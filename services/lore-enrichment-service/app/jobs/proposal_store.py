@@ -45,7 +45,11 @@ __all__ = [
 
 @dataclass(frozen=True)
 class PersistedProposal:
-    """The identity + H0 markers of a persisted proposal (insert result)."""
+    """The identity + H0 markers of a persisted proposal (insert result).
+
+    ``deduped`` is True when this row already existed (a resume/re-run hit the
+    per-gap UNIQUE(job_id, gap_ref) and the existing row was reloaded instead of
+    a new insert) — the runner uses it to avoid double-counting on resume."""
 
     proposal_id: str
     job_id: str
@@ -56,6 +60,7 @@ class PersistedProposal:
     confidence: float
     pending_validation: bool
     dimensions: dict[str, str]
+    deduped: bool = False
 
 
 def _dimensions_from_facts(facts: list[EnrichedFact]) -> dict[str, str]:
@@ -87,6 +92,7 @@ def build_proposal_fields(
     verify: AnnotatedVerify | None,
     source_refs: list[dict[str, Any]],
     base_provenance: dict[str, Any] | None = None,
+    gap_ref: str | None = None,
 ) -> dict[str, Any]:
     """Assemble the H0-safe column values for one ``enrichment_proposal`` insert.
 
@@ -114,6 +120,11 @@ def build_proposal_fields(
         "project_id": project_id,
         "entity_kind": entity_kind,
         "target_ref": target_ref,
+        # The per-gap dedupe key (target_ref or canonical_name): UNIQUE(job_id,
+        # gap_ref) makes a re-run idempotent (WARN-1). Falls back to the
+        # canonical_name when there is no target_ref (a faithful identity, never
+        # makeup content).
+        "gap_ref": gap_ref or target_ref or canonical_name,
         "canonical_name": canonical_name,
         "content": _content_from_facts(canonical_name, facts),
         "origin": "enrichment",  # H0: never 'glossary'
@@ -186,22 +197,41 @@ class PgProposalStore:
     async def persist_proposal(
         self, *, job_id: str, fields: dict[str, Any]
     ) -> PersistedProposal:
+        """Insert one proposal, IDEMPOTENT per (job_id, gap_ref) (WARN-1).
+
+        ON CONFLICT DO NOTHING against the UNIQUE(job_id, gap_ref) index makes a
+        resume/re-run that re-processes an already-persisted gap a no-op: the
+        existing row is reloaded (``deduped=True``) instead of inserting a
+        duplicate. So a re-run can never DUPLICATE proposals."""
+        gap_ref = fields["gap_ref"]
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 """INSERT INTO enrichment_proposal
                      (job_id, project_id, user_id, entity_kind, target_ref,
-                      canonical_name, content, origin, technique, provenance_json,
-                      confidence, source_refs_json, review_status)
-                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12::jsonb,$13)
+                      gap_ref, canonical_name, content, origin, technique,
+                      provenance_json, confidence, source_refs_json, review_status)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13::jsonb,$14)
+                   ON CONFLICT (job_id, gap_ref) WHERE gap_ref IS NOT NULL
+                     DO NOTHING
                    RETURNING proposal_id""",
                 UUID(job_id), UUID(fields["project_id"]), UUID(fields["user_id"]),
-                fields["entity_kind"], fields["target_ref"], fields["canonical_name"],
+                fields["entity_kind"], fields["target_ref"], gap_ref,
+                fields["canonical_name"],
                 fields["content"], fields["origin"], fields["technique"],
                 json.dumps(fields["provenance_json"], ensure_ascii=False),
                 fields["confidence"],
                 json.dumps(fields["source_refs_json"], ensure_ascii=False),
                 fields["review_status"],
             )
+            deduped = row is None
+            if deduped:
+                # The gap already has a proposal for this job — reload it (the
+                # ON CONFLICT skipped the insert). Idempotent: no duplicate row.
+                row = await conn.fetchrow(
+                    """SELECT proposal_id FROM enrichment_proposal
+                       WHERE job_id = $1 AND gap_ref = $2""",
+                    UUID(job_id), gap_ref,
+                )
         return PersistedProposal(
             proposal_id=str(row["proposal_id"]),
             job_id=job_id,
@@ -212,6 +242,7 @@ class PgProposalStore:
             confidence=float(fields["confidence"]),
             pending_validation=bool(fields["pending_validation"]),
             dimensions=dict(fields["provenance_json"].get("dimensions", {})),
+            deduped=deduped,
         )
 
     async def mark_job_status(
@@ -252,6 +283,8 @@ class InMemoryProposalStore:
     jobs: dict[str, dict[str, Any]] = field(default_factory=dict)
     proposals: list[PersistedProposal] = field(default_factory=list)
     raw_fields: list[dict[str, Any]] = field(default_factory=list)
+    #: (job_id, gap_ref) → proposal_id of an already-persisted gap (dedupe).
+    _by_gap: dict[tuple[str, str], str] = field(default_factory=dict)
 
     async def create_job(
         self,
@@ -278,6 +311,26 @@ class InMemoryProposalStore:
     async def persist_proposal(
         self, *, job_id: str, fields: dict[str, Any]
     ) -> PersistedProposal:
+        # Mirror the Pg UNIQUE(job_id, gap_ref) idempotency (WARN-1): a re-run
+        # that re-persists a gap reloads the existing proposal (deduped=True)
+        # instead of appending a duplicate.
+        gap_ref = fields["gap_ref"]
+        existing_id = self._by_gap.get((job_id, gap_ref)) if gap_ref else None
+        if existing_id is not None:
+            for prior in self.proposals:
+                if prior.proposal_id == existing_id:
+                    return PersistedProposal(
+                        proposal_id=prior.proposal_id,
+                        job_id=prior.job_id,
+                        canonical_name=prior.canonical_name,
+                        origin=prior.origin,
+                        technique=prior.technique,
+                        review_status=prior.review_status,
+                        confidence=prior.confidence,
+                        pending_validation=prior.pending_validation,
+                        dimensions=dict(prior.dimensions),
+                        deduped=True,
+                    )
         self.raw_fields.append(fields)
         p = PersistedProposal(
             proposal_id=str(uuid4()),
@@ -291,6 +344,8 @@ class InMemoryProposalStore:
             dimensions=dict(fields["provenance_json"].get("dimensions", {})),
         )
         self.proposals.append(p)
+        if gap_ref:
+            self._by_gap[(job_id, gap_ref)] = p.proposal_id
         return p
 
     async def mark_job_status(

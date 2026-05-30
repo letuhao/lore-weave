@@ -203,6 +203,12 @@ CREATE TABLE IF NOT EXISTS enrichment_proposal (
 
   entity_kind     TEXT NOT NULL,                  -- e.g. 'location'
   target_ref      TEXT,                           -- the canon entity being enriched
+  gap_ref         TEXT,                           -- per-gap dedupe discriminator
+                                                  --   (target_ref or canonical_name).
+                                                  --   UNIQUE(job_id, gap_ref) makes a
+                                                  --   resume/re-run idempotent: the same
+                                                  --   gap can persist only ONE proposal
+                                                  --   per job (WARN-1 duplicate-proposal fix).
   canonical_name  TEXT,                           -- faithful entity NAME from the Gap
                                                   --   (H0: never makeup content). Used as
                                                   --   the anchor name when target_ref is NULL
@@ -255,6 +261,18 @@ ALTER TABLE enrichment_proposal
   ADD COLUMN IF NOT EXISTS canonical_name TEXT;
 ALTER TABLE enrichment_proposal
   ADD COLUMN IF NOT EXISTS writeback_entity_id UUID;
+ALTER TABLE enrichment_proposal
+  ADD COLUMN IF NOT EXISTS gap_ref TEXT;
+
+-- Per-gap idempotency (WARN-1): at most ONE proposal per (job, gap). A resume
+-- or re-run that re-processes an already-persisted gap is a no-op insert (the
+-- store does ON CONFLICT DO NOTHING and reloads the existing row), so a job can
+-- never DUPLICATE proposals. NULL gap_ref is never written by the runner; the
+-- partial index ignores any legacy NULL rows so the constraint adds cleanly to
+-- an already-deployed table.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_enrichment_proposal_job_gap
+  ON enrichment_proposal(job_id, gap_ref)
+  WHERE gap_ref IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_enrichment_proposal_job
   ON enrichment_proposal(job_id, created_at DESC);

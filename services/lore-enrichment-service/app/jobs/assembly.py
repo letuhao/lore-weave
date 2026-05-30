@@ -30,7 +30,7 @@ from app.clients.port import KnowledgeReadHttp
 from app.config import settings
 from app.generation.complete import make_complete_fn
 from app.generation.generate import SchemaGovernedGenerator
-from app.jobs.cost import JobCostBudget
+from app.jobs.cost import GapCostModel, JobCostBudget
 from app.jobs.events import JobEventEmitter, make_redis_producer
 from app.jobs.proposal_store import PgProposalStore
 from app.jobs.runner import JobRunner
@@ -38,7 +38,6 @@ from app.jobs.stages import GapPipeline
 from app.retrieval.embedding import make_embed_query_fn
 from app.retrieval.store import SourceCorpusStore
 from app.retrieval.strategy import RetrievalStrategy
-from app.strategies.template import TemplateStrategy
 from app.verify.canon_verify import CanonFact, CanonVerifier
 
 __all__ = ["build_live_runner", "LiveRunnerBundle"]
@@ -64,6 +63,7 @@ async def build_live_runner(
     embedding_model_ref: str,
     cost_cap: float | None,
     eval_reserve_fraction: float = 0.15,
+    spent_so_far: float = 0.0,
     top_k: int = 5,
 ) -> LiveRunnerBundle:
     """Compose a :class:`JobRunner` from the real platform components.
@@ -72,6 +72,11 @@ async def build_live_runner(
     project's embedding model — used by retrieval. The GENERATION model_ref is
     carried per-run on the :class:`StrategyContext` the caller passes to
     ``run_job`` (so the embed + gen models can differ). NO model name here.
+
+    ``spent_so_far`` seeds the cost budget with the spend a PRIOR run already
+    incurred (read from ``enrichment_job.actual_cost_usd`` on a resume) so a
+    resumed job's cap accounts for what it already spent — it does NOT reset to
+    0 and double-spend up to the cap again (WARN-1 budget-reset fix).
     """
     # ── C1 client (embed + graph-stats) ────────────────────────────────────────
     kc = KnowledgeClient(
@@ -118,12 +123,20 @@ async def build_live_runner(
     )
 
     # ── cost budget (cap + reserved eval line, M5) ──────────────────────────────
-    budget = JobCostBudget(cost_cap, eval_reserve_fraction=eval_reserve_fraction)
+    # ``spent_so_far`` (resume) preloads what a prior run already spent so the
+    # working cap accounts for it (WARN-1: never reset to 0 and re-spend).
+    budget = JobCostBudget(
+        cost_cap, eval_reserve_fraction=eval_reserve_fraction, spent=spent_so_far
+    )
 
     runner = JobRunner(
         store=pg_store,
         pipeline=pipeline,
-        cost_strategy=TemplateStrategy(),  # the free, deterministic estimate unit
+        # The REAL per-gap cost (embed + LLM completion) — NON-ZERO so the cap
+        # actually bites a runaway job. The old wiring injected TemplateStrategy,
+        # whose estimate models the FREE scaffold (cost 0.0), making the per-job
+        # cost-cap inert in production (BLOCK-1).
+        cost_strategy=GapCostModel(),
         emitter=emitter,
         budget=budget,
     )

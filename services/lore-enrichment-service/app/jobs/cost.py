@@ -23,19 +23,108 @@ Boundaries (locked):
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from app.jobs.cost_guardrail import CostCapExceeded, CostGuardrail
 from app.jobs.state_machine import JobStateMachine
+from app.strategies.base import CostEstimate, Technique
+
+if TYPE_CHECKING:  # avoid a runtime import cycle (gap model imported lazily)
+    from app.gaps.model import Gap
 
 __all__ = [
     "DEFAULT_EVAL_RESERVE_FRACTION",
+    "RETRIEVAL_GAP_COST",
+    "GENERATION_GAP_COST",
+    "PER_GAP_WORKING_COST",
     "CostCapExceeded",  # re-exported so callers import the pause signal from here
     "EvalReserveError",
+    "GapCostModel",
     "JobCostBudget",
 ]
 
 #: Default fraction of the per-job cap reserved for the (C15) eval pass (M5).
 #: 15% leaves the bulk for enrichment while guaranteeing the eval can run.
 DEFAULT_EVAL_RESERVE_FRACTION: float = 0.15
+
+# ── the REAL per-gap cost (BLOCK-1 fix) ───────────────────────────────────────
+# A P1 gap does TWO billable calls: one retrieval query-embed (C10, the embed
+# seam) + one LLM completion (C11, the generation seam). The cost UNIT is opaque
+# — the same abstract "work unit" the strategy CostEstimate + the job cap trade
+# in (NOT currency; see cost_guardrail). The point is that it is NON-ZERO so a
+# runaway local-LLM job is PAUSED by the cap before unbounded overshoot, instead
+# of the inert ``TemplateStrategy`` free-scaffold estimate (0.0) the assembly
+# used to wire — that estimate models the FREE scaffold, not the real LLM/embed
+# work, so the cap never fired in production (the inert-cap defect).
+#
+# These mirror the per-gap unit costs the real strategies already declare:
+#   * retrieval — ``RetrievalStrategy._EMBED_UNIT_COST`` (1 embed call / gap)
+#   * generation — one LLM completion / gap; the generator does the heavy work,
+#     so it carries the larger share of the per-gap budget.
+#: Retrieval query-embed cost per gap (one /internal/embed call).
+RETRIEVAL_GAP_COST: float = 1.0
+#: LLM completion cost per gap (one /internal/llm/stream generation call). The
+#: generation is the dominant cost; weighted above the embed accordingly.
+GENERATION_GAP_COST: float = 4.0
+#: Truthful per-gap working cost charged against the cap = embed + generation.
+PER_GAP_WORKING_COST: float = RETRIEVAL_GAP_COST + GENERATION_GAP_COST
+
+
+class GapCostModel:
+    """The REAL per-gap cost estimator the runner charges against the cap.
+
+    Quacks like the slice of :class:`~app.strategies.base.EnrichmentStrategy`
+    the runner uses (``estimate_cost``), but — unlike ``TemplateStrategy`` (whose
+    estimate models the FREE scaffold, cost 0.0) — it returns the NON-ZERO cost
+    of the real P1 work per gap: one retrieval query-embed (C10) + one LLM
+    completion (C11). This is what makes the per-job cost-cap actually bite: a
+    runaway local-LLM job is paused before it overshoots, because each gap now
+    has a real, positive charge.
+
+    Cost is provider-agnostic + unit-opaque (the same abstract unit the cap +
+    the strategy estimates use — NOT currency). The estimate is a conservative
+    PRE-charge per gap (charged before the gap runs, so the cap can pause a
+    runaway BEFORE it incurs the next gap's LLM call). Pure + side-effect-free.
+
+    TODO(D-C14-EMBED-METER): this is a fixed PRE-charge, NOT post-call token
+    accounting — the actual embed/LLM token counts the clients report are not
+    fed back into the budget. Fine for the single-call P1 strategy; P2/P3
+    multi-call strategies (fabrication multi-pass, recook re-generate) will want
+    truthful post-call token metering (charge actual tokens, still check the cap
+    BEFORE the next gap). See docs/deferred/DEFERRED.md #052.
+    """
+
+    technique = Technique.RETRIEVAL
+
+    def __init__(
+        self,
+        *,
+        retrieval_gap_cost: float = RETRIEVAL_GAP_COST,
+        generation_gap_cost: float = GENERATION_GAP_COST,
+    ) -> None:
+        if retrieval_gap_cost < 0 or generation_gap_cost < 0:
+            raise ValueError("per-gap costs must be >= 0")
+        self._retrieval = retrieval_gap_cost
+        self._generation = generation_gap_cost
+
+    @property
+    def per_gap_cost(self) -> float:
+        """The non-zero cost charged for one gap (embed + LLM completion)."""
+        return self._retrieval + self._generation
+
+    def estimate_cost(self, gap_batch: list["Gap"]) -> CostEstimate:
+        """Project the real cost of enriching ``gap_batch`` (embed + LLM / gap).
+
+        Returns a :class:`CostEstimate` whose ``cost`` is ``per_gap_cost * n`` —
+        the runner accumulates it against the working cap BEFORE each gap, so a
+        breach pauses the job. NON-ZERO by construction (the inert-cap fix)."""
+        n = len(gap_batch)
+        return CostEstimate(
+            technique=self.technique,
+            gap_count=n,
+            units=float(n),
+            cost=self.per_gap_cost * n,
+        )
 
 
 class EvalReserveError(ValueError):

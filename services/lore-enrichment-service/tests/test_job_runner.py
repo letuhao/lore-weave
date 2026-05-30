@@ -20,7 +20,7 @@ import pytest
 
 from app.gaps.model import Dimension, EntityKind, Gap, dimensions_for
 from app.generation.generate import GenerationError, SchemaGovernedGenerator
-from app.jobs.cost import JobCostBudget
+from app.jobs.cost import GapCostModel, JobCostBudget
 from app.jobs.events import JobEventEmitter, JobEventType
 from app.jobs.proposal_store import InMemoryProposalStore
 from app.jobs.runner import JobRunner
@@ -243,6 +243,128 @@ async def test_cost_cap_breach_pauses_before_gap():
     assert store.jobs["job-1"]["status"] == "paused"
     # NO completed event — the job paused, it did not finish.
     assert not any(e.event_type is JobEventType.COMPLETED for e in emitter.emitted)
+
+
+# ── BLOCK-1: cap PAUSES on the REAL cost path (GapCostModel = what assembly ────
+#    wires), NOT a fabricated _CostlyStrategy. This closes the mock-only
+#    false-green: with the inert TemplateStrategy estimate (cost 0.0) the cap
+#    NEVER fired in production; GapCostModel is the same non-zero cost the live
+#    runner now charges, so a runaway job is paused before unbounded overshoot.
+
+
+def _real_runner(*, store, pipeline, budget, emitter) -> JobRunner:
+    """A runner wired EXACTLY like app.jobs.assembly.build_live_runner: the
+    NON-ZERO GapCostModel as the cost path (not the free TemplateStrategy)."""
+    return JobRunner(
+        store=store, pipeline=pipeline, cost_strategy=GapCostModel(),
+        emitter=emitter, budget=budget,
+    )
+
+
+async def test_cost_cap_pauses_on_real_cost_path_not_template():
+    store = InMemoryProposalStore()
+    emitter = _emitter()
+    # GapCostModel charges PER_GAP_WORKING_COST (=5.0) per gap. working cap =
+    # 12 − 2 = 10 → fits 2 gaps, pauses before the 3rd. With the OLD inert wiring
+    # (TemplateStrategy, cost 0.0) this would NEVER pause (all 4 would run free).
+    from app.jobs.cost import PER_GAP_WORKING_COST
+
+    budget = JobCostBudget(2.0 + 2 * PER_GAP_WORKING_COST, eval_reserve=2.0)
+    runner = _real_runner(
+        store=store, pipeline=_pipeline(), budget=budget, emitter=emitter,
+    )
+    gaps = [_gap(n) for n in _LOCATIONS]  # 4 gaps
+    outcome = await runner.run_job(job_id="job-1", gaps=gaps, context=_ctx())
+
+    assert outcome.final_state == "paused"
+    assert outcome.paused_at_gap is not None
+    assert len(outcome.proposals) == 2  # only the two that fit the working cap
+    assert outcome.spent == pytest.approx(2 * PER_GAP_WORKING_COST)
+    # budget protected: spend never reached or passed the working cap's headroom.
+    assert outcome.spent <= budget.working_cap
+    assert store.jobs["job-1"]["status"] == "paused"
+    assert not any(e.event_type is JobEventType.COMPLETED for e in emitter.emitted)
+
+
+async def test_runaway_job_cannot_run_unbounded_under_tiny_cap():
+    """A tiny max_spend pauses on the REAL cost path before doing any work —
+    proving the cap can stop a runaway (the safety control is no longer inert)."""
+    from app.jobs.cost import PER_GAP_WORKING_COST
+
+    store = InMemoryProposalStore()
+    # working cap < one gap's real cost → pauses BEFORE the very first gap.
+    budget = JobCostBudget(PER_GAP_WORKING_COST * 0.5, eval_reserve=0.0)
+    runner = _real_runner(
+        store=store, pipeline=_pipeline(), budget=budget, emitter=_emitter(),
+    )
+    gaps = [_gap(n) for n in _LOCATIONS]  # 4 gaps — none should run
+    outcome = await runner.run_job(job_id="job-1", gaps=gaps, context=_ctx())
+
+    assert outcome.final_state == "paused"
+    assert outcome.proposals == []  # NOTHING ran — cap bit immediately
+    assert outcome.spent == 0.0  # budget fully protected
+
+
+# ── WARN-1: resume/re-run is SAFE — no double-charge, no duplicate proposals ───
+
+
+async def test_rerun_does_not_duplicate_proposals():
+    """A re-run over the SAME job_id + gaps reloads each gap's existing proposal
+    (idempotent persist) instead of inserting duplicates."""
+    store = InMemoryProposalStore()  # shared across both runs (same DB)
+    gaps = [_gap(n) for n in _LOCATIONS]
+
+    run1 = await _real_runner(
+        store=store, pipeline=_pipeline(),
+        budget=JobCostBudget(None), emitter=_emitter(),
+    ).run_job(job_id="job-1", gaps=gaps, context=_ctx())
+    assert run1.final_state == "completed"
+    assert len(run1.proposals) == len(_LOCATIONS)
+    first_ids = {p.proposal_id for p in run1.proposals}
+
+    # re-run the SAME job over the SAME gaps (e.g. an operator re-trigger).
+    run2 = await _real_runner(
+        store=store, pipeline=_pipeline(),
+        budget=JobCostBudget(None), emitter=_emitter(),
+    ).run_job(job_id="job-1", gaps=gaps, context=_ctx())
+    assert run2.final_state == "completed"
+    # NO new rows: the store still holds exactly one proposal per gap.
+    assert len(store.proposals) == len(_LOCATIONS)
+    # every re-run proposal reloaded the SAME existing row (deduped).
+    assert {p.proposal_id for p in run2.proposals} == first_ids
+    assert all(p.deduped for p in run2.proposals)
+    assert sorted(run2.deduped_gaps) == sorted(g.target_ref for g in gaps)
+
+
+async def test_resume_seeds_spent_so_budget_not_reset():
+    """A resumed run seeds the budget with the prior spend (build_live_runner's
+    spent_so_far) so it does NOT reset to 0 and double-spend up to the cap."""
+    from app.jobs.cost import PER_GAP_WORKING_COST
+
+    store = InMemoryProposalStore()
+    gaps = [_gap(n) for n in _LOCATIONS]  # 4 gaps
+
+    # Run 1: cap fits 2 gaps, pauses; prior spend = 2 * per-gap cost.
+    cap = 2 * PER_GAP_WORKING_COST  # working cap (no eval reserve)
+    run1 = await _real_runner(
+        store=store, pipeline=_pipeline(),
+        budget=JobCostBudget(cap, eval_reserve=0.0), emitter=_emitter(),
+    ).run_job(job_id="job-1", gaps=gaps, context=_ctx())
+    assert run1.final_state == "paused"
+    prior_spent = run1.spent
+    assert prior_spent == pytest.approx(2 * PER_GAP_WORKING_COST)
+
+    # Resume: seed the budget with the prior spend. The cap is ALREADY consumed,
+    # so the resumed run must pause immediately (NOT re-spend up to the cap).
+    resumed_budget = JobCostBudget(cap, eval_reserve=0.0, spent=prior_spent)
+    run2 = await _real_runner(
+        store=store, pipeline=_pipeline(), budget=resumed_budget, emitter=_emitter(),
+    ).run_job(job_id="job-1", gaps=gaps, context=_ctx())
+    assert run2.final_state == "paused"
+    # the resumed run added NO new spend (budget was already at the cap).
+    assert run2.spent == pytest.approx(prior_spent)
+    # and it did NOT duplicate the 2 proposals run 1 already persisted.
+    assert len(store.proposals) == 2
 
 
 # ── ungroundable gap is SKIPPED (H0: no unprovenanced fact), not a failure ─────

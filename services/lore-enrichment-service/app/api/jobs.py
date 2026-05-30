@@ -268,6 +268,29 @@ def _job_row(r: asyncpg.Record) -> dict:
 # expose the explicit author transitions on the same C8 DAG: cancel a queued/
 # paused job, or pause/resume a job. They mutate ONLY the job's lifecycle status
 # (never a proposal's H0 markers). An illegal transition → 409.
+#
+# SCOPE (honest, WARN-1): these transitions flip the persisted ``status`` ONLY —
+# they do NOT re-drive the pipeline. ``resume`` therefore marks a paused job
+# ``running`` but does not itself re-process the remaining gaps (the original
+# request's targets + model_refs are not persisted on the job row, so the runner
+# cannot be rebuilt here). Re-running a job IS safe, though: the per-gap
+# idempotent persist (UNIQUE(job_id, gap_ref)) prevents DUPLICATE proposals and
+# ``build_live_runner(spent_so_far=...)`` (seeded from ``actual_cost_usd`` via
+# :func:`load_spent_so_far`) prevents DOUBLE-CHARGING the budget on a re-run.
+# Full auto-resume (re-drive only the not-yet-persisted gaps from a single
+# resume call) is tracked as a deferral — see SESSION_PATCH D-C14-FULL-RESUME.
+
+async def load_spent_so_far(
+    *, pool: asyncpg.Pool, job_id: UUID
+) -> float:
+    """Read what a prior run already spent (``actual_cost_usd``) so a re-run can
+    seed its budget and NOT reset to 0 / double-spend (WARN-1)."""
+    async with pool.acquire() as conn:
+        v = await conn.fetchval(
+            "SELECT actual_cost_usd FROM enrichment_job WHERE job_id=$1", job_id
+        )
+    return float(v) if v is not None else 0.0
+
 
 async def _transition_job(
     *, action: str, job_id: UUID, project_id: UUID,
@@ -277,7 +300,10 @@ async def _transition_job(
 
     ``start`` walks pending→estimating→running; ``resume`` paused→running;
     ``pause`` running→paused; ``cancel`` →cancelled. Any move illegal from the
-    current persisted state raises 409 (the C8 machine refuses it)."""
+    current persisted state raises 409 (the C8 machine refuses it).
+
+    These mutate the persisted ``status`` ONLY — they do NOT re-drive the
+    pipeline (see the module note above on resume scope, WARN-1)."""
     if principal.user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="auth required"

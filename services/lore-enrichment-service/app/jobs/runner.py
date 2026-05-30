@@ -11,8 +11,8 @@ Flow (one ``run_job`` call):
     start     (estimating → running)   emit job.started
     per gap:
         cost-cap charge_or_pause  BEFORE the gap (breach → PAUSE + job.paused,
-                                  resumable — NEVER crash, NEVER touch the eval
-                                  reserve)
+                                  re-runnable safely — NEVER crash, NEVER touch
+                                  the eval reserve)
         stage pipeline (C10→C11→C12)   retrieval → generate (H0 facts) → verify
         persist proposal (quarantined, H0: origin='enrichment', confidence<1.0,
                           review_status='proposed')
@@ -22,8 +22,18 @@ Flow (one ``run_job`` call):
 
 H0 (LOCKED): every persisted proposal is born quarantined; ONLY a later author
 promote (C13) canonizes. The runner NEVER writes canon, NEVER calls promote.
-Cost-cap breach PAUSES (resumable) — it does not drop work or crash. Events are
-idempotent (a crash-resume does not double-emit / double-write a gap).
+Cost-cap breach PAUSES — it does not drop work or crash.
+
+Resume/re-run SAFETY (WARN-1): a paused job is re-run by invoking ``run_job``
+again on a fresh runner seeded with the prior spend (``build_live_runner
+(spent_so_far=...)``). Re-running is SAFE but NOT yet skip-prior-work: it
+re-processes from gap 0, but it does NOT double-charge (the budget is seeded
+from ``actual_cost_usd``) and does NOT duplicate proposals (the per-gap
+idempotent persist, UNIQUE(job_id, gap_ref), reloads an already-persisted gap's
+row instead of inserting again — ``persisted.deduped`` flags it). Skipping the
+already-done gaps on resume is tracked as D-C14-FULL-RESUME. Events are
+idempotent within one emitter instance (dedupe set); a fresh emitter on a re-run
+may re-emit, but the consumer dedupes on ``dedupe_key`` (at-least-once stream).
 
 Boundaries: lore-enrichment-service only. NO model names (the strategies resolve
 via provider-registry by model_ref). NO direct Neo4j / glossary canonical write.
@@ -72,6 +82,9 @@ class JobOutcome:
     paused_at_gap: str | None = None
     error: str | None = None
     skipped_gaps: list[str] = field(default_factory=list)
+    #: gaps whose proposal already existed (a resume/re-run re-processed them —
+    #: the idempotent persist reloaded the row instead of duplicating it, WARN-1).
+    deduped_gaps: list[str] = field(default_factory=list)
 
 
 class JobRunner:
@@ -217,11 +230,17 @@ class JobRunner:
                     verify=stage.verify,
                     source_refs=stage.source_refs,
                     base_provenance=stage.proposal.provenance_json,
+                    gap_ref=gap_ref,  # per-gap idempotency key (WARN-1)
                 )
                 persisted = await self._store.persist_proposal(
                     job_id=job_id, fields=fields
                 )
                 outcome.proposals.append(persisted)
+                if persisted.deduped:
+                    # A resume/re-run re-processed an already-persisted gap; the
+                    # store reloaded the existing row instead of duplicating it.
+                    # Record it for visibility, but flag the no-op (WARN-1).
+                    outcome.deduped_gaps.append(gap_ref)
 
                 # ── events (idempotent per job+stage+gap) ───────────────────────
                 await self._emitter.emit(

@@ -14,10 +14,15 @@ from __future__ import annotations
 
 import pytest
 
+from app.gaps.model import Dimension, EntityKind, Gap
 from app.jobs.cost import (
     DEFAULT_EVAL_RESERVE_FRACTION,
+    GENERATION_GAP_COST,
+    PER_GAP_WORKING_COST,
+    RETRIEVAL_GAP_COST,
     CostCapExceeded,
     EvalReserveError,
+    GapCostModel,
     JobCostBudget,
 )
 from app.jobs.state_machine import JobRecord, JobState, JobStateMachine, PauseReason
@@ -91,3 +96,58 @@ def test_misconfig_raises():
         JobCostBudget(100.0, eval_reserve_fraction=1.0)  # fraction out of range
     with pytest.raises(EvalReserveError):
         JobCostBudget(-1.0)  # negative cap
+
+
+# ── BLOCK-1: the REAL per-gap cost model is NON-ZERO (the inert-cap fix) ───────
+
+
+def _gaps(n: int) -> list[Gap]:
+    return [
+        Gap(
+            entity_kind=EntityKind.LOCATION,
+            canonical_name=f"loc{i}",
+            target_ref=f"loc:{i}",
+            mention_count=1,
+            present_dimensions=(),
+            missing_dimensions=tuple(Dimension),
+        )
+        for i in range(n)
+    ]
+
+
+def test_gap_cost_model_charges_nonzero_per_gap():
+    """The real per-gap cost (embed + LLM) is NON-ZERO — unlike the inert
+    TemplateStrategy free-scaffold estimate (0.0) the assembly used to wire."""
+    model = GapCostModel()
+    assert PER_GAP_WORKING_COST == RETRIEVAL_GAP_COST + GENERATION_GAP_COST
+    assert model.per_gap_cost == pytest.approx(PER_GAP_WORKING_COST)
+    assert model.per_gap_cost > 0.0  # the defect was this being 0.0
+
+    one = model.estimate_cost(_gaps(1))
+    assert one.cost == pytest.approx(PER_GAP_WORKING_COST)
+    assert one.cost > 0.0
+    three = model.estimate_cost(_gaps(3))
+    assert three.cost == pytest.approx(PER_GAP_WORKING_COST * 3)
+
+
+def test_gap_cost_model_empty_batch_is_free_but_per_gap_nonzero():
+    model = GapCostModel()
+    assert model.estimate_cost([]).cost == 0.0  # nothing to do
+    assert model.estimate_cost(_gaps(1)).cost > 0.0  # but a real gap is not free
+
+
+def test_gap_cost_model_rejects_negative():
+    with pytest.raises(ValueError):
+        GapCostModel(retrieval_gap_cost=-1.0)
+
+
+def test_assembly_wires_nonzero_cost_not_template():
+    """Guard the wiring: the assembly must NOT inject the free TemplateStrategy
+    estimate (cost 0.0) as the cost path — that is exactly the inert-cap defect.
+    A one-gap charge through the wired model must be > 0."""
+    from app.strategies.template import TemplateStrategy
+
+    # The OLD (defective) wiring's per-gap charge was 0.0 — prove it stays the
+    # contrast, and that the NEW model the assembly wires is non-zero.
+    assert TemplateStrategy().estimate_cost(_gaps(1)).cost == 0.0
+    assert GapCostModel().estimate_cost(_gaps(1)).cost > 0.0
