@@ -1,0 +1,58 @@
+{
+  "saved": "已儲存章節",
+  "no_content": "沒有可翻譯的內容",
+  "translation_failed": "翻譯失敗",
+  "translated_blocks": "已翻譯 {{count}} 個區塊",
+  "text_translation_received": "已收到文字翻譯 — 建議使用區塊模式",
+  "breadcrumb": {
+    "workspace": "工作區",
+    "book": "書籍",
+    "chapter": "章節"
+  },
+  "prev_chapter": "上一章",
+  "next_chapter": "下一章",
+  "mode": {
+    "classic": "經典",
+    "classic_title": "經典模式 — 專注寫作",
+    "ai": "AI",
+    "ai_title": "AI 助手模式 — 完整功能"
+  },
+  "grammar_title": "切換文法與拼字檢查（LanguageTool）",
+  "translate_title": "使用 AI 翻譯內容（區塊模式）",
+  "translating": "翻譯中...",
+  "translate": "翻譯",
+  "toggle_source": "切換來源面板",
+  "toggle_history": "切換歷史 / AI 面板",
+  "unsaved": "未儲存",
+  "saved_badge": "已儲存",
+  "discard_title": "捨棄所有未儲存的變更",
+  "discard": "捨棄",
+  "save": "儲存",
+  "tabs": {
+    "chapters": "章節",
+    "original": "原文",
+    "glossary": "詞彙表"
+  },
+  "chapter_count": "{{count}} 章節",
+  "chapter_count_other": "{{count}} 章節",
+  "original_readonly": "已上傳的原文 — 唯讀",
+  "no_original": "無原始來源 — 此章節直接在編輯器中建立（未匯入檔案）。",
+  "title_placeholder": "章節標題",
+  "chars": "{{n}} 字元",
+  "words": "{{n}} 字",
+  "paragraphs": "{{count}} 段",
+  "paragraphs_other": "{{count}} 段",
+  "save_note_placeholder": "儲存備註（選填） — 例如：「新增回憶場景」",
+  "history": "歷史",
+  "ai_chat": "AI 聊天",
+  "coming_soon": "即將推出",
+  "connected": "已連線",
+  "left_panel": "左面板",
+  "right_panel": "右面板",
+  "discard_confirm": {
+    "title": "捨棄變更？",
+    "desc": "所有未儲存的變更將永久遺失，此操作無法復原。",
+    "confirm": "捨棄變更",
+    "cancel": "繼續編輯"
+  }
+}

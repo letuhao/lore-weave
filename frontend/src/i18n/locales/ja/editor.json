@@ -1,0 +1,58 @@
+{
+  "saved": "章を保存しました",
+  "no_content": "翻訳するコンテンツがありません",
+  "translation_failed": "翻訳に失敗しました",
+  "translated_blocks": "{{count}}ブロックを翻訳しました",
+  "text_translation_received": "テキスト翻訳を受信しました — ブロックモードを推奨します",
+  "breadcrumb": {
+    "workspace": "ワークスペース",
+    "book": "書籍",
+    "chapter": "章"
+  },
+  "prev_chapter": "前の章",
+  "next_chapter": "次の章",
+  "mode": {
+    "classic": "クラシック",
+    "classic_title": "クラシックモード — 集中執筆",
+    "ai": "AI",
+    "ai_title": "AIアシスタントモード — 全機能"
+  },
+  "grammar_title": "文法・スペルチェックの切り替え（LanguageTool）",
+  "translate_title": "AIでコンテンツを翻訳（ブロックモード）",
+  "translating": "翻訳中...",
+  "translate": "翻訳",
+  "toggle_source": "ソースパネルの切り替え",
+  "toggle_history": "履歴 / AIパネルの切り替え",
+  "unsaved": "未保存",
+  "saved_badge": "保存済み",
+  "discard_title": "未保存の変更をすべて破棄",
+  "discard": "破棄",
+  "save": "保存",
+  "tabs": {
+    "chapters": "章",
+    "original": "原文",
+    "glossary": "用語集"
+  },
+  "chapter_count": "{{count}}章",
+  "chapter_count_other": "{{count}}章",
+  "original_readonly": "アップロードされた原文 — 読み取り専用",
+  "no_original": "原文ソースなし — この章はエディタで直接作成されました（ファイルはインポートされていません）。",
+  "title_placeholder": "章のタイトル",
+  "chars": "{{n}}文字",
+  "words": "{{n}}語",
+  "paragraphs": "{{count}}段落",
+  "paragraphs_other": "{{count}}段落",
+  "save_note_placeholder": "保存メモ（任意） — 例：「回想シーンを追加」",
+  "history": "履歴",
+  "ai_chat": "AIチャット",
+  "coming_soon": "近日公開",
+  "connected": "接続済み",
+  "left_panel": "左パネル",
+  "right_panel": "右パネル",
+  "discard_confirm": {
+    "title": "変更を破棄しますか？",
+    "desc": "未保存の変更はすべて永久に失われます。元に戻せません。",
+    "confirm": "変更を破棄",
+    "cancel": "編集を続ける"
+  }
+}

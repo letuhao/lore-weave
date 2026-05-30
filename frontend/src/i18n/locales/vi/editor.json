@@ -1,0 +1,58 @@
+{
+  "saved": "Đã lưu chương",
+  "no_content": "Không có nội dung để dịch",
+  "translation_failed": "Dịch thất bại",
+  "translated_blocks": "Đã dịch {{count}} khối",
+  "text_translation_received": "Đã nhận bản dịch văn bản — nên dùng chế độ khối",
+  "breadcrumb": {
+    "workspace": "Không gian làm việc",
+    "book": "Sách",
+    "chapter": "Chương"
+  },
+  "prev_chapter": "Chương trước",
+  "next_chapter": "Chương sau",
+  "mode": {
+    "classic": "Cổ điển",
+    "classic_title": "Chế độ cổ điển — viết tập trung",
+    "ai": "AI",
+    "ai_title": "Chế độ trợ lý AI — đầy đủ tính năng"
+  },
+  "grammar_title": "Bật/tắt kiểm tra ngữ pháp & chính tả (LanguageTool)",
+  "translate_title": "Dịch nội dung bằng AI (chế độ khối)",
+  "translating": "Đang dịch...",
+  "translate": "Dịch",
+  "toggle_source": "Bật/tắt bảng nguồn",
+  "toggle_history": "Bật/tắt bảng lịch sử / AI",
+  "unsaved": "Chưa lưu",
+  "saved_badge": "Đã lưu",
+  "discard_title": "Hủy mọi thay đổi chưa lưu",
+  "discard": "Hủy bỏ",
+  "save": "Lưu",
+  "tabs": {
+    "chapters": "Chương",
+    "original": "Bản gốc",
+    "glossary": "Thuật ngữ"
+  },
+  "chapter_count": "{{count}} chương",
+  "chapter_count_other": "{{count}} chương",
+  "original_readonly": "Văn bản gốc đã tải lên — chỉ đọc",
+  "no_original": "Không có nguồn gốc — chương này được tạo trực tiếp trong trình soạn thảo (không nhập tệp nào).",
+  "title_placeholder": "Tiêu đề chương",
+  "chars": "{{n}} ký tự",
+  "words": "{{n}} từ",
+  "paragraphs": "{{count}} đoạn",
+  "paragraphs_other": "{{count}} đoạn",
+  "save_note_placeholder": "Ghi chú lưu (tùy chọn) — vd: \"thêm cảnh hồi tưởng\"",
+  "history": "Lịch sử",
+  "ai_chat": "Trò chuyện AI",
+  "coming_soon": "Sắp ra mắt",
+  "connected": "Đã kết nối",
+  "left_panel": "Bảng trái",
+  "right_panel": "Bảng phải",
+  "discard_confirm": {
+    "title": "Hủy thay đổi?",
+    "desc": "Mọi thay đổi chưa lưu sẽ bị mất vĩnh viễn. Không thể hoàn tác.",
+    "confirm": "Hủy thay đổi",
+    "cancel": "Tiếp tục chỉnh sửa"
+  }
+}

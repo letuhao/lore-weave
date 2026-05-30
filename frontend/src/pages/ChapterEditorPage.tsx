@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
   Save, PanelLeft, PanelRight, Clock, ChevronRight, ChevronLeft, ChevronRight as ChevronRightNav, SpellCheck,
@@ -32,6 +33,7 @@ function wordCount(text: string): number {
 }
 
 export function ChapterEditorPage() {
+  const { t } = useTranslation('editor');
   const { bookId = '', chapterId = '' } = useParams();
   const { accessToken } = useAuth();
   const panels = useEditorPanels();
@@ -144,9 +146,9 @@ export function ChapterEditorPage() {
       setTextContent(draft.text_content ?? '');
       setTiptapJson(null);
       setVersion(draft.draft_version);
-      const t = chapter.title ?? '';
-      setTitle(t);
-      setSavedTitle(t);
+      const chTitle = chapter.title ?? '';
+      setTitle(chTitle);
+      setSavedTitle(chTitle);
     } catch (e) { toast.error((e as Error).message); }
   }, [accessToken, bookId, chapterId]);
 
@@ -246,7 +248,7 @@ export function ChapterEditorPage() {
         await booksApi.patchChapter(accessToken, bookId, chapterId, { title: title || null });
       }
       setSaveNote('');
-      toast.success('Chapter saved');
+      toast.success(t('saved'));
       setRevKey((k) => k + 1);
       await load();
     } catch (e) { toast.error((e as Error).message); }
@@ -275,7 +277,7 @@ export function ChapterEditorPage() {
     if (!accessToken || !tiptapJson) return;
     const blocks = (tiptapJson as any)?.content;
     if (!Array.isArray(blocks) || blocks.length === 0) {
-      toast.error('No content to translate');
+      toast.error(t('no_content'));
       return;
     }
     setTranslating(true);
@@ -288,18 +290,18 @@ export function ChapterEditorPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data?.detail?.message || data?.detail || 'Translation failed');
+        toast.error(data?.detail?.message || data?.detail || t('translation_failed'));
         return;
       }
       if (data.translated_blocks && Array.isArray(data.translated_blocks)) {
         const newDoc = { type: 'doc', content: data.translated_blocks };
         tiptapEditorRef.current?.setContent(newDoc);
-        toast.success(`Translated ${data.translated_blocks.length} blocks`);
+        toast.success(t('translated_blocks', { count: data.translated_blocks.length }));
       } else if (data.translated_text) {
-        toast.info('Text translation received — block mode recommended');
+        toast.info(t('text_translation_received'));
       }
     } catch (e) {
-      toast.error((e as Error).message || 'Translation failed');
+      toast.error((e as Error).message || t('translation_failed'));
     } finally {
       setTranslating(false);
     }
@@ -355,21 +357,21 @@ export function ChapterEditorPage() {
             <button
               onClick={() => navigateToChapter(prevChapterId)}
               className="rounded p-1 hover:bg-secondary hover:text-foreground"
-              title="Previous chapter"
+              title={t('prev_chapter')}
             >
               <ChevronLeft className="h-3 w-3" />
             </button>
           )}
-          <button onClick={() => guardedNavigate('/books')} className="hover:text-foreground">Workspace</button>
+          <button onClick={() => guardedNavigate('/books')} className="hover:text-foreground">{t('breadcrumb.workspace')}</button>
           <ChevronRight className="h-3 w-3" />
-          <button onClick={() => guardedNavigate(`/books/${bookId}`)} className="hover:text-foreground">Book</button>
+          <button onClick={() => guardedNavigate(`/books/${bookId}`)} className="hover:text-foreground">{t('breadcrumb.book')}</button>
           <ChevronRight className="h-3 w-3" />
-          <span className="font-medium text-foreground">{title || 'Chapter'}</span>
+          <span className="font-medium text-foreground">{title || t('breadcrumb.chapter')}</span>
           {nextChapterId && (
             <button
               onClick={() => navigateToChapter(nextChapterId)}
               className="rounded p-1 hover:bg-secondary hover:text-foreground"
-              title="Next chapter"
+              title={t('next_chapter')}
             >
               <ChevronRightNav className="h-3 w-3" />
             </button>
@@ -388,10 +390,10 @@ export function ChapterEditorPage() {
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground',
               )}
-              title="Classic mode — focused writing"
+              title={t('mode.classic_title')}
             >
               <Pen className="h-3 w-3" />
-              Classic
+              {t('mode.classic')}
             </button>
             <button
               onClick={() => handleModeSwitch('ai')}
@@ -401,10 +403,10 @@ export function ChapterEditorPage() {
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground',
               )}
-              title="AI Assistant mode — full features"
+              title={t('mode.ai_title')}
             >
               <Sparkles className="h-3 w-3" />
-              AI
+              {t('mode.ai')}
             </button>
           </div>
 
@@ -416,7 +418,7 @@ export function ChapterEditorPage() {
               'flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-[10px] font-medium transition-colors',
               grammarEnabled ? 'text-warning' : 'text-muted-foreground hover:text-foreground',
             )}
-            title="Toggle grammar & spell check (LanguageTool)"
+            title={t('grammar_title')}
           >
             <input
               type="checkbox"
@@ -435,23 +437,23 @@ export function ChapterEditorPage() {
               'flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium transition-colors',
               translating ? 'text-primary animate-pulse' : 'text-muted-foreground hover:text-foreground',
             )}
-            title="Translate content using AI (block mode)"
+            title={t('translate_title')}
           >
             <Languages className="h-3.5 w-3.5" />
-            {translating ? 'Translating...' : 'Translate'}
+            {translating ? t('translating') : t('translate')}
           </button>
 
           <button
             onClick={panels.toggleLeft}
             className={cn('rounded p-1.5 transition-colors', panels.left ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary')}
-            title="Toggle source panel"
+            title={t('toggle_source')}
           >
             <PanelLeft className="h-3.5 w-3.5" />
           </button>
           <button
             onClick={panels.toggleRight}
             className={cn('rounded p-1.5 transition-colors', panels.right ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary')}
-            title="Toggle history / AI panel"
+            title={t('toggle_history')}
           >
             <PanelRight className="h-3.5 w-3.5" />
           </button>
@@ -461,12 +463,12 @@ export function ChapterEditorPage() {
           {isDirty ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/12 px-2 py-0.5 text-[10px] font-medium text-warning">
               <span className="h-1.5 w-1.5 rounded-full bg-warning" />
-              Unsaved
+              {t('unsaved')}
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-success/12 px-2 py-0.5 text-[10px] font-medium text-success">
               <span className="h-1.5 w-1.5 rounded-full bg-success" />
-              Saved
+              {t('saved_badge')}
             </span>
           )}
           <span className="text-[10px] font-mono text-muted-foreground">v{version ?? '?'}</span>
@@ -475,9 +477,9 @@ export function ChapterEditorPage() {
             <button
               onClick={() => setShowDiscardConfirm(true)}
               className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-destructive/50 hover:text-destructive"
-              title="Discard all unsaved changes"
+              title={t('discard_title')}
             >
-              Discard
+              {t('discard')}
             </button>
           )}
 
@@ -487,7 +489,7 @@ export function ChapterEditorPage() {
             className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             <Save className="h-3 w-3" />
-            Save
+            {t('save')}
             <kbd className="ml-1 rounded border border-primary-foreground/20 bg-primary-foreground/10 px-1 py-px font-mono text-[9px]">Ctrl+S</kbd>
           </button>
         </div>
@@ -509,7 +511,7 @@ export function ChapterEditorPage() {
                   leftTab === 'chapters' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                <BookOpen className="h-3 w-3" />Chapters
+                <BookOpen className="h-3 w-3" />{t('tabs.chapters')}
               </button>
               <button
                 onClick={() => setLeftTab('source')}
@@ -518,7 +520,7 @@ export function ChapterEditorPage() {
                   leftTab === 'source' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                <FileText className="h-3 w-3" />Original
+                <FileText className="h-3 w-3" />{t('tabs.original')}
               </button>
               <button
                 onClick={() => setLeftTab('glossary')}
@@ -527,7 +529,7 @@ export function ChapterEditorPage() {
                   leftTab === 'glossary' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                <BookMarked className="h-3 w-3" />Glossary
+                <BookMarked className="h-3 w-3" />{t('tabs.glossary')}
                 {glossaryEntities.length > 0 && (
                   <span className="text-[9px] px-1 py-px rounded-full bg-[var(--primary-muted)] text-[var(--primary)]">
                     {glossaryEntities.length}
@@ -540,7 +542,7 @@ export function ChapterEditorPage() {
             {leftTab === 'chapters' && (
               <div className="flex flex-1 flex-col overflow-hidden">
                 <div className="flex-shrink-0 border-b px-3 py-2 text-[10px] text-muted-foreground">
-                  {allChapters.length} chapter{allChapters.length !== 1 ? 's' : ''}
+                  {t('chapter_count', { count: allChapters.length })}
                 </div>
                 <div className="flex-1 overflow-y-auto">
                   {allChapters.length === 0 && (
@@ -577,7 +579,7 @@ export function ChapterEditorPage() {
             {leftTab === 'source' && (
               <div className="flex flex-1 flex-col overflow-hidden">
                 <div className="flex-shrink-0 border-b px-3 py-2 text-[10px] text-muted-foreground">
-                  Original uploaded text — read only
+                  {t('original_readonly')}
                 </div>
                 <div className="flex-1 overflow-y-auto p-3">
                   {originalLoading ? (
@@ -599,7 +601,7 @@ export function ChapterEditorPage() {
                     </div>
                   ) : (
                     <p className="text-[10px] italic text-muted-foreground">
-                      No original source — this chapter was created directly in the editor (no file was imported).
+                      {t('no_original')}
                     </p>
                   )}
                 </div>
@@ -628,7 +630,7 @@ export function ChapterEditorPage() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="w-full bg-transparent font-serif text-xl font-semibold outline-none placeholder:text-muted-foreground/30"
-              placeholder="Chapter title"
+              placeholder={t('title_placeholder')}
             />
             <div className="mt-1.5 flex items-center gap-2 text-[10px] text-muted-foreground">
               {chapterLang && (
@@ -637,11 +639,11 @@ export function ChapterEditorPage() {
                   <span className="text-border">|</span>
                 </>
               )}
-              <span>{charCount.toLocaleString()} chars</span>
+              <span>{t('chars', { n: charCount.toLocaleString() })}</span>
               <span className="text-border">|</span>
-              <span>{wc.toLocaleString()} words</span>
+              <span>{t('words', { n: wc.toLocaleString() })}</span>
               <span className="text-border">|</span>
-              <span>{paraCount} paragraph{paraCount !== 1 ? 's' : ''}</span>
+              <span>{t('paragraphs', { count: paraCount })}</span>
             </div>
           </div>
 
@@ -680,7 +682,7 @@ export function ChapterEditorPage() {
             <input
               value={saveNote}
               onChange={(e) => setSaveNote(e.target.value)}
-              placeholder="Save note (optional) — e.g. &quot;added flashback scene&quot;"
+              placeholder={t('save_note_placeholder')}
               className="w-full rounded border bg-background px-3 py-1.5 text-xs placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-ring/40"
             />
           </div>
@@ -694,15 +696,15 @@ export function ChapterEditorPage() {
                 onClick={() => setRightTab('history')}
                 className={cn('flex-1 px-3 py-2 text-xs font-medium', rightTab === 'history' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground')}
               >
-                <Clock className="mr-1.5 inline h-3 w-3" />History
+                <Clock className="mr-1.5 inline h-3 w-3" />{t('history')}
               </button>
               <button
                 onClick={() => setRightTab('ai')}
                 className={cn('flex-1 cursor-not-allowed px-3 py-2 text-xs text-muted-foreground/40')}
-                title="Coming soon"
+                title={t('coming_soon')}
                 disabled
               >
-                AI Chat
+                {t('ai_chat')}
               </button>
             </div>
             <div className="flex-1 overflow-hidden">
@@ -719,15 +721,15 @@ export function ChapterEditorPage() {
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center gap-1">
             <span className="h-1.5 w-1.5 rounded-full bg-success" />
-            Connected
+            {t('connected')}
           </span>
           {chapterLang && <span>{chapterLang}</span>}
-          <span>{wc.toLocaleString()} words</span>
+          <span>{t('words', { n: wc.toLocaleString() })}</span>
         </div>
         <div className="flex items-center gap-3">
-          <span><kbd className="rounded border border-border bg-secondary px-1 py-px font-mono text-[9px]">Ctrl+B</kbd> Left panel</span>
-          <span><kbd className="rounded border border-border bg-secondary px-1 py-px font-mono text-[9px]">Ctrl+J</kbd> Right panel</span>
-          <span><kbd className="rounded border border-border bg-secondary px-1 py-px font-mono text-[9px]">Ctrl+S</kbd> Save</span>
+          <span><kbd className="rounded border border-border bg-secondary px-1 py-px font-mono text-[9px]">Ctrl+B</kbd> {t('left_panel')}</span>
+          <span><kbd className="rounded border border-border bg-secondary px-1 py-px font-mono text-[9px]">Ctrl+J</kbd> {t('right_panel')}</span>
+          <span><kbd className="rounded border border-border bg-secondary px-1 py-px font-mono text-[9px]">Ctrl+S</kbd> {t('save')}</span>
         </div>
       </div>
 
@@ -735,10 +737,10 @@ export function ChapterEditorPage() {
       <ConfirmDialog
         open={showDiscardConfirm}
         onOpenChange={setShowDiscardConfirm}
-        title="Discard changes?"
-        description="All unsaved changes will be permanently lost. This cannot be undone."
-        confirmLabel="Discard changes"
-        cancelLabel="Keep editing"
+        title={t('discard_confirm.title')}
+        description={t('discard_confirm.desc')}
+        confirmLabel={t('discard_confirm.confirm')}
+        cancelLabel={t('discard_confirm.cancel')}
         variant="destructive"
         onConfirm={() => { discardChanges(); setShowDiscardConfirm(false); }}
       />

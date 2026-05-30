@@ -1,0 +1,58 @@
+{
+  "saved": "Chapter saved",
+  "no_content": "No content to translate",
+  "translation_failed": "Translation failed",
+  "translated_blocks": "Translated {{count}} blocks",
+  "text_translation_received": "Text translation received — block mode recommended",
+  "breadcrumb": {
+    "workspace": "Workspace",
+    "book": "Book",
+    "chapter": "Chapter"
+  },
+  "prev_chapter": "Previous chapter",
+  "next_chapter": "Next chapter",
+  "mode": {
+    "classic": "Classic",
+    "classic_title": "Classic mode — focused writing",
+    "ai": "AI",
+    "ai_title": "AI Assistant mode — full features"
+  },
+  "grammar_title": "Toggle grammar & spell check (LanguageTool)",
+  "translate_title": "Translate content using AI (block mode)",
+  "translating": "Translating...",
+  "translate": "Translate",
+  "toggle_source": "Toggle source panel",
+  "toggle_history": "Toggle history / AI panel",
+  "unsaved": "Unsaved",
+  "saved_badge": "Saved",
+  "discard_title": "Discard all unsaved changes",
+  "discard": "Discard",
+  "save": "Save",
+  "tabs": {
+    "chapters": "Chapters",
+    "original": "Original",
+    "glossary": "Glossary"
+  },
+  "chapter_count": "{{count}} chapter",
+  "chapter_count_other": "{{count}} chapters",
+  "original_readonly": "Original uploaded text — read only",
+  "no_original": "No original source — this chapter was created directly in the editor (no file was imported).",
+  "title_placeholder": "Chapter title",
+  "chars": "{{n}} chars",
+  "words": "{{n}} words",
+  "paragraphs": "{{count}} paragraph",
+  "paragraphs_other": "{{count}} paragraphs",
+  "save_note_placeholder": "Save note (optional) — e.g. \"added flashback scene\"",
+  "history": "History",
+  "ai_chat": "AI Chat",
+  "coming_soon": "Coming soon",
+  "connected": "Connected",
+  "left_panel": "Left panel",
+  "right_panel": "Right panel",
+  "discard_confirm": {
+    "title": "Discard changes?",
+    "desc": "All unsaved changes will be permanently lost. This cannot be undone.",
+    "confirm": "Discard changes",
+    "cancel": "Keep editing"
+  }
+}
