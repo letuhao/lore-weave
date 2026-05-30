@@ -12,6 +12,28 @@
   "viewAll": "Xem tất cả thông báo",
   "loadMore": "Tải thêm",
   "pageTitle": "Thông báo",
+  "event": {
+    "title": "{{op}} {{status}}",
+    "operation": {
+      "chat": "Trò chuyện",
+      "completion": "Sinh văn bản",
+      "embedding": "Embedding",
+      "entity_extraction": "Trích xuất thực thể",
+      "fact_extraction": "Trích xuất dữ kiện",
+      "relation_extraction": "Trích xuất quan hệ",
+      "event_extraction": "Trích xuất sự kiện",
+      "translation": "Dịch",
+      "image_gen": "Tạo ảnh",
+      "video_gen": "Tạo video"
+    },
+    "status": {
+      "completed": "hoàn tất",
+      "failed": "thất bại",
+      "cancelled": "đã hủy",
+      "running": "đang chạy",
+      "pending": "đang chờ"
+    }
+  },
   "category": {
     "all": "Tất cả",
     "translation": "Dịch thuật",

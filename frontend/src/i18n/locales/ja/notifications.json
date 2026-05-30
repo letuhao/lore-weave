@@ -12,6 +12,28 @@
   "viewAll": "すべての通知を表示",
   "loadMore": "もっと読み込む",
   "pageTitle": "通知",
+  "event": {
+    "title": "{{op}}{{status}}",
+    "operation": {
+      "chat": "チャット",
+      "completion": "補完",
+      "embedding": "埋め込み",
+      "entity_extraction": "エンティティ抽出",
+      "fact_extraction": "事実抽出",
+      "relation_extraction": "関係抽出",
+      "event_extraction": "イベント抽出",
+      "translation": "翻訳",
+      "image_gen": "画像生成",
+      "video_gen": "動画生成"
+    },
+    "status": {
+      "completed": "完了",
+      "failed": "失敗",
+      "cancelled": "キャンセル",
+      "running": "実行中",
+      "pending": "待機中"
+    }
+  },
   "category": {
     "all": "すべて",
     "translation": "翻訳",

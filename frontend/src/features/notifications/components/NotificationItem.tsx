@@ -15,9 +15,32 @@ type Props = {
 
 /** Shared notification row used by both the bell dropdown and the full page,
  *  so the icon/color/time/unread treatment stays in one place. */
+const humanize = (s: string) => {
+  const x = s.replace(/_/g, ' ').trim();
+  return x.charAt(0).toUpperCase() + x.slice(1);
+};
+
 export function NotificationItem({ notification: n, onClick, onMarkRead, onDelete, showActions = false }: Props) {
   const { t } = useTranslation('notifications');
   const Icon = categoryIcon(n.category);
+
+  // i18n the title client-side from machine-readable metadata (the stored `title`
+  // is server-rendered English). Phase 1: LLM-job events carry operation + status.
+  // Phase 2 (emitters with interpolated titles) sets metadata.i18n_key + params.
+  const meta = (n.metadata ?? {}) as Record<string, unknown>;
+  const key = typeof meta.i18n_key === 'string' ? meta.i18n_key : null;
+  const op = typeof meta.operation === 'string' ? meta.operation : null;
+  const status = typeof meta.status === 'string' ? meta.status : null;
+  let title = n.title; // fallback: stored English
+  if (key) {
+    const params = (meta.i18n_params as Record<string, unknown>) ?? {};
+    title = t(key, { defaultValue: n.title, ...params });
+  } else if (op) {
+    title = t('event.title', {
+      op: t(`event.operation.${op}`, { defaultValue: humanize(op) }),
+      status: t(`event.status.${status}`, { defaultValue: status ?? '' }),
+    }).trim();
+  }
 
   const timeAgo = (iso: string) => {
     const diff = Date.now() - new Date(iso).getTime();
@@ -45,7 +68,7 @@ export function NotificationItem({ notification: n, onClick, onMarkRead, onDelet
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] leading-snug">{n.title}</p>
+        <p className="text-[13px] leading-snug">{title}</p>
         {n.body && <p className="mt-0.5 text-[11px] text-muted-foreground line-clamp-2">{n.body}</p>}
       </div>
 

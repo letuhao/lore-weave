@@ -12,6 +12,28 @@
   "viewAll": "View all notifications",
   "loadMore": "Load more",
   "pageTitle": "Notifications",
+  "event": {
+    "title": "{{op}} {{status}}",
+    "operation": {
+      "chat": "Chat",
+      "completion": "Completion",
+      "embedding": "Embedding",
+      "entity_extraction": "Entity extraction",
+      "fact_extraction": "Fact extraction",
+      "relation_extraction": "Relation extraction",
+      "event_extraction": "Event extraction",
+      "translation": "Translation",
+      "image_gen": "Image generation",
+      "video_gen": "Video generation"
+    },
+    "status": {
+      "completed": "completed",
+      "failed": "failed",
+      "cancelled": "cancelled",
+      "running": "running",
+      "pending": "pending"
+    }
+  },
   "category": {
     "all": "All",
     "translation": "Translation",
