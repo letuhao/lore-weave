@@ -5,6 +5,42 @@
 > **HEAD:** `bca5819a` (74d, 2-hop hotfix committed). 74e (data survey + plan) is docs/data, checkpoint-committed separately.
 > **Branch:** `main`.
 
+## ▶ NEXT SESSION — start here
+
+**State:** cycles 74d–74f committed on `main`, **NOT pushed** (push needs approval):
+`bca5819a` 2-hop hotfix · `936f20a9` data-survey + accuracy/eval PLAN · `10283965` Phase-A disjoint metric + CI.
+**Production gate is resolved → ship-ready.** The accuracy engine is the two-axis learning-from-users loop in [the plan](../plans/2026-05-31-extraction-accuracy-and-eval-plan.md). Phase A (eval hygiene) is done; **next is Phase B / B2 (capture plumbing)** — the foundational dependency for the whole loop (tiers C–F all depend on capture).
+
+**Recommended next: Phase B — Axis-1 correction capture** (more contained; infra mostly exists; feeds the organic eval-gold = the bias answer). Phase B2 (config telemetry) is the alternative/parallel.
+
+**This is L+, multi-service, with a DB migration → invoke `/amaw` + DESIGN-checkpoint-commit before BUILD.** Steps:
+1. `corrections` table: `(tenant, project, target_type, target_id, op, before, after JSONB, source_extraction_run_id, source_chapter, source_span, actor, ts)` + diff-class tag.
+2. Enrich glossary outbox `glossary.entity_updated` payload with before→after + provenance — [outbox.go](../../services/glossary-service/internal/api/outbox.go), `outbox_events` in [migrate.go](../../services/glossary-service/internal/migrate/migrate.go).
+3. **Close plan §5 gap:** add transactional outbox to knowledge-service relation/event edits — `invalidate_relation`/`merge_entity` → emit `knowledge.relation_corrected` / `knowledge.entity_corrected` ([relations.py](../../services/knowledge-service/app/db/neo4j_repos/relations.py), [entities.py](../../services/knowledge-service/app/db/neo4j_repos/entities.py)).
+4. Wire knowledge-service consumer → update anchor index (loop Tier 1).
+5. BUILD: migrations + tests + **cross-service live smoke** (≥2 services → live-smoke token required).
+
+**Eval note:** for any A/B use the new **DISJOINT median of record** (`compute_ensemble_macros.py`), never the inflated full-panel 0.913. Host eval env block + harness: `tests/quality/run_rejudge_resumable.py` docstring (host → provider-registry `:8208` → LM Studio `:1234`, token `dev_internal_token`).
+
+<details><summary>Copy-paste resume prompt</summary>
+
+```
+Resume LoreWeave session 75. Read docs/sessions/SESSION_HANDOFF.md (top "NEXT SESSION" block + cycle 74f/74e sections) and docs/plans/2026-05-31-extraction-accuracy-and-eval-plan.md first.
+
+State: cycles 74d-74f committed on main (bca5819a 2-hop hotfix; 936f20a9 data-survey+plan; 10283965 Phase-A disjoint metric+CI), NOT pushed. Production gate resolved = ship-ready; accuracy engine = the two-axis learning-from-users loop in the plan.
+
+GOAL: implement Phase B — Axis-1 correction capture (plan §2.1/§4), the foundational dependency for the loop.
+- Invoke /amaw (DB migration = L+; tenant-scoped correction log is load-bearing). DESIGN first, checkpoint-commit the design before BUILD.
+- DESIGN: (1) corrections table; (2) enrich glossary outbox glossary.entity_updated with before->after + provenance; (3) close plan §5 gap = add transactional outbox to knowledge-service relation/event edits (invalidate_relation/merge_entity -> knowledge.relation_corrected/entity_corrected); (4) wire knowledge-service consumer -> anchor index (Tier 1).
+- BUILD: migrations + tests + cross-service live smoke.
+Alternative if I prefer Axis 2 first: Phase B2 config telemetry (config_registry content-addressed + adjustment_events async + runs.outcome + default versioning, plan §2.1/§2.4).
+
+Eval: use the DISJOINT median of record (compute_ensemble_macros.py), never the full-panel 0.913.
+
+Ask me which axis (B vs B2) to start before committing to the build.
+```
+</details>
+
 ## Session 74 — cycle 74f: Phase A eval hygiene — disjoint-judge metric of record + bootstrap CI
 
 **Plan §3 Phase A (first implementation cycle off the 74e plan).** [compute_ensemble_macros.py](../../services/knowledge-service/tests/quality/compute_ensemble_macros.py) now:
