@@ -17,6 +17,15 @@
   "cancel": "Hủy",
   "progress": "Chương {{current}} / {{total}} · {{percent}}% hoàn thành",
   "ch_short": "Ch. {{n}}",
+  "history": {
+    "title": "Lịch sử đọc",
+    "subtitle": "Những sách và chương bạn đọc gần đây.",
+    "empty": "Chưa có lịch sử đọc. Hãy bắt đầu đọc một chương!",
+    "chapters_read": "đã đọc {{count}} chương",
+    "fully_read": "đọc hết {{percent}}%",
+    "last_read": "Đọc lần cuối {{date}}",
+    "continue": "Tiếp tục"
+  },
   "theme": {
     "title": "Giao diện đọc",
     "presets": "Bộ giao diện",

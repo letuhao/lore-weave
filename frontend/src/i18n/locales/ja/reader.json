@@ -17,6 +17,15 @@
   "cancel": "キャンセル",
   "progress": "第{{current}}章 / 全{{total}}章 · {{percent}}% 完了",
   "ch_short": "第{{n}}章",
+  "history": {
+    "title": "読書履歴",
+    "subtitle": "最近読んだ書籍と章。",
+    "empty": "読書履歴はまだありません。章を読み始めましょう！",
+    "chapters_read": "{{count}} 章を読了",
+    "fully_read": "{{percent}}% 読了",
+    "last_read": "最終閲覧 {{date}}",
+    "continue": "続きを読む"
+  },
   "theme": {
     "title": "読書テーマ",
     "presets": "テーマプリセット",

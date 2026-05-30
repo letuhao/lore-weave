@@ -17,6 +17,15 @@
   "cancel": "取消",
   "progress": "第 {{current}} 章 / 共 {{total}} 章 · {{percent}}% 完成",
   "ch_short": "第 {{n}} 章",
+  "history": {
+    "title": "閱讀記錄",
+    "subtitle": "你最近閱讀的書籍與章節。",
+    "empty": "尚無閱讀記錄。開始閱讀章節吧！",
+    "chapters_read": "已讀 {{count}} 章",
+    "fully_read": "完整閱讀 {{percent}}%",
+    "last_read": "上次閱讀 {{date}}",
+    "continue": "繼續"
+  },
   "theme": {
     "title": "閱讀主題",
     "presets": "主題預設",

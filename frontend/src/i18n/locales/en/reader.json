@@ -17,6 +17,15 @@
   "cancel": "Cancel",
   "progress": "Chapter {{current}} of {{total}} · {{percent}}% complete",
   "ch_short": "Ch. {{n}}",
+  "history": {
+    "title": "Reading History",
+    "subtitle": "Your recently read books and chapters.",
+    "empty": "No reading history yet. Start reading a chapter!",
+    "chapters_read": "{{count}} chapters read",
+    "fully_read": "{{percent}}% fully read",
+    "last_read": "Last read {{date}}",
+    "continue": "Continue"
+  },
   "theme": {
     "title": "Reading Theme",
     "presets": "Theme Presets",
