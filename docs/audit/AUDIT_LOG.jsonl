@@ -465,3 +465,5 @@
 {"ts":"2026-05-30T07:19:10Z","event":"verify_cycle_pass","cycle":6}
 {"ts":"2026-05-30T07:21:28Z","event":"cycle_done","cycle":6,"dps_count":1,"adversary":{"blockers":0,"majors":0,"minors":0,"notes":2},"scope_guard":"CLEAR","verify_exit_code":0}
 {"ts": "2026-05-30T07:22:04Z", "event": "in_progress_update", "cycle": 6, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-30T07:24:08Z", "event": "coordinator_done_cycle", "cycle": 6, "sha": "8bd4834de8efd054c54e356566364a261d0b465f"}
+{"ts": "2026-05-30T07:24:50Z", "event": "in_progress_archived", "cycle": 6, "archived_to": "cycle-006-state.md"}
