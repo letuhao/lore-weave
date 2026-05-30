@@ -53,12 +53,101 @@ jobs:
           exit $fail
 
   lints:
-    name: Foundation lints (I3 language-rule + projection-coverage)
+    name: Foundation lints (I3 language-rule + projection-coverage + validators)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: bash scripts/language-rule-lint.sh
       - run: bash scripts/projection-coverage-lint.sh
+      # Phase 0 (DEFERRED 078): wire the lint/validator scripts that PASS on
+      # the current tree but were previously local-only. Each was confirmed
+      # exit-0 before wiring. Scripts that need a missing tool or live infra
+      # (lint-contract → spectral ruleset, log-density-detector → /var/log,
+      # projection-drift-check → DATABASE_URL) are intentionally NOT wired —
+      # see the Phase 0 report for the follow-up debt list.
+      #
+      # I2 provider-gateway invariant (priority): no direct LLM SDK imports.
+      - run: bash scripts/lint-no-direct-llm-imports.sh
+      - run: bash scripts/dashboard-validator.sh
+      - run: bash scripts/alert-rule-validator.sh
+      - run: bash scripts/dependency-registry-lint.sh
+      - run: bash scripts/admin-command-registry-lint.sh
+      - run: bash scripts/logging-discipline-lint.sh
+      - run: bash scripts/tracing-completeness-lint.sh
+      - run: bash scripts/runbook-drift-check.sh
+      - run: bash scripts/runbook-verification-lint.sh
+      - run: bash scripts/template-fixture-validator.sh
+
+  python:
+    name: Python services (byte-compile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Byte-compile only — no pip install, no pytest (avoids heavy/networked
+      # installs). Catches syntax errors across the Python service trees.
+      - name: byte-compile python service apps
+        shell: bash
+        run: |
+          set -uo pipefail
+          fail=0
+          for svc in chat-service knowledge-service video-gen-service translation-service worker-ai; do
+            app="services/$svc/app"
+            if [ -d "$app" ]; then
+              echo "::group::compileall $app"
+              if ! python -m compileall -q "$app"; then
+                echo "::error::python compile failed: $app"
+                fail=1
+              fi
+              echo "::endgroup::"
+            else
+              echo "::warning::$app not found — skipping"
+            fi
+          done
+          exit $fail
+
+  db-smoke:
+    name: DB live-smoke (PgEventStore integration)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: foundation
+          POSTGRES_PASSWORD: foundation
+          POSTGRES_DB: foundation
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U foundation -d foundation"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGPASSWORD: foundation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: create dp_kernel_test + apply migrations 0002 + 0004
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The actions `services:` container is reachable on localhost:5432.
+          psql() { PGPASSWORD=foundation command psql -h localhost -p 5432 -U foundation "$@"; }
+          # Idempotent create (guarded probe).
+          exists=$(psql -d foundation -tAc "SELECT 1 FROM pg_database WHERE datname='dp_kernel_test'" || true)
+          if [ "$exists" != "1" ]; then
+            psql -d foundation -v ON_ERROR_STOP=1 -c "CREATE DATABASE dp_kernel_test;"
+          fi
+          psql -d dp_kernel_test -v ON_ERROR_STOP=1 -f contracts/migrations/per_reality/0002_events_table.up.sql
+          psql -d dp_kernel_test -v ON_ERROR_STOP=1 -f contracts/migrations/per_reality/0004_aggregate_snapshots_table.up.sql
+      - name: cargo test PgEventStore live-smoke
+        env:
+          LOREWEAVE_TEST_PG_URL: postgres://foundation:foundation@localhost:5432/dp_kernel_test
+        run: cargo test -p dp-kernel --test integration_event_store
 
   secrets:
     name: Secret scan (gitleaks)

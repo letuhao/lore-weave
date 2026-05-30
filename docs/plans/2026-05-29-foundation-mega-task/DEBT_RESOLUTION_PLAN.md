@@ -21,6 +21,8 @@ Each closed item flips its `DEFERRED.md` row to `(ADDRESSED …)` + moves to "Re
 
 ## 1. Decisions needed from the operator (blockers for some phases)
 
+> **RESOLVED 2026-05-30:** D1 = **LocalStack** (AWS KMS emulation in docker-compose) · D2 = **RS256** (asymmetric) · D3 = world/travel game-domain is a **separate post-foundation track** (P5 stays a gated placeholder) · D4 = **iterate on-branch** (P0 started; no PR until P1–P2 functional). The table below records the original options.
+
 | # | Decision | Affects | Default if unanswered |
 |---|---|---|---|
 | D1 | **KMS provider** for PII KEK: LocalStack (AWS KMS emul) vs Vault Transit vs a dev `EnvKMS` | P2 (076) | LocalStack in docker-compose (closest to AWS prod) |

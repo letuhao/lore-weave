@@ -30,7 +30,11 @@ services:
       POSTGRES_PASSWORD: foundation
       POSTGRES_DB: foundation
     ports:
-      - "127.0.0.1:5432:5432"  # foundation-dev uses standard 5432; existing prod uses 5555
+      # Phase 0 (DEFERRED 041): host port is env-overridable with a
+      # NON-CONFLICTING default (55432) so this stack boots alongside the
+      # pre-existing free-context-hub stack, which already holds host :5432.
+      # Override with FOUNDATION_PG_PORT if 55432 is also taken.
+      - "127.0.0.1:${FOUNDATION_PG_PORT:-55432}:5432"
     volumes:
       - foundation-pg-data:/var/lib/postgresql/data
       # Cycle 16 (L3.I) — init script that runs once on first container
@@ -52,7 +56,9 @@ services:
     image: redis:7-alpine
     container_name: foundation-dev-redis
     ports:
-      - "127.0.0.1:6379:6379"  # foundation-dev uses 6379; existing prod uses 6399
+      # Phase 0 (DEFERRED 041): env-overridable, non-conflicting default
+      # (56379) — host :6379 is held by the free-context-hub redis.
+      - "127.0.0.1:${FOUNDATION_REDIS_PORT:-56379}:6379"
     volumes:
       - foundation-redis-data:/data
 
@@ -64,12 +70,36 @@ services:
       MINIO_ROOT_PASSWORD: foundation-secret-dev-only
     command: server /data --console-address ":9001"
     ports:
-      - "127.0.0.1:9000:9000"   # foundation-dev uses 9000 (existing prod uses 9123)
-      - "127.0.0.1:9001:9001"
+      # Phase 0 (DEFERRED 041): env-overridable, non-conflicting defaults
+      # (59000 / 59001). Host :9000-9001 may be held by another foundation-dev
+      # or infra minio; :9123-9124 by existing prod minio.
+      - "127.0.0.1:${FOUNDATION_MINIO_PORT:-59000}:9000"
+      - "127.0.0.1:${FOUNDATION_MINIO_CONSOLE_PORT:-59001}:9001"
     volumes:
       - foundation-minio-data:/data
+
+  # Phase 0 (D1=LocalStack): AWS KMS emulation for the PII KEK landing in P2.
+  # Minimal — only the kms service is enabled. The P2 PII work points its KMS
+  # endpoint at http://localhost:${FOUNDATION_KMS_PORT:-54566}.
+  #
+  # Image is PINNED to the 3.x line: KMS is a Community-edition service there
+  # and starts WITHOUT a license/auth token. The floating `:latest`
+  # (2026.x) now license-gates startup and exits 55 with
+  # "License activation failed" when LOCALSTACK_AUTH_TOKEN is unset — which
+  # would break a clean `up` for anyone without a Pro account. Override the
+  # tag via FOUNDATION_LOCALSTACK_IMAGE if a licensed image is desired.
+  localstack-foundation:
+    image: ${FOUNDATION_LOCALSTACK_IMAGE:-localstack/localstack:3}
+    container_name: foundation-dev-localstack
+    environment:
+      SERVICES: kms
+    ports:
+      - "127.0.0.1:${FOUNDATION_KMS_PORT:-54566}:4566"
+    volumes:
+      - foundation-localstack-data:/var/lib/localstack
 
 volumes:
   foundation-pg-data:
   foundation-redis-data:
   foundation-minio-data:
+  foundation-localstack-data:
