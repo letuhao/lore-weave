@@ -97,7 +97,56 @@ def _load_precision_filter_config() -> PrecisionFilterConfig | None:
 
 
 # Cached at module load; None when env unset = zero-overhead default.
+# Cycle 73f: runtime-overridable via Redis pubsub (consume_filter_reload_signal
+# below). Module-level rebind is atomic via Python GIL.
 _PRECISION_FILTER_CONFIG: PrecisionFilterConfig | None = _load_precision_filter_config()
+
+
+def set_precision_filter_config(
+    new_config: PrecisionFilterConfig | None,
+) -> PrecisionFilterConfig | None:
+    """Cycle 73f — atomically replace module-level cache from subscriber."""
+    global _PRECISION_FILTER_CONFIG
+    _PRECISION_FILTER_CONFIG = new_config
+    return _PRECISION_FILTER_CONFIG
+
+
+async def consume_filter_reload_signal(redis_url: str) -> None:
+    """Cycle 73f — subscribe to filter-reload pubsub; on each signal,
+    re-read Redis key + atomically swap module-level cache.
+
+    Resilient: SDK's subscribe_filter_reload has outer try/except with
+    backoff so this never bubbles into asyncio.gather and kills the
+    extraction job loop.
+    """
+    import redis.asyncio as aioredis
+    from loreweave_extraction import (
+        get_filter_config,
+        subscribe_filter_reload,
+    )
+
+    redis_client = aioredis.from_url(redis_url, decode_responses=False)
+
+    async def _on_reload() -> None:
+        try:
+            new_config = await get_filter_config(redis_client)
+            set_precision_filter_config(new_config)
+            logger.info(
+                "cycle 73f: filter config reloaded from Redis (active=%s)",
+                new_config is not None,
+            )
+        except Exception:
+            logger.exception(
+                "cycle 73f: failed to re-read filter config from Redis"
+            )
+
+    try:
+        await subscribe_filter_reload(redis_client, _on_reload)
+    finally:
+        try:
+            await redis_client.aclose()
+        except Exception:
+            pass
 
 
 def _load_entity_recovery_config() -> EntityRecoveryConfig | None:

@@ -1723,3 +1723,80 @@ async def test_runner_recovery_env_set_passes_config_to_extract_pass2() -> None:
 
     assert len(captured) == 1
     assert captured[0].get("entity_recovery") is recovery_sentinel
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Cycle 73f — runtime filter config reload (subscriber + setter)
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_set_precision_filter_config_swaps_module_cache():
+    """Cycle 73f: setter atomically swaps module-level _PRECISION_FILTER_CONFIG.
+    Subscriber path calls this on each Redis re-read."""
+    from loreweave_extraction import PrecisionFilterConfig
+    import app.runner as runner_module
+
+    saved = runner_module._PRECISION_FILTER_CONFIG
+    try:
+        new_config = PrecisionFilterConfig(
+            model_ref="cycle-73f-uuid",
+            categories=("relation", "event"),
+            partial_policy="drop",
+        )
+        returned = runner_module.set_precision_filter_config(new_config)
+        assert returned is new_config
+        assert runner_module._PRECISION_FILTER_CONFIG is new_config
+
+        # Reverse: set to None disables filter.
+        runner_module.set_precision_filter_config(None)
+        assert runner_module._PRECISION_FILTER_CONFIG is None
+    finally:
+        # Restore original module state for downstream tests.
+        runner_module.set_precision_filter_config(saved)
+
+
+@pytest.mark.asyncio
+async def test_consume_filter_reload_signal_reads_redis_and_swaps_cache(monkeypatch):
+    """Cycle 73f: on pubsub signal, subscriber re-reads Redis key + swaps
+    cache. Mock SDK's subscribe_filter_reload to fire one signal then exit."""
+    from loreweave_extraction import PrecisionFilterConfig
+    import app.runner as runner_module
+
+    new_config = PrecisionFilterConfig(
+        model_ref="from-redis-uuid",
+        categories=("event",),
+        partial_policy="drop",
+    )
+
+    async def fake_subscribe_filter_reload(redis_client, on_reload, **kwargs):
+        # Simulate one pubsub signal arriving.
+        await on_reload()
+        # Exit cleanly (subscriber's outer loop accepts this).
+        return
+
+    async def fake_get_filter_config(redis_client):
+        return new_config
+
+    saved = runner_module._PRECISION_FILTER_CONFIG
+    monkeypatch.setattr(
+        "loreweave_extraction.subscribe_filter_reload",
+        fake_subscribe_filter_reload,
+    )
+    monkeypatch.setattr(
+        "loreweave_extraction.get_filter_config",
+        fake_get_filter_config,
+    )
+    # Mock aioredis.from_url so we don't open a real Redis connection.
+    fake_redis = MagicMock()
+    fake_redis.aclose = AsyncMock()
+    monkeypatch.setattr(
+        "redis.asyncio.from_url",
+        lambda *args, **kwargs: fake_redis,
+    )
+
+    try:
+        await runner_module.consume_filter_reload_signal("redis://fake")
+        # After the simulated signal, module cache should reflect new_config.
+        assert runner_module._PRECISION_FILTER_CONFIG is new_config
+    finally:
+        runner_module.set_precision_filter_config(saved)

@@ -17,7 +17,7 @@ from loreweave_obs import setup_tracing
 from app.clients import BookClient, GlossaryClient, KnowledgeClient
 from app.config import settings
 from app.llm_client import close_llm_client, get_llm_client
-from app.runner import poll_and_run
+from app.runner import consume_filter_reload_signal, poll_and_run
 from app.summary_consumer import consume_summary_stream
 
 logger = logging.getLogger("worker-ai")
@@ -104,6 +104,17 @@ async def main() -> None:
         ))
     else:
         logger.info("summary consumer disabled via config")
+
+    # Cycle 73f — runtime filter config reload. Subscribes to Redis
+    # pubsub; on each signal, re-reads the Redis config key + atomically
+    # swaps module-level `_PRECISION_FILTER_CONFIG`. Resilient: SDK
+    # subscriber has outer try/except with backoff. Skip gracefully if
+    # redis_url is empty (dev/test without Redis).
+    if settings.redis_url:
+        coroutines.append(consume_filter_reload_signal(settings.redis_url))
+        logger.info("cycle 73f: filter reload subscriber started")
+    else:
+        logger.info("cycle 73f: filter reload subscriber skipped (no redis_url)")
 
     try:
         await asyncio.gather(*coroutines)
