@@ -572,6 +572,35 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 
 ## Current Active Work
 
+### C-2c — LLM naming of realms + counties (session 99, world-gen-sdk-refactor, BE [S]) ✅ — C3 arc COMPLETE
+
+Final C3 sub-phase. Extended the sphere naming layer (`naming.rs`) from 7 to 9
+categories: `WorldNames` + `realms` + `counties`; `world_names_schema` required +
+properties; `apply_names` zips both (tolerant, same as the others); SYSTEM_PROMPT
+vocab updated to the 5-tier hierarchy (place→settlement, grand realm/empire→realm,
+nation→state, province→province, county/shire→county, with an explicit
+realm>state>province>county grandeur escalation); user_prompt counts added.
+Names stay excluded from `content_hash` (C-2a already hash-guards county/realm/
+world names) — naming all 5 political tiers preserves the hash.
+
+**Files:** `naming.rs` (+ this SESSION_PATCH).
+
+**VERIFY:** naming **6** tests (apply-by-position incl realms/counties + hash
+preserved; schema lists 9 categories; short/long tolerance; provider-error
+untouched; **NEW** `name_world_applies_realm_and_county_names_end_to_end` — full
+prompt→parse→apply via a canned provider). bin compiles (`name` CLI intact).
+Clippy-clean.
+
+**`/review-impl`:** no HIGH/MED. LOW-1 (no end-to-end name_world test for the new
+tiers) **fixed**; LOW-2 (real-LLM 9-category smoke) deferred — additive schema,
+`#[serde(default)]`-tolerant, gateway→Qwen chain validated session 97; COSMETIC
+(test fixture naming) accepted.
+
+**C3 ARC COMPLETE.** Full world structure on the production sphere: geometric
+(continent→subcontinent→region, `--region-png`) + political
+(world→realm→nation→province→county, `--realm-png`) strictly nested, all five
+political tiers LLM-nameable. Flat track stayed frozen throughout.
+
 ### C-2b — Political-tier render `--realm-png` (session 99, world-gen-sdk-refactor, BE [S]) ✅
 
 Visual-verification render for the C-2a political tiers. NEW `render::realm_image`
