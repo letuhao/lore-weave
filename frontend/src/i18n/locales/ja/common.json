@@ -11,7 +11,10 @@
     "logout": "ログアウト",
     "main": "メイン",
     "manage": "管理",
-    "trash": "ゴミ箱"
+    "trash": "ゴミ箱",
+    "expand_sidebar": "サイドバーを展開",
+    "collapse_sidebar": "サイドバーを折りたたむ",
+    "theme": "テーマ: {{name}}"
   },
   "common": {
     "save": "保存",
@@ -68,5 +71,11 @@
     "exitVoiceMode": "音声モードを終了",
     "pauseResume": "一時停止 / 再開",
     "providerVoice": "音声"
+  },
+  "theme_name": {
+    "dark": "ダーク",
+    "light": "ライト",
+    "sepia": "セピア",
+    "oled": "OLED"
   }
 }

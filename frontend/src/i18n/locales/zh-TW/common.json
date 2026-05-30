@@ -11,7 +11,10 @@
     "logout": "登出",
     "main": "主要",
     "manage": "管理",
-    "trash": "資源回收筒"
+    "trash": "資源回收筒",
+    "expand_sidebar": "展開側邊欄",
+    "collapse_sidebar": "收合側邊欄",
+    "theme": "主題：{{name}}"
   },
   "common": {
     "save": "儲存",
@@ -68,5 +71,11 @@
     "exitVoiceMode": "退出語音模式",
     "pauseResume": "暫停 / 繼續",
     "providerVoice": "語音"
+  },
+  "theme_name": {
+    "dark": "深色",
+    "light": "淺色",
+    "sepia": "棕褐色",
+    "oled": "OLED"
   }
 }

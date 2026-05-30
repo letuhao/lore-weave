@@ -4,6 +4,9 @@
   "search_placeholder": "Tìm sách...",
   "all_languages": "Tất cả ngôn ngữ",
   "all_states": "Tất cả trạng thái",
+  "book_count": "{{count}} sách",
+  "book_count_other": "{{count}} sách",
+  "translated_to": "Đã dịch sang: {{langs}}",
   "create": {
     "title": "Sách mới",
     "description": "Tạo một cuốn sách mới để bắt đầu thêm chương.",
@@ -24,8 +27,69 @@
     "chapters": "{{count}} chương",
     "no_language": "Chưa đặt ngôn ngữ"
   },
+  "detail": {
+    "not_found": "Không tìm thấy sách",
+    "updated": "Cập nhật {{date}}",
+    "readers": "{{count}} độc giả",
+    "readers_other": "{{count}} độc giả",
+    "tabs": {
+      "chapters": "Chương",
+      "translation": "Bản dịch",
+      "glossary": "Thuật ngữ",
+      "wiki": "Wiki",
+      "sharing": "Chia sẻ",
+      "settings": "Cài đặt"
+    },
+    "trash_confirm": {
+      "title": "Chuyển vào thùng rác?",
+      "description": "\"{{title}}\" và tất cả chương sẽ được chuyển vào thùng rác. Bạn có thể khôi phục trong vòng 30 ngày.",
+      "confirm": "Chuyển vào thùng rác"
+    }
+  },
   "trash": {
     "title": "Thùng rác",
-    "empty": "Thùng rác trống"
+    "subtitle": "Các mục ở đây sẽ bị xóa vĩnh viễn sau 30 ngày.",
+    "back": "Quay lại không gian làm việc",
+    "search": "Tìm trong thùng rác…",
+    "empty": "Thùng rác trống",
+    "empty_search": "Không có mục nào khớp với tìm kiếm.",
+    "empty_hint": "Các mục đã xóa sẽ xuất hiện ở đây trong 30 ngày trước khi bị xóa vĩnh viễn.",
+    "item_count": "{{count}} mục",
+    "item_count_other": "{{count}} mục",
+    "selected": "Đã chọn {{count}}",
+    "restore": "Khôi phục",
+    "restore_selected": "Khôi phục mục đã chọn",
+    "delete_permanently": "Xóa vĩnh viễn",
+    "delete_tooltip": "Xóa vĩnh viễn",
+    "clear_selection": "Bỏ chọn",
+    "days_left": "còn {{count}} ngày",
+    "deleted_today": "Đã xóa hôm nay",
+    "deleted_yesterday": "Đã xóa hôm qua",
+    "deleted_days_ago": "Đã xóa {{count}} ngày trước",
+    "tabs": {
+      "books": "Sách",
+      "chapters": "Chương",
+      "glossary": "Thuật ngữ",
+      "chat": "Phiên trò chuyện"
+    },
+    "sort": {
+      "newest": "Mới nhất trước",
+      "oldest": "Cũ nhất trước",
+      "name": "Tên A-Z"
+    },
+    "restored_one": "Đã khôi phục \"{{title}}\"",
+    "restore_failed": "Khôi phục thất bại: {{error}}",
+    "restored_n": "Đã khôi phục {{count}} mục",
+    "restored_n_other": "Đã khôi phục {{count}} mục",
+    "purged_n": "Đã xóa vĩnh viễn {{count}} mục",
+    "purged_n_other": "Đã xóa vĩnh viễn {{count}} mục",
+    "purge_confirm": {
+      "title": "Xóa vĩnh viễn?",
+      "one": "\"{{title}}\" sẽ bị xóa vĩnh viễn. Không thể hoàn tác.",
+      "many": "{{count}} mục sẽ bị xóa vĩnh viễn. Không thể hoàn tác.",
+      "deleting": "Đang xóa…",
+      "confirm": "Xóa vĩnh viễn",
+      "cancel": "Hủy"
+    }
   }
 }

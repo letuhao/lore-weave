@@ -11,7 +11,10 @@
     "logout": "Đăng xuất",
     "main": "Chính",
     "manage": "Quản lý",
-    "trash": "Thùng rác"
+    "trash": "Thùng rác",
+    "expand_sidebar": "Mở rộng thanh bên",
+    "collapse_sidebar": "Thu gọn thanh bên",
+    "theme": "Giao diện: {{name}}"
   },
   "common": {
     "save": "Lưu",
@@ -68,5 +71,11 @@
     "exitVoiceMode": "Thoát chế độ giọng nói",
     "pauseResume": "Tạm dừng / Tiếp tục",
     "providerVoice": "Giọng nói"
+  },
+  "theme_name": {
+    "dark": "Tối",
+    "light": "Sáng",
+    "sepia": "Nâu sepia",
+    "oled": "OLED"
   }
 }

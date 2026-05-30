@@ -50,7 +50,7 @@ export function Sidebar() {
   const { t } = useTranslation();
   const { accessToken, user, logoutLocal } = useAuth();
   const { collapsed, toggle } = useSidebar();
-  const { appTheme, setAppTheme, themes } = useAppTheme();
+  const { appTheme, setAppTheme } = useAppTheme();
   const isLoggedIn = !!accessToken;
 
   const themeIcons: Record<AppTheme, React.ElementType> = { dark: Moon, light: Sun, sepia: Sunset, oled: Monitor };
@@ -152,11 +152,11 @@ export function Sidebar() {
               'flex items-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground',
               collapsed ? 'justify-center p-2' : 'w-full gap-3 px-3 py-2 text-sm',
             )}
-            title={`Theme: ${themes.find((t) => t.value === appTheme)?.label ?? appTheme}`}
+            title={t('nav.theme', { name: t(`theme_name.${appTheme}`) })}
           >
             <ThemeIcon className="h-4 w-4 flex-shrink-0" />
             {!collapsed && (
-              <span className="capitalize">{appTheme}</span>
+              <span>{t(`theme_name.${appTheme}`)}</span>
             )}
           </button>
         </div>

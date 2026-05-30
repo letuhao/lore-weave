@@ -4,6 +4,9 @@
   "search_placeholder": "書籍を検索...",
   "all_languages": "すべての言語",
   "all_states": "すべての状態",
+  "book_count": "{{count}}冊",
+  "book_count_other": "{{count}}冊",
+  "translated_to": "翻訳済み: {{langs}}",
   "create": {
     "title": "新しい書籍",
     "description": "新しい書籍を作成して章を追加しましょう。",
@@ -24,8 +27,69 @@
     "chapters": "{{count}}章",
     "no_language": "言語未設定"
   },
+  "detail": {
+    "not_found": "書籍が見つかりません",
+    "updated": "更新 {{date}}",
+    "readers": "{{count}}人の読者",
+    "readers_other": "{{count}}人の読者",
+    "tabs": {
+      "chapters": "章",
+      "translation": "翻訳",
+      "glossary": "用語集",
+      "wiki": "Wiki",
+      "sharing": "共有",
+      "settings": "設定"
+    },
+    "trash_confirm": {
+      "title": "ゴミ箱に移動しますか？",
+      "description": "「{{title}}」とすべての章がゴミ箱に移動されます。30日以内に復元できます。",
+      "confirm": "ゴミ箱に移動"
+    }
+  },
   "trash": {
     "title": "ゴミ箱",
-    "empty": "ゴミ箱は空です"
+    "subtitle": "ここにあるアイテムは30日後に完全に削除されます。",
+    "back": "ワークスペースに戻る",
+    "search": "ゴミ箱を検索…",
+    "empty": "ゴミ箱は空です",
+    "empty_search": "検索に一致するアイテムはありません。",
+    "empty_hint": "削除されたアイテムは完全に削除されるまで30日間ここに表示されます。",
+    "item_count": "{{count}}件",
+    "item_count_other": "{{count}}件",
+    "selected": "{{count}}件選択中",
+    "restore": "復元",
+    "restore_selected": "選択項目を復元",
+    "delete_permanently": "完全に削除",
+    "delete_tooltip": "完全に削除",
+    "clear_selection": "選択を解除",
+    "days_left": "残り{{count}}日",
+    "deleted_today": "今日削除",
+    "deleted_yesterday": "昨日削除",
+    "deleted_days_ago": "{{count}}日前に削除",
+    "tabs": {
+      "books": "書籍",
+      "chapters": "章",
+      "glossary": "用語集",
+      "chat": "チャットセッション"
+    },
+    "sort": {
+      "newest": "新しい順",
+      "oldest": "古い順",
+      "name": "名前 A-Z"
+    },
+    "restored_one": "「{{title}}」を復元しました",
+    "restore_failed": "復元に失敗しました: {{error}}",
+    "restored_n": "{{count}}件を復元しました",
+    "restored_n_other": "{{count}}件を復元しました",
+    "purged_n": "{{count}}件を完全に削除しました",
+    "purged_n_other": "{{count}}件を完全に削除しました",
+    "purge_confirm": {
+      "title": "完全に削除しますか？",
+      "one": "「{{title}}」は完全に削除されます。元に戻せません。",
+      "many": "{{count}}件のアイテムが完全に削除されます。元に戻せません。",
+      "deleting": "削除中…",
+      "confirm": "完全に削除",
+      "cancel": "キャンセル"
+    }
   }
 }

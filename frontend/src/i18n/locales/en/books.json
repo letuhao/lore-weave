@@ -4,6 +4,9 @@
   "search_placeholder": "Search books...",
   "all_languages": "All languages",
   "all_states": "All states",
+  "book_count": "{{count}} book",
+  "book_count_other": "{{count}} books",
+  "translated_to": "Translated to: {{langs}}",
   "create": {
     "title": "New Book",
     "description": "Create a new book to start adding chapters.",
@@ -24,8 +27,69 @@
     "chapters": "{{count}} chapters",
     "no_language": "No language set"
   },
+  "detail": {
+    "not_found": "Book not found",
+    "updated": "Updated {{date}}",
+    "readers": "{{count}} reader",
+    "readers_other": "{{count}} readers",
+    "tabs": {
+      "chapters": "Chapters",
+      "translation": "Translation",
+      "glossary": "Glossary",
+      "wiki": "Wiki",
+      "sharing": "Sharing",
+      "settings": "Settings"
+    },
+    "trash_confirm": {
+      "title": "Move to trash?",
+      "description": "\"{{title}}\" and all chapters will be moved to trash. You can restore within 30 days.",
+      "confirm": "Move to Trash"
+    }
+  },
   "trash": {
     "title": "Recycle Bin",
-    "empty": "Trash is empty"
+    "subtitle": "Items here will be permanently deleted after 30 days.",
+    "back": "Back to Workspace",
+    "search": "Search trash…",
+    "empty": "Trash is empty",
+    "empty_search": "No items match your search.",
+    "empty_hint": "Deleted items will appear here for 30 days before permanent removal.",
+    "item_count": "{{count}} item",
+    "item_count_other": "{{count}} items",
+    "selected": "{{count}} selected",
+    "restore": "Restore",
+    "restore_selected": "Restore Selected",
+    "delete_permanently": "Delete Permanently",
+    "delete_tooltip": "Delete permanently",
+    "clear_selection": "Clear selection",
+    "days_left": "{{count}}d left",
+    "deleted_today": "Deleted today",
+    "deleted_yesterday": "Deleted yesterday",
+    "deleted_days_ago": "Deleted {{count}} days ago",
+    "tabs": {
+      "books": "Books",
+      "chapters": "Chapters",
+      "glossary": "Glossary",
+      "chat": "Chat Sessions"
+    },
+    "sort": {
+      "newest": "Newest first",
+      "oldest": "Oldest first",
+      "name": "Name A-Z"
+    },
+    "restored_one": "Restored \"{{title}}\"",
+    "restore_failed": "Restore failed: {{error}}",
+    "restored_n": "Restored {{count}} item",
+    "restored_n_other": "Restored {{count}} items",
+    "purged_n": "Permanently deleted {{count}} item",
+    "purged_n_other": "Permanently deleted {{count}} items",
+    "purge_confirm": {
+      "title": "Delete permanently?",
+      "one": "\"{{title}}\" will be permanently deleted. This cannot be undone.",
+      "many": "{{count}} items will be permanently deleted. This cannot be undone.",
+      "deleting": "Deleting…",
+      "confirm": "Delete Permanently",
+      "cancel": "Cancel"
+    }
   }
 }

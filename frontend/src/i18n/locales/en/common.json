@@ -11,7 +11,10 @@
     "notifications": "Notifications",
     "logout": "Log out",
     "main": "Main",
-    "manage": "Manage"
+    "manage": "Manage",
+    "expand_sidebar": "Expand sidebar",
+    "collapse_sidebar": "Collapse sidebar",
+    "theme": "Theme: {{name}}"
   },
   "common": {
     "save": "Save",
@@ -68,5 +71,11 @@
     "recording": "Recording...",
     "exitVoiceMode": "Exit Voice Mode",
     "pauseResume": "Pause / Resume"
+  },
+  "theme_name": {
+    "dark": "Dark",
+    "light": "Light",
+    "sepia": "Sepia",
+    "oled": "OLED"
   }
 }
