@@ -25,6 +25,7 @@ _USER = uuid.uuid4()
 
 TABLES = [
     "source_corpus",
+    "source_corpus_chunk",
     "cultural_grounding_ref",
     "enrichment_template",
     "enrichment_job",

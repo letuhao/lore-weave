@@ -6,9 +6,9 @@ Follows the platform house style established by knowledge-service
 `run_migrations(pool)`. No Alembic/goose/flyway — bare SQL via asyncpg.
 
 A matching `run_down_migrations(pool)` drops everything in reverse FK
-dependency order (proposal → job → template → grounding_ref → corpus),
-plus the trigger function, so the up→down→up round-trip is clean and
-idempotent (RAID C2 acceptance gate).
+dependency order (proposal → job → template → grounding_ref →
+corpus_chunk → corpus), plus the trigger function, so the up→down→up
+round-trip is clean and idempotent (RAID C2/C10 acceptance gate).
 
 H0 INVARIANT (enriched lore != canon) is enforced at the SCHEMA level on
 `enrichment_proposal`:
@@ -64,6 +64,46 @@ CREATE TABLE IF NOT EXISTS source_corpus (
 
 CREATE INDEX IF NOT EXISTS idx_source_corpus_scope
   ON source_corpus(user_id, project_id);
+
+-- ═══════════════════════════════════════════════════════════════
+-- source_corpus_chunk (RAID C10 — technique-(b) retrieval)
+-- A deterministic CJK-aware chunk of a source_corpus text plus its
+-- embedding vector. The embedding is obtained by REUSING knowledge-
+-- service /internal/embed (provider-registry model_ref) — NEVER a
+-- hardcoded model name. `embedding_model_ref` records the resolving
+-- model_ref alongside the vector so a silent embedding-model change is
+-- DETECTABLE (mixing incomparable vector spaces is a real bug class).
+--
+-- Vectors are stored as DOUBLE PRECISION[] (the platform does NOT enable
+-- pgvector); similarity search is an in-process cosine scorer over a
+-- project's chunks (lightweight, no vector-DB service, no heavy dep).
+--
+-- Idempotency: (corpus_id, chunk_index) is UNIQUE and `content_sha256`
+-- lets re-ingest of identical text be a no-op (same text → same chunks,
+-- no duplicates, no silent re-embed). Per-project scoped (Q3) via the
+-- parent corpus; ON DELETE CASCADE purges chunks with their corpus.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS source_corpus_chunk (
+  chunk_id        UUID PRIMARY KEY DEFAULT uuidv7(),
+  corpus_id       UUID NOT NULL
+    REFERENCES source_corpus(corpus_id) ON DELETE CASCADE,
+  project_id      UUID NOT NULL,                  -- scope (Q3); no FK (cross-DB)
+  chunk_index     INT NOT NULL,                   -- 0-based ordinal (stable id)
+  content         TEXT NOT NULL,                  -- the chunk text (CJK, UTF-8)
+  content_sha256  TEXT NOT NULL,                  -- hash for idempotent re-ingest
+  embedding       DOUBLE PRECISION[],             -- the vector (NULL until embedded)
+  embedding_model_ref TEXT,                       -- resolving model_ref (drift guard)
+  embedding_dim   INT,                            -- vector dimension (drift guard)
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (corpus_id, chunk_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_source_corpus_chunk_corpus
+  ON source_corpus_chunk(corpus_id, chunk_index);
+
+CREATE INDEX IF NOT EXISTS idx_source_corpus_chunk_scope
+  ON source_corpus_chunk(project_id);
 
 -- ═══════════════════════════════════════════════════════════════
 -- cultural_grounding_ref
@@ -284,6 +324,7 @@ DROP TABLE IF EXISTS enrichment_proposal;
 DROP TABLE IF EXISTS enrichment_job;
 DROP TABLE IF EXISTS enrichment_template;
 DROP TABLE IF EXISTS cultural_grounding_ref;
+DROP TABLE IF EXISTS source_corpus_chunk;
 DROP TABLE IF EXISTS source_corpus;
 DROP FUNCTION IF EXISTS enrichment_proposal_h0_guard();
 """
