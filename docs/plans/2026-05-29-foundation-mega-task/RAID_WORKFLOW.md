@@ -1854,3 +1854,18 @@ When `/raid` is invoked, the Coordinator MUST run these steps BEFORE entering th
 - 12-Factor App: Config (https://12factor.net/config) — config separate from code
 - POSIX environment-variable + config-file pattern (cron, systemd unit files)
 - Anthropic Agent SDK file-tool conventions — read-config-first as Step 0
+
+---
+
+## §17. Post-RAID Comprehensive Review (v1.7 ADDED 2026-05-30 — mandatory end-of-run gate)
+
+After ALL build cycles are DONE (Coordinator `next-cycle` → `idle`), the Coordinator MUST run the **Post-RAID Comprehensive Review** BEFORE reporting "ready to PR" or opening a PR to `main`. This is a permanent anti-drift / anti-tech-debt gate: per-cycle review (the 12-phase, cold-start sub-agent) structurally cannot see cross-cycle drift, "contract-complete but skeleton" gaps, escalation-log noise, missing CI, or invariant-enforcement that silently went NOTE-only.
+
+**Canonical spec:** [`docs/raid/POST_RAID_REVIEW_PROTOCOL.md`](../../raid/POST_RAID_REVIEW_PROTOCOL.md) (task-agnostic; portable across RAID tasks).
+
+**Summary:**
+- **3 multi-agent + adversarially-verified passes:** Acceptance audit (escalation reconciliation · artifact completeness · git integrity) · Decisions audit (locked-decision drift/debt) · Dimension review (architecture/invariant drift · contract conformance · security/GDPR · test-quality/live-smoke) + an integrated build.
+- **Output:** `<plan_dir>/POST_RAID_REVIEW_FINDINGS.md` — `PRR-NN` findings + Fix Log + **Triage disposition** + a machine-readable `POST-RAID-REVIEW: CLEAR|BLOCKED` verdict line. Every deferral → a `docs/deferred/DEFERRED.md` row (defer = tracked, never forgotten).
+- **Gate:** `scripts/raid/post-raid-review-gate.sh` PASSES only when the findings doc exists, has a Triage disposition, and is stamped CLEAR. The Coordinator runs it before PR; BLOCKED halts the loop.
+- **CLEAR ≠ production-complete** — it means reviewed + nothing silently lost; HIGH deferred rows remain the explicit before-prod gate.
+- **Origin:** the foundation mega-task review (2026-05-30) surfaced **45 findings** (a forgeable admin auth, dead-at-runtime PII masking, an exit-0 worker fleet, a 64% projection-coverage gap, 24 spurious escalations, …) that no per-cycle review caught — see `docs/plans/2026-05-29-foundation-mega-task/POST_RAID_REVIEW_FINDINGS.md`.

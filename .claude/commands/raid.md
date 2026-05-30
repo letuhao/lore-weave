@@ -98,9 +98,12 @@ If you want to run JUST ONE cycle manually (e.g., debugging cycle 17 in isolatio
 
 ## After completion
 
-Coordinator emits final report. User can:
+**MANDATORY before any PR-to-main (RAID v1.7 §17):** when the loop reaches idle (all cycles DONE), the Coordinator runs the **Post-RAID Comprehensive Review** — 3 adversarially-verified passes (acceptance audit · decisions audit · 4-dimension review + integrated build) → writes `<plan_dir>/POST_RAID_REVIEW_FINDINGS.md` (findings + triage + a `POST-RAID-REVIEW: CLEAR|BLOCKED` verdict) + `DEFERRED.md` rows, then runs `bash scripts/raid/post-raid-review-gate.sh`. Report "ready to PR" ONLY on gate PASS; on BLOCKED, halt and surface the blockers. Canonical spec: `docs/raid/POST_RAID_REVIEW_PROTOCOL.md`.
+
+Coordinator then emits final report. User can:
 - Inspect `docs/raid/CYCLE_LOG.md` for per-cycle outcomes
-- Inspect `docs/raid/ESCALATIONS.md` (should be empty if no halts)
+- Inspect `docs/raid/ESCALATIONS.md` — note (PRR-10 fix): a missing live IN_PROGRESS state on a DONE/archived cycle is CONSISTENT, not a halt
+- Inspect `<plan_dir>/POST_RAID_REVIEW_FINDINGS.md` for the review verdict + DEFERRED backlog
 - Run `python scripts/raid/health-dashboard.py --all` for per-cycle health summaries
 - Run `python scripts/raid/quota-summary.py` for foundation-wide quota burn
-- If all 38 cycles DONE: open PR `mmo-rpg/foundation-mega-task -> main` per CYCLE_DECOMPOSITION.md §8 acceptance criteria
+- **Only after `bash scripts/raid/post-raid-review-gate.sh` PASSES**: open PR `mmo-rpg/foundation-mega-task -> main` per CYCLE_DECOMPOSITION.md §8 acceptance criteria
