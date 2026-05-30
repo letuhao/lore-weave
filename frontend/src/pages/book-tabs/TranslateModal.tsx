@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -17,6 +18,7 @@ interface TranslateModalProps {
 }
 
 export function TranslateModal({ open, onClose, bookId, onJobCreated }: TranslateModalProps) {
+  const { t } = useTranslation('books');
   const { accessToken } = useAuth();
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [settings, setSettings] = useState<BookTranslationSettings | null>(null);
@@ -90,7 +92,7 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
     } catch (e) {
       // Persisting the book default is best-effort (the job carries its own overrides),
       // but surface the failure instead of swallowing it.
-      toast.error(`Could not save translation settings: ${(e as Error).message}`);
+      toast.error(t('translate.settings_save_failed', { error: (e as Error).message }));
     }
   };
 
@@ -118,15 +120,15 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
         model_source: 'user_model',
         model_ref: selectedModelRef,
       });
-      toast.success(`Translation job started for ${selectedChapters.size} chapter(s)`);
+      toast.success(t('translate.job_started', { count: selectedChapters.size }));
       onJobCreated();
       onClose();
     } catch (e) {
       const err = e as Error & { code?: string };
       if (err.code === 'TRANSL_NO_MODEL_CONFIGURED') {
-        toast.error('No model configured. Please select a model above.');
+        toast.error(t('translate.no_model_configured'));
       } else {
-        toast.error(err.message || 'Translation failed');
+        toast.error(err.message || t('translate.failed'));
       }
     }
     setSubmitting(false);
@@ -147,9 +149,9 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
         >
           {/* Header */}
           <div className="border-b px-5 py-4">
-            <h2 className="text-sm font-semibold">Translate Chapters</h2>
+            <h2 className="text-sm font-semibold">{t('translate.title')}</h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Select language, model, and chapters to translate
+              {t('translate.subtitle')}
             </p>
           </div>
 
@@ -163,13 +165,13 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
               <div className="grid grid-cols-2 gap-3">
                 {/* Language */}
                 <div>
-                  <label className="mb-1 block text-xs font-medium">Target Language</label>
+                  <label className="mb-1 block text-xs font-medium">{t('translate.target_language')}</label>
                   <select
                     value={selectedLang}
                     onChange={(e) => handleLangChange(e.target.value)}
                     className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
                   >
-                    <option value="">Select language...</option>
+                    <option value="">{t('translate.select_language')}</option>
                     {availableLangs.map(([code, name]) => (
                       <option key={code} value={code}>{name} ({code})</option>
                     ))}
@@ -178,12 +180,12 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
 
                 {/* Model */}
                 <div>
-                  <label className="mb-1 block text-xs font-medium">Model</label>
+                  <label className="mb-1 block text-xs font-medium">{t('translate.model')}</label>
                   {userModels.length === 0 ? (
                     <div className="flex h-9 items-center rounded-md border border-dashed bg-background px-3 text-[11px] text-muted-foreground">
-                      No models.{' '}
+                      {t('translate.no_models')}{' '}
                       <Link to="/settings" onClick={onClose} className="ml-1 text-primary hover:underline">
-                        Add in Settings
+                        {t('translate.add_in_settings')}
                       </Link>
                     </div>
                   ) : (
@@ -192,7 +194,7 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
                       onChange={(e) => handleModelChange(e.target.value)}
                       className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
                     >
-                      <option value="">Select model...</option>
+                      <option value="">{t('translate.select_model')}</option>
                       {Array.from(modelsByProvider.entries()).map(([provider, models]) => (
                         <optgroup key={provider} label={provider}>
                           {models.map((m) => (
@@ -220,10 +222,10 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
                   <p className="text-[11px] text-amber-400">
                     {!selectedLang && !selectedModelRef
-                      ? 'Select a target language and model to start translating.'
+                      ? t('translate.warn_both')
                       : !selectedLang
-                        ? 'Select a target language.'
-                        : 'Select a model to use for translation.'}
+                        ? t('translate.warn_language')
+                        : t('translate.warn_model')}
                   </p>
                 </div>
               )}
@@ -232,13 +234,13 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-medium text-muted-foreground">
-                    Chapters ({selectedChapters.size}/{chapters.length})
+                    {t('translate.chapters', { selected: selectedChapters.size, total: chapters.length })}
                   </label>
                   <button
                     onClick={toggleAll}
                     className="text-[10px] text-primary hover:underline"
                   >
-                    {selectedChapters.size === chapters.length ? 'Deselect all' : 'Select all'}
+                    {selectedChapters.size === chapters.length ? t('translate.deselect_all') : t('translate.select_all')}
                   </button>
                 </div>
                 <div className="max-h-48 overflow-y-auto rounded-md border">
@@ -258,7 +260,7 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
                       />
                       <span className="w-5 text-right font-mono text-muted-foreground">{i + 1}</span>
                       <span className="flex-1 line-clamp-1">
-                        {ch.title || ch.original_filename || 'Untitled'}
+                        {ch.title || ch.original_filename || t('translate.untitled')}
                       </span>
                     </label>
                   ))}
@@ -273,7 +275,7 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
               onClick={onClose}
               className="rounded-md border px-4 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
             >
-              Cancel
+              {t('translate.cancel')}
             </button>
             <button
               onClick={() => void handleSubmit()}
@@ -281,7 +283,7 @@ export function TranslateModal({ open, onClose, bookId, onJobCreated }: Translat
               className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              Start Translation
+              {t('translate.submit')}
             </button>
           </div>
         </div>
