@@ -34,6 +34,21 @@
     "no_results": "No results found",
     "not_found": "Page not found"
   },
+  "badge": {
+    "private": "Private",
+    "unlisted": "Unlisted",
+    "public": "Public",
+    "active": "Active",
+    "trashed": "Trashed",
+    "purge_pending": "Purge pending",
+    "running": "Running",
+    "pending": "Pending",
+    "completed": "Completed",
+    "failed": "Failed",
+    "translated": "Translated",
+    "not_started": "Not started",
+    "partial": "Partial"
+  },
   "placeholder": {
     "coming_soon": "{{title}} — coming soon.",
     "phase": "Coming in {{phase}}."

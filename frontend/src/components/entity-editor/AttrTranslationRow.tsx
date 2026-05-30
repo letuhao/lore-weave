@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Check, Loader2, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
@@ -26,6 +27,7 @@ export function AttrTranslationRow({
   bookId, entityId, attrValueId, language,
   translation, translationHint, onChanged,
 }: AttrTranslationRowProps) {
+  const { t } = useTranslation('entityEditor');
   const { accessToken } = useAuth();
   const [value, setValue] = useState(translation?.value ?? '');
   const [saving, setSaving] = useState(false);
@@ -47,7 +49,7 @@ export function AttrTranslationRow({
           accessToken,
         );
         onChanged(updated);
-        toast.success('Translation updated');
+        toast.success(t('translation_row.toast.updated'));
       } else {
         // Create new
         const created = await glossaryApi.createTranslation(
@@ -56,7 +58,7 @@ export function AttrTranslationRow({
           accessToken,
         );
         onChanged(created);
-        toast.success('Translation created');
+        toast.success(t('translation_row.toast.created'));
       }
     } catch (e) {
       toast.error((e as Error).message);
@@ -75,7 +77,7 @@ export function AttrTranslationRow({
       setValue('');
       setConfirmDelete(false);
       onChanged(null);
-      toast.success('Translation deleted');
+      toast.success(t('translation_row.toast.deleted'));
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -107,15 +109,15 @@ export function AttrTranslationRow({
             value={translation.confidence}
             onChange={(e) => void handleConfidenceChange(e.target.value as Confidence)}
             className={`rounded border px-1.5 py-0.5 text-[9px] font-medium focus:outline-none ${CONFIDENCE_STYLES[translation.confidence]}`}
-            aria-label="Translation confidence"
+            aria-label={t('translation_row.confidence_aria')}
           >
-            <option value="draft">Draft</option>
-            <option value="verified">Verified</option>
-            <option value="machine">Machine</option>
+            <option value="draft">{t('translation_row.confidence.draft')}</option>
+            <option value="verified">{t('translation_row.confidence.verified')}</option>
+            <option value="machine">{t('translation_row.confidence.machine')}</option>
           </select>
         )}
         {translation?.translator && (
-          <span className="text-[9px] text-muted-foreground">by {translation.translator}</span>
+          <span className="text-[9px] text-muted-foreground">{t('translation_row.by', { name: translation.translator })}</span>
         )}
         <span className="flex-1" />
         {isDirty && (
@@ -124,7 +126,7 @@ export function AttrTranslationRow({
               type="button"
               onClick={() => setValue(translation?.value ?? '')}
               className="p-0.5 text-muted-foreground hover:text-foreground transition-colors"
-              title="Discard changes"
+              title={t('translation_row.discard_aria')}
             >
               <X className="h-3 w-3" />
             </button>
@@ -135,7 +137,7 @@ export function AttrTranslationRow({
               className="inline-flex items-center gap-1 rounded bg-primary px-2 py-0.5 text-[9px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
             >
               {saving ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Check className="h-2.5 w-2.5" />}
-              Save
+              {t('translation_row.save')}
             </button>
           </>
         )}
@@ -145,7 +147,7 @@ export function AttrTranslationRow({
             onClick={() => setConfirmDelete(true)}
             disabled={deleting}
             className="p-0.5 text-muted-foreground hover:text-destructive transition-colors"
-            title="Delete translation"
+            title={t('translation_row.delete_aria')}
           >
             {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
           </button>
@@ -155,15 +157,15 @@ export function AttrTranslationRow({
         value={value}
         onChange={(e) => setValue(e.target.value)}
         rows={1}
-        placeholder={translationHint || `${language} translation...`}
+        placeholder={translationHint || t('translation_row.placeholder', { lang: language })}
         className="w-full rounded border border-blue-500/20 bg-background px-2 py-1.5 text-xs focus:border-blue-500/40 focus:outline-none focus:ring-1 focus:ring-blue-500/30 resize-y"
       />
       <ConfirmDialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
-        title="Delete translation?"
-        description={`The ${language.toUpperCase()} translation for this attribute will be permanently deleted.`}
-        confirmLabel="Delete"
+        title={t('translation_row.delete_title')}
+        description={t('translation_row.delete_desc', { lang: language.toUpperCase() })}
+        confirmLabel={t('translation_row.delete_confirm')}
         variant="destructive"
         loading={deleting}
         onConfirm={() => void handleDelete()}

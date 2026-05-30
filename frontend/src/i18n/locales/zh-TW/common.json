@@ -34,6 +34,21 @@
     "no_results": "未找到結果",
     "not_found": "找不到頁面"
   },
+  "badge": {
+    "private": "私人",
+    "unlisted": "不公開",
+    "public": "公開",
+    "active": "啟用中",
+    "trashed": "已刪除",
+    "purge_pending": "待清除",
+    "running": "執行中",
+    "pending": "等待中",
+    "completed": "已完成",
+    "failed": "失敗",
+    "translated": "已翻譯",
+    "not_started": "尚未開始",
+    "partial": "部分"
+  },
   "placeholder": {
     "coming_soon": "{{title}} — 即將推出。",
     "phase": "將在{{phase}}實作。"

@@ -24,10 +24,12 @@ Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, wri
 vi.mock('react-i18next', () => ({
   useTranslation: (ns?: string) => ({
     t: (key: string, opts?: Record<string, unknown>) => {
-      // Return the key with interpolated values for testing
+      // Honor i18next's `defaultValue` (real behavior), then interpolate {{vars}}.
+      // Falls back to the key when no defaultValue is given.
       if (opts) {
-        let result = key;
+        let result = typeof opts.defaultValue === 'string' ? opts.defaultValue : key;
         for (const [k, v] of Object.entries(opts)) {
+          if (k === 'defaultValue') continue;
           result = result.replace(`{{${k}}}`, String(v));
         }
         return result;

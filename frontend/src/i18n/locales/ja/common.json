@@ -34,6 +34,21 @@
     "no_results": "結果が見つかりません",
     "not_found": "ページが見つかりません"
   },
+  "badge": {
+    "private": "非公開",
+    "unlisted": "限定公開",
+    "public": "公開",
+    "active": "有効",
+    "trashed": "ゴミ箱",
+    "purge_pending": "削除待ち",
+    "running": "実行中",
+    "pending": "保留中",
+    "completed": "完了",
+    "failed": "失敗",
+    "translated": "翻訳済み",
+    "not_started": "未開始",
+    "partial": "一部"
+  },
   "placeholder": {
     "coming_soon": "{{title}} — 近日公開。",
     "phase": "{{phase}}で実装予定。"

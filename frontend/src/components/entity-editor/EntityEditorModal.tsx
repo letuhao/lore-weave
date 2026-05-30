@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, Save, Loader2, Link2, Languages, FileText, Tag, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
@@ -25,6 +26,7 @@ interface EntityEditorModalProps {
 }
 
 export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGenreTags = [], bookOriginalLanguage, onClose, onSaved, onDelete, initialTab = 'attributes' }: EntityEditorModalProps) {
+  const { t } = useTranslation('entityEditor');
   const { accessToken } = useAuth();
   const [entity, setEntity] = useState<GlossaryEntity | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,7 +72,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
       for (const [attrValueId, value] of pendingChanges) {
         await glossaryApi.patchAttributeValue(bookId, entityId, attrValueId, { original_value: value }, accessToken);
       }
-      toast.success('Entity saved');
+      toast.success(t('modal.toast.saved'));
       setPendingChanges(new Map());
       onSaved();
       await load();
@@ -82,7 +84,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
     if (!accessToken || !entity) return;
     try {
       await glossaryApi.patchEntity(bookId, entityId, { status }, accessToken);
-      toast.success(`Status changed to ${status}`);
+      toast.success(t('modal.toast.status_changed', { status }));
       await load();
       onSaved();
     } catch (e) { toast.error((e as Error).message); }
@@ -120,7 +122,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
   // Filter attributes by genre: show if attr has no genre_tags (universal) or matches book genres
   const genreMatch = (attr: AttributeValue) => {
     const tags = attr.attribute_def.genre_tags ?? [];
-    return tags.length === 0 || tags.some((t) => bookGenreTags.includes(t));
+    return tags.length === 0 || tags.some((gt) => bookGenreTags.includes(gt));
   };
 
   const sortedAttrs = [...entity.attribute_values]
@@ -132,7 +134,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
   // Collect unique languages: book's original language + all existing translation languages
   // Stable key: serialize translation language codes to avoid recalc on unrelated entity changes
   const translationLangKey = entity.attribute_values
-    .flatMap((av) => av.translations.map((t) => t.language_code))
+    .flatMap((av) => av.translations.map((tr) => tr.language_code))
     .sort().join(',');
   const availableLanguages = useMemo(() => {
     const langs = new Set<string>();
@@ -154,7 +156,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
           if (av.attr_value_id !== attrValueId) return av;
           let translations: Translation[];
           if (updated) {
-            const idx = av.translations.findIndex((t) => t.translation_id === updated.translation_id);
+            const idx = av.translations.findIndex((tr) => tr.translation_id === updated.translation_id);
             if (idx >= 0) {
               translations = [...av.translations];
               translations[idx] = updated;
@@ -162,7 +164,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
               translations = [...av.translations, updated];
             }
           } else {
-            translations = av.translations.filter((t) => t.translation_id !== oldTranslationId);
+            translations = av.translations.filter((tr) => tr.translation_id !== oldTranslationId);
           }
           return { ...av, translations };
         }),
@@ -186,14 +188,14 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
           {/* ── Header ── */}
           <div className="flex items-center justify-between border-b bg-card px-6 py-4 flex-shrink-0">
             <div className="flex items-center gap-2.5 min-w-0">
-              <span className="font-serif text-base font-semibold truncate">{entity.display_name || 'Untitled'}</span>
+              <span className="font-serif text-base font-semibold truncate">{entity.display_name || t('modal.untitled')}</span>
               <span
                 className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium flex-shrink-0"
                 style={{ backgroundColor: entity.kind.color + '18', color: entity.kind.color }}
               >
                 {entity.kind.icon} {entity.kind.name}
               </span>
-              {kindGenreTags.filter((t) => t !== 'universal').map((g) => (
+              {kindGenreTags.filter((gt) => gt !== 'universal').map((g) => (
                 <span key={g} className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[9px] font-medium text-violet-400 flex-shrink-0">
                   {g}
                 </span>
@@ -203,15 +205,15 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                 onChange={(e) => void handleStatusChange(e.target.value)}
                 className="rounded border bg-background px-2 py-0.5 text-[10px] font-medium focus:outline-none flex-shrink-0"
               >
-                <option value="draft">Draft</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
+                <option value="draft">{t('modal.status.draft')}</option>
+                <option value="active">{t('modal.status.active')}</option>
+                <option value="inactive">{t('modal.status.inactive')}</option>
               </select>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               {isDirty && (
                 <button onClick={handleDiscard} className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
-                  Discard
+                  {t('modal.discard')}
                 </button>
               )}
               <button
@@ -220,7 +222,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                 className="btn-glow inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
               >
                 {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                Save
+                {t('modal.save')}
               </button>
               <button onClick={onClose} className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
                 <X className="h-4 w-4" />
@@ -230,9 +232,9 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
 
           {/* ── Meta bar ── */}
           <div className="flex items-center gap-4 border-b px-6 py-2.5 text-[11px] text-muted-foreground flex-shrink-0" style={{ background: 'rgba(24,20,18,0.4)' }}>
-            <span className="inline-flex items-center gap-1"><Link2 className="h-3 w-3" />{entity.chapter_link_count} chapters</span>
-            <span className="inline-flex items-center gap-1"><Languages className="h-3 w-3" />{entity.translation_count} translations</span>
-            <button type="button" onClick={() => setActiveTab('evidences')} className="inline-flex items-center gap-1 hover:text-primary transition-colors"><FileText className="h-3 w-3" />{entity.evidence_count} evidences</button>
+            <span className="inline-flex items-center gap-1"><Link2 className="h-3 w-3" />{t('modal.meta.chapters', { count: entity.chapter_link_count })}</span>
+            <span className="inline-flex items-center gap-1"><Languages className="h-3 w-3" />{t('modal.meta.translations', { count: entity.translation_count })}</span>
+            <button type="button" onClick={() => setActiveTab('evidences')} className="inline-flex items-center gap-1 hover:text-primary transition-colors"><FileText className="h-3 w-3" />{t('modal.meta.evidences', { count: entity.evidence_count })}</button>
             {entity.tags.length > 0 && (
               <>
                 <span className="flex-1" />
@@ -252,7 +254,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
-              Attributes
+              {t('modal.tab.attributes')}
             </button>
             <button
               type="button"
@@ -263,7 +265,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
-              Evidences
+              {t('modal.tab.evidences')}
               {entity.evidence_count > 0 && (
                 <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium">
                   {entity.evidence_count}
@@ -282,19 +284,19 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                     className={`rounded border bg-background px-2 py-1 text-[10px] font-medium focus:outline-none transition-colors ${
                       translationLang && translationLang !== '__new' ? 'border-blue-500/40 text-blue-400' : 'text-muted-foreground'
                     }`}
-                    aria-label="Translation language"
+                    aria-label={t('modal.translation_lang_aria')}
                   >
-                    <option value="">No translation</option>
+                    <option value="">{t('modal.no_translation')}</option>
                     {availableLanguages.map((lang) => (
                       <option key={lang} value={lang}>{lang.toUpperCase()}</option>
                     ))}
-                    <option value="__new">+ Add language...</option>
+                    <option value="__new">{t('modal.add_language')}</option>
                   </select>
                   {translationLang === '__new' && (
                     <input
                       autoFocus
                       type="text"
-                      placeholder="e.g. en"
+                      placeholder={t('modal.lang_placeholder')}
                       maxLength={5}
                       pattern="[a-zA-Z]{2,3}(-[a-zA-Z]{2,4})?"
                       className="w-16 rounded border border-blue-500/40 bg-background px-2 py-1 text-[10px] focus:outline-none"
@@ -303,7 +305,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                         if (v && /^[a-z]{2,3}(-[a-z]{2,4})?$/.test(v)) {
                           setTranslationLang(v);
                         } else {
-                          if (v) toast.error('Invalid language code (e.g. en, zh, zh-tw)');
+                          if (v) toast.error(t('modal.toast.invalid_lang'));
                           setTranslationLang('');
                         }
                       }}
@@ -328,7 +330,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                 {/* System attributes */}
                 {sysAttrs.length > 0 && (
                   <>
-                    <SectionLabel color="info">System Attributes</SectionLabel>
+                    <SectionLabel color="info">{t('modal.system_attrs')}</SectionLabel>
                     <AttrGrid
                       attrs={sysAttrs} getValue={getValue} onChange={handleChange}
                       pendingChanges={pendingChanges} translationLang={translationLang}
@@ -340,7 +342,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                 {/* User attributes */}
                 {usrAttrs.length > 0 && (
                   <>
-                    <SectionLabel color="primary">User Attributes</SectionLabel>
+                    <SectionLabel color="primary">{t('modal.user_attrs')}</SectionLabel>
                     <AttrGrid
                       attrs={usrAttrs} getValue={getValue} onChange={handleChange}
                       pendingChanges={pendingChanges} translationLang={translationLang}
@@ -350,7 +352,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                 )}
 
                 {sortedAttrs.length === 0 && (
-                  <p className="py-8 text-center text-xs italic text-muted-foreground">No attributes defined for this entity kind.</p>
+                  <p className="py-8 text-center text-xs italic text-muted-foreground">{t('modal.no_attributes')}</p>
                 )}
               </>
             )}
@@ -377,11 +379,11 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                 className="inline-flex items-center gap-1.5 text-xs text-destructive hover:bg-destructive/8 rounded-md px-3 py-1.5 transition-colors"
               >
                 <Trash2 className="h-3 w-3" />
-                Move to Trash
+                {t('modal.move_to_trash')}
               </button>
               <div className="flex items-center gap-2">
                 <button onClick={onClose} className="rounded-md border px-4 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
-                  Cancel
+                  {t('modal.cancel')}
                 </button>
                 <button
                   onClick={() => void handleSave()}
@@ -389,7 +391,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                   className="btn-glow inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-all"
                 >
                   {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                  Save Entity
+                  {t('modal.save_entity')}
                 </button>
               </div>
             </div>

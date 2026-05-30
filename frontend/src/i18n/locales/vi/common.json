@@ -34,6 +34,21 @@
     "no_results": "Không tìm thấy kết quả",
     "not_found": "Không tìm thấy trang"
   },
+  "badge": {
+    "private": "Riêng tư",
+    "unlisted": "Không công khai",
+    "public": "Công khai",
+    "active": "Hoạt động",
+    "trashed": "Đã bỏ vào thùng rác",
+    "purge_pending": "Chờ xóa vĩnh viễn",
+    "running": "Đang chạy",
+    "pending": "Đang chờ",
+    "completed": "Hoàn thành",
+    "failed": "Thất bại",
+    "translated": "Đã dịch",
+    "not_started": "Chưa bắt đầu",
+    "partial": "Một phần"
+  },
   "placeholder": {
     "coming_soon": "{{title}} — sắp ra mắt.",
     "phase": "Sẽ có trong {{phase}}."
