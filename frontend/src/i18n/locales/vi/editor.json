@@ -181,5 +181,63 @@
     "alt_placeholder": "Mô tả ảnh này cho trình đọc màn hình và xuất EPUB...",
     "alt_aria": "Văn bản thay thế ảnh",
     "alt_note": "Dùng cho trình đọc màn hình, tìm kiếm và xuất EPUB. Khác với chú thích."
+  },
+  "video": {
+    "err_type": "Loại không hỗ trợ: {{type}}. Dùng MP4 hoặc WebM.",
+    "err_size": "Tệp quá lớn: {{size}} MB. Tối đa 100 MB.",
+    "upload_unavailable": "Chưa thể tải lên — hãy lưu chương trước.",
+    "upload_failed": "Tải lên thất bại",
+    "gen_save_first": "Hãy lưu chương trước.",
+    "gen_no_model": "Chưa cấu hình mô hình tạo video. Thêm một mô hình trong Cài đặt > Nhà cung cấp.",
+    "gen_failed": "Tạo sinh thất bại",
+    "default_title": "Video",
+    "version_history": "Lịch sử phiên bản",
+    "copy_filename": "Sao chép tên tệp",
+    "copy": "Sao chép",
+    "ai_mode": "Chế độ AI",
+    "replace": "Thay thế",
+    "replace_title": "Thay video",
+    "delete_block": "Xóa khối",
+    "delete_video_block": "Xóa khối video",
+    "uploading": "Đang tải lên... {{pct}}%",
+    "drop_here": "Thả video vào đây",
+    "drop_hint": "Thả video hoặc nhấp để duyệt",
+    "formats": "MP4, WebM — Tối đa 100 MB",
+    "width_title": "Chiều rộng: {{width}}%",
+    "caption_placeholder": "Thêm chú thích...",
+    "caption_aria": "Chú thích video",
+    "alt_text": "Văn bản thay thế",
+    "alt_set": "đã đặt",
+    "alt_placeholder": "Mô tả video này cho trình đọc màn hình và xuất EPUB...",
+    "alt_aria": "Văn bản thay thế video",
+    "alt_note": "Dùng cho trình đọc màn hình, tìm kiếm và xuất EPUB. Khác với chú thích.",
+    "generate": "Tạo"
+  },
+  "audio": {
+    "err_type": "Loại không hỗ trợ: {{type}}. Dùng MP3, WAV, OGG, WebM hoặc M4A.",
+    "err_size": "Tệp quá lớn: {{size}} MB. Tối đa 20 MB.",
+    "upload_unavailable": "Chưa thể tải lên — hãy lưu chương trước.",
+    "upload_failed": "Tải lên thất bại",
+    "default_title": "Âm thanh",
+    "ai_mode": "Chế độ AI",
+    "play": "Phát",
+    "pause": "Tạm dừng",
+    "replace_title": "Thay âm thanh",
+    "delete_audio_block": "Xóa khối âm thanh",
+    "uploading": "Đang tải lên... {{pct}}%",
+    "drop_here": "Thả âm thanh vào đây",
+    "drop_hint": "Thả tệp âm thanh hoặc nhấp để duyệt",
+    "formats": "MP3, WAV, OGG, WebM, M4A — Tối đa 20 MB",
+    "subtitle_placeholder": "Thêm phụ đề...",
+    "subtitle_aria": "Phụ đề âm thanh"
+  },
+  "callout": {
+    "type": {
+      "note": "Ghi chú",
+      "warning": "Cảnh báo",
+      "tip": "Mẹo",
+      "danger": "Nguy hiểm"
+    },
+    "title": "{{type}} — nhấp để đổi loại"
   }
 }

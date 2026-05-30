@@ -181,5 +181,63 @@
     "alt_placeholder": "スクリーンリーダーとEPUBエクスポート用にこの画像を説明...",
     "alt_aria": "画像の代替テキスト",
     "alt_note": "スクリーンリーダー、検索、EPUBエクスポートで使用されます。キャプションとは異なります。"
+  },
+  "video": {
+    "err_type": "サポートされていない形式: {{type}}。MP4またはWebMを使用してください。",
+    "err_size": "ファイルが大きすぎます: {{size}} MB。最大100 MB。",
+    "upload_unavailable": "アップロードできません — 先に章を保存してください。",
+    "upload_failed": "アップロードに失敗しました",
+    "gen_save_first": "先に章を保存してください。",
+    "gen_no_model": "動画生成モデルが設定されていません。設定 > プロバイダーで追加してください。",
+    "gen_failed": "生成に失敗しました",
+    "default_title": "動画",
+    "version_history": "バージョン履歴",
+    "copy_filename": "ファイル名をコピー",
+    "copy": "コピー",
+    "ai_mode": "AIモード",
+    "replace": "置換",
+    "replace_title": "動画を置換",
+    "delete_block": "ブロックを削除",
+    "delete_video_block": "動画ブロックを削除",
+    "uploading": "アップロード中... {{pct}}%",
+    "drop_here": "ここに動画をドロップ",
+    "drop_hint": "動画をドロップまたはクリックして参照",
+    "formats": "MP4、WebM — 最大100 MB",
+    "width_title": "幅: {{width}}%",
+    "caption_placeholder": "キャプションを追加...",
+    "caption_aria": "動画キャプション",
+    "alt_text": "代替テキスト",
+    "alt_set": "設定済み",
+    "alt_placeholder": "スクリーンリーダーとEPUBエクスポート用にこの動画を説明...",
+    "alt_aria": "動画の代替テキスト",
+    "alt_note": "スクリーンリーダー、検索、EPUBエクスポートで使用されます。キャプションとは異なります。",
+    "generate": "生成"
+  },
+  "audio": {
+    "err_type": "サポートされていない形式: {{type}}。MP3、WAV、OGG、WebM、またはM4Aを使用してください。",
+    "err_size": "ファイルが大きすぎます: {{size}} MB。最大20 MB。",
+    "upload_unavailable": "アップロードできません — 先に章を保存してください。",
+    "upload_failed": "アップロードに失敗しました",
+    "default_title": "音声",
+    "ai_mode": "AIモード",
+    "play": "再生",
+    "pause": "一時停止",
+    "replace_title": "音声を置換",
+    "delete_audio_block": "音声ブロックを削除",
+    "uploading": "アップロード中... {{pct}}%",
+    "drop_here": "ここに音声をドロップ",
+    "drop_hint": "音声ファイルをドロップまたはクリックして参照",
+    "formats": "MP3、WAV、OGG、WebM、M4A — 最大20 MB",
+    "subtitle_placeholder": "字幕を追加...",
+    "subtitle_aria": "音声字幕"
+  },
+  "callout": {
+    "type": {
+      "note": "メモ",
+      "warning": "警告",
+      "tip": "ヒント",
+      "danger": "危険"
+    },
+    "title": "{{type}} — クリックしてタイプを変更"
   }
 }

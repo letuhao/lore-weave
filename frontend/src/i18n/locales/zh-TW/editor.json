@@ -181,5 +181,63 @@
     "alt_placeholder": "描述此圖片以供螢幕閱讀器與 EPUB 匯出...",
     "alt_aria": "圖片替代文字",
     "alt_note": "供螢幕閱讀器、搜尋與 EPUB 匯出使用。與說明不同。"
+  },
+  "video": {
+    "err_type": "不支援的類型：{{type}}。請使用 MP4 或 WebM。",
+    "err_size": "檔案太大：{{size}} MB。最大 100 MB。",
+    "upload_unavailable": "無法上傳 — 請先儲存章節。",
+    "upload_failed": "上傳失敗",
+    "gen_save_first": "請先儲存章節。",
+    "gen_no_model": "未設定影片生成模型。請在設定 > 供應商中新增。",
+    "gen_failed": "生成失敗",
+    "default_title": "影片",
+    "version_history": "版本歷史",
+    "copy_filename": "複製檔名",
+    "copy": "複製",
+    "ai_mode": "AI 模式",
+    "replace": "取代",
+    "replace_title": "取代影片",
+    "delete_block": "刪除區塊",
+    "delete_video_block": "刪除影片區塊",
+    "uploading": "上傳中... {{pct}}%",
+    "drop_here": "將影片拖放到此",
+    "drop_hint": "拖放影片或點擊瀏覽",
+    "formats": "MP4、WebM — 最大 100 MB",
+    "width_title": "寬度：{{width}}%",
+    "caption_placeholder": "新增說明...",
+    "caption_aria": "影片說明",
+    "alt_text": "替代文字",
+    "alt_set": "已設定",
+    "alt_placeholder": "描述此影片以供螢幕閱讀器與 EPUB 匯出...",
+    "alt_aria": "影片替代文字",
+    "alt_note": "供螢幕閱讀器、搜尋與 EPUB 匯出使用。與說明不同。",
+    "generate": "生成"
+  },
+  "audio": {
+    "err_type": "不支援的類型：{{type}}。請使用 MP3、WAV、OGG、WebM 或 M4A。",
+    "err_size": "檔案太大：{{size}} MB。最大 20 MB。",
+    "upload_unavailable": "無法上傳 — 請先儲存章節。",
+    "upload_failed": "上傳失敗",
+    "default_title": "音訊",
+    "ai_mode": "AI 模式",
+    "play": "播放",
+    "pause": "暫停",
+    "replace_title": "取代音訊",
+    "delete_audio_block": "刪除音訊區塊",
+    "uploading": "上傳中... {{pct}}%",
+    "drop_here": "將音訊拖放到此",
+    "drop_hint": "拖放音訊檔案或點擊瀏覽",
+    "formats": "MP3、WAV、OGG、WebM、M4A — 最大 20 MB",
+    "subtitle_placeholder": "新增字幕...",
+    "subtitle_aria": "音訊字幕"
+  },
+  "callout": {
+    "type": {
+      "note": "備註",
+      "warning": "警告",
+      "tip": "提示",
+      "danger": "危險"
+    },
+    "title": "{{type}} — 點擊變更類型"
   }
 }

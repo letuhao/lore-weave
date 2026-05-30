@@ -6,6 +6,7 @@ import {
 } from '@tiptap/react';
 import { Video, Upload, Loader2, Lock, Trash2, Replace, Accessibility, History } from 'lucide-react';
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { booksApi } from '@/features/books/api';
 import { getUploadContext } from './ImageBlockNode';
@@ -97,12 +98,12 @@ export const VideoBlockExtension = Node.create({
 });
 
 // --- Validation ---
-function validateVideoFile(file: File): string | null {
+function validateVideoFile(file: File): { key: string; params?: Record<string, unknown> } | null {
   if (!ALLOWED_VIDEO_TYPES.has(file.type)) {
-    return `Unsupported type: ${file.type}. Use MP4 or WebM.`;
+    return { key: 'video.err_type', params: { type: file.type } };
   }
   if (file.size > MAX_VIDEO_SIZE) {
-    return `File too large: ${(file.size / 1024 / 1024).toFixed(1)} MB. Max 100 MB.`;
+    return { key: 'video.err_size', params: { size: (file.size / 1024 / 1024).toFixed(1) } };
   }
   return null;
 }
@@ -123,6 +124,7 @@ function formatSize(bytes: number | null): string {
 
 // --- NodeView component ---
 function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNode }: NodeViewProps) {
+  const { t } = useTranslation('editor');
   const editorMode = ((editor.storage as any).mediaGuard?.editorMode as string) || 'ai';
   const isClassic = editorMode === 'classic';
   const src = node.attrs.src as string | null;
@@ -131,7 +133,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
   const width = (node.attrs.width as number) || 100;
   const duration = node.attrs.duration as number | null;
   const sizeBytes = node.attrs.size_bytes as number | null;
-  const title = (node.attrs.title as string) || 'Video';
+  const title = (node.attrs.title as string) || t('video.default_title');
   const [showAlt, setShowAlt] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState(0);
@@ -164,12 +166,12 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
     async (file: File) => {
       const err = validateVideoFile(file);
       if (err) {
-        setUploadError(err);
+        setUploadError(t(err.key, err.params));
         return;
       }
       const _uploadCtx = getUploadContext();
       if (!_uploadCtx) {
-        setUploadError('Upload not available — save the chapter first.');
+        setUploadError(t('video.upload_unavailable'));
         return;
       }
       setUploading(true);
@@ -201,7 +203,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
           duration,
         });
       } catch (e: any) {
-        setUploadError(e.message || 'Upload failed');
+        setUploadError(e.message || t('video.upload_failed'));
       } finally {
         setUploading(false);
       }
@@ -241,7 +243,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
     if (!prompt) return;
     const ctx = getUploadContext();
     if (!ctx) {
-      setGenerateError('Save the chapter first.');
+      setGenerateError(t('video.gen_save_first'));
       return;
     }
     setGenerating(true);
@@ -252,7 +254,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
       const savedId = localStorage.getItem('loreweave:media-prefs') ? JSON.parse(localStorage.getItem('loreweave:media-prefs')!).videoModelId : '';
       const videoModel = (savedId && models.find(m => m.user_model_id === savedId)) || models.find(m => m.is_active) || models[0];
       if (!videoModel) {
-        setGenerateError('No video generation model configured. Add one in Settings > Providers.');
+        setGenerateError(t('video.gen_no_model'));
         return;
       }
       const result = await videoGenApi.generate(ctx.token, {
@@ -269,10 +271,10 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
           size_bytes: result.size_bytes,
         });
       } else if (result.status === 'failed') {
-        setGenerateError(result.message || 'Generation failed.');
+        setGenerateError(result.message || t('video.gen_failed'));
       }
     } catch (e: any) {
-      setGenerateError(e.message || 'Generation failed');
+      setGenerateError(e.message || t('video.gen_failed'));
     } finally {
       setGenerating(false);
     }
@@ -295,7 +297,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
               type="button"
               onClick={() => _onOpenVideoHistory?.((node.attrs.blockId as string) || 'unknown', title, src)}
               className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] transition-colors hover:bg-card hover:text-foreground"
-              title="Version history"
+              title={t('video.version_history')}
             >
               <History className="h-2.5 w-2.5" />
             </button>
@@ -303,15 +305,15 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
           <button
             type="button"
             onClick={() => {
-              if (title && title !== 'Video') navigator.clipboard.writeText(title);
+              if (title && title !== t('video.default_title')) navigator.clipboard.writeText(title);
             }}
             className="hidden flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-card hover:text-foreground group-hover:flex"
-            title="Copy filename"
+            title={t('video.copy_filename')}
           >
-            Copy
+            {t('video.copy')}
           </button>
           <span className="flex items-center gap-1 rounded bg-card px-1.5 py-0.5 text-[9px]">
-            <Lock className="h-2.5 w-2.5" /> AI mode
+            <Lock className="h-2.5 w-2.5" /> {t('video.ai_mode')}
           </span>
         </div>
       </NodeViewWrapper>
@@ -362,16 +364,16 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
                 onClick={() => fileInputRef.current?.click()}
                 onMouseDown={(e) => e.preventDefault()}
                 className="rounded bg-black/60 px-2 py-1 text-[10px] text-white backdrop-blur transition hover:bg-black/80"
-                title="Replace video"
+                title={t('video.replace_title')}
               >
-                <Replace className="inline h-3 w-3" /> Replace
+                <Replace className="inline h-3 w-3" /> {t('video.replace')}
               </button>
               <button
                 type="button"
                 onClick={() => deleteNode()}
                 onMouseDown={(e) => e.preventDefault()}
                 className="rounded bg-black/60 px-2 py-1 text-[10px] text-white backdrop-blur transition hover:bg-destructive"
-                title="Delete block"
+                title={t('video.delete_block')}
               >
                 <Trash2 className="inline h-3 w-3" />
               </button>
@@ -398,7 +400,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
             {uploading ? (
               <>
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                <span className="text-xs">Uploading... {uploadPct}%</span>
+                <span className="text-xs">{t('video.uploading', { pct: uploadPct })}</span>
                 <div className="mx-8 h-1.5 w-48 overflow-hidden rounded-full bg-secondary">
                   <div
                     className="h-full rounded-full bg-primary transition-all"
@@ -410,9 +412,9 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
               <>
                 <Upload className="h-6 w-6 opacity-40" />
                 <span className="text-xs font-medium">
-                  {dragOver ? 'Drop video here' : 'Drop a video or click to browse'}
+                  {dragOver ? t('video.drop_here') : t('video.drop_hint')}
                 </span>
-                <span className="text-[9px] opacity-50">MP4, WebM — Max 100 MB</span>
+                <span className="text-[9px] opacity-50">{t('video.formats')}</span>
               </>
             )}
             {uploadError && (
@@ -430,7 +432,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
             )}
             onPointerDown={handlePointerDown}
             contentEditable={false}
-            title={`Width: ${currentWidth}%`}
+            title={t('video.width_title', { width: currentWidth })}
           >
             <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor" className="text-primary-fg">
               <circle cx="6" cy="6" r="1" />
@@ -451,9 +453,9 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
           type="text"
           value={caption}
           onChange={(e) => updateAttributes({ caption: e.target.value })}
-          placeholder="Add a caption..."
+          placeholder={t('video.caption_placeholder')}
           className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground/40"
-          aria-label="Video caption"
+          aria-label={t('video.caption_aria')}
         />
         {currentWidth < 100 && (
           <span className="flex-shrink-0 font-mono text-[9px] text-muted-foreground">
@@ -466,7 +468,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
             type="button"
             onClick={() => fileInputRef.current?.click()}
             className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            title="Replace video"
+            title={t('video.replace_title')}
           >
             <Replace className="h-3 w-3" />
           </button>
@@ -477,7 +479,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
             type="button"
             onClick={() => _onOpenVideoHistory?.((node.attrs.blockId as string) || 'unknown', title, src)}
             className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            title="Version history"
+            title={t('video.version_history')}
           >
             <History className="h-3 w-3" />
           </button>
@@ -487,7 +489,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
           type="button"
           onClick={() => deleteNode()}
           className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-          title="Delete video block"
+          title={t('video.delete_video_block')}
         >
           <Trash2 className="h-3 w-3" />
         </button>
@@ -502,8 +504,8 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
           aria-expanded={showAlt}
         >
           <Accessibility className="h-3 w-3" />
-          <span>Alt text</span>
-          {alt && <span className="rounded bg-success/10 px-1 text-[8px] text-success">set</span>}
+          <span>{t('video.alt_text')}</span>
+          {alt && <span className="rounded bg-success/10 px-1 text-[8px] text-success">{t('video.alt_set')}</span>}
           <span className="ml-auto text-[9px]">{showAlt ? '▾' : '▸'}</span>
         </button>
         {showAlt && (
@@ -512,12 +514,12 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
               type="text"
               value={alt}
               onChange={(e) => updateAttributes({ alt: e.target.value })}
-              placeholder="Describe this video for screen readers and EPUB export..."
+              placeholder={t('video.alt_placeholder')}
               className="w-full bg-transparent text-[11px] text-foreground outline-none placeholder:text-muted-foreground/40"
-              aria-label="Video alt text"
+              aria-label={t('video.alt_aria')}
             />
             <p className="mt-1 text-[9px] text-muted-foreground/60">
-              Used by screen readers, search, and EPUB export. Different from caption.
+              {t('video.alt_note')}
             </p>
           </div>
         )}
@@ -529,7 +531,7 @@ function VideoBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         onChange={(val) => updateAttributes({ ai_prompt: val })}
         onRegenerate={handleGenerate}
         regenerateDisabled={generating || !(node.attrs.ai_prompt as string)?.trim()}
-        regenerateLabel={generating ? 'Generating...' : 'Generate'}
+        regenerateLabel={generating ? t('media.generating') : t('video.generate')}
       />
       {generateError && (
         <div className="border-t px-3 py-1 text-[10px] text-destructive" contentEditable={false}>

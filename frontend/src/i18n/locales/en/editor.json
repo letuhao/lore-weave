@@ -181,5 +181,63 @@
     "alt_placeholder": "Describe this image for screen readers and EPUB export...",
     "alt_aria": "Image alt text",
     "alt_note": "Used by screen readers, search, and EPUB export. Different from caption."
+  },
+  "video": {
+    "err_type": "Unsupported type: {{type}}. Use MP4 or WebM.",
+    "err_size": "File too large: {{size}} MB. Max 100 MB.",
+    "upload_unavailable": "Upload not available — save the chapter first.",
+    "upload_failed": "Upload failed",
+    "gen_save_first": "Save the chapter first.",
+    "gen_no_model": "No video generation model configured. Add one in Settings > Providers.",
+    "gen_failed": "Generation failed",
+    "default_title": "Video",
+    "version_history": "Version history",
+    "copy_filename": "Copy filename",
+    "copy": "Copy",
+    "ai_mode": "AI mode",
+    "replace": "Replace",
+    "replace_title": "Replace video",
+    "delete_block": "Delete block",
+    "delete_video_block": "Delete video block",
+    "uploading": "Uploading... {{pct}}%",
+    "drop_here": "Drop video here",
+    "drop_hint": "Drop a video or click to browse",
+    "formats": "MP4, WebM — Max 100 MB",
+    "width_title": "Width: {{width}}%",
+    "caption_placeholder": "Add a caption...",
+    "caption_aria": "Video caption",
+    "alt_text": "Alt text",
+    "alt_set": "set",
+    "alt_placeholder": "Describe this video for screen readers and EPUB export...",
+    "alt_aria": "Video alt text",
+    "alt_note": "Used by screen readers, search, and EPUB export. Different from caption.",
+    "generate": "Generate"
+  },
+  "audio": {
+    "err_type": "Unsupported type: {{type}}. Use MP3, WAV, OGG, WebM, or M4A.",
+    "err_size": "File too large: {{size}} MB. Max 20 MB.",
+    "upload_unavailable": "Upload not available — save the chapter first.",
+    "upload_failed": "Upload failed",
+    "default_title": "Audio",
+    "ai_mode": "AI mode",
+    "play": "Play",
+    "pause": "Pause",
+    "replace_title": "Replace audio",
+    "delete_audio_block": "Delete audio block",
+    "uploading": "Uploading... {{pct}}%",
+    "drop_here": "Drop audio here",
+    "drop_hint": "Drop an audio file or click to browse",
+    "formats": "MP3, WAV, OGG, WebM, M4A — Max 20 MB",
+    "subtitle_placeholder": "Add a subtitle...",
+    "subtitle_aria": "Audio subtitle"
+  },
+  "callout": {
+    "type": {
+      "note": "note",
+      "warning": "warning",
+      "tip": "tip",
+      "danger": "danger"
+    },
+    "title": "{{type}} — click to change type"
   }
 }
