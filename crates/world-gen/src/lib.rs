@@ -20,6 +20,7 @@ pub mod erosion;
 pub mod feature;
 pub mod flat_climate;
 pub mod flatworld;
+pub mod hierarchy;
 pub mod hydrology;
 pub mod mesh;
 pub mod naming;
@@ -47,8 +48,9 @@ pub use creative_seed::{
     SettlementDensity, TerrainMode, WorldArchetype, WorldScale,
 };
 pub use world_map::{
-    BoundaryKind, Cell, CultureRegion, MountainRange, Plate, PlateBoundary, PlateKind, Province,
-    River, Route, RouteKind, Settlement, SettlementRole, State, WaterBody, WaterBodyKind, WorldMap,
+    BoundaryKind, Cell, Continent, CultureRegion, MountainRange, Plate, PlateBoundary, PlateKind,
+    Province, Region, River, Route, RouteKind, Settlement, SettlementRole, State, Subcontinent,
+    WaterBody, WaterBodyKind, WorldMap,
 };
 
 /// Generate a world map from a `u64` seed + creative direction.
@@ -143,6 +145,17 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         None => (vec![u32::MAX; cell_count], Vec::new(), Vec::new()),
     };
 
+    // Stage 10 — geometric region hierarchy (continents → subcontinents →
+    // regions; C3 arc, sub-phase C-1a). Built by reusing the land-connectivity
+    // mask + the plate layer; only the L2 region Voronoi is new geometry.
+    let region_tree = hierarchy::build(
+        &mesh.centers,
+        &mesh.neighbors,
+        &biome,
+        &plate_of,
+        cs.region_subdivision,
+    );
+
     let mut map = WorldMap {
         seed,
         scale: cs.world_scale,
@@ -166,6 +179,12 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         plate_of,
         plates,
         plate_boundaries,
+        continent_of: region_tree.continent_of,
+        subcontinent_of: region_tree.subcontinent_of,
+        region_of: region_tree.region_of,
+        continents: region_tree.continents,
+        subcontinents: region_tree.subcontinents,
+        regions: region_tree.regions,
         content_hash: [0u8; 32],
     };
     // All f32 fields must be finite — non-finite values serialize as JSON
@@ -227,6 +246,84 @@ mod tests {
         assert!(!map.settlements.is_empty());
         assert!(!map.culture_regions.is_empty());
         assert!(!map.water_bodies.is_empty(), "a map always has ocean");
+    }
+
+    #[test]
+    fn region_hierarchy_partitions_land_coherently() {
+        let map = generate(7, &CreativeSeed::default());
+        let n = map.cell_count();
+        assert_eq!(map.continent_of.len(), n);
+        assert_eq!(map.subcontinent_of.len(), n);
+        assert_eq!(map.region_of.len(), n);
+        assert!(!map.continents.is_empty(), "land ⇒ ≥1 continent");
+        assert!(!map.subcontinents.is_empty());
+        assert!(!map.regions.is_empty());
+
+        const NONE: u32 = u32::MAX;
+        for c in 0..n {
+            if map.biome[c].is_water() {
+                // Water cells are unassigned at every level.
+                assert_eq!(map.continent_of[c], NONE);
+                assert_eq!(map.subcontinent_of[c], NONE);
+                assert_eq!(map.region_of[c], NONE);
+                continue;
+            }
+            // No orphan land cell.
+            assert_ne!(map.continent_of[c], NONE, "land cell {c} has no continent");
+            assert_ne!(map.subcontinent_of[c], NONE);
+            assert_ne!(map.region_of[c], NONE);
+            // Containment: region ⊆ subcontinent ⊆ continent.
+            let r = map.region_of[c] as usize;
+            let s = map.subcontinent_of[c];
+            assert_eq!(map.regions[r].subcontinent, s);
+            assert_eq!(map.subcontinents[s as usize].continent, map.continent_of[c]);
+            // A subcontinent is exactly one plate's slice of a continent.
+            assert_eq!(map.plate_of[c], map.subcontinents[s as usize].plate);
+        }
+        // Every level nests in the one above (counts are monotone non-decreasing
+        // because each parent yields ≥1 child).
+        assert!(map.subcontinents.len() >= map.continents.len());
+        assert!(map.regions.len() >= map.subcontinents.len());
+        for sc in &map.subcontinents {
+            assert!((sc.continent as usize) < map.continents.len());
+        }
+        for r in &map.regions {
+            assert!((r.subcontinent as usize) < map.subcontinents.len());
+        }
+    }
+
+    #[test]
+    fn region_hierarchy_handles_profile_mode_without_plates() {
+        // `Profile` mode has no plate layer (`plate_of` is all `u32::MAX`), so
+        // every continent collapses to a single subcontinent with the sentinel
+        // plate — the L1 fallback path the Tectonic default never exercises.
+        let cs = CreativeSeed {
+            terrain_mode: TerrainMode::Profile,
+            ..CreativeSeed::default()
+        };
+        let map = generate(7, &cs);
+        const NONE: u32 = u32::MAX;
+        assert!(!map.continents.is_empty(), "a Profile world still has land");
+        assert_eq!(
+            map.subcontinents.len(),
+            map.continents.len(),
+            "Profile mode: exactly one subcontinent per continent"
+        );
+        for sc in &map.subcontinents {
+            assert_eq!(sc.plate, NONE, "Profile mode: subcontinent plate is the sentinel");
+        }
+        // The partition invariants still hold without a plate layer.
+        for c in 0..map.cell_count() {
+            if map.biome[c].is_water() {
+                assert_eq!(map.continent_of[c], NONE);
+                continue;
+            }
+            assert_ne!(map.region_of[c], NONE, "land cell {c} unassigned in Profile mode");
+            let r = map.region_of[c] as usize;
+            let s = map.subcontinent_of[c];
+            assert_eq!(map.regions[r].subcontinent, s);
+            assert_eq!(map.subcontinents[s as usize].continent, map.continent_of[c]);
+        }
     }
 
     /// Count connected components of land cells (`elevation >= sea_level`).

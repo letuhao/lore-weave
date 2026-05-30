@@ -117,6 +117,50 @@ pub struct State {
     pub name: String,
 }
 
+/// A continent — a connected component of land cells (geometric hierarchy L0,
+/// C3 arc). See [`crate::hierarchy`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Continent {
+    pub id: u32,
+    /// Lowest-index land cell of the component — its deterministic anchor.
+    pub seed_cell: u32,
+    /// Authored name; empty until named. Not hashed.
+    #[serde(default)]
+    pub name: String,
+}
+
+/// A subcontinent — one continent's cells that share a tectonic plate
+/// (geometric hierarchy L1). In `Profile` mode (no plates) a continent is one
+/// subcontinent with `plate == u32::MAX`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Subcontinent {
+    pub id: u32,
+    /// The continent this subcontinent belongs to.
+    pub continent: u32,
+    /// The tectonic plate whose cells form this subcontinent (`u32::MAX` =
+    /// none / `Profile` mode).
+    pub plate: u32,
+    /// Lowest-index cell of the subcontinent — its deterministic anchor.
+    pub seed_cell: u32,
+    /// Authored name; empty until named. Not hashed.
+    #[serde(default)]
+    pub name: String,
+}
+
+/// A region — a great-circle Voronoi cell of a subcontinent (geometric
+/// hierarchy L2). The finest geographic tier; political tiers (C-2) anchor here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Region {
+    pub id: u32,
+    /// The subcontinent this region belongs to.
+    pub subcontinent: u32,
+    /// The Voronoi seed cell that defines this region.
+    pub seed_cell: u32,
+    /// Authored name; empty until named. Not hashed.
+    #[serde(default)]
+    pub name: String,
+}
+
 /// A settlement.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Settlement {
@@ -335,6 +379,25 @@ pub struct WorldMap {
     /// Classified plate boundaries (Phase 2). Empty in `Profile` mode.
     #[serde(default)]
     pub plate_boundaries: Vec<PlateBoundary>,
+    /// Per-cell continent id (geometric hierarchy L0, C3 arc). `u32::MAX` for
+    /// water cells. Parallel to `cells`.
+    #[serde(default)]
+    pub continent_of: Vec<u32>,
+    /// Per-cell subcontinent id (L1). `u32::MAX` for water cells.
+    #[serde(default)]
+    pub subcontinent_of: Vec<u32>,
+    /// Per-cell region id (L2). `u32::MAX` for water cells.
+    #[serde(default)]
+    pub region_of: Vec<u32>,
+    /// Continents (L0).
+    #[serde(default)]
+    pub continents: Vec<Continent>,
+    /// Subcontinents (L1).
+    #[serde(default)]
+    pub subcontinents: Vec<Subcontinent>,
+    /// Regions (L2).
+    #[serde(default)]
+    pub regions: Vec<Region>,
     /// blake3 hash over the canonical byte view — the determinism check.
     pub content_hash: [u8; 32],
 }
@@ -477,6 +540,33 @@ impl WorldMap {
             h.update(&b.plate_a.to_le_bytes());
             h.update(&b.plate_b.to_le_bytes());
             h.update(&[b.kind.tag()]);
+        }
+        // Geometric region hierarchy (C3 arc, C-1a). Geometry is deterministic;
+        // the entities' `name` fields are deliberately not hashed (see
+        // MAINTENANCE above).
+        for &c in &self.continent_of {
+            h.update(&c.to_le_bytes());
+        }
+        for &c in &self.subcontinent_of {
+            h.update(&c.to_le_bytes());
+        }
+        for &c in &self.region_of {
+            h.update(&c.to_le_bytes());
+        }
+        for c in &self.continents {
+            h.update(&c.id.to_le_bytes());
+            h.update(&c.seed_cell.to_le_bytes());
+        }
+        for s in &self.subcontinents {
+            h.update(&s.id.to_le_bytes());
+            h.update(&s.continent.to_le_bytes());
+            h.update(&s.plate.to_le_bytes());
+            h.update(&s.seed_cell.to_le_bytes());
+        }
+        for r in &self.regions {
+            h.update(&r.id.to_le_bytes());
+            h.update(&r.subcontinent.to_le_bytes());
+            h.update(&r.seed_cell.to_le_bytes());
         }
         *h.finalize().as_bytes()
     }

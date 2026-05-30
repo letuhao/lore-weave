@@ -181,6 +181,25 @@ fn compute_hash_covers_every_field() {
         m.plate_boundaries[0].plate_a ^= 1;
     });
 
+    // Geometric region hierarchy (C3 arc, C-1a). The default world has land ⇒
+    // all three levels are populated.
+    assert!(
+        !base.continents.is_empty()
+            && !base.subcontinents.is_empty()
+            && !base.regions.is_empty(),
+        "the default Continent world has a populated region hierarchy"
+    );
+    tamper("continent_of", &|m| m.continent_of[0] ^= 1);
+    tamper("subcontinent_of", &|m| m.subcontinent_of[0] ^= 1);
+    tamper("region_of", &|m| m.region_of[0] ^= 1);
+    tamper("continents", &|m| m.continents[0].seed_cell ^= 1);
+    tamper("subcontinents", &|m| m.subcontinents[0].plate ^= 1);
+    tamper("regions", &|m| m.regions[0].seed_cell ^= 1);
+    // Guard the parent links explicitly — they are the load-bearing C-2
+    // anchoring seam; a future compute_hash refactor that drops them must fail.
+    tamper("subcontinents.continent", &|m| m.subcontinents[0].continent ^= 1);
+    tamper("regions.subcontinent", &|m| m.regions[0].subcontinent ^= 1);
+
     // Names are the deliberate carve-out: `compute_hash` excludes them, so a
     // name tamper must LEAVE `verify_hash` true — proof that the naming step
     // (`crate::naming`) can never break a map's determinism digest.
@@ -199,4 +218,7 @@ fn compute_hash_covers_every_field() {
     name_tamper("mountain_ranges.name", &|m| m.mountain_ranges[0].name.push('x'));
     name_tamper("rivers.name", &|m| m.rivers[0].name.push('x'));
     name_tamper("water_bodies.name", &|m| m.water_bodies[0].name.push('x'));
+    name_tamper("continents.name", &|m| m.continents[0].name.push('x'));
+    name_tamper("subcontinents.name", &|m| m.subcontinents[0].name.push('x'));
+    name_tamper("regions.name", &|m| m.regions[0].name.push('x'));
 }

@@ -70,6 +70,10 @@ struct GenerateArgs {
     /// clamped 0.1..=0.9). Higher = more land.
     #[arg(long, default_value_t = 0.4)]
     continental_fraction: f32,
+    /// Target number of geographic regions (L2) per subcontinent in the
+    /// geometric hierarchy (clamped 1..=12).
+    #[arg(long, default_value_t = 4)]
+    region_subdivision: u8,
     /// Coastline profile (only used in `--terrain-mode profile`).
     #[arg(long, value_enum, default_value_t = CoastlineArg::Coastal)]
     coastline: CoastlineArg,
@@ -272,6 +276,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             terrain_mode: cli.terrain_mode.into(),
             plate_count: cli.plate_count,
             continental_fraction: cli.continental_fraction,
+            region_subdivision: cli.region_subdivision,
         }
     };
 

@@ -572,6 +572,42 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 
 ## Current Active Work
 
+### C-1a — Geometric region hierarchy (model only) (session 99, world-gen-sdk-refactor, BE [L]) ✅
+
+**Arc:** C3 (geometric frame first → political tiers). This is **C-1a** (model);
+C-1b (`--region-png`) + C-2 (political tiers) are later. Plan:
+[`docs/plans/2026-05-30-c1a-geometric-hierarchy.md`](../plans/2026-05-30-c1a-geometric-hierarchy.md).
+Parent rationale: [`FLAT_TO_3D_MIGRATION_PLAN.md §7`](../03_planning/LLM_MMO_RPG/FLAT_TO_3D_MIGRATION_PLAN.md).
+
+**Shipped:** a 3-level geometric hierarchy on the sphere, mostly by REUSE —
+`hierarchy.rs` (new): L0 Continent = `pathfind::land_components`; L1 Subcontinent
+= continent ∩ `plate_of`; L2 Region = great-circle Voronoi (farthest-point seeds
++ max-dot, the only new geometry; R6 honored — no 2D grid). `WorldMap` gained
+`continent_of`/`subcontinent_of`/`region_of` + `continents`/`subcontinents`/
+`regions` (names excluded from `content_hash`); `compute_hash` extended;
+`CreativeSeed.region_subdivision` knob (default 4, clamp 1..=12) + CLI
+`--region-subdivision`. Province/state untouched (WRAP, not replace).
+
+**Files:** `hierarchy.rs` (new) · `world_map.rs` · `creative_seed.rs` · `lib.rs`
+· `main.rs` · `tests/serde.rs`.
+
+**VERIFY:** lib **380** passed (8 hierarchy unit + `region_hierarchy_partitions_land_coherently`
++ `region_hierarchy_handles_profile_mode_without_plates`), serde **5**
+(`compute_hash_covers_every_field` extended to all 6 fields + parent links),
+determinism 5, structure 20 — **0 failed**. C-1a code clippy-clean (4 residual
+warnings pre-existing in frozen `flat_climate`/`shape/llm`). `content_hash`
+re-based (run-vs-run, no literal pins); old pre-C-1a JSON still verifies (empty
+hierarchy adds 0 hash bytes). `live infra unavailable: standalone crate`.
+
+**REVIEW:** 2-stage self-review clean (RNG-free deviation from plan documented).
+**`/review-impl`:** no HIGH/MED. LOW-1 (hash tamper missed parent links — the
+C-2 seam) **fixed**; LOW-3 (lake/ocean split land — consistent with `political`)
+documented; LOW-4 (Profile-mode + zero-land) **fixed** with 2 new tests; LOW-2
+already covered by `worldmap_json_round_trip_is_identity`.
+
+**Next:** C-1b (`--region-png` 3-tier choropleth, S) then C-2 (political tiers
+world→realm→nation→province→county, re-anchor province under region, L–XL).
+
 ### Session 98 — Flat→3D substrate audit + migration plan (PLAN only, no code) ✅
 
 **Goal (PO directive end of session 97):** discussion+plan, no code. Audit whether
