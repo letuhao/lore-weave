@@ -540,9 +540,12 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		// whole bulk response).
 		if result.Status == "created" || result.Status == "updated" {
 			entID, _ := uuid.Parse(result.EntityID)
+			// Phase B: actor_type="pipeline" — this is the extraction's
+			// ORIGINAL output, not a user correction. learning-service skips
+			// pipeline events (no before/after attached).
 			payload := buildEntityEventPayload(
 				bookID.String(), result.EntityID, ent.Name, ent.KindCode,
-				nil, "", result.Status,
+				nil, "", result.Status, "pipeline", "", nil,
 			)
 			if err := insertEntityOutboxEvent(ctx, func(ctx context.Context, sql string, args ...any) error {
 				_, e := s.pool.Exec(ctx, sql, args...)

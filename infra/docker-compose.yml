@@ -605,6 +605,37 @@ services:
       retries: 5
     restart: unless-stopped
 
+  learning-service:
+    # Phase B — Axis-1 correction capture. Consumes the correction event spine
+    # (glossary.entity_updated [user-only] + knowledge.*_corrected) off Redis
+    # Streams and persists to the `corrections` log; exposes a read API.
+    # Repo-root context for parity with the other Python services (no sdks COPY
+    # — learning-service makes no LLM calls this cycle).
+    build:
+      context: ..
+      dockerfile: services/learning-service/Dockerfile
+    environment:
+      PORT: "8094"
+      LEARNING_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_learning
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8222:8094"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8094/health')\" || exit 1"]
+      interval: 5s
+      timeout: 3s
+      start_period: 20s
+      retries: 5
+    restart: unless-stopped
+
   worker-infra:
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.
@@ -620,7 +651,11 @@ services:
       # for knowledge-service's glossary-sync consumer. Additive — existing
       # book/translation/chat sources unchanged.
       OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book,translation:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_translation,chat:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_chat,glossary:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary"
-      OUTBOX_CLEANUP_RETAIN_DAYS: "7"
+      # Phase B (§10.1): bumped 7→30 days. glossary now also feeds
+      # learning-service's append-only correction log; a longer retention on the
+      # source outbox rows + event_log is the replay backstop so a learning-
+      # service outage can be backfilled (ReplayCorrections, D#049).
+      OUTBOX_CLEANUP_RETAIN_DAYS: "30"
       BOOK_DB_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book
       PANDOC_URL: http://pandoc-server:3030
       MINIO_ENDPOINT: minio:9000
@@ -778,6 +813,7 @@ services:
       NOTIFICATION_SERVICE_URL: http://notification-service:8091
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
       LORE_ENRICHMENT_SERVICE_URL: http://lore-enrichment-service:8093
+      LEARNING_SERVICE_URL: http://learning-service:8094
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
@@ -813,6 +849,11 @@ services:
         # must not wedge the whole stack if this nascent service is unhealthy
         # (adversary r2 BLOCK#1). Upgrade to service_healthy once it carries real
         # routes (post-C3).
+        condition: service_started
+      learning-service:
+        # Phase B — start-ordering only (not a hard gate): the correction read
+        # API is non-critical, so a learning-service hiccup must not wedge the
+        # gateway/whole stack. Mirrors the lore-enrichment posture.
         condition: service_started
       rabbitmq:
         condition: service_healthy

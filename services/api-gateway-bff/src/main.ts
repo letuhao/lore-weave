@@ -31,7 +31,8 @@ async function bootstrap() {
   const notificationUrl = requireEnv('NOTIFICATION_SERVICE_URL');
   const knowledgeUrl = requireEnv('KNOWLEDGE_SERVICE_URL');
   const loreEnrichmentUrl = requireEnv('LORE_ENRICHMENT_SERVICE_URL');
-  configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl, translationUrl, glossaryUrl, chatUrl, videoGenUrl, statisticsUrl, notificationUrl, knowledgeUrl, loreEnrichmentUrl });
+  const learningUrl = requireEnv('LEARNING_SERVICE_URL');
+  configureGatewayApp(app, { authUrl, bookUrl, sharingUrl, catalogUrl, providerRegistryUrl, usageBillingUrl, translationUrl, glossaryUrl, chatUrl, videoGenUrl, statisticsUrl, notificationUrl, knowledgeUrl, loreEnrichmentUrl, learningUrl });
 
   app.enableShutdownHooks();
   const port = parseInt(process.env.PORT || '3000', 10);

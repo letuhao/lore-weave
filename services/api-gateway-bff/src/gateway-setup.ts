@@ -24,6 +24,7 @@ export function configureGatewayApp(
     notificationUrl: string;
     knowledgeUrl: string;
     loreEnrichmentUrl: string;
+    learningUrl: string;
   },
 ): void {
   app.enableCors({
@@ -177,6 +178,13 @@ export function configureGatewayApp(
     pathFilter: (pathname: string) => pathname.startsWith('/v1/lore-enrichment'),
   });
 
+  // Phase B — learning-service (Axis-1 correction read API).
+  const learningProxy = createProxyMiddleware({
+    target: urls.learningUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/learning'),
+  });
+
   const httpAdapter = app.getHttpAdapter();
   const instance = httpAdapter.getInstance();
   const authProxyFn = authProxy as unknown as (
@@ -254,6 +262,11 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const learningProxyFn = learningProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
   instance.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith('/v1/auth') || req.path.startsWith('/v1/account') || req.path.startsWith('/v1/me/preferences') || req.path.startsWith('/v1/users')) {
       return authProxyFn(req, res, next);
@@ -299,6 +312,9 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/knowledge')) {
       return knowledgeProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/learning')) {
+      return learningProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/lore-enrichment')) {
       return loreEnrichmentProxyFn(req, res, next);

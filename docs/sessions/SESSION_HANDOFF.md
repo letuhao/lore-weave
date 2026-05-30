@@ -7,6 +7,18 @@
 
 ## ▶ NEXT SESSION — start here
 
+**State:** Phase-B **BUILD sub-session A (foundation) is DONE + committed** (session 75). Next = **sub-session B** (KS Postgres outbox + emit `knowledge.entity_corrected` on the existing entity-edit endpoints + add `knowledge:` to `OUTBOX_SOURCES`). Then sub-session C (rel/event edit endpoints + FE). Design + sequencing: [`docs/specs/2026-05-31-phase-b-correction-capture.md`](../specs/2026-05-31-phase-b-correction-capture.md) §6, §12.
+
+**Sub-session A shipped (cycle 75b):** new `learning-service` (Python/FastAPI, host 8222) with `corrections` table (redact/hash schema) + Redis-Streams consumer (`learning-collector`, with `XAUTOCLAIM` reclaim) + read API (`/v1/learning/corrections`) + gateway proxy + compose/db-ensure. worker-infra relay now carries `outbox_id` on the wire (F1/F2) + `streamMaxLen` 200k for glossary/knowledge + retention 30d. glossary `entity_updated` enriched with `actor_type`/`actor_id`/before/after (PATCH made transactional for consistent capture). **Cross-service live smoke PASSED** (glossary outbox→relay→learning: user corrections persisted+deduped on outbox_id, pipeline skipped, raw content NULL). AMAW code-review REJECTED→fixed (dead-retry reclaim F-A1, PATCH-contract F-A3; F-A2 deferred D#052). 23 learning unit tests + Go suites green.
+
+**Sub-session B specifics:** KS gains its first outbox (`outbox_events` in `migrate.py`, `aggregate_type='knowledge'`); `app/events/outbox_emit.py` best-effort `emit_correction` (cross-store try/except — Neo4j is SoT, PG outbox best-effort, §6.6); emit on `patch_entity`/`merge_entity_into`/`archive_user_entity` ([entities.py](../../services/knowledge-service/app/routers/public/entities.py)) with SAME-Cypher before-capture (§6.3, MED-3 — NOT read-before-write); `update_entity_fields` must RETURN the pre-edit snapshot. Add `knowledge:<dsn>` to `OUTBOX_SOURCES` in compose. learning-service already consumes `loreweave:events:knowledge` + handles `knowledge.*_corrected` (wired in subA, untested live until B). Live-smoke KS-entity-edit→learning.
+
+**Carry-forward gotchas (live-verified in A):** `origin_event_id := EventData.outbox_id` (NOT aggregate_id/message_id); empty outbox_id → DLQ not silent ""; diff_class is op-first; relation correct needs the dedicated `recreate_relation` (F5, sub-session C). Port the XAUTOCLAIM reclaim to knowledge-service too (D#051).
+
+---
+
+### (prior) Phase-B DESIGN checkpoint — session 75a
+
 **State:** Phase-B **DESIGN is locked + checkpoint-committed** (session 75). The design doc [`docs/specs/2026-05-31-phase-b-correction-capture.md`](../specs/2026-05-31-phase-b-correction-capture.md) survived 3 AMAW adversary rounds (REJECTED→REJECTED→APPROVED_WITH_WARNINGS) + a /review-impl pass; all BLOCK/MED findings folded. Prior cycles 74d–74f + this design checkpoint on `main`, **NOT pushed** (push needs approval).
 
 **Scope locked with PO (bigger than the original handoff):** Phase B = **XL** = the correction CAPTURE spine **+ build the rel/event user-edit endpoints that produce corrections** (they didn't exist — `invalidate_relation` was unwired, events had no edit primitive). Decisions: **new `learning-service`** (Python/FastAPI) owns the corrections store; **redact/hash content** (no raw novel text persisted — structural + content-hash only); **build the replay/backfill tool** (high MAXLEN + retained `event_log` + worker-infra idempotent replay). Tier-1 anchor reuse → **Phase C** (deferred, D#048); config telemetry → **B2** (D#047).
@@ -32,6 +44,19 @@ GOAL: BUILD sub-session A (foundation) per design §12 — learning-service scaf
 Hard gotchas from the design review: origin_event_id := EventData.outbox_id (NOT aggregate_id, NOT message_id); EventData lives in dispatcher.py:19-28; empty outbox_id → DLQ not silent ""; grep outbox_id ≥5 hits before VERIFY.
 ```
 </details>
+
+## Session 75 — cycle 75b: Phase B BUILD sub-session A (foundation)
+
+**AMAW. The correction-capture foundation, end-to-end live-smoke verified.**
+
+- **NEW `learning-service`** (`services/learning-service/`, Python/FastAPI, internal 8094 / host 8222, DB `loreweave_learning`): `corrections` table (redact/hash schema — structural + content-hash, raw `*_content` reserved NULL); Redis-Streams consumer (`learning-collector` group, `XAUTOCLAIM` reclaim); `diff_class` derivation (op-first); snapshot privacy-split; read API `GET /v1/learning/corrections(/stats)` (keyset pagination, strict JWT user-scoping); gateway `/v1/learning` proxy; compose + db-ensure + postgres-init.
+- **worker-infra relay (F1/F2):** XADD now carries `outbox_id` (the row PK — the end-to-end dedup key; extracted to `relayStreamValues` + unit-tested); `streamMaxLen` glossary/knowledge → 200k; `OUTBOX_CLEANUP_RETAIN_DAYS` 7→30 (§10.1 replay backstop).
+- **glossary-service:** `glossary.entity_updated` enriched with `actor_type`/`actor_id`/`before`/`after` (additive — KS glossary_sync unaffected). CREATE+PATCH thread `actor=user`; PATCH made **transactional** for consistent before/after capture (MED-3); bulk = `pipeline`. Removed the dead best-effort `emitEntityUpdated`.
+- **Tests:** 23 learning unit (diff_class, snapshot, handlers incl. F2 + R3-W1, read-API scoping/redact); glossary outbox payload tests (actor/before/after); worker-infra `relayStreamValues` outbox_id contract + maxLenFor. All green; gateway tsc clean.
+- **LIVE SMOKE PASS (cross-service):** inserted enriched glossary outbox rows → real relay shipped with `outbox_id` (verified on the Redis stream via XREVRANGE) → learning-service persisted 2 user corrections (`missing-add` + `boundary`), **skipped the pipeline event**, **deduped on outbox_id not aggregate_id** (F2), `before_content` NULL (R2 redact). 3 images rebuilt + healthy.
+- **AMAW code-review: REJECTED → fixed.** F-A1 (BLOCK) dead-retry-in-steady-state → periodic `XAUTOCLAIM` reclaim; F-A3 (WARN) transactional-PATCH contract → outbox.go comment; F-A2 (WARN) diff_class description granularity → deferred D#052. KS has the same reclaim bug → D#051.
+
+**NEXT:** sub-session B (KS outbox + entity-correction emission). See ▶ NEXT SESSION.
 
 ## Session 75 — cycle 75a: Phase B DESIGN checkpoint (correction capture + learning-service)
 
