@@ -28,7 +28,7 @@
 
 ## RAID operational
 - [x] `.raid/active-task.yaml` validates → `task_config.py validate` exit 0 (12 keys).
-- [x] Quota profile present (`contracts/raid/quota-profile.yaml`); cost posture = conservative/batched (locked).
+- [x] Quota profile present (`contracts/raid/quota-profile.yaml`); cost posture = conservative/**autonomous** (locked) — low DPS (2–3) + pause-on-quota; **no mid-run human gate** (RAID Phase 9 = AUTO Scope Guard; C15 eval gate auto-blocks/escalates higher-cost C16/C17).
 - [x] Runtime logs initialized: `CYCLE_LOG.md`, `ESCALATIONS.md`, `QUOTA_LOG.jsonl`, `AUDIT_LOG.jsonl`.
 - [x] pre-commit hook installed (`.git/hooks/pre-commit` → workflow-gate; warn-and-pass on no state).
 
@@ -41,5 +41,5 @@
 ## ⛳ Gating summary (2026-05-30 — pre-flight COMPLETE)
 - **Verified live ✅:** stack up + healthy; Qwen 3.6 + bge-m3 + judges registered & active; LM Studio reachable from container (200); branch/isolation; ports (8093/8221); RAID config + logs + hook; corpora prefetched; cost policy.
 - **Built during cycles (no pre-flight action) ⏳:** `loreweave_lore_enrichment` DB (C2), service env vars + skeleton (C0), Fengshen ingest (C0/C1), runtime live-smokes (C1+).
-- **No outstanding USER gate.** Pre-flight passes → ready for `/raid`.
+- **No outstanding USER gate.** Pre-flight passes → ready for `/raid`. **Human review = this pre-flight sign-off (before) + Coordinator final report (after); RAID runs C0→C18 autonomously in between** (mid-run halts only on escalation/quota/cost/secret).
 - Dev note: in-network DSN uses `postgres:5432` (service name), not host `:5555`; provider-registry in-net `:8085` (host `:8208`).

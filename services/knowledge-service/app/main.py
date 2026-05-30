@@ -28,6 +28,7 @@ from app.routers import (
     internal_parse,
     internal_summarize,
     internal_tools,
+    internal_wiki,
     metrics,
     ping,
 )
@@ -143,12 +144,19 @@ async def lifespan(app: FastAPI):
             handle_chat_turn,
             handle_chapter_saved,
             handle_chapter_deleted,
+            handle_glossary_entity_updated,
         )
 
         dispatcher = EventDispatcher()
         dispatcher.register("chat.turn_completed", handle_chat_turn)
         dispatcher.register("chapter.saved", handle_chapter_saved)
         dispatcher.register("chapter.deleted", handle_chapter_deleted)
+        # C4 (K14) — auto glossary→KG propagation. glossary-service emits
+        # glossary.entity_updated on every entity write (single + bulk
+        # extract); this triggers the existing glossary_sync → Neo4j.
+        dispatcher.register(
+            "glossary.entity_updated", handle_glossary_entity_updated,
+        )
 
         consumer = EventConsumer(
             redis_url=settings.redis_url,
@@ -521,6 +529,7 @@ app.include_router(internal_extraction.router)
 app.include_router(internal_parse.router)
 app.include_router(internal_summarize.router)
 app.include_router(internal_tools.router)
+app.include_router(internal_wiki.router)
 app.include_router(metrics.router)
 app.include_router(public_costs.router)
 app.include_router(public_drawers.router)

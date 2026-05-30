@@ -1,0 +1,63 @@
+{
+  "_meta": {
+    "cycle": "C6 gap MODEL fixtures",
+    "entity_kind": "location",
+    "dimension_set": ["history", "geography", "culture", "features", "inhabitants"],
+    "dimension_labels": {
+      "history": "历史",
+      "geography": "地理",
+      "culture": "文化",
+      "features": "features",
+      "inhabitants": "inhabitants"
+    },
+    "required_dimensions": ["history", "geography", "culture"],
+    "source": "封神演义 canon mentions (OPEN_QUESTIONS_LOCKED Demo scope — 4 locked places)",
+    "note": "These 4 places are UNDER-described in canon: most dimensions read as MISSING. present/missing flags are defensible from canon. This file is the golden expected-output C7's engine must reproduce. It describes ABSENCE only (H0) — no generated content, no source_type, no confidence.",
+    "expected_ranking_order": ["蓬萊", "玉虛宮", "碧遊宮／金鰲島", "陳塘關"],
+    "expected_scores": {
+      "蓬萊": 29.384354,
+      "玉虛宮": 28.0,
+      "碧遊宮／金鰲島": 27.31585,
+      "陳塘關": 18.686216
+    },
+    "ranking_note": "蓬萊 ranks #1 despite the lowest mention_count because it is missing ALL 5 dimensions (the two optional dims add weight); a place missing everything is a larger gap than one missing 4-of-5. This is the documented, deterministic behaviour of rank_score (see docs/gap_model.md). Scores are pinned in test_gap_model.py."
+  },
+  "gaps": [
+    {
+      "entity_kind": "location",
+      "canonical_name": "玉虛宮",
+      "target_ref": "fengshen:location:玉虛宮",
+      "mention_count": 55,
+      "present_dimensions": ["inhabitants"],
+      "missing_dimensions": ["history", "geography", "culture", "features"],
+      "rationale": "闡教 HQ on 昆仑. Canon names its master (元始天尊) and disciples → inhabitants present. But near-zero architecture/layout (geography), no founding/era account (history), no depiction of daily life/customs (culture), and no catalogued landmarks/relics (features). Most-referenced demo place (55 mentions) → highest salience."
+    },
+    {
+      "entity_kind": "location",
+      "canonical_name": "碧遊宮／金鰲島",
+      "target_ref": "fengshen:location:碧遊宮",
+      "mention_count": 45,
+      "present_dimensions": ["inhabitants"],
+      "missing_dimensions": ["history", "geography", "culture", "features"],
+      "rationale": "截教 HQ (rival faction). Canon names 通天教主 and the 截教 disciples → inhabitants present. The island/palace is very sparsely described: no geography of 金鰲島, no founding history of 碧遊宮, no cultural/daily-life depiction, no notable features catalogued. mention_count 45 = 碧遊宮 (38) + 金鰲島 (7) combined per the locked place entry."
+    },
+    {
+      "entity_kind": "location",
+      "canonical_name": "陳塘關",
+      "target_ref": "fengshen:location:陳塘關",
+      "mention_count": 32,
+      "present_dimensions": ["inhabitants", "history"],
+      "missing_dimensions": ["geography", "culture", "features"],
+      "rationale": "Nezha's birthplace, a frontier pass (关隘). Canon gives its commander 李靖 and family + the Nezha events → inhabitants and a thread of history (the birth/turmoil events) present. But no terrain/layout of the pass (geography), no depiction of frontier-pass customs/daily life (culture — the rich angle the demo wants to fill), and no catalogued landmarks (features)."
+    },
+    {
+      "entity_kind": "location",
+      "canonical_name": "蓬萊",
+      "target_ref": "fengshen:location:蓬萊",
+      "mention_count": 28,
+      "present_dimensions": [],
+      "missing_dimensions": ["history", "geography", "culture", "features", "inhabitants"],
+      "rationale": "Legendary immortal isle, invoked by name only. Canon supplies no geography, no history, no culture, no catalogued features, and names no specific resident faction tied to it → ALL FIVE dimensions missing. Lowest mention_count (28) of the four."
+    }
+  ]
+}
