@@ -572,6 +572,31 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 
 ## Current Active Work
 
+### C-1b — Region hierarchy render `--region-png` (session 99, world-gen-sdk-refactor, BE [S]) ✅
+
+Visual-verification render for the C-1a hierarchy (PO chose model-first, render
+second). NEW `render::region_image` — a 3-tier choropleth: each land cell filled
+with its **region** colour (golden-ratio hue per region id via new
+`hsv_to_rgb`); cells on a **continent** boundary (incl. the coastline) drawn
+near-black, **subcontinent** boundaries dark-grey — so all three levels read in
+one image. Ocean = blue. Falls back to `biome_image` for a land-less world
+(mirrors `plate_image`). CLI `--region-png`. Render-only → **`content_hash`
+untouched** (renderers are excluded from the hash).
+
+**Files:** `render.rs` · `main.rs`.
+
+**VERIFY:** lib **383** passed (+3: `region_image_renders_and_is_not_uniform`,
+`region_image_falls_back_to_biome_when_landless`,
+`hsv_to_rgb_covers_all_sextants_without_panic`), 0 failed. **Visual:** generated
+seed-7 continent map — coherent multi-region continents with dark coastline
+outlines, spatially consistent with `--plate-png`. Clippy-clean (added
+`#[allow(clippy::large_enum_variant)]` on the CLI `Command` enum — the new
+`Option<PathBuf>` field tipped the lint; CLI is parsed once so the size gap is
+irrelevant and boxing a clap args struct is noise).
+
+**Next:** C-2 — political tiers (world→realm→nation→province→county), re-anchor
+province under region (parent-link seam designed + hash-guarded in C-1a).
+
 ### C-1a — Geometric region hierarchy (model only) (session 99, world-gen-sdk-refactor, BE [L]) ✅
 
 **Arc:** C3 (geometric frame first → political tiers). This is **C-1a** (model);

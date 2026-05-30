@@ -310,6 +310,90 @@ fn boundary_color(k: crate::world_map::BoundaryKind) -> Rgb<u8> {
     }
 }
 
+/// 3-tier geometric-hierarchy choropleth (C-1b): each land cell is filled with
+/// its **region** colour; a cell on a **continent** boundary (a neighbour in a
+/// different continent — including the ocean, i.e. the coastline) is drawn
+/// near-black, and a cell on a **subcontinent** boundary dark-grey. All three
+/// levels read in one image. Ocean cells are blue. Falls back to
+/// [`biome_image`] for a land-less world (no hierarchy to show).
+pub fn region_image(
+    map: &WorldMap,
+    width: u32,
+    height: u32,
+    style: RenderStyle,
+    proj: Projection,
+) -> RgbImage {
+    if map.continents.is_empty() {
+        return biome_image(map, width, height, style, proj);
+    }
+    supersampled(width, height, |w, h| region_image_inner(map, w, h, style, proj))
+}
+
+fn region_image_inner(
+    map: &WorldMap,
+    width: u32,
+    height: u32,
+    style: RenderStyle,
+    proj: Projection,
+) -> RgbImage {
+    let relief = ReliefField::build(map, width, height, style, proj);
+    const WATER: Rgb<u8> = Rgb([40, 70, 120]);
+    const CONTINENT_BORDER: Rgb<u8> = Rgb([15, 15, 20]);
+    const SUBCONTINENT_BORDER: Rgb<u8> = Rgb([70, 70, 78]);
+    let mut img = rasterize(map, width, height, proj, |cell| {
+        let cont = map.continent_of[cell];
+        if cont == u32::MAX {
+            return WATER;
+        }
+        let sub = map.subcontinent_of[cell];
+        let mut continent_edge = false;
+        let mut subcontinent_edge = false;
+        for &nb in &map.neighbors[cell] {
+            let nb = nb as usize;
+            if map.continent_of[nb] != cont {
+                continent_edge = true;
+            } else if map.subcontinent_of[nb] != sub {
+                subcontinent_edge = true;
+            }
+        }
+        if continent_edge {
+            CONTINENT_BORDER
+        } else if subcontinent_edge {
+            SUBCONTINENT_BORDER
+        } else {
+            region_color(map.region_of[cell])
+        }
+    });
+    apply_shade(&mut img, &relief);
+    img
+}
+
+/// A well-separated tint per region id — a golden-ratio hue rotation at fixed
+/// saturation/value, so adjacent regions read apart.
+fn region_color(id: u32) -> Rgb<u8> {
+    let hue = (id as f32 * 0.618_034).fract();
+    hsv_to_rgb(hue, 0.55, 0.85)
+}
+
+/// `h, s, v` each in `[0, 1]` → 8-bit RGB.
+fn hsv_to_rgb(h: f32, s: f32, v: f32) -> Rgb<u8> {
+    let i = (h * 6.0).floor();
+    let f = h * 6.0 - i;
+    let p = v * (1.0 - s);
+    let q = v * (1.0 - f * s);
+    let t = v * (1.0 - (1.0 - f) * s);
+    let (r, g, b) = match (i as i32).rem_euclid(6) {
+        0 => (v, t, p),
+        1 => (q, v, p),
+        2 => (p, v, t),
+        3 => (p, q, v),
+        4 => (t, p, v),
+        _ => (v, p, q),
+    };
+    let c = |x: f32| (x * 255.0).round().clamp(0.0, 255.0) as u8;
+    Rgb([c(r), c(g), c(b)])
+}
+
 /// A distinct tint per culture id (`culture_count` is clamped to 1..=16).
 fn culture_color(id: u32) -> Rgb<u8> {
     const PALETTE: [[u8; 3]; 16] = [
@@ -1053,6 +1137,42 @@ mod tests {
         let plate = plate_image(&map, 96, 96, RenderStyle::Realistic, Projection::Equirectangular);
         let biome = biome_image(&map, 96, 96, RenderStyle::Realistic, Projection::Equirectangular);
         assert_eq!(plate.as_raw(), biome.as_raw(), "profile-mode plate_image must equal biome_image");
+    }
+
+    #[test]
+    fn region_image_renders_and_is_not_uniform() {
+        // Default (Tectonic) map has land ⇒ a multi-region choropleth.
+        let map = generate(7, &CreativeSeed::default());
+        assert!(!map.continents.is_empty(), "default map must have land");
+        let img = region_image(&map, 160, 160, RenderStyle::Realistic, Projection::Equirectangular);
+        assert_eq!((img.width(), img.height()), (160, 160));
+        let first = *img.get_pixel(0, 0);
+        assert!(
+            img.pixels().any(|p| *p != first),
+            "region image rendered a single flat colour"
+        );
+    }
+
+    #[test]
+    fn region_image_falls_back_to_biome_when_landless() {
+        // No land ⇒ no hierarchy ⇒ region_image == biome_image. Forcing a
+        // land-less map deterministically is awkward, so assert the documented
+        // fallback contract directly on an emptied-hierarchy clone.
+        let mut map = generate(7, &CreativeSeed::default());
+        map.continents.clear();
+        let region = region_image(&map, 96, 96, RenderStyle::Realistic, Projection::Equirectangular);
+        let biome = biome_image(&map, 96, 96, RenderStyle::Realistic, Projection::Equirectangular);
+        assert_eq!(region.as_raw(), biome.as_raw(), "land-less region_image must equal biome_image");
+    }
+
+    #[test]
+    fn hsv_to_rgb_covers_all_sextants_without_panic() {
+        for i in 0..=600 {
+            let _ = hsv_to_rgb(i as f32 / 600.0, 0.55, 0.85);
+        }
+        // saturation / value extremes must clamp, not panic.
+        let _ = hsv_to_rgb(0.0, 0.0, 0.0);
+        let _ = hsv_to_rgb(1.0, 1.0, 1.0);
     }
 
     #[test]

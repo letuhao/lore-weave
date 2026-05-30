@@ -34,6 +34,10 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
+// `GenerateArgs` carries many flags and dwarfs `Author`/`Name`; the enum is
+// parsed once at startup, so the size gap is irrelevant and boxing a clap args
+// struct would only add noise.
+#[allow(clippy::large_enum_variant)]
 enum Command {
     /// Generate a world map from a seed + creative direction.
     Generate(GenerateArgs),
@@ -128,6 +132,11 @@ struct GenerateArgs {
     /// outlines). Empty render in `--terrain-mode profile`.
     #[arg(long)]
     plate_png: Option<PathBuf>,
+    /// Optional region-hierarchy PNG path — a 3-tier choropleth: region fill +
+    /// continent (near-black) and subcontinent (grey) boundary outlines. A
+    /// land-less world renders the biome map.
+    #[arg(long)]
+    region_png: Option<PathBuf>,
     /// Optional political-map SVG path.
     #[arg(long)]
     svg: Option<PathBuf>,
@@ -398,6 +407,20 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
         );
         if let Err(e) = img.save(png) {
             eprintln!("error: save plate png {}: {e}", png.display());
+            return ExitCode::FAILURE;
+        }
+        println!("wrote {}", png.display());
+    }
+    if let Some(png) = &cli.region_png {
+        let img = world_gen::render::region_image(
+            &map,
+            img_w,
+            img_h,
+            cli.style.into(),
+            proj,
+        );
+        if let Err(e) = img.save(png) {
+            eprintln!("error: save region png {}: {e}", png.display());
             return ExitCode::FAILURE;
         }
         println!("wrote {}", png.display());
