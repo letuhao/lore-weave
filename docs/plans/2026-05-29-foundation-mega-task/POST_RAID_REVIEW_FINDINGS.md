@@ -253,3 +253,29 @@ Product/architecture **SOUND** (7 valid: canon-out-of-meta, ProviderPayload-opaq
 - 🔴 **major (~17):** PRR-01, 02, 03, 05, 16, 20, 24, 28, 29, 30, 31, 32, 33, 34, 35, 43, 44 *(PII/GDPR · admin-cli auth+wiring · gateway-bypass · WS wire · worker skeletons · projection coverage · CI gates · I3 enforcement)*
 - 🟠 **medium:** PRR-04, 06, 07, 08, 09, 17, 18, 25, 36, 37, 45
 - 🟡 **low/cosmetic:** PRR-10, 11, 12, 13, 14, 15, 19, 21, 22, 23, 26, 27, 38, 39, 40, 41, 42
+
+---
+
+## 🏁 Triage disposition & final verdict (2026-05-30)
+
+**Fixed + committed this session (6 commits, all verified green):**
+
+| Group | Commit | PRRs closed (code-completable) |
+|---|---|---|
+| F1 | `3e35fe9d` | 05\*, 29\*, 43, 44 — admin-cli execution safety |
+| F2 | `11148fa7` | 28, 01\* — logging PII mask floor + real 7-pattern scrubber |
+| F5a | `1b78e4e9` | 16, 21, 22 — I3 lint now *enforces* + CLAUDE.md sync |
+| F4 | `01435fbc` | 35, 32, 09\* — foundation CI workflow + projection-coverage gate |
+| F5b | `2cc2a436` | 20\*, 23 — I1 amendment (game-WS sanctioned) + enforcement fix |
+| F6 | `8d883925` | 10, 11, 12, 13, 19, 40 — RAID-infra hygiene; tree clean |
+
+(\* = core fixed in-session; the infra/cross-service remainder is tracked in DEFERRED.md.)
+
+**Deferred (DEFERRED.md 065–077, plus pre-existing 054/057/058/059/061/064):**
+- 🔴 **HIGH (launch-blocking):** D-PII-PRODUCTION (076) · D-BREAK-GLASS-JWT (075) · D-ADMIN-CLI-JWT (074) · D-ADMIN-CLI-LIVE-WIRING (073) · D-GDPR-BREACH-WIRING (072) · D-PROJECTION-ERASURE (071) · D-WORKER-FLEET-LIVE-WIRING (069) · D-GAME-WS-EDGE-CONTROLS (077) · + existing worker/canary live-wiring rows.
+- 🟠🟡 **MED/LOW:** D-LOGGING-PROD-TAG (070) · D-WS-TICKET-WIRE (068) · D-DERIVE-PROJECTION-MACRO (067) · D-SESSION-COST-WORKER (066) · D-POST-RAID-MISC (065).
+
+**Verdict:**
+- ✅ **As a foundation-skeleton milestone** — the branch is coherent, **builds green across all 4 toolchains**, is contract-complete, has its security/enforcement *gates* now real (I3 lint enforces, CI runs the gates, projection-coverage enforced, PII mask floor, admin-cli fail-closed, recovery false-positives eliminated), and **every remaining gap is honestly tracked** in DEFERRED.md. The earlier RAID-coordinator "100% ready / 0 escalations" framing is **corrected** here (it was a contract+skeleton layer, not a functional system).
+- 🔴 **NOT production-complete** — the HIGH DEFERRED rows (PII production crypto, break-glass JWT, GDPR breach wiring, worker live-wiring, admin command-body wiring) are **launch-blocking** and need infra / cross-service work no isolated code edit can finish. They MUST close before this foundation serves real user data.
+- **Recommendation:** PR-able to `main` **as the foundation milestone** with this doc + the HIGH DEFERRED list as the explicit "before-prod" gate; OR keep iterating the HIGH items first. (Branch not pushed — operator's call.)
