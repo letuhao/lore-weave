@@ -197,8 +197,33 @@ pub fn name_civ_via_llm(
     let prompt = TextPrompt::new(system, user).with_schema(civ_names_schema(), "world_names");
     let raw = provider.complete(&prompt)?;
     let names: CivNames = serde_json::from_str(raw.trim()).map_err(|e| {
-        LlmError::InvalidResponse(format!("CivNames JSON parse failed: {e}"))
+        let excerpt: String = raw.chars().take(200).collect();
+        LlmError::InvalidResponse(format!(
+            "CivNames JSON parse failed: {e}; first 200 chars: {excerpt}"
+        ))
     })?;
+
+    // **MED-1 fix (review 2026-05-30)**: zip-shortest silently truncates
+    // when LLM under-delivers (`#[serde(default)]` on every CivNames field
+    // means missing categories deserialize to empty Vec, no parse error).
+    // Reject so the CLI's fall-through to `apply_synthetic_names` fires
+    // for partial responses rather than leaving land features unnamed.
+    let shortfalls = [
+        ("settlements", names.settlements.len(), settlements.len()),
+        ("states", names.states.len(), political.states.len()),
+        ("provinces", names.provinces.len(), political.provinces.len()),
+        ("cultures", names.cultures.len(), culture.culture_regions.len()),
+        ("mountain_ranges", names.mountain_ranges.len(), features.mountain_ranges.len()),
+        ("rivers", names.rivers.len(), features.rivers.len()),
+        ("water_bodies", names.water_bodies.len(), features.water_bodies.len()),
+    ];
+    for (label, got, wanted) in shortfalls {
+        if got < wanted {
+            return Err(LlmError::InvalidResponse(format!(
+                "LLM returned {got}/{wanted} names for `{label}` — under-delivery"
+            )));
+        }
+    }
 
     for (s, n) in settlements.iter_mut().zip(&names.settlements) {
         s.name = n.clone();
@@ -230,9 +255,54 @@ mod tests {
     use crate::creative_seed::SettlementDensity;
     use crate::flat_climate::WorldClimateParams;
     use crate::flatworld::{generate, FlatParams};
-    use crate::shape::llm::MockTextProvider;
 
     use super::super::pipeline::build_culture;
+
+    /// Test-only [`TextProvider`] that always returns 200 entries per array
+    /// field — large enough to satisfy the **MED-1** truncation guard for
+    /// any test world we generate. Names are FNV-keyed on the user message
+    /// so determinism per prompt is preserved (same as
+    /// [`MockTextProvider`]) but archetype changes still produce different
+    /// names (the archetype string is part of the user message).
+    ///
+    /// Used by the post-MED-1 happy-path tests; the un-sized
+    /// [`MockTextProvider`] is still used by
+    /// [`name_civ_via_llm_rejects_under_delivery`] to exercise the new
+    /// guard on a default-size world.
+    #[derive(Debug, Clone)]
+    struct OverFillTextProvider;
+
+    impl TextProvider for OverFillTextProvider {
+        fn complete(&self, prompt: &TextPrompt) -> Result<String, LlmError> {
+            let mut h: u32 = 0x811C_9DC5;
+            for byte in prompt.user.as_bytes() {
+                h ^= *byte as u32;
+                h = h.wrapping_mul(0x0100_0193);
+            }
+            const N: usize = 200;
+            let fill = |key: &str| {
+                (0..N)
+                    .map(|i| {
+                        serde_json::Value::String(format!(
+                            "{}-{:08x}-{i}",
+                            key,
+                            h.wrapping_add(i as u32),
+                        ))
+                    })
+                    .collect::<Vec<_>>()
+            };
+            let payload = serde_json::json!({
+                "settlements": fill("S"),
+                "states": fill("ST"),
+                "provinces": fill("P"),
+                "cultures": fill("C"),
+                "mountain_ranges": fill("MR"),
+                "rivers": fill("R"),
+                "water_bodies": fill("WB"),
+            });
+            Ok(serde_json::to_string(&payload).expect("overfill JSON"))
+        }
+    }
 
     #[test]
     fn synthetic_names_populate_every_named_feature() {
@@ -324,7 +394,12 @@ mod tests {
     }
 
     #[test]
-    fn name_civ_via_llm_with_mock_populates_every_category() {
+    fn name_civ_via_llm_with_overfill_populates_every_entity() {
+        // **COSMETIC-1 fix (review 2026-05-30)**: previous test bar was
+        // `>= 1` named — passed even when only 5/N got renamed under the
+        // pre-MED-1 silent-truncation bug. Now: full delivery from
+        // `OverFillTextProvider` MUST rename every entity in every
+        // category.
         let world = generate(&FlatParams::default());
         let (_, mut features, mut political, _, mut settlements, _routes_v, mut culture_v) =
             build_culture(
@@ -335,7 +410,7 @@ mod tests {
                 SettlementDensity::Medium,
                 5,
             );
-        let provider = MockTextProvider::new();
+        let provider = OverFillTextProvider;
         name_civ_via_llm(
             &mut features,
             &mut political,
@@ -344,16 +419,77 @@ mod tests {
             &provider,
             "HighFantasy",
         )
-        .expect("mock should succeed");
+        .expect("overfill should succeed");
 
-        let named_settlements = settlements.iter().filter(|s| !s.name.is_empty()).count();
-        let named_states = political.states.iter().filter(|s| !s.name.is_empty()).count();
-        assert!(named_settlements >= 1);
-        assert!(named_states >= 1);
+        let unnamed_settlements = settlements.iter().filter(|s| s.name.is_empty()).count();
+        let unnamed_states = political.states.iter().filter(|s| s.name.is_empty()).count();
+        let unnamed_provinces = political.provinces.iter().filter(|p| p.name.is_empty()).count();
+        let unnamed_cultures =
+            culture_v.culture_regions.iter().filter(|c| c.name.is_empty()).count();
+        let unnamed_mountains =
+            features.mountain_ranges.iter().filter(|m| m.name.is_empty()).count();
+        let unnamed_rivers = features.rivers.iter().filter(|r| r.name.is_empty()).count();
+        let unnamed_water =
+            features.water_bodies.iter().filter(|w| w.name.is_empty()).count();
+        assert_eq!(unnamed_settlements, 0, "settlements unnamed");
+        assert_eq!(unnamed_states, 0, "states unnamed");
+        assert_eq!(unnamed_provinces, 0, "provinces unnamed");
+        assert_eq!(unnamed_cultures, 0, "cultures unnamed");
+        assert_eq!(unnamed_mountains, 0, "mountain ranges unnamed");
+        assert_eq!(unnamed_rivers, 0, "rivers unnamed");
+        assert_eq!(unnamed_water, 0, "water bodies unnamed");
     }
 
     #[test]
-    fn name_civ_via_llm_is_deterministic_with_mock_and_archetype() {
+    fn name_civ_via_llm_rejects_under_delivery() {
+        // **MED-1 (review 2026-05-30)**: when LLM returns fewer names than
+        // features, the function MUST error so the CLI's fall-through to
+        // synthetic naming fires. `EmptyArraysTextProvider` returns an
+        // empty array for every category — under-delivers as long as the
+        // world has ≥1 feature in any category, which the default world
+        // always does (≥1 settlement post Ship 4 settlement wire-up).
+        #[derive(Debug)]
+        struct EmptyArraysTextProvider;
+        impl TextProvider for EmptyArraysTextProvider {
+            fn complete(&self, _: &TextPrompt) -> Result<String, LlmError> {
+                Ok(r#"{"settlements":[],"states":[],"provinces":[],"cultures":[],"mountain_ranges":[],"rivers":[],"water_bodies":[]}"#.to_string())
+            }
+        }
+
+        let world = generate(&FlatParams::default());
+        let (_, mut features, mut political, _, mut settlements, _, mut culture_v) =
+            build_culture(
+                &world,
+                &WorldClimateParams::default(),
+                64,
+                42,
+                SettlementDensity::Medium,
+                5,
+            );
+        assert!(
+            !settlements.is_empty() || !political.provinces.is_empty(),
+            "test premise: default world must yield ≥1 feature somewhere",
+        );
+        let err = name_civ_via_llm(
+            &mut features,
+            &mut political,
+            &mut settlements,
+            &mut culture_v,
+            &EmptyArraysTextProvider,
+            "HighFantasy",
+        )
+        .expect_err("under-delivery must error");
+        let LlmError::InvalidResponse(msg) = err else {
+            panic!("expected InvalidResponse, got {err:?}");
+        };
+        assert!(
+            msg.contains("under-delivery"),
+            "error should name the under-delivery condition, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn name_civ_via_llm_is_deterministic_with_overfill_and_archetype() {
         let world = generate(&FlatParams::default());
 
         let make_bundle = || {
@@ -369,7 +505,7 @@ mod tests {
         };
         let (mut fa, mut pa, mut sa, mut ca) = make_bundle();
         let (mut fb, mut pb, mut sb, mut cb) = make_bundle();
-        let provider = MockTextProvider::new();
+        let provider = OverFillTextProvider;
         name_civ_via_llm(&mut fa, &mut pa, &mut sa, &mut ca, &provider, "HighFantasy").unwrap();
         name_civ_via_llm(&mut fb, &mut pb, &mut sb, &mut cb, &provider, "HighFantasy").unwrap();
         for (a, b) in sa.iter().zip(sb.iter()) {
@@ -381,7 +517,7 @@ mod tests {
     }
 
     #[test]
-    fn name_civ_via_llm_differs_across_archetypes_via_mock_hash() {
+    fn name_civ_via_llm_differs_across_archetypes_via_overfill_hash() {
         let world = generate(&FlatParams::default());
 
         let make_bundle = || {
@@ -397,7 +533,7 @@ mod tests {
         };
         let (mut fa, mut pa, mut sa, mut ca) = make_bundle();
         let (mut fb, mut pb, mut sb, mut cb) = make_bundle();
-        let provider = MockTextProvider::new();
+        let provider = OverFillTextProvider;
         name_civ_via_llm(&mut fa, &mut pa, &mut sa, &mut ca, &provider, "HighFantasy").unwrap();
         name_civ_via_llm(&mut fb, &mut pb, &mut sb, &mut cb, &provider, "Cyberpunk").unwrap();
         let differ = sa.iter().zip(sb.iter()).any(|(a, b)| a.name != b.name);

@@ -220,9 +220,16 @@ impl AnthropicProvider {
     ///
     /// Public for testing.
     pub fn build_text_request(&self, prompt: &TextPrompt) -> serde_json::Value {
+        // **MED-3 fix (review 2026-05-30)**: bumped 1024 → 4096. Civ
+        // naming for a default world easily exceeds 1024 (7 categories
+        // × up to 50 features × ~10 tokens/name ≈ 3500 tokens); under
+        // the old cap Claude truncated JSON mid-output and the caller
+        // silently fell back to synthetic. 4096 covers default-world
+        // naming with headroom; OpenAI provider has no equivalent cap
+        // and falls back to the model's own default.
         let mut body = serde_json::json!({
             "model": self.model,
-            "max_tokens": 1024,
+            "max_tokens": 4096,
             "temperature": 0.0,
             "system": [{
                 "type": "text",

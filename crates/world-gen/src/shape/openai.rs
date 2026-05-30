@@ -62,8 +62,14 @@ impl OpenAIProvider {
         base_url: impl Into<String>,
         model: impl Into<String>,
     ) -> Self {
+        // **MED-2 fix (review 2026-05-30)**: bumped 30s → 60s. Ship 7e
+        // routes LM Studio through this provider; local 30B-class models
+        // on consumer GPUs commonly take 30-90s for the 7-category
+        // naming prompt (≈3000 output tokens). Matches Ollama's 60s.
+        // Cloud OpenAI rarely needs >5s — the higher cap costs nothing
+        // on the happy path.
         let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(30))
+            .timeout(Duration::from_secs(60))
             .build()
             .expect("reqwest client builder should not fail with default config");
         Self {
