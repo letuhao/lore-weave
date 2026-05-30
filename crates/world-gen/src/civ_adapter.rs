@@ -410,6 +410,59 @@ pub fn build_settlement(
 }
 
 // ============================================================================
+// Civ Approach A step 2 — sphere mesh adapter (3D upgrade)
+// ============================================================================
+
+/// **Approach A step 2** — project a flat civ view onto a unit sphere
+/// via equirectangular projection.
+///
+/// For each cell centre `(x, y, 0)` in `view.centers`:
+/// - longitude `lon = (x / w − 0.5) · 2π ∈ [−π, π]`
+/// - latitude  `lat = (0.5 − y / h) · π ∈ [−π/2, π/2]` (y=0 is north pole)
+/// - 3D unit sphere point `(cos(lat)·cos(lon), cos(lat)·sin(lon), sin(lat))`
+///
+/// Delaunay adjacency stays untouched — equirectangular preserves
+/// topology, so the same neighbor edges that were valid on the flat
+/// plane remain valid on the sphere. Far from the poles this gives a
+/// near-uniform mesh; at the poles the projection compresses several
+/// adjacent cells together. For Phase A continent-scale worlds (the
+/// flatworld substrate) we never wrap around the world or touch the
+/// poles, so the compression doesn't matter.
+///
+/// Downstream civilization builders consume `centers: &[[f32; 3]]`
+/// without caring whether the third coordinate is `0.0` or a unit
+/// sphere `sin(lat)` — they only use the values for great-circle /
+/// Euclidean distance ratios.
+pub fn project_to_sphere(view: &mut CivView, world: &FlatWorld) {
+    let w = world.width as f32;
+    let h = world.height as f32;
+    if w <= 0.0 || h <= 0.0 {
+        return;
+    }
+    for c in view.centers.iter_mut() {
+        let (x, y) = (c[0], c[1]);
+        let lon = (x / w - 0.5) * std::f32::consts::TAU;
+        let lat = (0.5 - y / h) * std::f32::consts::PI;
+        let cos_lat = lat.cos();
+        c[0] = cos_lat * lon.cos();
+        c[1] = cos_lat * lon.sin();
+        c[2] = lat.sin();
+    }
+}
+
+/// **Approach A step 2** — full pipeline that produces a CivView with
+/// sphere centres instead of flat `(x, y, 0)` ones. Convenience wrapper
+/// around [`build_civ_view`] + [`project_to_sphere`].
+pub fn build_civ_view_spherical(
+    world: &FlatWorld,
+    climate_params: &WorldClimateParams,
+) -> CivView {
+    let mut view = build_civ_view(world, climate_params);
+    project_to_sphere(&mut view, world);
+    view
+}
+
+// ============================================================================
 // Civ Ship 7b — LLM-driven naming via TextProvider trait
 // ============================================================================
 
@@ -2001,6 +2054,99 @@ mod tests {
             5,
         );
         assert_eq!(a.content_hash, b.content_hash);
+    }
+
+    #[test]
+    fn spherical_centers_lie_on_unit_sphere() {
+        // Approach A step 2: every projected centre must have |c|² ≈ 1
+        // within a small float-rounding window. Proves the equirectangular
+        // → sphere math is correct end-to-end.
+        let world = generate(&FlatParams::default());
+        let view = build_civ_view_spherical(&world, &WorldClimateParams::default());
+        for (i, c) in view.centers.iter().enumerate() {
+            let mag2 = c[0] * c[0] + c[1] * c[1] + c[2] * c[2];
+            assert!(
+                (mag2 - 1.0).abs() < 1e-4,
+                "cell {i} centre {:?} has |c|² = {mag2}; should be 1.0",
+                c
+            );
+        }
+    }
+
+    #[test]
+    fn spherical_centers_preserve_distinctness() {
+        // The flat centres are non-degenerate (no two subzones share a
+        // centre). After equirectangular projection they must STAY
+        // distinct — otherwise neighbours would collapse into a single
+        // 3D point and political/settlement code would break.
+        let world = generate(&FlatParams::default());
+        let view = build_civ_view_spherical(&world, &WorldClimateParams::default());
+        let mut seen: std::collections::HashSet<(i32, i32, i32)> =
+            std::collections::HashSet::new();
+        let q = 1_000_000.0_f32; // 1µ quantisation — well below the equirectangular cell pitch
+        for c in &view.centers {
+            let key = (
+                (c[0] * q) as i32,
+                (c[1] * q) as i32,
+                (c[2] * q) as i32,
+            );
+            assert!(
+                seen.insert(key),
+                "two sphere centres landed at the same quantised cell {:?}; \
+                 equirectangular projection has a degenerate collision",
+                key
+            );
+        }
+    }
+
+    #[test]
+    fn spherical_view_runs_political_builder_unchanged() {
+        // Civilization stack is mesh-agnostic: political::build only
+        // consumes (seed, centers, neighbors, biomes). On spherical
+        // input it must still produce ≥1 province + ≥1 state.
+        let world = generate(&FlatParams::default());
+        let mut view = build_civ_view(&world, &WorldClimateParams::default());
+        view = augment_with_ocean(view, &world, 64);
+        project_to_sphere(&mut view, &world);
+        let political = crate::political::build(
+            42,
+            &view.centers,
+            &view.neighbors,
+            &view.biomes,
+        );
+        assert!(
+            !political.provinces.is_empty(),
+            "spherical view should still produce provinces"
+        );
+        assert!(
+            !political.states.is_empty(),
+            "spherical view should still produce states"
+        );
+    }
+
+    #[test]
+    fn project_to_sphere_zero_dim_world_is_noop() {
+        // Defensive: a degenerate `width=0` or `height=0` world should
+        // not divide-by-zero. The projection is a no-op so callers can
+        // call it on any FlatWorld without pre-checks.
+        let world = FlatWorld {
+            width: 0,
+            height: 0,
+            plates: vec![],
+            collision_gain: 1.0,
+        };
+        let mut view = CivView {
+            centers: vec![[1.0, 2.0, 3.0]],
+            neighbors: vec![vec![]],
+            biomes: vec![BiomeKind::Ocean],
+            climate: vec![ClimateZone::Tropical],
+            river_flux: vec![0.0],
+            is_coast: vec![false],
+            elevation: vec![0.0],
+            sea_level: 0.5,
+        };
+        project_to_sphere(&mut view, &world);
+        assert_eq!(view.centers[0], [1.0, 2.0, 3.0], "no-op on zero-dim world");
     }
 
     #[test]
