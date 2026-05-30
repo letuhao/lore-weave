@@ -203,6 +203,11 @@ CREATE TABLE IF NOT EXISTS enrichment_proposal (
 
   entity_kind     TEXT NOT NULL,                  -- e.g. 'location'
   target_ref      TEXT,                           -- the canon entity being enriched
+  canonical_name  TEXT,                           -- faithful entity NAME from the Gap
+                                                  --   (H0: never makeup content). Used as
+                                                  --   the anchor name when target_ref is NULL
+                                                  --   (new-entity case) so enriched CONTENT
+                                                  --   can never become the canon entity name.
   content         TEXT NOT NULL,                  -- generated lore (Chinese, source-faithful)
 
   -- ── H0 distinguishing columns ──────────────────────────────────────────
@@ -222,6 +227,13 @@ CREATE TABLE IF NOT EXISTS enrichment_proposal (
     CHECK (review_status IN
       ('proposed','author_reviewing','approved','promoted','rejected')),
 
+  -- ── write-back anchor (resolved at write-back, BEFORE/independent of promote) ──
+  -- The glossary entity_id resolved/minted when the enriched facts were admitted
+  -- to the KG QUARANTINED. Persisted so a retract of a quarantined-never-promoted
+  -- proposal can still locate + recycle its anchor (FIX-3 / NIT-3). NOT trigger-
+  -- guarded — it may be set in any state (it is not the promotion record).
+  writeback_entity_id UUID,                        -- glossary entity (cross-DB, no FK)
+
   -- ── promotion record (populated ONLY at promote; trigger-enforced) ───────
   promoted_entity_id UUID,                         -- glossary entity (cross-DB, no FK)
   promoted_by        UUID,                         -- auth user (cross-DB, no FK)
@@ -234,6 +246,15 @@ CREATE TABLE IF NOT EXISTS enrichment_proposal (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ── additive columns (idempotent — bring a pre-existing table up to schema) ──
+-- ADD COLUMN IF NOT EXISTS so an already-deployed enrichment_proposal table
+-- (created before canonical_name / writeback_entity_id existed) is migrated in
+-- place on the next startup, with no data loss and no down-migration needed.
+ALTER TABLE enrichment_proposal
+  ADD COLUMN IF NOT EXISTS canonical_name TEXT;
+ALTER TABLE enrichment_proposal
+  ADD COLUMN IF NOT EXISTS writeback_entity_id UUID;
 
 CREATE INDEX IF NOT EXISTS idx_enrichment_proposal_job
   ON enrichment_proposal(job_id, created_at DESC);

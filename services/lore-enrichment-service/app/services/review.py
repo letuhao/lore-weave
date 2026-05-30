@@ -81,6 +81,7 @@ class ProposalRow:
     user_id: UUID
     entity_kind: str
     target_ref: str | None
+    canonical_name: str | None
     content: str
     origin: str
     technique: str
@@ -89,6 +90,7 @@ class ProposalRow:
     source_refs_json: list[Any]
     cultural_grounding_ref_id: UUID | None
     review_status: str
+    writeback_entity_id: UUID | None
     promoted_entity_id: UUID | None
     promoted_by: UUID | None
     promoted_at: datetime | None
@@ -107,6 +109,7 @@ class ProposalRow:
             "user_id": str(self.user_id),
             "entity_kind": self.entity_kind,
             "target_ref": self.target_ref,
+            "canonical_name": self.canonical_name,
             "content": self.content,
             "origin": self.origin,
             "technique": self.technique,
@@ -118,6 +121,9 @@ class ProposalRow:
                 if self.cultural_grounding_ref_id else None
             ),
             "review_status": self.review_status,
+            "writeback_entity_id": (
+                str(self.writeback_entity_id) if self.writeback_entity_id else None
+            ),
             "promoted_entity_id": (
                 str(self.promoted_entity_id) if self.promoted_entity_id else None
             ),
@@ -137,10 +143,11 @@ class ProposalRow:
 
 
 _COLS = """
-  proposal_id, job_id, project_id, user_id, entity_kind, target_ref, content,
-  origin, technique, provenance_json, confidence, source_refs_json,
-  cultural_grounding_ref_id, review_status, promoted_entity_id, promoted_by,
-  promoted_at, promoted_from_proposal_id, original_technique, rejected_reason,
+  proposal_id, job_id, project_id, user_id, entity_kind, target_ref,
+  canonical_name, content, origin, technique, provenance_json, confidence,
+  source_refs_json, cultural_grounding_ref_id, review_status,
+  writeback_entity_id, promoted_entity_id, promoted_by, promoted_at,
+  promoted_from_proposal_id, original_technique, rejected_reason,
   created_at, updated_at
 """
 
@@ -162,6 +169,7 @@ def _row(r: asyncpg.Record) -> ProposalRow:
         user_id=r["user_id"],
         entity_kind=r["entity_kind"],
         target_ref=r["target_ref"],
+        canonical_name=r["canonical_name"],
         content=r["content"],
         origin=r["origin"],
         technique=r["technique"],
@@ -170,6 +178,7 @@ def _row(r: asyncpg.Record) -> ProposalRow:
         source_refs_json=_json(r["source_refs_json"], []),
         cultural_grounding_ref_id=r["cultural_grounding_ref_id"],
         review_status=r["review_status"],
+        writeback_entity_id=r["writeback_entity_id"],
         promoted_entity_id=r["promoted_entity_id"],
         promoted_by=r["promoted_by"],
         promoted_at=r["promoted_at"],
@@ -334,6 +343,33 @@ class ProposalsRepo:
                 user_id, project_id, proposal_id,
                 promoted_entity_id, promoted_by, promoted_at,
             )
+        return _row(r)
+
+    async def set_writeback_entity_id(
+        self,
+        *,
+        user_id: UUID,
+        project_id: UUID,
+        proposal_id: UUID,
+        writeback_entity_id: UUID,
+    ) -> ProposalRow:
+        """Persist the glossary anchor id resolved at write-back time (FIX-3).
+
+        This is NOT the promotion record (that is trigger-guarded and may only be
+        set at promote) — it records WHICH glossary entity the quarantined facts
+        anchored on, so a retract of a quarantined-never-promoted proposal can
+        still locate + recycle the anchor. Idempotent: only fills when empty (the
+        first write-back wins; re-writes keep the original anchor)."""
+        async with self._pool.acquire() as conn:
+            r = await conn.fetchrow(
+                f"""UPDATE enrichment_proposal
+                    SET writeback_entity_id = COALESCE(writeback_entity_id, $4)
+                    WHERE user_id = $1 AND project_id = $2 AND proposal_id = $3
+                    RETURNING {_COLS}""",
+                user_id, project_id, proposal_id, writeback_entity_id,
+            )
+        if r is None:
+            raise LookupError("proposal not found")
         return _row(r)
 
     async def mark_retracted(

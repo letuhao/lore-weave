@@ -50,6 +50,7 @@ def _proposal(status: str = ReviewStatus.APPROVED, **over) -> ProposalRow:
         user_id=OWNER,
         entity_kind="location",
         target_ref="蓬萊",
+        canonical_name="蓬萊",
         content="蓬萊：东海仙山，云雾缭绕。",
         origin="enrichment",
         technique="template",
@@ -58,6 +59,7 @@ def _proposal(status: str = ReviewStatus.APPROVED, **over) -> ProposalRow:
         source_refs_json=[],
         cultural_grounding_ref_id=None,
         review_status=status,
+        writeback_entity_id=None,
         promoted_entity_id=None,
         promoted_by=None,
         promoted_at=None,
@@ -104,6 +106,12 @@ class FakeRepo:
         )
         return self._p
 
+    async def set_writeback_entity_id(self, *, user_id, project_id, proposal_id, writeback_entity_id):
+        # Idempotent: first write wins (mirrors the COALESCE in the real repo).
+        if self._p.writeback_entity_id is None:
+            self._p = replace(self._p, writeback_entity_id=writeback_entity_id)
+        return self._p
+
     async def mark_retracted(self, *, user_id, project_id, proposal_id):
         self._p = replace(self._p, rejected_reason="retracted: routed to glossary recycle-bin (reversible)")
         return self._p
@@ -130,7 +138,7 @@ class FakePorts:
         return str(GLOSS)
 
     async def writeback_enriched_facts(self, *, user_id, project_id, proposal_id, glossary_entity_id, canonical_name, entity_kind, technique, facts):
-        self.writeback_calls.append({"proposal_id": proposal_id, "technique": technique, "facts": facts})
+        self.writeback_calls.append({"proposal_id": proposal_id, "technique": technique, "facts": facts, "canonical_name": canonical_name})
         # The KG endpoint returns enriched, pending, conf<1.0 — mirror that here.
         return [
             WrittenFact(
@@ -411,3 +419,142 @@ async def test_non_owner_cannot_retract():
             glossary_entity_id=GLOSS, jwt="jwt",
         )
     assert ports.retract_calls == []
+
+
+# ── FIX-1 (WARN-1): makeup content NEVER becomes the entity name/anchor ─────────
+
+
+@pytest.mark.asyncio
+async def test_writeback_null_target_ref_uses_canonical_name_not_makeup():
+    """H0 FIX-1: with target_ref=None, the anchor name is the faithful Gap
+    canonical_name — NEVER the makeup content[:32]."""
+    makeup = "这是凭空捏造的地点描述，绝不可成为实体名称：仙宫秘境云海深处。"
+    p = _proposal(
+        status=ReviewStatus.APPROVED,
+        target_ref=None,
+        canonical_name="昆侖虛",  # faithful name carried from the Gap
+        content=makeup,
+    )
+    ports = FakePorts()
+    svc = WritebackService(FakeRepo(p), ports)
+    await svc.write_back(
+        user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
+        glossary_entity_id=None,  # force anchor creation
+    )
+    assert ports.glossary_write_calls, "anchor must be created"
+    for call in ports.glossary_write_calls:
+        assert call["name"] == "昆侖虛"
+        assert call["name"] != makeup[:32]
+        assert makeup[:32] not in call["name"]
+    # the KG canonical_name must also be the faithful name, never makeup.
+    assert ports.writeback_calls
+    assert ports.writeback_calls[0]["canonical_name"] == "昆侖虛"
+    assert ports.writeback_calls[0]["canonical_name"] != makeup[:32]
+
+
+@pytest.mark.asyncio
+async def test_writeback_null_target_ref_no_canonical_name_uses_synthetic_id():
+    """H0 FIX-1: with NEITHER target_ref NOR canonical_name, the anchor falls back
+    to the non-makeup synthetic 'proposal:{id}', never the makeup content[:32]."""
+    makeup = "凭空捏造的描述文本，不得成为名称。"
+    p = _proposal(
+        status=ReviewStatus.APPROVED,
+        target_ref=None,
+        canonical_name=None,
+        content=makeup,
+    )
+    ports = FakePorts()
+    svc = WritebackService(FakeRepo(p), ports)
+    await svc.write_back(
+        user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
+        glossary_entity_id=None,
+    )
+    assert ports.glossary_write_calls
+    for call in ports.glossary_write_calls:
+        assert call["name"] == f"proposal:{p.proposal_id}"
+        assert makeup[:32] not in call["name"]
+        assert call["name"] != makeup[:32]
+
+
+@pytest.mark.asyncio
+async def test_promote_null_target_ref_canonizes_faithful_name_not_makeup():
+    """H0 FIX-1: even on promote (the content→canon flow), the glossary entity
+    NAME stays the faithful identity — only the short_description carries content."""
+    makeup = "捏造的地点描述不可作为实体名。"
+    p = _proposal(
+        status=ReviewStatus.APPROVED,
+        target_ref=None,
+        canonical_name="北俱蘆洲",
+        content=makeup,
+    )
+    ports = FakePorts(owner=OWNER)
+    svc = WritebackService(FakeRepo(p), ports)
+    await svc.promote(
+        acting_user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
+        glossary_entity_id=None,
+    )
+    content_writes = [c for c in ports.glossary_write_calls if "short_description" in c["attributes"]]
+    assert content_writes, "promote must canonize content into the attribute"
+    for c in ports.glossary_write_calls:
+        assert c["name"] == "北俱蘆洲", "the entity NAME is always the faithful identity"
+        assert c["name"] != makeup[:32]
+
+
+# ── FIX-3 (NIT-3): retract locates the anchor of a quarantined-never-promoted ───
+
+
+@pytest.mark.asyncio
+async def test_writeback_persists_anchor_id_for_later_retract():
+    """FIX-3: write-back persists the resolved glossary anchor id on the proposal
+    row so a later retract (no explicit id, never promoted) can find it."""
+    p = _proposal(status=ReviewStatus.APPROVED, writeback_entity_id=None)
+    repo = FakeRepo(p)
+    svc = WritebackService(repo, FakePorts())
+    await svc.write_back(
+        user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
+        glossary_entity_id=None,  # anchor minted → id must be persisted
+    )
+    assert repo._p.writeback_entity_id == GLOSS
+
+
+@pytest.mark.asyncio
+async def test_retract_quarantined_never_promoted_locates_anchor_via_writeback_id():
+    """FIX-3 / NIT-3: a proposal that was written-back (quarantined) but NEVER
+    promoted has no promoted_entity_id. Retract with no explicit id must still
+    recycle the anchor, located via the persisted writeback_entity_id."""
+    p = _proposal(
+        status=ReviewStatus.APPROVED,   # approved + written-back, never promoted
+        promoted_entity_id=None,
+        writeback_entity_id=GLOSS,      # persisted at write-back time
+    )
+    ports = FakePorts(owner=OWNER)
+    svc = WritebackService(FakeRepo(p), ports)
+    result = await svc.retract(
+        acting_user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
+        glossary_entity_id=None,  # caller supplies NOTHING — must use persisted id
+        jwt="jwt-token",
+    )
+    assert result.glossary_recycled is True
+    assert ports.recycle_calls, "anchor must be recycled even when never promoted"
+    assert ports.recycle_calls[0]["entity_id"] == GLOSS
+
+
+@pytest.mark.asyncio
+async def test_retract_orphan_when_no_anchor_id_anywhere():
+    """Guard: with no supplied id, no promoted_entity_id, and no writeback_entity_id
+    (e.g. never written back), retract does NOT recycle (nothing to locate) — and
+    must not raise. The KG soft-retract still runs."""
+    p = _proposal(
+        status=ReviewStatus.APPROVED,
+        promoted_entity_id=None,
+        writeback_entity_id=None,
+    )
+    ports = FakePorts(owner=OWNER)
+    svc = WritebackService(FakeRepo(p), ports)
+    result = await svc.retract(
+        acting_user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
+        glossary_entity_id=None, jwt="jwt-token",
+    )
+    assert result.glossary_recycled is False
+    assert ports.recycle_calls == []
+    assert ports.retract_calls, "KG facts still soft-retracted"

@@ -91,6 +91,27 @@ def _location_kind_code(entity_kind: str) -> str:
     return "location"
 
 
+def _anchor_name(proposal: ProposalRow) -> str:
+    """The NON-makeup identity used as the entity name / anchor / canonical_name.
+
+    H0 (FIX-1 / WARN-1): enriched ``content`` must NEVER become a canon entity
+    name. We resolve the faithful identity in strict order:
+
+      1. ``target_ref`` — the canon entity the proposal enriches (demo path).
+      2. ``canonical_name`` — the faithful entity name carried from the Gap
+         (new-entity case where there is no pre-existing canon ref).
+      3. ``proposal:{proposal_id}`` — a non-makeup SYNTHETIC identifier, used
+         only when neither faithful name exists, so the anchor still has a stable
+         identity that is provably NOT generated lore.
+
+    ``content[:32]`` (makeup) is intentionally NOT a fallback — that was the leak.
+    """
+    name = (proposal.target_ref or "").strip() or (proposal.canonical_name or "").strip()
+    if name:
+        return name
+    return f"proposal:{proposal.proposal_id}"
+
+
 class WritebackService:
     def __init__(
         self,
@@ -173,14 +194,28 @@ class WritebackService:
         # the content into a glossary attribute here would put makeup text onto a
         # canon entity before promotion — an H0 leak (self-adversary A1).
         kind_code = _location_kind_code(proposal.entity_kind)
+        anchor_name = _anchor_name(proposal)  # H0: faithful identity, never makeup
         if glossary_entity_id is None:
             entity_id_str = await self._ports.write_entity_through_glossary(
                 book_id=book_id,
                 kind_code=kind_code,
-                name=proposal.target_ref or proposal.content[:32],
+                name=anchor_name,
                 attributes={},  # identity only — no enriched content pre-promote
             )
             glossary_entity_id = UUID(entity_id_str)
+
+        # 3b. Persist the resolved anchor id on the proposal row (FIX-3/NIT-3) so a
+        # retract of a quarantined-never-promoted proposal can still locate it.
+        # Best-effort: an audit-trail write must not fail the write-back itself.
+        try:
+            await self._repo.set_writeback_entity_id(
+                user_id=user_id,
+                project_id=project_id,
+                proposal_id=proposal_id,
+                writeback_entity_id=glossary_entity_id,
+            )
+        except Exception:  # noqa: BLE001 — anchor-id bookkeeping is non-fatal
+            pass
 
         # 4. KG quarantine write (the H0 carrier). Always enriched, never canon.
         facts = self._facts_from_proposal(proposal)
@@ -189,7 +224,7 @@ class WritebackService:
             project_id=project_id,
             proposal_id=proposal_id,
             glossary_entity_id=glossary_entity_id,
-            canonical_name=proposal.target_ref or proposal.content[:32],
+            canonical_name=anchor_name,
             entity_kind=proposal.entity_kind,
             technique=proposal.technique,
             facts=facts,
@@ -299,7 +334,7 @@ class WritebackService:
             await self._ports.write_entity_through_glossary(
                 book_id=book_id,
                 kind_code=_location_kind_code(proposal.entity_kind),
-                name=proposal.target_ref or proposal.content[:32],
+                name=_anchor_name(proposal),  # H0: faithful identity, never makeup
                 attributes={"short_description": proposal.content[:480]},
             )
         except Exception:  # noqa: BLE001 — content sync is best-effort post-promote
@@ -348,9 +383,16 @@ class WritebackService:
             user_id=owner.owner_user_id, proposal_id=proposal_id
         )
 
-        # Glossary side: recycle-bin the entity anchor (reversible). Only when we
-        # know which entity to recycle (promoted_entity_id or supplied).
-        recycle_target = glossary_entity_id or proposal.promoted_entity_id
+        # Glossary side: recycle-bin the entity anchor (reversible). Resolve which
+        # entity to recycle in order of authority: an explicitly-supplied id, the
+        # promotion record, then the write-back anchor id persisted at write-back
+        # time (FIX-3/NIT-3) — the last covers a quarantined-never-promoted
+        # proposal, whose anchor would otherwise be orphaned.
+        recycle_target = (
+            glossary_entity_id
+            or proposal.promoted_entity_id
+            or proposal.writeback_entity_id
+        )
         recycled = False
         if recycle_target is not None and jwt:
             recycled = await self._ports.soft_delete_glossary_entity(

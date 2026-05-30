@@ -150,14 +150,27 @@ async def enriched_writeback(
         str(req.user_id), project_id, req.canonical_name, req.entity_kind
     )
     canon_name = canonicalize_entity_name(req.canonical_name)
+    # The minted-anchor confidence (FIX-2 / WARN-2): when write-back is the
+    # entity's actual creator (the anchor did not pre-exist), the anchor is born
+    # marked-as-enrichment with sub-canon confidence — NEVER canon-looking. Use
+    # the strongest fact confidence (already < 1.0), clamped defensively.
+    anchor_confidence = min(max((f.confidence for f in req.facts), default=0.5), 0.99)
 
     written: list[EnrichedFactRef] = []
     async with neo4j_session() as session:
-        # Ensure the canon entity anchor exists in the graph (it was synced by
-        # the glossary→KG pipeline). We MATCH it by glossary_entity_id; if the
-        # sync hasn't landed yet we MERGE a thin anchor so the enriched edge has
-        # an endpoint — the real glossary sync (source_type='glossary') will
-        # ON MATCH the same node later (keyed on glossary_entity_id).
+        # Ensure the entity anchor exists in the graph so the enriched edge has an
+        # endpoint. Two cases, kept strictly distinct (H0 / FIX-2):
+        #   * ON MATCH — a pre-existing canon anchor (synced by the glossary→KG
+        #     pipeline) stays EXACTLY as it is. We do not touch its source_type /
+        #     confidence / origin; enrichment never makes a canon node look more
+        #     or less canon. (Only updated_at bumps, and id is back-filled if a
+        #     legacy node lacks one.)
+        #   * ON CREATE — enrichment is the entity's CREATOR (anchor didn't
+        #     pre-exist). The node is born MARKED-AS-ENRICHMENT: origin=
+        #     'enrichment', pending_validation=true, confidence<1.0,
+        #     source_type='enriched:<technique>'. It is therefore indistinguishable
+        #     from canon NO LONGER — the real glossary→KG sync (a genuine canon
+        #     write) clears these markers ON MATCH when the owner authors/promotes.
         await session.run(
             """
             MERGE (e:Entity {user_id: $user_id, glossary_entity_id: $glossary_entity_id})
@@ -167,10 +180,17 @@ async def enriched_writeback(
               e.canonical_name = $canon_name,
               e.kind = $kind,
               e.project_id = $project_id,
-              e.confidence = 1.0,
-              e.source_type = 'glossary',
-              e.source_types = ['glossary'],
+              e.confidence = $anchor_confidence,
+              e.source_type = $anchor_source_type,
+              e.source_types = [$anchor_source_type],
+              e.origin = $origin,
+              e.pending_validation = true,
+              e.promoted_from_proposal_id = $proposal_id,
+              e.original_technique = $technique,
               e.created_at = datetime(),
+              e.updated_at = datetime()
+            ON MATCH SET
+              e.id = coalesce(e.id, $canon_id),
               e.updated_at = datetime()
             """,
             user_id=str(req.user_id),
@@ -180,6 +200,11 @@ async def enriched_writeback(
             canon_name=canon_name,
             kind=req.entity_kind,
             project_id=project_id or "global",
+            anchor_confidence=anchor_confidence,
+            anchor_source_type=source_type,
+            origin=_ENRICHMENT_ORIGIN,
+            proposal_id=str(req.proposal_id),
+            technique=req.technique,
         )
 
         for fact in req.facts:

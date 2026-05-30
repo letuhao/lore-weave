@@ -149,3 +149,63 @@ async def test_edit_keeps_non_canon(pool):
     assert edited.origin == "enrichment"
     assert edited.confidence < 1.0
     assert edited.review_status == "proposed"
+
+
+async def _seed_null_target(conn) -> uuid.UUID:
+    """A new-entity proposal: NULL target_ref but a faithful canonical_name (the
+    FIX-1 surface). Proves the additive canonical_name column exists + persists."""
+    job_id = await conn.fetchval(
+        """INSERT INTO enrichment_job (project_id, user_id, technique, entity_kind)
+           VALUES ($1,$2,'fabrication','location') RETURNING job_id""",
+        _PROJECT, _USER,
+    )
+    return await conn.fetchval(
+        """INSERT INTO enrichment_proposal
+             (job_id, project_id, user_id, entity_kind, target_ref, canonical_name,
+              content, technique, confidence, provenance_json)
+           VALUES ($1,$2,$3,'location', NULL, '昆侖虛',
+                   '凭空捏造的描述，绝不可成为名称。',
+                   'fabrication', 0.30, '{"dimensions":{"历史":"虚构"}}'::jsonb)
+           RETURNING proposal_id""",
+        job_id, _PROJECT, _USER,
+    )
+
+
+async def test_canonical_name_column_persists_for_null_target_ref(pool):
+    """FIX-1 (DB): the additive canonical_name column exists and round-trips; a
+    new-entity proposal carries the faithful name with target_ref NULL."""
+    async with pool.acquire() as conn:
+        pid = await _seed_null_target(conn)
+    repo = ProposalsRepo(pool)
+    p = await repo.get(user_id=_USER, project_id=_PROJECT, proposal_id=pid)
+    assert p is not None
+    assert p.target_ref is None
+    assert p.canonical_name == "昆侖虛"
+    # the as_dict surface exposes it for the API layer.
+    assert p.as_dict()["canonical_name"] == "昆侖虛"
+
+
+async def test_set_writeback_entity_id_persists_and_is_idempotent(pool):
+    """FIX-3 (DB): the additive writeback_entity_id column exists; the repo
+    persists the resolved anchor id (NOT trigger-guarded, set in any state) and
+    is idempotent (first write wins via COALESCE)."""
+    async with pool.acquire() as conn:
+        pid = await _seed(conn)
+    repo = ProposalsRepo(pool)
+    p0 = await repo.get(user_id=_USER, project_id=_PROJECT, proposal_id=pid)
+    assert p0 is not None and p0.writeback_entity_id is None
+
+    anchor = uuid.uuid4()
+    p1 = await repo.set_writeback_entity_id(
+        user_id=_USER, project_id=_PROJECT, proposal_id=pid, writeback_entity_id=anchor,
+    )
+    assert p1.writeback_entity_id == anchor
+    # still NOT promoted — the H0 trigger did not reject this non-promotion write.
+    assert p1.review_status == "proposed"
+    assert p1.promoted_entity_id is None
+
+    # idempotent: a second call with a different id keeps the first (COALESCE).
+    p2 = await repo.set_writeback_entity_id(
+        user_id=_USER, project_id=_PROJECT, proposal_id=pid, writeback_entity_id=uuid.uuid4(),
+    )
+    assert p2.writeback_entity_id == anchor
