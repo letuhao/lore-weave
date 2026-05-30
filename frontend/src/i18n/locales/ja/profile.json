@@ -34,7 +34,8 @@
     "hundredReaders": "100+読者",
     "followers": "{{count}}フォロワー",
     "multiLangTranslator": "{{count}}言語翻訳者",
-    "fiftyChapters": "50+章翻訳済み"
+    "fiftyChapters": "50+章翻訳済み",
+    "booksPublished_other": "{{count}}冊出版"
   },
   "loadError": "書籍の読み込みに失敗しました。",
   "noWiki": "まだWiki貢献がありません。",

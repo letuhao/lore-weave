@@ -1,0 +1,31 @@
+{
+  "workspace": "マイブック",
+  "new_book": "新しい書籍",
+  "search_placeholder": "書籍を検索...",
+  "all_languages": "すべての言語",
+  "all_states": "すべての状態",
+  "create": {
+    "title": "新しい書籍",
+    "description": "新しい書籍を作成して章を追加しましょう。",
+    "book_title": "タイトル",
+    "book_title_placeholder": "書籍のタイトル",
+    "language": "原語",
+    "book_description": "説明",
+    "book_description_placeholder": "この書籍はどんな内容ですか？",
+    "cover": "表紙画像",
+    "cover_hint": "PNG、JPG（最大5MB）",
+    "submit": "書籍を作成"
+  },
+  "empty": {
+    "title": "まだ書籍がありません",
+    "description": "最初の書籍を作成して、執筆・翻訳・物語世界の構築を始めましょう。"
+  },
+  "card": {
+    "chapters": "{{count}}章",
+    "no_language": "言語未設定"
+  },
+  "trash": {
+    "title": "ゴミ箱",
+    "empty": "ゴミ箱は空です"
+  }
+}

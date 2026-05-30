@@ -10,7 +10,8 @@
     "notifications": "通知",
     "logout": "ログアウト",
     "main": "メイン",
-    "manage": "管理"
+    "manage": "管理",
+    "trash": "ゴミ箱"
   },
   "common": {
     "save": "保存",
@@ -65,6 +66,7 @@
     "holdToSpeak": "長押しして話す",
     "recording": "録音中...",
     "exitVoiceMode": "音声モードを終了",
-    "pauseResume": "一時停止 / 再開"
+    "pauseResume": "一時停止 / 再開",
+    "providerVoice": "音声"
   }
 }

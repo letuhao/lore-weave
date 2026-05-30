@@ -14,6 +14,7 @@ import enExtraction from './locales/en/extraction.json';
 import enKnowledge from './locales/en/knowledge.json';
 import viCommon from './locales/vi/common.json';
 import viAuth from './locales/vi/auth.json';
+import viBooks from './locales/vi/books.json';
 import viLeaderboard from './locales/vi/leaderboard.json';
 import viProfile from './locales/vi/profile.json';
 import viNotifications from './locales/vi/notifications.json';
@@ -23,6 +24,7 @@ import viExtraction from './locales/vi/extraction.json';
 import viKnowledge from './locales/vi/knowledge.json';
 import jaCommon from './locales/ja/common.json';
 import jaAuth from './locales/ja/auth.json';
+import jaBooks from './locales/ja/books.json';
 import jaLeaderboard from './locales/ja/leaderboard.json';
 import jaProfile from './locales/ja/profile.json';
 import jaNotifications from './locales/ja/notifications.json';
@@ -32,6 +34,7 @@ import jaExtraction from './locales/ja/extraction.json';
 import jaKnowledge from './locales/ja/knowledge.json';
 import zhTWCommon from './locales/zh-TW/common.json';
 import zhTWAuth from './locales/zh-TW/auth.json';
+import zhTWBooks from './locales/zh-TW/books.json';
 import zhTWLeaderboard from './locales/zh-TW/leaderboard.json';
 import zhTWProfile from './locales/zh-TW/profile.json';
 import zhTWNotifications from './locales/zh-TW/notifications.json';
@@ -46,9 +49,9 @@ i18n
   .init({
     resources: {
       en: { common: enCommon, auth: enAuth, books: enBooks, leaderboard: enLeaderboard, profile: enProfile, notifications: enNotifications, glossaryEditor: enGlossaryEditor, wiki: enWiki, extraction: enExtraction, knowledge: enKnowledge },
-      vi: { common: viCommon, auth: viAuth, leaderboard: viLeaderboard, profile: viProfile, notifications: viNotifications, glossaryEditor: viGlossaryEditor, wiki: viWiki, extraction: viExtraction, knowledge: viKnowledge },
-      ja: { common: jaCommon, auth: jaAuth, leaderboard: jaLeaderboard, profile: jaProfile, notifications: jaNotifications, glossaryEditor: jaGlossaryEditor, wiki: jaWiki, extraction: jaExtraction, knowledge: jaKnowledge },
-      'zh-TW': { common: zhTWCommon, auth: zhTWAuth, leaderboard: zhTWLeaderboard, profile: zhTWProfile, notifications: zhTWNotifications, glossaryEditor: zhTWGlossaryEditor, wiki: zhTWWiki, extraction: zhTWExtraction, knowledge: zhTWKnowledge },
+      vi: { common: viCommon, auth: viAuth, books: viBooks, leaderboard: viLeaderboard, profile: viProfile, notifications: viNotifications, glossaryEditor: viGlossaryEditor, wiki: viWiki, extraction: viExtraction, knowledge: viKnowledge },
+      ja: { common: jaCommon, auth: jaAuth, books: jaBooks, leaderboard: jaLeaderboard, profile: jaProfile, notifications: jaNotifications, glossaryEditor: jaGlossaryEditor, wiki: jaWiki, extraction: jaExtraction, knowledge: jaKnowledge },
+      'zh-TW': { common: zhTWCommon, auth: zhTWAuth, books: zhTWBooks, leaderboard: zhTWLeaderboard, profile: zhTWProfile, notifications: zhTWNotifications, glossaryEditor: zhTWGlossaryEditor, wiki: zhTWWiki, extraction: zhTWExtraction, knowledge: zhTWKnowledge },
     },
     defaultNS: 'common',
     fallbackLng: 'en',

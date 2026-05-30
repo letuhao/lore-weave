@@ -1,0 +1,31 @@
+{
+  "workspace": "我的書籍",
+  "new_book": "新書",
+  "search_placeholder": "搜尋書籍...",
+  "all_languages": "所有語言",
+  "all_states": "所有狀態",
+  "create": {
+    "title": "新書",
+    "description": "建立一本新書以開始新增章節。",
+    "book_title": "標題",
+    "book_title_placeholder": "書籍標題",
+    "language": "原始語言",
+    "book_description": "描述",
+    "book_description_placeholder": "這本書講述什麼內容？",
+    "cover": "封面圖片",
+    "cover_hint": "PNG、JPG，最大 5MB",
+    "submit": "建立書籍"
+  },
+  "empty": {
+    "title": "尚無書籍",
+    "description": "建立您的第一本書，開始寫作、翻譯並建構您的故事世界。"
+  },
+  "card": {
+    "chapters": "{{count}} 章",
+    "no_language": "未設定語言"
+  },
+  "trash": {
+    "title": "資源回收筒",
+    "empty": "回收筒是空的"
+  }
+}

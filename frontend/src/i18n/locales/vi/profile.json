@@ -34,7 +34,8 @@
     "hundredReaders": "100+ độc giả",
     "followers": "{{count}} người theo dõi",
     "multiLangTranslator": "Dịch giả {{count}} ngôn ngữ",
-    "fiftyChapters": "50+ chương đã dịch"
+    "fiftyChapters": "50+ chương đã dịch",
+    "booksPublished_other": "{{count}} sách đã xuất bản"
   },
   "loadError": "Không thể tải danh sách sách.",
   "noWiki": "Chưa có đóng góp wiki nào.",

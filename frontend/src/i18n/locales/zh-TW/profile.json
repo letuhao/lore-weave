@@ -34,7 +34,8 @@
     "hundredReaders": "100+ 讀者",
     "followers": "{{count}} 粉絲",
     "multiLangTranslator": "{{count}} 語言翻譯者",
-    "fiftyChapters": "50+ 章節已翻譯"
+    "fiftyChapters": "50+ 章節已翻譯",
+    "booksPublished_other": "已出版 {{count}} 本書"
   },
   "loadError": "無法載入書籍。",
   "noWiki": "尚無 Wiki 貢獻。",

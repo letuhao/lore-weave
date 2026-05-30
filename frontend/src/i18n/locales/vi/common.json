@@ -10,7 +10,8 @@
     "notifications": "Thông báo",
     "logout": "Đăng xuất",
     "main": "Chính",
-    "manage": "Quản lý"
+    "manage": "Quản lý",
+    "trash": "Thùng rác"
   },
   "common": {
     "save": "Lưu",
@@ -65,6 +66,7 @@
     "holdToSpeak": "Giữ để nói",
     "recording": "Đang ghi...",
     "exitVoiceMode": "Thoát chế độ giọng nói",
-    "pauseResume": "Tạm dừng / Tiếp tục"
+    "pauseResume": "Tạm dừng / Tiếp tục",
+    "providerVoice": "Giọng nói"
   }
 }

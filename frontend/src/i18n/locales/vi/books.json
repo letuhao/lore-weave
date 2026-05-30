@@ -1,0 +1,31 @@
+{
+  "workspace": "Sách của tôi",
+  "new_book": "Sách mới",
+  "search_placeholder": "Tìm sách...",
+  "all_languages": "Tất cả ngôn ngữ",
+  "all_states": "Tất cả trạng thái",
+  "create": {
+    "title": "Sách mới",
+    "description": "Tạo một cuốn sách mới để bắt đầu thêm chương.",
+    "book_title": "Tiêu đề",
+    "book_title_placeholder": "Tiêu đề sách",
+    "language": "Ngôn ngữ gốc",
+    "book_description": "Mô tả",
+    "book_description_placeholder": "Cuốn sách này nói về điều gì?",
+    "cover": "Ảnh bìa",
+    "cover_hint": "PNG, JPG tối đa 5MB",
+    "submit": "Tạo sách"
+  },
+  "empty": {
+    "title": "Chưa có sách nào",
+    "description": "Tạo cuốn sách đầu tiên để bắt đầu viết, dịch và xây dựng thế giới truyện của bạn."
+  },
+  "card": {
+    "chapters": "{{count}} chương",
+    "no_language": "Chưa đặt ngôn ngữ"
+  },
+  "trash": {
+    "title": "Thùng rác",
+    "empty": "Thùng rác trống"
+  }
+}
