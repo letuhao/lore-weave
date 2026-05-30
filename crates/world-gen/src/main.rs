@@ -538,12 +538,14 @@ fn run_name(cli: NameArgs) -> ExitCode {
         return ExitCode::FAILURE;
     }
     println!(
-        "wrote {} — named {} settlements, {} states, {} provinces, {} cultures, \
-         {} ranges, {} rivers, {} water bodies",
+        "wrote {} — named {} settlements, {} realms, {} states, {} provinces, \
+         {} counties, {} cultures, {} ranges, {} rivers, {} water bodies",
         cli.out.display(),
         map.settlements.len(),
+        map.realms.len(),
         map.states.len(),
         map.provinces.len(),
+        map.counties.len(),
         map.culture_regions.len(),
         map.mountain_ranges.len(),
         map.rivers.len(),

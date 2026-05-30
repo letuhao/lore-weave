@@ -78,11 +78,26 @@ fn llm_authors_a_creative_seed_that_generates_a_valid_map() {
 fn llm_names_a_world() {
     let provider = build_provider();
     let mut map = generate(2, &CreativeSeed::default());
+    // The default world has all five political tiers (C-2a) — confirm the
+    // 9-category naming flow (C-2c) actually fills the new realm + county tiers
+    // against a real gateway, not just the mock.
+    assert!(
+        !map.realms.is_empty() && !map.counties.is_empty(),
+        "the default world must have realms + counties to name"
+    );
     name_world(&mut map, WorldArchetype::HighFantasy, &provider)
         .expect("gateway should return schema-valid world names");
     assert!(
         map.settlements.iter().any(|s| !s.name.is_empty()),
         "no settlement was named"
+    );
+    assert!(
+        map.realms.iter().any(|r| !r.name.is_empty()),
+        "C-2c: no realm was named by the gateway"
+    );
+    assert!(
+        map.counties.iter().any(|c| !c.name.is_empty()),
+        "C-2c: no county was named by the gateway"
     );
     assert!(map.verify_hash(), "naming changed the hashed geometry");
 }

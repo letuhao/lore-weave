@@ -572,6 +572,40 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 
 ## Current Active Work
 
+### C3 end-to-end live validation (session 99, world-gen-sdk-refactor, BE [S]) ✅
+
+PO directive: validate the C3 arc end-to-end against the real LLM, not just
+mocks. **Done — the full naming chain works.** Ran the `#[ignore]` live test
+`llm_names_a_world` (extended this cycle to assert realms + counties get named)
+against the running stack: world-gen → `loreweave_llm` SDK → `GatewayClient` →
+provider-registry (:8208, `dev_internal_token`) → **qwen2.5-32b-instruct** on
+LM Studio (:1234). **Test PASSED (36.2s)** — settlements, realms, counties all
+named; `verify_hash` holds.
+
+Concrete output (CLI `name`, high-fantasy, qwen2.5-32b) — names escalate in
+grandeur per the C-2c prompt:
+- realms: *Aetheria, Territorial Arcana* (2/2)
+- states/nations: *Enchanting Vale, Radiant Coast, Mystic Highlands* (3/3)
+- provinces: *Sapphire Hills, Emerald Plains, Azure Mountains…* (14/14)
+- counties: *Whispering Pines, Glimmering Falls, Duskwood…* (44/56 — the LLM
+  under-delivered the largest category; the documented soft-truncation contract
+  left the surplus 12 unnamed, no error — exactly as designed)
+
+**Infra notes (for re-running):** env `LOREWEAVE_INTERNAL_TOKEN=dev_internal_token`,
+`LOREWEAVE_GATEWAY_URL=http://localhost:8208`, `LOREWEAVE_TEST_MODEL_SOURCE=user`,
+a `user_models` row **with pricing configured** (a 0/0 dev-pricing row — most
+rows had none, which 402s with `LLM_QUOTA_EXCEEDED: model pricing not configured`
+*after* a successful auth+resolve, proving the gateway chain itself works). The
+402 is a billing-config gate, not a code defect.
+
+**Code this cycle:** `tests/author_llm.rs` (live test now asserts realms +
+counties — locks in the C-2c validation) + `main.rs` (`name` CLI summary now
+lists realms + counties). C-2c LOW-2 (deferred live-smoke) **CLOSED**.
+
+**Possible future enhancement (not a defect):** batch/paginate naming for very
+large county counts so the LLM names all of them — today's single-call
+soft-truncation leaves the tail unnamed by design.
+
 ### C-2c — LLM naming of realms + counties (session 99, world-gen-sdk-refactor, BE [S]) ✅ — C3 arc COMPLETE
 
 Final C3 sub-phase. Extended the sphere naming layer (`naming.rs`) from 7 to 9
