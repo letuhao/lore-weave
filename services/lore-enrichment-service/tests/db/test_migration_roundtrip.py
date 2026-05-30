@@ -30,6 +30,7 @@ TABLES = [
     "enrichment_template",
     "enrichment_job",
     "enrichment_proposal",
+    "enrichment_eval_runs",  # C15 additive eval table
 ]
 
 

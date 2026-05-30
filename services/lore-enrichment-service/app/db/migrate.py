@@ -351,6 +351,48 @@ DROP TRIGGER IF EXISTS trg_enrichment_proposal_h0 ON enrichment_proposal;
 CREATE TRIGGER trg_enrichment_proposal_h0
   BEFORE UPDATE ON enrichment_proposal
   FOR EACH ROW EXECUTE FUNCTION enrichment_proposal_h0_guard();
+
+-- ═══════════════════════════════════════════════════════════════
+-- enrichment_eval_runs (RAID C15 — eval framework, ADDITIVE)
+-- ───────────────────────────────────────────────────────────────
+-- One row per enrichment-eval run: the weighted sub-scores
+-- (schema/canon/anachronism/provenance/usefulness — cultural-fidelity), the
+-- weighted composite, the judge-ENSEMBLE agreement (Fleiss κ), and the GATE
+-- decision (passed). Mirrors knowledge-service project_embedding_benchmark_runs
+-- (load→run→persist to a runs table): immutable scorecard rows, longitudinal
+-- improvement space, queryable for "did the latest run for this suite pass?".
+--
+-- The GATE that guards C16 (fabrication)/C17 (re-cook) reads the LATEST passed
+-- row for a (project, suite_version) so P2/P3 cannot activate below threshold.
+-- Per-user/per-project scoped (Q3); no model name stored (judges resolve via
+-- provider-registry by model_ref — recorded as opaque refs in raw_report only).
+-- ADDITIVE: a fresh CREATE TABLE IF NOT EXISTS, no change to any prior table.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS enrichment_eval_runs (
+  eval_run_id      UUID PRIMARY KEY DEFAULT uuidv7(),
+  project_id       UUID NOT NULL,                  -- scope (Q3); no FK (cross-DB)
+  user_id          UUID NOT NULL,                  -- scope (Q3); no FK (cross-DB)
+  run_id           TEXT NOT NULL,                  -- caller-supplied id (default ts)
+  suite_version    TEXT NOT NULL,                  -- e.g. 'enrichment-v1'
+  baseline_version TEXT,                           -- baseline diffed against (nullable)
+  n_proposals      INT NOT NULL DEFAULT 0,
+  -- weighted sub-scores (each 0..100)
+  schema_score        NUMERIC(5,1) NOT NULL DEFAULT 0,
+  canon_score         NUMERIC(5,1) NOT NULL DEFAULT 0,
+  anachronism_score   NUMERIC(5,1) NOT NULL DEFAULT 0,
+  provenance_score    NUMERIC(5,1) NOT NULL DEFAULT 0,
+  usefulness_score    NUMERIC(5,1) NOT NULL DEFAULT 0,
+  composite        NUMERIC(6,2) NOT NULL DEFAULT 0,
+  fleiss_kappa     NUMERIC(5,3),                   -- judge agreement (nullable: <2 judges)
+  judge_ensemble_acceptable BOOLEAN NOT NULL DEFAULT false,
+  passed           BOOLEAN NOT NULL DEFAULT false, -- the GATE decision
+  raw_report       JSONB NOT NULL DEFAULT '{}'::jsonb,  -- full scorecard + gate reasons
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (project_id, suite_version, run_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_enrichment_eval_runs_latest
+  ON enrichment_eval_runs(project_id, suite_version, created_at DESC);
 """
 
 
@@ -358,6 +400,7 @@ CREATE TRIGGER trg_enrichment_proposal_h0
 # first, then job, then template, then grounding_ref (refs corpus), then
 # corpus. The trigger goes with its table; the function is dropped last.
 DOWN_DDL = """
+DROP TABLE IF EXISTS enrichment_eval_runs;
 DROP TRIGGER IF EXISTS trg_enrichment_proposal_h0 ON enrichment_proposal;
 DROP TABLE IF EXISTS enrichment_proposal;
 DROP TABLE IF EXISTS enrichment_job;

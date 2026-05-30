@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
+from app.api import eval as eval_api
 from app.api import jobs, proposals, sources, templates
 from app.config import settings
 from app.db.migrate import run_migrations
@@ -48,3 +49,6 @@ app.include_router(jobs.router)
 app.include_router(proposals.router)
 app.include_router(sources.router)
 app.include_router(templates.router)
+
+# C15 — internal eval-gate status route (P2/P3 gate signal for C16/C17).
+app.include_router(eval_api.router)
