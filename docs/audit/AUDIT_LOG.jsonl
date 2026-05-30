@@ -441,3 +441,5 @@
 {"ts": "2026-05-30T06:17:53Z", "event": "in_progress_update", "cycle": 4, "phase": "SESSION", "retry": 0}
 {"ts":"2026-05-30T06:18:00Z","event":"cycle_done","cycle":4,"title":"PLATFORM K14 event pipeline","dps":2,"files_changed":10,"new_files":3,"adversary":{"blockers":0,"majors":0,"minors":1,"notes":1},"scope_guard":"CLEAR","verify_exit":0,"live_smoke":"glossary entity auto-propagated glossary->outbox->relay->redis->knowledge consumer->glossary_sync->Neo4j (H1 confirmed)","regression":"glossary go test green; knowledge 1830 unit pass","minor_note":"pre-existing worker-infra outbox-cleanup int||days encode bug (out of scope, relay unaffected)"}
 {"ts": "2026-05-30T06:22:36Z", "event": "in_progress_update", "cycle": 4, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-05-30T06:23:13Z", "event": "coordinator_done_cycle", "cycle": 4, "sha": "e4a0e867"}
+{"ts": "2026-05-30T06:23:37Z", "event": "in_progress_archived", "cycle": 4, "archived_to": "cycle-004-state.md"}
