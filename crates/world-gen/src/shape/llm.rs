@@ -328,8 +328,10 @@ impl fmt::Display for LlmError {
 
 impl std::error::Error for LlmError {}
 
-/// The provider-side interface. v4.3a ships [`MockLlmProvider`]; v4.3c
-/// adds `AnthropicProvider`; v4.3d adds OpenAI + Ollama.
+/// The provider-side interface. v4.3a ships [`MockLlmProvider`]; the
+/// gateway-backed [`GatewayLlmProvider`] (added 2026-05-30) replaced the
+/// deleted v4.3c-d `AnthropicProvider` / `OpenAIProvider` /
+/// `OllamaProvider` direct-call impls.
 ///
 /// Implementations MUST be `Send + Sync` so a single `Arc<dyn LlmProvider>`
 /// can be cloned across the per-plate Rayon par-iter in
@@ -591,6 +593,316 @@ fn mock_params_for_kind(kind: ShapeKind, h: u32) -> Option<ParamOverride> {
             template_id: Some(h % 10),
         }),
         _ => None,
+    }
+}
+
+// ---------- Gateway providers (CLAUDE.md provider gateway invariant) ----------
+//
+// All LLM calls in world-gen MUST go through the loreweave_llm SDK, which
+// routes through provider-registry-service. The CLIENT never picks a
+// provider — `model_ref: Uuid` selects a registered model and the gateway
+// resolves the provider server-side. This replaces the deleted
+// shape/{anthropic,openai,ollama}.rs direct-provider impls and the
+// pre-existing `author::llm_json_request` direct call (which targeted an
+// OpenAI-compatible URL via `--llm-url`).
+
+use std::sync::Arc;
+
+use loreweave_llm::{
+    ChatStreamRequest, GatewayClient, LlmError as SdkLlmError, ModelSource, StreamEvent,
+    StreamFormat, ToolCallAccumulator,
+};
+use tokio::runtime::Runtime;
+use uuid::Uuid;
+
+/// Map an [`SdkLlmError`] to our local [`LlmError`] so the dispatcher's
+/// `Layered` fallback semantics stay uniform.
+fn map_sdk_err(e: SdkLlmError) -> LlmError {
+    match e {
+        SdkLlmError::Http(_) => LlmError::Transport(e.to_string()),
+        SdkLlmError::GatewayHttpStatus { status, body } => {
+            if status == 429 {
+                LlmError::Refused(format!("gateway rate-limited (status {status}): {body}"))
+            } else {
+                LlmError::Transport(format!("gateway HTTP {status}: {body}"))
+            }
+        }
+        SdkLlmError::GatewayErrorEvent { code, message } => {
+            LlmError::Refused(format!("gateway error event {code}: {message}"))
+        }
+        SdkLlmError::StreamParse(m) => LlmError::InvalidResponse(format!("stream parse: {m}")),
+        SdkLlmError::ValidationExhausted { attempts } => {
+            LlmError::InvalidResponse(format!("validation exhausted after {attempts} attempts"))
+        }
+        SdkLlmError::MissingInternalToken => LlmError::Other(e.to_string()),
+        SdkLlmError::InvalidInternalToken(_) => LlmError::Other(e.to_string()),
+        SdkLlmError::InvalidUrl(_) => LlmError::Other(e.to_string()),
+    }
+}
+
+/// Build the OpenAI-shaped `pick_shape` function-tool definition the gateway
+/// translates per provider. Schema mirrors [`pick_shape_schema_strict`].
+fn pick_shape_function_tool() -> serde_json::Value {
+    serde_json::json!({
+        "type": "function",
+        "function": {
+            "name": "pick_shape",
+            "description": "Choose a shape generator and (optionally) its \
+                            parameter override for the described entity.",
+            "parameters": pick_shape_schema_strict(),
+        }
+    })
+}
+
+/// Build the OpenAI-shaped function-tool for a free-form [`TextPrompt`]
+/// with a JSON schema attached.
+fn text_response_function_tool(name: &str, schema: &serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": "Emit the structured response per the parameters schema.",
+            "parameters": schema,
+        }
+    })
+}
+
+/// **Gateway-backed [`LlmProvider`]** (shape dispatch flow).
+///
+/// Streams `ChatStreamRequest` via [`GatewayClient`], assembles the
+/// `pick_shape` tool call from streamed `tool_call` fragments, parses to
+/// [`LlmDecision`]. `Send + Sync + Debug` per the trait contract.
+///
+/// **Sync→async bridge**: the dispatcher is sync, the SDK is async; the
+/// provider owns its own `current_thread` tokio runtime and uses
+/// `block_on` (same pattern as [`crate::shape::postgres_cache::PostgresDispatchCache`]).
+pub struct GatewayLlmProvider {
+    client: Arc<GatewayClient>,
+    model_source: ModelSource,
+    model_ref: Uuid,
+    user_id: Uuid,
+    rt: Arc<Runtime>,
+}
+
+impl fmt::Debug for GatewayLlmProvider {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GatewayLlmProvider")
+            .field("model_source", &self.model_source)
+            .field("model_ref", &self.model_ref)
+            .field("user_id", &self.user_id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl GatewayLlmProvider {
+    /// Build with explicit client + runtime — production callers usually
+    /// share one runtime + one client across providers.
+    pub fn new(
+        client: Arc<GatewayClient>,
+        model_source: ModelSource,
+        model_ref: Uuid,
+        user_id: Uuid,
+        rt: Arc<Runtime>,
+    ) -> Self {
+        Self {
+            client,
+            model_source,
+            model_ref,
+            user_id,
+            rt,
+        }
+    }
+}
+
+impl LlmProvider for GatewayLlmProvider {
+    fn pick(&self, prompt: &LlmPrompt) -> Result<LlmDecision, LlmError> {
+        let messages = vec![
+            serde_json::json!({ "role": "system", "content": shape_dispatch_system_prompt() }),
+            serde_json::json!({ "role": "user",   "content": shape_dispatch_user_message(prompt) }),
+        ];
+        let request = ChatStreamRequest::new_chat_with_tools(
+            self.model_source,
+            self.model_ref,
+            messages,
+            vec![pick_shape_function_tool()],
+            StreamFormat::Openai,
+        )
+        .with_tool_choice(serde_json::json!({
+            "type": "function",
+            "function": { "name": "pick_shape" },
+        }))
+        .normalize();
+        let client = self.client.clone();
+        let user_id = self.user_id;
+        let calls = self.rt.block_on(async move {
+            let mut handle = client.stream(request, user_id).await.map_err(map_sdk_err)?;
+            let mut acc = ToolCallAccumulator::new();
+            while let Some(item) = handle.next().await {
+                let event = item.map_err(map_sdk_err)?;
+                match &event {
+                    StreamEvent::ToolCall { .. } => acc.push(&event),
+                    StreamEvent::Error { code, message } => {
+                        return Err(LlmError::Refused(format!(
+                            "gateway error event {code}: {message}"
+                        )));
+                    }
+                    StreamEvent::Done { .. } => break,
+                    _ => {}
+                }
+            }
+            Ok::<Vec<loreweave_llm::CompletedToolCall>, LlmError>(acc.finish())
+        })?;
+        let pick = calls
+            .into_iter()
+            .find(|c| c.name.as_deref() == Some("pick_shape"))
+            .ok_or_else(|| {
+                LlmError::InvalidResponse("no `pick_shape` tool_call in stream".to_string())
+            })?;
+        let parsed: serde_json::Value = serde_json::from_str(&pick.arguments).map_err(|e| {
+            LlmError::InvalidResponse(format!("tool_call arguments not JSON: {e}"))
+        })?;
+        let kind_str = parsed
+            .get("kind")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                LlmError::InvalidResponse("tool_call.kind missing or not string".to_string())
+            })?;
+        let kind = parse_shape_kind_str(kind_str)?;
+        if !prompt.allowed_kinds.contains(&kind) {
+            return Err(LlmError::InvalidResponse(format!(
+                "kind {kind:?} not in allowed_kinds {:?}",
+                prompt.allowed_kinds
+            )));
+        }
+        let params = parse_params_from_value(kind, parsed.get("params"))?;
+        Ok(LlmDecision { kind, params })
+    }
+}
+
+/// **Gateway-backed [`TextProvider`]** (naming / authoring flow).
+///
+/// Streams `ChatStreamRequest` via [`GatewayClient`]. When `prompt.schema`
+/// is set: emits an OpenAI-shaped function tool with the schema as
+/// `parameters`, forces tool_choice, returns the assembled tool_call
+/// arguments JSON string. Otherwise: concatenates streamed `Token` deltas
+/// into a plain-text response.
+pub struct GatewayTextProvider {
+    client: Arc<GatewayClient>,
+    model_source: ModelSource,
+    model_ref: Uuid,
+    user_id: Uuid,
+    rt: Arc<Runtime>,
+}
+
+impl fmt::Debug for GatewayTextProvider {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GatewayTextProvider")
+            .field("model_source", &self.model_source)
+            .field("model_ref", &self.model_ref)
+            .field("user_id", &self.user_id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl GatewayTextProvider {
+    pub fn new(
+        client: Arc<GatewayClient>,
+        model_source: ModelSource,
+        model_ref: Uuid,
+        user_id: Uuid,
+        rt: Arc<Runtime>,
+    ) -> Self {
+        Self {
+            client,
+            model_source,
+            model_ref,
+            user_id,
+            rt,
+        }
+    }
+}
+
+impl TextProvider for GatewayTextProvider {
+    fn complete(&self, prompt: &TextPrompt) -> Result<String, LlmError> {
+        let messages = vec![
+            serde_json::json!({ "role": "system", "content": prompt.system }),
+            serde_json::json!({ "role": "user",   "content": prompt.user }),
+        ];
+        let (tools, tool_choice, schema_name) = if let Some(schema) = &prompt.schema {
+            let name = prompt
+                .schema_name
+                .clone()
+                .unwrap_or_else(|| "response".to_string());
+            (
+                vec![text_response_function_tool(&name, schema)],
+                Some(serde_json::json!({
+                    "type": "function",
+                    "function": { "name": name },
+                })),
+                Some(name),
+            )
+        } else {
+            (vec![], None, None)
+        };
+        let mut request = ChatStreamRequest::new_chat_with_tools(
+            self.model_source,
+            self.model_ref,
+            messages,
+            tools,
+            StreamFormat::Openai,
+        );
+        if let Some(tc) = tool_choice {
+            request = request.with_tool_choice(tc);
+        }
+        let request = request.normalize();
+        let client = self.client.clone();
+        let user_id = self.user_id;
+        let (tool_calls, text_buf) = self.rt.block_on(async move {
+            let mut handle = client.stream(request, user_id).await.map_err(map_sdk_err)?;
+            let mut acc = ToolCallAccumulator::new();
+            let mut text = String::new();
+            while let Some(item) = handle.next().await {
+                match item.map_err(map_sdk_err)? {
+                    StreamEvent::Token { delta, .. } => text.push_str(&delta),
+                    StreamEvent::ToolCall {
+                        index,
+                        id,
+                        name,
+                        arguments_delta,
+                    } => acc.push(&StreamEvent::ToolCall {
+                        index,
+                        id,
+                        name,
+                        arguments_delta,
+                    }),
+                    StreamEvent::Error { code, message } => {
+                        return Err(LlmError::Refused(format!(
+                            "gateway error event {code}: {message}"
+                        )));
+                    }
+                    StreamEvent::Done { .. } => break,
+                    _ => {}
+                }
+            }
+            Ok::<(Vec<loreweave_llm::CompletedToolCall>, String), LlmError>((acc.finish(), text))
+        })?;
+        if let Some(name) = schema_name {
+            let call = tool_calls
+                .into_iter()
+                .find(|c| c.name.as_deref() == Some(name.as_str()))
+                .ok_or_else(|| {
+                    LlmError::InvalidResponse(format!(
+                        "schema-mode response missing `{name}` tool_call"
+                    ))
+                })?;
+            Ok(call.arguments)
+        } else if text_buf.is_empty() {
+            Err(LlmError::InvalidResponse(
+                "no text content in response (and no tool_call requested)".to_string(),
+            ))
+        } else {
+            Ok(text_buf)
+        }
     }
 }
 

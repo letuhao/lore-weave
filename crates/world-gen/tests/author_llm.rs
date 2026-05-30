@@ -1,25 +1,65 @@
 //! LLM integration tests — `CreativeSeed` authoring + feature naming.
 //!
-//! `#[ignore]`d: they need a running OpenAI-compatible endpoint (LM Studio at
-//! `localhost:1234` with `ibm/granite-4-h-tiny` loaded). Run on demand:
-//! `cargo test -p world-gen --test author_llm -- --ignored`.
+//! `#[ignore]`d: they need a running gateway + a registered model_ref.
+//! Environment setup before running:
+//!
+//! ```text
+//! export LOREWEAVE_INTERNAL_TOKEN=<token>
+//! export LOREWEAVE_GATEWAY_URL=http://localhost:8208     # provider-registry host port
+//! export LOREWEAVE_TEST_MODEL_REF=<uuid>                  # platform-registered model
+//! export LOREWEAVE_TEST_USER_ID=<uuid>                    # any test user
+//! cargo test -p world-gen --test author_llm -- --ignored
+//! ```
+//!
+//! **2026-05-30 refactor**: previous version called LM Studio directly via
+//! `--llm-url http://localhost:1234/v1` — that was a CLAUDE.md provider
+//! gateway invariant violation. Now: all LLM calls flow through
+//! `loreweave_llm::GatewayClient`.
 
+use std::sync::Arc;
+
+use loreweave_llm::{GatewayClient, ModelSource};
+use tokio::runtime::Builder as RuntimeBuilder;
+use uuid::Uuid;
 use world_gen::author::request_creative_seed;
 use world_gen::naming::name_world;
+use world_gen::shape::GatewayTextProvider;
 use world_gen::{CreativeSeed, WorldArchetype, generate};
 
+fn build_provider() -> GatewayTextProvider {
+    let client = GatewayClient::from_env().expect("LOREWEAVE_INTERNAL_TOKEN must be set");
+    let model_ref: Uuid = std::env::var("LOREWEAVE_TEST_MODEL_REF")
+        .expect("LOREWEAVE_TEST_MODEL_REF must be set")
+        .parse()
+        .expect("LOREWEAVE_TEST_MODEL_REF must be a valid UUID");
+    let user_id: Uuid = std::env::var("LOREWEAVE_TEST_USER_ID")
+        .expect("LOREWEAVE_TEST_USER_ID must be set")
+        .parse()
+        .expect("LOREWEAVE_TEST_USER_ID must be a valid UUID");
+    let runtime = RuntimeBuilder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime build");
+    GatewayTextProvider::new(
+        Arc::new(client),
+        ModelSource::PlatformModel,
+        model_ref,
+        user_id,
+        Arc::new(runtime),
+    )
+}
+
 #[test]
-#[ignore = "requires a running LM Studio at http://localhost:1234"]
+#[ignore = "requires a running gateway + LOREWEAVE_TEST_MODEL_REF env"]
 fn llm_authors_a_creative_seed_that_generates_a_valid_map() {
+    let provider = build_provider();
     let cs = request_creative_seed(
         "a cold, mountainous wuxia realm of scattered island kingdoms, \
          sparsely settled, with several rival cultures",
-        "http://localhost:1234/v1",
-        "ibm/granite-4-h-tiny",
+        &provider,
     )
-    .expect("LLM should return a schema-valid CreativeSeed");
+    .expect("gateway should return a schema-valid CreativeSeed");
 
-    // The authored CreativeSeed must drive a valid, self-consistent map.
     let map = generate(1, &cs);
     assert!(map.verify_hash(), "authored map fails its own hash check");
     assert!(!map.provinces.is_empty(), "authored map has no provinces");
@@ -27,19 +67,12 @@ fn llm_authors_a_creative_seed_that_generates_a_valid_map() {
 }
 
 #[test]
-#[ignore = "requires a running LM Studio at http://localhost:1234"]
+#[ignore = "requires a running gateway + LOREWEAVE_TEST_MODEL_REF env"]
 fn llm_names_a_world() {
+    let provider = build_provider();
     let mut map = generate(2, &CreativeSeed::default());
-    name_world(
-        &mut map,
-        WorldArchetype::HighFantasy,
-        "http://localhost:1234/v1",
-        "ibm/granite-4-h-tiny",
-    )
-    .expect("LLM should return schema-valid world names");
-
-    // The settlements should come back named, and naming must not disturb the
-    // hashed geometry (names are excluded from `content_hash`).
+    name_world(&mut map, WorldArchetype::HighFantasy, &provider)
+        .expect("gateway should return schema-valid world names");
     assert!(
         map.settlements.iter().any(|s| !s.name.is_empty()),
         "no settlement was named"

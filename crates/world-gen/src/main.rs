@@ -13,13 +13,18 @@
 
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use loreweave_llm::{GatewayClient, ModelSource};
+use tokio::runtime::{Builder as RuntimeBuilder, Runtime};
+use uuid::Uuid;
 use world_gen::{
     ClimateZone, CoastlineProfile, CreativeSeed, ErosionStrength, HemisphereOrientation,
     PrevailingWind, Projection, RenderStyle, SettlementDensity, TerrainMode, WorldArchetype,
     WorldMap, WorldScale, generate,
 };
+use world_gen::shape::GatewayTextProvider;
 
 #[derive(Parser)]
 #[command(name = "world-gen", about = "Procedural world-map generator (GEO Phases 1-4)")]
@@ -143,12 +148,20 @@ struct AuthorArgs {
     /// Output CreativeSeed JSON path.
     #[arg(long)]
     out: PathBuf,
-    /// OpenAI-compatible LLM API base URL.
-    #[arg(long, default_value = "http://localhost:1234/v1")]
-    llm_url: String,
-    /// LLM model id.
-    #[arg(long, default_value = "ibm/granite-4-h-tiny")]
-    llm_model: String,
+    /// Model registered in provider-registry-service (UUID). The gateway
+    /// resolves this to the underlying provider server-side — per
+    /// CLAUDE.md provider gateway invariant the CLI does NOT choose a
+    /// provider.
+    #[arg(long)]
+    model_ref: Uuid,
+    /// Whether `model_ref` is a platform-shared registration or
+    /// per-user (BYOK).
+    #[arg(long, value_enum, default_value_t = ModelSourceArg::Platform)]
+    model_source: ModelSourceArg,
+    /// User the call is billed against. Required by
+    /// `/internal/llm/stream`. Generate or supply a real one.
+    #[arg(long)]
+    user_id: Uuid,
 }
 
 #[derive(Args)]
@@ -168,12 +181,57 @@ struct NameArgs {
     /// SVG width/height in pixels.
     #[arg(long, default_value_t = 1024)]
     svg_size: u32,
-    /// OpenAI-compatible LLM API base URL.
-    #[arg(long, default_value = "http://localhost:1234/v1")]
-    llm_url: String,
-    /// LLM model id.
-    #[arg(long, default_value = "ibm/granite-4-h-tiny")]
-    llm_model: String,
+    /// Model registered in provider-registry-service (UUID). See
+    /// `AuthorArgs::model_ref` — same semantics.
+    #[arg(long)]
+    model_ref: Uuid,
+    /// Whether `model_ref` is a platform-shared registration or
+    /// per-user (BYOK).
+    #[arg(long, value_enum, default_value_t = ModelSourceArg::Platform)]
+    model_source: ModelSourceArg,
+    /// User the call is billed against.
+    #[arg(long)]
+    user_id: Uuid,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum ModelSourceArg {
+    Platform,
+    User,
+}
+
+impl From<ModelSourceArg> for ModelSource {
+    fn from(s: ModelSourceArg) -> Self {
+        match s {
+            ModelSourceArg::Platform => ModelSource::PlatformModel,
+            ModelSourceArg::User => ModelSource::UserModel,
+        }
+    }
+}
+
+/// Build the shared SDK plumbing every Author / Name subcommand needs.
+///
+/// Fails fast on missing `LOREWEAVE_INTERNAL_TOKEN` (CLAUDE.md "no
+/// hardcoded secrets / services fail to start if missing"). The runtime
+/// is `current_thread` + `enable_all` so the SDK's async streaming works
+/// inside the sync `TextProvider::complete` block-on path.
+fn build_gateway_provider(
+    model_source: ModelSource,
+    model_ref: Uuid,
+    user_id: Uuid,
+) -> Result<GatewayTextProvider, String> {
+    let client = GatewayClient::from_env().map_err(|e| format!("gateway client: {e}"))?;
+    let runtime: Runtime = RuntimeBuilder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| format!("tokio runtime: {e}"))?;
+    Ok(GatewayTextProvider::new(
+        Arc::new(client),
+        model_source,
+        model_ref,
+        user_id,
+        Arc::new(runtime),
+    ))
 }
 
 fn main() -> ExitCode {
@@ -351,7 +409,15 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
 }
 
 fn run_author(cli: AuthorArgs) -> ExitCode {
-    match world_gen::author::request_creative_seed(&cli.brief, &cli.llm_url, &cli.llm_model) {
+    let provider = match build_gateway_provider(cli.model_source.into(), cli.model_ref, cli.user_id)
+    {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match world_gen::author::request_creative_seed(&cli.brief, &provider) {
         Ok(cs) => match serde_json::to_string_pretty(&cs) {
             Ok(json) => {
                 if let Err(e) = std::fs::write(&cli.out, json) {
@@ -397,9 +463,15 @@ fn run_name(cli: NameArgs) -> ExitCode {
         );
         return ExitCode::FAILURE;
     }
-    if let Err(e) =
-        world_gen::naming::name_world(&mut map, cli.archetype.into(), &cli.llm_url, &cli.llm_model)
+    let provider = match build_gateway_provider(cli.model_source.into(), cli.model_ref, cli.user_id)
     {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    if let Err(e) = world_gen::naming::name_world(&mut map, cli.archetype.into(), &provider) {
         eprintln!("error: name: {e}");
         return ExitCode::FAILURE;
     }

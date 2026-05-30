@@ -4,12 +4,19 @@
 //! `generate` stays pure, and the `name` fields are excluded from
 //! `content_hash`. A short LLM response leaves the surplus features unnamed;
 //! a failed request returns `Err` and leaves the map untouched.
+//!
+//! **Gateway invariant (CLAUDE.md, 2026-05-30)**: LLM calls flow through the
+//! `loreweave_llm` SDK via a `&dyn TextProvider` — typically
+//! [`crate::shape::GatewayTextProvider`] for the real backend or
+//! [`crate::shape::MockTextProvider`] for offline tests. The prior
+//! signature `(llm_url, model)` directly POSTed to an OpenAI-compatible
+//! URL via `author::llm_json_request`, which the invariant forbids.
 
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::author::llm_json_request;
 use crate::creative_seed::WorldArchetype;
+use crate::shape::llm::{LlmError, TextPrompt, TextProvider};
 use crate::world_map::WorldMap;
 
 /// System prompt — instructs the LLM on the naming task.
@@ -66,17 +73,24 @@ fn world_names_schema() -> Value {
     })
 }
 
-/// Name every feature of `map` in place via an LLM. The map's geometry is
-/// untouched, so `content_hash` (which excludes names) still verifies.
+/// Name every feature of `map` in place via a [`TextProvider`]. The map's
+/// geometry is untouched, so `content_hash` (which excludes names) still
+/// verifies.
 ///
-/// A short LLM response leaves the surplus features unnamed; a failed request
-/// returns `Err` and leaves the map unchanged.
+/// A short LLM response leaves the surplus features unnamed; a failed
+/// request returns [`Err`] and leaves the map unchanged.
+///
+/// **Soft-truncation contract preserved**: this naming step intentionally
+/// accepts partial responses (see [`apply_names_tolerates_a_short_list`]
+/// test). The civ-layer adapter (`civ_adapter::naming::name_civ_via_llm`)
+/// has the opposite contract (errors on under-delivery) because it
+/// follows a synthetic-naming pass that fills gaps; sphere `name_world`
+/// has no synthetic fallback, so partial-named is the documented design.
 pub fn name_world(
     map: &mut WorldMap,
     archetype: WorldArchetype,
-    llm_url: &str,
-    model: &str,
-) -> Result<(), String> {
+    provider: &dyn TextProvider,
+) -> Result<(), LlmError> {
     let user_prompt = format!(
         "Genre: {archetype:?}. Name these features — produce exactly the given \
          count of distinct names per category:\n\
@@ -90,16 +104,11 @@ pub fn name_world(
         map.rivers.len(),
         map.water_bodies.len(),
     );
-    let content = llm_json_request(
-        llm_url,
-        model,
-        SYSTEM_PROMPT,
-        &user_prompt,
-        world_names_schema(),
-        "world_names",
-    )?;
+    let prompt = TextPrompt::new(SYSTEM_PROMPT, user_prompt)
+        .with_schema(world_names_schema(), "world_names");
+    let content = provider.complete(&prompt)?;
     let names: WorldNames = serde_json::from_str(content.trim())
-        .map_err(|e| format!("WorldNames JSON parse failed: {e}"))?;
+        .map_err(|e| LlmError::InvalidResponse(format!("WorldNames JSON parse failed: {e}")))?;
     apply_names(map, &names);
     Ok(())
 }
@@ -223,18 +232,23 @@ mod tests {
     }
 
     #[test]
-    fn name_world_unreachable_endpoint_errors_cleanly() {
-        // `.invalid` never resolves (RFC 6761) — `name_world` must surface a
-        // descriptive `Err`, never panic or hang, and leave the map untouched.
+    fn name_world_provider_error_leaves_map_untouched() {
+        // **2026-05-30 refactor**: the old `--llm-url unreachable-endpoint`
+        // path is dead; the equivalent SDK-era contract is that any
+        // TextProvider returning Err leaves the map unchanged. Verified
+        // with an inline always-failing provider.
+        use crate::shape::llm::{LlmError, TextPrompt, TextProvider};
+        #[derive(Debug)]
+        struct AlwaysFailProvider;
+        impl TextProvider for AlwaysFailProvider {
+            fn complete(&self, _: &TextPrompt) -> Result<String, LlmError> {
+                Err(LlmError::Transport("simulated unreachable gateway".into()))
+            }
+        }
         let mut map = generate(7, &CreativeSeed::default());
         let before = map.clone();
-        let r = name_world(
-            &mut map,
-            WorldArchetype::HighFantasy,
-            "http://geo-gen.invalid/v1",
-            "m",
-        );
-        assert!(r.is_err(), "unreachable endpoint must return Err, got {r:?}");
+        let r = name_world(&mut map, WorldArchetype::HighFantasy, &AlwaysFailProvider);
+        assert!(r.is_err(), "failed provider must return Err, got {r:?}");
         assert_eq!(map, before, "a failed naming call must leave the map unchanged");
     }
 }
