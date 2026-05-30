@@ -34,8 +34,11 @@ terrain_mode = Tectonic (a multi-continent plate-tectonic planet — the default
 and best for a whole world) or Profile (a single landmass shaped by \
 coastline_profile — for a region/zone); plate_count = number of tectonic plates \
 when Tectonic (3-24, ~8 for an Earth-like world); continental_fraction = share \
-of plates that are land when Tectonic (0.1-0.9, ~0.4 for an ocean-rich world). \
-Choose values that fit the brief. Output only the JSON object.";
+of plates that are land when Tectonic (0.1-0.9, ~0.4 for an ocean-rich world); \
+continent_latitude_spread = how strongly continents spread across latitudes when \
+Tectonic (0.0-1.0; 0 = random placement (default), 1 = land covers equator to \
+both poles for a wider biome range — set ~0.6+ for a deliberately varied, \
+pole-to-pole world). Choose values that fit the brief. Output only the JSON object.";
 
 /// The JSON Schema constraining the LLM output to the `CreativeSeed` shape.
 ///
@@ -84,7 +87,8 @@ pub fn creative_seed_schema() -> Value {
             // pre-Phase-2 brief still validates. Not in `required`.
             "terrain_mode": { "enum": ["Tectonic", "Profile"] },
             "plate_count": { "type": "integer", "minimum": 3, "maximum": 24 },
-            "continental_fraction": { "type": "number", "minimum": 0.1, "maximum": 0.9 }
+            "continental_fraction": { "type": "number", "minimum": 0.1, "maximum": 0.9 },
+            "continent_latitude_spread": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
         }
     })
 }
@@ -100,6 +104,7 @@ pub fn parse_creative_seed(content: &str) -> Result<CreativeSeed, String> {
     // also clamps at use; this keeps the stored CreativeSeed sane).
     cs.plate_count = cs.plate_count.clamp(3, 24);
     cs.continental_fraction = cs.continental_fraction.clamp(0.1, 0.9);
+    cs.continent_latitude_spread = cs.continent_latitude_spread.clamp(0.0, 1.0);
     Ok(cs)
 }
 
@@ -177,6 +182,22 @@ mod tests {
         assert_eq!(parse_creative_seed(&hi).unwrap().culture_count, 16);
         let lo = VALID.replace("\"culture_count\": 6", "\"culture_count\": 0");
         assert_eq!(parse_creative_seed(&lo).unwrap().culture_count, 1);
+    }
+
+    #[test]
+    fn clamps_out_of_range_continent_latitude_spread() {
+        // A garbage LLM value must be clamped to [0,1] in the stored seed
+        // (defence-in-depth; the generator also clamps at use).
+        let hi = VALID.replace(
+            "\"culture_count\": 6",
+            "\"culture_count\": 6, \"continent_latitude_spread\": 5.0",
+        );
+        assert!((parse_creative_seed(&hi).unwrap().continent_latitude_spread - 1.0).abs() < 1e-6);
+        let lo = VALID.replace(
+            "\"culture_count\": 6",
+            "\"culture_count\": 6, \"continent_latitude_spread\": -2.0",
+        );
+        assert!(parse_creative_seed(&lo).unwrap().continent_latitude_spread.abs() < 1e-6);
     }
 
     #[test]

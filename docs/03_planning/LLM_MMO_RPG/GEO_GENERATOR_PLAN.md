@@ -37,12 +37,25 @@
 >   *variety* gap, not a desert defect. Fix is v2 (cosine insolation / real
 >   `winter_frac`) OR subsumed by the next step below.
 >
-> **TOP NEXT (PO-chosen): continent-latitude PLACEMENT (terrain track).** Per
-> lesson 1fbf8d34 the real biome-variety lever is spreading land across more
-> latitudes (seed-7 land clusters at |lat|≈30°, the dry belt; nothing above 75°).
-> This is the right fix for diversity AND will recover the temperate band
-> naturally — not more climate tuning. Then optionally: review/merge PR #13;
-> Köppen v2 (19-subtype richer palette).
+> **Continent-latitude PLACEMENT — SHIPPED (opt-in).** Added the
+> `continent_latitude_spread` knob (`CreativeSeed` + CLI `--continent-latitude-spread`
+> + author schema), Approach A: greedy farthest-point continental-plate *selection*
+> over signed sin-latitude (no geometry change). `spread=0` (the **default**) is
+> byte-identical to legacy; `spread=1` spreads land equator→both poles. Plan:
+> [`docs/plans/2026-05-31-continent-latitude-placement.md`](../../plans/2026-05-31-continent-latitude-placement.md).
+> Full lib 395 green, clippy-clean, `/review-impl` (1 LOW fixed). **Empirical
+> (seed-7 mega, spread=1):** land reaches |lat| 89° (was 74°), Boreal 6%→23% — but
+> Desert drops 36%→8% and **Temperate + Tundra stay ≈0**. Why: the full
+> tropics→tundra gradient is **gated on #045** — the seasonal-amplitude squeeze
+> gives high-lat lowland warm summers (→Boreal, not Polar/Tundra). So default kept
+> at 0.0 (opt-in) until #045 lands. Knob is a threshold-switch at the default
+> ~3-continental-plate count (smoother with more plates).
+>
+> **TOP NEXT (PO-chosen): #045 — Köppen v2 SEASONALITY.** Fix the linear-insolation
+> / seasonal-amplitude squeeze (cosine insolation curve and/or amplitude rebalance)
+> so the latitudinal gradient is real — this is what unblocks BOTH Temperate and
+> Tundra/Polar, after which `continent_latitude_spread` can become the default.
+> Then optionally: review/merge PR #13; Köppen v2 19-subtype richer palette.
 >
 > ---
 >
