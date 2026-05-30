@@ -54,5 +54,90 @@
     "desc": "所有未儲存的變更將永久遺失，此操作無法復原。",
     "confirm": "捨棄變更",
     "cancel": "繼續編輯"
+  },
+  "toolbar": {
+    "paragraph": "段落",
+    "h1": "標題 1",
+    "h2": "標題 2",
+    "h3": "標題 3",
+    "bold": "粗體 (Ctrl+B)",
+    "italic": "斜體 (Ctrl+I)",
+    "strike": "刪除線",
+    "underline": "底線 (Ctrl+U)",
+    "inline_code": "行內程式碼",
+    "link": "連結",
+    "url_prompt": "URL：",
+    "highlight": "螢光標示 (Ctrl+Shift+H)",
+    "subscript": "下標",
+    "superscript": "上標",
+    "bullet_list": "項目符號清單",
+    "ordered_list": "編號清單",
+    "blockquote": "引言",
+    "insert_image": "插入圖片",
+    "insert_video": "插入影片",
+    "insert_audio": "插入音訊",
+    "code_block": "程式碼區塊",
+    "horizontal_rule": "水平線",
+    "undo": "復原 (Ctrl+Z)",
+    "redo": "重做 (Ctrl+Shift+Z)"
+  },
+  "slash": {
+    "paragraph": {
+      "title": "段落",
+      "desc": "純文字區塊"
+    },
+    "heading1": {
+      "title": "標題 1",
+      "desc": "大型章節標題"
+    },
+    "heading2": {
+      "title": "標題 2",
+      "desc": "中型章節標題"
+    },
+    "heading3": {
+      "title": "標題 3",
+      "desc": "小型章節標題"
+    },
+    "bullet": {
+      "title": "項目符號清單",
+      "desc": "無序清單"
+    },
+    "numbered": {
+      "title": "編號清單",
+      "desc": "有序清單"
+    },
+    "quote": {
+      "title": "引言",
+      "desc": "區塊引用"
+    },
+    "image": {
+      "title": "圖片",
+      "desc": "上傳、貼上或 AI 生成"
+    },
+    "video": {
+      "title": "影片",
+      "desc": "上傳影片檔案"
+    },
+    "audio": {
+      "title": "音訊",
+      "desc": "上傳音訊檔案"
+    },
+    "code": {
+      "title": "程式碼區塊",
+      "desc": "語法高亮的程式碼"
+    },
+    "callout": {
+      "title": "標註",
+      "desc": "作者註記或提示"
+    },
+    "divider": {
+      "title": "分隔線",
+      "desc": "水平線"
+    }
+  },
+  "code": {
+    "language_label": "程式碼語言",
+    "copy": "複製程式碼",
+    "delete": "刪除程式碼區塊"
   }
 }

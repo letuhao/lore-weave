@@ -54,5 +54,90 @@
     "desc": "All unsaved changes will be permanently lost. This cannot be undone.",
     "confirm": "Discard changes",
     "cancel": "Keep editing"
+  },
+  "toolbar": {
+    "paragraph": "Paragraph",
+    "h1": "Heading 1",
+    "h2": "Heading 2",
+    "h3": "Heading 3",
+    "bold": "Bold (Ctrl+B)",
+    "italic": "Italic (Ctrl+I)",
+    "strike": "Strikethrough",
+    "underline": "Underline (Ctrl+U)",
+    "inline_code": "Inline code",
+    "link": "Link",
+    "url_prompt": "URL:",
+    "highlight": "Highlight (Ctrl+Shift+H)",
+    "subscript": "Subscript",
+    "superscript": "Superscript",
+    "bullet_list": "Bullet list",
+    "ordered_list": "Ordered list",
+    "blockquote": "Block quote",
+    "insert_image": "Insert image",
+    "insert_video": "Insert video",
+    "insert_audio": "Insert audio",
+    "code_block": "Code block",
+    "horizontal_rule": "Horizontal rule",
+    "undo": "Undo (Ctrl+Z)",
+    "redo": "Redo (Ctrl+Shift+Z)"
+  },
+  "slash": {
+    "paragraph": {
+      "title": "Paragraph",
+      "desc": "Plain text block"
+    },
+    "heading1": {
+      "title": "Heading 1",
+      "desc": "Large section heading"
+    },
+    "heading2": {
+      "title": "Heading 2",
+      "desc": "Medium section heading"
+    },
+    "heading3": {
+      "title": "Heading 3",
+      "desc": "Small section heading"
+    },
+    "bullet": {
+      "title": "Bullet List",
+      "desc": "Unordered list"
+    },
+    "numbered": {
+      "title": "Numbered List",
+      "desc": "Ordered list"
+    },
+    "quote": {
+      "title": "Quote",
+      "desc": "Block quotation"
+    },
+    "image": {
+      "title": "Image",
+      "desc": "Upload, paste, or AI generate"
+    },
+    "video": {
+      "title": "Video",
+      "desc": "Upload video file"
+    },
+    "audio": {
+      "title": "Audio",
+      "desc": "Upload audio file"
+    },
+    "code": {
+      "title": "Code Block",
+      "desc": "Syntax highlighted code"
+    },
+    "callout": {
+      "title": "Callout",
+      "desc": "Author note or tip"
+    },
+    "divider": {
+      "title": "Divider",
+      "desc": "Horizontal rule"
+    }
+  },
+  "code": {
+    "language_label": "Code language",
+    "copy": "Copy code",
+    "delete": "Delete code block"
   }
 }

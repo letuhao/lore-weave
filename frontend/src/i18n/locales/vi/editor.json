@@ -54,5 +54,90 @@
     "desc": "Mọi thay đổi chưa lưu sẽ bị mất vĩnh viễn. Không thể hoàn tác.",
     "confirm": "Hủy thay đổi",
     "cancel": "Tiếp tục chỉnh sửa"
+  },
+  "toolbar": {
+    "paragraph": "Đoạn văn",
+    "h1": "Tiêu đề 1",
+    "h2": "Tiêu đề 2",
+    "h3": "Tiêu đề 3",
+    "bold": "Đậm (Ctrl+B)",
+    "italic": "Nghiêng (Ctrl+I)",
+    "strike": "Gạch ngang",
+    "underline": "Gạch chân (Ctrl+U)",
+    "inline_code": "Mã nội dòng",
+    "link": "Liên kết",
+    "url_prompt": "URL:",
+    "highlight": "Đánh dấu (Ctrl+Shift+H)",
+    "subscript": "Chỉ số dưới",
+    "superscript": "Chỉ số trên",
+    "bullet_list": "Danh sách dấu đầu dòng",
+    "ordered_list": "Danh sách đánh số",
+    "blockquote": "Trích dẫn",
+    "insert_image": "Chèn ảnh",
+    "insert_video": "Chèn video",
+    "insert_audio": "Chèn âm thanh",
+    "code_block": "Khối mã",
+    "horizontal_rule": "Đường kẻ ngang",
+    "undo": "Hoàn tác (Ctrl+Z)",
+    "redo": "Làm lại (Ctrl+Shift+Z)"
+  },
+  "slash": {
+    "paragraph": {
+      "title": "Đoạn văn",
+      "desc": "Khối văn bản thuần"
+    },
+    "heading1": {
+      "title": "Tiêu đề 1",
+      "desc": "Tiêu đề mục lớn"
+    },
+    "heading2": {
+      "title": "Tiêu đề 2",
+      "desc": "Tiêu đề mục vừa"
+    },
+    "heading3": {
+      "title": "Tiêu đề 3",
+      "desc": "Tiêu đề mục nhỏ"
+    },
+    "bullet": {
+      "title": "Danh sách dấu đầu dòng",
+      "desc": "Danh sách không thứ tự"
+    },
+    "numbered": {
+      "title": "Danh sách đánh số",
+      "desc": "Danh sách có thứ tự"
+    },
+    "quote": {
+      "title": "Trích dẫn",
+      "desc": "Trích dẫn khối"
+    },
+    "image": {
+      "title": "Hình ảnh",
+      "desc": "Tải lên, dán hoặc tạo bằng AI"
+    },
+    "video": {
+      "title": "Video",
+      "desc": "Tải lên tệp video"
+    },
+    "audio": {
+      "title": "Âm thanh",
+      "desc": "Tải lên tệp âm thanh"
+    },
+    "code": {
+      "title": "Khối mã",
+      "desc": "Mã được tô sáng cú pháp"
+    },
+    "callout": {
+      "title": "Ghi chú",
+      "desc": "Ghi chú hoặc mẹo của tác giả"
+    },
+    "divider": {
+      "title": "Đường kẻ",
+      "desc": "Đường kẻ ngang"
+    }
+  },
+  "code": {
+    "language_label": "Ngôn ngữ mã",
+    "copy": "Sao chép mã",
+    "delete": "Xóa khối mã"
   }
 }

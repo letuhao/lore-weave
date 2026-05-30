@@ -54,5 +54,90 @@
     "desc": "未保存の変更はすべて永久に失われます。元に戻せません。",
     "confirm": "変更を破棄",
     "cancel": "編集を続ける"
+  },
+  "toolbar": {
+    "paragraph": "段落",
+    "h1": "見出し1",
+    "h2": "見出し2",
+    "h3": "見出し3",
+    "bold": "太字 (Ctrl+B)",
+    "italic": "斜体 (Ctrl+I)",
+    "strike": "取り消し線",
+    "underline": "下線 (Ctrl+U)",
+    "inline_code": "インラインコード",
+    "link": "リンク",
+    "url_prompt": "URL:",
+    "highlight": "ハイライト (Ctrl+Shift+H)",
+    "subscript": "下付き文字",
+    "superscript": "上付き文字",
+    "bullet_list": "箇条書きリスト",
+    "ordered_list": "番号付きリスト",
+    "blockquote": "引用",
+    "insert_image": "画像を挿入",
+    "insert_video": "動画を挿入",
+    "insert_audio": "音声を挿入",
+    "code_block": "コードブロック",
+    "horizontal_rule": "水平線",
+    "undo": "元に戻す (Ctrl+Z)",
+    "redo": "やり直し (Ctrl+Shift+Z)"
+  },
+  "slash": {
+    "paragraph": {
+      "title": "段落",
+      "desc": "プレーンテキストブロック"
+    },
+    "heading1": {
+      "title": "見出し1",
+      "desc": "大セクション見出し"
+    },
+    "heading2": {
+      "title": "見出し2",
+      "desc": "中セクション見出し"
+    },
+    "heading3": {
+      "title": "見出し3",
+      "desc": "小セクション見出し"
+    },
+    "bullet": {
+      "title": "箇条書きリスト",
+      "desc": "順序なしリスト"
+    },
+    "numbered": {
+      "title": "番号付きリスト",
+      "desc": "順序付きリスト"
+    },
+    "quote": {
+      "title": "引用",
+      "desc": "ブロック引用"
+    },
+    "image": {
+      "title": "画像",
+      "desc": "アップロード、貼り付け、またはAI生成"
+    },
+    "video": {
+      "title": "動画",
+      "desc": "動画ファイルをアップロード"
+    },
+    "audio": {
+      "title": "音声",
+      "desc": "音声ファイルをアップロード"
+    },
+    "code": {
+      "title": "コードブロック",
+      "desc": "シンタックスハイライト付きコード"
+    },
+    "callout": {
+      "title": "コールアウト",
+      "desc": "著者のメモやヒント"
+    },
+    "divider": {
+      "title": "区切り線",
+      "desc": "水平線"
+    }
+  },
+  "code": {
+    "language_label": "コード言語",
+    "copy": "コードをコピー",
+    "delete": "コードブロックを削除"
   }
 }
