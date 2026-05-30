@@ -1,7 +1,7 @@
 // ── Chat V2 API Client ────────────────────────────────────────────────────────
 // Uses the shared apiJson wrapper from @/api.
 
-import { apiJson } from '@/api';
+import { apiJson, apiBase } from '@/api';
 import type {
   ChatMessage,
   ChatOutput,
@@ -11,7 +11,9 @@ import type {
   PendingFact,
 } from './types';
 
-const base = () => import.meta.env.VITE_API_BASE || 'http://localhost:3000';
+// Shared base from @/api (relative '' by default → rides the same proxy→gateway
+// path as apiJson). Used for SSE/streaming callers that bypass apiJson.
+const base = apiBase;
 
 export const chatApi = {
   // ── Sessions ──────────────────────────────────────────────────────────────────

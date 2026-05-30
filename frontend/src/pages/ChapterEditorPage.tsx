@@ -6,6 +6,7 @@ import {
   BookOpen, FileText, BookMarked, Pen, Sparkles, Languages,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
+import { apiBase } from '@/api';
 import { booksApi, type Chapter } from '@/features/books/api';
 import { useEditorPanels } from '@/hooks/useEditorPanels';
 import { useEditorDirty } from '@/contexts/EditorDirtyContext';
@@ -279,7 +280,7 @@ export function ChapterEditorPage() {
     }
     setTranslating(true);
     try {
-      const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
+      const API_BASE = apiBase();
       const res = await fetch(`${API_BASE}/v1/translation/translate-text`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },

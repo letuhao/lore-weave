@@ -64,16 +64,17 @@ Legend — **State**: `SHIPPED` (done, just needs sign-off) · `PARTIAL` (built 
 
 | ID | Item | State | Evidence | Notes |
 |---|---|---|---|---|
-| OPS-1 | Cloud readiness tasks (CRA) | PARTIAL | `CLOUD_READINESS_AUDIT.md` — ~12 of 20 CRA tasks marked DONE | **~8 remaining** = real deploy blocker for AWS/multi-device |
-| OPS-2 | Voice Pipeline V2 (43 tasks) | NOT-BUILT | Referenced in `CLOUD_READINESS_AUDIT.md` as "waiting"; **no spec doc found** in planning/plans/specs | Confirm whether in MVP scope at all |
-| OPS-3 | Acceptance evidence packs (all 5 modules) | NOT-BUILT | Matrix "⚠️ Smoke only" across M01–M05 | |
+| OPS-1 | Cloud readiness tasks (CRA) | **TRACK 2** (backlog) | `CLOUD_READINESS_AUDIT.md` — ~8 CRA tasks open | **De-scoped 2026-05-30:** release target is local/self-host hobby, no paid infra / no platform company. Cloud is "maybe later" → keep in backlog so a future cloud move doesn't redo work, but NOT an active blocker. Most items (service discovery, RDS pooling, multi-region) are N/A locally. Already-done items (CRA-01/02 secrets) stay. |
+| OPS-2 | Voice Pipeline V2 (43 tasks) | **TRACK 2** (backlog) | Referenced in `CLOUD_READINESS_AUDIT.md`; no spec doc found | Out of hobby-MVP scope; revisit only if pursued deliberately. |
+| OPS-3 | Acceptance evidence packs (all 5 modules) | **DOWNGRADED** | Matrix "⚠️ Smoke only" across M01–M05 | Formal governance acceptance packs are overkill for a hobby release. Replace with **lightweight live functional verification** (does each flow actually work end-to-end on the local stack — like the T1 walkthrough that found TR-5). |
 
 ### 1.5 Cross-cutting (found during live walkthrough)
 
 | ID | Item | State | Evidence | Notes |
 |---|---|---|---|---|
 | UI-6 | **i18n coverage incomplete / inconsistent** | BROKEN | Live 2026-05-30: nav rendered in Japanese (メイン/ワークスペース/チャット…) while many strings stayed English — sidebar "Trash", breadcrumb "My Books", book tabs (Chapters/Translation/Glossary/Wiki/Sharing/Settings). | Mixed-language UI looks unfinished. Either finish locale coverage or lock default locale for V1. |
-| UI-7 | Book stats/view calls bypass gateway → CORS fail | ⚠️ ENV? | Live: `GET :3000/v1/books/{id}/stats` + `/view` blocked by CORS (6 console errors on book detail). | Likely dev-port artifact (Vite on 5174), BUT confirms `/stats` + `/view` hit `:3000` directly. Verify prod routes these through the gateway (gateway invariant). |
+| UI-7 | Book stats/view calls bypass gateway → CORS fail | ✅ **FIXED (F-3)** | Same root cause as the chat break — the `localhost:3000` hardcoded base. Resolved by the F-3 consolidation (all FE callers now use the shared `apiBase`, relative→proxy→gateway). |
+| **F-3** | **Architecture rot: no single FE API base (8 divergent copies)** | ✅ **FIXED 2026-05-30** | `src/api.ts` already exported a correct shared `apiBase` (relative `''` default) for SSE/WS/upload callers, but **8 call-sites re-declared a local `base` defaulting to `http://localhost:3000`** — the gateway's *container-internal* port, unreachable from the browser → those features silently broke whenever `VITE_API_BASE` was unset. Also 4-way port-doc drift (CLAUDE.md/api.ts said `:3001`; real dev host `:3123`; container `:3000`). **Fix:** all 8 now import the shared `apiBase`; WS callers use `apiBase() \|\| window.location.origin`; port docs corrected (CLAUDE.md + api.ts); added a guard comment in `api.ts` against re-declaring a hardcoded base. This is the same class of defect that hid TR-5 — divergent paths that unit tests (which mock the api layer) never exercise. |
 
 > **What actually works well (don't touch):** rich TipTap chapter editor (formatting, image/video/audio embed, word/char/paragraph counts, autosave, revision history); Reader (read-time estimate, theme customizer, TTS button, progress); Workspace book list + book-detail tabs; Translation Matrix + 13-language native-name dropdown + live LM-Studio BYOK model resolution; Chat shell. The product *shell* is solid — the debt is concentrated in the AI/translation *actions* and finishing polish.
 
@@ -81,12 +82,14 @@ Legend — **State**: `SHIPPED` (done, just needs sign-off) · `PARTIAL` (built 
 
 ## 2. Proposed Prioritization (DRAFT — to be decided together)
 
+**Release target (decided 2026-05-30): local / self-host hobby; cloud "maybe later" (backlog).** So "done" = every advertised flow works end-to-end on the local Docker-Compose stack, with no dead/coming-soon controls and reasonable polish. Cloud/scale/governance items move to Track 2.
+
 | Priority | Items | Rationale |
 |---|---|---|
-| **P0 — functional blocker** | **TR-5 (translation contract drift — core flow is dead)**, WA-3 (grammar 500), OPS-1 (remaining cloud-readiness) | Live walkthrough proved the headline "translate" action fails silently. Translation is the product's primary value — this is the #1 fix. Grammar 500 is the other live runtime break. |
-| **P0 — close what's coded** | TR-3/TR-4 verify+close, M04 acceptance | Translator UX is mostly built; verify against Plan 72 and produce acceptance evidence. |
-| **P1 — visible polish** | UI-1, UI-2 (remove/complete stubs), UI-6 (i18n), WA-1 decision | Dead buttons, stub tabs, and mixed-language UI read as "unfinished product". |
-| **P2 — cut from MVP** | WA-4 (continuation), OPS-2 (voice), UI-3 (TTS/auto-load), UI-5 (full Plan 97) | Too large for "complete MVP to release"; defer post-V1. |
+| **P0 — functional: does it actually work?** | ✅ TR-5 (done). **Live functional sweep** of the other "Closed (smoke)" flows (glossary, wiki, chat, knowledge, extraction, reading/sharing) to find more TR-5-style latent breakages. | TR-5 proved a mock-green "Closed (smoke)" module can be broken live. Honest release needs each core flow exercised on the real stack. |
+| **P1 — no dead controls** | WA-1 (in-editor AI: hide or wire), UI-1 (Notifications page), UI-2 (Profile stubs), UI-3 (reader coming-soon) | For a hobby release, simplest is hide/remove dead "coming soon" controls so nothing looks broken. |
+| **P2 — polish** | UI-6 (i18n consistency), UI-5 (Plan 97 DataTable/filters), TR-3 (verify Plan 72) | Improves feel; not blocking personal use. |
+| **Track 2 — backlog (not now)** | OPS-1 (cloud readiness), OPS-2 (voice), WA-4 (continuation) | Re-scoped: no paid infra / no platform company. Keep so a future cloud move doesn't redo work. |
 
 **Key open decision:** Is **Writing Assistant (WA-1/WA-4)** in the MVP release?
 - If **yes** → it's a multi-week epic of its own.
@@ -106,6 +109,24 @@ Legend — **State**: `SHIPPED` (done, just needs sign-off) · `PARTIAL` (built 
 | 2026-05-30 | T1 resolver | Consolidate the duplicated effective-settings fallback into one `resolve_effective_settings` (used by GET book-settings + create-job). PUT uses the atomic upsert directly. | PO (option a) |
 | 2026-05-30 | T1 /review-impl | All findings fixed: MED-1 (atomic upsert), MED-2 (verified provider-registry scopes model_ref by user_id — no IDOR), LOW-1 (model_source⇒model_ref validator), LOW-2 (documented), LOW-3 + COSMETIC (test hardening). | Lead |
 | 2026-05-30 | Deferred from T1 | `put_preferences` could carry the same partial-update sharp edge — not exercised by current UI; left strict. Logged, not actioned. | Lead |
+| 2026-05-30 | **Release target** | Local / self-host hobby; cloud "maybe later". No paid infra, no platform company. → OPS-1 (cloud-readiness) + OPS-2 (voice) move to **Track 2 backlog**; formal acceptance packs (OPS-3) downgraded to lightweight live functional verification. "Done" = every flow works locally + no dead controls + polish. | PO |
+| 2026-05-30 | Live sweep + **F-3** | Live functional sweep found F-1 (extraction no-op) + F-2/F-3 (FE API base rot). Prioritized **F-3 first** (architecture rot — root cause of F-2 + UI-7 + the same defect-class as TR-5). Fixed by consolidating 8 divergent FE base decls onto the shared `apiBase`. F-1 still open. | PO + Lead |
+| 2026-05-30 | Pre-existing test debt (logged, not fixed) | `useEditorPanels.test.ts` has 3 failing tests; vitest is misconfigured to collect Playwright e2e specs (`tests/e2e/specs/*`) → 4 suite-collection failures. Both confirmed pre-existing via git-stash; separate test-infra task. | Lead |
+
+## Live functional sweep (2026-05-30) — does each flow actually work?
+
+Exercised on the running local stack (writer→reader), using network 4xx/5xx + actual effect as the signal (the method that caught TR-5).
+
+| Flow | Result | Evidence |
+|---|---|---|
+| Translation (Start Translation) | ✅ works | T1 — PUT 200 + POST /jobs 201 + chapter Running |
+| Wiki generate-from-glossary | ✅ works | POST `/v1/glossary/.../wiki/generate` → 200 |
+| Chat: create session | ✅ works | POST `/v1/chat/sessions` → 201 (relative path) |
+| **Glossary extraction (per-chapter)** | ⚠️ **F-1 (MED) no-op** | Per-chapter "Extract Glossary" → POST `/v1/extraction/.../extract-glossary` with **`chapter_ids: []`** → job "completes" over **0 chapters / 0 LLM calls / 0 entities**. The chapter row's id is never seeded into the wizard. `frontend/src/pages/book-tabs/*` (extraction wizard launch). |
+| **Chat: send message (+ 7 other features)** | ✅ **FIXED (F-3)** | Was: POST to **`http://localhost:3000`** → `net::ERR_FAILED`. Now: POST `localhost:5174/v1/chat/.../messages` → **200** (relative→proxy→gateway), 0 console errors, message persisted + stream connected. Fixed by F-3 consolidation below. |
+| Knowledge graph build · Reading/Sharing | ⏳ not yet swept | blocked partly by F-2 (reading-view tracker uses the :3000 base) — re-test after F-2 fix |
+
+**New tasks from sweep:** **F-1** (seed chapter_ids on per-chapter extraction) and **F-2** (fix the stale `:3000` base default across 8 sites). F-2 is cheap (1-line × 8) and unblocks the rest of the sweep.
 
 ## Recently completed
 

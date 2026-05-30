@@ -319,9 +319,9 @@ Read only the docs for the module you're actively working on.
 ## Project Constants
 ```
 project_id:      loreweave
-frontend_port:   5173 (Vite dev)
-gateway_port:    3001 (NestJS BFF)
-mcp_url:         http://localhost:3000/mcp (optional, ContextHub)
+frontend_port:   5174 (Vite dev — see frontend/vite.config.ts)
+gateway:         api-gateway-bff (NestJS BFF) listens on container :3000, host-mapped :3123 (dev). FE always talks to it via RELATIVE /v1 (vite proxy → :3123 in dev; nginx → gateway:3000 in prod). No :3001 — that was a stale doc value.
+mcp_url:         http://localhost:3000/mcp (optional, ContextHub — a DISTINCT service, NOT the gateway)
 ```
 
 ## Test Account

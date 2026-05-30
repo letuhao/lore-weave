@@ -1,4 +1,4 @@
-import { apiJson } from '@/api';
+import { apiJson, apiBase } from '@/api';
 
 export type Visibility = 'private' | 'unlisted' | 'public';
 
@@ -35,7 +35,9 @@ export type Chapter = {
   updated_at?: string | null;
 };
 
-const base = () => import.meta.env.VITE_API_BASE || 'http://localhost:3000';
+// Shared base from @/api (relative '' default → proxy→gateway). For multipart
+// upload / media URLs that bypass apiJson.
+const base = apiBase;
 
 export type ChapterListResponse = {
   items: Chapter[];
