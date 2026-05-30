@@ -1,0 +1,20 @@
+{
+  "loading": "載入中...",
+  "chapter_of": "第 {{current}} 章 / 共 {{total}} 章",
+  "stop_reading": "停止朗讀",
+  "read_aloud": "朗讀",
+  "reading_theme": "閱讀主題",
+  "edit_chapter": "編輯此章節",
+  "back_to_book": "返回書籍",
+  "chapter_label": "第 {{n}} 章",
+  "chars": "字元",
+  "words": "字",
+  "min_read": "約 {{minutes}} 分鐘閱讀",
+  "loading_translation": "正在載入翻譯...",
+  "empty_chapter": "空白章節 — 尚未撰寫任何內容。",
+  "end_of_chapter": "第 {{n}} 章結束",
+  "next_in": "{{seconds}} 秒後前往下一章...",
+  "cancel": "取消",
+  "progress": "第 {{current}} 章 / 共 {{total}} 章 · {{percent}}% 完成",
+  "ch_short": "第 {{n}} 章"
+}

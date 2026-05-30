@@ -1,0 +1,20 @@
+{
+  "loading": "読み込み中...",
+  "chapter_of": "第{{current}}章 / 全{{total}}章",
+  "stop_reading": "読み上げを停止",
+  "read_aloud": "読み上げ",
+  "reading_theme": "読書テーマ",
+  "edit_chapter": "この章を編集",
+  "back_to_book": "書籍に戻る",
+  "chapter_label": "第{{n}}章",
+  "chars": "文字",
+  "words": "語",
+  "min_read": "約{{minutes}}分で読了",
+  "loading_translation": "翻訳を読み込み中...",
+  "empty_chapter": "空の章 — まだ何も書かれていません。",
+  "end_of_chapter": "第{{n}}章 終わり",
+  "next_in": "{{seconds}}秒後に次の章へ...",
+  "cancel": "キャンセル",
+  "progress": "第{{current}}章 / 全{{total}}章 · {{percent}}% 完了",
+  "ch_short": "第{{n}}章"
+}

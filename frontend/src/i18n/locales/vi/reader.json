@@ -1,0 +1,20 @@
+{
+  "loading": "Đang tải...",
+  "chapter_of": "Chương {{current}} / {{total}}",
+  "stop_reading": "Dừng đọc",
+  "read_aloud": "Đọc to",
+  "reading_theme": "Giao diện đọc",
+  "edit_chapter": "Sửa chương này",
+  "back_to_book": "Quay lại sách",
+  "chapter_label": "Chương {{n}}",
+  "chars": "ký tự",
+  "words": "từ",
+  "min_read": "~{{minutes}} phút đọc",
+  "loading_translation": "Đang tải bản dịch...",
+  "empty_chapter": "Chương trống — chưa viết gì.",
+  "end_of_chapter": "Hết Chương {{n}}",
+  "next_in": "Chương tiếp theo sau {{seconds}}s...",
+  "cancel": "Hủy",
+  "progress": "Chương {{current}} / {{total}} · {{percent}}% hoàn thành",
+  "ch_short": "Ch. {{n}}"
+}

@@ -1,0 +1,20 @@
+{
+  "loading": "Loading...",
+  "chapter_of": "Chapter {{current}} of {{total}}",
+  "stop_reading": "Stop reading",
+  "read_aloud": "Read aloud",
+  "reading_theme": "Reading theme",
+  "edit_chapter": "Edit this chapter",
+  "back_to_book": "Back to book",
+  "chapter_label": "Chapter {{n}}",
+  "chars": "chars",
+  "words": "words",
+  "min_read": "~{{minutes}} min read",
+  "loading_translation": "Loading translation...",
+  "empty_chapter": "Empty chapter — nothing written yet.",
+  "end_of_chapter": "End of Chapter {{n}}",
+  "next_in": "Next chapter in {{seconds}}s...",
+  "cancel": "Cancel",
+  "progress": "Chapter {{current}} of {{total}} · {{percent}}% complete",
+  "ch_short": "Ch. {{n}}"
+}
