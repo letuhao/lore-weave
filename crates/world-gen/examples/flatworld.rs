@@ -62,7 +62,7 @@ fn main() {
     let mut civ_archetype: String = "HighFantasy".to_string();
     // Naming source: None → synthetic; Some(kind) → real LLM TextProvider.
     #[derive(Clone, Copy)]
-    enum NameSource { Synthetic, Anthropic, OpenAI, Ollama }
+    enum NameSource { Synthetic, Anthropic, OpenAI, Ollama, LmStudio }
     let mut name_source = NameSource::Synthetic;
     let mut name_model: Option<String> = None;
 
@@ -74,6 +74,12 @@ fn main() {
         let flag = args[i].as_str();
         let val = args.get(i + 1).cloned();
         let need = || val.clone().unwrap_or_else(|| panic!("{flag} needs a value"));
+        // **Ship 7e fix**: pre-existing bug — loop unconditionally
+        // advanced `i += 2`, so a valueless flag (the `--name-*`
+        // provider flags) silently ate the next arg. Flag arms that
+        // don't consume a value set `valueless = true`; loop advance
+        // becomes conditional.
+        let mut valueless = false;
         match flag {
             "--width" => p.width = need().parse().expect("width"),
             "--height" => p.height = need().parse().expect("height"),
@@ -248,13 +254,14 @@ fn main() {
                 };
             }
             "--civ-archetype" => civ_archetype = need(),
-            "--name-anthropic" => name_source = NameSource::Anthropic,
-            "--name-openai" => name_source = NameSource::OpenAI,
-            "--name-ollama" => name_source = NameSource::Ollama,
+            "--name-anthropic" => { name_source = NameSource::Anthropic; valueless = true; }
+            "--name-openai" => { name_source = NameSource::OpenAI; valueless = true; }
+            "--name-ollama" => { name_source = NameSource::Ollama; valueless = true; }
+            "--name-lmstudio" => { name_source = NameSource::LmStudio; valueless = true; }
             "--name-model" => name_model = Some(need()),
             other => panic!("unknown flag: {other}"),
         }
-        i += 2;
+        i += if valueless { 1 } else { 2 };
     }
 
     let world = generate(&p);
@@ -547,6 +554,23 @@ fn main() {
                     });
                     Arc::new(OllamaProvider::new(model))
                 }
+                NameSource::LmStudio => {
+                    // **Ship 7e**: LM Studio exposes OpenAI-compatible
+                    // /v1/chat/completions at http://localhost:1234.
+                    // Reuses OpenAIProvider; dummy bearer key (LM Studio
+                    // doesn't check auth). User overrides the loaded
+                    // model via --name-model (LM Studio routes to the
+                    // single loaded model regardless of the name if no
+                    // override given).
+                    let model = name_model
+                        .clone()
+                        .unwrap_or_else(|| "local-model".to_string());
+                    Arc::new(OpenAIProvider::with_base_url(
+                        "lm-studio",
+                        world_gen::shape::openai::LMSTUDIO_BASE_URL,
+                        model,
+                    ))
+                }
             };
             // Pack into the CivBundle's flat vectors → Political /
             // Culture / Features need separate mutable handles for
@@ -582,6 +606,7 @@ fn main() {
                         NameSource::Anthropic => "anthropic",
                         NameSource::OpenAI => "openai",
                         NameSource::Ollama => "ollama",
+                        NameSource::LmStudio => "lmstudio",
                         NameSource::Synthetic => "synthetic",
                     });
                 }

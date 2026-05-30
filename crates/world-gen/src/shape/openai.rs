@@ -30,6 +30,15 @@ pub const DEFAULT_MODEL: &str = "gpt-4o-mini-2024-07-18";
 /// Chat Completions API base URL.
 pub const DEFAULT_BASE_URL: &str = "https://api.openai.com";
 
+/// **Ship 7e** — default base URL for a locally-running **LM Studio**
+/// instance. LM Studio exposes an OpenAI-compatible
+/// `/v1/chat/completions` endpoint so the [`OpenAIProvider`] /
+/// [`crate::shape::llm::TextProvider`] impls speak to it unchanged —
+/// only the base URL (and a dummy bearer-auth key, which LM Studio
+/// ignores) need to differ. Used by the `examples/flatworld.rs`
+/// `--name-lmstudio` CLI flag.
+pub const LMSTUDIO_BASE_URL: &str = "http://localhost:1234";
+
 pub struct OpenAIProvider {
     api_key: String,
     base_url: String,
