@@ -7,39 +7,43 @@
 
 ## ▶ NEXT SESSION — start here
 
-**State:** cycles 74d–74f committed on `main`, **NOT pushed** (push needs approval):
-`bca5819a` 2-hop hotfix · `936f20a9` data-survey + accuracy/eval PLAN · `10283965` Phase-A disjoint metric + CI.
-**Production gate is resolved → ship-ready.** The accuracy engine is the two-axis learning-from-users loop in [the plan](../plans/2026-05-31-extraction-accuracy-and-eval-plan.md). Phase A (eval hygiene) is done; **next is Phase B / B2 (capture plumbing)** — the foundational dependency for the whole loop (tiers C–F all depend on capture).
+**State:** Phase-B **DESIGN is locked + checkpoint-committed** (session 75). The design doc [`docs/specs/2026-05-31-phase-b-correction-capture.md`](../specs/2026-05-31-phase-b-correction-capture.md) survived 3 AMAW adversary rounds (REJECTED→REJECTED→APPROVED_WITH_WARNINGS) + a /review-impl pass; all BLOCK/MED findings folded. Prior cycles 74d–74f + this design checkpoint on `main`, **NOT pushed** (push needs approval).
 
-**Recommended next: Phase B — Axis-1 correction capture** (more contained; infra mostly exists; feeds the organic eval-gold = the bias answer). Phase B2 (config telemetry) is the alternative/parallel.
+**Scope locked with PO (bigger than the original handoff):** Phase B = **XL** = the correction CAPTURE spine **+ build the rel/event user-edit endpoints that produce corrections** (they didn't exist — `invalidate_relation` was unwired, events had no edit primitive). Decisions: **new `learning-service`** (Python/FastAPI) owns the corrections store; **redact/hash content** (no raw novel text persisted — structural + content-hash only); **build the replay/backfill tool** (high MAXLEN + retained `event_log` + worker-infra idempotent replay). Tier-1 anchor reuse → **Phase C** (deferred, D#048); config telemetry → **B2** (D#047).
 
-**This is L+, multi-service, with a DB migration → invoke `/amaw` + DESIGN-checkpoint-commit before BUILD.** Steps:
-1. `corrections` table: `(tenant, project, target_type, target_id, op, before, after JSONB, source_extraction_run_id, source_chapter, source_span, actor, ts)` + diff-class tag.
-2. Enrich glossary outbox `glossary.entity_updated` payload with before→after + provenance — [outbox.go](../../services/glossary-service/internal/api/outbox.go), `outbox_events` in [migrate.go](../../services/glossary-service/internal/migrate/migrate.go).
-3. **Close plan §5 gap:** add transactional outbox to knowledge-service relation/event edits — `invalidate_relation`/`merge_entity` → emit `knowledge.relation_corrected` / `knowledge.entity_corrected` ([relations.py](../../services/knowledge-service/app/db/neo4j_repos/relations.py), [entities.py](../../services/knowledge-service/app/db/neo4j_repos/entities.py)).
-4. Wire knowledge-service consumer → update anchor index (loop Tier 1).
-5. BUILD: migrations + tests + **cross-service live smoke** (≥2 services → live-smoke token required).
+**NEXT = BUILD, in 3 sub-sessions (each its own VERIFY+POST-REVIEW+COMMIT), per design §12:**
+1. **Sub-session A (foundation):** `learning-service` scaffold (clone chat-service shell + KS consumer) + `corrections` DDL (redact/hash schema §3) + consumer (`learning-collector` group) + read API + gateway route + compose/db-ensure. **worker-infra: add `outbox_id` to relay XADD (F1/F2 — 5-place sync, §4.0), high `streamMaxLen` for glossary/knowledge, replay task (§10.1).** glossary `entity_updated` enrichment (actor + before/after, SELECT-old-in-tx on PATCH). Live-smoke glossary→learning.
+2. **Sub-session B:** KS first Postgres outbox + `emit_correction` + emit on existing entity edits (PATCH/merge/archive, same-Cypher before-capture §6.3) + add `knowledge:` to `OUTBOX_SOURCES`. Live-smoke KS-entity→learning.
+3. **Sub-session C:** new relation + event correction repo primitives (`recreate_relation` — structurally separate from extraction `create_relation`, F5; `update_event_fields`/`archive_event` + `:Event.version`) + public routers + emission; FE relation/event edit UI.
 
-**Eval note:** for any A/B use the new **DISJOINT median of record** (`compute_ensemble_macros.py`), never the inflated full-panel 0.913. Host eval env block + harness: `tests/quality/run_rejudge_resumable.py` docstring (host → provider-registry `:8208` → LM Studio `:1234`, token `dev_internal_token`).
+**BUILD must-dos baked into the design:** F4 grep-gate (`outbox_id` ≥5 hits); F5 regression-lock (Pass-2 re-extraction leaves invalidated SVO `valid_until` NON-null); empty-`outbox_id`→DLQ (R3-W1); cross-service live-smoke token. Deferred rows: D#045 live-smoke, D#046 reconcile, D#047 B2, D#048 Phase-C anchor, D#049 replay tool, D#050 raw-content opt-in.
+
+**Eval note (unchanged):** for any A/B use the **DISJOINT median of record** (`compute_ensemble_macros.py`), never the full-panel 0.913. Host harness: `tests/quality/run_rejudge_resumable.py` docstring (host → provider-registry `:8208` → LM Studio `:1234`, token `dev_internal_token`).
 
 <details><summary>Copy-paste resume prompt</summary>
 
 ```
-Resume LoreWeave session 75. Read docs/sessions/SESSION_HANDOFF.md (top "NEXT SESSION" block + cycle 74f/74e sections) and docs/plans/2026-05-31-extraction-accuracy-and-eval-plan.md first.
+Resume LoreWeave session 76. Read docs/sessions/SESSION_HANDOFF.md (top "NEXT SESSION" block) + the locked design docs/specs/2026-05-31-phase-b-correction-capture.md (esp §3 schema, §4.0 outbox_id sync, §6 KS changes, §10.1 durability, §12 BUILD sequencing) FIRST. AMAW is the workflow.
 
-State: cycles 74d-74f committed on main (bca5819a 2-hop hotfix; 936f20a9 data-survey+plan; 10283965 Phase-A disjoint metric+CI), NOT pushed. Production gate resolved = ship-ready; accuracy engine = the two-axis learning-from-users loop in the plan.
+State: Phase-B DESIGN locked + checkpoint-committed on main (NOT pushed). Phase B = XL = correction-capture spine + new rel/event user-edit endpoints, into a NEW learning-service (Python/FastAPI). Redact/hash content (no raw text); build the replay tool. Tier-1 anchor = Phase C (deferred).
 
-GOAL: implement Phase B — Axis-1 correction capture (plan §2.1/§4), the foundational dependency for the loop.
-- Invoke /amaw (DB migration = L+; tenant-scoped correction log is load-bearing). DESIGN first, checkpoint-commit the design before BUILD.
-- DESIGN: (1) corrections table; (2) enrich glossary outbox glossary.entity_updated with before->after + provenance; (3) close plan §5 gap = add transactional outbox to knowledge-service relation/event edits (invalidate_relation/merge_entity -> knowledge.relation_corrected/entity_corrected); (4) wire knowledge-service consumer -> anchor index (Tier 1).
-- BUILD: migrations + tests + cross-service live smoke.
-Alternative if I prefer Axis 2 first: Phase B2 config telemetry (config_registry content-addressed + adjustment_events async + runs.outcome + default versioning, plan §2.1/§2.4).
+GOAL: BUILD sub-session A (foundation) per design §12 — learning-service scaffold + corrections DDL (§3 redact/hash) + consumer (learning-collector) + read API + gateway + compose/db-ensure; worker-infra outbox_id XADD (§4.0 5-place sync) + high streamMaxLen + replay task (§10.1); glossary entity_updated enrichment (actor + before/after, SELECT-old in tx). Live-smoke glossary→learning. Each sub-session = its own VERIFY+POST-REVIEW+COMMIT.
 
-Eval: use the DISJOINT median of record (compute_ensemble_macros.py), never the full-panel 0.913.
-
-Ask me which axis (B vs B2) to start before committing to the build.
+Hard gotchas from the design review: origin_event_id := EventData.outbox_id (NOT aggregate_id, NOT message_id); EventData lives in dispatcher.py:19-28; empty outbox_id → DLQ not silent ""; grep outbox_id ≥5 hits before VERIFY.
 ```
 </details>
+
+## Session 75 — cycle 75a: Phase B DESIGN checkpoint (correction capture + learning-service)
+
+**DESIGN-only, no code (checkpoint-commit artifact).** AMAW. Doc: [`docs/specs/2026-05-31-phase-b-correction-capture.md`](../specs/2026-05-31-phase-b-correction-capture.md).
+
+- **CLARIFY found 3 plan-vs-code divergences:** (1) `glossary.entity_updated` carries no actor field + fires on user-create/patch AND pipeline bulk (route middleware distinguishes via JWT-vs-internal-token, payload doesn't); (2) `invalidate_relation` is **unwired** + events have **no edit primitive** → no user path to correct a relation/event today; (3) knowledge-service has **no outbox** (graph is Neo4j, outbox must be Postgres → no true atomicity).
+- **PO locked scope (maximal):** build the rel/event edit endpoints too (XL); **new `learning-service`** (Python/FastAPI, port 8094/host 8222, DB `loreweave_learning`); **redact/hash content** (no raw novel text — structural + content-hash; raw reserved for Phase-E per-tenant opt-in); **build the replay tool** (high MAXLEN + retained `event_log` + worker-infra idempotent replay). Tier-1 anchor reuse correctly re-scoped to **Phase C** (plan §4; handoff had conflated it into B).
+- **AMAW design review (3 cold-start adversary rounds): REJECTED → REJECTED → APPROVED_WITH_WARNINGS.** Caught + folded: **F1/F2 (BLOCK)** — the idempotency key didn't exist on the wire (relay never XADDs the outbox row id; `aggregate_id` is the reused target id) → relay now carries `outbox_id` (5-place platform sync, §4.0); **F5 (BLOCK)** — "extend `create_relation` ON MATCH to clear `valid_until`" would silently resurrect user-invalidated relations on every re-extraction → forced a dedicated `recreate_relation`; F3/F4/F6 + R3-W1 folded.
+- **/review-impl pass:** 5 more findings — MED-2 (before/after shape unpinned per target_type), MED-3 (KS before-capture must be same-Cypher, TOCTOU), LOW-4 (user_id-vs-actor_id latent under future write-collab), LOW-5 (cross-store drop = chain-break) all folded; MED-1 (durability) → PO chose build-replay-now.
+- **All open questions R1–R5 + MED-1 resolved** (design §13). Audit trail: `docs/audit/AUDIT_LOG.jsonl` (3 review-design rounds + review-impl). Deferred: D#045–D#050.
+
+**NEXT:** BUILD sub-session A (foundation) — see the ▶ NEXT SESSION block + design §12.
 
 ## Session 74 — cycle 74f: Phase A eval hygiene — disjoint-judge metric of record + bootstrap CI
 
