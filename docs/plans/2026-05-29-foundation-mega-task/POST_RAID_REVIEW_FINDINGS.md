@@ -41,7 +41,11 @@
 ### F5a — I3 language-rule enforcement + CLAUDE.md sync ✅ DONE *(`language-rule-lint.sh` PASS on real tree; negative-tested → FAILs on mismatch / `missing`-but-present / absent-row)*
 - **PRR-16 + PRR-21**: rewrote `contracts/language-rule.yaml` to map all 34 on-disk services to their real language (was ~30 mislabelled `missing`); hardened `scripts/language-rule-lint.sh` to (a) **FAIL** on a present service declared `missing` (PRR-16), (b) add a **completeness check** that FAILs on a present (toolchain-detected) service with no yaml row (PRR-21), (c) detect Python via `requirements.txt`. The lint now *enforces* I3 instead of NOTE-only — ~21 previously-unguarded services are now covered.
 - **PRR-22**: `CLAUDE.md` Language rule updated — added the **Rust** kernel-derived tier + pointed to `contracts/language-rule.yaml` as the authoritative service→language SSOT (rule book no longer drifts from the 35-service reality).
-- *Remaining F5: **PRR-24/25** WS ticket-hash wire drift (base64 vs JSON int-array) — Go+Rust change; **PRR-20** game-server gateway bypass — needs an architecture decision (front via api-gateway-bff vs formally amend invariant I1).*
+- *Remaining F5: **PRR-24/25** WS ticket-hash wire drift (base64 vs JSON int-array) — Go+Rust change. (**PRR-20** resolved → see F5b.)*
+
+### F4 — CI gate + projection-coverage gate ✅ DONE *(foundation-ci.yml YAML valid, 4 jobs; projection-coverage-lint PASS — enforceable + negative-safe)*
+- **PRR-35**: added `.github/workflows/foundation-ci.yml` — runs the real gates on every push / PR to `main` + `mmo-rpg/**`: Rust `cargo build/test --workspace`, **every** Go module `build+vet+test` (no root go.mod → per-module loop), the I3 + projection-coverage lints, and gitleaks. The foundation's "N/N PASS" is now CI-verified, not local-only.
+- **PRR-32 + PRR-09**: added `scripts/projection-coverage-lint.sh` — cross-references `contracts/events/_registry.yaml` (14 event_types) vs projection `apply_event` arms; FAILs on a registered event with no projection that isn't allowlisted. Pins current state honestly: **5/14 projected**, 8 consumed-elsewhere-by-design (writers/seeders/history), **1 real deferred gap `xreality.user.erased`** (GDPR projection-side erasure → **D-PROJECTION-ERASURE**). Wired into the CI `lints` job. — *Remaining: implement `xreality.user.erased` projection erasure (D-PROJECTION-ERASURE); worker-fleet live-wiring (PRR-33) + live-PG test (PRR-36) remain infra-blocked (F3).*
 
 ---
 

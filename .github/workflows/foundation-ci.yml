@@ -1,0 +1,72 @@
+name: foundation-ci
+
+# PRR-35: the foundation's acceptance gates (build, test, vet, lints, secret
+# scan) previously ran ONLY locally — no CI executed them, so every "N/N PASS"
+# recorded in CYCLE_LOG was unverified. This workflow runs them on every push /
+# PR to the foundation branch + main so the gates are actually enforced in CI.
+#
+# Complements the existing lint-foundation.yml (static lints) by adding the
+# build + test + I3 + projection-coverage + gitleaks gates.
+
+on:
+  push:
+    branches: [main, "mmo-rpg/**"]
+  pull_request:
+    branches: [main, "mmo-rpg/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: Rust workspace (build + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace
+      - run: cargo test --workspace
+
+  go:
+    name: Go modules (build + vet + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: build + vet + test every go.mod module
+        shell: bash
+        run: |
+          set -uo pipefail
+          fail=0
+          while IFS= read -r mod; do
+            dir=$(dirname "$mod")
+            echo "::group::$dir"
+            if ! ( cd "$dir" && go build ./... && go vet ./... && go test ./... ); then
+              echo "::error::go module failed: $dir"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done < <(find . -name go.mod -not -path '*/.git/*')
+          exit $fail
+
+  lints:
+    name: Foundation lints (I3 language-rule + projection-coverage)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/language-rule-lint.sh
+      - run: bash scripts/projection-coverage-lint.sh
+
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_CONFIG: .gitleaks.toml
