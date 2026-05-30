@@ -19,10 +19,17 @@ def test_health_ok(monkeypatch):
     async def _fake_close_pool():
         return None
 
-    # main.py imported create_pool/close_pool by name at module load, so patch
-    # the names it actually calls (the module globals), plus the source module.
+    async def _fake_run_migrations(pool):
+        # /health must not require a live DB; C2 added run_migrations to the
+        # lifespan, so stub it too (the real DDL is exercised in tests/db/).
+        return None
+
+    # main.py imported create_pool/close_pool/run_migrations by name at module
+    # load, so patch the names it actually calls (the module globals), plus the
+    # source modules.
     monkeypatch.setattr(main_mod, "create_pool", _fake_create_pool)
     monkeypatch.setattr(main_mod, "close_pool", _fake_close_pool)
+    monkeypatch.setattr(main_mod, "run_migrations", _fake_run_migrations)
     monkeypatch.setattr(pool_mod, "create_pool", _fake_create_pool)
     monkeypatch.setattr(pool_mod, "close_pool", _fake_close_pool)
 

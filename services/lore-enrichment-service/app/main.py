@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
 from app.config import settings
+from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool
 
 logger = logging.getLogger(__name__)
@@ -13,9 +14,11 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # C0 skeleton: open the DB pool only. NO migrations (C2 owns schema),
-    # NO KG/glossary/book clients (C1), NO redis/minio (later cycles).
-    await create_pool(settings.database_url)
+    # Open the DB pool, then apply idempotent migrations (C2 owns schema).
+    # Mirrors knowledge-service: run_migrations on every startup. NO
+    # KG/glossary/book client wiring here (C1), NO redis/minio (later cycles).
+    pool = await create_pool(settings.database_url)
+    await run_migrations(pool)
     try:
         yield
     finally:

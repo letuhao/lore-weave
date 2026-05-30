@@ -404,3 +404,16 @@
 {"ts": "2026-05-29T20:54:15Z", "event": "in_progress_update", "cycle": 1, "phase": "RETRO", "retry": 0}
 {"ts": "2026-05-29T20:54:35Z", "cycle": 1, "phase": "retro", "event": "retro", "note": "Smooth: read-client TDD + respx mocking + real live-smoke against running KG (HTTP 401 = reachability proof). Surprise: worktrees-create base is mmo-rpg/foundation-mega-task, not lore-enrichment/foundation, so DPS worktrees lacked the C0 skeleton; with Agent tool unavailable, fell back to in-place single-DPS per coordinator note. Next: fix worktrees-create base-branch resolution or expect in-place builds. Also: httpx json= escapes CJK to backslash-u; fixed via ensure_ascii=False."}
 {"ts": "2026-05-29T20:54:50Z", "event": "in_progress_archived", "cycle": 1, "archived_to": "cycle-001-state.md"}
+{"ts":"2026-05-30T00:00:00Z","task":"lore-enrichment","phase":"coordinator","agent":"coordinator","action":"cycle_accepted","cycle":1,"commit":"399f6711","verify_exit":0,"note":"verified sound: correct branch/parent, isolation clean, 27 pytest, verify-cycle-1 exit0. MODEL FINDING: nested Agent spawn unavailable -> cycle-runner ran single-agent self-review (no DPS/cold-start adversary); worktrees-create hardcodes mmo-rpg base -> in-place fallback. Coordinator will add independent adversary on high-risk cycles."}
+{"ts": "2026-05-29T20:58:10Z", "event": "coordinator_next_cycle_emitted", "cycle": 3}
+{"ts":"2026-05-29T21:01:42Z","event":"startup_drift_check_inconclusive","cycle":2,"cd":"","rw":""}
+{"ts":"2026-05-29T21:01:42Z","event":"startup_verifier_complete","cycle":2,"steps":6}
+{"ts": "2026-05-29T21:01:49Z", "event": "in_progress_init", "cycle": 2, "title": "Data model + H0"}
+{"ts": "2026-05-30T05:02:36Z", "event": "in_progress_update", "cycle": 2, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-05-30T05:03:21Z", "event": "in_progress_update", "cycle": 2, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-30T05:07:59Z", "event": "in_progress_update", "cycle": 2, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-30T05:08:37Z","event":"verify_cycle_pass","cycle":2}
+{"ts":"2026-05-30T05:08:49Z","event":"verify_cycle_pass","cycle":2}
+{"ts": "2026-05-30T05:10:26Z", "event": "in_progress_update", "cycle": 2, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-05-30T05:11:35Z", "event": "in_progress_update", "cycle": 2, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-30T05:13:20Z", "event": "in_progress_update", "cycle": 2, "phase": "COMMIT", "retry": 0}
