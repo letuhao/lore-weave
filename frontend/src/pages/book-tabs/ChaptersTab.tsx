@@ -18,7 +18,7 @@ interface ChaptersTabProps {
 }
 
 export function ChaptersTab({ bookId }: ChaptersTabProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation('books');
   const { accessToken } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -94,7 +94,7 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
       a.download = `${ch.title || ch.original_filename}.txt`;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success('Chapter exported');
+      toast.success(t('chapters.exported'));
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -109,26 +109,26 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
     },
     {
       key: 'title',
-      header: 'Title',
+      header: t('chapters.col.title'),
       render: (ch) => (
         <span data-testid="chapter-title-cell" className="font-medium">{ch.title || ch.original_filename}</span>
       ),
     },
     {
       key: 'language',
-      header: 'Language',
+      header: t('chapters.col.language'),
       className: 'w-32',
       render: (ch) => <LanguageDisplay code={ch.original_language} />,
     },
     {
       key: 'status',
-      header: 'Status',
+      header: t('chapters.col.status'),
       className: 'w-24',
       render: (ch) => <StatusBadge variant={ch.lifecycle_state} />,
     },
     {
       key: 'updated',
-      header: 'Updated',
+      header: t('chapters.col.updated'),
       className: 'w-32 text-xs text-muted-foreground',
       render: (ch) => ch.draft_updated_at
         ? new Date(ch.draft_updated_at).toLocaleDateString()
@@ -143,28 +143,28 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
           <Link
             to={`/books/${bookId}/chapters/${ch.chapter_id}/edit`}
             className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            title="Edit"
+            title={t('chapters.action.edit')}
           >
             <Pencil className="h-3.5 w-3.5" />
           </Link>
           <button
             onClick={() => setExtractChapterId(ch.chapter_id)}
             className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
-            title="Extract Glossary"
+            title={t('chapters.action.extract')}
           >
             <Sparkles className="h-3.5 w-3.5" />
           </button>
           <button
             onClick={() => void handleDownload(ch)}
             className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            title="Download"
+            title={t('chapters.action.download')}
           >
             <Download className="h-3.5 w-3.5" />
           </button>
           <button
             onClick={() => setTrashTarget(ch)}
             className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-            title="Trash"
+            title={t('chapters.action.trash')}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
@@ -178,7 +178,7 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
       {/* Toolbar */}
       <div className="flex items-center justify-between">
         <span className="text-xs text-muted-foreground">
-          {total} {total === 1 ? 'chapter' : 'chapters'}
+          {t('chapters.count', { count: total })}
         </span>
         <div className="flex items-center gap-2">
           <button
@@ -186,7 +186,7 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
             className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           >
             <Upload className="h-3.5 w-3.5" />
-            Import
+            {t('chapters.import')}
           </button>
           <button
             onClick={() => setCreateOpen(true)}
@@ -194,7 +194,7 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
             className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             <Plus className="h-3.5 w-3.5" />
-            New Chapter
+            {t('chapters.new')}
           </button>
         </div>
       </div>
@@ -216,15 +216,15 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
       {!loading && chapters.length === 0 && (
         <EmptyState
           icon={Pencil}
-          title="No chapters yet"
-          description="Create your first chapter to start writing."
+          title={t('chapters.empty.title')}
+          description={t('chapters.empty.description')}
           action={
             <button
               onClick={() => setCreateOpen(true)}
               className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
             >
               <Plus className="h-4 w-4" />
-              New Chapter
+              {t('chapters.new')}
             </button>
           }
         />
@@ -246,12 +246,12 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
       <FormDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        title="New Chapter"
-        description="Create a new chapter in the editor."
+        title={t('chapters.create.title')}
+        description={t('chapters.create.description')}
         footer={
           <>
             <button onClick={() => setCreateOpen(false)} data-testid="chapter-create-cancel" className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-secondary">
-              {t('common.cancel')}
+              {t('common.cancel', { ns: 'common' })}
             </button>
             <button
               onClick={() => void handleCreate()}
@@ -259,24 +259,24 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
               data-testid="chapter-create-submit"
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
-              {t('common.create')}
+              {t('common.create', { ns: 'common' })}
             </button>
           </>
         }
       >
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Title</label>
+            <label className="text-sm font-medium">{t('chapters.create.title_label')}</label>
             <input
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="Chapter title (optional)"
+              placeholder={t('chapters.create.title_placeholder')}
               data-testid="chapter-title-input"
               className="w-full rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/40"
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Language <span className="text-destructive">*</span></label>
+            <label className="text-sm font-medium">{t('chapters.create.language_label')} <span className="text-destructive">*</span></label>
             <input
               value={newLang}
               onChange={(e) => setNewLang(e.target.value)}
@@ -287,11 +287,11 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Initial draft</label>
+            <label className="text-sm font-medium">{t('chapters.create.body_label')}</label>
             <textarea
               value={newBody}
               onChange={(e) => setNewBody(e.target.value)}
-              placeholder="Start writing... (optional)"
+              placeholder={t('chapters.create.body_placeholder')}
               rows={4}
               data-testid="chapter-body-input"
               className="w-full resize-none rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-ring/40"
@@ -304,9 +304,9 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
       <ConfirmDialog
         open={!!trashTarget}
         onOpenChange={(open) => { if (!open) setTrashTarget(null); }}
-        title="Move chapter to trash?"
-        description={`"${trashTarget?.title || trashTarget?.original_filename}" will be moved to trash.`}
-        confirmLabel="Move to Trash"
+        title={t('chapters.trash_confirm.title')}
+        description={t('chapters.trash_confirm.description', { title: trashTarget?.title || trashTarget?.original_filename })}
+        confirmLabel={t('chapters.trash_confirm.confirm')}
         variant="destructive"
         onConfirm={() => void handleTrash()}
       />

@@ -91,5 +91,117 @@
       "confirm": "Delete Permanently",
       "cancel": "Cancel"
     }
+  },
+  "chapters": {
+    "count": "{{count}} chapter",
+    "count_other": "{{count}} chapters",
+    "import": "Import",
+    "new": "New Chapter",
+    "col": {
+      "title": "Title",
+      "language": "Language",
+      "status": "Status",
+      "updated": "Updated"
+    },
+    "action": {
+      "edit": "Edit",
+      "extract": "Extract Glossary",
+      "download": "Download",
+      "trash": "Trash"
+    },
+    "exported": "Chapter exported",
+    "empty": {
+      "title": "No chapters yet",
+      "description": "Create your first chapter to start writing."
+    },
+    "create": {
+      "title": "New Chapter",
+      "description": "Create a new chapter in the editor.",
+      "title_label": "Title",
+      "title_placeholder": "Chapter title (optional)",
+      "language_label": "Language",
+      "body_label": "Initial draft",
+      "body_placeholder": "Start writing... (optional)"
+    },
+    "trash_confirm": {
+      "title": "Move chapter to trash?",
+      "description": "\"{{title}}\" will be moved to trash.",
+      "confirm": "Move to Trash"
+    }
+  },
+  "glossary": {
+    "header": "Glossary & Lore",
+    "entity_count": "{{count}} entity",
+    "entity_count_other": "{{count}} entities",
+    "kind_count": "{{count}} kind",
+    "kind_count_other": "{{count}} kinds",
+    "extract": "Extract",
+    "genres": "Genres",
+    "kinds": "Kinds",
+    "new_entity": "New Entity",
+    "no_kinds": "No kinds available",
+    "search": "Search entities...",
+    "filter": "Filter",
+    "filter_count": "{{count}} filter",
+    "filter_count_other": "{{count}} filters",
+    "kind_label": "Kind",
+    "status_label": "Status",
+    "status_all": "All",
+    "status": {
+      "draft": "Draft",
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "clear_filters": "Clear all filters",
+    "created": "Entity created",
+    "deleted": "Entity deleted",
+    "empty": {
+      "title": "No entities yet",
+      "description": "Create your first glossary entity — characters, places, items, and more."
+    },
+    "untitled": "Untitled",
+    "alive_title": "Alive — click to mark dead",
+    "dead_title": "Dead — click to revive",
+    "alive": "alive",
+    "dead": "dead",
+    "chapter_count": "{{count}} chapter",
+    "chapter_count_other": "{{count}} chapters",
+    "translation_count": "{{count}} translation",
+    "translation_count_other": "{{count}} translations",
+    "evidence_count": "{{count}} evidence",
+    "evidence_count_other": "{{count}} evidences",
+    "delete": "Delete",
+    "delete_confirm": {
+      "title": "Delete entity?",
+      "description": "\"{{title}}\" will be moved to the recycle bin.",
+      "confirm": "Delete"
+    }
+  },
+  "sharing": {
+    "title": "Visibility",
+    "subtitle": "Control who can see and read this book.",
+    "options": {
+      "private": {
+        "label": "Private",
+        "desc": "Only you can see this book"
+      },
+      "unlisted": {
+        "label": "Unlisted",
+        "desc": "Anyone with the link can read"
+      },
+      "public": {
+        "label": "Public",
+        "desc": "Visible in the public catalog"
+      }
+    },
+    "visibility_set": "Visibility set to {{name}}",
+    "load_failed": "Failed to load sharing settings",
+    "update_failed": "Failed to update visibility",
+    "token_rotated": "Link token rotated",
+    "rotate_failed": "Failed to rotate token",
+    "link_title": "Shareable Link",
+    "copy": "Copy",
+    "copied": "Copied",
+    "rotate": "Rotate link (invalidates old link)"
   }
 }

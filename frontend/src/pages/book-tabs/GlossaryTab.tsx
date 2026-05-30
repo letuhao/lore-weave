@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { BookOpen, Plus, Search, Filter, Trash2, Settings2, Layers, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
@@ -34,6 +35,7 @@ function KindBadge({ kind }: { kind: GlossaryEntitySummary['kind'] }) {
 }
 
 export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }: { bookId: string; bookGenreTags?: string[]; bookOriginalLanguage?: string }) {
+  const { t } = useTranslation('books');
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
@@ -72,7 +74,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
         // Empty genre_tags or "universal" = show for all books
         if (tags.length === 0 || tags.includes('universal')) return true;
         // Otherwise, show if book has at least one matching genre
-        return bookGenreTags.length === 0 || tags.some((t) => bookGenreTags.includes(t));
+        return bookGenreTags.length === 0 || tags.some((tag) => bookGenreTags.includes(tag));
       })
       .sort((a, b) => a.sort_order - b.sort_order),
     [kinds, bookGenreTags],
@@ -82,7 +84,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
     if (!accessToken) return;
     try {
       await glossaryApi.createEntity(bookId, kindId, accessToken);
-      toast.success('Entity created');
+      toast.success(t('glossary.created'));
       setCreateKindOpen(false);
       invalidate();
     } catch (e) {
@@ -94,7 +96,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
     if (!accessToken || !deleteTarget) return;
     try {
       await glossaryApi.deleteEntity(bookId, deleteTarget.entity_id, accessToken);
-      toast.success('Entity deleted');
+      toast.success(t('glossary.deleted'));
       setDeleteTarget(null);
       invalidate();
     } catch (e) {
@@ -139,10 +141,10 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold">Glossary & Lore</h3>
+          <h3 className="text-sm font-semibold">{t('glossary.header')}</h3>
           <p className="text-xs text-muted-foreground">
-            {total} entit{total !== 1 ? 'ies' : 'y'}
-            {visibleKinds.length > 0 && ` · ${visibleKinds.length} kind${visibleKinds.length !== 1 ? 's' : ''}`}
+            {t('glossary.entity_count', { count: total })}
+            {visibleKinds.length > 0 && ` · ${t('glossary.kind_count', { count: visibleKinds.length })}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -152,21 +154,21 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
             className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
           >
             <Sparkles className="h-3.5 w-3.5" />
-            Extract
+            {t('glossary.extract')}
           </button>
           <button
             onClick={() => setView('genres')}
             className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
           >
             <Layers className="h-3.5 w-3.5" />
-            Genres
+            {t('glossary.genres')}
           </button>
           <button
             onClick={() => setView('kinds')}
             className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
           >
             <Settings2 className="h-3.5 w-3.5" />
-            Kinds
+            {t('glossary.kinds')}
           </button>
           <div className="relative">
             <button
@@ -174,7 +176,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
               className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
             >
               <Plus className="h-3.5 w-3.5" />
-              New Entity
+              {t('glossary.new_entity')}
             </button>
             {createKindOpen && (
               <>
@@ -191,7 +193,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
                     </button>
                   ))}
                   {visibleKinds.length === 0 && (
-                    <p className="px-3 py-2 text-xs text-muted-foreground">No kinds available</p>
+                    <p className="px-3 py-2 text-xs text-muted-foreground">{t('glossary.no_kinds')}</p>
                   )}
                 </div>
               </>
@@ -208,7 +210,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
             type="text"
             value={filters.searchQuery}
             onChange={(e) => setFilters((f) => ({ ...f, searchQuery: e.target.value }))}
-            placeholder="Search entities..."
+            placeholder={t('glossary.search')}
             data-testid="glossary-search-input"
             className="w-full rounded-md border bg-background pl-9 pr-3 py-1.5 text-xs focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
           />
@@ -223,7 +225,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
           )}
         >
           <Filter className="h-3.5 w-3.5" />
-          {activeFilterCount > 0 ? `${activeFilterCount} filter${activeFilterCount > 1 ? 's' : ''}` : 'Filter'}
+          {activeFilterCount > 0 ? t('glossary.filter_count', { count: activeFilterCount }) : t('glossary.filter')}
         </button>
       </div>
 
@@ -231,7 +233,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
       {filterOpen && (
         <div className="rounded-lg border bg-card p-3 space-y-3">
           <div className="space-y-1.5">
-            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Kind</span>
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{t('glossary.kind_label')}</span>
             <div className="flex flex-wrap gap-1.5">
               {visibleKinds.map((k) => {
                 const active = filters.kindCodes.includes(k.code);
@@ -254,7 +256,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
             </div>
           </div>
           <div className="space-y-1.5">
-            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Status</span>
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{t('glossary.status_label')}</span>
             <div className="flex gap-1.5">
               {(['all', 'draft', 'active', 'inactive'] as const).map((s) => (
                 <button
@@ -265,7 +267,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
                     filters.status === s ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:text-foreground',
                   )}
                 >
-                  {s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}
+                  {s === 'all' ? t('glossary.status_all') : t(`glossary.status.${s}`)}
                 </button>
               ))}
             </div>
@@ -275,7 +277,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
               onClick={() => setFilters(defaultFilters)}
               className="text-[10px] text-primary hover:underline"
             >
-              Clear all filters
+              {t('glossary.clear_filters')}
             </button>
           )}
         </div>
@@ -285,8 +287,8 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
       {entities.length === 0 ? (
         <EmptyState
           icon={BookOpen}
-          title="No entities yet"
-          description="Create your first glossary entity — characters, places, items, and more."
+          title={t('glossary.empty.title')}
+          description={t('glossary.empty.description')}
         />
       ) : (
         <div className="rounded-lg border divide-y">
@@ -303,11 +305,11 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium truncate">
-                    {e.display_name || 'Untitled'}
+                    {e.display_name || t('glossary.untitled')}
                   </span>
                   <KindBadge kind={e.kind} />
                   <span className={cn('rounded-full px-1.5 py-0.5 text-[9px] font-medium', STATUS_COLORS[e.status])}>
-                    {e.status}
+                    {t(`glossary.status.${e.status}`)}
                   </span>
                   {e.alive != null && (
                     <button
@@ -318,23 +320,23 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
                           ? 'bg-green-500/10 text-green-500 hover:bg-green-500/20'
                           : 'bg-muted text-muted-foreground hover:bg-muted/80',
                       )}
-                      title={e.alive ? 'Alive — click to mark dead' : 'Dead — click to revive'}
+                      title={e.alive ? t('glossary.alive_title') : t('glossary.dead_title')}
                     >
-                      {e.alive ? 'alive' : 'dead'}
+                      {e.alive ? t('glossary.alive') : t('glossary.dead')}
                     </button>
                   )}
                 </div>
                 <div className="flex items-center gap-3 mt-0.5 text-[10px] text-muted-foreground">
-                  {e.chapter_link_count > 0 && <span>{e.chapter_link_count} chapter{e.chapter_link_count !== 1 ? 's' : ''}</span>}
-                  {e.translation_count > 0 && <span>{e.translation_count} translation{e.translation_count !== 1 ? 's' : ''}</span>}
-                  {e.evidence_count > 0 && <span>{e.evidence_count} evidence{e.evidence_count !== 1 ? 's' : ''}</span>}
+                  {e.chapter_link_count > 0 && <span>{t('glossary.chapter_count', { count: e.chapter_link_count })}</span>}
+                  {e.translation_count > 0 && <span>{t('glossary.translation_count', { count: e.translation_count })}</span>}
+                  {e.evidence_count > 0 && <span>{t('glossary.evidence_count', { count: e.evidence_count })}</span>}
                   {e.tags.length > 0 && <span>{e.tags.join(', ')}</span>}
                 </div>
               </div>
               <button
                 onClick={() => setDeleteTarget(e)}
                 className="opacity-0 group-hover:opacity-100 max-md:opacity-100 rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
-                title="Delete"
+                title={t('glossary.delete')}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -346,9 +348,9 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
       <ConfirmDialog
         open={!!deleteTarget}
         onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
-        title="Delete entity?"
-        description={`"${deleteTarget?.display_name || 'Untitled'}" will be moved to the recycle bin.`}
-        confirmLabel="Delete"
+        title={t('glossary.delete_confirm.title')}
+        description={t('glossary.delete_confirm.description', { title: deleteTarget?.display_name || t('glossary.untitled') })}
+        confirmLabel={t('glossary.delete_confirm.confirm')}
         variant="destructive"
         onConfirm={() => void handleDelete()}
       />

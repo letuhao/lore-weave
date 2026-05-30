@@ -91,5 +91,117 @@
       "confirm": "完全に削除",
       "cancel": "キャンセル"
     }
+  },
+  "chapters": {
+    "count": "{{count}}章",
+    "count_other": "{{count}}章",
+    "import": "インポート",
+    "new": "新しい章",
+    "col": {
+      "title": "タイトル",
+      "language": "言語",
+      "status": "ステータス",
+      "updated": "更新"
+    },
+    "action": {
+      "edit": "編集",
+      "extract": "用語を抽出",
+      "download": "ダウンロード",
+      "trash": "ゴミ箱"
+    },
+    "exported": "章をエクスポートしました",
+    "empty": {
+      "title": "まだ章がありません",
+      "description": "最初の章を作成して執筆を始めましょう。"
+    },
+    "create": {
+      "title": "新しい章",
+      "description": "エディタで新しい章を作成します。",
+      "title_label": "タイトル",
+      "title_placeholder": "章のタイトル（任意）",
+      "language_label": "言語",
+      "body_label": "初稿",
+      "body_placeholder": "執筆を始める...（任意）"
+    },
+    "trash_confirm": {
+      "title": "章をゴミ箱に移動しますか？",
+      "description": "「{{title}}」がゴミ箱に移動されます。",
+      "confirm": "ゴミ箱に移動"
+    }
+  },
+  "glossary": {
+    "header": "用語集とロア",
+    "entity_count": "{{count}}個のエンティティ",
+    "entity_count_other": "{{count}}個のエンティティ",
+    "kind_count": "{{count}}種類",
+    "kind_count_other": "{{count}}種類",
+    "extract": "抽出",
+    "genres": "ジャンル",
+    "kinds": "種類",
+    "new_entity": "新しいエンティティ",
+    "no_kinds": "利用可能な種類がありません",
+    "search": "エンティティを検索...",
+    "filter": "フィルター",
+    "filter_count": "{{count}}個のフィルター",
+    "filter_count_other": "{{count}}個のフィルター",
+    "kind_label": "種類",
+    "status_label": "ステータス",
+    "status_all": "すべて",
+    "status": {
+      "draft": "下書き",
+      "active": "アクティブ",
+      "inactive": "非アクティブ"
+    },
+    "clear_filters": "すべてのフィルターをクリア",
+    "created": "エンティティを作成しました",
+    "deleted": "エンティティを削除しました",
+    "empty": {
+      "title": "まだエンティティがありません",
+      "description": "最初の用語エンティティを作成しましょう — キャラクター、場所、アイテムなど。"
+    },
+    "untitled": "無題",
+    "alive_title": "生存 — クリックして死亡にする",
+    "dead_title": "死亡 — クリックして復活",
+    "alive": "生存",
+    "dead": "死亡",
+    "chapter_count": "{{count}}章",
+    "chapter_count_other": "{{count}}章",
+    "translation_count": "{{count}}件の翻訳",
+    "translation_count_other": "{{count}}件の翻訳",
+    "evidence_count": "{{count}}件の根拠",
+    "evidence_count_other": "{{count}}件の根拠",
+    "delete": "削除",
+    "delete_confirm": {
+      "title": "エンティティを削除しますか？",
+      "description": "「{{title}}」はゴミ箱に移動されます。",
+      "confirm": "削除"
+    }
+  },
+  "sharing": {
+    "title": "公開設定",
+    "subtitle": "この書籍を誰が閲覧・読めるかを管理します。",
+    "options": {
+      "private": {
+        "label": "非公開",
+        "desc": "あなただけがこの書籍を閲覧できます"
+      },
+      "unlisted": {
+        "label": "限定公開",
+        "desc": "リンクを知っている人なら誰でも読めます"
+      },
+      "public": {
+        "label": "公開",
+        "desc": "公開カタログに表示されます"
+      }
+    },
+    "visibility_set": "公開設定を{{name}}に設定しました",
+    "load_failed": "共有設定の読み込みに失敗しました",
+    "update_failed": "公開設定の更新に失敗しました",
+    "token_rotated": "リンクトークンを更新しました",
+    "rotate_failed": "トークンの更新に失敗しました",
+    "link_title": "共有リンク",
+    "copy": "コピー",
+    "copied": "コピーしました",
+    "rotate": "リンクを更新（古いリンクは無効になります）"
   }
 }

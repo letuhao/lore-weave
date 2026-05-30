@@ -91,5 +91,117 @@
       "confirm": "Xóa vĩnh viễn",
       "cancel": "Hủy"
     }
+  },
+  "chapters": {
+    "count": "{{count}} chương",
+    "count_other": "{{count}} chương",
+    "import": "Nhập",
+    "new": "Chương mới",
+    "col": {
+      "title": "Tiêu đề",
+      "language": "Ngôn ngữ",
+      "status": "Trạng thái",
+      "updated": "Cập nhật"
+    },
+    "action": {
+      "edit": "Sửa",
+      "extract": "Trích xuất thuật ngữ",
+      "download": "Tải xuống",
+      "trash": "Thùng rác"
+    },
+    "exported": "Đã xuất chương",
+    "empty": {
+      "title": "Chưa có chương nào",
+      "description": "Tạo chương đầu tiên để bắt đầu viết."
+    },
+    "create": {
+      "title": "Chương mới",
+      "description": "Tạo một chương mới trong trình soạn thảo.",
+      "title_label": "Tiêu đề",
+      "title_placeholder": "Tiêu đề chương (tùy chọn)",
+      "language_label": "Ngôn ngữ",
+      "body_label": "Bản nháp ban đầu",
+      "body_placeholder": "Bắt đầu viết... (tùy chọn)"
+    },
+    "trash_confirm": {
+      "title": "Chuyển chương vào thùng rác?",
+      "description": "\"{{title}}\" sẽ được chuyển vào thùng rác.",
+      "confirm": "Chuyển vào thùng rác"
+    }
+  },
+  "glossary": {
+    "header": "Thuật ngữ & Tri thức",
+    "entity_count": "{{count}} thực thể",
+    "entity_count_other": "{{count}} thực thể",
+    "kind_count": "{{count}} loại",
+    "kind_count_other": "{{count}} loại",
+    "extract": "Trích xuất",
+    "genres": "Thể loại",
+    "kinds": "Loại",
+    "new_entity": "Thực thể mới",
+    "no_kinds": "Không có loại nào",
+    "search": "Tìm thực thể...",
+    "filter": "Lọc",
+    "filter_count": "{{count}} bộ lọc",
+    "filter_count_other": "{{count}} bộ lọc",
+    "kind_label": "Loại",
+    "status_label": "Trạng thái",
+    "status_all": "Tất cả",
+    "status": {
+      "draft": "Bản nháp",
+      "active": "Hoạt động",
+      "inactive": "Không hoạt động"
+    },
+    "clear_filters": "Xóa tất cả bộ lọc",
+    "created": "Đã tạo thực thể",
+    "deleted": "Đã xóa thực thể",
+    "empty": {
+      "title": "Chưa có thực thể nào",
+      "description": "Tạo thực thể thuật ngữ đầu tiên — nhân vật, địa điểm, vật phẩm và hơn thế."
+    },
+    "untitled": "Chưa đặt tên",
+    "alive_title": "Còn sống — nhấn để đánh dấu đã chết",
+    "dead_title": "Đã chết — nhấn để hồi sinh",
+    "alive": "còn sống",
+    "dead": "đã chết",
+    "chapter_count": "{{count}} chương",
+    "chapter_count_other": "{{count}} chương",
+    "translation_count": "{{count}} bản dịch",
+    "translation_count_other": "{{count}} bản dịch",
+    "evidence_count": "{{count}} bằng chứng",
+    "evidence_count_other": "{{count}} bằng chứng",
+    "delete": "Xóa",
+    "delete_confirm": {
+      "title": "Xóa thực thể?",
+      "description": "\"{{title}}\" sẽ được chuyển vào thùng rác.",
+      "confirm": "Xóa"
+    }
+  },
+  "sharing": {
+    "title": "Hiển thị",
+    "subtitle": "Kiểm soát ai có thể xem và đọc cuốn sách này.",
+    "options": {
+      "private": {
+        "label": "Riêng tư",
+        "desc": "Chỉ bạn có thể xem cuốn sách này"
+      },
+      "unlisted": {
+        "label": "Không công khai",
+        "desc": "Bất kỳ ai có liên kết đều có thể đọc"
+      },
+      "public": {
+        "label": "Công khai",
+        "desc": "Hiển thị trong danh mục công khai"
+      }
+    },
+    "visibility_set": "Đã đặt hiển thị thành {{name}}",
+    "load_failed": "Không thể tải cài đặt chia sẻ",
+    "update_failed": "Không thể cập nhật hiển thị",
+    "token_rotated": "Đã xoay token liên kết",
+    "rotate_failed": "Không thể xoay token",
+    "link_title": "Liên kết chia sẻ",
+    "copy": "Sao chép",
+    "copied": "Đã sao chép",
+    "rotate": "Xoay liên kết (vô hiệu hóa liên kết cũ)"
   }
 }

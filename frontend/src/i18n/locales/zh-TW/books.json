@@ -91,5 +91,117 @@
       "confirm": "永久刪除",
       "cancel": "取消"
     }
+  },
+  "chapters": {
+    "count": "{{count}} 章節",
+    "count_other": "{{count}} 章節",
+    "import": "匯入",
+    "new": "新章節",
+    "col": {
+      "title": "標題",
+      "language": "語言",
+      "status": "狀態",
+      "updated": "更新"
+    },
+    "action": {
+      "edit": "編輯",
+      "extract": "擷取詞彙",
+      "download": "下載",
+      "trash": "回收筒"
+    },
+    "exported": "已匯出章節",
+    "empty": {
+      "title": "尚無章節",
+      "description": "建立第一個章節以開始寫作。"
+    },
+    "create": {
+      "title": "新章節",
+      "description": "在編輯器中建立新章節。",
+      "title_label": "標題",
+      "title_placeholder": "章節標題（選填）",
+      "language_label": "語言",
+      "body_label": "初始草稿",
+      "body_placeholder": "開始寫作...（選填）"
+    },
+    "trash_confirm": {
+      "title": "將章節移至回收筒？",
+      "description": "「{{title}}」將移至回收筒。",
+      "confirm": "移至回收筒"
+    }
+  },
+  "glossary": {
+    "header": "詞彙表與設定",
+    "entity_count": "{{count}} 個實體",
+    "entity_count_other": "{{count}} 個實體",
+    "kind_count": "{{count}} 種類",
+    "kind_count_other": "{{count}} 種類",
+    "extract": "擷取",
+    "genres": "類型",
+    "kinds": "種類",
+    "new_entity": "新實體",
+    "no_kinds": "沒有可用的種類",
+    "search": "搜尋實體...",
+    "filter": "篩選",
+    "filter_count": "{{count}} 個篩選",
+    "filter_count_other": "{{count}} 個篩選",
+    "kind_label": "種類",
+    "status_label": "狀態",
+    "status_all": "全部",
+    "status": {
+      "draft": "草稿",
+      "active": "啟用",
+      "inactive": "停用"
+    },
+    "clear_filters": "清除所有篩選",
+    "created": "已建立實體",
+    "deleted": "已刪除實體",
+    "empty": {
+      "title": "尚無實體",
+      "description": "建立第一個詞彙實體 — 角色、地點、物品等等。"
+    },
+    "untitled": "未命名",
+    "alive_title": "存活 — 點擊標記為死亡",
+    "dead_title": "死亡 — 點擊復活",
+    "alive": "存活",
+    "dead": "死亡",
+    "chapter_count": "{{count}} 章節",
+    "chapter_count_other": "{{count}} 章節",
+    "translation_count": "{{count}} 個翻譯",
+    "translation_count_other": "{{count}} 個翻譯",
+    "evidence_count": "{{count}} 個佐證",
+    "evidence_count_other": "{{count}} 個佐證",
+    "delete": "刪除",
+    "delete_confirm": {
+      "title": "刪除實體？",
+      "description": "「{{title}}」將移至資源回收筒。",
+      "confirm": "刪除"
+    }
+  },
+  "sharing": {
+    "title": "可見性",
+    "subtitle": "控制誰可以查看與閱讀這本書。",
+    "options": {
+      "private": {
+        "label": "私人",
+        "desc": "只有您可以查看這本書"
+      },
+      "unlisted": {
+        "label": "不公開",
+        "desc": "任何擁有連結的人都可閱讀"
+      },
+      "public": {
+        "label": "公開",
+        "desc": "顯示在公開目錄中"
+      }
+    },
+    "visibility_set": "可見性已設為{{name}}",
+    "load_failed": "無法載入分享設定",
+    "update_failed": "無法更新可見性",
+    "token_rotated": "已輪換連結權杖",
+    "rotate_failed": "無法輪換權杖",
+    "link_title": "分享連結",
+    "copy": "複製",
+    "copied": "已複製",
+    "rotate": "輪換連結（舊連結將失效）"
   }
 }
