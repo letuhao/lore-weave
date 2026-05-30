@@ -16,5 +16,81 @@
   "next_in": "{{seconds}}秒後に次の章へ...",
   "cancel": "キャンセル",
   "progress": "第{{current}}章 / 全{{total}}章 · {{percent}}% 完了",
-  "ch_short": "第{{n}}章"
+  "ch_short": "第{{n}}章",
+  "theme": {
+    "title": "読書テーマ",
+    "presets": "テーマプリセット",
+    "preset": {
+      "dark": {
+        "name": "ダーク",
+        "desc": "暖かみのある暗い背景"
+      },
+      "light": {
+        "name": "ライト",
+        "desc": "クリーンな白い背景"
+      },
+      "sepia": {
+        "name": "セピア",
+        "desc": "暖かい紙の色合い"
+      },
+      "oled": {
+        "name": "OLED",
+        "desc": "OLED画面向けの完全な黒"
+      },
+      "parchment": {
+        "name": "羊皮紙",
+        "desc": "クラシックな羊皮紙の質感"
+      },
+      "forest": {
+        "name": "フォレスト",
+        "desc": "夜間も目に優しい"
+      }
+    },
+    "font": "フォント",
+    "typography": "タイポグラフィ",
+    "font_size": "文字サイズ",
+    "line_height": "行の高さ",
+    "text_width": "テキスト幅",
+    "spacing": "間隔",
+    "reading_mode": "読書モード",
+    "show_indices": "ブロックインデックスを表示（翻訳者モード）",
+    "auto_next": "次の章を自動読み込み",
+    "auto_scroll": "TTSに合わせて自動スクロール"
+  },
+  "tts": {
+    "source": {
+      "attached": "添付",
+      "ai": "AI TTS",
+      "browser": "ブラウザ",
+      "inline": "音声"
+    },
+    "prev_block": "前のブロック (Shift+Left)",
+    "play": "再生 (Space)",
+    "pause": "一時停止 (Space)",
+    "next_block": "次のブロック (Shift+Right)",
+    "cycle_speed": "速度を切り替え",
+    "autoscroll_on": "自動スクロール: オン",
+    "autoscroll_off": "自動スクロール: オフ",
+    "settings": "TTS設定",
+    "stop": "停止 (Escape)",
+    "speed": "速度",
+    "browser_voice": "ブラウザ音声",
+    "default": "デフォルト",
+    "no_voices": "利用可能な音声がありません。ブラウザがWeb Speech APIに対応していない可能性があります。",
+    "ai_model": "AI TTSモデル",
+    "none_browser": "なし（ブラウザTTSのみ）",
+    "no_models": "モデルが設定されていません。設定 > プロバイダーでプロバイダーを追加してください。",
+    "ai_voice": "AI音声",
+    "openai_voices": "OpenAI音声: alloy, echo, fable, onyx, nova, shimmer",
+    "behavior": "動作",
+    "autoscroll_active": "アクティブなブロックへ自動スクロール",
+    "highlight_active": "アクティブなブロックをハイライト",
+    "now_playing": "再生中",
+    "block_label": "ブロック: {{id}}",
+    "status": {
+      "playing": "再生中",
+      "paused": "一時停止",
+      "loading": "読み込み中"
+    }
+  }
 }

@@ -16,5 +16,81 @@
   "next_in": "{{seconds}} 秒後前往下一章...",
   "cancel": "取消",
   "progress": "第 {{current}} 章 / 共 {{total}} 章 · {{percent}}% 完成",
-  "ch_short": "第 {{n}} 章"
+  "ch_short": "第 {{n}} 章",
+  "theme": {
+    "title": "閱讀主題",
+    "presets": "主題預設",
+    "preset": {
+      "dark": {
+        "name": "深色",
+        "desc": "溫暖的深色背景"
+      },
+      "light": {
+        "name": "淺色",
+        "desc": "乾淨的白色背景"
+      },
+      "sepia": {
+        "name": "棕褐色",
+        "desc": "溫暖的紙張色調"
+      },
+      "oled": {
+        "name": "OLED",
+        "desc": "適合 OLED 螢幕的純黑"
+      },
+      "parchment": {
+        "name": "羊皮紙",
+        "desc": "經典羊皮紙質感"
+      },
+      "forest": {
+        "name": "森林",
+        "desc": "夜間護眼"
+      }
+    },
+    "font": "字型",
+    "typography": "排版",
+    "font_size": "字型大小",
+    "line_height": "行高",
+    "text_width": "文字寬度",
+    "spacing": "間距",
+    "reading_mode": "閱讀模式",
+    "show_indices": "顯示區塊索引（譯者模式）",
+    "auto_next": "自動載入下一章",
+    "auto_scroll": "隨 TTS 自動捲動"
+  },
+  "tts": {
+    "source": {
+      "attached": "附加",
+      "ai": "AI TTS",
+      "browser": "瀏覽器",
+      "inline": "音訊"
+    },
+    "prev_block": "上一個區塊 (Shift+Left)",
+    "play": "播放 (Space)",
+    "pause": "暫停 (Space)",
+    "next_block": "下一個區塊 (Shift+Right)",
+    "cycle_speed": "切換速度",
+    "autoscroll_on": "自動捲動：開",
+    "autoscroll_off": "自動捲動：關",
+    "settings": "TTS 設定",
+    "stop": "停止 (Escape)",
+    "speed": "速度",
+    "browser_voice": "瀏覽器語音",
+    "default": "預設",
+    "no_voices": "沒有可用的語音。您的瀏覽器可能不支援 Web Speech API。",
+    "ai_model": "AI TTS 模型",
+    "none_browser": "無（僅瀏覽器 TTS）",
+    "no_models": "未設定模型。請在設定 > 供應商中新增供應商。",
+    "ai_voice": "AI 語音",
+    "openai_voices": "OpenAI 語音：alloy, echo, fable, onyx, nova, shimmer",
+    "behavior": "行為",
+    "autoscroll_active": "自動捲動至作用中區塊",
+    "highlight_active": "標示作用中區塊",
+    "now_playing": "正在播放",
+    "block_label": "區塊：{{id}}",
+    "status": {
+      "playing": "播放中",
+      "paused": "已暫停",
+      "loading": "載入中"
+    }
+  }
 }

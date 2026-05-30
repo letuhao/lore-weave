@@ -16,5 +16,81 @@
   "next_in": "Next chapter in {{seconds}}s...",
   "cancel": "Cancel",
   "progress": "Chapter {{current}} of {{total}} · {{percent}}% complete",
-  "ch_short": "Ch. {{n}}"
+  "ch_short": "Ch. {{n}}",
+  "theme": {
+    "title": "Reading Theme",
+    "presets": "Theme Presets",
+    "preset": {
+      "dark": {
+        "name": "Dark",
+        "desc": "Warm dark background"
+      },
+      "light": {
+        "name": "Light",
+        "desc": "Clean white background"
+      },
+      "sepia": {
+        "name": "Sepia",
+        "desc": "Warm paper tone"
+      },
+      "oled": {
+        "name": "OLED",
+        "desc": "True black for OLED screens"
+      },
+      "parchment": {
+        "name": "Parchment",
+        "desc": "Classic parchment feel"
+      },
+      "forest": {
+        "name": "Forest",
+        "desc": "Easy on the eyes at night"
+      }
+    },
+    "font": "Font",
+    "typography": "Typography",
+    "font_size": "Font size",
+    "line_height": "Line height",
+    "text_width": "Text width",
+    "spacing": "Spacing",
+    "reading_mode": "Reading Mode",
+    "show_indices": "Show block indices (translator mode)",
+    "auto_next": "Auto-load next chapter",
+    "auto_scroll": "Auto-scroll with TTS"
+  },
+  "tts": {
+    "source": {
+      "attached": "Attached",
+      "ai": "AI TTS",
+      "browser": "Browser",
+      "inline": "Audio"
+    },
+    "prev_block": "Previous block (Shift+Left)",
+    "play": "Play (Space)",
+    "pause": "Pause (Space)",
+    "next_block": "Next block (Shift+Right)",
+    "cycle_speed": "Cycle speed",
+    "autoscroll_on": "Auto-scroll: ON",
+    "autoscroll_off": "Auto-scroll: OFF",
+    "settings": "TTS Settings",
+    "stop": "Stop (Escape)",
+    "speed": "Speed",
+    "browser_voice": "Browser Voice",
+    "default": "Default",
+    "no_voices": "No voices available. Your browser may not support Web Speech API.",
+    "ai_model": "AI TTS Model",
+    "none_browser": "None (browser TTS only)",
+    "no_models": "No models configured. Add a provider in Settings > Providers.",
+    "ai_voice": "AI Voice",
+    "openai_voices": "OpenAI voices: alloy, echo, fable, onyx, nova, shimmer",
+    "behavior": "Behavior",
+    "autoscroll_active": "Auto-scroll to active block",
+    "highlight_active": "Highlight active block",
+    "now_playing": "Now Playing",
+    "block_label": "Block: {{id}}",
+    "status": {
+      "playing": "playing",
+      "paused": "paused",
+      "loading": "loading"
+    }
+  }
 }

@@ -16,5 +16,81 @@
   "next_in": "Chương tiếp theo sau {{seconds}}s...",
   "cancel": "Hủy",
   "progress": "Chương {{current}} / {{total}} · {{percent}}% hoàn thành",
-  "ch_short": "Ch. {{n}}"
+  "ch_short": "Ch. {{n}}",
+  "theme": {
+    "title": "Giao diện đọc",
+    "presets": "Bộ giao diện",
+    "preset": {
+      "dark": {
+        "name": "Tối",
+        "desc": "Nền tối ấm"
+      },
+      "light": {
+        "name": "Sáng",
+        "desc": "Nền trắng sạch"
+      },
+      "sepia": {
+        "name": "Sepia",
+        "desc": "Tông giấy ấm"
+      },
+      "oled": {
+        "name": "OLED",
+        "desc": "Đen tuyền cho màn OLED"
+      },
+      "parchment": {
+        "name": "Giấy da",
+        "desc": "Cảm giác giấy da cổ điển"
+      },
+      "forest": {
+        "name": "Rừng",
+        "desc": "Dịu mắt ban đêm"
+      }
+    },
+    "font": "Phông chữ",
+    "typography": "Kiểu chữ",
+    "font_size": "Cỡ chữ",
+    "line_height": "Giãn dòng",
+    "text_width": "Chiều rộng văn bản",
+    "spacing": "Khoảng cách",
+    "reading_mode": "Chế độ đọc",
+    "show_indices": "Hiện chỉ số khối (chế độ dịch giả)",
+    "auto_next": "Tự động tải chương kế",
+    "auto_scroll": "Tự cuộn theo TTS"
+  },
+  "tts": {
+    "source": {
+      "attached": "Đính kèm",
+      "ai": "AI TTS",
+      "browser": "Trình duyệt",
+      "inline": "Âm thanh"
+    },
+    "prev_block": "Khối trước (Shift+Left)",
+    "play": "Phát (Space)",
+    "pause": "Tạm dừng (Space)",
+    "next_block": "Khối sau (Shift+Right)",
+    "cycle_speed": "Đổi tốc độ",
+    "autoscroll_on": "Tự cuộn: BẬT",
+    "autoscroll_off": "Tự cuộn: TẮT",
+    "settings": "Cài đặt TTS",
+    "stop": "Dừng (Escape)",
+    "speed": "Tốc độ",
+    "browser_voice": "Giọng trình duyệt",
+    "default": "Mặc định",
+    "no_voices": "Không có giọng nào. Trình duyệt của bạn có thể không hỗ trợ Web Speech API.",
+    "ai_model": "Mô hình AI TTS",
+    "none_browser": "Không (chỉ TTS trình duyệt)",
+    "no_models": "Chưa cấu hình mô hình. Thêm nhà cung cấp trong Cài đặt > Nhà cung cấp.",
+    "ai_voice": "Giọng AI",
+    "openai_voices": "Giọng OpenAI: alloy, echo, fable, onyx, nova, shimmer",
+    "behavior": "Hành vi",
+    "autoscroll_active": "Tự cuộn đến khối đang đọc",
+    "highlight_active": "Tô sáng khối đang đọc",
+    "now_playing": "Đang phát",
+    "block_label": "Khối: {{id}}",
+    "status": {
+      "playing": "đang phát",
+      "paused": "tạm dừng",
+      "loading": "đang tải"
+    }
+  }
 }
