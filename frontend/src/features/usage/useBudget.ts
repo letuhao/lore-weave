@@ -2,12 +2,14 @@
 // fetch of the guardrail (Subsystem A) + platform balance (Subsystem B) and
 // the limit-update mutation; BudgetPanel renders.
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { usageApi } from './api';
 import type { Guardrail, PlatformBalance } from './types';
 
 export function useBudget() {
+  const { t } = useTranslation('usage');
   const { accessToken } = useAuth();
   const [guardrail, setGuardrail] = useState<Guardrail | null>(null);
   const [platform, setPlatform] = useState<PlatformBalance | null>(null);
@@ -28,7 +30,7 @@ export function useBudget() {
         setPlatform(p);
       })
       .catch(() => {
-        if (!cancelled) toast.error('Failed to load budget');
+        if (!cancelled) toast.error(t('budget.load_failed'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -51,10 +53,10 @@ export function useBudget() {
           monthly_limit_usd: monthlyLimit,
         });
         setGuardrail(updated);
-        toast.success('Budget limits updated');
+        toast.success(t('budget.limits_updated'));
         return true;
       } catch {
-        toast.error('Failed to update budget');
+        toast.error(t('budget.update_failed'));
         return false;
       } finally {
         setSaving(false);
