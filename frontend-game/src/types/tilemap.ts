@@ -48,13 +48,32 @@ export type Direction = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw';
 export interface RegistryRef {
   id: string;
   version: string;
+  /** TMP-Q4 — per-book value-band thresholds (ascending). 4 values =
+   *  5 bands (low / low-mid / mid / high / gilt). Backend validates
+   *  strict-ascending at registry load. When `undefined`, the
+   *  frontend falls back to VALUE_BAND_DEFAULTS = [500, 2000, 5000, 12000].
+   *  Frontend defensive clamp lives in `pickValueBand` (chunk B) —
+   *  TS type-level validation of ascending tuples isn't possible, so
+   *  fixture stubs or buggy backend builds must still be tolerated. */
+  value_band_thresholds?: [number, number, number, number];
 }
 
 /** V2 — per-tile terrain cell. Indexed by `terrain_layer` u8 values
- *  via `terrain_vocabulary`. Mirrors backend `TerrainCell`. */
+ *  via `terrain_vocabulary`. Mirrors backend `TerrainCell`.
+ *
+ *  TMP-Q3 chunk C — optional per-kind cross-tile-blend shader hints.
+ *  When present, `applyBlendFilterV2` overrides `STAGE2_BLEND_DEFAULTS`
+ *  for the dominant zone TerrainKind. Both fields are validated
+ *  `[0.0, 1.0]` finite at backend registry-load; the frontend
+ *  additionally sanitizes via `sanitizeUnitInterval` before pushing
+ *  to the GPU (defense in depth). */
 export interface TerrainCell {
   primitive: TerrainPrimitive;
   tag: string;
+  /** Kernel half-radius hint in [0, 1]. Absent ⇒ Stage-2 default. */
+  blend_radius?: number;
+  /** Mix factor at tile edge in [0, 1]. Absent ⇒ Stage-2 default. */
+  blend_strength?: number;
 }
 
 /** TerrainKind u8 index per `services/tilemap-service/src/types/tile.rs` */
@@ -181,6 +200,12 @@ export interface TilemapObjectPlacement {
   canon_ref?: string;
   biome_object_type?: BiomeObjectType;
   value?: number;
+  /** TMP-Q4 — sort position within the zone's effective tier list
+   *  (high-`max` first; `0` is the highest band of the zone).
+   *  Populated by TreasurePlacer for pile placements AND their
+   *  guards (the guard inherits the pile's tier_index). `undefined`
+   *  for non-treasure placements. */
+  tier_index?: number;
   // V2 additive — populated by backend Batch 3.0c.1+. Absent on pre-V2 fixtures.
   /** Engine behavior class. */
   primitive?: ObjectPrimitive;

@@ -306,6 +306,7 @@ fn place_connection_object(
         canon_ref: None,
         biome_object_type: None,
         value,
+        tier_index: None,
         primitive: Some(v2.primitive),
         tag: Some(v2.tag),
         footprint: Some(v2.footprint),

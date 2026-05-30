@@ -1,0 +1,363 @@
+{
+  "chapter": "alice_ch02",
+  "entities": {
+    "tp": [
+      {
+        "actual_idx": 0,
+        "expected_idx": 0,
+        "actual_name": "Alice",
+        "actual_kind": "person",
+        "expected_name": "Alice",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 1,
+        "expected_idx": 1,
+        "actual_name": "White Rabbit",
+        "actual_kind": "person",
+        "expected_name": "White Rabbit",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 4,
+        "expected_idx": 2,
+        "actual_name": "Duchess",
+        "actual_kind": "person",
+        "expected_name": "Duchess",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 7,
+        "expected_idx": 3,
+        "actual_name": "hall",
+        "actual_kind": "place",
+        "expected_name": "hall",
+        "expected_kind": "place",
+        "matched_via": "canonical_name"
+      }
+    ],
+    "fp": [
+      {
+        "actual_idx": 2,
+        "actual_name": "little golden key",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 3,
+        "actual_name": "telescope",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 5,
+        "actual_name": "feet",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 6,
+        "actual_name": "garden door",
+        "actual_kind": "place"
+      },
+      {
+        "actual_idx": 8,
+        "actual_name": "white kid gloves",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 9,
+        "actual_name": "Good-bye",
+        "actual_kind": "concept"
+      },
+      {
+        "actual_idx": 10,
+        "actual_name": "large fan",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 11,
+        "actual_name": "shoes",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 12,
+        "actual_name": "stockings",
+        "actual_kind": "artifact"
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 4,
+        "expected_name": "garden",
+        "expected_kind": "place",
+        "expected_aliases": []
+      }
+    ],
+    "fp_trap": [
+      {
+        "actual_idx": 5,
+        "actual_name": "feet",
+        "actual_kind": "artifact",
+        "trap_idx": 0,
+        "trap_name": "feet",
+        "trap_reason": "Alice personifies her feet in dialogue; not an actor"
+      }
+    ],
+    "fp_annotation_gap": []
+  },
+  "relations": {
+    "tp": [
+      {
+        "actual_idx": 9,
+        "expected_idx": 0,
+        "actual": [
+          "White Rabbit",
+          "serves",
+          "Duchess",
+          "affirm"
+        ],
+        "expected": [
+          "White Rabbit",
+          "serves",
+          "Duchess",
+          "affirm"
+        ]
+      }
+    ],
+    "fp": [
+      {
+        "actual_idx": 1,
+        "actual": [
+          "White Rabbit",
+          "carries",
+          "white kid gloves",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 2,
+        "actual": [
+          "White Rabbit",
+          "carries",
+          "large fan",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 4,
+        "actual": [
+          "Alice",
+          "trusts",
+          "shoes",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 6,
+        "actual": [
+          "Alice",
+          "helps",
+          "feet",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 7,
+        "actual": [
+          "Alice",
+          "knows",
+          "stockings",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 8,
+        "actual": [
+          "Alice",
+          "follows",
+          "garden door",
+          "affirm"
+        ]
+      }
+    ],
+    "fn": [],
+    "fp_trap": [],
+    "fp_annotation_gap": [
+      {
+        "actual_idx": 0,
+        "actual": [
+          "Alice",
+          "works_for",
+          "hall",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 3,
+        "actual": [
+          "Alice",
+          "lives_in",
+          "hall",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 5,
+        "actual": [
+          "White Rabbit",
+          "works_for",
+          "Duchess",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 10,
+        "actual": [
+          "White Rabbit",
+          "courts",
+          "Duchess",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      }
+    ]
+  },
+  "events": {
+    "tp": [
+      {
+        "actual_idx": 2,
+        "expected_idx": 1,
+        "actual_summary": "Alice picks up the little golden key and moves quickly toward the garden door.",
+        "actual_participants": [
+          "Alice"
+        ],
+        "expected_summary": "Alice picks up a golden key and moves toward the garden door",
+        "expected_participants": [
+          "Alice"
+        ],
+        "overlap_score": 0.9,
+        "participants_jaccard": 1.0
+      },
+      {
+        "actual_idx": 5,
+        "expected_idx": 3,
+        "actual_summary": "The White Rabbit holds a pair of white kid gloves in one hand and a large fan in the other.",
+        "actual_participants": [
+          "White Rabbit"
+        ],
+        "expected_summary": "White Rabbit returns dressed in gloves carrying a fan",
+        "expected_participants": [
+          "White Rabbit"
+        ],
+        "overlap_score": 0.571,
+        "participants_jaccard": 1.0
+      }
+    ],
+    "fp": [
+      {
+        "actual_idx": 0,
+        "actual_summary": "Alice experiences a sudden expansion of her body, becoming as large as the largest telescope ever made.",
+        "actual_participants": [
+          "Alice"
+        ]
+      },
+      {
+        "actual_idx": 1,
+        "actual_summary": "Alice reaches a height of over nine feet, marking a significant physical transformation.",
+        "actual_participants": [
+          "Alice"
+        ]
+      },
+      {
+        "actual_idx": 3,
+        "actual_summary": "Alice’s head hits the ceiling of the hall as she grows taller.",
+        "actual_participants": [
+          "Alice"
+        ]
+      },
+      {
+        "actual_idx": 4,
+        "actual_summary": "Alice bids farewell to her feet as they grow increasingly distant and small.",
+        "actual_participants": [
+          "Alice"
+        ]
+      },
+      {
+        "actual_idx": 6,
+        "actual_summary": "The White Rabbit expresses concern that the Duchess will be angry for keeping her waiting.",
+        "actual_participants": [
+          "White Rabbit"
+        ]
+      },
+      {
+        "actual_idx": 7,
+        "actual_summary": "The White Rabbit arrives back in a grand and hurried manner, wearing fine attire.",
+        "actual_participants": [
+          "White Rabbit"
+        ]
+      },
+      {
+        "actual_idx": 8,
+        "actual_summary": "Alice lies on her side and looks through the garden with one eye.",
+        "actual_participants": [
+          "Alice"
+        ]
+      },
+      {
+        "actual_idx": 9,
+        "actual_summary": "Alice reflects on the future care of her feet, imagining someone else putting on their shoes and stockings.",
+        "actual_participants": [
+          "Alice"
+        ]
+      },
+      {
+        "actual_idx": 10,
+        "actual_summary": "Alice starts crying after struggling to see into the garden.",
+        "actual_participants": [
+          "Alice"
+        ]
+      },
+      {
+        "actual_idx": 11,
+        "actual_summary": "Alice resolves to care for her feet so they will walk as she desires.",
+        "actual_participants": [
+          "Alice"
+        ]
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 0,
+        "expected_summary": "Alice grows larger than nine feet tall",
+        "expected_participants": [
+          "Alice"
+        ]
+      },
+      {
+        "expected_idx": 2,
+        "expected_summary": "Alice sits down and cries",
+        "expected_participants": [
+          "Alice"
+        ]
+      }
+    ],
+    "fp_trap": [
+      {
+        "actual_idx": 0,
+        "actual_summary": "Alice experiences a sudden expansion of her body, becoming as large as the largest telescope ever made.",
+        "actual_participants": [
+          "Alice"
+        ],
+        "trap_idx": 1,
+        "trap_summary": "Alice meets the Duchess",
+        "trap_participants": [],
+        "trap_reason": "Duchess is only foreshadowed by the Rabbit, never appears here"
+      }
+    ],
+    "fp_annotation_gap": []
+  }
+}

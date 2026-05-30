@@ -97,7 +97,118 @@ def _load_precision_filter_config() -> PrecisionFilterConfig | None:
 
 
 # Cached at module load; None when env unset = zero-overhead default.
+# Cycle 73f: runtime-overridable via Redis pubsub (consume_filter_reload_signal
+# below). Module-level rebind is atomic via Python GIL.
 _PRECISION_FILTER_CONFIG: PrecisionFilterConfig | None = _load_precision_filter_config()
+
+
+def set_precision_filter_config(
+    new_config: PrecisionFilterConfig | None,
+) -> PrecisionFilterConfig | None:
+    """Cycle 73f — atomically replace module-level cache from subscriber."""
+    global _PRECISION_FILTER_CONFIG
+    _PRECISION_FILTER_CONFIG = new_config
+    return _PRECISION_FILTER_CONFIG
+
+
+async def hydrate_precision_filter_config_from_redis(redis_url: str) -> None:
+    """Cycle 73f r3 H1 fold — symmetric with KS hydrate. On worker
+    startup, GET the Redis key + seed module-level cache. Without this,
+    a worker container restart silently drops the ops-override and
+    reverts to env defaults until next manual reload POST — defeating
+    the cycle's "persistent across restart" promise (asymmetric with
+    KS r2 H1 fold which already had hydrate).
+
+    Cycle 73h: bumps `worker_ai_filter_reload_total{outcome=startup}`
+    on success or `startup_failed` on exception (replaces cycle 73g
+    M4's log-only emission)."""
+    import redis.asyncio as aioredis
+    from loreweave_extraction import get_filter_config
+
+    from app.metrics import worker_ai_filter_reload_total
+
+    redis_client = aioredis.from_url(redis_url, decode_responses=False)
+    try:
+        cached = await get_filter_config(redis_client)
+        if cached is not None:
+            set_precision_filter_config(cached)
+            logger.info(
+                "WORKER_FILTER_RELOAD outcome=startup active=true "
+                "model_ref=%s categories=%s",
+                cached.model_ref, cached.categories,
+            )
+        else:
+            logger.info(
+                "WORKER_FILTER_RELOAD outcome=startup active=false "
+                "reason=redis_key_absent",
+            )
+        worker_ai_filter_reload_total.labels(outcome="startup").inc()
+    except Exception:
+        worker_ai_filter_reload_total.labels(outcome="startup_failed").inc()
+        logger.exception(
+            "WORKER_FILTER_RELOAD outcome=startup_failed reason=exception"
+        )
+    finally:
+        try:
+            await redis_client.aclose()
+        except Exception:
+            pass
+
+
+async def consume_filter_reload_signal(redis_url: str) -> None:
+    """Cycle 73f — subscribe to filter-reload pubsub; on each signal,
+    re-read Redis key + atomically swap module-level cache.
+
+    Resilient: SDK's subscribe_filter_reload has outer try/except with
+    backoff so this never bubbles into asyncio.gather and kills the
+    extraction job loop.
+    """
+    import redis.asyncio as aioredis
+    from loreweave_extraction import (
+        get_filter_config,
+        subscribe_filter_reload,
+    )
+
+    redis_client = aioredis.from_url(redis_url, decode_responses=False)
+
+    async def _on_reload() -> None:
+        # Cycle 73h fold (closes cycle 73g M4 stopgap): bump Prometheus
+        # counter on each pubsub-driven re-read outcome. Structured log
+        # line retained for legacy ops grep tooling.
+        from app.metrics import worker_ai_filter_reload_total
+        try:
+            new_config = await get_filter_config(redis_client)
+            if new_config is None:
+                # Cycle 74b — key absent (e.g. after a disable=true DELETE)
+                # reverts to env config, matching startup-hydrate semantics
+                # (hydrate keeps env config when the key is absent). Without
+                # this, the runtime path set None (filter OFF) while a restart
+                # reloads env config (filter ON) — a silent cross-path
+                # divergence surfaced by the cycle-73f live smoke. `_load`
+                # itself returns None when no filter env is set, so the
+                # genuinely-no-filter deployment still ends at None.
+                new_config = _load_precision_filter_config()
+            set_precision_filter_config(new_config)
+            worker_ai_filter_reload_total.labels(outcome="applied").inc()
+            logger.info(
+                "WORKER_FILTER_RELOAD outcome=applied active=%s "
+                "model_ref=%s",
+                new_config is not None,
+                new_config.model_ref if new_config else None,
+            )
+        except Exception:
+            worker_ai_filter_reload_total.labels(outcome="failed").inc()
+            logger.exception(
+                "WORKER_FILTER_RELOAD outcome=failed reason=exception"
+            )
+
+    try:
+        await subscribe_filter_reload(redis_client, _on_reload)
+    finally:
+        try:
+            await redis_client.aclose()
+        except Exception:
+            pass
 
 
 def _load_entity_recovery_config() -> EntityRecoveryConfig | None:

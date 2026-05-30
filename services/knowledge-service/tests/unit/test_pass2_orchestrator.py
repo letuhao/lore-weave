@@ -925,6 +925,293 @@ def test_load_entity_recovery_config_env_set_builds_config() -> None:
                 os.environ[k] = v
 
 
+# ── Cycle 73e writer autocreate env loader (regression-lock) ─────
+
+
+def test_load_writer_autocreate_config_env_unset_defaults_disabled() -> None:
+    """Default state: autocreate OFF + max=20 (the soft cap).
+    Pre-73e callers preserve cascade-skip behaviour."""
+    import os
+    from app.extraction.pass2_orchestrator import _load_writer_autocreate_config
+
+    saved = {
+        k: os.environ.pop(k, None) for k in (
+            "KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED",
+            "KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_MAX_PER_CHAPTER",
+        )
+    }
+    try:
+        config = _load_writer_autocreate_config()
+        assert config == {
+            "autocreate_enabled": False,
+            "autocreate_max": 20,
+        }
+    finally:
+        for k, v in saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+
+def test_load_writer_autocreate_config_env_set_enables_with_cap() -> None:
+    """ENABLED=true + MAX_PER_CHAPTER=5 → spread-ready dict for
+    write_pass2_extraction."""
+    import os
+    from app.extraction.pass2_orchestrator import _load_writer_autocreate_config
+
+    saved = {
+        k: os.environ.pop(k, None) for k in (
+            "KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED",
+            "KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_MAX_PER_CHAPTER",
+        )
+    }
+    try:
+        os.environ["KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED"] = "true"
+        os.environ["KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_MAX_PER_CHAPTER"] = "5"
+        config = _load_writer_autocreate_config()
+        assert config == {
+            "autocreate_enabled": True,
+            "autocreate_max": 5,
+        }
+    finally:
+        for k, v in saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+
+@pytest.mark.asyncio
+async def test_hydrate_precision_filter_config_seeds_cache_from_redis(monkeypatch):
+    """Cycle 73g L1 fold (closes r3 L1): KS hydrate on lifespan startup
+    GETs Redis key + swaps module-level cache. Without this test, a
+    regression in the hydrate path (signature change, import-path drift)
+    only surfaces at container boot, not in CI."""
+    from loreweave_extraction import PrecisionFilterConfig
+    import app.extraction.pass2_orchestrator as orch
+
+    persisted = PrecisionFilterConfig(
+        model_ref="hydrated-uuid",
+        categories=("relation",),
+        partial_policy="drop",
+    )
+
+    async def fake_get_filter_config(redis_client):
+        return persisted
+
+    saved = orch._PRECISION_FILTER_CONFIG
+    monkeypatch.setattr(
+        "loreweave_extraction.get_filter_config",
+        fake_get_filter_config,
+    )
+    fake_redis = MagicMock()
+    fake_redis.aclose = AsyncMock()
+    monkeypatch.setattr(
+        "redis.asyncio.from_url",
+        lambda *args, **kwargs: fake_redis,
+    )
+
+    try:
+        await orch.hydrate_precision_filter_config_from_redis("redis://fake")
+        assert orch._PRECISION_FILTER_CONFIG is persisted
+    finally:
+        orch.set_precision_filter_config(saved)
+
+
+@pytest.mark.asyncio
+async def test_hydrate_precision_filter_config_no_op_when_redis_empty(monkeypatch):
+    """L1 edge: Redis key absent → hydrate leaves cache at env-default
+    (no clobber)."""
+    import app.extraction.pass2_orchestrator as orch
+
+    async def fake_get_filter_config(redis_client):
+        return None
+
+    saved = orch._PRECISION_FILTER_CONFIG
+    monkeypatch.setattr(
+        "loreweave_extraction.get_filter_config",
+        fake_get_filter_config,
+    )
+    fake_redis = MagicMock()
+    fake_redis.aclose = AsyncMock()
+    monkeypatch.setattr(
+        "redis.asyncio.from_url",
+        lambda *args, **kwargs: fake_redis,
+    )
+
+    try:
+        await orch.hydrate_precision_filter_config_from_redis("redis://fake")
+        # Cache unchanged.
+        assert orch._PRECISION_FILTER_CONFIG is saved
+    finally:
+        orch.set_precision_filter_config(saved)
+
+
+@pytest.mark.asyncio
+async def test_consume_filter_reload_reverts_to_env_when_key_absent(monkeypatch):
+    """Cycle 74b: pubsub re-read with the key absent (e.g. after a
+    disable=true DELETE) reverts to ENV config, NOT None — the runtime
+    path now matches startup hydrate. Closes the cycle-73f live-smoke
+    cross-path divergence (runtime set None while a restart reloaded env)."""
+    from loreweave_extraction import PrecisionFilterConfig
+    import app.extraction.pass2_orchestrator as orch
+
+    env_config = PrecisionFilterConfig(
+        model_ref="env-revert-uuid",
+        categories=("relation",),
+        partial_policy="drop",
+    )
+
+    async def fake_subscribe_filter_reload(redis_client, on_reload, **kwargs):
+        await on_reload()  # simulate one pubsub signal
+        return
+
+    async def fake_get_filter_config(redis_client):
+        return None  # key absent
+
+    saved = orch._PRECISION_FILTER_CONFIG
+    monkeypatch.setattr(
+        "loreweave_extraction.subscribe_filter_reload",
+        fake_subscribe_filter_reload,
+    )
+    monkeypatch.setattr(
+        "loreweave_extraction.get_filter_config",
+        fake_get_filter_config,
+    )
+    monkeypatch.setattr(orch, "_load_precision_filter_config", lambda: env_config)
+    fake_redis = MagicMock()
+    fake_redis.aclose = AsyncMock()
+    monkeypatch.setattr(
+        "redis.asyncio.from_url",
+        lambda *args, **kwargs: fake_redis,
+    )
+
+    try:
+        await orch.consume_filter_reload_signal("redis://fake")
+        # Reverted to env config, not None.
+        assert orch._PRECISION_FILTER_CONFIG is env_config
+    finally:
+        orch.set_precision_filter_config(saved)
+
+
+def test_set_precision_filter_config_real_function_mutates_module_binding():
+    """Cycle 73g L2 fold (closes r3 L2): mock-only tests verify
+    mock_set_local.assert_called_once_with(None) but don't prove the
+    REAL `set_precision_filter_config` actually mutates the module-level
+    binding. This test calls the real function (no mock) and verifies."""
+    import app.extraction.pass2_orchestrator as orch
+
+    saved = orch._PRECISION_FILTER_CONFIG
+    try:
+        # Disable path: set to None.
+        result = orch.set_precision_filter_config(None)
+        assert result is None
+        assert orch._PRECISION_FILTER_CONFIG is None
+
+        # Re-enable path: set to a fresh config.
+        from loreweave_extraction import PrecisionFilterConfig
+        new = PrecisionFilterConfig(model_ref="real-mutation-test")
+        result = orch.set_precision_filter_config(new)
+        assert result is new
+        assert orch._PRECISION_FILTER_CONFIG is new
+    finally:
+        # Restore for downstream tests.
+        orch.set_precision_filter_config(saved)
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_filter_config_snapshot_at_entry_survives_concurrent_reload(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """Cycle 73f r3 H2 fold — `_maybe_apply_precision_filter` MUST
+    snapshot the module-level `_PRECISION_FILTER_CONFIG` to a local
+    var at function entry. Without that, a concurrent pubsub-driven
+    reload that swaps `_PRECISION_FILTER_CONFIG = None` between the
+    `is None` check and the `config=...` parameter pass would push
+    None into `apply_precision_filter`, crashing the call.
+
+    This test simulates the race by making `apply_precision_filter`
+    rebind `_PRECISION_FILTER_CONFIG = None` mid-call, then asserts
+    that the orchestrator's invocation received the ORIGINAL config
+    (proving snapshot semantics)."""
+    from loreweave_extraction import (
+        Pass2Candidates, PrecisionFilterConfig,
+    )
+    import app.extraction.pass2_orchestrator as orch
+    from app.extraction.pass2_orchestrator import extract_pass2_chat_turn
+
+    pass_a_entity = _entity("Alice")
+    mock_entities.return_value = [pass_a_entity]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result()
+
+    config = PrecisionFilterConfig(
+        model_ref="snapshot-test-uuid",
+        categories=("relation",),
+        partial_policy="drop",
+    )
+
+    apf_calls: list[Any] = []
+
+    async def _race_apf(candidates, **kwargs):
+        # Simulate a concurrent pubsub callback that swaps the
+        # module-level binding to None DURING our call.
+        orch._PRECISION_FILTER_CONFIG = None
+        apf_calls.append(kwargs.get("config"))
+        return candidates  # return inputs unchanged
+
+    with patch(f"{_ORCH}._PRECISION_FILTER_CONFIG", config), \
+         patch(f"{_ORCH}.apply_precision_filter", new=_race_apf):
+        await extract_pass2_chat_turn(
+            session=MagicMock(),
+            user_id=_USER_ID, project_id=_PROJECT_ID,
+            source_type="chat_turn", source_id="t-race", job_id=_JOB_ID,
+            user_message="hello",
+            assistant_message="hi",
+            model_source="user_model", model_ref="m-uuid",
+            llm_client=MagicMock(),
+        )
+
+    # apply_precision_filter was called exactly once with the ORIGINAL
+    # snapshot config (not None — even though the race fake swapped
+    # the module-level binding to None before returning).
+    assert len(apf_calls) == 1
+    assert apf_calls[0] is config, (
+        "filter config must be snapshotted at function entry; "
+        "found a concurrent rebind leaked into apply_precision_filter "
+        "call → r3 H2 atomicity fold regressed"
+    )
+
+
+def test_load_writer_autocreate_config_accepts_truthy_variants() -> None:
+    """1 / yes / on / TRUE are all truthy; anything else is False."""
+    import os
+    from app.extraction.pass2_orchestrator import _load_writer_autocreate_config
+
+    saved = os.environ.pop("KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED", None)
+    try:
+        for truthy in ("true", "True", "TRUE", "1", "yes", "YES", "on", "On"):
+            os.environ["KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED"] = truthy
+            assert _load_writer_autocreate_config()["autocreate_enabled"] is True, (
+                f"{truthy!r} should be truthy"
+            )
+        for falsy in ("false", "no", "off", "0", "", "  ", "anything-else"):
+            os.environ["KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED"] = falsy
+            assert _load_writer_autocreate_config()["autocreate_enabled"] is False, (
+                f"{falsy!r} should be falsy"
+            )
+    finally:
+        os.environ.pop("KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED", None)
+        if saved is not None:
+            os.environ["KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED"] = saved
+
+
 @pytest.mark.asyncio
 @patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
 @patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)

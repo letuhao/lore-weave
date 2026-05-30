@@ -32,7 +32,7 @@ import logging
 import os
 import time
 from collections.abc import Iterable
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 from uuid import UUID
 
 from loreweave_extraction import (
@@ -128,7 +128,127 @@ def _load_precision_filter_config() -> PrecisionFilterConfig | None:
 
 
 # Cached at module load. Re-read by tests via patch on this name.
+# Cycle 73f: overridable at runtime via reload_precision_filter_config_from_redis()
+# called from lifespan startup + filter-reload subscriber. Module-level rebind
+# is atomic via Python GIL; in-flight readers keep their reference per call.
 _PRECISION_FILTER_CONFIG: PrecisionFilterConfig | None = _load_precision_filter_config()
+
+
+def set_precision_filter_config(
+    new_config: PrecisionFilterConfig | None,
+) -> PrecisionFilterConfig | None:
+    """Cycle 73f — atomically replace module-level cache.
+
+    Called by:
+      - reload endpoint after writing to Redis (immediate local apply)
+      - subscriber task on pubsub receipt (catches reloads from other services)
+      - lifespan startup after reading current Redis state
+
+    Returns the now-effective config (echoed in API response)."""
+    global _PRECISION_FILTER_CONFIG
+    _PRECISION_FILTER_CONFIG = new_config
+    return _PRECISION_FILTER_CONFIG
+
+
+async def hydrate_precision_filter_config_from_redis(redis_url: str) -> None:
+    """Cycle 73f r2 H1 fold — on KS lifespan startup, GET the Redis key
+    and seed the module-level cache. Without this, container restart
+    loses ops-override until first reload-endpoint POST. Bumps
+    `knowledge_extraction_filter_reload_total{source=startup}` metric.
+    """
+    import redis.asyncio as aioredis
+
+    from app.metrics import knowledge_extraction_filter_reload_total
+    from loreweave_extraction import get_filter_config
+
+    redis_client = aioredis.from_url(redis_url, decode_responses=False)
+    try:
+        cached = await get_filter_config(redis_client)
+        if cached is not None:
+            set_precision_filter_config(cached)
+            knowledge_extraction_filter_reload_total.labels(
+                source="startup", outcome="applied",
+            ).inc()
+            logger.info(
+                "cycle 73f: hydrated filter config from Redis on startup "
+                "(model_ref=%s, categories=%s)",
+                cached.model_ref, cached.categories,
+            )
+        else:
+            logger.info(
+                "cycle 73f: Redis filter config absent — using env defaults",
+            )
+    except Exception:
+        knowledge_extraction_filter_reload_total.labels(
+            source="startup", outcome="failed",
+        ).inc()
+        logger.exception(
+            "cycle 73f: failed to hydrate filter config from Redis "
+            "(non-fatal; using env defaults)",
+        )
+    finally:
+        try:
+            await redis_client.aclose()
+        except Exception:
+            pass
+
+
+async def consume_filter_reload_signal(redis_url: str) -> None:
+    """Cycle 73f r2 H1 fold — KS subscriber task. Listens on the
+    filter-reload pubsub channel; on each signal, re-reads Redis +
+    atomically swaps module-level cache. Without this, multi-replica KS
+    deployments (the cloud default per CLAUDE.md) silently drift —
+    only the replica that received the POST gets the new config.
+
+    Resilient: SDK's subscribe_filter_reload has outer try/except with
+    backoff so this never bubbles into lifespan and breaks startup.
+    """
+    import redis.asyncio as aioredis
+
+    from app.metrics import knowledge_extraction_filter_reload_total
+    from loreweave_extraction import (
+        get_filter_config,
+        subscribe_filter_reload,
+    )
+
+    redis_client = aioredis.from_url(redis_url, decode_responses=False)
+
+    async def _on_reload() -> None:
+        try:
+            new_config = await get_filter_config(redis_client)
+            if new_config is None:
+                # Cycle 74b — key absent (e.g. after a disable=true DELETE)
+                # reverts to env config, matching startup-hydrate semantics.
+                # Without this the runtime path set None (filter OFF) while a
+                # restart reloads env config (filter ON) — a silent cross-path
+                # divergence surfaced by the cycle-73f live smoke. `_load`
+                # returns None when no filter env is set, so a genuinely
+                # no-filter deployment still ends at None.
+                new_config = _load_precision_filter_config()
+            set_precision_filter_config(new_config)
+            knowledge_extraction_filter_reload_total.labels(
+                source="pubsub", outcome="applied",
+            ).inc()
+            logger.info(
+                "cycle 73f: KS filter config reloaded from Redis "
+                "(active=%s)", new_config is not None,
+            )
+        except Exception:
+            knowledge_extraction_filter_reload_total.labels(
+                source="pubsub", outcome="failed",
+            ).inc()
+            logger.exception(
+                "cycle 73f: KS failed to re-read filter config from "
+                "Redis on pubsub signal",
+            )
+
+    try:
+        await subscribe_filter_reload(redis_client, _on_reload)
+    finally:
+        try:
+            await redis_client.aclose()
+        except Exception:
+            pass
 
 
 def _load_entity_recovery_config() -> EntityRecoveryConfig | None:
@@ -165,6 +285,52 @@ def _load_entity_recovery_config() -> EntityRecoveryConfig | None:
 
 
 _ENTITY_RECOVERY_CONFIG: EntityRecoveryConfig | None = _load_entity_recovery_config()
+
+
+class _WriterAutocreateKwargs(TypedDict):
+    """Typed kwargs spreadable into ``write_pass2_extraction(**)``.
+
+    Cycle 73e — used by ``_load_writer_autocreate_config`` so the
+    ``**_WRITER_AUTOCREATE_CONFIG`` spread is mypy-clean. Matches the
+    new kwargs added to ``pass2_writer.write_pass2_extraction`` exactly.
+    """
+    autocreate_enabled: bool
+    autocreate_max: int | None
+
+
+def _load_writer_autocreate_config() -> _WriterAutocreateKwargs:
+    """Cycle 73e — read Pass2 writer autocreate env config.
+
+    Returns a TypedDict spreadable into ``write_pass2_extraction(**)``.
+    Default: disabled. Tier A.1/A.2 free repairs still run regardless;
+    only Tier B autocreate is gated.
+
+    Envs (all optional):
+        KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED: ``"true"`` /
+            ``"1"`` / ``"yes"`` / ``"on"`` (case-insensitive) enables
+            Tier B. Anything else (default) keeps it off.
+        KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_MAX_PER_CHAPTER: int
+            cap per chapter (default 20). Empty / non-numeric also
+            defaults to 20.
+    """
+    enabled_env = os.environ.get(
+        "KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED", "false"
+    ).strip().lower()
+    enabled = enabled_env in ("true", "1", "yes", "on")
+    max_env = os.environ.get(
+        "KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_MAX_PER_CHAPTER", "20"
+    ).strip() or "20"
+    try:
+        max_per_chapter: int | None = max(1, int(max_env))
+    except ValueError:
+        max_per_chapter = 20
+    return {
+        "autocreate_enabled": enabled,
+        "autocreate_max": max_per_chapter,
+    }
+
+
+_WRITER_AUTOCREATE_CONFIG: _WriterAutocreateKwargs = _load_writer_autocreate_config()
 
 
 def _on_recovery_decision(decision: RecoveryDecision) -> None:
@@ -299,7 +465,15 @@ async def _maybe_apply_precision_filter(
     coverage gauge, and returns the filtered lists. Facts are NEVER
     filtered (per spec D2 — passed through unchanged).
     """
-    if _PRECISION_FILTER_CONFIG is None:
+    # Cycle 73f r3 H2 fold — snapshot the module-level config to a LOCAL
+    # variable at function entry. Without this, a concurrent pubsub-driven
+    # reload could rebind `_PRECISION_FILTER_CONFIG = None` between the
+    # `is None` check below and the later `config=...` read, passing None
+    # into `apply_precision_filter` whose call sites assume non-None →
+    # AttributeError crashes the extraction job instead of gracefully
+    # falling through. Snapshot makes this function atomic w.r.t. reload.
+    cfg = _PRECISION_FILTER_CONFIG
+    if cfg is None:
         return entities, relations, events, facts
 
     pass2_candidates = Pass2Candidates(
@@ -313,7 +487,7 @@ async def _maybe_apply_precision_filter(
     filtered = await apply_precision_filter(
         pass2_candidates,
         text=text,
-        config=_PRECISION_FILTER_CONFIG,
+        config=cfg,
         user_id=user_id,
         llm_client=llm_client,
         on_decision=_on_filter_decision,
@@ -651,6 +825,7 @@ async def _run_pipeline(
             job_id=job_id,
             extraction_model=model_ref,
             anchors=anchors,
+            **_WRITER_AUTOCREATE_CONFIG,
         )
 
     started = time.perf_counter()
@@ -722,6 +897,7 @@ async def _run_pipeline(
             job_id=job_id,
             extraction_model=model_ref,
             anchors=anchors,
+            **_WRITER_AUTOCREATE_CONFIG,
         )
 
     # Steps 2-4 — relation/event/fact run concurrently. All three
@@ -851,6 +1027,7 @@ async def _run_pipeline(
         extraction_model=model_ref,
         anchors=anchors,
         hierarchy_paths=hierarchy_paths,   # P3 D2a — hierarchy MERGE in same Tx
+        **_WRITER_AUTOCREATE_CONFIG,
     )
     write_elapsed = time.perf_counter() - write_started
     await _emit_log(
