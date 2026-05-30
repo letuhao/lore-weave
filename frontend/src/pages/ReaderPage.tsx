@@ -55,7 +55,7 @@ export function ReaderPage() {
   const [ttsSettingsOpen, setTtsSettingsOpen] = useState(false);
   const [showIndices, setShowIndices] = useState(() => localStorage.getItem('lw_reader_indices') === 'true');
   const [loading, setLoading] = useState(true);
-  const [autoNextEnabled] = useState(() => localStorage.getItem('lw_reader_auto_next') !== 'false');
+  const [autoNextEnabled, setAutoNextEnabled] = useState(() => localStorage.getItem('lw_reader_auto_next') !== 'false');
   const [autoScrollTTS, setAutoScrollTTS] = useState(() => localStorage.getItem('lw_reader_tts_scroll') !== 'false');
   const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
   const chapterEndRef = useRef<HTMLDivElement>(null);
@@ -322,6 +322,17 @@ export function ReaderPage() {
         onClose={() => setThemeOpen(false)}
         showIndices={showIndices}
         onShowIndicesChange={(v) => { setShowIndices(v); localStorage.setItem('lw_reader_indices', String(v)); }}
+        autoNext={autoNextEnabled}
+        onAutoNextChange={(v) => {
+          setAutoNextEnabled(v);
+          localStorage.setItem('lw_reader_auto_next', String(v));
+          if (!v) setAutoNextCountdown(null); // cancel any pending auto-advance
+        }}
+        autoScrollTTS={autoScrollTTS}
+        onAutoScrollTTSChange={(v) => {
+          setAutoScrollTTS(v);
+          localStorage.setItem('lw_reader_tts_scroll', String(v));
+        }}
       />
 
       {/* Reading area — reader theme applied here, chrome stays on app theme */}

@@ -7,6 +7,10 @@ interface ThemeCustomizerProps {
   onClose: () => void;
   showIndices: boolean;
   onShowIndicesChange: (v: boolean) => void;
+  autoNext: boolean;
+  onAutoNextChange: (v: boolean) => void;
+  autoScrollTTS: boolean;
+  onAutoScrollTTSChange: (v: boolean) => void;
 }
 
 const PRESET_DESCRIPTIONS: Record<string, string> = {
@@ -26,7 +30,10 @@ const FONT_OPTIONS: { family: string; label: string; sample: string }[] = [
   { family: "'Noto Serif JP', serif", label: 'Noto Serif JP', sample: '素早い茶色の狐' },
 ];
 
-export function ThemeCustomizer({ open, onClose, showIndices, onShowIndicesChange }: ThemeCustomizerProps) {
+export function ThemeCustomizer({
+  open, onClose, showIndices, onShowIndicesChange,
+  autoNext, onAutoNextChange, autoScrollTTS, onAutoScrollTTSChange,
+}: ThemeCustomizerProps) {
   const {
     theme, presetName, presets, setPreset,
     setFont, setFontSize, setLineHeight, setMaxWidth, setSpacing,
@@ -152,13 +159,23 @@ export function ThemeCustomizer({ open, onClose, showIndices, onShowIndicesChang
                 />
                 Show block indices (translator mode)
               </label>
-              <label className="flex items-center gap-2 text-xs cursor-pointer opacity-50">
-                <input type="checkbox" disabled className="accent-primary" />
-                Auto-load next chapter (coming soon)
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoNext}
+                  onChange={(e) => onAutoNextChange(e.target.checked)}
+                  className="accent-primary"
+                />
+                Auto-load next chapter
               </label>
-              <label className="flex items-center gap-2 text-xs cursor-pointer opacity-50">
-                <input type="checkbox" disabled className="accent-primary" />
-                Auto-scroll with TTS (coming soon)
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoScrollTTS}
+                  onChange={(e) => onAutoScrollTTSChange(e.target.checked)}
+                  className="accent-primary"
+                />
+                Auto-scroll with TTS
               </label>
             </div>
           </section>
