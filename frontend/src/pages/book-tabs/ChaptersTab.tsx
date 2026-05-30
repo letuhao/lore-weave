@@ -320,6 +320,11 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
       />
 
       <ExtractionWizard
+        // Remount per chapter so useExtractionState's useState initializer re-seeds
+        // chapterIds from preselectedChapterIds. Without this key the wizard mounts
+        // once (closed, preselected=undefined → chapterIds=[]) and the later prop is
+        // ignored, so extraction ran over 0 chapters (F-1).
+        key={extractChapterId ?? 'closed'}
         open={!!extractChapterId}
         onOpenChange={(open) => { if (!open) setExtractChapterId(null); }}
         bookId={bookId}
