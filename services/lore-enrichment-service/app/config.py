@@ -35,5 +35,8 @@ class Settings(BaseSettings):
 
     port: int = 8093
 
+    # C18 — structured-logging level. INFO in prod; DEBUG locally via env.
+    log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
+
 
 settings = Settings()

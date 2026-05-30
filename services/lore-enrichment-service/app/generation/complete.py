@@ -30,6 +30,7 @@ from typing import Any
 
 import httpx
 
+from app import metrics
 from app.strategies.base import StrategyContext
 
 __all__ = [
@@ -116,6 +117,17 @@ def make_complete_fn(
     base = provider_registry_base_url.rstrip("/")
 
     async def _complete(prompt: str, context: StrategyContext) -> str:
+        # C18 — count the real LLM completion call by outcome (NO model name in
+        # the label; the model is resolved by model_ref at runtime).
+        try:
+            text = await _complete_inner(prompt, context)
+        except Exception:
+            metrics.llm_calls_total.labels(outcome="error").inc()
+            raise
+        metrics.llm_calls_total.labels(outcome="ok").inc()
+        return text
+
+    async def _complete_inner(prompt: str, context: StrategyContext) -> str:
         if not context.model_ref:
             raise CompletionSeamError(
                 "StrategyContext.model_ref is required for generation "

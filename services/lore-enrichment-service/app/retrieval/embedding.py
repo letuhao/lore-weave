@@ -21,6 +21,7 @@ from __future__ import annotations
 from typing import Sequence
 from uuid import UUID
 
+from app import metrics
 from app.clients.knowledge import KnowledgeClient
 from app.retrieval.store import EmbedFn
 from app.strategies.base import StrategyContext
@@ -62,12 +63,19 @@ def make_embed_query_fn(client: KnowledgeClient, *, user_id: UUID):
                 "StrategyContext.model_ref is required for retrieval embedding "
                 "(resolve the project's embedding model via provider-registry)"
             )
-        result = await client.embed(
-            user_id=user_id,
-            model_source=MODEL_SOURCE,
-            model_ref=context.model_ref,
-            texts=[query],
-        )
+        # C18 — count the real embed call by outcome (NO model name in the label;
+        # the model is resolved by model_ref at runtime).
+        try:
+            result = await client.embed(
+                user_id=user_id,
+                model_source=MODEL_SOURCE,
+                model_ref=context.model_ref,
+                texts=[query],
+            )
+        except Exception:
+            metrics.embed_calls_total.labels(outcome="error").inc()
+            raise
+        metrics.embed_calls_total.labels(outcome="ok").inc()
         if not result.embeddings:
             raise ValueError("embed returned no vector for the query")
         return result.embeddings[0]

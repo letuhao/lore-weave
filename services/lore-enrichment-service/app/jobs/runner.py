@@ -42,6 +42,7 @@ via provider-registry by model_ref). NO direct Neo4j / glossary canonical write.
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field
 
 from app.gaps.model import Gap
@@ -200,6 +201,7 @@ class JobRunner:
                     return outcome
 
                 # ── stage pipeline (C10 → C11 → C12) ────────────────────────────
+                stage_started = time.monotonic()
                 try:
                     stage = await self._pipeline.run_gap(gap, context, jwt=jwt)
                 except (GenerationError, FabricationError) as exc:
@@ -252,6 +254,10 @@ class JobRunner:
                     outcome.deduped_gaps.append(gap_ref)
 
                 # ── events (idempotent per job+stage+gap) ───────────────────────
+                # ``elapsed_seconds`` + ``technique`` feed the C18 per-stage
+                # latency histogram (observed in the emitter); both are bounded
+                # scalars, never enriched content.
+                stage_elapsed = time.monotonic() - stage_started
                 await self._emitter.emit(
                     JobEventType.STAGE_COMPLETED,
                     gap_ref=gap_ref,
@@ -259,6 +265,8 @@ class JobRunner:
                         "gap": gap_ref,
                         "dimensions": list(persisted.dimensions.keys()),
                         "verify_status": stage.verify.status.value,
+                        "elapsed_seconds": round(stage_elapsed, 6),
+                        "technique": self._pipeline.technique_value(),
                     },
                 )
                 await self._emitter.emit(

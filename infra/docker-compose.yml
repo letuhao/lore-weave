@@ -578,11 +578,19 @@ services:
       BOOK_SERVICE_URL: http://book-service:8082
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       REDIS_URL: redis://redis:6379
+      # C18 — OpenTelemetry trace export (mirrors api-gateway-bff / the other
+      # FastAPI services). Empty default → setup_tracing is a no-op (dev). Set to
+      # the collector endpoint to enable tracing.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
     ports:
       - "8221:8093"
+    # Liveness probe — /health is constant-ok (no DB). C18 added /ready (DB-
+    # readiness, SELECT 1, 503 on failure) for orchestrator traffic-gating; the
+    # compose healthcheck stays on /health so a brief DB blip does NOT crash-loop
+    # the container (DEFERRED-042 cleared — see RUNBOOK.md /health vs /ready).
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8093/health')\" || exit 1"]
       interval: 5s

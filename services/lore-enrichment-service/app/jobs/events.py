@@ -34,6 +34,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Protocol
 
+from app import metrics
+
 __all__ = [
     "JobEventType",
     "JobEvent",
@@ -66,6 +68,50 @@ class JobEventType(str, Enum):
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+# Map a proposal technique → the H0 source_type label the proposals counter
+# carries. Closed vocab (the C2 technique CHECK); an unknown value falls back to
+# the bare 'enriched' marker so a future technique never crashes metric recording.
+_KNOWN_TECHNIQUES = ("retrieval", "fabrication", "recook")
+
+
+def _record_event_metric(event: "JobEvent") -> None:
+    """Increment the C18 Prometheus counters for one lifecycle event.
+
+    Best-effort + total: a metric-recording failure must NEVER fail the job
+    (it is observability, not business logic). Reads only bounded scalars from
+    the event payload — never enriched content, never a model name."""
+    try:
+        et = event.event_type
+        if et is JobEventType.STARTED:
+            metrics.jobs_started_total.inc()
+        elif et is JobEventType.COMPLETED:
+            metrics.jobs_completed_total.inc()
+        elif et is JobEventType.FAILED:
+            metrics.jobs_failed_total.inc()
+        elif et is JobEventType.PAUSED:
+            metrics.jobs_paused_total.inc()
+            # PAUSED is emitted by the runner only on a cost-cap breach.
+            if event.data.get("reason") == "cost_cap":
+                metrics.cost_cap_pauses_total.inc()
+        elif et is JobEventType.PROPOSAL_CREATED:
+            technique = str(event.data.get("technique") or "")
+            source_type = (
+                f"enriched:{technique}"
+                if technique in _KNOWN_TECHNIQUES
+                else "enriched"
+            )
+            metrics.proposals_created_total.labels(source_type=source_type).inc()
+        elif et is JobEventType.STAGE_COMPLETED:
+            elapsed = event.data.get("elapsed_seconds")
+            technique = str(event.data.get("technique") or "")
+            if isinstance(elapsed, (int, float)) and technique in _KNOWN_TECHNIQUES:
+                metrics.stage_duration_seconds.labels(
+                    technique=technique
+                ).observe(float(elapsed))
+    except Exception:  # noqa: BLE001 — metrics must never break the job
+        logger.debug("metric recording failed (non-fatal)", exc_info=True)
 
 
 @dataclass(frozen=True)
@@ -209,6 +255,12 @@ class JobEventEmitter:
             dedupe_key=key,
             data=dict(data or {}),
         )
+        # C18 — move the Prometheus counters from the LIVE pipeline (NOT
+        # hardcoded): one increment per genuinely-new logical lifecycle event.
+        # Placed BEFORE the (best-effort) Redis append so a down Redis does not
+        # lose the metric, and AFTER the dedupe guard so a re-run's deduped
+        # event does not double-count (metric honesty, C18 adversary focus).
+        _record_event_metric(event)
         # Mark seen BEFORE the append so a transient append failure cannot cause
         # a later retry to double-publish the same logical event (at-most-once
         # for the logical key; the consumer dedupes on dedupe_key for the
