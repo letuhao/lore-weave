@@ -572,6 +572,29 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 
 ## Current Active Work
 
+### Köppen-on-sphere spec + circulation experiment (reverted) (session 99, BE [DESIGN]) ✅
+
+After the retune (above), explored candidate A (Köppen). PO asked the right
+question — *does the current logic actually follow the Köppen formula?* Honest
+answer: **no**. A first circulation-bands experiment (latitude precip feeding the
+`[0,1]` heuristic) **regressed** Desert to 55–62 % because seed-7 land sits at
+median |lat|≈30° (the dry belt) — it modulated a proxy instead of using the real
+classifier. **Reverted** `climate.rs` to the committed retune (53 %).
+
+Wrote the full **actionable spec** instead of rushing an L climate rewrite at the
+tail of a 9-commit marathon (quality-first, CLAUDE.md "don't rush"):
+[`docs/specs/2026-05-30-koppen-climate-sphere.md`](../specs/2026-05-30-koppen-climate-sphere.md)
+— Option A (port the **validated** `flat_climate` Köppen classifier to the
+sphere, keep `ClimateZone`/`BiomeKind`): real °C + mm/yr derivation, the
+temperature-dependent `precip < 20·T_mean+offset` aridity formula (the actual
+desert fix — hot needs ~470 mm, cold ~70 mm to escape B-group), circulation mm
+curve, Köppen→ClimateZone map, calibrated params (T_EQ 28 / T_POLE −15 / precip
+2400/180/900/150 / seasonal), a histogram-driven calibration plan (target Desert
+30–40 %), test rewrites, and the R6 note (sphere-native great-circle transport,
+only the latitude/unit functions lifted).
+
+**This is the de-risked plan for a focused Köppen build (next).** Not yet built.
+
 ### Climate audit + continentality retune (session 99, world-gen-sdk-refactor, BE [M]) ✅
 
 PO picked candidate-B-then-A path. **Visual audit** of a Megaplanet (seed 7)
