@@ -452,3 +452,4 @@
 {"ts":"2026-05-30T06:59:46Z","cycle":5,"event":"verify","result":"pass","live_smoke":"entity -> generated wiki body persisted (canon+enriched)"}
 {"ts": "2026-05-30T07:01:46Z", "event": "in_progress_update", "cycle": 5, "phase": "SESSION", "retry": 0}
 {"ts":"2026-05-30T07:02:00Z","cycle":5,"event":"cycle_done","title":"PLATFORM D4-03 wiki-from-KG","result":"DONE","files":7,"dps":2,"adversary":{"blockers":0,"majors":0,"minors":0},"scope_guard":"CLEAR","verify_exit":0,"live_smoke":"entity -> generated wiki body persisted (canon+enriched H0 markers)","notable":"replaced empty generateWikiStubs with deterministic KG->prose renderer; read-only knowledge-service neighborhood endpoint; additive/backward-compat; D-044 infra wiring deferred"}
+{"ts": "2026-05-30T07:03:10Z", "event": "in_progress_archived", "cycle": 5, "archived_to": "cycle-005-state.md"}
