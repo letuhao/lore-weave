@@ -48,5 +48,68 @@
     "context_attached": "Đã đính kèm ngữ cảnh · ",
     "hint": "Enter để gửi · Shift+Enter để xuống dòng",
     "hint_thinking": " · Ctrl+Shift+Enter suy nghĩ · Ctrl+Enter nhanh"
+  },
+  "new": {
+    "preset": {
+      "novel": "Trợ lý tiểu thuyết",
+      "translator": "Phiên dịch",
+      "worldbuilder": "Kiến tạo thế giới",
+      "editor": "Biên tập"
+    },
+    "create_failed": "Không thể tạo cuộc trò chuyện: {{error}}",
+    "title": "Bắt đầu trò chuyện mới",
+    "model": "Mô hình",
+    "no_models": "Không có mô hình hoạt động. Thêm một mô hình trong Cài đặt → Nhà cung cấp.",
+    "search_models": "Tìm mô hình...",
+    "ctx": "{{n}}K ngữ cảnh",
+    "favorite": "Yêu thích",
+    "quick_start": "Bắt đầu nhanh",
+    "hide_prompt": "Ẩn system prompt",
+    "add_prompt": "Thêm system prompt",
+    "prompt_placeholder": "Hướng dẫn tùy chỉnh cho AI...",
+    "start_chat": "Bắt đầu trò chuyện"
+  },
+  "sidebar": {
+    "timeago": {
+      "just_now": "Vừa xong",
+      "mins": "{{n}} phút trước",
+      "hours": "{{n}} giờ trước",
+      "yesterday": "Hôm qua",
+      "days": "{{n}} ngày trước"
+    },
+    "pin": "Ghim",
+    "unpin": "Bỏ ghim",
+    "rename": "Đổi tên",
+    "archive": "Lưu trữ",
+    "delete": "Xóa",
+    "group": {
+      "pinned": "Đã ghim",
+      "today": "Hôm nay",
+      "yesterday": "Hôm qua",
+      "this_week": "Tuần này",
+      "older": "Cũ hơn"
+    },
+    "conversations": "Cuộc trò chuyện",
+    "new": "Mới",
+    "search": "Tìm cuộc trò chuyện...",
+    "empty": "Chưa có cuộc trò chuyện nào.",
+    "empty_cta": "Nhấn \"Mới\" để bắt đầu.",
+    "no_matches": "Không có kết quả cho \"{{query}}\"",
+    "message_matches": "Khớp tin nhắn"
+  },
+  "view": {
+    "configure_voice": "Cấu hình {{missing}} để bật Trợ lý giọng nói",
+    "missing_both": "mô hình STT và TTS",
+    "missing_stt": "một mô hình STT",
+    "missing_tts": "một mô hình TTS",
+    "loading_messages": "Đang tải tin nhắn...",
+    "edit_failed": "Sửa thất bại: {{error}}",
+    "regenerate_failed": "Tạo lại thất bại: {{error}}",
+    "delete_confirm": "Xóa tin nhắn này? Không thể hoàn tác.",
+    "delete_failed": "Xóa thất bại: {{error}}",
+    "consent_title": "Bật chế độ giọng nói",
+    "consent_desc": "Chế độ giọng nói sẽ dùng micro của bạn để nhận dạng giọng nói. Âm thanh có thể được lưu tối đa 48 giờ để phát lại. Bạn có thể xóa toàn bộ dữ liệu giọng nói bất cứ lúc nào trong Cài đặt.",
+    "cancel": "Hủy",
+    "continue": "Tiếp tục"
   }
 }

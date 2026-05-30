@@ -11,6 +11,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
 import { chatApi } from '../api';
@@ -39,6 +40,7 @@ function SessionItem({
   onDelete,
   onTogglePin,
 }: SessionItemProps) {
+  const { t } = useTranslation('chat');
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(session.title);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -58,13 +60,13 @@ function SessionItem({
     if (!iso) return '';
     const diff = Date.now() - new Date(iso).getTime();
     const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'Just now';
-    if (mins < 60) return `${mins}m ago`;
+    if (mins < 1) return t('sidebar.timeago.just_now');
+    if (mins < 60) return t('sidebar.timeago.mins', { n: mins });
     const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
+    if (hrs < 24) return t('sidebar.timeago.hours', { n: hrs });
     const days = Math.floor(hrs / 24);
-    if (days === 1) return 'Yesterday';
-    return `${days}d ago`;
+    if (days === 1) return t('sidebar.timeago.yesterday');
+    return t('sidebar.timeago.days', { n: days });
   }
 
   return (
@@ -119,7 +121,7 @@ function SessionItem({
           </div>
           <div className="mt-1 flex items-center justify-between">
             <span className="text-[10px] text-muted-foreground">
-              {modelNameMap?.get(session.model_ref) ?? (session.model_source === 'user_model' ? 'My Model' : 'Platform')}
+              {modelNameMap?.get(session.model_ref) ?? (session.model_source === 'user_model' ? t('header.my_model') : t('header.platform'))}
             </span>
             <span className="text-[10px] text-muted-foreground">
               {relativeTime(session.last_message_at ?? session.created_at)}
@@ -135,14 +137,14 @@ function SessionItem({
           isActive && 'max-md:flex',
         )}>
           <button
-            title={session.is_pinned ? 'Unpin' : 'Pin'}
+            title={session.is_pinned ? t('sidebar.unpin') : t('sidebar.pin')}
             onClick={(e) => { e.stopPropagation(); onTogglePin(); }}
             className="rounded p-0.5 text-muted-foreground hover:text-primary"
           >
             {session.is_pinned ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
           </button>
           <button
-            title="Rename"
+            title={t('sidebar.rename')}
             onClick={(e) => {
               e.stopPropagation();
               setEditValue(session.title);
@@ -153,14 +155,14 @@ function SessionItem({
             <Pencil className="h-3 w-3" />
           </button>
           <button
-            title="Archive"
+            title={t('sidebar.archive')}
             onClick={(e) => { e.stopPropagation(); onArchive(); }}
             className="rounded p-0.5 text-muted-foreground hover:text-foreground"
           >
             <Archive className="h-3 w-3" />
           </button>
           <button
-            title="Delete"
+            title={t('sidebar.delete')}
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
             className="rounded p-0.5 text-muted-foreground hover:text-destructive"
           >
@@ -192,7 +194,7 @@ interface SessionSidebarProps {
 
 // ── Temporal grouping ──────────────────────────────────────────────────────────
 
-type SessionGroup = { label: string; sessions: ChatSession[] };
+type SessionGroup = { key: string; sessions: ChatSession[] };
 
 function groupSessions(sessions: ChatSession[]): SessionGroup[] {
   const now = new Date();
@@ -216,11 +218,11 @@ function groupSessions(sessions: ChatSession[]): SessionGroup[] {
   }
 
   const groups: SessionGroup[] = [];
-  if (pinned.length) groups.push({ label: 'Pinned', sessions: pinned });
-  if (todayArr.length) groups.push({ label: 'Today', sessions: todayArr });
-  if (yesterdayArr.length) groups.push({ label: 'Yesterday', sessions: yesterdayArr });
-  if (weekArr.length) groups.push({ label: 'This Week', sessions: weekArr });
-  if (older.length) groups.push({ label: 'Older', sessions: older });
+  if (pinned.length) groups.push({ key: 'pinned', sessions: pinned });
+  if (todayArr.length) groups.push({ key: 'today', sessions: todayArr });
+  if (yesterdayArr.length) groups.push({ key: 'yesterday', sessions: yesterdayArr });
+  if (weekArr.length) groups.push({ key: 'this_week', sessions: weekArr });
+  if (older.length) groups.push({ key: 'older', sessions: older });
   return groups;
 }
 
@@ -238,6 +240,7 @@ export function SessionSidebar({
   mobileOpen,
   onMobileClose,
 }: SessionSidebarProps) {
+  const { t } = useTranslation('chat');
   const { accessToken } = useAuth();
   const [search, setSearch] = useState('');
   const [ftsResults, setFtsResults] = useState<Array<{ session_id: string; session_title: string; snippet: string }>>([]);
@@ -291,14 +294,14 @@ export function SessionSidebar({
       )}>
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <span className="text-[13px] font-semibold text-foreground">Conversations</span>
+        <span className="text-[13px] font-semibold text-foreground">{t('sidebar.conversations')}</span>
         <button
           type="button"
           onClick={onCreate}
           className="inline-flex items-center gap-1 rounded-md bg-accent px-2.5 py-1 text-[11px] font-medium text-accent-foreground transition-colors hover:bg-accent/90"
         >
           <Plus className="h-3 w-3" />
-          New
+          {t('sidebar.new')}
         </button>
       </div>
 
@@ -310,7 +313,7 @@ export function SessionSidebar({
             type="text"
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
-            placeholder="Search conversations..."
+            placeholder={t('sidebar.search')}
             className="w-full rounded-md border border-border bg-background py-1.5 pl-7 pr-2 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-ring"
           />
         </div>
@@ -331,15 +334,15 @@ export function SessionSidebar({
 
         {!isLoading && sessions.length === 0 && (
           <p className="mt-6 px-4 text-center text-xs text-muted-foreground">
-            No conversations yet.
+            {t('sidebar.empty')}
             <br />
-            Click <strong>New</strong> to start.
+            {t('sidebar.empty_cta')}
           </p>
         )}
 
         {!isLoading && filtered.length === 0 && sessions.length > 0 && (
           <p className="mt-6 px-4 text-center text-xs text-muted-foreground">
-            No matches for &ldquo;{search}&rdquo;
+            {t('sidebar.no_matches', { query: search })}
           </p>
         )}
 
@@ -348,7 +351,7 @@ export function SessionSidebar({
           <div>
             <p className="px-4 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
               <Search className="mr-1 inline h-2.5 w-2.5" />
-              Message matches
+              {t('sidebar.message_matches')}
             </p>
             {ftsResults.map((r) => (
               <div
@@ -369,10 +372,10 @@ export function SessionSidebar({
         )}
 
         {groups.map((group) => (
-          <div key={group.label}>
+          <div key={group.key}>
             <p className="px-4 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              {group.label === 'Pinned' && <Pin className="mr-1 inline h-2.5 w-2.5 text-primary" />}
-              {group.label}
+              {group.key === 'pinned' && <Pin className="mr-1 inline h-2.5 w-2.5 text-primary" />}
+              {t(`sidebar.group.${group.key}`)}
             </p>
             {group.sessions.map((s) => (
               <SessionItem

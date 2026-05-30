@@ -48,5 +48,68 @@
     "context_attached": "Context attached · ",
     "hint": "Enter to send · Shift+Enter for new line",
     "hint_thinking": " · Ctrl+Shift+Enter think · Ctrl+Enter fast"
+  },
+  "new": {
+    "preset": {
+      "novel": "Novel Assistant",
+      "translator": "Translator",
+      "worldbuilder": "Worldbuilder",
+      "editor": "Editor"
+    },
+    "create_failed": "Failed to create chat: {{error}}",
+    "title": "Start New Chat",
+    "model": "Model",
+    "no_models": "No active models. Add one in Settings → Providers.",
+    "search_models": "Search models...",
+    "ctx": "{{n}}K ctx",
+    "favorite": "Favorite",
+    "quick_start": "Quick Start",
+    "hide_prompt": "Hide system prompt",
+    "add_prompt": "Add system prompt",
+    "prompt_placeholder": "Custom instructions for the AI...",
+    "start_chat": "Start Chat"
+  },
+  "sidebar": {
+    "timeago": {
+      "just_now": "Just now",
+      "mins": "{{n}}m ago",
+      "hours": "{{n}}h ago",
+      "yesterday": "Yesterday",
+      "days": "{{n}}d ago"
+    },
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "rename": "Rename",
+    "archive": "Archive",
+    "delete": "Delete",
+    "group": {
+      "pinned": "Pinned",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "this_week": "This Week",
+      "older": "Older"
+    },
+    "conversations": "Conversations",
+    "new": "New",
+    "search": "Search conversations...",
+    "empty": "No conversations yet.",
+    "empty_cta": "Click \"New\" to start.",
+    "no_matches": "No matches for \"{{query}}\"",
+    "message_matches": "Message matches"
+  },
+  "view": {
+    "configure_voice": "Configure {{missing}} to enable Voice Assist",
+    "missing_both": "STT and TTS models",
+    "missing_stt": "an STT model",
+    "missing_tts": "a TTS model",
+    "loading_messages": "Loading messages...",
+    "edit_failed": "Edit failed: {{error}}",
+    "regenerate_failed": "Regenerate failed: {{error}}",
+    "delete_confirm": "Delete this message? This cannot be undone.",
+    "delete_failed": "Delete failed: {{error}}",
+    "consent_title": "Enable Voice Mode",
+    "consent_desc": "Voice mode will use your microphone for speech recognition. Audio may be stored for up to 48 hours to enable replay. You can delete all voice data anytime from Settings.",
+    "cancel": "Cancel",
+    "continue": "Continue"
   }
 }

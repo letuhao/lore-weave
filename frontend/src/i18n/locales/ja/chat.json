@@ -48,5 +48,68 @@
     "context_attached": "コンテキスト添付済み · ",
     "hint": "Enterで送信 · Shift+Enterで改行",
     "hint_thinking": " · Ctrl+Shift+Enterで熟考 · Ctrl+Enterで高速"
+  },
+  "new": {
+    "preset": {
+      "novel": "小説アシスタント",
+      "translator": "翻訳者",
+      "worldbuilder": "世界構築",
+      "editor": "編集者"
+    },
+    "create_failed": "チャットの作成に失敗しました: {{error}}",
+    "title": "新しいチャットを開始",
+    "model": "モデル",
+    "no_models": "アクティブなモデルがありません。設定 → プロバイダーで追加してください。",
+    "search_models": "モデルを検索...",
+    "ctx": "{{n}}K コンテキスト",
+    "favorite": "お気に入り",
+    "quick_start": "クイックスタート",
+    "hide_prompt": "システムプロンプトを隠す",
+    "add_prompt": "システムプロンプトを追加",
+    "prompt_placeholder": "AIへのカスタム指示...",
+    "start_chat": "チャットを開始"
+  },
+  "sidebar": {
+    "timeago": {
+      "just_now": "たった今",
+      "mins": "{{n}}分前",
+      "hours": "{{n}}時間前",
+      "yesterday": "昨日",
+      "days": "{{n}}日前"
+    },
+    "pin": "ピン留め",
+    "unpin": "ピン留め解除",
+    "rename": "名前を変更",
+    "archive": "アーカイブ",
+    "delete": "削除",
+    "group": {
+      "pinned": "ピン留め",
+      "today": "今日",
+      "yesterday": "昨日",
+      "this_week": "今週",
+      "older": "それ以前"
+    },
+    "conversations": "会話",
+    "new": "新規",
+    "search": "会話を検索...",
+    "empty": "まだ会話がありません。",
+    "empty_cta": "「新規」をクリックして開始します。",
+    "no_matches": "「{{query}}」に一致する結果がありません",
+    "message_matches": "メッセージの一致"
+  },
+  "view": {
+    "configure_voice": "{{missing}}を設定して音声アシストを有効化",
+    "missing_both": "STTとTTSモデル",
+    "missing_stt": "STTモデル",
+    "missing_tts": "TTSモデル",
+    "loading_messages": "メッセージを読み込み中...",
+    "edit_failed": "編集に失敗しました: {{error}}",
+    "regenerate_failed": "再生成に失敗しました: {{error}}",
+    "delete_confirm": "このメッセージを削除しますか？元に戻せません。",
+    "delete_failed": "削除に失敗しました: {{error}}",
+    "consent_title": "音声モードを有効化",
+    "consent_desc": "音声モードは音声認識のためにマイクを使用します。再生のため音声は最大48時間保存される場合があります。音声データはいつでも設定から削除できます。",
+    "cancel": "キャンセル",
+    "continue": "続行"
   }
 }

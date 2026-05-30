@@ -48,5 +48,68 @@
     "context_attached": "已附加情境 · ",
     "hint": "Enter 傳送 · Shift+Enter 換行",
     "hint_thinking": " · Ctrl+Shift+Enter 思考 · Ctrl+Enter 快速"
+  },
+  "new": {
+    "preset": {
+      "novel": "小說助手",
+      "translator": "翻譯",
+      "worldbuilder": "世界建構",
+      "editor": "編輯"
+    },
+    "create_failed": "無法建立聊天：{{error}}",
+    "title": "開始新聊天",
+    "model": "模型",
+    "no_models": "沒有啟用的模型。請在設定 → 供應商中新增。",
+    "search_models": "搜尋模型...",
+    "ctx": "{{n}}K 情境",
+    "favorite": "最愛",
+    "quick_start": "快速開始",
+    "hide_prompt": "隱藏系統提示",
+    "add_prompt": "新增系統提示",
+    "prompt_placeholder": "給 AI 的自訂指示...",
+    "start_chat": "開始聊天"
+  },
+  "sidebar": {
+    "timeago": {
+      "just_now": "剛剛",
+      "mins": "{{n}} 分鐘前",
+      "hours": "{{n}} 小時前",
+      "yesterday": "昨天",
+      "days": "{{n}} 天前"
+    },
+    "pin": "釘選",
+    "unpin": "取消釘選",
+    "rename": "重新命名",
+    "archive": "封存",
+    "delete": "刪除",
+    "group": {
+      "pinned": "已釘選",
+      "today": "今天",
+      "yesterday": "昨天",
+      "this_week": "本週",
+      "older": "更早"
+    },
+    "conversations": "對話",
+    "new": "新增",
+    "search": "搜尋對話...",
+    "empty": "尚無對話。",
+    "empty_cta": "點擊「新增」開始。",
+    "no_matches": "找不到「{{query}}」的結果",
+    "message_matches": "訊息符合"
+  },
+  "view": {
+    "configure_voice": "設定{{missing}}以啟用語音輔助",
+    "missing_both": "STT 與 TTS 模型",
+    "missing_stt": "STT 模型",
+    "missing_tts": "TTS 模型",
+    "loading_messages": "正在載入訊息...",
+    "edit_failed": "編輯失敗：{{error}}",
+    "regenerate_failed": "重新生成失敗：{{error}}",
+    "delete_confirm": "刪除此訊息？此操作無法復原。",
+    "delete_failed": "刪除失敗：{{error}}",
+    "consent_title": "啟用語音模式",
+    "consent_desc": "語音模式將使用您的麥克風進行語音辨識。音訊可能會保存最多 48 小時以供重播。您可以隨時在設定中刪除所有語音資料。",
+    "cancel": "取消",
+    "continue": "繼續"
   }
 }
