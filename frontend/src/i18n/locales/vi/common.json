@@ -14,7 +14,17 @@
     "trash": "Thùng rác",
     "expand_sidebar": "Mở rộng thanh bên",
     "collapse_sidebar": "Thu gọn thanh bên",
-    "theme": "Giao diện: {{name}}"
+    "theme": "Giao diện: {{name}}",
+    "home": "Trang chủ",
+    "account": "Tài khoản",
+    "signin": "Đăng nhập",
+    "back_to_book": "Quay lại sách"
+  },
+  "logout_confirm": {
+    "title": "Đăng xuất khi có thay đổi chưa lưu?",
+    "description": "Bạn có những thay đổi chưa lưu sẽ bị mất vĩnh viễn nếu đăng xuất ngay bây giờ.",
+    "confirm": "Vẫn đăng xuất",
+    "cancel": "Ở lại trang"
   },
   "common": {
     "save": "Lưu",

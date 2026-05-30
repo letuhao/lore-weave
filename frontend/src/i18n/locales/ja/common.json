@@ -14,7 +14,17 @@
     "trash": "ゴミ箱",
     "expand_sidebar": "サイドバーを展開",
     "collapse_sidebar": "サイドバーを折りたたむ",
-    "theme": "テーマ: {{name}}"
+    "theme": "テーマ: {{name}}",
+    "home": "ホーム",
+    "account": "アカウント",
+    "signin": "サインイン",
+    "back_to_book": "書籍に戻る"
+  },
+  "logout_confirm": {
+    "title": "未保存の変更があるままログアウトしますか？",
+    "description": "未保存の変更があります。今ログアウトすると完全に失われます。",
+    "confirm": "ログアウトする",
+    "cancel": "ページに留まる"
   },
   "common": {
     "save": "保存",

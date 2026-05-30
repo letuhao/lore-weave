@@ -14,7 +14,17 @@
     "manage": "Manage",
     "expand_sidebar": "Expand sidebar",
     "collapse_sidebar": "Collapse sidebar",
-    "theme": "Theme: {{name}}"
+    "theme": "Theme: {{name}}",
+    "home": "Home",
+    "account": "Account",
+    "signin": "Sign in",
+    "back_to_book": "Back to book"
+  },
+  "logout_confirm": {
+    "title": "Log out with unsaved changes?",
+    "description": "You have unsaved changes that will be permanently lost if you log out now.",
+    "confirm": "Log out anyway",
+    "cancel": "Stay on page"
   },
   "common": {
     "save": "Save",

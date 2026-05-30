@@ -14,7 +14,17 @@
     "trash": "資源回收筒",
     "expand_sidebar": "展開側邊欄",
     "collapse_sidebar": "收合側邊欄",
-    "theme": "主題：{{name}}"
+    "theme": "主題：{{name}}",
+    "home": "首頁",
+    "account": "帳號",
+    "signin": "登入",
+    "back_to_book": "返回書籍"
+  },
+  "logout_confirm": {
+    "title": "有未儲存的變更，仍要登出嗎？",
+    "description": "你有未儲存的變更，若現在登出將永久遺失。",
+    "confirm": "仍要登出",
+    "cancel": "留在頁面"
   },
   "common": {
     "save": "儲存",

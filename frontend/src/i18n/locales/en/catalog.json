@@ -1,0 +1,62 @@
+{
+  "browse": {
+    "title": "Discover Stories",
+    "subtitle": "Browse public novels from the LoreWeave community. Read, translate, and explore stories across languages.",
+    "search_placeholder": "Search by title, author, or language...",
+    "search_aria": "Search catalog",
+    "no_books": "No books found. Try a different search or filter.",
+    "load_failed": "Failed to load catalog"
+  },
+  "filter": {
+    "lang_all": "All",
+    "clear_genres": "Clear genres",
+    "books_found": "{{count}} books found",
+    "sort_aria": "Sort books by",
+    "sort": {
+      "recent": "Most recent",
+      "popular": "Most popular",
+      "chapters": "Most chapters",
+      "alpha": "Alphabetical"
+    }
+  },
+  "card": {
+    "chapters_short": "{{count}} ch"
+  },
+  "detail": {
+    "breadcrumb_browse": "Browse",
+    "public_badge": "Public",
+    "unlisted_badge": "Unlisted",
+    "chapters_count": "{{count}} chapters",
+    "available_languages": "Available languages",
+    "original": "Original",
+    "start_reading": "Start Reading",
+    "no_chapters_yet": "No chapters yet",
+    "share": "Share",
+    "copy_link": "Copy Link",
+    "loading": "Loading...",
+    "chapters_heading": "Chapters",
+    "no_chapters_available": "No chapters available.",
+    "untitled": "Untitled",
+    "words": "{{count}} words",
+    "showing_chapters": "Showing {{from}}–{{to}} of {{total}} chapters",
+    "stat_chapters": "Chapters",
+    "stat_languages": "Languages",
+    "stat_original": "Original",
+    "stat_published": "Published",
+    "na": "N/A",
+    "book_not_found": "Book not found",
+    "back_to_browse": "Back to Browse",
+    "link_copied": "Link copied",
+    "copy_failed": "Failed to copy",
+    "load_chapters_failed": "Failed to load chapters"
+  },
+  "shared": {
+    "indicator": "You're viewing a shared link. This book is not publicly listed.",
+    "invalid": "This shared link is invalid or has expired.",
+    "not_found": "Shared link not found or expired",
+    "browse_instead": "Browse public books instead",
+    "back_to_chapters": "Back to chapters",
+    "ch_short": "Ch. {{n}}",
+    "load_chapter_failed": "Failed to load chapter: {{error}}"
+  }
+}
