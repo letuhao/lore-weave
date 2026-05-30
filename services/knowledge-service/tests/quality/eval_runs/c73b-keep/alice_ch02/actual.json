@@ -1,0 +1,393 @@
+{
+  "entities": [
+    {
+      "name": "Alice",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "alice",
+      "canonical_id": "eid-loaded-0"
+    },
+    {
+      "name": "White Rabbit",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "white rabbit",
+      "canonical_id": "eid-loaded-1"
+    },
+    {
+      "name": "little golden key",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "little golden key",
+      "canonical_id": "eid-loaded-2"
+    },
+    {
+      "name": "telescope",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "telescope",
+      "canonical_id": "eid-loaded-3"
+    },
+    {
+      "name": "Duchess",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "duchess",
+      "canonical_id": "eid-loaded-4"
+    },
+    {
+      "name": "feet",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "feet",
+      "canonical_id": "eid-loaded-5"
+    },
+    {
+      "name": "garden door",
+      "kind": "place",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "garden door",
+      "canonical_id": "eid-loaded-6"
+    },
+    {
+      "name": "hall",
+      "kind": "place",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "hall",
+      "canonical_id": "eid-loaded-7"
+    },
+    {
+      "name": "white kid gloves",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "white kid gloves",
+      "canonical_id": "eid-loaded-8"
+    },
+    {
+      "name": "Good-bye",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "good-bye",
+      "canonical_id": "eid-loaded-9"
+    },
+    {
+      "name": "large fan",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "large fan",
+      "canonical_id": "eid-loaded-10"
+    },
+    {
+      "name": "shoes",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "shoes",
+      "canonical_id": "eid-loaded-11"
+    },
+    {
+      "name": "stockings",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "stockings",
+      "canonical_id": "eid-loaded-12"
+    }
+  ],
+  "relations": [
+    {
+      "subject": "White Rabbit",
+      "predicate": "carries",
+      "object": "white kid gloves",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-1"
+    },
+    {
+      "subject": "White Rabbit",
+      "predicate": "carries",
+      "object": "large fan",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-2"
+    },
+    {
+      "subject": "Alice",
+      "predicate": "trusts",
+      "object": "shoes",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-4"
+    },
+    {
+      "subject": "White Rabbit",
+      "predicate": "works_for",
+      "object": "Duchess",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-5"
+    },
+    {
+      "subject": "Alice",
+      "predicate": "helps",
+      "object": "feet",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-6"
+    },
+    {
+      "subject": "Alice",
+      "predicate": "knows",
+      "object": "stockings",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-7"
+    },
+    {
+      "subject": "Alice",
+      "predicate": "follows",
+      "object": "garden door",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-8"
+    },
+    {
+      "subject": "White Rabbit",
+      "predicate": "serves",
+      "object": "Duchess",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-9"
+    }
+  ],
+  "events": [
+    {
+      "name": "Alice experiences a sudden expansion of ",
+      "kind": "action",
+      "participants": [
+        "Alice"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Alice experiences a sudden expansion of her body, becoming as large as the largest telescope ever made.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-0"
+    },
+    {
+      "name": "Alice reaches a height of over nine feet",
+      "kind": "action",
+      "participants": [
+        "Alice"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Alice reaches a height of over nine feet, marking a significant physical transformation.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-1"
+    },
+    {
+      "name": "Alice picks up the little golden key and",
+      "kind": "action",
+      "participants": [
+        "Alice"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Alice picks up the little golden key and moves quickly toward the garden door.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-2"
+    },
+    {
+      "name": "Alice’s head hits the ceiling of the hal",
+      "kind": "action",
+      "participants": [
+        "Alice"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Alice’s head hits the ceiling of the hall as she grows taller.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-3"
+    },
+    {
+      "name": "Alice bids farewell to her feet as they ",
+      "kind": "action",
+      "participants": [
+        "Alice"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Alice bids farewell to her feet as they grow increasingly distant and small.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-4"
+    },
+    {
+      "name": "The White Rabbit holds a pair of white k",
+      "kind": "action",
+      "participants": [
+        "White Rabbit"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "The White Rabbit holds a pair of white kid gloves in one hand and a large fan in the other.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-5"
+    },
+    {
+      "name": "The White Rabbit expresses concern that ",
+      "kind": "action",
+      "participants": [
+        "White Rabbit"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "The White Rabbit expresses concern that the Duchess will be angry for keeping her waiting.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-6"
+    },
+    {
+      "name": "The White Rabbit arrives back in a grand",
+      "kind": "action",
+      "participants": [
+        "White Rabbit"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "The White Rabbit arrives back in a grand and hurried manner, wearing fine attire.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-7"
+    },
+    {
+      "name": "Alice lies on her side and looks through",
+      "kind": "action",
+      "participants": [
+        "Alice"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Alice lies on her side and looks through the garden with one eye.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-8"
+    },
+    {
+      "name": "Alice reflects on the future care of her",
+      "kind": "action",
+      "participants": [
+        "Alice"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Alice reflects on the future care of her feet, imagining someone else putting on their shoes and stockings.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-9"
+    },
+    {
+      "name": "Alice starts crying after struggling to ",
+      "kind": "action",
+      "participants": [
+        "Alice"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Alice starts crying after struggling to see into the garden.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-10"
+    },
+    {
+      "name": "Alice resolves to care for her feet so t",
+      "kind": "action",
+      "participants": [
+        "Alice"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Alice resolves to care for her feet so they will walk as she desires.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-11"
+    }
+  ],
+  "facts": []
+}

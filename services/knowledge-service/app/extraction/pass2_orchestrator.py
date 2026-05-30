@@ -91,6 +91,11 @@ def _load_precision_filter_config() -> PrecisionFilterConfig | None:
             (default) or ``"drop"``.
         KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_SOURCE: ``"user_model"``
             (default) or ``"platform_model"``.
+        KNOWLEDGE_EXTRACTION_PRECISION_FILTER_CATEGORIES: comma-separated
+            subset of ``{"entity","relation","event"}`` (default
+            ``"entity,relation,event"`` for cycle-72 backward-compat;
+            cycle-73b ship uses ``"relation"`` for 55% latency
+            reduction at near-identical F1).
     """
     model_ref = os.environ.get(
         "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF", ""
@@ -103,10 +108,18 @@ def _load_precision_filter_config() -> PrecisionFilterConfig | None:
     model_source = os.environ.get(
         "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_SOURCE", "user_model"
     ).strip() or "user_model"
+    categories_env = os.environ.get(
+        "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_CATEGORIES",
+        "entity,relation,event",
+    ).strip() or "entity,relation,event"
+    categories = tuple(
+        c.strip() for c in categories_env.split(",") if c.strip()
+    )
     return PrecisionFilterConfig(
         model_ref=model_ref,
         model_source=model_source,  # type: ignore[arg-type]
         partial_policy=partial_policy,  # type: ignore[arg-type]
+        categories=categories,  # type: ignore[arg-type]
     )
 
 

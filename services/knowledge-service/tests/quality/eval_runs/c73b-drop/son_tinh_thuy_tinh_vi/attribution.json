@@ -1,0 +1,445 @@
+{
+  "chapter": "son_tinh_thuy_tinh_vi",
+  "entities": {
+    "tp": [
+      {
+        "actual_idx": 0,
+        "expected_idx": 2,
+        "actual_name": "Mỵ Nương",
+        "actual_kind": "person",
+        "expected_name": "Mỵ Nương",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 1,
+        "expected_idx": 0,
+        "actual_name": "Sơn Tinh",
+        "actual_kind": "person",
+        "expected_name": "Sơn Tinh",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 2,
+        "expected_idx": 1,
+        "actual_name": "Thủy Tinh",
+        "actual_kind": "person",
+        "expected_name": "Thủy Tinh",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 3,
+        "expected_idx": 4,
+        "actual_name": "núi Tản Viên",
+        "actual_kind": "place",
+        "expected_name": "núi Tản Viên",
+        "expected_kind": "place",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 12,
+        "expected_idx": 3,
+        "actual_name": "vua cha",
+        "actual_kind": "person",
+        "expected_name": "Hùng Vương",
+        "expected_kind": "person",
+        "matched_via": "alias"
+      }
+    ],
+    "fp": [
+      {
+        "actual_idx": 4,
+        "actual_name": "Đời Hùng Vương thứ mười tám",
+        "actual_kind": "concept"
+      },
+      {
+        "actual_idx": 5,
+        "actual_name": "cung điện",
+        "actual_kind": "place"
+      },
+      {
+        "actual_idx": 6,
+        "actual_name": "gà chín cựa",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 7,
+        "actual_name": "lũ lụt hằng năm ở đồng bằng Bắc Bộ",
+        "actual_kind": "concept"
+      },
+      {
+        "actual_idx": 8,
+        "actual_name": "một trăm nệp bánh chưng",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 9,
+        "actual_name": "một trăm ván cơm nếp",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 10,
+        "actual_name": "ngựa chín hồng mao",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 11,
+        "actual_name": "voi chín ngà",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 13,
+        "actual_name": "nước dâng cao",
+        "actual_kind": "concept"
+      },
+      {
+        "actual_idx": 14,
+        "actual_name": "sính lễ",
+        "actual_kind": "concept"
+      },
+      {
+        "actual_idx": 15,
+        "actual_name": "vùng biển sâu",
+        "actual_kind": "place"
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 5,
+        "expected_name": "đồng bằng Bắc Bộ",
+        "expected_kind": "place",
+        "expected_aliases": []
+      }
+    ],
+    "fp_trap": [
+      {
+        "actual_idx": 11,
+        "actual_name": "voi chín ngà",
+        "actual_kind": "artifact",
+        "trap_idx": 0,
+        "trap_name": "voi chín ngà",
+        "trap_reason": "Wedding gift item, not a named entity"
+      },
+      {
+        "actual_idx": 6,
+        "actual_name": "gà chín cựa",
+        "actual_kind": "artifact",
+        "trap_idx": 1,
+        "trap_name": "gà chín cựa",
+        "trap_reason": "Wedding gift item, not a named entity"
+      },
+      {
+        "actual_idx": 10,
+        "actual_name": "ngựa chín hồng mao",
+        "actual_kind": "artifact",
+        "trap_idx": 2,
+        "trap_name": "ngựa chín hồng mao",
+        "trap_reason": "Wedding gift item, not a named entity"
+      }
+    ],
+    "fp_annotation_gap": []
+  },
+  "relations": {
+    "tp": [
+      {
+        "actual_idx": 0,
+        "expected_idx": 4,
+        "actual": [
+          "Sơn Tinh",
+          "married_to",
+          "Mỵ Nương",
+          "affirm"
+        ],
+        "expected": [
+          "Sơn Tinh",
+          "married_to",
+          "Mỵ Nương",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 1,
+        "expected_idx": 3,
+        "actual": [
+          "Sơn Tinh",
+          "lives_in",
+          "núi Tản Viên",
+          "affirm"
+        ],
+        "expected": [
+          "Sơn Tinh",
+          "resides_at",
+          "núi Tản Viên",
+          "affirm"
+        ]
+      }
+    ],
+    "fp": [
+      {
+        "actual_idx": 2,
+        "actual": [
+          "Đời Hùng Vương thứ mười tám",
+          "has_daughter",
+          "Mỵ Nương",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 3,
+        "actual": [
+          "Thủy Tinh",
+          "rules",
+          "vùng biển sâu",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 4,
+        "actual": [
+          "nước dâng cao",
+          "causes",
+          "lũ lụt hằng năm ở đồng bằng Bắc Bộ",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 5,
+        "actual": [
+          "vua cha",
+          "loves",
+          "Mỵ Nương",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 6,
+        "actual": [
+          "Sơn Tinh",
+          "owns",
+          "ngựa chín hồng mao",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 7,
+        "actual": [
+          "vua cha",
+          "wants_to_marry",
+          "Mỵ Nương",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 8,
+        "actual": [
+          "Thủy Tinh",
+          "courts",
+          "Mỵ Nương",
+          "negate"
+        ]
+      },
+      {
+        "actual_idx": 9,
+        "actual": [
+          "Thủy Tinh",
+          "enemies_with",
+          "Sơn Tinh",
+          "affirm"
+        ]
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 0,
+        "expected": [
+          "Mỵ Nương",
+          "child_of",
+          "Hùng Vương",
+          "affirm"
+        ]
+      },
+      {
+        "expected_idx": 1,
+        "expected": [
+          "Sơn Tinh",
+          "courts",
+          "Mỵ Nương",
+          "affirm"
+        ]
+      },
+      {
+        "expected_idx": 2,
+        "expected": [
+          "Thủy Tinh",
+          "courts",
+          "Mỵ Nương",
+          "affirm"
+        ]
+      }
+    ],
+    "fp_trap": [],
+    "fp_annotation_gap": [
+      {
+        "actual_idx": 10,
+        "actual": [
+          "Thủy Tinh",
+          "knows",
+          "Sơn Tinh",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 11,
+        "actual": [
+          "Thủy Tinh",
+          "follows",
+          "Sơn Tinh",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      }
+    ]
+  },
+  "events": {
+    "tp": [
+      {
+        "actual_idx": 2,
+        "expected_idx": 2,
+        "actual_summary": "Thủy Tinh nổi cơn thịnh nộ, hô mưa gọi gió và dâng nước cuồn cuộn để đuổi theo Sơn Tinh.",
+        "actual_participants": [
+          "Thủy Tinh",
+          "Sơn Tinh"
+        ],
+        "expected_summary": "Thủy Tinh nổi giận dâng nước đuổi đánh Sơn Tinh",
+        "expected_participants": [
+          "Thủy Tinh",
+          "Sơn Tinh"
+        ],
+        "overlap_score": 0.778,
+        "participants_jaccard": 1.0
+      }
+    ],
+    "fp": [
+      {
+        "actual_idx": 0,
+        "actual_summary": "Sơn Tinh đã mang đủ sính lễ đến cung điện và đón được Mỵ Nương về núi Tản Viên.",
+        "actual_participants": [
+          "Sơn Tinh"
+        ]
+      },
+      {
+        "actual_idx": 1,
+        "actual_summary": "Từ sau thất bại, Thủy Tinh mỗi năm lại dâng nước đánh Sơn Tinh để báo thù mối hận xưa.",
+        "actual_participants": [
+          "Thủy Tinh"
+        ]
+      },
+      {
+        "actual_idx": 3,
+        "actual_summary": "Vua cha yêu thương con gái Mỵ Nương hết mực và quyết định kén chồng cho nàng.",
+        "actual_participants": [
+          "vua cha",
+          "Mỵ Nương"
+        ]
+      },
+      {
+        "actual_idx": 4,
+        "actual_summary": "Sơn Tinh và Thủy Tinh đánh nhau liên tục trong nhiều tháng.",
+        "actual_participants": [
+          "Sơn Tinh",
+          "Thủy Tinh"
+        ]
+      },
+      {
+        "actual_idx": 5,
+        "actual_summary": "Người dân cho rằng lũ lụt hằng năm ở đồng bằng Bắc Bộ bắt nguồn từ cuộc chiến giữa Thủy Tinh và Sơn Tinh.",
+        "actual_participants": [
+          "người dân"
+        ]
+      },
+      {
+        "actual_idx": 6,
+        "actual_summary": "Sơn Tinh hóa phép để cho núi Tản Viên cao lên theo mức nước dâng.",
+        "actual_participants": [
+          "Sơn Tinh"
+        ]
+      },
+      {
+        "actual_idx": 7,
+        "actual_summary": "Hai vị thần, Sơn Tinh và Thủy Tinh, cùng đến cầu hôn Mỵ Nương.",
+        "actual_participants": [
+          "Sơn Tinh",
+          "Thủy Tinh"
+        ]
+      },
+      {
+        "actual_idx": 8,
+        "actual_summary": "Sau nhiều tháng chiến đấu, Thủy Tinh kiệt sức và rút quân về biển.",
+        "actual_participants": [
+          "Thủy Tinh"
+        ]
+      },
+      {
+        "actual_idx": 9,
+        "actual_summary": "Thủy Tinh đến cung điện sau Sơn Tinh nhưng không thấy Mỵ Nương, biết rằng đã thua cuộc.",
+        "actual_participants": [
+          "Thủy Tinh",
+          "Mỵ Nương"
+        ]
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 0,
+        "expected_summary": "Hùng Vương ra điều kiện sính lễ để chọn rể giữa Sơn Tinh và Thủy Tinh",
+        "expected_participants": [
+          "Hùng Vương",
+          "Sơn Tinh",
+          "Thủy Tinh",
+          "Mỵ Nương"
+        ]
+      },
+      {
+        "expected_idx": 1,
+        "expected_summary": "Sơn Tinh mang sính lễ đến trước và đón Mỵ Nương về núi Tản Viên",
+        "expected_participants": [
+          "Sơn Tinh",
+          "Mỵ Nương"
+        ]
+      },
+      {
+        "expected_idx": 3,
+        "expected_summary": "Sơn Tinh hóa phép cho núi Tản Viên cao lên chống lại nước lũ",
+        "expected_participants": [
+          "Sơn Tinh",
+          "núi Tản Viên"
+        ]
+      },
+      {
+        "expected_idx": 4,
+        "expected_summary": "Thủy Tinh hằng năm dâng nước đánh Sơn Tinh nhưng đều thua",
+        "expected_participants": [
+          "Thủy Tinh",
+          "Sơn Tinh"
+        ]
+      }
+    ],
+    "fp_trap": [
+      {
+        "actual_idx": 1,
+        "actual_summary": "Từ sau thất bại, Thủy Tinh mỗi năm lại dâng nước đánh Sơn Tinh để báo thù mối hận xưa.",
+        "actual_participants": [
+          "Thủy Tinh"
+        ],
+        "trap_idx": 6,
+        "trap_summary": "Sơn Tinh và Thủy Tinh hòa giải",
+        "trap_participants": [],
+        "trap_reason": "The story ends with eternal conflict; reconciliation is the OPPOSITE of what happens"
+      }
+    ],
+    "fp_annotation_gap": []
+  }
+}

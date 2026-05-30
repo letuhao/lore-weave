@@ -1,0 +1,482 @@
+{
+  "chapter": "tam_cam_vi",
+  "entities": {
+    "tp": [
+      {
+        "actual_idx": 1,
+        "expected_idx": 0,
+        "actual_name": "Tấm",
+        "actual_kind": "person",
+        "expected_name": "Tấm",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 2,
+        "expected_idx": 1,
+        "actual_name": "Cám",
+        "actual_kind": "person",
+        "expected_name": "Cám",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 4,
+        "expected_idx": 2,
+        "actual_name": "dì ghẻ",
+        "actual_kind": "person",
+        "expected_name": "dì ghẻ",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 5,
+        "expected_idx": 4,
+        "actual_name": "vua",
+        "actual_kind": "person",
+        "expected_name": "vua",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      }
+    ],
+    "fp": [
+      {
+        "actual_idx": 0,
+        "actual_name": "Bụt",
+        "actual_kind": "concept"
+      },
+      {
+        "actual_idx": 3,
+        "actual_name": "cá bống",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 6,
+        "actual_name": "giày thêu",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 7,
+        "actual_name": "giếng",
+        "actual_kind": "place"
+      },
+      {
+        "actual_idx": 8,
+        "actual_name": "ngựa quý",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 9,
+        "actual_name": "hội lớn",
+        "actual_kind": "concept"
+      },
+      {
+        "actual_idx": 10,
+        "actual_name": "lọ",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 11,
+        "actual_name": "quần áo lụa là",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 12,
+        "actual_name": "giường",
+        "actual_kind": "artifact"
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 3,
+        "expected_name": "Bụt",
+        "expected_kind": "person",
+        "expected_aliases": []
+      },
+      {
+        "expected_idx": 5,
+        "expected_name": "cá bống",
+        "expected_kind": "person",
+        "expected_aliases": [
+          "bống"
+        ]
+      },
+      {
+        "expected_idx": 6,
+        "expected_name": "yếm đỏ",
+        "expected_kind": "artifact",
+        "expected_aliases": []
+      }
+    ],
+    "fp_trap": [
+      {
+        "actual_idx": 7,
+        "actual_name": "giếng",
+        "actual_kind": "place",
+        "trap_idx": 5,
+        "trap_name": "giếng",
+        "trap_reason": "Unnamed common-noun location ('the well'), not a proper-noun entity"
+      }
+    ],
+    "fp_annotation_gap": []
+  },
+  "relations": {
+    "tp": [
+      {
+        "actual_idx": 2,
+        "expected_idx": 2,
+        "actual": [
+          "Tấm",
+          "stepchild_of",
+          "dì ghẻ",
+          "affirm"
+        ],
+        "expected": [
+          "Tấm",
+          "stepchild_of",
+          "dì ghẻ",
+          "affirm"
+        ]
+      }
+    ],
+    "fp": [
+      {
+        "actual_idx": 1,
+        "actual": [
+          "Tấm",
+          "child_of",
+          "mẹ ruột Tấm",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 9,
+        "actual": [
+          "Tấm",
+          "lives_in",
+          "cung",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 11,
+        "actual": [
+          "dì ghẻ",
+          "married_to",
+          "cha Tấm",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 12,
+        "actual": [
+          "Tấm",
+          "born_from",
+          "giếng",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 13,
+        "actual": [
+          "Tấm",
+          "rents",
+          "giường",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 14,
+        "actual": [
+          "dì ghẻ",
+          "imprisoned_by",
+          "Tấm",
+          "negate"
+        ]
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 0,
+        "expected": [
+          "Tấm",
+          "stepsibling_of",
+          "Cám",
+          "affirm"
+        ]
+      },
+      {
+        "expected_idx": 1,
+        "expected": [
+          "Cám",
+          "child_of",
+          "dì ghẻ",
+          "affirm"
+        ]
+      },
+      {
+        "expected_idx": 3,
+        "expected": [
+          "Bụt",
+          "helps",
+          "Tấm",
+          "affirm"
+        ]
+      },
+      {
+        "expected_idx": 4,
+        "expected": [
+          "vua",
+          "married_to",
+          "Tấm",
+          "affirm"
+        ]
+      }
+    ],
+    "fp_trap": [],
+    "fp_annotation_gap": [
+      {
+        "actual_idx": 0,
+        "actual": [
+          "Bụt",
+          "instructs",
+          "Tấm",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 3,
+        "actual": [
+          "vua",
+          "courts",
+          "Tấm",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 4,
+        "actual": [
+          "Cám",
+          "sibling_of",
+          "Tấm",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 5,
+        "actual": [
+          "Tấm",
+          "works_for",
+          "dì ghẻ",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 6,
+        "actual": [
+          "Tấm",
+          "helps",
+          "cá bống",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 7,
+        "actual": [
+          "Tấm",
+          "owns",
+          "cá bống",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 8,
+        "actual": [
+          "Tấm",
+          "follows",
+          "Bụt",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 10,
+        "actual": [
+          "Cám",
+          "lives_with",
+          "dì ghẻ",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      }
+    ]
+  },
+  "events": {
+    "tp": [],
+    "fp": [
+      {
+        "actual_idx": 0,
+        "actual_summary": "After Tấm cries over the task, Bụt sends a flock of sparrows to assist her in sorting rice and barley.",
+        "actual_participants": [
+          "Bụt",
+          "chim sẻ"
+        ]
+      },
+      {
+        "actual_idx": 1,
+        "actual_summary": "After Tấm cries over her stolen shrimp, Bụt appears and tells her to release a small bống fish into the well and feed it rice daily.",
+        "actual_participants": [
+          "Bụt",
+          "Tấm"
+        ]
+      },
+      {
+        "actual_idx": 2,
+        "actual_summary": "After Tấm discovers her fish missing and cries again, Bụt appears and commands her to bury the fish bones in four jars under the four legs of the bed.",
+        "actual_participants": [
+          "Bụt",
+          "Tấm"
+        ]
+      },
+      {
+        "actual_idx": 3,
+        "actual_summary": "Cám tricks Tấm into bathing and transfers all of Tấm's shrimp to her own basket, returning home first.",
+        "actual_participants": [
+          "Cám",
+          "Tấm"
+        ]
+      },
+      {
+        "actual_idx": 4,
+        "actual_summary": "After learning of Tấm's daily ritual, the stepmother and Cám lure Tấm away to graze cattle and cook the bống fish for dinner.",
+        "actual_participants": [
+          "dì ghẻ",
+          "Cám",
+          "Tấm"
+        ]
+      },
+      {
+        "actual_idx": 5,
+        "actual_summary": "After their mother's death and father's passing, Tấm and Cám live with their stepmother, who favors Cám over Tấm.",
+        "actual_participants": [
+          "Tấm",
+          "Cám",
+          "dì ghẻ"
+        ]
+      },
+      {
+        "actual_idx": 6,
+        "actual_summary": "Tấm uncovers the buried jars, finding silk clothes, embroidered shoes, and a noble horse.",
+        "actual_participants": [
+          "Tấm"
+        ]
+      },
+      {
+        "actual_idx": 7,
+        "actual_summary": "Tấm successfully tries on the shoe and is brought to the palace by the king to become empress.",
+        "actual_participants": [
+          "Tấm",
+          "vua"
+        ]
+      },
+      {
+        "actual_idx": 8,
+        "actual_summary": "The stepmother mixes rice and barley, requiring Tấm to separate them before she can attend the festival.",
+        "actual_participants": [
+          "dì ghẻ",
+          "Tấm"
+        ]
+      },
+      {
+        "actual_idx": 9,
+        "actual_summary": "The king picks up the lost shoe and proclaims that any girl who fits it perfectly will be married to him as queen.",
+        "actual_participants": [
+          "vua"
+        ]
+      },
+      {
+        "actual_idx": 10,
+        "actual_summary": "Tấm diligently gathers a full basket of shrimp, while Cám plays and fails to catch any.",
+        "actual_participants": [
+          "Tấm",
+          "Cám"
+        ]
+      },
+      {
+        "actual_idx": 11,
+        "actual_summary": "Tấm consistently feeds rice to the bống fish every meal, treating it as her closest friend.",
+        "actual_participants": [
+          "Tấm",
+          "cá bống"
+        ]
+      },
+      {
+        "actual_idx": 12,
+        "actual_summary": "While traveling to the festival, Tấm drops one of her embroidered shoes into a body of water.",
+        "actual_participants": [
+          "Tấm"
+        ]
+      },
+      {
+        "actual_idx": 13,
+        "actual_summary": "The king announces a large gathering, inviting all citizens to celebrate.",
+        "actual_participants": [
+          "vua"
+        ]
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 0,
+        "expected_summary": "Cám lừa Tấm xuống tắm rồi cướp giỏ tép của Tấm",
+        "expected_participants": [
+          "Tấm",
+          "Cám"
+        ]
+      },
+      {
+        "expected_idx": 1,
+        "expected_summary": "Bụt cho Tấm con cá bống làm bạn",
+        "expected_participants": [
+          "Bụt",
+          "Tấm",
+          "cá bống"
+        ]
+      },
+      {
+        "expected_idx": 2,
+        "expected_summary": "Dì ghẻ và Cám lừa Tấm đi chăn trâu rồi giết cá bống",
+        "expected_participants": [
+          "dì ghẻ",
+          "Cám",
+          "Tấm",
+          "cá bống"
+        ]
+      },
+      {
+        "expected_idx": 3,
+        "expected_summary": "Bụt sai đàn chim sẻ xuống giúp Tấm nhặt thóc",
+        "expected_participants": [
+          "Bụt",
+          "Tấm"
+        ]
+      },
+      {
+        "expected_idx": 4,
+        "expected_summary": "Vua ướm giày tìm chủ nhân và cưới Tấm về làm hoàng hậu",
+        "expected_participants": [
+          "vua",
+          "Tấm"
+        ]
+      }
+    ],
+    "fp_trap": [],
+    "fp_annotation_gap": []
+  }
+}
