@@ -1,9 +1,47 @@
-# Session Handoff — Session 74 (74a F1-eval NEUTRAL · 74a-smoke 73f live · 74b disable-semantics fix)
+# Session Handoff — Session 74 (74a F1-eval · 74b disable-fix · 74c relation-lever refutations + ARCHITECTURE AUDIT)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-05-30 (session 74 — 74a F1 eval (NEUTRAL) + 74a-smoke (73f live smoke, PASS) + 74b (disable-semantics consistency fix, found by the smoke)).
-> **HEAD:** `fc96eebe` (74a) + 74b commit (this session).
+> **Date:** 2026-05-30 (session 74 — 74a F1 eval (NEUTRAL) + 74a-smoke (73f live smoke PASS) + 74b (disable-semantics fix) + 74c (relation-lever refutations + full RAG/eval architecture audit)).
+> **HEAD:** `0d456f27` (74b). 74c produced docs only (audit report + this handoff), uncommitted at time of writing.
 > **Branch:** `main`.
+
+## Session 74 — cycle 74c: relation-lever refutations + full architecture/eval audit
+
+### Part A — four relation/events R&D levers investigated, ALL refuted (no code shipped)
+
+User wanted to push extraction quality. I rigorously investigated and **refuted every candidate cheap lever** — banked as negatives so they are not re-litigated:
+
+1. **Events fuzzy-match (D-EVENT-AGGREGATOR-FUZZY-MATCH) → STALE.** Premise ("events weakest") dates to cycle 69. Current macro F1 by category (c73e-on verdicts): entity 0.93–0.99, **relation 0.69–0.94 (weakest)**, event 0.945–0.983 (strong). The LLM recall judge already matches "under any phrasing", so granularity drift is absorbed. **Close this deferred row as stale.**
+2. **Filter confirmed-endpoint exemption → REFUTED.** "Keep relations whose both endpoints are confirmed entities" would recover 39/48 filter-dropped relations — but ~37 are garbage the filter correctly dropped (`White Rabbit -located_in-> waistcoat-pocket`, `Bingley -married_to-> Netherfield Park`). Both-endpoints-are-entities ≠ predicate is correct. Would tank precision.
+3. **Deterministic predicate↔object-kind rule → REFUTED.** No clean separator: same predicates/kinds appear in garbage AND good (person obj 16 dropped/35 kept; `lives_in` 3/9; `married_to` 1/3). Garbage-vs-good is semantic — exactly what the LLM filter judges.
+4. **Confidence-threshold prune → UNMEASURABLE.** Eval dumps carry no confidence (0/121 relations) — needs re-extraction.
+
+**Conclusion:** the relation extractor over-extracts spurious relations (48 dropped corpus-wide, mostly garbage); the filter correctly cleans them; shipped relation *precision* is already 0.89–0.94. No cheap lever remains; the only path is a risky+expensive prompt-tightening re-extraction (cycle-71 lessons warn of regression). Pass2 relation R&D is at the **cheap-lever frontier**.
+
+### Part B — full RAG + extraction + eval architecture audit → [docs/reports/2026-05-30-rag-pipeline-audit.html](../reports/2026-05-30-rag-pipeline-audit.html)
+
+User distrusted the eval results. I ran a 3-pipeline audit (extraction, RAG retrieval, eval framework) via parallel subagents + direct verification, and produced a detailed technical HTML report. **Corrected verdict (after user feedback that local models are strong + a strong model already validated outputs):**
+
+- **Models are NOT the problem.** Extractor/judges are near-top-tier open models (Google Gemma-26B, Alibaba Qwen-30B/35B). Strong-model (Claude) manual review across sessions — incl. this session's spot-checks — corroborates the extraction output is genuinely good. Results are **not fake**.
+- **RAG retrieval architecture = correct** (mode dispatch, L0–L3 layers, bge-m3 1024-d cosine vector + MMR λ=0.7 + hub-penalty/recency, oversample-then-tenant-filter, token budgeting). Standard, sound. **Two defects, not design errors:**
+  - 🐞 **HIGH — 2-hop graph retrieval is dead code.** `app/context/selectors/facts.py:183` calls `find_relations_2hop()` without the **required** kw-only `hop1_types` (`db/neo4j_repos/relations.py:547`, no default) → `TypeError` swallowed by `_safe_l2_facts` → **entire L2 fact layer returns empty for every RELATIONAL-intent query**. Verified. Fix + regression test.
+  - MED — L2 temporal bucketing unimplemented (all relations → `background`).
+- **Eval design = above-average, but two SETUP-correctness flaws inflate the absolute numbers (independent of model quality):**
+  - **Self-reinforcement WIRING:** extractor `019e6a20` == ensemble Judge B (qwen-30b); precision filter `019e5650` == ensemble Judge C ("claude-4.7-opus", which is actually a local `huihui-qwen3.6-35b-…-abliterated` fine-tune, NOT Anthropic Claude). Only Judge A (gemma `019dc3df`) is independent. Grading your own output inflates F1 regardless of grader strength. The locked 3-judge median includes both self-overlapping judges.
+  - **Undersized gold set + no CIs:** 9 chapters, 1–6 gold items each (3 chapters have exactly 1 gold relation), macro-averaged, no confidence intervals — yet ships on ±0.1–0.3pp. A single-run nondeterminism swing of −29pp on alice_ch01 already exceeds every cycle's claimed lift.
+  - CoNLL 0.219 / DocRED 0.127 are a **domain-mismatch sanity floor (news/Wiki NER ≠ fiction extraction), NOT a quality verdict** — do not read as "real accuracy is 0.22".
+- **Net:** eval is reliable as a *relative same-judge drift signal*; its *absolute F1 is inflated by self-grading* and *sub-0.5pp deltas are noise*. Fixable without new models: make judges disjoint from extractor/filter, grow the gold set, add CIs.
+
+### NEXT WORK (user directive) — production-readiness evaluation, then conditional improvement plan
+
+Decision gate the next session must resolve:
+- **If the architecture is already good at production level → STOP.**
+- **If quality is low OR cost is too high → make a plan** to improve via architecture changes / additional algorithms / techniques that **reduce cost and improve quality**. **Priority order: precision (quality) FIRST, cost SECOND, latency LAST** (a precision-first RAG pipeline tolerates latency).
+
+To evaluate cleanly, the next session should FIRST neutralize the two eval-setup flaws so the readiness number isn't self-inflated:
+1. **Get a self-reinforcement-free quality number** — re-judge with the judge set restricted to models that are NEITHER the extractor (`019e6a20`) NOR the filter (`019e5650`); i.e. judge with gemma + one or more *other* models not used in extraction/filtering. Compare to the current 0.913. (Re-judge runs from HOST via `tests/quality/run_rejudge_resumable.py`, host→provider-registry :8208→LM Studio :1234 — bypasses the container OOM blocker.)
+2. **Measure COST** — tokens + wall-clock per chapter for the full pipeline (extract ×4 + relation filter + writes + embeddings). The relation-only drop filter adds ~18.9s/chapter; quantify $/chapter-equivalent and throughput on the local LM Studio target.
+3. **Then judge production-readiness** on precision-first criteria and either stop or write an improvement plan (candidate levers: better/smaller extractor, prompt-tightening with proper re-extraction measurement, cheaper filter, retrieval improvements, fixing the 2-hop bug which is pure correctness).
 
 ## Session 74 summary — cycle 74a-smoke + 74b: 73f live smoke + disable-semantics fix (D-CYCLE73F-LIVE-SMOKE)
 
