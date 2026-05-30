@@ -66,8 +66,15 @@ pub use db_pool::{DbPoolKey, DbPoolRegistry, ShardHost};
 pub use deprovisioner::{DeprovisionReport, DeprovisionRequest, Deprovisioner};
 // L3.I cycle 16 — embedding queue (Q-L3-1 V1: in world-service).
 pub use embedding_queue::{
-    AuditEvent, AuditOutcome, AuditWriter, CountingAuditWriter, EmbedResult, EmbeddingProvider,
-    EmbeddingWriter, MemoryRef, Queue as EmbeddingQueue, Worker as EmbeddingWorker, EMBEDDING_DIM,
+    AuditEvent, AuditOutcome, AuditWriter, CountingAuditWriter, EMBEDDING_DIM, EmbedResult,
+    EmbeddingProvider, EmbeddingWriter, MemoryRef, Queue as EmbeddingQueue,
+    Worker as EmbeddingWorker,
+};
+// DEFERRED-059 core — embedding-queue live wiring (sqlx writer + meta audit +
+// fail-closed provider + axum/prometheus ops surface + tokio drain loop).
+pub use embedding_queue::live::{
+    Config as EmbeddingWorkerConfig, MetaAuditWriter, Metrics as EmbeddingMetrics,
+    MetricsAuditWriter, NotWiredProvider, SqlxEmbeddingWriter,
 };
 pub use errors::ProvisionerError;
 pub use provisioner::{ProvisionReport, ProvisionRequest, Provisioner};
@@ -76,6 +83,6 @@ pub use reality_seeder::{
     AuditEvent as SeederAuditEvent, AuditSink as SeederAuditSink, BookMetadata, BookReader,
     CanonEntry as SeedCanonEntry, CanonExporter, CanonProjectionIntent, CanonProjectionWriter,
     CheckpointStore, KnowledgeReader, LifecycleTransitioner, NpcProxy, RealitySeeder,
-    RealityStatus, Region, SeedCheckpoint, SeedExportResult, SeedReport, SeedRequest,
-    SeederDeps, SeederError, TranslationGateway, TranslationOrchestrator,
+    RealityStatus, Region, SeedCheckpoint, SeedExportResult, SeedReport, SeedRequest, SeederDeps,
+    SeederError, TranslationGateway, TranslationOrchestrator,
 };

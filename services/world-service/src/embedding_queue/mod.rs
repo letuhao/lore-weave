@@ -56,9 +56,12 @@
 //! can be hundreds of ms for an LLM call) lives entirely in the queue.
 
 pub mod audit;
+pub mod live;
 
 use std::collections::VecDeque;
 use std::sync::Mutex;
+
+use async_trait::async_trait;
 use uuid::Uuid;
 
 pub use audit::{AuditEvent, AuditOutcome, AuditWriter, CountingAuditWriter};
@@ -121,10 +124,12 @@ pub enum EmbedResult {
 /// this to an adapter in `provider-registry-service` (the BYOK gateway
 /// from CLAUDE.md "Provider gateway invariant: NO direct provider SDK
 /// calls — all AI calls go through adapter layer").
-pub trait EmbeddingProvider {
+#[async_trait]
+pub trait EmbeddingProvider: Send + Sync {
     /// Compute an embedding for the given text. Returns the model name
-    /// used (for audit) and an [`EmbedResult`].
-    fn embed(&self, text: &str) -> (String, EmbedResult);
+    /// used (for audit) and an [`EmbedResult`]. Async: production binds a
+    /// BYOK provider-gateway HTTP call (deferred D-EMBEDDING-PROVIDER-WIRING).
+    async fn embed(&self, text: &str) -> (String, EmbedResult);
 
     /// Stable identifier for the underlying provider (audit field).
     /// Examples: "openai", "cohere", "local-bge". The caller MUST NOT
@@ -136,13 +141,17 @@ pub trait EmbeddingProvider {
 /// the queue from sqlx so unit tests can use an in-memory fake. Production
 /// wiring (deferred to D-EMBEDDING-QUEUE-LIVE-WIRING) binds this to a
 /// sqlx::PgPool against the per-reality DB for `reality_id`.
-pub trait EmbeddingWriter {
+#[async_trait]
+pub trait EmbeddingWriter: Send + Sync {
     /// UPDATE npc_session_memory_embedding
     ///   SET embedding = $vector::vector
     ///  WHERE npc_id = $npc_id AND session_id = $session_id
     ///    AND embedding IS NULL  -- idempotency guard: don't clobber existing
-    fn write_embedding(
-        &mut self,
+    ///
+    /// Async + `&self`: production binds a shared `sqlx::PgPool` (interior
+    /// shared, no `&mut`), mirroring `dp-kernel::PgEventStore`.
+    async fn write_embedding(
+        &self,
         reality_id: Uuid,
         npc_id: Uuid,
         session_id: Uuid,
@@ -221,10 +230,12 @@ pub struct Worker<'a> {
     pub queue: &'a Queue,
     /// BYOK provider gateway (NOT a direct vendor SDK — see CLAUDE.md).
     pub provider: &'a dyn EmbeddingProvider,
-    /// Persistence sink for the computed VECTOR(1536).
-    pub writer: &'a mut dyn EmbeddingWriter,
+    /// Persistence sink for the computed VECTOR(1536). Shared (`&dyn`) — the
+    /// async writer trait takes `&self`, so the production loop can borrow an
+    /// `Arc<dyn EmbeddingWriter>` per tick.
+    pub writer: &'a dyn EmbeddingWriter,
     /// Audit sink — receives ONE event per provider call (Q-L1A-3 full audit).
-    pub audit: &'a mut dyn AuditWriter,
+    pub audit: &'a dyn AuditWriter,
 }
 
 impl<'a> Worker<'a> {
@@ -239,90 +250,99 @@ impl<'a> Worker<'a> {
     ///      (it scans for stale NULL embeddings and re-pushes them).
     ///
     /// Returns the count of items popped from the queue.
-    pub fn process_batch(&mut self, max_items: usize) -> usize {
+    pub async fn process_batch(&self, max_items: usize) -> usize {
         let mut processed = 0;
         while processed < max_items {
             let Some(mr) = self.queue.dequeue() else {
                 break;
             };
             processed += 1;
-            self.handle_one(mr);
+            self.handle_one(mr).await;
         }
         processed
     }
 
-    fn handle_one(&mut self, mr: MemoryRef) {
-        let (model, result) = self.provider.embed(&mr.text);
+    async fn handle_one(&self, mr: MemoryRef) {
+        let (model, result) = self.provider.embed(&mr.text).await;
         match result {
             EmbedResult::Ok { vector, tokens } => {
                 // Guard against a misbehaving provider — even though the
                 // trait contract says 1536, defense in depth.
                 if vector.len() != EMBEDDING_DIM {
-                    self.audit.record(AuditEvent {
-                        reality_id: mr.reality_id,
-                        npc_id: mr.npc_id,
-                        session_id: mr.session_id,
-                        provider: self.provider.provider_name().to_string(),
-                        model,
-                        tokens: 0,
-                        outcome: AuditOutcome::DimMismatch {
-                            returned_dim: vector.len(),
-                        },
-                    });
+                    self.audit
+                        .record(AuditEvent {
+                            reality_id: mr.reality_id,
+                            npc_id: mr.npc_id,
+                            session_id: mr.session_id,
+                            provider: self.provider.provider_name().to_string(),
+                            model,
+                            tokens: 0,
+                            outcome: AuditOutcome::DimMismatch {
+                                returned_dim: vector.len(),
+                            },
+                        })
+                        .await;
                     return;
                 }
                 // Record audit FIRST so cost is captured even if the
                 // subsequent write blows up.
-                self.audit.record(AuditEvent {
-                    reality_id: mr.reality_id,
-                    npc_id: mr.npc_id,
-                    session_id: mr.session_id,
-                    provider: self.provider.provider_name().to_string(),
-                    model: model.clone(),
-                    tokens,
-                    outcome: AuditOutcome::Ok,
-                });
-                if let Err(e) = self.writer.write_embedding(
-                    mr.reality_id,
-                    mr.npc_id,
-                    mr.session_id,
-                    &vector,
-                ) {
+                self.audit
+                    .record(AuditEvent {
+                        reality_id: mr.reality_id,
+                        npc_id: mr.npc_id,
+                        session_id: mr.session_id,
+                        provider: self.provider.provider_name().to_string(),
+                        model: model.clone(),
+                        tokens,
+                        outcome: AuditOutcome::Ok,
+                    })
+                    .await;
+                if let Err(e) = self
+                    .writer
+                    .write_embedding(mr.reality_id, mr.npc_id, mr.session_id, &vector)
+                    .await
+                {
                     // Record a SECOND audit row capturing the write failure
                     // — distinct from the provider call (which succeeded).
                     // SRE distinguishes via outcome=write_error.
-                    self.audit.record(AuditEvent {
+                    self.audit
+                        .record(AuditEvent {
+                            reality_id: mr.reality_id,
+                            npc_id: mr.npc_id,
+                            session_id: mr.session_id,
+                            provider: self.provider.provider_name().to_string(),
+                            model,
+                            tokens: 0,
+                            outcome: AuditOutcome::WriteError(e),
+                        })
+                        .await;
+                }
+            }
+            EmbedResult::DimMismatch { returned_dim } => {
+                self.audit
+                    .record(AuditEvent {
                         reality_id: mr.reality_id,
                         npc_id: mr.npc_id,
                         session_id: mr.session_id,
                         provider: self.provider.provider_name().to_string(),
                         model,
                         tokens: 0,
-                        outcome: AuditOutcome::WriteError(e),
-                    });
-                }
-            }
-            EmbedResult::DimMismatch { returned_dim } => {
-                self.audit.record(AuditEvent {
-                    reality_id: mr.reality_id,
-                    npc_id: mr.npc_id,
-                    session_id: mr.session_id,
-                    provider: self.provider.provider_name().to_string(),
-                    model,
-                    tokens: 0,
-                    outcome: AuditOutcome::DimMismatch { returned_dim },
-                });
+                        outcome: AuditOutcome::DimMismatch { returned_dim },
+                    })
+                    .await;
             }
             EmbedResult::ProviderError(e) => {
-                self.audit.record(AuditEvent {
-                    reality_id: mr.reality_id,
-                    npc_id: mr.npc_id,
-                    session_id: mr.session_id,
-                    provider: self.provider.provider_name().to_string(),
-                    model,
-                    tokens: 0,
-                    outcome: AuditOutcome::ProviderError(e),
-                });
+                self.audit
+                    .record(AuditEvent {
+                        reality_id: mr.reality_id,
+                        npc_id: mr.npc_id,
+                        session_id: mr.session_id,
+                        provider: self.provider.provider_name().to_string(),
+                        model,
+                        tokens: 0,
+                        outcome: AuditOutcome::ProviderError(e),
+                    })
+                    .await;
             }
         }
     }
@@ -337,6 +357,7 @@ impl<'a> Worker<'a> {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+    use std::sync::Mutex as StdMutex;
 
     // ─── Test doubles ──────────────────────────────────────────────────────
 
@@ -349,8 +370,9 @@ mod tests {
         tokens: u32,
     }
 
+    #[async_trait]
     impl EmbeddingProvider for StubProvider {
-        fn embed(&self, _text: &str) -> (String, EmbedResult) {
+        async fn embed(&self, _text: &str) -> (String, EmbedResult) {
             let mut v = vec![0.0f32; EMBEDDING_DIM];
             for (i, x) in v.iter_mut().enumerate() {
                 *x = (i as f32) * 0.001;
@@ -373,8 +395,9 @@ mod tests {
     /// audit path.
     struct WrongDimProvider;
 
+    #[async_trait]
     impl EmbeddingProvider for WrongDimProvider {
-        fn embed(&self, _text: &str) -> (String, EmbedResult) {
+        async fn embed(&self, _text: &str) -> (String, EmbedResult) {
             (
                 "broken-model".to_string(),
                 EmbedResult::Ok {
@@ -391,8 +414,9 @@ mod tests {
     /// Provider that always errors — exercises the provider-error audit path.
     struct ErrorProvider;
 
+    #[async_trait]
     impl EmbeddingProvider for ErrorProvider {
-        fn embed(&self, _text: &str) -> (String, EmbedResult) {
+        async fn embed(&self, _text: &str) -> (String, EmbedResult) {
             (
                 "unreachable-model".to_string(),
                 EmbedResult::ProviderError("connection refused".to_string()),
@@ -403,26 +427,48 @@ mod tests {
         }
     }
 
-    /// In-memory writer keyed by (reality, npc, session).
+    /// In-memory writer keyed by (reality, npc, session). Interior-mutable
+    /// (`&self` async trait) via `Mutex`, matching the production sqlx writer
+    /// which holds a shared `PgPool`.
     #[derive(Default)]
     struct MemWriter {
-        rows: HashMap<(Uuid, Uuid, Uuid), Vec<f32>>,
-        fail_next: bool,
+        rows: StdMutex<HashMap<(Uuid, Uuid, Uuid), Vec<f32>>>,
+        fail_next: StdMutex<bool>,
     }
 
+    impl MemWriter {
+        fn row_count(&self) -> usize {
+            self.rows.lock().unwrap().len()
+        }
+        fn vector_lens(&self) -> Vec<usize> {
+            self.rows
+                .lock()
+                .unwrap()
+                .values()
+                .map(|v| v.len())
+                .collect()
+        }
+    }
+
+    #[async_trait]
     impl EmbeddingWriter for MemWriter {
-        fn write_embedding(
-            &mut self,
+        async fn write_embedding(
+            &self,
             reality_id: Uuid,
             npc_id: Uuid,
             session_id: Uuid,
             vector: &[f32],
         ) -> Result<(), String> {
-            if self.fail_next {
-                self.fail_next = false;
-                return Err("simulated DB error".into());
+            {
+                let mut f = self.fail_next.lock().unwrap();
+                if *f {
+                    *f = false;
+                    return Err("simulated DB error".into());
+                }
             }
             self.rows
+                .lock()
+                .unwrap()
                 .insert((reality_id, npc_id, session_id), vector.to_vec());
             Ok(())
         }
@@ -456,8 +502,8 @@ mod tests {
         assert_eq!(q.depth(), 2);
     }
 
-    #[test]
-    fn worker_happy_path_writes_vector_and_audits_ok() {
+    #[tokio::test]
+    async fn worker_happy_path_writes_vector_and_audits_ok() {
         let q = Queue::new(10);
         q.enqueue(mr("hello")).unwrap();
         q.enqueue(mr("world")).unwrap();
@@ -466,76 +512,76 @@ mod tests {
             model: "text-embedding-ada-002",
             tokens: 42,
         };
-        let mut writer = MemWriter::default();
-        let mut audit = CountingAuditWriter::default();
-        let mut worker = Worker {
+        let writer = MemWriter::default();
+        let audit = CountingAuditWriter::default();
+        let worker = Worker {
             queue: &q,
             provider: &provider,
-            writer: &mut writer,
-            audit: &mut audit,
+            writer: &writer,
+            audit: &audit,
         };
-        let n = worker.process_batch(10);
+        let n = worker.process_batch(10).await;
         assert_eq!(n, 2);
-        assert_eq!(writer.rows.len(), 2, "both rows written");
-        for v in writer.rows.values() {
-            assert_eq!(v.len(), EMBEDDING_DIM, "all written vectors are 1536-dim");
+        assert_eq!(writer.row_count(), 2, "both rows written");
+        for len in writer.vector_lens() {
+            assert_eq!(len, EMBEDDING_DIM, "all written vectors are 1536-dim");
         }
         // Q-L1A-3: full audit — both calls recorded.
-        assert_eq!(audit.events.len(), 2);
-        assert!(matches!(audit.events[0].outcome, AuditOutcome::Ok));
-        assert_eq!(audit.events[0].tokens, 42);
-        assert_eq!(audit.events[0].model, "text-embedding-ada-002");
-        assert_eq!(audit.events[0].provider, "openai");
+        let ev = audit.events();
+        assert_eq!(ev.len(), 2);
+        assert!(matches!(ev[0].outcome, AuditOutcome::Ok));
+        assert_eq!(ev[0].tokens, 42);
+        assert_eq!(ev[0].model, "text-embedding-ada-002");
+        assert_eq!(ev[0].provider, "openai");
     }
 
-    #[test]
-    fn worker_dim_mismatch_audits_but_does_not_write() {
+    #[tokio::test]
+    async fn worker_dim_mismatch_audits_but_does_not_write() {
         // Two failure modes: (a) provider returns OK with wrong-dim vector,
         // (b) provider explicitly returns DimMismatch. Both must audit + skip write.
         let q = Queue::new(10);
         q.enqueue(mr("a")).unwrap();
         let provider = WrongDimProvider;
-        let mut writer = MemWriter::default();
-        let mut audit = CountingAuditWriter::default();
-        let mut worker = Worker {
+        let writer = MemWriter::default();
+        let audit = CountingAuditWriter::default();
+        let worker = Worker {
             queue: &q,
             provider: &provider,
-            writer: &mut writer,
-            audit: &mut audit,
+            writer: &writer,
+            audit: &audit,
         };
-        worker.process_batch(10);
-        assert_eq!(writer.rows.len(), 0, "wrong-dim must NOT write");
-        assert_eq!(audit.events.len(), 1);
-        match &audit.events[0].outcome {
+        worker.process_batch(10).await;
+        assert_eq!(writer.row_count(), 0, "wrong-dim must NOT write");
+        let ev = audit.events();
+        assert_eq!(ev.len(), 1);
+        match &ev[0].outcome {
             AuditOutcome::DimMismatch { returned_dim } => assert_eq!(*returned_dim, 768),
             other => panic!("expected DimMismatch, got {other:?}"),
         }
     }
 
-    #[test]
-    fn worker_provider_error_is_audited_only() {
+    #[tokio::test]
+    async fn worker_provider_error_is_audited_only() {
         let q = Queue::new(10);
         q.enqueue(mr("a")).unwrap();
         let provider = ErrorProvider;
-        let mut writer = MemWriter::default();
-        let mut audit = CountingAuditWriter::default();
-        let mut worker = Worker {
+        let writer = MemWriter::default();
+        let audit = CountingAuditWriter::default();
+        let worker = Worker {
             queue: &q,
             provider: &provider,
-            writer: &mut writer,
-            audit: &mut audit,
+            writer: &writer,
+            audit: &audit,
         };
-        worker.process_batch(10);
-        assert_eq!(writer.rows.len(), 0);
-        assert_eq!(audit.events.len(), 1);
-        assert!(matches!(
-            audit.events[0].outcome,
-            AuditOutcome::ProviderError(_)
-        ));
+        worker.process_batch(10).await;
+        assert_eq!(writer.row_count(), 0);
+        let ev = audit.events();
+        assert_eq!(ev.len(), 1);
+        assert!(matches!(ev[0].outcome, AuditOutcome::ProviderError(_)));
     }
 
-    #[test]
-    fn worker_write_failure_emits_second_audit_row() {
+    #[tokio::test]
+    async fn worker_write_failure_emits_second_audit_row() {
         // Q-L1A-3 + defense-in-depth: a DB write failure after a successful
         // provider call must be its OWN audit row so SRE can distinguish
         // "we paid for the tokens" from "we successfully stored the result".
@@ -546,29 +592,27 @@ mod tests {
             model: "text-embedding-ada-002",
             tokens: 50,
         };
-        let mut writer = MemWriter {
-            fail_next: true,
+        let writer = MemWriter {
+            fail_next: StdMutex::new(true),
             ..Default::default()
         };
-        let mut audit = CountingAuditWriter::default();
-        let mut worker = Worker {
+        let audit = CountingAuditWriter::default();
+        let worker = Worker {
             queue: &q,
             provider: &provider,
-            writer: &mut writer,
-            audit: &mut audit,
+            writer: &writer,
+            audit: &audit,
         };
-        worker.process_batch(10);
-        assert_eq!(writer.rows.len(), 0, "write failed → no row");
-        assert_eq!(audit.events.len(), 2, "must record OK + WriteError");
-        assert!(matches!(audit.events[0].outcome, AuditOutcome::Ok));
-        assert!(matches!(
-            audit.events[1].outcome,
-            AuditOutcome::WriteError(_)
-        ));
+        worker.process_batch(10).await;
+        assert_eq!(writer.row_count(), 0, "write failed → no row");
+        let ev = audit.events();
+        assert_eq!(ev.len(), 2, "must record OK + WriteError");
+        assert!(matches!(ev[0].outcome, AuditOutcome::Ok));
+        assert!(matches!(ev[1].outcome, AuditOutcome::WriteError(_)));
     }
 
-    #[test]
-    fn worker_respects_max_items_cap() {
+    #[tokio::test]
+    async fn worker_respects_max_items_cap() {
         let q = Queue::new(100);
         for i in 0..50 {
             q.enqueue(mr(&format!("text-{i}"))).unwrap();
@@ -578,38 +622,38 @@ mod tests {
             model: "text-embedding-ada-002",
             tokens: 1,
         };
-        let mut writer = MemWriter::default();
-        let mut audit = CountingAuditWriter::default();
-        let mut worker = Worker {
+        let writer = MemWriter::default();
+        let audit = CountingAuditWriter::default();
+        let worker = Worker {
             queue: &q,
             provider: &provider,
-            writer: &mut writer,
-            audit: &mut audit,
+            writer: &writer,
+            audit: &audit,
         };
-        let n = worker.process_batch(10);
+        let n = worker.process_batch(10).await;
         assert_eq!(n, 10, "max_items cap honored");
         assert_eq!(q.depth(), 40, "remaining items still in queue");
     }
 
-    #[test]
-    fn process_batch_empty_queue_returns_zero() {
+    #[tokio::test]
+    async fn process_batch_empty_queue_returns_zero() {
         let q = Queue::new(10);
         let provider = StubProvider {
             name: "openai",
             model: "text-embedding-ada-002",
             tokens: 1,
         };
-        let mut writer = MemWriter::default();
-        let mut audit = CountingAuditWriter::default();
-        let mut worker = Worker {
+        let writer = MemWriter::default();
+        let audit = CountingAuditWriter::default();
+        let worker = Worker {
             queue: &q,
             provider: &provider,
-            writer: &mut writer,
-            audit: &mut audit,
+            writer: &writer,
+            audit: &audit,
         };
-        let n = worker.process_batch(100);
+        let n = worker.process_batch(100).await;
         assert_eq!(n, 0);
-        assert_eq!(audit.events.len(), 0);
+        assert_eq!(audit.events().len(), 0);
     }
 
     #[test]

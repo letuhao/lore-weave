@@ -117,8 +117,17 @@ BEGIN
 
     IF col_type = 'vector(1536)' THEN
         -- Cycle-13 path A: extension was present, table already shipped with
-        -- the correct type. Nothing to do for the column.
-        RAISE NOTICE 'npc_session_memory_embedding.embedding already VECTOR(1536) — skipping ALTER';
+        -- the correct VECTOR(1536) type — but 0006 created it `NOT NULL`. The
+        -- embedding-queue design (L3.I.3) REQUIRES the column to be nullable:
+        -- the projection INSERTs a row with `embedding = NULL` ("pending
+        -- compute") and the async queue backfills the real vector. Path B
+        -- below already does this DROP NOT NULL after its type swap; path A
+        -- must do it too, or the NULL-sentinel contract is broken on every
+        -- fresh pgvector DB (the projection insert + the queue's
+        -- `UPDATE … WHERE embedding IS NULL` would never work). Idempotent.
+        RAISE NOTICE 'npc_session_memory_embedding.embedding already VECTOR(1536) — ensuring nullable';
+        EXECUTE 'ALTER TABLE npc_session_memory_embedding '
+             || 'ALTER COLUMN embedding DROP NOT NULL';
     ELSIF col_type = 'bytea' THEN
         -- Cycle-13 path B: BYTEA placeholder. Perform the swap.
         RAISE NOTICE 'npc_session_memory_embedding.embedding is BYTEA — performing ALTER COLUMN to VECTOR(1536)';

@@ -6,10 +6,8 @@
 //! computed against a deterministic stub provider; the queue + worker +
 //! audit emitter are exercised end-to-end through the public crate API.
 //!
-//! The "live retrieval" test against a real pgvector HNSW index is deferred
-//! to D-EMBEDDING-QUEUE-LIVE-WIRING — it needs a running per-reality DB
-//! created by the cycle-5 provisioner (currently no test bench has that
-//! plumbed up).
+//! The "live retrieval" test against a real pgvector HNSW index is the
+//! separate gated `embedding_live.rs` smoke (DEFERRED-059 core).
 //!
 //! ## LOCKED decisions exercised
 //!
@@ -21,10 +19,13 @@
 //!   audit writer — asserted by [`CountingAuditWriter`].
 
 use std::collections::HashMap;
+use std::sync::Mutex;
+
+use async_trait::async_trait;
 use uuid::Uuid;
 use world_service::{
-    AuditEvent, AuditOutcome, AuditWriter, CountingAuditWriter, EmbedResult, EmbeddingProvider,
-    EmbeddingQueue, EmbeddingWorker, EmbeddingWriter, MemoryRef, EMBEDDING_DIM,
+    AuditEvent, AuditOutcome, AuditWriter, CountingAuditWriter, EMBEDDING_DIM, EmbedResult,
+    EmbeddingProvider, EmbeddingQueue, EmbeddingWorker, EmbeddingWriter, MemoryRef,
 };
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -35,12 +36,11 @@ use world_service::{
 /// same vector, so cosine-similarity ranking is testable.
 struct DeterministicEmbedder;
 
+#[async_trait]
 impl EmbeddingProvider for DeterministicEmbedder {
-    fn embed(&self, text: &str) -> (String, EmbedResult) {
+    async fn embed(&self, text: &str) -> (String, EmbedResult) {
         let mut v = vec![0.0f32; EMBEDDING_DIM];
-        // Seed from text hash; spread across all 1536 dims so similar text
-        // yields similar vectors (not actually similar text → similar
-        // vectors here — we test the PLUMBING not the model quality).
+        // Seed from text hash; spread across all 1536 dims.
         let mut h: u64 = 5381;
         for b in text.bytes() {
             h = h.wrapping_mul(33) ^ (b as u64);
@@ -70,21 +70,42 @@ impl EmbeddingProvider for DeterministicEmbedder {
     }
 }
 
-/// In-memory writer that records by full PK.
+/// In-memory writer that records by full PK. Interior-mutable (`&self` async
+/// trait) via `Mutex`, matching the production sqlx writer's shared handle.
 #[derive(Default)]
 struct MemWriter {
-    rows: HashMap<(Uuid, Uuid, Uuid), Vec<f32>>,
+    rows: Mutex<HashMap<(Uuid, Uuid, Uuid), Vec<f32>>>,
 }
 
+impl MemWriter {
+    fn get(&self, key: &(Uuid, Uuid, Uuid)) -> Option<Vec<f32>> {
+        self.rows.lock().unwrap().get(key).cloned()
+    }
+    fn len(&self) -> usize {
+        self.rows.lock().unwrap().len()
+    }
+    fn vector_lens(&self) -> Vec<usize> {
+        self.rows
+            .lock()
+            .unwrap()
+            .values()
+            .map(|v| v.len())
+            .collect()
+    }
+}
+
+#[async_trait]
 impl EmbeddingWriter for MemWriter {
-    fn write_embedding(
-        &mut self,
+    async fn write_embedding(
+        &self,
         reality_id: Uuid,
         npc_id: Uuid,
         session_id: Uuid,
         vector: &[f32],
     ) -> Result<(), String> {
         self.rows
+            .lock()
+            .unwrap()
             .insert((reality_id, npc_id, session_id), vector.to_vec());
         Ok(())
     }
@@ -114,9 +135,8 @@ fn mr(reality: Uuid, npc: Uuid, session: Uuid, text: &str) -> MemoryRef {
 // Tests
 // ───────────────────────────────────────────────────────────────────────────
 
-#[test]
-fn end_to_end_enqueue_embed_write_audit() {
-    // Three NPC memories in two sessions; all should be embedded + written.
+#[tokio::test]
+async fn end_to_end_enqueue_embed_write_audit() {
     let reality = Uuid::from_u128(0xDEAD_BEEF);
     let npc_a = Uuid::from_u128(0xA);
     let npc_b = Uuid::from_u128(0xB);
@@ -132,25 +152,24 @@ fn end_to_end_enqueue_embed_write_audit() {
         .unwrap();
 
     let provider = DeterministicEmbedder;
-    let mut writer = MemWriter::default();
-    let mut audit = CountingAuditWriter::default();
-    let mut worker = EmbeddingWorker {
+    let writer = MemWriter::default();
+    let audit = CountingAuditWriter::default();
+    let worker = EmbeddingWorker {
         queue: &q,
         provider: &provider,
-        writer: &mut writer,
-        audit: &mut audit,
+        writer: &writer,
+        audit: &audit,
     };
 
-    let n = worker.process_batch(10);
+    let n = worker.process_batch(10).await;
     assert_eq!(n, 3, "all three enqueued memories processed");
-    assert_eq!(writer.rows.len(), 3, "all three rows written");
-    for v in writer.rows.values() {
-        assert_eq!(v.len(), EMBEDDING_DIM, "Q-L3I-1 dim=1536 enforced");
+    assert_eq!(writer.len(), 3, "all three rows written");
+    for len in writer.vector_lens() {
+        assert_eq!(len, EMBEDDING_DIM, "Q-L3I-1 dim=1536 enforced");
     }
     // Q-L1A-3 — every provider call audited.
-    assert_eq!(audit.events.len(), 3);
+    assert_eq!(audit.len(), 3);
     assert_eq!(audit.count_by_outcome_kind("ok"), 3);
-    // Cost rolled up correctly.
     let expected_tokens: u32 = ["the dragon roared", "the village burned", "i found a coin"]
         .iter()
         .map(|s| s.len() as u32)
@@ -158,14 +177,8 @@ fn end_to_end_enqueue_embed_write_audit() {
     assert_eq!(audit.total_ok_tokens(), expected_tokens);
 }
 
-#[test]
-fn cosine_retrieval_ranks_same_text_above_different() {
-    // Determinism property: same input → same output. So a query for text X
-    // matches the stored embedding for text X with cosine = 1.0 (modulo
-    // f32 rounding), and matches the embedding for a different text Y with
-    // cosine < 1.0. This is the SHAPE of the HNSW retrieval test from the
-    // L3.I.5 brief — the live version against a real pgvector index lands
-    // in D-EMBEDDING-QUEUE-LIVE-WIRING.
+#[tokio::test]
+async fn cosine_retrieval_ranks_same_text_above_different() {
     let reality = Uuid::from_u128(0xDEAD_BEEF);
 
     let q = EmbeddingQueue::new(100);
@@ -192,36 +205,30 @@ fn cosine_retrieval_ranks_same_text_above_different() {
     .unwrap();
 
     let provider = DeterministicEmbedder;
-    let mut writer = MemWriter::default();
-    let mut audit = CountingAuditWriter::default();
-    let mut worker = EmbeddingWorker {
+    let writer = MemWriter::default();
+    let audit = CountingAuditWriter::default();
+    let worker = EmbeddingWorker {
         queue: &q,
         provider: &provider,
-        writer: &mut writer,
-        audit: &mut audit,
+        writer: &writer,
+        audit: &audit,
     };
-    worker.process_batch(10);
+    worker.process_batch(10).await;
 
-    // Query embedding for "the dragon roared" — same provider, same text →
-    // matches the stored row exactly.
-    let (_, query_result) = provider.embed("the dragon roared");
+    let (_, query_result) = provider.embed("the dragon roared").await;
     let query_vec = match query_result {
         EmbedResult::Ok { vector, .. } => vector,
         _ => panic!("stub provider should always return Ok"),
     };
 
-    let dragon_key = (
-        reality,
-        Uuid::from_u128(10),
-        Uuid::from_u128(10),
-    );
+    let dragon_key = (reality, Uuid::from_u128(10), Uuid::from_u128(10));
     let sword_key = (reality, Uuid::from_u128(11), Uuid::from_u128(11));
 
-    let dragon_vec = writer.rows.get(&dragon_key).expect("dragon row stored");
-    let sword_vec = writer.rows.get(&sword_key).expect("sword row stored");
+    let dragon_vec = writer.get(&dragon_key).expect("dragon row stored");
+    let sword_vec = writer.get(&sword_key).expect("sword row stored");
 
-    let dragon_sim = cosine(&query_vec, dragon_vec);
-    let sword_sim = cosine(&query_vec, sword_vec);
+    let dragon_sim = cosine(&query_vec, &dragon_vec);
+    let sword_sim = cosine(&query_vec, &sword_vec);
 
     assert!(
         (dragon_sim - 1.0).abs() < 1e-4,
@@ -233,13 +240,10 @@ fn cosine_retrieval_ranks_same_text_above_different() {
     );
 }
 
-#[test]
-fn non_blocking_enqueue_returns_immediately_even_with_backlog() {
-    // Q-L3-1 acceptance: enqueue MUST NOT block on provider call. We push
-    // 50 items WITHOUT running the worker — enqueue should be O(1) per
-    // item; no provider calls happen until we explicitly drive the worker.
+#[tokio::test]
+async fn non_blocking_enqueue_returns_immediately_even_with_backlog() {
     let q = EmbeddingQueue::new(100);
-    let mut audit = CountingAuditWriter::default();
+    let audit = CountingAuditWriter::default();
     for i in 0..50 {
         q.enqueue(mr(
             Uuid::from_u128(1),
@@ -251,19 +255,21 @@ fn non_blocking_enqueue_returns_immediately_even_with_backlog() {
     }
     assert_eq!(q.depth(), 50);
     assert_eq!(
-        audit.events.len(),
+        audit.len(),
         0,
         "enqueue must NOT call provider — zero audits"
     );
     // Sanity: AuditWriter trait IS the same `audit` we constructed.
-    audit.record(AuditEvent {
-        reality_id: Uuid::from_u128(0),
-        npc_id: Uuid::from_u128(0),
-        session_id: Uuid::from_u128(0),
-        provider: "test".into(),
-        model: "test".into(),
-        tokens: 0,
-        outcome: AuditOutcome::Ok,
-    });
-    assert_eq!(audit.events.len(), 1);
+    audit
+        .record(AuditEvent {
+            reality_id: Uuid::from_u128(0),
+            npc_id: Uuid::from_u128(0),
+            session_id: Uuid::from_u128(0),
+            provider: "test".into(),
+            model: "test".into(),
+            tokens: 0,
+            outcome: AuditOutcome::Ok,
+        })
+        .await;
+    assert_eq!(audit.len(), 1);
 }

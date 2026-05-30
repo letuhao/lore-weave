@@ -135,6 +135,17 @@ sqlx = { version = "0.8", default-features = false, features = [
     "macros",
 ] }
 
+# Cycle 16 / DEFERRED-059 — embedding-queue live wiring (world-service).
+# async-trait: async IO traits (provider/writer/audit) — same pattern dp-kernel
+#   uses for the EventStore trait.
+# pgvector: sqlx Encode/Decode for the `vector` type (npc_session_memory_embedding
+#   .embedding VECTOR(1536)). The `sqlx` feature targets sqlx 0.8.
+# prometheus: Rust ops-surface metrics (first Rust worker with a /metrics
+#   endpoint; mirrors the Go workers' prometheus/client_golang surface).
+async-trait = "0.1"
+pgvector = { version = "0.4", default-features = false, features = ["sqlx"] }
+prometheus = "0.13"
+
 # Cycle 17 (L4.B) — proc-macro toolkit for `#[derive(Aggregate)]`.
 syn = { version = "2.0", features = ["full"] }
 quote = "1.0"

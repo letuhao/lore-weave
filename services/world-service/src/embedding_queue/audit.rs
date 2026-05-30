@@ -9,25 +9,26 @@
 //! ## Audit row shape
 //!
 //! The on-the-wire row in `service_to_service_audit` is wider than the
-//! [`AuditEvent`] here (it includes a surrogate audit_id, recorded_at
-//! timestamp, calling-service field, etc — see cycle-7 contracts/meta).
-//! The [`AuditWriter`] adapter is responsible for populating those:
-//! production wiring binds [`AuditWriter`] to a `meta-rs::MetaWrite` call
-//! that lands the row in the SAME TX as the embedding column UPDATE
-//! (Q-L1B-3 multi-table TX support).
+//! [`AuditEvent`] here (it includes a surrogate audit_id, created_at_nanos,
+//! caller/callee/rpc fields, etc — see cycle-7 `migrations/meta/016`). The
+//! [`AuditWriter`] adapter is responsible for populating those: production
+//! wiring binds [`AuditWriter`] to a sqlx INSERT
+//! (`crate::embedding_queue::live::MetaAuditWriter`).
 //!
 //! ## Why we keep `AuditEvent` POD
 //!
 //! Mirroring the [`crate::embedding_queue::EmbeddingWriter`] split: the
 //! audit recorder is a trait so unit tests can use an in-memory counter
-//! without needing meta-rs + sqlx + a running Postgres. The
-//! [`CountingAuditWriter`] in this module is the test-time impl;
-//! production binds a `MetaWriteAuditAdapter` (deferred to
-//! D-EMBEDDING-QUEUE-LIVE-WIRING).
+//! without needing sqlx + a running Postgres. The [`CountingAuditWriter`]
+//! in this module is the test-time impl; production binds
+//! [`crate::embedding_queue::live::MetaAuditWriter`].
 
+use std::sync::Mutex;
+
+use async_trait::async_trait;
 use uuid::Uuid;
 
-/// Outcome enum surfaced into the audit row's `outcome` text column.
+/// Outcome enum surfaced into the audit row's `outcome` mapping.
 /// Stays SMALL so cardinality of `lw_embedding_audit_outcome_total{outcome=...}`
 /// (V1+30d obs counter) is bounded.
 #[derive(Debug, Clone, PartialEq)]
@@ -51,8 +52,23 @@ pub enum AuditOutcome {
     WriteError(String),
 }
 
+impl AuditOutcome {
+    /// Stable lowercase discriminator string. Used by the metrics counter
+    /// label AND folded into the `service_to_service_audit.result` mapping
+    /// (`ok` → "ok"; everything else → "error" per the table's CHECK enum,
+    /// with this finer-grained kind carried in correlation fields).
+    pub fn kind(&self) -> &'static str {
+        match self {
+            AuditOutcome::Ok => "ok",
+            AuditOutcome::DimMismatch { .. } => "dim_mismatch",
+            AuditOutcome::ProviderError(_) => "provider_error",
+            AuditOutcome::WriteError(_) => "write_error",
+        }
+    }
+}
+
 /// One audit-row payload. Production wiring lands this into
-/// `service_to_service_audit` via meta-rs::MetaWrite (Q-L1A-3 full audit).
+/// `service_to_service_audit` via a sqlx INSERT (Q-L1A-3 full audit).
 #[derive(Debug, Clone, PartialEq)]
 pub struct AuditEvent {
     /// Reality the embedding belongs to. Audit DB partitions on this.
@@ -76,30 +92,46 @@ pub struct AuditEvent {
 }
 
 /// Trait the queue speaks to for audit emission. Production binds to a
-/// MetaWrite adapter; tests use [`CountingAuditWriter`].
-pub trait AuditWriter {
-    /// Record one audit event. MUST NOT block on a long-running operation
-    /// — production wiring uses a same-TX MetaWrite call (sub-ms when the
-    /// meta DB is healthy); during meta DB degraded-mode (cycle-3) the
-    /// queue WILL stall as designed (calls are degraded-mode-essential
-    /// reads/writes per the audit invariant).
-    fn record(&mut self, event: AuditEvent);
+/// sqlx INSERT adapter; tests use [`CountingAuditWriter`].
+#[async_trait]
+pub trait AuditWriter: Send + Sync {
+    /// Record one audit event. Production wiring INSERTs one row into
+    /// `service_to_service_audit`; during meta-DB degraded mode the call
+    /// (and thus the queue tick) WILL stall as designed — audit writes are
+    /// degraded-mode-essential per the Q-L1A-3 audit invariant.
+    async fn record(&self, event: AuditEvent);
 }
 
 /// Test-time + integration-test [`AuditWriter`] that collects events in
-/// memory. Reused by `tests/integration/embedding_retrieval_test.rs`
-/// (L3.I.5) for end-to-end assertions on the audit trail.
+/// memory. Interior-mutable (`&self`) via `Mutex` so it matches the
+/// production adapter's shared-handle shape.
 #[derive(Default)]
 pub struct CountingAuditWriter {
-    /// All events recorded, in order.
-    pub events: Vec<AuditEvent>,
+    events: Mutex<Vec<AuditEvent>>,
 }
 
 impl CountingAuditWriter {
+    /// Snapshot of all events recorded so far, in order.
+    pub fn events(&self) -> Vec<AuditEvent> {
+        self.events.lock().unwrap().clone()
+    }
+
+    /// Number of events recorded.
+    pub fn len(&self) -> usize {
+        self.events.lock().unwrap().len()
+    }
+
+    /// True if no events recorded yet.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Total token count across all OK events — useful for cost-budget
     /// assertions in tests.
     pub fn total_ok_tokens(&self) -> u32 {
         self.events
+            .lock()
+            .unwrap()
             .iter()
             .filter(|e| matches!(e.outcome, AuditOutcome::Ok))
             .map(|e| e.tokens)
@@ -109,21 +141,18 @@ impl CountingAuditWriter {
     /// Count events matching a given outcome discriminator. Test helper.
     pub fn count_by_outcome_kind(&self, kind: &str) -> usize {
         self.events
+            .lock()
+            .unwrap()
             .iter()
-            .filter(|e| match (&e.outcome, kind) {
-                (AuditOutcome::Ok, "ok") => true,
-                (AuditOutcome::DimMismatch { .. }, "dim_mismatch") => true,
-                (AuditOutcome::ProviderError(_), "provider_error") => true,
-                (AuditOutcome::WriteError(_), "write_error") => true,
-                _ => false,
-            })
+            .filter(|e| e.outcome.kind() == kind)
             .count()
     }
 }
 
+#[async_trait]
 impl AuditWriter for CountingAuditWriter {
-    fn record(&mut self, event: AuditEvent) {
-        self.events.push(event);
+    async fn record(&self, event: AuditEvent) {
+        self.events.lock().unwrap().push(event);
     }
 }
 
@@ -143,24 +172,28 @@ mod tests {
         }
     }
 
-    #[test]
-    fn counting_writer_total_ok_tokens_sums_only_ok() {
-        let mut w = CountingAuditWriter::default();
-        w.record(evt(AuditOutcome::Ok, 100));
-        w.record(evt(AuditOutcome::ProviderError("nope".into()), 0));
-        w.record(evt(AuditOutcome::Ok, 50));
-        w.record(evt(AuditOutcome::DimMismatch { returned_dim: 768 }, 0));
+    #[tokio::test]
+    async fn counting_writer_total_ok_tokens_sums_only_ok() {
+        let w = CountingAuditWriter::default();
+        w.record(evt(AuditOutcome::Ok, 100)).await;
+        w.record(evt(AuditOutcome::ProviderError("nope".into()), 0))
+            .await;
+        w.record(evt(AuditOutcome::Ok, 50)).await;
+        w.record(evt(AuditOutcome::DimMismatch { returned_dim: 768 }, 0))
+            .await;
         assert_eq!(w.total_ok_tokens(), 150);
     }
 
-    #[test]
-    fn counting_writer_count_by_outcome_kind() {
-        let mut w = CountingAuditWriter::default();
-        w.record(evt(AuditOutcome::Ok, 10));
-        w.record(evt(AuditOutcome::Ok, 20));
-        w.record(evt(AuditOutcome::DimMismatch { returned_dim: 768 }, 0));
-        w.record(evt(AuditOutcome::ProviderError("x".into()), 0));
-        w.record(evt(AuditOutcome::WriteError("y".into()), 0));
+    #[tokio::test]
+    async fn counting_writer_count_by_outcome_kind() {
+        let w = CountingAuditWriter::default();
+        w.record(evt(AuditOutcome::Ok, 10)).await;
+        w.record(evt(AuditOutcome::Ok, 20)).await;
+        w.record(evt(AuditOutcome::DimMismatch { returned_dim: 768 }, 0))
+            .await;
+        w.record(evt(AuditOutcome::ProviderError("x".into()), 0))
+            .await;
+        w.record(evt(AuditOutcome::WriteError("y".into()), 0)).await;
         assert_eq!(w.count_by_outcome_kind("ok"), 2);
         assert_eq!(w.count_by_outcome_kind("dim_mismatch"), 1);
         assert_eq!(w.count_by_outcome_kind("provider_error"), 1);

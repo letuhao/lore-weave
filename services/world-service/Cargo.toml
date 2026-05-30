@@ -23,6 +23,14 @@ path = "src/main.rs"
 name = "orphan_scanner"
 path = "src/bin/orphan_scanner.rs"
 
+# L3.I cycle 16 / DEFERRED-059 — embedding-worker binary. Drains the embedding
+# queue, writes VECTOR(1536) into npc_session_memory_embedding, and emits a
+# service_to_service_audit row per provider call. Tokio ticker + graceful
+# shutdown + /healthz+/readyz+/metrics.
+[[bin]]
+name = "embedding-worker"
+path = "src/bin/embedding_worker.rs"
+
 # L1.C provisioner core + L1.G.3 db_pool share these. All workspace-pinned.
 [dependencies]
 thiserror = { workspace = true }
@@ -32,6 +40,19 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 meta-rs = { path = "../../crates/meta-rs" }
 
+# DEFERRED-059 embedding-queue live wiring — async DB + audit + ops surface.
+tokio = { workspace = true }
+sqlx = { workspace = true }
+async-trait = { workspace = true }
+pgvector = { workspace = true }
+# Health/metrics HTTP surface — axum (repo Rust convention; tilemap-service
+# already serves /internal/v1/tilemaps/render via axum). NOT raw hyper.
+axum = { workspace = true }
+prometheus = { workspace = true }
+tracing-subscriber = { workspace = true }
+
 [dev-dependencies]
-# Async testing not needed yet — provisioner core is sync over a Connection
-# trait, mirroring meta-rs::Connection. Real async impls land with sqlx later.
+# Embedding-queue unit tests are async (#[tokio::test]) over the async IO
+# traits; the live-smoke integration test (tests/embedding_live.rs) is gated
+# on LOREWEAVE_TEST_PG_URL + LOREWEAVE_TEST_META_URL.
+tokio = { workspace = true }

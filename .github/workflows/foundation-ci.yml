@@ -240,6 +240,29 @@ jobs:
           LW_INTEGRATION_DB: postgres://foundation:foundation@localhost:5432/retention_smoke?sslmode=disable
           # The audit script connects via the DSN it is handed (localhost:5432).
         run: go -C tests/integration test -tags=integration -run TestRetentionWorkerLiveSmoke -count=1 ./...
+      # DEFERRED 059 (D-EMBEDDING-QUEUE-LIVE-WIRING core): SqlxEmbeddingWriter →
+      # npc_session_memory_embedding (pgvector VECTOR(1536)) + MetaAuditWriter →
+      # service_to_service_audit. The Rust test applies the per-reality (0006 +
+      # 0008) and meta (016) migrations itself via sqlx::raw_sql, so we only
+      # create the empty DBs here. The DB MUST be the pgvector image (it is —
+      # the job's postgres service is pgvector/pgvector:pg16) so 0008 installs
+      # the `vector` extension + makes the embedding column nullable.
+      - name: create worldservice embedding smoke DBs
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql() { PGPASSWORD=foundation command psql -h localhost -p 5432 -U foundation "$@"; }
+          for db in worldservice_smoke worldservice_meta; do
+            exists=$(psql -d foundation -tAc "SELECT 1 FROM pg_database WHERE datname='$db'" || true)
+            if [ "$exists" != "1" ]; then
+              psql -d foundation -v ON_ERROR_STOP=1 -c "CREATE DATABASE $db;"
+            fi
+          done
+      - name: cargo test embedding-worker live-smoke
+        env:
+          LOREWEAVE_TEST_PG_URL: postgres://foundation:foundation@localhost:5432/worldservice_smoke?sslmode=disable
+          LOREWEAVE_TEST_META_URL: postgres://foundation:foundation@localhost:5432/worldservice_meta?sslmode=disable
+        run: cargo test -p world-service --test embedding_live
 
   secrets:
     name: Secret scan (gitleaks)
