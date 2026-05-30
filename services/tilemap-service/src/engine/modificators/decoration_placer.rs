@@ -39,6 +39,27 @@ use crate::types::primitive::ObjectPrimitive;
 use crate::types::registry::FootprintSize;
 use crate::types::tile::TileCoord;
 use crate::types::tile_mask::TileMask;
+use crate::types::zone::ZoneRole;
+
+/// TMP-Q5 chunk C — role-aware decoration density multiplier.
+///
+/// Per spec §1 #4: Wilderness zones get +20% density (sense of being
+/// wild), Hub zones get -30% (cleared roads + market), Forbidden and
+/// Sea stay at 0 (defensive — Forbidden is already all-Obstacle so
+/// `free.count_ones()` would be 0 anyway, but the explicit ×0 protects
+/// against future template-author edge cases where Sea has a small
+/// Open band or Forbidden has been mis-flagged).
+///
+/// Hard-coded for V1; future per-book override via
+/// `RegistryRef.role_decoration_multipliers` is deferred (spec §10).
+const fn role_density_multiplier(role: ZoneRole) -> f32 {
+    match role {
+        ZoneRole::Wilderness => 1.2,
+        ZoneRole::Hub => 0.7,
+        ZoneRole::Forbidden => 0.0,
+        ZoneRole::Sea => 0.0,
+    }
+}
 
 /// Visual-density pass. See module doc.
 #[derive(Debug)]
@@ -114,7 +135,21 @@ fn place_in_zone(
         return;
     }
 
-    let target = density.target_for(free.count_ones() as u32);
+    let raw_target = density.target_for(free.count_ones() as u32);
+    // TMP-Q5 chunk C — role-aware density bias. Applied AFTER
+    // density.target_for so the per-zone density math is unchanged
+    // for any explicit multiplier of 1.0 (none today). Forbidden /
+    // Sea collapse to target=0 here even when raw_target was > 0.
+    //
+    // Re-clamp to `max_per_zone` AFTER the multiplier so Wilderness
+    // (×1.2) can't take a max-bounded zone above the configured
+    // ceiling — that would silently break AC-DECO-4 (max_per_zone is
+    // a hard invariant per template author's intent). Hub (×0.7)
+    // never exceeds max so the clamp is a no-op there.
+    let role = ctx.state.zones[zone_idx].role;
+    let multiplier = role_density_multiplier(role);
+    let biased = ((raw_target as f32) * multiplier) as u32;
+    let target = biased.min(density.max_per_zone);
     if target == 0 {
         return;
     }

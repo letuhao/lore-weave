@@ -22,6 +22,18 @@
 id = "xianxia"
 version = "0.1.0"
 
+# TMP-Q5 chunk C — per-book zone-role color override. Demonstrates
+# the chunk-A wire shape (RegistryRef.zone_role_colors) end-to-end:
+# the viewer's "Zone roles" overlay paints each zone with this
+# book's themed palette instead of the lw: defaults (emerald /
+# indigo / rose / blue Tailwind). Xianxia skews toward golden
+# cultivation (Wilderness as Spirit Wilds) + Jade Court Hub.
+[registry.zone_role_colors]
+wilderness = 0xfacc15  # amber-400 — golden Spirit Wilds
+hub = 0x4ade80         # emerald-400 — Jade Court verdant city
+forbidden = 0x9333ea   # purple-600 — sealed forbidden realm
+sea = 0x06b6d4         # cyan-500 — celestial waters
+
 # ── TERRAIN — Xianxia-themed re-skin of the 10 V1 TerrainKind variants ──
 
 [[terrain]]

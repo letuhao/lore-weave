@@ -539,7 +539,14 @@ fn decoration_v3_default_town_pinned_hash() {
     // Updating requires re-validating the sanity gates manually + a
     // PR-description explanation of why the new decoration output is
     // correct.
-    const PINNED: &str = "61d58b1ea320e7507b121ef29d0115b1bbd1b9bc06d0dd106d6bee32f7fe71d1";
+    // PINNED HASH UPDATED 2026-05-30 for TMP-Q5 chunk C role-aware
+    // decoration density bias. The fixture has 2 Wilderness zones
+    // (capital + frontier) + 1 Hub zone (crossroad). Bias: Wilderness
+    // ×1.2 (UP), Hub ×0.7 (DOWN). The re-clamp to `max_per_zone`
+    // means tight-density Wilderness zones don't exceed the
+    // configured ceiling. AC-DECO-4/5/6/10 sanity gates above this
+    // assertion still pass — the new output is correct.
+    const PINNED: &str = "23fe61330910b6ad2cd283f28a7c1716d9de10a4b7201aa417bfb4760eeba77b";
     assert_eq!(
         actual.as_str(),
         PINNED,
@@ -547,5 +554,117 @@ fn decoration_v3_default_town_pinned_hash() {
          Update the PINNED literal ONLY after manually re-validating \
          AC-DECO-4/5/6/10 on the new view + explaining in the PR \
          description why the new decorations are correct."
+    );
+}
+
+// ────────────────────────────────────────────────────────────────────
+// TMP-Q5 chunk C — role-aware decoration density bias
+// ────────────────────────────────────────────────────────────────────
+
+#[test]
+fn tmp_q5_wilderness_zones_get_more_decorations_than_hub_zones() {
+    // Bias: Wilderness ×1.2 (target), Hub ×0.7 (target). The fixture
+    // has 2 Wilderness + 1 Hub. Wilderness average decoration count
+    // MUST exceed Hub's. The theoretical target ratio is 1.71x
+    // (1.2/0.7), but actual placement counts are constrained by the
+    // placer's per-tag `min_spacing` exhaustion — real-world OPEN
+    // regions saturate well before target. So this test asserts the
+    // softer invariant: Wilderness avg > Hub avg by ANY margin
+    // (sign-of-bias check). The hard hash pin in
+    // `decoration_v3_default_town_pinned_hash` independently proves
+    // the bias changes the output deterministically.
+    let template = fixture(Some(DecorationDensity::TOWN));
+    let mut wilderness_total: u32 = 0;
+    let mut wilderness_zones: u32 = 0;
+    let mut hub_total: u32 = 0;
+    let mut hub_zones: u32 = 0;
+    for raw_seed in [1u64, 42, 100, 999, 0xC0FFEE] {
+        let view = run(&template, raw_seed);
+        for zone in &view.zones {
+            let count = decorations_in_zone(&view, &zone.zone_id.0).len() as u32;
+            if zone.zone_id.0 == "capital" || zone.zone_id.0 == "frontier" {
+                wilderness_total += count;
+                wilderness_zones += 1;
+            } else if zone.zone_id.0 == "crossroad" {
+                hub_total += count;
+                hub_zones += 1;
+            }
+        }
+    }
+    let wilderness_avg = wilderness_total as f32 / wilderness_zones as f32;
+    let hub_avg = hub_total as f32 / hub_zones as f32;
+    assert!(
+        wilderness_avg > hub_avg,
+        "TMP-Q5 chunk C: Wilderness avg ({wilderness_avg}) must exceed Hub avg ({hub_avg}) \
+         — the role-aware bias multiplier (×1.2 / ×0.7) must measurably tilt the \
+         placement count regardless of per-tag spacing exhaustion. Got ratio {:.2}x",
+        wilderness_avg / hub_avg
+    );
+}
+
+#[test]
+fn tmp_q5_forbidden_and_sea_zones_get_zero_decorations() {
+    // Build a fixture with Forbidden + Sea zones. Even though those
+    // zones typically have no Open region (Forbidden = all-Obstacle;
+    // Sea = water), the chunk-C bias's explicit ×0 multiplier is the
+    // defensive guarantee.
+    let template = TilemapTemplate {
+        template_id: TilemapTemplateId("q5_forbidden_sea".to_string()),
+        zones: vec![
+            ZoneSpec {
+                zone_id: ZoneId("home".to_string()),
+                zone_role: ZoneRole::Wilderness,
+                size: 100,
+                terrain_types: vec![TerrainKind::Grass],
+                monster_strength: None,
+                connections: vec![TemplateConnection::new(
+                    ZoneId("rival".to_string()),
+                    PassageKind::Portal,
+                )],
+                treasure_tiers: vec![],
+                biome_selection_rules: None,
+                inherit_treasure_from: None,
+                biome_theme: None,
+            },
+            ZoneSpec {
+                zone_id: ZoneId("rival".to_string()),
+                zone_role: ZoneRole::Forbidden,
+                size: 100,
+                terrain_types: vec![],
+                monster_strength: None,
+                connections: vec![],
+                treasure_tiers: vec![],
+                biome_selection_rules: None,
+                inherit_treasure_from: None,
+                biome_theme: None,
+            },
+            ZoneSpec {
+                zone_id: ZoneId("sea".to_string()),
+                zone_role: ZoneRole::Sea,
+                size: 100,
+                terrain_types: vec![],
+                monster_strength: None,
+                connections: vec![],
+                treasure_tiers: vec![],
+                biome_selection_rules: None,
+                inherit_treasure_from: None,
+                biome_theme: None,
+            },
+        ],
+        seed_offset: 0,
+        world_zone: None,
+        decoration_density: Some(DecorationDensity::TOWN),
+        background_biome: None,
+    };
+    let view = run(&template, 1);
+    let forbidden_count = decorations_in_zone(&view, "rival").len();
+    let sea_count = decorations_in_zone(&view, "sea").len();
+    assert_eq!(
+        forbidden_count, 0,
+        "TMP-Q5 chunk C: Forbidden zone must have ZERO decorations (×0 multiplier)"
+    );
+    assert_eq!(
+        sea_count, 0,
+        "TMP-Q5 chunk C: Sea zone must have ZERO decorations (×0 multiplier)"
     );
 }

@@ -1751,6 +1751,28 @@ label = "Obj"
     }
 
     #[test]
+    fn xianxia_sample_carries_zone_role_colors_override() {
+        // TMP-Q5 chunk C — per-book demo verification: loading the
+        // xianxia_sample.toml file (which declares a
+        // `[registry.zone_role_colors]` block) carries all 4 fields
+        // through to RegistryRef on the wire. Pins the chunk-A wire
+        // shape end-to-end against the real per-book registry that
+        // the FE viewer + chunk-B `zoneRoleColor` helper consume.
+        let path = std::path::Path::new("registry/xianxia_sample.toml");
+        let xianxia = Registry::load_from_path(path)
+            .expect("xianxia_sample.toml must load successfully");
+        let colors = xianxia
+            .reference()
+            .zone_role_colors
+            .as_ref()
+            .expect("xianxia_sample must declare zone_role_colors");
+        assert_eq!(colors.wilderness, Some(0xfacc15), "amber-400 Spirit Wilds");
+        assert_eq!(colors.hub, Some(0x4ade80), "emerald-400 Jade Court");
+        assert_eq!(colors.forbidden, Some(0x9333ea), "purple-600 sealed realm");
+        assert_eq!(colors.sea, Some(0x06b6d4), "cyan-500 celestial waters");
+    }
+
+    #[test]
     fn registry_loads_without_zone_role_colors_section() {
         // TMP-Q5 backward compat: a pre-Q5 TOML without the
         // `[registry.zone_role_colors]` block loads with
