@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use crate::shape::llm::{
     parse_params_from_value, parse_shape_kind_str, pick_shape_schema_strict,
     shape_dispatch_system_prompt, shape_dispatch_user_message, LlmDecision, LlmError, LlmPrompt,
-    LlmProvider,
+    LlmProvider, TextPrompt, TextProvider,
 };
 
 /// Default model — cheapest fast-enough OpenAI option as of 2026-01.
@@ -156,6 +156,89 @@ impl LlmProvider for OpenAIProvider {
             .json()
             .map_err(|e| LlmError::InvalidResponse(format!("response JSON parse: {e}")))?;
         Self::parse_response(&parsed, prompt)
+    }
+}
+
+// ---------- Civ Ship 7c: TextProvider impl ----------
+
+impl OpenAIProvider {
+    /// Build the body for a [`TextProvider::complete`] call. When the
+    /// caller attaches a JSON schema, the body sets
+    /// `response_format: { type: "json_schema", json_schema: {..,
+    /// strict: true } }`; otherwise the assistant returns plain text.
+    /// Public for testing.
+    pub fn build_text_request(&self, prompt: &TextPrompt) -> serde_json::Value {
+        let mut body = serde_json::json!({
+            "model": self.model,
+            "temperature": 0.0,
+            "messages": [
+                { "role": "system", "content": prompt.system },
+                { "role": "user", "content": prompt.user },
+            ],
+        });
+        if let Some(schema) = &prompt.schema {
+            let name = prompt
+                .schema_name
+                .clone()
+                .unwrap_or_else(|| "response".to_string());
+            body["response_format"] = serde_json::json!({
+                "type": "json_schema",
+                "json_schema": {
+                    "name": name,
+                    "strict": true,
+                    "schema": schema,
+                },
+            });
+        }
+        body
+    }
+
+    /// Parse a Chat Completions response into the plain assistant
+    /// content string. The caller is responsible for `serde_json::from_str`
+    /// when a schema was attached. Public for testing.
+    pub fn parse_text_response(
+        response: &ChatCompletionsResponse,
+    ) -> Result<String, LlmError> {
+        let choice = response.choices.first().ok_or_else(|| {
+            LlmError::InvalidResponse("response.choices is empty".to_string())
+        })?;
+        Ok(choice.message.content.clone())
+    }
+}
+
+impl TextProvider for OpenAIProvider {
+    fn complete(&self, prompt: &TextPrompt) -> Result<String, LlmError> {
+        let body = self.build_text_request(prompt);
+        let url = format!(
+            "{}/v1/chat/completions",
+            self.base_url.trim_end_matches('/')
+        );
+        let http_resp = self
+            .client
+            .post(&url)
+            .bearer_auth(&self.api_key)
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .map_err(|e| LlmError::Transport(e.to_string()))?;
+        let status = http_resp.status();
+        if !status.is_success() {
+            let body = http_resp
+                .text()
+                .unwrap_or_else(|e| format!("<failed to read error body: {e}>"));
+            if status.as_u16() == 429 {
+                return Err(LlmError::Refused(format!(
+                    "openai rate-limited (status {status}): {body}"
+                )));
+            }
+            return Err(LlmError::Transport(format!(
+                "openai returned non-success status {status}: {body}"
+            )));
+        }
+        let parsed: ChatCompletionsResponse = http_resp
+            .json()
+            .map_err(|e| LlmError::InvalidResponse(format!("response JSON parse: {e}")))?;
+        Self::parse_text_response(&parsed)
     }
 }
 
@@ -312,6 +395,57 @@ mod tests {
         let resp = ChatCompletionsResponse { choices: vec![] };
         let err = OpenAIProvider::parse_response(&resp, &sample_prompt())
             .expect_err("empty choices");
+        assert!(matches!(err, LlmError::InvalidResponse(_)));
+    }
+
+    // ---------- Civ Ship 7c: TextProvider tests ----------
+
+    #[test]
+    fn text_build_request_no_schema_omits_response_format() {
+        let p = OpenAIProvider::new("test-key");
+        let prompt = TextPrompt::new("sys", "user");
+        let body = p.build_text_request(&prompt);
+        assert_eq!(body["temperature"], 0.0);
+        assert!(body.get("response_format").is_none(), "no rf when no schema");
+        assert_eq!(body["messages"][0]["role"], "system");
+        assert_eq!(body["messages"][1]["role"], "user");
+        assert_eq!(body["messages"][1]["content"], "user");
+    }
+
+    #[test]
+    fn text_build_request_with_schema_sets_strict_json_schema() {
+        let p = OpenAIProvider::new("test-key");
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": { "name": { "type": "string" } }
+        });
+        let prompt = TextPrompt::new("sys", "user").with_schema(schema.clone(), "world_names");
+        let body = p.build_text_request(&prompt);
+        let rf = &body["response_format"];
+        assert_eq!(rf["type"], "json_schema");
+        assert_eq!(rf["json_schema"]["name"], "world_names");
+        assert_eq!(rf["json_schema"]["strict"], true);
+        assert_eq!(rf["json_schema"]["schema"], schema);
+    }
+
+    #[test]
+    fn parse_text_response_returns_content_string() {
+        let resp = ChatCompletionsResponse {
+            choices: vec![Choice {
+                message: ResponseMessage {
+                    role: "assistant".to_string(),
+                    content: r#"{"settlements":["Aetherholt"]}"#.to_string(),
+                },
+            }],
+        };
+        let out = OpenAIProvider::parse_text_response(&resp).expect("parse");
+        assert!(out.contains("Aetherholt"));
+    }
+
+    #[test]
+    fn parse_text_response_empty_choices_rejected() {
+        let resp = ChatCompletionsResponse { choices: vec![] };
+        let err = OpenAIProvider::parse_text_response(&resp).expect_err("empty");
         assert!(matches!(err, LlmError::InvalidResponse(_)));
     }
 }

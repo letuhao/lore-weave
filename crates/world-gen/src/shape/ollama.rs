@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use crate::shape::llm::{
     parse_params_from_value, parse_shape_kind_str, pick_shape_schema_strict,
     shape_dispatch_system_prompt, shape_dispatch_user_message, LlmDecision, LlmError, LlmPrompt,
-    LlmProvider,
+    LlmProvider, TextPrompt, TextProvider,
 };
 
 /// Default model — user is expected to have `ollama pull llama3.1` before
@@ -139,6 +139,68 @@ impl LlmProvider for OllamaProvider {
             .json()
             .map_err(|e| LlmError::InvalidResponse(format!("response JSON parse: {e}")))?;
         Self::parse_response(&parsed, prompt)
+    }
+}
+
+// ---------- Civ Ship 7c: TextProvider impl ----------
+
+impl OllamaProvider {
+    /// Build the body for a [`TextProvider::complete`] call. When a
+    /// schema is attached, sets `format: <schema>` so the daemon
+    /// constrains the response; otherwise the model emits free-form
+    /// text. Public for testing.
+    pub fn build_text_request(&self, prompt: &TextPrompt) -> serde_json::Value {
+        let mut body = serde_json::json!({
+            "model": self.model,
+            "messages": [
+                { "role": "system", "content": prompt.system },
+                { "role": "user", "content": prompt.user },
+            ],
+            "stream": false,
+            "options": { "temperature": 0.0 },
+        });
+        if let Some(schema) = &prompt.schema {
+            body["format"] = schema.clone();
+        }
+        body
+    }
+
+    /// Pull the assistant content from an Ollama response. Public for
+    /// testing.
+    pub fn parse_text_response(response: &OllamaChatResponse) -> Result<String, LlmError> {
+        if response.message.content.is_empty() {
+            return Err(LlmError::InvalidResponse(
+                "ollama response.message.content is empty".to_string(),
+            ));
+        }
+        Ok(response.message.content.clone())
+    }
+}
+
+impl TextProvider for OllamaProvider {
+    fn complete(&self, prompt: &TextPrompt) -> Result<String, LlmError> {
+        let body = self.build_text_request(prompt);
+        let url = format!("{}/api/chat", self.base_url.trim_end_matches('/'));
+        let http_resp = self
+            .client
+            .post(&url)
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .map_err(|e| LlmError::Transport(e.to_string()))?;
+        let status = http_resp.status();
+        if !status.is_success() {
+            let body = http_resp
+                .text()
+                .unwrap_or_else(|e| format!("<failed to read error body: {e}>"));
+            return Err(LlmError::Transport(format!(
+                "ollama returned non-success status {status}: {body}"
+            )));
+        }
+        let parsed: OllamaChatResponse = http_resp
+            .json()
+            .map_err(|e| LlmError::InvalidResponse(format!("response JSON parse: {e}")))?;
+        Self::parse_text_response(&parsed)
     }
 }
 
@@ -270,6 +332,43 @@ mod tests {
         let resp = fake_response("not json{");
         let err = OllamaProvider::parse_response(&resp, &sample_prompt())
             .expect_err("non-JSON content");
+        assert!(matches!(err, LlmError::InvalidResponse(_)));
+    }
+
+    // ---------- Civ Ship 7c: TextProvider tests ----------
+
+    #[test]
+    fn text_build_request_no_schema_omits_format() {
+        let p = OllamaProvider::new("llama3.1");
+        let prompt = TextPrompt::new("sys", "user");
+        let body = p.build_text_request(&prompt);
+        assert!(body.get("format").is_none(), "no format when no schema");
+        assert_eq!(body["stream"], false);
+        assert_eq!(body["options"]["temperature"], 0.0);
+        assert_eq!(body["messages"][0]["role"], "system");
+        assert_eq!(body["messages"][1]["content"], "user");
+    }
+
+    #[test]
+    fn text_build_request_with_schema_sets_format() {
+        let p = OllamaProvider::new("llama3.1");
+        let schema = serde_json::json!({ "type": "object", "properties": { "name": { "type": "string" } } });
+        let prompt = TextPrompt::new("sys", "user").with_schema(schema.clone(), "world_names");
+        let body = p.build_text_request(&prompt);
+        assert_eq!(body["format"], schema);
+    }
+
+    #[test]
+    fn parse_text_response_returns_content_string() {
+        let resp = fake_response(r#"{"settlements":["Aetherholt"]}"#);
+        let out = OllamaProvider::parse_text_response(&resp).expect("parse");
+        assert!(out.contains("Aetherholt"));
+    }
+
+    #[test]
+    fn parse_text_response_empty_content_rejected() {
+        let resp = fake_response("");
+        let err = OllamaProvider::parse_text_response(&resp).expect_err("empty content");
         assert!(matches!(err, LlmError::InvalidResponse(_)));
     }
 }

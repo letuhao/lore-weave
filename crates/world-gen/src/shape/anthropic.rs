@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 use crate::shape::llm::{
     parse_params_from_value, parse_shape_kind_str, pick_shape_schema_strict,
     shape_dispatch_system_prompt, shape_dispatch_user_message, LlmDecision, LlmError, LlmPrompt,
-    LlmProvider,
+    LlmProvider, TextPrompt, TextProvider,
 };
 
 /// Default model — Anthropic's cheapest+fastest as of 2026-01.
@@ -202,6 +202,131 @@ impl LlmProvider for AnthropicProvider {
             .json()
             .map_err(|e| LlmError::InvalidResponse(format!("response JSON parse: {e}")))?;
         Self::parse_response(&parsed, prompt)
+    }
+}
+
+// ---------- Civ Ship 7c: TextProvider impl ----------
+
+impl AnthropicProvider {
+    /// Build the body for a [`TextProvider::complete`] call. Two shapes:
+    ///
+    /// - `prompt.schema = None` → plain text completion. No `tools` /
+    ///   `tool_choice` in the body; the assistant returns a free-form
+    ///   text content block.
+    /// - `prompt.schema = Some(schema)` → structured JSON via a single
+    ///   `respond` tool whose `input_schema` is the caller's schema.
+    ///   The assistant emits a `tool_use` block; we return the
+    ///   serialized input JSON.
+    ///
+    /// Public for testing.
+    pub fn build_text_request(&self, prompt: &TextPrompt) -> serde_json::Value {
+        let mut body = serde_json::json!({
+            "model": self.model,
+            "max_tokens": 1024,
+            "temperature": 0.0,
+            "system": [{
+                "type": "text",
+                "text": prompt.system,
+                "cache_control": { "type": "ephemeral" },
+            }],
+            "messages": [{
+                "role": "user",
+                "content": [{ "type": "text", "text": prompt.user }],
+            }],
+        });
+        if let Some(schema) = &prompt.schema {
+            let tool_name = prompt
+                .schema_name
+                .clone()
+                .unwrap_or_else(|| "respond".to_string());
+            body["tools"] = serde_json::json!([{
+                "name": tool_name,
+                "description": "Emit the structured response per the input_schema.",
+                "input_schema": schema,
+            }]);
+            body["tool_choice"] = serde_json::json!({
+                "type": "tool",
+                "name": tool_name,
+            });
+        }
+        body
+    }
+
+    /// Parse the Messages-API response for a text completion. When the
+    /// caller provided a schema, returns the `tool_use.input` block
+    /// serialized to a JSON string (the caller is then responsible for
+    /// `serde_json::from_str` into its typed struct). When the caller
+    /// provided no schema, returns the first `text` block's text.
+    pub fn parse_text_response(
+        response: &MessagesResponse,
+        prompt: &TextPrompt,
+    ) -> Result<String, LlmError> {
+        if prompt.schema.is_some() {
+            let tool_name = prompt
+                .schema_name
+                .clone()
+                .unwrap_or_else(|| "respond".to_string());
+            let tool_use = response
+                .content
+                .iter()
+                .find_map(|b| match b {
+                    ResponseContentBlock::ToolUse { name, input, .. } if *name == tool_name => {
+                        Some(input)
+                    }
+                    _ => None,
+                })
+                .ok_or_else(|| {
+                    LlmError::InvalidResponse(format!(
+                        "no `{tool_name}` tool_use block in text response content"
+                    ))
+                })?;
+            return serde_json::to_string(tool_use).map_err(|e| {
+                LlmError::InvalidResponse(format!("tool_use.input re-encode: {e}"))
+            });
+        }
+        // No schema — first text block wins.
+        for block in &response.content {
+            if let ResponseContentBlock::Text { text } = block {
+                return Ok(text.clone());
+            }
+        }
+        Err(LlmError::InvalidResponse(
+            "no text content block in response".to_string(),
+        ))
+    }
+}
+
+impl TextProvider for AnthropicProvider {
+    fn complete(&self, prompt: &TextPrompt) -> Result<String, LlmError> {
+        let body = self.build_text_request(prompt);
+        let url = format!("{}/v1/messages", self.base_url.trim_end_matches('/'));
+        let http_resp = self
+            .client
+            .post(&url)
+            .header("x-api-key", &self.api_key)
+            .header("anthropic-version", API_VERSION)
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .map_err(|e| LlmError::Transport(e.to_string()))?;
+        let status = http_resp.status();
+        if !status.is_success() {
+            let body = http_resp
+                .text()
+                .unwrap_or_else(|e| format!("<failed to read error body: {e}>"));
+            if status.as_u16() == 429 || status.as_u16() == 529 {
+                return Err(LlmError::Refused(format!(
+                    "anthropic rate-limited (status {status}): {body}"
+                )));
+            }
+            return Err(LlmError::Transport(format!(
+                "anthropic returned non-success status {status}: {body}"
+            )));
+        }
+        let parsed: MessagesResponse = http_resp
+            .json()
+            .map_err(|e| LlmError::InvalidResponse(format!("response JSON parse: {e}")))?;
+        Self::parse_text_response(&parsed, prompt)
     }
 }
 
@@ -444,6 +569,86 @@ mod tests {
         };
         let err = AnthropicProvider::parse_response(&resp, &sample_prompt())
             .expect_err("text-only response should be rejected");
+        assert!(matches!(err, LlmError::InvalidResponse(_)));
+    }
+
+    // ---------- Civ Ship 7c: TextProvider tests ----------
+
+    #[test]
+    fn text_build_request_no_schema_emits_plain_messages() {
+        let p = AnthropicProvider::new("test-key");
+        let prompt = TextPrompt::new("you are helpful", "hello");
+        let body = p.build_text_request(&prompt);
+        assert_eq!(body["temperature"], 0.0);
+        assert!(body.get("tools").is_none(), "no tools when no schema");
+        assert!(body.get("tool_choice").is_none());
+        let sys = &body["system"][0];
+        assert_eq!(sys["text"], "you are helpful");
+        assert_eq!(sys["cache_control"]["type"], "ephemeral");
+        let user_content = &body["messages"][0]["content"][0];
+        assert_eq!(user_content["text"], "hello");
+    }
+
+    #[test]
+    fn text_build_request_with_schema_wraps_in_tool_use() {
+        let p = AnthropicProvider::new("test-key");
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": { "name": { "type": "string" } }
+        });
+        let prompt = TextPrompt::new("you are helpful", "name me a place")
+            .with_schema(schema.clone(), "world_names");
+        let body = p.build_text_request(&prompt);
+        let tools = body["tools"].as_array().expect("tools array");
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0]["name"], "world_names");
+        assert_eq!(tools[0]["input_schema"], schema);
+        assert_eq!(body["tool_choice"]["type"], "tool");
+        assert_eq!(body["tool_choice"]["name"], "world_names");
+    }
+
+    #[test]
+    fn parse_text_response_no_schema_returns_first_text_block() {
+        let resp = MessagesResponse {
+            content: vec![ResponseContentBlock::Text {
+                text: "the answer is 42".to_string(),
+            }],
+        };
+        let prompt = TextPrompt::new("sys", "user");
+        let out = AnthropicProvider::parse_text_response(&resp, &prompt).expect("parse");
+        assert_eq!(out, "the answer is 42");
+    }
+
+    #[test]
+    fn parse_text_response_with_schema_returns_tool_use_input_json() {
+        let resp = MessagesResponse {
+            content: vec![ResponseContentBlock::ToolUse {
+                id: "tool-1".to_string(),
+                name: "world_names".to_string(),
+                input: serde_json::json!({ "settlements": ["Aetherholt", "Brightford"] }),
+            }],
+        };
+        let prompt = TextPrompt::new("sys", "user")
+            .with_schema(serde_json::json!({}), "world_names");
+        let out = AnthropicProvider::parse_text_response(&resp, &prompt).expect("parse");
+        let parsed: serde_json::Value = serde_json::from_str(&out).expect("re-parse");
+        assert_eq!(parsed["settlements"][0], "Aetherholt");
+    }
+
+    #[test]
+    fn parse_text_response_schema_missing_tool_use_rejected() {
+        // Caller asked for schema-bound output but the assistant only
+        // emitted free-form text — must surface as InvalidResponse so
+        // caller can fall back.
+        let resp = MessagesResponse {
+            content: vec![ResponseContentBlock::Text {
+                text: "I cannot comply".to_string(),
+            }],
+        };
+        let prompt = TextPrompt::new("sys", "user")
+            .with_schema(serde_json::json!({}), "world_names");
+        let err = AnthropicProvider::parse_text_response(&resp, &prompt)
+            .expect_err("schema-mode without tool_use should fail");
         assert!(matches!(err, LlmError::InvalidResponse(_)));
     }
 }
