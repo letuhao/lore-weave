@@ -747,7 +747,7 @@ components:
 
     CreateJobRequest:
       type: object
-      required: [project_id, technique]
+      required: [project_id, embedding_model_ref, generation_model_ref, targets]
       properties:
         project_id:
           type: string
@@ -755,14 +755,77 @@ components:
           description: Per-project scope (Q3). The user is taken from the JWT.
         technique:
           $ref: '#/components/schemas/Technique'
+          description: >
+            Optional. C14 runs the P1 pipeline (template + retrieval grounding →
+            schema-gov generation); proposals carry technique `retrieval`. P2/P3
+            are gated until the C15 cost/quality gate.
         entity_kind:
           type: string
           maxLength: 64
           description: Demo target is `location`.
+        embedding_model_ref:
+          type: string
+          format: uuid
+          description: >
+            Provider-registry user_model id for the EMBEDDING model (retrieval,
+            C10). Resolved via provider-registry — NEVER a hardcoded model name.
+        generation_model_ref:
+          type: string
+          format: uuid
+          description: >
+            Provider-registry user_model id for the GENERATION model (schema-gov
+            generation, C11). Resolved via provider-registry — never a name.
+        targets:
+          type: array
+          minItems: 1
+          description: >
+            The under-described canon entities to enrich. The runner derives each
+            entity's MISSING dimensions via the C7 gap engine.
+          items:
+            $ref: '#/components/schemas/JobGapTarget'
         max_spend_usd:
           type: number
           minimum: 0
-          description: Cost guardrail (C8). Job halts if estimate/actual exceeds.
+          description: >
+            Cost guardrail (C8). The job PAUSES (resumable) on a working-cap
+            breach; a fraction (eval_reserve_fraction) is held back for the C15
+            eval pass (M5) and is never consumed by the pipeline.
+        eval_reserve_fraction:
+          type: number
+          minimum: 0
+          exclusiveMaximum: 1.0
+          default: 0.15
+          description: Fraction of max_spend_usd reserved for the C15 eval pass (M5).
+        top_k:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 5
+          description: Passages retrieved per gap (C10 grounding).
+
+    JobGapTarget:
+      type: object
+      required: [canonical_name]
+      properties:
+        canonical_name:
+          type: string
+          minLength: 1
+          description: The faithful (source-language) entity name (never makeup).
+        target_ref:
+          type: string
+          description: The canon entity ref this gap enriches (when it exists).
+        entity_kind:
+          type: string
+          default: location
+        mention_count:
+          type: integer
+          minimum: 0
+          default: 1
+        present_dimensions:
+          type: array
+          items:
+            type: string
+          description: Dimensions already present in canon (default none → all missing).
 
     EnrichmentJob:
       type: object

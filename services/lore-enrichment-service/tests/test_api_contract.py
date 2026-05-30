@@ -5,11 +5,12 @@ Asserts the API matches the frozen OpenAPI surface:
   2. Every mounted /v1/lore-enrichment route is IN the spec (no orphan routes) —
      C13 added /write-back + /retract, which are now in the spec too.
   3. The H0 author `promote` endpoint exists and carries a Principal seam.
-  4. Stub families still in stub state (jobs/sources/templates) return 200/501.
+  4. Stub families still in stub state (sources/templates) return 200/501.
 
-C13 note: the proposals review routes are now REAL (DB-backed). They are
-exercised against fake dependency overrides here (no DB); their behaviour is
-covered by tests/test_review_gate.py + the DB lifecycle tests + the live-smoke.
+C13 note: the proposals review routes are now REAL (DB-backed). C14 note: the
+jobs routes are now REAL (DB-backed end-to-end runner). Both are exercised
+against fake dependency overrides here (no DB); their behaviour is covered by
+tests/test_review_gate.py + tests/test_job_runner.py + the DB + live-smoke gates.
 """
 
 from __future__ import annotations
@@ -49,6 +50,37 @@ class _FakeRepo:
         return None
 
 
+class _FakeConn:
+    """A no-row connection for the jobs list/get routes (no real DB)."""
+
+    async def fetchval(self, *a, **kw):
+        return 0
+
+    async def fetch(self, *a, **kw):
+        return []
+
+    async def fetchrow(self, *a, **kw):
+        return None
+
+    async def execute(self, *a, **kw):
+        return None
+
+
+class _FakeAcquire:
+    async def __aenter__(self):
+        return _FakeConn()
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+class _FakePool:
+    """Empty pool: every job list returns {items:[],total:0}; get → 404."""
+
+    def acquire(self):
+        return _FakeAcquire()
+
+
 @pytest.fixture()
 def client(monkeypatch):
     import app.api.proposals as prop_mod
@@ -73,7 +105,13 @@ def client(monkeypatch):
     async def _fake_repo():
         return _FakeRepo()
 
+    async def _fake_db():
+        return _FakePool()
+
+    import app.deps as deps_mod
+
     main_mod.app.dependency_overrides[prop_mod.get_repo] = _fake_repo
+    main_mod.app.dependency_overrides[deps_mod.get_db] = _fake_db
     with TestClient(main_mod.app) as c:
         yield c
     main_mod.app.dependency_overrides.clear()
@@ -132,13 +170,14 @@ def test_promote_endpoint_reachable(client):
 
 
 def test_stub_families_return_200_or_501(client):
-    """jobs/sources/templates are still C3 stubs → 200/201/202/501, never
-    404/500. Proposals routes are real (C13) and excluded here."""
+    """sources/templates are still C3 stubs → 200/201/202/501, never 404/500.
+    Proposals (C13) + jobs (C14) routes are real (DB-backed) and excluded here —
+    covered by test_review_gate / test_job_runner + the live-smoke gate."""
     spec = _load_spec()
     failures = []
     for spec_path, methods in spec["paths"].items():
-        if "/proposals" in spec_path:
-            continue  # real C13 routes — covered by test_review_gate
+        if "/proposals" in spec_path or "/jobs" in spec_path:
+            continue  # real C13/C14 routes — covered by their own suites
         url = _spec_to_concrete(spec_path)
         params = {}
         for op in methods.values():
