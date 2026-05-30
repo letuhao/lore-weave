@@ -4867,11 +4867,15 @@
     },
     {
       "primitive": "land",
-      "tag": "lw:mountain"
+      "tag": "lw:mountain",
+      "blend_radius": 0.55,
+      "blend_strength": 0.45
     },
     {
       "primitive": "water",
-      "tag": "lw:water"
+      "tag": "lw:water",
+      "blend_radius": 0.95,
+      "blend_strength": 0.55
     },
     {
       "primitive": "land",

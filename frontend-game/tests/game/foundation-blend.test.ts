@@ -7,6 +7,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   applyBlendFilter,
   applyBlendFilterV2,
+  dominantTerrainKind,
+  dominantTerrainKinds,
+  pickBlendHints,
   STAGE1_BLUR_DEFAULTS,
   type BlendFilterTarget,
   type ControllerAddSurface,
@@ -287,5 +290,166 @@ describe('applyBlendFilterV2 (TMP-Q3 chunk B)', () => {
     expect((r as { stage: number }).stage).toBe(1);
     expect(add).not.toHaveBeenCalled();
     expect(addBlur).toHaveBeenCalledTimes(1);
+  });
+
+  it('view passed but no per-kind hints → falls back to Stage-1 in jsdom', () => {
+    // TMP-Q3 chunk C — V2 helper accepts an optional view arg. With
+    // no hints declared in terrain_vocabulary, the picker returns an
+    // empty override + the controller construction in jsdom returns
+    // null, which routes to Stage-1.
+    const { target, addBlur } = v2Mock();
+    // Pass only the duck-typed shape `BlendHintSource` needs (no
+    // primitive/tag); a real TilemapView would have those.
+    const view = {
+      terrain_layer: [1, 1, 2, 2],
+      terrain_vocabulary: [{}, {}, {}],
+    };
+    const r = applyBlendFilterV2(target, true, fakeScene, view);
+    expect(r.ok).toBe(true);
+    expect((r as { stage: number }).stage).toBe(1);
+    expect(addBlur).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// TMP-Q3 chunk C — dominant-kind picker + per-book hint lookup.
+// ──────────────────────────────────────────────────────────────────
+
+describe('dominantTerrainKind (TMP-Q3 chunk C)', () => {
+  it('returns the highest-count u8 excluding void (0)', () => {
+    const layer = [1, 1, 1, 2, 2, 0, 0, 0];
+    expect(dominantTerrainKind(layer)).toBe(1);
+  });
+
+  it('tie-break: lowest u8 wins (deterministic)', () => {
+    // Equal count for kinds 2 and 3 — kind 2 wins.
+    const layer = [2, 2, 3, 3];
+    expect(dominantTerrainKind(layer)).toBe(2);
+  });
+
+  it('returns null for empty layer', () => {
+    expect(dominantTerrainKind([])).toBe(null);
+  });
+
+  it('returns null for all-void layer', () => {
+    expect(dominantTerrainKind([0, 0, 0, 0])).toBe(null);
+  });
+
+  it('excludes void from counting even when it dominates', () => {
+    // Mostly void with a single Grass tile — Grass still wins.
+    const layer = [0, 0, 0, 0, 0, 0, 0, 1];
+    expect(dominantTerrainKind(layer)).toBe(1);
+  });
+});
+
+describe('pickBlendHints (TMP-Q3 chunk C)', () => {
+  it('returns empty override when view is null', () => {
+    expect(pickBlendHints(null)).toEqual({});
+  });
+
+  it('returns empty override when terrain_vocabulary is absent', () => {
+    expect(pickBlendHints({ terrain_layer: [1, 2, 3] })).toEqual({});
+  });
+
+  it('returns empty override when no kind dominates (all-void)', () => {
+    expect(
+      pickBlendHints({
+        terrain_layer: [0, 0],
+        terrain_vocabulary: [{ blend_radius: 0.9 }],
+      }),
+    ).toEqual({});
+  });
+
+  it('looks up the dominant kind in the vocabulary and returns its hints', () => {
+    // Kind 4 (Water) dominates; vocab[4] has hints.
+    const view = {
+      terrain_layer: [4, 4, 4, 1, 1],
+      terrain_vocabulary: [
+        {},
+        { blend_radius: 0.3, blend_strength: 0.3 },
+        {},
+        {},
+        { blend_radius: 0.95, blend_strength: 0.55 },
+      ],
+    };
+    expect(pickBlendHints(view)).toEqual({
+      blendRadius: 0.95,
+      blendStrength: 0.55,
+    });
+  });
+
+  it('returns empty when dominant kind exists but vocabulary entry is missing', () => {
+    // Kind 5 dominates but vocab only has 3 entries — index 5 is undefined.
+    const view = {
+      terrain_layer: [5, 5, 5],
+      terrain_vocabulary: [{}, {}, {}],
+    };
+    expect(pickBlendHints(view)).toEqual({});
+  });
+
+  it('passes through undefined hints when vocab entry has no blend fields', () => {
+    const view = {
+      terrain_layer: [1, 1, 1],
+      terrain_vocabulary: [{}, { /* no hints */ }],
+    };
+    expect(pickBlendHints(view)).toEqual({
+      blendRadius: undefined,
+      blendStrength: undefined,
+    });
+  });
+
+  it('LOW-2: tied kinds — prefers the one that DECLARES blend hints', () => {
+    // Equal count for kinds 1 (no hints) and 2 (has hints).
+    // Old behavior: kind 1 wins by lowest-u8 tie-break → no hints.
+    // New behavior (LOW-2 fix): kind 2 wins because it declares hints.
+    const view = {
+      terrain_layer: [1, 2],
+      terrain_vocabulary: [{}, {}, { blend_radius: 0.4, blend_strength: 0.6 }],
+    };
+    expect(pickBlendHints(view)).toEqual({
+      blendRadius: 0.4,
+      blendStrength: 0.6,
+    });
+  });
+
+  it('LOW-2: tied kinds with neither declaring hints — falls back to lowest u8', () => {
+    // Both 3 and 5 tied; neither has hints. Lowest u8 (3) wins.
+    const view = {
+      terrain_layer: [3, 5],
+      terrain_vocabulary: [{}, {}, {}, {}, {}, {}],
+    };
+    expect(pickBlendHints(view)).toEqual({
+      blendRadius: undefined,
+      blendStrength: undefined,
+    });
+  });
+
+  it('LOW-2: NO ties — preserves dominant-kind behaviour', () => {
+    // Kind 1 dominates (3 tiles) over kind 2 (1 tile). Even though
+    // kind 2 has hints, kind 1 is the dominant winner — its absent
+    // hints are returned (frontend falls back to STAGE2_BLEND_DEFAULTS).
+    const view = {
+      terrain_layer: [1, 1, 1, 2],
+      terrain_vocabulary: [{}, {}, { blend_radius: 0.4 }],
+    };
+    expect(pickBlendHints(view)).toEqual({
+      blendRadius: undefined,
+      blendStrength: undefined,
+    });
+  });
+});
+
+describe('dominantTerrainKinds (TMP-Q3 chunk C — LOW-2 helper)', () => {
+  it('returns all kinds tied for highest count, ascending', () => {
+    // 1 and 2 tied with 2 each, sorted ascending.
+    expect(dominantTerrainKinds([1, 1, 2, 2, 3])).toEqual([1, 2]);
+  });
+
+  it('returns single kind when there is a clear winner', () => {
+    expect(dominantTerrainKinds([1, 1, 1, 2])).toEqual([1]);
+  });
+
+  it('returns empty array for empty layer', () => {
+    expect(dominantTerrainKinds([])).toEqual([]);
   });
 });

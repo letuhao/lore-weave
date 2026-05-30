@@ -172,15 +172,121 @@ export interface SceneSurface {
   cameras?: { main?: Phaser.Cameras.Scene2D.Camera };
 }
 
+/** TMP-Q3 chunk C — minimal `TilemapView` surface the dominant-kind
+ *  picker needs. Duck-typed so unit tests can construct a fixture
+ *  without a real `TilemapView`. */
+export interface BlendHintSource {
+  terrain_layer: number[];
+  terrain_vocabulary?: Array<{
+    blend_radius?: number;
+    blend_strength?: number;
+  }>;
+}
+
+/** Per-kind blend hint override for the Stage-2 controller. */
+export interface BlendHintOverride {
+  blendRadius?: number;
+  blendStrength?: number;
+}
+
+/** TMP-Q3 chunk C — compute the dominant `TerrainKind` u8 in a
+ *  `terrain_layer` (highest count, excluding `0` = void). Tie-break:
+ *  the LOWEST u8 wins so the result is deterministic across runs.
+ *
+ *  Returns `null` for an empty / all-void layer (no kind to look up).
+ *
+ *  **Cost (LOW-3 from chunk-C /review-impl):** O(layer.length) — a
+ *  single linear scan + a small `Map<u8, count>`. For Continent tier
+ *  (256² = 65k tiles) this is ~1ms. Suitable for toggle-time use
+ *  (every blend re-application); too costly to call per frame. */
+export function dominantTerrainKind(layer: ReadonlyArray<number>): number | null {
+  const winners = dominantTerrainKinds(layer);
+  // The empty-guard makes `winners[0]` always defined, but TS strict
+  // null checks can't narrow through `.length === 0` — assert the
+  // non-empty path manually with `??`.
+  return winners[0] ?? null;
+}
+
+/** TMP-Q3 chunk C — like [`dominantTerrainKind`] but returns ALL kinds
+ *  tied for highest count, sorted ascending. Used internally by
+ *  [`pickBlendHints`] to prefer a tied kind that DECLARES blend hints
+ *  over one that doesn't (LOW-2 fix from chunk-C /review-impl).
+ *
+ *  Returns an empty array for an empty / all-void layer. */
+export function dominantTerrainKinds(layer: ReadonlyArray<number>): number[] {
+  const counts = new Map<number, number>();
+  for (const v of layer) {
+    if (v === 0) continue;
+    counts.set(v, (counts.get(v) ?? 0) + 1);
+  }
+  if (counts.size === 0) return [];
+  let max = -1;
+  for (const c of counts.values()) {
+    if (c > max) max = c;
+  }
+  return Array.from(counts.entries())
+    .filter(([, c]) => c === max)
+    .map(([k]) => k)
+    .sort((a, b) => a - b);
+}
+
+/** Look up per-kind blend hints from `view.terrain_vocabulary` for the
+ *  dominant `TerrainKind` u8. Returns an override object suitable for
+ *  passing to `newCrossTileBlendController`. Both fields fall back to
+ *  the chunk-B `STAGE2_BLEND_DEFAULTS` when the vocabulary entry is
+ *  missing or doesn't declare the hint.
+ *
+ *  **LOW-2 fix from chunk-C /review-impl:** when multiple kinds are
+ *  tied for highest count, prefer one that DECLARES non-undefined
+ *  `blend_radius` or `blend_strength` over one that doesn't. Falls
+ *  back to lowest-u8-wins only when no tied kind has hints. This way
+ *  an author's deliberate hint choice wins over a kind that ignored
+ *  the field. */
+export function pickBlendHints(view: BlendHintSource | null | undefined): BlendHintOverride {
+  if (!view || !view.terrain_vocabulary) return {};
+  const winners = dominantTerrainKinds(view.terrain_layer);
+  if (winners.length === 0) return {};
+  const vocab = view.terrain_vocabulary;
+  // First pass: prefer a winner that DECLARES at least one hint.
+  for (const k of winners) {
+    const cell = vocab[k];
+    if (cell && (cell.blend_radius !== undefined || cell.blend_strength !== undefined)) {
+      return {
+        blendRadius: cell.blend_radius,
+        blendStrength: cell.blend_strength,
+      };
+    }
+  }
+  // No tied winner declared hints — fall back to lowest u8 (winners[0]).
+  // The first-pass guard already returned when `winners.length === 0`,
+  // so `lowestWinner` is always defined here; the assertion satisfies
+  // TS strict-null-checks without changing behavior.
+  const lowestWinner = winners[0]!;
+  const cell = vocab[lowestWinner];
+  if (!cell) return {};
+  return {
+    blendRadius: cell.blend_radius,
+    blendStrength: cell.blend_strength,
+  };
+}
+
 /** Apply the Stage-2 custom cross-tile blend filter, falling back to
  *  Stage-1 Blur on any failure, then V0 on Stage-1 failure.
  *
  *  Idempotent: each call clears `filters.external` before attaching.
- *  Toggling `enabled=false` clears both stages' filters. */
+ *  Toggling `enabled=false` clears both stages' filters.
+ *
+ *  TMP-Q3 chunk C — optional `view` arg lets the helper read per-kind
+ *  blend hints from `view.terrain_vocabulary` for the dominant
+ *  `TerrainKind` in the rendered tilemap, overriding
+ *  `STAGE2_BLEND_DEFAULTS` per book. Backward-compat: when view is
+ *  omitted OR the vocabulary doesn't declare hints, the controller
+ *  uses chunk-B defaults. */
 export function applyBlendFilterV2(
   target: ControllerAddSurface | null | undefined,
   enabled: boolean,
   scene: SceneSurface | null | undefined,
+  view?: BlendHintSource | null,
 ): BlendV2Result {
   if (!target) {
     return { ok: true, stage: -1, action: 'unsupported' };
@@ -208,7 +314,15 @@ export function applyBlendFilterV2(
     );
     if (reg.ok) {
       try {
-        const controller = newCrossTileBlendController(camera);
+        // TMP-Q3 chunk C — pick per-kind hints from the view's
+        // vocabulary; absent values fall back to STAGE2_BLEND_DEFAULTS
+        // inside `newCrossTileBlendController`.
+        const hints = pickBlendHints(view ?? null);
+        const controller = newCrossTileBlendController(
+          camera,
+          hints.blendRadius,
+          hints.blendStrength,
+        );
         if (controller) {
           target.filters.external.add(controller);
           return { ok: true, stage: 2, action: 'enabled' };

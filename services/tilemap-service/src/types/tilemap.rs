@@ -112,7 +112,13 @@ pub struct RiverSegment {
 }
 
 /// Primary tilemap-service aggregate per TMP_001 §3.1.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// TMP-Q3 chunk C — `Eq` dropped because `terrain_vocabulary: Vec<TerrainCell>`
+/// now carries optional `f32` blend hints. Same pattern as
+/// `TilemapTemplate` (see `types/template.rs` "Note on Eq"). No call
+/// site uses `TilemapView` as a HashMap key — only `assert_eq!` for
+/// determinism / round-trip tests, which works with `PartialEq` alone.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TilemapView {
     pub channel_id: ChannelId,
     /// Denormalized tier — must NOT be `Cell` (TMP-A1).

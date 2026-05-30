@@ -150,10 +150,15 @@ export class WorldScene extends Phaser.Scene {
     const target = this.foundationDisplay as unknown as Parameters<
       typeof applyBlendFilterV2
     >[0];
+    // TMP-Q3 chunk C — read the currently-cached TilemapView so the
+    // V2 helper can pick per-kind blend hints from the vocabulary.
+    // Cached view may be undefined during the initial fallback render;
+    // that's fine — V2 helper just uses STAGE2_BLEND_DEFAULTS.
+    const view = getLatestTilemap() ?? undefined;
     // Try Stage 2 custom shader first. The V2 helper internally falls
     // back to Stage 1 Blur on shader-register / controller-add failure,
     // and to V0 hard edges if Stage 1 also fails.
-    const result = applyBlendFilterV2(target, enabled, this);
+    const result = applyBlendFilterV2(target, enabled, this, view);
     if (!result.ok) {
       // eslint-disable-next-line no-console
       console.warn('Blend filter pipeline unavailable; rendering V0 hard edges', result.error);

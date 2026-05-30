@@ -93,6 +93,22 @@ pub struct TerrainKindDef {
     /// keys they understand. See ADR §2.1.1 for conventions.
     #[serde(default = "default_properties")]
     pub properties: JsonValue,
+    /// TMP-Q3 chunk C — per-book cross-tile-blend shader hint.
+    /// Kernel half-radius as a fraction of `uTilePx/2` in the
+    /// frontend Stage-2 shader. Range `[0.0, 1.0]`, finite. When
+    /// `None`, the frontend uses `STAGE2_BLEND_DEFAULTS.blendRadius`.
+    /// Authors set this per-kind to tune how aggressively a terrain
+    /// blurs at its edges (water=softer, mountain=sharper). Additive
+    /// Option pattern preserves V2 byte-identical output when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blend_radius: Option<f32>,
+    /// TMP-Q3 chunk C — per-book cross-tile-blend shader hint.
+    /// Mix factor at the tile EDGE in the frontend Stage-2 shader.
+    /// Range `[0.0, 1.0]`, finite. When `None`, the frontend uses
+    /// `STAGE2_BLEND_DEFAULTS.blendStrength`. Higher = more visible
+    /// crossfade between this terrain and its neighbors.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blend_strength: Option<f32>,
 }
 
 /// Per-tag object definition. Loaded from registry TOML.
@@ -310,10 +326,68 @@ walkability_pattern = { mask = [true, false, false, false] }
             primitive: TerrainPrimitive::Water,
             label: "Water".to_string(),
             properties: json!({ "depth": "shallow" }),
+            blend_radius: None,
+            blend_strength: None,
         };
         let s = serde_json::to_string(&def).unwrap();
         let back: TerrainKindDef = serde_json::from_str(&s).unwrap();
         assert_eq!(def, back);
+    }
+
+    // TMP-Q3 chunk C — round-trip + skip-serializing tests for the
+    // optional per-kind shader hints.
+    #[test]
+    fn terrain_kind_def_deserializes_without_blend_fields() {
+        // Pre-Q3 wire shape: no blend_radius / blend_strength → both
+        // default to None.
+        let toml_text = r#"
+id = "lw:grass"
+primitive = "land"
+label = "Grass"
+"#;
+        let def: TerrainKindDef = toml::from_str(toml_text).unwrap();
+        assert!(def.blend_radius.is_none(),
+            "missing blend_radius must serde-default to None");
+        assert!(def.blend_strength.is_none(),
+            "missing blend_strength must serde-default to None");
+    }
+
+    #[test]
+    fn terrain_kind_def_round_trips_with_blend_hints() {
+        let def = TerrainKindDef {
+            id: "lw:water".to_string(),
+            primitive: TerrainPrimitive::Water,
+            label: "Water".to_string(),
+            properties: json!({}),
+            blend_radius: Some(0.95),
+            blend_strength: Some(0.45),
+        };
+        let s = serde_json::to_string(&def).unwrap();
+        assert!(s.contains("blend_radius"),
+            "Some(_) blend_radius must be serialized: {s}");
+        assert!(s.contains("0.95"));
+        let back: TerrainKindDef = serde_json::from_str(&s).unwrap();
+        assert_eq!(def, back);
+    }
+
+    #[test]
+    fn terrain_kind_def_skip_serializing_when_blend_none() {
+        // Wire-shape invariant: None values must be ABSENT from JSON.
+        // Locks the V2 byte-identical contract — pre-Q3 consumers
+        // continue to see the same wire shape against default templates.
+        let def = TerrainKindDef {
+            id: "lw:grass".to_string(),
+            primitive: TerrainPrimitive::Land,
+            label: "Grass".to_string(),
+            properties: json!({}),
+            blend_radius: None,
+            blend_strength: None,
+        };
+        let s = serde_json::to_string(&def).unwrap();
+        assert!(!s.contains("blend_radius"),
+            "None blend_radius must NOT appear in JSON (skip_serializing_if discipline): {s}");
+        assert!(!s.contains("blend_strength"),
+            "None blend_strength must NOT appear in JSON: {s}");
     }
 
     #[test]

@@ -51,10 +51,21 @@ export interface RegistryRef {
 }
 
 /** V2 — per-tile terrain cell. Indexed by `terrain_layer` u8 values
- *  via `terrain_vocabulary`. Mirrors backend `TerrainCell`. */
+ *  via `terrain_vocabulary`. Mirrors backend `TerrainCell`.
+ *
+ *  TMP-Q3 chunk C — optional per-kind cross-tile-blend shader hints.
+ *  When present, `applyBlendFilterV2` overrides `STAGE2_BLEND_DEFAULTS`
+ *  for the dominant zone TerrainKind. Both fields are validated
+ *  `[0.0, 1.0]` finite at backend registry-load; the frontend
+ *  additionally sanitizes via `sanitizeUnitInterval` before pushing
+ *  to the GPU (defense in depth). */
 export interface TerrainCell {
   primitive: TerrainPrimitive;
   tag: string;
+  /** Kernel half-radius hint in [0, 1]. Absent ⇒ Stage-2 default. */
+  blend_radius?: number;
+  /** Mix factor at tile edge in [0, 1]. Absent ⇒ Stage-2 default. */
+  blend_strength?: number;
 }
 
 /** TerrainKind u8 index per `services/tilemap-service/src/types/tile.rs` */
