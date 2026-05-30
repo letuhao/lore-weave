@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { lookupAt } from '@/store/viewer-store';
+import { describe, expect, it, beforeEach } from 'vitest';
+import { lookupAt, useViewerStore } from '@/store/viewer-store';
 import type { TerrainCell, TilemapView } from '@/types/tilemap';
 
 // V2 inspector lookup — `lookupAt` must resolve `terrainCell` from the
@@ -96,5 +96,64 @@ describe('viewer-store lookupAt — V2 terrainCell', () => {
     expect(at.placementsAtTile[0]?.primitive).toBe('pickup');
     expect(at.placementsAtTile[0]?.footprint).toEqual({ width: 1, height: 1 });
     expect(at.roadHits).toBe(1);
+  });
+});
+
+describe('viewer-store blendEnabled toggle (TMP-Q3 chunk A)', () => {
+  beforeEach(() => {
+    // Reset to default between tests so the previous test's toggle
+    // doesn't leak. setBlendEnabled is the canonical reset path.
+    // LOW-5 fix: moving the "defaults to true" test into this block
+    // so the reset cycle covers it explicitly, eliminating the
+    // ordering risk in the lookupAt block (no beforeEach there).
+    useViewerStore.getState().setBlendEnabled(true);
+    useViewerStore.getState().resetLayers();
+  });
+
+  it('blendEnabled defaults to true (Stage-1 polish ON by default)', () => {
+    // AC-BLEND-2 default. Asserted after the beforeEach reset so the
+    // assertion holds regardless of test ordering.
+    expect(useViewerStore.getState().blendEnabled).toBe(true);
+  });
+
+  it('setBlendEnabled(false) flips the flag', () => {
+    useViewerStore.getState().setBlendEnabled(false);
+    expect(useViewerStore.getState().blendEnabled).toBe(false);
+  });
+
+  it('setBlendEnabled(true) re-enables after flip', () => {
+    useViewerStore.getState().setBlendEnabled(false);
+    useViewerStore.getState().setBlendEnabled(true);
+    expect(useViewerStore.getState().blendEnabled).toBe(true);
+  });
+
+  it('blend toggle does not touch layer visibility (forward direction)', () => {
+    // AC-BLEND-3 — blend lives orthogonal to L0..L7 layer toggles.
+    // Forward: set blend then layer, verify each stayed put.
+    useViewerStore.getState().setBlendEnabled(false);
+    useViewerStore.getState().setLayer('foundation', false);
+    const s = useViewerStore.getState();
+    expect(s.blendEnabled).toBe(false);
+    expect(s.visibleLayers.foundation).toBe(false);
+    s.setLayer('foundation', true);
+    expect(useViewerStore.getState().blendEnabled).toBe(false);
+    expect(useViewerStore.getState().visibleLayers.foundation).toBe(true);
+  });
+
+  it('layer toggle does not touch blendEnabled (reverse direction)', () => {
+    // LOW-4 fix from chunk-A /review-impl: cover the REVERSE direction
+    // of the independence invariant. A regression that wired setLayer
+    // to mutate blendEnabled (or vice versa via a future shared
+    // setter) would slip past the forward-only test above.
+    useViewerStore.getState().setLayer('paths', false);
+    useViewerStore.getState().setBlendEnabled(false);
+    const a = useViewerStore.getState();
+    expect(a.visibleLayers.paths).toBe(false);
+    expect(a.blendEnabled).toBe(false);
+    // Flip blend again — layer must still be false.
+    a.setBlendEnabled(true);
+    const b = useViewerStore.getState();
+    expect(b.visibleLayers.paths).toBe(false);
+    expect(b.blendEnabled).toBe(true);
   });
 });

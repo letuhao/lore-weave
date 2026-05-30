@@ -47,6 +47,14 @@ export interface ViewerState {
   setLayer: (layer: ViewerLayer, visible: boolean) => void;
   resetLayers: () => void;
 
+  /** TMP-Q3 chunk A — Stage-1 smooth-blend post-processing on the
+   *  foundation layer. `true` (default) enables a low-strength Phaser
+   *  Blur filter; `false` falls back to V0 hard-pixel rendering for
+   *  debug / perf comparison. Chunk B replaces the Blur with a custom
+   *  cross-tile shader gated by the same flag. */
+  blendEnabled: boolean;
+  setBlendEnabled: (enabled: boolean) => void;
+
   /** Last clicked tile (null = inspector closed). */
   inspector: InspectorPayload | null;
   openInspectorFor: (
@@ -134,6 +142,9 @@ export const useViewerStore = create<ViewerState>((set) => ({
       visibleLayers: { ...s.visibleLayers, [layer]: visible },
     })),
   resetLayers: () => set({ visibleLayers: { ...DEFAULT_VISIBLE } }),
+
+  blendEnabled: true,
+  setBlendEnabled: (enabled) => set({ blendEnabled: enabled }),
 
   inspector: null,
   openInspectorFor: (tile, view) =>
