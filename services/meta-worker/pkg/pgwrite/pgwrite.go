@@ -125,6 +125,14 @@ func NewAudit(meta *pgxpool.Pool) *Audit { return &Audit{meta: meta} }
 
 // WriteAudit appends one meta_write_audit row. audit_id is deterministic per
 // (event_id, reality_id) so re-delivery is idempotent.
+//
+// PII / scrub note (076 Slice A): this is an out-of-band writer (not the
+// contracts/meta MetaWrite path), so it does NOT run the scrubber — deliberately.
+// Its before/after payload is PII-safe BY CONSTRUCTION: a fixed map of a book_id
+// UUID + a schema attribute_path, and a constant reason ("canon fan-out"); no
+// user free-text flows here. scrub_version is therefore left at its DEFAULT ”
+// (honestly "not scrubbed"). If this writer ever carries user free-text, route
+// its after-map through meta.ScrubValuesMap + stamp scrub_version='regex-v1'.
 func (a *Audit) WriteAudit(ctx context.Context, e canon_writer.AuditEntry) error {
 	auditID := uuid.NewSHA1(auditNamespace, []byte(e.EventID.String()+"|"+e.RealityID.String()))
 	rowPK, _ := json.Marshal(map[string]string{

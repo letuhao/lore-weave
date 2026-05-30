@@ -2,7 +2,9 @@ package meta
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"regexp"
 	"strings"
 	"time"
@@ -145,13 +147,14 @@ type RegexScrubber struct {
 // NewRegexScrubber returns a production RegexScrubber. clock=nil → time.Now.
 func NewRegexScrubber(clock Clock) RegexScrubber { return RegexScrubber{Clock: clock} }
 
+// ScrubText implements TextScrubber: the redaction WITHOUT the SHA-256/timestamp
+// of Scrub(). Used by ScrubValue for structured leaves (which discard the hash).
+func (r RegexScrubber) ScrubText(s string) string { return scrubString(s) }
+
 // Scrub implements Scrubber: PII patterns → placeholders; RawHash = SHA-256(raw).
 func (r RegexScrubber) Scrub(raw string) ScrubbedField {
 	h := sha256.Sum256([]byte(raw))
-	scrubbed := raw
-	for _, rule := range regexScrubRules {
-		scrubbed = rule.re.ReplaceAllString(scrubbed, rule.placeholder)
-	}
+	scrubbed := scrubString(raw)
 	var ts time.Time
 	if r.Clock != nil {
 		ts = time.Unix(0, r.Clock.NowUnixNano())
@@ -164,6 +167,151 @@ func (r RegexScrubber) Scrub(raw string) ScrubbedField {
 		Version:    regexScrubberVersion,
 		ScrubbedAt: ts,
 	}
+}
+
+// maxScrubDepth caps recursion into nested audit values. Intent maps are
+// caller-constructed (not schema-bounded), so a pathologically deep or
+// self-referential structure could otherwise stack-overflow. Beyond the cap we
+// drop the sub-tree to a placeholder rather than recurse further.
+const maxScrubDepth = 64
+
+// ScrubValue returns a DEEP-COPIED, PII-redacted view of an arbitrary audit
+// value, redacting every string leaf via sc (the injected Scrubber). It NEVER
+// mutates its input: meta_write_audit's before/after maps are shared by
+// reference with the persisted data write AND the outbox event payload, so
+// in-place mutation would ship redaction placeholders to every downstream
+// projection.
+//
+// Security-first / fail-closed (under-redaction is the risk): EVERY string leaf
+// in ANY container is redacted, not just the three well-known JSON shapes. A
+// reflection fallback covers typed containers ([]byte, map[string]string,
+// []string, named string types, json.RawMessage); only non-string scalars
+// (numbers/bools/nil) and opaque structs pass through. The result is a
+// normalized any-tree (map[string]any / []any) suitable for JSON marshaling.
+//
+// Struct values are handled too: the reflect fallback round-trips them through
+// JSON (exported fields only, honoring json tags) and scrubs the result, so a
+// domain struct placed as an audit value does not leak string fields.
+func ScrubValue(v any, sc Scrubber) any { return scrubValueDepth(v, leafScrubber(sc), 0) }
+
+// TextScrubber is an OPTIONAL fast-path: a Scrubber that can redact a string
+// without the per-call SHA-256/timestamp of Scrub(). ScrubValue prefers it so
+// scrubbing a wide structured map does not compute N throwaway hashes.
+type TextScrubber interface {
+	ScrubText(s string) string
+}
+
+// leafScrubber resolves the per-string transform ONCE: the ScrubText fast-path
+// when available (RegexScrubber), else Scrub().Scrubbed.
+func leafScrubber(sc Scrubber) func(string) string {
+	if ts, ok := sc.(TextScrubber); ok {
+		return ts.ScrubText
+	}
+	return func(s string) string { return sc.Scrub(s).Scrubbed }
+}
+
+func scrubValueDepth(v any, scrub func(string) string, depth int) any {
+	if v == nil {
+		return nil
+	}
+	if depth > maxScrubDepth {
+		return "[TRUNCATED]"
+	}
+	switch t := v.(type) {
+	case string:
+		return scrub(t)
+	case []byte:
+		return []byte(scrub(string(t)))
+	case map[string]any:
+		out := make(map[string]any, len(t))
+		for k, val := range t {
+			out[scrub(k)] = scrubValueDepth(val, scrub, depth+1) // scrub keys too
+		}
+		return out
+	case []any:
+		out := make([]any, len(t))
+		for i, val := range t {
+			out[i] = scrubValueDepth(val, scrub, depth+1)
+		}
+		return out
+	}
+	return scrubReflect(reflect.ValueOf(v), scrub, depth)
+}
+
+// scrubReflect is the fail-closed fallback for typed containers + named string
+// kinds the type switch above does not enumerate. Redacts any reflect.String
+// leaf (incl. map keys) and any byte slice; walks maps/slices/arrays; derefs
+// ptr/interface.
+func scrubReflect(rv reflect.Value, scrub func(string) string, depth int) any {
+	if depth > maxScrubDepth {
+		return "[TRUNCATED]"
+	}
+	switch rv.Kind() {
+	case reflect.String:
+		return scrub(rv.String())
+	case reflect.Pointer, reflect.Interface:
+		if rv.IsNil() {
+			return nil
+		}
+		return scrubReflect(rv.Elem(), scrub, depth+1)
+	case reflect.Slice, reflect.Array:
+		if rv.Kind() == reflect.Slice && rv.Type().Elem().Kind() == reflect.Uint8 {
+			return []byte(scrub(string(rv.Bytes())))
+		}
+		out := make([]any, rv.Len())
+		for i := 0; i < rv.Len(); i++ {
+			out[i] = scrubReflect(rv.Index(i), scrub, depth+1)
+		}
+		return out
+	case reflect.Map:
+		out := make(map[string]any, rv.Len())
+		for _, k := range rv.MapKeys() {
+			out[scrub(fmt.Sprint(k.Interface()))] = scrubReflect(rv.MapIndex(k), scrub, depth+1)
+		}
+		return out
+	case reflect.Struct:
+		// Scrub a struct VALUE by round-tripping through JSON: json.Marshal sees
+		// ONLY exported fields (no unexported-field reflect panic) and honors
+		// json tags, so the scrubbed map matches the on-the-wire shape. Then
+		// scrub the resulting any-tree. Fail-closed if it can't be marshaled.
+		if !rv.CanInterface() {
+			return "[UNSCRUBBABLE]"
+		}
+		b, err := json.Marshal(rv.Interface())
+		if err != nil {
+			return "[UNSCRUBBABLE]"
+		}
+		var m any
+		if err := json.Unmarshal(b, &m); err != nil {
+			return "[UNSCRUBBABLE]"
+		}
+		return scrubValueDepth(m, scrub, depth+1)
+	default:
+		// Numbers, bools, and other scalars carry no scrubbable free text.
+		return rv.Interface()
+	}
+}
+
+// ScrubValuesMap is the map-typed convenience wrapper for ScrubValue. Returns a
+// fresh map (nil input → nil) — never the same backing map as the input.
+func ScrubValuesMap(m map[string]any, sc Scrubber) map[string]any {
+	if m == nil {
+		return nil
+	}
+	scrub := leafScrubber(sc)
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[scrub(k)] = scrubValueDepth(v, scrub, 1)
+	}
+	return out
+}
+
+// scrubString applies the 7 regexScrubRules in order. Used by RegexScrubber.
+func scrubString(s string) string {
+	for _, rule := range regexScrubRules {
+		s = rule.re.ReplaceAllString(s, rule.placeholder)
+	}
+	return s
 }
 
 // MustValidateScrubbedField fail-fasts if the four fields aren't

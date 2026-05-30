@@ -37,11 +37,11 @@ type OutboxAppender interface {
 
 // OutboxEvent is the minimal envelope handed to the OutboxAppender.
 type OutboxEvent struct {
-	EventID      uuid.UUID
-	EventName    string
-	AggregateID  string
-	Payload      map[string]any
-	RecordedAt   int64 // unix nanos
+	EventID     uuid.UUID
+	EventName   string
+	AggregateID string
+	Payload     map[string]any
+	RecordedAt  int64 // unix nanos
 }
 
 // QueryBuilder generates the SQL for a single MetaWriteIntent. Driver-agnostic
@@ -57,17 +57,21 @@ type QueryBuilder interface {
 // MetaWriteAuditRow is what audit_writer.go inserts into meta_write_audit
 // in the same TX as the data write. Fields mirror S04 §12T.5.
 type MetaWriteAuditRow struct {
-	AuditID         uuid.UUID
-	TableName       string
-	Operation       MetaWriteOp
-	RowPK           map[string]any
-	BeforeValues    map[string]any
-	AfterValues     map[string]any
-	ActorType       ActorType
-	ActorID         string
-	Reason          string
-	RequestContext  RequestContext
-	CreatedAtNanos  int64
+	AuditID        uuid.UUID
+	TableName      string
+	Operation      MetaWriteOp
+	RowPK          map[string]any
+	BeforeValues   map[string]any
+	AfterValues    map[string]any
+	ActorType      ActorType
+	ActorID        string
+	Reason         string
+	RequestContext RequestContext
+	CreatedAtNanos int64
+	// ScrubVersion identifies the scrubber ruleset applied to BeforeValues/
+	// AfterValues/Reason in this audit row ("" when no Scrubber was configured).
+	// Lets retroactive re-scrub jobs target rows by ruleset (076 Slice A).
+	ScrubVersion string
 }
 
 // LifecycleTransitionAuditRow mirrors lifecycle_transition_audit (L1A §1.4).
@@ -96,13 +100,18 @@ type UUIDGen interface {
 
 // Config plumbs the library's runtime collaborators.
 type Config struct {
-	DB             DB
-	Allowlist      Allowlist
-	Transitions    *TransitionGraph
-	Outbox         OutboxAppender // optional; nil = events skipped
-	QueryBuilder   QueryBuilder
-	Clock          Clock
-	UUIDGen        UUIDGen
+	DB           DB
+	Allowlist    Allowlist
+	Transitions  *TransitionGraph
+	Outbox       OutboxAppender // optional; nil = events skipped
+	QueryBuilder QueryBuilder
+	Clock        Clock
+	UUIDGen      UUIDGen
+	// Scrubber is OPTIONAL. When set, the audit-row COPY of before/after values
+	// + reason is PII-redacted before insert (the persisted data write + outbox
+	// payload keep the originals). nil = no scrub (back-compat for all existing
+	// callers/tests). Production injects meta.NewRegexScrubber (076 Slice A).
+	Scrubber Scrubber
 }
 
 // Validate checks Config has the required collaborators.
@@ -237,20 +246,50 @@ func writeOneInTx(ctx context.Context, cfg *Config, tx Tx, in MetaWriteIntent) (
 		return nil, ErrConcurrentStateTransition
 	}
 
-	// Audit row in same TX
+	// Audit row in same TX. When a Scrubber is configured, the audit COPY of
+	// before/after + reason is PII-redacted via deep-copied maps (ScrubValuesMap
+	// never mutates its input) — the data write above and the outbox payload
+	// below keep the ORIGINAL unscrubbed values. scrub_version marks the ruleset
+	// that scrubbed the structured values ("" when no scrubber is configured).
 	auditID := cfg.UUIDGen.New()
+	auditPK, auditBefore, auditAfter, auditReason := in.PK, in.ExpectedBefore, in.NewValues, in.Reason
+	auditReqCtx := in.RequestContext
+	scrubVersion := ""
+	if cfg.Scrubber != nil {
+		// Scrub the audit COPY only — deep-copied fresh maps; in.* (the data
+		// write + outbox payload) keep the originals. The injected Scrubber
+		// governs both structured leaves and reason, so scrub_version is read
+		// from the Scrubber itself (honest for any ruleset, not hardcoded).
+		sf := cfg.Scrubber.Scrub(in.Reason)
+		auditReason = sf.Scrubbed
+		scrubVersion = sf.Version
+		// row_pk is a JSONB column too — scrub it (a no-op for UUID PKs, but
+		// closes the gap if a table ever has a free-text natural-key PK).
+		auditPK = ScrubValuesMap(in.PK, cfg.Scrubber)
+		auditBefore = ScrubValuesMap(in.ExpectedBefore, cfg.Scrubber)
+		auditAfter = ScrubValuesMap(in.NewValues, cfg.Scrubber)
+		// RequestContext.RequestID is caller-controlled free text on some
+		// diagnostic paths; scrub the three fields in the audit copy too
+		// (opaque IDs are no-ops). The original in.RequestContext is untouched.
+		auditReqCtx = RequestContext{
+			TraceID:       cfg.Scrubber.Scrub(in.RequestContext.TraceID).Scrubbed,
+			RequestID:     cfg.Scrubber.Scrub(in.RequestContext.RequestID).Scrubbed,
+			SourceService: cfg.Scrubber.Scrub(in.RequestContext.SourceService).Scrubbed,
+		}
+	}
 	auditRow := MetaWriteAuditRow{
 		AuditID:        auditID,
 		TableName:      in.Table,
 		Operation:      in.Operation,
-		RowPK:          in.PK,
-		BeforeValues:   in.ExpectedBefore,
-		AfterValues:    in.NewValues,
+		RowPK:          auditPK,
+		BeforeValues:   auditBefore,
+		AfterValues:    auditAfter,
 		ActorType:      in.Actor.Type,
 		ActorID:        in.Actor.ID,
-		Reason:         in.Reason,
-		RequestContext: in.RequestContext,
+		Reason:         auditReason,
+		RequestContext: auditReqCtx,
 		CreatedAtNanos: cfg.Clock.NowUnixNano(),
+		ScrubVersion:   scrubVersion,
 	}
 	auditQuery, auditArgs, err := cfg.QueryBuilder.BuildAuditInsert(auditRow)
 	if err != nil {

@@ -116,12 +116,13 @@ func (PostgresQueryBuilder) BuildAuditInsert(row MetaWriteAuditRow) (string, []a
 	}
 	q := `INSERT INTO meta_write_audit
 		(audit_id, table_name, operation, row_pk, before_values, after_values,
-		 actor_type, actor_id, reason, request_context, created_at_nanos)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
+		 actor_type, actor_id, reason, request_context, created_at_nanos, scrub_version)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
 	args := []any{
 		row.AuditID, row.TableName, string(row.Operation),
 		pkJSON, beforeJSON, afterJSON,
 		string(row.ActorType), row.ActorID, row.Reason, ctxJSON, row.CreatedAtNanos,
+		row.ScrubVersion, // "" when no Scrubber configured (column is NOT NULL DEFAULT '')
 	}
 	return q, args, nil
 }

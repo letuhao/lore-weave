@@ -17,6 +17,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/loreweave/foundation/contracts/meta"
 )
 
 // Action is one audited admin invocation.
@@ -43,16 +45,20 @@ type Sink interface {
 
 // Emitter wraps a Sink and provides Before/After/Failure helpers.
 type Emitter struct {
-	sink Sink
-	now  func() time.Time
+	sink     Sink
+	now      func() time.Time
+	scrubber meta.Scrubber
 }
 
-// New returns an Emitter. now=nil → time.Now.
+// New returns an Emitter. now=nil → time.Now. The free-text Reason is ALWAYS
+// scrubbed (PRR-45 / S08 §12X.5) before it is persisted — the production
+// RegexScrubber redacts the 7 PII pattern classes so raw PII never lands in
+// admin_action_audit.
 func New(sink Sink, now func() time.Time) *Emitter {
 	if now == nil {
 		now = time.Now
 	}
-	return &Emitter{sink: sink, now: now}
+	return &Emitter{sink: sink, now: now, scrubber: meta.NewRegexScrubber(nil)}
 }
 
 // ErrAudit is returned on sink errors.
@@ -63,7 +69,7 @@ var ErrAudit = errors.New("admin-cli/audit_emitter")
 func (e *Emitter) Before(ctx context.Context, a Action) (Action, error) {
 	a.StartedAt = e.now()
 	a.Outcome = "started"
-	if err := e.sink.Write(ctx, a); err != nil {
+	if err := e.writeScrubbed(ctx, a); err != nil {
 		return a, fmt.Errorf("%w: before: %v", ErrAudit, err)
 	}
 	return a, nil
@@ -73,7 +79,7 @@ func (e *Emitter) Before(ctx context.Context, a Action) (Action, error) {
 func (e *Emitter) After(ctx context.Context, a Action) error {
 	a.FinishedAt = e.now()
 	a.Outcome = "succeeded"
-	if err := e.sink.Write(ctx, a); err != nil {
+	if err := e.writeScrubbed(ctx, a); err != nil {
 		return fmt.Errorf("%w: after: %v", ErrAudit, err)
 	}
 	return nil
@@ -84,10 +90,18 @@ func (e *Emitter) Failure(ctx context.Context, a Action, errDetailHash string) e
 	a.FinishedAt = e.now()
 	a.Outcome = "failed"
 	a.ErrorDetailHash = errDetailHash
-	if err := e.sink.Write(ctx, a); err != nil {
+	if err := e.writeScrubbed(ctx, a); err != nil {
 		return fmt.Errorf("%w: failure: %v", ErrAudit, err)
 	}
 	return nil
+}
+
+// writeScrubbed persists a COPY of the action with Reason PII-redacted (PRR-45).
+// `a` is passed by value, so the caller's Action (and the one Before returns)
+// keeps its raw Reason for local use — only the persisted row is scrubbed.
+func (e *Emitter) writeScrubbed(ctx context.Context, a Action) error {
+	a.Reason = e.scrubber.Scrub(a.Reason).Scrubbed
+	return e.sink.Write(ctx, a)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
