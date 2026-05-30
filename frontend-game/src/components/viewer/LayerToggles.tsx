@@ -26,6 +26,8 @@ export function LayerToggles(): JSX.Element {
   const setLayer = useViewerStore((s) => s.setLayer);
   const blendEnabled = useViewerStore((s) => s.blendEnabled);
   const setBlendEnabled = useViewerStore((s) => s.setBlendEnabled);
+  const showTreasureBands = useViewerStore((s) => s.showTreasureBands);
+  const setShowTreasureBands = useViewerStore((s) => s.setShowTreasureBands);
   return (
     <div className="bg-slate-900/90 border border-slate-700 rounded-md p-3 text-xs text-slate-200 font-mono pointer-events-auto flex flex-col gap-1.5 w-64">
       <div className="font-semibold text-sm mb-1">Layers</div>
@@ -67,6 +69,22 @@ export function LayerToggles(): JSX.Element {
           className="accent-indigo-500"
         />
         <span>Smooth blend</span>
+      </label>
+      {/* TMP-Q4 chunk C — zone-tier treasure-band overlay toggle.
+          Default OFF: tints each zone with its max-tier band color
+          for at-a-glance economy review. Independent of "Smooth blend"
+          and L0..L7 layer toggles. */}
+      <label
+        className="flex items-center gap-2 cursor-pointer hover:bg-slate-800/60 rounded px-1"
+        title="Translucent tint per zone reflecting its highest treasure tier band."
+      >
+        <input
+          type="checkbox"
+          checked={showTreasureBands}
+          onChange={(e) => setShowTreasureBands(e.target.checked)}
+          className="accent-indigo-500"
+        />
+        <span>Treasure bands</span>
       </label>
     </div>
   );

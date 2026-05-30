@@ -1,4 +1,6 @@
+import { useMemo } from 'react';
 import type { TilemapView } from '@/types/tilemap';
+import { computeZoneBreakdown } from './zone-breakdown';
 
 // Compact metadata readout for the current TilemapView. Bottom-left,
 // shown only when data has settled. Pure presentation — no store
@@ -85,7 +87,71 @@ export function MetadataPanel({ view }: { view: TilemapView | undefined }): JSX.
           ))}
         </div>
       </details>
+      <TreasureBreakdown view={view} />
     </div>
+  );
+}
+
+// TMP-Q4 chunk C — collapsible per-zone treasure breakdown table.
+// Reuses the same `computeZoneBreakdown` pure helper the canvas overlay
+// consumes (MED-1 single-source-of-truth: the panel value-count, the
+// panel band swatch, AND the canvas overlay color all agree per zone).
+//
+// Sorts: total_value desc, zone_id asc tiebreaker. Empty zones (LOW-1)
+// are omitted upstream.
+function TreasureBreakdown({ view }: { view: TilemapView }): JSX.Element | null {
+  // MED-2 from chunk-C /review-impl: memoize on the `view` reference so
+  // React parent re-renders (HUD updates, viewer-store flips, etc.)
+  // don't re-walk all placements × all zones. The view reference only
+  // changes on tilemap refetch, so the memo is stable.
+  const rows = useMemo(() => computeZoneBreakdown(view), [view]);
+  if (rows.length === 0) {
+    // Surface the empty state so the operator knows the panel rendered
+    // (it tried) AND that the rendered fixture had no treasures — not
+    // a regression where the section silently failed to render.
+    return (
+      <details className="mt-1">
+        <summary className="cursor-pointer text-slate-400 text-[10px]">
+          treasure breakdown
+        </summary>
+        <div className="mt-1 text-[10px] text-slate-500">
+          no treasure placed in this view
+        </div>
+      </details>
+    );
+  }
+  const totalAll = rows.reduce((sum, r) => sum + r.total_value, 0);
+  return (
+    <details className="mt-1">
+      <summary className="cursor-pointer text-slate-400 text-[10px]">
+        treasure breakdown ({rows.length} zones · Σ {totalAll} gold)
+      </summary>
+      <div className="mt-1 max-h-32 overflow-y-auto flex flex-col gap-0.5">
+        {rows.map((row) => {
+          const hex = row.color.toString(16).padStart(6, '0');
+          return (
+            <div
+              key={row.zone_id}
+              className="flex items-center gap-1 text-[10px]"
+            >
+              <span
+                className="inline-block w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: `#${hex}` }}
+                aria-label={`band ${row.band_name}`}
+                data-testid="breakdown-band-swatch"
+              />
+              <span className="text-slate-400 shrink-0">{row.zone_id}</span>
+              <span className="text-slate-500 shrink-0 text-[9px]">
+                ({row.zone_role})
+              </span>
+              <span className="ml-auto text-right text-[10px]">
+                {row.pile_count} · Σ {row.total_value}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </details>
   );
 }
 

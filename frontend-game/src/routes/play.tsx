@@ -41,7 +41,22 @@ export function PlayRoute(): JSX.Element {
   const [gridWidth, setGridWidth] = useState<number>(DEFAULT_ZONE_WIDTH);
   const [gridHeight, setGridHeight] = useState<number>(DEFAULT_ZONE_HEIGHT);
 
-  const tilemap = useZoneTilemap({ seed, tier, gridWidth, gridHeight });
+  // TMP-Q4 chunk C — let the e2e select a fixture via `?template=<key>`
+  // so the visual regression goldens can exercise the badges + zone
+  // overlay against a treasure-bearing template without changing
+  // minimal.json (which the existing AC-DECO-8 / AC-BIOME-8 smoke
+  // tests depend on). Default remains minimal.json so /play loads
+  // unchanged in normal usage.
+  const templateUrl =
+    typeof window !== 'undefined'
+      ? (() => {
+          const params = new URLSearchParams(window.location.search);
+          const key = params.get('template');
+          if (key === 'treasure-demo') return '/templates/treasure-demo.json';
+          return undefined;
+        })()
+      : undefined;
+  const tilemap = useZoneTilemap({ seed, tier, gridWidth, gridHeight, templateUrl });
   const openInspectorFor = useViewerStore((s) => s.openInspectorFor);
 
   // Bridge Phaser EventBus → viewer-store: Shift-click on a tile

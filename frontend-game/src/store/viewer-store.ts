@@ -60,6 +60,14 @@ export interface ViewerState {
   blendEnabled: boolean;
   setBlendEnabled: (enabled: boolean) => void;
 
+  /** TMP-Q4 chunk C — zone-tier treasure-band canvas overlay. Default
+   *  OFF: the overlay is an at-a-glance design review aid, not a
+   *  default-on visual. When true, WorldScene's overlay-rt paints each
+   *  zone's `assigned_tiles` mask with its max-tier band color at
+   *  alpha=0.18. Independent of `blendEnabled` and L0..L7 toggles. */
+  showTreasureBands: boolean;
+  setShowTreasureBands: (enabled: boolean) => void;
+
   /** Last clicked tile (null = inspector closed). */
   inspector: InspectorPayload | null;
   openInspectorFor: (
@@ -156,6 +164,9 @@ export const useViewerStore = create<ViewerState>((set) => ({
 
   blendEnabled: true,
   setBlendEnabled: (enabled) => set({ blendEnabled: enabled }),
+
+  showTreasureBands: false,
+  setShowTreasureBands: (enabled) => set({ showTreasureBands: enabled }),
 
   inspector: null,
   openInspectorFor: (tile, view) =>

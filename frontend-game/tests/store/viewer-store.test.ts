@@ -185,3 +185,56 @@ describe('viewer-store blendEnabled toggle (TMP-Q3 chunk A)', () => {
     expect(b.blendEnabled).toBe(true);
   });
 });
+
+describe('viewer-store showTreasureBands toggle (TMP-Q4 chunk C)', () => {
+  beforeEach(() => {
+    // Re-establish defaults between tests so flag-flip ordering doesn't
+    // cross-contaminate. Same discipline as the chunk-A block.
+    useViewerStore.getState().setShowTreasureBands(false);
+    useViewerStore.getState().setBlendEnabled(true);
+    useViewerStore.getState().resetLayers();
+  });
+
+  it('showTreasureBands defaults to false (AC-VBT-5)', () => {
+    // Default OFF: the overlay is an at-a-glance design review aid,
+    // not a default-visible polish. The author opts in.
+    expect(useViewerStore.getState().showTreasureBands).toBe(false);
+  });
+
+  it('setShowTreasureBands flips the flag (forward + reverse)', () => {
+    useViewerStore.getState().setShowTreasureBands(true);
+    expect(useViewerStore.getState().showTreasureBands).toBe(true);
+    useViewerStore.getState().setShowTreasureBands(false);
+    expect(useViewerStore.getState().showTreasureBands).toBe(false);
+  });
+
+  it('LOW-3 — showTreasureBands and blendEnabled toggle independently', () => {
+    // Forward: flip bands ON, then flip blend OFF. Both flags must
+    // hold their independent state.
+    useViewerStore.getState().setShowTreasureBands(true);
+    useViewerStore.getState().setBlendEnabled(false);
+    const a = useViewerStore.getState();
+    expect(a.showTreasureBands).toBe(true);
+    expect(a.blendEnabled).toBe(false);
+    // Reverse: flip blend back, bands must still hold.
+    a.setBlendEnabled(true);
+    expect(useViewerStore.getState().showTreasureBands).toBe(true);
+    expect(useViewerStore.getState().blendEnabled).toBe(true);
+  });
+
+  it('LOW-3 — showTreasureBands and L0..L7 layer toggles independent', () => {
+    // A layer toggle must not perturb showTreasureBands. Same
+    // independence-invariant pattern as the blend x layer test above.
+    useViewerStore.getState().setShowTreasureBands(true);
+    useViewerStore.getState().setLayer('foundation', false);
+    const a = useViewerStore.getState();
+    expect(a.showTreasureBands).toBe(true);
+    expect(a.visibleLayers.foundation).toBe(false);
+    // Reverse direction.
+    a.setLayer('foundation', true);
+    a.setShowTreasureBands(false);
+    const b = useViewerStore.getState();
+    expect(b.showTreasureBands).toBe(false);
+    expect(b.visibleLayers.foundation).toBe(true);
+  });
+});
