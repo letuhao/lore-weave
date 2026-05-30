@@ -278,6 +278,7 @@ paths:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/ProjectIdQuery'
       responses:
         '200':
           description: OK
@@ -306,6 +307,7 @@ paths:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/ProjectIdQuery'
       responses:
         '200':
           description: OK
@@ -336,6 +338,7 @@ paths:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/ProjectIdQuery'
       requestBody:
         required: false
         content:
@@ -373,6 +376,7 @@ paths:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/ProjectIdQuery'
       requestBody:
         required: true
         content:
@@ -417,6 +421,13 @@ paths:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/ProjectIdQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WriteBackRequest'
       responses:
         '200':
           description: OK — proposal promoted to canon; returns the promotion record
@@ -443,6 +454,85 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorBody'
         '501':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/proposals/{proposal_id}/write-back:
+    post:
+      tags: [proposals]
+      summary: Write an approved proposal's facts into the KG QUARANTINED (NOT canon)
+      description: >
+        H0: admits an `approved` proposal's enriched dimension facts into the
+        knowledge graph QUARANTINED — `source_type='enriched:<technique>'`,
+        `pending_validation=true`, `confidence < 1.0` — visibly distinct from the
+        glossary-authored canon entity. The entity anchor is written through the
+        glossary SSOT (Q2). This is NOT canonization: only the author `promote`
+        endpoint flips it to canon. Requires `review_status = approved` (else 409).
+      operationId: writeBackEnrichmentProposal
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/ProjectIdQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WriteBackRequest'
+      responses:
+        '200':
+          description: OK — facts admitted to the KG (quarantined, non-canon).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WriteBackResult'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/proposals/{proposal_id}/retract:
+    post:
+      tags: [proposals]
+      summary: Retract a promoted/quarantined proposal (M6 recycle-bin, reversible)
+      description: >
+        AUTHOR-ONLY. Routes the glossary entity to the recycle-bin (soft-delete,
+        reversible) and soft-retracts the KG facts (`valid_until`) so they leave
+        the active graph. Reversible — not a hard delete of canon.
+      operationId: retractEnrichmentProposal
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/ProjectIdQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WriteBackRequest'
+      responses:
+        '200':
+          description: OK — entity recycled + KG facts soft-retracted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetractResult'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
           $ref: '#/components/responses/ErrorResponse'
 
   # ────────────────────────────── sources ──────────────────────────────
@@ -929,6 +1019,71 @@ components:
           description: Permanent origin marker (H0).
         original_technique:
           $ref: '#/components/schemas/Technique'
+
+    WriteBackRequest:
+      type: object
+      description: >
+        Canon-anchor coordinates for write-back / promote / retract. `book_id`
+        is the glossary/book scope; `glossary_entity_id` is optional (resolved
+        via the glossary SSOT write when absent).
+      required: [book_id]
+      properties:
+        book_id:
+          type: string
+          format: uuid
+          description: The book/glossary scope for the write-back.
+        glossary_entity_id:
+          type: [string, 'null']
+          format: uuid
+          description: Existing glossary entity anchor (optional).
+
+    WriteBackResult:
+      type: object
+      description: >
+        Result of admitting an approved proposal's facts to the KG QUARANTINED.
+        `canon` is ALWAYS false (H0 — write-back never canonizes); every fact
+        carries an `enriched` source_type, `pending_validation`, confidence < 1.0.
+      required: [proposal_id, glossary_entity_id, facts, canon]
+      properties:
+        proposal_id:
+          type: string
+          format: uuid
+        glossary_entity_id:
+          type: string
+          format: uuid
+        facts:
+          type: array
+          items:
+            type: object
+            properties:
+              fact_id: { type: string }
+              dimension: { type: string }
+              source_type:
+                type: string
+                description: Always `enriched:<technique>` on write-back (H0).
+              confidence:
+                type: number
+                exclusiveMaximum: 1.0
+              pending_validation:
+                type: boolean
+        canon:
+          type: boolean
+          description: H0 — always false; write-back is quarantined.
+
+    RetractResult:
+      type: object
+      required: [proposal_id, facts_retracted, glossary_recycled, review_status]
+      properties:
+        proposal_id:
+          type: string
+          format: uuid
+        facts_retracted:
+          type: integer
+          minimum: 0
+        glossary_recycled:
+          type: boolean
+        review_status:
+          $ref: '#/components/schemas/ReviewStatus'
 
     CreateSourceRequest:
       type: object
