@@ -1,21 +1,61 @@
 // Package auth validates the admin JWT issued by auth-service.
 //
-// V1 (cycle 36) ships a SKELETON: the framework calls Validate() and accepts
-// any non-empty token claiming admin scope. Real JWT signature verification +
-// scope claims wire up alongside the auth-service admin-scope feature (cycle
-// 18+).
+// 074/075: Validate now performs REAL RS256 signature verification of the
+// auth-service-signed admin JWT (via the shared contracts/adminjwt module),
+// against the public key in ADMIN_JWT_PUBLIC_KEY_PEM, with a kid binding so a
+// stale/wrong key fails loudly. The `dev:` token shortcut remains, gated by
+// ADMIN_CLI_ALLOW_DEV_TOKENS=1 for LOCAL DEV only. Everything is fail-closed:
+// an empty/unverifiable token, or a missing public key for a signed token, is
+// rejected rather than trusted.
 //
-// Why a skeleton: the policy seam exists so every command in the framework
-// already gates on auth.Validate(); future work just swaps the body without
-// touching command handlers.
+// The framework's command handlers gate on auth.Validate() and did not change
+// when the verifier body was swapped in.
 package auth
 
 import (
+	"crypto/rsa"
 	"errors"
 	"fmt"
 	"os"
 	"strings"
+	"sync"
+
+	"github.com/loreweave/foundation/contracts/adminjwt"
 )
+
+// Parsed-public-key memo. The PEM comes from an env var that is effectively
+// constant for a CLI process; we cache the parse + fingerprint keyed on the PEM
+// string so repeated Validate calls (e.g. primary + second-actor token in one
+// dispatch) don't re-parse, while a changed PEM (tests) still re-parses.
+var (
+	pubKeyMu  sync.RWMutex
+	cachedPEM string
+	cachedPub *rsa.PublicKey
+	cachedKID string
+)
+
+func loadPublicKey(pemStr string) (*rsa.PublicKey, string, error) {
+	pubKeyMu.RLock()
+	if cachedPub != nil && pemStr == cachedPEM {
+		pub, kid := cachedPub, cachedKID
+		pubKeyMu.RUnlock()
+		return pub, kid, nil
+	}
+	pubKeyMu.RUnlock()
+
+	pub, err := adminjwt.ParseRSAPublicKeyPEM([]byte(pemStr))
+	if err != nil {
+		return nil, "", err
+	}
+	kid, err := adminjwt.KeyFingerprint(pub)
+	if err != nil {
+		return nil, "", err
+	}
+	pubKeyMu.Lock()
+	cachedPEM, cachedPub, cachedKID = pemStr, pub, kid
+	pubKeyMu.Unlock()
+	return pub, kid, nil
+}
 
 // ErrAuth is returned by Validate on rejection.
 var ErrAuth = errors.New("admin-cli/auth")
@@ -35,16 +75,21 @@ type Claims struct {
 // This prevents the forgeable `dev:` token from ever authenticating a real env.
 const AllowDevTokensEnv = "ADMIN_CLI_ALLOW_DEV_TOKENS"
 
+// PublicKeyEnv holds the auth-service admin-signing RSA PUBLIC key (SPKI PEM).
+// Required to verify production (non-dev) signed admin JWTs. Public keys are not
+// secret; the kid binding (fingerprint) detects a stale/wrong key.
+const PublicKeyEnv = "ADMIN_JWT_PUBLIC_KEY_PEM"
+
 // Validate inspects an admin token and returns Claims on success.
 //
-// Security posture (PRR-29, fail-closed):
+// Security posture (PRR-29/PRR-30, fail-closed):
 //   - `dev:` tokens are a LOCAL-DEV shortcut, accepted ONLY when
 //     ADMIN_CLI_ALLOW_DEV_TOKENS=1. Otherwise rejected — a forged dev token
 //     cannot authenticate in production.
-//   - Any non-`dev:` token requires real signed-JWT verification, not yet wired
-//     (PRR-30). Until then Validate FAILS CLOSED rather than trust an
-//     unverified token. Production wiring swaps in an RS256/JWS verifier reading
-//     the auth-service signing key; the CALLER (dispatcher) does not change.
+//   - Any non-`dev:` token is verified as a real RS256 admin JWT against the
+//     auth-service public key (see validateSigned). If no public key is
+//     configured, or the signature/kid/iss/aud/exp fail, Validate FAILS CLOSED.
+//     The CALLER (dispatcher) is unchanged.
 //
 // Dev-token format (when enabled): dev:<user>:<role>:<scopes-pipe-separated>[:break-glass]
 // Scopes use `|` (NOT `,`) because scope strings like `admin:read` contain a
@@ -56,13 +101,41 @@ func Validate(token string) (Claims, error) {
 	}
 	if strings.HasPrefix(token, "dev:") {
 		if os.Getenv(AllowDevTokensEnv) != "1" {
-			return Claims{}, fmt.Errorf("%w: `dev:` tokens are disabled (fail-closed). Set %s=1 for LOCAL DEV only; production must present a signed JWT (real verifier pending PRR-30 / D-ADMIN-CLI-JWT)", ErrAuth, AllowDevTokensEnv)
+			return Claims{}, fmt.Errorf("%w: `dev:` tokens are disabled (fail-closed). Set %s=1 for LOCAL DEV only; production must present a signed JWT", ErrAuth, AllowDevTokensEnv)
 		}
 		return parseDevToken(token)
 	}
-	// Non-dev token: real JWT verification is not wired yet (PRR-30). Refuse
-	// rather than accept an unverified token.
-	return Claims{}, fmt.Errorf("%w: signed-JWT verification not yet wired (PRR-30 / D-ADMIN-CLI-JWT); refusing to authenticate an unverified token", ErrAuth)
+	// Non-dev token: verify the auth-service-signed admin JWT (RS256, 074/075).
+	return validateSigned(token)
+}
+
+// validateSigned verifies a real RS256 admin JWT against the auth-service public
+// key (ADMIN_JWT_PUBLIC_KEY_PEM). Fail-closed: if no public key is configured we
+// refuse rather than trust an unverified token. The kid is bound to the key's
+// fingerprint so a stale/wrong configured key fails loudly.
+func validateSigned(token string) (Claims, error) {
+	pemStr := os.Getenv(PublicKeyEnv)
+	if pemStr == "" {
+		return Claims{}, fmt.Errorf("%w: %s not set; cannot verify a signed admin JWT (fail-closed)", ErrAuth, PublicKeyEnv)
+	}
+	pub, kid, err := loadPublicKey(pemStr)
+	if err != nil {
+		return Claims{}, fmt.Errorf("%w: bad %s: %v", ErrAuth, PublicKeyEnv, err)
+	}
+	ac, err := adminjwt.Verify(token, pub, kid)
+	if err != nil {
+		return Claims{}, fmt.Errorf("%w: %v", ErrAuth, err)
+	}
+	c := Claims{
+		Subject:    ac.Subject,
+		Role:       ac.Role,
+		Scopes:     ac.Scopes,
+		BreakGlass: ac.BreakGlass,
+	}
+	if ac.ExpiresAt != nil {
+		c.ExpiresUnix = ac.ExpiresAt.Unix()
+	}
+	return c, nil
 }
 
 // parseDevToken parses the dev-token shortcut. Only reached when

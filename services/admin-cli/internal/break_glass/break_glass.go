@@ -1,6 +1,7 @@
 // Package break_glass implements the S11-D10 break-glass flow:
-//   POST /admin/break-glass → dual-actor + 100+ char reason + incident ticket
-//   → 24h TTL JWT with `break_glass=true` claim
+//
+//	POST /admin/break-glass → dual-actor + 100+ char reason + incident ticket
+//	→ 24h TTL JWT with `break_glass=true` claim
 //
 // V1 (cycle 36) ships the policy CHECKS as a pure library + the request
 // struct. Actual JWT issuance wires to auth-service (cycle 18+).
@@ -11,6 +12,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/loreweave/foundation/contracts/adminjwt"
 )
 
 // Request captures a break-glass token request.
@@ -25,26 +28,22 @@ type Request struct {
 // ErrBreakGlass is returned by Validate on policy violation.
 var ErrBreakGlass = errors.New("admin-cli/break_glass")
 
-// Validate enforces S11-D10 invariants. Returns ErrBreakGlass on failure.
+// Validate enforces the S11-D10 invariants. The policy itself lives in the
+// shared contracts/adminjwt module (the single pinned source consumed by BOTH
+// admin-cli and the auth-service issuer, so the two can never drift). We
+// re-wrap under the local ErrBreakGlass sentinel to preserve this package's
+// error contract for existing callers.
 func (r Request) Validate() error {
-	if r.PrimaryActor == "" {
-		return fmt.Errorf("%w: primary_actor empty", ErrBreakGlass)
-	}
-	if r.SecondaryActor == "" {
-		return fmt.Errorf("%w: secondary_actor empty (dual-actor required)", ErrBreakGlass)
-	}
-	if r.PrimaryActor == r.SecondaryActor {
-		return fmt.Errorf("%w: primary and secondary actor must differ (dual-actor)", ErrBreakGlass)
-	}
-	if len(strings.TrimSpace(r.Reason)) < 100 {
-		return fmt.Errorf("%w: reason must be >=100 chars (got %d)",
-			ErrBreakGlass, len(strings.TrimSpace(r.Reason)))
-	}
-	if r.IncidentTicket == "" {
-		return fmt.Errorf("%w: incident_ticket empty", ErrBreakGlass)
-	}
-	if r.RequestedTTL <= 0 || r.RequestedTTL > 24*time.Hour {
-		return fmt.Errorf("%w: requested_ttl=%s out of (0, 24h]", ErrBreakGlass, r.RequestedTTL)
+	err := adminjwt.ValidateBreakGlass(adminjwt.BreakGlassRequest{
+		PrimaryActor:   r.PrimaryActor,
+		SecondaryActor: r.SecondaryActor,
+		Reason:         r.Reason,
+		IncidentTicket: r.IncidentTicket,
+		RequestedTTL:   r.RequestedTTL,
+	})
+	if err != nil {
+		detail := strings.TrimPrefix(err.Error(), adminjwt.ErrBreakGlass.Error()+": ")
+		return fmt.Errorf("%w: %s", ErrBreakGlass, detail)
 	}
 	return nil
 }
