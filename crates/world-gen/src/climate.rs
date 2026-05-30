@@ -45,10 +45,18 @@ const PRECIP_POLAR: f32 = 150.0;
 
 /// Seasonal amplitude at the equator (°C) — year-round-stable tropics.
 const AMP_EQ: f32 = 2.0;
-/// Extra seasonal amplitude per unit `lat_dist` (°C) — poles swing wide.
-const AMP_LAT: f32 = 28.0;
-/// Continentality amplification of the seasonal swing (interior > coast).
-const AMP_CONT: f32 = 0.8;
+/// **Maritime** latitude amplitude gain (°C per unit `lat_dist`, at `cont=0`).
+/// Small, so an oceanic coast keeps a mild seasonal swing even at high latitude
+/// (Reykjavík ≈ 6 °C at 64°N) — a cold-mean + low-amplitude maritime pole then
+/// classifies Polar/Tundra (warmest month < 10 °C) instead of Boreal.
+const AMP_MARITIME: f32 = 4.0;
+/// **Continental** extra latitude amplitude gain (°C per unit `lat_dist` per unit
+/// continentality). Interiors swing wide (Yakutsk ≈ 30 °C at 62°N → Boreal). This
+/// is what *gates* the big swings on continentality instead of applying them to
+/// every cell — the v2 seasonality fix (DEFERRED #045): the old
+/// `(AMP_EQ+AMP_LAT·lat)·(1+AMP_CONT·cont)` gave a 30 °C maritime-pole amplitude,
+/// blocking both the temperate C-band and the polar/tundra band.
+const AMP_CONT_GAIN: f32 = 24.0;
 
 /// Winter precip fraction in v1 — **fixed at 0.5** (year-round even). Real
 /// hemisphere/margin seasonality (Mediterranean dry-summer Cs, monsoon
@@ -140,7 +148,7 @@ pub fn build(
             let cont = (1.0 - m).clamp(0.0, 1.0); // interior = high continentality
 
             // Temperature: insolation − elevation lapse (+ bias).
-            let temp_mean = lerp(T_EQ, T_POLE, lat_dist) - LAPSE_C * elev_above + temp_bias;
+            let temp_mean = insolation_temp(lat_dist) - LAPSE_C * elev_above + temp_bias;
             // Precipitation: latitude circulation base (mm) × horizontal
             // moisture transport [0,1] (+ bias), clamped non-negative.
             let precip = (circulation_precip_mm(lat_dist) * m + precip_bias).max(0.0);
@@ -191,12 +199,27 @@ fn circulation_precip_mm(lat_dist: f32) -> f32 {
     raw.max(0.0)
 }
 
+/// Sea-level mean annual temperature (°C) at a given `lat_dist` — a **cosine**
+/// insolation curve (Köppen v2, DEFERRED #045). `T_POLE + (T_EQ − T_POLE)·cos(θ)`
+/// with `θ = lat_dist·π/2`. Cosine is concave on `[0, π/2]`, so it lies *above*
+/// the old linear `lerp` chord — mid-latitudes are warmer (≈ 15 °C at 45° vs the
+/// linear 6.5 °C), which is what lets the temperate C-band exist there. Exact at
+/// the endpoints (equator = `T_EQ`, pole = `T_POLE`).
+fn insolation_temp(lat_dist: f32) -> f32 {
+    let theta = lat_dist.clamp(0.0, 1.0) * std::f32::consts::FRAC_PI_2;
+    T_POLE + (T_EQ - T_POLE) * theta.cos()
+}
+
 /// Seasonal temperature amplitude (°C): half the warm/cold-month spread.
-/// Port of `flat_climate::seasonal_amplitude` — small at the equator, large at
-/// the poles, amplified in continental interiors.
+/// **Continentality-gated** (Köppen v2, #045): a small maritime base that grows
+/// with latitude (`AMP_MARITIME·lat_dist`) plus a continental term that only the
+/// interior pays (`AMP_CONT_GAIN·cont·lat_dist`). So an oceanic coast stays
+/// low-amplitude at every latitude (cold mean + low amp → Polar/Tundra at the
+/// pole, mild C-band at mid-lat) while interiors swing wide (→ Boreal).
 fn seasonal_amp(lat_dist: f32, continentality: f32) -> f32 {
-    let lat_amp = AMP_EQ + AMP_LAT * lat_dist.clamp(0.0, 1.0);
-    lat_amp * (1.0 + continentality.clamp(0.0, 1.0) * AMP_CONT)
+    let lat = lat_dist.clamp(0.0, 1.0);
+    let cont = continentality.clamp(0.0, 1.0);
+    AMP_EQ + (AMP_MARITIME + AMP_CONT_GAIN * cont) * lat
 }
 
 /// Köppen B-group aridity threshold (mm/yr): a zone is arid iff annual precip
@@ -440,6 +463,69 @@ mod tests {
     }
 
     #[test]
+    fn insolation_warms_midlatitudes() {
+        // Endpoints exact.
+        assert!((insolation_temp(0.0) - T_EQ).abs() < 1e-3);
+        assert!((insolation_temp(1.0) - T_POLE).abs() < 1e-3);
+        // Cosine is concave on [0, π/2] → mid-latitudes are warmer than the old
+        // linear chord midpoint (the v2 fix that lets the C-band exist there).
+        let linear_mid = 0.5 * (T_EQ + T_POLE);
+        assert!(
+            insolation_temp(0.5) > linear_mid + 5.0,
+            "cosine mid-lat {} not warmer than linear {}",
+            insolation_temp(0.5),
+            linear_mid
+        );
+    }
+
+    #[test]
+    fn maritime_stays_low_amplitude() {
+        // **Headline v2 property.** A maritime (cont=0) pole keeps a small
+        // seasonal swing, while a continental (cont=1) pole swings wide.
+        assert!(
+            seasonal_amp(1.0, 0.0) < 10.0,
+            "maritime pole amp {} too large — would block Polar/Tundra",
+            seasonal_amp(1.0, 0.0)
+        );
+        assert!(
+            seasonal_amp(1.0, 1.0) > 25.0,
+            "continental pole amp {} too small",
+            seasonal_amp(1.0, 1.0)
+        );
+        // The equator is stable regardless of continentality.
+        assert!((seasonal_amp(0.0, 1.0) - AMP_EQ).abs() < 1e-3);
+    }
+
+    #[test]
+    fn v2_seasonality_opens_temperate_and_polar() {
+        // Maritime mid-latitude, wet → **Temperate** (the C-band, previously
+        // unreachable: the old amplitude drove t_cold below −3 → Boreal).
+        let mid = insolation_temp(0.5);
+        let amp_mid = seasonal_amp(0.5, 0.05);
+        assert_eq!(
+            classify_koppen(mid + amp_mid, mid - amp_mid, 1200.0, WINTER_FRAC_V1, 0.0),
+            ClimateZone::Temperate,
+            "maritime mid-lat should be Temperate"
+        );
+        // Maritime high-latitude → **Polar** (warmest month < 10 °C → Tundra
+        // downstream; previously the 30 °C maritime amplitude kept t_warm ≫ 10).
+        let hi = insolation_temp(0.9);
+        let amp_hi = seasonal_amp(0.9, 0.05);
+        assert_eq!(
+            classify_koppen(hi + amp_hi, hi - amp_hi, 300.0, WINTER_FRAC_V1, 0.0),
+            ClimateZone::Polar,
+            "maritime high-lat should be Polar"
+        );
+        // Continental high-latitude still swings wide → Boreal (warm summer).
+        let amp_cont = seasonal_amp(0.9, 0.9);
+        assert_eq!(
+            classify_koppen(hi + amp_cont, hi - amp_cont, 400.0, WINTER_FRAC_V1, 0.0),
+            ClimateZone::Boreal,
+            "continental high-lat should stay Boreal"
+        );
+    }
+
+    #[test]
     fn all_eight_zones_are_reachable() {
         let mut seen = [false; 8];
         for &tw in &[-5.0_f32, 5.0, 12.0, 15.0, 18.0, 25.0, 30.0, 35.0] {
@@ -497,7 +583,11 @@ mod tests {
         let n = 12;
         let centers: Vec<[f32; 3]> = (0..n)
             .map(|i| {
-                let z = i as f32 / n as f32 * 0.95; // sin(lat): 0 → ~0.95
+                // sin(lat): equator (0) → near the pole (0.99 ≈ |lat| 82°). Span
+                // the full range so the pole-end cell is genuinely high-latitude
+                // (a shorter span lands in warm mid-latitudes, which the cosine
+                // insolation can legitimately make Arid when dry).
+                let z = i as f32 / (n - 1) as f32 * 0.99;
                 let x = (1.0 - z * z).sqrt(); // lon = 0 meridian
                 [x, 0.0, z]
             })

@@ -51,11 +51,29 @@
 > at 0.0 (opt-in) until #045 lands. Knob is a threshold-switch at the default
 > ~3-continental-plate count (smoother with more plates).
 >
-> **TOP NEXT (PO-chosen): #045 — Köppen v2 SEASONALITY.** Fix the linear-insolation
-> / seasonal-amplitude squeeze (cosine insolation curve and/or amplitude rebalance)
-> so the latitudinal gradient is real — this is what unblocks BOTH Temperate and
-> Tundra/Polar, after which `continent_latitude_spread` can become the default.
-> Then optionally: review/merge PR #13; Köppen v2 19-subtype richer palette.
+> **Köppen v2 SEASONALITY (#045) — SHIPPED.** Replaced the linear insolation
+> `lerp(28,−15,lat_dist)` with a **cosine** curve (`insolation_temp` — warms mid-lat
+> ~6.5→15 °C at 45°) and rewrote `seasonal_amp` to be **continentality-gated**
+> (`AMP_EQ + (AMP_MARITIME=4 + AMP_CONT_GAIN=24·cont)·lat_dist`) so maritime coasts
+> stay low-amplitude at every latitude. Plan:
+> [`docs/plans/2026-05-31-koppen-v2-seasonality.md`](../../plans/2026-05-31-koppen-v2-seasonality.md).
+> Full lib 398 green, clippy-clean, `/review-impl` (no HIGH/MED). **Result (seed-7
+> mega):** Desert preserved **33.5 %** at spread=0 (Köppen win intact); **Tundra
+> opened 0→126** + Polar/Boreal gradient at spread=1; the temperate C-band is now
+> *reachable* (`Plain` 0→55 with Equatorial orientation), render shows a tundra cap
+> → boreal → tropical gradient. #045 cleared.
+>
+> **Honest residual → #046:** Temperate stays only ~1–2 % because it is a wet-**mild**
+> maritime climate (Cfb) that the single prevailing-wind moisture march under-produces
+> (interiors dry → Arid/Boreal). Two non-seasonality levers: (a) richer
+> moisture-transport model (wetter interiors); (b) the `Northern` default makes the
+> south hemisphere warm.
+>
+> **TOP NEXT (PO-chosen): #046 — MOISTURE-TRANSPORT model.** A multi-directional /
+> onshore-flow moisture model (or weaker `land_leak`) so continental interiors stay
+> wetter → abundant wet-mild Temperate, completing the latitudinal gradient. Then
+> optionally: flip `continent_latitude_spread` default on; review/merge PR #13;
+> Köppen 19-subtype palette.
 >
 > ---
 >
