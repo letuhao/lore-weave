@@ -515,3 +515,16 @@
 {"ts": "2026-05-30T09:06:56Z", "event": "in_progress_update", "cycle": 11, "phase": "SESSION", "retry": 0}
 {"ts":"2026-05-30T09:07:44Z","event":"cycle_session_complete","cycle":11,"files":7,"tests":"253 pass / 14 skip","adversary":"0blk/2maj-fixed/0min","scope_guard":"CLEAR","verify_exit":0,"notable":"H0 enforcement point; closed model_construct+model_copy escape hatches"}
 {"ts": "2026-05-30T09:08:18Z", "event": "in_progress_archived", "cycle": 11, "archived_to": "cycle-011-state.md"}
+{"ts":"2026-05-30T09:14:09Z","task":"lore-enrichment","phase":"coordinator-review","agent":"independent-adversary","action":"verdict","cycle":11,"verdict":"APPROVED_WITH_WARNINGS","block":0,"warn":2}
+{"ts":"2026-05-30T00:00:00Z","task":"lore-enrichment","phase":"coordinator-review","agent":"coordinator","action":"cycle_accepted","cycle":11,"commit":"fcb29e43","verify_exit":0,"independent_adversary":"APPROVED_WITH_WARNINGS","note":"H0 ENFORCEMENT POINT independently verified AIRTIGHT: LLM text->content only, origin/confidence/review_status factory-set+un-spoofable, provenance non-empty enforced, model_construct/copy closed. 2 WARN fidelity (confidence quantization fail-closed; cjk-garbage acceptance) + 1 NIT (technique vocab) -> DEFERRED 045/046/047 with exact fixes; none is a canon-escape. self-review had already fixed 2 pydantic escape hatches."}
+{"ts":"2026-05-30T09:17:35Z","event":"startup_drift_check_inconclusive","cycle":12,"cd":"","rw":""}
+{"ts":"2026-05-30T09:17:35Z","event":"startup_verifier_complete","cycle":12,"steps":6}
+{"ts": "2026-05-30T09:19:18Z", "event": "in_progress_init", "cycle": 12, "title": "Canon-verify (M2)"}
+{"ts": "2026-05-30T09:23:04Z", "event": "in_progress_update", "cycle": 12, "phase": "CLARIFY", "retry": 0}
+{"ts": "2026-05-30T09:27:34Z", "event": "in_progress_update", "cycle": 12, "phase": "CLARIFY", "retry": 0}
+{"ts":"2026-05-30T09:27:54Z","event":"secret_scan_skipped","cycle":12,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts":"2026-05-30T09:27:35Z","event":"verify_cycle_pass","cycle":12}
+{"ts":"2026-05-30T09:30:37Z","event":"secret_scan_skipped","cycle":12,"scope":"cycle","reason":"gitleaks_not_installed"}
+{"ts":"2026-05-30T09:30:33Z","event":"verify_cycle_pass","cycle":12}
+{"ts":"2026-05-30T09:34:20Z","event":"cycle_done","cycle":12,"title":"Canon-verify","dps":2,"tests":"275 pass / 14 skip","adversary":"0blk/0maj/1min-fixed","scope_guard":"CLEAR","verify_exit":0}
+{"ts": "2026-05-30T09:34:20Z", "event": "in_progress_update", "cycle": 12, "phase": "CLARIFY", "retry": 0}
