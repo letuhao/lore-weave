@@ -1,9 +1,52 @@
-# Session Handoff — Session 73 (cycle 73a verify + 73b SHIPPED + 73c re-judge + 73d entity recovery NEGATIVE + 73e writer autocreate)
+# Session Handoff — Session 73 (cycles 73a-73f, ending 73f runtime-reload)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-05-30 (session 73 — 5 cycles: cycle 72 verify + cycle 73b relation-only ship + cycle 73c realized-F1 re-judge + cycle 73d entity recovery NEGATIVE + cycle 73e writer autocreate).
-> **HEAD:** pending ship commits on top of `e298a723` (cycle 73d merge).
+> **Date:** 2026-05-30 (session 73 — 6 cycles: 73a verify + 73b relation-only ship + 73c realized-F1 + 73d entity recovery NEGATIVE + 73e writer autocreate + 73f runtime reload).
+> **HEAD:** pending ship commits on top of cycle 73e shipped commits.
 > **Branch:** `main`.
+
+## Session 73 summary — cycle 73f runtime filter reload (Redis-key + pubsub hybrid)
+
+### Cycle 73f (L) — D-PASS2-FILTER-RUNTIME-FLAG ops endpoint for runtime config reload
+
+Goal: ops can change Pass2 precision filter config (categories, partial_policy, model_ref) WITHOUT compose restart. Architecture: Redis-key as source of truth + pubsub for change notification + module-level cache in both KS + worker-ai. Bypasses container restart pattern that killed 73e ensemble 2x.
+
+**Architecture:**
+
+```
+POST KS endpoint → SET Redis key + PUBLISH pubsub channel
+                 → KS local cache swap (immediate)
+                 → workers receive pubsub → re-read Redis → update cache
+KS startup       → GET Redis key → seed cache (hydrate)
+KS pubsub sub    → listen for cross-replica reload signals
+```
+
+**What ships:**
+- NEW `sdks/python/loreweave_extraction/filter_config_store.py` (~220 lines, 10 tests) — duck-typed Redis helpers, schema_version envelope, defensive deserializer, subscriber loop with backoff
+- KS `POST /internal/admin/precision-filter/reload` endpoint (body-based config, server-generated timestamp, model_validator catches disable+model_ref ambiguity + empty-body, Field validators, try/finally Redis cleanup)
+- KS lifespan hydrate + subscriber task (r2 H1 fold — was missing, would have broken multi-replica)
+- Worker-ai subscriber wired into `asyncio.gather`
+- `set_precision_filter_config()` setter in both KS + worker-ai (atomic module-level swap via Python GIL)
+- NEW Prometheus counter `knowledge_extraction_filter_reload_total{source, outcome}` (9 series)
+
+**Tests:** 106/106 pass (90 KS + 10 SDK + 6 worker-ai incl. 2 new cycle 73f tests)
+
+**3-round /review-impl:**
+- r1 on DESIGN: 7H + 9M + 6L; 7H + 5M + 2L folded inline (server-timestamp, ge=1 validation, list→tuple, subscriber resilience, schema_version envelope, swap-then-publish order, metric counter, channel naming, connection cleanup, validation truth table)
+- r2 on BUILD diff: 2H (1 critical) + 4M + 4L; H1 critical "KS never subscribes to own pubsub" folded (added hydrate + consume_filter_reload_signal in pass2_orchestrator + wired into main.py lifespan). H2 verified clean. M+L folded or deferred.
+
+**Documented limitations (accepted):**
+1. Pub/sub miss while worker restarting → ops re-reloads manually; monitor via metric counter
+2. KS-local apply succeeds even when Redis publish fails → `redis_publish_status="failed"` surfaces drift via response field
+3. Cross-service live smoke deferred to D-CYCLE73F-LIVE-SMOKE per container restart pattern (3x in this session)
+4. In-flight job consistency: orchestrator reads `_PRECISION_FILTER_CONFIG` per call; reload mid-job means chapter N uses old, N+1 uses new (acceptable for ops-tooling)
+
+**Deferred rows added:**
+- **D-CYCLE73F-LIVE-SMOKE** — cross-service smoke (curl KS reload → tail worker logs → verify cache swap) when container stable
+- **D-PASS2-FILTER-PER-JOB-OVERRIDE** — per-job override via StartJobRequest.filter_override field
+- **D-PASS2-FILTER-PER-USER-UI** — FE surface (cycle 72 deferred)
+
+### Cycle 73e (L) — Pass2 writer Tier-A name repair + Tier-B autocreate — closes 73c's writer-cascade gap WITHOUT LLM (no self-reinforcement risk)
 
 ## Session 73 summary — cycle 73e Pass2 writer Tier-A + Tier-B autocreate ship decision
 
