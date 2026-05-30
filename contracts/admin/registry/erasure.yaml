@@ -18,6 +18,7 @@ commands:
       - {name: user_ref_id, type: uuid,   required: true, description: "Target user reference UUID"}
       - {name: ticket_id,   type: string, required: true, description: "GDPR ticket / DPO authorization ref"}
       - {name: reason,      type: string, required: true, description: "Audit explanation (must reference ticket)"}
+      - {name: legal_basis, type: string, required: true, description: "S08 §12X.6 step 1: self_request | court_order | dpa_approved"}
     impact_class: tier-1-destructive
     dry_run_required: true
     double_approval_required: true

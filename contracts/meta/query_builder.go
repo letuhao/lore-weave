@@ -65,6 +65,15 @@ func (PostgresQueryBuilder) BuildUpdate(in MetaWriteIntent) (string, []any, erro
 	}
 	expCols := sortedKeys(in.ExpectedBefore)
 	for _, c := range expCols {
+		// A nil expected-value means "column IS NULL". `col = NULL` is never
+		// true in SQL, so render it as an IS NULL predicate (no bound arg).
+		// This lets callers CAS on an as-yet-unset column — e.g. revoke a
+		// consent row only while revoked_at IS NULL (migration 011's documented
+		// single-transition), or pseudonymize a ledger row only once.
+		if in.ExpectedBefore[c] == nil {
+			whereParts = append(whereParts, fmt.Sprintf("%s IS NULL", quoteIdent(c)))
+			continue
+		}
 		whereParts = append(whereParts, fmt.Sprintf("%s = $%d", quoteIdent(c), idx))
 		args = append(args, in.ExpectedBefore[c])
 		idx++

@@ -18,11 +18,16 @@
 //
 // Audit: every invocation is audited via framework.Run() → admin_action_audit
 // (cycle 4 L1.A-3 table; allowlist confirms events: []).
+//
+// AV note: this binary links AWS-KMS + AES-GCM crypto-shred (PII erasure), which
+// some desktop AVs (Bitdefender Gen:Variant.Tedy.*) flag as a FALSE POSITIVE on
+// unsigned static Go binaries. It is not malware — see docs/SECURITY-FALSEPOSITIVE.md.
 package main
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -31,12 +36,17 @@ import (
 	"strings"
 	"time"
 
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	awskms "github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/loreweave/foundation/contracts/meta"
+	"github.com/loreweave/foundation/contracts/pii"
 	"github.com/loreweave/foundation/sdks/go/metapg"
+	"github.com/loreweave/foundation/sdks/go/piikms"
 	"github.com/loreweave/foundation/services/admin-cli/internal/audit_emitter"
+	"github.com/loreweave/foundation/services/admin-cli/internal/commands"
 	"github.com/loreweave/foundation/services/admin-cli/internal/framework"
 )
 
@@ -98,6 +108,106 @@ func buildAuditSink(stderr *os.File, impact framework.ImpactClass, dryRun, confi
 		Clock: sysClock{}, UUIDGen: randUUID{}, Scrubber: meta.NewRegexScrubber(nil),
 	}
 	return audit_emitter.NewMetaWriteSink(cfg), pool.Close, nil
+}
+
+// buildErasureHandler wires `erasure user-erasure` to the full PII SDK +
+// MetaWrite consent path (076 Slice C). It owns its OWN meta pool — isolated
+// from buildAuditSink's pool so the security-critical audit guards stay
+// untouched; both pools are short-lived for a single CLI invocation. Returns a
+// no-op closer (never nil) so the caller can always defer it. On a hard wiring
+// error it returns a nil handler + the error; the caller logs and the registry's
+// NotWired handler refuses the command.
+//
+// The PII SDK is built PER-INVOCATION inside the closure so meta_read_audit gets
+// the LIVE admin subject (inv.Actor) as actor_id and the enum-valid "admin" as
+// actor_type (migration-014 CHECK) — never the doc's suggested "admin-cli",
+// which would fail the actor_type CHECK after the KEK is already shredded.
+func buildErasureHandler() (framework.Handler, func(), error) {
+	noop := func() {}
+	dsn := os.Getenv("META_DATABASE_URL")
+	if dsn == "" {
+		return nil, noop, nil // no DB → leave NotWired (dispatcher refuses real runs)
+	}
+	allowPath := os.Getenv("META_ALLOWLIST_PATH")
+	if allowPath == "" {
+		return nil, noop, fmt.Errorf("META_ALLOWLIST_PATH required for erasure consent-revoke")
+	}
+	allow, err := meta.LoadAllowlist(allowPath)
+	if err != nil {
+		return nil, noop, fmt.Errorf("load allowlist: %w", err)
+	}
+	// Fail-fast: step 7 writes user_consent_ledger via MetaWrite.
+	if !allow.AllowsTable("user_consent_ledger") {
+		return nil, noop, fmt.Errorf("allowlist %s missing user_consent_ledger (erasure step 7 needs it)", allowPath)
+	}
+	pool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		return nil, noop, fmt.Errorf("erasure meta DB connect: %w", err)
+	}
+	cfg := &meta.Config{
+		DB: metapg.New(pool), Allowlist: allow, QueryBuilder: meta.PostgresQueryBuilder{},
+		Clock: sysClock{}, UUIDGen: randUUID{}, Scrubber: meta.NewRegexScrubber(nil),
+	}
+	// Real AWS KMS (KMS_ENDPOINT overrides BaseEndpoint for LocalStack).
+	region := os.Getenv("AWS_REGION")
+	if region == "" {
+		region = "us-east-1"
+	}
+	awsCfg, err := awsconfig.LoadDefaultConfig(context.Background(), awsconfig.WithRegion(region))
+	if err != nil {
+		pool.Close()
+		return nil, noop, fmt.Errorf("aws config: %w", err)
+	}
+	endpoint := os.Getenv("KMS_ENDPOINT")
+	kmsClient := awskms.NewFromConfig(awsCfg, func(o *awskms.Options) {
+		if endpoint != "" {
+			o.BaseEndpoint = &endpoint
+		}
+	})
+
+	h := func(ctx context.Context, inv framework.Invocation) (string, error) {
+		sdk, err := pii.NewSDK(pii.Config{
+			KMS:         piikms.NewAWSKMSClient(kmsClient),
+			DB:          piikms.NewPgPIIReader(pool),
+			KEKManager:  piikms.NewPgKEKManager(pool, kmsClient, 30),
+			AuditWriter: piikms.NewPgReadAuditWriter(pool),
+			ActorID:     inv.Actor,               // live admin subject (meta_read_audit.actor_id is TEXT)
+			ActorType:   string(meta.ActorAdmin), // enum-valid "admin" (migration-014); typed const, NOT a magic "admin-cli"
+		})
+		if err != nil {
+			return "", fmt.Errorf("build PII SDK: %w", err)
+		}
+		uid, err := uuid.Parse(inv.Params["user_ref_id"])
+		if err != nil {
+			return "", fmt.Errorf("invalid user_ref_id %q: %w", inv.Params["user_ref_id"], err)
+		}
+		req := commands.ErasureRequest{
+			UserRefID:  uid,
+			TicketID:   inv.Params["ticket_id"],
+			Reason:     inv.Reason,
+			LegalBasis: inv.Params["legal_basis"],
+			DryRun:     inv.DryRun,
+		}
+		reader := piikms.NewPgPIIReader(pool)
+		deps := commands.ErasureDeps{
+			Eraser:  sdk,
+			Consent: commands.NewPgConsentRevoker(pool, cfg, inv.Actor, time.Now),
+			Balance: commands.NewPgBalanceReader(pool),
+			// Existence guard: refuse to shred a non-existent user_ref_id.
+			Existence: commands.ExistenceCheckerFunc(func(c context.Context, u uuid.UUID) (bool, error) {
+				if _, rerr := reader.ReadPIIRow(c, u); rerr != nil {
+					if errors.Is(rerr, meta.ErrPIINotFound) {
+						return false, nil
+					}
+					return false, rerr
+				}
+				return true, nil
+			}),
+			Clock: time.Now,
+		}
+		return commands.RunUserErasure(ctx, req, deps)
+	}
+	return h, pool.Close, nil
 }
 
 // registryDirEnv lets ops override the registry path (defaults to the
@@ -230,7 +340,23 @@ func run(args []string, stdout, stderr *os.File) int {
 	defer closeSink()
 	emitter := audit_emitter.New(sink, nil)
 
-	handler := defaultHandlers().Resolve(c)
+	handlers := defaultHandlers()
+	// Wire the erasure orchestrator (076 Slice C) only for its own command, so
+	// unrelated commands never open the PII pool. Falls back to NotWired on a
+	// wiring error.
+	closeErasure := func() {}
+	if c.Name == "erasure user-erasure" {
+		erasureH, ce, eerr := buildErasureHandler()
+		closeErasure = ce
+		if eerr != nil {
+			fmt.Fprintf(stderr, "admin: erasure handler not wired: %v\n", eerr)
+		} else if erasureH != nil {
+			handlers.Register("erasure user-erasure", erasureH)
+		}
+	}
+	defer closeErasure()
+
+	handler := handlers.Resolve(c)
 	inv := framework.Invocation{
 		Command:          c,
 		Params:           params,
