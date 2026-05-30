@@ -572,6 +572,58 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 
 ## Current Active Work
 
+### Session 98 — Flat→3D substrate audit + migration plan (PLAN only, no code) ✅
+
+**Goal (PO directive end of session 97):** discussion+plan, no code. Audit whether
+the flat-map civ experiment will make the eventual "elevation map applied at the
+end" a painful retrofit.
+
+**Key finding (lesson 1fbf8d34 applied):** the PO's fear is largely already
+resolved, but not as expected. The civ stack (`political`/`settlement`/`routes`/
+`culture`/`feature`/`naming`/`hydrology`) is **mesh-agnostic shared modules** —
+sphere `generate()` (lib.rs:100-124) calls the *same* functions `civ_adapter.rs`
+(civ_adapter.rs:47-51) calls. The sphere substrate **already has** real 3D
+elevation (plate tectonics + Earth-like hypsometry + erosion since Phase 1). The
+flat track is an **experiment**; its missing elevation is experiment-only, not a
+pending production retrofit.
+
+**Genuinely flat-only:** `flat_climate` 5-layer Köppen/Whittaker (21-cell, richer
+than sphere's 8-zone); the hierarchical zone tree (plate→zone→subzone); the 2D
+shape dispatcher (coupled to 2D geometry, won't transfer). The 3 hardcoded LLM
+provider files (`shape/{anthropic,ollama,openai}.rs`) only survive on
+`civ-layer-amaw` — PR #13 deleted them for the SDK gateway.
+
+**Decisions:** sphere = production substrate; flat = frozen + harvested (its one
+real win, layered climate, becomes the documented Phase 3 Köppen work if/when
+shipped). No civ feature exempt from running on the sphere (lesson b720b779).
+
+**PO picks (session 98):** next-ship = **candidate C3** — lift the hierarchical
+hierarchy to the sphere, **geometric frame first** (C-1: continents →
+subcontinents → regions) then **political tiers** (C-2: world → realm → nation →
+province → county). Multi-session XL arc toward the MMO end-state.
+
+**Output doc:** [`docs/03_planning/LLM_MMO_RPG/FLAT_TO_3D_MIGRATION_PLAN.md`](../03_planning/LLM_MMO_RPG/FLAT_TO_3D_MIGRATION_PLAN.md)
+— honest current state, Q1-Q6 audit, migration decisions, C3 arc breakdown,
+risk register (R1-R7).
+
+**C-1 DESIGN completed in-session (PO said continue).** Investigated real code:
+the hierarchy is mostly REUSE of existing primitives — `pathfind::land_components`
+(continents, already used by political.rs:29), `feature::components` (ocean
+basins), `plates.plate_of` (subcontinents = continent∩plate). Only L2 regions are
+new (great-circle Voronoi, copy plates.rs:99-114 pattern). D1-D4 all resolved
+(§7 of migration doc). C-1 split into C-1a (model, M) + C-1b (render, S) per PO.
+
+**Next (session 99 = BUILD, C-1a, size M):** geometric hierarchy MODEL only,
+NO render. New WorldMap fields continent_of/subcontinent_of/region_of + vecs;
+L2 region-count knob on CreativeSeed; pin re-based content_hash. VERIFY must
+assert partition invariants (no orphan cells, region⊆subcontinent⊆continent),
+not just serialization. Traps: R6 (3D great-circle Voronoi, not 2D grid), R7
+(reuse plates/land_components, no parallel partition). Then C-1b render, then
+C-2 political tiers (re-anchor province under region).
+
+**Files touched:** 1 new doc + this SESSION_PATCH entry. No code. No tests run
+(plan session). No commit unless PO requests.
+
 ### Phase A v4.1a — Tier 3 zone templating SCHEMA (session 67, geo-generator-amaw, BE [XL staged 1/4]) ✅
 
 Driver: roadmap §4 Tier 3 row v4.1 (highest-risk phase per roadmap §10, 5/5 risk, 14-18h estimate). PO chose STAGED migration at CLARIFY (v4.1a schema only → v4.1b climate → v4.1c render → v4.1d cleanup) to reduce per-cycle risk. This is ship 1 of 4 for the Tier 3 zone-templating roadmap row.
