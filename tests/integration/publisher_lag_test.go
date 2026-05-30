@@ -1,9 +1,9 @@
-// publisher_lag_test.go — L2.D.10 (RAID cycle 10).
+// publisher_lag_test.go — L2.D.10 (RAID cycle 10; refactored DEFERRED 054).
 //
 // Lag SLO test: inject 1000 outbox rows, run the publisher's poll loop
 // ONCE, verify all 1000 rows are drained (Published) within the wall-time
-// budget. This is the in-memory cousin of the future live test that runs
-// against pgx + real Redis (D-PUBLISHER-LIVE-WIRING — cycle 11/L4).
+// budget. This is the in-memory cousin of the live test that runs against
+// pgx + real Redis (publisher_live_smoke_test.go).
 //
 // Also exercises:
 //   - retry path: rows whose XADD fails get Retried (attempts++ + backoff).
@@ -36,19 +36,6 @@ import (
 
 // ── Test doubles ────────────────────────────────────────────────────────
 
-type lagFetcher struct {
-	rows []types.OutboxRow
-	done bool
-}
-
-func (f *lagFetcher) FetchPending(_ context.Context, _ string, _ int) ([]types.OutboxRow, error) {
-	if f.done {
-		return nil, nil
-	}
-	f.done = true
-	return f.rows, nil
-}
-
 type lagEmitter struct{ count int }
 
 func (e *lagEmitter) Emit(_ context.Context, _ types.OutboxRow) error {
@@ -66,22 +53,6 @@ func (e *failingEmitter) Emit(_ context.Context, _ types.OutboxRow) error {
 type noopFanout struct{}
 
 func (noopFanout) Fanout(_ context.Context, _ types.OutboxRow) error { return nil }
-
-type stateRecorder struct {
-	pub  int
-	retr int
-	dl   int
-}
-
-func (s *stateRecorder) MarkPublished(_ context.Context, _ string) error { s.pub++; return nil }
-func (s *stateRecorder) MarkRetry(_ context.Context, _ string, _ int, _ string, _ time.Time) error {
-	s.retr++
-	return nil
-}
-func (s *stateRecorder) MarkDeadLetter(_ context.Context, _ string, _ int, _ string) error {
-	s.dl++
-	return nil
-}
 
 type modeFull struct{}
 
@@ -117,13 +88,12 @@ func makeRows(n, attempts int) []types.OutboxRow {
 // L2.D.10 acceptance: inject 1000 rows; drain in <1s wall time.
 func TestPublisher_DrainsThousandRowsUnderSLO(t *testing.T) {
 	rows := makeRows(1000, 0)
-	state := &stateRecorder{}
+	source := &memSource{rows: rows}
 	loop, err := poll_loop.New(poll_loop.Config{
 		Leader:    leader_election.NewNoOp(),
-		Fetcher:   &lagFetcher{rows: rows},
+		Source:    source,
 		Emitter:   &lagEmitter{},
 		Fanout:    noopFanout{},
-		StateW:    state,
 		Mode:      modeFull{},
 		Policy:    retry.DefaultPolicy(),
 		BatchSize: 1000,
@@ -142,8 +112,11 @@ func TestPublisher_DrainsThousandRowsUnderSLO(t *testing.T) {
 	if stats.Published != 1000 {
 		t.Errorf("Published=%d want 1000", stats.Published)
 	}
-	if state.pub != 1000 {
-		t.Errorf("state.pub=%d want 1000", state.pub)
+	if source.batch.pub != 1000 {
+		t.Errorf("batch.pub=%d want 1000", source.batch.pub)
+	}
+	if !source.batch.committed {
+		t.Error("batch should be committed")
 	}
 	// Tight SLO: even with overhead, the in-memory drain MUST be < 1s.
 	if dur > 1*time.Second {
@@ -156,13 +129,12 @@ func TestPublisher_DeadLettersAfterMaxAttempts(t *testing.T) {
 	p := retry.DefaultPolicy()
 	// Row at attempts = MaxAttempts-1; next failure should dead-letter.
 	rows := makeRows(1, p.MaxAttempts-1)
-	state := &stateRecorder{}
+	source := &memSource{rows: rows}
 	loop, _ := poll_loop.New(poll_loop.Config{
 		Leader:    leader_election.NewNoOp(),
-		Fetcher:   &lagFetcher{rows: rows},
+		Source:    source,
 		Emitter:   &failingEmitter{},
 		Fanout:    noopFanout{},
-		StateW:    state,
 		Mode:      modeFull{},
 		Policy:    p,
 		BatchSize: 100,
@@ -175,8 +147,8 @@ func TestPublisher_DeadLettersAfterMaxAttempts(t *testing.T) {
 	if stats.DeadLettered != 1 {
 		t.Errorf("DeadLettered=%d want 1", stats.DeadLettered)
 	}
-	if state.dl != 1 {
-		t.Errorf("state.dl=%d want 1", state.dl)
+	if source.batch.dl != 1 {
+		t.Errorf("batch.dl=%d want 1", source.batch.dl)
 	}
 }
 
@@ -184,10 +156,9 @@ func TestPublisher_DeadLettersAfterMaxAttempts(t *testing.T) {
 func TestPublisher_NotLeader_SkipsIteration(t *testing.T) {
 	loop, _ := poll_loop.New(poll_loop.Config{
 		Leader:    notLeader{},
-		Fetcher:   &lagFetcher{rows: makeRows(10, 0)},
+		Source:    &memSource{rows: makeRows(10, 0)},
 		Emitter:   &lagEmitter{},
 		Fanout:    noopFanout{},
-		StateW:    &stateRecorder{},
 		Mode:      modeFull{},
 		Policy:    retry.DefaultPolicy(),
 		BatchSize: 10,
@@ -209,10 +180,9 @@ func TestPublisher_NotLeader_SkipsIteration(t *testing.T) {
 func TestPublisher_DegradedMode_SkipsIteration(t *testing.T) {
 	loop, _ := poll_loop.New(poll_loop.Config{
 		Leader:    leader_election.NewNoOp(),
-		Fetcher:   &lagFetcher{rows: makeRows(5, 0)},
+		Source:    &memSource{rows: makeRows(5, 0)},
 		Emitter:   &lagEmitter{},
 		Fanout:    noopFanout{},
-		StateW:    &stateRecorder{},
 		Mode:      modeEss{},
 		Policy:    retry.DefaultPolicy(),
 		BatchSize: 5,

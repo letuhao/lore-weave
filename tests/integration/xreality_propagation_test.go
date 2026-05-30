@@ -21,7 +21,6 @@ import (
 	"context"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -83,19 +82,10 @@ func copyFields(in map[string]any) map[string]any {
 }
 
 // ── Stub publisher dependencies ────────────────────────────────────────
-
-type stubFetcher struct {
-	rows []types.OutboxRow
-	done bool
-}
-
-func (f *stubFetcher) FetchPending(_ context.Context, _ string, _ int) ([]types.OutboxRow, error) {
-	if f.done {
-		return nil, nil
-	}
-	f.done = true
-	return f.rows, nil
-}
+//
+// The drain Source/Batch is the shared in-memory memSource (see
+// publisher_source_helpers_test.go). The xreality assertion is on the
+// fanout side, so the per-reality Emitter here is a no-op sink.
 
 // stubEmitter is the per-reality XADD sink. We don't care what it stores
 // for THIS test — the assertion is on the xreality fanout side.
@@ -139,10 +129,9 @@ func TestXRealityPropagation_PublisherToMetaWorker(t *testing.T) {
 	// 3. Build the poll loop.
 	loop, err := poll_loop.New(poll_loop.Config{
 		Leader:    leader_election.NewNoOp(),
-		Fetcher:   &stubFetcher{rows: []types.OutboxRow{row}},
+		Source:    &memSource{rows: []types.OutboxRow{row}},
 		Emitter:   stubEmitter{},
 		Fanout:    fanout,
-		StateW:    &xrealityStateW{},
 		Mode:      stubMode{},
 		Policy:    retry.DefaultPolicy(),
 		BatchSize: 10,
@@ -200,15 +189,4 @@ func TestXRealityPropagation_PublisherToMetaWorker(t *testing.T) {
 	if got.Fields["event_id"] != eventID.String() {
 		t.Errorf("event_id=%v want %s", got.Fields["event_id"], eventID.String())
 	}
-}
-
-// xrealityStateW satisfies poll_loop.StateWriter.
-type xrealityStateW struct{}
-
-func (xrealityStateW) MarkPublished(_ context.Context, _ string) error { return nil }
-func (xrealityStateW) MarkRetry(_ context.Context, _ string, _ int, _ string, _ time.Time) error {
-	return nil
-}
-func (xrealityStateW) MarkDeadLetter(_ context.Context, _ string, _ int, _ string) error {
-	return nil
 }

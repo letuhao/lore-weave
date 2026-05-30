@@ -15,7 +15,7 @@
 
 module github.com/loreweave/foundation/tests/integration
 
-go 1.22
+go 1.25
 
 require (
 	github.com/lib/pq v1.10.9
@@ -48,19 +48,36 @@ require (
 
 	// Cycle 30 — L6.F + L6.G admission runtimes
 	github.com/loreweave/foundation/contracts/capacity v0.0.0
-	github.com/loreweave/foundation/contracts/observability v0.0.0
-	github.com/loreweave/foundation/infra/k8s/admission-webhook v0.0.0
-	github.com/loreweave/foundation/pkg/metrics v0.0.0
-	gopkg.in/yaml.v3 v3.0.1
 
 	// Cycle 37 — L7.D incident_flow_test + L7.L statuspage_test
 	github.com/loreweave/foundation/contracts/incidents v0.0.0
-	github.com/loreweave/foundation/services/incident-bot v0.0.0
-	github.com/loreweave/foundation/services/postmortem-bot v0.0.0
-	github.com/loreweave/foundation/services/statuspage-updater v0.0.0
+	github.com/loreweave/foundation/contracts/observability v0.0.0
+	github.com/loreweave/foundation/infra/k8s/admission-webhook v0.0.0
+	github.com/loreweave/foundation/pkg/metrics v0.0.0
 
 	// Cycle 38 — L7.K canary_advance_test + deploy_freeze_test
 	github.com/loreweave/foundation/services/canary-controller v0.0.0
+	github.com/loreweave/foundation/services/incident-bot v0.0.0
+	github.com/loreweave/foundation/services/postmortem-bot v0.0.0
+	github.com/loreweave/foundation/services/statuspage-updater v0.0.0
+	gopkg.in/yaml.v3 v3.0.1
+)
+
+require (
+	github.com/jackc/pgx/v5 v5.6.0
+	github.com/redis/go-redis/v9 v9.7.3
+)
+
+require (
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
+	github.com/jackc/puddle/v2 v2.2.1 // indirect
+	github.com/rogpeppe/go-internal v1.15.0 // indirect
+	golang.org/x/crypto v0.17.0 // indirect
+	golang.org/x/sync v0.16.0 // indirect
+	golang.org/x/text v0.28.0 // indirect
 )
 
 replace github.com/loreweave/foundation/services/migration-orchestrator => ../../services/migration-orchestrator

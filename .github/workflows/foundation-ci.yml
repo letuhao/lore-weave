@@ -109,7 +109,7 @@ jobs:
           exit $fail
 
   db-smoke:
-    name: DB live-smoke (PgEventStore integration)
+    name: DB live-smoke (PgEventStore + publisher integration)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -125,12 +125,24 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       PGPASSWORD: foundation
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
       - name: create dp_kernel_test + apply migrations 0002 + 0004
         shell: bash
         run: |
@@ -148,6 +160,23 @@ jobs:
         env:
           LOREWEAVE_TEST_PG_URL: postgres://foundation:foundation@localhost:5432/dp_kernel_test
         run: cargo test -p dp-kernel --test integration_event_store
+      # DEFERRED 054 (D-PUBLISHER-LIVE-WIRING): drain outbox -> Redis Streams,
+      # asserted against the live PG + Redis services. The Go test applies the
+      # per-reality migrations (0002 + 0005) itself.
+      - name: create publisher_smoke DB
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql() { PGPASSWORD=foundation command psql -h localhost -p 5432 -U foundation "$@"; }
+          exists=$(psql -d foundation -tAc "SELECT 1 FROM pg_database WHERE datname='publisher_smoke'" || true)
+          if [ "$exists" != "1" ]; then
+            psql -d foundation -v ON_ERROR_STOP=1 -c "CREATE DATABASE publisher_smoke;"
+          fi
+      - name: go test publisher live-smoke
+        env:
+          LW_INTEGRATION_DB: postgres://foundation:foundation@localhost:5432/publisher_smoke?sslmode=disable
+          LW_INTEGRATION_REDIS: redis://localhost:6379/0
+        run: go -C tests/integration test -tags=integration -run TestPublisherLiveSmoke -count=1 ./...
 
   secrets:
     name: Secret scan (gitleaks)

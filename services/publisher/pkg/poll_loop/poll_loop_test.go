@@ -17,18 +17,78 @@ import (
 
 // ── In-memory fakes ─────────────────────────────────────────────────────
 
-type fakeFetcher struct {
-	byReality map[string][][]types.OutboxRow // pop one batch per call
+type retryRec struct {
+	attempts int
+	lastErr  string
+	next     time.Time
 }
 
-func (f *fakeFetcher) FetchPending(_ context.Context, reality string, _ int) ([]types.OutboxRow, error) {
-	batches := f.byReality[reality]
-	if len(batches) == 0 {
-		return nil, nil
+// fakeBatch records the Mark calls + commit/rollback for one reality drain.
+type fakeBatch struct {
+	rows         []types.OutboxRow
+	published    []uuid.UUID
+	retried      map[uuid.UUID]retryRec
+	deadLettered []uuid.UUID
+	committed    bool
+	rolledBack   bool
+}
+
+func newFakeBatch(rows []types.OutboxRow) *fakeBatch {
+	return &fakeBatch{rows: rows, retried: map[uuid.UUID]retryRec{}}
+}
+
+func (b *fakeBatch) Rows() []types.OutboxRow { return b.rows }
+
+func (b *fakeBatch) MarkPublished(_ context.Context, eid string) error {
+	u, _ := uuid.Parse(eid)
+	b.published = append(b.published, u)
+	return nil
+}
+
+func (b *fakeBatch) MarkRetry(_ context.Context, eid string, attempts int, lastErr string, next time.Time) error {
+	u, _ := uuid.Parse(eid)
+	b.retried[u] = retryRec{attempts, lastErr, next}
+	return nil
+}
+
+func (b *fakeBatch) MarkDeadLetter(_ context.Context, eid string, _ int, _ string) error {
+	u, _ := uuid.Parse(eid)
+	b.deadLettered = append(b.deadLettered, u)
+	return nil
+}
+
+func (b *fakeBatch) Commit(_ context.Context) error   { b.committed = true; return nil }
+func (b *fakeBatch) Rollback(_ context.Context) error { b.rolledBack = true; return nil }
+
+// fakeSource pops one batch per reality per Begin call and records every
+// batch it created so tests can assert on the Mark calls.
+type fakeSource struct {
+	byReality map[string][][]types.OutboxRow
+	batches   []*fakeBatch
+}
+
+func (s *fakeSource) Begin(_ context.Context, reality string, _ int) (Batch, error) {
+	var rows []types.OutboxRow
+	batches := s.byReality[reality]
+	if len(batches) > 0 {
+		rows = batches[0]
+		s.byReality[reality] = batches[1:]
 	}
-	out := batches[0]
-	f.byReality[reality] = batches[1:]
-	return out, nil
+	b := newFakeBatch(rows)
+	s.batches = append(s.batches, b)
+	return b, nil
+}
+
+// lastBatch returns the most recently created batch (single-reality tests).
+func (s *fakeSource) lastBatch() *fakeBatch {
+	if len(s.batches) == 0 {
+		return newFakeBatch(nil)
+	}
+	return s.batches[len(s.batches)-1]
+}
+
+func newFakeSource(reality string, rows []types.OutboxRow) *fakeSource {
+	return &fakeSource{byReality: map[string][][]types.OutboxRow{reality: {rows}}}
 }
 
 type fakeEmitter struct {
@@ -57,46 +117,6 @@ func (f *fakeFanout) Fanout(_ context.Context, row types.OutboxRow) error {
 	return nil
 }
 
-type fakeStateW struct {
-	published    []uuid.UUID
-	retried      map[uuid.UUID]struct {
-		attempts int
-		lastErr  string
-		next     time.Time
-	}
-	deadLettered []uuid.UUID
-}
-
-func newFakeStateW() *fakeStateW {
-	return &fakeStateW{retried: map[uuid.UUID]struct {
-		attempts int
-		lastErr  string
-		next     time.Time
-	}{}}
-}
-
-func (s *fakeStateW) MarkPublished(_ context.Context, eid string) error {
-	u, _ := uuid.Parse(eid)
-	s.published = append(s.published, u)
-	return nil
-}
-
-func (s *fakeStateW) MarkRetry(_ context.Context, eid string, attempts int, lastErr string, next time.Time) error {
-	u, _ := uuid.Parse(eid)
-	s.retried[u] = struct {
-		attempts int
-		lastErr  string
-		next     time.Time
-	}{attempts, lastErr, next}
-	return nil
-}
-
-func (s *fakeStateW) MarkDeadLetter(_ context.Context, eid string, _ int, _ string) error {
-	u, _ := uuid.Parse(eid)
-	s.deadLettered = append(s.deadLettered, u)
-	return nil
-}
-
 type fakeMode struct{ m lifecycle.ServiceMode }
 
 func (f *fakeMode) Mode() lifecycle.ServiceMode { return f.m }
@@ -121,14 +141,13 @@ func newRow(n, attempts int, crossReality bool) types.OutboxRow {
 	return r
 }
 
-func newLoop(t *testing.T, fetcher Fetcher, emitter Emitter, fanout XRealityFanout, stateW StateWriter, mode ModeReader, realities []string) *Loop {
+func newLoop(t *testing.T, source Source, emitter Emitter, fanout XRealityFanout, mode ModeReader, realities []string) *Loop {
 	t.Helper()
 	loop, err := New(Config{
 		Leader:    leader_election.NewNoOp(),
-		Fetcher:   fetcher,
+		Source:    source,
 		Emitter:   emitter,
 		Fanout:    fanout,
-		StateW:    stateW,
 		Mode:      mode,
 		Policy:    retry.DefaultPolicy(),
 		BatchSize: 100,
@@ -144,20 +163,18 @@ func newLoop(t *testing.T, fetcher Fetcher, emitter Emitter, fanout XRealityFano
 
 func TestNew_ValidatesDeps(t *testing.T) {
 	good := Config{
-		Leader: leader_election.NewNoOp(),
-		Fetcher: &fakeFetcher{},
+		Leader:  leader_election.NewNoOp(),
+		Source:  &fakeSource{},
 		Emitter: &fakeEmitter{},
-		Fanout: &fakeFanout{},
-		StateW: newFakeStateW(),
-		Mode: &fakeMode{},
-		Policy: retry.DefaultPolicy(),
+		Fanout:  &fakeFanout{},
+		Mode:    &fakeMode{},
+		Policy:  retry.DefaultPolicy(),
 	}
 	tests := []func(c *Config){
 		func(c *Config) { c.Leader = nil },
-		func(c *Config) { c.Fetcher = nil },
+		func(c *Config) { c.Source = nil },
 		func(c *Config) { c.Emitter = nil },
 		func(c *Config) { c.Fanout = nil },
-		func(c *Config) { c.StateW = nil },
 		func(c *Config) { c.Mode = nil },
 		func(c *Config) { c.Policy = retry.Policy{} },
 	}
@@ -172,12 +189,11 @@ func TestNew_ValidatesDeps(t *testing.T) {
 
 func TestRun_HappyPath_PublishesEveryRow(t *testing.T) {
 	rows := []types.OutboxRow{newRow(1, 0, false), newRow(2, 0, false)}
-	fetcher := &fakeFetcher{byReality: map[string][][]types.OutboxRow{"reality_A": {rows}}}
+	source := newFakeSource("reality_A", rows)
 	emitter := &fakeEmitter{}
 	fanout := &fakeFanout{}
-	stateW := newFakeStateW()
 	mode := &fakeMode{m: lifecycle.ModeFull}
-	loop := newLoop(t, fetcher, emitter, fanout, stateW, mode, []string{"reality_A"})
+	loop := newLoop(t, source, emitter, fanout, mode, []string{"reality_A"})
 
 	stats, err := loop.Run(context.Background())
 	if err != nil {
@@ -189,17 +205,20 @@ func TestRun_HappyPath_PublishesEveryRow(t *testing.T) {
 	if stats.Retried != 0 || stats.DeadLettered != 0 {
 		t.Errorf("expected zero retries/dead-letters, got R=%d DL=%d", stats.Retried, stats.DeadLettered)
 	}
-	if len(stateW.published) != 2 {
-		t.Errorf("expected 2 MarkPublished calls, got %d", len(stateW.published))
+	b := source.lastBatch()
+	if len(b.published) != 2 {
+		t.Errorf("expected 2 MarkPublished calls, got %d", len(b.published))
+	}
+	if !b.committed {
+		t.Error("expected batch to be committed")
 	}
 }
 
 func TestRun_TransientFailureRetries(t *testing.T) {
 	rows := []types.OutboxRow{newRow(1, 0, false)}
-	fetcher := &fakeFetcher{byReality: map[string][][]types.OutboxRow{"r1": {rows}}}
+	source := newFakeSource("r1", rows)
 	emitter := &fakeEmitter{failEventIDs: map[uuid.UUID]bool{uuidN(1): true}}
-	stateW := newFakeStateW()
-	loop := newLoop(t, fetcher, emitter, &fakeFanout{}, stateW, &fakeMode{}, []string{"r1"})
+	loop := newLoop(t, source, emitter, &fakeFanout{}, &fakeMode{}, []string{"r1"})
 
 	stats, err := loop.Run(context.Background())
 	if err != nil {
@@ -208,7 +227,7 @@ func TestRun_TransientFailureRetries(t *testing.T) {
 	if stats.Retried != 1 {
 		t.Errorf("Retried=%d want 1", stats.Retried)
 	}
-	got, ok := stateW.retried[uuidN(1)]
+	got, ok := source.lastBatch().retried[uuidN(1)]
 	if !ok {
 		t.Fatal("expected retried entry for event 1")
 	}
@@ -227,10 +246,9 @@ func TestRun_DeadLettersAtMaxAttempts(t *testing.T) {
 	// Row with attempts = MaxAttempts - 1; next failure should dead-letter.
 	p := retry.DefaultPolicy()
 	row := newRow(1, p.MaxAttempts-1, false)
-	fetcher := &fakeFetcher{byReality: map[string][][]types.OutboxRow{"r1": {{row}}}}
+	source := newFakeSource("r1", []types.OutboxRow{row})
 	emitter := &fakeEmitter{failEventIDs: map[uuid.UUID]bool{uuidN(1): true}}
-	stateW := newFakeStateW()
-	loop := newLoop(t, fetcher, emitter, &fakeFanout{}, stateW, &fakeMode{}, []string{"r1"})
+	loop := newLoop(t, source, emitter, &fakeFanout{}, &fakeMode{}, []string{"r1"})
 
 	stats, err := loop.Run(context.Background())
 	if err != nil {
@@ -239,18 +257,17 @@ func TestRun_DeadLettersAtMaxAttempts(t *testing.T) {
 	if stats.DeadLettered != 1 {
 		t.Errorf("DeadLettered=%d want 1", stats.DeadLettered)
 	}
-	if len(stateW.deadLettered) != 1 {
-		t.Errorf("expected 1 MarkDeadLetter call, got %d", len(stateW.deadLettered))
+	if len(source.lastBatch().deadLettered) != 1 {
+		t.Errorf("expected 1 MarkDeadLetter call, got %d", len(source.lastBatch().deadLettered))
 	}
 }
 
 func TestRun_SkipsWhenNotLeader(t *testing.T) {
 	loop, _ := New(Config{
 		Leader:    notLeader{},
-		Fetcher:   &fakeFetcher{},
+		Source:    &fakeSource{},
 		Emitter:   &fakeEmitter{},
 		Fanout:    &fakeFanout{},
-		StateW:    newFakeStateW(),
 		Mode:      &fakeMode{},
 		Policy:    retry.DefaultPolicy(),
 		Realities: []string{"r1"},
@@ -271,7 +288,7 @@ func (notLeader) Step()          {}
 func (notLeader) Stop()          {}
 
 func TestRun_SkipsWhenDegraded(t *testing.T) {
-	loop := newLoop(t, &fakeFetcher{}, &fakeEmitter{}, &fakeFanout{}, newFakeStateW(), &fakeMode{m: lifecycle.ModeEssentials}, []string{"r1"})
+	loop := newLoop(t, &fakeSource{}, &fakeEmitter{}, &fakeFanout{}, &fakeMode{m: lifecycle.ModeEssentials}, []string{"r1"})
 	stats, err := loop.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -286,10 +303,10 @@ func TestRun_SkipsWhenDegraded(t *testing.T) {
 
 func TestRun_XRealityFanoutInvokedAfterSuccess(t *testing.T) {
 	rows := []types.OutboxRow{newRow(1, 0, true /*crossReality*/), newRow(2, 0, false)}
-	fetcher := &fakeFetcher{byReality: map[string][][]types.OutboxRow{"r1": {rows}}}
+	source := newFakeSource("r1", rows)
 	emitter := &fakeEmitter{}
 	fanout := &fakeFanout{}
-	loop := newLoop(t, fetcher, emitter, fanout, newFakeStateW(), &fakeMode{}, []string{"r1"})
+	loop := newLoop(t, source, emitter, fanout, &fakeMode{}, []string{"r1"})
 	stats, err := loop.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -304,11 +321,10 @@ func TestRun_XRealityFanoutInvokedAfterSuccess(t *testing.T) {
 
 func TestRun_XRealityFanoutErrorIsNonFatal(t *testing.T) {
 	row := newRow(1, 0, true)
-	fetcher := &fakeFetcher{byReality: map[string][][]types.OutboxRow{"r1": {{row}}}}
+	source := newFakeSource("r1", []types.OutboxRow{row})
 	emitter := &fakeEmitter{}
 	fanout := &fakeFanout{errOn: map[uuid.UUID]bool{uuidN(1): true}}
-	stateW := newFakeStateW()
-	loop := newLoop(t, fetcher, emitter, fanout, stateW, &fakeMode{}, []string{"r1"})
+	loop := newLoop(t, source, emitter, fanout, &fakeMode{}, []string{"r1"})
 	stats, err := loop.Run(context.Background())
 	if err != nil {
 		t.Fatalf("fanout error must NOT abort the loop, got %v", err)
@@ -316,7 +332,7 @@ func TestRun_XRealityFanoutErrorIsNonFatal(t *testing.T) {
 	if stats.FanoutErr != 1 {
 		t.Errorf("FanoutErr=%d want 1", stats.FanoutErr)
 	}
-	if len(stateW.published) != 1 {
+	if len(source.lastBatch().published) != 1 {
 		t.Error("main-stream MarkPublished should still have happened")
 	}
 }
@@ -328,14 +344,99 @@ func TestRun_LagDrainsAllRows_1000RowsCompleteInOneTick(t *testing.T) {
 		rows[i] = newRow(1, 0, false)
 		rows[i].EventID = uuid.New()
 	}
-	fetcher := &fakeFetcher{byReality: map[string][][]types.OutboxRow{"r1": {rows}}}
-	stateW := newFakeStateW()
-	loop := newLoop(t, fetcher, &fakeEmitter{}, &fakeFanout{}, stateW, &fakeMode{}, []string{"r1"})
+	source := newFakeSource("r1", rows)
+	loop := newLoop(t, source, &fakeEmitter{}, &fakeFanout{}, &fakeMode{}, []string{"r1"})
 	stats, err := loop.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if stats.Published != 1000 {
 		t.Errorf("Published=%d want 1000 — single tick lag drain failed", stats.Published)
+	}
+}
+
+// fatalBatch fails on MarkPublished so we can assert the reality batch is
+// rolled back (not committed) on a state-write error.
+type fatalSource struct {
+	rows  []types.OutboxRow
+	batch *fatalBatch
+}
+
+func (s *fatalSource) Begin(_ context.Context, _ string, _ int) (Batch, error) {
+	s.batch = &fatalBatch{rows: s.rows}
+	return s.batch, nil
+}
+
+type fatalBatch struct {
+	rows       []types.OutboxRow
+	committed  bool
+	rolledBack bool
+}
+
+func (b *fatalBatch) Rows() []types.OutboxRow { return b.rows }
+func (b *fatalBatch) MarkPublished(context.Context, string) error {
+	return errors.New("simulated UPDATE failure")
+}
+func (b *fatalBatch) MarkRetry(context.Context, string, int, string, time.Time) error { return nil }
+func (b *fatalBatch) MarkDeadLetter(context.Context, string, int, string) error       { return nil }
+func (b *fatalBatch) Commit(context.Context) error                                    { b.committed = true; return nil }
+func (b *fatalBatch) Rollback(context.Context) error                                  { b.rolledBack = true; return nil }
+
+// isolationSource fails the named reality's batch on MarkPublished but drains
+// the others normally — proves one bad reality doesn't starve the rest.
+type isolationSource struct {
+	failReality string
+	rowsByReal  map[string][]types.OutboxRow
+	good        map[string]*fakeBatch
+}
+
+func (s *isolationSource) Begin(_ context.Context, reality string, _ int) (Batch, error) {
+	if reality == s.failReality {
+		return &fatalBatch{rows: s.rowsByReal[reality]}, nil
+	}
+	b := newFakeBatch(s.rowsByReal[reality])
+	if s.good == nil {
+		s.good = map[string]*fakeBatch{}
+	}
+	s.good[reality] = b
+	return b, nil
+}
+
+func TestRun_PerRealityIsolation_OneBadRealityDoesNotStarveOthers(t *testing.T) {
+	src := &isolationSource{
+		failReality: "r_bad",
+		rowsByReal: map[string][]types.OutboxRow{
+			"r_bad":  {newRow(1, 0, false)},
+			"r_good": {newRow(2, 0, false), newRow(3, 0, false)},
+		},
+	}
+	loop := newLoop(t, src, &fakeEmitter{}, &fakeFanout{}, &fakeMode{}, []string{"r_bad", "r_good"})
+	stats, err := loop.Run(context.Background())
+	if err == nil {
+		t.Fatal("expected the bad reality to surface an error")
+	}
+	if stats.RealityErrors != 1 {
+		t.Errorf("RealityErrors=%d want 1", stats.RealityErrors)
+	}
+	if stats.Published != 2 {
+		t.Errorf("Published=%d want 2 — good reality must still drain", stats.Published)
+	}
+	if gb := src.good["r_good"]; gb == nil || !gb.committed {
+		t.Error("good reality batch should have committed")
+	}
+}
+
+func TestRun_StateWriteError_RollsBackAndReturns(t *testing.T) {
+	source := &fatalSource{rows: []types.OutboxRow{newRow(1, 0, false)}}
+	loop := newLoop(t, source, &fakeEmitter{}, &fakeFanout{}, &fakeMode{}, []string{"r1"})
+	_, err := loop.Run(context.Background())
+	if err == nil {
+		t.Fatal("expected error from MarkPublished failure")
+	}
+	if !source.batch.rolledBack {
+		t.Error("expected batch to be rolled back on Mark error")
+	}
+	if source.batch.committed {
+		t.Error("batch must NOT commit after a Mark error")
 	}
 }
