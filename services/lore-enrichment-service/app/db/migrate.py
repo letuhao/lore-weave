@@ -55,7 +55,15 @@ CREATE TABLE IF NOT EXISTS source_corpus (
   name          TEXT NOT NULL,
   kind          TEXT NOT NULL
     CHECK (kind IN ('fengshen','shanhaijing','history','other')),
-  license       TEXT NOT NULL DEFAULT 'public-domain',
+  -- C17 WARN-1 (RAID c17 re-cook adversary): license DEFAULTs to 'unknown'
+  -- (an INADMISSIBLE value) — fail CLOSED. An ingest that omits a license stamps
+  -- 'unknown', which the default-deny licensing gate (app/strategies/licensing.py)
+  -- REFUSES, so an un-tagged corpus (e.g. an operator ingesting copyrighted/news
+  -- text and forgetting to tag it) can NEVER be silently re-cooked. A genuinely
+  -- public-domain corpus must be tagged 'public-domain' EXPLICITLY at ingest. The
+  -- earlier 'public-domain' default defeated the module-level default-deny one
+  -- layer up (admit-by-omission); 'unknown' restores fail-closed at admission.
+  license       TEXT NOT NULL DEFAULT 'unknown',
   provenance_json JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -73,9 +81,10 @@ CREATE INDEX IF NOT EXISTS idx_source_corpus_scope
 -- / 'public_domain' / 'licensed' sources and REFUSES anything else. This CHECK
 -- pins the column to the recognised vocabulary at the SCHEMA level so an
 -- ingested corpus can never carry a free-text/garbage license that the
--- default-deny normaliser would silently treat as UNKNOWN. The C2 default
--- 'public-domain' (hyphen) is admitted; the demo corpora (山海经, 封神演义,
--- Shang–Zhou history) are genuinely public-domain and keep that default.
+-- default-deny normaliser would silently treat as UNKNOWN. The C2 column DEFAULT
+-- is 'unknown' (fail-closed, WARN-1) — an un-tagged corpus is REFUSED by re-cook;
+-- the demo corpora (山海经, 封神演义, Shang–Zhou history) are genuinely public-domain
+-- and must be tagged 'public-domain' EXPLICITLY at ingest to become re-cookable.
 --   * unlicensed / copyrighted / restricted / unknown are PERSISTABLE (so a
 --     source can be HONESTLY tagged as not-yet-licensed) but the re-cook
 --     application gate REFUSES them — the DB records the truth, the app enforces
@@ -96,6 +105,15 @@ BEGIN
   END IF;
 END
 $license_chk$;
+
+-- ── C17 WARN-1: bring an ALREADY-DEPLOYED table to the fail-closed DEFAULT ────
+-- CREATE TABLE IF NOT EXISTS above sets the 'unknown' default only on a FRESH
+-- table; a table created before this fix keeps its old 'public-domain' default
+-- (admit-by-omission). This idempotent ALTER COLUMN ... SET DEFAULT migrates it in
+-- place so an ingest that omits a license fails CLOSED on the running DB too.
+-- Existing rows are NOT rewritten (genuinely-PD demo corpora keep their explicit
+-- tag); only the default for FUTURE un-tagged inserts changes.
+ALTER TABLE source_corpus ALTER COLUMN license SET DEFAULT 'unknown';
 
 -- ═══════════════════════════════════════════════════════════════
 -- source_corpus_chunk (RAID C10 — technique-(b) retrieval)

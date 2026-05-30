@@ -170,6 +170,7 @@ async def _main() -> int:
             user_id=user_id, project_id=project_id, name="山海经-live-smoke",
             kind="shanhaijing", text=text, embed_fn=embed_fn,
             model_ref=model_ref_uuid, target_chars=20,
+            license="public-domain",  # genuine PD demo (ingest fails closed otherwise, WARN-1)
         )
         if ingest.chunks_embedded < 1:
             print("live infra unavailable: no chunk embedded", file=sys.stderr)

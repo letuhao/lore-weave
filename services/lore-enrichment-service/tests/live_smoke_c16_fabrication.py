@@ -183,6 +183,7 @@ async def _main() -> int:  # noqa: C901 — a linear smoke script
             user_id=user_id, project_id=project_uuid, name="山海经-c16-demo",
             kind="shanhaijing", text=_SHANHAIJING_PENGLAI, embed_fn=embed_fn,
             model_ref=embed_ref, target_chars=40,
+            license="public-domain",  # genuine PD demo (ingest fails closed otherwise, WARN-1)
         )
         if ingest.chunks_total < 1:
             print("live infra unavailable: no grounding chunk embedded", file=sys.stderr)

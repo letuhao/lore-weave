@@ -77,6 +77,7 @@ from app.strategies.licensing import (
     check_admissible,
 )
 from app.verify.canon_verify import CanonVerifier
+from app.verify.sanitize import neutralize_proposal_text
 from app.verify.wiring import AnnotatedVerify, verify_and_annotate
 
 __all__ = [
@@ -154,9 +155,19 @@ class ReCookedProposal(BaseModel):
 def _grounding_block(grounding: Sequence[GroundingRef]) -> str:
     """Format the C10 retrieved excerpts (the REAL source material) as the
     re-cook's source-faithful anchor block (Chinese, cited). Same shape as the
-    C11/C16 prompt block so the model sees the same evidence framing."""
+    C11/C16 prompt block so the model sees the same evidence framing.
+
+    INJECTION DEFENSE-IN-DEPTH (RAID c17 WARN-2): the re-cook source is the MOST
+    untrusted input — a poisoned corpus excerpt could steer the GENERATING LLM
+    (C12 ``verify_and_annotate`` only neutralizes the OUTPUT, protecting C13/C15,
+    not the model that composes this prompt). So every excerpt is neutralized via
+    the C1/C12 :func:`neutralize_proposal_text` (tag-not-delete: it prepends a
+    ``[FICTIONAL]`` marker to any injection span so the model reads it as quoted
+    in-story text, never an instruction) BEFORE it enters the prompt. CJK lore is
+    preserved verbatim — the neutralizer only tags matched directive spans."""
     return "\n".join(
-        f"［{i + 1}］（来源 {g.corpus_id}#{g.chunk_index}，相似度 {g.score}）{g.excerpt}"
+        f"［{i + 1}］（来源 {g.corpus_id}#{g.chunk_index}，相似度 {g.score}）"
+        f"{neutralize_proposal_text(g.excerpt)[0]}"
         for i, g in enumerate(grounding)
     )
 

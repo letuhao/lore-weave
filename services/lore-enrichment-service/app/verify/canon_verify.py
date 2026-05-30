@@ -205,6 +205,13 @@ ANACHRONISM_MARKERS: tuple[tuple[str, str], ...] = (
     ("枪炮", "火器枪炮非商周冷兵器时代"),
     ("火药", "火药发明远晚于商周"),
     ("互联网", "互联网为现代产物"),
+    # ── modern military / science (NIT-3: a few unambiguous out-of-era tokens
+    #    added as re-cook source domains widen toward news/modern history) ───────
+    ("雷达", "雷达为现代科技产物"),
+    ("坦克", "坦克为近现代军事产物"),
+    ("卫星", "人造卫星为现代科技产物"),
+    ("无人机", "无人机为现代科技产物"),
+    ("疫苗", "疫苗为近现代医学产物"),
     # NOTE: deliberately NOT a bare "电" marker — it false-positives on
     # era-appropriate Classical words like 雷电 (thunder & lightning). The
     # compound modern-tech markers above (电话/电脑/电视) cover the real cases.

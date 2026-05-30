@@ -185,6 +185,9 @@ async def _run_one_location(
         user_id=user_id, project_id=project_uuid, name=corpus_name,
         kind=corpus_kind, text=grounding_text, embed_fn=embed_fn,
         model_ref=embed_ref, target_chars=160,
+        # genuinely public-domain demo corpus (封神演义/山海经/Shang–Zhou) — tag it
+        # EXPLICITLY now that ingest fails closed on an omitted license (C17 WARN-1).
+        license="public-domain",
     )
     if ingest.chunks_embedded < 1 and ingest.chunks_total < 1:
         result["error"] = "live infra unavailable: no grounding chunk embedded"

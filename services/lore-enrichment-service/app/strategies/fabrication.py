@@ -69,6 +69,7 @@ from app.strategies.base import (
     Technique,
 )
 from app.verify.canon_verify import CanonVerifier
+from app.verify.sanitize import neutralize_proposal_text
 from app.verify.wiring import AnnotatedVerify, verify_and_annotate
 
 __all__ = [
@@ -151,9 +152,18 @@ class FabricatedProposal(BaseModel):
 def _grounding_block(grounding: Sequence[GroundingRef]) -> str:
     """Format the C10 retrieved excerpts as the fabrication's source-faithful
     anchor block (Chinese, cited). Identical shape to the C11 prompt's block so
-    the model sees the same evidence framing."""
+    the model sees the same evidence framing.
+
+    INJECTION DEFENSE-IN-DEPTH (RAID c17 WARN-2): the corpus excerpt is untrusted —
+    a poisoned excerpt could steer the GENERATING LLM (C12 ``verify_and_annotate``
+    only neutralizes the OUTPUT, not the model composing this prompt). So every
+    excerpt is neutralized via the C1/C12 :func:`neutralize_proposal_text` (it
+    prepends a ``[FICTIONAL]`` marker to any injection span so the model treats it
+    as quoted in-story text, not an instruction) BEFORE it enters the prompt. CJK
+    lore is preserved verbatim — only matched directive spans are tagged."""
     return "\n".join(
-        f"［{i + 1}］（来源 {g.corpus_id}#{g.chunk_index}，相似度 {g.score}）{g.excerpt}"
+        f"［{i + 1}］（来源 {g.corpus_id}#{g.chunk_index}，相似度 {g.score}）"
+        f"{neutralize_proposal_text(g.excerpt)[0]}"
         for i, g in enumerate(grounding)
     )
 

@@ -21,6 +21,11 @@ import uuid
 import pytest
 
 from app.retrieval.store import SourceCorpusStore
+from app.strategies.licensing import (
+    SourceLicense,
+    UnlicensedSourceError,
+    check_admissible,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -54,7 +59,7 @@ async def test_ingest_is_idempotent_and_tags_model_ref(pool):
     first = await store.ingest_corpus(
         user_id=user_id, project_id=project_id, name="山海经-test",
         kind="shanhaijing", text=_TEXT, embed_fn=embed_fn, model_ref="mref-aaa",
-        target_chars=40,
+        target_chars=40, license="public-domain",
     )
     assert first.chunks_total >= 2
     assert first.chunks_inserted == first.chunks_total
@@ -64,7 +69,7 @@ async def test_ingest_is_idempotent_and_tags_model_ref(pool):
     second = await store.ingest_corpus(
         user_id=user_id, project_id=project_id, name="山海经-test",
         kind="shanhaijing", text=_TEXT, embed_fn=embed_fn, model_ref="mref-aaa",
-        target_chars=40,
+        target_chars=40, license="public-domain",
     )
     assert second.corpus_id == first.corpus_id  # same corpus, not forked
     assert second.chunks_total == first.chunks_total
@@ -92,7 +97,7 @@ async def test_similarity_search_returns_seeded_chunk_top1(pool):
     result = await store.ingest_corpus(
         user_id=user_id, project_id=project_id, name="山海经-test",
         kind="shanhaijing", text=_TEXT, embed_fn=embed_fn, model_ref="mref-bbb",
-        target_chars=30,
+        target_chars=30, license="public-domain",
     )
     assert result.chunks_total >= 2
 
@@ -105,6 +110,49 @@ async def test_similarity_search_returns_seeded_chunk_top1(pool):
     assert [h.score for h in hits] == sorted((h.score for h in hits), reverse=True)
 
 
+async def test_untagged_ingest_fails_closed_and_is_not_recookable(pool):
+    """C17 WARN-1: an ingest with NO license arg fails CLOSED.
+
+    The corpus is stamped 'unknown' (the inadmissible default), so the re-cook
+    licensing gate REFUSES it — an operator who forgets to tag a copyrighted/news
+    source can never silently re-cook it. Tagging it 'public-domain' explicitly
+    makes the SAME corpus admissible (the fix is fail-closed-by-default, not a
+    blanket block)."""
+    store = SourceCorpusStore(pool)
+    user_id, project_id = uuid.uuid4(), uuid.uuid4()
+    embed_fn, _ = _make_embed_fn(sorted(set(_TEXT)))
+
+    # ── ingest WITHOUT a license arg → stamped 'unknown' (fail-closed) ──────────
+    untagged = await store.ingest_corpus(
+        user_id=user_id, project_id=project_id, name="未标注-news",
+        kind="history", text=_TEXT, embed_fn=embed_fn, model_ref="m",
+        target_chars=40,
+    )
+    raw = await store.get_corpus_license(corpus_id=untagged.corpus_id)
+    assert raw == "unknown"  # NOT 'public-domain' (the old admit-by-omission default)
+    # the re-cook licensing gate REFUSES it (resolved from the DB value)
+    lic = SourceLicense.from_raw(
+        corpus_id=str(untagged.corpus_id), name="未标注-news", license=raw
+    )
+    assert lic.admissible is False
+    with pytest.raises(UnlicensedSourceError):
+        check_admissible(lic, stage="corpus-admission")
+
+    # ── the SAME content tagged public-domain → admissible (fix is fail-closed) ─
+    tagged = await store.ingest_corpus(
+        user_id=user_id, project_id=project_id, name="封神演义-pd",
+        kind="fengshen", text=_TEXT, embed_fn=embed_fn, model_ref="m",
+        target_chars=40, license="public-domain",
+    )
+    raw_pd = await store.get_corpus_license(corpus_id=tagged.corpus_id)
+    assert raw_pd == "public-domain"
+    pd = SourceLicense.from_raw(
+        corpus_id=str(tagged.corpus_id), name="封神演义-pd", license=raw_pd
+    )
+    assert pd.admissible is True
+    check_admissible(pd, stage="corpus-admission")  # no raise
+
+
 async def test_search_is_project_scoped(pool):
     store = SourceCorpusStore(pool)
     user_id = uuid.uuid4()
@@ -115,7 +163,7 @@ async def test_search_is_project_scoped(pool):
     await store.ingest_corpus(
         user_id=user_id, project_id=project_a, name="山海经-A",
         kind="shanhaijing", text=_TEXT, embed_fn=embed_fn, model_ref="m",
-        target_chars=30,
+        target_chars=30, license="public-domain",
     )
     # project_b ingested nothing → search returns empty (scope isolation, Q3).
     hits_b = await store.search(

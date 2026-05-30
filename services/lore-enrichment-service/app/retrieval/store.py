@@ -177,11 +177,19 @@ class SourceCorpusStore:
         project_id: UUID,
         name: str,
         kind: str,
-        license: str = "public-domain",
+        license: str = "unknown",
     ) -> UUID:
         """Return the ``corpus_id`` for this (user, project, name, kind),
         creating the row if absent. Idempotent: the same logical corpus resolves
         to the same id across ingests (so re-ingest does not fork a new corpus).
+
+        ``license`` defaults to ``"unknown"`` — an INADMISSIBLE value (C17 WARN-1).
+        Re-cook's default-deny gate (``app/strategies/licensing.py``) REFUSES
+        ``unknown``, so a corpus ingested WITHOUT an explicit ``license=`` fails
+        CLOSED: it can never be silently re-cooked. A genuinely public-domain
+        corpus MUST pass ``license="public-domain"`` explicitly. (The previous
+        ``"public-domain"`` default bypassed the module-level default-deny one
+        layer up — admit-by-omission — which this fail-closed default fixes.)
         """
         async with self._pool.acquire() as conn:
             existing = await conn.fetchval(
@@ -276,7 +284,7 @@ class SourceCorpusStore:
         text: str,
         embed_fn: EmbedFn,
         model_ref: str,
-        license: str = "public-domain",
+        license: str = "unknown",
         target_chars: int = DEFAULT_TARGET_CHARS,
         overlap_sentences: int = DEFAULT_OVERLAP_SENTENCES,
     ) -> IngestResult:
@@ -288,6 +296,10 @@ class SourceCorpusStore:
         Idempotent end-to-end: re-ingesting the same text inserts zero new chunks
         and re-embeds zero chunks (already-embedded chunks are skipped). The
         resolving ``model_ref`` is stored with each vector (drift guard).
+
+        ``license`` defaults to ``"unknown"`` (fail-closed, C17 WARN-1): an ingest
+        that omits it produces a corpus the re-cook licensing gate REFUSES. Tag a
+        genuinely public-domain / licensed source EXPLICITLY to make it re-cookable.
         """
         corpus_id = await self.upsert_corpus(
             user_id=user_id, project_id=project_id, name=name, kind=kind, license=license,

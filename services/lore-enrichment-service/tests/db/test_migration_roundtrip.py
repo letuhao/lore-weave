@@ -128,6 +128,21 @@ async def test_source_corpus_license_check_constraint(pool):
             )
 
 
+async def test_source_corpus_license_defaults_unknown_fail_closed(pool):
+    """C17 WARN-1: the source_corpus.license column DEFAULT is 'unknown' (an
+    INADMISSIBLE value) — fail CLOSED. An INSERT that omits license stamps
+    'unknown', NOT the old admit-by-omission 'public-domain'. A genuinely
+    public-domain corpus must declare it explicitly to become re-cookable."""
+    async with pool.acquire() as conn:
+        lic = await conn.fetchval(
+            """INSERT INTO source_corpus (project_id, user_id, name, kind)
+               VALUES ($1,$2,'corpus-no-license','history')
+               RETURNING license""",
+            _PROJECT, _USER,
+        )
+        assert lic == "unknown"
+
+
 async def _seed_job(pool) -> uuid.UUID:
     async with pool.acquire() as conn:
         return await conn.fetchval(
