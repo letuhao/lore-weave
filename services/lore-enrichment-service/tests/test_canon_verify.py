@@ -198,6 +198,24 @@ async def test_anachronism_no_overreach_on_classical_compounds():
         ], f"false-positive anachronism on {legit!r}"
 
 
+@pytest.mark.asyncio
+async def test_anachronism_zerowidth_evasion_is_flagged():
+    # WARN-2: the anachronism check must prenormalize (strip zero-width / bidi +
+    # NFKC) like the injection scanner, else a marker split by a zero-width char
+    # evades the denylist. 火‍车 (火 + ZWJ + 车 = 火车/train) and 电‍话 (电 + ZWJ + 话
+    # = 电话/telephone) must still be caught.
+    verifier = CanonVerifier(read_port=_NonEmptyRead(), canon_lookup=_empty_canon_lookup())
+    zwj = "‍"  # zero-width joiner
+    evasive = f"蓬萊岛上有火{zwj}车直达，居民以电{zwj}话互通消息。"
+    # sanity: the raw markers are NOT present as plain substrings (real evasion).
+    assert "火车" not in evasive and "电话" not in evasive
+    result = await verifier.verify(_proposal(), [_fact(evasive)], jwt="jwt")
+    anach = [f for f in result.flags if f.kind is FlagKind.ANACHRONISM]
+    terms = " ".join(f.evidence for f in anach)
+    assert "火车" in terms, "zero-width-smuggled 火车 must be flagged after prenormalization"
+    assert "电话" in terms, "zero-width-smuggled 电话 must be flagged after prenormalization"
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # (c) injection neutralized
 # ═══════════════════════════════════════════════════════════════════════════
@@ -338,10 +356,29 @@ async def test_canon_lookup_failure_degrades_gracefully():
         raise RuntimeError("canon store down")
 
     verifier = CanonVerifier(read_port=_NonEmptyRead(), canon_lookup=_boom)
-    # graph reachable (non-empty) but per-dimension lookup throws → no crash,
-    # contradiction simply finds nothing (graph-level degrade flag not set here).
+    # graph reachable (non-empty) but per-dimension lookup THROWS → no crash, AND
+    # "couldn't check" must NOT report verified_clean: a swallowed lookup error is
+    # a degradation, never a false-green (WARN-1).
     result = await verifier.verify(_proposal(), [_fact("蓬萊乃仙岛。")], jwt="jwt")
     assert not [f for f in result.flags if f.kind is FlagKind.CONTRADICTION]
+    assert result.verify_degraded is True
+    assert result.passed is False
+
+
+@pytest.mark.asyncio
+async def test_canon_lookup_failure_does_not_pass_contradicting_fact_as_clean():
+    # A genuinely-contradicting fact (并非东海 — negates canon term 东海) must NOT be
+    # waved through as clean when the per-dimension canon lookup errors out. The
+    # contradiction loop can't see the canon to flag it, so the degrade flag is the
+    # ONLY thing keeping this off a false-green — assert it holds (WARN-1).
+    async def _boom(entity_name: str, dimension: str):
+        raise RuntimeError("canon store down")
+
+    verifier = CanonVerifier(read_port=_NonEmptyRead(), canon_lookup=_boom)
+    fact = _fact("蓬萊并非东海之岛，实为西方之地。")
+    result = await verifier.verify(_proposal(), [fact], jwt="jwt")
+    assert result.verify_degraded is True
+    assert result.passed is False
 
 
 # ═══════════════════════════════════════════════════════════════════════════

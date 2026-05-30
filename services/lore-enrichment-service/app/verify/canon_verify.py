@@ -46,7 +46,11 @@ from app.clients.knowledge import GraphStats
 from app.clients.port import KnowledgeReadPort
 from app.generation.provenance import EnrichedFact
 from app.retrieval.strategy import GroundedProposal
-from app.verify.sanitize import neutralize_proposal_text, scan_injection
+from app.verify.sanitize import (
+    _prenormalize,
+    neutralize_proposal_text,
+    scan_injection,
+)
 
 __all__ = [
     "FlagKind",
@@ -324,8 +328,12 @@ class CanonVerifier:
         Operates on the Chinese text (locked: anachronism on Chinese). Each marker
         is an unambiguous post-商周 / non-封神 concept; a hit carries the matched
         term + the reason as evidence (never an opaque boolean).
+
+        Scans the PRE-NORMALIZED content (strip zero-width / bidi + NFKC) exactly
+        like the injection scanner, so a zero-width-smuggled marker such as
+        ``火‍车`` (火 + ZWJ + 车) cannot evade the denylist via a substring miss.
         """
-        content = fact.content
+        content = _prenormalize(fact.content)
         for term, reason in ANACHRONISM_MARKERS:
             if term in content:
                 result.flags.append(
@@ -363,7 +371,7 @@ class CanonVerifier:
 
         for fact in facts:
             canon_facts = await self._lookup_canon(
-                proposal.canonical_name, fact.dimension
+                proposal.canonical_name, fact.dimension, result
             )
             for canon in canon_facts:
                 term = self._contradicted_term(fact.content, canon)
@@ -397,17 +405,21 @@ class CanonVerifier:
         return await self._port.get_graph_stats(jwt=jwt, project_id=project_uuid)
 
     async def _lookup_canon(
-        self, entity_name: str, dimension: str
+        self, entity_name: str, dimension: str, result: VerifyResult
     ) -> Sequence[CanonFact]:
         """Look up canon assertions for an entity+dimension through the seam.
 
-        Never raises into the verifier: a lookup failure degrades to "no canon
-        known" (the contradiction check simply finds nothing to contradict for
-        that dimension — the graph-level degradation flag already covers a
-        wholesale outage)."""
+        Never raises into the verifier, but a lookup ERROR is NOT the same as an
+        empty result: a swallowed exception means the canon read could not run for
+        this dimension, so we MUST mark the verify degraded (``verify_degraded``
+        forces ``passed=False``). Returning ``()`` silently on an error would make
+        a "couldn't check" run indistinguishable from "no canon known" and let the
+        contradiction loop find nothing → a false-green ``verified_clean``. A
+        genuinely-empty lookup (no exception) returns ``()`` without degrading."""
         try:
             return await self._canon_lookup(entity_name, dimension)
         except Exception:
+            result.verify_degraded = True
             return ()
 
     @staticmethod
