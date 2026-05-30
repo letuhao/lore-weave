@@ -28,6 +28,7 @@ from app.routers import (
     internal_parse,
     internal_summarize,
     internal_tools,
+    internal_wiki,
     metrics,
     ping,
 )
@@ -528,6 +529,7 @@ app.include_router(internal_extraction.router)
 app.include_router(internal_parse.router)
 app.include_router(internal_summarize.router)
 app.include_router(internal_tools.router)
+app.include_router(internal_wiki.router)
 app.include_router(metrics.router)
 app.include_router(public_costs.router)
 app.include_router(public_drawers.router)

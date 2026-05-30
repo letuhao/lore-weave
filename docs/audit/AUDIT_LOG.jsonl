@@ -443,3 +443,12 @@
 {"ts": "2026-05-30T06:22:36Z", "event": "in_progress_update", "cycle": 4, "phase": "COMMIT", "retry": 0}
 {"ts": "2026-05-30T06:23:13Z", "event": "coordinator_done_cycle", "cycle": 4, "sha": "e4a0e867"}
 {"ts": "2026-05-30T06:23:37Z", "event": "in_progress_archived", "cycle": 4, "archived_to": "cycle-004-state.md"}
+{"ts":"2026-05-30T06:28:18Z","task":"lore-enrichment","phase":"coordinator-review","agent":"independent-adversary","action":"verdict","cycle":4,"verdict":"APPROVED_WITH_WARNINGS","block":0,"warn":1}
+{"ts":"2026-05-30T00:00:00Z","task":"lore-enrichment","phase":"coordinator-review","agent":"coordinator","action":"cycle_accepted","cycle":4,"commit":"e4a0e867","verify_exit":0,"independent_adversary":"APPROVED_WITH_WARNINGS","note":"verified additive+isolated (only glossary+knowledge-service, compose OUTBOX_SOURCES append); both go suites green; live-smoke H1 confirmed. Independent adversary cleared tx-atomicity/idempotency(MERGE)/DLQ/backward-compat/Q2; found WARN-1 manual name-fill propagation gap (demo path unaffected) -> DEFERRED 043 with exact fix."}
+{"ts":"2026-05-30T06:31:51Z","event":"startup_drift_check_inconclusive","cycle":5,"cd":"","rw":""}
+{"ts":"2026-05-30T06:31:51Z","event":"startup_verifier_complete","cycle":5,"steps":6}
+{"ts": "2026-05-30T06:32:02Z", "event": "in_progress_init", "cycle": 5, "title": "PLATFORM D4-03 wiki-from-KG"}
+{"ts": "2026-05-30T06:41:39Z", "event": "in_progress_update", "cycle": 5, "phase": "BUILD", "retry": 0}
+{"ts":"2026-05-30T06:59:46Z","cycle":5,"event":"verify","result":"pass","live_smoke":"entity -> generated wiki body persisted (canon+enriched)"}
+{"ts": "2026-05-30T07:01:46Z", "event": "in_progress_update", "cycle": 5, "phase": "SESSION", "retry": 0}
+{"ts":"2026-05-30T07:02:00Z","cycle":5,"event":"cycle_done","title":"PLATFORM D4-03 wiki-from-KG","result":"DONE","files":7,"dps":2,"adversary":{"blockers":0,"majors":0,"minors":0},"scope_guard":"CLEAR","verify_exit":0,"live_smoke":"entity -> generated wiki body persisted (canon+enriched H0 markers)","notable":"replaced empty generateWikiStubs with deterministic KG->prose renderer; read-only knowledge-service neighborhood endpoint; additive/backward-compat; D-044 infra wiring deferred"}

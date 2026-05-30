@@ -58,6 +58,7 @@ __all__ = [
     "delete_entities_with_zero_evidence",
     "list_entities_filtered",
     "get_entity_with_relations",
+    "get_neighborhood_by_glossary_id",
     "update_entity_fields",
     "unlock_entity_user_edited",
     "merge_entities",
@@ -1498,6 +1499,109 @@ async def get_entity_with_relations(
         # Bolt-driver temporal conversions — same pattern as
         # _node_to_entity so Relation's datetime fields round-trip
         # into stdlib types.
+        for k, v in list(r_data.items()):
+            if v is not None and hasattr(v, "to_native"):
+                r_data[k] = v.to_native()
+        subj_data = dict(subj.items() if hasattr(subj, "items") else subj)
+        obj_data = dict(obj.items() if hasattr(obj, "items") else obj)
+        r_data["subject_name"] = subj_data.get("name")
+        r_data["subject_kind"] = subj_data.get("kind")
+        r_data["object_name"] = obj_data.get("name")
+        r_data["object_kind"] = obj_data.get("kind")
+        relations.append(Relation.model_validate(r_data))
+
+    return EntityDetail(
+        entity=entity,
+        relations=relations,
+        relations_truncated=total > len(relations),
+        total_relations=total,
+    )
+
+
+# ── C5 (D4-03) — get_neighborhood_by_glossary_id ─────────────────────
+#
+# Wiki-from-KG read path. glossary-service hosts the wiki feature but
+# does NOT hold the entity-to-entity relationship graph — that lives
+# only here in Neo4j, keyed by `glossary_entity_id`. The wiki renderer
+# in glossary-service calls the internal endpoint that wraps this, so
+# it can build an article body from the entity's 1-hop neighborhood.
+#
+# This is a READ-ONLY path (Q2 LOCKED: enrichment/wiki never write
+# Neo4j canonical content directly). It is the glossary-FK-keyed twin
+# of `get_entity_with_relations`: same relation projection + cap, but
+# matched by the glossary FK instead of the canonical id, because the
+# wiki caller knows the glossary entity_id, not the hash-derived
+# canonical_id (which drifts on rename).
+
+_GET_NEIGHBORHOOD_BY_GLOSSARY_ID_CYPHER = """
+MATCH (e:Entity {glossary_entity_id: $glossary_entity_id})
+WHERE e.user_id = $user_id
+CALL {
+  WITH e
+  OPTIONAL MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)
+  WHERE (subj = e OR obj = e)
+    AND r.user_id = $user_id
+    AND r.valid_until IS NULL
+  WITH r, subj, obj
+  WHERE r IS NOT NULL
+  ORDER BY r.confidence DESC, r.created_at DESC
+  LIMIT $rel_cap
+  RETURN collect({r: r, subj: subj, obj: obj}) AS edges
+}
+CALL {
+  WITH e
+  OPTIONAL MATCH (subj:Entity)-[r:RELATES_TO]->(obj:Entity)
+  WHERE (subj = e OR obj = e)
+    AND r.user_id = $user_id
+    AND r.valid_until IS NULL
+  RETURN count(r) AS total
+}
+RETURN e, edges, total
+"""
+
+
+async def get_neighborhood_by_glossary_id(
+    session: CypherSession,
+    *,
+    user_id: str,
+    glossary_entity_id: str,
+    rel_cap: int = ENTITIES_DETAIL_REL_CAP,
+) -> EntityDetail | None:
+    """C5 (D4-03) — entity + 1-hop active RELATES_TO edges, keyed by the
+    glossary FK rather than the canonical id.
+
+    Returns None when no anchored entity carries the given
+    `glossary_entity_id` for this user (a glossary entity that has
+    never been synced into the KG, or a cross-user lookup). A None
+    result is a VALID "empty neighborhood" signal for the wiki
+    renderer — it produces a minimal body rather than failing.
+
+    Relations carry `confidence` + `pending_validation`, and the
+    entity carries `source_types`, so the caller can mark enriched
+    (`source_type='enriched'`, pending, confidence<1.0) facts as
+    visibly distinct from glossary canon (H0 LOCKED).
+    """
+    if not glossary_entity_id:
+        raise ValueError("glossary_entity_id must be a non-empty string")
+    result = await run_read(
+        session,
+        _GET_NEIGHBORHOOD_BY_GLOSSARY_ID_CYPHER,
+        user_id=user_id,
+        glossary_entity_id=glossary_entity_id,
+        rel_cap=rel_cap,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    entity = _node_to_entity(record["e"])
+    total = int(record["total"] or 0)
+
+    relations: list[Relation] = []
+    for edge in record["edges"]:
+        r = edge["r"]
+        subj = edge["subj"]
+        obj = edge["obj"]
+        r_data = dict(r.items() if hasattr(r, "items") else r)
         for k, v in list(r_data.items()):
             if v is not None and hasattr(v, "to_native"):
                 r_data[k] = v.to_native()
