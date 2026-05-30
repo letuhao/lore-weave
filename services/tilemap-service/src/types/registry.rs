@@ -139,6 +139,17 @@ pub struct ObjectKindDef {
     #[serde(default = "default_density_weight",
             skip_serializing_if = "is_default_density_weight")]
     pub density_weight: f32,
+    /// TMP-Q6 — family classifier for decoration objects (chunk-B
+    /// per-family density bias + chunk-C FE breakdown grouping).
+    /// `None` for non-decoration kinds (towns, treasure, etc.) and
+    /// for pre-Q6 fixtures without the field. Validated at registry
+    /// load: id-format regex `^[a-z][a-z0-9_]*$`. The namespace is
+    /// flat + book-extensible — V1 default families are `rock` /
+    /// `vegetation` / `structure` / `bone` / `water` / `snow`; per-
+    /// book registries can add new family strings without code
+    /// changes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub family: Option<String>,
     /// Open property bag — see ADR §2.1.1.
     #[serde(default = "default_properties")]
     pub properties: JsonValue,
@@ -586,5 +597,48 @@ label = "Wall"
 "#;
         let def: TerrainKindDef = toml::from_str(toml_text).unwrap();
         assert_eq!(def.properties, json!({}));
+    }
+
+    #[test]
+    fn object_kind_def_round_trips_with_family() {
+        // TMP-Q6 AC-DFS-1 — family field serializes when set.
+        let toml_text = r#"
+id = "lw:decoration.test_rock"
+primitive = "decoration"
+label = "Test Rock"
+family = "rock"
+"#;
+        let def: ObjectKindDef = toml::from_str(toml_text).unwrap();
+        assert_eq!(def.family.as_deref(), Some("rock"));
+        let json = serde_json::to_string(&def).unwrap();
+        assert!(json.contains("\"family\":\"rock\""), "family must appear: {json}");
+    }
+
+    #[test]
+    fn object_kind_def_skip_serializes_family_when_none() {
+        // TMP-Q6 AC-DFS-1 — V2 byte-identical preservation: no family
+        // declared ⇒ no key on wire.
+        let toml_text = r#"
+id = "lw:obstacle.peak"
+primitive = "blocker"
+label = "Peak"
+"#;
+        let def: ObjectKindDef = toml::from_str(toml_text).unwrap();
+        assert_eq!(def.family, None);
+        let json = serde_json::to_string(&def).unwrap();
+        assert!(!json.contains("family"), "None family must NOT appear: {json}");
+    }
+
+    #[test]
+    fn object_kind_def_deserializes_pre_q6_fixture_without_family() {
+        // TMP-Q6 backward compat — pre-Q6 TOML loads with None.
+        let toml_text = r#"
+id = "lw:decoration.legacy"
+primitive = "decoration"
+label = "Legacy Decoration"
+biomes = ["grass"]
+"#;
+        let def: ObjectKindDef = toml::from_str(toml_text).unwrap();
+        assert_eq!(def.family, None);
     }
 }

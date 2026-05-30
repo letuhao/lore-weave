@@ -89,6 +89,28 @@ pub(crate) fn is_valid_id(id: &str) -> bool {
 /// TMP-Q2 chunk A — also called by [`BiomeThemeDef::validate`] to gate
 /// the `terrain` tag in each `BiomeMixEntry`. Same closed-set rule so a
 /// future `TerrainKind` variant fails both places at once.
+/// TMP-Q6 chunk A — family name validation. Same flat `[a-z][a-z0-9_]*`
+/// regex as terrain / object ids but WITHOUT the `:` / `.` / `-`
+/// separators (families are flat single-word namespaces; `rock` ✓,
+/// `lw:rock` ✗ — the lw prefix would be ambiguous for per-book
+/// registries that just want to add `talisman`). Per-book registries
+/// can declare any matching family without code changes.
+///
+/// **LOW-1 from chunk-A /review-impl — ASCII-only namespace:** the
+/// regex rejects unicode characters. A per-book registry that wants
+/// `family = "符箓"` (Chinese for talisman) can't declare it under V1.
+/// Matches the existing terrain / object id regex discipline; relaxing
+/// to UAX#31 identifiers later would be a wider conversation that
+/// affects ids too.
+pub(crate) fn is_valid_family_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else { return false };
+    if !first.is_ascii_lowercase() {
+        return false;
+    }
+    chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+}
+
 pub(crate) fn is_valid_biome_key(key: &str) -> bool {
     matches!(
         key,
@@ -280,6 +302,29 @@ impl Registry {
                     "object {:?} density_weight must be finite + positive, got {}",
                     def.id, def.density_weight
                 )));
+            }
+            // TMP-Q6 chunk A — validate family name when declared. Same
+            // id-format regex as terrain / object ids so the namespace
+            // is consistent + book-extensible without code changes.
+            // `None` (no family declared) is valid — chunk B's per-
+            // family bias falls back to multiplier 1.0 for un-familied
+            // tags.
+            //
+            // LOW-3 from chunk-A /review-impl — kept INLINE rather than
+            // extracted to a named function because this is an ACTIVE
+            // check (the body actually validates), not a reserved seam
+            // for future constraints. The `feedback_reserved_seam_must_be_named`
+            // memory applies when the body is no-op-placeholder; this
+            // body has real validation. If chunk B/C adds future
+            // constraints (uniqueness-per-registry, max length, etc.),
+            // extract to a named function THEN.
+            if let Some(family) = &def.family {
+                if !is_valid_family_name(family) {
+                    return Err(RegistryError::Validation(format!(
+                        "object {:?} family {:?} must match ^[a-z][a-z0-9_]*$",
+                        def.id, family
+                    )));
+                }
             }
             if object_by_tag.contains_key(&def.id) {
                 return Err(RegistryError::Validation(format!(
@@ -769,6 +814,7 @@ biomes = ["grass", "grass"]
             min_spacing: 0,
             biomes: vec![],
             density_weight: 1.0,
+            family: None,
             properties: serde_json::Value::Object(serde_json::Map::new()),
         };
         let json = serde_json::to_string(&def).unwrap();
@@ -1770,6 +1816,213 @@ label = "Obj"
         assert_eq!(colors.hub, Some(0x4ade80), "emerald-400 Jade Court");
         assert_eq!(colors.forbidden, Some(0x9333ea), "purple-600 sealed realm");
         assert_eq!(colors.sea, Some(0x06b6d4), "cyan-500 celestial waters");
+    }
+
+    #[test]
+    fn registry_rejects_invalid_family_name() {
+        // TMP-Q6 AC-DFS-3 — family must match the flat id-format regex
+        // `^[a-z][a-z0-9_]*$`. Invalid names (uppercase, colons,
+        // hyphens, leading digit) reject at registry load.
+        for (label, bad_family) in [
+            ("uppercase", "\"Rock\""),
+            ("colon", "\"lw:rock\""),
+            ("hyphen", "\"rock-shard\""),
+            ("leading-digit", "\"1rock\""),
+        ] {
+            let toml = format!(r#"
+[registry]
+id = "test"
+version = "0.0.1"
+
+[[terrain]]
+id = "test:t"
+primitive = "land"
+label = "T"
+
+[[object]]
+id = "test:bad_family_object"
+primitive = "decoration"
+label = "Bad"
+family = {bad_family}
+"#);
+            let err = Registry::from_toml_str(&toml).expect_err(
+                &format!("expected {label} family {bad_family} to reject"));
+            match err {
+                RegistryError::Validation(msg) => {
+                    assert!(msg.contains("family"),
+                        "[{label}] msg must mention 'family': {msg}");
+                }
+                other => panic!("[{label}] expected Validation, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn xianxia_sample_per_book_completeness_tracked_for_chunk_b_c() {
+        // LOW-2 from chunk-A /review-impl — the per-book registry
+        // family-annotation completeness is NOT yet enforced at
+        // chunk A because xianxia_sample.toml's 29
+        // `xianxia:decoration.*` entries currently ship without family
+        // annotations (deferred to chunk B/C alongside the per-book
+        // bias demo). This test pins the EXPECTED state today (no
+        // family annotations on xianxia decorations) so chunk B/C
+        // MUST either:
+        //   (a) annotate the xianxia decorations + flip this test to
+        //       a positive assertion mirroring
+        //       `default_registry_decorations_all_have_family`, OR
+        //   (b) explicitly document why the xianxia book skips family
+        //       annotations.
+        // Either way, chunk B/C touches this test — the chunk-A
+        // deferral is now load-bearing on chunk B/C, not optional.
+        let path = std::path::Path::new("registry/xianxia_sample.toml");
+        let xianxia = Registry::load_from_path(path)
+            .expect("xianxia_sample.toml must load");
+        let xianxia_with_family: Vec<&str> = xianxia
+            .object_tags()
+            .filter(|tag| tag.starts_with("xianxia:decoration."))
+            .filter(|tag| xianxia.get_object(tag).unwrap().family.is_some())
+            .collect();
+        // Chunk A baseline: 0 xianxia decorations are family-annotated.
+        // Chunk B/C MUST update this assertion when xianxia gets its
+        // family annotations.
+        assert_eq!(
+            xianxia_with_family.len(),
+            0,
+            "chunk B/C must update this test: xianxia_with_family={xianxia_with_family:?}",
+        );
+    }
+
+    #[test]
+    fn registry_accepts_valid_family_names() {
+        // TMP-Q6 AC-DFS-3 — flat lowercase + underscore + digits valid.
+        for family in ["rock", "vegetation", "structure_decay", "tier_3_ore"] {
+            let toml = format!(r#"
+[registry]
+id = "test"
+version = "0.0.1"
+
+[[terrain]]
+id = "test:t"
+primitive = "land"
+label = "T"
+
+[[object]]
+id = "test:obj_for_{family}"
+primitive = "decoration"
+label = "O"
+family = "{family}"
+"#);
+            let reg = Registry::from_toml_str(&toml)
+                .expect(&format!("family {family:?} must accept"));
+            let def = reg.get_object(&format!("test:obj_for_{family}")).unwrap();
+            assert_eq!(def.family.as_deref(), Some(family));
+        }
+    }
+
+    /// TMP-Q6 chunk-A MED-1 from /review-impl — V1 closed-enum TYPE-marker
+    /// entries that have `primitive = "decoration"` but are NOT concrete
+    /// placed decorations. They're V2-back-compat shims consumed by
+    /// `resolve_object_v2(TilemapObjectKind::{Landmark, Decoration}, None)`
+    /// when placers don't specify a tag. Because they're never placed as
+    /// individual decoration sprites (the V2 wire shape resolves them
+    /// only as fallbacks for the closed-enum kinds), they're exempt from
+    /// the family-annotation requirement. The exemption is named + listed
+    /// here so a future maintainer sees WHY each is exempt instead of a
+    /// silent prefix filter.
+    const FAMILY_EXEMPT_DECORATION_TYPE_MARKERS: &[&str] = &[
+        "lw:landmark",   // legacy TilemapObjectKind::Landmark TYPE marker
+        "lw:decoration", // legacy TilemapObjectKind::Decoration TYPE marker
+    ];
+
+    #[test]
+    fn default_registry_decorations_all_have_family() {
+        // TMP-Q6 AC-DFS-2 — annotation completeness: every CONCRETE
+        // decoration in default.toml (primitive=Decoration AND not a
+        // TYPE-marker exempt entry) MUST declare a family. A future PR
+        // that adds a new decoration without a family fails this test
+        // (annotation drift detection).
+        //
+        // MED-1 fix from /review-impl: filter by `primitive ==
+        // Decoration` (not id-prefix) so a new `lw:tree` or `lw:idol`
+        // entry with primitive=decoration WOULD be caught. The 2
+        // TYPE-marker entries are exempt via a named const list, not a
+        // hidden prefix carve-out.
+        let reg = Registry::load_default().expect("default must load");
+        let mut unfamilied: Vec<&str> = Vec::new();
+        for tag in reg.object_tags() {
+            let def = reg.get_object(tag).expect("get_object");
+            if def.primitive != ObjectPrimitive::Decoration {
+                continue;
+            }
+            if FAMILY_EXEMPT_DECORATION_TYPE_MARKERS.contains(&tag) {
+                continue;
+            }
+            if def.family.is_none() {
+                unfamilied.push(tag);
+            }
+        }
+        assert!(
+            unfamilied.is_empty(),
+            "AC-DFS-2: every concrete decoration in default.toml MUST declare a family \
+             (primitive=Decoration excluding TYPE markers {FAMILY_EXEMPT_DECORATION_TYPE_MARKERS:?}); \
+             missing: {unfamilied:?}",
+        );
+    }
+
+    #[test]
+    fn default_registry_uses_v1_six_family_namespace() {
+        // TMP-Q6 AC-DFS-2 — every declared family in default.toml is
+        // one of the V1 6-family closed set
+        // (rock/vegetation/structure/bone/water/snow). Per-book
+        // registries can add new family strings, but the lw default
+        // MUST stay within the V1 namespace.
+        //
+        // COSMETIC from /review-impl: `let Some(family) = ... else
+        // continue` is defensive against tests running in arbitrary
+        // order — if the completeness test runs AFTER this one and the
+        // namespace test sees a None family, the continue keeps the
+        // failure message focused on what THIS test guards (namespace
+        // membership). The completeness test owns the "must have
+        // family" assertion.
+        const V1_FAMILIES: &[&str] = &[
+            "rock", "vegetation", "structure", "bone", "water", "snow",
+        ];
+        let reg = Registry::load_default().expect("default must load");
+        for tag in reg.object_tags() {
+            let def = reg.get_object(tag).expect("get_object");
+            if def.primitive != ObjectPrimitive::Decoration {
+                continue;
+            }
+            let Some(family) = &def.family else { continue };
+            assert!(
+                V1_FAMILIES.contains(&family.as_str()),
+                "AC-DFS-2: {tag:?} family {family:?} must be one of V1 set {V1_FAMILIES:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn family_exempt_type_markers_actually_lack_family_in_default_toml() {
+        // TMP-Q6 chunk-A MED-1 from /review-impl — pin the 2 known
+        // TYPE-marker exemptions. If a future PR adds a family field to
+        // `lw:landmark` or `lw:decoration` (perhaps to bring them into
+        // the family namespace), THIS test fails — forcing the
+        // maintainer to update FAMILY_EXEMPT_DECORATION_TYPE_MARKERS or
+        // reconsider the exemption rationale.
+        let reg = Registry::load_default().expect("default must load");
+        for tag in FAMILY_EXEMPT_DECORATION_TYPE_MARKERS {
+            let def = reg.get_object(tag).expect("exempt entry must exist");
+            assert_eq!(
+                def.primitive,
+                ObjectPrimitive::Decoration,
+                "exempt entry {tag} must have primitive=Decoration to qualify for the exemption",
+            );
+            assert!(
+                def.family.is_none(),
+                "exempt entry {tag} must NOT declare a family — if you want it in the namespace, \
+                 remove it from FAMILY_EXEMPT_DECORATION_TYPE_MARKERS first",
+            );
+        }
     }
 
     #[test]

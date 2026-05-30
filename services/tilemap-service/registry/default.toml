@@ -236,6 +236,7 @@ walkability_pattern = "all_walkable"
 biomes = ["grass", "rough", "mountain", "sand"]
 density_weight = 1.0
 min_spacing = 2
+family = "rock"
 
 [[object]]
 id = "lw:decoration.weathered_rock"
@@ -245,6 +246,7 @@ walkability_pattern = "all_walkable"
 biomes = ["rough", "mountain", "sand"]
 density_weight = 0.8
 min_spacing = 4
+family = "rock"
 
 [[object]]
 id = "lw:decoration.dead_tree"
@@ -254,6 +256,7 @@ walkability_pattern = "all_walkable"
 biomes = ["forest", "swamp"]
 density_weight = 0.7
 min_spacing = 4
+family = "vegetation"
 
 [[object]]
 id = "lw:decoration.mushroom_cluster"
@@ -263,6 +266,7 @@ walkability_pattern = "all_walkable"
 biomes = ["forest", "swamp"]
 density_weight = 1.0
 min_spacing = 0
+family = "vegetation"
 
 [[object]]
 id = "lw:decoration.bush"
@@ -272,6 +276,7 @@ walkability_pattern = "all_walkable"
 biomes = ["grass", "rough"]
 density_weight = 1.0
 min_spacing = 4
+family = "vegetation"
 
 [[object]]
 id = "lw:decoration.broken_cart"
@@ -281,6 +286,7 @@ walkability_pattern = "all_walkable"
 biomes = ["grass", "road"]
 density_weight = 0.3
 min_spacing = 8
+family = "structure"
 
 [[object]]
 id = "lw:decoration.bone_pile"
@@ -290,6 +296,7 @@ walkability_pattern = "all_walkable"
 biomes = ["swamp", "sand", "subterranean"]
 density_weight = 0.5
 min_spacing = 0
+family = "bone"
 
 [[object]]
 id = "lw:decoration.fungus_patch"
@@ -299,6 +306,7 @@ walkability_pattern = "all_walkable"
 biomes = ["swamp", "subterranean"]
 density_weight = 0.8
 min_spacing = 2
+family = "vegetation"
 
 [[object]]
 id = "lw:decoration.crystal_shard"
@@ -308,6 +316,7 @@ walkability_pattern = "all_walkable"
 biomes = ["subterranean", "mountain"]
 density_weight = 0.5
 min_spacing = 8
+family = "rock"
 
 # ── grass-only ──
 
@@ -319,6 +328,7 @@ walkability_pattern = "all_walkable"
 biomes = ["grass"]
 density_weight = 1.5
 min_spacing = 0
+family = "vegetation"
 
 [[object]]
 id = "lw:decoration.tall_grass"
@@ -328,6 +338,7 @@ walkability_pattern = "all_walkable"
 biomes = ["grass"]
 density_weight = 1.2
 min_spacing = 0
+family = "vegetation"
 
 [[object]]
 id = "lw:decoration.signpost"
@@ -337,6 +348,7 @@ walkability_pattern = "all_walkable"
 biomes = ["grass"]
 density_weight = 0.3
 min_spacing = 8
+family = "structure"
 
 # ── forest-only ──
 
@@ -348,6 +360,7 @@ walkability_pattern = "all_walkable"
 biomes = ["forest"]
 density_weight = 1.2
 min_spacing = 0
+family = "vegetation"
 
 [[object]]
 id = "lw:decoration.log_pile"
@@ -357,6 +370,7 @@ walkability_pattern = "all_walkable"
 biomes = ["forest"]
 density_weight = 0.5
 min_spacing = 4
+family = "vegetation"
 
 # ── mountain-only ──
 
@@ -368,6 +382,7 @@ walkability_pattern = "all_walkable"
 biomes = ["mountain"]
 density_weight = 0.6
 min_spacing = 4
+family = "rock"
 
 [[object]]
 id = "lw:decoration.bones"
@@ -377,6 +392,7 @@ walkability_pattern = "all_walkable"
 biomes = ["mountain"]
 density_weight = 0.4
 min_spacing = 0
+family = "bone"
 
 [[object]]
 id = "lw:decoration.abandoned_pickaxe"
@@ -386,6 +402,7 @@ walkability_pattern = "all_walkable"
 biomes = ["mountain"]
 density_weight = 0.2
 min_spacing = 8
+family = "structure"
 
 # ── swamp-only ──
 
@@ -397,6 +414,7 @@ walkability_pattern = "all_walkable"
 biomes = ["swamp"]
 density_weight = 0.6
 min_spacing = 4
+family = "water"
 
 # ── sand-only ──
 
@@ -408,6 +426,7 @@ walkability_pattern = "all_walkable"
 biomes = ["sand"]
 density_weight = 1.0
 min_spacing = 4
+family = "vegetation"
 
 [[object]]
 id = "lw:decoration.bleached_bones"
@@ -417,6 +436,7 @@ walkability_pattern = "all_walkable"
 biomes = ["sand"]
 density_weight = 0.5
 min_spacing = 0
+family = "bone"
 
 [[object]]
 id = "lw:decoration.oasis_rocks"
@@ -426,6 +446,7 @@ walkability_pattern = "all_walkable"
 biomes = ["sand"]
 density_weight = 0.3
 min_spacing = 8
+family = "rock"
 
 # ── snow-only ──
 
@@ -437,6 +458,7 @@ walkability_pattern = "all_walkable"
 biomes = ["snow"]
 density_weight = 1.3
 min_spacing = 0
+family = "snow"
 
 [[object]]
 id = "lw:decoration.pine_branch"
@@ -446,6 +468,7 @@ walkability_pattern = "all_walkable"
 biomes = ["snow"]
 density_weight = 0.9
 min_spacing = 2
+family = "vegetation"
 
 [[object]]
 id = "lw:decoration.frozen_log"
@@ -455,6 +478,7 @@ walkability_pattern = "all_walkable"
 biomes = ["snow"]
 density_weight = 0.6
 min_spacing = 4
+family = "vegetation"
 
 [[object]]
 id = "lw:decoration.ice_shard"
@@ -464,6 +488,7 @@ walkability_pattern = "all_walkable"
 biomes = ["snow"]
 density_weight = 0.7
 min_spacing = 2
+family = "rock"
 
 # ── water-only (placed on shallows; chunk-C concern) ──
 
@@ -475,6 +500,7 @@ walkability_pattern = "all_walkable"
 biomes = ["water"]
 density_weight = 1.0
 min_spacing = 0
+family = "vegetation"
 
 [[object]]
 id = "lw:decoration.water_lily"
@@ -484,6 +510,7 @@ walkability_pattern = "all_walkable"
 biomes = ["water"]
 density_weight = 0.8
 min_spacing = 0
+family = "vegetation"
 
 # ── subterranean-only ──
 
@@ -495,6 +522,7 @@ walkability_pattern = "all_walkable"
 biomes = ["subterranean"]
 density_weight = 0.4
 min_spacing = 8
+family = "rock"
 
 # ── road-only (placed on tiles adjacent to road waypoints; chunk-C) ──
 
@@ -506,6 +534,7 @@ walkability_pattern = "all_walkable"
 biomes = ["road"]
 density_weight = 0.6
 min_spacing = 2
+family = "structure"
 
 # ── BIOME THEMES (TMP-Q2 chunk A) ─────────────────────────────────────
 #
