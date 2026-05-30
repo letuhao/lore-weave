@@ -165,16 +165,22 @@ async def consume_filter_reload_signal(redis_url: str) -> None:
     redis_client = aioredis.from_url(redis_url, decode_responses=False)
 
     async def _on_reload() -> None:
+        # r3 M4 fold: distinct structured log token so ops can grep for
+        # worker-side reload events. Worker-ai has no Prometheus infra
+        # today; greppable log is the observability surface for now.
+        # Track to D-WORKER-AI-METRICS-INFRA for a future cycle.
         try:
             new_config = await get_filter_config(redis_client)
             set_precision_filter_config(new_config)
             logger.info(
-                "cycle 73f: filter config reloaded from Redis (active=%s)",
+                "WORKER_FILTER_RELOAD outcome=applied active=%s "
+                "model_ref=%s",
                 new_config is not None,
+                new_config.model_ref if new_config else None,
             )
         except Exception:
             logger.exception(
-                "cycle 73f: failed to re-read filter config from Redis"
+                "WORKER_FILTER_RELOAD outcome=failed reason=exception"
             )
 
     try:

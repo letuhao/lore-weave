@@ -981,6 +981,97 @@ def test_load_writer_autocreate_config_env_set_enables_with_cap() -> None:
 
 
 @pytest.mark.asyncio
+async def test_hydrate_precision_filter_config_seeds_cache_from_redis(monkeypatch):
+    """Cycle 73g L1 fold (closes r3 L1): KS hydrate on lifespan startup
+    GETs Redis key + swaps module-level cache. Without this test, a
+    regression in the hydrate path (signature change, import-path drift)
+    only surfaces at container boot, not in CI."""
+    from loreweave_extraction import PrecisionFilterConfig
+    import app.extraction.pass2_orchestrator as orch
+
+    persisted = PrecisionFilterConfig(
+        model_ref="hydrated-uuid",
+        categories=("relation",),
+        partial_policy="drop",
+    )
+
+    async def fake_get_filter_config(redis_client):
+        return persisted
+
+    saved = orch._PRECISION_FILTER_CONFIG
+    monkeypatch.setattr(
+        "loreweave_extraction.get_filter_config",
+        fake_get_filter_config,
+    )
+    fake_redis = MagicMock()
+    fake_redis.aclose = AsyncMock()
+    monkeypatch.setattr(
+        "redis.asyncio.from_url",
+        lambda *args, **kwargs: fake_redis,
+    )
+
+    try:
+        await orch.hydrate_precision_filter_config_from_redis("redis://fake")
+        assert orch._PRECISION_FILTER_CONFIG is persisted
+    finally:
+        orch.set_precision_filter_config(saved)
+
+
+@pytest.mark.asyncio
+async def test_hydrate_precision_filter_config_no_op_when_redis_empty(monkeypatch):
+    """L1 edge: Redis key absent → hydrate leaves cache at env-default
+    (no clobber)."""
+    import app.extraction.pass2_orchestrator as orch
+
+    async def fake_get_filter_config(redis_client):
+        return None
+
+    saved = orch._PRECISION_FILTER_CONFIG
+    monkeypatch.setattr(
+        "loreweave_extraction.get_filter_config",
+        fake_get_filter_config,
+    )
+    fake_redis = MagicMock()
+    fake_redis.aclose = AsyncMock()
+    monkeypatch.setattr(
+        "redis.asyncio.from_url",
+        lambda *args, **kwargs: fake_redis,
+    )
+
+    try:
+        await orch.hydrate_precision_filter_config_from_redis("redis://fake")
+        # Cache unchanged.
+        assert orch._PRECISION_FILTER_CONFIG is saved
+    finally:
+        orch.set_precision_filter_config(saved)
+
+
+def test_set_precision_filter_config_real_function_mutates_module_binding():
+    """Cycle 73g L2 fold (closes r3 L2): mock-only tests verify
+    mock_set_local.assert_called_once_with(None) but don't prove the
+    REAL `set_precision_filter_config` actually mutates the module-level
+    binding. This test calls the real function (no mock) and verifies."""
+    import app.extraction.pass2_orchestrator as orch
+
+    saved = orch._PRECISION_FILTER_CONFIG
+    try:
+        # Disable path: set to None.
+        result = orch.set_precision_filter_config(None)
+        assert result is None
+        assert orch._PRECISION_FILTER_CONFIG is None
+
+        # Re-enable path: set to a fresh config.
+        from loreweave_extraction import PrecisionFilterConfig
+        new = PrecisionFilterConfig(model_ref="real-mutation-test")
+        result = orch.set_precision_filter_config(new)
+        assert result is new
+        assert orch._PRECISION_FILTER_CONFIG is new
+    finally:
+        # Restore for downstream tests.
+        orch.set_precision_filter_config(saved)
+
+
+@pytest.mark.asyncio
 @patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
 @patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
 @patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)

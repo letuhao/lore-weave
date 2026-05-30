@@ -277,7 +277,18 @@ def _build_filter_config_from_request(
         "response returns `redis_publish_status='failed'` (200, not 502, "
         "since KS-side cache is still updated). Ops MUST check the status "
         "field. Counter `knowledge_extraction_filter_reload_total{source=api}` "
-        "tracks outcomes."
+        "tracks outcomes — `applied` and `failed` are ADDITIVE per r3 M1 "
+        "fold (both bump when local-applied + redis-failed).\n\n"
+        "**Known limitations (r3 L3+L4 docs):**\n"
+        "- **Pubsub message-loss:** Redis pub/sub is fire-and-forget; if a "
+        "subscriber's TCP buffer is full or connection blips, the reload "
+        "signal is silently dropped. The affected replica/worker stays on "
+        "old cache until next reload POST. Workaround: re-POST to converge.\n"
+        "- **Redis restart:** if Redis itself restarts (not the service), the "
+        "config key is lost. Next KS startup hydrate finds no key and falls "
+        "back to env defaults silently. Ops should re-POST after Redis "
+        "incidents. (Future: persistent Redis storage class OR config-store "
+        "in Postgres for cross-Redis-restart durability.)"
     ),
 )
 async def reload_precision_filter(
@@ -325,12 +336,15 @@ async def reload_precision_filter(
     #    new config; worker-ai may drift until next manual reload.
     effective = set_precision_filter_config(new_config)
 
-    # 5. Bump applied counter when local apply succeeded (regardless of
-    #    pubsub status).
-    if publish_status == "published":
-        knowledge_extraction_filter_reload_total.labels(
-            source="api", outcome="applied",
-        ).inc()
+    # 5. Bookkeeping per /review-impl r3 M1 fold: counter outcomes are
+    #    ADDITIVE so dashboards can compute "total reload attempts" =
+    #    sum of all outcomes. Always bump `applied` on successful
+    #    local-apply (the KS-side cache is now correct regardless of
+    #    Redis state). The publish-failure path bumped `failed` above.
+    #    Total per-reload: 1 bump if redis OK; 2 bumps if redis failed.
+    knowledge_extraction_filter_reload_total.labels(
+        source="api", outcome="applied",
+    ).inc()
 
     # 6. Build response.
     config_dict = dataclasses.asdict(effective) if effective is not None else None

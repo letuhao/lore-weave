@@ -455,6 +455,7 @@ def test_filter_reload_redis_publish_failure_returns_status_failed(client: TestC
     mock_redis.aclose = AsyncMock()
 
     pre_failed = _counter_value("api", "failed")
+    pre_applied = _counter_value("api", "applied")
 
     with patch(
         "app.routers.internal_admin.aioredis.from_url",
@@ -475,7 +476,11 @@ def test_filter_reload_redis_publish_failure_returns_status_failed(client: TestC
     # Local cache STILL applied (cycle 73f intentional — KS reflects new config
     # even if propagation to workers fails; ops sees drift via status field).
     mock_set_local.assert_called_once()
+    # r3 M1 fold: BOTH counter outcomes fire additively for the redis-failed
+    # branch. `failed` records the publish error; `applied` records the
+    # successful local-apply. Dashboards summing outcomes = total attempts.
     assert _counter_value("api", "failed") == pre_failed + 1
+    assert _counter_value("api", "applied") == pre_applied + 1
 
 
 def test_filter_reload_invalid_max_items_per_batch_returns_422(client: TestClient):

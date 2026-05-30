@@ -395,6 +395,22 @@ async def lifespan(app: FastAPI):
                     "Error stopping cache invalidator", exc_info=True,
                 )
 
+        # Cycle 73f r3 M3 fold: stop filter-reload subscriber. Without
+        # this cancel block, the BG task leaks its Redis client + pubsub
+        # connection on container shutdown — slow teardown + connection
+        # exhaustion on repeated dev restarts.
+        if filter_reload_task is not None:
+            filter_reload_task.cancel()
+            try:
+                await filter_reload_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.warning(
+                    "cycle 73f: error stopping filter-reload subscriber",
+                    exc_info=True,
+                )
+
         # Stop anchor-refresh loop next (quick cancel).
         if refresh_task is not None:
             refresh_task.cancel()
