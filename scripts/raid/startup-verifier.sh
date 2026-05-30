@@ -30,6 +30,13 @@ if [ -z "$CYCLE" ]; then
   exit 1
 fi
 
+# PRR-11: JSON-encode the cycle value. Numeric cycles stay bare integers
+# (matches the Python writers + int-based consumers in cost-tracker.py /
+# health-dashboard.py); non-numeric bootstrap values like "00X" are quoted
+# so the emitted line is always valid JSON. The C0 bootstrap previously wrote
+# unquoted "cycle":00X, producing 17 malformed AUDIT_LOG rows.
+if [[ "$CYCLE" =~ ^[0-9]+$ ]]; then CYCLE_JSON="$CYCLE"; else CYCLE_JSON="\"$CYCLE\""; fi
+
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 TASK_CONFIG="$REPO_ROOT/scripts/raid/task_config.py"
 if [ ! -f "$TASK_CONFIG" ]; then
@@ -48,7 +55,7 @@ audit() {
   local event="$1"; shift
   local fields="$*"
   mkdir -p "$(dirname "$AUDIT_LOG")"
-  echo "{\"ts\":\"$NOW\",\"event\":\"$event\",\"cycle\":$CYCLE,$fields}" >> "$AUDIT_LOG"
+  echo "{\"ts\":\"$NOW\",\"event\":\"$event\",\"cycle\":$CYCLE_JSON,$fields}" >> "$AUDIT_LOG"
 }
 
 step() { echo "[startup-verifier] step $1: $2"; }

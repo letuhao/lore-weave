@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# DEPRECATED (v1.5+): superseded by the Agent-tool Coordinator (.claude/commands/raid.md).
+# Kept for v1.4 backwards-compat only; do NOT use for new runs.
 # run-smoke-test — C0 AUTO gate per RAID_WORKFLOW v1.4 §13.7 + CYCLE_0_PLAN §4.
 #
 # Exercises 24 checks (10 P + 6 B + 8 Q) + 5 lock-state probes (P1 1B) + P5

@@ -51,6 +51,13 @@
 - **PRR-20**: amended invariant **I1** (`docs/03_planning/LLM_MMO_RPG/00_foundation/02_invariants.md`) + CLAUDE.md — `game-server` Colyseus WS is now a **second sanctioned external entry point** with mandatory edge controls (handshake JWT/ticket auth · per-connection/user caps · lifecycle audit) and AWS-security-group enforcement (only gateway + game-server public). Provisional until those edge controls are verified → **D-GAME-WS-EDGE-CONTROLS**.
 - **PRR-23**: corrected the I1 "Enforced by" claim — the ACL matrix has no `public→service` concept; AWS security groups are the real enforcement; a future ingress manifest should encode the public edge.
 
+### F6 — RAID-infra hygiene + tree-clean ✅ DONE *(AUDIT_LOG 0 malformed / 1385 parse; both lints PASS; recovery runner live-tested on c37 → CONSISTENT exit 0; 13 RAID-infra files)*
+- **PRR-10**: `recovery-protocol-runner.sh` now treats a missing live state as CONSISTENT when `_archive/cycle-NNN-state.md` exists OR the cycle is DONE in CYCLE_LOG (genuine-crash path — missing AND not-completed — preserved) → kills the false-positive class. `ESCALATIONS.md` stale `(empty…)` marker removed + RESOLUTION banner added documenting the 23 p5 entries (+ C0 spec_drift) as spurious/resolved (history retained, annotated).
+- **PRR-11**: repaired the 17 malformed `"cycle":00X` AUDIT_LOG rows → `"cycle":"00X"` (0 malformed now); hardened the 4 shell audit emitters with a numeric-vs-string guard (numeric cycles stay bare int to match Python consumers; non-numeric quoted) so it can't recur.
+- **PRR-12 + PRR-40**: `.gitattributes` `* text=auto eol=lf` (+ binary rules) stops the CRLF churn; `.gitignore` ignores the untracked build `.exe`s; the lingering `coordinator_idle` AUDIT_LOG line is committed → **tree clean**.
+- **PRR-13**: CYCLE_LOG "Started"-column SHA drift (cycles 18,19,32–38) normalized — SHA moved to Notes as `commit:<sha>`, Started set to the Completed date.
+- **PRR-19**: `auto-dispatcher.py` + `run-smoke-test.sh` marked DEPRECATED (v1.5+); stale `.session-cycle-lock` (`READY_FOR_1`) reconciled to a clean closed state.
+
 ---
 
 ## 🔴 MAJOR — to fix

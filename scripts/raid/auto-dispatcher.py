@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# DEPRECATED (v1.5+): superseded by the Agent-tool Coordinator (.claude/commands/raid.md).
+# Kept for v1.4 backwards-compat only; do NOT use for new runs.
 """
 auto-dispatcher — Semi-AUTO ready-signal emitter (R3 redesign per Adversary R2 BLOCK 2)
 Per RAID_WORKFLOW.md v1.4 §13.7 + CYCLE_0_PLAN.md §3 B6.

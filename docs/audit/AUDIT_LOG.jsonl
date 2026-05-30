@@ -370,10 +370,10 @@
 {"ts": "2026-05-28T20:36:05Z", "event": "brief_generator_drift_inconclusive", "cd": "", "rw": "v1.4"}
 {"ts": "2026-05-28T20:36:06Z", "event": "brief_generator_run", "count": 38}
 {"ts": "2026-05-28T20:37:11Z", "event": "brief_generator_drift_check_passed", "version": "v1.4"}
-{"ts":"2026-05-28T20:37:11Z","event":"startup_drift_check_inconclusive","cycle":00X,"cd":"v1.4","rw":""}
-{"ts":"2026-05-28T20:37:11Z","event":"startup_verifier_complete","cycle":00X,"steps":6}
-{"ts":"2026-05-28T20:37:43Z","event":"startup_drift_check_passed","cycle":00X,"version":"v1.4"}
-{"ts":"2026-05-28T20:37:43Z","event":"startup_verifier_complete","cycle":00X,"steps":6}
+{"ts":"2026-05-28T20:37:11Z","event":"startup_drift_check_inconclusive","cycle":"00X","cd":"v1.4","rw":""}
+{"ts":"2026-05-28T20:37:11Z","event":"startup_verifier_complete","cycle":"00X","steps":6}
+{"ts":"2026-05-28T20:37:43Z","event":"startup_drift_check_passed","cycle":"00X","version":"v1.4"}
+{"ts":"2026-05-28T20:37:43Z","event":"startup_verifier_complete","cycle":"00X","steps":6}
 {"ts": "2026-05-29T03:41:20.478910", "task": "cycle-0-foundation-bootstrap", "phase": "build", "agent": "main", "action": "phase_complete", "evidence": "B1-B6 all batches complete: 32 scripts/raid files + 1 test helper + 40 cycle briefs (38 auto-gen + smoke + TEMPLATE) + 1 docker-compose + 1 terraform + 1 quota-profile = canonical 46 deliverables; RAID_WORKFLOW.md copied to docs/raid/"}
 {"ts":"2026-05-28T20:41:27Z","event":"smoke_start","cycle":"00X"}
 {"ts":"2026-05-28T20:41:27Z","event":"smoke_check_pass","cycle":"00X","check":"P1-1A:UNLOCKED→00X"}
@@ -391,8 +391,8 @@
 {"ts":"2026-05-28T20:41:30Z","event":"test_lock_forced","state":"READY_FOR_1","signal_source":"/tmp/.smoke-sig-valid.yaml"}
 {"ts":"2026-05-28T20:41:27Z","event":"smoke_check_pass","cycle":"00X","check":"P1-1B-probe5:READY_FOR_1+valid→ACCEPTED"}
 {"ts":"2026-05-28T20:41:27Z","event":"smoke_check_pass","cycle":"00X","check":"P1-1C:no-transient-UNLOCKED-in-current-lock"}
-{"ts":"2026-05-28T20:41:31Z","event":"startup_drift_check_passed","cycle":00X,"version":"v1.4"}
-{"ts":"2026-05-28T20:41:31Z","event":"startup_verifier_complete","cycle":00X,"steps":6}
+{"ts":"2026-05-28T20:41:31Z","event":"startup_drift_check_passed","cycle":"00X","version":"v1.4"}
+{"ts":"2026-05-28T20:41:31Z","event":"startup_verifier_complete","cycle":"00X","steps":6}
 {"ts":"2026-05-28T20:41:27Z","event":"smoke_check_pass","cycle":"00X","check":"P2:startup-verifier-6-steps"}
 {"ts": "2026-05-28T20:41:32Z", "event": "in_progress_init", "cycle": 999, "title": "smoke-test"}
 {"ts":"2026-05-28T20:41:27Z","event":"smoke_check_pass","cycle":"00X","check":"P3:IN_PROGRESS-write"}
@@ -432,7 +432,7 @@
 {"ts": "2026-05-28T20:41:59Z", "event": "brief_generator_drift_check_passed", "version": "v1.4"}
 {"ts":"2026-05-28T20:41:27Z","event":"smoke_check_pass","cycle":"00X","check":"B4:brief-generator-drift-check-passed"}
 {"ts":"2026-05-28T20:41:27Z","event":"smoke_check_pass","cycle":"00X","check":"B5:prod-isolation-clean"}
-{"ts":"2026-05-28T20:41:59Z","event":"secret_scan_skipped","cycle":00X,"dps":1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-05-28T20:41:59Z","event":"secret_scan_skipped","cycle":"00X","dps":1,"reason":"gitleaks_not_installed"}
 {"ts":"2026-05-28T20:41:27Z","event":"smoke_check_fail","cycle":"00X","check":"B6","reason":"secret scan errored"}
 {"ts":"2026-05-28T20:41:27Z","event":"smoke_check_pass","cycle":"00X","check":"Q1:profile-plan-max-20x"}
 {"ts": "2026-05-28T20:42:00Z", "event": "sub_agent_spawn_resolved", "role": "DPS", "slice": null, "model": "claude-sonnet-4-6", "dry_run": true}
@@ -449,7 +449,7 @@
 {"ts":"2026-05-28T20:41:27Z","event":"smoke_check_pass","cycle":"00X","check":"AUTO:dispatcher-emit-signal+lock"}
 {"ts":"2026-05-28T20:41:27Z","event":"smoke_complete","cycle":"00X","result":"FAIL","failed_count":7,"failed":"P5-5A-b P5-5A-c P5-5A-d P7 B6 Q3 Q4"}
 {"ts": "2026-05-28T20:42:07Z", "event": "escalation_written", "cycle": 0, "type": "error", "phase": "verify"}
-{"ts":"2026-05-28T20:42:51Z","event":"secret_scan_skipped","cycle":00X,"dps":1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-05-28T20:42:51Z","event":"secret_scan_skipped","cycle":"00X","dps":1,"reason":"gitleaks_not_installed"}
 {"ts": "2026-05-28T20:42:51Z", "event": "in_progress_init", "cycle": 998, "title": "test"}
 {"ts": "2026-05-28T20:42:52Z", "event": "in_progress_update", "cycle": 998, "phase": "BUILD", "retry": 0}
 {"ts":"2026-05-28T20:42:52Z","event":"recovery_halted","cycle":998,"reason":"brief_missing"}
@@ -470,8 +470,8 @@
 {"ts":"2026-05-28T20:45:21Z","event":"test_lock_forced","state":"READY_FOR_1","signal_source":"/tmp/.smoke-sig-valid.yaml"}
 {"ts":"2026-05-28T20:45:18Z","event":"smoke_check_pass","cycle":"00X","check":"P1-1B-probe5:READY_FOR_1+valid→ACCEPTED"}
 {"ts":"2026-05-28T20:45:18Z","event":"smoke_check_pass","cycle":"00X","check":"P1-1C:no-transient-UNLOCKED-in-current-lock"}
-{"ts":"2026-05-28T20:45:22Z","event":"startup_drift_check_passed","cycle":00X,"version":"v1.4"}
-{"ts":"2026-05-28T20:45:22Z","event":"startup_verifier_complete","cycle":00X,"steps":6}
+{"ts":"2026-05-28T20:45:22Z","event":"startup_drift_check_passed","cycle":"00X","version":"v1.4"}
+{"ts":"2026-05-28T20:45:22Z","event":"startup_verifier_complete","cycle":"00X","steps":6}
 {"ts":"2026-05-28T20:45:18Z","event":"smoke_check_pass","cycle":"00X","check":"P2:startup-verifier-6-steps"}
 {"ts": "2026-05-28T20:45:23Z", "event": "in_progress_init", "cycle": 999, "title": "smoke-test"}
 {"ts":"2026-05-28T20:45:18Z","event":"smoke_check_pass","cycle":"00X","check":"P3:IN_PROGRESS-write"}
@@ -511,7 +511,7 @@
 {"ts": "2026-05-28T20:45:51Z", "event": "brief_generator_drift_check_passed", "version": "v1.4"}
 {"ts":"2026-05-28T20:45:18Z","event":"smoke_check_pass","cycle":"00X","check":"B4:brief-generator-drift-check-passed"}
 {"ts":"2026-05-28T20:45:18Z","event":"smoke_check_pass","cycle":"00X","check":"B5:prod-isolation-clean"}
-{"ts":"2026-05-28T20:45:51Z","event":"secret_scan_skipped","cycle":00X,"dps":1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-05-28T20:45:51Z","event":"secret_scan_skipped","cycle":"00X","dps":1,"reason":"gitleaks_not_installed"}
 {"ts":"2026-05-28T20:45:18Z","event":"smoke_check_pass","cycle":"00X","check":"B6:secret-scan-clean-or-skipped"}
 {"ts":"2026-05-28T20:45:18Z","event":"smoke_check_pass","cycle":"00X","check":"Q1:profile-plan-max-20x"}
 {"ts": "2026-05-28T20:45:52Z", "event": "sub_agent_spawn_resolved", "role": "DPS", "slice": null, "model": "claude-sonnet-4-6", "dry_run": true}
@@ -549,8 +549,8 @@
 {"ts":"2026-05-28T20:48:30Z","event":"test_lock_forced","state":"READY_FOR_1","signal_source":"/tmp/.smoke-sig-valid.yaml"}
 {"ts":"2026-05-28T20:48:26Z","event":"smoke_check_pass","cycle":"00X","check":"P1-1B-probe5:READY_FOR_1+valid→ACCEPTED"}
 {"ts":"2026-05-28T20:48:26Z","event":"smoke_check_pass","cycle":"00X","check":"P1-1C:no-transient-UNLOCKED-in-current-lock"}
-{"ts":"2026-05-28T20:48:30Z","event":"startup_drift_check_passed","cycle":00X,"version":"v1.4"}
-{"ts":"2026-05-28T20:48:30Z","event":"startup_verifier_complete","cycle":00X,"steps":6}
+{"ts":"2026-05-28T20:48:30Z","event":"startup_drift_check_passed","cycle":"00X","version":"v1.4"}
+{"ts":"2026-05-28T20:48:30Z","event":"startup_verifier_complete","cycle":"00X","steps":6}
 {"ts":"2026-05-28T20:48:26Z","event":"smoke_check_pass","cycle":"00X","check":"P2:startup-verifier-6-steps"}
 {"ts": "2026-05-28T20:48:31Z", "event": "in_progress_init", "cycle": 999, "title": "smoke-test"}
 {"ts":"2026-05-28T20:48:26Z","event":"smoke_check_pass","cycle":"00X","check":"P3:IN_PROGRESS-write"}
@@ -591,7 +591,7 @@
 {"ts": "2026-05-28T20:48:59Z", "event": "brief_generator_drift_check_passed", "version": "v1.4"}
 {"ts":"2026-05-28T20:48:26Z","event":"smoke_check_pass","cycle":"00X","check":"B4:brief-generator-drift-check-passed"}
 {"ts":"2026-05-28T20:48:26Z","event":"smoke_check_pass","cycle":"00X","check":"B5:prod-isolation-clean"}
-{"ts":"2026-05-28T20:48:59Z","event":"secret_scan_skipped","cycle":00X,"dps":1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-05-28T20:48:59Z","event":"secret_scan_skipped","cycle":"00X","dps":1,"reason":"gitleaks_not_installed"}
 {"ts":"2026-05-28T20:48:26Z","event":"smoke_check_pass","cycle":"00X","check":"B6:secret-scan-clean-or-skipped"}
 {"ts":"2026-05-28T20:48:26Z","event":"smoke_check_pass","cycle":"00X","check":"Q1:profile-plan-max-20x"}
 {"ts": "2026-05-28T20:49:00Z", "event": "sub_agent_spawn_resolved", "role": "DPS", "slice": null, "model": "claude-sonnet-4-6", "dry_run": true}
@@ -625,8 +625,8 @@
 {"ts":"2026-05-28T20:56:47Z","event":"test_lock_forced","state":"READY_FOR_1","signal_source":"/tmp/.smoke-sig-valid.yaml"}
 {"ts":"2026-05-28T20:56:44Z","event":"smoke_check_pass","cycle":"00X","check":"P1-1B-probe5:READY_FOR_1+valid→ACCEPTED"}
 {"ts":"2026-05-28T20:56:44Z","event":"smoke_check_pass","cycle":"00X","check":"P1-1C:no-transient-UNLOCKED-in-current-lock"}
-{"ts":"2026-05-28T20:56:48Z","event":"startup_drift_check_passed","cycle":00X,"version":"v1.4"}
-{"ts":"2026-05-28T20:56:48Z","event":"startup_verifier_complete","cycle":00X,"steps":6}
+{"ts":"2026-05-28T20:56:48Z","event":"startup_drift_check_passed","cycle":"00X","version":"v1.4"}
+{"ts":"2026-05-28T20:56:48Z","event":"startup_verifier_complete","cycle":"00X","steps":6}
 {"ts":"2026-05-28T20:56:44Z","event":"smoke_check_pass","cycle":"00X","check":"P2:startup-verifier-6-steps"}
 {"ts": "2026-05-28T20:56:49Z", "event": "in_progress_init", "cycle": 999, "title": "smoke-test"}
 {"ts":"2026-05-28T20:56:44Z","event":"smoke_check_pass","cycle":"00X","check":"P3:IN_PROGRESS-write"}
@@ -667,7 +667,7 @@
 {"ts": "2026-05-28T20:57:17Z", "event": "brief_generator_drift_check_passed", "version": "v1.4"}
 {"ts":"2026-05-28T20:56:44Z","event":"smoke_check_pass","cycle":"00X","check":"B4:brief-generator-drift-check-passed"}
 {"ts":"2026-05-28T20:56:44Z","event":"smoke_check_pass","cycle":"00X","check":"B5:prod-isolation-clean"}
-{"ts":"2026-05-28T20:57:18Z","event":"secret_scan_skipped","cycle":00X,"dps":1,"reason":"gitleaks_not_installed"}
+{"ts":"2026-05-28T20:57:18Z","event":"secret_scan_skipped","cycle":"00X","dps":1,"reason":"gitleaks_not_installed"}
 {"ts":"2026-05-28T20:56:44Z","event":"smoke_check_pass","cycle":"00X","check":"B6:secret-scan-clean-or-skipped"}
 {"ts":"2026-05-28T20:56:44Z","event":"smoke_check_pass","cycle":"00X","check":"Q1:profile-plan-max-20x"}
 {"ts": "2026-05-28T20:57:19Z", "event": "sub_agent_spawn_resolved", "role": "DPS", "slice": null, "model": "claude-sonnet-4-6", "dry_run": true}
@@ -1382,3 +1382,4 @@
 {"ts": "2026-05-29T19:19:26Z", "event": "in_progress_update", "cycle": 38, "phase": "COMMIT", "retry": 0}
 {"ts": "2026-05-29T19:20:37Z", "event": "in_progress_archived", "cycle": 38, "archived_to": "cycle-038-state.md"}
 {"ts":"2026-05-30T00:45:00Z","event":"retro","cycle":38,"phase":"RETRO","commit_sha":"5bad1763fef0c8118b0a9555156d0cc36377557a","reflections":["FINAL CYCLE of the 38-cycle foundation mega-task — L7 layer fully closed.","Keeping the canary state machine PURE (canary.Decide() takes State+Observation, returns Decision; zero I/O, injected clock) was the key design move: the safety-critical advance/abort/2×-baseline logic is exhaustively unit-tested (boundary at exactly 2× holds; abort precedes window; sticky-aborted) without ANY live SLI source or DB. The controller is a thin orchestrator over 4 interfaces.","Go internal/ encapsulation blocks cross-module imports — same lesson as cycle 37 (statuspage pkg/statusflow facade). Added pkg/canaryflow re-export so tests/integration can drive the controller. This is now an established foundation idiom (cliapi, statusflow, canaryflow).","Adversary review caught a real spec-compliance bug: I had ALL contracts/* → major, but §12AH.2 distinguishes non-breaking contracts/api/ endpoint (minor) from internal contract wire-shape (major). Both the Go classifier and the shell mirror had it; fixed together + 3 new tests. The shell lint and Go service MUST stay in lockstep since deploy.yml runs the shell and the controller uses the Go — divergence would mismatch CI class detection.","deploy-freeze-check.sh + the admin-cli break-glass command share the same break-glass-deploy label contract: the CI lint lets the merge through when the label is present, and the command records the audit row + 24h post-review obligation. Two halves of one §12AH.3 escape hatch."],"locked_consumed":["Q-L7K-1 GitHub Actions V1 only"]}
+{"ts": "2026-05-29T19:23:14Z", "event": "coordinator_idle"}

@@ -261,3 +261,9 @@ frontend-game/test-results/
 
 # Local extraction-quality eval run artifacts (dumps, judge verdicts, logs)
 .eval_dumps/
+
+# PRR-12: Go build-artifact binaries (untracked in worktree, no .exe is tracked).
+# Ignore all compiled exes plus the two known RAID/infra build outputs explicitly.
+*.exe
+infra/pg18test-go/pg18test.exe
+tools/eventgen/eventgen.exe
