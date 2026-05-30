@@ -111,5 +111,60 @@
     "consent_desc": "語音模式將使用您的麥克風進行語音辨識。音訊可能會保存最多 48 小時以供重播。您可以隨時在設定中刪除所有語音資料。",
     "cancel": "取消",
     "continue": "繼續"
+  },
+  "message": {
+    "edit_hint": "Enter 確認 · Esc 取消 · Shift+Enter 換行",
+    "cancel_title": "取消 (Esc)",
+    "cancel": "取消",
+    "confirm_title": "確認 (Enter)",
+    "save": "儲存",
+    "edit_message": "編輯訊息",
+    "delete_message": "刪除訊息",
+    "copied": "已複製到剪貼簿",
+    "copied_markdown": "已複製為 Markdown",
+    "sent_to_editor": "已傳送至編輯器 — 開啟章節以貼上",
+    "ttft": "首個 token 時間",
+    "copy": "複製",
+    "regenerate": "重新生成",
+    "more_actions": "更多操作",
+    "copy_markdown": "複製 Markdown",
+    "send_to_editor": "傳送至編輯器"
+  },
+  "tools": {
+    "title": "此回覆使用的工具",
+    "label": {
+      "memory_search": "🔍 已搜尋記憶",
+      "memory_recall_entity": "📚 已喚回實體",
+      "memory_timeline": "📅 已檢查時間軸",
+      "memory_remember": "📝 已記下記憶",
+      "memory_forget": "🗑 已遺忘事實"
+    },
+    "step": "步驟 {{n}}",
+    "ok": "成功",
+    "failed": "失敗"
+  },
+  "facts": {
+    "type": {
+      "decision": "決定",
+      "preference": "偏好",
+      "milestone": "里程碑",
+      "negation": "更正"
+    },
+    "confirm_failed": "確認失敗",
+    "reject_failed": "拒絕失敗",
+    "title": "等待您確認的記憶",
+    "confirm_title": "確認 — 儲存此記憶",
+    "confirm": "確認",
+    "reject_title": "拒絕 — 捨棄此記憶",
+    "reject": "拒絕"
+  },
+  "output": {
+    "sent_to_editor": "已傳送至編輯器",
+    "code": "程式碼 ({{lang}})",
+    "text": "文字",
+    "copied": "已複製",
+    "copy": "複製",
+    "to_editor": "至編輯器",
+    "save": "儲存"
   }
 }

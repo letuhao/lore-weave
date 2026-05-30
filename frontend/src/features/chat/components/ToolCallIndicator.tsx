@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ToolCallRecord } from '../types';
@@ -19,22 +21,14 @@ interface Props {
   toolCalls: ToolCallRecord[];
 }
 
-// Tool name → human-readable label. Verbatim from the K21-C spec.
-// An unrecognised tool name falls back to the raw name with a gear,
-// so a new BE tool doesn't render blank.
-const TOOL_LABELS: Record<string, string> = {
-  memory_search: '🔍 Searched memory',
-  memory_recall_entity: '📚 Recalled an entity',
-  memory_timeline: '📅 Checked the timeline',
-  memory_remember: '📝 Noted a memory',
-  memory_forget: '🗑 Forgot a fact',
-};
-
-function labelFor(tool: string): string {
-  return TOOL_LABELS[tool] ?? `⚙ ${tool}`;
+// Tool name → human-readable label (i18n). An unrecognised tool name falls back
+// to the raw name with a gear, so a new BE tool doesn't render blank.
+function labelFor(tool: string, t: TFunction): string {
+  return t(`tools.label.${tool}`, { defaultValue: `⚙ ${tool}` });
 }
 
 export function ToolCallIndicator({ toolCalls }: Props) {
+  const { t } = useTranslation('chat');
   const [expanded, setExpanded] = useState(false);
 
   // Empty / null → render nothing. Lets the parent mount this
@@ -47,7 +41,7 @@ export function ToolCallIndicator({ toolCalls }: Props) {
         type="button"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded ? 'true' : 'false'}
-        title="Tools used in this reply"
+        title={t('tools.title')}
         className="flex flex-wrap items-center gap-1.5 rounded-md border border-border bg-secondary/40 px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-secondary"
       >
         <Wrench className="h-3 w-3 shrink-0 text-accent" />
@@ -62,7 +56,7 @@ export function ToolCallIndicator({ toolCalls }: Props) {
                 : 'border-destructive/30 bg-destructive/10 text-destructive',
             )}
           >
-            {labelFor(tc.tool)}
+            {labelFor(tc.tool, t)}
           </span>
         ))}
       </button>
@@ -80,12 +74,12 @@ export function ToolCallIndicator({ toolCalls }: Props) {
                   tc.ok ? 'bg-emerald-400' : 'bg-red-400',
                 )}
               />
-              <span className="text-foreground/80">{labelFor(tc.tool)}</span>
+              <span className="text-foreground/80">{labelFor(tc.tool, t)}</span>
               {tc.iteration != null && (
-                <span className="text-muted-foreground/60">· step {tc.iteration}</span>
+                <span className="text-muted-foreground/60">· {t('tools.step', { n: tc.iteration })}</span>
               )}
               <span className={cn('ml-auto', tc.ok ? 'text-emerald-400' : 'text-red-400')}>
-                {tc.ok ? 'ok' : 'failed'}
+                {tc.ok ? t('tools.ok') : t('tools.failed')}
               </span>
             </li>
           ))}

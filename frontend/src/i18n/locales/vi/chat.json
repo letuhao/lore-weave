@@ -111,5 +111,60 @@
     "consent_desc": "Chế độ giọng nói sẽ dùng micro của bạn để nhận dạng giọng nói. Âm thanh có thể được lưu tối đa 48 giờ để phát lại. Bạn có thể xóa toàn bộ dữ liệu giọng nói bất cứ lúc nào trong Cài đặt.",
     "cancel": "Hủy",
     "continue": "Tiếp tục"
+  },
+  "message": {
+    "edit_hint": "Enter để xác nhận · Esc để hủy · Shift+Enter xuống dòng",
+    "cancel_title": "Hủy (Esc)",
+    "cancel": "Hủy",
+    "confirm_title": "Xác nhận (Enter)",
+    "save": "Lưu",
+    "edit_message": "Sửa tin nhắn",
+    "delete_message": "Xóa tin nhắn",
+    "copied": "Đã sao chép vào clipboard",
+    "copied_markdown": "Đã sao chép dạng markdown",
+    "sent_to_editor": "Đã gửi tới trình soạn thảo — mở một chương để dán",
+    "ttft": "Thời gian tới token đầu tiên",
+    "copy": "Sao chép",
+    "regenerate": "Tạo lại",
+    "more_actions": "Thêm thao tác",
+    "copy_markdown": "Sao chép Markdown",
+    "send_to_editor": "Gửi tới trình soạn thảo"
+  },
+  "tools": {
+    "title": "Công cụ dùng trong câu trả lời này",
+    "label": {
+      "memory_search": "🔍 Đã tìm bộ nhớ",
+      "memory_recall_entity": "📚 Đã gợi lại một thực thể",
+      "memory_timeline": "📅 Đã kiểm tra dòng thời gian",
+      "memory_remember": "📝 Đã ghi nhớ",
+      "memory_forget": "🗑 Đã quên một sự kiện"
+    },
+    "step": "bước {{n}}",
+    "ok": "ổn",
+    "failed": "thất bại"
+  },
+  "facts": {
+    "type": {
+      "decision": "Quyết định",
+      "preference": "Sở thích",
+      "milestone": "Cột mốc",
+      "negation": "Sửa lỗi"
+    },
+    "confirm_failed": "Xác nhận thất bại",
+    "reject_failed": "Từ chối thất bại",
+    "title": "Ký ức đang chờ bạn xác nhận",
+    "confirm_title": "Xác nhận — lưu ký ức này",
+    "confirm": "Xác nhận",
+    "reject_title": "Từ chối — bỏ ký ức này",
+    "reject": "Từ chối"
+  },
+  "output": {
+    "sent_to_editor": "Đã gửi tới trình soạn thảo",
+    "code": "Mã ({{lang}})",
+    "text": "Văn bản",
+    "copied": "Đã sao chép",
+    "copy": "Sao chép",
+    "to_editor": "Tới trình soạn thảo",
+    "save": "Lưu"
   }
 }

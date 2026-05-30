@@ -111,5 +111,60 @@
     "consent_desc": "音声モードは音声認識のためにマイクを使用します。再生のため音声は最大48時間保存される場合があります。音声データはいつでも設定から削除できます。",
     "cancel": "キャンセル",
     "continue": "続行"
+  },
+  "message": {
+    "edit_hint": "Enterで確定 · Escでキャンセル · Shift+Enterで改行",
+    "cancel_title": "キャンセル (Esc)",
+    "cancel": "キャンセル",
+    "confirm_title": "確定 (Enter)",
+    "save": "保存",
+    "edit_message": "メッセージを編集",
+    "delete_message": "メッセージを削除",
+    "copied": "クリップボードにコピーしました",
+    "copied_markdown": "Markdownとしてコピーしました",
+    "sent_to_editor": "エディタに送信しました — 章を開いて貼り付け",
+    "ttft": "最初のトークンまでの時間",
+    "copy": "コピー",
+    "regenerate": "再生成",
+    "more_actions": "その他の操作",
+    "copy_markdown": "Markdownをコピー",
+    "send_to_editor": "エディタに送信"
+  },
+  "tools": {
+    "title": "この返信で使用したツール",
+    "label": {
+      "memory_search": "🔍 メモリを検索",
+      "memory_recall_entity": "📚 エンティティを呼び出し",
+      "memory_timeline": "📅 タイムラインを確認",
+      "memory_remember": "📝 メモを記録",
+      "memory_forget": "🗑 事実を削除"
+    },
+    "step": "ステップ{{n}}",
+    "ok": "成功",
+    "failed": "失敗"
+  },
+  "facts": {
+    "type": {
+      "decision": "決定",
+      "preference": "好み",
+      "milestone": "マイルストーン",
+      "negation": "訂正"
+    },
+    "confirm_failed": "確認に失敗しました",
+    "reject_failed": "拒否に失敗しました",
+    "title": "確認待ちの記憶",
+    "confirm_title": "確認 — この記憶を保存",
+    "confirm": "確認",
+    "reject_title": "拒否 — この記憶を破棄",
+    "reject": "拒否"
+  },
+  "output": {
+    "sent_to_editor": "エディタに送信しました",
+    "code": "コード ({{lang}})",
+    "text": "テキスト",
+    "copied": "コピーしました",
+    "copy": "コピー",
+    "to_editor": "エディタへ",
+    "save": "保存"
   }
 }

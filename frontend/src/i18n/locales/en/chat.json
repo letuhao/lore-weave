@@ -111,5 +111,60 @@
     "consent_desc": "Voice mode will use your microphone for speech recognition. Audio may be stored for up to 48 hours to enable replay. You can delete all voice data anytime from Settings.",
     "cancel": "Cancel",
     "continue": "Continue"
+  },
+  "message": {
+    "edit_hint": "Enter to confirm · Esc to cancel · Shift+Enter new line",
+    "cancel_title": "Cancel (Esc)",
+    "cancel": "Cancel",
+    "confirm_title": "Confirm (Enter)",
+    "save": "Save",
+    "edit_message": "Edit message",
+    "delete_message": "Delete message",
+    "copied": "Copied to clipboard",
+    "copied_markdown": "Copied as markdown",
+    "sent_to_editor": "Sent to editor — open a chapter to paste",
+    "ttft": "Time to first token",
+    "copy": "Copy",
+    "regenerate": "Regenerate",
+    "more_actions": "More actions",
+    "copy_markdown": "Copy Markdown",
+    "send_to_editor": "Send to Editor"
+  },
+  "tools": {
+    "title": "Tools used in this reply",
+    "label": {
+      "memory_search": "🔍 Searched memory",
+      "memory_recall_entity": "📚 Recalled an entity",
+      "memory_timeline": "📅 Checked the timeline",
+      "memory_remember": "📝 Noted a memory",
+      "memory_forget": "🗑 Forgot a fact"
+    },
+    "step": "step {{n}}",
+    "ok": "ok",
+    "failed": "failed"
+  },
+  "facts": {
+    "type": {
+      "decision": "Decision",
+      "preference": "Preference",
+      "milestone": "Milestone",
+      "negation": "Correction"
+    },
+    "confirm_failed": "Confirm failed",
+    "reject_failed": "Reject failed",
+    "title": "Memories awaiting your confirmation",
+    "confirm_title": "Confirm — save this memory",
+    "confirm": "Confirm",
+    "reject_title": "Reject — discard this memory",
+    "reject": "Reject"
+  },
+  "output": {
+    "sent_to_editor": "Sent to editor",
+    "code": "Code ({{lang}})",
+    "text": "Text",
+    "copied": "Copied",
+    "copy": "Copy",
+    "to_editor": "To Editor",
+    "save": "Save"
   }
 }
