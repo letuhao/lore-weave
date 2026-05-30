@@ -63,17 +63,27 @@
 > *reachable* (`Plain` 0→55 with Equatorial orientation), render shows a tundra cap
 > → boreal → tropical gradient. #045 cleared.
 >
-> **Honest residual → #046:** Temperate stays only ~1–2 % because it is a wet-**mild**
-> maritime climate (Cfb) that the single prevailing-wind moisture march under-produces
-> (interiors dry → Arid/Boreal). Two non-seasonality levers: (a) richer
-> moisture-transport model (wetter interiors); (b) the `Northern` default makes the
-> south hemisphere warm.
+> **MOISTURE-TRANSPORT model (#046) — SHIPPED.** Rewrote `moisture_field` from
+> **averaging** upwind neighbours to **MAX best-path** downwind-directed multi-source
+> transport (a cell takes the wettest upwind route from any upwind sea; wind-aware,
+> so offshore coasts stay dry and range rain-shadows persist). Plan:
+> [`docs/plans/2026-05-31-moisture-transport-model.md`](../../plans/2026-05-31-moisture-transport-model.md).
+> Full lib 399 green, clippy-clean, `/review-impl` no HIGH/MED. **Result (seed-7 mega):**
+> interiors greener, C-group ~doubled in the full-gradient case (equatorial spread=1:
+> 2.2→3.9 %, `Plain` 55→98), Desert preserved 30.7 % at spread=0; bonus — maritime
+> cooling raised Tundra/Polar (126→375). The full tundra-cap→boreal→desert→tropical
+> gradient renders. #046 cleared.
 >
-> **TOP NEXT (PO-chosen): #046 — MOISTURE-TRANSPORT model.** A multi-directional /
-> onshore-flow moisture model (or weaker `land_leak`) so continental interiors stay
-> wetter → abundant wet-mild Temperate, completing the latitudinal gradient. Then
-> optionally: flip `continent_latitude_spread` default on; review/merge PR #13;
-> Köppen 19-subtype palette.
+> **CLIMATE ARC COMPLETE.** Three biome-variety levers shipped this session, all
+> compounding: Köppen desert fix (`7b4dc786`) → continent-latitude placement
+> (`1cd2c038`) → v2 seasonality (`42723e7e`) → moisture transport (this commit).
+> Optional remaining lever: **#047** (8-zone mapping Dfa/Dfb→Temperate) for abundant
+> literal temperate-*plains* — a classifier choice, not yet chosen.
+>
+> **TOP NEXT (PO-chosen): review / merge PR #13 to `main`.** The branch has
+> accumulated a large body of work (SDK refactor + C3 world-hierarchy arc + the full
+> climate arc above). Consolidate before opening a new direction. Then optionally:
+> flip `continent_latitude_spread` default on; #047 mapping; Köppen 19-subtype palette.
 >
 > ---
 >

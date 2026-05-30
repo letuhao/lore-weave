@@ -328,6 +328,16 @@ fn lerp(a: f32, b: f32, t: f32) -> f32 {
 /// little moisture: a dry rain shadow. Deterministic: a total-ordered downwind
 /// sweep (`f32::total_cmp` on the wind projection, ties broken by cell index).
 ///
+/// **#046 (2026-05-31) — downwind-directed multi-source transport.** Each land
+/// cell takes the **MAX** over its upwind neighbours of the moisture they deliver
+/// (their value minus the overland leak and the orographic climb from *that*
+/// neighbour), rather than the average. Averaging diluted the wettest route, so a
+/// cell near an upwind coast in a non-primary direction dried out into desert; the
+/// MAX lets moisture reach deep inland along the wettest path from *any* upwind sea
+/// (multi-directional within the upwind cone) while staying wind-aware — moisture
+/// only flows downwind, so an offshore-wind coast supplies nothing and rain shadows
+/// behind ranges persist (all upwind paths are shadowed).
+///
 /// Output is a pure horizontal-transport factor `[0,1]`: the Köppen path
 /// multiplies the latitude circulation base (mm) by it, so a wet-latitude coast
 /// keeps its full circulation precip while a deep interior or lee dries out.
@@ -383,30 +393,29 @@ fn moisture_field(
             continue;
         }
         let proj_i = proj(i);
-        let mut sum_moist = 0.0f32;
-        let mut sum_elev = 0.0f32;
-        let mut count = 0u32;
+        // Best (wettest) upwind path: MAX over upwind neighbours of the moisture
+        // each delivers after the overland leak + the orographic climb from *that*
+        // neighbour (#046). MAX, not an average, so the wettest route from any
+        // upwind sea reaches inland instead of being diluted by drier neighbours.
+        let mut best = f32::NEG_INFINITY;
         for &nb in &neighbors[i] {
             let nb = nb as usize;
             if proj(nb) < proj_i {
-                sum_moist += moisture[nb];
-                sum_elev += f32::from(elevation[nb]);
-                count += 1;
+                let climb =
+                    ((f32::from(elevation[i]) - f32::from(elevation[nb])) / 65535.0).max(0.0);
+                let delivered = moisture[nb] - land_leak - OROGRAPHIC * climb;
+                best = best.max(delivered);
             }
         }
-        // A windward-edge land cell has no upwind neighbour — air arrives
-        // from the off-map ocean, fully moist.
-        let incoming = if count > 0 { sum_moist / count as f32 } else { 1.0 };
-        let up_elev = if count > 0 {
-            sum_elev / count as f32
+        moisture[i] = if best > f32::NEG_INFINITY {
+            best.max(0.0)
         } else {
-            // Windward-edge cell: the air crossed the off-map ocean, so it
-            // was at sea level — a coastal mountain still self-shadows.
-            f32::from(sea_level)
+            // Windward-edge land cell: no upwind neighbour — the air crossed the
+            // off-map ocean (fully moist) and only self-shadows on its own climb
+            // up from sea level.
+            let climb = ((f32::from(elevation[i]) - f32::from(sea_level)) / 65535.0).max(0.0);
+            (1.0 - OROGRAPHIC * climb).max(0.0)
         };
-        let climb = ((f32::from(elevation[i]) - up_elev) / 65535.0).max(0.0);
-        let loss = OROGRAPHIC * climb + land_leak;
-        moisture[i] = (incoming - loss).max(0.0);
     }
     moisture
 }
@@ -660,5 +669,36 @@ mod tests {
         let east = moisture_field(&centers, &elevation, sea, &neighbors, PrevailingWind::East);
         assert!(east[3] > east[1], "E wind: windward {} <= lee {}", east[3], east[1]);
         assert!(east[1] < 0.1, "E wind: rain shadow did not flip, got {}", east[1]);
+    }
+
+    #[test]
+    fn moisture_takes_wettest_upwind_path() {
+        // **#046 headline.** A cell fed by two upwind routes — one wet (straight
+        // off the sea) and one dry (over a tall ridge) — must inherit the WET
+        // route (MAX), not be dragged to the average. This is what carries
+        // moisture inland along the wettest path instead of drying every
+        // multi-neighbour interior cell.
+        //
+        // Layout (West wind, proj = lon): [0] sea at lon −0.9; [1] lowland and
+        // [2] a tall ridge both at lon −0.45 (so both are upwind of [3]); [3]
+        // lowland at lon 0 with upwind neighbours {1, 2}.
+        let p = |lon: f32, lat: f32| [lat.cos() * lon.cos(), lat.cos() * lon.sin(), lat.sin()];
+        let centers = vec![p(-0.9, 0.0), p(-0.45, 0.1), p(-0.45, -0.1), p(0.0, 0.0)];
+        let sea = 10_000u16;
+        let elevation = vec![5_000u16, 15_000, 60_000, 15_000];
+        let neighbors = vec![vec![1u32, 2], vec![0, 3], vec![0, 3], vec![1, 2]];
+
+        let m = moisture_field(&centers, &elevation, sea, &neighbors, PrevailingWind::West);
+        // [1] wet (straight off the sea), [2] dry (climbed the ridge).
+        assert!(m[1] > 0.2, "windward lowland should be moist, got {}", m[1]);
+        assert!(m[2] < 0.05, "ridge should be wrung dry, got {}", m[2]);
+        // [3] must follow the wet route [1], not the average of [1] and the dry
+        // [2] (an average would land near m[1]/2; MAX keeps it close to m[1]).
+        assert!(
+            m[3] > 0.7 * m[1],
+            "downwind cell took the average, not the wettest path: m[3]={} m[1]={} m[2]={}",
+            m[3], m[1], m[2]
+        );
+        assert!(m[3] > m[2] + 0.15, "downwind cell dragged toward the dry ridge");
     }
 }
