@@ -40,12 +40,33 @@ export interface InspectorPayload {
   placementsAtTile: TilemapObjectPlacement[];
   roadHits: number;
   riverHit: { kind: 'tile' | 'bridge' | 'ford' } | null;
+  /** TMP-Q4 chunk B — per-book value-band thresholds copied from the
+   *  rendered tilemap's `registry_ref`. `null` when the registry omits
+   *  the field; the inspector + badge stamper fall back to
+   *  VALUE_BAND_DEFAULTS in that case. */
+  valueBandThresholds: readonly [number, number, number, number] | null;
 }
 
 export interface ViewerState {
   visibleLayers: Record<ViewerLayer, boolean>;
   setLayer: (layer: ViewerLayer, visible: boolean) => void;
   resetLayers: () => void;
+
+  /** TMP-Q3 chunk A — Stage-1 smooth-blend post-processing on the
+   *  foundation layer. `true` (default) enables a low-strength Phaser
+   *  Blur filter; `false` falls back to V0 hard-pixel rendering for
+   *  debug / perf comparison. Chunk B replaces the Blur with a custom
+   *  cross-tile shader gated by the same flag. */
+  blendEnabled: boolean;
+  setBlendEnabled: (enabled: boolean) => void;
+
+  /** TMP-Q4 chunk C — zone-tier treasure-band canvas overlay. Default
+   *  OFF: the overlay is an at-a-glance design review aid, not a
+   *  default-on visual. When true, WorldScene's overlay-rt paints each
+   *  zone's `assigned_tiles` mask with its max-tier band color at
+   *  alpha=0.18. Independent of `blendEnabled` and L0..L7 toggles. */
+  showTreasureBands: boolean;
+  setShowTreasureBands: (enabled: boolean) => void;
 
   /** Last clicked tile (null = inspector closed). */
   inspector: InspectorPayload | null;
@@ -116,6 +137,11 @@ function lookupAt(
     }
   }
 
+  // TMP-Q4 chunk B — surface the per-book value-band scale to the
+  // inspector. `null` when the registry omits the field; the inspector's
+  // `pickValueBand` call applies VALUE_BAND_DEFAULTS in that case.
+  const valueBandThresholds = view.registry_ref?.value_band_thresholds ?? null;
+
   return {
     tile,
     terrainKind,
@@ -124,6 +150,7 @@ function lookupAt(
     placementsAtTile,
     roadHits,
     riverHit,
+    valueBandThresholds,
   };
 }
 
@@ -134,6 +161,12 @@ export const useViewerStore = create<ViewerState>((set) => ({
       visibleLayers: { ...s.visibleLayers, [layer]: visible },
     })),
   resetLayers: () => set({ visibleLayers: { ...DEFAULT_VISIBLE } }),
+
+  blendEnabled: true,
+  setBlendEnabled: (enabled) => set({ blendEnabled: enabled }),
+
+  showTreasureBands: false,
+  setShowTreasureBands: (enabled) => set({ showTreasureBands: enabled }),
 
   inspector: null,
   openInspectorFor: (tile, view) =>

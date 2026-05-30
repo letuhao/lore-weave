@@ -180,6 +180,21 @@ impl Registry {
                 "registry must define at least one object kind".into(),
             ));
         }
+        // TMP-Q4 — validate per-book value-band thresholds if set.
+        // 4 strictly-ascending u32 values; any non-ascending pair (incl.
+        // equal) is rejected so every band is non-empty.
+        if let Some(thresholds) = &file.registry.value_band_thresholds {
+            for i in 0..3 {
+                if thresholds[i] >= thresholds[i + 1] {
+                    return Err(RegistryError::Validation(format!(
+                        "value_band_thresholds must be strictly ascending; got {:?} (index {} >= {})",
+                        thresholds,
+                        i,
+                        i + 1
+                    )));
+                }
+            }
+        }
         let mut terrain_by_tag = HashMap::with_capacity(file.terrain.len());
         for def in file.terrain {
             if !is_valid_id(&def.id) {
@@ -187,6 +202,27 @@ impl Registry {
                     "invalid terrain id {:?}: must match ^[a-z][a-z0-9_:.-]*$",
                     def.id
                 )));
+            }
+            // TMP-Q3 chunk C — validate per-kind blend hints if present.
+            // Mirrors the decoration density + biome theme discipline:
+            // hints must be finite + in [0.0, 1.0]. The frontend
+            // shader clamps defensively but the BACKEND is the
+            // canonical source of truth for valid registry content.
+            if let Some(r) = def.blend_radius {
+                if !r.is_finite() || !(0.0..=1.0).contains(&r) {
+                    return Err(RegistryError::Validation(format!(
+                        "terrain {:?} blend_radius ({}) must be finite and in [0.0, 1.0]",
+                        def.id, r
+                    )));
+                }
+            }
+            if let Some(s) = def.blend_strength {
+                if !s.is_finite() || !(0.0..=1.0).contains(&s) {
+                    return Err(RegistryError::Validation(format!(
+                        "terrain {:?} blend_strength ({}) must be finite and in [0.0, 1.0]",
+                        def.id, s
+                    )));
+                }
             }
             if terrain_by_tag.contains_key(&def.id) {
                 return Err(RegistryError::Validation(format!(
@@ -438,12 +474,25 @@ impl Registry {
     /// produce a different primitive while keeping the same tag. Falls back
     /// to the static `TerrainKind::v2_cell()` defaults when an entry is
     /// absent — keeping wire shape compatible even for partial registries.
+    ///
+    /// TMP-Q3 chunk C — per-kind blend hints flow through here. When the
+    /// registry HAS an entry for a tag, that entry's `blend_radius` and
+    /// `blend_strength` are copied to the resulting `TerrainCell` —
+    /// **even if they are `None`**. The `v2_cell()` defaults (which
+    /// carry the `lw:` demo hints for water + mountain) are used ONLY
+    /// when the registry has no entry for that tag at all. This means
+    /// a per-book registry that overrides `lw:water` without declaring
+    /// hints opts into `STAGE2_BLEND_DEFAULTS`, not the lw: aesthetic.
+    /// See `per_book_override_without_blend_hints_drops_v2_cell_defaults`
+    /// for the locked semantic.
     pub fn build_default_terrain_vocabulary(&self) -> Vec<crate::types::tile::TerrainCell> {
         use crate::types::tile::TerrainKind;
         let mut vocab = Vec::with_capacity(11);
         vocab.push(crate::types::tile::TerrainCell {
             primitive: crate::types::primitive::TerrainPrimitive::Void,
             tag: "lw:void".to_string(),
+            blend_radius: None,
+            blend_strength: None,
         });
         for kind in [
             TerrainKind::Grass,
@@ -459,9 +508,26 @@ impl Registry {
         ] {
             let default_cell = kind.v2_cell();
             let cell = match self.get_terrain(&default_cell.tag) {
+                // TMP-Q3 chunk C — when the registry overrides this
+                // tag, also propagate the per-kind blend hints into
+                // the vocabulary so the frontend Stage-2 shader can
+                // pick them up. Absent hints stay None ⇒ frontend
+                // falls back to STAGE2_BLEND_DEFAULTS.
+                //
+                // LOW-1 from chunk-C /review-impl — per-book registries
+                // OWN their aesthetic. An override that doesn't declare
+                // hints opts INTO STAGE2_BLEND_DEFAULTS, NOT the lw:
+                // demo values from `v2_cell()`. To inherit lw: hints,
+                // the per-book registry must declare them explicitly.
+                // The MED-1 test
+                // `per_book_override_without_blend_hints_drops_v2_cell_defaults`
+                // pins this semantic so a future merge-rule change is
+                // a deliberate decision.
                 Some(def) => crate::types::tile::TerrainCell {
                     primitive: def.primitive,
                     tag: default_cell.tag,
+                    blend_radius: def.blend_radius,
+                    blend_strength: def.blend_strength,
                 },
                 None => default_cell,
             };
@@ -829,6 +895,277 @@ label = "Treasure"
         let ids: Vec<&str> = reg.biome_ids().collect();
         assert!(ids.is_empty(),
             "biome_ids() iterator must be empty for biome-less registry");
+    }
+
+    // TMP-Q3 chunk C — per-kind blend hint validation.
+    #[test]
+    fn registry_rejects_blend_radius_out_of_range() {
+        for (label, bad_value) in [
+            ("negative", "-0.1"),
+            ("above-one", "1.1"),
+            ("nan", "nan"),
+            ("inf", "inf"),
+        ] {
+            let toml = format!(r#"
+[registry]
+id = "test"
+version = "0.0.1"
+
+[[terrain]]
+id = "test:bad"
+primitive = "land"
+label = "Bad"
+blend_radius = {bad_value}
+
+[[object]]
+id = "test:obj"
+primitive = "pickup"
+label = "Obj"
+"#);
+            let err = Registry::from_toml_str(&toml).expect_err(
+                &format!("expected {label} blend_radius ({bad_value}) to fail registry-load"));
+            match err {
+                RegistryError::Validation(msg) => {
+                    assert!(msg.contains("blend_radius"),
+                        "[{label}] msg missing 'blend_radius': {msg}");
+                    assert!(msg.contains("[0.0, 1.0]") || msg.contains("finite"),
+                        "[{label}] msg missing range hint: {msg}");
+                }
+                other => panic!("[{label}] expected Validation, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn registry_rejects_blend_strength_out_of_range() {
+        for (label, bad_value) in [("negative", "-0.5"), ("above-one", "2.0"), ("nan", "nan")] {
+            let toml = format!(r#"
+[registry]
+id = "test"
+version = "0.0.1"
+
+[[terrain]]
+id = "test:bad"
+primitive = "land"
+label = "Bad"
+blend_strength = {bad_value}
+
+[[object]]
+id = "test:obj"
+primitive = "pickup"
+label = "Obj"
+"#);
+            let err = Registry::from_toml_str(&toml).expect_err(
+                &format!("expected {label} blend_strength ({bad_value}) to fail"));
+            match err {
+                RegistryError::Validation(msg) => {
+                    assert!(msg.contains("blend_strength"),
+                        "[{label}] msg missing 'blend_strength': {msg}");
+                }
+                other => panic!("[{label}] expected Validation, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn registry_rejects_non_ascending_value_band_thresholds() {
+        // TMP-Q4 AC-VBT-7 — non-strictly-ascending thresholds reject at
+        // registry load. Each band must be non-empty.
+        for (label, bad_array) in [
+            ("equal pair (i0=i1)", "[500, 500, 5000, 12000]"),
+            ("descending pair (i1>i2)", "[500, 2000, 1500, 12000]"),
+            ("descending pair (i2>i3)", "[500, 2000, 5000, 4000]"),
+            ("all equal", "[100, 100, 100, 100]"),
+        ] {
+            let toml = format!(r#"
+[registry]
+id = "test"
+version = "0.0.1"
+value_band_thresholds = {bad_array}
+
+[[terrain]]
+id = "test:t"
+primitive = "land"
+label = "T"
+
+[[object]]
+id = "test:obj"
+primitive = "pickup"
+label = "Obj"
+"#);
+            let err = Registry::from_toml_str(&toml).expect_err(
+                &format!("expected {label} thresholds to fail"));
+            match err {
+                RegistryError::Validation(msg) => {
+                    assert!(msg.contains("value_band_thresholds") && msg.contains("ascending"),
+                        "[{label}] msg missing keywords: {msg}");
+                }
+                other => panic!("[{label}] expected Validation, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn registry_accepts_strictly_ascending_value_band_thresholds() {
+        // TMP-Q4 AC-VBT-7 — strictly ascending thresholds load + flow
+        // through to RegistryRef.
+        let toml = r#"
+[registry]
+id = "xianxia"
+version = "1.0.0"
+value_band_thresholds = [1000, 5000, 15000, 50000]
+
+[[terrain]]
+id = "test:t"
+primitive = "land"
+label = "T"
+
+[[object]]
+id = "test:obj"
+primitive = "pickup"
+label = "Obj"
+"#;
+        let reg = Registry::from_toml_str(toml).expect("must load");
+        assert_eq!(
+            reg.reference().value_band_thresholds,
+            Some([1_000, 5_000, 15_000, 50_000])
+        );
+    }
+
+    #[test]
+    fn registry_loads_without_value_band_thresholds() {
+        // TMP-Q4 LOW-2 — backward compat: a pre-Q4 TOML without the
+        // field loads with `value_band_thresholds = None`.
+        let toml = r#"
+[registry]
+id = "test"
+version = "0.0.1"
+
+[[terrain]]
+id = "test:t"
+primitive = "land"
+label = "T"
+
+[[object]]
+id = "test:obj"
+primitive = "pickup"
+label = "Obj"
+"#;
+        let reg = Registry::from_toml_str(toml).expect("must load");
+        assert_eq!(reg.reference().value_band_thresholds, None);
+    }
+
+    #[test]
+    fn registry_accepts_blend_hints_at_boundaries() {
+        // 0.0 and 1.0 are inclusive — 0.0 effectively disables blend
+        // for that kind via the shader's clamp; 1.0 maxes it out.
+        let toml = r#"
+[registry]
+id = "test"
+version = "0.0.1"
+
+[[terrain]]
+id = "test:zero"
+primitive = "land"
+label = "Zero"
+blend_radius = 0.0
+blend_strength = 1.0
+
+[[object]]
+id = "test:obj"
+primitive = "pickup"
+label = "Obj"
+"#;
+        let reg = Registry::from_toml_str(toml).expect("boundary values must load");
+        let def = reg.get_terrain("test:zero").unwrap();
+        assert_eq!(def.blend_radius, Some(0.0));
+        assert_eq!(def.blend_strength, Some(1.0));
+    }
+
+    #[test]
+    fn per_book_override_without_blend_hints_drops_v2_cell_defaults() {
+        // MED-1 fix from chunk-C /review-impl: when a per-book registry
+        // overrides a `lw:` tag (e.g. xianxia replaces lw:water) but
+        // does NOT declare its own blend hints, the resulting
+        // TerrainCell carries `None` — NOT the lw: demo defaults from
+        // `v2_cell()`. Per-book registries own their aesthetic.
+        //
+        // Locking this with a test means a future change to
+        // `build_default_terrain_vocabulary`'s merge semantics (e.g.,
+        // inherit-on-None) is a deliberate decision, not a quiet drift.
+        let toml = r#"
+[registry]
+id = "test"
+version = "0.0.1"
+
+[[terrain]]
+id = "lw:water"
+primitive = "water"
+label = "Per-book water override (no hints)"
+
+[[terrain]]
+id = "lw:grass"
+primitive = "land"
+label = "Grass"
+
+[[object]]
+id = "test:obj"
+primitive = "pickup"
+label = "Obj"
+"#;
+        let reg = Registry::from_toml_str(toml).expect("registry must load");
+        let vocab = reg.build_default_terrain_vocabulary();
+        // Water is index 4 (V1 enum order). Per-book override → None
+        // hints, NOT the lw: demo (0.95 / 0.55) from `v2_cell()`.
+        let water = &vocab[4];
+        assert_eq!(water.tag, "lw:water");
+        assert_eq!(water.primitive, crate::types::primitive::TerrainPrimitive::Water,
+            "primitive comes from the per-book def");
+        assert!(water.blend_radius.is_none(),
+            "per-book override without explicit hints must NOT inherit lw: v2_cell hints");
+        assert!(water.blend_strength.is_none(),
+            "per-book override without explicit hints must NOT inherit lw: v2_cell hints");
+    }
+
+    #[test]
+    fn build_default_terrain_vocabulary_carries_blend_hints() {
+        // TMP-Q3 chunk C — the wire-up from TerrainKindDef → TerrainCell.
+        // When the loaded registry has per-kind hints, the
+        // vocabulary entries the frontend sees must carry them.
+        let toml = r#"
+[registry]
+id = "test"
+version = "0.0.1"
+
+[[terrain]]
+id = "lw:water"
+primitive = "water"
+label = "Water"
+blend_radius = 0.95
+blend_strength = 0.45
+
+[[terrain]]
+id = "lw:grass"
+primitive = "land"
+label = "Grass"
+
+[[object]]
+id = "test:obj"
+primitive = "pickup"
+label = "Obj"
+"#;
+        let reg = Registry::from_toml_str(toml).expect("registry must load");
+        let vocab = reg.build_default_terrain_vocabulary();
+        // Water is index 4 (V1 enum order).
+        let water = &vocab[4];
+        assert_eq!(water.tag, "lw:water");
+        assert_eq!(water.blend_radius, Some(0.95));
+        assert_eq!(water.blend_strength, Some(0.45));
+        // Grass (index 1) has no hints declared — None.
+        let grass = &vocab[1];
+        assert_eq!(grass.tag, "lw:grass");
+        assert!(grass.blend_radius.is_none());
+        assert!(grass.blend_strength.is_none());
     }
 
     #[test]

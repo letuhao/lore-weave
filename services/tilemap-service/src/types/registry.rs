@@ -93,6 +93,22 @@ pub struct TerrainKindDef {
     /// keys they understand. See ADR §2.1.1 for conventions.
     #[serde(default = "default_properties")]
     pub properties: JsonValue,
+    /// TMP-Q3 chunk C — per-book cross-tile-blend shader hint.
+    /// Kernel half-radius as a fraction of `uTilePx/2` in the
+    /// frontend Stage-2 shader. Range `[0.0, 1.0]`, finite. When
+    /// `None`, the frontend uses `STAGE2_BLEND_DEFAULTS.blendRadius`.
+    /// Authors set this per-kind to tune how aggressively a terrain
+    /// blurs at its edges (water=softer, mountain=sharper). Additive
+    /// Option pattern preserves V2 byte-identical output when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blend_radius: Option<f32>,
+    /// TMP-Q3 chunk C — per-book cross-tile-blend shader hint.
+    /// Mix factor at the tile EDGE in the frontend Stage-2 shader.
+    /// Range `[0.0, 1.0]`, finite. When `None`, the frontend uses
+    /// `STAGE2_BLEND_DEFAULTS.blendStrength`. Higher = more visible
+    /// crossfade between this terrain and its neighbors.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blend_strength: Option<f32>,
 }
 
 /// Per-tag object definition. Loaded from registry TOML.
@@ -171,13 +187,69 @@ pub struct RegistryRef {
     pub id: String,
     /// Semver-ish version. Bumped on schema-breaking changes.
     pub version: String,
+    /// TMP-Q4 — per-book value-band thresholds (ascending). 4 values
+    /// = 5 bands (low / low-mid / mid / high / gilt). When `None`,
+    /// the frontend falls back to `VALUE_BAND_DEFAULTS =
+    /// [500, 2000, 5000, 12000]`. Validated at `Registry::from_file`:
+    /// strictly ascending, no duplicates. Per-book registries OWN
+    /// their value scale — a xianxia book with high-end qi-stones at
+    /// 50k can override the defaults so its top tier maps to "gilt".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value_band_thresholds: Option<[u32; 4]>,
 }
 
 impl RegistryRef {
     pub fn new(id: impl Into<String>, version: impl Into<String>) -> Self {
-        Self { id: id.into(), version: version.into() }
+        Self {
+            id: id.into(),
+            version: version.into(),
+            value_band_thresholds: None,
+        }
+    }
+
+    /// TMP-Q4 builder for tests + per-book registries that set bands.
+    ///
+    /// **MED-2 from chunk-A /review-impl** — the builder validates the
+    /// strict-ascending invariant up-front so production callers (and
+    /// tests that bypass `Registry::from_file`) can't put invalid bands
+    /// on the wire. Same check as `Registry::from_file` runs against the
+    /// loaded TOML, so the two paths cannot diverge.
+    pub fn with_value_band_thresholds(
+        mut self,
+        thresholds: [u32; 4],
+    ) -> Result<Self, ValueBandThresholdsError> {
+        for i in 0..3 {
+            if thresholds[i] >= thresholds[i + 1] {
+                return Err(ValueBandThresholdsError {
+                    thresholds,
+                    bad_index: i,
+                });
+            }
+        }
+        self.value_band_thresholds = Some(thresholds);
+        Ok(self)
     }
 }
+
+/// TMP-Q4 MED-2 — surfaced when a builder caller passes a non-strictly-
+/// ascending `value_band_thresholds` array.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValueBandThresholdsError {
+    pub thresholds: [u32; 4],
+    pub bad_index: usize,
+}
+
+impl std::fmt::Display for ValueBandThresholdsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "value_band_thresholds must be strictly ascending; got {:?} (index {} >= {})",
+            self.thresholds, self.bad_index, self.bad_index + 1
+        )
+    }
+}
+
+impl std::error::Error for ValueBandThresholdsError {}
 
 #[cfg(test)]
 mod tests {
@@ -310,10 +382,68 @@ walkability_pattern = { mask = [true, false, false, false] }
             primitive: TerrainPrimitive::Water,
             label: "Water".to_string(),
             properties: json!({ "depth": "shallow" }),
+            blend_radius: None,
+            blend_strength: None,
         };
         let s = serde_json::to_string(&def).unwrap();
         let back: TerrainKindDef = serde_json::from_str(&s).unwrap();
         assert_eq!(def, back);
+    }
+
+    // TMP-Q3 chunk C — round-trip + skip-serializing tests for the
+    // optional per-kind shader hints.
+    #[test]
+    fn terrain_kind_def_deserializes_without_blend_fields() {
+        // Pre-Q3 wire shape: no blend_radius / blend_strength → both
+        // default to None.
+        let toml_text = r#"
+id = "lw:grass"
+primitive = "land"
+label = "Grass"
+"#;
+        let def: TerrainKindDef = toml::from_str(toml_text).unwrap();
+        assert!(def.blend_radius.is_none(),
+            "missing blend_radius must serde-default to None");
+        assert!(def.blend_strength.is_none(),
+            "missing blend_strength must serde-default to None");
+    }
+
+    #[test]
+    fn terrain_kind_def_round_trips_with_blend_hints() {
+        let def = TerrainKindDef {
+            id: "lw:water".to_string(),
+            primitive: TerrainPrimitive::Water,
+            label: "Water".to_string(),
+            properties: json!({}),
+            blend_radius: Some(0.95),
+            blend_strength: Some(0.45),
+        };
+        let s = serde_json::to_string(&def).unwrap();
+        assert!(s.contains("blend_radius"),
+            "Some(_) blend_radius must be serialized: {s}");
+        assert!(s.contains("0.95"));
+        let back: TerrainKindDef = serde_json::from_str(&s).unwrap();
+        assert_eq!(def, back);
+    }
+
+    #[test]
+    fn terrain_kind_def_skip_serializing_when_blend_none() {
+        // Wire-shape invariant: None values must be ABSENT from JSON.
+        // Locks the V2 byte-identical contract — pre-Q3 consumers
+        // continue to see the same wire shape against default templates.
+        let def = TerrainKindDef {
+            id: "lw:grass".to_string(),
+            primitive: TerrainPrimitive::Land,
+            label: "Grass".to_string(),
+            properties: json!({}),
+            blend_radius: None,
+            blend_strength: None,
+        };
+        let s = serde_json::to_string(&def).unwrap();
+        assert!(!s.contains("blend_radius"),
+            "None blend_radius must NOT appear in JSON (skip_serializing_if discipline): {s}");
+        assert!(!s.contains("blend_strength"),
+            "None blend_strength must NOT appear in JSON: {s}");
     }
 
     #[test]
@@ -325,5 +455,58 @@ label = "Wall"
 "#;
         let def: TerrainKindDef = toml::from_str(toml_text).unwrap();
         assert_eq!(def.properties, json!({}));
+    }
+
+    #[test]
+    fn registry_ref_round_trips_with_value_band_thresholds() {
+        // TMP-Q4 AC-VBT-7 — a per-book registry that declares custom
+        // value-band thresholds round-trips through JSON.
+        let r = RegistryRef::new("xianxia", "1.0.0")
+            .with_value_band_thresholds([1_000, 5_000, 15_000, 50_000])
+            .expect("ascending thresholds must build");
+        let s = serde_json::to_string(&r).unwrap();
+        assert!(s.contains("\"value_band_thresholds\":[1000,5000,15000,50000]"),
+            "thresholds must appear on wire: {s}");
+        let back: RegistryRef = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.value_band_thresholds, Some([1_000, 5_000, 15_000, 50_000]));
+    }
+
+    #[test]
+    fn registry_ref_builder_rejects_non_ascending_thresholds() {
+        // TMP-Q4 MED-2 — the builder is just as strict as
+        // `Registry::from_file`. Invalid arrays return Err instead of
+        // silently shipping bad bands to the frontend.
+        for (label, bad) in [
+            ("equal pair", [500, 500, 5_000, 12_000]),
+            ("descending mid", [500, 2_000, 1_500, 12_000]),
+            ("descending tail", [500, 2_000, 5_000, 4_000]),
+        ] {
+            let err = RegistryRef::new("bad", "1.0.0")
+                .with_value_band_thresholds(bad)
+                .expect_err(&format!("[{label}] {bad:?} must reject"));
+            assert!(
+                err.to_string().contains("ascending"),
+                "[{label}] error message must mention 'ascending'; got {err}",
+            );
+        }
+    }
+
+    #[test]
+    fn registry_ref_skip_serializes_thresholds_when_none() {
+        // TMP-Q4 AC-VBT-1 — a registry without thresholds preserves V2
+        // byte-identical wire (no spurious `"value_band_thresholds":null`).
+        let r = RegistryRef::new("lw", "1.0.0");
+        let s = serde_json::to_string(&r).unwrap();
+        assert!(!s.contains("value_band_thresholds"),
+            "None must be skipped: {s}");
+    }
+
+    #[test]
+    fn registry_ref_deserializes_pre_q4_fixture_without_thresholds() {
+        // TMP-Q4 LOW-2 — pre-Q4 wire JSON without `value_band_thresholds`
+        // round-trips via `#[serde(default)]` to None.
+        let json = r#"{"id":"lw","version":"1.0.0"}"#;
+        let r: RegistryRef = serde_json::from_str(json).unwrap();
+        assert_eq!(r.value_band_thresholds, None);
     }
 }

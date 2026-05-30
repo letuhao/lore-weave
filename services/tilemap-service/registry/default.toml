@@ -35,6 +35,10 @@ label = "Mountain Slope"
 # Mountain TERRAIN is walkable (slope); mountain OBSTACLE is
 # `lw:obstacle.mountain` (Blocker peak).
 properties = { movement_speed = 0.5, elevation = "high" }
+# TMP-Q3 chunk C — mountain uses a sharper blend (smaller kernel +
+# less mix) so rocky cliff edges stay crisp at tile boundaries.
+blend_radius = 0.55
+blend_strength = 0.45
 
 [[terrain]]
 id = "lw:water"
@@ -42,6 +46,12 @@ primitive = "water"
 label = "Water"
 # Bridges/fords cross via L1/L2 overlay placements.
 properties = { depth = "shallow" }
+# TMP-Q3 chunk C — water uses a softer blend edge so coastal
+# tile boundaries feather into adjacent land. blend_radius is
+# higher (kernel reaches further out from tile center); blend_strength
+# slightly lower to keep tile centers readable as "water".
+blend_radius = 0.95
+blend_strength = 0.55
 
 [[terrain]]
 id = "lw:sand"

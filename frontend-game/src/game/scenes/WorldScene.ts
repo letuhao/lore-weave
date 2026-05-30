@@ -4,6 +4,7 @@ import { TILE_PX } from '../config/constants';
 import { Player } from '../entities/Player';
 import { InputSystem } from '../systems/input-system';
 import { TERRAIN_TILESET_KEY } from './PreloaderScene';
+import { applyBlendFilterV2 } from '../render/foundation-blend';
 import { buildObjectOverlay, type ObjectOverlayHandle } from '../render/object-overlay';
 import { buildOverlayRt, type OverlayRtHandle } from '../render/overlay-rt';
 import {
@@ -128,7 +129,47 @@ export class WorldScene extends Phaser.Scene {
       }
       this.foundationDisplay = std;
     }
+
+    // TMP-Q3 chunk A — Stage-1 smooth-blend polish. Reads viewer-store
+    // `blendEnabled` flag (default true). Wraps in try/catch so a
+    // Phaser-version skew or missing WebGL extension falls back to the
+    // V0 hard-pixel rendering without breaking the scene.
+    this.applyBlendFilter();
   }
+
+  /** TMP-Q3 chunk A — apply / remove the Stage-1 Blur filter on the
+   *  foundation display based on the viewer-store `blendEnabled` flag.
+   *  Delegates the actual filter mutation to the pure helper in
+   *  `foundation-blend.ts` so the logic is unit-testable without
+   *  mounting Phaser. */
+  private applyBlendFilter(): void {
+    const enabled = useViewerStore.getState().blendEnabled;
+    // Phaser types declare `filters: FiltersInternalExternal | null` —
+    // narrower than our duck-typed surface. Cast via unknown because
+    // we only call the optional members the helper actually invokes.
+    const target = this.foundationDisplay as unknown as Parameters<
+      typeof applyBlendFilterV2
+    >[0];
+    // TMP-Q3 chunk C — read the currently-cached TilemapView so the
+    // V2 helper can pick per-kind blend hints from the vocabulary.
+    // Cached view may be undefined during the initial fallback render;
+    // that's fine — V2 helper just uses STAGE2_BLEND_DEFAULTS.
+    const view = getLatestTilemap() ?? undefined;
+    // Try Stage 2 custom shader first. The V2 helper internally falls
+    // back to Stage 1 Blur on shader-register / controller-add failure,
+    // and to V0 hard edges if Stage 1 also fails.
+    const result = applyBlendFilterV2(target, enabled, this, view);
+    if (!result.ok) {
+      // eslint-disable-next-line no-console
+      console.warn('Blend filter pipeline unavailable; rendering V0 hard edges', result.error);
+      return;
+    }
+    if (result.stage === 1) {
+      // eslint-disable-next-line no-console
+      console.info('Stage-2 cross-tile blend unavailable; using Stage-1 Blur fallback');
+    }
+  }
+
 
   private renderTilemap(view: TilemapView): void {
     const w = view.grid_size.width;
@@ -182,12 +223,17 @@ export class WorldScene extends Phaser.Scene {
 
   /** Apply the current viewer-store visibility flags to all live layers. */
   private applyViewerStoreVisibility(): void {
-    const v = useViewerStore.getState().visibleLayers;
+    const state = useViewerStore.getState();
+    const v = state.visibleLayers;
     if (this.foundationDisplay && 'visible' in this.foundationDisplay) {
       (this.foundationDisplay as unknown as { visible: boolean }).visible = v.foundation;
     }
     this.overlayRt?.setRtVisible(v.paths);
     this.overlayRt?.setZoneCentersVisible(v.zone_centers);
+    // TMP-Q4 chunk C — zone-tier treasure-band overlay is independent
+    // of L0..L7 layer toggles; route the dedicated `showTreasureBands`
+    // flag straight through to the overlay-rt handle.
+    this.overlayRt?.setTreasureBandsVisible(state.showTreasureBands);
     this.zoneBoundary?.setVisible(v.zone_boundaries);
     this.objectOverlay?.setEnabled(v.objects);
     if (this.player) {
@@ -199,8 +245,17 @@ export class WorldScene extends Phaser.Scene {
     if (this.viewerStoreUnsubscribe) {
       this.viewerStoreUnsubscribe();
     }
+    // Track previous flag so we only re-apply the (potentially expensive)
+    // blend filter when the toggle changes — visibility-only updates skip
+    // the filter rebuild.
+    let prevBlendEnabled = useViewerStore.getState().blendEnabled;
     this.viewerStoreUnsubscribe = useViewerStore.subscribe(() => {
       this.applyViewerStoreVisibility();
+      const nextBlend = useViewerStore.getState().blendEnabled;
+      if (nextBlend !== prevBlendEnabled) {
+        prevBlendEnabled = nextBlend;
+        this.applyBlendFilter();
+      }
     });
   }
 
@@ -238,6 +293,15 @@ export class WorldScene extends Phaser.Scene {
       }
     };
     EventBus.on('player-action', this.moveHandler);
+
+    // TMP-Q3 chunk A LOW-1 fix: even on the fallback all-grass path,
+    // wire the same viewer-store visibility + toggle subscription as
+    // renderTilemap so the "Smooth blend" checkbox works when the
+    // backend stays unreachable. The fallback is shortlived (replaced
+    // when tilemap-updated fires) but the toggle should still respond
+    // for the offline-preview workflow.
+    this.applyViewerStoreVisibility();
+    this.subscribeViewerStore();
   }
 
   /**

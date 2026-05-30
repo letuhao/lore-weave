@@ -4867,11 +4867,15 @@
     },
     {
       "primitive": "land",
-      "tag": "lw:mountain"
+      "tag": "lw:mountain",
+      "blend_radius": 0.55,
+      "blend_strength": 0.45
     },
     {
       "primitive": "water",
-      "tag": "lw:water"
+      "tag": "lw:water",
+      "blend_radius": 0.95,
+      "blend_strength": 0.55
     },
     {
       "primitive": "land",
@@ -4938,6 +4942,7 @@
         "y": 16
       },
       "value": 2000,
+      "tier_index": 0,
       "primitive": "pickup",
       "tag": "lw:treasure",
       "footprint": {
@@ -4952,6 +4957,7 @@
         "y": 15
       },
       "value": 200,
+      "tier_index": 0,
       "primitive": "spawner",
       "tag": "lw:monster_lair",
       "footprint": {
@@ -4966,6 +4972,7 @@
         "y": 11
       },
       "value": 2750,
+      "tier_index": 0,
       "primitive": "pickup",
       "tag": "lw:treasure",
       "footprint": {
@@ -4980,6 +4987,7 @@
         "y": 11
       },
       "value": 275,
+      "tier_index": 0,
       "primitive": "spawner",
       "tag": "lw:monster_lair",
       "footprint": {

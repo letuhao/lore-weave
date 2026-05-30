@@ -1,6 +1,10 @@
 import Phaser from 'phaser';
 import { TILE_PX } from '../config/constants';
 import type { TilemapView } from '@/types/tilemap';
+import {
+  computeZoneBreakdown,
+  zoneIndexOfPlacement,
+} from '@/components/viewer/zone-breakdown';
 
 // L1 roads + L2 rivers + L2.5 crossings + L6 zone-center markers —
 // Strategy C (RenderTexture pre-bake) per render-strategy spec §2 C.
@@ -42,7 +46,14 @@ export interface OverlayRtHandle {
   setRtVisible(v: boolean): void;
   /** Toggle the zone-center markers Container on/off. */
   setZoneCentersVisible(v: boolean): void;
+  /** TMP-Q4 chunk C — toggle the zone-tier treasure-band overlay
+   *  (translucent fill per zone, color = max-tier band). The RT is
+   *  built once at construction; this method only flips visibility
+   *  so re-toggling is instant. */
+  setTreasureBandsVisible(v: boolean): void;
 }
+
+const TREASURE_BAND_ALPHA = 0.18;
 
 function tileCenterX(x: number): number {
   return x * TILE_PX + TILE_PX / 2;
@@ -109,6 +120,69 @@ function drawCrossings(g: Phaser.GameObjects.Graphics, view: TilemapView): void 
   }
 }
 
+/**
+ * TMP-Q4 chunk C — paint the zone-tier treasure-band overlay into `rt`.
+ *
+ * Per tile:
+ *   - look up the owning zone via `zoneIndexOfPlacement` (the same
+ *     single-source-of-truth helper the MetadataPanel breakdown
+ *     consumes — MED-1 from chunk-C self-review AND chunk-C
+ *     /review-impl round 2)
+ *   - if that zone has a treasure row in `computeZoneBreakdown`,
+ *     paint the tile at its row color with `TREASURE_BAND_ALPHA`
+ *
+ * Zones with no treasure (omitted from breakdown rows per LOW-1) are
+ * skipped naturally — `rowByZoneId.get(...)` returns undefined.
+ *
+ * Per-tile zone lookup is build-time only and stays well under 10 ms
+ * even at Continent tier (256² × ~5 zone-lookups = ~325k ops). Stepping
+ * through `zoneIndexOfPlacement` per tile means the bitmap-claim case
+ * AND the Voronoi-fallback case use EXACTLY the same attribution the
+ * breakdown does — so a placement counted under zone Z in the panel is
+ * also painted under zone Z's tint on the canvas, end-to-end. The
+ * earlier "16-tile square at center" Voronoi-fallback shortcut was
+ * removed (LOW-4 from chunk-C /review-impl): it diverged from the
+ * breakdown's Voronoi-region attribution, defeating the MED-1
+ * single-source-of-truth fix in the fallback path.
+ */
+function drawTreasureBands(
+  scene: Phaser.Scene,
+  view: TilemapView,
+  rt: Phaser.GameObjects.RenderTexture,
+): void {
+  const rows = computeZoneBreakdown(view);
+  if (rows.length === 0) return;
+  const rowByZoneId = new Map<string, (typeof rows)[number]>();
+  for (const row of rows) {
+    rowByZoneId.set(row.zone_id, row);
+  }
+
+  const g = scene.add.graphics();
+  const gridW = view.grid_size.width;
+  const gridH = view.grid_size.height;
+  // Track fillStyle changes manually so we don't redundantly set the
+  // same color on contiguous tiles. Phaser's fillStyle is cheap but
+  // not free.
+  let currentColor = -1;
+  for (let y = 0; y < gridH; y++) {
+    for (let x = 0; x < gridW; x++) {
+      const idx = zoneIndexOfPlacement({ x, y }, view.zones);
+      if (idx < 0) continue;
+      const zone = view.zones[idx];
+      if (!zone) continue;
+      const row = rowByZoneId.get(zone.zone_id);
+      if (!row) continue; // zone had no treasure → no paint
+      if (row.color !== currentColor) {
+        g.fillStyle(row.color, TREASURE_BAND_ALPHA);
+        currentColor = row.color;
+      }
+      g.fillRect(x * TILE_PX, y * TILE_PX, TILE_PX, TILE_PX);
+    }
+  }
+  rt.draw(g);
+  g.destroy();
+}
+
 function drawZoneCenters(
   scene: Phaser.Scene,
   view: TilemapView,
@@ -159,6 +233,17 @@ export function buildOverlayRt(
   rt.draw(g);
   g.destroy();
 
+  // TMP-Q4 chunk C — separate RT for the treasure-band overlay so
+  // toggling it independently doesn't have to repaint the
+  // road/river layer. Depth 55 puts it just above paths RT (50) and
+  // safely below props (100) and zone-center markers (200) — the
+  // overlay tint should sit between terrain and props.
+  const bandsRt = scene.add.renderTexture(0, 0, renderedW, renderedH);
+  bandsRt.setOrigin(0, 0);
+  bandsRt.setDepth(55);
+  drawTreasureBands(scene, view, bandsRt);
+  bandsRt.visible = false; // default OFF (AC-VBT-5)
+
   // Zone centers — separate Container above props/RT (depth 200).
   // Each marker is small + dynamic; keeping them as live GameObjects
   // lets a future viewer-store toggle them visible/hidden cheaply.
@@ -169,6 +254,7 @@ export function buildOverlayRt(
   return {
     destroy: () => {
       rt.destroy();
+      bandsRt.destroy();
       zoneContainer.destroy(true);
     },
     setRtVisible: (v) => {
@@ -176,6 +262,9 @@ export function buildOverlayRt(
     },
     setZoneCentersVisible: (v) => {
       zoneContainer.visible = v;
+    },
+    setTreasureBandsVisible: (v) => {
+      bandsRt.visible = v;
     },
   };
 }
