@@ -47,6 +47,10 @@
 - **PRR-35**: added `.github/workflows/foundation-ci.yml` — runs the real gates on every push / PR to `main` + `mmo-rpg/**`: Rust `cargo build/test --workspace`, **every** Go module `build+vet+test` (no root go.mod → per-module loop), the I3 + projection-coverage lints, and gitleaks. The foundation's "N/N PASS" is now CI-verified, not local-only.
 - **PRR-32 + PRR-09**: added `scripts/projection-coverage-lint.sh` — cross-references `contracts/events/_registry.yaml` (14 event_types) vs projection `apply_event` arms; FAILs on a registered event with no projection that isn't allowlisted. Pins current state honestly: **5/14 projected**, 8 consumed-elsewhere-by-design (writers/seeders/history), **1 real deferred gap `xreality.user.erased`** (GDPR projection-side erasure → **D-PROJECTION-ERASURE**). Wired into the CI `lints` job. — *Remaining: implement `xreality.user.erased` projection erasure (D-PROJECTION-ERASURE); worker-fleet live-wiring (PRR-33) + live-PG test (PRR-36) remain infra-blocked (F3).*
 
+### F5b — I1 amendment: game-WS sanctioned + enforcement-point correction ✅ DONE *(governance/doc; user-approved architecture decision)*
+- **PRR-20**: amended invariant **I1** (`docs/03_planning/LLM_MMO_RPG/00_foundation/02_invariants.md`) + CLAUDE.md — `game-server` Colyseus WS is now a **second sanctioned external entry point** with mandatory edge controls (handshake JWT/ticket auth · per-connection/user caps · lifecycle audit) and AWS-security-group enforcement (only gateway + game-server public). Provisional until those edge controls are verified → **D-GAME-WS-EDGE-CONTROLS**.
+- **PRR-23**: corrected the I1 "Enforced by" claim — the ACL matrix has no `public→service` concept; AWS security groups are the real enforcement; a future ingress manifest should encode the public edge.
+
 ---
 
 ## 🔴 MAJOR — to fix

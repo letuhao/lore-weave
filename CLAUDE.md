@@ -37,7 +37,7 @@ Data: Postgres (per-service DBs), Redis Streams (jobs), MinIO (objects).
 
 ### Key Rules
 - **Contract-first**: API contract frozen before frontend flow
-- **Gateway invariant**: all external traffic through `api-gateway-bff`
+- **Gateway invariant**: all external traffic through `api-gateway-bff` — with ONE sanctioned exception (PRR-20): the `game-server` real-time WebSocket transport (Colyseus) is a second public entry point that inherits the same auth/rate-limit/audit edge controls. See `docs/03_planning/LLM_MMO_RPG/00_foundation/02_invariants.md` I1 amendment.
 - **Provider gateway invariant**: NO direct provider SDK calls — all AI calls go through adapter layer
 - **Language rule** (I3, amended & LOCKED 2026-05-29): **Rust** for kernel-derived services (world/travel/tilemap, the DP-kernel consumers), **Go** for domain + meta services, **Python** for AI/LLM services, **TypeScript** for gateway/BFF + realtime transport. The authoritative service→language map is `contracts/language-rule.yaml`, enforced by `scripts/language-rule-lint.sh` (FAILs on mismatch, on a present service mapped `missing`, and on a present service with no row). See `docs/plans/2026-05-29-foundation-mega-task/I3_INVARIANT_AMENDMENT.md` §5.
 - Each microservice owns its own Postgres database
