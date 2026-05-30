@@ -2,18 +2,58 @@ package main
 
 import (
 	"testing"
-
-	"github.com/loreweave/foundation/services/archive-worker/pkg/parquet_writer"
+	"time"
 )
 
-// TestParquetABI_DocumentedConstants — anti-regression. If someone bumps
-// SchemaVersion or rotates Magic, downstream readers break silently. main()
-// guards against this at startup; this test guards at build time.
-func TestParquetABI_DocumentedConstants(t *testing.T) {
-	if parquet_writer.SchemaVersion != 1 {
-		t.Fatalf("SchemaVersion drift: got %d, want 1", parquet_writer.SchemaVersion)
+func setRequiredEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("META_DB_URL", "postgres://m:m@localhost:55432/foundation?sslmode=disable")
+	t.Setenv("MINIO_ENDPOINT", "localhost:59000")
+	t.Setenv("MINIO_ACCESS_KEY", "foundation")
+	t.Setenv("MINIO_SECRET_KEY", "foundation-secret-dev-only")
+	t.Setenv("SHARD_DB_USER", "foundation")
+	t.Setenv("SHARD_DB_PASSWORD", "foundation")
+}
+
+func TestLoadConfig_MissingRequiredFails(t *testing.T) {
+	for _, k := range []string{"META_DB_URL", "MINIO_ENDPOINT", "MINIO_ACCESS_KEY", "MINIO_SECRET_KEY", "SHARD_DB_USER", "SHARD_DB_PASSWORD"} {
+		t.Setenv(k, "")
 	}
-	if string(parquet_writer.Magic[:]) != "LWP1" {
-		t.Fatalf("Magic drift: got %q, want LWP1", parquet_writer.Magic[:])
+	if _, err := loadConfig(); err == nil {
+		t.Fatal("expected error when required env missing")
+	}
+}
+
+func TestLoadConfig_Defaults(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("PUBLISHER_SHARD_HOST_OVERRIDE", "*=localhost:55432")
+	c, err := loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if c.Cutoff != 90*24*time.Hour {
+		t.Errorf("Cutoff default = %v want 90d", c.Cutoff)
+	}
+	if c.Interval != time.Hour {
+		t.Errorf("Interval default = %v want 1h", c.Interval)
+	}
+	if c.HTTPAddr != ":8080" {
+		t.Errorf("HTTPAddr default = %q want :8080", c.HTTPAddr)
+	}
+	if c.DSN.HostOverride["*"] != "localhost:55432" {
+		t.Errorf("host override not parsed: %v", c.DSN.HostOverride)
+	}
+}
+
+func TestLoadConfig_RespectsOverrides(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("ARCHIVE_CUTOFF", "1h")
+	t.Setenv("ARCHIVE_INTERVAL", "30s")
+	c, err := loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if c.Cutoff != time.Hour || c.Interval != 30*time.Second {
+		t.Errorf("overrides not applied: cutoff=%v interval=%v", c.Cutoff, c.Interval)
 	}
 }

@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
       - name: build + vet + test every go.mod module
         shell: bash
         run: |
@@ -142,7 +142,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
       - name: create dp_kernel_test + apply migrations 0002 + 0004
         shell: bash
         run: |
@@ -196,6 +196,33 @@ jobs:
           LW_INTEGRATION_META_DB: postgres://foundation:foundation@localhost:5432/metaworker_meta?sslmode=disable
           LW_INTEGRATION_REDIS: redis://localhost:6379/0
         run: go -C tests/integration test -tags=integration -run TestMetaWorkerLiveSmoke -count=1 ./...
+      # DEFERRED 056+057 (archive-worker): Parquet+ZSTD → MinIO → DROP → restore.
+      # MinIO runs as a docker-run step (a service container can't set the
+      # `server /data` command); it's reachable on localhost:9000.
+      - name: start MinIO + create archive_smoke DB
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name minio-ci -p 9000:9000 \
+            -e MINIO_ROOT_USER=foundation -e MINIO_ROOT_PASSWORD=foundation-secret-dev-only \
+            minio/minio:latest server /data
+          # Wait for MinIO to accept connections.
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:9000/minio/health/live >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          psql() { PGPASSWORD=foundation command psql -h localhost -p 5432 -U foundation "$@"; }
+          exists=$(psql -d foundation -tAc "SELECT 1 FROM pg_database WHERE datname='archive_smoke'" || true)
+          if [ "$exists" != "1" ]; then
+            psql -d foundation -v ON_ERROR_STOP=1 -c "CREATE DATABASE archive_smoke;"
+          fi
+      - name: go test archive-worker live-smoke
+        env:
+          LW_INTEGRATION_DB: postgres://foundation:foundation@localhost:5432/archive_smoke?sslmode=disable
+          LW_INTEGRATION_MINIO_ENDPOINT: localhost:9000
+          LW_INTEGRATION_MINIO_ACCESS: foundation
+          LW_INTEGRATION_MINIO_SECRET: foundation-secret-dev-only
+        run: go -C tests/integration test -tags=integration -run TestArchiveWorkerLiveSmoke -count=1 ./...
 
   secrets:
     name: Secret scan (gitleaks)

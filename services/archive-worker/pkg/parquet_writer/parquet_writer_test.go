@@ -46,6 +46,52 @@ func TestEncodeDecode_RoundTrip(t *testing.T) {
 		if got[i].AggregateVersion != rows[i].AggregateVersion {
 			t.Errorf("row %d AggregateVersion mismatch", i)
 		}
+		if string(got[i].Payload) != string(rows[i].Payload) {
+			t.Errorf("row %d Payload mismatch: got=%q want=%q", i, got[i].Payload, rows[i].Payload)
+		}
+		if !got[i].OccurredAt.Equal(rows[i].OccurredAt) {
+			t.Errorf("row %d OccurredAt mismatch: got=%v want=%v", i, got[i].OccurredAt, rows[i].OccurredAt)
+		}
+		if !got[i].RecordedAt.Equal(rows[i].RecordedAt) {
+			t.Errorf("row %d RecordedAt mismatch", i)
+		}
+		if got[i].EventType != rows[i].EventType {
+			t.Errorf("row %d EventType mismatch", i)
+		}
+		// Metadata was nil — must round-trip as nil (optional column).
+		if got[i].Metadata != nil {
+			t.Errorf("row %d Metadata should be nil, got %q", i, got[i].Metadata)
+		}
+	}
+}
+
+func TestEncodeDecode_NullableFields(t *testing.T) {
+	// audit_ref + registry_version + metadata present → must round-trip.
+	au := uuid.New()
+	rv := 7
+	row := mkRow(1)
+	row.Metadata = []byte(`{"k":"v"}`)
+	row.AuditRef = &au
+	row.RegistryVersion = &rv
+	blob, err := NewEncoder().Encode([]types.EventRow{row})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := NewDecoder().Decode(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("rows=%d want 1", len(got))
+	}
+	if string(got[0].Metadata) != `{"k":"v"}` {
+		t.Errorf("Metadata=%q want {\"k\":\"v\"}", got[0].Metadata)
+	}
+	if got[0].AuditRef == nil || *got[0].AuditRef != au {
+		t.Errorf("AuditRef=%v want %s", got[0].AuditRef, au)
+	}
+	if got[0].RegistryVersion == nil || *got[0].RegistryVersion != 7 {
+		t.Errorf("RegistryVersion=%v want 7", got[0].RegistryVersion)
 	}
 }
 
@@ -144,7 +190,7 @@ func TestMagicMarker_DocumentedConstant(t *testing.T) {
 	if !bytes.Equal(Magic[:], []byte("LWP1")) {
 		t.Fatalf("Magic changed without coordinated update! got %q", Magic[:])
 	}
-	if SchemaVersion != 1 {
+	if SchemaVersion != 2 {
 		t.Fatalf("SchemaVersion changed: got %d", SchemaVersion)
 	}
 }
