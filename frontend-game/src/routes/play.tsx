@@ -41,7 +41,54 @@ export function PlayRoute(): JSX.Element {
   const [gridWidth, setGridWidth] = useState<number>(DEFAULT_ZONE_WIDTH);
   const [gridHeight, setGridHeight] = useState<number>(DEFAULT_ZONE_HEIGHT);
 
-  const tilemap = useZoneTilemap({ seed, tier, gridWidth, gridHeight });
+  // DEFERRED #048 from TMP-Q6 chunk-C /review-impl MED-3 follow-up — the
+  // default `/play` route loads `minimal.json` which biome-themes most
+  // wilderness zones, leaving DecorationPlacer with no zone_terrain to
+  // work with → 0 decorations placed → chunk-C visual goldens captured
+  // the empty-state UI. The `?fixture=NAME` query param lets test
+  // fixtures (e.g. `decoration_dense`) inject an alternate template
+  // file from `/public/templates/{NAME}.json` so e2e goldens can
+  // verify the populated-row rendering path WITHOUT touching the
+  // shared minimal.json used by other goldens.
+  //
+  // Allowlist validates against a closed enum at the query layer so
+  // an attacker can't load `?fixture=../etc/passwd` or load arbitrary
+  // remote URLs — the GET stays scoped to bundled fixtures.
+  const ALLOWED_FIXTURES = new Set<string>([
+    'minimal',
+    'decoration_dense',
+  ]);
+  const queryParams = (() => {
+    if (typeof window === 'undefined') return { fixture: null, seedOverride: null };
+    const params = new URLSearchParams(window.location.search);
+    const rawFixture = params.get('fixture');
+    const fixture =
+      rawFixture && ALLOWED_FIXTURES.has(rawFixture) ? rawFixture : null;
+    // `?seed=N` lets test fixtures pin a known-good seed for the
+    // requested template (some templates have seeds where the placer
+    // pipeline saturates or under-shoots; goldens need a deterministic
+    // productive seed). Validated as a positive 32-bit integer to
+    // avoid NaN / overflow / negative values flowing into the BE.
+    const rawSeed = params.get('seed');
+    const seedOverride = (() => {
+      if (!rawSeed) return null;
+      const n = Number.parseInt(rawSeed, 10);
+      if (!Number.isFinite(n) || n < 0 || n > 0xffffffff) return null;
+      return n;
+    })();
+    return { fixture, seedOverride };
+  })();
+  const templateUrl = queryParams.fixture
+    ? `/templates/${queryParams.fixture}.json`
+    : undefined;
+  const effectiveSeed = queryParams.seedOverride ?? seed;
+  const tilemap = useZoneTilemap({
+    seed: effectiveSeed,
+    tier,
+    gridWidth,
+    gridHeight,
+    templateUrl,
+  });
   const openInspectorFor = useViewerStore((s) => s.openInspectorFor);
 
   // Bridge Phaser EventBus → viewer-store: Shift-click on a tile

@@ -1,5 +1,11 @@
 import { vi } from 'vitest';
 
+// DEFERRED #049 from TMP-Q6 chunk-C /review-impl LOW-5 — `@testing-library/jest-dom`
+// matchers (`toBeInTheDocument`, `toBeEmptyDOMElement`, etc.) loaded
+// once so React component tests under `tests/components/*.test.tsx`
+// can use them without re-importing per file.
+import '@testing-library/jest-dom/vitest';
+
 // Phaser tries to detect WebGL/Canvas APIs at module load; jsdom doesn't
 // have them. Tests that just need Phaser.Events.EventEmitter shape (e.g.
 // EventBus contract tests) get a minimal Node-EventEmitter-backed stub.

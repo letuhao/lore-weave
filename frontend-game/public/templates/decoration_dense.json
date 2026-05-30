@@ -1,0 +1,43 @@
+{
+  "template_id": "v1_viewer_decoration_dense",
+  "zones": [
+    {
+      "zone_id": "grass_meadow",
+      "zone_role": "wilderness",
+      "size": 100,
+      "terrain_types": ["grass"],
+      "connections": [{ "to_zone": "forest_outpost", "kind": "threshold" }],
+      "treasure_tiers": []
+    },
+    {
+      "zone_id": "forest_outpost",
+      "zone_role": "hub",
+      "size": 100,
+      "terrain_types": ["forest"],
+      "connections": [{ "to_zone": "highland_frontier", "kind": "open" }],
+      "treasure_tiers": []
+    },
+    {
+      "zone_id": "highland_frontier",
+      "zone_role": "wilderness",
+      "size": 100,
+      "terrain_types": ["mountain"],
+      "connections": [],
+      "treasure_tiers": []
+    },
+    {
+      "zone_id": "sandwash_wilds",
+      "zone_role": "wilderness",
+      "size": 100,
+      "terrain_types": ["sand"],
+      "connections": [],
+      "treasure_tiers": []
+    }
+  ],
+  "seed_offset": 0,
+  "decoration_density": {
+    "min_per_zone": 20,
+    "max_per_zone": 40,
+    "fraction_of_free": 0.1
+  }
+}
