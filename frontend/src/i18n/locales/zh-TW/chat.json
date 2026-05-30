@@ -187,5 +187,37 @@
     "unnamed": "(未命名)",
     "no_matches": "找不到符合項目。",
     "no_items": "沒有可用項目。"
+  },
+  "settings": {
+    "title": "工作階段設定",
+    "model": "模型",
+    "system_prompt": "系統提示",
+    "preset": {
+      "Custom": "自訂",
+      "Novelist": "小說家",
+      "Translator": "翻譯",
+      "Worldbuilder": "世界建構",
+      "Editor": "編輯",
+      "Analyst": "分析師"
+    },
+    "prompt_placeholder": "給 AI 一個角色、個性或具體指示...",
+    "gen_params": "生成參數",
+    "max_tokens": "最大 Token",
+    "temperature": "溫度",
+    "temp_min": "0（精確）",
+    "temp_max": "2（創意）",
+    "top_p": "Top P",
+    "topp_min": "0（窄）",
+    "topp_max": "1（多樣）",
+    "default_mode": "預設模式",
+    "session_info": "工作階段資訊",
+    "messages": "訊息",
+    "status": "狀態",
+    "created": "建立",
+    "pinned": "已釘選",
+    "yes": "是",
+    "no": "否",
+    "reset": "重設為預設",
+    "save_failed": "儲存失敗：{{error}}"
   }
 }

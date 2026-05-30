@@ -187,5 +187,37 @@
     "unnamed": "(chưa đặt tên)",
     "no_matches": "Không tìm thấy kết quả.",
     "no_items": "Không có mục nào."
+  },
+  "settings": {
+    "title": "Cài đặt phiên",
+    "model": "Mô hình",
+    "system_prompt": "System Prompt",
+    "preset": {
+      "Custom": "Tùy chỉnh",
+      "Novelist": "Tiểu thuyết gia",
+      "Translator": "Phiên dịch",
+      "Worldbuilder": "Kiến tạo thế giới",
+      "Editor": "Biên tập",
+      "Analyst": "Phân tích"
+    },
+    "prompt_placeholder": "Cho AI một vai trò, tính cách hoặc chỉ dẫn cụ thể...",
+    "gen_params": "Tham số tạo sinh",
+    "max_tokens": "Token tối đa",
+    "temperature": "Nhiệt độ",
+    "temp_min": "0 (chính xác)",
+    "temp_max": "2 (sáng tạo)",
+    "top_p": "Top P",
+    "topp_min": "0 (hẹp)",
+    "topp_max": "1 (đa dạng)",
+    "default_mode": "Chế độ mặc định",
+    "session_info": "Thông tin phiên",
+    "messages": "Tin nhắn",
+    "status": "Trạng thái",
+    "created": "Đã tạo",
+    "pinned": "Đã ghim",
+    "yes": "Có",
+    "no": "Không",
+    "reset": "Đặt lại mặc định",
+    "save_failed": "Lưu thất bại: {{error}}"
   }
 }

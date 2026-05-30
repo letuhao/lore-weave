@@ -187,5 +187,37 @@
     "unnamed": "(unnamed)",
     "no_matches": "No matches found.",
     "no_items": "No items available."
+  },
+  "settings": {
+    "title": "Session Settings",
+    "model": "Model",
+    "system_prompt": "System Prompt",
+    "preset": {
+      "Custom": "Custom",
+      "Novelist": "Novelist",
+      "Translator": "Translator",
+      "Worldbuilder": "Worldbuilder",
+      "Editor": "Editor",
+      "Analyst": "Analyst"
+    },
+    "prompt_placeholder": "Give the AI a role, personality, or specific instructions...",
+    "gen_params": "Generation Parameters",
+    "max_tokens": "Max Tokens",
+    "temperature": "Temperature",
+    "temp_min": "0 (precise)",
+    "temp_max": "2 (creative)",
+    "top_p": "Top P",
+    "topp_min": "0 (narrow)",
+    "topp_max": "1 (diverse)",
+    "default_mode": "Default Mode",
+    "session_info": "Session Info",
+    "messages": "Messages",
+    "status": "Status",
+    "created": "Created",
+    "pinned": "Pinned",
+    "yes": "Yes",
+    "no": "No",
+    "reset": "Reset to Defaults",
+    "save_failed": "Save failed: {{error}}"
   }
 }

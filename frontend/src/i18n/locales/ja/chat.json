@@ -187,5 +187,37 @@
     "unnamed": "(名前なし)",
     "no_matches": "一致するものが見つかりません。",
     "no_items": "利用可能なアイテムがありません。"
+  },
+  "settings": {
+    "title": "セッション設定",
+    "model": "モデル",
+    "system_prompt": "システムプロンプト",
+    "preset": {
+      "Custom": "カスタム",
+      "Novelist": "小説家",
+      "Translator": "翻訳者",
+      "Worldbuilder": "世界構築",
+      "Editor": "編集者",
+      "Analyst": "分析者"
+    },
+    "prompt_placeholder": "AIに役割、性格、または具体的な指示を与えます...",
+    "gen_params": "生成パラメータ",
+    "max_tokens": "最大トークン",
+    "temperature": "温度",
+    "temp_min": "0（正確）",
+    "temp_max": "2（創造的）",
+    "top_p": "Top P",
+    "topp_min": "0（狭い）",
+    "topp_max": "1（多様）",
+    "default_mode": "デフォルトモード",
+    "session_info": "セッション情報",
+    "messages": "メッセージ",
+    "status": "ステータス",
+    "created": "作成日",
+    "pinned": "ピン留め",
+    "yes": "はい",
+    "no": "いいえ",
+    "reset": "デフォルトにリセット",
+    "save_failed": "保存に失敗しました: {{error}}"
   }
 }
