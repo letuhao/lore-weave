@@ -65,6 +65,38 @@ CREATE TABLE IF NOT EXISTS source_corpus (
 CREATE INDEX IF NOT EXISTS idx_source_corpus_scope
   ON source_corpus(user_id, project_id);
 
+-- ── C17 re-cook LICENSING gate (additive CHECK constraint) ───────────────────
+-- Re-cook (technique (d)) takes REAL history/news/reference material and
+-- re-contextualises it into the 商周/封神 setting; modern/news material is NOT
+-- public-domain and carries a licensing liability. The re-cook strategy
+-- (app/strategies/licensing.py) is default-deny: it admits ONLY 'public-domain'
+-- / 'public_domain' / 'licensed' sources and REFUSES anything else. This CHECK
+-- pins the column to the recognised vocabulary at the SCHEMA level so an
+-- ingested corpus can never carry a free-text/garbage license that the
+-- default-deny normaliser would silently treat as UNKNOWN. The C2 default
+-- 'public-domain' (hyphen) is admitted; the demo corpora (山海经, 封神演义,
+-- Shang–Zhou history) are genuinely public-domain and keep that default.
+--   * unlicensed / copyrighted / restricted / unknown are PERSISTABLE (so a
+--     source can be HONESTLY tagged as not-yet-licensed) but the re-cook
+--     application gate REFUSES them — the DB records the truth, the app enforces
+--     the policy.
+-- Added in a DO $$ block (ADD CONSTRAINT has no IF NOT EXISTS) so it is
+-- idempotent + brings an already-deployed table up to schema.
+DO $license_chk$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'source_corpus_license_vocab'
+  ) THEN
+    ALTER TABLE source_corpus
+      ADD CONSTRAINT source_corpus_license_vocab
+      CHECK (license IN (
+        'public-domain', 'public_domain', 'licensed',
+        'unlicensed', 'copyrighted', 'restricted', 'unknown'
+      ));
+  END IF;
+END
+$license_chk$;
+
 -- ═══════════════════════════════════════════════════════════════
 -- source_corpus_chunk (RAID C10 — technique-(b) retrieval)
 -- A deterministic CJK-aware chunk of a source_corpus text plus its

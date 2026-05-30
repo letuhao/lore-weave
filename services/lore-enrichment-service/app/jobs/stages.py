@@ -37,6 +37,7 @@ from app.generation.provenance import EnrichedFact
 from app.retrieval.strategy import GroundedProposal, RetrievalStrategy
 from app.strategies.base import StrategyContext, Technique
 from app.strategies.fabrication import FabricationError, FabricationStrategy
+from app.strategies.recook import ReCookError, ReCookStrategy
 from app.verify.canon_verify import CanonVerifier
 from app.verify.wiring import AnnotatedVerify, verify_and_annotate
 
@@ -45,6 +46,7 @@ __all__ = [
     "JobPipeline",
     "GapPipeline",
     "FabricationPipeline",
+    "ReCookPipeline",
     "source_refs_from_grounding",
 ]
 
@@ -210,3 +212,61 @@ class FabricationPipeline:
     def technique_value() -> str:
         """The technique these P2 proposals carry (fabrication)."""
         return Technique.FABRICATION.value
+
+
+class ReCookPipeline:
+    """Run one gap through the P3 RE-COOK (C17 — gate-enforced + licensing-gated).
+
+    The P3 counterpart to :class:`FabricationPipeline`: it ADAPTS a
+    :class:`~app.strategies.recook.ReCookStrategy` to the same :class:`JobPipeline`
+    contract the C14 runner drives, so the runner enforces the IDENTICAL cost-cap +
+    H0 + lifecycle for re-cook that it does for retrieval / fabrication. It
+    implements no new generation/verify/licensing logic — it delegates to the
+    strategy (which already chains retrieval → licensing-check → re-contextualise →
+    C12 verify per gap) and projects the strategy's
+    :class:`~app.strategies.recook.ReCookedProposal` onto the runner's
+    :class:`StageResult` shape (same proposal/facts/verify triple).
+
+    H0: every fact leaving here is the strategy's H0-tagged
+    ``origin='enriched:recook'``, confidence<1.0, pending fact — quarantine is
+    untouched. An ungroundable gap raises :class:`ReCookError`, which the runner
+    treats EXACTLY like a P1/P2 ungroundable gap (skip, never an unprovenanced
+    fact). An UNLICENSED source raises
+    :class:`~app.strategies.licensing.UnlicensedSourceError`, which PROPAGATES
+    (the job is refused) — re-cook never silently consumes unlicensed material.
+    This pipeline is ONLY constructed once the gate-aware factory has confirmed the
+    live eval gate is CLEARED — it never re-checks the gate itself (one enforcement
+    point, the factory)."""
+
+    def __init__(self, *, strategy: ReCookStrategy) -> None:
+        self._strategy = strategy
+
+    async def run_gap(
+        self, gap: Gap, context: StrategyContext, *, jwt: str = ""
+    ) -> StageResult:
+        """Re-cook one gap and project the result onto :class:`StageResult`.
+
+        Delegates to the strategy (retrieve → licensing-check → re-contextualise →
+        C12 verify) for the single gap, then maps its
+        :class:`~app.strategies.recook.ReCookedProposal` onto the runner's stage
+        shape. Raises :class:`ReCookError` (ungroundable → runner skips) — never
+        mints an unprovenanced fact (H0). An UnlicensedSourceError propagates (the
+        source is refused)."""
+        results = await self._strategy.run([gap], context, jwt=jwt)
+        if not results:
+            raise ReCookError(
+                f"re-cook produced no proposal for {gap.canonical_name!r}"
+            )
+        rc = results[0]
+        return StageResult(
+            gap=gap,
+            proposal=rc.proposal,
+            facts=rc.facts,
+            verify=rc.verify,
+            source_refs=source_refs_from_grounding(rc.proposal),
+        )
+
+    @staticmethod
+    def technique_value() -> str:
+        """The technique these P3 proposals carry (recook)."""
+        return Technique.RECOOK.value

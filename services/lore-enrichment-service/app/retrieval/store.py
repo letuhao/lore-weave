@@ -151,6 +151,24 @@ class SourceCorpusStore:
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
 
+    # ── license lookup (for the C17 re-cook licensing gate) ──────────────────
+    async def get_corpus_license(self, *, corpus_id: UUID) -> str | None:
+        """Return the raw ``source_corpus.license`` for ``corpus_id``, or None if
+        the corpus does not exist.
+
+        Read-only single-column lookup the C17 re-cook strategy uses to resolve a
+        source's license at corpus-admission / fact-emit. A None result (unknown
+        corpus) is treated by the caller as an UNKNOWN license → refused
+        (default-deny). Nothing here is scoped per-project: the corpus_id is a
+        primary key, and the re-cook only reaches here with ids from grounding it
+        already retrieved within the project scope.
+        """
+        async with self._pool.acquire() as conn:
+            return await conn.fetchval(
+                "SELECT license FROM source_corpus WHERE corpus_id = $1",
+                corpus_id,
+            )
+
     # ── corpus upsert (idempotent on (user, project, name, kind)) ────────────
     async def upsert_corpus(
         self,

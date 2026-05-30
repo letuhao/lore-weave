@@ -54,6 +54,22 @@ from app.strategies.fabrication import (
     FabricationStrategy,
     NeighborFact,
 )
+from app.strategies.licensing import (
+    ADMISSIBLE_LICENSES,
+    LicenseStatus,
+    SourceLicense,
+    UnlicensedSourceError,
+    check_admissible,
+    is_admissible,
+    normalize_license,
+)
+from app.strategies.recook import (
+    RECOOK_CONFIDENCE,
+    RECOOK_GAP_COST,
+    ReCookedProposal,
+    ReCookError,
+    ReCookStrategy,
+)
 
 __all__ = [
     "CostEstimate",
@@ -81,4 +97,17 @@ __all__ = [
     "NeighborFact",
     "FABRICATION_CONFIDENCE",
     "FABRICATION_GAP_COST",
+    # C17 — re-cook (P3) + licensing gate
+    "ReCookStrategy",
+    "ReCookedProposal",
+    "ReCookError",
+    "RECOOK_CONFIDENCE",
+    "RECOOK_GAP_COST",
+    "LicenseStatus",
+    "SourceLicense",
+    "UnlicensedSourceError",
+    "ADMISSIBLE_LICENSES",
+    "normalize_license",
+    "is_admissible",
+    "check_admissible",
 ]

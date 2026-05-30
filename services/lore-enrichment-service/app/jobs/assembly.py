@@ -35,7 +35,7 @@ from app.jobs.cost import GapCostModel, JobCostBudget
 from app.jobs.events import JobEventEmitter, make_redis_producer
 from app.jobs.proposal_store import PgProposalStore
 from app.jobs.runner import JobRunner
-from app.jobs.stages import FabricationPipeline, GapPipeline, JobPipeline
+from app.jobs.stages import FabricationPipeline, GapPipeline, JobPipeline, ReCookPipeline
 from app.retrieval.embedding import make_embed_query_fn
 from app.retrieval.store import SourceCorpusStore
 from app.retrieval.strategy import RetrievalStrategy
@@ -43,6 +43,8 @@ from app.strategies.base import EnrichmentStrategy, Technique
 from app.strategies.fabrication import FabricationStrategy
 from app.strategies.factory import GateAwareStrategyFactory
 from app.strategies.gate_reader import make_eval_runs_gate_reader
+from app.strategies.licensing import SourceLicense
+from app.strategies.recook import ReCookStrategy
 from app.verify.canon_verify import CanonFact, CanonVerifier
 
 __all__ = ["build_live_runner", "LiveRunnerBundle"]
@@ -143,9 +145,28 @@ async def build_live_runner(
     fabrication = FabricationStrategy(
         retrieval=retrieval, complete=complete, verifier=verifier
     )
+
+    # ── C17 re-cook (P3): same gate-enforced selection path + a LICENSING gate.
+    # The license-resolver reads ``source_corpus.license`` for each grounding
+    # source; the re-cook strategy refuses any non-public_domain/non-licensed
+    # source (default-deny) at corpus-admission AND fact-emit. Like fabrication it
+    # is constructed unconditionally but unreachable until the gate clears (the
+    # factory is the single enforcement point; P3 is forced OFF on a locked gate).
+    async def _license_lookup(corpus_id: str) -> SourceLicense | None:
+        raw = await store.get_corpus_license(corpus_id=UUID(corpus_id))
+        if raw is None:
+            return None  # unknown corpus → caller treats as UNKNOWN (refused)
+        return SourceLicense.from_raw(corpus_id=corpus_id, name=corpus_id, license=raw)
+
+    recook = ReCookStrategy(
+        retrieval=retrieval,
+        complete=complete,
+        verifier=verifier,
+        license_lookup=_license_lookup,
+    )
     factory = GateAwareStrategyFactory(
         gate_reader=make_eval_runs_gate_reader(EvalRunsRepo(pool)),
-        strategies=[retrieval, fabrication],
+        strategies=[retrieval, fabrication, recook],
         suite_version=suite_version,
     )
     # Gate enforcement happens HERE — a locked fabrication raises
@@ -168,6 +189,15 @@ async def build_live_runner(
         # Its OWN estimate_cost (FABRICATION_GAP_COST=8.0/gap) is what the cost-cap
         # charges, so the higher P2 cost actually binds (not the inert P1 model).
         pipeline = FabricationPipeline(strategy=selected)  # type: ignore[arg-type]
+        cost_strategy = selected
+    elif selected.technique is Technique.RECOOK:
+        # P3: the re-cook pipeline (retrieve → licensing-check → re-contextualise →
+        # verify per gap). Reachable ONLY when the gate is CLEARED (the factory
+        # forces P3 OFF on a locked gate). Its OWN estimate_cost
+        # (RECOOK_GAP_COST=12.0/gap) is what the cost-cap charges, so the highest
+        # P3 cost binds soonest. The licensing gate inside the strategy refuses any
+        # unlicensed source (UnlicensedSourceError propagates → job refused).
+        pipeline = ReCookPipeline(strategy=selected)  # type: ignore[arg-type]
         cost_strategy = selected
     else:
         # P1 default (retrieval): the unchanged C10→C11→C12 pipeline + the

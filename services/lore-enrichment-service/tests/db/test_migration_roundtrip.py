@@ -104,6 +104,30 @@ async def test_confidence_check_rejects_canon(pool):
             )
 
 
+async def test_source_corpus_license_check_constraint(pool):
+    """C17: the additive license CHECK pins source_corpus.license to the
+    recognised vocabulary — the C2 default 'public-domain' is admitted; a garbage
+    free-text license is REJECTED at the schema level (so a corpus can never carry
+    a license the default-deny normaliser would silently treat as UNKNOWN)."""
+    async with pool.acquire() as conn:
+        # admissible / honest statuses persist (the DB records the truth)
+        for lic in ("public-domain", "public_domain", "licensed",
+                    "unlicensed", "copyrighted", "restricted", "unknown"):
+            cid = await conn.fetchval(
+                """INSERT INTO source_corpus (project_id, user_id, name, kind, license)
+                   VALUES ($1,$2,$3,'history',$4) RETURNING corpus_id""",
+                _PROJECT, _USER, f"corpus-{lic}", lic,
+            )
+            assert cid is not None
+        # garbage free-text license → CHECK violation
+        with pytest.raises(Exception):  # asyncpg.CheckViolationError
+            await conn.execute(
+                """INSERT INTO source_corpus (project_id, user_id, name, kind, license)
+                   VALUES ($1,$2,'corpus-bad','history','cc-by-nc-totally-made-up')""",
+                _PROJECT, _USER,
+            )
+
+
 async def _seed_job(pool) -> uuid.UUID:
     async with pool.acquire() as conn:
         return await conn.fetchval(
