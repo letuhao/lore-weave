@@ -220,6 +220,48 @@ async fn ac_http_2_valid_request_returns_200_with_tilemap_view() {
 }
 
 #[tokio::test]
+async fn tmp_q5_render_endpoint_omits_zone_role_colors_for_default_registry() {
+    // TMP-Q5 AC-ZRV-11 — the default `lw` registry does NOT declare
+    // a zone_role_colors override, so the wire-shape contract is:
+    // the field is OMITTED entirely (not present as `null`). Locks
+    // the V2 byte-identical wire path so a regression where
+    // RegistryRef serialized `zone_role_colors: null` instead of
+    // skipping it would shift the baseline and break frontend
+    // strict-key consumers.
+    //
+    // LOW-3 from chunk-A /review-impl — companion test "WITH override"
+    // is intentionally absent here: the HTTP render endpoint reads
+    // `Registry::load_default()` exclusively (see src/http/render.rs),
+    // so there's no test seam to inject a per-request registry. The
+    // WITH-override wire-shape contract is covered by the lib-level
+    // serde tests in src/types/registry.rs
+    // (`registry_ref_round_trips_with_zone_role_colors`) and the
+    // src/registry.rs TOML-load tests (full + sparse + inline). When
+    // chunk B+C land a per-channel registry selector, the missing
+    // HTTP companion test should be added here.
+    let base = boot_server().await;
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{base}/internal/v1/tilemaps/render"))
+        .bearer_auth(TOKEN)
+        .json(&minimal_render_body(&minimal_template(), 31))
+        .send()
+        .await
+        .expect("send");
+    assert_eq!(resp.status(), StatusCode::OK);
+    let view: Value = resp.json().await.expect("json");
+    let registry_ref = view["registry_ref"]
+        .as_object()
+        .expect("default registry must emit registry_ref");
+    assert_eq!(registry_ref["id"], "lw", "default is the lw registry");
+    assert!(
+        !registry_ref.contains_key("zone_role_colors"),
+        "AC-ZRV-11: default registry omits zone_role_colors (None ⇒ skipped); \
+         got {registry_ref:?}",
+    );
+}
+
+#[tokio::test]
 async fn ac_http_3_missing_authorization_returns_401_problem_json() {
     let base = boot_server().await;
     let client = reqwest::Client::new();

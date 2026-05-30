@@ -162,6 +162,22 @@ pub struct DecorationRef {
     pub min_spacing: u32,
 }
 
+/// TMP-Q5 — validation hook for `RegistryRef.zone_role_colors`.
+///
+/// V1: no constraint (every u32 is a valid 24-bit color packed into
+/// the low bits; alpha bits are ignored at render time). The function
+/// exists as a reserved extension point so future constraints (alpha-
+/// bit reserved, contrast-vs-foundation check, per-role hue family)
+/// land without an API churn at `Registry::from_file` AND without
+/// risking accidental deletion as bare dead code (MED-1 from
+/// chunk-A /review-impl).
+fn validate_zone_role_colors(
+    _colors: &Option<crate::types::registry::ZoneRoleColors>,
+) -> Result<(), RegistryError> {
+    // V1 no-op. Future constraints land here.
+    Ok(())
+}
+
 impl Registry {
     /// Build from a parsed registry file, validating:
     /// - at least one terrain + one object kind
@@ -180,6 +196,13 @@ impl Registry {
                 "registry must define at least one object kind".into(),
             ));
         }
+        // TMP-Q5 — validate per-book zone_role_colors if declared.
+        // Delegated to a named function so the seam is delete-resistant
+        // (MED-1 from chunk-A /review-impl): a cleanup sweep that
+        // removes a bare `let _ = colors;` no-op block is too easy;
+        // a named function call with documented intent makes it
+        // explicit that this is a reserved validation extension point.
+        validate_zone_role_colors(&file.registry.zone_role_colors)?;
         let mut terrain_by_tag = HashMap::with_capacity(file.terrain.len());
         for def in file.terrain {
             if !is_valid_id(&def.id) {
@@ -1655,6 +1678,223 @@ walkability_pattern = { mask = [true, false, false, false] }
             placement.footprint.as_ref().expect("footprint populated"),
             &def.footprint,
             "placement footprint must match xianxia registry entry"
+        );
+    }
+
+    #[test]
+    fn registry_loads_with_zone_role_colors_section() {
+        // TMP-Q5 AC-ZRV-2 — a per-book registry that declares a full
+        // `[registry.zone_role_colors]` block loads + flows through to
+        // RegistryRef.
+        let toml = r#"
+[registry]
+id = "xianxia"
+version = "1.0.0"
+
+[registry.zone_role_colors]
+wilderness = 0xfacc15
+hub = 0x818cf8
+forbidden = 0xf87171
+sea = 0x60a5fa
+
+[[terrain]]
+id = "test:t"
+primitive = "land"
+label = "T"
+
+[[object]]
+id = "test:obj"
+primitive = "pickup"
+label = "Obj"
+"#;
+        let reg = Registry::from_toml_str(toml).expect("must load");
+        let colors = reg
+            .reference()
+            .zone_role_colors
+            .as_ref()
+            .expect("zone_role_colors must be Some after declaration");
+        assert_eq!(colors.wilderness, Some(0xfacc15));
+        assert_eq!(colors.hub, Some(0x818cf8));
+        assert_eq!(colors.forbidden, Some(0xf87171));
+        assert_eq!(colors.sea, Some(0x60a5fa));
+    }
+
+    #[test]
+    fn registry_loads_with_sparse_zone_role_colors() {
+        // TMP-Q5 AC-ZRV-2 — partial overrides: only wilderness declared;
+        // hub/forbidden/sea stay None so the frontend can fall back
+        // to ZONE_ROLE_DEFAULTS per-field.
+        let toml = r#"
+[registry]
+id = "xianxia"
+version = "1.0.0"
+
+[registry.zone_role_colors]
+wilderness = 16769093
+
+[[terrain]]
+id = "test:t"
+primitive = "land"
+label = "T"
+
+[[object]]
+id = "test:obj"
+primitive = "pickup"
+label = "Obj"
+"#;
+        let reg = Registry::from_toml_str(toml).expect("must load");
+        let colors = reg.reference().zone_role_colors.as_ref().expect("Some");
+        assert_eq!(colors.wilderness, Some(16769093));
+        assert_eq!(colors.hub, None);
+        assert_eq!(colors.forbidden, None);
+        assert_eq!(colors.sea, None);
+    }
+
+    #[test]
+    fn registry_loads_without_zone_role_colors_section() {
+        // TMP-Q5 backward compat: a pre-Q5 TOML without the
+        // `[registry.zone_role_colors]` block loads with
+        // RegistryRef.zone_role_colors = None (the V2 byte-identical
+        // wire path).
+        let toml = r#"
+[registry]
+id = "test"
+version = "0.0.1"
+
+[[terrain]]
+id = "test:t"
+primitive = "land"
+label = "T"
+
+[[object]]
+id = "test:obj"
+primitive = "pickup"
+label = "Obj"
+"#;
+        let reg = Registry::from_toml_str(toml).expect("must load");
+        assert_eq!(reg.reference().zone_role_colors, None);
+    }
+
+    #[test]
+    fn registry_loads_with_inline_table_zone_role_colors() {
+        // TMP-Q5 LOW-5 from chunk-A /review-impl — defensive coverage
+        // of TOML inline-table syntax: a per-book author who writes
+        // `registry = { ..., zone_role_colors = { wilderness = 0x... } }`
+        // gets the same struct as the block form. Pins toml-rs +
+        // serde's inline-table-of-table support so a future library
+        // bump that breaks it fails loudly here.
+        let toml = r#"
+registry = { id = "inline", version = "1.0.0", zone_role_colors = { wilderness = 16769093 } }
+
+[[terrain]]
+id = "test:t"
+primitive = "land"
+label = "T"
+
+[[object]]
+id = "test:obj"
+primitive = "pickup"
+label = "Obj"
+"#;
+        let reg = Registry::from_toml_str(toml).expect("inline-table TOML must load");
+        let colors = reg.reference().zone_role_colors.as_ref().expect("Some");
+        assert_eq!(colors.wilderness, Some(16769093));
+        assert_eq!(colors.hub, None);
+    }
+
+    #[test]
+    fn registry_rejects_negative_zone_role_color() {
+        // TMP-Q5 MED-2 from chunk-A /review-impl — pin toml-rs behavior
+        // on negative integers. Without this test pinning the reject,
+        // a future toml-rs version bump that started silently
+        // saturating or overflow-wrapping negatives could let garbage
+        // values through the wire-shape contract.
+        let toml = r#"
+[registry]
+id = "neg"
+version = "1.0.0"
+
+[registry.zone_role_colors]
+wilderness = -1
+
+[[terrain]]
+id = "test:t"
+primitive = "land"
+label = "T"
+
+[[object]]
+id = "test:obj"
+primitive = "pickup"
+label = "Obj"
+"#;
+        let result = Registry::from_toml_str(toml);
+        assert!(
+            result.is_err(),
+            "MED-2: a negative wilderness color must be rejected at TOML \
+             parse time (got Ok = silent acceptance of garbage values)",
+        );
+    }
+
+    #[test]
+    fn registry_rejects_overflow_zone_role_color() {
+        // TMP-Q5 MED-2 from chunk-A /review-impl — pin toml-rs behavior
+        // on values above u32::MAX. Same reasoning as negative: a
+        // silent saturation / wrap would be a HIGH bug.
+        // 5_000_000_000 > u32::MAX (4_294_967_295).
+        let toml = r#"
+[registry]
+id = "over"
+version = "1.0.0"
+
+[registry.zone_role_colors]
+wilderness = 5000000000
+
+[[terrain]]
+id = "test:t"
+primitive = "land"
+label = "T"
+
+[[object]]
+id = "test:obj"
+primitive = "pickup"
+label = "Obj"
+"#;
+        let result = Registry::from_toml_str(toml);
+        assert!(
+            result.is_err(),
+            "MED-2: an over-u32::MAX wilderness color must be rejected \
+             at TOML parse time",
+        );
+    }
+
+    #[test]
+    fn registry_accepts_zone_role_color_at_u32_max() {
+        // TMP-Q5 MED-2 — boundary test on the OK side: u32::MAX is a
+        // valid 32-bit value (24-bit RGB packed with alpha bits set;
+        // alpha bits are ignored at render). This pins inclusive
+        // upper bound.
+        let toml = format!(r#"
+[registry]
+id = "max"
+version = "1.0.0"
+
+[registry.zone_role_colors]
+wilderness = {}
+
+[[terrain]]
+id = "test:t"
+primitive = "land"
+label = "T"
+
+[[object]]
+id = "test:obj"
+primitive = "pickup"
+label = "Obj"
+"#, u32::MAX);
+        let reg = Registry::from_toml_str(&toml).expect("u32::MAX must load");
+        assert_eq!(
+            reg.reference().zone_role_colors.as_ref().unwrap().wilderness,
+            Some(u32::MAX),
         );
     }
 }

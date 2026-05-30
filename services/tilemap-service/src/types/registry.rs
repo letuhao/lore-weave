@@ -163,6 +163,50 @@ fn is_default_density_weight(weight: &f32) -> bool {
     *weight == 1.0
 }
 
+/// TMP-Q5 — per-book role color override. Each role independently
+/// optional so authors can override only the colors they care about
+/// (e.g., declare gold-themed Wilderness only; Hub/Forbidden/Sea
+/// fall back to the frontend's `ZONE_ROLE_DEFAULTS`).
+///
+/// Wire shape: each declared field rides as a u32 (24-bit RGB; alpha
+/// bits ignored at render). Each field omitted from TOML = `None` on
+/// wire, skipped via `skip_serializing_if`. An all-`None` struct still
+/// emits `{}` if wrapped in `Some(_)` on `RegistryRef.zone_role_colors`
+/// — authors who want NO override should leave the outer `Option`
+/// unset (default behavior).
+///
+/// V2 forward-compat: adding `AllyHome`/`RivalHome` later widens this
+/// struct additively; pre-Q5 TOML continues to load (new fields
+/// default to None).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ZoneRoleColors {
+    /// Override color (24-bit RGB packed in u32) for `ZoneRole::Wilderness`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wilderness: Option<u32>,
+    /// Override color for `ZoneRole::Hub`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hub: Option<u32>,
+    /// Override color for `ZoneRole::Forbidden`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forbidden: Option<u32>,
+    /// Override color for `ZoneRole::Sea`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sea: Option<u32>,
+}
+
+impl ZoneRoleColors {
+    /// Returns `true` iff EVERY field is `None`. Useful for callers
+    /// that want to materially distinguish "no override declared"
+    /// from "Some(empty struct)" — the wire treats the second as `{}`,
+    /// not "no override" (LOW-1 from chunk-A self-review).
+    pub fn is_empty(&self) -> bool {
+        self.wilderness.is_none()
+            && self.hub.is_none()
+            && self.forbidden.is_none()
+            && self.sea.is_none()
+    }
+}
+
 /// Registry identifier + version, embedded in TilemapView responses so
 /// frontends can detect mismatched registry assumptions.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -171,13 +215,74 @@ pub struct RegistryRef {
     pub id: String,
     /// Semver-ish version. Bumped on schema-breaking changes.
     pub version: String,
+    /// TMP-Q5 — per-book role color override. `None` (default) lets
+    /// the frontend use `ZONE_ROLE_DEFAULTS` for every role.
+    /// `Some(ZoneRoleColors)` overrides one or more roles; omitted
+    /// fields still fall back to defaults at render time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zone_role_colors: Option<ZoneRoleColors>,
 }
 
 impl RegistryRef {
     pub fn new(id: impl Into<String>, version: impl Into<String>) -> Self {
-        Self { id: id.into(), version: version.into() }
+        Self {
+            id: id.into(),
+            version: version.into(),
+            zone_role_colors: None,
+        }
+    }
+
+    /// TMP-Q5 builder for tests + per-book registries that set
+    /// role color overrides. Returns `Result` per
+    /// `feedback_builder_validation_parity` (chunk-A TMP-Q4
+    /// precedent) so future validation constraints (alpha-bit reserved,
+    /// contrast-vs-foundation) can land without an API break, even
+    /// though V1 validation is a no-op.
+    ///
+    /// **Semantic: REPLACE, not merge (LOW-4 from chunk-A /review-impl).**
+    /// Calling this builder a second time discards any earlier
+    /// override entirely:
+    ///   `ref.with_zone_role_colors({wilderness: red})
+    ///       .with_zone_role_colors({hub: blue})`
+    /// produces `ZoneRoleColors { wilderness: None, hub: Some(blue), .. }`
+    /// — Wilderness=red is dropped. If you want to merge sparse
+    /// overrides across calls, build the merged struct yourself and
+    /// call the builder once.
+    pub fn with_zone_role_colors(
+        mut self,
+        colors: ZoneRoleColors,
+    ) -> Result<Self, ZoneRoleColorsError> {
+        // V1: u32 is intrinsically valid (TOML parses to native u32).
+        // Future constraints land here. The Result-returning shape is
+        // intentional even with no-op validation — see
+        // feedback_builder_validation_parity.
+        self.zone_role_colors = Some(colors);
+        Ok(self)
     }
 }
+
+/// TMP-Q5 — surfaced when a builder caller passes a malformed
+/// `ZoneRoleColors`. V1 has no constraint; the type exists so future
+/// validation constraints land without an API break.
+///
+/// **`detail` field is currently unused (LOW-6 from chunk-A
+/// /review-impl)** — reserved for chunk-C / future validation hooks
+/// that surface a specific constraint violation (alpha-bit reserved,
+/// contrast-vs-foundation, etc.). V1 never constructs an instance,
+/// but the field stays so the future constructor signature lands
+/// without an API break.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ZoneRoleColorsError {
+    pub detail: String,
+}
+
+impl std::fmt::Display for ZoneRoleColorsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "invalid zone_role_colors: {}", self.detail)
+    }
+}
+
+impl std::error::Error for ZoneRoleColorsError {}
 
 #[cfg(test)]
 mod tests {
@@ -299,6 +404,162 @@ walkability_pattern = { mask = [true, false, false, false] }
         assert_eq!(r, back);
         assert_eq!(r.id, "lw");
         assert_eq!(r.version, "1.0.0");
+    }
+
+    #[test]
+    fn zone_role_colors_default_is_all_none() {
+        // TMP-Q5 AC-ZRV-2 — Default impl gives all-None struct so
+        // partial declarations only need to set the fields they care
+        // about (sparse overrides).
+        let c = ZoneRoleColors::default();
+        assert!(c.wilderness.is_none());
+        assert!(c.hub.is_none());
+        assert!(c.forbidden.is_none());
+        assert!(c.sea.is_none());
+        assert!(c.is_empty());
+    }
+
+    #[test]
+    fn zone_role_colors_is_empty_helper() {
+        // is_empty distinguishes "all-None inner" from "any field set".
+        let empty = ZoneRoleColors::default();
+        assert!(empty.is_empty());
+        let with_one = ZoneRoleColors { wilderness: Some(0x4ade80), ..Default::default() };
+        assert!(!with_one.is_empty());
+    }
+
+    #[test]
+    fn zone_role_colors_round_trips_with_all_fields() {
+        // TMP-Q5 AC-ZRV-1 — full override round-trips through JSON.
+        let c = ZoneRoleColors {
+            wilderness: Some(0x4ade80),
+            hub: Some(0x818cf8),
+            forbidden: Some(0xf87171),
+            sea: Some(0x60a5fa),
+        };
+        let s = serde_json::to_string(&c).unwrap();
+        // All 4 fields appear on wire (decimal repr of the hex values).
+        assert!(s.contains("\"wilderness\":4906624"), "wire: {s}");
+        assert!(s.contains("\"hub\":8490232"), "wire: {s}");
+        assert!(s.contains("\"forbidden\":16281969"), "wire: {s}");
+        assert!(s.contains("\"sea\":6333946"), "wire: {s}");
+        let back: ZoneRoleColors = serde_json::from_str(&s).unwrap();
+        assert_eq!(c, back);
+    }
+
+    #[test]
+    fn zone_role_colors_round_trips_sparse() {
+        // TMP-Q5 AC-ZRV-2 — only one role declared; the others stay
+        // off-wire so per-book authors can override only what they
+        // care about.
+        let c = ZoneRoleColors {
+            wilderness: Some(0xffff00),
+            ..Default::default()
+        };
+        let s = serde_json::to_string(&c).unwrap();
+        assert!(s.contains("wilderness"), "wire: {s}");
+        assert!(!s.contains("hub"), "hub must be skipped: {s}");
+        assert!(!s.contains("forbidden"), "forbidden must be skipped: {s}");
+        assert!(!s.contains("sea"), "sea must be skipped: {s}");
+        let back: ZoneRoleColors = serde_json::from_str(&s).unwrap();
+        assert_eq!(c, back);
+    }
+
+    #[test]
+    fn registry_ref_round_trips_with_zone_role_colors() {
+        // TMP-Q5 AC-ZRV-1 — RegistryRef carries the override through
+        // a JSON round-trip.
+        let r = RegistryRef::new("xianxia", "1.0.0")
+            .with_zone_role_colors(ZoneRoleColors {
+                wilderness: Some(0xfacc15),
+                ..Default::default()
+            })
+            .expect("V1 builder must accept all u32 values");
+        let s = serde_json::to_string(&r).unwrap();
+        assert!(s.contains("zone_role_colors"), "wire: {s}");
+        assert!(s.contains("wilderness"), "wire: {s}");
+        let back: RegistryRef = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.zone_role_colors, r.zone_role_colors);
+    }
+
+    #[test]
+    fn registry_ref_skip_serializes_when_zone_role_colors_none() {
+        // TMP-Q5 AC-ZRV-1 — V2 byte-identical preservation: a registry
+        // that doesn't declare an override produces no key on wire.
+        let r = RegistryRef::new("lw", "1.0.0");
+        assert!(r.zone_role_colors.is_none());
+        let s = serde_json::to_string(&r).unwrap();
+        assert!(
+            !s.contains("zone_role_colors"),
+            "None outer must be skipped from wire: {s}",
+        );
+    }
+
+    #[test]
+    fn registry_ref_deserializes_pre_q5_fixture_without_zone_role_colors() {
+        // TMP-Q5 backward compat: pre-Q5 wire JSON (no zone_role_colors
+        // key) round-trips via `#[serde(default)]` to None.
+        let json = r#"{"id":"lw","version":"1.0.0"}"#;
+        let r: RegistryRef = serde_json::from_str(json).unwrap();
+        assert_eq!(r.zone_role_colors, None);
+    }
+
+    #[test]
+    fn registry_ref_builder_with_zone_role_colors_succeeds() {
+        // TMP-Q5 AC-ZRV-3 — builder parity (feedback_builder_validation_parity):
+        // Result-returning even with V1 no-op validation so future
+        // constraints land without an API break.
+        let result = RegistryRef::new("lw", "1.0.0")
+            .with_zone_role_colors(ZoneRoleColors::default());
+        assert!(result.is_ok(), "V1 builder must accept default (all-None) override");
+        let r = result.unwrap();
+        assert!(r.zone_role_colors.is_some()); // wrapped Some(empty)
+        assert!(r.zone_role_colors.as_ref().unwrap().is_empty());
+    }
+
+    #[test]
+    fn registry_ref_builder_replaces_not_merges_on_second_call() {
+        // TMP-Q5 LOW-4 from chunk-A /review-impl — the builder REPLACES
+        // the entire override on each call. Sparse overrides are NOT
+        // merged across calls. A future user who chains the builder
+        // expecting merge semantics would silently lose the first
+        // call's fields. This test pins the replace semantic so a
+        // future API change to merge would fail loudly.
+        let result = RegistryRef::new("lw", "1.0.0")
+            .with_zone_role_colors(ZoneRoleColors {
+                wilderness: Some(0xff0000),
+                ..Default::default()
+            })
+            .expect("first call succeeds")
+            .with_zone_role_colors(ZoneRoleColors {
+                hub: Some(0x0000ff),
+                ..Default::default()
+            })
+            .expect("second call succeeds");
+        let colors = result.zone_role_colors.as_ref().expect("Some");
+        assert_eq!(colors.hub, Some(0x0000ff), "second call's hub override stays");
+        assert_eq!(
+            colors.wilderness, None,
+            "REPLACE semantic: first call's wilderness override is DROPPED \
+             by the second call (not merged)",
+        );
+    }
+
+    #[test]
+    fn registry_ref_with_some_empty_zone_role_colors_emits_curly_braces() {
+        // TMP-Q5 LOW-1 from chunk-A self-review — the outer
+        // `skip_serializing_if = Option::is_none` only skips when the
+        // outer Option is None. Wrapping an empty inner struct in Some
+        // emits the literal `"zone_role_colors":{}` on wire (the empty
+        // fields are skipped via their own skip_serializing_if; the
+        // wrapper is not). Authors who want "no override" should leave
+        // the outer Option as None. This test pins the documented quirk
+        // so future cleanup (custom skip predicate) is intentional.
+        let r = RegistryRef::new("lw", "1.0.0")
+            .with_zone_role_colors(ZoneRoleColors::default())
+            .unwrap();
+        let s = serde_json::to_string(&r).unwrap();
+        assert!(s.contains("\"zone_role_colors\":{}"), "expected {{}}: {s}");
     }
 
     #[test]

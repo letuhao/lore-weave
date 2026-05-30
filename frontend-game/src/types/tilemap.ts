@@ -44,10 +44,32 @@ export interface FootprintSize {
 /** V2 — 8-way orientation. Mirrors backend `Direction`. */
 export type Direction = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw';
 
+/** TMP-Q5 — per-book role color override.
+ *
+ *  Each role is independently optional. When `undefined`, the
+ *  frontend falls back to `ZONE_ROLE_DEFAULTS` (chunk B) for that
+ *  role. Authors can declare only the roles they want to override
+ *  (sparse overrides) and leave the rest at default.
+ *
+ *  Each color is a 24-bit RGB packed into a u32 on the wire (alpha
+ *  bits ignored at render).
+ */
+export interface ZoneRoleColors {
+  wilderness?: number;
+  hub?: number;
+  forbidden?: number;
+  sea?: number;
+}
+
 /** V2 — registry pin. Mirrors backend `RegistryRef`. */
 export interface RegistryRef {
   id: string;
   version: string;
+  /** TMP-Q5 — per-book role color override.
+   *  `undefined` ⇒ frontend uses `ZONE_ROLE_DEFAULTS` for every role.
+   *  Backend validates each declared color at registry load
+   *  (`Registry::from_file`). */
+  zone_role_colors?: ZoneRoleColors;
 }
 
 /** V2 — per-tile terrain cell. Indexed by `terrain_layer` u8 values
