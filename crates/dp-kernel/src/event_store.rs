@@ -410,7 +410,12 @@ pub mod shared_test_suite {
 
     async fn test_reality_isolation<S: EventStore>(store: &S, reality_a: Uuid) {
         // Aggregate in a different reality must not leak into reality_a reads.
-        let reality_b = Uuid::from_u128(0xB000_0000_0000);
+        // Re-run-safe: derive a fresh, distinct reality from reality_a rather
+        // than a fixed constant. A hardcoded reality_b accumulates rows in a
+        // PERSISTENT store (PgEventStore) and breaks idempotency on the 2nd+
+        // run (expected_version 0 conflicts with the prior run's v1). XOR with
+        // a nonzero mask guarantees reality_b != reality_a.
+        let reality_b = Uuid::from_u128(reality_a.as_u128() ^ 0xB000_0000_0000);
         let agg_id = "isolated-agg";
         store
             .append_events(

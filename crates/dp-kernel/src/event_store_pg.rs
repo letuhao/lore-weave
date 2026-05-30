@@ -212,9 +212,9 @@ impl EventStore for PgEventStore {
                 payload,
                 metadata,
                 to_char(occurred_at AT TIME ZONE 'UTC',
-                        'YYYY-MM-DD"T"HH24:MI:SSOF') AS occurred_at_str,
+                        'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS occurred_at_str,
                 to_char(recorded_at AT TIME ZONE 'UTC',
-                        'YYYY-MM-DD"T"HH24:MI:SSOF') AS recorded_at_str
+                        'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS recorded_at_str
             FROM events
             WHERE reality_id = $1
               AND aggregate_type = $2

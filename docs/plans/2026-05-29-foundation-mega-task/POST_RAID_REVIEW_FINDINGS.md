@@ -58,6 +58,12 @@
 - **PRR-13**: CYCLE_LOG "Started"-column SHA drift (cycles 18,19,32–38) normalized — SHA moved to Notes as `commit:<sha>`, Started set to the Completed date.
 - **PRR-19**: `auto-dispatcher.py` + `run-smoke-test.sh` marked DEPRECATED (v1.5+); stale `.session-cycle-lock` (`READY_FOR_1`) reconciled to a clean closed state.
 
+### F7 — docker-compose live-smoke: PgEventStore PG contract ✅ DONE *(real Postgres via `infra/foundation-dev`; full `dp-kernel` suite green incl. PG integration) — closes D-EVENT-STORE-LIVE-SMOKE (061) / PRR-36*
+Reviewer challenge "can't these be tested on docker-compose?" was correct — they can. Stood up `infra/foundation-dev` Postgres on host **:55432** (host :5432/:6379 were occupied by a pre-existing ContextHub stack), applied per-reality migrations 0002+0004, and ran the previously-deferred `PgEventStore` shared-suite live-smoke. It immediately surfaced **2 real bugs no mock-only unit test caught** (validating the C4 "mock-only hides cross-service bugs" finding):
+- **PRR-46 (NEW · FIXED):** PgEventStore read path used `to_char(... AT TIME ZONE 'UTC', '…SSOF')` → emitted `+00`, but the canonical timestamp form (fixtures + in-memory store) is `Z` → round-trip diverged and broke the shared contract. Value is forced UTC, so fixed `OF` → literal `"Z"` (`crates/dp-kernel/src/event_store_pg.rs`, 2 sites).
+- **PRR-47 (NEW · FIXED):** the shared `test_reality_isolation` used a hardcoded `reality_b` constant → not idempotent against a persistent store (2nd+ run conflicts). Made `reality_b` fresh-per-run (`reality_a ^ mask`) — re-run-safe (`crates/dp-kernel/src/event_store.rs`).
+- **Result:** full `dp-kernel` suite (in-memory unit + PG integration) **green**. **Reframes the verdict:** the remaining deferred live-wiring/live-smoke items (worker fleet 069, PII seam 076, etc.) are **docker-compose-testable here** — they should be live-wired + smoked locally, not treated as hard-blocked. The honest blocker was the RAID build deferring the wiring + never standing the stack up, not impossibility.
+
 ---
 
 ## 🔴 MAJOR — to fix
