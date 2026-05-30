@@ -601,6 +601,69 @@ func UpEvidenceChapterIndex(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
+// ── C4 (K14) — transactional outbox for glossary.entity_updated events ──────
+//
+// Mirrors the platform outbox pattern already used by book-service
+// (services/book-service/internal/api/outbox.go +
+// services/worker-infra/internal/tasks/outbox_relay.go). The worker-infra
+// outbox-relay polls this table (when glossary is listed in OUTBOX_SOURCES)
+// and relays unpublished rows to the Redis Stream
+// "loreweave:events:glossary" (aggregate_type='glossary' → MAXLEN 10000).
+// knowledge-service's existing consumer then triggers glossary_sync → Neo4j.
+//
+// ADDITIVE / backward-compatible: a brand-new table + index + notify
+// trigger. No existing table, column, or behaviour is altered. If the
+// relay never runs (OUTBOX_SOURCES omits glossary), rows simply accumulate
+// with published_at IS NULL and are pruned by the standard outbox cleanup —
+// the primary entity write is never affected.
+const outboxSQL = `
+-- outbox_events: same shape as book-service so the worker-infra relay
+-- (which is schema-generic) reads it without code changes. Default
+-- aggregate_type='glossary' → routes to loreweave:events:glossary.
+CREATE TABLE IF NOT EXISTS outbox_events (
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
+  aggregate_type TEXT NOT NULL DEFAULT 'glossary',
+  aggregate_id UUID NOT NULL,
+  event_type TEXT NOT NULL,
+  payload JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  published_at TIMESTAMPTZ,
+  retry_count INT NOT NULL DEFAULT 0,
+  last_error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_outbox_pending
+  ON outbox_events(created_at) WHERE published_at IS NULL;
+
+-- pg_notify on insert so the relay can switch from 30s poll to
+-- LISTEN/NOTIFY (D1-10) without further migration. Harmless if no
+-- listener is attached.
+CREATE OR REPLACE FUNCTION fn_outbox_notify()
+RETURNS trigger AS $fn$
+BEGIN
+  PERFORM pg_notify('outbox_events', NEW.id::text);
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DO $$ BEGIN
+  CREATE TRIGGER trg_outbox_notify
+    AFTER INSERT ON outbox_events
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_outbox_notify();
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+`
+
+// UpOutbox creates the transactional outbox table + notify trigger used
+// by the C4/K14 glossary→KG event pipeline. Idempotent (IF NOT EXISTS /
+// CREATE OR REPLACE / duplicate-object guard) — safe on every startup.
+func UpOutbox(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, outboxSQL); err != nil {
+		return fmt.Errorf("migrate outbox: %w", err)
+	}
+	return nil
+}
+
 // ── knowledge-service memory support (Track 1 K2a) ─────────────────────────
 //
 // Adds columns that the knowledge-service L2 glossary-fallback depends on:

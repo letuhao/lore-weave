@@ -528,6 +528,31 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// 6. C4 (K14) — emit ONE glossary.entity_updated per entity that
+		// was actually written (created or updated). "skipped" entities
+		// changed nothing, so no event. This is the bulk fan-out: a batch
+		// of N written entities produces N events, never a single batch
+		// event — so every extracted entity propagates to Neo4j. Built
+		// from in-hand fields (name/kind from this request) rather than a
+		// snapshot round-trip, since cached_name may lag the EAV write
+		// within the same request. Best-effort (pool.Exec already
+		// committed each entity above; a broker hiccup must not fail the
+		// whole bulk response).
+		if result.Status == "created" || result.Status == "updated" {
+			entID, _ := uuid.Parse(result.EntityID)
+			payload := buildEntityEventPayload(
+				bookID.String(), result.EntityID, ent.Name, ent.KindCode,
+				nil, "", result.Status,
+			)
+			if err := insertEntityOutboxEvent(ctx, func(ctx context.Context, sql string, args ...any) error {
+				_, e := s.pool.Exec(ctx, sql, args...)
+				return e
+			}, entID, payload); err != nil {
+				slog.Warn("extraction: failed to emit glossary.entity_updated (non-fatal)",
+					"entity_id", entID, "name", ent.Name, "error", err)
+			}
+		}
+
 		results = append(results, result)
 	}
 

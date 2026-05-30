@@ -97,12 +97,13 @@ def _build_config(
     *,
     model_ref: str,
     partial_policy: Literal["keep", "drop"],
+    categories: tuple[str, ...] = ("entity", "relation", "event"),
 ) -> PrecisionFilterConfig:
     return PrecisionFilterConfig(
         model_ref=model_ref,
         model_source="user_model",
         partial_policy=partial_policy,
-        categories=("entity", "relation", "event"),
+        categories=categories,  # type: ignore[arg-type]
         # max_items_per_batch + transient_retry_budget use defaults
         # (3 + 1) — calibrated for reasoning-token bursts; tune in
         # follow-up if filter_coverage shows truncation.
@@ -212,13 +213,9 @@ async def _filter_one_chapter(
 
 async def main() -> int:
     variant = os.environ.get("KNOWLEDGE_C72_VARIANT", "c72b").strip()
-    if variant not in ("c72b", "c72c"):
-        print(
-            f"ERROR: KNOWLEDGE_C72_VARIANT must be 'c72b' or 'c72c'; "
-            f"got {variant!r}",
-            file=sys.stderr,
-        )
-        return 1
+    # cycle 73b — accept any variant name; only c72b/c72c get auto
+    # partial_policy mapping. Other names (c73b-keep / c73b-drop)
+    # require explicit KNOWLEDGE_C72_PARTIAL_POLICY env.
 
     user_id = os.environ.get("KNOWLEDGE_EVAL_USER_ID", "").strip()
     if not user_id:
@@ -233,8 +230,50 @@ async def main() -> int:
         "019e5650-eca7-78c2-985d-465aa3bce1ce",  # default: huihui-claude-4.7-opus
     ).strip()
 
-    partial_policy: Literal["keep", "drop"] = "keep" if variant == "c72b" else "drop"
-    config = _build_config(model_ref=model_ref, partial_policy=partial_policy)
+    # Variant-derived defaults (c72b=keep, c72c=drop) — overridable
+    # via KNOWLEDGE_C72_PARTIAL_POLICY for cycle 73b and beyond.
+    if variant == "c72b":
+        default_policy = "keep"
+    elif variant == "c72c":
+        default_policy = "drop"
+    else:
+        default_policy = "drop"
+
+    policy_env = os.environ.get(
+        "KNOWLEDGE_C72_PARTIAL_POLICY", default_policy
+    ).strip().lower()
+    if policy_env not in ("keep", "drop"):
+        print(
+            f"ERROR: KNOWLEDGE_C72_PARTIAL_POLICY must be 'keep' or 'drop'; "
+            f"got {policy_env!r}",
+            file=sys.stderr,
+        )
+        return 1
+    partial_policy: Literal["keep", "drop"] = policy_env  # type: ignore[assignment]
+
+    # Cycle 73b — categories subset (comma-separated). Default to all 3
+    # to preserve c72 behavior. For relation-only: "relation".
+    categories_env = os.environ.get(
+        "KNOWLEDGE_C72_CATEGORIES", "entity,relation,event"
+    )
+    categories = tuple(
+        c.strip() for c in categories_env.split(",") if c.strip()
+    )
+    valid_cats = {"entity", "relation", "event"}
+    if not categories or not all(c in valid_cats for c in categories):
+        print(
+            f"ERROR: KNOWLEDGE_C72_CATEGORIES must be a non-empty "
+            f"comma-separated subset of {sorted(valid_cats)}; got "
+            f"{categories_env!r}",
+            file=sys.stderr,
+        )
+        return 1
+
+    config = _build_config(
+        model_ref=model_ref,
+        partial_policy=partial_policy,
+        categories=categories,
+    )
 
     c70a_root, out_root_base, fixtures_root = _resolve_paths()
     out_root = out_root_base / variant
@@ -249,8 +288,10 @@ async def main() -> int:
         return 1
 
     logger.info(
-        "c72 filter run starting: variant=%s policy=%s model=%s chapters=%d",
-        variant, partial_policy, model_ref, len(chapter_dirs),
+        "c72 filter run starting: variant=%s policy=%s categories=%s "
+        "model=%s chapters=%d",
+        variant, partial_policy, ",".join(categories), model_ref,
+        len(chapter_dirs),
     )
 
     client = get_llm_client()
@@ -277,6 +318,7 @@ async def main() -> int:
             {
                 "variant": variant,
                 "partial_policy": partial_policy,
+                "categories": list(categories),
                 "filter_model_ref": model_ref,
                 "elapsed_sec": round(overall_elapsed, 1),
                 "chapters": summary,

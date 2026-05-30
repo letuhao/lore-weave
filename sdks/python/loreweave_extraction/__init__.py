@@ -68,6 +68,20 @@ from loreweave_extraction.pass2_filter import (
     apply_precision_filter,
     load_candidates_from_dump,
 )
+from loreweave_extraction.entity_recovery import (
+    EntityRecoveryConfig,
+    RecoveryDecision,
+    recover_missing_entities,
+)
+from loreweave_extraction.filter_config_store import (
+    FILTER_CONFIG_REDIS_KEY,
+    FILTER_RELOAD_PUBSUB_CHANNEL,
+    WIRE_SCHEMA_VERSION,
+    delete_filter_config,
+    get_filter_config,
+    set_filter_config,
+    subscribe_filter_reload,
+)
 from loreweave_extraction.extractors.precision_filter_prompts import (
     NO_THINK_PREFIX,
     build_precision_prompt,
@@ -87,6 +101,18 @@ __all__ = [
     "build_precision_prompt",
     "precision_prompt_body",
     "NO_THINK_PREFIX",
+    # Cycle 73d — entity recovery (3-tier glossary/hints/LLM)
+    "recover_missing_entities",
+    "EntityRecoveryConfig",
+    "RecoveryDecision",
+    # Cycle 73f — runtime filter config store (Redis-backed)
+    "FILTER_CONFIG_REDIS_KEY",
+    "FILTER_RELOAD_PUBSUB_CHANNEL",
+    "WIRE_SCHEMA_VERSION",
+    "get_filter_config",
+    "set_filter_config",
+    "delete_filter_config",
+    "subscribe_filter_reload",
     # Per-op extractors
     "extract_entities",
     "extract_relations",

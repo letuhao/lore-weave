@@ -28,6 +28,7 @@ from app.routers import (
     internal_parse,
     internal_summarize,
     internal_tools,
+    internal_wiki,
     metrics,
     ping,
 )
@@ -133,6 +134,29 @@ async def lifespan(app: FastAPI):
         )
         await _close_all_startup_resources()
         raise
+    # Cycle 73f r2 H1 fold — hydrate filter config from Redis on startup
+    # so a container restart preserves ops-override. Spawn subscriber
+    # task so multi-replica KS deployments see each others' reloads via
+    # pubsub. Non-fatal: failure logs warn and falls through to env.
+    filter_reload_task = None
+    if settings.redis_url:
+        try:
+            from app.extraction.pass2_orchestrator import (
+                consume_filter_reload_signal,
+                hydrate_precision_filter_config_from_redis,
+            )
+            await hydrate_precision_filter_config_from_redis(settings.redis_url)
+            filter_reload_task = asyncio.create_task(
+                consume_filter_reload_signal(settings.redis_url),
+            )
+            logger.info("cycle 73f: filter reload hydrate + subscriber started")
+        except Exception:
+            logger.warning(
+                "cycle 73f: filter reload startup failed (non-fatal — "
+                "using env defaults)",
+                exc_info=True,
+            )
+
     # K14.1 — start event consumer as background task.
     # Imports inline to avoid circular imports (consumer needs pool).
     consumer_task = None
@@ -143,12 +167,19 @@ async def lifespan(app: FastAPI):
             handle_chat_turn,
             handle_chapter_saved,
             handle_chapter_deleted,
+            handle_glossary_entity_updated,
         )
 
         dispatcher = EventDispatcher()
         dispatcher.register("chat.turn_completed", handle_chat_turn)
         dispatcher.register("chapter.saved", handle_chapter_saved)
         dispatcher.register("chapter.deleted", handle_chapter_deleted)
+        # C4 (K14) — auto glossary→KG propagation. glossary-service emits
+        # glossary.entity_updated on every entity write (single + bulk
+        # extract); this triggers the existing glossary_sync → Neo4j.
+        dispatcher.register(
+            "glossary.entity_updated", handle_glossary_entity_updated,
+        )
 
         consumer = EventConsumer(
             redis_url=settings.redis_url,
@@ -364,6 +395,22 @@ async def lifespan(app: FastAPI):
                     "Error stopping cache invalidator", exc_info=True,
                 )
 
+        # Cycle 73f r3 M3 fold: stop filter-reload subscriber. Without
+        # this cancel block, the BG task leaks its Redis client + pubsub
+        # connection on container shutdown — slow teardown + connection
+        # exhaustion on repeated dev restarts.
+        if filter_reload_task is not None:
+            filter_reload_task.cancel()
+            try:
+                await filter_reload_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.warning(
+                    "cycle 73f: error stopping filter-reload subscriber",
+                    exc_info=True,
+                )
+
         # Stop anchor-refresh loop next (quick cancel).
         if refresh_task is not None:
             refresh_task.cancel()
@@ -521,6 +568,7 @@ app.include_router(internal_extraction.router)
 app.include_router(internal_parse.router)
 app.include_router(internal_summarize.router)
 app.include_router(internal_tools.router)
+app.include_router(internal_wiki.router)
 app.include_router(metrics.router)
 app.include_router(public_costs.router)
 app.include_router(public_drawers.router)

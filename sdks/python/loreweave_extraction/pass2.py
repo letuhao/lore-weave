@@ -88,6 +88,8 @@ async def extract_pass2(
     on_dropped: DroppedHandler | None = None,
     precision_filter: "PrecisionFilterConfig | None" = None,
     on_filter_decision: "DecisionHandler | None" = None,
+    entity_recovery: "EntityRecoveryConfig | None" = None,
+    on_recovery_decision: "RecoveryDecisionHandler | None" = None,
 ) -> Pass2Candidates:
     """Run the full Pass 2 extraction pipeline.
 
@@ -162,6 +164,23 @@ async def extract_pass2(
         events=events,
         facts=facts,
     )
+
+    # Cycle 73d — optional entity recovery (runs BEFORE precision filter).
+    # Promotes "real" entities the extractor missed (so writer doesn't
+    # cascade-skip relations referencing them) and drops relations whose
+    # subjects/objects are abstract phrases.
+    if entity_recovery is not None:
+        from loreweave_extraction.entity_recovery import recover_missing_entities
+
+        candidates = await recover_missing_entities(
+            candidates,
+            text=text,
+            config=entity_recovery,
+            user_id=user_id,
+            project_id=project_id,
+            llm_client=llm_client,
+            on_decision=on_recovery_decision,
+        )
 
     # Cycle 72 — optional precision filter pass.
     if precision_filter is not None:

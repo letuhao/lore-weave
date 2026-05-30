@@ -417,6 +417,27 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// C4 (K14) — emit glossary.entity_updated inside the SAME tx as the
+	// entity insert (true transactional outbox: the event row commits
+	// atomically with the entity, or not at all). A fresh draft has no
+	// name yet; the payload carries kind + book_id, and the later PATCH
+	// that fills the name re-emits — knowledge-service's glossary_sync
+	// MERGE (keyed on glossary_entity_id) makes both events idempotent.
+	createEntityUUID, _ := uuid.Parse(entityIDStr)
+	{
+		name, kind, aliases, shortDesc, ok := loadEntityEventFields(ctx, tx, createEntityUUID)
+		if !ok {
+			name, kind, aliases, shortDesc = "", "", []string{}, ""
+		}
+		payload := buildEntityEventPayload(
+			bookID.String(), entityIDStr, name, kind, aliases, shortDesc, "created",
+		)
+		if err := emitEntityUpdatedTx(ctx, tx, createEntityUUID, payload); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "outbox emit failed")
+			return
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")
 		return
@@ -784,6 +805,10 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "entity not found")
 			return
 		}
+		// C4 (K14) — entity changed → emit best-effort (already committed
+		// via pool.Exec above; fire-and-forget so a broker hiccup can't
+		// turn a successful PATCH into a 500).
+		s.emitEntityUpdated(ctx, entityID, "updated")
 	}
 
 	detail, err := s.loadEntityDetail(ctx, bookID, entityID)

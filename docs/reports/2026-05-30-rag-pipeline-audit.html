@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LoreWeave RAG Pipeline — Architecture &amp; Evaluation Audit</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --panel2:#1c2230; --ink:#e6edf3; --muted:#9aa7b4;
+    --line:#2b3441; --accent:#4cc2ff; --good:#3fb950; --warn:#d29922; --bad:#f85149;
+    --code:#0b0f14; --chip:#22303f;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1100px;margin:0 auto;padding:32px 24px 96px}
+  h1{font-size:30px;margin:0 0 4px;letter-spacing:-.3px}
+  h2{font-size:23px;margin:48px 0 12px;padding-top:14px;border-top:1px solid var(--line)}
+  h3{font-size:18px;margin:28px 0 8px;color:#cdd9e5}
+  h4{font-size:15px;margin:18px 0 6px;color:var(--accent)}
+  p{margin:10px 0}
+  a{color:var(--accent);text-decoration:none}
+  code,kbd{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:12.5px}
+  code{background:var(--code);border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:#c9d6e0}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow:auto;font-size:12.5px;line-height:1.5}
+  pre code{background:none;border:none;padding:0}
+  .sub{color:var(--muted);font-size:14px}
+  .lead{font-size:16px;color:#cdd9e5}
+  .banner{border-radius:10px;padding:18px 20px;margin:22px 0;border:1px solid}
+  .banner.bad{background:rgba(248,81,73,.08);border-color:rgba(248,81,73,.45)}
+  .banner.warn{background:rgba(210,153,34,.08);border-color:rgba(210,153,34,.45)}
+  .banner h3{margin-top:0;color:#fff}
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:#cdd9e5;font-weight:600}
+  tr:nth-child(even) td{background:rgba(255,255,255,.015)}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .tag{display:inline-block;font-size:11px;padding:1px 7px;border-radius:20px;border:1px solid var(--line);background:var(--chip);color:#bcd;margin-right:4px;white-space:nowrap}
+  .tag.bad{background:rgba(248,81,73,.15);border-color:rgba(248,81,73,.4);color:#ffb4ae}
+  .tag.good{background:rgba(63,185,80,.13);border-color:rgba(63,185,80,.4);color:#9ff0a8}
+  .tag.warn{background:rgba(210,153,34,.13);border-color:rgba(210,153,34,.4);color:#f2d692}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .toc{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 20px;columns:2;column-gap:32px}
+  .toc a{display:block;padding:3px 0;font-size:13.5px}
+  .muted{color:var(--muted)}
+  .mono-sm{font-family:ui-monospace,monospace;font-size:12px;color:var(--muted)}
+  .flow{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:16px;overflow:auto}
+  .flow pre{border:none;background:none;padding:0;color:#aeb9c4}
+  ul{margin:8px 0 8px 0;padding-left:22px}
+  li{margin:4px 0}
+  .kbd{font-size:11px;color:var(--muted)}
+  .ref{font-family:ui-monospace,monospace;font-size:11.5px;color:#7d8a98}
+  hr{border:none;border-top:1px solid var(--line);margin:30px 0}
+  .verdict{font-size:17px;font-weight:600}
+  .pill-good{color:var(--good)} .pill-bad{color:var(--bad)} .pill-warn{color:var(--warn)}
+  @media(max-width:760px){.grid,.toc{grid-template-columns:1fr;columns:1}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>LoreWeave — RAG Pipeline Architecture &amp; Evaluation Audit</h1>
+  <p class="sub">Technical review of the knowledge-extraction + retrieval pipeline and a critical assessment of the evaluation methodology.<br>
+  Generated 2026-05-30 · repo <code>lore-weave</code> @ <code>0d456f27</code> (main) · audit scope: <code>knowledge-service</code>, <code>loreweave_extraction</code> SDK, eval framework, provider gateway.</p>
+
+  <div class="banner warn">
+    <h3>Verdict — both pipelines are architecturally sound; the eval has two fixable <i>setup</i> flaws (not a model-quality problem)</h3>
+    <p class="verdict">The extraction is producing <span class="pill-good">genuinely good output</span> — the models are near-top-tier open models (Google Gemma-26B, Alibaba Qwen-30B/35B), and independent strong-model review (Claude, across sessions — including manual spot-checks this session that <i>agreed</i> with the pipeline's keep/drop decisions) corroborates real quality. <b>Model quality is not the concern.</b> What is <span class="pill-warn">not reliable</span> is the eval's <i>absolute numbers and sub-noise deltas</i>, for two architectural reasons: <b>(1)</b> the eval is <i>wired</i> so the extractor and the precision filter are also 2 of the 3 judges — grading your own output inflates the score regardless of how strong the grader is; <b>(2)</b> the gold set is tiny (9 chapters, 1–6 items each) with no confidence intervals, so ship decisions on ±0.1–0.3pp F1 sit inside the measurement noise. Both are fixable wiring/methodology issues. There is also one real RAG correctness bug (2-hop graph retrieval is dead, §9). Full reasoning in §8.</p>
+  </div>
+
+  <h3 style="margin-top:26px">Table of contents</h3>
+  <div class="toc">
+    <a href="#overview">1. System overview &amp; data flow</a>
+    <a href="#stack">2. Technology stack</a>
+    <a href="#extraction">3. Extraction pipeline</a>
+    <a href="#retrieval">4. RAG retrieval pipeline</a>
+    <a href="#algorithms">5. Algorithm catalogue</a>
+    <a href="#eval">6. Evaluation framework</a>
+    <a href="#results">7. Results &amp; history</a>
+    <a href="#trust">8. Architecture-correctness assessment</a>
+    <a href="#bugs">9. Defects found during audit</a>
+    <a href="#recs">10. Recommendations</a>
+  </div>
+
+  <!-- ===================== 1 OVERVIEW ===================== -->
+  <h2 id="overview">1 · System overview &amp; data flow</h2>
+  <p>LoreWeave builds a per-user knowledge graph + memory layer over novels and feeds assembled context to chat LLMs. The relevant subsystem is two halves that share a graph store:</p>
+  <ul>
+    <li><b>Write path (extraction):</b> chapter text → LLM extraction (entities/relations/events/facts) → entity anchoring → Neo4j graph + passage vector index.</li>
+    <li><b>Read path (RAG retrieval):</b> chat turn → multi-layer context assembly (summaries, glossary, graph facts, vector passages) → token-budgeted memory block → chat-service.</li>
+  </ul>
+
+  <div class="flow"><pre>
+WRITE PATH (Pass 2, the production pipeline)
+  chapter.txt
+    │
+    ▼   provider-registry gateway (BYOK, chunking, JSON aggregation)
+  extract_entities ──► (gate: no entities ⇒ stop)
+    │
+    ├─ asyncio.gather ─► extract_relations
+    │                    extract_events            ◄─ local LM Studio model
+    │                    extract_facts                (huihui-qwen3-30b-instruct, UUID 019e6a20)
+    ▼
+  recover_missing_entities  (opt-in, OFF by default)
+    ▼
+  apply_precision_filter    (ON: relation-only, drop)  ◄─ local model 019e5650
+    ▼
+  write_pass2_extraction ──► Neo4j  (:Entity/:Event/:Fact, :RELATES_TO, :EVIDENCED_BY)
+                              + passage_ingester ──► Neo4j vector index (bge-m3, 1024-d, cosine)
+
+READ PATH (Mode 3 "full", per chat turn)
+  POST /internal/context/build
+    │  intent classifier (regex, no LLM)
+    ├─ L0 global bio        (Postgres, 0.1s budget)
+    ├─ L1 project summary   (Postgres, 0.1s)
+    ├─ glossary select      (glossary-service, 0.2s)
+    ├─ L2 facts             (Neo4j 1-hop/2-hop/negation, 0.3s)   ◄─ 2-hop path BROKEN (§9)
+    └─ L3 passages          (Neo4j vector → MMR rerank, 2.0s)
+    ▼
+  token-budget enforcer (6000 tok, tiktoken cl100k) ──► &lt;memory&gt; block ──► chat-service
+  </pre></div>
+
+  <h3>Services involved</h3>
+  <table>
+    <tr><th>Service</th><th>Lang</th><th>Role in this pipeline</th></tr>
+    <tr><td><code>knowledge-service</code></td><td>Python / FastAPI</td><td>Owns extraction orchestration, anchoring, Neo4j writes, and all RAG retrieval / context assembly.</td></tr>
+    <tr><td><code>provider-registry-service</code></td><td>Go / Chi</td><td>LLM &amp; embedding gateway. Resolves BYOK <code>model_ref</code>→upstream, chunks prompts, aggregates JSON, meters spend. <b>All</b> LLM/embed calls go through it (gateway invariant).</td></tr>
+    <tr><td><code>glossary-service</code></td><td>Go / Chi</td><td>Authored-SSOT entity layer; supplies glossary anchors (write path) + context entities (read path).</td></tr>
+    <tr><td><code>worker-ai</code></td><td>Python</td><td>Runs Pass 2 extraction off the job queue (same SDK as knowledge-service).</td></tr>
+    <tr><td>Neo4j 2026.03</td><td>—</td><td>Graph store (entities/relations/events/facts) + native vector indexes for passages/entities/events.</td></tr>
+    <tr><td>Postgres</td><td>—</td><td>SSOT for projects, summaries, extraction-leaf cache.</td></tr>
+    <tr><td>Redis</td><td>—</td><td>Job queue + runtime filter-config pub/sub + context caches.</td></tr>
+    <tr><td>LM Studio (host)</td><td>—</td><td>Actually runs every model — extractor, filter, judges, embeddings. Cloud is fallback-only.</td></tr>
+  </table>
+
+  <!-- ===================== 2 STACK ===================== -->
+  <h2 id="stack">2 · Technology stack</h2>
+  <table>
+    <tr><th>Concern</th><th>What is used</th><th>Notes</th></tr>
+    <tr><td>Extraction LLM (default)</td><td><code>huihui-qwen3-30b-a3b-instruct-2507-abliterated</code> <span class="ref">UUID 019e6a20</span></td><td>Local, LM Studio, 40K ctx, no reasoning tokens. High-recall champion.</td></tr>
+    <tr><td>Precision-filter LLM (ships ON)</td><td><code>huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated</code> <span class="ref">UUID 019e5650</span></td><td>Local. <b>Despite the name, not Anthropic Claude</b> — a Qwen-3.6 abliterated fine-tune.</td></tr>
+    <tr><td>Eval judges (ensemble of 3)</td><td>gemma-4-26b <span class="ref">019dc3df</span> · qwen3-30b <span class="ref">019e6a20</span> · qwen3.6-35b "claude-4.7-opus" <span class="ref">019e5650</span></td><td>All local. Judge B = the extractor; Judge C = the filter (§8).</td></tr>
+    <tr><td>Embeddings</td><td><code>bge-m3</code>, <b>1024-dim</b>, cosine</td><td>Dimension probed at config time (<code>probe_embedding_dimension</code>); stored per-dim as Neo4j node props.</td></tr>
+    <tr><td>Graph DB</td><td>Neo4j 2026.03, native vector indexes</td><td>Cosine similarity, oversample-then-tenant-filter.</td></tr>
+    <tr><td>Re-ranking</td><td>MMR (λ=0.7) + optional listwise LLM rerank</td><td>Embedding-cosine redundancy, word-Jaccard fallback.</td></tr>
+    <tr><td>Token counting</td><td>tiktoken <code>cl100k_base</code></td><td>Fixed a 3–7× CJK undercount vs the old <code>len//4</code>.</td></tr>
+    <tr><td>Eval anchors</td><td>CoNLL-2003 (seqeval), DocRED; DeepEval G-Eval; Fleiss κ</td><td>External NER/RE benchmarks; informational only (not gates).</td></tr>
+    <tr><td>Prompt I/O</td><td>Plain markdown system prompts + tolerant JSON parser</td><td><code>temperature=0.0</code>, <code>response_format:text</code>, anti-<code>&lt;think&gt;</code> preamble.</td></tr>
+  </table>
+
+  <!-- ===================== 3 EXTRACTION ===================== -->
+  <h2 id="extraction">3 · Extraction pipeline</h2>
+
+  <h3>3.1 Two-pass architecture</h3>
+  <p><b>Pass 1 (pattern/regex)</b> — <span class="ref">app/extraction/triple_extractor.py</span>. Pure-function SVO extraction over <i>English-only</i> capitalised-subject + verb (-ed/-s/-ing/irregular) + noun-phrase regex, cross-checked against entity candidates. Emits quarantine triples at <code>confidence=0.5</code>, <code>pending_validation=True</code>. CJK falls straight through to Pass 2. Per-language pattern detectors live under <code>patterns/{en,ja,ko,vi,zh}.py</code>. In practice Pass 1 is a low-trust seeder; Pass 2 is the real pipeline.</p>
+
+  <p><b>Pass 2 (LLM)</b> — two orchestrator layers:</p>
+  <ul>
+    <li><b>SDK</b> <span class="ref">loreweave_extraction/pass2.py::extract_pass2</span> — library-pure. Order: entity-first (anchors the rest) → gate (no entities ⇒ return empty) → <code>asyncio.gather</code>(relations, events, facts) → optional recovery → optional precision filter. Returns a <code>Pass2Candidates</code> dataclass.</li>
+    <li><b>Service</b> <span class="ref">app/extraction/pass2_orchestrator.py</span> — adds per-op caching (<code>extraction_leaves</code>, keyed by <code>compute_task_id(text, op, extractor_version, model_ref)</code> so editing one prompt invalidates only that op's cache), glossary anchoring, Neo4j persistence, and async summary enqueue.</li>
+  </ul>
+  <p><b>Chunking</b> is gateway-side: the caller sends the whole chapter as one user message + a <code>ChunkingConfig(strategy="paragraphs")</code>; provider-registry splits on paragraph boundaries, replays the system prompt verbatim per chunk, and merges per-op JSON across chunks (<code>jsonListAggregator</code>). Chunk size scales to the model's loaded context and CJK token density.</p>
+
+  <h3>3.2 The four extractors</h3>
+  <p>All share the shape <code>load_prompt → _extract_via_llm_client → tolerant_parse → _postprocess(resolve/canonicalize/dedup/sort -confidence)</code>. Output schemas (Pydantic):</p>
+  <table>
+    <tr><th>Extractor</th><th>Output model — fields</th><th>Enums / guards</th></tr>
+    <tr><td>entity</td><td><code>LLMEntityCandidate</code>: name, kind, aliases[], confidence, canonical_name, canonical_id</td><td>kind ∈ person·place·organization·artifact·concept·other</td></tr>
+    <tr><td>relation</td><td><code>LLMRelationCandidate</code>: subject, predicate, object, polarity, modality, confidence, subject_id?, object_id?, relation_id?</td><td>polarity affirm·negate; modality asserted·reported·hypothetical. Null-object relations dropped at postprocess (local models emit null objects for intransitive verbs).</td></tr>
+    <tr><td>event</td><td><code>LLMEventCandidate</code>: name, kind, participants[], participant_ids[], location?, time_cue?, event_date?, summary, confidence, event_id?</td><td>kind action·dialogue·battle·travel·discovery·death·birth·other. <code>event_date</code> validated against a truncated-ISO regex, malformed ⇒ None.</td></tr>
+    <tr><td>fact</td><td><code>LLMFactCandidate</code>: content, type, subject?, subject_id?, polarity, modality, confidence, fact_id</td><td>type description·attribute·negation·temporal·causal. <b>Facts are never filtered.</b></td></tr>
+  </table>
+  <p><b>Tolerant parsing:</b> iterate <code>job.result[&lt;op&gt;]</code>; drop non-dicts and items missing key fields; default <code>aliases→[]</code>, <code>confidence→0.5</code>; clamp confidence to [0,1]; on enum ValidationError drop + emit <code>knowledge_extraction_dropped_total{op,reason}</code>. Markdown-fence recovery happens gateway-side (<code>aggregator.go::extractJSONObject</code> — a fence bug that had silently dropped <i>all</i> fenced-model output was fixed 2026-05-23).</p>
+  <p><b>Prompts</b> (<span class="ref">prompts/&lt;op&gt;_extraction_system.md</span>) all open with an anti-reasoning preamble (suppress <code>&lt;think&gt;</code>), keep names/subjects/summaries in original script, force English keys/enums, inject <code>{known_entities}</code>, require <code>confidence ∈ [0.5,1.0]</code>. The relation prompt defines a <b>28-predicate canonical vocabulary</b> (kinship/mentorship/authority/spatial/action/social) with CJK (<code>拜…為師→disciple_of</code>) + VN (<code>con riêng→stepchild_of</code>) worked examples added in cycle 70. The entity prompt's load-bearing rule is scene-relevance ("bias toward omission" of backstory/geographic asides).</p>
+
+  <h3>3.3 LLM gateway path</h3>
+  <p>Extractors call <code>llm_client.submit_and_wait(operation, model_source, model_ref, input, chunking, transient_retry_budget=1)</code>. Dedicated <code>JobOperation</code> enums exist for the four extractors + <code>summarize_level</code>; the <b>precision filter and entity recovery reuse <code>operation="chat"</code></b>. <code>model_ref</code> is a provider-registry model UUID resolved server-side against <code>user_models</code> (which holds the upstream name + BYOK credential). The client retries transient errors (honouring <code>retry_after_s</code>) and exponential-backs-off stale-pool connect timeouts, but does <b>not</b> raise on <code>status=failed</code> — the extractor inspects. <code>max_tokens=4096</code> caps exist specifically to stop LM Studio reserving full context per slot (3× R/E/F gather would OOM the GPU KV cache).</p>
+
+  <h3>3.4 Entity resolution &amp; anchoring</h3>
+  <ul>
+    <li><b>Canonicalization</b> <span class="ref">canonical.py</span>: lowercase → strip honorifics (a deterministic <i>tuple</i>, longest-first, because a set would be hash-randomised across restarts) → collapse whitespace → strip punctuation. IDs are <code>sha256("v1:user:project:kind:canonical")[:32]</code> — tenant+project scoped, idempotent.</li>
+    <li><b>Two-stage anchoring:</b> each extractor snaps names to known-entity canonical spelling; relation/event/fact endpoints resolve against a case-insensitive name/alias lookup, then the <code>known_entities</code> anchor map; unresolved ⇒ <code>id=None</code>.</li>
+    <li><b>Glossary anchors (two-layer pattern):</b> a Pass-0 loader pulls active glossary entities into an in-memory <code>AnchorIndex</code> keyed <code>(folded_name|alias, kind)</code>; on hit, the writer reuses the anchor's <code>canonical_id</code> and stamps a <code>glossary_entity_id</code> FK (knowledge-service entity layer anchored to the authored glossary SSOT). Glossary down ⇒ graceful mint-on-no-match.</li>
+  </ul>
+
+  <h3>3.5 Neo4j graph storage</h3>
+  <p><span class="ref">app/extraction/pass2_writer.py::write_pass2_extraction</span> runs one Cypher transaction per chapter. All persisted text is run through <code>neutralize_injection</code> first. Order: hierarchy MERGE (Book/Part/Chapter/Scene) → provenance source → entities (<code>resolve_or_merge_entity</code> + <code>:EVIDENCED_BY</code>) → relations → events → facts. Schema: <code>:Entity</code>(canonical_id, name, kind, confidence, glossary_entity_id, anchor_score, auto_created, pending_validation), <code>:Event</code>, <code>:Fact</code>; edges <code>:RELATES_TO</code> (keyed by relation_id), <code>:EVIDENCED_BY</code>. Re-extraction is idempotent (MERGE on structural IDs); evidence edges dedupe by <code>job_id</code>.</p>
+  <p><b>Endpoint repair / autocreate (cycle 73e):</b> Tier A.1 chapter-local name-fold repair (free) → Tier A.2 anchor-index reuse (free) → Tier B env-gated MERGE of a new <code>:Entity</code>(kind=concept, auto_created=true, confidence≤0.3) with a per-chapter cap + noise-subject heuristic. Tier B is OFF by default; the cycle-74a F1 eval found it <span class="tag">neutral</span> (§7).</p>
+
+  <h3>3.6 Precision filter</h3>
+  <p><span class="ref">loreweave_extraction/pass2_filter.py::apply_precision_filter</span> — a post-extraction LLM pass that re-grades each extracted item against the source text and drops the unsupported ones. Best-effort (LLM failure ⇒ <code>degraded</code>, candidates unchanged), immutable, per-category concurrent. Each item is judged <code>supported|partial|unsupported</code> in batches of 3; keep/drop by <code>partial_policy</code> (<code>drop</code> in production). <b>Ships ON by default, relation-only</b> (<code>CATEGORIES=relation</code>, cycle 73b — 0.916 F1 ≈ full-filter 0.917 at 55% less latency). Runtime-reconfigurable via Redis pub/sub (cycle 73f; the disable-semantics bug found+fixed cycle 74b this session). The filter prompt is <b>byte-identical to the eval judge prompt</b> — by design, but see §8.</p>
+
+  <!-- ===================== 4 RETRIEVAL ===================== -->
+  <h2 id="retrieval">4 · RAG retrieval pipeline</h2>
+  <p>Entry point <code>POST /internal/context/build</code> <span class="ref">app/routers/context.py</span>, called by chat-service before each turn. Dispatch on project state:</p>
+  <table>
+    <tr><th>Mode</th><th>When</th><th>Layers assembled</th></tr>
+    <tr><td><b>1 · no_project</b></td><td>no project linked</td><td>L0 only (global user bio). Fully cacheable.</td></tr>
+    <tr><td><b>2 · static</b></td><td>project, extraction OFF</td><td>L0 + L1 project summary + glossary (sequential).</td></tr>
+    <tr><td><b>3 · full</b></td><td>project, extraction ON</td><td>L0 + L1 + glossary + <b>L2 graph facts + L3 vector passages + summary blend</b> (Neo4j layers parallel). Recent-message window tightened 50→20 ("the graph carries durable memory").</td></tr>
+  </table>
+
+  <h3>4.1 Layered context &amp; budgets</h3>
+  <table>
+    <tr><th>Layer</th><th>Source</th><th class="num">Timeout</th><th>What it retrieves</th></tr>
+    <tr><td>L0</td><td>Postgres</td><td class="num">0.1s</td><td>Global user bio (TTL-cached, Redis pub/sub invalidation).</td></tr>
+    <tr><td>L1</td><td>Postgres</td><td class="num">0.1s</td><td>Project summary.</td></tr>
+    <tr><td>glossary</td><td>glossary-service</td><td class="num">0.2s</td><td>Per-candidate exact-name lookups (client-side proper-noun extraction beats Postgres AND-tokenised FTS).</td></tr>
+    <tr><td>L2</td><td>Neo4j</td><td class="num">0.3s</td><td>1-hop relations (conf≥0.8), 2-hop (RELATIONAL intent), negation facts. <span class="tag bad">2-hop path broken</span></td></tr>
+    <tr><td>L3</td><td>Neo4j vector</td><td class="num">2.0s</td><td>Embedded-query → vector search → MMR rerank → top-N passages.</td></tr>
+  </table>
+  <p>Every layer degrades to empty on timeout/exception (increments <code>layer_timeout_total</code>), so Mode 3 collapses gracefully to ~Mode 2 if Neo4j is down.</p>
+
+  <h3>4.2 Embeddings &amp; vector retrieval</h3>
+  <p>Query embedded via provider-registry <code>/internal/embed</code> (bge-m3, 1024-d), cached per-worker (TTLCache, 30s). Neo4j native vector index per dimension (<code>passage_embeddings_1024</code>, cosine). Because Neo4j vector indexes are global, the query <b>oversamples ×10</b> then post-filters on <code>user_id</code>/<code>project_id</code> for tenant isolation. Raw cosine score is then re-weighted in the selector:</p>
+  <ul>
+    <li><b>Hub penalty</b> — score ×0.3 (SPECIFIC_ENTITY) … ×0.9 (GENERAL) for <code>is_hub</code> chunks.</li>
+    <li><b>Recency weight</b> — <code>decay = 1/(1+age_in_chapters)</code>; signed by intent (HISTORICAL prefers old, RECENT_EVENT prefers new).</li>
+    <li><b>MMR diversification</b> — λ=0.7, greedy <code>lam·rel − (1−lam)·max_redundancy</code>; redundancy = embedding cosine (Jaccard fallback). Early-exit at <code>top_n</code> (pool=40@3072-d costs 1.2s uncapped vs 57ms capped).</li>
+    <li><b>Optional</b> listwise LLM rerank (opt-in per project), 1.0s inner timeout so a slow rerank falls back to MMR order.</li>
+  </ul>
+  <p>Pool/top-N scale by intent: SPECIFIC_ENTITY pool 20→top 5; RELATIONAL/GENERAL pool 40→top 10. Intent classification is a pure regex cascade (&lt;15ms, no LLM).</p>
+
+  <h3>4.3 Graph fact retrieval (L2)</h3>
+  <p>Resolves intent entity names → canonical IDs, then 1-hop <code>:RELATES_TO</code> (both directions, <code>UNION</code> dedupes self-loops; <code>confidence≥0.8</code>, <code>valid_until IS NULL</code>, non-pending, non-archived), optional 2-hop fan-out gated by predicate set, plus negation facts (post-filtered to resolved entities — first-class anti-hallucination signal). <b>Note two issues:</b> the 2-hop call is broken (§9), and temporal bucketing (current/recent vs background) is unimplemented — all relations land in <code>background</code> pending <code>chapter_index</code> on evidence edges.</p>
+
+  <h3>4.4 Token budgeting</h3>
+  <p>6000-token budget (tiktoken cl100k). When over budget the assembler re-renders after each trim, dropping lowest-value first: <b>passages → summaries → absences → background facts → glossary</b>. <span class="tag good">Never dropped</span>: L0, project instructions, L1 summary, current/recent/negation facts, CoT instructions. Trimming only touches content after <code>&lt;/project&gt;</code> so the cacheable stable prefix stays byte-identical (chat-service applies Anthropic <code>cache_control</code> there).</p>
+
+  <!-- ===================== 5 ALGORITHMS ===================== -->
+  <h2 id="algorithms">5 · Algorithm catalogue</h2>
+  <table>
+    <tr><th>Stage</th><th>Algorithm</th></tr>
+    <tr><td>Pass-1 extraction</td><td>Language-aware sentence split + capitalised-subject SVO regex + entity cross-check; quarantine at conf 0.5.</td></tr>
+    <tr><td>Pass-2 extraction</td><td>LLM structured extraction, temperature 0, tolerant JSON parse, per-op gateway chunking + JSON aggregation.</td></tr>
+    <tr><td>Canonicalization</td><td>Honorific-strip + whitespace/punct normalise; sha256 tenant+project-scoped IDs.</td></tr>
+    <tr><td>Entity resolution</td><td>Name/alias case-insensitive lookup → glossary AnchorIndex <code>(folded_name,kind)</code> → alias-map redirect → mint.</td></tr>
+    <tr><td>Graph write</td><td>Cypher MERGE on structural IDs; ON CREATE/ON MATCH; evidence edges deduped by job_id; injection-neutralised text.</td></tr>
+    <tr><td>Precision filter</td><td>LLM per-item supported/partial/unsupported verdict, batch 3, keep/drop policy.</td></tr>
+    <tr><td>Intent classification</td><td>Ordered regex cascade → intent + hop_count + signed recency_weight.</td></tr>
+    <tr><td>Vector retrieval</td><td>Neo4j HNSW cosine, oversample×10 + tenant post-filter.</td></tr>
+    <tr><td>Passage scoring</td><td>cosine × hub-penalty × recency-decay, then MMR (λ=0.7), optional LLM listwise rerank.</td></tr>
+    <tr><td>Graph retrieval</td><td>1-hop bidirectional UNION + predicate-gated 2-hop + negation post-filter.</td></tr>
+    <tr><td>Dedup</td><td>Glossary-vs-L1 token-overlap (≥2 shared ≥4-char tokens ⇒ drop, pinned exempt).</td></tr>
+    <tr><td>Budgeting</td><td>tiktoken cl100k count + priority-ordered greedy trim with stable-prefix preservation.</td></tr>
+    <tr><td>Evaluation</td><td>LLM-judge precision/partial-credit + recall-any-phrasing; macro-over-chapters P/R/F1; 3-judge majority + Fleiss κ; external CoNLL/DocRED anchors.</td></tr>
+  </table>
+
+  <!-- ===================== 6 EVAL ===================== -->
+  <h2 id="eval">6 · Evaluation framework</h2>
+
+  <h3>6.1 Judges</h3>
+  <p>An LLM judge reads the full chapter text and grades extraction. <b>Precision</b>: each extracted item → <code>supported|partial|unsupported</code> ("judge by meaning, not surface wording"). <b>Recall</b>: each gold item → "captured under ANY phrasing?" with a matched index. Batched (3/call); items the judge omits become <code>unjudged</code> and are <b>excluded from the denominator</b> (missing data ≠ miss). The precision-judge system prompt is <i>the same file</i> as the production filter prompt.</p>
+
+  <h3>6.2 Scoring formulas <span class="sub">(compute_ensemble_macros.py)</span></h3>
+  <pre><code>PRECISION_CREDIT = { supported:1.0, partial:0.5, unsupported:0.0, unjudged:0.0 }
+RECALL_FOUND     = { "covered", "supported" }
+
+# per chapter, over JUDGED (non-unjudged) verdicts:
+chapter_p = Σ credit / n_judged
+chapter_r = n_found  / n_judged
+
+# MACRO over the ≤9 chapters (arithmetic mean), then harmonic F1:
+macro_P  = mean(chapter_p)          macro_R = mean(chapter_r)
+macro_F1 = 2·P·R / (P + R)          # NOT mean of per-chapter F1</code></pre>
+  <p>Macro-averaging over 9 chapters with single-digit per-chapter denominators is the core statistical weakness (§8.3).</p>
+
+  <h3>6.3 Three-judge ensemble</h3>
+  <ul>
+    <li><b>Fleiss κ</b> over items all judges scored: <code>κ = (P̄ − Pₑ)/(1 − Pₑ)</code>, Landis &amp; Koch buckets. Measures inter-rater <i>agreement</i>, not correctness.</li>
+    <li><b>Majority vote</b>: <code>majority = top if top_count &gt; n_complete/2 else None(disputed)</code>; unjudged excluded.</li>
+    <li><b>D11 gate</b>: ensemble acceptable iff ≥2 judges complete; never silently downgrade a 2-judge result to look like 3-judge.</li>
+    <li><b>D12 bias</b>: strictness_gap (flag &gt;0.15), language_bias en/vi/zh (flag &gt;0.15), rp_bias (informational).</li>
+  </ul>
+
+  <h3>6.4 External anchors</h3>
+  <p>Two published benchmarks run against the <b>real production extractor</b> (not a stub): <b>CoNLL-2003</b> NER (100 samples, seqeval strict) and <b>DocRED</b> unlabeled-triple (50 samples, direction-agnostic pairs). They are <b>informational only</b>; the sole hard gate is a sanity floor (F1≥0.10 AND extracted≥0.1×gold) to catch "regressed to empty". Both are <b>English-only</b> — zero signal on the CJK/VN chapters where judge leniency is worst. DeepEval G-Eval adds three more LLM-judged metrics (one per judge) — explicitly "another judge layer, not a fix for the single-judge problem."</p>
+
+  <h3>6.5 Gold sets</h3>
+  <p>10 human-annotated chapter excerpts (9 used by default; the 54 KB Sherlock chapter is excluded as too long). Annotated <b>conservatively</b> ("only unambiguously present; when in doubt add a trap"). The Vietnamese chapter texts are <b>original paraphrases composed for fixtures</b>, not canonical source.</p>
+  <table>
+    <tr><th>Chapter</th><th>Lang</th><th class="num">Gold entities</th><th class="num">Gold relations</th><th class="num">Gold events</th></tr>
+    <tr><td>alice_ch01</td><td>en</td><td class="num">3</td><td class="num">2</td><td class="num">2</td></tr>
+    <tr><td>alice_ch02</td><td>en</td><td class="num">5</td><td class="num">1</td><td class="num">4</td></tr>
+    <tr><td>journey_west_zh_ch01</td><td>zh</td><td class="num">10</td><td class="num">6</td><td class="num">5</td></tr>
+    <tr><td>journey_west_zh_ch14</td><td>zh</td><td class="num">9</td><td class="num">4</td><td class="num">4</td></tr>
+    <tr><td>little_women_ch01</td><td>en</td><td class="num">6</td><td class="num">1</td><td class="num">3</td></tr>
+    <tr><td>pride_prejudice_ch01</td><td>en</td><td class="num">4</td><td class="num">1</td><td class="num">2</td></tr>
+    <tr><td>sherlock_scandal_ch01</td><td>en</td><td class="num">4</td><td class="num">2</td><td class="num">2</td></tr>
+    <tr><td>son_tinh_thuy_tinh_vi</td><td>vi</td><td class="num">6</td><td class="num">5</td><td class="num">5</td></tr>
+    <tr><td>tam_cam_vi</td><td>vi</td><td class="num">7</td><td class="num">5</td><td class="num">5</td></tr>
+    <tr><td><b>Total (9 ch)</b></td><td></td><td class="num"><b>~54</b></td><td class="num"><b>~22</b></td><td class="num"><b>~28</b></td></tr>
+  </table>
+  <p><b>Three chapters have exactly one gold relation</b> — a single judge flip swings that chapter's relation recall 0→1.0 and meaningfully moves the macro. There are <b>no confidence intervals</b> anywhere, despite the spec asking for them.</p>
+
+  <!-- ===================== 7 RESULTS ===================== -->
+  <h2 id="results">7 · Results &amp; history</h2>
+
+  <h3>7.1 Headline extraction quality (LLM-judge, the "metric of record")</h3>
+  <table>
+    <tr><th>Run</th><th>Judge setup</th><th class="num">P</th><th class="num">R</th><th class="num">F1</th><th class="num">Fleiss κ</th></tr>
+    <tr><td>30B-instruct extractor (cycle 69 baseline)</td><td>3-judge ensemble</td><td class="num">~0.93</td><td class="num">~0.94</td><td class="num">~0.91</td><td class="num">0.708</td></tr>
+    <tr><td>claude-style extractor (precision champ)</td><td>single gemma judge</td><td class="num">0.93</td><td class="num">0.71</td><td class="num">0.84</td><td class="num">—</td></tr>
+  </table>
+
+  <h3>7.2 Precision-filter cycles (3-judge median F1)</h3>
+  <table>
+    <tr><th>Variant</th><th>Config</th><th class="num">F1</th><th class="num">κ</th><th>Decision</th></tr>
+    <tr><td>c70a</td><td>no filter (baseline)</td><td class="num">0.895</td><td class="num">0.671</td><td>baseline</td></tr>
+    <tr><td>c72c</td><td>all-cat, drop</td><td class="num">0.917</td><td class="num">0.776</td><td><span class="tag good">shipped (c72)</span></td></tr>
+    <tr><td>c73b-drop</td><td>relation-only, drop</td><td class="num">0.916</td><td class="num">0.754</td><td><span class="tag good">shipped — current default</span></td></tr>
+    <tr><td>c73d-recov+rel</td><td>entity recovery + filter</td><td class="num">0.922</td><td class="num">0.726</td><td><span class="tag bad">rejected</span> +0.9pp 3-judge but −0.15pp on claude-excluded subset = self-reinforcement</td></tr>
+    <tr><td>c73e-autocreate (realized)</td><td>writer autocreate ON</td><td class="num">0.911</td><td class="num">0.738</td><td><span class="tag warn">neutral</span> −0.2pp on locked median (measured this session, cycle 74a)</td></tr>
+  </table>
+  <p class="muted">Realized re-judge series (after Neo4j writer cascade-drops): c70a 0.895 → c72c-drop 0.904 → c73b-drop 0.913 → c73e-on 0.911.</p>
+
+  <h3>7.3 External anchors — a domain-mismatch sanity floor, <i>not</i> a quality verdict</h3>
+  <table>
+    <tr><th>Anchor</th><th>Measures</th><th class="num">F1</th><th class="num">P</th><th class="num">R</th><th>SOTA (that dataset)</th></tr>
+    <tr><td>CoNLL-2003</td><td>news-wire NER (entities)</td><td class="num">0.219</td><td class="num">0.204</td><td class="num">0.237</td><td>~0.92 (RoBERTa)</td></tr>
+    <tr><td>DocRED</td><td>Wikipedia relation triples</td><td class="num">0.127</td><td class="num">0.110</td><td class="num">0.149</td><td>~0.45–0.55</td></tr>
+  </table>
+  <p><b>These are NOT comparable to the fiction F1 and must not be read as "the real accuracy."</b> They measure a <i>different task on different-domain data</i> with <i>different entity/relation definitions</i> (CoNLL tags PER/LOC/ORG/MISC in news; LoreWeave extracts scene-relevant literary entities with a 6-kind taxonomy and a deliberate "omit backstory" rule). A general-purpose literary extractor is <i>expected</i> to score low on news-NER token-alignment. The framework correctly labels them <b>informational</b> and uses them only as a <b>sanity floor</b> (catch "regressed to empty"), with a consistent ~24–28% ratio across both as a drift signal. <span class="muted">My earlier draft wrongly presented these as "the real number is 0.22 not 0.91" — that conflated two incomparable measurements and is withdrawn.</span></p>
+
+  <!-- ===================== 8 TRUST ===================== -->
+  <h2 id="trust">8 · Architecture-correctness assessment</h2>
+  <p class="lead">The right question is not "can we trust the local model" — the extractor and judges are near-top-tier open models (Gemma-26B, Qwen-30B/35B), and independent strong-model review (Claude, across sessions) corroborates that the extraction output is genuinely good. The question is whether the two pipelines are <b>wired correctly</b>. The RAG pipeline is architecturally sound (one real bug). The eval pipeline's <i>design</i> is above-average — inter-rater reliability, bias metrics, external anchors, saved-dump fixtures, an anti-self-reinforcement subset check that has actually changed ship decisions — but its <i>setup</i> has two correctness flaws that make the <b>absolute numbers and sub-noise deltas</b> unreliable. Both are fixable without touching the models.</p>
+
+  <div class="banner good">
+    <h3>8.1 · RAG retrieval pipeline — architecture is correct</h3>
+    <p>The design is sound and uses standard, appropriate techniques: mode dispatch by project state, layered retrieval (L0–L3) with per-layer timeouts and graceful degradation, regex intent classification, cosine vector search with oversample-then-tenant-filter (correct for global Neo4j indexes), hub-penalty + recency-decay + <b>MMR (λ=0.7)</b> re-ranking, priority-ordered token budgeting with a cache-stable prefix, and glossary/L1 dedup. Multi-tenant isolation is enforced on every query. <b>No architectural objections.</b> The defects are a <i>bug</i> and an <i>unfinished feature</i>, not design errors: the 2-hop graph path is dead code (§9, HIGH) and temporal fact-bucketing is unimplemented (all relations land in <code>background</code>). Fix those two and the read path is solid.</p>
+  </div>
+
+  <div class="banner warn">
+    <h3>8.2 · Eval — self-reinforcement is a WIRING flaw (independent of model quality)</h3>
+    <p>This is the single most important correctness issue, and it is about <i>how the eval is wired</i>, not how good the models are — a frontier model grading its own output is still biased. In a default stack the models grade their own work:</p>
+    <p>In a default stack the models <b>grade their own work</b>:</p>
+    <table style="margin-top:6px">
+      <tr><th>Role</th><th>Model UUID</th><th>Also serves as…</th></tr>
+      <tr><td>Extractor (under test)</td><td><code>019e6a20</code> qwen-30b</td><td><b>Ensemble Judge B</b> + DeepEval RelationGroundedness judge</td></tr>
+      <tr><td>Precision filter (ships ON)</td><td><code>019e5650</code> "claude-4.7-opus"</td><td><b>Ensemble Judge C</b> + DeepEval EventRecall judge</td></tr>
+      <tr><td>Judge A (gemma)</td><td><code>019dc3df</code></td><td>the <i>only</i> judge independent of both</td></tr>
+    </table>
+    <p>The locked metric (3-judge median) includes both self-overlapping judges, and the median is frequently <i>pinned to</i> the filter model. The team's 2-judge "exclude-claude" recompute caught a fake +0.9pp lift in c73d — but it only excludes the <i>filter</i> model, never the <i>extractor-as-Judge-B</i>, and it is run ad-hoc per cycle rather than baked into the metric of record.</p>
+  </div>
+
+  <div class="banner warn">
+    <h3>8.3 · Sample size far too small for the precision claimed</h3>
+    <p>9 chapters, single-digit gold per category, several chapters with <b>exactly one gold relation</b>, macro-averaged, <b>no confidence intervals</b> — yet ship/no-ship decisions turn on ±0.1–0.3pp F1. The framework's own data shows alice_ch01 precision swinging <b>0.385→0.250 (−29pp) from pure LLM nondeterminism with zero fixture change</b>. That single-run noise dwarfs every cycle's claimed lift. Deltas the docs themselves call "within Fleiss-κ noise" are nonetheless used as ship gates.</p>
+  </div>
+
+  <div class="banner warn">
+    <h3>8.4 · "unjudged-excluded" can flatter the numbers</h3>
+    <p>Omitted verdicts shrink the denominator instead of counting as misses. Coverage is surfaced, but historically ran 56–68% while P≈0.97 was reported — i.e. a third of items were never graded. Recent cycles are at ~100% coverage, but the mechanism remains a latent confounder.</p>
+  </div>
+
+  <div class="banner warn">
+    <h3>8.5 · Multilingual axis is unanchored AND is where leniency is worst</h3>
+    <p>All three judges accept CJK/VN items 8–18pp more readily than English; the only external anchors are English-only. So the Vietnamese/Chinese chapters' frequent P=R=1.00 scores are simultaneously the <b>least trustworthy</b> and the <b>least independently checkable</b> numbers in the set. The team flags this but cannot resolve whether it is real over-extraction quality or judges failing to reject non-English errors.</p>
+  </div>
+
+  <div class="banner warn">
+    <h3>8.6 · Filter-output F1 over-states realized graph quality</h3>
+    <p>The judge grades <i>filter output</i>, but the Neo4j writer cascade-drops 10–22% more at persist time (unresolved endpoints, FK cascades). "Realized" re-judges exist and are lower, but the headline cycle numbers are filter-output, not what actually lands in the graph.</p>
+  </div>
+
+  <h3>Bottom line</h3>
+  <p class="lead">The extraction output is <span class="pill-good">genuinely good</span> — strong-model review corroborates it, and both pipelines are well-architected. The problems are specific, structural, and fixable <b>without changing the models</b>: <b>(RAG)</b> the 2-hop graph bug; <b>(eval)</b> the self-reinforcement wiring (extractor + filter are also judges) and the undersized gold set with no confidence intervals. Today the eval is reliable as a <span class="pill-warn">relative, same-judge drift signal</span> but its <b>absolute F1 is inflated by self-grading</b> and its <b>sub-0.5pp deltas are inside the noise</b> — so "F1≈0.91" should be read as "strong local models broadly agree the output is good," not as a calibrated accuracy figure, and tiny cycle deltas should not drive ship decisions. Make the judges disjoint from the extractor/filter, grow the gold set, and add CIs, and the numbers become defensible as absolute claims. <b>Model quality is not the limiting factor.</b></p>
+
+  <!-- ===================== 9 BUGS ===================== -->
+  <h2 id="bugs">9 · Defects found during this audit</h2>
+  <table>
+    <tr><th>Severity</th><th>Defect</th><th>Detail</th></tr>
+    <tr><td><span class="tag bad">HIGH</span></td><td>2-hop graph retrieval is dead code</td><td><span class="ref">facts.py:183</span> calls <code>find_relations_2hop()</code> without the <b>required</b> keyword-only <code>hop1_types</code> (<span class="ref">relations.py:547</span>, no default). Every RELATIONAL-intent query raises <code>TypeError</code>, swallowed by <code>_safe_l2_facts</code> → the <b>entire L2 fact layer (1-hop + negations included) returns empty</b> for exactly the queries that most need graph reasoning. Verified during audit.</td></tr>
+    <tr><td><span class="tag warn">MED</span></td><td>L2 temporal bucketing unimplemented</td><td><code>current</code>/<code>recent</code> fact buckets are always empty; all relations land in <code>background</code> pending <code>chapter_index</code> on evidence edges. Renderer + budget enforcer already distinguish the buckets, so this is plumbing-only.</td></tr>
+    <tr><td><span class="tag warn">MED</span></td><td>Misleading judge/model naming</td><td><code>claude-4.7-opus</code> is a local Qwen fine-tune; the label appears in result filenames + doc tables and could lead a reader to believe a frontier Claude grounds the ensemble.</td></tr>
+    <tr><td><span class="tag">LOW</span></td><td>Dead model→dim map</td><td><code>EMBEDDING_MODEL_TO_DIM</code> (<span class="ref">passages.py:75</span>) is no longer consulted at runtime (dimension comes from <code>Project.embedding_dimension</code>); flagged for deletion in its own comment.</td></tr>
+    <tr><td><span class="tag">INFO</span></td><td>Write-time field drops</td><td>Entity <code>aliases</code>, event <code>location</code>, fact <code>subject</code> are dropped at Neo4j write (repo primitives don't accept them yet) — tracked, but means some extracted signal never persists.</td></tr>
+  </table>
+
+  <!-- ===================== 10 RECS ===================== -->
+  <h2 id="recs">10 · Recommendations (priority order)</h2>
+  <ol>
+    <li><b>Make the judges disjoint from the extractor and filter (the wiring fix).</b> The metric of record must not include the extractor (currently Judge B) or the filter (currently Judge C). Either swap in judge models used for nothing else, or bake the "exclude extractor+filter models" subset into the locked metric rather than running it ad-hoc. This removes the self-grading inflation and is the single highest-value change — and it needs no new model.</li>
+    <li><b>Add confidence intervals; grow the gold set; stop shipping on sub-noise deltas.</b> With 9 chapters and 1–6 gold items each, bootstrap CIs over chapters and treat any delta inside the CI as a tie. Add more chapters / more items per chapter before trusting ±1pp. (A single-run nondeterminism swing of −29pp on one chapter already exceeds every cycle's claimed lift.)</li>
+    <li><b>Fix the 2-hop retrieval bug</b> (pass <code>hop1_types</code>; add a regression test asserting RELATIONAL-intent L2 facts are non-empty). Real RAG-quality regression, independent of the eval.</li>
+    <li><b>Report realized (post-Neo4j-write) F1 as the headline</b>, not filter-output F1, so the number reflects what actually lands in the graph.</li>
+    <li><b>(Optional, for absolute calibration)</b> One cost-controlled pass of a true frontier cloud judge or a small human-labelled set over the 9 chapters would quantify any residual inflation and pin an absolute anchor — already specced (<code>D-EVAL-FRAMEWORK-CLOUD-JUDGE</code>). Lower priority than the wiring fix, since the inflation is structural and removable without it.</li>
+    <li><b>Add a multilingual external anchor</b> (WikiNeural is specced) so CJK/VN scores have an independent check; and rename <code>claude-4.7-opus</code> to its real name (<code>qwen3.6-35b-…-abliterated</code>) everywhere to stop the naming confusion.</li>
+  </ol>
+
+  <hr>
+  <p class="sub">Audit method: three parallel code-reading passes over the extraction pipeline, retrieval pipeline, and eval framework, plus direct verification of the two load-bearing claims (the 2-hop defect and the filter=judge-C self-reinforcement) against source. Model identities cross-checked against <code>infra/docker-compose.yml</code>, <code>eval/QUALITY_EVAL_BASELINES.md</code>, and <code>docs/specs/2026-05-27-eval-framework-overhaul.md</code>. Result numbers from <code>eval_runs/*_compare.md</code> and this session's cycle-74a re-judge.</p>
+
+</div>
+</body>
+</html>

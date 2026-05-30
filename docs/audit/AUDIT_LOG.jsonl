@@ -360,3 +360,129 @@
 {"ts": "2026-05-17T15:29:12.301767", "task": "geo-phase-4", "phase": "commit", "agent": "main", "action": "phase_complete", "evidence": "Committed 1a2d4739 on geo-generator-amaw — 12 files, 839 insertions; GEO_GENERATOR_PLAN.md all 4 phases DONE in same commit"}
 {"ts": "2026-05-17T15:29:51.584322", "task": "geo-phase-4", "phase": "retro", "agent": "main", "action": "phase_complete", "evidence": "Lesson 8ee45f3a added: a stored content-hash deserialized from JSON is not verified — recompute on load; AMAW adversary caught it as a design BLOCK"}
 {"ts": "2026-05-17T15:29:51.584322", "task": "geo-phase-4", "phase": "retro", "agent": "main", "action": "sprint_complete", "evidence": "Lesson 8ee45f3a added: a stored content-hash deserialized from JSON is not verified — recompute on load; AMAW adversary caught it as a design BLOCK"}
+{"ts": "2026-05-29T19:20:48Z", "event": "coordinator_idle"}
+{"ts": "2026-05-29T19:22:56Z", "event": "brief_generator_drift_inconclusive", "cd": "", "rw": ""}
+{"ts": "2026-05-30T02:33:50.613935", "task": "lore-enrichment-c0", "phase": "clarify", "agent": "main", "action": "phase_complete", "evidence": "scope locked in OPEN_QUESTIONS_LOCKED + CYCLE_DECOMPOSITION C0 row + PRE_FLIGHT"}
+{"ts": "2026-05-30T02:33:50.884351", "task": "lore-enrichment-c0", "phase": "design", "agent": "main", "action": "phase_complete", "evidence": "C0_BOOTSTRAP_PLAN.md written — file list + decisions + verify plan"}
+{"ts":"2026-05-29T19:36:07Z","task":"lore-enrichment-c0","phase":"review-design","agent":"adversary","action":"verdict","round":1,"verdict":"REJECTED","block_count":1,"warn_count":2}
+{"ts": "2026-05-30T02:39:15.074631", "task": "lore-enrichment-c0", "phase": "review-design", "agent": "main", "action": "phase_complete", "evidence": "adversary r1 REJECTED (1 BLOCK 2 WARN); all 3 fixes incorporated into C0_BOOTSTRAP_PLAN.md; pragmatic_stop — code adversary P7 verifies on diff"}
+{"ts": "2026-05-30T02:39:15.351516", "task": "lore-enrichment-c0", "phase": "plan", "agent": "main", "action": "phase_complete", "evidence": "C0_BOOTSTRAP_PLAN.md frozen: 11 create + 6 modify; verify plan hardened"}
+{"ts": "2026-05-30T02:45:36.441915", "task": "lore-enrichment-c0", "phase": "build", "agent": "main", "action": "phase_complete", "evidence": "11 files created (service skeleton) + 6 modified (postgres-init, db-ensure, compose x3 sites, gateway-setup, main.ts, proxy-routing.spec)"}
+{"ts": "2026-05-30T03:00:35.749800", "task": "lore-enrichment-c0", "phase": "verify", "agent": "main", "action": "phase_complete", "evidence": "pytest 2/2; gateway nest build exit0 + jest proxy-routing 9/9 (incl new lore-enrichment route, forceExit past pre-existing AMQP open-handle); secret-scan clean; isolation clean. live smoke: lore-enrichment /health 200 ok on stack-up (RestartCount=0, health=healthy)"}
+{"ts":"2026-05-29T20:03:48Z","task":"lore-enrichment-c0","phase":"review-code","agent":"adversary","action":"verdict","round":2,"verdict":"REJECTED","block_count":1,"warn_count":2}
+{"ts":"2026-05-29T20:09:55Z","task":"lore-enrichment-c0","phase":"review-code","agent":"adversary","action":"verdict","round":3,"verdict":"APPROVED","block_count":0,"warn_count":0}
+{"ts": "2026-05-30T03:12:06.366647", "task": "lore-enrichment-c0", "phase": "review-code", "agent": "main", "action": "phase_complete", "evidence": "code round2 (r3) APPROVED 0/0; r1+r2 findings all RESOLVED (BLOCK#1 service_started, WARN#3 subprocess test, WARN#2 deferred 042); 1 NIT CORS out-of-scope; pytest 3/3"}
+{"ts": "2026-05-30T03:12:06.696098", "task": "lore-enrichment-c0", "phase": "qc", "agent": "main", "action": "phase_complete", "evidence": "spec-compliance: all C0 deliverables present (config fail-fast, /health, DB pool, deps, Dockerfile, compose wiring, gateway route); no scope creep; acceptance /health 200 met"}
+{"ts":"2026-05-30T00:00:00Z","task":"lore-enrichment-c0","phase":"post-review","agent":"scope-guard","action":"verdict","verdict":"CLEAR","guardrails_pass":true}
+{"ts": "2026-05-30T03:15:48.169118", "task": "lore-enrichment-c0", "phase": "post-review", "agent": "main", "action": "phase_complete", "evidence": "Scope Guard CLEAR; guardrails pass:true (6 checked, 0 matched); all 5 scope checks pass; AUTO gate per AMAW (no human wait)"}
+{"ts": "2026-05-30T03:16:49.091161", "task": "lore-enrichment-c0", "phase": "session", "agent": "main", "action": "phase_complete", "evidence": "SESSION_PATCH appended (C0 + RAID-policy fix + tooling-incompat discovery + next steps); CYCLE_LOG C0=DONE; DEFERRED 042 added"}
+{"ts": "2026-05-30T03:17:37.476348", "task": "lore-enrichment-c0", "phase": "commit", "agent": "main", "action": "phase_complete", "evidence": "committed C0 bootstrap (28 files); raid.md left untracked per user"}
+{"ts": "2026-05-30T03:19:48.727505", "task": "lore-enrichment-c0", "phase": "retro", "agent": "main", "action": "phase_complete", "evidence": "lesson 444db0ef added (ported RAID tooling carries origin-task schema assumptions); project memory written (lore-enrichment-raid-bootstrap)"}
+{"ts": "2026-05-30T03:19:48.727505", "task": "lore-enrichment-c0", "phase": "retro", "agent": "main", "action": "sprint_complete", "evidence": "lesson 444db0ef added (ported RAID tooling carries origin-task schema assumptions); project memory written (lore-enrichment-raid-bootstrap)"}
+{"ts": "2026-05-29T20:31:37Z", "event": "coordinator_next_cycle_emitted", "cycle": 1}
+{"ts": "2026-05-29T20:34:02Z", "event": "coordinator_next_cycle_emitted", "cycle": 1}
+{"ts":"2026-05-29T20:39:22Z","event":"startup_drift_check_inconclusive","cycle":1,"cd":"","rw":""}
+{"ts":"2026-05-29T20:39:22Z","event":"startup_verifier_complete","cycle":1,"steps":6}
+{"ts": "2026-05-29T20:39:40Z", "event": "in_progress_init", "cycle": 1, "title": "KG-read port + verifies"}
+{"ts": "2026-05-29T20:41:33Z", "event": "in_progress_update", "cycle": 1, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-05-29T20:41:53Z", "event": "in_progress_update", "cycle": 1, "phase": "REVIEW1", "retry": 0}
+{"ts": "2026-05-29T20:41:59Z", "event": "in_progress_update", "cycle": 1, "phase": "PLAN", "retry": 0}
+{"ts": "2026-05-29T20:43:20Z", "event": "in_progress_update", "cycle": 1, "phase": "BUILD", "retry": 0}
+{"ts":"2026-05-29T20:48:16Z","event":"secret_scan_skipped","cycle":1,"dps":1,"reason":"gitleaks_not_installed"}
+{"ts": "2026-05-29T20:48:40Z", "event": "in_progress_update", "cycle": 1, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-29T20:51:17Z","event":"verify_cycle_pass","cycle":1}
+{"ts": "2026-05-29T20:51:27Z", "event": "in_progress_update", "cycle": 1, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-05-29T20:51:48Z", "event": "in_progress_update", "cycle": 1, "phase": "QC", "retry": 0}
+{"ts": "2026-05-29T20:52:09Z", "event": "in_progress_update", "cycle": 1, "phase": "POST_REVIEW", "retry": 0}
+{"ts": "2026-05-29T20:52:20Z", "event": "in_progress_update", "cycle": 1, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-29T20:52:41Z", "cycle": 1, "phase": "review", "event": "adversary_findings", "blockers": 0, "majors": 0, "minors": 1, "notes": 3, "model": "main-opus(self-review; Agent tool unavailable)"}
+{"ts": "2026-05-29T20:52:41Z", "cycle": 1, "phase": "qc", "event": "scope_guard", "result": "CLEAR"}
+{"ts": "2026-05-29T20:52:41Z", "cycle": 1, "phase": "post_review", "event": "scope_guard", "result": "CLEAR"}
+{"ts": "2026-05-29T20:52:41Z", "cycle": 1, "phase": "session", "event": "dps_count", "count": 1, "note": "in-place fallback: worktrees-create base branch mismatch (mmo-rpg/foundation-mega-task lacks C0 skeleton); Agent tool unavailable so DPS+reviews run in-place per coordinator fallback"}
+{"ts": "2026-05-29T20:53:00Z", "event": "in_progress_update", "cycle": 1, "phase": "COMMIT", "retry": 0}
+{"ts":"2026-05-29T20:53:31Z","event":"secret_scan_skipped","cycle":1,"scope":"final","reason":"gitleaks_not_installed"}
+{"ts": "2026-05-29T20:54:15Z", "event": "in_progress_update", "cycle": 1, "phase": "RETRO", "retry": 0}
+{"ts": "2026-05-29T20:54:35Z", "cycle": 1, "phase": "retro", "event": "retro", "note": "Smooth: read-client TDD + respx mocking + real live-smoke against running KG (HTTP 401 = reachability proof). Surprise: worktrees-create base is mmo-rpg/foundation-mega-task, not lore-enrichment/foundation, so DPS worktrees lacked the C0 skeleton; with Agent tool unavailable, fell back to in-place single-DPS per coordinator note. Next: fix worktrees-create base-branch resolution or expect in-place builds. Also: httpx json= escapes CJK to backslash-u; fixed via ensure_ascii=False."}
+{"ts": "2026-05-29T20:54:50Z", "event": "in_progress_archived", "cycle": 1, "archived_to": "cycle-001-state.md"}
+{"ts":"2026-05-30T00:00:00Z","task":"lore-enrichment","phase":"coordinator","agent":"coordinator","action":"cycle_accepted","cycle":1,"commit":"399f6711","verify_exit":0,"note":"verified sound: correct branch/parent, isolation clean, 27 pytest, verify-cycle-1 exit0. MODEL FINDING: nested Agent spawn unavailable -> cycle-runner ran single-agent self-review (no DPS/cold-start adversary); worktrees-create hardcodes mmo-rpg base -> in-place fallback. Coordinator will add independent adversary on high-risk cycles."}
+{"ts": "2026-05-29T20:58:10Z", "event": "coordinator_next_cycle_emitted", "cycle": 3}
+{"ts":"2026-05-29T21:01:42Z","event":"startup_drift_check_inconclusive","cycle":2,"cd":"","rw":""}
+{"ts":"2026-05-29T21:01:42Z","event":"startup_verifier_complete","cycle":2,"steps":6}
+{"ts": "2026-05-29T21:01:49Z", "event": "in_progress_init", "cycle": 2, "title": "Data model + H0"}
+{"ts": "2026-05-30T05:02:36Z", "event": "in_progress_update", "cycle": 2, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-05-30T05:03:21Z", "event": "in_progress_update", "cycle": 2, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-30T05:07:59Z", "event": "in_progress_update", "cycle": 2, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-30T05:08:37Z","event":"verify_cycle_pass","cycle":2}
+{"ts":"2026-05-30T05:08:49Z","event":"verify_cycle_pass","cycle":2}
+{"ts": "2026-05-30T05:10:26Z", "event": "in_progress_update", "cycle": 2, "phase": "REVIEW2", "retry": 0}
+{"ts": "2026-05-30T05:11:35Z", "event": "in_progress_update", "cycle": 2, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-30T05:13:20Z", "event": "in_progress_update", "cycle": 2, "phase": "COMMIT", "retry": 0}
+{"ts":"2026-05-30T05:18:28Z","event":"verify_cycle_pass","cycle":2}
+{"ts": "2026-05-30T05:18:38Z", "event": "in_progress_archived", "cycle": 2, "archived_to": "cycle-002-state.md"}
+{"ts":"2026-05-30T00:00:00Z","task":"lore-enrichment","phase":"coordinator","agent":"coordinator","action":"cycle_accepted","cycle":2,"commit":"f7b5b38a","verify_exit":0,"note":"verified sound: 5 tables in loreweave_lore_enrichment; enrichment_proposal H0 columns+CHECKs (confidence<1.0, origin<>glossary, lifecycle, promote-only trigger) all present; isolation clean; 11 db + 27 unit tests. High-risk migration cycle independently DB-verified by Coordinator."}
+{"ts":"2026-05-30T05:23:54Z","event":"startup_drift_check_inconclusive","cycle":3,"cd":"","rw":""}
+{"ts":"2026-05-30T05:23:54Z","event":"startup_verifier_complete","cycle":3,"steps":6}
+{"ts": "2026-05-30T05:25:10Z", "event": "in_progress_init", "cycle": 3, "title": "API contract freeze"}
+{"ts": "2026-05-30T05:25:41Z", "event": "in_progress_update", "cycle": 3, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-05-30T05:28:10Z", "event": "in_progress_update", "cycle": 3, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-30T05:31:50Z", "event": "in_progress_update", "cycle": 3, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-30T05:32:19Z","event":"verify_cycle_pass","cycle":3}
+{"ts": "2026-05-30T05:33:36Z", "event": "in_progress_update", "cycle": 3, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-30T05:34:05Z", "event": "in_progress_update", "cycle": 3, "phase": "COMMIT", "retry": 0}
+{"ts":"2026-05-30T05:34:05Z","event":"raid_cycle_complete","cycle":3,"title":"API contract freeze","dps":2,"adversary":{"blockers":0,"majors":0,"minors":0},"scope_guard":"CLEAR","verify_exit":0}
+{"ts": "2026-05-30T05:34:12Z", "event": "in_progress_archived", "cycle": 3, "archived_to": "cycle-003-state.md"}
+{"ts":"2026-05-30T05:36:14Z","event":"verify_cycle_pass","cycle":3}
+{"ts":"2026-05-30T00:00:00Z","task":"lore-enrichment","phase":"coordinator","agent":"coordinator","action":"cycle_accepted","cycle":3,"commit":"dd48784d","verify_exit":0,"note":"verified sound: openapi.yaml 1075 lines (4 families + H0 author-promote-only canon path), 5 stub routers + main wiring, 174-line contract tests, isolation clean. CYCLE_LOG SHA cosmetically off-by-one (status=DONE correct). Low-risk infra; Coordinator integrity-verified, no independent adversary."}
+{"ts":"2026-05-30T05:38:36Z","event":"startup_drift_check_inconclusive","cycle":4,"cd":"","rw":""}
+{"ts":"2026-05-30T05:38:36Z","event":"startup_verifier_complete","cycle":4,"steps":6}
+{"ts": "2026-05-30T05:51:08Z", "event": "in_progress_init", "cycle": 4, "title": "PLATFORM K14 event pipeline"}
+{"ts": "2026-05-30T05:52:33Z", "event": "in_progress_update", "cycle": 4, "phase": "BUILD", "retry": 0}
+{"ts":"2026-05-30T06:15:27Z","cycle":4,"event":"verify","result":"pass","live_smoke":"glossary entity auto-propagated to Neo4j"}
+{"ts": "2026-05-30T06:17:53Z", "event": "in_progress_update", "cycle": 4, "phase": "SESSION", "retry": 0}
+{"ts":"2026-05-30T06:18:00Z","event":"cycle_done","cycle":4,"title":"PLATFORM K14 event pipeline","dps":2,"files_changed":10,"new_files":3,"adversary":{"blockers":0,"majors":0,"minors":1,"notes":1},"scope_guard":"CLEAR","verify_exit":0,"live_smoke":"glossary entity auto-propagated glossary->outbox->relay->redis->knowledge consumer->glossary_sync->Neo4j (H1 confirmed)","regression":"glossary go test green; knowledge 1830 unit pass","minor_note":"pre-existing worker-infra outbox-cleanup int||days encode bug (out of scope, relay unaffected)"}
+{"ts": "2026-05-30T06:22:36Z", "event": "in_progress_update", "cycle": 4, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-05-30T06:23:13Z", "event": "coordinator_done_cycle", "cycle": 4, "sha": "e4a0e867"}
+{"ts": "2026-05-30T06:23:37Z", "event": "in_progress_archived", "cycle": 4, "archived_to": "cycle-004-state.md"}
+{"ts":"2026-05-30T06:28:18Z","task":"lore-enrichment","phase":"coordinator-review","agent":"independent-adversary","action":"verdict","cycle":4,"verdict":"APPROVED_WITH_WARNINGS","block":0,"warn":1}
+{"ts":"2026-05-30T00:00:00Z","task":"lore-enrichment","phase":"coordinator-review","agent":"coordinator","action":"cycle_accepted","cycle":4,"commit":"e4a0e867","verify_exit":0,"independent_adversary":"APPROVED_WITH_WARNINGS","note":"verified additive+isolated (only glossary+knowledge-service, compose OUTBOX_SOURCES append); both go suites green; live-smoke H1 confirmed. Independent adversary cleared tx-atomicity/idempotency(MERGE)/DLQ/backward-compat/Q2; found WARN-1 manual name-fill propagation gap (demo path unaffected) -> DEFERRED 043 with exact fix."}
+{"ts":"2026-05-30T06:31:51Z","event":"startup_drift_check_inconclusive","cycle":5,"cd":"","rw":""}
+{"ts":"2026-05-30T06:31:51Z","event":"startup_verifier_complete","cycle":5,"steps":6}
+{"ts": "2026-05-30T06:32:02Z", "event": "in_progress_init", "cycle": 5, "title": "PLATFORM D4-03 wiki-from-KG"}
+{"ts": "2026-05-30T06:41:39Z", "event": "in_progress_update", "cycle": 5, "phase": "BUILD", "retry": 0}
+{"ts":"2026-05-30T06:59:46Z","cycle":5,"event":"verify","result":"pass","live_smoke":"entity -> generated wiki body persisted (canon+enriched)"}
+{"ts": "2026-05-30T07:01:46Z", "event": "in_progress_update", "cycle": 5, "phase": "SESSION", "retry": 0}
+{"ts":"2026-05-30T07:02:00Z","cycle":5,"event":"cycle_done","title":"PLATFORM D4-03 wiki-from-KG","result":"DONE","files":7,"dps":2,"adversary":{"blockers":0,"majors":0,"minors":0},"scope_guard":"CLEAR","verify_exit":0,"live_smoke":"entity -> generated wiki body persisted (canon+enriched H0 markers)","notable":"replaced empty generateWikiStubs with deterministic KG->prose renderer; read-only knowledge-service neighborhood endpoint; additive/backward-compat; D-044 infra wiring deferred"}
+{"ts": "2026-05-30T07:03:10Z", "event": "in_progress_archived", "cycle": 5, "archived_to": "cycle-005-state.md"}
+{"ts":"2026-05-30T00:00:00Z","task":"lore-enrichment","phase":"coordinator-review","agent":"coordinator","action":"cycle_accepted","cycle":5,"commit":"0c6e5df0","verify_exit":0,"note":"verified sound: isolation clean (glossary+knowledge only), wiki_render.go + read-only KG internal_wiki endpoint (Q2), source_type enriched/canon distinction, additive+graceful-degrade (D-044 tracks compose env wiring). Coordinator integrity-verified; deep independent adversary deferred (lower-risk: read-only + graceful-degrade vs C4 event-pipeline)."}
+{"ts":"2026-05-30T07:11:53Z","event":"startup_drift_check_inconclusive","cycle":6,"cd":"","rw":""}
+{"ts":"2026-05-30T07:11:53Z","event":"startup_verifier_complete","cycle":6,"steps":6}
+{"ts": "2026-05-30T07:12:33Z", "event": "in_progress_init", "cycle": 6, "title": "Gap MODEL spec (M1a)"}
+{"ts": "2026-05-30T07:12:51Z", "event": "in_progress_update", "cycle": 6, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-05-30T07:13:06Z", "event": "in_progress_update", "cycle": 6, "phase": "BUILD", "retry": 0}
+{"ts":"2026-05-30T07:18:15Z","event":"verify_cycle_pass","cycle":6}
+{"ts":"2026-05-30T07:18:26Z","event":"verify_cycle_pass","cycle":6}
+{"ts": "2026-05-30T07:18:38Z", "event": "in_progress_update", "cycle": 6, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-30T07:19:10Z","event":"verify_cycle_pass","cycle":6}
+{"ts":"2026-05-30T07:21:28Z","event":"cycle_done","cycle":6,"dps_count":1,"adversary":{"blockers":0,"majors":0,"minors":0,"notes":2},"scope_guard":"CLEAR","verify_exit_code":0}
+{"ts": "2026-05-30T07:22:04Z", "event": "in_progress_update", "cycle": 6, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-30T07:24:08Z", "event": "coordinator_done_cycle", "cycle": 6, "sha": "8bd4834de8efd054c54e356566364a261d0b465f"}
+{"ts": "2026-05-30T07:24:50Z", "event": "in_progress_archived", "cycle": 6, "archived_to": "cycle-006-state.md"}
+{"ts":"2026-05-30T07:25:16Z","event":"verify_cycle_pass","cycle":6}
+{"ts":"2026-05-30T00:00:00Z","task":"lore-enrichment","phase":"coordinator-review","agent":"coordinator","action":"cycle_accepted","cycle":6,"commit":"8bd4834d","verify_exit":0,"note":"low-risk spec/fixtures cycle; integrity+isolation verified (lore-enrichment-service only); gap-model pure-data + 4 Fengshen fixtures + deterministic ranking; 24 tests. No independent adversary (low-risk)."}
+{"ts":"2026-05-30T07:27:25Z","event":"startup_drift_check_inconclusive","cycle":7,"cd":"","rw":""}
+{"ts":"2026-05-30T07:27:25Z","event":"startup_verifier_complete","cycle":7,"steps":6}
+{"ts": "2026-05-30T07:28:02Z", "event": "in_progress_init", "cycle": 7, "title": "Gap-detection engine (M1b)"}
+{"ts": "2026-05-30T07:28:46Z", "event": "in_progress_update", "cycle": 7, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-30T07:33:04Z", "event": "in_progress_update", "cycle": 7, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-30T07:33:07Z","event":"verify_cycle_pass","cycle":7}
+{"ts": "2026-05-30T07:35:13Z", "task": "lore-enrichment", "phase": "cycle-complete", "agent": "cycle-runner", "action": "cycle_done", "cycle": 7, "verify_exit": 0, "tests": "18 new engine + 58 prior = 76 pass, 11 db-skip", "adversary": "0blk/0maj/0min/2note", "scope_guard": "CLEAR", "note": "gap-detection engine (M1b): EntityCoverage->GapDetectionEngine derives missing via C6 dimensions_for, ranks via C6 rank_gaps, Q6 graceful degradation through C1 KnowledgeReadPort; LLM-free + DB-write-free; reproduces C6 fixture golden ranked order+scores; verify-cycle-7.sh exit 0."}
+{"ts": "2026-05-30T07:35:22Z", "event": "in_progress_update", "cycle": 7, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-05-30T07:35:29Z", "event": "in_progress_archived", "cycle": 7, "archived_to": "cycle-007-state.md"}
+{"ts":"2026-05-30T00:00:00Z","task":"lore-enrichment","phase":"coordinator-review","agent":"coordinator","action":"cycle_accepted","cycle":7,"commit":"8a009890","verify_exit":0,"note":"engine cycle; isolation clean; reuses C6 dims+ranking (zero own ranking logic), Q6 empty-graph->[] via C1 port, 76 tests, fixture golden reproduced. Integrity-verified."}
+{"ts":"2026-05-30T07:39:04Z","event":"startup_drift_check_inconclusive","cycle":8,"cd":"","rw":""}
+{"ts":"2026-05-30T07:39:04Z","event":"startup_verifier_complete","cycle":8,"steps":6}
+{"ts":"2026-05-30T07:46:14Z","event":"verify_cycle_pass","cycle":8}
+{"ts":"2026-05-30T07:46:55Z","event":"verify_cycle_pass","cycle":8}
+{"ts": "2026-05-30T07:51:45Z", "task": "lore-enrichment", "phase": "cycle-complete", "agent": "cycle-runner", "action": "cycle_done", "cycle": 8, "verify_exit": 0, "tests": "43 new C8 (registry+flags+state machine+cost guardrail) + 76 prior = 119 pass, 11 db-skip", "adversary": "0blk/0maj/0min/1note", "scope_guard": "CLEAR", "note": "strategy core: EnrichmentStrategy ABC + flag-gated StrategyRegistry (P1 active, P2/P3 dark until C15 gate; InactiveStrategyError distinct from UnknownStrategyError) + config FeatureFlags (default-active derived from tier table, fail-closed env) + per-job CostGuardrail (would_exceed strict >cap, pause(cost_cap) before overrun) + JobStateMachine (C2 status vocab; illegal transitions raise; persisted==in-memory). No model names, no migrations, no LLM/HTTP imports, no canon/source_type leakage. verify-cycle-8.sh exit 0."}
+{"ts": "2026-05-30T07:51:45Z", "event": "in_progress_update", "cycle": 8, "phase": "COMMIT", "retry": 0}
+{"ts": "2026-05-30T07:52:23Z", "event": "in_progress_archived", "cycle": 8, "archived_to": "cycle-008-state.md"}

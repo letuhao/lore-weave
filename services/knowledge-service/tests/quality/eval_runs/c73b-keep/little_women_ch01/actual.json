@@ -1,0 +1,935 @@
+{
+  "entities": [
+    {
+      "name": "Amy",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "amy",
+      "canonical_id": "eid-loaded-0"
+    },
+    {
+      "name": "Jo",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "jo",
+      "canonical_id": "eid-loaded-1"
+    },
+    {
+      "name": "Meg",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "meg",
+      "canonical_id": "eid-loaded-2"
+    },
+    {
+      "name": "Beth",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "beth",
+      "canonical_id": "eid-loaded-3"
+    },
+    {
+      "name": "Christmas",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "christmas",
+      "canonical_id": "eid-loaded-4"
+    },
+    {
+      "name": "Father",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "father",
+      "canonical_id": "eid-loaded-5"
+    },
+    {
+      "name": "Margaret",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "margaret",
+      "canonical_id": "eid-loaded-6"
+    },
+    {
+      "name": "Mother",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "mother",
+      "canonical_id": "eid-loaded-7"
+    },
+    {
+      "name": "Undine and Sintran",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "undine and sintran",
+      "canonical_id": "eid-loaded-8"
+    },
+    {
+      "name": "December snow",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "december snow",
+      "canonical_id": "eid-loaded-9"
+    },
+    {
+      "name": "Faber's drawing pencils",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "faber's drawing pencils",
+      "canonical_id": "eid-loaded-10"
+    },
+    {
+      "name": "Mouse",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "mouse",
+      "canonical_id": "eid-loaded-11"
+    },
+    {
+      "name": "the King children",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "the king children",
+      "canonical_id": "eid-loaded-12"
+    },
+    {
+      "name": "Tomboy",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "tomboy",
+      "canonical_id": "eid-loaded-13"
+    },
+    {
+      "name": "blue army sock",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "blue army sock",
+      "canonical_id": "eid-loaded-14"
+    },
+    {
+      "name": "fire crackled cheerfully within",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "fire crackled cheerfully within",
+      "canonical_id": "eid-loaded-15"
+    },
+    {
+      "name": "the hearth brush and kettle-holder",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "the hearth brush and kettle-holder",
+      "canonical_id": "eid-loaded-16"
+    },
+    {
+      "name": "geese",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "geese",
+      "canonical_id": "eid-loaded-17"
+    }
+  ],
+  "relations": [
+    {
+      "subject": "Jo",
+      "predicate": "owns",
+      "object": "Undine and Sintran",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-1"
+    },
+    {
+      "subject": "Meg",
+      "predicate": "trusts",
+      "object": "Beth",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-2"
+    },
+    {
+      "subject": "Amy",
+      "predicate": "enjoys",
+      "object": "boy's games and work and manners",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-3"
+    },
+    {
+      "subject": "Amy",
+      "predicate": "courts",
+      "object": "fancy words and refined speech",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-4"
+    },
+    {
+      "subject": "Amy",
+      "predicate": "practices",
+      "object": "music at home",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-5"
+    },
+    {
+      "subject": "Beth",
+      "predicate": "lives_with",
+      "object": "Mother",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-6"
+    },
+    {
+      "subject": "Beth",
+      "predicate": "lives_in",
+      "object": "the room with the fire crackled cheerfully within",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-7"
+    },
+    {
+      "subject": "Meg",
+      "predicate": "teaches",
+      "object": "tiresome children",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-9"
+    },
+    {
+      "subject": "Amy",
+      "predicate": "enjoys",
+      "object": "Faber's drawing pencils",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-10"
+    },
+    {
+      "subject": "Beth",
+      "predicate": "lives_in",
+      "object": "December snow",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-11"
+    },
+    {
+      "subject": "Jo",
+      "predicate": "helps",
+      "object": "Mother",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-13"
+    },
+    {
+      "subject": "Meg",
+      "predicate": "knows",
+      "object": "the reason for not having presents this Christmas",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-15"
+    },
+    {
+      "subject": "Meg",
+      "predicate": "enjoys",
+      "object": "home peace and comfort",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-16"
+    },
+    {
+      "subject": "Beth",
+      "predicate": "lives_in",
+      "object": "the King children",
+      "polarity": "negate",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-17"
+    }
+  ],
+  "events": [
+    {
+      "name": "Jo reveals that their father is far away",
+      "kind": "action",
+      "participants": [
+        "Jo"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Jo reveals that their father is far away at war and will not return soon.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-0"
+    },
+    {
+      "name": "Jo sits upright, places her hands in her",
+      "kind": "action",
+      "participants": [
+        "Jo"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Jo sits upright, places her hands in her pockets, and starts whistling with a refined air.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-1"
+    },
+    {
+      "name": "Jo passionately resists the idea of bein",
+      "kind": "action",
+      "participants": [
+        "Jo"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Jo passionately resists the idea of being a young lady and vows to keep her hair in two tails.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-2"
+    },
+    {
+      "name": "Jo shares her deep longing to be a boy a",
+      "kind": "action",
+      "participants": [
+        "Jo"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Jo shares her deep longing to be a boy and join her father in the army.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-3"
+    },
+    {
+      "name": "Jo expresses her disappointment that Chr",
+      "kind": "action",
+      "participants": [
+        "Jo"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Jo expresses her disappointment that Christmas will not be complete without gifts.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-4"
+    },
+    {
+      "name": "Jo suggests that the sisters spend their",
+      "kind": "action",
+      "participants": [
+        "Jo"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Jo suggests that the sisters spend their dollars freely on personal gifts while still making sacrifices.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-5"
+    },
+    {
+      "name": "Jo knits with great energy, causing her ",
+      "kind": "action",
+      "participants": [
+        "Jo"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Jo knits with great energy, causing her knitting needles to rattle and her ball to bounce across the room.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-6"
+    },
+    {
+      "name": "The four sisters sit knitting in the fad",
+      "kind": "action",
+      "participants": [
+        "Jo",
+        "Meg",
+        "Beth",
+        "Amy"
+      ],
+      "participant_ids": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "The four sisters sit knitting in the fading light, as December snow falls quietly outside and fire crackles within.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-7"
+    },
+    {
+      "name": "Amy voices her sense of injustice that s",
+      "kind": "action",
+      "participants": [
+        "Amy"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Amy voices her sense of injustice that some girls have many possessions while others have none.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-8"
+    },
+    {
+      "name": "Amy observes and appreciates the informa",
+      "kind": "action",
+      "participants": [
+        "Amy"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Amy observes and appreciates the informal, colloquial language used by Jo.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-9"
+    },
+    {
+      "name": "Amy details her daily trials at school, ",
+      "kind": "action",
+      "participants": [
+        "Amy"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Amy details her daily trials at school, including mockery from peers and social judgment.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-10"
+    },
+    {
+      "name": "Amy expresses her dislike of rough or un",
+      "kind": "action",
+      "participants": [
+        "Amy"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Amy expresses her dislike of rough or unrefined behavior in women.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-11"
+    },
+    {
+      "name": "Amy defends her use of sophisticated lan",
+      "kind": "action",
+      "participants": [
+        "Amy"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Amy defends her use of sophisticated language and explains the importance of expanding vocabulary.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-12"
+    },
+    {
+      "name": "Amy announces her decision to use her do",
+      "kind": "action",
+      "participants": [
+        "Amy"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Amy announces her decision to use her dollar for a set of Faber's drawing pencils.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-13"
+    },
+    {
+      "name": "Beth humorously inquires about her own i",
+      "kind": "action",
+      "participants": [
+        "Beth"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Beth humorously inquires about her own identity after being compared to the other sisters.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-14"
+    },
+    {
+      "name": "Beth strokes Jo's rough head with a hand",
+      "kind": "action",
+      "participants": [
+        "Beth"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Beth strokes Jo's rough head with a hand that has been shaped by years of dishwashing and dusting.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-15"
+    },
+    {
+      "name": "Beth recalls and elaborates on her siste",
+      "kind": "action",
+      "participants": [
+        "Beth"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Beth recalls and elaborates on her sister Meg's earlier comparison between their family and the wealthy King children.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-16"
+    },
+    {
+      "name": "Beth shares her joy in having Father, Mo",
+      "kind": "action",
+      "participants": [
+        "Beth"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Beth shares her joy in having Father, Mother, and each other as the greatest blessings.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-17"
+    },
+    {
+      "name": "Beth expresses her frustration with dish",
+      "kind": "action",
+      "participants": [
+        "Beth"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Beth expresses her frustration with dishwashing and housekeeping, which make her hands stiff and hinder her music practice.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-18"
+    },
+    {
+      "name": "Beth sings a lullaby-like phrase to calm",
+      "kind": "action",
+      "participants": [
+        "Beth"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Beth sings a lullaby-like phrase to calm the sisters after their argument.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-19"
+    },
+    {
+      "name": "Beth shares her intention to use her dol",
+      "kind": "action",
+      "participants": [
+        "Beth"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Beth shares her intention to use her dollar for new music, expressing quiet longing.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-20"
+    },
+    {
+      "name": "Jo gently corrects Amy for using 'label'",
+      "kind": "action",
+      "participants": [
+        "Jo",
+        "Amy"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Jo gently corrects Amy for using 'label' instead of the more precise word 'libel'.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-21"
+    },
+    {
+      "name": "Jo explains that she whistles precisely ",
+      "kind": "action",
+      "participants": [
+        "Jo"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Jo explains that she whistles precisely because she wants to be boyish and enjoys the habit.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-22"
+    },
+    {
+      "name": "Jo vividly describes her daily struggle ",
+      "kind": "action",
+      "participants": [
+        "Jo"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Jo vividly describes her daily struggle of caring for an irritable and demanding elderly woman.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-23"
+    },
+    {
+      "name": "Jo declares her long-held wish to purcha",
+      "kind": "action",
+      "participants": [
+        "Jo"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Jo declares her long-held wish to purchase the book 'Undine and Sintran' with her dollar.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-24"
+    },
+    {
+      "name": "Jo removes her hairnet and lets her long",
+      "kind": "action",
+      "participants": [
+        "Jo"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Jo removes her hairnet and lets her long, thick brown hair fall freely.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-25"
+    },
+    {
+      "name": "Meg recounts the challenges of teaching ",
+      "kind": "action",
+      "participants": [
+        "Meg"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Meg recounts the challenges of teaching children all day while longing for personal enjoyment.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-26"
+    },
+    {
+      "name": "Meg mocks Amy for being overly refined a",
+      "kind": "action",
+      "participants": [
+        "Meg"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Meg mocks Amy for being overly refined and delicate in manner.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-27"
+    },
+    {
+      "name": "Meg gently chides Jo for her boyish beha",
+      "kind": "action",
+      "participants": [
+        "Meg",
+        "Jo"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Meg gently chides Jo for her boyish behavior, especially whistling.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-28"
+    },
+    {
+      "name": "Meg gives a formal and thoughtful talk a",
+      "kind": "action",
+      "participants": [
+        "Meg"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Meg gives a formal and thoughtful talk about the importance of proper conduct for young women.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-29"
+    },
+    {
+      "name": "Meg recounts that Mother proposed no pre",
+      "kind": "action",
+      "participants": [
+        "Meg"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Meg recounts that Mother proposed no presents this Christmas to save money for the army during a hard winter.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-30"
+    },
+    {
+      "name": "Meg compliments Amy on her refined speec",
+      "kind": "action",
+      "participants": [
+        "Meg"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Meg compliments Amy on her refined speech while gently criticizing her overdone elegance.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-31"
+    },
+    {
+      "name": "Meg warmly affirms that Beth is simply '",
+      "kind": "action",
+      "participants": [
+        "Meg"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Meg warmly affirms that Beth is simply 'a dear'—lovable and essential to the family.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-32"
+    },
+    {
+      "name": "Meg affirms that the March sisters are h",
+      "kind": "action",
+      "participants": [
+        "Meg"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Meg affirms that the March sisters are happier than the King children despite their daily labor and challenges.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-33"
+    },
+    {
+      "name": "Meg imagines a happier life if they had ",
+      "kind": "action",
+      "participants": [
+        "Meg"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Meg imagines a happier life if they had recovered the money their father lost in earlier years.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-34"
+    },
+    {
+      "name": "Meg reflects on the hardships of poverty",
+      "kind": "action",
+      "participants": [
+        "Meg"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Meg reflects on the hardships of poverty while looking at her old dress.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-35"
+    },
+    {
+      "name": "The four sisters' expressions change in ",
+      "kind": "action",
+      "participants": [
+        "Jo",
+        "Meg",
+        "Beth",
+        "Amy"
+      ],
+      "participant_ids": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "The four sisters' expressions change in response to Beth's words, first brightening with hope and then darkening with sorrow.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-36"
+    },
+    {
+      "name": "The sisters’ playful bickering, or 'peck",
+      "kind": "action",
+      "participants": [
+        "Meg",
+        "Jo",
+        "Amy"
+      ],
+      "participant_ids": [
+        null,
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "The sisters’ playful bickering, or 'pecking', comes to a joyful close with shared laughter.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-37"
+    }
+  ],
+  "facts": []
+}

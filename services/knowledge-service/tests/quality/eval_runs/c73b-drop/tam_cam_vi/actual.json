@@ -1,0 +1,493 @@
+{
+  "entities": [
+    {
+      "name": "Bụt",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "bụt",
+      "canonical_id": "eid-loaded-0"
+    },
+    {
+      "name": "Tấm",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "tấm",
+      "canonical_id": "eid-loaded-1"
+    },
+    {
+      "name": "Cám",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "cám",
+      "canonical_id": "eid-loaded-2"
+    },
+    {
+      "name": "cá bống",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "cá bống",
+      "canonical_id": "eid-loaded-3"
+    },
+    {
+      "name": "dì ghẻ",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "dì ghẻ",
+      "canonical_id": "eid-loaded-4"
+    },
+    {
+      "name": "vua",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "vua",
+      "canonical_id": "eid-loaded-5"
+    },
+    {
+      "name": "giày thêu",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "giày thêu",
+      "canonical_id": "eid-loaded-6"
+    },
+    {
+      "name": "giếng",
+      "kind": "place",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "giếng",
+      "canonical_id": "eid-loaded-7"
+    },
+    {
+      "name": "ngựa quý",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "ngựa quý",
+      "canonical_id": "eid-loaded-8"
+    },
+    {
+      "name": "hội lớn",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "hội lớn",
+      "canonical_id": "eid-loaded-9"
+    },
+    {
+      "name": "lọ",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "lọ",
+      "canonical_id": "eid-loaded-10"
+    },
+    {
+      "name": "quần áo lụa là",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "quần áo lụa là",
+      "canonical_id": "eid-loaded-11"
+    },
+    {
+      "name": "giường",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "giường",
+      "canonical_id": "eid-loaded-12"
+    }
+  ],
+  "relations": [
+    {
+      "subject": "Bụt",
+      "predicate": "instructs",
+      "object": "Tấm",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-0"
+    },
+    {
+      "subject": "Tấm",
+      "predicate": "child_of",
+      "object": "mẹ ruột Tấm",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-1"
+    },
+    {
+      "subject": "Tấm",
+      "predicate": "stepchild_of",
+      "object": "dì ghẻ",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-2"
+    },
+    {
+      "subject": "vua",
+      "predicate": "courts",
+      "object": "Tấm",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-3"
+    },
+    {
+      "subject": "Cám",
+      "predicate": "sibling_of",
+      "object": "Tấm",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-4"
+    },
+    {
+      "subject": "Tấm",
+      "predicate": "works_for",
+      "object": "dì ghẻ",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-5"
+    },
+    {
+      "subject": "Tấm",
+      "predicate": "helps",
+      "object": "cá bống",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-6"
+    },
+    {
+      "subject": "Tấm",
+      "predicate": "follows",
+      "object": "Bụt",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-8"
+    },
+    {
+      "subject": "Tấm",
+      "predicate": "lives_in",
+      "object": "cung",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-9"
+    },
+    {
+      "subject": "Cám",
+      "predicate": "lives_with",
+      "object": "dì ghẻ",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-10"
+    },
+    {
+      "subject": "dì ghẻ",
+      "predicate": "married_to",
+      "object": "cha Tấm",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-11"
+    },
+    {
+      "subject": "dì ghẻ",
+      "predicate": "imprisoned_by",
+      "object": "Tấm",
+      "polarity": "negate",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-14"
+    }
+  ],
+  "events": [
+    {
+      "name": "After Tấm cries over the task, Bụt sends",
+      "kind": "action",
+      "participants": [
+        "Bụt",
+        "chim sẻ"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "After Tấm cries over the task, Bụt sends a flock of sparrows to assist her in sorting rice and barley.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-0"
+    },
+    {
+      "name": "After Tấm cries over her stolen shrimp, ",
+      "kind": "action",
+      "participants": [
+        "Bụt",
+        "Tấm"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "After Tấm cries over her stolen shrimp, Bụt appears and tells her to release a small bống fish into the well and feed it rice daily.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-1"
+    },
+    {
+      "name": "After Tấm discovers her fish missing and",
+      "kind": "action",
+      "participants": [
+        "Bụt",
+        "Tấm"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "After Tấm discovers her fish missing and cries again, Bụt appears and commands her to bury the fish bones in four jars under the four legs of the bed.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-2"
+    },
+    {
+      "name": "Cám tricks Tấm into bathing and transfer",
+      "kind": "action",
+      "participants": [
+        "Cám",
+        "Tấm"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Cám tricks Tấm into bathing and transfers all of Tấm's shrimp to her own basket, returning home first.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-3"
+    },
+    {
+      "name": "After learning of Tấm's daily ritual, th",
+      "kind": "action",
+      "participants": [
+        "dì ghẻ",
+        "Cám",
+        "Tấm"
+      ],
+      "participant_ids": [
+        null,
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "After learning of Tấm's daily ritual, the stepmother and Cám lure Tấm away to graze cattle and cook the bống fish for dinner.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-4"
+    },
+    {
+      "name": "After their mother's death and father's ",
+      "kind": "action",
+      "participants": [
+        "Tấm",
+        "Cám",
+        "dì ghẻ"
+      ],
+      "participant_ids": [
+        null,
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "After their mother's death and father's passing, Tấm and Cám live with their stepmother, who favors Cám over Tấm.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-5"
+    },
+    {
+      "name": "Tấm uncovers the buried jars, finding si",
+      "kind": "action",
+      "participants": [
+        "Tấm"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Tấm uncovers the buried jars, finding silk clothes, embroidered shoes, and a noble horse.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-6"
+    },
+    {
+      "name": "Tấm successfully tries on the shoe and i",
+      "kind": "action",
+      "participants": [
+        "Tấm",
+        "vua"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Tấm successfully tries on the shoe and is brought to the palace by the king to become empress.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-7"
+    },
+    {
+      "name": "The stepmother mixes rice and barley, re",
+      "kind": "action",
+      "participants": [
+        "dì ghẻ",
+        "Tấm"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "The stepmother mixes rice and barley, requiring Tấm to separate them before she can attend the festival.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-8"
+    },
+    {
+      "name": "The king picks up the lost shoe and proc",
+      "kind": "action",
+      "participants": [
+        "vua"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "The king picks up the lost shoe and proclaims that any girl who fits it perfectly will be married to him as queen.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-9"
+    },
+    {
+      "name": "Tấm diligently gathers a full basket of ",
+      "kind": "action",
+      "participants": [
+        "Tấm",
+        "Cám"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Tấm diligently gathers a full basket of shrimp, while Cám plays and fails to catch any.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-10"
+    },
+    {
+      "name": "Tấm consistently feeds rice to the bống ",
+      "kind": "action",
+      "participants": [
+        "Tấm",
+        "cá bống"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Tấm consistently feeds rice to the bống fish every meal, treating it as her closest friend.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-11"
+    },
+    {
+      "name": "While traveling to the festival, Tấm dro",
+      "kind": "action",
+      "participants": [
+        "Tấm"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "While traveling to the festival, Tấm drops one of her embroidered shoes into a body of water.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-12"
+    },
+    {
+      "name": "The king announces a large gathering, in",
+      "kind": "action",
+      "participants": [
+        "vua"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "The king announces a large gathering, inviting all citizens to celebrate.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-13"
+    }
+  ],
+  "facts": []
+}

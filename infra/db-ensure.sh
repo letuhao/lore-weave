@@ -23,6 +23,7 @@ loreweave_events
 loreweave_statistics
 loreweave_notification
 loreweave_knowledge
+loreweave_lore_enrichment
 "
 
 for db in $DATABASES; do

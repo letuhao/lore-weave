@@ -106,6 +106,11 @@ func main() {
 		slog.Error("migrate evidence-chapter-index", "error", err)
 		os.Exit(1)
 	}
+	// C4 (K14) — transactional outbox for glossary.entity_updated events.
+	if err := migrate.UpOutbox(ctx, pool); err != nil {
+		slog.Error("migrate outbox", "error", err)
+		os.Exit(1)
+	}
 	if err := migrate.UpKnowledgeMemory(ctx, pool); err != nil {
 		slog.Error("migrate knowledge-memory", "error", err)
 		os.Exit(1)

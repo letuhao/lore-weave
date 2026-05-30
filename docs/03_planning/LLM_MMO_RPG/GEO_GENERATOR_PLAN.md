@@ -8,6 +8,39 @@
 
 ## Current status & next session (handoff)
 
+> **🆕 2026-05-30 (session 99) — C3 world-hierarchy arc COMPLETE + climate work.**
+> Branch `world-gen-sdk-refactor` (PR #13), HEAD `8d5e8619`. On the **production
+> sphere** (not the flat experiment), the full world structure now exists,
+> strictly nested, all verified per the 12-phase workflow + `/review-impl`:
+>
+> - **Geometric hierarchy** (C-1a `f8b15cf0`, render C-1b `6d833669`):
+>   continent → subcontinent → region. `--region-png`. Mostly reuse
+>   (`pathfind::land_components` + `plate_of`); only L2 region Voronoi is new.
+> - **Political hierarchy** (C-2a `a04f2d8e`, render C-2b `954d4174`, naming
+>   C-2c `d9933f29`): world → realm⊆continent → state(nation)⊆subcontinent →
+>   province⊆region → county⊆province. `--realm-png`. NEW `political::build_nested`
+>   (sphere); legacy `political::build` kept verbatim for the frozen flat track.
+>   All 5 tiers LLM-nameable (9-category schema).
+> - **Live-validated end-to-end** (`5ba43923`): real gateway→qwen2.5-32b named
+>   realms/counties; hash preserved.
+> - **Climate audit + retune** (`6767683a`): the standing colour defect is
+>   **desert monotony** (Megaplanet land was 63 % Desert), not "all-green".
+>   Retune (resolution-scaled continentality + temperature-aware Arid gates) cut
+>   it to **53 %**. The cheap path is structurally capped ~50 % (single-wind
+>   march can't moisten a huge interior).
+> - **Köppen-on-sphere SPEC** (`8d5e8619`, **not built**):
+>   [`docs/specs/2026-05-30-koppen-climate-sphere.md`](../../specs/2026-05-30-koppen-climate-sphere.md)
+>   — port the **validated** `flat_climate` Köppen classifier (real °C + mm/yr,
+>   the `precip < 20·T_mean+offset` aridity formula = the actual desert fix),
+>   Option A (keep `ClimateZone`/`BiomeKind`). A circulation-bands experiment was
+>   tried + reverted (regressed — it modulated the `[0,1]` proxy, not the real
+>   classifier).
+>
+> **TOP NEXT: build Köppen from the spec** (L, histogram-calibrated, target
+> Desert 30–40 %). Then optionally: continent-latitude placement (terrain) for
+> biome diversity; review/merge PR #13.
+
+
 > **🆕 Flatworld bottom-up track (2026-05-23).** A NEW, standalone experiment
 > separate from the sphere pipeline: a top-down → bottom-up region generator on
 > a flat rectangle. Modules [`flatworld.rs`](../../../crates/world-gen/src/flatworld.rs)
