@@ -29,10 +29,76 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/loreweave/foundation/contracts/meta"
+	"github.com/loreweave/foundation/sdks/go/metapg"
 	"github.com/loreweave/foundation/services/admin-cli/internal/audit_emitter"
 	"github.com/loreweave/foundation/services/admin-cli/internal/framework"
 )
+
+// sysClock / randUUID are the production Clock/UUIDGen for MetaWrite.
+type sysClock struct{}
+
+func (sysClock) NowUnixNano() int64 { return time.Now().UnixNano() }
+
+type randUUID struct{}
+
+func (randUUID) New() uuid.UUID { return uuid.New() }
+
+// buildAuditSink selects the audit Sink. With META_DATABASE_URL set it persists
+// to admin_action_audit via MetaWrite (metapg + Slice-A scrubber); without it,
+// the dev stdout/in-memory sink. Guards: dev tokens are incompatible with a
+// real audit DB (non-UUID subjects break the UUID actor_id), and running a
+// destructive command unaudited (no DB) requires an explicit opt-in.
+func buildAuditSink(stderr *os.File, impact framework.ImpactClass, dryRun, confirm bool) (audit_emitter.Sink, func(), error) {
+	_ = confirm // retained for signature symmetry; the guard keys on !dryRun (below)
+	dsn := os.Getenv("META_DATABASE_URL")
+	destructive := impact == framework.Tier1Destructive || impact == framework.Tier2Griefing
+
+	if dsn == "" {
+		// Any REAL (non-dry-run) destructive command must be audited. Keying on
+		// !dryRun (NOT confirm) closes the tier-2 hole: tier-2-griefing has no
+		// DryRunRequired gate, so a flagless tier-2 run would otherwise escape.
+		if destructive && !dryRun && os.Getenv("ADMIN_CLI_ALLOW_UNAUDITED") != "1" {
+			return nil, nil, fmt.Errorf("META_DATABASE_URL unset: refusing to run destructive command unaudited (set ADMIN_CLI_ALLOW_UNAUDITED=1 to override for local dev)")
+		}
+		mem := audit_emitter.NewMemorySink()
+		return stdoutSink{stdout: stderr, mem: mem}, func() {}, nil
+	}
+
+	if os.Getenv("ADMIN_CLI_ALLOW_DEV_TOKENS") == "1" {
+		return nil, nil, fmt.Errorf("ADMIN_CLI_ALLOW_DEV_TOKENS=1 is incompatible with META_DATABASE_URL (a dev-token non-UUID subject cannot be the admin_action_audit.actor_id); unset one")
+	}
+	allowPath := os.Getenv("META_ALLOWLIST_PATH")
+	if allowPath == "" {
+		return nil, nil, fmt.Errorf("META_ALLOWLIST_PATH is required when META_DATABASE_URL is set (path to events_allowlist.yaml)")
+	}
+	allow, err := meta.LoadAllowlist(allowPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load allowlist: %w", err)
+	}
+	// Fail-fast: the audit path writes admin_action_audit AND its same-TX
+	// meta_write_audit row. A misconfigured allowlist missing either would
+	// otherwise fail-closed only at the first command's audit write.
+	for _, tbl := range []string{"admin_action_audit", "meta_write_audit"} {
+		if !allow.AllowsTable(tbl) {
+			return nil, nil, fmt.Errorf("allowlist %s missing required table %q (audit path needs it)", allowPath, tbl)
+		}
+	}
+	pool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		return nil, nil, fmt.Errorf("meta DB connect: %w", err)
+	}
+	cfg := &meta.Config{
+		DB: metapg.New(pool), Allowlist: allow, QueryBuilder: meta.PostgresQueryBuilder{},
+		Clock: sysClock{}, UUIDGen: randUUID{}, Scrubber: meta.NewRegexScrubber(nil),
+	}
+	return audit_emitter.NewMetaWriteSink(cfg), pool.Close, nil
+}
 
 // registryDirEnv lets ops override the registry path (defaults to the
 // canonical contracts/admin/registry relative to repo root).
@@ -154,10 +220,15 @@ func run(args []string, stdout, stderr *os.File) int {
 		params[p.Name] = v
 	}
 
-	// Audit emitter: V1 stdout sink (writes to admin_action_audit
-	// wires via meta-worker MetaWrite adapter in a follow-up cycle).
-	mem := audit_emitter.NewMemorySink()
-	emitter := audit_emitter.New(stdoutSink{stdout: stderr, mem: mem}, nil)
+	// Audit emitter: MetaWriteSink (admin_action_audit via MetaWrite) when
+	// META_DATABASE_URL is set, else the dev stdout sink. 073 prerequisite.
+	sink, closeSink, serr := buildAuditSink(stderr, c.ImpactClass, *fDryRun, *fConfirm)
+	if serr != nil {
+		fmt.Fprintf(stderr, "admin: %v\n", serr)
+		return 2
+	}
+	defer closeSink()
+	emitter := audit_emitter.New(sink, nil)
 
 	handler := defaultHandlers().Resolve(c)
 	inv := framework.Invocation{
@@ -178,10 +249,10 @@ func run(args []string, stdout, stderr *os.File) int {
 	}
 	if *fJSON {
 		_ = json.NewEncoder(stdout).Encode(map[string]any{
-			"command":    c.Name,
-			"dry_run":    *fDryRun,
-			"output":     out,
-			"audit_rows": mem.Count(),
+			"command": c.Name,
+			"dry_run": *fDryRun,
+			"output":  out,
+			"audited": os.Getenv("META_DATABASE_URL") != "",
 		})
 	} else {
 		fmt.Fprintln(stdout, out)
