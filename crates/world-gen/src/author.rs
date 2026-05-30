@@ -1,13 +1,21 @@
 //! GEO_001b authoring — turn a prose brief into a schema-valid `CreativeSeed`
-//! via an LLM (an OpenAI-compatible `/chat/completions` endpoint).
+//! via an LLM.
 //!
 //! The LLM call is **non-deterministic**, but it only produces the *input*
 //! `CreativeSeed`; `generate(seed, creative_seed)` downstream is as pure and
 //! deterministic as ever.
+//!
+//! **Gateway invariant (CLAUDE.md, 2026-05-30)**: LLM calls flow through the
+//! `loreweave_llm` SDK via a `&dyn TextProvider` — typically
+//! [`crate::shape::GatewayTextProvider`] for the real backend or
+//! [`crate::shape::MockTextProvider`] for offline tests. The prior
+//! `llm_json_request(llm_url, model, ...)` helper was deleted (it
+//! directly POSTed to an OpenAI-compatible URL).
 
 use serde_json::{Value, json};
 
 use crate::creative_seed::CreativeSeed;
+use crate::shape::llm::{TextPrompt, TextProvider};
 
 /// System prompt — explains the `CreativeSeed` fields to the LLM.
 const SYSTEM_PROMPT: &str = "\
@@ -95,89 +103,22 @@ pub fn parse_creative_seed(content: &str) -> Result<CreativeSeed, String> {
     Ok(cs)
 }
 
-/// Extract `choices[0].message.content` from a chat-completions response body.
-/// Navigates with `get`/`as_*` (never `unwrap`/index) so an error envelope or
-/// a refusal (no `choices`, null `content`) returns a clear `Err`.
-fn extract_message_content(response_body: &str) -> Result<String, String> {
-    let v: Value = serde_json::from_str(response_body)
-        .map_err(|e| format!("LLM response was not JSON: {e}"))?;
-    v.get("choices")
-        .and_then(Value::as_array)
-        .and_then(|a| a.first())
-        .and_then(|c| c.get("message"))
-        .and_then(|m| m.get("content"))
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .ok_or_else(|| "LLM response had no message content".to_string())
-}
-
-/// Request a `CreativeSeed` from an OpenAI-compatible chat endpoint.
+/// Request a `CreativeSeed` from a [`TextProvider`] (typically a
+/// gateway-backed one — see [`crate::shape::GatewayTextProvider`]).
 ///
-/// `llm_url` is the API base (e.g. `http://localhost:1234/v1`); `model` is the
-/// model id. Every failure path returns a descriptive `Err` — no panic.
+/// The provider must honor the attached JSON schema; the result is the raw
+/// JSON string which [`parse_creative_seed`] then validates and clamps.
+/// Every failure path returns a descriptive `Err` — no panic.
 pub fn request_creative_seed(
     brief: &str,
-    llm_url: &str,
-    model: &str,
+    provider: &dyn TextProvider,
 ) -> Result<CreativeSeed, String> {
-    let content = llm_json_request(
-        llm_url,
-        model,
-        SYSTEM_PROMPT,
-        brief,
-        creative_seed_schema(),
-        "creative_seed",
-    )?;
+    let prompt = TextPrompt::new(SYSTEM_PROMPT, brief)
+        .with_schema(creative_seed_schema(), "creative_seed");
+    let content = provider
+        .complete(&prompt)
+        .map_err(|e| format!("CreativeSeed request failed: {e}"))?;
     parse_creative_seed(&content)
-}
-
-/// Shared LLM call — POST a json-schema-constrained chat completion to an
-/// OpenAI-compatible endpoint and return the message `content` string. Used by
-/// [`request_creative_seed`] and `crate::naming`. Every failure path returns a
-/// descriptive `Err` — no panic; an explicit timeout stops a stalled endpoint
-/// from hanging the CLI forever.
-pub(crate) fn llm_json_request(
-    llm_url: &str,
-    model: &str,
-    system_prompt: &str,
-    user_prompt: &str,
-    schema: Value,
-    schema_name: &str,
-) -> Result<String, String> {
-    let body = json!({
-        "model": model,
-        "messages": [
-            { "role": "system", "content": system_prompt },
-            { "role": "user", "content": user_prompt }
-        ],
-        "response_format": {
-            "type": "json_schema",
-            "json_schema": {
-                "name": schema_name,
-                "strict": true,
-                "schema": schema
-            }
-        }
-    });
-    let url = format!("{}/chat/completions", llm_url.trim_end_matches('/'));
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
-        .build()
-        .map_err(|e| format!("LLM client build failed: {e}"))?;
-    let resp = client
-        .post(&url)
-        .json(&body)
-        .send()
-        .map_err(|e| format!("LLM request to {url} failed: {e}"))?;
-    let status = resp.status();
-    let text = resp
-        .text()
-        .map_err(|e| format!("reading LLM response failed: {e}"))?;
-    if !status.is_success() {
-        let snippet: String = text.chars().take(200).collect();
-        return Err(format!("LLM HTTP {status}: {snippet}"));
-    }
-    extract_message_content(&text)
 }
 
 #[cfg(test)]
@@ -239,33 +180,25 @@ mod tests {
     }
 
     #[test]
-    fn extract_content_from_valid_response() {
-        let resp = json!({
-            "choices": [{ "message": { "content": "the seed" } }]
-        })
-        .to_string();
-        assert_eq!(extract_message_content(&resp).unwrap(), "the seed");
-    }
-
-    #[test]
-    fn request_to_unreachable_endpoint_errors_cleanly() {
-        // `.invalid` is reserved never to resolve (RFC 6761) — `send()` fails
-        // fast; the error contract must surface a descriptive `Err`, never
-        // panic and never hang. (The common real failure: LM Studio is down.)
-        let r = request_creative_seed("a brief", "http://geo-gen.invalid/v1", "m");
-        assert!(r.is_err(), "unreachable endpoint must return Err, got {r:?}");
-    }
-
-    #[test]
-    fn extract_content_rejects_error_envelope() {
-        // a non-2xx body / refusal has no `choices`.
-        let envelope = json!({ "error": { "message": "bad request" } }).to_string();
-        assert!(extract_message_content(&envelope).is_err());
-        // empty choices / null content.
-        assert!(extract_message_content(&json!({ "choices": [] }).to_string()).is_err());
-        let null_content =
-            json!({ "choices": [{ "message": { "content": null } }] }).to_string();
-        assert!(extract_message_content(&null_content).is_err());
+    fn request_provider_error_surfaces_clean_message() {
+        // **2026-05-30 refactor**: `extract_message_content` +
+        // `llm_json_request` were deleted with the direct-HTTP path.
+        // Provider errors now surface via `LlmError`; this test pins
+        // that the wrapper preserves the message.
+        use crate::shape::llm::{LlmError, TextPrompt, TextProvider};
+        #[derive(Debug)]
+        struct AlwaysFailProvider;
+        impl TextProvider for AlwaysFailProvider {
+            fn complete(&self, _: &TextPrompt) -> Result<String, LlmError> {
+                Err(LlmError::Transport("simulated unreachable gateway".into()))
+            }
+        }
+        let r = request_creative_seed("a brief", &AlwaysFailProvider);
+        let err = r.expect_err("provider failure must surface as Err");
+        assert!(
+            err.contains("CreativeSeed request failed"),
+            "wrapper should prefix; got: {err}"
+        );
     }
 
     #[test]

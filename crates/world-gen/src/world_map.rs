@@ -92,6 +92,12 @@ impl RouteKind {
     }
 }
 
+/// `serde` default for the geometric-nesting id fields (C-2): the `u32::MAX`
+/// sentinel, so a pre-C-2 JSON (or the flat builder) reads as "unnested".
+fn sentinel_u32() -> u32 {
+    u32::MAX
+}
+
 /// A province — a cell cluster grown from one political seed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Province {
@@ -100,19 +106,111 @@ pub struct Province {
     pub capital_cell: u32,
     /// The state this province belongs to.
     pub state: u32,
+    /// The geometric **region** this province nests in (C-2 strict nesting;
+    /// `u32::MAX` from the flat/pre-C-2 builder). A province ⊆ one region.
+    #[serde(default = "sentinel_u32")]
+    pub region: u32,
     /// Authored name; empty until named by `crate::naming`. Not hashed.
     #[serde(default)]
     pub name: String,
 }
 
-/// A state — a cluster of provinces.
+/// A state (the **nation** tier) — a cluster of provinces within one
+/// subcontinent (C-2). The type keeps the name `State` to avoid churn.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct State {
     pub id: u32,
     /// The state-seed province (farthest-point sampled within the state's
-    /// land component) — its capital.
+    /// subcontinent) — its capital.
     pub capital_province: u32,
+    /// The geometric **subcontinent** this state nests in (`u32::MAX` from the
+    /// flat/pre-C-2 builder). A state ⊆ one subcontinent.
+    #[serde(default = "sentinel_u32")]
+    pub subcontinent: u32,
+    /// The **realm** this state belongs to (`u32::MAX` from the flat/pre-C-2
+    /// builder).
+    #[serde(default = "sentinel_u32")]
+    pub realm: u32,
     /// Authored name; empty until named by `crate::naming`. Not hashed.
+    #[serde(default)]
+    pub name: String,
+}
+
+/// A county — a subdivision of a province (C-2, the finest political tier).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct County {
+    pub id: u32,
+    /// The county's seed/capital cell.
+    pub capital_cell: u32,
+    /// The province this county belongs to.
+    pub province: u32,
+    /// Authored name; empty until named. Not hashed.
+    #[serde(default)]
+    pub name: String,
+}
+
+/// A realm — a cluster of states (nations) within one continent (C-2, the
+/// tier above state).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Realm {
+    pub id: u32,
+    /// The realm-seed state — its capital nation.
+    pub capital_state: u32,
+    /// The geometric **continent** this realm nests in. A realm ⊆ one continent.
+    pub continent: u32,
+    /// Authored name; empty until named. Not hashed.
+    #[serde(default)]
+    pub name: String,
+}
+
+/// The world — the political root (C-2). One per map; mostly a naming anchor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct World {
+    /// Authored name; empty until named. Not hashed.
+    #[serde(default)]
+    pub name: String,
+}
+
+/// A continent — a connected component of land cells (geometric hierarchy L0,
+/// C3 arc). See [`crate::hierarchy`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Continent {
+    pub id: u32,
+    /// Lowest-index land cell of the component — its deterministic anchor.
+    pub seed_cell: u32,
+    /// Authored name; empty until named. Not hashed.
+    #[serde(default)]
+    pub name: String,
+}
+
+/// A subcontinent — one continent's cells that share a tectonic plate
+/// (geometric hierarchy L1). In `Profile` mode (no plates) a continent is one
+/// subcontinent with `plate == u32::MAX`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Subcontinent {
+    pub id: u32,
+    /// The continent this subcontinent belongs to.
+    pub continent: u32,
+    /// The tectonic plate whose cells form this subcontinent (`u32::MAX` =
+    /// none / `Profile` mode).
+    pub plate: u32,
+    /// Lowest-index cell of the subcontinent — its deterministic anchor.
+    pub seed_cell: u32,
+    /// Authored name; empty until named. Not hashed.
+    #[serde(default)]
+    pub name: String,
+}
+
+/// A region — a great-circle Voronoi cell of a subcontinent (geometric
+/// hierarchy L2). The finest geographic tier; political tiers (C-2) anchor here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Region {
+    pub id: u32,
+    /// The subcontinent this region belongs to.
+    pub subcontinent: u32,
+    /// The Voronoi seed cell that defines this region.
+    pub seed_cell: u32,
+    /// Authored name; empty until named. Not hashed.
     #[serde(default)]
     pub name: String,
 }
@@ -335,6 +433,37 @@ pub struct WorldMap {
     /// Classified plate boundaries (Phase 2). Empty in `Profile` mode.
     #[serde(default)]
     pub plate_boundaries: Vec<PlateBoundary>,
+    /// Per-cell continent id (geometric hierarchy L0, C3 arc). `u32::MAX` for
+    /// water cells. Parallel to `cells`.
+    #[serde(default)]
+    pub continent_of: Vec<u32>,
+    /// Per-cell subcontinent id (L1). `u32::MAX` for water cells.
+    #[serde(default)]
+    pub subcontinent_of: Vec<u32>,
+    /// Per-cell region id (L2). `u32::MAX` for water cells.
+    #[serde(default)]
+    pub region_of: Vec<u32>,
+    /// Continents (L0).
+    #[serde(default)]
+    pub continents: Vec<Continent>,
+    /// Subcontinents (L1).
+    #[serde(default)]
+    pub subcontinents: Vec<Subcontinent>,
+    /// Regions (L2).
+    #[serde(default)]
+    pub regions: Vec<Region>,
+    /// Per-cell county id (political tier, C-2); `u32::MAX` for water / non-land.
+    #[serde(default)]
+    pub county_of: Vec<u32>,
+    /// Counties (C-2) — subdivisions of provinces.
+    #[serde(default)]
+    pub counties: Vec<County>,
+    /// Realms (C-2) — clusters of states within a continent.
+    #[serde(default)]
+    pub realms: Vec<Realm>,
+    /// The world root (C-2) — a single naming anchor.
+    #[serde(default)]
+    pub world: World,
     /// blake3 hash over the canonical byte view — the determinism check.
     pub content_hash: [u8; 32],
 }
@@ -411,10 +540,13 @@ impl WorldMap {
             h.update(&p.id.to_le_bytes());
             h.update(&p.capital_cell.to_le_bytes());
             h.update(&p.state.to_le_bytes());
+            h.update(&p.region.to_le_bytes());
         }
         for s in &self.states {
             h.update(&s.id.to_le_bytes());
             h.update(&s.capital_province.to_le_bytes());
+            h.update(&s.subcontinent.to_le_bytes());
+            h.update(&s.realm.to_le_bytes());
         }
         for s in &self.settlements {
             h.update(&s.cell.to_le_bytes());
@@ -477,6 +609,47 @@ impl WorldMap {
             h.update(&b.plate_a.to_le_bytes());
             h.update(&b.plate_b.to_le_bytes());
             h.update(&[b.kind.tag()]);
+        }
+        // Geometric region hierarchy (C3 arc, C-1a). Geometry is deterministic;
+        // the entities' `name` fields are deliberately not hashed (see
+        // MAINTENANCE above).
+        for &c in &self.continent_of {
+            h.update(&c.to_le_bytes());
+        }
+        for &c in &self.subcontinent_of {
+            h.update(&c.to_le_bytes());
+        }
+        for &c in &self.region_of {
+            h.update(&c.to_le_bytes());
+        }
+        for c in &self.continents {
+            h.update(&c.id.to_le_bytes());
+            h.update(&c.seed_cell.to_le_bytes());
+        }
+        for s in &self.subcontinents {
+            h.update(&s.id.to_le_bytes());
+            h.update(&s.continent.to_le_bytes());
+            h.update(&s.plate.to_le_bytes());
+            h.update(&s.seed_cell.to_le_bytes());
+        }
+        for r in &self.regions {
+            h.update(&r.id.to_le_bytes());
+            h.update(&r.subcontinent.to_le_bytes());
+            h.update(&r.seed_cell.to_le_bytes());
+        }
+        // Political tiers (C-2). `world` carries only a name ⇒ not hashed.
+        for &c in &self.county_of {
+            h.update(&c.to_le_bytes());
+        }
+        for c in &self.counties {
+            h.update(&c.id.to_le_bytes());
+            h.update(&c.capital_cell.to_le_bytes());
+            h.update(&c.province.to_le_bytes());
+        }
+        for r in &self.realms {
+            h.update(&r.id.to_le_bytes());
+            h.update(&r.capital_state.to_le_bytes());
+            h.update(&r.continent.to_le_bytes());
         }
         *h.finalize().as_bytes()
     }
