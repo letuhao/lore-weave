@@ -1,9 +1,34 @@
-# Session Handoff — Session 73 (cycles 73a-73h, ending 73h worker-ai metrics)
+# Session Handoff — Session 74 (cycle 74a — c73e writer-autocreate F1 eval, NEUTRAL)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-05-30 (session 73 — 8 cycles: 73a verify + 73b relation-only ship + 73c realized-F1 + 73d entity recovery NEGATIVE + 73e writer autocreate + 73f runtime reload + 73f r3 fix + 73g r3 cleanup + 73h worker metrics infra).
-> **HEAD:** `d480a2fc` (cycle 73h).
+> **Date:** 2026-05-30 (session 74 — 1 cycle: 74a F1 eval of cycle-73e writer-autocreate-on; result F1-NEUTRAL, keep default OFF).
+> **HEAD:** `ab4777ec` (session 73 close) + cycle 74a (this session).
 > **Branch:** `main`.
+
+## Session 74 summary — cycle 74a: c73e writer-autocreate realized-F1 eval (D-PASS2-WRITER-AUTOCREATE-F1-EVAL)
+
+**Result: F1-NEUTRAL. Compose default stays OFF (SDK opt-in unchanged). Deferred row CLOSED.**
+
+Ran the 3-judge ensemble re-judge (gemma + qwen-30b + claude-4.7-opus) on the saved `c73e-autocreate-on` dump that was blocked twice in session 73 by container OOM.
+
+**Blocker permanently sidestepped — host orchestration.** The session-73 deaths happened because the re-judge ran *in* knowledge-service, and LM Studio JIT model-load → host memory pressure → Docker Desktop OOM-kills the heaviest container. Session 74 ran the orchestrator on **host Python** instead: `host → provider-registry (:8208) → LM Studio (:1234)`. knowledge-service is NOT in the re-judge path, so its OOM-killer can't reach the run. New reusable driver [`run_rejudge_resumable.py`](../../services/knowledge-service/tests/quality/run_rejudge_resumable.py) persists each judge's verdicts the instant it finishes (crash only loses the in-flight judge) and resumes by skipping already-complete judges. Run completed clean in ~23 min, all 3 judges `complete`, κ=0.738. **This makes D-DOCKER-RESTART-INVESTIGATION non-blocking for all future F1 cycles.**
+
+**Measured F1 (3-judge ensemble):**
+
+| Variant | gemma | qwen-30b | claude (median) | **3J median** | mean | κ |
+|---|---:|---:|---:|---:|---:|---:|
+| c73b-drop realized (SHIP) | 0.888 | 0.972 | 0.913 | **0.913** | 0.924 | 0.756 |
+| c73e-autocreate-on | 0.901 | 0.979 | 0.911 | **0.911** | 0.930 | 0.738 |
+| **Δ** | +1.3pp | +0.7pp | −0.2pp | **−0.2pp** | +0.6pp | −0.018 |
+
+The locked metric (3J median) moved **−0.2pp (within noise)** — the expected +0.3-0.6pp lift did NOT materialize. gemma/qwen improved but the median pins to claude (flat). The +6 cascade-recovered relations are low-confidence (`≤0.3`, `kind=concept`) abstract subjects (`仙卿`, `大海`, `Bụt`, `cha Tấm`, `cung`); judges weight them near-indifferently — zero precision cost, zero median lift. Confound ruled out: claude judged 0/421 unjudged; the 190 truncation warnings (83% budget) all parsed cleanly. D10 clause (a) does not clear → keep default OFF. Detail in [`c73e_compare.md`](../../services/knowledge-service/tests/quality/eval_runs/c73e_compare.md).
+
+**Deferred rows resolved:**
+- **D-PASS2-WRITER-AUTOCREATE-F1-EVAL** → CLOSED (measured: F1-neutral).
+- **D-PASS2-WRITER-CASCADE-GAP-CLOSE** → can CLOSE (gap measured as F1-immaterial; further closing chases a flat lever).
+- **D-DOCKER-RESTART-INVESTIGATION** → de-prioritized for F1 work (host-orchestration bypass); still open for general stack stability if desired.
+
+**Methodology note for next F1 cycle:** raise `KNOWLEDGE_JUDGE_BASE_TOKENS` above 3072 to clear the claude truncation warnings (harmless here — JSON recovered — but cleaner). Run from host with the exact env block in `run_rejudge_resumable.py`'s docstring; provider-registry host port is `:8208`, internal token `dev_internal_token`.
 
 ## Session 73 summary — cycle 73h Prometheus metrics infra for worker-ai
 

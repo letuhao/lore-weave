@@ -52,9 +52,9 @@ Run on c73b-drop filter dump (same input as cycle 73c). Two variants:
 3. Write realized `actual.json` per variant
 4. Re-judge with 3-judge ensemble (gemma + qwen-30b + claude-4.7-opus)
 
-## Realized F1 (3-judge ensemble re-judge) — DEFERRED
+## Realized F1 (3-judge ensemble re-judge) — MEASURED 2026-05-30 (session 74)
 
-**Status:** ensemble re-judge attempted twice (2026-05-30 ~10:30 + ~11:00 UTC). Both runs got killed by knowledge-service container restart mid-ensemble (gemma judge in flight; LM Studio JIT-load triggered host memory pressure → Docker Desktop OOM-killed the container; logs purged on restart).
+**Status:** ✅ **DONE.** The prior two attempts (2026-05-30 ~10:30 + ~11:00 UTC) were killed by knowledge-service container OOM mid-ensemble. Session 74 sidestepped the blocker by running the orchestrator on **host Python** (host → provider-registry `:8208` → LM Studio `:1234`); knowledge-service is not in the re-judge path, so its OOM-killer can't reach the run. Driver: [`run_rejudge_resumable.py`](../run_rejudge_resumable.py) (persists each judge's verdicts the instant it completes — crash only loses the in-flight judge). Run completed clean in ~23 min, all 3 judges `complete`, κ=0.738 (substantial).
 
 | Variant | gemma F1 | qwen-30b F1 | claude F1 | **3J median F1** | **2J mean (no claude)** | Fleiss κ |
 |---|---:|---:|---:|---:|---:|---:|
@@ -62,30 +62,39 @@ Run on c73b-drop filter dump (same input as cycle 73c). Two variants:
 | c72c-drop realized | 0.899 | 0.965 | 0.904 | 0.904 | 0.9320 | 0.773 |
 | **c73b-drop realized (current SHIP)** | **0.888** | **0.972** | **0.913** | **0.913** | **0.9300** | **0.756** |
 | **c73e-autocreate-off** | _(byte-identical to c73b-drop-realized — verified via diff)_ | | | _0.913_ | _0.9300_ | _0.756_ |
-| **c73e-autocreate-on** | _deferred — see D-PASS2-WRITER-AUTOCREATE-F1-EVAL_ | | | | | |
+| **c73e-autocreate-on** | **0.901** | **0.979** | **0.911** | **0.911** | **0.9400** | **0.738** |
+| **Δ (on − SHIP)** | **+1.3pp** | **+0.7pp** | **−0.2pp** | **−0.2pp** | **+1.0pp** | **−0.018** |
 
-**Deferred to:** `D-PASS2-WRITER-AUTOCREATE-F1-EVAL` — re-run when container is stable for 30+ min uninterrupted, OR when a non-LM-Studio-dependent judge ensemble is available.
+**Finding — F1-NEUTRAL on the locked metric; the expected +0.3-0.6pp lift did NOT materialize.** The locked ship metric (3-judge median, per `QUALITY_EVAL_BASELINES.md`) moved **−0.2pp (0.913 → 0.911), inside the noise band**. The median is pinned to claude-4.7-opus, which was flat (−0.2pp). The other two judges DID improve (gemma +1.3pp, qwen-30b +0.7pp), so the **mean** is +0.6pp and the no-claude 2-judge subset is +1.0pp — but the median is the lock, and it didn't move.
 
-**Expected F1 impact (informational, not measured):** 6 relations recovered out of 121 baseline (c70a) = ~5% relation recall lift. Per cycle 73c proportionality (c73b's 9 supported-cascade ≈ -0.3pp realized F1 loss; c72c's 16 supported-cascade ≈ -1.3pp loss), the inverse — 6 relations recovered — is expected to be roughly +0.3-0.6pp realized F1 lift on the 3-judge median. This is well below cycle 73b's +2.1pp baseline lift but still positive.
+**No measurement confound:**
+- claude judged **0/421 items unjudged** in the on-run (vs 3/409 in baseline). The 190 "JSON likely truncated" budget warnings fired at ~83% budget but the JSON parser recovered every one — no data loss biasing claude down. (Methodology note for future runs: raise `KNOWLEDGE_JUDGE_BASE_TOKENS` above 3072 to clear the warnings; harmless here.)
+- The +12 verdict slots in the on-run (421 vs 409) = the +6 recovered relations × (precision + recall) sides, exactly as expected.
+- Both variants re-judged through the identical `compute_ensemble_macros.py` path; the c73b-drop-realized numbers reproduce the locked baseline (0.888 / 0.972 / 0.913) byte-for-byte.
 
-## Ship gate evaluation — DEFERRED to D-PASS2-WRITER-AUTOCREATE-F1-EVAL
+**Why the cascade-recovered relations don't lift the median:** this is the `filter-output-F1-overstates-realized-when-writer-cascades` pattern in reverse — the +6 recovered endpoints are low-confidence (`confidence ≤ 0.3`, `kind=concept`) abstract subjects (`仙卿`, `大海`, `Bụt`, `cha Tấm`, `cung`, …). Judges weight them near-indifferently: gemma/qwen credit them slightly (small +), claude treats them as borderline (flat). Recovering them costs **zero precision** (no graph-pollution F1 penalty surfaced) but also buys **no median lift**.
 
-Cannot evaluate D10 5-clause without realized F1 numbers. The cascade-simulation evidence supports the mechanism:
+## Ship gate evaluation — D10
 
-- **+6 relations recovered** (15.7% relative reduction of cascade-skip from 13.7% → 5.5%)
-- **0 false positives in entity graph** — noise heuristic correctly filtered all 4 `little_women_ch01` compound subjects
-- **0 cap exhaustion** — default cap=20 was never hit (max needed = 3 for `tam_cam_vi`)
-- **Per-chapter autocreate distribution** matches cycle 73c's identified abstract-subject cascade hotspots
+| D10 clause | Verdict |
+|---|---|
+| (a) realized 3J median F1 ≥ current SHIP | ❌ **−0.2pp** (0.911 < 0.913) — within noise, but not ≥ |
+| (b) Fleiss κ stays ≥ substantial (0.60) | ✅ 0.738 (substantial) |
+| (c) no precision regression / graph pollution | ✅ precision flat-to-up on all judges; cascade sim 0 false-positives |
+| (d) mechanism validated | ✅ +6 relations recovered, cap never hit, noise heuristic clean |
+| (e) latency cost acceptable | ✅ Tier B is a deterministic MERGE — **no LLM call**, negligible latency |
 
-## Ship decision — SDK opt-in (cycle 73d pattern)
+**Clause (a) is the gate and it does not clear** — autocreate-on is F1-neutral (−0.2pp on the lock), not a lift.
 
-**DO NOT ACTIVATE c73e as compose default.** Default ship: SDK opt-in only.
+## Ship decision — KEEP SDK opt-in (compose default stays OFF) — CONFIRMED by data
+
+**DO NOT ACTIVATE c73e as compose default.** The measured F1 **confirms** cycle-73e's conservative decision rather than overturning it.
 
 Rationale:
-1. **Mechanism validated via cascade simulation** — 6 relations recovered cleanly, 4 noise-filtered correctly. No graph-pollution evidence.
-2. **D10 ship gate unevaluable** — realized F1 ensemble re-judge unavailable due to recurring container restart on LM-Studio-heavy load. Without F1 numbers, cannot pass clause (a).
-3. **Conservative default** — matches cycle 73d's "ship SDK opt-in until F1 is robust" pattern. Power users can flip `KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED=true` in their `.env` to AB-test in their own deployments.
-4. **D-PASS2-WRITER-CASCADE-GAP-CLOSE stays OPEN** until F1 is measured. The MECHANISM is validated; the QUANTITATIVE LIFT is deferred.
+1. **Locked-metric F1 is neutral** — 3J median −0.2pp (within noise). Flipping a production default requires a clear lift on the lock; this isn't one.
+2. **Mechanism is sound but low-yield** — +6 relations recovered with zero precision cost, but the recovered low-confidence concept entities don't move the median. Mean / 2J-subset are mildly positive (+0.6 / +1.0pp); not enough to override the lock.
+3. **Conservative default** — power users can still flip `KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED=true` in their `.env`. The SDK path is validated and F1-safe (no regression), so opt-in carries no quality risk.
+4. **D-PASS2-WRITER-AUTOCREATE-F1-EVAL is CLOSED** with this measured result. **D-PASS2-WRITER-CASCADE-GAP-CLOSE** can also close: the gap is now *measured* as F1-immaterial — closing it further (entity-prompt extension / pre-filter) would chase a lever the data shows is near-flat on the locked metric.
 
 ## What we DO ship regardless of D10 verdict
 
