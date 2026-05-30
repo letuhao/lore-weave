@@ -8,10 +8,96 @@
 
 ## Current status & next session (handoff)
 
-> **🆕 2026-05-30 (session 99) — C3 world-hierarchy arc COMPLETE + climate work.**
-> Branch `world-gen-sdk-refactor` (PR #13), HEAD `8d5e8619`. On the **production
-> sphere** (not the flat experiment), the full world structure now exists,
-> strictly nested, all verified per the 12-phase workflow + `/review-impl`:
+> **🆕 2026-05-31 (session 100) — KÖPPEN CLIMATE ON THE SPHERE — BUILT.**
+> Branch `world-gen-sdk-refactor` (climate arc → new PR; PR #13 already merged).
+> Built candidate A from the session-99
+> spec: ported the **validated** `flat_climate` Köppen-Geiger classifier into the
+> production `climate.rs`, working in real °C + mm/yr. Replaced the
+> temperature-blind `dryness > 0.62` Arid gate with the real Köppen B-test
+> `precip < 20·T_mean + offset`, mapping the 19 subtypes onto the existing 8
+> `ClimateZone` (Option A — enum/`BiomeKind`/render pipeline untouched).
+>
+> - **Desert fix achieved (the goal):** Megaplanet seed-7 land **53 % → 36.1 %**
+>   Desert (target 30–40 %); Continent seed-7 **32.5 %**. Boreal/Polar/Tropical/
+>   Forest all present; render shows a varied world, not a sand-wall.
+> - **Verified:** full lib **390 green** (+1 = new `build()` distribution guard),
+>   `climate.rs` clippy-clean. 7 climate tests incl. headline
+>   `arid_threshold_is_temperature_dependent`. `/review-impl` ran (3 findings:
+>   2 fixed — build-smoke test + Mediterranean-bias overshoot softened; 1 deferred).
+> - **Design decisions (PO-approved):** R1 kept `effective_latitude` (hemisphere
+>   knob preserved — spec's `asin(z).abs()` was Equatorial shorthand); R3 kept a
+>   conservative Highland override; R4 `moisture_field` left as pure `[0,1]`
+>   transport (already reverted at `6767683a` — no change needed); R5 `climate_bias`
+>   re-expressed as a °C/mm nudge. Spec/plan:
+>   [`docs/specs/2026-05-30-koppen-climate-sphere.md`](../../specs/2026-05-30-koppen-climate-sphere.md),
+>   [`docs/plans/2026-05-30-koppen-climate-sphere-build.md`](../../plans/2026-05-30-koppen-climate-sphere-build.md).
+> - **⚠️ Known limitation → DEFERRED #045 (v2 seasonality):** the temperate
+>   C-group (Temperate/Subtropical/Mediterranean) is ≈0 on *every* world — the
+>   **linear** insolation gradient + amplitude squeeze the narrow C-band (a failed
+>   `AMP_LAT 28→8` experiment proved it's structural, not a param tweak). This is a
+>   *variety* gap, not a desert defect. Fix is v2 (cosine insolation / real
+>   `winter_frac`) OR subsumed by the next step below.
+>
+> **Continent-latitude PLACEMENT — SHIPPED (opt-in).** Added the
+> `continent_latitude_spread` knob (`CreativeSeed` + CLI `--continent-latitude-spread`
+> + author schema), Approach A: greedy farthest-point continental-plate *selection*
+> over signed sin-latitude (no geometry change). `spread=0` (the **default**) is
+> byte-identical to legacy; `spread=1` spreads land equator→both poles. Plan:
+> [`docs/plans/2026-05-31-continent-latitude-placement.md`](../../plans/2026-05-31-continent-latitude-placement.md).
+> Full lib 395 green, clippy-clean, `/review-impl` (1 LOW fixed). **Empirical
+> (seed-7 mega, spread=1):** land reaches |lat| 89° (was 74°), Boreal 6%→23% — but
+> Desert drops 36%→8% and **Temperate + Tundra stay ≈0**. Why: the full
+> tropics→tundra gradient is **gated on #045** — the seasonal-amplitude squeeze
+> gives high-lat lowland warm summers (→Boreal, not Polar/Tundra). So default kept
+> at 0.0 (opt-in) until #045 lands. Knob is a threshold-switch at the default
+> ~3-continental-plate count (smoother with more plates).
+>
+> **Köppen v2 SEASONALITY (#045) — SHIPPED.** Replaced the linear insolation
+> `lerp(28,−15,lat_dist)` with a **cosine** curve (`insolation_temp` — warms mid-lat
+> ~6.5→15 °C at 45°) and rewrote `seasonal_amp` to be **continentality-gated**
+> (`AMP_EQ + (AMP_MARITIME=4 + AMP_CONT_GAIN=24·cont)·lat_dist`) so maritime coasts
+> stay low-amplitude at every latitude. Plan:
+> [`docs/plans/2026-05-31-koppen-v2-seasonality.md`](../../plans/2026-05-31-koppen-v2-seasonality.md).
+> Full lib 398 green, clippy-clean, `/review-impl` (no HIGH/MED). **Result (seed-7
+> mega):** Desert preserved **33.5 %** at spread=0 (Köppen win intact); **Tundra
+> opened 0→126** + Polar/Boreal gradient at spread=1; the temperate C-band is now
+> *reachable* (`Plain` 0→55 with Equatorial orientation), render shows a tundra cap
+> → boreal → tropical gradient. #045 cleared.
+>
+> **MOISTURE-TRANSPORT model (#046) — SHIPPED.** Rewrote `moisture_field` from
+> **averaging** upwind neighbours to **MAX best-path** downwind-directed multi-source
+> transport (a cell takes the wettest upwind route from any upwind sea; wind-aware,
+> so offshore coasts stay dry and range rain-shadows persist). Plan:
+> [`docs/plans/2026-05-31-moisture-transport-model.md`](../../plans/2026-05-31-moisture-transport-model.md).
+> Full lib 399 green, clippy-clean, `/review-impl` no HIGH/MED. **Result (seed-7 mega):**
+> interiors greener, C-group ~doubled in the full-gradient case (equatorial spread=1:
+> 2.2→3.9 %, `Plain` 55→98), Desert preserved 30.7 % at spread=0; bonus — maritime
+> cooling raised Tundra/Polar (126→375). The full tundra-cap→boreal→desert→tropical
+> gradient renders. #046 cleared.
+>
+> **CLIMATE ARC COMPLETE.** Three biome-variety levers shipped this session, all
+> compounding: Köppen desert fix (`7b4dc786`) → continent-latitude placement
+> (`1cd2c038`) → v2 seasonality (`42723e7e`) → moisture transport (this commit).
+> Optional remaining lever: **#047** (8-zone mapping Dfa/Dfb→Temperate) for abundant
+> literal temperate-*plains* — a classifier choice, not yet chosen.
+>
+> **Branch/PR state (corrected 2026-05-31).** PR #13 (SDK refactor + C3 arc,
+> through `10fedcd5`) is **already MERGED** to `main` — the session-99 "PR #13 OPEN"
+> note was stale. The **4 session-100 climate commits** (`7b4dc786…db5cc852`) were
+> built on top and are landing via a **new PR**: the branch was updated onto current
+> `origin/main` (clean merge — main never touched `crates/world-gen`), world-gen
+> verified green, then pushed + new PR opened.
+>
+> **TOP NEXT:** after the climate-arc PR lands — optionally flip
+> `continent_latitude_spread` default on; #047 mapping (Dfa/Dfb→Temperate); Köppen
+> 19-subtype palette.
+>
+> ---
+>
+> **2026-05-30 (session 99) — C3 world-hierarchy arc COMPLETE + climate work.**
+> On the **production sphere** (not the flat experiment), the full world structure
+> now exists, strictly nested, all verified per the 12-phase workflow +
+> `/review-impl`:
 >
 > - **Geometric hierarchy** (C-1a `f8b15cf0`, render C-1b `6d833669`):
 >   continent → subcontinent → region. `--region-png`. Mostly reuse
@@ -36,9 +122,7 @@
 >   tried + reverted (regressed — it modulated the `[0,1]` proxy, not the real
 >   classifier).
 >
-> **TOP NEXT: build Köppen from the spec** (L, histogram-calibrated, target
-> Desert 30–40 %). Then optionally: continent-latitude placement (terrain) for
-> biome diversity; review/merge PR #13.
+> _(Köppen was the TOP NEXT here — **DONE in session 100**, see the block above.)_
 
 
 > **🆕 Flatworld bottom-up track (2026-05-23).** A NEW, standalone experiment

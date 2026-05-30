@@ -74,6 +74,12 @@ struct GenerateArgs {
     /// clamped 0.1..=0.9). Higher = more land.
     #[arg(long, default_value_t = 0.4)]
     continental_fraction: f32,
+    /// How strongly continents spread across latitudes (`tectonic` mode;
+    /// clamped 0.0..=1.0). 0 (default) = legacy random placement; 1 = land
+    /// covers equator → both poles (tropics + boreal). Opt-in: the full
+    /// tropics→tundra gradient also needs the v2 seasonality fix.
+    #[arg(long, default_value_t = 0.0)]
+    continent_latitude_spread: f32,
     /// Target number of geographic regions (L2) per subcontinent in the
     /// geometric hierarchy (clamped 1..=12).
     #[arg(long, default_value_t = 4)]
@@ -293,6 +299,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             terrain_mode: cli.terrain_mode.into(),
             plate_count: cli.plate_count,
             continental_fraction: cli.continental_fraction,
+            continent_latitude_spread: cli.continent_latitude_spread,
             region_subdivision: cli.region_subdivision,
             county_subdivision: cli.county_subdivision,
         }
