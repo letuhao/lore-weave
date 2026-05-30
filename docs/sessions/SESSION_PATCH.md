@@ -572,6 +572,26 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 
 ## Current Active Work
 
+### C-2b — Political-tier render `--realm-png` (session 99, world-gen-sdk-refactor, BE [S]) ✅
+
+Visual-verification render for the C-2a political tiers. NEW `render::realm_image`
+— a political-tier choropleth mirroring `region_image`: each land cell filled
+with its **province** colour (reuses `region_color` golden-hue); cells on a
+**realm** boundary (incl. coastline) near-black, **state** boundaries grey — so
+province ⊆ state ⊆ realm reads in one image. Ocean = blue. Falls back to
+`biome_image` for a world with no political tiers. CLI `--realm-png`. Render-only
+→ **`content_hash` untouched**.
+
+**Files:** `render.rs` · `main.rs`.
+
+**VERIFY:** lib **387** (+`realm_image_renders_and_is_not_uniform`,
+`realm_image_falls_back_to_biome_when_landless`), 0 failed. **Visual:** seed-7
+continent map renders coherent province choropleth with realm/state outlines,
+spatially consistent with `--region-png`. Clippy-clean.
+
+**Next:** C-2c (LLM naming of realms/counties via the naming layer, S) — then the
+C3 arc is complete.
+
 ### C-2a — Political tiers, strict geometric nesting (session 99, world-gen-sdk-refactor, BE [XL]) ✅
 
 C3 arc, sub-phase C-2a (model). PO decisions: **strict nesting** (political ⊆
