@@ -65,12 +65,30 @@ The "Classic/AI" mode toggle is a visual no-op and the "AI Chat" panel is a disa
 
 **Decision needed from PO** before this becomes a task. **Acceptance:** no disabled/no-op AI controls visible at release (whichever option). **Risk:** Remove = low; Build = high.
 
+**Status 2026-05-30 — WA-1b attempt REJECTED by PO.** A `Build-lite` attempt shipped `frontend/src/features/chat/components/EditorChatPanel.tsx` (a compact bespoke chat panel re-implementing session create + streaming). Live smoke worked mechanically, but PO assessed it as **architecture rot** (see ARCH-1 below) and the underlying RAG pipeline looped infinitely on a simple "summarize this chapter" request (see ARCH-2). **The EditorChatPanel work is NOT committed** — it stays in the working tree only as a reference for the unified rework. T7 is now blocked on ARCH-1 (do the unify-then-embed, not a second chat).
+
 ### T8 — Profile stub tabs (UI-2)  · size **S**
 `ProfilePage.tsx:172-173` renders `<StubTab>` for Wiki + Reviews. Either implement or hide the tabs for V1. **Risk:** low.
 
 ### T9 — Graceful-degrade for optional services (WA-3 follow-up + UI-7)  · size **XS–S**
 - Make grammar (LanguageTool) failures degrade quietly instead of console-500 spam when the LT service is absent.
 - Verify book `/stats` + `/view` route through the gateway in prod (the live CORS-to-:3000 was a dev-port artifact — confirm config). **Risk:** low.
+
+---
+
+## Architecture Rot — deferred for a unified rework (PO-flagged 2026-05-30)
+
+These two items came out of the WA-1b attempt. Both are real rot, not MVP blockers — record now, tackle together when we return to the in-editor AI surface (T7). Governed by CLAUDE.md "No Defer Drift": tracked, not forgotten.
+
+### ARCH-1 — One chat, not two: delete the in-editor chat, embed the canonical chat  · size **M** (when undertaken)
+**Problem (PO 2026-05-30):** the in-editor chat (`EditorChatPanel`, uncommitted) is markedly lower quality than the standalone chat on the Chat page — the Chat page already has voice mode and a stack of features the editor panel re-implements badly. Building a second chat surface duplicates the chat logic (session lifecycle, streaming, model selection) and means every future chat enhancement must be done in two places, with two bug surfaces.
+**Direction:** do **not** maintain a separate editor chat. Make the Chat-page chat the single source of truth, factor it into a reusable feature/component, and **embed that one component** in the editor side-panel (passing chapter context as system prompt / attached context). Fix once, gain everywhere; no duplicated code; one thing to maintain.
+**Touch points:** `frontend/src/features/chat/*` (the canonical chat + `useChatMessages`), the editor side-panel host in `frontend/src/pages/ChapterEditorPage.tsx`, and the rejected `EditorChatPanel.tsx` (reference, then remove). **Acceptance:** editor AI panel renders the *same* chat component as `/chat` (voice mode + all features available), zero duplicated chat logic. **Risk:** med — refactor of a load-bearing feature; do under full 12-phase + `/review-impl`.
+
+### ARCH-2 — RAG pipeline consolidation (fragmentation + infinite-loop)  · size **L+** (track-2 design first)
+**Problem (PO 2026-05-30):** asked the model to summarize a chapter and the pipeline looped infinitely — a proper RAG pipeline must do better than that. Root issue is structural: we already have **several disjoint RAG pipelines** scattered across services (translation, chat, knowledge-service extraction, glossary/wiki, etc.), each fragmented and carrying its own bugs. Bolting a new per-editor pipeline on top adds yet another fragmented surface and more bugs to chase.
+**Direction:** inventory every existing RAG/LLM-orchestration path, identify the shared retrieval + generation contract, and consolidate onto **one** pipeline/abstraction (retrieval → context assembly → bounded generation with loop/stop guards) that all surfaces call. The infinite-loop on "summarize" is a symptom — likely a missing stop condition / max-turn guard / bad streaming-termination in whichever path the editor hit; the consolidation is where that guard lives once.
+**First step (track-2, design-only):** enumerate the current RAG pipelines + where each lives + what each does differently, then propose the unified contract. No Track-1 code until that map exists. **Acceptance (design phase):** a written inventory + a single proposed pipeline contract with loop/termination guarantees. **Risk:** high — cross-service; spec file required before any build.
 
 ---
 
