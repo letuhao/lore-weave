@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
+from app.api import jobs, proposals, sources, templates
 from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool
@@ -39,3 +40,11 @@ app.add_middleware(
 @app.get("/health", response_class=PlainTextResponse)
 async def health() -> str:
     return "ok"
+
+
+# C3 contract-freeze stub routers (one per resource family). Behaviour ships in
+# later cycles; these mount the frozen OpenAPI surface as 200/501 stubs.
+app.include_router(jobs.router)
+app.include_router(proposals.router)
+app.include_router(sources.router)
+app.include_router(templates.router)

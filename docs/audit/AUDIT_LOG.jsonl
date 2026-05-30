@@ -417,3 +417,17 @@
 {"ts": "2026-05-30T05:10:26Z", "event": "in_progress_update", "cycle": 2, "phase": "REVIEW2", "retry": 0}
 {"ts": "2026-05-30T05:11:35Z", "event": "in_progress_update", "cycle": 2, "phase": "SESSION", "retry": 0}
 {"ts": "2026-05-30T05:13:20Z", "event": "in_progress_update", "cycle": 2, "phase": "COMMIT", "retry": 0}
+{"ts":"2026-05-30T05:18:28Z","event":"verify_cycle_pass","cycle":2}
+{"ts": "2026-05-30T05:18:38Z", "event": "in_progress_archived", "cycle": 2, "archived_to": "cycle-002-state.md"}
+{"ts":"2026-05-30T00:00:00Z","task":"lore-enrichment","phase":"coordinator","agent":"coordinator","action":"cycle_accepted","cycle":2,"commit":"f7b5b38a","verify_exit":0,"note":"verified sound: 5 tables in loreweave_lore_enrichment; enrichment_proposal H0 columns+CHECKs (confidence<1.0, origin<>glossary, lifecycle, promote-only trigger) all present; isolation clean; 11 db + 27 unit tests. High-risk migration cycle independently DB-verified by Coordinator."}
+{"ts":"2026-05-30T05:23:54Z","event":"startup_drift_check_inconclusive","cycle":3,"cd":"","rw":""}
+{"ts":"2026-05-30T05:23:54Z","event":"startup_verifier_complete","cycle":3,"steps":6}
+{"ts": "2026-05-30T05:25:10Z", "event": "in_progress_init", "cycle": 3, "title": "API contract freeze"}
+{"ts": "2026-05-30T05:25:41Z", "event": "in_progress_update", "cycle": 3, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-05-30T05:28:10Z", "event": "in_progress_update", "cycle": 3, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-30T05:31:50Z", "event": "in_progress_update", "cycle": 3, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-30T05:32:19Z","event":"verify_cycle_pass","cycle":3}
+{"ts": "2026-05-30T05:33:36Z", "event": "in_progress_update", "cycle": 3, "phase": "SESSION", "retry": 0}
+{"ts": "2026-05-30T05:34:05Z", "event": "in_progress_update", "cycle": 3, "phase": "COMMIT", "retry": 0}
+{"ts":"2026-05-30T05:34:05Z","event":"raid_cycle_complete","cycle":3,"title":"API contract freeze","dps":2,"adversary":{"blockers":0,"majors":0,"minors":0},"scope_guard":"CLEAR","verify_exit":0}
+{"ts": "2026-05-30T05:34:12Z", "event": "in_progress_archived", "cycle": 3, "archived_to": "cycle-003-state.md"}
