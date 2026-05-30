@@ -9,7 +9,8 @@
 ## Current status & next session (handoff)
 
 > **🆕 2026-05-31 (session 100) — KÖPPEN CLIMATE ON THE SPHERE — BUILT.**
-> Branch `world-gen-sdk-refactor` (PR #13). Built candidate A from the session-99
+> Branch `world-gen-sdk-refactor` (climate arc → new PR; PR #13 already merged).
+> Built candidate A from the session-99
 > spec: ported the **validated** `flat_climate` Köppen-Geiger classifier into the
 > production `climate.rs`, working in real °C + mm/yr. Replaced the
 > temperature-blind `dryness > 0.62` Arid gate with the real Köppen B-test
@@ -80,10 +81,16 @@
 > Optional remaining lever: **#047** (8-zone mapping Dfa/Dfb→Temperate) for abundant
 > literal temperate-*plains* — a classifier choice, not yet chosen.
 >
-> **TOP NEXT (PO-chosen): review / merge PR #13 to `main`.** The branch has
-> accumulated a large body of work (SDK refactor + C3 world-hierarchy arc + the full
-> climate arc above). Consolidate before opening a new direction. Then optionally:
-> flip `continent_latitude_spread` default on; #047 mapping; Köppen 19-subtype palette.
+> **Branch/PR state (corrected 2026-05-31).** PR #13 (SDK refactor + C3 arc,
+> through `10fedcd5`) is **already MERGED** to `main` — the session-99 "PR #13 OPEN"
+> note was stale. The **4 session-100 climate commits** (`7b4dc786…db5cc852`) were
+> built on top and are landing via a **new PR**: the branch was updated onto current
+> `origin/main` (clean merge — main never touched `crates/world-gen`), world-gen
+> verified green, then pushed + new PR opened.
+>
+> **TOP NEXT:** after the climate-arc PR lands — optionally flip
+> `continent_latitude_spread` default on; #047 mapping (Dfa/Dfb→Temperate); Köppen
+> 19-subtype palette.
 >
 > ---
 >
