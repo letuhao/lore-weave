@@ -128,7 +128,118 @@ def _load_precision_filter_config() -> PrecisionFilterConfig | None:
 
 
 # Cached at module load. Re-read by tests via patch on this name.
+# Cycle 73f: overridable at runtime via reload_precision_filter_config_from_redis()
+# called from lifespan startup + filter-reload subscriber. Module-level rebind
+# is atomic via Python GIL; in-flight readers keep their reference per call.
 _PRECISION_FILTER_CONFIG: PrecisionFilterConfig | None = _load_precision_filter_config()
+
+
+def set_precision_filter_config(
+    new_config: PrecisionFilterConfig | None,
+) -> PrecisionFilterConfig | None:
+    """Cycle 73f — atomically replace module-level cache.
+
+    Called by:
+      - reload endpoint after writing to Redis (immediate local apply)
+      - subscriber task on pubsub receipt (catches reloads from other services)
+      - lifespan startup after reading current Redis state
+
+    Returns the now-effective config (echoed in API response)."""
+    global _PRECISION_FILTER_CONFIG
+    _PRECISION_FILTER_CONFIG = new_config
+    return _PRECISION_FILTER_CONFIG
+
+
+async def hydrate_precision_filter_config_from_redis(redis_url: str) -> None:
+    """Cycle 73f r2 H1 fold — on KS lifespan startup, GET the Redis key
+    and seed the module-level cache. Without this, container restart
+    loses ops-override until first reload-endpoint POST. Bumps
+    `knowledge_extraction_filter_reload_total{source=startup}` metric.
+    """
+    import redis.asyncio as aioredis
+
+    from app.metrics import knowledge_extraction_filter_reload_total
+    from loreweave_extraction import get_filter_config
+
+    redis_client = aioredis.from_url(redis_url, decode_responses=False)
+    try:
+        cached = await get_filter_config(redis_client)
+        if cached is not None:
+            set_precision_filter_config(cached)
+            knowledge_extraction_filter_reload_total.labels(
+                source="startup", outcome="applied",
+            ).inc()
+            logger.info(
+                "cycle 73f: hydrated filter config from Redis on startup "
+                "(model_ref=%s, categories=%s)",
+                cached.model_ref, cached.categories,
+            )
+        else:
+            logger.info(
+                "cycle 73f: Redis filter config absent — using env defaults",
+            )
+    except Exception:
+        knowledge_extraction_filter_reload_total.labels(
+            source="startup", outcome="failed",
+        ).inc()
+        logger.exception(
+            "cycle 73f: failed to hydrate filter config from Redis "
+            "(non-fatal; using env defaults)",
+        )
+    finally:
+        try:
+            await redis_client.aclose()
+        except Exception:
+            pass
+
+
+async def consume_filter_reload_signal(redis_url: str) -> None:
+    """Cycle 73f r2 H1 fold — KS subscriber task. Listens on the
+    filter-reload pubsub channel; on each signal, re-reads Redis +
+    atomically swaps module-level cache. Without this, multi-replica KS
+    deployments (the cloud default per CLAUDE.md) silently drift —
+    only the replica that received the POST gets the new config.
+
+    Resilient: SDK's subscribe_filter_reload has outer try/except with
+    backoff so this never bubbles into lifespan and breaks startup.
+    """
+    import redis.asyncio as aioredis
+
+    from app.metrics import knowledge_extraction_filter_reload_total
+    from loreweave_extraction import (
+        get_filter_config,
+        subscribe_filter_reload,
+    )
+
+    redis_client = aioredis.from_url(redis_url, decode_responses=False)
+
+    async def _on_reload() -> None:
+        try:
+            new_config = await get_filter_config(redis_client)
+            set_precision_filter_config(new_config)
+            knowledge_extraction_filter_reload_total.labels(
+                source="pubsub", outcome="applied",
+            ).inc()
+            logger.info(
+                "cycle 73f: KS filter config reloaded from Redis "
+                "(active=%s)", new_config is not None,
+            )
+        except Exception:
+            knowledge_extraction_filter_reload_total.labels(
+                source="pubsub", outcome="failed",
+            ).inc()
+            logger.exception(
+                "cycle 73f: KS failed to re-read filter config from "
+                "Redis on pubsub signal",
+            )
+
+    try:
+        await subscribe_filter_reload(redis_client, _on_reload)
+    finally:
+        try:
+            await redis_client.aclose()
+        except Exception:
+            pass
 
 
 def _load_entity_recovery_config() -> EntityRecoveryConfig | None:

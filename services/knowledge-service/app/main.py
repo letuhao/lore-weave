@@ -134,6 +134,29 @@ async def lifespan(app: FastAPI):
         )
         await _close_all_startup_resources()
         raise
+    # Cycle 73f r2 H1 fold — hydrate filter config from Redis on startup
+    # so a container restart preserves ops-override. Spawn subscriber
+    # task so multi-replica KS deployments see each others' reloads via
+    # pubsub. Non-fatal: failure logs warn and falls through to env.
+    filter_reload_task = None
+    if settings.redis_url:
+        try:
+            from app.extraction.pass2_orchestrator import (
+                consume_filter_reload_signal,
+                hydrate_precision_filter_config_from_redis,
+            )
+            await hydrate_precision_filter_config_from_redis(settings.redis_url)
+            filter_reload_task = asyncio.create_task(
+                consume_filter_reload_signal(settings.redis_url),
+            )
+            logger.info("cycle 73f: filter reload hydrate + subscriber started")
+        except Exception:
+            logger.warning(
+                "cycle 73f: filter reload startup failed (non-fatal — "
+                "using env defaults)",
+                exc_info=True,
+            )
+
     # K14.1 — start event consumer as background task.
     # Imports inline to avoid circular imports (consumer needs pool).
     consumer_task = None

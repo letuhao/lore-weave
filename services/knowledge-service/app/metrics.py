@@ -43,6 +43,7 @@ __all__ = [
     "knowledge_extraction_filter_coverage_ratio",
     "knowledge_extraction_recovery_decisions_total",
     "knowledge_extraction_writer_autocreate_total",
+    "knowledge_extraction_filter_reload_total",
 ]
 
 registry = CollectorRegistry()
@@ -546,6 +547,29 @@ for _src in ("glossary", "hints", "llm", "unmatched"):
     for _v in ("entity", "abstract", "unjudged"):
         knowledge_extraction_recovery_decisions_total.labels(
             source=_src, verdict=_v,
+        )
+
+
+# ── Cycle 73f — Pass2 precision filter runtime reload observability ──
+#
+# `source` cardinality is closed at 3 (api / pubsub / startup).
+# `outcome` cardinality is closed at 3 (applied / rejected / failed).
+# Total series: 3 × 3 = 9.
+knowledge_extraction_filter_reload_total = Counter(
+    "knowledge_extraction_filter_reload_total",
+    "Cycle 73f Pass2 precision filter reload — per-source/outcome counts. "
+    "Source: api (POST /internal/admin/precision-filter/reload), pubsub "
+    "(filter-reload signal from another service), startup (lifespan GET "
+    "from Redis on container boot). Outcome: applied (cache swap success), "
+    "rejected (validation failure / unknown schema_version), failed "
+    "(Redis I/O error / serialization error).",
+    ["source", "outcome"],
+    registry=registry,
+)
+for _src in ("api", "pubsub", "startup"):
+    for _out in ("applied", "rejected", "failed"):
+        knowledge_extraction_filter_reload_total.labels(
+            source=_src, outcome=_out,
         )
 
 
