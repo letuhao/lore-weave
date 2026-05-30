@@ -42,6 +42,7 @@ __all__ = [
     "knowledge_extraction_filter_decisions_total",
     "knowledge_extraction_filter_coverage_ratio",
     "knowledge_extraction_recovery_decisions_total",
+    "knowledge_extraction_writer_autocreate_total",
 ]
 
 registry = CollectorRegistry()
@@ -545,4 +546,44 @@ for _src in ("glossary", "hints", "llm", "unmatched"):
     for _v in ("entity", "abstract", "unjudged"):
         knowledge_extraction_recovery_decisions_total.labels(
             source=_src, verdict=_v,
+        )
+
+
+# ── Cycle 73e — Pass2 writer autocreate observability ────────────────
+#
+# `role` cardinality is closed at 2 (subject / object).
+# `outcome` cardinality is closed at 9:
+#   - tier_a_name_repair     : in-memory chapter map matched (Tier A.1)
+#   - tier_a_anchor_repair   : anchor index matched (Tier A.2; entity pre-existed)
+#   - tier_b_autocreated     : Neo4j MERGE minted a new :Entity (Tier B)
+#   - kind_ambiguous         : Tier A multi-kind collision; skip Tier B too
+#   - noise_skipped          : char-length OR word-count heuristic fired
+#   - cap_exhausted          : per-chapter cap reached; cascade-skip
+#   - cap_exhausted_high_conf: cap reached AND relation confidence > 0.8 (tuning signal)
+#   - invalid_name           : canonicalize_entity_name returned empty
+#   - error                  : resolve_or_merge_entity raised; cascade-skip + warn
+# Total series: 2 × 9 = 18.
+knowledge_extraction_writer_autocreate_total = Counter(
+    "knowledge_extraction_writer_autocreate_total",
+    "Cycle 73e Pass2 writer autocreate — per-endpoint resolution outcomes. "
+    "Role identifies subject vs object position in the relation; outcome "
+    "tells which tier resolved or why we skipped. Only 'tier_b_autocreated' "
+    "represents a new :Entity write to Neo4j; the rest are repairs or skips.",
+    ["role", "outcome"],
+    registry=registry,
+)
+for _role in ("subject", "object"):
+    for _out in (
+        "tier_a_name_repair",
+        "tier_a_anchor_repair",
+        "tier_b_autocreated",
+        "kind_ambiguous",
+        "noise_skipped",
+        "cap_exhausted",
+        "cap_exhausted_high_conf",
+        "invalid_name",
+        "error",
+    ):
+        knowledge_extraction_writer_autocreate_total.labels(
+            role=_role, outcome=_out,
         )
