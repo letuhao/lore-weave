@@ -41,6 +41,7 @@ __all__ = [
     "mode3_intent_classifier_glossary_unavailable_total",
     "knowledge_extraction_filter_decisions_total",
     "knowledge_extraction_filter_coverage_ratio",
+    "knowledge_extraction_recovery_decisions_total",
 ]
 
 registry = CollectorRegistry()
@@ -524,3 +525,24 @@ knowledge_extraction_filter_coverage_ratio = Gauge(
 )
 for _cat in ("entity", "relation", "event"):
     knowledge_extraction_filter_coverage_ratio.labels(category=_cat).set(1.0)
+
+
+# ── Cycle 73d — entity recovery (3-tier) observability ────────────────
+#
+# `source` cardinality is closed at 4 (glossary / hints / llm / unmatched).
+# `verdict` cardinality is closed at 3 (entity / abstract / unjudged).
+# Total series: 4 × 3 = 12.
+knowledge_extraction_recovery_decisions_total = Counter(
+    "knowledge_extraction_recovery_decisions_total",
+    "Cycle 73d entity recovery — per-name resolution outcomes. Source "
+    "tells which tier resolved (glossary lookup, author hints, LLM "
+    "classifier, or unjudged-due-to-LLM-failure). Verdict 'abstract' "
+    "drops referencing relations; 'entity' promotes a new :Entity.",
+    ["source", "verdict"],
+    registry=registry,
+)
+for _src in ("glossary", "hints", "llm", "unmatched"):
+    for _v in ("entity", "abstract", "unjudged"):
+        knowledge_extraction_recovery_decisions_total.labels(
+            source=_src, verdict=_v,
+        )

@@ -883,6 +883,185 @@ def test_load_precision_filter_config_categories_relation_only() -> None:
                 os.environ[k] = v
 
 
+# ── Cycle 73d — entity recovery env loader ─────────────────────────────
+
+
+def test_load_entity_recovery_config_env_unset_returns_none() -> None:
+    import os
+    from app.extraction.pass2_orchestrator import _load_entity_recovery_config
+
+    saved = os.environ.pop("KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_REF", None)
+    try:
+        assert _load_entity_recovery_config() is None
+    finally:
+        if saved is not None:
+            os.environ["KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_REF"] = saved
+
+
+def test_load_entity_recovery_config_env_set_builds_config() -> None:
+    import os
+    from app.extraction.pass2_orchestrator import _load_entity_recovery_config
+
+    saved = {
+        k: os.environ.pop(k, None) for k in (
+            "KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_REF",
+            "KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_SOURCE",
+            "KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MAX_BATCH",
+        )
+    }
+    try:
+        os.environ["KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_REF"] = "claude-4.7-opus-uuid"
+        os.environ["KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_SOURCE"] = "platform_model"
+        os.environ["KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MAX_BATCH"] = "10"
+        config = _load_entity_recovery_config()
+        assert config is not None
+        assert config.model_ref == "claude-4.7-opus-uuid"
+        assert config.model_source == "platform_model"
+        assert config.max_items_per_batch == 10
+    finally:
+        for k, v in saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_orchestrator_env_set_calls_recovery_before_filter(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """Cycle 73d: when both recovery + filter env-set, recovery runs
+    FIRST. Filter sees enriched candidates."""
+    from loreweave_extraction import (
+        EntityRecoveryConfig, Pass2Candidates, PrecisionFilterConfig,
+    )
+    from app.extraction.pass2_orchestrator import extract_pass2_chat_turn
+
+    pass_a_entity = _entity("Alice")
+    pass_a_relation = MagicMock()
+    mock_entities.return_value = [pass_a_entity]
+    mock_relations.return_value = [pass_a_relation]
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result()
+
+    recovery_calls: list[Any] = []
+    filter_calls: list[Any] = []
+
+    async def _stub_recovery(candidates, **kwargs):
+        recovery_calls.append(kwargs)
+        # Promote a recovered entity to verify the filter sees it
+        from loreweave_extraction.extractors.entity import LLMEntityCandidate
+        recovered = LLMEntityCandidate.model_construct(
+            name="Recovered", kind="person", aliases=[], confidence=0.7,
+            canonical_name="recovered", canonical_id="eid-recovered",
+        )
+        return Pass2Candidates(
+            entities=list(candidates.entities) + [recovered],
+            relations=candidates.relations,
+            events=candidates.events,
+            facts=candidates.facts,
+        )
+
+    async def _stub_filter(candidates, **kwargs):
+        filter_calls.append((len(candidates.entities), list(kwargs.keys())))
+        return Pass2Candidates(
+            entities=candidates.entities,
+            relations=candidates.relations,
+            events=candidates.events,
+            facts=candidates.facts,
+            filter_status="applied",
+            filter_coverage={"entity": 1.0, "relation": 1.0, "event": 1.0},
+        )
+
+    recovery_config = EntityRecoveryConfig(model_ref="recov-test")
+    filter_config = PrecisionFilterConfig(model_ref="filter-test")
+
+    with patch(f"{_ORCH}._ENTITY_RECOVERY_CONFIG", recovery_config), \
+         patch(f"{_ORCH}._PRECISION_FILTER_CONFIG", filter_config), \
+         patch(f"{_ORCH}.recover_missing_entities", new=_stub_recovery), \
+         patch(f"{_ORCH}.apply_precision_filter", new=_stub_filter):
+        await extract_pass2_chat_turn(
+            session=MagicMock(),
+            user_id=_USER_ID, project_id=_PROJECT_ID,
+            source_type="chat_turn", source_id="t-1", job_id=_JOB_ID,
+            user_message="hello",
+            assistant_message="hi",
+            model_source="user_model", model_ref="m-uuid",
+            llm_client=MagicMock(),
+        )
+
+    # Recovery was called once, filter was called once
+    assert len(recovery_calls) == 1
+    assert len(filter_calls) == 1
+    # Filter saw 2 entities (1 Pass A + 1 recovered) — confirms ordering
+    assert filter_calls[0][0] == 2
+
+
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_orchestrator_recovery_merges_glossary_anchors_as_hints(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """Cycle 73d: glossary anchors flow into recovery's known_entity_kinds."""
+    from loreweave_extraction import (
+        EntityRecoveryConfig, Pass2Candidates,
+    )
+    from app.extraction.anchor_loader import Anchor
+    from app.extraction.pass2_orchestrator import extract_pass2_chapter
+
+    mock_entities.return_value = [_entity("Alice")]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result()
+
+    recovery_capture: list[dict[str, str]] = []
+
+    async def _stub_recovery(candidates, **kwargs):
+        # Snapshot the known_entity_kinds the orchestrator built
+        config = kwargs.get("config")
+        recovery_capture.append(dict(config.known_entity_kinds))
+        return candidates
+
+    recovery_config = EntityRecoveryConfig(model_ref="recov-test")
+    anchors = [
+        Anchor(canonical_id="eid-watson", glossary_entity_id="ge-1",
+               name="Watson", kind="person", aliases=("Dr. Watson", "John Watson")),
+        Anchor(canonical_id="eid-london", glossary_entity_id="ge-2",
+               name="London", kind="place", aliases=()),
+    ]
+
+    with patch(f"{_ORCH}._ENTITY_RECOVERY_CONFIG", recovery_config), \
+         patch(f"{_ORCH}._PRECISION_FILTER_CONFIG", None), \
+         patch(f"{_ORCH}.recover_missing_entities", new=_stub_recovery):
+        await extract_pass2_chapter(
+            session=MagicMock(),
+            user_id=_USER_ID, project_id=_PROJECT_ID,
+            source_type="chapter", source_id="ch-1", job_id=_JOB_ID,
+            chapter_text="text",
+            model_source="user_model", model_ref="m-uuid",
+            llm_client=MagicMock(),
+            anchors=anchors,
+        )
+
+    assert len(recovery_capture) == 1
+    hints = recovery_capture[0]
+    # Both name + aliases injected
+    assert hints.get("Watson") == "person"
+    assert hints.get("Dr. Watson") == "person"
+    assert hints.get("John Watson") == "person"
+    assert hints.get("London") == "place"
+
+
 def test_load_precision_filter_config_orchestrator_env_unset() -> None:
     """Env reader: empty/unset → None."""
     import os

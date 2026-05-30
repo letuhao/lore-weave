@@ -1,0 +1,280 @@
+{
+  "chapter": "alice_ch01",
+  "entities": {
+    "tp": [
+      {
+        "actual_idx": 0,
+        "expected_idx": 0,
+        "actual_name": "Alice",
+        "actual_kind": "person",
+        "expected_name": "Alice",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 1,
+        "expected_idx": 1,
+        "actual_name": "White Rabbit",
+        "actual_kind": "person",
+        "expected_name": "White Rabbit",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 9,
+        "expected_idx": 2,
+        "actual_name": "sister",
+        "actual_kind": "person",
+        "expected_name": "sister",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      }
+    ],
+    "fp": [
+      {
+        "actual_idx": 2,
+        "actual_name": "rabbit-hole",
+        "actual_kind": "place"
+      },
+      {
+        "actual_idx": 3,
+        "actual_name": "watch",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 4,
+        "actual_name": "book",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 5,
+        "actual_name": "daisy-chain",
+        "actual_kind": "concept"
+      },
+      {
+        "actual_idx": 6,
+        "actual_name": "hedge",
+        "actual_kind": "place"
+      },
+      {
+        "actual_idx": 7,
+        "actual_name": "field",
+        "actual_kind": "place"
+      },
+      {
+        "actual_idx": 8,
+        "actual_name": "pink eyes",
+        "actual_kind": "concept"
+      },
+      {
+        "actual_idx": 10,
+        "actual_name": "waistcoat-pocket",
+        "actual_kind": "concept"
+      }
+    ],
+    "fn": [],
+    "fp_trap": [],
+    "fp_annotation_gap": []
+  },
+  "relations": {
+    "tp": [
+      {
+        "actual_idx": 1,
+        "expected_idx": 1,
+        "actual": [
+          "Alice",
+          "follows",
+          "White Rabbit",
+          "affirm"
+        ],
+        "expected": [
+          "Alice",
+          "follows",
+          "White Rabbit",
+          "affirm"
+        ]
+      }
+    ],
+    "fp": [
+      {
+        "actual_idx": 2,
+        "actual": [
+          "White Rabbit",
+          "has",
+          "watch",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 3,
+        "actual": [
+          "Alice",
+          "reads",
+          "book",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 4,
+        "actual": [
+          "White Rabbit",
+          "located_in",
+          "field",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 5,
+        "actual": [
+          "White Rabbit",
+          "located_in",
+          "waistcoat-pocket",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 6,
+        "actual": [
+          "White Rabbit",
+          "located_on",
+          "hedge",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 7,
+        "actual": [
+          "sister",
+          "reading",
+          "book",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 8,
+        "actual": [
+          "Alice",
+          "considers",
+          "daisy-chain",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 9,
+        "actual": [
+          "Alice",
+          "lives_in",
+          "field",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 10,
+        "actual": [
+          "Alice",
+          "owns",
+          "daisy-chain",
+          "affirm"
+        ]
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 0,
+        "expected": [
+          "Alice",
+          "sits_by",
+          "sister",
+          "affirm"
+        ]
+      }
+    ],
+    "fp_trap": [],
+    "fp_annotation_gap": [
+      {
+        "actual_idx": 0,
+        "actual": [
+          "Alice",
+          "lives_with",
+          "sister",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      }
+    ]
+  },
+  "events": {
+    "tp": [],
+    "fp": [
+      {
+        "actual_idx": 0,
+        "actual_summary": "Alice contemplates whether making a daisy-chain is worth the effort of getting up and picking daisies.",
+        "actual_participants": [
+          "Alice"
+        ]
+      },
+      {
+        "actual_idx": 1,
+        "actual_summary": "Alice descends into the rabbit-hole after the White Rabbit, without considering how she would get out.",
+        "actual_participants": [
+          "Alice"
+        ]
+      },
+      {
+        "actual_idx": 2,
+        "actual_summary": "The White Rabbit takes a watch from its waistcoat-pocket, looks at it, and then hurriedly continues running.",
+        "actual_participants": [
+          "White Rabbit"
+        ]
+      },
+      {
+        "actual_idx": 3,
+        "actual_summary": "The White Rabbit disappears into a large rabbit-hole located beneath the hedge.",
+        "actual_participants": [
+          "White Rabbit"
+        ]
+      },
+      {
+        "actual_idx": 4,
+        "actual_summary": "Alice becomes aware that she has never seen a rabbit with both a waistcoat-pocket and a watch before.",
+        "actual_participants": [
+          "Alice"
+        ]
+      },
+      {
+        "actual_idx": 5,
+        "actual_summary": "Alice runs across the field to follow the White Rabbit.",
+        "actual_participants": [
+          "Alice"
+        ]
+      },
+      {
+        "actual_idx": 6,
+        "actual_summary": "A White Rabbit with pink eyes runs close to Alice on the bank.",
+        "actual_participants": [
+          "White Rabbit"
+        ]
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 0,
+        "expected_summary": "White Rabbit runs past Alice on the bank",
+        "expected_participants": [
+          "Alice",
+          "White Rabbit"
+        ]
+      },
+      {
+        "expected_idx": 1,
+        "expected_summary": "Alice follows the White Rabbit down a rabbit hole",
+        "expected_participants": [
+          "Alice",
+          "White Rabbit"
+        ]
+      }
+    ],
+    "fp_trap": [],
+    "fp_annotation_gap": []
+  }
+}

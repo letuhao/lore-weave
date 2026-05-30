@@ -538,6 +538,12 @@ services:
       # at 18.9s/chapter (vs c72c-drop's 42.5s/chapter — 55% latency cut).
       # Override to "entity,relation,event" to revert to cycle-72 full filter.
       KNOWLEDGE_EXTRACTION_PRECISION_FILTER_CATEGORIES: ${KNOWLEDGE_EXTRACTION_PRECISION_FILTER_CATEGORIES:-relation}
+      # Cycle 73d — entity recovery (3-tier glossary→hints→LLM). OFF by
+      # default until eval validates the +F1 win justifies +latency.
+      # Override to claude-4.7-opus UUID to enable.
+      KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_REF: ${KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_REF:-}
+      KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_SOURCE: ${KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_SOURCE:-user_model}
+      KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MAX_BATCH: ${KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MAX_BATCH:-5}
     depends_on:
       postgres:
         condition: service_healthy
@@ -625,6 +631,10 @@ services:
       WORKER_AI_PRECISION_FILTER_MODEL_SOURCE: ${WORKER_AI_PRECISION_FILTER_MODEL_SOURCE:-user_model}
       # Cycle 73b — see knowledge-service block for rationale; same default.
       WORKER_AI_PRECISION_FILTER_CATEGORIES: ${WORKER_AI_PRECISION_FILTER_CATEGORIES:-relation}
+      # Cycle 73d — entity recovery OFF by default; eval-validate first.
+      WORKER_AI_ENTITY_RECOVERY_MODEL_REF: ${WORKER_AI_ENTITY_RECOVERY_MODEL_REF:-}
+      WORKER_AI_ENTITY_RECOVERY_MODEL_SOURCE: ${WORKER_AI_ENTITY_RECOVERY_MODEL_SOURCE:-user_model}
+      WORKER_AI_ENTITY_RECOVERY_MAX_BATCH: ${WORKER_AI_ENTITY_RECOVERY_MAX_BATCH:-5}
     depends_on:
       postgres:
         condition: service_healthy

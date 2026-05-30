@@ -37,11 +37,14 @@ from uuid import UUID
 
 from loreweave_extraction import (
     ContextBudget,
+    EntityRecoveryConfig,
     FilterDecision,
     Pass2Candidates,
     PrecisionFilterConfig,
+    RecoveryDecision,
     apply_precision_filter,
     get_extractor_version,
+    recover_missing_entities,
 )
 from loreweave_extraction.extractors.entity import extract_entities
 from loreweave_extraction.extractors.event import extract_events
@@ -63,6 +66,7 @@ from app.metrics import (
     knowledge_extraction_dropped_total,
     knowledge_extraction_filter_coverage_ratio,
     knowledge_extraction_filter_decisions_total,
+    knowledge_extraction_recovery_decisions_total,
 )
 
 __all__ = [
@@ -127,11 +131,148 @@ def _load_precision_filter_config() -> PrecisionFilterConfig | None:
 _PRECISION_FILTER_CONFIG: PrecisionFilterConfig | None = _load_precision_filter_config()
 
 
+def _load_entity_recovery_config() -> EntityRecoveryConfig | None:
+    """Cycle 73d — read entity recovery env config.
+
+    Envs (all optional):
+        KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_REF: gateway
+            model_ref / UUID for the LLM classifier (Tier 3). Unset = off.
+        KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_SOURCE: default
+            "user_model".
+        KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MAX_BATCH: int (default 5).
+    """
+    model_ref = os.environ.get(
+        "KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_REF", ""
+    ).strip()
+    if not model_ref:
+        return None
+    model_source = os.environ.get(
+        "KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MODEL_SOURCE", "user_model"
+    ).strip() or "user_model"
+    max_batch_env = os.environ.get(
+        "KNOWLEDGE_EXTRACTION_ENTITY_RECOVERY_MAX_BATCH", "5"
+    ).strip() or "5"
+    try:
+        max_batch = int(max_batch_env)
+    except ValueError:
+        max_batch = 5
+    return EntityRecoveryConfig(
+        model_ref=model_ref,
+        model_source=model_source,  # type: ignore[arg-type]
+        max_items_per_batch=max(1, max_batch),
+        # known_entity_kinds populated per-call from glossary anchors
+    )
+
+
+_ENTITY_RECOVERY_CONFIG: EntityRecoveryConfig | None = _load_entity_recovery_config()
+
+
+def _on_recovery_decision(decision: RecoveryDecision) -> None:
+    """Bridge RecoveryDecision callbacks to Prometheus counter."""
+    knowledge_extraction_recovery_decisions_total.labels(
+        source=decision.source, verdict=decision.verdict,
+    ).inc()
+
+
 def _on_filter_decision(decision: FilterDecision) -> None:
     """Bridge `FilterDecision` callbacks to the Prometheus counter."""
     knowledge_extraction_filter_decisions_total.labels(
         category=decision.category, verdict=decision.verdict
     ).inc()
+
+
+async def _maybe_apply_entity_recovery(
+    *,
+    entities: list[Any],
+    relations: list[Any],
+    events: list[Any],
+    facts: list[Any],
+    text: str,
+    user_id: str,
+    project_id: str | None,
+    llm_client: LLMClient,
+    anchors: list[Anchor] | None,
+    job_logs_repo: JobLogsRepo | None,
+    job_id: str,
+    source_type: str,
+    source_id: str,
+) -> tuple[list[Any], list[Any], list[Any], list[Any]]:
+    """Cycle 73d — optional 3-tier entity recovery (runs BEFORE filter).
+
+    Glossary anchors are merged into the EntityRecoveryConfig's
+    known_entity_kinds map for Tier 1 lookup. Tier 3 (LLM classifier)
+    handles names not in glossary. Author hints surface is future work
+    (no API yet).
+    """
+    if _ENTITY_RECOVERY_CONFIG is None:
+        return entities, relations, events, facts
+
+    # Build name→kind from glossary anchors (name + aliases, lowercase
+    # for case-insensitive lookup downstream).
+    known_kinds: dict[str, str] = {}
+    if anchors:
+        for a in anchors:
+            known_kinds[a.name] = a.kind
+            for alias in a.aliases:
+                known_kinds.setdefault(alias, a.kind)
+
+    # Inject per-call config with merged known_entity_kinds.
+    from dataclasses import replace as dc_replace
+    config = dc_replace(
+        _ENTITY_RECOVERY_CONFIG, known_entity_kinds=known_kinds
+    )
+
+    pre_entity_count = len(entities)
+    pre_rel_count = len(relations)
+
+    recovery_started = time.perf_counter()
+    enriched = await recover_missing_entities(
+        Pass2Candidates(
+            entities=entities,
+            relations=relations,
+            events=events,
+            facts=facts,
+        ),
+        text=text,
+        config=config,
+        user_id=user_id,
+        project_id=project_id,
+        llm_client=llm_client,
+        on_decision=_on_recovery_decision,
+    )
+    recovery_elapsed = time.perf_counter() - recovery_started
+
+    post_entity_count = len(enriched.entities)
+    post_rel_count = len(enriched.relations)
+
+    await _emit_log(
+        job_logs_repo, user_id, job_id,
+        f"Pass 2 entity recovery: "
+        f"ent {pre_entity_count}->{post_entity_count} "
+        f"(+{post_entity_count - pre_entity_count} recovered), "
+        f"rel {pre_rel_count}->{post_rel_count} "
+        f"({pre_rel_count - post_rel_count} dropped as abstract) "
+        f"in {recovery_elapsed:.2f}s "
+        f"(glossary hints: {len(known_kinds)})",
+        context={
+            "event": "pass2_entity_recovery",
+            "source_type": source_type,
+            "source_id": source_id,
+            "entities_in": pre_entity_count,
+            "entities_out": post_entity_count,
+            "relations_in": pre_rel_count,
+            "relations_out": post_rel_count,
+            "glossary_hint_count": len(known_kinds),
+            "duration_ms": int(recovery_elapsed * 1000),
+        },
+    )
+
+    return (
+        enriched.entities,
+        enriched.relations,
+        enriched.events,
+        enriched.facts,
+    )
 
 
 async def _maybe_apply_precision_filter(
@@ -636,6 +777,24 @@ async def _run_pipeline(
         ),
     )
     gather_elapsed = time.perf_counter() - gather_started
+
+    # Cycle 73d — optional entity recovery (runs BEFORE filter so the
+    # filter operates on enriched candidates). No-op when env unset.
+    entities, relation_cands, event_cands, fact_cands = await _maybe_apply_entity_recovery(
+        entities=entities,
+        relations=relation_cands,
+        events=event_cands,
+        facts=fact_cands,
+        text=text,
+        user_id=user_id,
+        project_id=project_id,
+        llm_client=llm_client,
+        anchors=anchors,
+        job_logs_repo=job_logs_repo,
+        job_id=job_id,
+        source_type=source_type,
+        source_id=source_id,
+    )
 
     # Cycle 72 — optional precision filter (no-op when env unset).
     entities, relation_cands, event_cands, fact_cands = await _maybe_apply_precision_filter(

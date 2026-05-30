@@ -1641,3 +1641,85 @@ def test_load_precision_filter_config_categories_comma_separated() -> None:
             os.environ.pop(k, None)
             if v is not None:
                 os.environ[k] = v
+
+
+# ── Cycle 73d — entity recovery env loader ─────────────────────────────
+
+
+def test_load_entity_recovery_config_env_unset_returns_none() -> None:
+    import os
+    from app.runner import _load_entity_recovery_config
+
+    saved = os.environ.pop("WORKER_AI_ENTITY_RECOVERY_MODEL_REF", None)
+    try:
+        assert _load_entity_recovery_config() is None
+    finally:
+        if saved is not None:
+            os.environ["WORKER_AI_ENTITY_RECOVERY_MODEL_REF"] = saved
+
+
+def test_load_entity_recovery_config_env_set_builds_config() -> None:
+    import os
+    from app.runner import _load_entity_recovery_config
+
+    saved = {
+        k: os.environ.pop(k, None) for k in (
+            "WORKER_AI_ENTITY_RECOVERY_MODEL_REF",
+            "WORKER_AI_ENTITY_RECOVERY_MODEL_SOURCE",
+            "WORKER_AI_ENTITY_RECOVERY_MAX_BATCH",
+        )
+    }
+    try:
+        os.environ["WORKER_AI_ENTITY_RECOVERY_MODEL_REF"] = "claude-4.7-opus-uuid"
+        os.environ["WORKER_AI_ENTITY_RECOVERY_MODEL_SOURCE"] = "platform_model"
+        os.environ["WORKER_AI_ENTITY_RECOVERY_MAX_BATCH"] = "8"
+        config = _load_entity_recovery_config()
+        assert config is not None
+        assert config.model_ref == "claude-4.7-opus-uuid"
+        assert config.model_source == "platform_model"
+        assert config.max_items_per_batch == 8
+        # worker-ai has no glossary → empty known_kinds
+        assert dict(config.known_entity_kinds) == {}
+    finally:
+        for k, v in saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+
+@pytest.mark.asyncio
+async def test_runner_recovery_env_set_passes_config_to_extract_pass2() -> None:
+    """Cycle 73d — when WORKER_AI_ENTITY_RECOVERY_MODEL_REF is set, the
+    runner threads the recovery config to extract_pass2 alongside any
+    precision filter config."""
+    from loreweave_extraction import EntityRecoveryConfig
+    from app.runner import _extract_and_persist
+
+    recovery_sentinel = EntityRecoveryConfig(model_ref="recov-model")
+
+    captured: list[dict] = []
+
+    async def _stub_extract_pass2(**kwargs):
+        captured.append(kwargs)
+        from loreweave_extraction import Pass2Candidates
+        return Pass2Candidates()
+
+    with patch("app.runner._PRECISION_FILTER_CONFIG", None), \
+         patch("app.runner._ENTITY_RECOVERY_CONFIG", recovery_sentinel), \
+         patch("app.runner.extract_pass2", new=_stub_extract_pass2):
+        kc = _mock_knowledge_client()
+        llm = _mock_llm_client()
+        await _extract_and_persist(
+            knowledge_client=kc,
+            llm_client=llm,
+            user_id=uuid4(),
+            project_id=uuid4(),
+            source_type="chapter",
+            source_id="ch-recovery",
+            job_id=uuid4(),
+            model_ref="test-model",
+            text="short passage",
+        )
+
+    assert len(captured) == 1
+    assert captured[0].get("entity_recovery") is recovery_sentinel

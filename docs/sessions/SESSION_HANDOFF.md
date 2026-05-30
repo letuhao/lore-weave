@@ -1,11 +1,59 @@
-# Session Handoff — Session 73 (cycle 73a verify + 73b SHIPPED + 73c realized-F1 confirmation)
+# Session Handoff — Session 73 (cycle 73a verify + 73b SHIPPED + 73c re-judge + 73d entity recovery NEGATIVE)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-05-30 (session 73 — 3 cycles: cycle 72 verify + cycle 73b relation-only ship + cycle 73c realized-F1 analytics + re-judge).
-> **HEAD:** pending ship commit on top of `998e59a1` (cycle 73b SHIP) + `609e9655` (merge).
+> **Date:** 2026-05-30 (session 73 — 4 cycles: cycle 72 verify + cycle 73b relation-only ship + cycle 73c realized-F1 re-judge + cycle 73d entity recovery NEGATIVE).
+> **HEAD:** pending ship commit on top of `fc36a1a4` (cycle 73c ship).
 > **Branch:** `main`.
 
-## Session 73 summary — cycle 73a verify CLEAN + cycle 73b SHIPPED relation-only filter (44% latency win) + cycle 73c realized-F1 CONFIRMS c73b ship strictly better
+## Session 73 summary — cycle 73a verify CLEAN + cycle 73b SHIPPED + cycle 73c realized-F1 + cycle 73d entity recovery NEGATIVE (self-reinforcement caught)
+
+### Cycle 73d (M) — entity recovery (3-tier glossary→hints→LLM) — NEGATIVE; SDK ships opt-in, NOT activated
+
+Goal: close the baseline 10.7% writer-cascade gap identified in cycle 73c by promoting unmatched relation subjects/objects as :Entity nodes via 3-tier resolution (glossary → optional author hints → LLM classifier fallback).
+
+**Empirical 4-variant comparison** (all on c70a saved fixture, ensemble re-judged):
+
+| Variant | Filter-output F1 | Cascade-skip rate | Realized F1 | Per-chapter latency |
+|---|---:|---:|---:|---:|
+| c70a baseline | 0.895 | 10.7% | ~0.88 (est) | — |
+| c72c-drop realized (cycle-72 retired) | — | 22.5% | 0.904 | 42.5s |
+| c73b-drop realized (current SHIP) | — | 12.3% | **0.913** | **18.9s** |
+| c73d-recov-only | 0.898 | **0%** | 0.898 | **2.0s** |
+| c73d-recov-plus-rel (proposed) | 0.922 | **0%** | 0.922 | ~30s |
+
+3-judge median F1 lift of c73d-recov-plus-rel: **+0.9pp** vs c73b-drop-realized. But D10(c) self-reinforcement check catches it:
+
+**Self-reinforcement check** (recompute median over judge-subset excluding the filter+classifier model):
+
+| Variant | 3-judge median | **2-judge mean (no claude)** | Δ 2J vs c73b ship |
+|---|---:|---:|---:|
+| c73b-drop realized (SHIP) | 0.913 | 0.9300 | — |
+| c73d-recov-plus-rel (proposed) | 0.922 | **0.9285** | **-0.15pp** |
+
+The +0.9pp 3-judge lift came **entirely from the claude judge**. With claude removed, c73d-recov-plus-rel is **slightly WORSE** than c73b-drop. Classic self-reinforcement signature — claude classifier's output over-credited by claude judge.
+
+**Ship decision: don't activate c73d as default.** SDK ships opt-in:
+- ✅ `sdks/python/loreweave_extraction/entity_recovery.py` (~340 lines, 13 unit tests)
+- ✅ `EntityRecoveryConfig` + env loaders (knowledge-service + worker-ai)
+- ✅ New Prometheus counter `knowledge_extraction_recovery_decisions_total{source, verdict}`
+- ✅ Compose envs default OFF
+- ✅ Eval driver `run_c73d_recovery.py`
+- ✅ Eval results `eval_runs/c73d-recov-only/` + `eval_runs/c73d-recov-plus-rel/`
+- ✅ `eval_runs/c73d_compare.md` documenting the negative ship outcome
+
+**Re-validation conditions** (re-evaluate when ANY of):
+- Non-claude classifier model available (cloud claude-haiku-4-5 BYOK lands)
+- 4th non-claude judge added to ensemble (e.g. cloud Claude judge)
+- Author-hints API in book-service (Tier 2 use case grows, less reliance on Tier 3 LLM)
+
+**Bonus finding (cycle 73d sub-result):** recovery successfully closes the c73c baseline cascade gap — 0% cascade-skip on c73d-recov-only (vs c70a's 10.7%, c73b's 12.3%). The mechanism works; the ship blocker is the self-reinforcement check, NOT the recovery itself.
+
+**Memory lesson:** `feedback_anti_self_reinforcement_via_judge_subset_recompute` — when filter/classifier model is also in ensemble, recompute median over judge subset excluding that model; if lift disappears, it was self-reinforcement.
+
+**Deferred rows added:**
+- **D-ENTITY-RECOVERY-NON-CLAUDE-CLASSIFIER** (NEW) — re-validate c73d when a non-claude classifier model is available
+
+### Cycle 73c (S→M scope-bump) — Neo4j-realized F1 cascade analysis + empirical re-judge
 
 ### Cycle 73c (S→M scope-bump) — Neo4j-realized F1 cascade analysis + empirical re-judge
 

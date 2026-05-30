@@ -28,6 +28,7 @@ import asyncpg
 from opentelemetry import trace as _ot_trace
 
 from loreweave_extraction import (
+    EntityRecoveryConfig,
     PrecisionFilterConfig,
     extract_pass2,
 )
@@ -97,6 +98,49 @@ def _load_precision_filter_config() -> PrecisionFilterConfig | None:
 
 # Cached at module load; None when env unset = zero-overhead default.
 _PRECISION_FILTER_CONFIG: PrecisionFilterConfig | None = _load_precision_filter_config()
+
+
+def _load_entity_recovery_config() -> EntityRecoveryConfig | None:
+    """Cycle 73d — read entity recovery env config.
+
+    Returns:
+        ``EntityRecoveryConfig`` when
+        ``WORKER_AI_ENTITY_RECOVERY_MODEL_REF`` is set; ``None`` otherwise.
+
+    Envs:
+        WORKER_AI_ENTITY_RECOVERY_MODEL_REF: gateway model_ref / UUID
+            for the Tier 3 LLM classifier.
+        WORKER_AI_ENTITY_RECOVERY_MODEL_SOURCE: default "user_model".
+        WORKER_AI_ENTITY_RECOVERY_MAX_BATCH: int (default 5).
+
+    Note: worker-ai has no glossary access; `known_entity_kinds` stays
+    empty. Tier 1 (glossary) is never used in this caller; Tier 3 (LLM)
+    handles all unmatched names. Knowledge-service callers use the
+    glossary-aware variant in pass2_orchestrator.
+    """
+    model_ref = os.environ.get(
+        "WORKER_AI_ENTITY_RECOVERY_MODEL_REF", ""
+    ).strip()
+    if not model_ref:
+        return None
+    model_source = os.environ.get(
+        "WORKER_AI_ENTITY_RECOVERY_MODEL_SOURCE", "user_model"
+    ).strip() or "user_model"
+    max_batch_env = os.environ.get(
+        "WORKER_AI_ENTITY_RECOVERY_MAX_BATCH", "5"
+    ).strip() or "5"
+    try:
+        max_batch = int(max_batch_env)
+    except ValueError:
+        max_batch = 5
+    return EntityRecoveryConfig(
+        model_ref=model_ref,
+        model_source=model_source,  # type: ignore[arg-type]
+        max_items_per_batch=max(1, max_batch),
+    )
+
+
+_ENTITY_RECOVERY_CONFIG: EntityRecoveryConfig | None = _load_entity_recovery_config()
 
 # D-PHASE6C-WORKERAI-JOB-SPAN. Module-level tracer; when OTel is no-op
 # (OTEL_EXPORTER_OTLP_ENDPOINT unset) this is the NoOp tracer and
@@ -652,6 +696,11 @@ async def _extract_and_persist(
             # behavior (no filter). Filter degraded path is
             # surfaced via candidates.filter_status without raising.
             precision_filter=_PRECISION_FILTER_CONFIG,
+            # Cycle 73d — opt-in entity recovery (3-tier) via
+            # WORKER_AI_ENTITY_RECOVERY_MODEL_REF env. Runs BEFORE
+            # filter. Worker-ai has no glossary access so all unmatched
+            # names go to the LLM classifier (Tier 3).
+            entity_recovery=_ENTITY_RECOVERY_CONFIG,
         )
     except ExtractionError as exc:
         retryable = exc.stage == "provider_exhausted"
