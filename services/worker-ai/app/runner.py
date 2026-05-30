@@ -111,6 +111,43 @@ def set_precision_filter_config(
     return _PRECISION_FILTER_CONFIG
 
 
+async def hydrate_precision_filter_config_from_redis(redis_url: str) -> None:
+    """Cycle 73f r3 H1 fold — symmetric with KS hydrate. On worker
+    startup, GET the Redis key + seed module-level cache. Without this,
+    a worker container restart silently drops the ops-override and
+    reverts to env defaults until next manual reload POST — defeating
+    the cycle's "persistent across restart" promise (asymmetric with
+    KS r2 H1 fold which already had hydrate)."""
+    import redis.asyncio as aioredis
+    from loreweave_extraction import get_filter_config
+
+    redis_client = aioredis.from_url(redis_url, decode_responses=False)
+    try:
+        cached = await get_filter_config(redis_client)
+        if cached is not None:
+            set_precision_filter_config(cached)
+            logger.info(
+                "cycle 73f: worker hydrated filter config from Redis "
+                "on startup (model_ref=%s, categories=%s)",
+                cached.model_ref, cached.categories,
+            )
+        else:
+            logger.info(
+                "cycle 73f: worker Redis filter config absent — "
+                "using env defaults",
+            )
+    except Exception:
+        logger.exception(
+            "cycle 73f: worker failed to hydrate filter config from "
+            "Redis (non-fatal; using env defaults)",
+        )
+    finally:
+        try:
+            await redis_client.aclose()
+        except Exception:
+            pass
+
+
 async def consume_filter_reload_signal(redis_url: str) -> None:
     """Cycle 73f — subscribe to filter-reload pubsub; on each signal,
     re-read Redis key + atomically swap module-level cache.

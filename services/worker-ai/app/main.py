@@ -17,7 +17,11 @@ from loreweave_obs import setup_tracing
 from app.clients import BookClient, GlossaryClient, KnowledgeClient
 from app.config import settings
 from app.llm_client import close_llm_client, get_llm_client
-from app.runner import consume_filter_reload_signal, poll_and_run
+from app.runner import (
+    consume_filter_reload_signal,
+    hydrate_precision_filter_config_from_redis,
+    poll_and_run,
+)
 from app.summary_consumer import consume_summary_stream
 
 logger = logging.getLogger("worker-ai")
@@ -110,9 +114,15 @@ async def main() -> None:
     # swaps module-level `_PRECISION_FILTER_CONFIG`. Resilient: SDK
     # subscriber has outer try/except with backoff. Skip gracefully if
     # redis_url is empty (dev/test without Redis).
+    #
+    # r3 H1 fold: hydrate first (one-shot Redis GET to seed cache from
+    # any active ops-override) — without this, worker restart silently
+    # reverts to env defaults regardless of Redis state. Symmetric with
+    # KS lifespan hydrate (r2 H1 fold).
     if settings.redis_url:
+        await hydrate_precision_filter_config_from_redis(settings.redis_url)
         coroutines.append(consume_filter_reload_signal(settings.redis_url))
-        logger.info("cycle 73f: filter reload subscriber started")
+        logger.info("cycle 73f: filter reload hydrate + subscriber started")
     else:
         logger.info("cycle 73f: filter reload subscriber skipped (no redis_url)")
 

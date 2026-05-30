@@ -456,7 +456,15 @@ async def _maybe_apply_precision_filter(
     coverage gauge, and returns the filtered lists. Facts are NEVER
     filtered (per spec D2 — passed through unchanged).
     """
-    if _PRECISION_FILTER_CONFIG is None:
+    # Cycle 73f r3 H2 fold — snapshot the module-level config to a LOCAL
+    # variable at function entry. Without this, a concurrent pubsub-driven
+    # reload could rebind `_PRECISION_FILTER_CONFIG = None` between the
+    # `is None` check below and the later `config=...` read, passing None
+    # into `apply_precision_filter` whose call sites assume non-None →
+    # AttributeError crashes the extraction job instead of gracefully
+    # falling through. Snapshot makes this function atomic w.r.t. reload.
+    cfg = _PRECISION_FILTER_CONFIG
+    if cfg is None:
         return entities, relations, events, facts
 
     pass2_candidates = Pass2Candidates(
@@ -470,7 +478,7 @@ async def _maybe_apply_precision_filter(
     filtered = await apply_precision_filter(
         pass2_candidates,
         text=text,
-        config=_PRECISION_FILTER_CONFIG,
+        config=cfg,
         user_id=user_id,
         llm_client=llm_client,
         on_decision=_on_filter_decision,

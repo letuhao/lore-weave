@@ -980,6 +980,77 @@ def test_load_writer_autocreate_config_env_set_enables_with_cap() -> None:
                 os.environ[k] = v
 
 
+@pytest.mark.asyncio
+@patch(f"{_ORCH}.write_pass2_extraction", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_facts", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_events", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_relations", new_callable=AsyncMock)
+@patch(f"{_ORCH}.extract_entities", new_callable=AsyncMock)
+async def test_filter_config_snapshot_at_entry_survives_concurrent_reload(
+    mock_entities, mock_relations, mock_events, mock_facts, mock_write,
+):
+    """Cycle 73f r3 H2 fold — `_maybe_apply_precision_filter` MUST
+    snapshot the module-level `_PRECISION_FILTER_CONFIG` to a local
+    var at function entry. Without that, a concurrent pubsub-driven
+    reload that swaps `_PRECISION_FILTER_CONFIG = None` between the
+    `is None` check and the `config=...` parameter pass would push
+    None into `apply_precision_filter`, crashing the call.
+
+    This test simulates the race by making `apply_precision_filter`
+    rebind `_PRECISION_FILTER_CONFIG = None` mid-call, then asserts
+    that the orchestrator's invocation received the ORIGINAL config
+    (proving snapshot semantics)."""
+    from loreweave_extraction import (
+        Pass2Candidates, PrecisionFilterConfig,
+    )
+    import app.extraction.pass2_orchestrator as orch
+    from app.extraction.pass2_orchestrator import extract_pass2_chat_turn
+
+    pass_a_entity = _entity("Alice")
+    mock_entities.return_value = [pass_a_entity]
+    mock_relations.return_value = []
+    mock_events.return_value = []
+    mock_facts.return_value = []
+    mock_write.return_value = _write_result()
+
+    config = PrecisionFilterConfig(
+        model_ref="snapshot-test-uuid",
+        categories=("relation",),
+        partial_policy="drop",
+    )
+
+    apf_calls: list[Any] = []
+
+    async def _race_apf(candidates, **kwargs):
+        # Simulate a concurrent pubsub callback that swaps the
+        # module-level binding to None DURING our call.
+        orch._PRECISION_FILTER_CONFIG = None
+        apf_calls.append(kwargs.get("config"))
+        return candidates  # return inputs unchanged
+
+    with patch(f"{_ORCH}._PRECISION_FILTER_CONFIG", config), \
+         patch(f"{_ORCH}.apply_precision_filter", new=_race_apf):
+        await extract_pass2_chat_turn(
+            session=MagicMock(),
+            user_id=_USER_ID, project_id=_PROJECT_ID,
+            source_type="chat_turn", source_id="t-race", job_id=_JOB_ID,
+            user_message="hello",
+            assistant_message="hi",
+            model_source="user_model", model_ref="m-uuid",
+            llm_client=MagicMock(),
+        )
+
+    # apply_precision_filter was called exactly once with the ORIGINAL
+    # snapshot config (not None — even though the race fake swapped
+    # the module-level binding to None before returning).
+    assert len(apf_calls) == 1
+    assert apf_calls[0] is config, (
+        "filter config must be snapshotted at function entry; "
+        "found a concurrent rebind leaked into apply_precision_filter "
+        "call → r3 H2 atomicity fold regressed"
+    )
+
+
 def test_load_writer_autocreate_config_accepts_truthy_variants() -> None:
     """1 / yes / on / TRUE are all truthy; anything else is False."""
     import os

@@ -1800,3 +1800,73 @@ async def test_consume_filter_reload_signal_reads_redis_and_swaps_cache(monkeypa
         assert runner_module._PRECISION_FILTER_CONFIG is new_config
     finally:
         runner_module.set_precision_filter_config(saved)
+
+
+# Cycle 73f r3 H1 fold — worker startup hydrate (symmetric with KS).
+
+
+@pytest.mark.asyncio
+async def test_hydrate_precision_filter_config_seeds_cache_from_redis(monkeypatch):
+    """r3 H1 fold: on worker startup, hydrate reads Redis key + swaps
+    cache. Without this, worker restart silently reverts to env defaults
+    even when Redis has an active ops-override."""
+    from loreweave_extraction import PrecisionFilterConfig
+    import app.runner as runner_module
+
+    persisted_config = PrecisionFilterConfig(
+        model_ref="persisted-uuid",
+        categories=("relation",),
+        partial_policy="drop",
+    )
+
+    async def fake_get_filter_config(redis_client):
+        return persisted_config
+
+    saved = runner_module._PRECISION_FILTER_CONFIG
+    monkeypatch.setattr(
+        "loreweave_extraction.get_filter_config",
+        fake_get_filter_config,
+    )
+    fake_redis = MagicMock()
+    fake_redis.aclose = AsyncMock()
+    monkeypatch.setattr(
+        "redis.asyncio.from_url",
+        lambda *args, **kwargs: fake_redis,
+    )
+
+    try:
+        await runner_module.hydrate_precision_filter_config_from_redis("redis://fake")
+        # Worker cache reflects what Redis had.
+        assert runner_module._PRECISION_FILTER_CONFIG is persisted_config
+    finally:
+        runner_module.set_precision_filter_config(saved)
+
+
+@pytest.mark.asyncio
+async def test_hydrate_precision_filter_config_leaves_cache_when_redis_empty(monkeypatch):
+    """r3 H1 fold edge case: Redis key absent → hydrate is a no-op
+    (cache stays at whatever env-load produced). Defends the worker
+    from clobbering env defaults when Redis exists but key is empty."""
+    import app.runner as runner_module
+
+    async def fake_get_filter_config(redis_client):
+        return None  # Redis empty / key absent
+
+    saved = runner_module._PRECISION_FILTER_CONFIG
+    monkeypatch.setattr(
+        "loreweave_extraction.get_filter_config",
+        fake_get_filter_config,
+    )
+    fake_redis = MagicMock()
+    fake_redis.aclose = AsyncMock()
+    monkeypatch.setattr(
+        "redis.asyncio.from_url",
+        lambda *args, **kwargs: fake_redis,
+    )
+
+    try:
+        await runner_module.hydrate_precision_filter_config_from_redis("redis://fake")
+        # Cache should remain at its pre-hydrate value (no clobber).
+        assert runner_module._PRECISION_FILTER_CONFIG is saved
+    finally:
+        runner_module.set_precision_filter_config(saved)
