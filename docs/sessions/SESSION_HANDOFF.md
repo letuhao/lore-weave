@@ -5,6 +5,20 @@
 > **HEAD:** `0d456f27` (74b). 74c produced docs only (audit report + this handoff), uncommitted at time of writing.
 > **Branch:** `main`.
 
+## Session 74 — cycle 74d: Neo4j 2-hop retrieval hotfix (audit HIGH) + clean-judge re-judge
+
+**Cycle 74d (S/SHIP-pending-approval) — D-RAG-2HOP-DEAD-CODE → FIXED.**
+
+The audit's HIGH defect is fixed: [facts.py](../../services/knowledge-service/app/context/selectors/facts.py) `select_l2_facts` now passes the **required** `hop1_types` to `find_relations_2hop()`. Gate = new module constant `_RELATIONAL_HOP1_PREDICATES` (durable structural predicates only — kinship/mentorship/authority/social-state; spatial+action deliberately excluded as fan-out explosions, mirrors `relation_extraction_system.md` vocab). The 2-hop block is wrapped in its own `try/except` so a future 2-hop failure degrades to 1-hop-only instead of letting `_safe_l2_facts` swallow it and zero the whole L2 layer.
+
+**Why it slipped:** the happy-path unit test mocked `find_relations_2hop` with a bare `AsyncMock` (accepts any kwargs). Added 2 regressions in [test_facts_selector.py](../../services/knowledge-service/tests/unit/test_facts_selector.py): (1) `test_select_2hop_passes_required_hop1_types` uses a stub mirroring the REAL required-kwarg+non-empty contract; (2) `test_select_2hop_failure_degrades_to_1hop`.
+
+**VERIFY:** 11/11 facts selector unit (9+2) + 30/30 mode_full green on host. **LIVE SMOKE PASS** — host python (edited source) → live Neo4j (`bolt://localhost:7688`): seeded `Arthur -married_to-> Guinevere -knows-> Lancelot`, RELATIONAL intent → L2 returns 1-hop `Arthur — married_to — Guinevere` AND 2-hop `Arthur — married_to — Guinevere — knows — Lancelot` (was empty/`TypeError` pre-fix). MED L2 temporal-bucketing (all→`background`) still deferred, untouched.
+
+**Clean-judge re-judge (eval-flaw #1 quantified)** over the c73b-drop-realized ship dump, judges disjoint from extractor `019e6a20` + filter `019e5650`: gemma `019dc3df` **0.888** + phi4 `019dc3ab-2b65` **0.851** (+ qwen35 `019dc3fb` running). 2-judge clean median **0.869** vs locked headline **0.913** = **~4–5pp self-inflation** (extractor self-grades **0.972**, filter self-grades 0.913 = the pinned median). Confirms the audit's self-reinforcement claim empirically. Needed a one-time provider-registry pricing row (`{input_per_mtok:0,output_per_mtok:0}`) on phi4+qwen35 to clear the gateway 402. Artifacts: `tests/quality/eval_runs/c74c-clean-rejudge/` (not committed with the hotfix).
+
+**NEXT:** eval-architecture cycle (bake disjoint-judge metric + bootstrap CIs + rename claude-4.7-opus). User drives scope.
+
 ## Session 74 — cycle 74c: relation-lever refutations + full architecture/eval audit
 
 ### Part A — four relation/events R&D levers investigated, ALL refuted (no code shipped)

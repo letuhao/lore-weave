@@ -53,6 +53,28 @@ _MAX_1HOP_PER_ENTITY = 20
 _MAX_2HOP_PER_ENTITY = 10
 _MAX_NEGATIVES = 15
 
+# 2-hop fan-out gate. ``find_relations_2hop`` REQUIRES a non-empty
+# ``hop1_types`` so a hub entity (a main character with hundreds of
+# outgoing edges) doesn't multiply at the second hop and blow the
+# query budget. We restrict the first hop to the DURABLE structural
+# predicates — kinship, mentorship, authority/affiliation, and
+# social-state — which are exactly the edges that form meaningful
+# "A — via — B" relational chains. Spatial/action predicates
+# (``located_in``, ``owns``, ``follows`` …) are deliberately excluded:
+# they fan out hard (a place has many residents) and rarely answer a
+# RELATIONAL query. Mirrors the canonical relation vocabulary in
+# loreweave_extraction/prompts/relation_extraction_system.md.
+_RELATIONAL_HOP1_PREDICATES: list[str] = [
+    # Kinship
+    "child_of", "stepchild_of", "sibling_of", "stepsibling_of", "married_to",
+    # Mentorship
+    "mentor_of", "disciple_of", "instructs",
+    # Authority / affiliation
+    "commands", "serves", "imprisoned_by", "works_for", "member_of",
+    # Social / state
+    "knows", "trusts", "enemy_of",
+]
+
 
 @dataclass
 class L2FactResult:
@@ -178,16 +200,33 @@ async def select_l2_facts(
             seen_relations.add(r.id)
             result.background.append(format_relation(r))
 
-        # 2-hop (relational intent only).
+        # 2-hop (relational intent only). ``hop1_types`` is REQUIRED by
+        # the repo (selectivity gate) — omitting it raises TypeError,
+        # which the Mode-3 ``_safe_l2_facts`` wrapper would swallow,
+        # silently zeroing the ENTIRE L2 layer (1-hop + negations) for
+        # exactly the RELATIONAL queries that most need graph reasoning.
+        # Keep the 2-hop call in its own try/except so a future 2-hop
+        # failure degrades to 1-hop-only rather than discarding the
+        # 1-hop facts already gathered above.
         if intent.hop_count >= 2:
-            two_hop = await find_relations_2hop(
-                session,
-                user_id=user_id,
-                project_id=project_id,
-                entity_id=entity_id,
-                min_confidence=min_confidence,
-                limit=_MAX_2HOP_PER_ENTITY,
-            )
+            try:
+                two_hop = await find_relations_2hop(
+                    session,
+                    user_id=user_id,
+                    project_id=project_id,
+                    entity_id=entity_id,
+                    hop1_types=_RELATIONAL_HOP1_PREDICATES,
+                    min_confidence=min_confidence,
+                    limit=_MAX_2HOP_PER_ENTITY,
+                )
+            except Exception:  # noqa: BLE001 — degrade to 1-hop, never nuke L2
+                logger.warning(
+                    "2-hop traversal failed for entity %s; "
+                    "falling back to 1-hop facts only",
+                    entity_id,
+                    exc_info=True,
+                )
+                two_hop = []
             for hop in two_hop:
                 key = f"{hop.hop1.id}|{hop.hop2.id}"
                 if key in seen_relations:
