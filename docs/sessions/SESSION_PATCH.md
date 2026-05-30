@@ -572,6 +572,38 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 
 ## Current Active Work
 
+### Climate audit + continentality retune (session 99, world-gen-sdk-refactor, BE [M]) ✅
+
+PO picked candidate-B-then-A path. **Visual audit** of a Megaplanet (seed 7)
+diagnosed the standing colour defect — NOT "all-green" (stale) but **desert
+monotony: 63 % of land was Desert, Tundra 0.1 %**. Root cause (doubt-the-
+substrate): the single-direction wind `moisture_field` over-dries continental
+interiors, made worse by a **resolution artifact** — `LAND_LEAK` was a per-step
+constant, so a finer mesh (Megaplanet+) accumulated more drying per geographic
+unit. The biome matrix itself was fine (Arid→Desert correct; Polar→Tundra
+correct but little polar land).
+
+**Retune shipped (`climate.rs` only):**
+- `moisture_field`: `LAND_LEAK` is now **resolution-scaled** —
+  `LAND_LEAK_BASE(0.018) * sqrt(8192/n)` clamped `[0.1,3.0]` — so total
+  continentality drying over a fixed great-circle distance is invariant across
+  `WorldScale` (`OROGRAPHIC` was already invariant; climb telescopes). Lowered
+  from `0.025`.
+- `classify`: hot-band Arid gate `0.55→0.62`; warm-interior Arid override
+  `0.72→0.80` — Arid only when genuinely parched.
+
+**Result: Desert 63 %→53 % of land**, green (forest/jungle/plain/marsh) up to
+24 %, Jungle 2.6 %→7 %. A real incremental win + a correctness fix.
+
+**Evidence-based finding for Köppen:** the cheap retune is **structurally capped
+near ~50 %** — a single-direction wind march cannot carry moisture into a huge
+continent's interior from multiple sides, so the downwind ⅔ stays dry regardless
+of threshold tuning. **Multi-cell circulation (candidate A / Köppen) is the real
+fix** — now evidence-backed, not a guess. Building it next this session.
+
+**VERIFY:** lib **388**, climate **50**, determinism **8**, serde **5** — 0
+failed. `content_hash` re-based (run-vs-run; no literal pins). Clippy-clean.
+
 ### C3 end-to-end live validation (session 99, world-gen-sdk-refactor, BE [S]) ✅
 
 PO directive: validate the C3 arc end-to-end against the real LLM, not just

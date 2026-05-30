@@ -131,17 +131,22 @@ pub fn classify(
         } else {
             ClimateZone::Subtropical
         }
-    } else if dry > 0.55 {
+    } else if dry > 0.62 {
+        // Hot band → Arid only when genuinely parched. Raised from 0.55 after
+        // the 2026-05-30 audit: the prior threshold turned most of the hot,
+        // single-wind-dried interior into desert (63 % of land).
         ClimateZone::Arid
     } else {
         ClimateZone::Tropical
     };
 
-    // Dry continental interior → Arid even in the warm-temperate bands.
+    // Dry continental interior → Arid even in the warm-temperate bands. The
+    // dryness gate is high (`0.80`, raised from `0.72`) so only the truly
+    // moisture-starved deep interior flips, not every mid-continent cell.
     if matches!(
         zone,
         ClimateZone::Temperate | ClimateZone::Mediterranean | ClimateZone::Subtropical
-    ) && dry > 0.72
+    ) && dry > 0.80
         && temp > 0.42
     {
         zone = ClimateZone::Arid;
@@ -180,12 +185,27 @@ fn moisture_field(
     wind: PrevailingWind,
 ) -> Vec<f32> {
     /// Moisture wrung out per unit of normalized climb (orographic rain) —
-    /// high, so any real mountain range casts a strong rain shadow.
+    /// high, so any real mountain range casts a strong rain shadow. This term
+    /// is already resolution-invariant: climb telescopes to the total elevation
+    /// gain over a range regardless of how many cells span it.
     const OROGRAPHIC: f32 = 4.5;
-    /// Moisture lost per overland step — the continentality gradient.
-    const LAND_LEAK: f32 = 0.025;
+    /// Continentality leak per overland step — moisture lost as the air crosses
+    /// each cell. **Resolution-scaled** (see `land_leak` below): a per-step
+    /// constant would dry the interior of a large mesh (Megaplanet+) into
+    /// wall-to-wall desert purely because it has more, shorter steps per
+    /// geographic unit. Scaling by `sqrt(REF / n)` keeps the *total* drying over
+    /// a fixed great-circle distance invariant across `WorldScale`. Lowered from
+    /// the prior `0.025` after the 2026-05-30 climate audit (63 %→ target ~⅓
+    /// desert on land).
+    const LAND_LEAK_BASE: f32 = 0.018;
+    /// Reference cell count (~`WorldScale::Continent`) at which the leak scale
+    /// is `1.0`; clamped to `[0.1, 3.0]` so degenerate tiny meshes (unit tests)
+    /// and Gigaplanet stay sane.
+    const LEAK_REF_CELLS: f32 = 8192.0;
 
     let n = centers.len();
+    let leak_scale = (LEAK_REF_CELLS / n as f32).sqrt().clamp(0.1, 3.0);
+    let land_leak = LAND_LEAK_BASE * leak_scale;
     // **Sphere wind march (Stage B):** the per-cell `(lon, −lat)` projection
     // gives an `(u, v)`-shaped tuple suited to the existing 1-direction
     // global wind sort. Antimeridian wrap is an accepted Phase-1 artefact
@@ -231,7 +251,7 @@ fn moisture_field(
             f32::from(sea_level)
         };
         let climb = ((f32::from(elevation[i]) - up_elev) / 65535.0).max(0.0);
-        let loss = OROGRAPHIC * climb + LAND_LEAK;
+        let loss = OROGRAPHIC * climb + land_leak;
         moisture[i] = (incoming - loss).max(0.0);
     }
     moisture
