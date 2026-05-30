@@ -36,13 +36,20 @@ fn build_provider() -> GatewayTextProvider {
         .expect("LOREWEAVE_TEST_USER_ID must be set")
         .parse()
         .expect("LOREWEAVE_TEST_USER_ID must be a valid UUID");
+    let model_source = match std::env::var("LOREWEAVE_TEST_MODEL_SOURCE")
+        .unwrap_or_else(|_| "platform".to_string())
+        .as_str()
+    {
+        "user" => ModelSource::UserModel,
+        _ => ModelSource::PlatformModel,
+    };
     let runtime = RuntimeBuilder::new_current_thread()
         .enable_all()
         .build()
         .expect("tokio runtime build");
     GatewayTextProvider::new(
         Arc::new(client),
-        ModelSource::PlatformModel,
+        model_source,
         model_ref,
         user_id,
         Arc::new(runtime),

@@ -720,6 +720,12 @@ impl LlmProvider for GatewayLlmProvider {
             serde_json::json!({ "role": "system", "content": shape_dispatch_system_prompt() }),
             serde_json::json!({ "role": "user",   "content": shape_dispatch_user_message(prompt) }),
         ];
+        // `tool_choice: "required"` works against the broadest set of
+        // providers (LM Studio rejects the OpenAI-spec `{type:function,
+        // function:{name:...}}` object form with HTTP 400; "required"
+        // forces some tool call). With a single registered tool the model
+        // can only pick that one, so semantically equivalent to forcing
+        // by name.
         let request = ChatStreamRequest::new_chat_with_tools(
             self.model_source,
             self.model_ref,
@@ -727,10 +733,7 @@ impl LlmProvider for GatewayLlmProvider {
             vec![pick_shape_function_tool()],
             StreamFormat::Openai,
         )
-        .with_tool_choice(serde_json::json!({
-            "type": "function",
-            "function": { "name": "pick_shape" },
-        }))
+        .with_tool_choice(serde_json::json!("required"))
         .normalize();
         let client = self.client.clone();
         let user_id = self.user_id;
@@ -833,12 +836,11 @@ impl TextProvider for GatewayTextProvider {
                 .schema_name
                 .clone()
                 .unwrap_or_else(|| "response".to_string());
+            // See GatewayLlmProvider note — `"required"` instead of the
+            // OpenAI-spec object form for LM Studio compatibility.
             (
                 vec![text_response_function_tool(&name, schema)],
-                Some(serde_json::json!({
-                    "type": "function",
-                    "function": { "name": name },
-                })),
+                Some(serde_json::json!("required")),
                 Some(name),
             )
         } else {
