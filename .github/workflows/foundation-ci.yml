@@ -223,6 +223,23 @@ jobs:
           LW_INTEGRATION_MINIO_ACCESS: foundation
           LW_INTEGRATION_MINIO_SECRET: foundation-secret-dev-only
         run: go -C tests/integration test -tags=integration -run TestArchiveWorkerLiveSmoke -count=1 ./...
+      # DEFERRED 058 (retention-worker): bounded outbox prune (pgx) + audit
+      # retention (os/exec → event-audit-retention-cron.sh → psql). The runner
+      # has psql + bash.
+      - name: create retention_smoke DB
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql() { PGPASSWORD=foundation command psql -h localhost -p 5432 -U foundation "$@"; }
+          exists=$(psql -d foundation -tAc "SELECT 1 FROM pg_database WHERE datname='retention_smoke'" || true)
+          if [ "$exists" != "1" ]; then
+            psql -d foundation -v ON_ERROR_STOP=1 -c "CREATE DATABASE retention_smoke;"
+          fi
+      - name: go test retention-worker live-smoke
+        env:
+          LW_INTEGRATION_DB: postgres://foundation:foundation@localhost:5432/retention_smoke?sslmode=disable
+          # The audit script connects via the DSN it is handed (localhost:5432).
+        run: go -C tests/integration test -tags=integration -run TestRetentionWorkerLiveSmoke -count=1 ./...
 
   secrets:
     name: Secret scan (gitleaks)
