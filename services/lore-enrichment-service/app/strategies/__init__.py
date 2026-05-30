@@ -35,6 +35,12 @@ from app.strategies.registry import (
     StrategyRegistry,
     UnknownStrategyError,
 )
+from app.strategies.template import (
+    SCAFFOLD_CONFIDENCE,
+    SCAFFOLD_PLACEHOLDER,
+    ScaffoldedProposal,
+    TemplateStrategy,
+)
 
 __all__ = [
     "CostEstimate",
@@ -48,4 +54,8 @@ __all__ = [
     "StrategyRegistry",
     "UnknownStrategyError",
     "InactiveStrategyError",
+    "TemplateStrategy",
+    "ScaffoldedProposal",
+    "SCAFFOLD_CONFIDENCE",
+    "SCAFFOLD_PLACEHOLDER",
 ]
