@@ -1573,6 +1573,7 @@ def test_load_precision_filter_config_env_set_builds_config() -> None:
             "WORKER_AI_PRECISION_FILTER_MODEL_REF",
             "WORKER_AI_PRECISION_FILTER_PARTIAL_POLICY",
             "WORKER_AI_PRECISION_FILTER_MODEL_SOURCE",
+            "WORKER_AI_PRECISION_FILTER_CATEGORIES",
         )
     }
     try:
@@ -1584,6 +1585,57 @@ def test_load_precision_filter_config_env_set_builds_config() -> None:
         assert config.model_ref == "claude-4.7-opus-uuid"
         assert config.partial_policy == "drop"
         assert config.model_source == "platform_model"
+        # cycle 73b — default categories backward-compat = all 3
+        assert config.categories == ("entity", "relation", "event")
+    finally:
+        for k, v in saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+
+def test_load_precision_filter_config_categories_relation_only() -> None:
+    """Cycle 73b — WORKER_AI_PRECISION_FILTER_CATEGORIES=relation
+    parses to a single-category tuple."""
+    import os
+    from app.runner import _load_precision_filter_config
+
+    saved = {
+        k: os.environ.pop(k, None) for k in (
+            "WORKER_AI_PRECISION_FILTER_MODEL_REF",
+            "WORKER_AI_PRECISION_FILTER_CATEGORIES",
+        )
+    }
+    try:
+        os.environ["WORKER_AI_PRECISION_FILTER_MODEL_REF"] = "test-model"
+        os.environ["WORKER_AI_PRECISION_FILTER_CATEGORIES"] = "relation"
+        config = _load_precision_filter_config()
+        assert config is not None
+        assert config.categories == ("relation",)
+    finally:
+        for k, v in saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+
+def test_load_precision_filter_config_categories_comma_separated() -> None:
+    """Whitespace-tolerant comma split for KNOWLEDGE_C72_CATEGORIES-style env."""
+    import os
+    from app.runner import _load_precision_filter_config
+
+    saved = {
+        k: os.environ.pop(k, None) for k in (
+            "WORKER_AI_PRECISION_FILTER_MODEL_REF",
+            "WORKER_AI_PRECISION_FILTER_CATEGORIES",
+        )
+    }
+    try:
+        os.environ["WORKER_AI_PRECISION_FILTER_MODEL_REF"] = "test-model"
+        os.environ["WORKER_AI_PRECISION_FILTER_CATEGORIES"] = "relation, event"
+        config = _load_precision_filter_config()
+        assert config is not None
+        assert config.categories == ("relation", "event")
     finally:
         for k, v in saved.items():
             os.environ.pop(k, None)

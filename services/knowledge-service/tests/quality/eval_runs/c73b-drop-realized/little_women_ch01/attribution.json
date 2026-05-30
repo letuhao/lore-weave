@@ -1,0 +1,635 @@
+{
+  "chapter": "little_women_ch01",
+  "entities": {
+    "tp": [
+      {
+        "actual_idx": 0,
+        "expected_idx": 3,
+        "actual_name": "Amy",
+        "actual_kind": "person",
+        "expected_name": "Amy",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 1,
+        "expected_idx": 0,
+        "actual_name": "Jo",
+        "actual_kind": "person",
+        "expected_name": "Jo",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 2,
+        "expected_idx": 1,
+        "actual_name": "Meg",
+        "actual_kind": "person",
+        "expected_name": "Meg",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 3,
+        "expected_idx": 2,
+        "actual_name": "Beth",
+        "actual_kind": "person",
+        "expected_name": "Beth",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 5,
+        "expected_idx": 4,
+        "actual_name": "Father",
+        "actual_kind": "person",
+        "expected_name": "Father",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 7,
+        "expected_idx": 5,
+        "actual_name": "Mother",
+        "actual_kind": "person",
+        "expected_name": "Mother",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      }
+    ],
+    "fp": [
+      {
+        "actual_idx": 4,
+        "actual_name": "Christmas",
+        "actual_kind": "concept"
+      },
+      {
+        "actual_idx": 6,
+        "actual_name": "Margaret",
+        "actual_kind": "person"
+      },
+      {
+        "actual_idx": 8,
+        "actual_name": "Undine and Sintran",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 9,
+        "actual_name": "December snow",
+        "actual_kind": "concept"
+      },
+      {
+        "actual_idx": 10,
+        "actual_name": "Faber's drawing pencils",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 11,
+        "actual_name": "Mouse",
+        "actual_kind": "person"
+      },
+      {
+        "actual_idx": 12,
+        "actual_name": "the King children",
+        "actual_kind": "person"
+      },
+      {
+        "actual_idx": 13,
+        "actual_name": "Tomboy",
+        "actual_kind": "concept"
+      },
+      {
+        "actual_idx": 14,
+        "actual_name": "blue army sock",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 15,
+        "actual_name": "fire crackled cheerfully within",
+        "actual_kind": "concept"
+      },
+      {
+        "actual_idx": 16,
+        "actual_name": "the hearth brush and kettle-holder",
+        "actual_kind": "artifact"
+      },
+      {
+        "actual_idx": 17,
+        "actual_name": "geese",
+        "actual_kind": "person"
+      }
+    ],
+    "fn": [],
+    "fp_trap": [
+      {
+        "actual_idx": 8,
+        "actual_name": "Undine and Sintran",
+        "actual_kind": "artifact",
+        "trap_idx": 1,
+        "trap_name": "Undine and Sintran",
+        "trap_reason": "Title of a book Jo wants to purchase; not a character or meaningful entity"
+      }
+    ],
+    "fp_annotation_gap": []
+  },
+  "relations": {
+    "tp": [],
+    "fp": [
+      {
+        "actual_idx": 1,
+        "actual": [
+          "Jo",
+          "owns",
+          "Undine and Sintran",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 3,
+        "actual": [
+          "Amy",
+          "enjoys",
+          "boy's games and work and manners",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 4,
+        "actual": [
+          "Amy",
+          "courts",
+          "fancy words and refined speech",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 5,
+        "actual": [
+          "Amy",
+          "practices",
+          "music at home",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 7,
+        "actual": [
+          "Beth",
+          "lives_in",
+          "the room with the fire crackled cheerfully within",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 9,
+        "actual": [
+          "Meg",
+          "teaches",
+          "tiresome children",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 10,
+        "actual": [
+          "Amy",
+          "enjoys",
+          "Faber's drawing pencils",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 11,
+        "actual": [
+          "Beth",
+          "lives_in",
+          "December snow",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 14,
+        "actual": [
+          "Jo",
+          "born_from",
+          "the hearth brush and kettle-holder",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 15,
+        "actual": [
+          "Meg",
+          "knows",
+          "the reason for not having presents this Christmas",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 16,
+        "actual": [
+          "Meg",
+          "enjoys",
+          "home peace and comfort",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 17,
+        "actual": [
+          "Beth",
+          "lives_in",
+          "the King children",
+          "negate"
+        ]
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 0,
+        "expected": [
+          "Meg",
+          "sibling_of",
+          "Jo",
+          "affirm"
+        ]
+      }
+    ],
+    "fp_trap": [],
+    "fp_annotation_gap": [
+      {
+        "actual_idx": 0,
+        "actual": [
+          "Jo",
+          "works_for",
+          "Mother",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 2,
+        "actual": [
+          "Meg",
+          "trusts",
+          "Beth",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 6,
+        "actual": [
+          "Beth",
+          "lives_with",
+          "Mother",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 8,
+        "actual": [
+          "Jo",
+          "follows",
+          "Beth",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 12,
+        "actual": [
+          "Jo",
+          "instructs",
+          "Beth",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 13,
+        "actual": [
+          "Jo",
+          "helps",
+          "Mother",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      }
+    ]
+  },
+  "events": {
+    "tp": [],
+    "fp": [
+      {
+        "actual_idx": 0,
+        "actual_summary": "Jo reveals that their father is far away at war and will not return soon.",
+        "actual_participants": [
+          "Jo"
+        ]
+      },
+      {
+        "actual_idx": 1,
+        "actual_summary": "Jo sits upright, places her hands in her pockets, and starts whistling with a refined air.",
+        "actual_participants": [
+          "Jo"
+        ]
+      },
+      {
+        "actual_idx": 2,
+        "actual_summary": "Jo passionately resists the idea of being a young lady and vows to keep her hair in two tails.",
+        "actual_participants": [
+          "Jo"
+        ]
+      },
+      {
+        "actual_idx": 3,
+        "actual_summary": "Jo shares her deep longing to be a boy and join her father in the army.",
+        "actual_participants": [
+          "Jo"
+        ]
+      },
+      {
+        "actual_idx": 4,
+        "actual_summary": "Jo expresses her disappointment that Christmas will not be complete without gifts.",
+        "actual_participants": [
+          "Jo"
+        ]
+      },
+      {
+        "actual_idx": 5,
+        "actual_summary": "Jo suggests that the sisters spend their dollars freely on personal gifts while still making sacrifices.",
+        "actual_participants": [
+          "Jo"
+        ]
+      },
+      {
+        "actual_idx": 6,
+        "actual_summary": "Jo knits with great energy, causing her knitting needles to rattle and her ball to bounce across the room.",
+        "actual_participants": [
+          "Jo"
+        ]
+      },
+      {
+        "actual_idx": 7,
+        "actual_summary": "The four sisters sit knitting in the fading light, as December snow falls quietly outside and fire crackles within.",
+        "actual_participants": [
+          "Jo",
+          "Meg",
+          "Beth",
+          "Amy"
+        ]
+      },
+      {
+        "actual_idx": 8,
+        "actual_summary": "Amy voices her sense of injustice that some girls have many possessions while others have none.",
+        "actual_participants": [
+          "Amy"
+        ]
+      },
+      {
+        "actual_idx": 9,
+        "actual_summary": "Amy observes and appreciates the informal, colloquial language used by Jo.",
+        "actual_participants": [
+          "Amy"
+        ]
+      },
+      {
+        "actual_idx": 10,
+        "actual_summary": "Amy details her daily trials at school, including mockery from peers and social judgment.",
+        "actual_participants": [
+          "Amy"
+        ]
+      },
+      {
+        "actual_idx": 11,
+        "actual_summary": "Amy expresses her dislike of rough or unrefined behavior in women.",
+        "actual_participants": [
+          "Amy"
+        ]
+      },
+      {
+        "actual_idx": 12,
+        "actual_summary": "Amy defends her use of sophisticated language and explains the importance of expanding vocabulary.",
+        "actual_participants": [
+          "Amy"
+        ]
+      },
+      {
+        "actual_idx": 13,
+        "actual_summary": "Amy announces her decision to use her dollar for a set of Faber's drawing pencils.",
+        "actual_participants": [
+          "Amy"
+        ]
+      },
+      {
+        "actual_idx": 14,
+        "actual_summary": "Beth humorously inquires about her own identity after being compared to the other sisters.",
+        "actual_participants": [
+          "Beth"
+        ]
+      },
+      {
+        "actual_idx": 15,
+        "actual_summary": "Beth strokes Jo's rough head with a hand that has been shaped by years of dishwashing and dusting.",
+        "actual_participants": [
+          "Beth"
+        ]
+      },
+      {
+        "actual_idx": 16,
+        "actual_summary": "Beth recalls and elaborates on her sister Meg's earlier comparison between their family and the wealthy King children.",
+        "actual_participants": [
+          "Beth"
+        ]
+      },
+      {
+        "actual_idx": 17,
+        "actual_summary": "Beth shares her joy in having Father, Mother, and each other as the greatest blessings.",
+        "actual_participants": [
+          "Beth"
+        ]
+      },
+      {
+        "actual_idx": 18,
+        "actual_summary": "Beth expresses her frustration with dishwashing and housekeeping, which make her hands stiff and hinder her music practice.",
+        "actual_participants": [
+          "Beth"
+        ]
+      },
+      {
+        "actual_idx": 19,
+        "actual_summary": "Beth sings a lullaby-like phrase to calm the sisters after their argument.",
+        "actual_participants": [
+          "Beth"
+        ]
+      },
+      {
+        "actual_idx": 20,
+        "actual_summary": "Beth shares her intention to use her dollar for new music, expressing quiet longing.",
+        "actual_participants": [
+          "Beth"
+        ]
+      },
+      {
+        "actual_idx": 21,
+        "actual_summary": "Jo gently corrects Amy for using 'label' instead of the more precise word 'libel'.",
+        "actual_participants": [
+          "Jo",
+          "Amy"
+        ]
+      },
+      {
+        "actual_idx": 22,
+        "actual_summary": "Jo explains that she whistles precisely because she wants to be boyish and enjoys the habit.",
+        "actual_participants": [
+          "Jo"
+        ]
+      },
+      {
+        "actual_idx": 23,
+        "actual_summary": "Jo vividly describes her daily struggle of caring for an irritable and demanding elderly woman.",
+        "actual_participants": [
+          "Jo"
+        ]
+      },
+      {
+        "actual_idx": 24,
+        "actual_summary": "Jo declares her long-held wish to purchase the book 'Undine and Sintran' with her dollar.",
+        "actual_participants": [
+          "Jo"
+        ]
+      },
+      {
+        "actual_idx": 25,
+        "actual_summary": "Jo removes her hairnet and lets her long, thick brown hair fall freely.",
+        "actual_participants": [
+          "Jo"
+        ]
+      },
+      {
+        "actual_idx": 26,
+        "actual_summary": "Meg recounts the challenges of teaching children all day while longing for personal enjoyment.",
+        "actual_participants": [
+          "Meg"
+        ]
+      },
+      {
+        "actual_idx": 27,
+        "actual_summary": "Meg mocks Amy for being overly refined and delicate in manner.",
+        "actual_participants": [
+          "Meg"
+        ]
+      },
+      {
+        "actual_idx": 28,
+        "actual_summary": "Meg gently chides Jo for her boyish behavior, especially whistling.",
+        "actual_participants": [
+          "Meg",
+          "Jo"
+        ]
+      },
+      {
+        "actual_idx": 29,
+        "actual_summary": "Meg gives a formal and thoughtful talk about the importance of proper conduct for young women.",
+        "actual_participants": [
+          "Meg"
+        ]
+      },
+      {
+        "actual_idx": 30,
+        "actual_summary": "Meg recounts that Mother proposed no presents this Christmas to save money for the army during a hard winter.",
+        "actual_participants": [
+          "Meg"
+        ]
+      },
+      {
+        "actual_idx": 31,
+        "actual_summary": "Meg compliments Amy on her refined speech while gently criticizing her overdone elegance.",
+        "actual_participants": [
+          "Meg"
+        ]
+      },
+      {
+        "actual_idx": 32,
+        "actual_summary": "Meg warmly affirms that Beth is simply 'a dear'—lovable and essential to the family.",
+        "actual_participants": [
+          "Meg"
+        ]
+      },
+      {
+        "actual_idx": 33,
+        "actual_summary": "Meg affirms that the March sisters are happier than the King children despite their daily labor and challenges.",
+        "actual_participants": [
+          "Meg"
+        ]
+      },
+      {
+        "actual_idx": 34,
+        "actual_summary": "Meg imagines a happier life if they had recovered the money their father lost in earlier years.",
+        "actual_participants": [
+          "Meg"
+        ]
+      },
+      {
+        "actual_idx": 35,
+        "actual_summary": "Meg reflects on the hardships of poverty while looking at her old dress.",
+        "actual_participants": [
+          "Meg"
+        ]
+      },
+      {
+        "actual_idx": 36,
+        "actual_summary": "The four sisters' expressions change in response to Beth's words, first brightening with hope and then darkening with sorrow.",
+        "actual_participants": [
+          "Jo",
+          "Meg",
+          "Beth",
+          "Amy"
+        ]
+      },
+      {
+        "actual_idx": 37,
+        "actual_summary": "The sisters’ playful bickering, or 'pecking', comes to a joyful close with shared laughter.",
+        "actual_participants": [
+          "Meg",
+          "Jo",
+          "Amy"
+        ]
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 0,
+        "expected_summary": "The four March sisters discuss not having Christmas presents because their father is away at war",
+        "expected_participants": [
+          "Jo",
+          "Meg",
+          "Beth",
+          "Amy"
+        ]
+      },
+      {
+        "expected_idx": 1,
+        "expected_summary": "Jo and Amy quarrel about boyish behavior and ladylike manners until Beth makes peace",
+        "expected_participants": [
+          "Jo",
+          "Amy",
+          "Beth"
+        ]
+      },
+      {
+        "expected_idx": 2,
+        "expected_summary": "Meg lectures Jo and Amy about their behavior as young ladies",
+        "expected_participants": [
+          "Meg",
+          "Jo",
+          "Amy"
+        ]
+      }
+    ],
+    "fp_trap": [],
+    "fp_annotation_gap": []
+  }
+}

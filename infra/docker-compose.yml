@@ -533,6 +533,11 @@ services:
       KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF: ${KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF:-019e5650-eca7-78c2-985d-465aa3bce1ce}
       KNOWLEDGE_EXTRACTION_PRECISION_FILTER_PARTIAL_POLICY: ${KNOWLEDGE_EXTRACTION_PRECISION_FILTER_PARTIAL_POLICY:-drop}
       KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_SOURCE: ${KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_SOURCE:-user_model}
+      # Cycle 73b — relation-only filter ships as default. Per c73b_compare.md,
+      # relation-only captures 0.916 F1 (vs c72c-drop's 0.917, within noise)
+      # at 18.9s/chapter (vs c72c-drop's 42.5s/chapter — 55% latency cut).
+      # Override to "entity,relation,event" to revert to cycle-72 full filter.
+      KNOWLEDGE_EXTRACTION_PRECISION_FILTER_CATEGORIES: ${KNOWLEDGE_EXTRACTION_PRECISION_FILTER_CATEGORIES:-relation}
     depends_on:
       postgres:
         condition: service_healthy
@@ -651,6 +656,8 @@ services:
       WORKER_AI_PRECISION_FILTER_MODEL_REF: ${WORKER_AI_PRECISION_FILTER_MODEL_REF:-019e5650-eca7-78c2-985d-465aa3bce1ce}
       WORKER_AI_PRECISION_FILTER_PARTIAL_POLICY: ${WORKER_AI_PRECISION_FILTER_PARTIAL_POLICY:-drop}
       WORKER_AI_PRECISION_FILTER_MODEL_SOURCE: ${WORKER_AI_PRECISION_FILTER_MODEL_SOURCE:-user_model}
+      # Cycle 73b — see knowledge-service block for rationale; same default.
+      WORKER_AI_PRECISION_FILTER_CATEGORIES: ${WORKER_AI_PRECISION_FILTER_CATEGORIES:-relation}
     depends_on:
       postgres:
         condition: service_healthy

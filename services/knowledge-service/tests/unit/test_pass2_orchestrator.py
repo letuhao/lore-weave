@@ -840,6 +840,7 @@ def test_load_precision_filter_config_orchestrator_env_set() -> None:
         k: os.environ.pop(k, None) for k in (
             "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF",
             "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_PARTIAL_POLICY",
+            "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_CATEGORIES",
         )
     }
     try:
@@ -849,6 +850,32 @@ def test_load_precision_filter_config_orchestrator_env_set() -> None:
         assert config is not None
         assert config.model_ref == "claude-4.7-opus-uuid"
         assert config.partial_policy == "drop"
+        # cycle 73b — default categories backward-compat = all 3
+        assert config.categories == ("entity", "relation", "event")
+    finally:
+        for k, v in saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+
+def test_load_precision_filter_config_categories_relation_only() -> None:
+    """Cycle 73b — categories env reads as a tuple subset."""
+    import os
+    from app.extraction.pass2_orchestrator import _load_precision_filter_config
+
+    saved = {
+        k: os.environ.pop(k, None) for k in (
+            "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF",
+            "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_CATEGORIES",
+        )
+    }
+    try:
+        os.environ["KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF"] = "test-model"
+        os.environ["KNOWLEDGE_EXTRACTION_PRECISION_FILTER_CATEGORIES"] = "relation"
+        config = _load_precision_filter_config()
+        assert config is not None
+        assert config.categories == ("relation",)
     finally:
         for k, v in saved.items():
             os.environ.pop(k, None)

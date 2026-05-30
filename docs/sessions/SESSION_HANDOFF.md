@@ -1,11 +1,134 @@
-# Session Handoff — Session 72.S2 (cycle 72 pass2 precision filter — SHIPPED c72c)
+# Session Handoff — Session 73 (cycle 73a verify + 73b SHIPPED + 73c realized-F1 confirmation)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-05-30 (session 72.S2 — XL BUILD + VERIFY + ship-or-revert).
-> **HEAD:** pending ship commit on top of `5f36802a` (Phase 3 eval validation).
+> **Date:** 2026-05-30 (session 73 — 3 cycles: cycle 72 verify + cycle 73b relation-only ship + cycle 73c realized-F1 analytics + re-judge).
+> **HEAD:** pending ship commit on top of `998e59a1` (cycle 73b SHIP) + `609e9655` (merge).
 > **Branch:** `main`.
 
-## Session 72.S2 summary — cycle 72 SHIPPED c72c (drop policy) — median F1 +2.2pp, κ +0.105, D10 4/4 PASS
+## Session 73 summary — cycle 73a verify CLEAN + cycle 73b SHIPPED relation-only filter (44% latency win) + cycle 73c realized-F1 CONFIRMS c73b ship strictly better
+
+### Cycle 73c (S→M scope-bump) — Neo4j-realized F1 cascade analysis + empirical re-judge
+
+**Question:** does the pass2_writer's relation-cascade-skip change the F1 numbers from cycle 72/73b ship decisions?
+
+**Process:**
+1. Analytics: simulated writer's cascade rule on saved filter dumps; computed supported-cascade rate per variant
+2. Scope-bump (user approved): generated "realized" `actual.json` per variant (with cascade applied) → ran 3-judge ensemble re-judge on the realized dumps (~33 min total wall-clock)
+
+**Empirical results:**
+
+| Variant | Filter-output F1 | Realized F1 | Δ from cascade | Verdict |
+|---|---:|---:|---:|---|
+| c70a baseline | 0.895 | _not re-judged_ | est ~0.88-0.89 | Pre-existing writer-cascade gap (10.7% supported-relations cascade-skip) |
+| c72c-drop (cycle-72 ship) | 0.917 | **0.904** | **-1.3pp** | Over-credited; cascade dropped supported relations |
+| **c73b-drop (current ship)** | 0.916 | **0.913** | **-0.3pp** | Validated; near-negligible cascade impact |
+
+**Key findings:**
+- On realized basis, c73b-drop is **+0.9pp ahead of c72c-drop** (vs +0.1pp on filter-output) — much stronger ship case
+- Pre-existing writer-cascade gap: even no-filter c70a has 13/121 (10.7%) judge-supported relations that would cascade-skip at write time. Root cause: LLM extracts relations with abstract/compound subjects ("civil practice", "home peace and comfort") that weren't extracted as entities
+- Filtering entities (cycle-72 approach) MAKES the cascade worse (22.5% supported-cascade rate vs baseline 10.7%); filtering only relations (cycle-73b approach) doesn't make it worse (12.3% ≈ baseline)
+
+**Ship recommendation: c73b-drop stays — now confirmed strictly better than c72c-drop on realized F1.**
+
+**Deferred rows added:**
+- **D-PASS2-WRITER-CASCADE-GAP-CLOSE** — close the baseline 10.7% cascade gap by extending entity extraction to abstract/compound subjects (option a), OR auto-creating entities at write time (option b), OR pre-filtering unresolved relations (option c). Recommend (a) for first pass.
+- **D-PASS2-CASCADE-C70A-REALIZED-REJUDGE** — re-judge c70a on realized state to complete the realized-F1 picture; expected ~0.88-0.89.
+
+**Memory lesson captured:** TBD pending RETRO.
+
+### Cycle 73a (S-verify) — cycle 72 activation confirmed in dev stack
+
+Rebuilt knowledge-service + worker-ai with cycle-72 SDK baked in; envs propagated, `_PRECISION_FILTER_CONFIG` loaded at module import in both services; end-to-end smoke filter call dropped fabricated entities + relations. No code or doc changes. Verified the cycle-72 SHIP commit actually works in production-shape compose stack.
+
+### Cycle 73b (M) — relation-only filter SHIPPED — median F1 0.916, **44% latency reduction vs c72c-drop**
+
+(see "Session 73 summary — cycle 73a verify CLEAN + cycle 73b SHIPPED relation-only filter (44% latency win)" — kept intact below)
+
+---
+
+## Session 73 summary (legacy header — kept for grep continuity) — cycle 73a verify CLEAN + cycle 73b SHIPPED relation-only filter (44% latency win)
+
+### Cycle 73a (S-verify) — cycle 72 activation confirmed in dev stack
+
+Rebuilt knowledge-service + worker-ai with cycle-72 SDK baked in; envs propagated, `_PRECISION_FILTER_CONFIG` loaded at module import in both services; end-to-end smoke filter call dropped fabricated entities + relations. No code or doc changes. Verified the cycle-72 SHIP commit actually works in production-shape compose stack.
+
+### Cycle 73b (M) — relation-only filter SHIPPED — median F1 0.916, **44% latency reduction vs c72c-drop**
+
+Hypothesis from c72c per-category analysis: relations carried virtually all of c72c-drop's +2.2pp F1 lift. Filtering entities + events added marginal κ improvement at significant latency cost.
+
+**Empirical** (3-judge ensemble re-judge against c70a saved fixture):
+
+| Variant | gemma F1 | qwen-30b F1 | claude F1 | Median F1 | Δ vs c70a | Per-chapter latency | 6-clause gate |
+|---|---:|---:|---:|---:|---:|---:|---|
+| c70a (baseline) | 0.848 | 0.955 | 0.895 | 0.895 | — | — | — |
+| c72c-drop (cycle-72 ship) | 0.891 | 0.973 | 0.917 | 0.917 | +2.2pp | 42.5s | PASS 4/4 D10 |
+| c73b-keep (rel-only, keep) | 0.855 | 0.964 | 0.907 | 0.907 | +1.2pp | 25.5s | FAIL (a)+(f) |
+| **c73b-drop (rel-only, drop)** | **0.887** | **0.971** | **0.916** | **0.916** | **+2.1pp** | **18.9s** | **PASS 6/6** |
+
+c73b-drop gate clauses (D10 + 2 cycle-73b-specific):
+- (a) median F1 lift ≥ +1.5pp → +2.1pp PASS
+- (b) min F1 lift ≥ -0.5pp → +1.6pp (qwen-30b) PASS
+- (c) claude F1 lift ≤ 2× median → 2.1pp ≤ 4.2pp PASS
+- (d) Fleiss κ ≥ 0.60 → 0.754 PASS (substantial; -0.022 from c72c-drop)
+- (e) F1 within 1pp of c72c-drop (0.917) → 0.916, diff = 0.1pp PASS with margin
+- (f) Per-chapter latency ≤ 21s (50% of c72c-drop) → 18.9s PASS with margin
+
+**Hypothesis confirmed**: relation-only filter is **~2.2× more efficient** per second of latency (0.0485 F1/sec vs c72c-drop's 0.0216 F1/sec) with negligible F1 loss. Gemma still lifts +3.9pp on the relation-only filter, ruling out claude-self-reinforcement.
+
+### Activation update
+
+```yaml
+# infra/docker-compose.yml — knowledge-service + worker-ai (cycle-73b default)
+KNOWLEDGE_EXTRACTION_PRECISION_FILTER_CATEGORIES: ${...:-relation}  # NEW
+WORKER_AI_PRECISION_FILTER_CATEGORIES: ${...:-relation}             # NEW
+# (model_ref, partial_policy=drop, model_source unchanged from cycle-72 SHIP)
+```
+
+Override `CATEGORIES=entity,relation,event` to revert to cycle-72 full filter.
+
+### SDK + service code changes
+
+- `services/worker-ai/app/runner.py::_load_precision_filter_config` reads `WORKER_AI_PRECISION_FILTER_CATEGORIES` (default `"entity,relation,event"` for backward-compat)
+- `services/knowledge-service/app/extraction/pass2_orchestrator.py::_load_precision_filter_config` reads `KNOWLEDGE_EXTRACTION_PRECISION_FILTER_CATEGORIES` (same default)
+- Plus 3 new env-loader unit tests (2 worker-ai + 1 knowledge-service)
+- Plus `run_c72_filter.py` accepts `KNOWLEDGE_C72_CATEGORIES` + `KNOWLEDGE_C72_PARTIAL_POLICY` for cycle 73b runs
+
+### Eval artifacts shipped
+
+- `services/knowledge-service/tests/quality/eval_runs/c73b-keep/` — filter dump + 3-judge ensemble
+- `services/knowledge-service/tests/quality/eval_runs/c73b-drop/` — filter dump + 3-judge ensemble
+- `services/knowledge-service/tests/quality/eval_runs/c73b_compare.md` — full D10+(e)+(f) gate evaluation + ship decision
+
+### Operational note: knowledge-service container restart mid-ensemble
+
+c73b-drop ensemble's first run was killed by a knowledge-service container restart at 06:14:20 UTC (clean exit, no OOM, no crash log). Cause unknown but only affected knowledge-service (worker-ai + provider-registry stayed up). Re-launched after re-copying `tests/` + dump back into container; second run completed cleanly in 17:24. Worth watching if pattern repeats — possibly Docker Desktop pause/resume artifact.
+
+### Deferred items added/carried
+
+- **D-PASS2-FILTER-NEO4J-REALIZED-F1** (carryover) — F1 post writer-cascade
+- **D-PASS2-FILTER-FACTS-SUPPORT** (carryover) — filter facts
+- **D-PASS2-FILTER-CLOUD-CALIBRATION** (carryover) — cloud Claude calibration
+- **D-PASS2-FILTER-RUNTIME-FLAG** (carryover) — per-request header override
+- **D-PASS2-FILTER-CACHE** (carryover) — verdict caching
+- **D-PASS2-FILTER-PER-USER-UI** (carryover) — UI surface
+- **D-PASS2-FILTER-CATEGORIES-AB-TUNE** (NEW from c73b) — re-validate relation-only ship after first month of production data; consider per-language or per-genre `categories` override
+
+### Memory lessons captured this session
+
+- **per-category-yield-attribution-via-ablation** — when a multi-component change ships positive, run an ablation to see which component carried the win. c73b-drop ablated c72c-drop down to just relations and confirmed entities + events added marginal value at significant latency cost.
+
+### Session 73 entry point for the NEXT session
+
+1. Verify cycle 73b activation similar to cycle 73a (rebuild already done in this session, env propagation confirmed)
+2. Cycle 73c candidates from deferred list:
+   - **D-PASS2-FILTER-NEO4J-REALIZED-F1** — post writer-cascade F1 measurement (most impactful — would let us distinguish filter-output gain from realized gain)
+   - **D-PASS2-FILTER-FACTS-SUPPORT** — extend filter to facts (smaller scope)
+   - **D-EVAL-FRAMEWORK-WIKINEURAL-MULTILINGUAL-ANCHOR** — multilingual NER anchor (predates cycle 71)
+   - **C71 event prompt** revisit with the c70a lessons — events were never lifted by cycle 71/71-bis, are still the weakest extraction category
+
+---
+
+## Session 72.S2 summary — cycle 72 SHIPPED c72c (drop policy) — median F1 +2.2pp, κ +0.105, D10 4/4 PASS — historical
 
 Ran the full BUILD + VERIFY + ship flow planned in S1. Filter `partial_policy="drop"` config (c72c variant) decisively cleared the D10 4-clause symmetric ship gate; activated by default in [`infra/docker-compose.yml`](../../infra/docker-compose.yml) for both knowledge-service and worker-ai. Filter is OFF in raw production envs (no compose; explicit env required) — dev compose ships it on by default to surface the F1 lift in routine use.
 
