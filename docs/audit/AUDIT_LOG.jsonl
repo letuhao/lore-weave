@@ -597,3 +597,15 @@
 {"ts":"2026-05-30T16:25:00Z","cycle":15,"event":"cycle_complete","result":"DONE","dps_count":2,"files_count":18,"adversary":{"blockers":0,"majors":0,"minors":0,"notes":2},"scope_guard":"CLEAR","verify_exit_code":0,"notable":"enrichment eval (judge-ensemble) + P2/P3 gate; demo scorecard composite=96.88 usefulness=87.5; gate=P2/P3 CLEARED; persisted enrichment_eval_runs + live gate-status route"}
 {"ts":"2026-05-30T16:29:42Z","task":"lore-enrichment","phase":"coordinator-review","agent":"independent-adversary","action":"verdict","cycle":15,"verdict":"APPROVED_WITH_WARNINGS","block":0,"warn":3}
 {"ts":"2026-05-30T00:00:00Z","task":"lore-enrichment","phase":"coordinator-review","agent":"coordinator","action":"cycle_accepted","cycle":15,"commit":"9ef742fe","verify_exit":0,"independent_adversary":"APPROVED_WITH_WARNINGS","note":"eval framework + P2/P3 gate; isolation clean (no climate/geo edit, judge-ensemble reused by import). Independent adversary: NOT a C14-style false-green (deterministic scorers meaningful, no-judge fail-closed, 050 real, gate honest forward-plumbing). 3 forward WARN -> DEFERRED 054(enforcement, REQUIRED for C16/C17)/055(suite-hash freshness)/056(judge-diversity floor)/057(gate-status http test). Live demo scorecard composite=96.88, GATE cleared."}
+{"ts":"2026-05-30T16:42:17Z","event":"startup_drift_check_inconclusive","cycle":16,"cd":"","rw":""}
+{"ts":"2026-05-30T16:42:17Z","event":"startup_verifier_complete","cycle":16,"steps":6}
+{"ts": "2026-05-30T16:43:26Z", "event": "in_progress_init", "cycle": 16, "title": "Strategy (c) fabrication"}
+{"ts": "2026-05-30T16:43:42Z", "event": "in_progress_update", "cycle": 16, "phase": "DESIGN", "retry": 0}
+{"ts": "2026-05-30T16:44:14Z", "event": "in_progress_update", "cycle": 16, "phase": "BUILD", "retry": 0}
+{"ts": "2026-05-30T16:51:36Z", "event": "in_progress_update", "cycle": 16, "phase": "VERIFY", "retry": 0}
+{"ts":"2026-05-30T16:52:34Z","cycle":16,"event":"verify","result":"pass","live_smoke":"skipped:no-harness"}
+{"ts":"2026-05-30T16:56:13Z","cycle":16,"event":"verify","result":"pass","live_smoke":"infra-unavailable:qwen-jit"}
+{"ts":"2026-05-30T16:59:32Z","cycle":16,"event":"verify","result":"pass","live_smoke":"infra-unavailable:qwen-jit"}
+{"ts": "2026-05-30T17:01:23Z", "event": "in_progress_update", "cycle": 16, "phase": "SESSION", "retry": 0}
+{"ts":"2026-05-31T00:00:00Z","cycle":16,"event":"session","result":"done","title":"strategy (c) canon-grounded fabrication (gate-enforced)","files":7,"tests":"416 pass real-DB (+19 C16)","adversary":"0blk/0maj/0min/2note","scope_guard":"CLEAR","gate_054":"ENFORCED — GateAwareStrategyFactory is the sole P2 selection path; live-observed both states (cleared→selected→real Qwen 5 H0 facts; locked→InactiveStrategyError)","h0":"every fabricated fact origin=enriched:fabrication conf<1.0 quarantined grounding-cited, NOT promoted"}
+{"ts": "2026-05-30T17:02:50Z", "event": "in_progress_update", "cycle": 16, "phase": "COMMIT", "retry": 0}

@@ -41,6 +41,19 @@ from app.strategies.template import (
     ScaffoldedProposal,
     TemplateStrategy,
 )
+from app.strategies.factory import (
+    GateAwareStrategyFactory,
+    GateStatusReader,
+    LiveGateStatus,
+)
+from app.strategies.fabrication import (
+    FABRICATION_CONFIDENCE,
+    FABRICATION_GAP_COST,
+    FabricatedProposal,
+    FabricationError,
+    FabricationStrategy,
+    NeighborFact,
+)
 
 __all__ = [
     "CostEstimate",
@@ -58,4 +71,14 @@ __all__ = [
     "ScaffoldedProposal",
     "SCAFFOLD_CONFIDENCE",
     "SCAFFOLD_PLACEHOLDER",
+    # C16 — fabrication (P2) + gate-aware factory (DEFERRED-054)
+    "GateAwareStrategyFactory",
+    "GateStatusReader",
+    "LiveGateStatus",
+    "FabricationStrategy",
+    "FabricatedProposal",
+    "FabricationError",
+    "NeighborFact",
+    "FABRICATION_CONFIDENCE",
+    "FABRICATION_GAP_COST",
 ]
