@@ -895,6 +895,217 @@ metrics:
     owner: sre
     source: services/alert-recorder
 
+  # ────────────────────────────────────────────────────────────────────
+  # 078 backfill (2026-05-31) — emitted spine-worker metrics not previously
+  # registered. These are the names the SHIPPED code actually emits; the older
+  # planned names a few entries above (lw_meta_worker_dispatch_total,
+  # lw_archive_bytes_uploaded_total, lw_retention_outbox_pruned_total, …) are
+  # stale-by-refactor — reconciling/retiring them is tracked in DEFERRED-111
+  # (renaming emitted metrics is dashboard/alert-load-bearing).
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_publisher_published_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'Outbox rows XADDed + marked published.'
+    owner: world-platform
+    source: services/publisher (poll_loop)
+  - name: lw_publisher_fanout_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: [result]
+    description: 'xreality fanout XADDs by result.'
+    owner: world-platform
+    source: services/publisher (xreality_fanout)
+    cardinality_notes: 'result is a small bounded enum (ok/error).'
+  - name: lw_publisher_dead_lettered_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'Outbox rows dead-lettered at max attempts.'
+    owner: sre
+    source: services/publisher (retry policy)
+  - name: lw_publisher_retried_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'Outbox rows marked for retry after a transient XADD failure.'
+    owner: sre
+    source: services/publisher (retry policy)
+  - name: lw_publisher_reality_errors_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'Per-reality drain transactions that failed (infra error).'
+    owner: sre
+    source: services/publisher (poll_loop)
+  - name: lw_publisher_iteration_errors_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'Poll-loop iterations that returned an error.'
+    owner: sre
+    source: services/publisher (poll_loop)
+  - name: lw_meta_worker_dispatched_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'messages dispatched + acked.'
+    owner: world-platform
+    source: services/meta-worker (internal/dispatch)
+  - name: lw_meta_worker_acked_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'messages XACKed.'
+    owner: world-platform
+    source: services/meta-worker (internal/dispatch)
+  - name: lw_meta_worker_read_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'xreality messages read.'
+    owner: world-platform
+    source: services/meta-worker (internal/dispatch)
+  - name: lw_meta_worker_read_errors_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'XREADGROUP errors.'
+    owner: sre
+    source: services/meta-worker (internal/dispatch)
+  - name: lw_meta_worker_handler_errors_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'handler errors (NACK / redelivery).'
+    owner: sre
+    source: services/meta-worker (internal/dispatch)
+  - name: lw_meta_worker_no_handler_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'messages with no registered handler (I7 allowlist).'
+    owner: world-platform
+    source: services/meta-worker (internal/dispatch)
+  - name: lw_archive_bytes_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'Encoded archive bytes uploaded (post-ZSTD).'
+    owner: world-platform
+    source: services/archive-worker (pkg/archive_loop)
+  - name: lw_archive_errors_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'Archive iteration errors.'
+    owner: sre
+    source: services/archive-worker (pkg/archive_loop)
+  - name: lw_archive_partitions_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'Partitions archived + dropped.'
+    owner: world-platform
+    source: services/archive-worker (pkg/archive_loop)
+  - name: lw_archive_rows_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'Event rows archived.'
+    owner: world-platform
+    source: services/archive-worker (pkg/archive_loop)
+  - name: lw_retention_audit_flagged_deleted_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'flagged event_audit rows pruned.'
+    owner: world-platform
+    source: services/retention-worker
+  - name: lw_retention_audit_nonflagged_deleted_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'non-flagged event_audit rows pruned.'
+    owner: world-platform
+    source: services/retention-worker
+  - name: lw_retention_audit_partitions_dropped_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'fully-expired event_audit partitions dropped.'
+    owner: world-platform
+    source: services/retention-worker
+  - name: lw_retention_errors_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'retention iteration errors.'
+    owner: sre
+    source: services/retention-worker
+  - name: lw_retention_outbox_deleted_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'events_outbox rows pruned (dead-letter rows excluded).'
+    owner: world-platform
+    source: services/retention-worker (pkg/outbox_pruner)
+  - name: lw_embedding_queue_depth
+    kind: gauge
+    layer: L3
+    shipped_cycle: 16
+    labels: []
+    description: 'current in-process embedding queue depth.'
+    owner: sre
+    source: services/world-service (embedding_queue)
+  - name: lw_embedding_queue_failures_total
+    kind: counter
+    layer: L3
+    shipped_cycle: 16
+    labels: []
+    description: 'embedding items that did NOT result in a successful write.'
+    owner: sre
+    source: services/world-service (embedding_queue)
+  - name: lw_embedding_provider_tokens_total
+    kind: counter
+    layer: L3
+    shipped_cycle: 16
+    labels: []
+    description: 'provider tokens billed for embedding requests.'
+    owner: world-platform
+    source: services/world-service (embedding_queue)
+  - name: lw_embedding_audit_outcome_total
+    kind: counter
+    layer: L3
+    shipped_cycle: 16
+    labels: [outcome]
+    description: 'embedding write-audit outcomes (bounded outcome enum).'
+    owner: world-platform
+    source: services/world-service (embedding_queue)
+    cardinality_notes: 'outcome is a small bounded enum (ok/write_error/…).'
+
 # ────────────────────────────────────────────────────────────────────
 # CARDINALITY BUDGET (V1)
 # ────────────────────────────────────────────────────────────────────
