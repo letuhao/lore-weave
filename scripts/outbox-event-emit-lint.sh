@@ -15,9 +15,11 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 violations=0
 
-# Forbid `XADD` / `.XAdd(` outside services/publisher and existing outbox
-# relays (services/worker-infra is the existing platform's outbox relay
-# implementation — same pattern as publisher, predates the foundation).
+# Forbid `XADD` / `.XAdd(` outside services/publisher and the SANCTIONED outbox
+# relays — services/worker-infra (the existing novel-platform relay) and
+# services/meta-outbox-relay (P2/101 Option B: the meta-context drain that
+# XADDs meta_outbox → lw.meta.events + the xreality bridge; the meta analog of
+# publisher, a deliberate 2nd emitter the user chose over meta-as-a-reality).
 # Skip comment-only lines.
 # Forbid bare `XADD` literal or `.XAdd(` method call OUTSIDE outbox-relay code.
 # We look only for code that actually CALLS the redis client method:
@@ -29,6 +31,7 @@ hits=$(grep -rnE '(\b[a-zA-Z_]+\.XAdd\(|\bredis\.xadd\(|\bclient\.xadd\(|\br\.xa
   "$repo_root/services" "$repo_root/contracts" "$repo_root/crates" 2>/dev/null \
   | grep -vE 'services/publisher/' \
   | grep -vE 'services/worker-infra/internal/tasks/outbox_relay\.go' \
+  | grep -vE 'services/meta-outbox-relay/' \
   | grep -vE 'services/knowledge-service/' \
   | grep -vE 'services/chat-service/' \
   | grep -vE '_test\.go|_test\.rs|_test\.py|test_.*\.py' \

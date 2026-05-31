@@ -32,6 +32,22 @@ scan_dirs=(
   "$repo_root/frontend-game"
 )
 
+# Sanctioned direct meta-table writers (file-path-regex → table). Each is a
+# NARROW exemption (path AND table must match): a different file writing this
+# table, or these files writing a different table, still FAILs. Two sanctioned
+# categories per S04 §12T.6 intent:
+#   - LIVENESS: high-frequency heartbeat upserts that must NOT emit a
+#     meta_write_audit row per write (events:[] by design).
+#   - AUDIT-SELF-WRITE: writing an audit table IS the audit; it has no
+#     MetaWrite path (MetaWrite governs DOMAIN writes, and for meta_write_audit
+#     would be infinite-regress). The canon path's per-reality projection apply
+#     (meta-worker pgwrite) writes its own meta_write_audit row directly.
+declare -A sanctioned=(
+  ["services/publisher/pkg/metahb/"]="publisher_heartbeats"
+  ["services/world-service/src/embedding_queue/live/audit_writer.rs"]="service_to_service_audit"
+  ["services/meta-worker/pkg/pgwrite/"]="meta_write_audit"
+)
+
 for table in $meta_tables; do
   # Match INSERT INTO <table>, UPDATE <table>, DELETE FROM <table>
   # in Go/Rust/SQL/TS files OUTSIDE contracts/meta.
@@ -43,6 +59,12 @@ for table in $meta_tables; do
     | grep -vE 'migrations/meta/' \
     | grep -vE '_test\.(go|rs|ts)' \
     | grep -vE ':[[:space:]]*(//|--|#|\*|///)' || true)
+  # Drop sanctioned (path, table) writers for THIS table.
+  for path in "${!sanctioned[@]}"; do
+    if [[ "${sanctioned[$path]}" == "$table" && -n "$hits" ]]; then
+      hits=$(printf '%s\n' "$hits" | grep -vF "$path" || true)
+    fi
+  done
   if [[ -n "$hits" ]]; then
     echo "[meta-write-discipline] FAIL — direct write on meta table $table outside contracts/meta:"
     echo "$hits" | sed 's/^/  /'

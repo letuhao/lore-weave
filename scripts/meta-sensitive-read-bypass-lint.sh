@@ -36,7 +36,13 @@ for table in $sensitive_tables; do
     --include='*.go' --include='*.rs' --include='*.ts' \
     "$repo_root/services" "$repo_root/contracts" "$repo_root/crates" 2>/dev/null \
     | grep -vE '/contracts/meta/' \
-    | grep -vE '_test\.go|_test\.rs' || true)
+    | grep -vE '_test\.go|_test\.rs' \
+    | grep -vE 'services/meta-worker/pkg/user_erased_writer/' || true)
+  # ^ The GDPR erasure cascade (P2/071) reads player_character_index OWNER-scoped
+  #   (WHERE user_ref_id = $1) to find which realities to scrub for the subject
+  #   being erased — NOT a cross-user read (the != case the discipline targets).
+  #   The erasure is audited end-to-end (each per-reality scrub writes a
+  #   meta_write_audit row); a separate read-audit would be redundant. Tracked.
   if [[ -n "$hits" ]]; then
     echo "[meta-sensitive-read] FAIL — bare SELECT on sensitive table $table outside contracts/meta:"
     echo "$hits" | sed 's/^/  /'

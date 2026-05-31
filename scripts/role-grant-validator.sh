@@ -25,18 +25,27 @@ audit_tables=$(ls "$repo_root/migrations/meta/" 2>/dev/null \
   | grep -E '_audit\.up\.sql$' \
   | sed -E 's/^[0-9]+_(.*)\.up\.sql$/\1/' | sort -u || true)
 
-# For each `table_name:` line, check that no audit table grants UPDATE/DELETE
+# For each `table_name:` line, check that no audit table grants UPDATE/DELETE.
+#
+# EXCEPTION — state-machine "audit" tables: a few tables are named *_audit but
+# are legitimately UPDATE-able state machines, not append-only logs. deploy_audit
+# (L1A §6.3) is INSERT=started + UPDATE=canary stage advance/rollback (the
+# canary-controller is the sole writer). For these, UPDATE is sanctioned but
+# DELETE is STILL forbidden (deploy history must not be erased).
 for audit in $audit_tables; do
-  # find the block for this table inside matrix; if it has UPDATE or DELETE → fail
-  hits=$(awk -v t="$audit" '
+  allow_update=0
+  case "$audit" in
+    deploy_audit) allow_update=1 ;;
+  esac
+  hits=$(awk -v t="$audit" -v au="$allow_update" '
     /^[[:space:]]*[a-z_]+:[[:space:]]*$/ {
-      if (in_block && drop_table_block) print "  " line ": " block;
       block_table = $1; gsub(":", "", block_table);
       in_block = (block_table == t);
-      block = "";
     }
     in_block && /^[[:space:]]+-[[:space:]]*(UPDATE|DELETE)[[:space:]]*$/ {
-      print FILENAME ":" NR ": audit table " t " grants " $2;
+      op = $2;
+      if (op == "DELETE" || au == 0)
+        print FILENAME ":" NR ": audit table " t " grants " op;
     }
   ' "$matrix" || true)
   if [[ -n "$hits" ]]; then
@@ -46,10 +55,18 @@ for audit in $audit_tables; do
   fi
 done
 
-# Check for grants on unknown tables
-declared_tables=$(ls "$repo_root/migrations/meta/" 2>/dev/null \
-  | grep -E '\.up\.sql$' \
-  | sed -E 's/^[0-9]+_(.*)\.up\.sql$/\1/' | sort -u || true)
+# Check for grants on unknown tables.
+#
+# Derive the declared-table set from ACTUAL `CREATE TABLE` statements in BOTH
+# the meta migrations AND the per-reality migrations — the service-ACL matrix
+# legitimately references per-reality tables (events / events_outbox /
+# event_audit / archive_state, in contracts/migrations/per_reality/), and
+# filename-parsing also produced false table names for ALTER-only migrations
+# (e.g. 027_meta_write_audit_scrub_version). Grepping CREATE TABLE is exact.
+declared_tables=$( { grep -rhoiE 'CREATE TABLE +(IF NOT EXISTS +)?[a-z_][a-z0-9_]*' \
+    "$repo_root/migrations/meta/" \
+    "$repo_root/contracts/migrations/per_reality/" 2>/dev/null \
+  | sed -E 's/.*CREATE TABLE +(IF NOT EXISTS +)?//I'; } | sort -u || true)
 # Tables referenced in matrix (heuristic: 2-space indent, ending in :)
 ref_tables=$(grep -E '^[[:space:]]{6}[a-z_]+:$' "$matrix" | sed -E 's/[[:space:]]+([a-z_]+):.*/\1/' | sort -u || true)
 for t in $ref_tables; do

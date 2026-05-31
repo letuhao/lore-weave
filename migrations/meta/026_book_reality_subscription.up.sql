@@ -15,6 +15,16 @@
 -- Retention: lifecycle-bound to the reality (cascade-cleaned when a reality is
 --   dropped — handled by the reality close pipeline, not an FK since reality_id
 --   rows are audit-retained).
+--
+-- PII/retention classification (S08 §12X.3/§12X.4; pii-classify-lint). This is a
+-- NO-PII routing/config map — both columns are opaque FKs (book_id, reality_id);
+-- it carries no user data, so the retention class is informational only (no
+-- erasure obligation). Closes the 111 pii-classify gap for 026.
+-- @pii_sensitivity: none (opaque FKs book_id + reality_id; no user PII)
+-- @retention_class: operational
+-- @retention_hot: lifecycle (lives until the subscribed reality is dropped)
+-- @erasure_method: hard_delete (no PII; row removed on unsubscribe / reality drop)
+-- @legal_basis: legitimate_interest (canon fan-out routing configuration)
 
 CREATE TABLE IF NOT EXISTS book_reality_subscription (
     book_id     UUID        NOT NULL,

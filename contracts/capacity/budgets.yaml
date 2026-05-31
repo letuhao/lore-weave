@@ -96,6 +96,10 @@ services:
     class: worker
     v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "outbox_lag>1000" }
     v3: { min_replicas: 2, max_replicas: 4 }
+  - name: meta-outbox-relay
+    class: worker
+    v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.25, memory_per_replica: 256Mi, scale_trigger: "lw_meta_outbox_pending>1000" }
+    v3: { min_replicas: 1, max_replicas: 2 }
   - name: meta-worker
     class: worker
     v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "xreality_lag>500" }
