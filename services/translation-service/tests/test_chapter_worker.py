@@ -48,6 +48,13 @@ def _make_pool(job_status="running", finalization_row=None):
     db.execute = AsyncMock()
     db.fetchval = AsyncMock(return_value=job_status)   # cancellation check
     db.fetchrow = AsyncMock(return_value=finalization_row)
+    # `_process_chapter` persists inside `async with db.transaction():`. An
+    # unconfigured AsyncMock attribute returns a coroutine (not an async CM),
+    # so give transaction() a synchronous factory returning an async CM.
+    _tx = AsyncMock()
+    _tx.__aenter__ = AsyncMock(return_value=db)
+    _tx.__aexit__ = AsyncMock(return_value=False)
+    db.transaction = MagicMock(return_value=_tx)
     pool = MagicMock()
     pool.acquire = MagicMock(return_value=_AcquireCM(db))
     # session_translator calls pool.fetchrow / pool.execute directly (no acquire)
@@ -334,6 +341,93 @@ async def test_provider_5xx_raises_transient_error():
         from app.workers.chapter_worker import handle_chapter_message
         with pytest.raises(_TransientError):
             await handle_chapter_message(_chapter_msg(), pool, AsyncMock(), MagicMock(), retry_count=0)
+
+
+# ── Block pipeline total-failure guard (TR-4 regression) ──────────────────────
+
+@pytest.mark.asyncio
+async def test_block_pipeline_total_failure_marks_chapter_failed():
+    """TR-4 regression: if the block pipeline translates 0 of N translatable
+    blocks (the LLM step failed for every batch), the chapter MUST be marked
+    failed — NOT silently persisted as 'completed' with all-original blocks
+    (which made the matrix show 完了 for an untranslated chapter)."""
+    from app.workers.chapter_worker import _PermanentError, handle_chapter_message
+
+    pool, db = _make_pool()
+    publish_event = AsyncMock()
+    msg = _chapter_msg(target_language="ja")
+
+    block_body = {
+        "original_language": "en",
+        "body": {"content": [
+            {"type": "paragraph", "content": [{"type": "text", "text": "Hello."}]},
+        ]},
+        "text_content": "Hello.",
+    }
+    book_resp = MagicMock(spec=httpx.Response)
+    book_resp.status_code = 200
+    book_resp.is_success = True
+    book_resp.raise_for_status = MagicMock()
+    book_resp.json.return_value = block_body
+    original_blocks = block_body["body"]["content"]
+
+    with patch("app.workers.chapter_worker.httpx.AsyncClient") as mock_cls, \
+         patch("app.workers.chapter_worker._get_model_context_window",
+               new_callable=AsyncMock, return_value=8192), \
+         patch("app.workers.session_translator.translate_chapter_blocks",
+               new_callable=AsyncMock,
+               return_value=(original_blocks, 0, 0, 0, 1)):  # 0/1 translated → total failure
+        mock_cls.return_value.__aenter__ = AsyncMock(
+            return_value=_patched_book_http(book_resp=book_resp))
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        with pytest.raises(_PermanentError):
+            await handle_chapter_message(msg, pool, publish_event, MagicMock(), retry_count=0)
+
+    # The chapter row was marked failed (NOT completed); a chapter_done event fired.
+    all_sql = " ".join(c.args[0] for c in db.execute.call_args_list)
+    assert "failed" in all_sql
+    assert "status='completed'" not in all_sql
+    events = [c.args[1].get("event") for c in publish_event.call_args_list]
+    assert "job.chapter_done" in events
+
+
+@pytest.mark.asyncio
+async def test_block_pipeline_partial_success_still_completes():
+    """Counterpart: a PARTIAL block result (some translated) must still complete
+    — only a TOTAL failure (0 translated) trips the guard."""
+    from app.workers.chapter_worker import handle_chapter_message
+
+    pool, db = _make_pool()
+    msg = _chapter_msg(target_language="ja")
+    block_body = {
+        "original_language": "en",
+        "body": {"content": [
+            {"type": "paragraph", "content": [{"type": "text", "text": "Hello."}]},
+        ]},
+        "text_content": "Hello.",
+    }
+    book_resp = MagicMock(spec=httpx.Response)
+    book_resp.status_code = 200
+    book_resp.is_success = True
+    book_resp.raise_for_status = MagicMock()
+    book_resp.json.return_value = block_body
+    translated_blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "こんにちは。"}]}]
+
+    with patch("app.workers.chapter_worker.httpx.AsyncClient") as mock_cls, \
+         patch("app.workers.chapter_worker._get_model_context_window",
+               new_callable=AsyncMock, return_value=8192), \
+         patch("app.workers.session_translator.translate_chapter_blocks",
+               new_callable=AsyncMock,
+               return_value=(translated_blocks, 10, 8, 1, 1)):  # 1/1 translated
+        mock_cls.return_value.__aenter__ = AsyncMock(
+            return_value=_patched_book_http(book_resp=book_resp))
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        await handle_chapter_message(msg, pool, AsyncMock(), MagicMock(), retry_count=0)
+
+    all_sql = " ".join(c.args[0] for c in db.execute.call_args_list)
+    assert "completed" in all_sql
 
 
 # ── _fail_chapter_idempotent ──────────────────────────────────────────────────

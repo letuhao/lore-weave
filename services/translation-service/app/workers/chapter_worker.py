@@ -134,22 +134,37 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             "chapter %s: using BLOCK pipeline (%d blocks, model=%s/%s)",
             chapter_id, len(blocks), msg.get("model_source"), msg.get("model_ref"),
         )
-        translated_blocks, input_tokens, output_tokens = await translate_chapter_blocks(
-            blocks=blocks,
-            source_lang=source_lang,
-            msg=msg,
-            pool=pool,
-            chapter_translation_id=chapter_translation_id,
-            llm_client=llm_client,
-            context_window=context_window,
+        translated_blocks, input_tokens, output_tokens, translated_count, translatable_count = (
+            await translate_chapter_blocks(
+                blocks=blocks,
+                source_lang=source_lang,
+                msg=msg,
+                pool=pool,
+                chapter_translation_id=chapter_translation_id,
+                llm_client=llm_client,
+                context_window=context_window,
+            )
         )
+        # Total-failure guard: if the chapter HAD translatable blocks but none
+        # were translated, the LLM step failed for every batch (e.g. the gateway
+        # rejected the operation). The block pipeline falls each failed block
+        # back to its ORIGINAL text, so `translated_blocks` looks complete —
+        # persisting it as "completed" is a silent false-success (matrix shows
+        # 完了 for an untranslated chapter). Raise so handle_chapter_message marks
+        # the chapter FAILED. (TR-4 live acceptance, 2026-05-31.)
+        if translatable_count > 0 and translated_count == 0:
+            raise _PermanentError(
+                f"translation produced no output: 0/{translatable_count} blocks "
+                f"translated (LLM step failed for every batch — see worker log)"
+            )
         # Store as JSONB
         translated_body_json = json.dumps(translated_blocks)
         translated_body_text = None  # not used for block translations
         translated_body_format = "json"
         log.info(
-            "chapter %s: block pipeline done — %d blocks, in=%s out=%s",
-            chapter_id, len(translated_blocks), input_tokens, output_tokens,
+            "chapter %s: block pipeline done — %d blocks, %d/%d translated, in=%s out=%s",
+            chapter_id, len(translated_blocks), translated_count, translatable_count,
+            input_tokens, output_tokens,
         )
     else:
         log.info(

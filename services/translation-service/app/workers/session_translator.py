@@ -823,7 +823,12 @@ async def translate_chapter_blocks(
         context_window:         Model context window in tokens.
 
     Returns:
-        (translated_blocks, total_input_tokens, total_output_tokens)
+        (translated_blocks, total_input_tokens, total_output_tokens,
+         translated_count, translatable_count)
+        translated_count/translatable_count let the caller detect a total
+        failure (translatable blocks existed but none translated) and mark the
+        chapter FAILED instead of silently persisting all-original blocks as
+        "completed".
     """
     from .block_classifier import rebuild_block, extract_translatable_text
     from .block_batcher import build_batch_plan, parse_translated_blocks
@@ -843,7 +848,7 @@ async def translate_chapter_blocks(
     )
 
     if not plan.batches:
-        return blocks, 0, 0
+        return blocks, 0, 0, 0, plan.translatable_count
 
     user_id = msg["user_id"]
 
@@ -1076,4 +1081,4 @@ async def translate_chapter_blocks(
             sorted(failed_blocks), chapter_translation_id,
         )
 
-    return result_blocks, total_input, total_output
+    return result_blocks, total_input, total_output, translated_count, plan.translatable_count
