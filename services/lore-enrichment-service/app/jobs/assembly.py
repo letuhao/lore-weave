@@ -36,6 +36,7 @@ from app.jobs.events import JobEventEmitter, make_redis_producer
 from app.jobs.proposal_store import PgProposalStore
 from app.jobs.runner import JobRunner
 from app.jobs.stages import FabricationPipeline, GapPipeline, JobPipeline, ReCookPipeline
+from app.jobs.tokens import UsageMeter
 from app.retrieval.embedding import make_embed_query_fn
 from app.retrieval.store import SourceCorpusStore
 from app.retrieval.strategy import RetrievalStrategy
@@ -106,15 +107,23 @@ async def build_live_runner(
         internal_token=settings.internal_service_token,
     )
 
+    # ── C1 token meter (DEFERRED-052) ───────────────────────────────────────────
+    # One meter per job run; the embed + generation seams record their REAL token
+    # usage into it and the runner reconciles the per-gap pre-charge against the
+    # meter's delta. Wired into the shared seams below; passed to the runner ONLY
+    # on the P1 token path (P2/P3 keep their opaque pre-charge — gate-locked).
+    meter = UsageMeter()
+
     # ── C10 retrieval (store + embed seam) ──────────────────────────────────────
     store = SourceCorpusStore(pool)
-    embed_query = make_embed_query_fn(kc, user_id=UUID(user_id))
+    embed_query = make_embed_query_fn(kc, user_id=UUID(user_id), meter=meter)
     retrieval = RetrievalStrategy(store=store, embed_query=embed_query, top_k=top_k)
 
     # ── C11 generation (real LLM completion seam by model_ref) ──────────────────
     complete = make_complete_fn(
         provider_registry_base_url=settings.provider_registry_internal_url,
         internal_token=settings.internal_service_token,
+        meter=meter,
     )
     generator = SchemaGovernedGenerator(complete=complete)
 
@@ -184,6 +193,10 @@ async def build_live_runner(
 
     pipeline: JobPipeline
     cost_strategy: EnrichmentStrategy
+    # The runner reconciles real tokens ONLY on the P1 token path; P2/P3 keep
+    # their opaque pre-charge (8.0/12.0 per gap) until their token-denomination
+    # lands at gate activation (DEFERRED-059) — meter=None → no reconcile.
+    runner_meter: UsageMeter | None = None
     if selected.technique is Technique.FABRICATION:
         # P2: the fabrication pipeline (retrieve → fabricate → verify per gap).
         # Its OWN estimate_cost (FABRICATION_GAP_COST=8.0/gap) is what the cost-cap
@@ -207,6 +220,9 @@ async def build_live_runner(
             retrieval=retrieval, generator=generator, verifier=verifier
         )
         cost_strategy = GapCostModel()
+        # P1 is token-denominated: hand the runner the meter so it reconciles each
+        # gap's pre-charge to the REAL tokens the embed + LLM seams recorded (C1).
+        runner_meter = meter
 
     # ── persistence (C2) ────────────────────────────────────────────────────────
     pg_store = PgProposalStore(pool)
@@ -235,5 +251,7 @@ async def build_live_runner(
         cost_strategy=cost_strategy,
         emitter=emitter,
         budget=budget,
+        # C1: the meter on the P1 token path (None for P2/P3 → no reconcile yet).
+        meter=runner_meter,
     )
     return LiveRunnerBundle(runner, knowledge_client=kc)

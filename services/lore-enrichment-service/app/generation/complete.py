@@ -31,6 +31,7 @@ from typing import Any
 import httpx
 
 from app import metrics
+from app.jobs.tokens import TokenUsage, UsageMeter, estimate_tokens
 from app.strategies.base import StrategyContext
 
 __all__ = [
@@ -38,6 +39,7 @@ __all__ = [
     "MODEL_SOURCE",
     "make_complete_fn",
     "collect_stream_text",
+    "collect_stream_usage",
 ]
 
 #: provider-registry model source — ``user_model`` resolves a BYOK user_model row
@@ -96,11 +98,58 @@ def collect_stream_text(sse_text: str) -> str:
     return "".join(parts)
 
 
+def collect_stream_usage(sse_text: str) -> TokenUsage | None:
+    """Parse the LLM stream's ``event: usage`` frame into a :class:`TokenUsage`.
+
+    The provider-registry stream emits one terminal ``usage`` frame carrying
+    ``{"input_tokens": …, "output_tokens": …, "reasoning_tokens": …?}`` (C1 token
+    metering, DEFERRED-052). Reasoning tokens FOLD INTO output — matching how the
+    platform bills reasoning at the output rate (provider-registry stream_billing).
+    Returns ``None`` when no usage frame is present (provider omitted it) so the
+    caller can fall back to a char-based estimate. Tolerant of blank/partial lines.
+    """
+    found: TokenUsage | None = None
+    event_name: str | None = None
+    data_lines: list[str] = []
+
+    def _flush() -> None:
+        nonlocal event_name, data_lines, found
+        if event_name is None and not data_lines:
+            return
+        raw = "\n".join(data_lines).strip()
+        try:
+            payload: dict[str, Any] = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            payload = {}
+        kind = event_name or payload.get("event")
+        if kind == "usage":
+            # Clamp to >= 0: a buggy/hostile upstream must never REDUCE metered
+            # spend with negative counts (the cap is a safety control).
+            inp = max(0, int(payload.get("input_tokens", 0) or 0))
+            out = max(0, int(payload.get("output_tokens", 0) or 0))
+            reasoning = max(0, int(payload.get("reasoning_tokens", 0) or 0))
+            found = TokenUsage(input_tokens=inp, output_tokens=out + reasoning)
+        event_name = None
+        data_lines = []
+
+    for line in sse_text.splitlines():
+        if line == "":
+            _flush()
+            continue
+        if line.startswith("event:"):
+            event_name = line[len("event:"):].strip()
+        elif line.startswith("data:"):
+            data_lines.append(line[len("data:"):].lstrip())
+    _flush()
+    return found
+
+
 def make_complete_fn(
     *,
     provider_registry_base_url: str,
     internal_token: str,
     timeout_s: float = 180.0,
+    meter: UsageMeter | None = None,
 ):
     """Build a real C11 ``CompleteFn`` over provider-registry ``/internal/llm/stream``.
 
@@ -112,6 +161,14 @@ def make_complete_fn(
 
     The timeout is generous to tolerate a cold (JIT-loading) LM Studio model on
     the first call; the demo wrapper additionally retries on a retryable error.
+
+    ``meter`` (C1 / DEFERRED-052): when supplied, the REAL token usage of each
+    completion is recorded into it for the per-job cost-cap reconcile — harvested
+    from the stream's ``usage`` frame, or (when the provider omits it) ESTIMATED
+    from the prompt (input) + collected text (output) via the platform
+    char-convention so generation is ALWAYS metered. The return type is unchanged
+    (``str``) — metering is a side effect on the meter, NOT a contract change, so
+    the fabrication/recook seams + every test stub are unaffected.
     """
 
     base = provider_registry_base_url.rstrip("/")
@@ -120,14 +177,32 @@ def make_complete_fn(
         # C18 — count the real LLM completion call by outcome (NO model name in
         # the label; the model is resolved by model_ref at runtime).
         try:
-            text = await _complete_inner(prompt, context)
+            text, usage = await _complete_inner(prompt, context)
         except Exception:
             metrics.llm_calls_total.labels(outcome="error").inc()
             raise
         metrics.llm_calls_total.labels(outcome="ok").inc()
+        if meter is not None:
+            # Real usage frame when present AND informative; else the platform
+            # char-estimate of prompt (input) + generated text (output). A frame
+            # that is absent (None) OR present-but-empty (total == 0, e.g. a
+            # provider that emits `event: usage` without counts) is NOT a real
+            # measurement — fall back to the estimate so a gap is NEVER metered
+            # as 0 tokens (which would silently weaken the cost-cap, DEFERRED-052).
+            if usage is not None and usage.total > 0:
+                meter.add(usage)
+            else:
+                meter.add(
+                    TokenUsage(
+                        input_tokens=estimate_tokens(prompt),
+                        output_tokens=estimate_tokens(text),
+                    )
+                )
         return text
 
-    async def _complete_inner(prompt: str, context: StrategyContext) -> str:
+    async def _complete_inner(
+        prompt: str, context: StrategyContext
+    ) -> tuple[str, TokenUsage | None]:
         if not context.model_ref:
             raise CompletionSeamError(
                 "StrategyContext.model_ref is required for generation "
@@ -173,6 +248,9 @@ def make_complete_fn(
                 "LLM stream produced no token text (empty completion)",
                 retryable=True,
             )
-        return text
+        # Harvest the terminal usage frame (None when the provider omits it; the
+        # caller then estimates from prompt+text — DEFERRED-052).
+        usage = collect_stream_usage(resp.text)
+        return text, usage
 
     return _complete

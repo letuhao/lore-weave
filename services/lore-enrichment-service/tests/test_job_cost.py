@@ -141,6 +141,41 @@ def test_gap_cost_model_rejects_negative():
         GapCostModel(retrieval_gap_cost=-1.0)
 
 
+# ── C1 (DEFERRED-052): cost is now denominated in REAL TOKENS ─────────────────
+
+
+def test_per_gap_cost_is_token_magnitude_not_unit_opaque():
+    """Re-denomination: a P1 gap pre-charges realistic TOKEN counts (embed query +
+    LLM completion), not the old 1.0+4.0 opaque units — so the cap, expressed in
+    tokens, matches the platform (chat/knowledge) convention."""
+    model = GapCostModel()
+    # Generation dominates; both legs are token-scale (tens→thousands), not ~1.
+    assert GENERATION_GAP_COST >= RETRIEVAL_GAP_COST
+    assert model.per_gap_cost == pytest.approx(PER_GAP_WORKING_COST)
+    assert PER_GAP_WORKING_COST >= 100.0  # token magnitude, not a handful of units
+
+
+def test_budget_reconcile_trues_up_to_actual_above_estimate():
+    """Pre-charge an estimate, then reconcile to a higher ACTUAL: spend reflects
+    the real tokens (one-gap overshoot), and further charges are then blocked."""
+    b = JobCostBudget(2000.0, eval_reserve=0.0)  # working cap 2000 tokens
+    assert b.charge(1264.0) is True  # the per-gap pre-estimate
+    b.reconcile(500.0)  # actual was 1764 → +500 over the estimate
+    assert b.spent == pytest.approx(1764.0)
+    # a second gap's pre-estimate (1264) would now breach 2000 → guarded next.
+    assert b.would_exceed(1264.0) is True
+
+
+def test_budget_reconcile_refunds_when_actual_below_estimate():
+    """A gap that under-runs its estimate gives headroom back (reconcile down) so
+    more cheap gaps fit under the same cap."""
+    b = JobCostBudget(2000.0, eval_reserve=0.0)
+    b.charge(1264.0)
+    b.reconcile(-1000.0)  # actual was only 264
+    assert b.spent == pytest.approx(264.0)
+    assert b.remaining == pytest.approx(1736.0)
+
+
 def test_assembly_wires_nonzero_cost_not_template():
     """Guard the wiring: the assembly must NOT inject the free TemplateStrategy
     estimate (cost 0.0) as the cost path — that is exactly the inert-cap defect.

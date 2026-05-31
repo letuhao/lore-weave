@@ -161,8 +161,9 @@ def test_fabrication_is_p2_technique():
 
 
 def test_cost_is_higher_than_p1_per_gap():
-    # P2 must declare a higher per-gap cost than P1 retrieval (1.0) so the cost-cap
-    # pauses/escalates a runaway fabrication batch sooner (Q-R2 cost discipline).
+    # P2 must declare a higher per-gap TOKEN pre-charge than P1 retrieval's
+    # RETRIEVAL_GAP_COST (multi-pass fabrication > single P1 generation) so the
+    # cost-cap pauses/escalates a runaway fabrication batch sooner (Q-R2).
     from app.jobs.cost import RETRIEVAL_GAP_COST
 
     s = _strategy()

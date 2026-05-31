@@ -183,8 +183,9 @@ def test_recook_is_p3_technique():
 
 
 def test_cost_is_highest_tier_per_gap():
-    # P3 must declare the highest per-gap cost (> P2 fabrication 8.0 > P1 1.0) so
-    # the cost-cap pauses/escalates a runaway re-cook batch soonest.
+    # P3 must declare the highest per-gap TOKEN pre-charge (re-cook > P2
+    # fabrication > P1 retrieval) so the cost-cap pauses/escalates a runaway
+    # re-cook batch soonest.
     from app.jobs.cost import RETRIEVAL_GAP_COST
     from app.strategies.fabrication import FABRICATION_GAP_COST
 

@@ -114,12 +114,14 @@ LicenseLookupFn = Callable[[str], Awaitable["SourceLicense | None"]]
 #: strictly ``0 < c < 1.0``.
 RECOOK_CONFIDENCE: float = GENERATION_CONFIDENCE
 
-#: Per-gap abstract cost. Re-cook is P3 — the LAST, highest-cost/highest-risk
-#: tier: it does retrieval + a licensing resolution per source + the richest LLM
-#: re-contextualisation prompt. Declared HIGHER than P2 fabrication (8.0) so the
+#: Per-gap TOKEN pre-charge (C1 / DEFERRED-052: denominated in real tokens, like
+#: P1/P2). Re-cook is P3 — the LAST, highest-cost/highest-risk tier: retrieval + a
+#: licensing resolution per source + the richest, re-generating LLM
+#: re-contextualisation prompt. Declared HIGHER than P2 fabrication (3000) so the
 #: C8 cost-cap pauses/escalates a runaway re-cook batch SOONEST (cost discipline,
-#: Q-R2 — P3 is last and most expensive). Unit-opaque — NOT currency.
-RECOOK_GAP_COST: float = 12.0
+#: Q-R2 — P3 is last and most expensive). Conservative PRE-charge; P3's post-call
+#: meter-reconcile is deferred until the eval gate activates re-cook (DEFERRED-059).
+RECOOK_GAP_COST: float = 4500.0
 
 
 class ReCookError(RuntimeError):

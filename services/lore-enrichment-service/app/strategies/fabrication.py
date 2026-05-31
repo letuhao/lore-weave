@@ -98,12 +98,15 @@ CompleteFn = Callable[[str, StrategyContext], Awaitable[str]]
 #: gated harder by the human review. H0: strictly ``0 < c < 1.0``.
 FABRICATION_CONFIDENCE: float = GENERATION_CONFIDENCE
 
-#: Per-gap abstract cost. Fabrication is P2 (higher cost than P1 retrieval): it
-#: does the retrieval embed + assembles the KG neighbourhood + a richer LLM
-#: completion (longer prompt, more reasoning). Declared HIGHER than the P1 per-gap
-#: cost so the C8 cost-cap pauses/escalates a runaway fabrication batch sooner.
-#: Unit-opaque (same abstract unit as every other CostEstimate) — NOT currency.
-FABRICATION_GAP_COST: float = 8.0
+#: Per-gap TOKEN pre-charge (C1 / DEFERRED-052: denominated in real tokens, like
+#: P1). Fabrication is P2 (higher cost than P1 retrieval): it does the retrieval
+#: embed + assembles the KG neighbourhood + a richer, multi-pass LLM completion
+#: (longer prompt, more reasoning), so it carries a larger per-gap token budget
+#: than P1 generation (~1200). Declared HIGHER than the P1 per-gap cost so the C8
+#: cost-cap pauses/escalates a runaway fabrication batch sooner. NOTE: this is a
+#: conservative PRE-charge; P2's post-call meter-reconcile is deferred until the
+#: eval gate activates fabrication (DEFERRED-059) — until then it is gate-locked.
+FABRICATION_GAP_COST: float = 3000.0
 
 
 class NeighborFact(BaseModel):

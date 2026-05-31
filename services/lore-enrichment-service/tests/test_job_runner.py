@@ -25,6 +25,7 @@ from app.jobs.events import JobEventEmitter, JobEventType
 from app.jobs.proposal_store import InMemoryProposalStore
 from app.jobs.runner import JobRunner
 from app.jobs.stages import GapPipeline
+from app.jobs.tokens import TokenUsage, UsageMeter
 from app.retrieval.strategy import GroundedProposal, GroundingRef
 from app.strategies.base import CostEstimate, StrategyContext, Technique
 from app.strategies.template import TemplateStrategy
@@ -135,6 +136,40 @@ def _pipeline(*, grounded: bool = True) -> GapPipeline:
 def _emitter(producer=None) -> JobEventEmitter:
     return JobEventEmitter(
         producer, job_id="job-1", project_id=_PROJECT, user_id=_USER
+    )
+
+
+# ── C1 token-metering helpers: seams that record into a shared meter ──────────
+
+
+class _MeteredRetrieval(_FakeRetrieval):
+    """A retrieval stub that records a fixed embed token-spend per gap into the
+    meter (simulating the real embed seam) before grounding."""
+
+    def __init__(self, meter, *, embed_tokens: int, grounded: bool = True) -> None:
+        super().__init__(grounded=grounded)
+        self._meter = meter
+        self._embed_tokens = embed_tokens
+
+    async def run(self, gaps, context):
+        for _ in gaps:
+            self._meter.add(TokenUsage(input_tokens=self._embed_tokens))
+        return await super().run(gaps, context)
+
+
+def _metered_complete(meter, *, gen_tokens: int, text: str = _VALID_COMPLETION):
+    async def _fn(prompt, ctx):
+        meter.add(TokenUsage(output_tokens=gen_tokens))  # simulate LLM usage frame
+        return text
+    return _fn
+
+
+def _metered_pipeline(meter, *, embed_tokens: int, gen_tokens: int,
+                      grounded: bool = True) -> GapPipeline:
+    return GapPipeline(
+        retrieval=_MeteredRetrieval(meter, embed_tokens=embed_tokens, grounded=grounded),
+        generator=SchemaGovernedGenerator(complete=_metered_complete(meter, gen_tokens=gen_tokens)),
+        verifier=_verifier(),
     )
 
 
@@ -479,6 +514,107 @@ async def test_generation_error_surfaces_as_skip():
     assert outcome.final_state == "completed"
     assert outcome.proposals == []
     assert outcome.skipped_gaps == ["loc:蓬萊"]
+
+
+# ── C1 (DEFERRED-052): per-gap reconcile to REAL tokens via the UsageMeter ─────
+
+
+def _metered_runner(*, store, meter, budget, embed_tokens, gen_tokens,
+                    grounded=True, emitter=None) -> JobRunner:
+    """A runner wired like build_live_runner's P1 branch: GapCostModel pre-charge
+    + the UsageMeter the seams feed → per-gap reconcile to real tokens."""
+    return JobRunner(
+        store=store,
+        pipeline=_metered_pipeline(
+            meter, embed_tokens=embed_tokens, gen_tokens=gen_tokens, grounded=grounded
+        ),
+        cost_strategy=GapCostModel(),
+        emitter=emitter or _emitter(),
+        budget=budget,
+        meter=meter,
+    )
+
+
+async def test_reconcile_down_lets_cheap_gaps_fit_under_cap():
+    """A gap that under-runs its pre-charged estimate refunds headroom, so more
+    cheap gaps fit. With pre-charge ALONE (no reconcile) the same cap would pause
+    after the first gap."""
+    from app.jobs.cost import PER_GAP_WORKING_COST
+
+    store = InMemoryProposalStore()
+    meter = UsageMeter()
+    # Real spend = 10 embed + 20 gen = 30 tokens/gap — far below the 1264 estimate.
+    # working cap 1500 fits each gap's PRE-charge (≤ ~1354) only because reconcile
+    # keeps accumulated spend tiny; 2 * 1264 = 2528 > 1500 would pause at gap 2.
+    assert 2 * PER_GAP_WORKING_COST > 1500.0
+    budget = JobCostBudget(1500.0, eval_reserve=0.0)
+    runner = _metered_runner(
+        store=store, meter=meter, budget=budget, embed_tokens=10, gen_tokens=20,
+    )
+    gaps = [_gap(n) for n in _LOCATIONS]  # 4 gaps
+    outcome = await runner.run_job(job_id="job-1", gaps=gaps, context=_ctx())
+
+    assert outcome.final_state == "completed"
+    assert len(outcome.proposals) == 4  # all fit once reconciled to real tokens
+    assert outcome.spent == pytest.approx(4 * 30)  # real tokens, not 4 * 1264
+    assert meter.total_tokens == 4 * 30
+
+
+async def test_reconcile_up_overshoots_one_gap_then_pauses():
+    """A gap that OVER-runs its estimate trues spend up past the working cap (the
+    accepted one-gap overshoot, eval-reserve-absorbed); the cap then guards the
+    NEXT gap's pre-charge → pause."""
+    store = InMemoryProposalStore()
+    meter = UsageMeter()
+    # Real gen spend (2000) exceeds the per-gap estimate (1264) → reconcile UP.
+    budget = JobCostBudget(1500.0, eval_reserve=0.0)
+    runner = _metered_runner(
+        store=store, meter=meter, budget=budget, embed_tokens=0, gen_tokens=2000,
+    )
+    gaps = [_gap(n) for n in _LOCATIONS]
+    outcome = await runner.run_job(job_id="job-1", gaps=gaps, context=_ctx())
+
+    assert outcome.final_state == "paused"
+    assert len(outcome.proposals) == 1  # gap 1 ran; reconcile pushed spend to 2000
+    assert outcome.spent == pytest.approx(2000.0)  # overshot the 1500 working cap
+    assert outcome.spent > budget.working_cap  # the accepted one-gap overshoot
+
+
+async def test_skip_reconciles_embed_only_spend_not_full_estimate():
+    """An ungroundable gap is skipped AFTER the embed ran (generation refused on
+    empty grounding). Its real spend is the embed estimate only — the pre-charged
+    1264 is reconciled down to the embed tokens, not left fully charged."""
+    store = InMemoryProposalStore()
+    meter = UsageMeter()
+    runner = _metered_runner(
+        store=store, meter=meter, budget=JobCostBudget(None),
+        embed_tokens=10, gen_tokens=99, grounded=False,  # no grounding → gen refuses
+    )
+    outcome = await runner.run_job(
+        job_id="job-1", gaps=[_gap("蓬萊")], context=_ctx()
+    )
+    assert outcome.final_state == "completed"
+    assert outcome.skipped_gaps == ["loc:蓬萊"]
+    # only the embed ran (generation never called); spend = embed estimate only.
+    assert meter.total_tokens == 10
+    assert outcome.spent == pytest.approx(10.0)  # NOT the 1264 pre-charge
+
+
+async def test_no_meter_keeps_pre_charge_estimate_as_spend():
+    """Without a meter (P2/P3 opaque path), spend stays the pre-charged estimate
+    — no reconcile happens (back-compat)."""
+    from app.jobs.cost import PER_GAP_WORKING_COST
+
+    store = InMemoryProposalStore()
+    runner = _real_runner(  # GapCostModel, NO meter
+        store=store, pipeline=_pipeline(), budget=JobCostBudget(None),
+        emitter=_emitter(),
+    )
+    outcome = await runner.run_job(
+        job_id="job-1", gaps=[_gap("蓬萊")], context=_ctx()
+    )
+    assert outcome.final_state == "completed"
+    assert outcome.spent == pytest.approx(PER_GAP_WORKING_COST)  # estimate, unreconciled
 
 
 # ── persistence H0 guard + SSE collector (pure unit) ──────────────────────────

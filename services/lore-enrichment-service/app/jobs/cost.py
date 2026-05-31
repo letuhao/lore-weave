@@ -47,26 +47,28 @@ __all__ = [
 #: 15% leaves the bulk for enrichment while guaranteeing the eval can run.
 DEFAULT_EVAL_RESERVE_FRACTION: float = 0.15
 
-# ── the REAL per-gap cost (BLOCK-1 fix) ───────────────────────────────────────
+# ── the REAL per-gap cost in TOKENS (C1, DEFERRED-052) ────────────────────────
 # A P1 gap does TWO billable calls: one retrieval query-embed (C10, the embed
-# seam) + one LLM completion (C11, the generation seam). The cost UNIT is opaque
-# — the same abstract "work unit" the strategy CostEstimate + the job cap trade
-# in (NOT currency; see cost_guardrail). The point is that it is NON-ZERO so a
-# runaway local-LLM job is PAUSED by the cap before unbounded overshoot, instead
-# of the inert ``TemplateStrategy`` free-scaffold estimate (0.0) the assembly
-# used to wire — that estimate models the FREE scaffold, not the real LLM/embed
-# work, so the cap never fired in production (the inert-cap defect).
+# seam) + one LLM completion (C11, the generation seam). The cost UNIT is now
+# REAL TOKENS (PO ruling, audit C1) — consistent with how the platform's other
+# features (chat / knowledge) meter spend (provider-registry bills input+output
+# (+reasoning) tokens). These constants are the CONSERVATIVE PRE-CHARGE per gap:
+# charged BEFORE the gap so a runaway local-LLM job is PAUSED by the cap before
+# unbounded overshoot; the runner then RECONCILES to the ACTUAL tokens after the
+# gap (harvested from the LLM ``usage`` frame + the embed query estimate, via the
+# per-job ``UsageMeter`` → ``JobCostBudget.reconcile``). A reconcile down refunds
+# headroom; a reconcile up may overshoot one gap (the eval-reserve absorbs it).
 #
-# These mirror the per-gap unit costs the real strategies already declare:
-#   * retrieval — ``RetrievalStrategy._EMBED_UNIT_COST`` (1 embed call / gap)
-#   * generation — one LLM completion / gap; the generator does the heavy work,
-#     so it carries the larger share of the per-gap budget.
-#: Retrieval query-embed cost per gap (one /internal/embed call).
-RETRIEVAL_GAP_COST: float = 1.0
-#: LLM completion cost per gap (one /internal/llm/stream generation call). The
-#: generation is the dominant cost; weighted above the embed accordingly.
-GENERATION_GAP_COST: float = 4.0
-#: Truthful per-gap working cost charged against the cap = embed + generation.
+# The old values (1.0 + 4.0 opaque units) modelled "work units", not tokens —
+# the cap could not be set in a unit consistent with the rest of the platform.
+#: Conservative per-gap embed-query token PRE-CHARGE (one /internal/embed call;
+#: the query is a short name + dimension labels — tens of CJK tokens).
+RETRIEVAL_GAP_COST: float = 64.0
+#: Conservative per-gap generation token PRE-CHARGE (one /internal/llm/stream
+#: call: the grounding-citing prompt + the completion). Generation dominates, so
+#: it carries the larger share. Reconciled to the real ``usage`` count after.
+GENERATION_GAP_COST: float = 1200.0
+#: Per-gap working PRE-CHARGE in tokens = embed query + generation.
 PER_GAP_WORKING_COST: float = RETRIEVAL_GAP_COST + GENERATION_GAP_COST
 
 
@@ -81,17 +83,20 @@ class GapCostModel:
     runaway local-LLM job is paused before it overshoots, because each gap now
     has a real, positive charge.
 
-    Cost is provider-agnostic + unit-opaque (the same abstract unit the cap +
-    the strategy estimates use — NOT currency). The estimate is a conservative
-    PRE-charge per gap (charged before the gap runs, so the cap can pause a
-    runaway BEFORE it incurs the next gap's LLM call). Pure + side-effect-free.
+    Cost is provider-agnostic and denominated in REAL TOKENS (C1, DEFERRED-052) —
+    the same unit the platform's other features meter in. The estimate is a
+    conservative PRE-charge per gap (charged before the gap runs, so the cap can
+    pause a runaway BEFORE it incurs the next gap's LLM call). Pure +
+    side-effect-free.
 
-    TODO(D-C14-EMBED-METER): this is a fixed PRE-charge, NOT post-call token
-    accounting — the actual embed/LLM token counts the clients report are not
-    fed back into the budget. Fine for the single-call P1 strategy; P2/P3
-    multi-call strategies (fabrication multi-pass, recook re-generate) will want
-    truthful post-call token metering (charge actual tokens, still check the cap
-    BEFORE the next gap). See docs/deferred/DEFERRED.md #052.
+    C1 (DEFERRED-052) RESOLVED for P1: the runner now RECONCILES this pre-charge
+    to the ACTUAL tokens after each gap (harvested from the LLM ``usage`` frame +
+    the embed-query estimate via the per-job ``UsageMeter`` →
+    ``JobCostBudget.reconcile``), still checking the cap BEFORE the next gap.
+    P2/P3 (fabrication multi-pass, recook re-generate) still pre-charge their own
+    opaque per-gap estimate and are NOT yet token-reconciled — they are gate-
+    locked (not live); wiring their meter-reconcile is tracked for gate
+    activation. See docs/deferred/DEFERRED.md (#052 resolved-for-P1, #059 P2/P3).
     """
 
     technique = Technique.RETRIEVAL
@@ -222,6 +227,16 @@ class JobCostBudget:
         """Charge a unit against the working cap (pure accounting). Returns False
         and adds nothing if it would dip into the eval reserve / breach the cap."""
         return self._guard.charge(next_cost)
+
+    def reconcile(self, delta: float) -> None:
+        """Reconcile the working spend by ``delta`` after a gap ran (C1, token
+        metering). Delegates to the guardrail's unconditional
+        :meth:`~app.jobs.cost_guardrail.CostGuardrail.record_actual`: the gap
+        already executed, so the REAL token delta (actual − pre-charged estimate)
+        is recorded even if it overshoots the working cap (the eval-reserve
+        absorbs a one-gap overshoot; the next pre-charge then pauses). A negative
+        ``delta`` refunds headroom when the gap under-ran its estimate."""
+        self._guard.record_actual(delta)
 
     async def charge_or_pause(
         self, next_cost: float, machine: JobStateMachine

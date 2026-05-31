@@ -56,6 +56,7 @@ from app.jobs.proposal_store import (
 )
 from app.jobs.stages import JobPipeline
 from app.jobs.state_machine import JobRecord, JobStateMachine, PersistFn
+from app.jobs.tokens import UsageMeter
 from app.strategies.base import EnrichmentStrategy, StrategyContext
 from app.strategies.fabrication import FabricationError
 
@@ -112,6 +113,7 @@ class JobRunner:
         emitter: JobEventEmitter,
         budget: JobCostBudget,
         persist_state: PersistFn | None = None,
+        meter: UsageMeter | None = None,
     ) -> None:
         self._store = store
         self._pipeline = pipeline
@@ -119,6 +121,10 @@ class JobRunner:
         self._emitter = emitter
         self._budget = budget
         self._persist_state = persist_state
+        # C1 (DEFERRED-052): when a meter is wired (P1 token path), the runner
+        # reconciles each gap's pre-charged estimate to the REAL tokens the seams
+        # recorded. None → no reconcile (P2/P3 opaque pre-charge, gate-locked).
+        self._meter = meter
 
     @property
     def store(self) -> ProposalStore:
@@ -217,6 +223,12 @@ class JobRunner:
                     return outcome
 
                 # ── stage pipeline (C10 → C11 → C12) ────────────────────────────
+                # C1 (DEFERRED-052): snapshot the meter AFTER the pre-charge and
+                # BEFORE the gap runs; the per-gap token delta (post − pre) is the
+                # real spend the runner reconciles against the pre-charged estimate.
+                before_tokens = (
+                    self._meter.total_tokens if self._meter is not None else 0
+                )
                 stage_started = time.monotonic()
                 try:
                     stage = await self._pipeline.run_gap(gap, context, jwt=jwt)
@@ -227,9 +239,17 @@ class JobRunner:
                     # GenerationError — an ungrounded fabrication is refused the
                     # same way (never free invention). Record + continue; other
                     # gaps still enrich.
+                    # Reconcile the tokens that DID run (the embed query, and any
+                    # generation up to the refusal) so a skipped gap's real spend
+                    # is charged truthfully — not the full pre-estimate.
+                    self._reconcile_gap(unit_cost, before_tokens)
                     logger.info("skipping gap %s: %s", gap_ref, exc)
                     outcome.skipped_gaps.append(gap_ref)
                     continue
+
+                # The gap produced content: reconcile its pre-charged estimate to
+                # the REAL tokens the embed + LLM seams recorded into the meter.
+                self._reconcile_gap(unit_cost, before_tokens)
 
                 # ── persist (quarantined, H0) ───────────────────────────────────
                 # The proposal confidence reflects GENERATION (the facts now hold
@@ -339,6 +359,21 @@ class JobRunner:
             outcome.error = err
             outcome.spent = self._budget.spent
             return outcome
+
+    def _reconcile_gap(self, pre_estimate: float, before_tokens: int) -> None:
+        """Reconcile one gap's pre-charged estimate to the REAL tokens it spent
+        (C1, DEFERRED-052). No-op when no meter is wired (P2/P3 opaque path).
+
+        ``before_tokens`` is the meter total snapshotted right after the
+        pre-charge; ``meter.total_tokens − before_tokens`` is this gap's actual
+        token spend (sequential-run invariant). The budget is trued up by
+        ``actual − pre_estimate``: down (refund headroom) when the gap under-ran
+        its estimate, up (one-gap overshoot, eval-reserve-absorbed) when it
+        over-ran. The cap is still guarded BEFORE the next gap's pre-charge."""
+        if self._meter is None:
+            return
+        actual = self._meter.total_tokens - before_tokens
+        self._budget.reconcile(actual - pre_estimate)
 
     @staticmethod
     def _gap_ref(gap: Gap) -> str:
