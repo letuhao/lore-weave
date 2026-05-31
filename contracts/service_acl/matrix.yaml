@@ -173,25 +173,30 @@ services:
       L1.L.3 — admin capacity-override (S5-D5 Tier-2). Future cycle 36 adds
       the full ~30 commands. Each subcommand owns a precise grant set; this
       entry seeds the Tier-2 capacity surface.
+      Object storage is not modeled in this table matrix: `archive fetch`
+      (073) does a read-only GET on the lw-event-archive MinIO bucket
+      (mirrors archive-worker's prose-documented bucket access).
     permissions:
       scaling_events:
         - INSERT
         - SELECT
-      # read-only: `reality stats` (073) summary query
+      # read-only: `reality stats` summary query + `projection drift-check`
+      # (073) fleet enumeration of realities to read each shard's drift ledger
       reality_registry:
         - SELECT
       # read-only: `migration status` (073) per-reality migration ledger
       instance_schema_migrations:
         - SELECT
-      # read-only: `archive list` (073) per-reality archive ledger
+      # read-only: `archive list` + `archive fetch` (073) per-reality archive ledger
       archive_state:
+        - SELECT
+      # read-only: `projection drift-check` (073) per-reality drift summary ledger
+      projection_drift_state:
         - SELECT
       admin_action_audit:
         - INSERT
       meta_write_audit:
         - INSERT
-      reality_registry:
-        - SELECT
 
   # ── Cycle 11 (L2.J) — archive-worker
   - name: archive-worker

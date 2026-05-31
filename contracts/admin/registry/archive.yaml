@@ -22,7 +22,7 @@ commands:
     params:
       - {name: reality_id, type: uuid,   required: true,  description: "Target reality UUID"}
       - {name: month,      type: string, required: true,  description: "YYYY-MM"}
-      - {name: out_path,   type: path,   required: false, description: "Destination file (default stdout)"}
+      - {name: out_path,   type: path,   required: false, description: "Destination file for the .parquet blob; if omitted, only metadata + header-integrity is printed (binary is never streamed to stdout)"}
     impact_class: tier-3-informational
     dry_run_required: false
     double_approval_required: false

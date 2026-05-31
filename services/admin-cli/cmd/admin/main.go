@@ -33,6 +33,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,6 +50,7 @@ import (
 	"github.com/loreweave/foundation/sdks/go/piikms"
 	"github.com/loreweave/foundation/services/admin-cli/internal/audit_emitter"
 	"github.com/loreweave/foundation/services/admin-cli/internal/commands"
+	"github.com/loreweave/foundation/services/admin-cli/internal/commands/miniofetch"
 	"github.com/loreweave/foundation/services/admin-cli/internal/framework"
 )
 
@@ -381,6 +383,80 @@ func buildArchiveListHandler() (framework.Handler, func(), error) {
 	return h, metaPool.Close, nil
 }
 
+// buildProjectionDriftCheckHandler wires the read-only `projection drift-check`
+// command (073) to a FLEET-WIDE read of projection_drift_state (the registry entry
+// has no reality_id → all realities; D1). Owns the meta pool (reality enumeration);
+// the reader opens each reality's shard pool per-read via buildShardDSN. NotWired
+// without META_DATABASE_URL; per-reality reads also need SHARD_DB_* at run time.
+func buildProjectionDriftCheckHandler() (framework.Handler, func(), error) {
+	noop := func() {}
+	dsn := os.Getenv("META_DATABASE_URL")
+	if dsn == "" {
+		return nil, noop, nil
+	}
+	metaPool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		return nil, noop, fmt.Errorf("projection-drift-check meta DB connect: %w", err)
+	}
+	reader := commands.NewPgProjectionDriftReader(metaPool, buildShardDSN)
+	h := func(ctx context.Context, inv framework.Invocation) (string, error) {
+		sampleSize := 100 // registry default
+		if raw := strings.TrimSpace(inv.Params["sample_size"]); raw != "" {
+			n, perr := strconv.Atoi(raw)
+			if perr != nil {
+				return "", fmt.Errorf("invalid --sample_size %q: %w", raw, perr)
+			}
+			sampleSize = n
+		}
+		return commands.RunProjectionDriftCheck(ctx, inv.Params["projection_name"], sampleSize, reader)
+	}
+	return h, metaPool.Close, nil
+}
+
+// buildArchiveFetchHandler wires the read-only `archive fetch` command (073): resolve
+// the object key from the per-reality archive_state manifest, then GET the blob from
+// the lw-event-archive MinIO bucket + verify the LWP1 header. Owns the meta pool (DSN
+// resolution) + a minio fetcher (admin-cli's own wrapper; D4). NotWired without
+// META_DATABASE_URL; the blob fetch also needs MINIO_* env. A MinIO wiring error
+// leaves the command NotWired (the meta pool still closes).
+func buildArchiveFetchHandler() (framework.Handler, func(), error) {
+	noop := func() {}
+	dsn := os.Getenv("META_DATABASE_URL")
+	if dsn == "" {
+		return nil, noop, nil
+	}
+	metaPool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		return nil, noop, fmt.Errorf("archive-fetch meta DB connect: %w", err)
+	}
+	ep, ak, sk := os.Getenv("MINIO_ENDPOINT"), os.Getenv("MINIO_ACCESS_KEY"), os.Getenv("MINIO_SECRET_KEY")
+	if ep == "" || ak == "" || sk == "" {
+		metaPool.Close()
+		return nil, noop, fmt.Errorf("archive fetch needs MINIO_ENDPOINT / MINIO_ACCESS_KEY / MINIO_SECRET_KEY")
+	}
+	fetcher, err := miniofetch.New(context.Background(), miniofetch.Config{
+		Endpoint: ep, AccessKey: ak, SecretKey: sk, UseSSL: os.Getenv("MINIO_USE_SSL") == "true",
+	})
+	if err != nil {
+		metaPool.Close()
+		return nil, noop, fmt.Errorf("archive-fetch minio connect: %w", err)
+	}
+	h := func(ctx context.Context, inv framework.Invocation) (string, error) {
+		rid, err := uuid.Parse(inv.Params["reality_id"])
+		if err != nil {
+			return "", fmt.Errorf("invalid reality_id %q: %w", inv.Params["reality_id"], err)
+		}
+		rpool, err := perRealityPool(ctx, metaPool, rid)
+		if err != nil {
+			return "", err
+		}
+		defer rpool.Close()
+		return commands.RunArchiveFetch(ctx, rid, inv.Params["month"], inv.Params["out_path"], inv.DryRun,
+			commands.NewPgArchiveMetaReader(rpool), fetcher)
+	}
+	return h, metaPool.Close, nil
+}
+
 // registryDirEnv lets ops override the registry path (defaults to the
 // canonical contracts/admin/registry relative to repo root).
 const registryDirEnv = "ADMIN_CLI_REGISTRY_DIR"
@@ -566,6 +642,32 @@ func run(args []string, stdout, stderr *os.File) int {
 		}
 	}
 	defer closeArchive()
+
+	// Read-only `projection drift-check` (073) — fleet-wide drift ledger read.
+	closeDrift := func() {}
+	if c.Name == "projection drift-check" {
+		dh, dc, derr := buildProjectionDriftCheckHandler()
+		closeDrift = dc
+		if derr != nil {
+			fmt.Fprintf(stderr, "admin: projection-drift-check handler not wired: %v\n", derr)
+		} else if dh != nil {
+			handlers.Register("projection drift-check", dh)
+		}
+	}
+	defer closeDrift()
+
+	// Read-only `archive fetch` (073) — per-reality archive_state lookup + MinIO GET.
+	closeFetch := func() {}
+	if c.Name == "archive fetch" {
+		fh, fc, ferr := buildArchiveFetchHandler()
+		closeFetch = fc
+		if ferr != nil {
+			fmt.Fprintf(stderr, "admin: archive-fetch handler not wired: %v\n", ferr)
+		} else if fh != nil {
+			handlers.Register("archive fetch", fh)
+		}
+	}
+	defer closeFetch()
 
 	handler := handlers.Resolve(c)
 	inv := framework.Invocation{
