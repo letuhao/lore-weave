@@ -399,6 +399,12 @@ services:
       AUTH_SERVICE_URL: http://auth-service:8081
       BOOK_SERVICE_URL: http://book-service:8082
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # DEFERRED-044: the C5 wiki-from-KG renderer reads an entity's KG
+      # neighbourhood from knowledge-service when this is set, and degrades to a
+      # name/kind/attributes-only body when unset (no hard dependency — so no
+      # depends_on coupling). Without it, /wiki/generate omits the KG relationship
+      # sections in the dev/prod stack.
+      KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
       # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:

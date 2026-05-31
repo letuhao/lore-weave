@@ -284,9 +284,16 @@ def repair_generation(
         content = _coerce_value(key, data[key], report)
         if not content:
             raise RepairError(f"required dimension {key!r} is empty after repair")
-        if key in chinese and has_english_leakage(content):
+        if key in chinese and cjk_ratio(content) < _MIN_CJK_RATIO:
+            # DEFERRED-046: reject ANY low-CJK value for a Chinese dimension,
+            # regardless of Latin presence. The old `has_english_leakage` gate
+            # early-returned False on no-Latin text, so a numeric/punctuation
+            # hallucination (e.g. {"历史":123} -> "123", cjk_ratio 0) slipped
+            # through as a "Chinese source-faithful" fact. cjk_ratio < min now
+            # catches BOTH English prose AND non-Latin garbage.
+            kind = "English-leakage" if has_english_leakage(content) else "non-Chinese (low-CJK)"
             raise RepairError(
-                f"dimension {key!r} is English-leakage "
+                f"dimension {key!r} is {kind} "
                 f"(cjk_ratio={cjk_ratio(content):.2f} < {_MIN_CJK_RATIO}); "
                 "required Chinese content not produced"
             )
