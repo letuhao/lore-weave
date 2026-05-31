@@ -1,23 +1,36 @@
-# Session Handoff — Session 101 (Phase B2 config-telemetry: full arc SHIPPED + validated)
+# Session Handoff — Session 102 (Phase E2 mining scaffold SHIPPED)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-05-31 (session 101 — Phase B2 A+B+C + writer_autocreate + end-to-end validation; human-in-loop v2.2).
-> **HEAD:** `3328d7d0` (B2 e2e validation note). Branch: `main` (NOT pushed — all session-101 commits are local).
+> **Date:** 2026-06-01 (session 102 — env knob fix + Phase E2 mining scaffold; human-in-loop v2.2).
+> **HEAD:** `89069c5a` (E2 mining query layer + router). Branch: `main` (pushed — all session-102 commits are remote).
 
 ## ▶ NEXT SESSION — start here
 
-**State:** **Phase B2 (Axis-2 config telemetry + per-novel tuning) is COMPLETE, verified, and validated end-to-end on a real qwen extraction.** All local on `main`, unpushed. Seven commits:
-`a1adef1a` design+plan ckpt · `360231a3` B2-A run-plumbing (`config_registry`/`extraction_runs` + SDK `resolve_config`) · `b4a14c97` B2-B-b1 structural overrides BE + `PUT /extraction-config` + `config_adjustment_events` · `e28f6f50` B2-B-b2 raw-prompt editing (injection-safe output-contract + redact-by-default) · `965cd52b` B2-C FE tuning panel · `62584b1b` writer_autocreate wiring (was dormant on persist-pass2) · `3328d7d0` e2e validation record.
+**State:** **Phase E2 config data-mining scaffold is COMPLETE.** All committed and pushed. Eight commits this session:
+`a27afd6c` env-knob fix (worker-ai reads global autocreate env) · `2a374ecb` design+plan docs · `1376c741` KS `genre` on `knowledge_projects` · `fe0a2550` worker-ai genre emit · `54d1d95d` learning-service DDL+handler (genre on `extraction_runs`) · `89069c5a` learning mining query layer + read API.
 
-**What works now:** per-project `knowledge_projects.extraction_config` drives extraction (model / precision-filter / entity-recovery / writer-autocreate / raw per-op system prompts); each chapter emits a transactional `extraction_runs` row + content-addressed `config_registry` (prompt content-hashed, never raw); edits log `config_adjustment_events`; all through the existing outbox→relay→learning-collector spine. Proven live: real qwen3.6-35b extraction → config drove the run → accurate telemetry (hash verified). Unit: SDK 260 / KS 63 / worker-ai 89 / learning 33 / FE 274 components. Two `/review-impl` security passes folded.
+**What works now (E2 additions):**
+- `knowledge_projects.genre TEXT` (free-text, user-settable via PATCH) — returns in GET, emitted into `extraction_runs.genre` via run-completed event
+- `extraction_runs.genre` — denorm'd from project at run time, enables genre-segment queries without cross-DB join
+- `/v1/learning/mining/config-quality` — genre × config_hash success rate with explore/exploit + power-user segmentation
+- `/v1/learning/mining/model-matrix` — model_ref × scope weighted outcome
+- `/v1/learning/mining/default-drift` — convergent vs divergent param changes (popularity≠quality guardrail baked in)
+- `/v1/learning/mining/outcome-recompute` — correction-join recipe (returns empty at cold-start; establishes the join recipe per §2.4 Q2)
+- Global `KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED` env now readable by worker-ai as default-for-all
+- B2 base still fully live: per-project config drives extraction, telemetry, FE tuning panel
 
-**FIRST: push `main`** (`git push origin main` — 7 unpushed commits + any earlier). Stack is rebuilt on the new code (KS / worker-ai / learning-service / FE); redis read-timeout noise in service logs is an environment quirk (self-recovering), not a bug.
+**FIRST: no push needed** — all commits from this session are already pushed (`a27afd6c` through `89069c5a`). Stack needs rebuild (KS / worker-ai / learning-service changed). Redis read-timeout noise is an environment quirk, not a bug.
 
-**NEXT — pick one (both are fresh, substantial tracks; ask PO which):**
-1. **Phase E2 mining** (config-vs-outcome insights — what B2 feeds). Now unblocked *in principle* but wants real run/correction VOLUME accumulated over actual use; guardrails per plan §2.4: popularity≠quality (JOIN `outcome`, never raw change-frequency) + explore/exploit + selection-bias weighting. The `extraction_runs.outcome` is provisional (`succeeded`/`skipped`/`failed`); the *refined* correction-join outcome is E2 work.
-2. **Resume eval R&D arc** (cycle-70s extraction-quality F1: prompt/filter levers, host-orchestrated judge ensembles). See the eval plan + the `today-*.md`/`recent.md` R&D history.
+**NEXT — pick one:**
+1. **D-E2-LIVE-SMOKE** — rebuild stack + smoke the full genre emit path (extraction job → `extraction_runs.genre` populated → `/v1/learning/mining/config-quality` returns data). Validates the cross-service chain before mining queries see real data.
+2. **Resume eval R&D arc** — cycle-70s extraction-quality F1 work: independent judges, prompt/filter levers, host-orchestrated judge ensembles. Has active momentum; disjoint-median metric locked; next step is prod-readiness eval with independent judges.
+3. **FE genre field** — expose genre input on the project settings panel (deferred from E2 scope). Small [FE] task.
 
-**Small optional follow-up (not started):** make worker-ai read the autocreate env so the global env knob stays a default-for-all (currently per-project supersedes it on the worker path; deliberate, flagged in `62584b1b`).
+**Deferred items (E2):**
+- D-E2-LIVE-SMOKE: cross-service integration smoke (worker-ai → extraction_runs.genre → mining endpoint)
+- FE genre input on project settings panel
+- Outcome refinement batch job (correction-join recompute UPDATE on extraction_runs; needs correction volume)
+- FE mining insights panel
 
 <details><summary>(historical) Phase B complete — push options (all done/superseded)</summary>
 
