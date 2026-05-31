@@ -101,6 +101,37 @@ retract → delete_enrichment_supplement(proposal_id) (soft-delete rows)      [g
 - H0 intact: supplement quarantined (`proposed`, conf<1.0) until promote; markers permanent; retract reversible.
 - No relitigation of H0 / locked baseline; DEFERRED-053 superseded (no short_description overwrite).
 
+## F. PROGRESS TRACKER (single source of truth — update every session)
+
+> Status keys: ☐ TODO · ◐ IN-PROGRESS · ✅ DONE · ⏸️ BLOCKED/PARKED. Update the box + a one-line note (commit sha) as work lands. Keep this in sync with `DEFERRED.md` + `SESSION_HANDOFF.md`.
+
+### Cluster 1 — F-C13-1 (HIGH) + F-C13-2 (MED): enrichment-as-supplement  [this plan, §C]
+- ☐ T1 glossary `entity_enrichments` table + migration register
+- ☐ T2 glossary internal endpoints (POST upsert + DELETE soft-delete + emit)
+- ☐ T3 lore-enrichment ports for the 2 endpoints
+- ☐ T4 `_anchor_name`→canonical_name + writeback resolves+writes supplement  *(closes F-C13-2 pt.1)*
+- ☐ T5 promote writes supplement(promoted) + DROP short_description write  *(closes F-C13-2 pt.2)*
+- ☐ T6 retract → internal-token delete_enrichment_supplement (DROP user-jwt)  *(closes F-C13-1)*
+- ☐ T7 wiki/entity read surfaces `entity_enrichments` (separate, non-blocking)
+- ☐ T8 LIVE verify (no dup entity · short_description untouched · retract removes supplement · canon survives)
+
+### Cluster 2 — wire the built-but-not-wired (PO ruling D1/D2)
+- ☐ D1 gap-auto-detection wired to a production path (C7 engine has no caller)
+- ☐ resume: persist request on job row + resume entrypoint that skips done gaps (DEFERRED-051)
+- ☐ corpus-register API (currently a C3 501 stub)
+- ☐ F-LIVE-1 stale-image guard: pin knowledge image ≥ C13 + CI check (recurs on plain `docker start`)
+
+### Cluster 3 — quality/policy (PO rulings C1/C3)
+- ☐ C1 real token metering, per-platform convention (DEFERRED-052, now MED)
+- ☐ C3 defenses: hybrid flag-for-human + AUTO-REJECT egregious — needs design pass first (F-C12-1 + 050 + 058)
+- ⏸️ C2 judge-diversity gate — PARKED until `main` merge (DEFERRED-056); re-decide post-merge
+
+### Done this QC/fix arc (for the record)
+- ✅ F-LIVE-2 circular import (`9a1555f0`) · ✅ do-nows 044+046 (`7be1b18d`) · ✅ QC review C0–C18 (`eed8b055`,`b42d1135`) · ✅ PO rulings (`f5cb9ae4`) · ✅ spec+plan (`9b2f012d`,`b92076e0`,`41f01c7f`,`0df29c72`)
+- ✅ Cleared live: F-C2-1 (trigger installed), F-C1617-1 (licenses clean) · stale-resolved defers 048/049
+
+---
+
 ## E. Open confirmations for PO (before BUILD) — ✅ APPROVED 2026-05-31
 1. **C6 — APPROVED:** fix-forward only (no data migration for the existing broken `蓬萊` orphan; clean manually or leave dev cruft).
 2. **C7 — APPROVED:** wiki read surfacing of `entity_enrichments` is a separate task (#7), NOT blocking the F-C13 fix.
