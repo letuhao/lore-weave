@@ -1,17 +1,75 @@
 //! Stage 3 — climate.
 //!
-//! Per-cell `ClimateZone` from latitude × elevation × dryness, a
-//! Köppen-Geiger-inspired deterministic classification (no RNG).
+//! Per-cell `ClimateZone` from a **real Köppen-Geiger classification** working
+//! in physical units (°C + mm/yr), ported from the validated `flat_climate`
+//! classifier. No RNG — a pure, deterministic function of geometry + terrain.
 //!
-//! Dryness comes from an **orographic moisture march** ([`moisture_field`]): a
-//! prevailing wind carries moisture inland from the sea; over land it bleeds
-//! away — a small overland leak plus a large orographic loss wherever the
-//! terrain climbs — so the lee of a mountain range falls into a dry rain
-//! shadow. The march subsumes continentality (deep inland = moisture spent).
+//! The pipeline derives, per cell:
+//! - a sea-level **temperature** from latitude (insolation), minus an elevation
+//!   lapse, plus a seasonal amplitude → warm/cold-month extremes;
+//! - an annual **precipitation** = a latitude circulation base (mm/yr, the four
+//!   Earth bands ITCZ/subtropical/mid-lat/polar) × an orographic moisture
+//!   transport factor `[0,1]` ([`moisture_field`]: a prevailing wind carries
+//!   moisture inland and bleeds it over land + behind mountains → rain shadows);
+//!
+//! then classifies with the Köppen tree — crucially the **temperature-dependent
+//! aridity threshold** `precip < 20·T_mean + offset`: a hot region needs far more
+//! rain to escape desert than a cold one, so cold-dry interiors become
+//! boreal/tundra (not desert) and only genuinely hot-dry belts read Arid. The 19
+//! Köppen subtypes collapse onto the existing 8 [`ClimateZone`].
 
 use serde::{Deserialize, Serialize};
 
 use crate::creative_seed::{HemisphereOrientation, PrevailingWind};
+
+// ── Calibrated parameters (ported from `flat_climate::WorldClimateParams`) ──
+
+/// Sea-level temperature at the equator (°C).
+const T_EQ: f32 = 28.0;
+/// Sea-level temperature at the pole (°C).
+const T_POLE: f32 = -15.0;
+/// Elevation lapse (°C per unit of normalized height above sea level). A
+/// full-height peak (`elev_above ≈ 0.6`) is ≈ 24 °C colder than its sea-level
+/// latitude — matches Earth's ~6.5 °C/km over a ~3.7 km tall range. Calibration
+/// knob for the desert/tundra balance.
+const LAPSE_C: f32 = 40.0;
+
+/// Annual precip at the ITCZ / equator (mm/yr).
+const PRECIP_EQ: f32 = 2400.0;
+/// Annual precip at the subtropical high / horse latitudes ~30° (mm/yr).
+const PRECIP_SUBTROPIC: f32 = 180.0;
+/// Annual precip at the mid-latitude westerlies ~55° (mm/yr).
+const PRECIP_MIDLAT: f32 = 900.0;
+/// Annual precip at the pole (mm/yr).
+const PRECIP_POLAR: f32 = 150.0;
+
+/// Seasonal amplitude at the equator (°C) — year-round-stable tropics.
+const AMP_EQ: f32 = 2.0;
+/// **Maritime** latitude amplitude gain (°C per unit `lat_dist`, at `cont=0`).
+/// Small, so an oceanic coast keeps a mild seasonal swing even at high latitude
+/// (Reykjavík ≈ 6 °C at 64°N) — a cold-mean + low-amplitude maritime pole then
+/// classifies Polar/Tundra (warmest month < 10 °C) instead of Boreal.
+const AMP_MARITIME: f32 = 4.0;
+/// **Continental** extra latitude amplitude gain (°C per unit `lat_dist` per unit
+/// continentality). Interiors swing wide (Yakutsk ≈ 30 °C at 62°N → Boreal). This
+/// is what *gates* the big swings on continentality instead of applying them to
+/// every cell — the v2 seasonality fix (DEFERRED #045): the old
+/// `(AMP_EQ+AMP_LAT·lat)·(1+AMP_CONT·cont)` gave a 30 °C maritime-pole amplitude,
+/// blocking both the temperate C-band and the polar/tundra band.
+const AMP_CONT_GAIN: f32 = 24.0;
+
+/// Winter precip fraction in v1 — **fixed at 0.5** (year-round even). Real
+/// hemisphere/margin seasonality (Mediterranean dry-summer Cs, monsoon
+/// dry-winter Cw) is deferred to v2; with 0.5 everywhere the Mediterranean zone
+/// is unreachable in the live pipeline, but biome.rs maps Mediterranean and
+/// Temperate to identical biomes so there is no biome-level regression.
+const WINTER_FRAC_V1: f32 = 0.5;
+
+/// Highland override gate: a cell above this normalized height-above-sea, if
+/// warm enough (`t_warm ≥ 10`), classifies Highland (→ Hill/Mountain in
+/// biome.rs) rather than by precip. Cold high cells fall through to Polar so
+/// glaciated peaks stay reachable. Calibration knob.
+const HIGHLAND_ELEV: f32 = 0.30;
 
 /// Closed climate-zone enum (GEO_001 §4.1, 8 variants).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -58,9 +116,12 @@ impl ClimateZone {
 
 /// Build the per-cell climate layer.
 ///
-/// **Phase 1 Stage B (2026-05-20):** `centers` is now 3D unit-sphere points;
-/// latitude derives directly from `asin(z)`. The Stage A `effective_latitude(v)`
-/// scaffold is replaced by a clean lat-based formula.
+/// **Phase 3 Köppen (2026-05-30):** the ad-hoc `[0,1]`-dryness heuristic is
+/// replaced by the real Köppen classifier in physical units. Each cell derives
+/// °C + mm/yr from latitude × elevation × wind-carried moisture, then
+/// [`classify_koppen`] maps the Köppen group onto a [`ClimateZone`]. `centers`
+/// are 3D unit-sphere points; latitude is `asin(z)` and `lat_dist` honours the
+/// `hemisphere` orientation via [`effective_latitude`].
 pub fn build(
     centers: &[[f32; 3]],
     elevation: &[u16],
@@ -71,17 +132,33 @@ pub fn build(
     climate_bias: Option<ClimateZone>,
 ) -> Vec<ClimateZone> {
     let moisture = moisture_field(centers, elevation, sea_level, neighbors, prevailing_wind);
+    // Climate bias is applied as a small physical-unit nudge (°C, mm/yr) before
+    // classification, so `CreativeSeed.climate_bias` keeps steering the result.
+    let (temp_bias, precip_bias) = climate_bias.map_or((0.0, 0.0), bias_delta);
 
     centers
         .iter()
         .enumerate()
         .map(|(i, &p)| {
             let lat = p[2].clamp(-1.0, 1.0).asin();
-            let eff_lat = effective_latitude(lat, hemisphere);
-            let elev_norm = f32::from(elevation[i]) / 65535.0;
-            // Dryness is the complement of the wind-carried moisture.
-            let dryness = (1.0 - moisture[i]).clamp(0.0, 1.0);
-            classify(eff_lat, elev_norm, dryness, climate_bias)
+            let lat_dist = effective_latitude(lat, hemisphere); // [0,1], 0=equator
+            let elev_above =
+                ((f32::from(elevation[i]) - f32::from(sea_level)) / 65535.0).max(0.0);
+            let m = moisture[i];
+            let cont = (1.0 - m).clamp(0.0, 1.0); // interior = high continentality
+
+            // Temperature: insolation − elevation lapse (+ bias).
+            let temp_mean = insolation_temp(lat_dist) - LAPSE_C * elev_above + temp_bias;
+            // Precipitation: latitude circulation base (mm) × horizontal
+            // moisture transport [0,1] (+ bias), clamped non-negative.
+            let precip = (circulation_precip_mm(lat_dist) * m + precip_bias).max(0.0);
+
+            // Seasonality → warm/cold-month extremes the Köppen tree reads.
+            let amp = seasonal_amp(lat_dist, cont);
+            let t_warm = temp_mean + amp;
+            let t_cold = temp_mean - amp;
+
+            classify_koppen(t_warm, t_cold, precip, WINTER_FRAC_V1, elev_above)
         })
         .collect()
 }
@@ -101,72 +178,145 @@ fn effective_latitude(lat: f32, hemi: HemisphereOrientation) -> f32 {
     }
 }
 
-/// Classify one cell. Pure function — the determinism contract of stage 3.
-/// `dryness` is `0` (saturated) .. `1` (parched).
-pub fn classify(
-    eff_lat: f32,
-    elev_norm: f32,
-    dryness: f32,
-    bias: Option<ClimateZone>,
-) -> ClimateZone {
-    let (temp_d, dry_d) = bias.map_or((0.0, 0.0), bias_delta);
-    let temp = (1.0 - eff_lat) - 0.35 * elev_norm + temp_d;
-    let dry = (dryness + dry_d).clamp(0.0, 1.0);
-
-    // Highland — altitude dominates, except at polar latitudes (a high cell
-    // near the pole stays Polar so glaciated peaks remain reachable).
-    if elev_norm > 0.62 && eff_lat < 0.75 {
-        return ClimateZone::Highland;
-    }
-
-    let mut zone = if temp < 0.16 {
-        ClimateZone::Polar
-    } else if temp < 0.34 {
-        ClimateZone::Boreal
-    } else if temp < 0.58 {
-        ClimateZone::Temperate
-    } else if temp < 0.78 {
-        if dry > 0.5 {
-            ClimateZone::Mediterranean
-        } else {
-            ClimateZone::Subtropical
-        }
-    } else if dry > 0.62 {
-        // Hot band → Arid only when genuinely parched. Raised from 0.55 after
-        // the 2026-05-30 audit: the prior threshold turned most of the hot,
-        // single-wind-dried interior into desert (63 % of land).
-        ClimateZone::Arid
+/// Latitude circulation precip base (mm/yr) — piecewise-linear over the four
+/// canonical Earth bands. Port of `flat_climate::circulation_curve`.
+///
+/// | `lat_dist` | band | mm/yr |
+/// |---|---|---|
+/// | 0.00 | ITCZ (equator) | 2400 |
+/// | 0.33 | subtropical high (~30°) | 180 |
+/// | 0.67 | mid-lat westerlies (~55°) | 900 |
+/// | 1.00 | polar | 150 |
+fn circulation_precip_mm(lat_dist: f32) -> f32 {
+    let t = lat_dist.clamp(0.0, 1.0);
+    let raw = if t <= 0.33 {
+        lerp(PRECIP_EQ, PRECIP_SUBTROPIC, t / 0.33)
+    } else if t <= 0.67 {
+        lerp(PRECIP_SUBTROPIC, PRECIP_MIDLAT, (t - 0.33) / 0.34)
     } else {
-        ClimateZone::Tropical
+        lerp(PRECIP_MIDLAT, PRECIP_POLAR, (t - 0.67) / 0.33)
     };
-
-    // Dry continental interior → Arid even in the warm-temperate bands. The
-    // dryness gate is high (`0.80`, raised from `0.72`) so only the truly
-    // moisture-starved deep interior flips, not every mid-continent cell.
-    if matches!(
-        zone,
-        ClimateZone::Temperate | ClimateZone::Mediterranean | ClimateZone::Subtropical
-    ) && dry > 0.80
-        && temp > 0.42
-    {
-        zone = ClimateZone::Arid;
-    }
-    zone
+    raw.max(0.0)
 }
 
-/// `(temp_delta, dry_delta)` nudging classification toward `z`.
+/// Sea-level mean annual temperature (°C) at a given `lat_dist` — a **cosine**
+/// insolation curve (Köppen v2, DEFERRED #045). `T_POLE + (T_EQ − T_POLE)·cos(θ)`
+/// with `θ = lat_dist·π/2`. Cosine is concave on `[0, π/2]`, so it lies *above*
+/// the old linear `lerp` chord — mid-latitudes are warmer (≈ 15 °C at 45° vs the
+/// linear 6.5 °C), which is what lets the temperate C-band exist there. Exact at
+/// the endpoints (equator = `T_EQ`, pole = `T_POLE`).
+fn insolation_temp(lat_dist: f32) -> f32 {
+    let theta = lat_dist.clamp(0.0, 1.0) * std::f32::consts::FRAC_PI_2;
+    T_POLE + (T_EQ - T_POLE) * theta.cos()
+}
+
+/// Seasonal temperature amplitude (°C): half the warm/cold-month spread.
+/// **Continentality-gated** (Köppen v2, #045): a small maritime base that grows
+/// with latitude (`AMP_MARITIME·lat_dist`) plus a continental term that only the
+/// interior pays (`AMP_CONT_GAIN·cont·lat_dist`). So an oceanic coast stays
+/// low-amplitude at every latitude (cold mean + low amp → Polar/Tundra at the
+/// pole, mild C-band at mid-lat) while interiors swing wide (→ Boreal).
+fn seasonal_amp(lat_dist: f32, continentality: f32) -> f32 {
+    let lat = lat_dist.clamp(0.0, 1.0);
+    let cont = continentality.clamp(0.0, 1.0);
+    AMP_EQ + (AMP_MARITIME + AMP_CONT_GAIN * cont) * lat
+}
+
+/// Köppen B-group aridity threshold (mm/yr): a zone is arid iff annual precip
+/// is below this. Port of `flat_climate::arid_precip_threshold`.
+///
+/// `Pthr = 20·T_mean + offset`, the offset set by **when** the rain falls
+/// (winter rain evaporates less → lower threshold needed):
+/// - dry-summer / winter-heavy (`winter_frac > 0.70`): `−70`
+/// - dry-winter / summer-heavy (`winter_frac < 0.30`): `+140`
+/// - even: `+70`
+///
+/// This temperature dependence is the headline fix: it is what lets cold-dry
+/// interiors classify D/E instead of falling into a fixed-gate desert.
+fn arid_precip_threshold(t_warm: f32, t_cold: f32, winter_frac: f32) -> f32 {
+    let t_mean = (t_warm + t_cold) * 0.5;
+    let offset = if winter_frac > 0.70 {
+        -70.0
+    } else if winter_frac < 0.30 {
+        140.0
+    } else {
+        70.0
+    };
+    (20.0 * t_mean + offset).max(0.0)
+}
+
+/// Classify one cell into a [`ClimateZone`] — pure function, the determinism
+/// contract of stage 3. Ported from `flat_climate::koppen_classify`, collapsing
+/// the 19 Köppen subtypes onto the 8 zones in canonical Köppen order
+/// (Highland → E → A → B → D → C).
+///
+/// - `t_warm` / `t_cold`: warmest / coldest-month mean temperature (°C)
+/// - `precip`: annual precipitation (mm/yr)
+/// - `winter_frac`: fraction of precip in the cold half-year (v1 pins 0.5)
+/// - `elev_above`: normalized height above sea level (for the Highland gate)
+fn classify_koppen(
+    t_warm: f32,
+    t_cold: f32,
+    precip: f32,
+    winter_frac: f32,
+    elev_above: f32,
+) -> ClimateZone {
+    // Highland — tall warm terrain (preserves biome.rs hill/mountain). Cold high
+    // cells fall through to Polar so glaciated peaks stay reachable.
+    if elev_above > HIGHLAND_ELEV && t_warm >= 10.0 {
+        return ClimateZone::Highland;
+    }
+    // E — Polar: warmest month below 10 °C.
+    if t_warm < 10.0 {
+        return ClimateZone::Polar;
+    }
+    // A — Tropical: coldest month above 18 °C.
+    if t_cold > 18.0 {
+        return ClimateZone::Tropical;
+    }
+    // B — Arid: precip below the temperature-dependent threshold.
+    if precip < arid_precip_threshold(t_warm, t_cold, winter_frac) {
+        return ClimateZone::Arid;
+    }
+    // D — Boreal/continental: coldest month below −3 °C.
+    if t_cold < -3.0 {
+        return ClimateZone::Boreal;
+    }
+    // C — temperate group → Mediterranean / Subtropical / Temperate.
+    if winter_frac > 0.65 {
+        return ClimateZone::Mediterranean; // Cs (dry-summer) — v2-live (winter_frac=0.5 in v1)
+    }
+    if t_warm > 22.0 {
+        return ClimateZone::Subtropical; // Cfa / Cwa
+    }
+    ClimateZone::Temperate // Cfb
+}
+
+/// `(temp_delta_°C, precip_delta_mm)` nudging classification toward `z`. The
+/// nudge is applied to `temp_mean` (shifts both monthly extremes) and to annual
+/// precip before [`classify_koppen`]. Magnitudes are Earth-plausible: enough to
+/// flip a borderline cell, small enough not to override clear climates.
 fn bias_delta(z: ClimateZone) -> (f32, f32) {
     match z {
-        ClimateZone::Polar => (-0.15, 0.0),
-        ClimateZone::Boreal => (-0.10, 0.0),
-        ClimateZone::Temperate => (0.0, -0.10),
-        ClimateZone::Mediterranean => (0.05, 0.15),
-        ClimateZone::Subtropical => (0.10, -0.10),
-        ClimateZone::Tropical => (0.12, -0.15),
-        ClimateZone::Arid => (0.05, 0.20),
+        ClimateZone::Polar => (-10.0, 0.0),
+        ClimateZone::Boreal => (-7.0, 0.0),
+        ClimateZone::Temperate => (0.0, 150.0),
+        // v1 has no reachable Mediterranean zone (winter_frac ≡ 0.5), so nudge
+        // toward the nearest reachable *mild* climate (warm-temperate) rather
+        // than drying — a drying nudge would risk tipping a borderline cell into
+        // Arid, the opposite of the mild-Mediterranean intent. True Cs → v2.
+        ClimateZone::Mediterranean => (2.0, 0.0),
+        ClimateZone::Subtropical => (6.0, 80.0),
+        ClimateZone::Tropical => (8.0, 250.0),
+        ClimateZone::Arid => (0.0, -200.0),
         // Highland is purely elevation-driven; a bias toward it is a no-op.
         ClimateZone::Highland => (0.0, 0.0),
     }
+}
+
+/// Linear interpolation `a + (b - a) * t`.
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
 }
 
 /// Per-cell atmospheric moisture in `[0,1]` from a wind-driven march.
@@ -177,6 +327,20 @@ fn bias_delta(z: ClimateZone) -> (f32, f32) {
 /// its upwind neighbours. The lee of a mountain range is therefore left with
 /// little moisture: a dry rain shadow. Deterministic: a total-ordered downwind
 /// sweep (`f32::total_cmp` on the wind projection, ties broken by cell index).
+///
+/// **#046 (2026-05-31) — downwind-directed multi-source transport.** Each land
+/// cell takes the **MAX** over its upwind neighbours of the moisture they deliver
+/// (their value minus the overland leak and the orographic climb from *that*
+/// neighbour), rather than the average. Averaging diluted the wettest route, so a
+/// cell near an upwind coast in a non-primary direction dried out into desert; the
+/// MAX lets moisture reach deep inland along the wettest path from *any* upwind sea
+/// (multi-directional within the upwind cone) while staying wind-aware — moisture
+/// only flows downwind, so an offshore-wind coast supplies nothing and rain shadows
+/// behind ranges persist (all upwind paths are shadowed).
+///
+/// Output is a pure horizontal-transport factor `[0,1]`: the Köppen path
+/// multiplies the latitude circulation base (mm) by it, so a wet-latitude coast
+/// keeps its full circulation precip while a deep interior or lee dries out.
 fn moisture_field(
     centers: &[[f32; 3]],
     elevation: &[u16],
@@ -229,30 +393,29 @@ fn moisture_field(
             continue;
         }
         let proj_i = proj(i);
-        let mut sum_moist = 0.0f32;
-        let mut sum_elev = 0.0f32;
-        let mut count = 0u32;
+        // Best (wettest) upwind path: MAX over upwind neighbours of the moisture
+        // each delivers after the overland leak + the orographic climb from *that*
+        // neighbour (#046). MAX, not an average, so the wettest route from any
+        // upwind sea reaches inland instead of being diluted by drier neighbours.
+        let mut best = f32::NEG_INFINITY;
         for &nb in &neighbors[i] {
             let nb = nb as usize;
             if proj(nb) < proj_i {
-                sum_moist += moisture[nb];
-                sum_elev += f32::from(elevation[nb]);
-                count += 1;
+                let climb =
+                    ((f32::from(elevation[i]) - f32::from(elevation[nb])) / 65535.0).max(0.0);
+                let delivered = moisture[nb] - land_leak - OROGRAPHIC * climb;
+                best = best.max(delivered);
             }
         }
-        // A windward-edge land cell has no upwind neighbour — air arrives
-        // from the off-map ocean, fully moist.
-        let incoming = if count > 0 { sum_moist / count as f32 } else { 1.0 };
-        let up_elev = if count > 0 {
-            sum_elev / count as f32
+        moisture[i] = if best > f32::NEG_INFINITY {
+            best.max(0.0)
         } else {
-            // Windward-edge cell: the air crossed the off-map ocean, so it
-            // was at sea level — a coastal mountain still self-shadows.
-            f32::from(sea_level)
+            // Windward-edge land cell: no upwind neighbour — the air crossed the
+            // off-map ocean (fully moist) and only self-shadows on its own climb
+            // up from sea level.
+            let climb = ((f32::from(elevation[i]) - f32::from(sea_level)) / 65535.0).max(0.0);
+            (1.0 - OROGRAPHIC * climb).max(0.0)
         };
-        let climb = ((f32::from(elevation[i]) - up_elev) / 65535.0).max(0.0);
-        let loss = OROGRAPHIC * climb + land_leak;
-        moisture[i] = (incoming - loss).max(0.0);
     }
     moisture
 }
@@ -262,42 +425,133 @@ mod tests {
     use super::*;
 
     #[test]
-    fn highland_needs_high_elevation_below_polar_latitude() {
-        assert_eq!(classify(0.3, 0.7, 0.5, None), ClimateZone::Highland);
-        // a high cell at a polar latitude stays Polar (→ Glacier-capable).
-        assert_eq!(classify(0.95, 0.7, 0.5, None), ClimateZone::Polar);
+    fn highland_needs_high_elevation_and_warmth() {
+        // High + warm → Highland (→ Hill/Mountain downstream).
+        assert_eq!(
+            classify_koppen(20.0, 5.0, 600.0, 0.5, 0.5),
+            ClimateZone::Highland
+        );
+        // High but cold (warmest month < 10 °C) → Polar, so glaciated peaks
+        // stay reachable in biome.rs.
+        assert_eq!(
+            classify_koppen(5.0, -20.0, 200.0, 0.5, 0.5),
+            ClimateZone::Polar
+        );
     }
 
     #[test]
     fn equator_is_hot_pole_is_cold() {
-        assert_eq!(classify(0.0, 0.0, 0.0, None), ClimateZone::Tropical);
-        assert_eq!(classify(1.0, 0.0, 0.0, None), ClimateZone::Polar);
+        // Equator: warm + wet → Tropical (coldest month > 18 °C).
+        assert_eq!(
+            classify_koppen(30.0, 26.0, 2400.0, 0.5, 0.0),
+            ClimateZone::Tropical
+        );
+        // Pole: warmest month well below 10 °C → Polar.
+        assert_eq!(
+            classify_koppen(-5.0, -40.0, 150.0, 0.5, 0.0),
+            ClimateZone::Polar
+        );
     }
 
     #[test]
-    fn arid_bias_makes_borderline_cells_more_arid() {
-        // Inputs on the Tropical/Arid border: unbiased → Tropical; an Arid
-        // bias must push it to Arid (direction check, not just "differs").
-        assert_eq!(classify(0.1, 0.1, 0.45, None), ClimateZone::Tropical);
+    fn arid_threshold_is_temperature_dependent() {
+        // **Headline property.** Same 300 mm/yr precip, different temperatures →
+        // opposite aridity verdicts. The hot cell (t_mean=20 → threshold 470)
+        // is Arid; the cold cell (t_mean=7 → threshold 210) is not — the fixed
+        // `dryness>0.62` heuristic could never make this distinction.
         assert_eq!(
-            classify(0.1, 0.1, 0.45, Some(ClimateZone::Arid)),
-            ClimateZone::Arid
+            classify_koppen(30.0, 10.0, 300.0, 0.5, 0.0),
+            ClimateZone::Arid,
+            "hot-dry cell must be Arid"
+        );
+        assert_ne!(
+            classify_koppen(12.0, 2.0, 300.0, 0.5, 0.0),
+            ClimateZone::Arid,
+            "cold cell with the same precip must NOT be Arid"
+        );
+    }
+
+    #[test]
+    fn insolation_warms_midlatitudes() {
+        // Endpoints exact.
+        assert!((insolation_temp(0.0) - T_EQ).abs() < 1e-3);
+        assert!((insolation_temp(1.0) - T_POLE).abs() < 1e-3);
+        // Cosine is concave on [0, π/2] → mid-latitudes are warmer than the old
+        // linear chord midpoint (the v2 fix that lets the C-band exist there).
+        let linear_mid = 0.5 * (T_EQ + T_POLE);
+        assert!(
+            insolation_temp(0.5) > linear_mid + 5.0,
+            "cosine mid-lat {} not warmer than linear {}",
+            insolation_temp(0.5),
+            linear_mid
+        );
+    }
+
+    #[test]
+    fn maritime_stays_low_amplitude() {
+        // **Headline v2 property.** A maritime (cont=0) pole keeps a small
+        // seasonal swing, while a continental (cont=1) pole swings wide.
+        assert!(
+            seasonal_amp(1.0, 0.0) < 10.0,
+            "maritime pole amp {} too large — would block Polar/Tundra",
+            seasonal_amp(1.0, 0.0)
+        );
+        assert!(
+            seasonal_amp(1.0, 1.0) > 25.0,
+            "continental pole amp {} too small",
+            seasonal_amp(1.0, 1.0)
+        );
+        // The equator is stable regardless of continentality.
+        assert!((seasonal_amp(0.0, 1.0) - AMP_EQ).abs() < 1e-3);
+    }
+
+    #[test]
+    fn v2_seasonality_opens_temperate_and_polar() {
+        // Maritime mid-latitude, wet → **Temperate** (the C-band, previously
+        // unreachable: the old amplitude drove t_cold below −3 → Boreal).
+        let mid = insolation_temp(0.5);
+        let amp_mid = seasonal_amp(0.5, 0.05);
+        assert_eq!(
+            classify_koppen(mid + amp_mid, mid - amp_mid, 1200.0, WINTER_FRAC_V1, 0.0),
+            ClimateZone::Temperate,
+            "maritime mid-lat should be Temperate"
+        );
+        // Maritime high-latitude → **Polar** (warmest month < 10 °C → Tundra
+        // downstream; previously the 30 °C maritime amplitude kept t_warm ≫ 10).
+        let hi = insolation_temp(0.9);
+        let amp_hi = seasonal_amp(0.9, 0.05);
+        assert_eq!(
+            classify_koppen(hi + amp_hi, hi - amp_hi, 300.0, WINTER_FRAC_V1, 0.0),
+            ClimateZone::Polar,
+            "maritime high-lat should be Polar"
+        );
+        // Continental high-latitude still swings wide → Boreal (warm summer).
+        let amp_cont = seasonal_amp(0.9, 0.9);
+        assert_eq!(
+            classify_koppen(hi + amp_cont, hi - amp_cont, 400.0, WINTER_FRAC_V1, 0.0),
+            ClimateZone::Boreal,
+            "continental high-lat should stay Boreal"
         );
     }
 
     #[test]
     fn all_eight_zones_are_reachable() {
         let mut seen = [false; 8];
-        for lat in 0..=20 {
-            for elev in 0..=20 {
-                for dry in 0..=20 {
-                    let z = classify(
-                        lat as f32 / 20.0,
-                        elev as f32 / 20.0,
-                        dry as f32 / 20.0,
-                        None,
-                    );
-                    seen[z.tag() as usize] = true;
+        for &tw in &[-5.0_f32, 5.0, 12.0, 15.0, 18.0, 25.0, 30.0, 35.0] {
+            for &tc in &[-40.0_f32, -20.0, -10.0, -4.0, 0.0, 5.0, 12.0, 20.0] {
+                if tc > tw {
+                    continue;
+                }
+                for &pr in &[10.0_f32, 100.0, 300.0, 800.0, 1500.0, 2400.0] {
+                    // winter_frac sweep includes >0.65 so Mediterranean (Cs) is
+                    // reachable as a pure-function property; the v1 pipeline pins
+                    // 0.5 (Mediterranean == Temperate biome, no regression).
+                    for &wf in &[0.2_f32, 0.5, 0.8] {
+                        for &elev in &[0.0_f32, 0.5] {
+                            let z = classify_koppen(tw, tc, pr, wf, elev);
+                            seen[z.tag() as usize] = true;
+                        }
+                    }
                 }
             }
         }
@@ -305,6 +559,90 @@ mod tests {
             seen.iter().all(|&s| s),
             "not all 8 ClimateZone variants reachable: {seen:?}"
         );
+    }
+
+    #[test]
+    fn arid_bias_makes_borderline_cells_more_arid() {
+        // A humid-warm cell that classifies Subtropical unbiased...
+        let (tw, tc, pr) = (30.0_f32, 12.0_f32, 520.0_f32);
+        assert_eq!(
+            classify_koppen(tw, tc, pr, 0.5, 0.0),
+            ClimateZone::Subtropical
+        );
+        // ...with an Arid bias (precip −200 mm) flips to Arid (direction check).
+        let (td, pd) = bias_delta(ClimateZone::Arid);
+        assert_eq!(
+            classify_koppen(tw + td, tc + td, (pr + pd).max(0.0), 0.5, 0.0),
+            ClimateZone::Arid
+        );
+    }
+
+    #[test]
+    fn build_derives_a_latitude_climate_gradient() {
+        // **Distribution guard** — the unit tests above exercise
+        // `classify_koppen` with hand-picked inputs; this one exercises the
+        // `build()` *derivation* (geometry → °C + mm/yr → zone) so an inverted
+        // lat→temp wiring or an all-one-zone collapse can't pass silently. The
+        // assertions are directional properties (not a pinned distribution), so
+        // legitimate param retunes don't break them (spec §7: no literal pin).
+        //
+        // A meridian of land cells from the equator (z≈0) toward the pole
+        // (z≈0.95). North wind ⇒ moisture marches equator→pole, so interiors
+        // dry out with latitude — a realistic continentality gradient.
+        let n = 12;
+        let centers: Vec<[f32; 3]> = (0..n)
+            .map(|i| {
+                // sin(lat): equator (0) → near the pole (0.99 ≈ |lat| 82°). Span
+                // the full range so the pole-end cell is genuinely high-latitude
+                // (a shorter span lands in warm mid-latitudes, which the cosine
+                // insolation can legitimately make Arid when dry).
+                let z = i as f32 / (n - 1) as f32 * 0.99;
+                let x = (1.0 - z * z).sqrt(); // lon = 0 meridian
+                [x, 0.0, z]
+            })
+            .collect();
+        let sea = 10_000u16;
+        let elevation = vec![20_000u16; n]; // all land, low + uniform elevation
+        let neighbors: Vec<Vec<u32>> = (0..n)
+            .map(|i| {
+                let mut v = Vec::new();
+                if i > 0 {
+                    v.push((i - 1) as u32);
+                }
+                if i + 1 < n {
+                    v.push((i + 1) as u32);
+                }
+                v
+            })
+            .collect();
+
+        let zones = build(
+            &centers,
+            &elevation,
+            sea,
+            &neighbors,
+            HemisphereOrientation::Equatorial,
+            PrevailingWind::North,
+            None,
+        );
+
+        // Equator end: hot + very wet (2400 mm base) → Tropical.
+        assert_eq!(zones[0], ClimateZone::Tropical, "equator must be Tropical");
+        // Pole end: warmest-month cold enough to leave the A/B groups → a cold
+        // continental/polar class.
+        assert!(
+            matches!(zones[n - 1], ClimateZone::Boreal | ClimateZone::Polar),
+            "pole end must be a cold zone, got {:?}",
+            zones[n - 1]
+        );
+        // The gradient must produce real variety — a regression that collapsed
+        // every cell to one zone (the failure this guards) would trip here.
+        let mut seen = [false; 8];
+        for z in &zones {
+            seen[z.tag() as usize] = true;
+        }
+        let distinct = seen.iter().filter(|&&s| s).count();
+        assert!(distinct >= 3, "expected ≥3 distinct zones, got {distinct}: {zones:?}");
     }
 
     #[test]
@@ -331,5 +669,36 @@ mod tests {
         let east = moisture_field(&centers, &elevation, sea, &neighbors, PrevailingWind::East);
         assert!(east[3] > east[1], "E wind: windward {} <= lee {}", east[3], east[1]);
         assert!(east[1] < 0.1, "E wind: rain shadow did not flip, got {}", east[1]);
+    }
+
+    #[test]
+    fn moisture_takes_wettest_upwind_path() {
+        // **#046 headline.** A cell fed by two upwind routes — one wet (straight
+        // off the sea) and one dry (over a tall ridge) — must inherit the WET
+        // route (MAX), not be dragged to the average. This is what carries
+        // moisture inland along the wettest path instead of drying every
+        // multi-neighbour interior cell.
+        //
+        // Layout (West wind, proj = lon): [0] sea at lon −0.9; [1] lowland and
+        // [2] a tall ridge both at lon −0.45 (so both are upwind of [3]); [3]
+        // lowland at lon 0 with upwind neighbours {1, 2}.
+        let p = |lon: f32, lat: f32| [lat.cos() * lon.cos(), lat.cos() * lon.sin(), lat.sin()];
+        let centers = vec![p(-0.9, 0.0), p(-0.45, 0.1), p(-0.45, -0.1), p(0.0, 0.0)];
+        let sea = 10_000u16;
+        let elevation = vec![5_000u16, 15_000, 60_000, 15_000];
+        let neighbors = vec![vec![1u32, 2], vec![0, 3], vec![0, 3], vec![1, 2]];
+
+        let m = moisture_field(&centers, &elevation, sea, &neighbors, PrevailingWind::West);
+        // [1] wet (straight off the sea), [2] dry (climbed the ridge).
+        assert!(m[1] > 0.2, "windward lowland should be moist, got {}", m[1]);
+        assert!(m[2] < 0.05, "ridge should be wrung dry, got {}", m[2]);
+        // [3] must follow the wet route [1], not the average of [1] and the dry
+        // [2] (an average would land near m[1]/2; MAX keeps it close to m[1]).
+        assert!(
+            m[3] > 0.7 * m[1],
+            "downwind cell took the average, not the wettest path: m[3]={} m[1]={} m[2]={}",
+            m[3], m[1], m[2]
+        );
+        assert!(m[3] > m[2] + 0.15, "downwind cell dragged toward the dry ridge");
     }
 }
