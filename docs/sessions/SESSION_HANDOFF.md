@@ -7,7 +7,10 @@
 
 ## ▶ NEXT SESSION — start here
 
-**State:** Phase B is **FEATURE-COMPLETE** (session 75). The full two-axis-Axis-1 correction loop is built + committed: users can correct **entities** (edit/delete/merge), **relations** (correct/mark-wrong), and **events** (edit/delete) in the UI → each emits a `knowledge.*_corrected` / enriched `glossary.entity_updated` → relay → `learning-service.corrections`. Backend live-smoke-verified end-to-end (all types); frontend tsc-clean + 469 knowledge vitest pass + AMAW-adversary-folded. **Only residual: a Playwright BROWSER smoke** (D#054, LOW) — the contract is already covered by component tests + BE live-smokes.
+**State:** Phase B is **COMPLETE + fully browser-verified** (session 75). The D#054 Playwright browser smoke PASSED — a real UI relation-correction (ally_of→enemy_of via the dialog) refreshed the panel AND produced a `predicate-fix` correction in `learning.corrections`, end-to-end. **Nothing left in Phase B.** Next is push / Phase C / B2.
+
+<details><summary>(historical) earlier state note</summary>
+**State:** Phase B was FEATURE-COMPLETE (pre-browser-smoke).</details> The full two-axis-Axis-1 correction loop is built + committed: users can correct **entities** (edit/delete/merge), **relations** (correct/mark-wrong), and **events** (edit/delete) in the UI → each emits a `knowledge.*_corrected` / enriched `glossary.entity_updated` → relay → `learning-service.corrections`. Backend live-smoke-verified end-to-end (all types); frontend tsc-clean + 469 knowledge vitest pass + AMAW-adversary-folded. **Only residual: a Playwright BROWSER smoke** (D#054, LOW) — the contract is already covered by component tests + BE live-smokes.
 
 **NEXT options:** (a) **close out Phase B** with the D#054 browser smoke (needs Vite dev server 5173 + stack up); (b) **push the 8 unpushed commits** (needs approval); (c) start **Phase C** (Tier-1 anchor reuse, D#048) or **Phase B2** (config telemetry, D#047) per the [accuracy plan](../plans/2026-05-31-extraction-accuracy-and-eval-plan.md) §4. The correction CAPTURE spine is done; Phases C–F/B2 build the *use* of corrections (anchor reuse, few-shot, organic gold, fine-tune) as volume accrues.
 
@@ -68,7 +71,7 @@ Hard gotchas from the design review: origin_event_id := EventData.outbox_id (NOT
 - **AMAW cold-start adversary (FE): WARN×3** — the high-value `version`-undefined probe CLEARED (BE timeline list returns `version`). F1/F2 (date integrity) + F3 (per-row dialog hoist) all folded + re-tested.
 - **Residual:** D#054 (LOW) — the pure browser-CLICK layer. **Post-commit (session 75): the REAL relation `invalidate` endpoint was live-smoked end-to-end** — KS-direct HTTP route → `invalidate_relation` → emit → relay → learning corrections row (seeded an `:Entity→:Entity` relation; the test user's real graph only has `:Entity→:Fact` edges + 0 events, so the in-UI flow needs seeded data). Empirically confirmed D#053 (a non-UUID-coercible id → `emit_correction` silently drops — harmless for real 32-hex ids). gateway + auth-service are currently **Exited** (restart for any gateway-routed work).
 
-**Phase B = FEATURE-COMPLETE.** See ▶ NEXT SESSION for options (browser smoke / push / Phase C or B2).
+**Phase B = COMPLETE + browser-verified** (D#054 Playwright smoke passed — see ▶ NEXT SESSION). Options: push / Phase C / B2.
 
 ## Session 75 — cycle 75f: Phase B C-FE data layer (api + hooks)
 
