@@ -504,6 +504,62 @@ export type DrawerSearchErrorCode =
   | 'embedding_dim_mismatch'
   | 'unknown';
 
+// ── Phase E2 — learning-service mining response shapes ─────────────────────
+
+export interface MiningConfigQualityRow {
+  genre: string | null;
+  config_hash: string;
+  run_count: number;
+  succeeded: number;
+  avg_entities_on_success: number | null;
+  success_rate: number | null;
+}
+
+export interface MiningConfigQualityResponse {
+  items: MiningConfigQualityRow[];
+  exploration: MiningConfigQualityRow[];
+}
+
+export interface MiningModelMatrixRow {
+  model_ref: string | null;
+  scope: string | null;
+  has_filter: boolean;
+  run_count: number;
+  succeeded: number;
+  weighted_outcome: number | null;
+}
+
+export interface MiningModelMatrixResponse {
+  items: MiningModelMatrixRow[];
+}
+
+export interface MiningDriftRow {
+  target: string;
+  base_default_version: string | null;
+  affected_projects: number;
+  distinct_after_values: number;
+  drift_pattern: string;
+  runs_with_outcome: number;
+}
+
+export interface MiningDefaultDriftResponse {
+  items: MiningDriftRow[];
+}
+
+export interface MiningOutcomeRecomputeRow {
+  run_id: string;
+  project_id: string;
+  pipeline_outcome: string | null;
+  created_at: string;
+  post_run_corrections: number;
+  recomputed_outcome: string | null;
+}
+
+export interface MiningOutcomeRecomputeResponse {
+  items: MiningOutcomeRecomputeRow[];
+  total: number;
+}
+
 export interface DrawerSearchError extends Error {
   status?: number;
   errorCode: DrawerSearchErrorCode;
@@ -541,6 +597,7 @@ export function parseDrawersError(err: unknown): DrawerSearchError {
 }
 
 const BASE = '/v1/knowledge';
+const LEARNING_BASE = '/v1/learning';
 
 // D-K8-03: weak ETag format used by the knowledge-service routes.
 const ifMatch = (version: number): Record<string, string> => ({
@@ -1154,6 +1211,65 @@ export const knowledgeApi = {
     return apiJson<void>(
       `${BASE}/events/${encodeURIComponent(eventId)}`,
       { method: 'DELETE', token },
+    );
+  },
+
+  // ── Phase E2 — learning-service mining ───────────────────────────────────
+
+  miningConfigQuality(
+    token: string,
+    params?: { genre?: string; limit?: number },
+  ): Promise<MiningConfigQualityResponse> {
+    const qs = new URLSearchParams();
+    if (params?.genre) qs.set('genre', params.genre);
+    if (params?.limit != null) qs.set('limit', String(params.limit));
+    const q = qs.toString();
+    return apiJson<MiningConfigQualityResponse>(
+      `${LEARNING_BASE}/mining/config-quality${q ? `?${q}` : ''}`,
+      { token },
+    );
+  },
+
+  miningModelMatrix(
+    token: string,
+    params?: { scope?: string },
+  ): Promise<MiningModelMatrixResponse> {
+    const qs = new URLSearchParams();
+    if (params?.scope) qs.set('scope', params.scope);
+    const q = qs.toString();
+    return apiJson<MiningModelMatrixResponse>(
+      `${LEARNING_BASE}/mining/model-matrix${q ? `?${q}` : ''}`,
+      { token },
+    );
+  },
+
+  miningDefaultDrift(
+    token: string,
+    params?: { target?: string; base_default_version?: string },
+  ): Promise<MiningDefaultDriftResponse> {
+    const qs = new URLSearchParams();
+    if (params?.target) qs.set('target', params.target);
+    if (params?.base_default_version) qs.set('base_default_version', params.base_default_version);
+    const q = qs.toString();
+    return apiJson<MiningDefaultDriftResponse>(
+      `${LEARNING_BASE}/mining/default-drift${q ? `?${q}` : ''}`,
+      { token },
+    );
+  },
+
+  miningOutcomeRecompute(
+    token: string,
+    params?: { project_id?: string; window_days?: number; limit?: number; offset?: number },
+  ): Promise<MiningOutcomeRecomputeResponse> {
+    const qs = new URLSearchParams();
+    if (params?.project_id) qs.set('project_id', params.project_id);
+    if (params?.window_days != null) qs.set('window_days', String(params.window_days));
+    if (params?.limit != null) qs.set('limit', String(params.limit));
+    if (params?.offset != null) qs.set('offset', String(params.offset));
+    const q = qs.toString();
+    return apiJson<MiningOutcomeRecomputeResponse>(
+      `${LEARNING_BASE}/mining/outcome-recompute${q ? `?${q}` : ''}`,
+      { token },
     );
   },
 

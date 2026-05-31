@@ -1,37 +1,29 @@
-# Session Handoff — Session 103 (E2 live-smoke PASSED; FE genre field SHIPPED)
+# Session Handoff — Session 104 (FE mining insights panel SHIPPED)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-06-01 (session 103 — FE genre field + D-E2-LIVE-SMOKE; human-in-loop v2.2).
-> **HEAD:** `693473b0` (FE genre field). Branch: `main` (local — push pending).
+> **Date:** 2026-06-01 (session 104 — FE mining insights panel; human-in-loop v2.2).
+> **HEAD:** TBD (post-commit). Branch: `main` (local — push pending).
 
 ## ▶ NEXT SESSION — start here
 
-**State:** **D-E2-LIVE-SMOKE PASSED.** Three items completed this session:
+**State:** **FE mining insights panel SHIPPED.** Phase E2 FE surface complete.
 
-1. **FE genre field** (`693473b0`) — `ProjectFormModal` now exposes genre input (create + edit), types updated, storybook fixture updated. 476 knowledge tests pass.
-2. **E2 stack rebuild** — gateway image was stale (2026-05-17, missing learning proxy). Rebuilt: gateway + KS + worker-ai + learning-service. All 4 services healthy.
-3. **`correction_ts` bug fixed** (`mining.py` `get_outcome_recompute`) — query used non-existent `c.correction_ts`; actual column is `c.created_at`. Caught during live smoke. Fixed, rebuilt, verified.
+**This session (session 104):**
+- **FE mining insights panel** — new `insights` tab on KnowledgePage (BarChart2 icon). Four collapsible `<details>` sections: Config Quality (open), Model Matrix, Config Drift, Outcome Recompute (all collapsed). Cold-start empty state per section. Tables with pct(), 8-char hash truncation, convergent/divergent chips.
+- **Files:** `api.ts` (4 types + 4 methods on `knowledgeApi`, `LEARNING_BASE`), `MiningInsightsTab.tsx` (new), `KnowledgePage.tsx` (+insights tab), 4 i18n locale files (+`page.tabs.insights` + full `mining.*` section), `MiningInsightsTab.test.tsx` (7 tests).
+- **Evidence:** 483/483 knowledge tests pass · tsc clean.
 
-**Live smoke evidence:**
-- `knowledge_projects.genre TEXT` ✓ (PATCH `"Tien hiep / Cultivation"` → version 1→2)
-- `extraction_runs.genre TEXT` ✓ (synthetic row inserted, genre visible)
-- All 4 mining endpoints respond via gateway (`/v1/learning/mining/*`):
-  - `config-quality` → `{items:[], exploration:[]}` (cold-start; `HAVING count(*) >= 2` — needs real run volume)
-  - `model-matrix` → `{items:[]}` (same)
-  - `default-drift` → `{items:[]}` (no adjustment events yet)
-  - `outcome-recompute` → `items=1 total=1` ✓ (reads synthetic row)
-
-**FIRST: push main** — `693473b0` is local only. Confirm clean working tree, then `git push origin main`.
+**FIRST: push main** — commits from sessions 103–104 are local only. Confirm clean working tree, then `git push origin main`.
 
 **NEXT — pick one:**
 1. **Resume eval R&D arc** — cycle-70s extraction-quality F1 work: independent judges, host-orchestrated ensembles. Disjoint-median metric locked; next = prod-readiness eval with independent judges.
-2. **Run a real extraction** to populate `extraction_runs` with real data and see mining queries return non-empty results (needs a project with passing benchmark + enabled LLM).
-3. **FE mining insights panel** — expose the 4 mining endpoints in a UI panel (deferred from E2 scope).
+2. **D-E2-FULL-EXTRACTION-SMOKE** — full pipeline smoke: worker-ai reads genre from JOIN → event pipeline → `extraction_runs.genre` populated. Needs project with passing benchmark + LLM configured.
 
 **Deferred items (E2):**
 - D-E2-FULL-EXTRACTION-SMOKE: full pipeline smoke (worker-ai emits genre via join → event → extraction_runs.genre); needs a project with passing benchmark + LLM configured
 - Outcome refinement batch job (correction-join recompute UPDATE on extraction_runs; needs correction volume)
-- FE mining insights panel
+
+**Known:** `config-quality` / `model-matrix` / `default-drift` return empty until `extraction_runs` accumulates ≥2 runs per config_hash. This is expected cold-start behavior — the UI shows the informative empty state.
 
 **Known:** `config-quality` / `model-matrix` / `default-drift` return empty until `extraction_runs` accumulates ≥2 runs per config_hash. This is expected cold-start behavior.
 

@@ -10,7 +10,8 @@
       "entities": "實體",
       "timeline": "時間軸",
       "raw": "原始",
-      "privacy": "隱私"
+      "privacy": "隱私",
+      "insights": "洞察"
     }
   },
   "mobile": {
@@ -798,5 +799,54 @@
       "success": "Event deleted.",
       "failed": "Couldn't delete the event: {{error}}"
     }
+  },
+  "mining": {
+    "sections": {
+      "configQuality": {
+        "title": "配置品質",
+        "description": "依類型和配置的成功率。同一配置雜湊執行 2 次以上後顯示資料。",
+        "empty": "尚無資料 — 每個類型需要 2 次以上使用相同配置雜湊的擷取。",
+        "exploration": "探索樣本（隨機末段）"
+      },
+      "modelMatrix": {
+        "title": "模型矩陣",
+        "description": "依模型和任務範圍的加權結果分數。succeeded=1.0 · skipped=0.3 · failed=0.0。",
+        "empty": "尚無資料 — 需要 2 次以上使用相同模型和範圍的擷取。"
+      },
+      "defaultDrift": {
+        "title": "配置漂移",
+        "description": "哪些擷取參數偏離預設値，以及各專案是否趨向相同値。",
+        "empty": "尚未記錄任何參數調整。"
+      },
+      "outcomeRecompute": {
+        "title": "結果重算",
+        "description": "套用使用者校正後重新評估的擷取執行。",
+        "empty": "尚無校正資料。當校正連結到擷取執行時，此功能將啟用。"
+      }
+    },
+    "columns": {
+      "genre": "類型",
+      "configHash": "配置",
+      "runs": "次數",
+      "successRate": "成功率",
+      "avgEntities": "平均實體",
+      "model": "模型",
+      "scope": "範圍",
+      "filter": "過濾器",
+      "weightedOutcome": "分數",
+      "target": "參數",
+      "affectedProjects": "專案",
+      "driftPattern": "模式",
+      "runsWithOutcome": "有結果的執行",
+      "runId": "執行",
+      "outcome": "結果",
+      "recomputed": "重算",
+      "corrections": "校正"
+    },
+    "driftPattern": {
+      "convergent": "收斂",
+      "divergent": "發散"
+    },
+    "totalRuns": "共 {{count}} 次執行"
   }
 }
