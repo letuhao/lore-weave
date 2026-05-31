@@ -718,6 +718,9 @@ services:
       # Set to 0 to disable (e.g. when running multiple worker replicas
       # on the same host that would collide on the port).
       METRICS_PORT: "${WORKER_AI_METRICS_PORT:-8094}"
+      # B2 follow-up — global env knob for writer autocreate.  Mirrors the
+      # knowledge-service value so both services share one .env toggle.
+      KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED: ${KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED:-false}
     depends_on:
       postgres:
         condition: service_healthy

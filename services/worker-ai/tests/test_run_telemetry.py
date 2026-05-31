@@ -314,6 +314,20 @@ async def test_extract_and_persist_forwards_writer_autocreate(monkeypatch):
     assert kc.persist_pass2.await_args.kwargs["writer_autocreate"] is True
 
 
+def test_writer_autocreate_default_reads_env(monkeypatch):
+    """_WRITER_AUTOCREATE_DEFAULT is True when env var is set to 'true'."""
+    import importlib
+    from app import runner
+
+    monkeypatch.setenv("KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED", "true")
+    importlib.reload(runner)
+    assert runner._WRITER_AUTOCREATE_DEFAULT is True
+
+    monkeypatch.setenv("KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED", "false")
+    importlib.reload(runner)
+    assert runner._WRITER_AUTOCREATE_DEFAULT is False
+
+
 async def test_extract_and_persist_explicit_none_disables_not_global(monkeypatch):
     """Explicit precision_filter=None → DISABLED, must NOT fall back to the
     global (memory sdk-default-arg-dropped-from-wire — the sentinel guards this)."""

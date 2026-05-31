@@ -259,6 +259,16 @@ def _load_entity_recovery_config() -> EntityRecoveryConfig | None:
 
 _ENTITY_RECOVERY_CONFIG: EntityRecoveryConfig | None = _load_entity_recovery_config()
 
+# B2 follow-up — global env knob as default-for-all autocreate.
+# Per-project extraction_config.writer_autocreate still supersedes this
+# (resolve_effective_config merges it on top).  Setting the env var to
+# "true" here makes the knob functional for projects that have no
+# per-project override (the previous behaviour was always-False).
+_WRITER_AUTOCREATE_DEFAULT: bool = (
+    os.environ.get("KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED", "false").lower()
+    in {"1", "true", "yes"}
+)
+
 # D-PHASE6C-WORKERAI-JOB-SPAN. Module-level tracer; when OTel is no-op
 # (OTEL_EXPORTER_OTLP_ENDPOINT unset) this is the NoOp tracer and
 # `start_as_current_span` is a zero-cost context manager. When
@@ -349,7 +359,7 @@ def _build_run_config(job: JobRow) -> tuple[ResolvedConfig, str, str]:
         "model_source": "user_model",
         "precision_filter": _PRECISION_FILTER_CONFIG,
         "entity_recovery": _ENTITY_RECOVERY_CONFIG,
-        "writer_autocreate": False,
+        "writer_autocreate": _WRITER_AUTOCREATE_DEFAULT,
     }
     try:
         snapshot = resolve_effective_config(
