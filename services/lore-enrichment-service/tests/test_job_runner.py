@@ -148,6 +148,47 @@ def _runner(*, store, pipeline, budget, emitter) -> JobRunner:
     )
 
 
+# ── resume (051/F-C14-1): skip_gap_refs skips done gaps BEFORE any work ───────
+
+
+async def test_resume_skips_done_gaps_before_charge_and_run_gap():
+    """A gap in skip_gap_refs is skipped before the cost-cap charge + the LLM
+    run_gap — so a resumed job spends neither budget nor tokens on it, produces
+    no duplicate proposal, and records it in resumed_skipped (token-safe)."""
+    store = InMemoryProposalStore()
+    runner = _runner(
+        store=store, pipeline=_pipeline(),
+        budget=JobCostBudget(None), emitter=_emitter(),
+    )
+    gaps = [_gap("蓬萊"), _gap("玉虛宮")]
+    outcome = await runner.run_job(
+        job_id="job-1", gaps=gaps, context=_ctx(), entity_kind="location",
+        skip_gap_refs=frozenset({"loc:蓬萊"}),  # 蓬萊 already done on a prior run
+    )
+    assert outcome.final_state == "completed"
+    assert outcome.resumed_skipped == ["loc:蓬萊"]
+    # Only the not-yet-done gap produced a proposal — the skipped gap never
+    # reached run_gap/persist (no duplicate, no spend).
+    assert [p.canonical_name for p in outcome.proposals] == ["玉虛宮"]
+
+
+async def test_resume_all_done_is_a_clean_noop_completion():
+    """If every gap is already done, a resume completes immediately with no
+    proposals and all gaps in resumed_skipped (full convergence)."""
+    store = InMemoryProposalStore()
+    runner = _runner(
+        store=store, pipeline=_pipeline(),
+        budget=JobCostBudget(None), emitter=_emitter(),
+    )
+    outcome = await runner.run_job(
+        job_id="job-1", gaps=[_gap("蓬萊"), _gap("玉虛宮")], context=_ctx(),
+        skip_gap_refs=frozenset({"loc:蓬萊", "loc:玉虛宮"}),
+    )
+    assert outcome.final_state == "completed"
+    assert outcome.proposals == []
+    assert set(outcome.resumed_skipped) == {"loc:蓬萊", "loc:玉虛宮"}
+
+
 # ── happy path: full chain → completed, every proposal H0 ─────────────────────
 
 

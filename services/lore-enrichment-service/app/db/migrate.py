@@ -230,6 +230,20 @@ CREATE INDEX IF NOT EXISTS idx_enrichment_job_active
   WHERE status IN ('pending','estimating','running','paused');
 
 -- ═══════════════════════════════════════════════════════════════
+-- enrichment_job_request (F-C14-1 / 051) — the request payload needed to
+-- RE-DRIVE a cost-cap-paused job from the background resume worker. One row
+-- per job, written at create. Holds the targets + provider-registry model_ref
+-- UUIDs (NOT secrets) + technique/params — NEVER any enriched/generated content
+-- (H0: only the request shape, so the worker can rebuild the runner).
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS enrichment_job_request (
+  job_id        UUID PRIMARY KEY
+    REFERENCES enrichment_job(job_id) ON DELETE CASCADE,
+  request_json  JSONB NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ═══════════════════════════════════════════════════════════════
 -- enrichment_proposal — H0 CARRIER (enriched lore != canon)
 -- ───────────────────────────────────────────────────────────────
 -- The makeup-lore unit awaiting author review. EVERY column that makes it

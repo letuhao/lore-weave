@@ -18,6 +18,7 @@ by ``model_ref`` (NO hardcoded model names).
 
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
 import asyncpg
@@ -25,9 +26,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.api.principal import Principal, require_principal
+from app.config import settings
 from app.deps import get_db
 from app.gaps.model import Dimension, EntityKind, Gap
 from app.jobs.assembly import build_live_runner
+from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM, make_redis_producer
+from app.jobs.job_request import save_job_request
 from app.jobs.proposal_store import PgProposalStore
 from app.jobs.state_machine import (
     IllegalTransitionError,
@@ -40,6 +44,7 @@ from app.strategies.base import StrategyContext, Technique
 from app.strategies.registry import InactiveStrategyError, UnknownStrategyError
 
 router = APIRouter(prefix="/v1/lore-enrichment/jobs", tags=["jobs"])
+logger = logging.getLogger("lore_enrichment.jobs")
 
 
 # ── request / response bodies ────────────────────────────────────────────────
@@ -154,6 +159,14 @@ async def create_job(
         entity_kind="location",
         max_spend=body.max_spend_usd,
         estimated_cost=0.0,
+    )
+    # Persist the request so a cost-cap-paused job can be RE-DRIVEN by the resume
+    # worker (F-C14-1/051). Stores only the request shape (targets + model_ref
+    # UUIDs + params + acting user) — never enriched content.
+    await save_job_request(
+        pool=pool,
+        job_id=UUID(db_job_id),
+        request={**body.model_dump(mode="json"), "user_id": str(user_id)},
     )
     # Build the runner THROUGH the gate-aware factory: a P2/P3 technique while the
     # live eval gate is LOCKED raises InactiveStrategyError here — the job is
@@ -414,17 +427,43 @@ async def pause_job(
     )
 
 
-@router.post("/{job_id}/resume")
+@router.post("/{job_id}/resume", status_code=status.HTTP_202_ACCEPTED)
 async def resume_job(
     job_id: UUID,
     project_id: UUID = Query(...),
     principal: Principal = Depends(require_principal),
     pool: asyncpg.Pool = Depends(get_db),
 ) -> dict:
-    return await _transition_job(
+    """Resume a cost-cap-paused job (F-C14-1/051).
+
+    Flips paused→running (C8) AND enqueues a resume trigger on the Redis stream;
+    the background resume worker re-drives the job, skipping already-done gaps
+    (no re-spend). Non-blocking — returns 202 once enqueued. An illegal
+    transition (e.g. not paused) → 409 from the C8 machine before any enqueue."""
+    result = await _transition_job(
         action="resume", job_id=job_id, project_id=project_id,
         principal=principal, pool=pool,
     )
+    # Enqueue the re-drive trigger (best-effort: the status is already 'running';
+    # a transient Redis hiccup leaves the job re-triggerable by a repeat resume).
+    producer = make_redis_producer(settings.redis_url)
+    try:
+        await producer.xadd(
+            LORE_ENRICHMENT_RESUME_STREAM,
+            {
+                "job_id": str(job_id),
+                "project_id": str(project_id),
+                "user_id": str(principal.user_id),
+            },
+            maxlen=10000,
+        )
+        result["resume"] = "enqueued"
+    except Exception:  # noqa: BLE001 — enqueue failure must not 500 a flipped job
+        logger.warning("resume enqueue failed for job %s (re-triggerable)", job_id, exc_info=True)
+        result["resume"] = "enqueue_failed"
+    finally:
+        await producer.aclose()
+    return result
 
 
 @router.post("/{job_id}/cancel")

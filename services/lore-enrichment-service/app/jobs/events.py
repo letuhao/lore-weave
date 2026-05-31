@@ -50,6 +50,12 @@ logger = logging.getLogger("lore_enrichment.job_events")
 #: The single Redis stream key (platform convention loreweave:events:<aggregate>).
 LORE_ENRICHMENT_STREAM: str = "loreweave:events:lore_enrichment"
 
+#: Resume-trigger stream (F-C14-1/051). The resume endpoint XADDs a {job_id,
+#: user_id, project_id} message here; the background resume worker XREADGROUPs it
+#: and re-drives the paused job (skipping already-done gaps). Separate from the
+#: lifecycle-event stream above so the worker's consumer group only sees triggers.
+LORE_ENRICHMENT_RESUME_STREAM: str = "loreweave:events:lore_enrichment_resume"
+
 #: Approximate cap on stream length (XADD MAXLEN ~) — mirrors the glossary
 #: outbox stream's 10000 bound so the bus cannot grow unbounded.
 STREAM_MAXLEN: int = 10000

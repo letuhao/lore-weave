@@ -628,6 +628,33 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # F-C14-1/051 — background resume worker. Same image as lore-enrichment-service
+  # (CMD override), runs the Redis-Streams resume consumer that re-drives
+  # cost-cap-paused jobs (skipping already-done gaps). No HTTP port.
+  lore-enrichment-worker:
+    build:
+      context: ..
+      dockerfile: services/lore-enrichment-service/Dockerfile
+      labels: *build-labels
+    command: ["python", "-m", "app.worker"]
+    environment:
+      LORE_ENRICHMENT_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_lore_enrichment
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      GLOSSARY_SERVICE_URL: http://glossary-service:8088
+      BOOK_SERVICE_URL: http://book-service:8082
+      PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
+      REDIS_URL: redis://redis:6379
+      RESUME_CONSUMER_ENABLED: ${RESUME_CONSUMER_ENABLED:-true}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   worker-infra:
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.

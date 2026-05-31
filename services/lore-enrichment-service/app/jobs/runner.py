@@ -87,6 +87,10 @@ class JobOutcome:
     #: gaps whose proposal already existed (a resume/re-run re-processed them —
     #: the idempotent persist reloaded the row instead of duplicating it, WARN-1).
     deduped_gaps: list[str] = field(default_factory=list)
+    #: gaps SKIPPED before any work on a resume because their proposal already
+    #: exists (passed via skip_gap_refs) — neither budget nor an LLM call spent
+    #: on them (the token-safe convergence fix, 051/F-C14-1).
+    resumed_skipped: list[str] = field(default_factory=list)
 
 
 class JobRunner:
@@ -134,12 +138,18 @@ class JobRunner:
         context: StrategyContext,
         entity_kind: str | None = None,
         jwt: str = "",
+        skip_gap_refs: frozenset[str] = frozenset(),
     ) -> JobOutcome:
         """Run the full P1 pipeline over ``gaps`` for one job.
 
         Returns a :class:`JobOutcome`. The job persists through the C8 state
         machine (pending→estimating→running→completed | paused | failed), emits a
         lifecycle event per phase, and enforces the cost cap (pause on breach).
+
+        ``skip_gap_refs`` (resume, 051/F-C14-1): gaps whose proposal already
+        exists from a prior run. They are skipped BEFORE the cost-cap charge and
+        the LLM ``run_gap``, so a resumed job re-spends neither budget nor tokens
+        on done gaps — it processes strictly fewer gaps each time and converges.
         """
         record = JobRecord(job_id=job_id)
         machine = JobStateMachine(record, persist=self._persist_state)
@@ -171,6 +181,12 @@ class JobRunner:
         try:
             for gap in gaps:
                 gap_ref = self._gap_ref(gap)
+                # ── resume skip (051): a gap already persisted on a prior run is
+                # skipped BEFORE the cost charge + the LLM run_gap, so a resumed
+                # job spends neither budget nor tokens on it (token-safe).
+                if gap_ref in skip_gap_refs:
+                    outcome.resumed_skipped.append(gap_ref)
+                    continue
                 # Per-gap cost: the strategy's estimate for a one-gap batch.
                 unit_cost = self._cost_strategy.estimate_cost([gap]).cost
                 # ── cost-cap BEFORE the gap (breach → PAUSE, resumable) ──────────
