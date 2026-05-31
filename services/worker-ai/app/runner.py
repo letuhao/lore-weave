@@ -1391,7 +1391,7 @@ async def process_job(
                     llm_client=llm_client,
                     user_id=job.user_id,
                     project_id=job.project_id,
-                    source_type="chat_turn",
+                    source_type="chat_message",
                     source_id=str(turn["aggregate_id"]),
                     job_id=job.job_id,
                     model_ref=job.llm_model,
