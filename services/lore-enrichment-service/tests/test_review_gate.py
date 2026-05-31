@@ -19,8 +19,12 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
+import jwt as pyjwt
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
+from app.api import proposals as proposals_api
 from app.clients.writeback import BookOwner, WrittenFact
 from app.services.review import (
     IllegalTransitionError,
@@ -125,23 +129,18 @@ class FakePorts:
         self.writeback_calls: list[dict] = []
         self.promote_calls: list[dict] = []
         self.retract_calls: list[dict] = []
-        self.recycle_calls: list[dict] = []
         self.glossary_write_calls: list[dict] = []
-        self.canon_content_calls: list[dict] = []
-        self.get_canon_content_calls: list[dict] = []
-        # Enrichment SUPPLEMENT calls (B1 — entity_enrichments).
+        # Enrichment SUPPLEMENT calls (B1 — entity_enrichments). The supplement
+        # REPLACES the old short_description canon-content write (F-C13-2) and the
+        # old user-JWT recycle (F-C13-1).
         self.supplement_upserts: list[dict] = []
         self.supplement_deletes: list[dict] = []
-        # The glossary-side canon content, keyed by entity_id. None => NULL (the
-        # post-write-back quarantine state); a string => already-canon content.
-        # WARN-1: the re-promote self-heal reads this to decide whether to heal.
-        self.glossary_canon_content: dict[UUID, str | None] = {}
-        # When set, get_glossary_canon_content raises this (simulate a transient
-        # glossary read failure) — used to prove the self-heal logs + stands.
-        self.get_canon_content_error: Exception | None = None
-        # When set, the FIRST set_glossary_canon_content call raises this (then
-        # clears) — simulates a transient step-5 write failure (WARN-1 repro).
-        self.set_canon_content_error: Exception | None = None
+        # When set, the FIRST upsert_enrichment_supplement call raises this (then
+        # clears) — simulates a transient promote-supplement write failure.
+        self.upsert_supplement_error: Exception | None = None
+
+    async def aclose(self):
+        pass
 
     async def book_owner(self, *, book_id):
         return BookOwner(book_id=book_id, owner_user_id=self.owner)
@@ -151,26 +150,6 @@ class FakePorts:
             {"book_id": book_id, "kind_code": kind_code, "name": name, "attributes": attributes}
         )
         return str(GLOSS)
-
-    async def get_glossary_canon_content(self, *, book_id, entity_id):
-        # WARN-1: the re-promote self-heal reads the current canon content to
-        # decide whether a prior write landed. None/empty => needs healing.
-        self.get_canon_content_calls.append({"book_id": book_id, "entity_id": entity_id})
-        if self.get_canon_content_error is not None:
-            raise self.get_canon_content_error
-        return self.glossary_canon_content.get(entity_id)
-
-    async def set_glossary_canon_content(self, *, book_id, entity_id, short_description):
-        # DEFERRED-053: the Q2 canon-content write performed on promote (and the
-        # re-promote self-heal when the prior write did not land — WARN-1).
-        if self.set_canon_content_error is not None:
-            err = self.set_canon_content_error
-            self.set_canon_content_error = None  # transient: only the first call fails
-            raise err
-        self.canon_content_calls.append(
-            {"book_id": book_id, "entity_id": entity_id, "short_description": short_description}
-        )
-        self.glossary_canon_content[entity_id] = short_description
 
     async def writeback_enriched_facts(self, *, user_id, project_id, proposal_id, glossary_entity_id, canonical_name, entity_kind, technique, facts):
         self.writeback_calls.append({"proposal_id": proposal_id, "technique": technique, "facts": facts, "canonical_name": canonical_name})
@@ -195,14 +174,16 @@ class FakePorts:
         self.retract_calls.append({"proposal_id": proposal_id})
         return 2
 
-    async def soft_delete_glossary_entity(self, *, book_id, entity_id, jwt):
-        self.recycle_calls.append({"entity_id": entity_id})
-        return True
-
     async def upsert_enrichment_supplement(
         self, *, book_id, entity_id, proposal_id, technique, review_status,
         facts, promoted_by=None, promoted_at=None,
     ):
+        # Transient-failure injection (only the FIRST promoted write fails, then
+        # clears) — proves the promote stands + a re-promote re-upserts.
+        if review_status == "promoted" and self.upsert_supplement_error is not None:
+            err = self.upsert_supplement_error
+            self.upsert_supplement_error = None
+            raise err
         self.supplement_upserts.append(
             {
                 "book_id": book_id, "entity_id": entity_id, "proposal_id": proposal_id,
@@ -217,6 +198,10 @@ class FakePorts:
             {"book_id": book_id, "entity_id": entity_id, "proposal_id": proposal_id}
         )
         return 1
+
+    def promoted_upserts(self) -> list[dict]:
+        """The supplement upserts that promoted (review_status='promoted')."""
+        return [u for u in self.supplement_upserts if u["review_status"] == "promoted"]
 
 
 # ── lifecycle DAG ─────────────────────────────────────────────────────────────
@@ -277,8 +262,9 @@ async def test_writeback_enters_quarantined_not_canon():
     # glossary write at all; the assertion guards the no-content-leak invariant.
     for call in ports.glossary_write_calls:
         assert "short_description" not in call.get("attributes", {})
-    # DEFERRED-053: canonical content is set ONLY on promote — never on write-back.
-    assert ports.canon_content_calls == []
+    # B1/F-C13-2: write-back writes the supplement as 'proposed' only — it NEVER
+    # promotes it (promote is the sole canon transition).
+    assert ports.promoted_upserts() == []
 
 
 @pytest.mark.asyncio
@@ -296,8 +282,9 @@ async def test_writeback_writes_identity_only_no_content_leak():
     assert ports.glossary_write_calls, "anchor must be created when no id supplied"
     for call in ports.glossary_write_calls:
         assert call["attributes"] == {}, "no enriched content on the canon anchor pre-promote"
-    # DEFERRED-053: and no canonical-content write pre-promote either.
-    assert ports.canon_content_calls == []
+    # B1/F-C13-2: write-back writes the supplement 'proposed' (quarantined), never
+    # promoted, and never touches short_description.
+    assert ports.promoted_upserts() == []
 
 
 # ── T4 (F-C13-2): write-back RESOLVES the canonical entity + writes the supplement
@@ -344,19 +331,19 @@ async def test_writeback_writes_proposed_supplement_not_short_description():
     assert sup["proposal_id"] == p.proposal_id
     assert sup["promoted_by"] is None
     assert len(sup["facts"]) >= 1
-    # original canon (short_description) is NEVER written by write-back.
-    assert ports.canon_content_calls == []
+    # write-back writes 'proposed' only — never promotes the supplement, and
+    # never touches short_description.
+    assert ports.promoted_upserts() == []
     # still quarantined.
     assert result.canon is False
 
 
 @pytest.mark.asyncio
-async def test_promote_flows_content_to_glossary_canon():
-    """H0 A1 / DEFERRED-053: promote (and ONLY promote) flows the enriched content
-    into the glossary entity's CANONICAL content (short_description) through the
-    SSOT — the point makeup legitimately becomes canon. The anchor write
-    (extract-entities) stays identity-only; content goes via the dedicated
-    canon-content port (extract-entities can't set short_description)."""
+async def test_promote_writes_promoted_supplement_not_short_description():
+    """F-C13-2 (B1 / C4): promote flips the enrichment SUPPLEMENT rows to
+    'promoted' on the resolved canonical entity — it does NOT write
+    short_description (original canon stays original-authored). The supplement is
+    a distinguished `dị bản`, promoted but always tellable-apart."""
     p = _proposal(status=ReviewStatus.APPROVED)
     ports = FakePorts(owner=OWNER)
     svc = WritebackService(FakeRepo(p), ports)
@@ -364,13 +351,14 @@ async def test_promote_flows_content_to_glossary_canon():
         acting_user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
         glossary_entity_id=None,
     )
-    # The canonical content reached the glossary SSOT exactly once, on the
-    # resolved entity, carrying the proposal content (non-empty).
-    assert len(ports.canon_content_calls) == 1, "promote must canonize content into glossary canon"
-    cc = ports.canon_content_calls[0]
-    assert cc["entity_id"] == GLOSS
-    assert cc["short_description"], "canonical content must be non-empty"
-    assert cc["short_description"] == p.content[:480]
+    # Exactly one PROMOTED supplement upsert, on the resolved entity, with markers.
+    promoted = ports.promoted_upserts()
+    assert len(promoted) == 1, "promote must upsert the promoted supplement"
+    up = promoted[0]
+    assert up["entity_id"] == GLOSS
+    assert up["promoted_by"] == OWNER
+    assert up["promoted_at"] is not None
+    assert len(up["facts"]) >= 1
     # The identity anchor write (extract-entities) must NOT carry content.
     for call in ports.glossary_write_calls:
         assert "short_description" not in call["attributes"]
@@ -481,6 +469,9 @@ async def test_promote_requires_approved():
 
 @pytest.mark.asyncio
 async def test_promote_idempotent_no_duplicate_canon():
+    """A re-promote of an already-promoted proposal re-flips the KG + re-upserts
+    the PROMOTED supplement (idempotent ON CONFLICT) — and never re-writes the
+    entity anchor, so no duplicate canon entity is minted."""
     already = _proposal(
         status=ReviewStatus.PROMOTED,
         promoted_entity_id=GLOSS,
@@ -491,8 +482,6 @@ async def test_promote_idempotent_no_duplicate_canon():
     )
     already = replace(already, promoted_from_proposal_id=already.proposal_id)
     ports = FakePorts(owner=OWNER)
-    # The glossary entity is already HEALTHY canon (content landed on first promote).
-    ports.glossary_canon_content[GLOSS] = already.content[:480]
     svc = WritebackService(FakeRepo(already), ports)
     result = await svc.promote(
         acting_user_id=OWNER, project_id=PROJECT, proposal_id=already.proposal_id, book_id=BOOK,
@@ -501,101 +490,72 @@ async def test_promote_idempotent_no_duplicate_canon():
     # No second write-back of the entity anchor (no duplicate canon entity).
     assert ports.writeback_calls == []
     assert ports.glossary_write_calls == []
-    # Healthy re-promote re-flips KG only — the self-heal READS canon content,
-    # finds it already populated, and does NOT re-write (idempotent no-op).
-    assert ports.get_canon_content_calls, "self-heal must read current canon content"
-    assert ports.canon_content_calls == []
+    # The re-promote re-upserts the promoted supplement (idempotent), on GLOSS.
+    promoted = ports.promoted_upserts()
+    assert len(promoted) == 1
+    assert promoted[0]["entity_id"] == GLOSS
 
 
-# ── WARN-1: re-promote SELF-HEALS a transiently-failed canon-content write ──────
+# ── re-promote re-upserts the PROMOTED supplement (recovery / idempotency) ──────
 
 
 @pytest.mark.asyncio
-async def test_first_promote_canon_content_failure_still_promotes():
-    """WARN-1 repro half 1: a transient step-5 canon-content write failure on the
-    FIRST promote must NOT unwind the promotion — the proposal still becomes
-    PROMOTED (KG canon + proposal row hold), but the glossary short_description is
-    left empty (the DEFERRED-053 symptom that the self-heal then recovers)."""
+async def test_first_promote_supplement_failure_still_promotes():
+    """A transient promoted-supplement write failure on the FIRST promote must NOT
+    unwind the promotion — the proposal still becomes PROMOTED (KG canon +
+    proposal row hold); the promoted supplement is just not yet written (a
+    re-promote re-upserts it)."""
     p = _proposal(status=ReviewStatus.APPROVED)
     repo = FakeRepo(p)
     ports = FakePorts(owner=OWNER)
-    ports.set_canon_content_error = RuntimeError("transient glossary 503")
+    ports.upsert_supplement_error = RuntimeError("transient glossary 503")
     svc = WritebackService(repo, ports)
     result = await svc.promote(
         acting_user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
     )
-    # Promotion STANDS despite the canon-content write failing.
+    # Promotion STANDS despite the promoted-supplement write failing.
     assert result.canon is True
     assert repo._p.review_status == "promoted"
     assert repo._p.promoted_entity_id == GLOSS
-    # …but the glossary short_description is still empty (NULL) — not yet healed.
-    assert ports.canon_content_calls == [], "the failed write left no canon content"
-    assert ports.glossary_canon_content.get(GLOSS) is None
+    # The proposed supplement (from write_back) landed; the PROMOTED one failed.
+    assert ports.promoted_upserts() == [], "the failed promote-write left no promoted supplement"
 
 
 @pytest.mark.asyncio
-async def test_repromote_self_heals_missing_canon_content():
-    """WARN-1 core: promote (step-5 write fails) leaves glossary short_description
-    NULL while the proposal is PROMOTED — then a SECOND promote (the idempotent
-    branch) detects the empty canon content and re-writes it. A re-promote is the
-    real recovery path (no reconciler exists)."""
+async def test_repromote_reupserts_promoted_supplement_after_failure():
+    """Recovery path: promote (promoted-supplement write fails) leaves the
+    proposal PROMOTED with the supplement not-yet-promoted — then a SECOND promote
+    (the idempotent branch) re-upserts the promoted supplement. A re-promote is
+    the real recovery surface (no reconciler exists)."""
     p = _proposal(status=ReviewStatus.APPROVED)
     repo = FakeRepo(p)
     ports = FakePorts(owner=OWNER)
-    ports.set_canon_content_error = RuntimeError("transient glossary 503")
+    ports.upsert_supplement_error = RuntimeError("transient glossary 503")
     svc = WritebackService(repo, ports)
 
-    # First promote: canon-content write fails transiently → short_description NULL.
+    # First promote: promoted-supplement write fails transiently.
     await svc.promote(
         acting_user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
     )
     assert repo._p.review_status == "promoted"
-    assert ports.glossary_canon_content.get(GLOSS) is None, "first promote left it empty"
+    assert ports.promoted_upserts() == [], "first promote left the supplement un-promoted"
 
-    # Second promote (idempotent branch). The transient error has cleared; the
-    # self-heal reads NULL and re-writes the canon content for real.
+    # Second promote (idempotent branch): the error cleared; the promoted
+    # supplement is re-upserted for real.
     result = await svc.promote(
         acting_user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
     )
     assert result.canon is True
-    # The self-heal READ the empty state, then WROTE the canon content.
-    assert ports.get_canon_content_calls, "re-promote must read current canon content"
-    assert len(ports.canon_content_calls) == 1, "re-promote self-heals the canon content"
-    cc = ports.canon_content_calls[0]
-    assert cc["entity_id"] == GLOSS
-    assert cc["short_description"] == p.content[:480]
-    assert ports.glossary_canon_content.get(GLOSS) == p.content[:480], "now populated"
+    promoted = ports.promoted_upserts()
+    assert len(promoted) == 1, "re-promote re-upserts the promoted supplement"
+    assert promoted[0]["entity_id"] == GLOSS
 
 
 @pytest.mark.asyncio
-async def test_repromote_no_reheal_when_canon_content_already_present():
-    """WARN-1 idempotency guard: a re-promote of a HEALTHY entity (canon content
-    already present) reads it, finds it populated, and does NOT re-write."""
-    already = _proposal(
-        status=ReviewStatus.PROMOTED,
-        promoted_entity_id=GLOSS,
-        promoted_by=OWNER,
-        promoted_at=datetime.now(timezone.utc),
-        original_technique="template",
-    )
-    already = replace(already, promoted_from_proposal_id=already.proposal_id)
-    ports = FakePorts(owner=OWNER)
-    ports.glossary_canon_content[GLOSS] = "已有的正典内容"
-    svc = WritebackService(FakeRepo(already), ports)
-    await svc.promote(
-        acting_user_id=OWNER, project_id=PROJECT, proposal_id=already.proposal_id, book_id=BOOK,
-    )
-    assert ports.get_canon_content_calls, "self-heal must read first"
-    assert ports.canon_content_calls == [], "healthy entity: no re-write"
-    assert ports.glossary_canon_content[GLOSS] == "已有的正典内容", "unchanged"
-
-
-@pytest.mark.asyncio
-async def test_repromote_self_heal_read_failure_logs_and_stands():
-    """WARN-1 robustness: if the self-heal READ itself fails transiently on a
+async def test_repromote_supplement_write_failure_stands():
+    """Robustness: if the promoted-supplement write fails transiently on a
     re-promote, the promotion still stands (KG re-flipped, no raise) — the error
-    is logged and the NEXT re-promote remains the retry surface (no silent
-    permanent failure, but also no crash)."""
+    is logged and the NEXT re-promote remains the retry surface."""
     already = _proposal(
         status=ReviewStatus.PROMOTED,
         promoted_entity_id=GLOSS,
@@ -605,7 +565,7 @@ async def test_repromote_self_heal_read_failure_logs_and_stands():
     )
     already = replace(already, promoted_from_proposal_id=already.proposal_id)
     ports = FakePorts(owner=OWNER)
-    ports.get_canon_content_error = RuntimeError("transient glossary read 503")
+    ports.upsert_supplement_error = RuntimeError("transient glossary write 503")
     svc = WritebackService(FakeRepo(already), ports)
     result = await svc.promote(
         acting_user_id=OWNER, project_id=PROJECT, proposal_id=already.proposal_id, book_id=BOOK,
@@ -613,16 +573,19 @@ async def test_repromote_self_heal_read_failure_logs_and_stands():
     # No raise; promotion stands; KG re-flipped.
     assert result.canon is True
     assert len(ports.promote_calls) == 1
-    # The read was attempted; the write never happened (read failed first).
-    assert ports.get_canon_content_calls
-    assert ports.canon_content_calls == []
+    # The write was attempted and failed (caught) → no promoted supplement recorded.
+    assert ports.promoted_upserts() == []
 
 
 # ── (d) retract path ──────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_retract_routes_to_recycle_bin_and_soft_retracts_kg():
+async def test_retract_soft_deletes_supplement_and_preserves_entity():
+    """F-C13-1 fix: retract soft-deletes the enrichment SUPPLEMENT for the
+    proposal over the INTERNAL token (no user JWT) + soft-retracts the KG facts.
+    The canonical entity is NEVER deleted (recycling the whole entity was the
+    F-C13-1 bug)."""
     p = _proposal(
         status=ReviewStatus.PROMOTED,
         promoted_entity_id=GLOSS,
@@ -635,11 +598,15 @@ async def test_retract_routes_to_recycle_bin_and_soft_retracts_kg():
     svc = WritebackService(FakeRepo(p), ports)
     result = await svc.retract(
         acting_user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
-        glossary_entity_id=GLOSS, jwt="jwt-token",
+        glossary_entity_id=GLOSS,  # NOTE: no jwt — retract no longer needs one
     )
     assert result.facts_retracted == 2
-    assert result.glossary_recycled is True
-    assert ports.retract_calls and ports.recycle_calls
+    assert result.supplement_retracted == 1
+    assert ports.retract_calls, "KG facts soft-retracted"
+    assert ports.supplement_deletes, "supplement soft-deleted"
+    sd = ports.supplement_deletes[0]
+    assert sd["entity_id"] == GLOSS
+    assert sd["proposal_id"] == p.proposal_id
     assert "retracted" in (result.proposal["rejected_reason"] or "")
 
 
@@ -651,9 +618,10 @@ async def test_non_owner_cannot_retract():
     with pytest.raises(NotOwnerError):
         await svc.retract(
             acting_user_id=OTHER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
-            glossary_entity_id=GLOSS, jwt="jwt",
+            glossary_entity_id=GLOSS,
         )
     assert ports.retract_calls == []
+    assert ports.supplement_deletes == []
 
 
 # ── FIX-1 (WARN-1): makeup content NEVER becomes the entity name/anchor ─────────
@@ -712,10 +680,10 @@ async def test_writeback_null_target_ref_no_canonical_name_uses_synthetic_id():
 
 
 @pytest.mark.asyncio
-async def test_promote_null_target_ref_canonizes_faithful_name_not_makeup():
-    """H0 FIX-1: even on promote (the content→canon flow), the glossary entity
-    NAME stays the faithful identity — the canonical content carries the makeup,
-    the anchor name never does."""
+async def test_promote_null_target_ref_faithful_name_supplement_not_makeup():
+    """H0 FIX-1 + B1: on promote the glossary entity NAME stays the faithful
+    identity (北俱蘆洲); the enrichment becomes a PROMOTED supplement on that
+    entity — never short_description, and the makeup never becomes the name."""
     makeup = "捏造的地点描述不可作为实体名。"
     p = _proposal(
         status=ReviewStatus.APPROVED,
@@ -729,10 +697,10 @@ async def test_promote_null_target_ref_canonizes_faithful_name_not_makeup():
         acting_user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
         glossary_entity_id=None,
     )
-    # The makeup content reaches the canonical content (DEFERRED-053)…
-    assert ports.canon_content_calls, "promote must canonize content into glossary canon"
-    assert ports.canon_content_calls[0]["short_description"] == makeup[:480]
-    # …but the entity NAME (anchor) is always the faithful identity, never makeup.
+    # The enrichment is canonized as a PROMOTED supplement (B1)…
+    assert ports.promoted_upserts(), "promote must upsert the promoted supplement"
+    # …but the entity NAME (anchor) is always the faithful identity, never makeup,
+    # and no makeup is written into short_description (extract-entities attrs).
     for c in ports.glossary_write_calls:
         assert c["name"] == "北俱蘆洲", "the entity NAME is always the faithful identity"
         assert c["name"] != makeup[:32]
@@ -760,7 +728,7 @@ async def test_writeback_persists_anchor_id_for_later_retract():
 async def test_retract_quarantined_never_promoted_locates_anchor_via_writeback_id():
     """FIX-3 / NIT-3: a proposal that was written-back (quarantined) but NEVER
     promoted has no promoted_entity_id. Retract with no explicit id must still
-    recycle the anchor, located via the persisted writeback_entity_id."""
+    soft-delete the supplement, located via the persisted writeback_entity_id."""
     p = _proposal(
         status=ReviewStatus.APPROVED,   # approved + written-back, never promoted
         promoted_entity_id=None,
@@ -771,18 +739,17 @@ async def test_retract_quarantined_never_promoted_locates_anchor_via_writeback_i
     result = await svc.retract(
         acting_user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
         glossary_entity_id=None,  # caller supplies NOTHING — must use persisted id
-        jwt="jwt-token",
     )
-    assert result.glossary_recycled is True
-    assert ports.recycle_calls, "anchor must be recycled even when never promoted"
-    assert ports.recycle_calls[0]["entity_id"] == GLOSS
+    assert result.supplement_retracted == 1
+    assert ports.supplement_deletes, "supplement must be soft-deleted even when never promoted"
+    assert ports.supplement_deletes[0]["entity_id"] == GLOSS
 
 
 @pytest.mark.asyncio
 async def test_retract_orphan_when_no_anchor_id_anywhere():
     """Guard: with no supplied id, no promoted_entity_id, and no writeback_entity_id
-    (e.g. never written back), retract does NOT recycle (nothing to locate) — and
-    must not raise. The KG soft-retract still runs."""
+    (e.g. never written back), retract does NOT touch the glossary (nothing to
+    locate) — and must not raise. The KG soft-retract still runs."""
     p = _proposal(
         status=ReviewStatus.APPROVED,
         promoted_entity_id=None,
@@ -792,8 +759,81 @@ async def test_retract_orphan_when_no_anchor_id_anywhere():
     svc = WritebackService(FakeRepo(p), ports)
     result = await svc.retract(
         acting_user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
-        glossary_entity_id=None, jwt="jwt-token",
+        glossary_entity_id=None,
     )
-    assert result.glossary_recycled is False
-    assert ports.recycle_calls == []
+    assert result.supplement_retracted == 0
+    assert ports.supplement_deletes == []
     assert ports.retract_calls, "KG facts still soft-retracted"
+
+
+# ── F-C13-1: API-LEVEL retract test (drives the real FastAPI handler) ───────────
+# The QC found F-C13-1 was MASKED because every retract unit test called
+# WritebackService.retract directly with a hand-supplied jwt the real handler
+# never had. This test exercises the actual POST handler end-to-end (principal
+# extraction + repo dep + ports) to prove retract works WITHOUT any JWT threading.
+
+
+def _api_client(repo, ports):
+    """A TestClient over just the proposals router, with the repo dep overridden
+    and _make_ports patched to the fake (no live stack / DB)."""
+    app = FastAPI()
+    app.include_router(proposals_api.router)
+    app.dependency_overrides[proposals_api.get_repo] = lambda: repo
+    proposals_api._make_ports = lambda: ports  # type: ignore[attr-defined]
+    return TestClient(app)
+
+
+def _owner_bearer() -> str:
+    """A bearer whose unverified `sub` is the book owner (the handler decodes sub
+    without signature verification at this stage)."""
+    return pyjwt.encode({"sub": str(OWNER)}, "irrelevant", algorithm="HS256")
+
+
+@pytest.mark.asyncio
+async def test_api_retract_soft_deletes_supplement_without_jwt_threading():
+    """F-C13-1 capstone (unit): the real retract HANDLER soft-deletes the
+    supplement and returns the supplement_retracted shape — proving retract no
+    longer depends on a user JWT being threaded (the old structural dead-code)."""
+    p = _proposal(
+        status=ReviewStatus.PROMOTED,
+        promoted_entity_id=GLOSS,
+        promoted_by=OWNER,
+        promoted_at=datetime.now(timezone.utc),
+        original_technique="template",
+    )
+    p = replace(p, promoted_from_proposal_id=p.proposal_id)
+    ports = FakePorts(owner=OWNER)
+    client = _api_client(FakeRepo(p), ports)
+
+    resp = client.post(
+        f"/v1/lore-enrichment/proposals/{p.proposal_id}/retract",
+        params={"project_id": str(PROJECT)},
+        json={"book_id": str(BOOK), "glossary_entity_id": str(GLOSS)},
+        headers={"Authorization": f"Bearer {_owner_bearer()}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["facts_retracted"] == 2
+    assert body["supplement_retracted"] == 1
+    assert "glossary_recycled" not in body, "the broken recycle flag is gone"
+    # The supplement delete fired over the internal port (no JWT was threaded).
+    assert ports.supplement_deletes and ports.supplement_deletes[0]["entity_id"] == GLOSS
+
+
+@pytest.mark.asyncio
+async def test_api_retract_non_owner_is_403():
+    """The real handler rejects a non-owner principal (book-owner truth check)."""
+    p = _proposal(status=ReviewStatus.PROMOTED, promoted_entity_id=GLOSS, promoted_by=OWNER,
+                  promoted_at=datetime.now(timezone.utc), original_technique="template")
+    p = replace(p, promoted_from_proposal_id=p.proposal_id)
+    ports = FakePorts(owner=OWNER)
+    client = _api_client(FakeRepo(p), ports)
+    other_bearer = pyjwt.encode({"sub": str(OTHER)}, "irrelevant", algorithm="HS256")
+    resp = client.post(
+        f"/v1/lore-enrichment/proposals/{p.proposal_id}/retract",
+        params={"project_id": str(PROJECT)},
+        json={"book_id": str(BOOK), "glossary_entity_id": str(GLOSS)},
+        headers={"Authorization": f"Bearer {other_bearer}"},
+    )
+    assert resp.status_code == 403, resp.text
+    assert ports.supplement_deletes == []

@@ -341,6 +341,8 @@ async def retract_proposal(
             proposal_id=proposal_id,
             book_id=body.book_id,
             glossary_entity_id=body.glossary_entity_id,
+            # F-C13-1: no JWT threaded — retract soft-deletes the supplement over
+            # the internal token; the canonical entity is preserved.
         )
     except NotOwnerError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
@@ -354,6 +356,6 @@ async def retract_proposal(
     return {
         "proposal_id": result.proposal["proposal_id"],
         "facts_retracted": result.facts_retracted,
-        "glossary_recycled": result.glossary_recycled,
+        "supplement_retracted": result.supplement_retracted,
         "review_status": result.proposal["review_status"],
     }

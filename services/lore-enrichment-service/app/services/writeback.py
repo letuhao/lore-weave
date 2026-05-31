@@ -85,7 +85,11 @@ class PromoteResult:
 class RetractResult:
     proposal: dict[str, Any]
     facts_retracted: int
-    glossary_recycled: bool
+    # Count of enrichment-supplement rows soft-deleted (F-C13-1). The canonical
+    # entity + its original canon are ALWAYS preserved — retract only removes the
+    # distinguished supplement, so there is no "entity recycled" flag any more
+    # (recycling the whole entity was the F-C13-1 bug).
+    supplement_retracted: int
 
 
 def _location_kind_code(entity_kind: str) -> str:
@@ -161,50 +165,51 @@ class WritebackService:
             )
         return facts
 
-    async def _heal_glossary_canon_content(
+    async def _write_promoted_supplement(
         self,
         *,
         book_id: UUID,
         entity_id: UUID,
-        content: str,
+        proposal: ProposalRow,
+        promoted_by: UUID,
+        promoted_at: datetime,
         proposal_id: UUID,
     ) -> None:
-        """Converge the glossary entity's canonical ``short_description`` to the
-        promoted content (WARN-1 / DEFERRED-053 robustness).
+        """Upsert the proposal's enrichment SUPPLEMENT rows to ``promoted`` on the
+        canonical entity (B1 / F-C13-2 — replaces the old short_description write).
 
         Called from BOTH promote paths:
-          * the first promote (step 5) — write the canon content;
-          * the idempotent re-promote branch — RE-write it IF the glossary still
-            has no canon content (a prior write failed transiently).
+          * the first promote (step 5) — flip the proposal's supplement rows
+            (written ``proposed`` by write_back) to ``promoted`` + stamp markers;
+          * the idempotent re-promote branch — re-upsert ``promoted`` (the
+            glossary endpoint upserts ON CONFLICT, so this is naturally idempotent
+            and needs no read-before-write; it also heals a first-promote whose
+            supplement write failed transiently).
 
-        It first READS the current canon content; if it is already populated the
-        write is skipped (re-promote of a healthy entity is a no-op, matching the
-        idempotency contract). If it is missing/empty, it (re)writes — so a
-        re-promote is the real recovery path for a transiently-failed step 5.
+        The enrichment NEVER touches the entity's original-canon
+        ``short_description`` (C4). It is a distinguished supplement, promoted but
+        always tellable-apart (origin='enrichment', markers retained).
 
         Best-effort *for the success of the promote*: a transient glossary hiccup
         is LOGGED (never swallowed silently) and does NOT unwind a promotion whose
         canon state already holds in the KG + proposal row. The next re-promote
-        re-attempts the heal — there is no other reconciler, so this branch is the
-        guaranteed retry surface."""
-        target = content[:480]
+        re-upserts — there is no other reconciler, so this is the retry surface."""
         try:
-            current = await self._ports.get_glossary_canon_content(
-                book_id=book_id, entity_id=entity_id
-            )
-            if current and current.strip():
-                # Already canon — nothing to heal (idempotent no-op).
-                return
-            await self._ports.set_glossary_canon_content(
+            await self._ports.upsert_enrichment_supplement(
                 book_id=book_id,
                 entity_id=entity_id,
-                short_description=target,
+                proposal_id=proposal_id,
+                technique=proposal.technique,
+                review_status="promoted",
+                facts=self._facts_from_proposal(proposal),
+                promoted_by=promoted_by,
+                promoted_at=promoted_at,
             )
         except Exception:  # noqa: BLE001 — promote already holds; re-promote heals
             logger.warning(
-                "glossary canon-content write failed for proposal %s entity %s; "
-                "promotion stands (KG canon + proposal row), a re-promote will "
-                "self-heal the glossary short_description",
+                "glossary enrichment-supplement promote write failed for proposal "
+                "%s entity %s; promotion stands (KG canon + proposal row), a "
+                "re-promote will re-upsert the promoted supplement",
                 proposal_id,
                 entity_id,
                 exc_info=True,
@@ -363,12 +368,12 @@ class WritebackService:
             raise LookupError("proposal not found")
 
         # Idempotent: already promoted → flip KG (no-op if already canon) + return.
-        # This branch is ALSO the real recovery path (adversary WARN-1): if the
-        # step-5 canon-content write on the FIRST promote failed transiently, the
-        # glossary short_description is still NULL while the KG facts are canon
-        # (the exact DEFERRED-053 symptom). There is no reconciler — so a
-        # re-promote MUST self-heal the canon content here, else it can never be
-        # retried (this branch returns BEFORE step 5).
+        # This branch is ALSO the real recovery path: if the step-5 supplement
+        # write on the FIRST promote failed transiently, the glossary supplement
+        # may still be 'proposed' (or absent) while the KG facts are canon. There
+        # is no reconciler — so a re-promote re-upserts the PROMOTED supplement
+        # here (idempotent ON CONFLICT), else it can never be retried (this branch
+        # returns BEFORE step 5).
         if proposal.review_status == ReviewStatus.PROMOTED:
             promoted_at = proposal.promoted_at or datetime.now(timezone.utc)
             n = await self._ports.promote_enriched_facts(
@@ -379,10 +384,12 @@ class WritebackService:
             )
             resolved_entity_id = proposal.promoted_entity_id or proposal.writeback_entity_id
             if resolved_entity_id is not None:
-                await self._heal_glossary_canon_content(
+                await self._write_promoted_supplement(
                     book_id=book_id,
                     entity_id=resolved_entity_id,
-                    content=proposal.content,
+                    proposal=proposal,
+                    promoted_by=proposal.promoted_by or owner.owner_user_id,
+                    promoted_at=promoted_at,
                     proposal_id=proposal_id,
                 )
             return PromoteResult(
@@ -431,31 +438,30 @@ class WritebackService:
             promoted_at=promoted_at,
         )
 
-        # 5. NOW (and only now) the content is canon — flow it into the glossary
-        # entity's CANONICAL content through the SSOT (Q2 / DEFERRED-053).
-        # Pre-promote, write-back wrote only the entity identity (quarantine);
-        # this is the point makeup legitimately becomes authored canon.
+        # 5. NOW (and only now) the enrichment is canon — flip the glossary
+        # SUPPLEMENT rows for this proposal from 'proposed' to 'promoted' on the
+        # resolved canonical entity, stamping the permanent markers (B1 / C4).
         #
-        # We set the glossary ``short_description`` COLUMN on the resolved
-        # entity via the internal canon-content endpoint — NOT extract-entities,
-        # which silently no-ops on short_description (it is a column, not an EAV
-        # attribute_definition). glossary_sync (C4) then propagates this content
-        # to Neo4j as source_type='glossary' canon, keeping the KG entity anchor
-        # consistent with the glossary SSOT. The per-dimension KG facts promoted
-        # in step 4 carry the structured dimensions; the short_description is the
-        # canonical summary — complementary, never divergent.
+        # This REPLACES the old short_description write (DEFERRED-053): the
+        # enrichment is a DISTINGUISHED supplement (`dị bản`) living in the
+        # entity_enrichments table, NEVER conflated into the entity's
+        # original-canon short_description — so original canon vs enrichment stays
+        # tellable-apart for life (the B1 core requirement / F-C13-2 fix).
+        # glossary emits entity_updated so glossary_sync (C4) re-runs; the
+        # per-dimension KG facts promoted in step 4 are the KG/RAG layer, the
+        # supplement rows are the authored/wiki layer — two-layer by design.
         #
-        # WARN-1: this write is best-effort *for the success of THIS promote* (a
-        # transient glossary hiccup must not unwind a promotion whose canon state
-        # already holds in the KG + proposal row). It is NOT silently abandoned:
-        # because step 5 was skipped, the proposal is left as PROMOTED with an
-        # EMPTY glossary short_description, and the IDEMPOTENT re-promote branch
-        # above detects that empty state and re-writes the canon content. A
-        # re-promote is therefore the real recovery path — there is no reconciler.
-        await self._heal_glossary_canon_content(
+        # Best-effort *for the success of THIS promote* (a transient glossary
+        # hiccup must not unwind a promotion whose canon state already holds in
+        # the KG + proposal row). It is NOT silently abandoned: the IDEMPOTENT
+        # re-promote branch above re-upserts the promoted supplement, so a
+        # re-promote is the real recovery path — there is no other reconciler.
+        await self._write_promoted_supplement(
             book_id=book_id,
             entity_id=resolved_entity_id,
-            content=proposal.content,
+            proposal=proposal,
+            promoted_by=owner.owner_user_id,
+            promoted_at=promoted_at,
             proposal_id=proposal_id,
         )
 
@@ -478,13 +484,20 @@ class WritebackService:
         proposal_id: UUID,
         book_id: UUID,
         glossary_entity_id: UUID | None,
-        jwt: str = "",
     ) -> RetractResult:
         """Retract a promoted/quarantined proposal (reversible).
 
-        Author-only (same truth-source check as promote). Routes the glossary
-        entity to the recycle-bin (M6 soft-delete) and soft-retracts the KG facts
-        (``valid_until``). The proposal row records the retraction note."""
+        Author-only (same truth-source check as promote). Soft-deletes the
+        enrichment SUPPLEMENT rows for this proposal on the glossary entity, and
+        soft-retracts the KG facts (``valid_until``). The proposal row records the
+        retraction note.
+
+        F-C13-1 FIX: the supplement soft-delete goes over the service-to-service
+        INTERNAL token (``delete_enrichment_supplement``) — NO user JWT. The old
+        path needed a user Bearer the handler never carried (``Principal`` has no
+        token), so the recycle leg was structurally dead. It also recycled the
+        WHOLE entity; now retract only removes the distinguished supplement, so
+        the canonical entity + its original canon ALWAYS survive."""
         owner = await self._ports.book_owner(book_id=book_id)
         if acting_user_id is None or acting_user_id != owner.owner_user_id:
             raise NotOwnerError("only the book/project owner may retract")
@@ -500,20 +513,21 @@ class WritebackService:
             user_id=owner.owner_user_id, proposal_id=proposal_id
         )
 
-        # Glossary side: recycle-bin the entity anchor (reversible). Resolve which
-        # entity to recycle in order of authority: an explicitly-supplied id, the
-        # promotion record, then the write-back anchor id persisted at write-back
-        # time (FIX-3/NIT-3) — the last covers a quarantined-never-promoted
-        # proposal, whose anchor would otherwise be orphaned.
-        recycle_target = (
+        # Glossary side: soft-delete the enrichment SUPPLEMENT for this proposal
+        # (reversible — sets deleted_at). Resolve which entity carries it in order
+        # of authority: an explicitly-supplied id, the promotion record, then the
+        # write-back anchor id persisted at write-back time (FIX-3/NIT-3) — the
+        # last covers a quarantined-never-promoted proposal. Internal-token; no
+        # user JWT (F-C13-1). The canonical entity is NEVER deleted.
+        supplement_target = (
             glossary_entity_id
             or proposal.promoted_entity_id
             or proposal.writeback_entity_id
         )
-        recycled = False
-        if recycle_target is not None and jwt:
-            recycled = await self._ports.soft_delete_glossary_entity(
-                book_id=book_id, entity_id=recycle_target, jwt=jwt
+        supplement_retracted = 0
+        if supplement_target is not None:
+            supplement_retracted = await self._ports.delete_enrichment_supplement(
+                book_id=book_id, entity_id=supplement_target, proposal_id=proposal_id
             )
 
         updated = await self._repo.mark_retracted(
@@ -522,5 +536,5 @@ class WritebackService:
         return RetractResult(
             proposal=updated.as_dict(),
             facts_retracted=n,
-            glossary_recycled=recycled,
+            supplement_retracted=supplement_retracted,
         )
