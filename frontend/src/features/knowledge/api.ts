@@ -387,6 +387,11 @@ export interface TimelineEvent {
   chapter_title: string | null;
   event_order: number | null;
   chronological_order: number | null;
+  /** C18 — in-story ISO date (partial precision: YYYY / YYYY-MM / YYYY-MM-DD).
+   *  Present in the BE Event projection; declared here for the C-FE edit form. */
+  event_date_iso: string | null;
+  /** C18-DEF-01 — free-text narrative time hint (e.g. "the next morning"). */
+  time_cue: string | null;
   participants: string[];
   confidence: number;
   source_types: string[];

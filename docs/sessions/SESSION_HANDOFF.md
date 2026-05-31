@@ -7,27 +7,19 @@
 
 ## ▶ NEXT SESSION — start here
 
-**State:** Phase-B **BE complete + C-FE data layer DONE + committed** (session 75). The entire backend capture spine (entity edit/delete/merge, relation invalidate/correct, event edit/delete) is live-smoke-verified, and the **FE data/controller layer** (api methods + `useRelationMutations`/`useEventMutations`, tsc-clean) is committed. **Only the C-FE VIEWS remain** (dialogs + wiring + browser smoke) → tracked **D#054**.
+**State:** Phase B is **FEATURE-COMPLETE** (session 75). The full two-axis-Axis-1 correction loop is built + committed: users can correct **entities** (edit/delete/merge), **relations** (correct/mark-wrong), and **events** (edit/delete) in the UI → each emits a `knowledge.*_corrected` / enriched `glossary.entity_updated` → relay → `learning-service.corrections`. Backend live-smoke-verified end-to-end (all types); frontend tsc-clean + 469 knowledge vitest pass + AMAW-adversary-folded. **Only residual: a Playwright BROWSER smoke** (D#054, LOW) — the contract is already covered by component tests + BE live-smokes.
 
-**NEXT = C-FE views (the final Phase-B slice — fresh session for browser verification):** the api + hooks are READY (`knowledgeApi.{getRelation,invalidateRelation,correctRelation,updateEvent,archiveEvent}`, `useInvalidateRelation`/`useCorrectRelation`, `useUpdateEvent`/`useArchiveEvent`). Build the views that consume them — mirror `EntityEditDialog`+`useEntityMutations`+`ifMatch`/`isVersionConflict` →
+**NEXT options:** (a) **close out Phase B** with the D#054 browser smoke (needs Vite dev server 5173 + stack up); (b) **push the 8 unpushed commits** (needs approval); (c) start **Phase C** (Tier-1 anchor reuse, D#048) or **Phase B2** (config telemetry, D#047) per the [accuracy plan](../plans/2026-05-31-extraction-accuracy-and-eval-plan.md) §4. The correction CAPTURE spine is done; Phases C–F/B2 build the *use* of corrections (anchor reuse, few-shot, organic gold, fine-tune) as volume accrues.
+
+<details><summary>(historical) C-FE views scope — now DONE</summary>
+
+Built this session: mirror `EntityEditDialog`+`useEntityMutations`+`ifMatch`/`isVersionConflict` →
 - `RelationEditDialog` (predicate/endpoint correct → `POST /v1/knowledge/relations/correct`; "mark wrong" → `POST /relations/{id}/invalidate`), wired from the read-only `RelationRow` in [EntityDetailPanel.tsx](../../frontend/src/features/knowledge/components/EntityDetailPanel.tsx).
 - `EventEditDialog` (title/summary/time_cue/event_date_iso edit → `PATCH /v1/knowledge/events/{id}` with If-Match; archive → `DELETE /events/{id}`), wired from [TimelineEventRow.tsx](../../frontend/src/features/knowledge/components/TimelineEventRow.tsx).
 - `api.ts`: `getRelation`/`correctRelation`/`invalidateRelation`/`updateEvent`/`archiveEvent`; hooks `useRelationMutations`/`useEventMutations` (react-query invalidation + 412 refetch).
 - a11y: 44×44 icon-only tap targets; visibility-transition tests for both dialogs (standing FE lessons).
-- A FINAL cold-start AMAW adversary on the full C surface (BE + FE) is recommended at C-FE close (deferred from the BE cycles, which got self-review since they mirror the adversary-reviewed entity patterns).
-
-**C1 (relations) shipped (cycle 75d):** `recreate_relation` (F5 — separate from extraction `create_relation`, resurrects `valid_until`; invariant test-locked) + public relations router (`GET /relations/{id}`, `POST /relations/{id}/invalidate`, `POST /relations/correct`) + emit `knowledge.relation_corrected`. Live-smoke PASSED (predicate-fix + spurious-drop, target_type=relation). Correct = recreate-FIRST-then-invalidate (a 409 leaves the old edge intact — no half-applied state).
-
-**C2 (events) scope:** add `version` to `:Event` (ON CREATE=1, bump on edit); `update_event_fields` (same-Cypher before-capture, If-Match) + `archive_event` (read-before, op=delete) in [events.py](../../services/knowledge-service/app/db/neo4j_repos/events.py); new events router (`PATCH /v1/knowledge/events/{id}` 428/412 ETag, `DELETE .../{id}`); emit `knowledge.event_corrected` (add `event_correction_payload`/`event_snapshot` to outbox_emit — structural=`event_date_iso`, content=`title/summary/time_cue/participants`). Extract the duplicated `_parse_if_match`/`_etag` helpers to a shared module (or duplicate per existing convention).
-
-**C3 (merge emission) scope:** `merge_entity_into` ([entities.py router](../../services/knowledge-service/app/routers/public/entities.py)) → emit `knowledge.entity_corrected` op=merge, before=source snapshot (read source via `get_entity` BEFORE merge), after=target. `merge_entities` repo unchanged.
-
-**C-FE scope:** mirror `EntityEditDialog`+`useEntityMutations`+`ifMatch` → `RelationEditDialog` (predicate/endpoint correct + mark-wrong→invalidate, wired from `RelationRow` in `EntityDetailPanel.tsx`) + `EventEditDialog` (title/summary/time + archive, from `TimelineEventRow.tsx`); `api.ts` methods; 44×44 tap targets; visibility-transition tests. Needs its own wireframe + browser smoke.
-
-learning-service already consumes + handles all three `knowledge.*_corrected` types (wired in A). Live-smoke each BE slice.
-
-### (prior) sub-session B — KS entity-correction emission (session 75c)
-Next was sub-session B; now DONE (see cycle 75c below).
+- a11y: 44×44 icon-only tap targets; 412 conflict handling per the entity pattern.
+</details>
 
 **Sub-session A shipped (cycle 75b):** new `learning-service` (Python/FastAPI, host 8222) with `corrections` table (redact/hash schema) + Redis-Streams consumer (`learning-collector`, with `XAUTOCLAIM` reclaim) + read API (`/v1/learning/corrections`) + gateway proxy + compose/db-ensure. worker-infra relay now carries `outbox_id` on the wire (F1/F2) + `streamMaxLen` 200k for glossary/knowledge + retention 30d. glossary `entity_updated` enriched with `actor_type`/`actor_id`/before/after (PATCH made transactional for consistent capture). **Cross-service live smoke PASSED** (glossary outbox→relay→learning: user corrections persisted+deduped on outbox_id, pipeline skipped, raw content NULL). AMAW code-review REJECTED→fixed (dead-retry reclaim F-A1, PATCH-contract F-A3; F-A2 deferred D#052). 23 learning unit tests + Go suites green.
 
@@ -64,6 +56,19 @@ GOAL: BUILD sub-session A (foundation) per design §12 — learning-service scaf
 Hard gotchas from the design review: origin_event_id := EventData.outbox_id (NOT aggregate_id, NOT message_id); EventData lives in dispatcher.py:19-28; empty outbox_id → DLQ not silent ""; grep outbox_id ≥5 hits before VERIFY.
 ```
 </details>
+
+## Session 75 — cycle 75g: Phase B C-FE views — relation/event edit UI (FEATURE-COMPLETE)
+
+**The user-facing correction UI. Phase B is now feature-complete.**
+
+- **`RelationEditDialog`** ([components](../../frontend/src/features/knowledge/components/RelationEditDialog.tsx)): predicate correct → `correctRelation`; "mark wrong" (confirm) → `invalidateRelation`. Mounted **once at panel scope** (adversary F3 — keyed by `editingRelation`, not one-per-row), opened from the Pencil CTA on each `RelationRow` in `EntityDetailPanel.tsx`.
+- **`EventEditDialog`** ([components](../../frontend/src/features/knowledge/components/EventEditDialog.tsx)): title/summary/time_cue/event_date_iso edit with If-Match → `updateEvent`; **ISO-date validation** (`YYYY|YYYY-MM|YYYY-MM-DD`, adversary F1) + empty-date = no-change (F2, avoids `""` corrupting the lexicographic date axis). Wired into `TimelineEventRow` expanded detail + an archive (`DELETE`) button → `archiveEvent`.
+- i18n `relations.*` + `events.*` added to all 4 locales (en/ja/vi/zh-TW).
+- **Tests:** 9 new dialog tests (pre-fill, diff-only+If-Match, 412 conflict, no-op, mark-wrong confirm/cancel) + 24 affected (EntityDetailPanel/TimelineTab) green. **469 knowledge vitest pass; frontend tsc clean.**
+- **AMAW cold-start adversary (FE): WARN×3** — the high-value `version`-undefined probe CLEARED (BE timeline list returns `version`). F1/F2 (date integrity) + F3 (per-row dialog hoist) all folded + re-tested.
+- **Residual:** D#054 (LOW) — a Playwright **browser smoke** through the live stack. Contract already covered by component tests + BE live-smokes.
+
+**Phase B = FEATURE-COMPLETE.** See ▶ NEXT SESSION for options (browser smoke / push / Phase C or B2).
 
 ## Session 75 — cycle 75f: Phase B C-FE data layer (api + hooks)
 
