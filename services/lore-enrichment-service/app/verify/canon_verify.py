@@ -39,18 +39,28 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Awaitable, Callable, Sequence
+from typing import TYPE_CHECKING, Awaitable, Callable, Sequence
 from uuid import UUID
 
 from app.clients.knowledge import GraphStats
 from app.clients.port import KnowledgeReadPort
-from app.generation.provenance import EnrichedFact
-from app.retrieval.strategy import GroundedProposal
 from app.verify.sanitize import (
     _prenormalize,
     neutralize_proposal_text,
     scan_injection,
 )
+
+if TYPE_CHECKING:
+    # Annotation-only (PEP 563 — `from __future__ import annotations` is active above,
+    # so these names are never evaluated at runtime). Importing them at module load
+    # makes canon_verify's OWN initialization descend into the generation/retrieval/
+    # strategies package tree, which imports back into the still-partially-initialized
+    # canon_verify (fabrication/recook/wiring all import CanonVerifier) → ImportError.
+    # Production startup (app.main) dodges it via import ordering, but any entry point
+    # that imports app.clients.writeback first crashes. Deferring these two imports
+    # breaks the cycle at its source with no behaviour change. See QC F-LIVE-2.
+    from app.generation.provenance import EnrichedFact
+    from app.retrieval.strategy import GroundedProposal
 
 __all__ = [
     "FlagKind",

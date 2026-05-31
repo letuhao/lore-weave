@@ -22,11 +22,20 @@ does not advance the lifecycle DAG.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Sequence
+from typing import TYPE_CHECKING, Sequence
 
-from app.generation.provenance import EnrichedFact
-from app.retrieval.strategy import GroundedProposal
 from app.verify.canon_verify import CanonVerifier, FlagKind, VerifyResult
+
+if TYPE_CHECKING:
+    # Annotation-only (PEP 563 active above). Importing these leaf types eagerly runs
+    # the generation/retrieval package __init__ trees, which descend into strategies
+    # and import back into this still-initializing module (fabrication imports
+    # AnnotatedVerify from here) → circular ImportError on any entry point that loads
+    # app.verify before the strategies tree. Deferring them breaks the cycle with no
+    # behaviour change (CanonVerifier/FlagKind/VerifyResult stay eager — FlagKind is
+    # used at runtime in _derive_status). See QC F-LIVE-2.
+    from app.generation.provenance import EnrichedFact
+    from app.retrieval.strategy import GroundedProposal
 
 __all__ = [
     "VerifyStatus",
