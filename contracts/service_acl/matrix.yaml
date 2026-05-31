@@ -183,6 +183,9 @@ services:
       # read-only: `migration status` (073) per-reality migration ledger
       instance_schema_migrations:
         - SELECT
+      # read-only: `archive list` (073) per-reality archive ledger
+      archive_state:
+        - SELECT
       admin_action_audit:
         - INSERT
       meta_write_audit:

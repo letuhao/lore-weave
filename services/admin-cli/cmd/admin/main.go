@@ -39,6 +39,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	awskms "github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/loreweave/foundation/contracts/meta"
@@ -307,6 +308,79 @@ func buildMigrationStatusHandler() (framework.Handler, func(), error) {
 	return h, pool.Close, nil
 }
 
+// buildShardDSN builds a per-reality DB DSN from the SHARD_DB_* env + the
+// reality's resolved host/name. Kept inline so admin-cli stays self-contained
+// (no publisher dep); mirrors the shard DSN config publisher/meta-worker use.
+// SHARD_DB_HOST_OVERRIDE routes every reality to a local host for dev.
+func buildShardDSN(host, dbname string) (string, error) {
+	user := os.Getenv("SHARD_DB_USER")
+	pass := os.Getenv("SHARD_DB_PASSWORD")
+	if user == "" || pass == "" {
+		return "", fmt.Errorf("SHARD_DB_USER + SHARD_DB_PASSWORD required for per-reality reads")
+	}
+	if ov := os.Getenv("SHARD_DB_HOST_OVERRIDE"); ov != "" {
+		host = ov
+	}
+	port := os.Getenv("SHARD_DB_PORT")
+	if port == "" {
+		port = "5432"
+	}
+	sslmode := os.Getenv("SHARD_DB_SSLMODE")
+	if sslmode == "" {
+		sslmode = "require"
+	}
+	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", user, pass, host, port, dbname, sslmode), nil
+}
+
+// perRealityPool resolves a reality's per-reality DB pool: look up db_host/db_name
+// from reality_registry (meta pool) → build the shard DSN → open a pool. The
+// caller closes it (per-invocation for a read-only CLI command).
+func perRealityPool(ctx context.Context, metaPool *pgxpool.Pool, realityID uuid.UUID) (*pgxpool.Pool, error) {
+	var host, name string
+	err := metaPool.QueryRow(ctx,
+		`SELECT db_host, db_name FROM reality_registry WHERE reality_id = $1`, realityID).Scan(&host, &name)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, commands.ErrRealityNotFound
+		}
+		return nil, fmt.Errorf("resolve reality %s DSN: %w", realityID, err)
+	}
+	dsn, err := buildShardDSN(host, name)
+	if err != nil {
+		return nil, err
+	}
+	return pgxpool.New(ctx, dsn)
+}
+
+// buildArchiveListHandler wires the read-only `archive list` command (073) to a
+// PER-REALITY archive_state SELECT. Owns the meta pool (DSN resolution); opens
+// the reality's per-reality pool PER-INVOCATION (a CLI read). NotWired without
+// META_DATABASE_URL; per-reality reads also need the SHARD_DB_* env at run time.
+func buildArchiveListHandler() (framework.Handler, func(), error) {
+	noop := func() {}
+	dsn := os.Getenv("META_DATABASE_URL")
+	if dsn == "" {
+		return nil, noop, nil
+	}
+	metaPool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		return nil, noop, fmt.Errorf("archive-list meta DB connect: %w", err)
+	}
+	h := func(ctx context.Context, inv framework.Invocation) (string, error) {
+		rid, err := uuid.Parse(inv.Params["reality_id"])
+		if err != nil {
+			return "", fmt.Errorf("invalid reality_id %q: %w", inv.Params["reality_id"], err)
+		}
+		rpool, err := perRealityPool(ctx, metaPool, rid)
+		if err != nil {
+			return "", err
+		}
+		defer rpool.Close()
+		return commands.RunArchiveList(ctx, rid, commands.NewPgArchiveListReader(rpool))
+	}
+	return h, metaPool.Close, nil
+}
+
 // registryDirEnv lets ops override the registry path (defaults to the
 // canonical contracts/admin/registry relative to repo root).
 const registryDirEnv = "ADMIN_CLI_REGISTRY_DIR"
@@ -478,6 +552,20 @@ func run(args []string, stdout, stderr *os.File) int {
 		}
 	}
 	defer closeMig()
+
+	// Read-only `archive list` (073) — wired only for its own command. Per-reality
+	// read: needs META_DATABASE_URL (DSN resolution) + SHARD_DB_* at run time.
+	closeArchive := func() {}
+	if c.Name == "archive list" {
+		ah, ac, aerr := buildArchiveListHandler()
+		closeArchive = ac
+		if aerr != nil {
+			fmt.Fprintf(stderr, "admin: archive-list handler not wired: %v\n", aerr)
+		} else if ah != nil {
+			handlers.Register("archive list", ah)
+		}
+	}
+	defer closeArchive()
 
 	handler := handlers.Resolve(c)
 	inv := framework.Invocation{
