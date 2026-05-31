@@ -618,11 +618,13 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
     post:
       tags: [sources]
-      summary: Register a grounding corpus (metadata only — no ingest here)
+      summary: Register a grounding corpus (metadata only — ingest is a separate call)
       description: >
-        Registers corpus metadata (name, kind, license, provenance). Ingest /
-        chunking / embedding is OUT of this contract (C10). Stub (C3): returns
-        501 until corpus registration is implemented.
+        Registers corpus metadata (name, kind, license, provenance) and returns
+        the corpus. Idempotent on (user, project, name, kind). Chunking + embedding
+        is a separate call — POST /sources/{corpus_id}/ingest. License is
+        default-deny ('unknown' → not re-cookable, C17); tag a public-domain corpus
+        explicitly.
       operationId: createSourceCorpus
       security:
         - bearerAuth: []
@@ -645,7 +647,67 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
         '403':
           $ref: '#/components/responses/ErrorResponse'
-        '501':
+
+  /v1/lore-enrichment/sources/{corpus_id}/ingest:
+    post:
+      tags: [sources]
+      summary: Ingest text into a registered corpus (chunk + real embed)
+      description: >
+        Chunks the supplied text (CJK-aware) and embeds each chunk via
+        provider-registry (by embedding_model_ref — NO model name). Idempotent:
+        re-ingesting identical text is a no-op (UNIQUE(corpus_id, chunk_index) +
+        content hash). The corpus must already exist (register it first).
+      operationId: ingestSourceCorpus
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: corpus_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id, text, embedding_model_ref]
+              properties:
+                project_id:
+                  type: string
+                  format: uuid
+                text:
+                  type: string
+                  minLength: 1
+                embedding_model_ref:
+                  type: string
+                  format: uuid
+                target_chars:
+                  type: integer
+                  minimum: 40
+                  maximum: 4000
+                  default: 800
+      responses:
+        '202':
+          description: Ingested — chunk counts returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  corpus_id: { type: string, format: uuid }
+                  chunks_total: { type: integer }
+                  chunks_inserted: { type: integer }
+                  chunks_embedded: { type: integer }
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
           $ref: '#/components/responses/ErrorResponse'
 
   # ───────────────────────────── templates ─────────────────────────────

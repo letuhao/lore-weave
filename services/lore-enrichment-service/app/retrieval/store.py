@@ -24,6 +24,7 @@ service's own ``source_corpus*`` tables — never to glossary / KG / Neo4j, neve
 
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Sequence
@@ -170,6 +171,44 @@ class SourceCorpusStore:
             )
 
     # ── corpus upsert (idempotent on (user, project, name, kind)) ────────────
+    async def get_corpus(
+        self, *, user_id: UUID, project_id: UUID, corpus_id: UUID
+    ) -> dict | None:
+        """Load one corpus scoped to (user, project), or None (→ 404). Used by the
+        ingest endpoint to recover name/kind/license for the existing row."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """SELECT corpus_id, name, kind, license, provenance_json,
+                          created_at
+                   FROM source_corpus
+                   WHERE corpus_id=$1 AND user_id=$2 AND project_id=$3""",
+                corpus_id, user_id, project_id,
+            )
+        return dict(row) if row is not None else None
+
+    async def list_corpora(
+        self, *, user_id: UUID, project_id: UUID, limit: int = 20, offset: int = 0
+    ) -> tuple[list[dict], int]:
+        """List the (user, project) corpora with chunk counts (the GET /sources
+        read). Returns (page, total). Ordered newest-first, stable by corpus_id."""
+        async with self._pool.acquire() as conn:
+            total = await conn.fetchval(
+                "SELECT COUNT(*) FROM source_corpus WHERE user_id=$1 AND project_id=$2",
+                user_id, project_id,
+            )
+            rows = await conn.fetch(
+                """SELECT c.corpus_id, c.name, c.kind, c.license, c.provenance_json,
+                          c.created_at,
+                          (SELECT COUNT(*) FROM source_corpus_chunk ch
+                             WHERE ch.corpus_id = c.corpus_id) AS chunk_count
+                   FROM source_corpus c
+                   WHERE c.user_id=$1 AND c.project_id=$2
+                   ORDER BY c.created_at DESC, c.corpus_id
+                   LIMIT $3 OFFSET $4""",
+                user_id, project_id, limit, offset,
+            )
+        return [dict(r) for r in rows], int(total or 0)
+
     async def upsert_corpus(
         self,
         *,
@@ -178,6 +217,7 @@ class SourceCorpusStore:
         name: str,
         kind: str,
         license: str = "unknown",
+        provenance_json: dict | None = None,
     ) -> UUID:
         """Return the ``corpus_id`` for this (user, project, name, kind),
         creating the row if absent. Idempotent: the same logical corpus resolves
@@ -203,11 +243,12 @@ class SourceCorpusStore:
                 return existing
             return await conn.fetchval(
                 """
-                INSERT INTO source_corpus (project_id, user_id, name, kind, license)
-                VALUES ($1, $2, $3, $4, $5)
+                INSERT INTO source_corpus (project_id, user_id, name, kind, license, provenance_json)
+                VALUES ($1, $2, $3, $4, $5, $6::jsonb)
                 RETURNING corpus_id
                 """,
                 project_id, user_id, name, kind, license,
+                json.dumps(provenance_json or {}),
             )
 
     # ── chunk persistence (idempotent on (corpus_id, chunk_index)) ───────────
