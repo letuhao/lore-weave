@@ -6,6 +6,23 @@
 
 ---
 
+## PO Decision Rulings (2026-05-31) — decision audit, ratified by the human PO
+These rule on the autonomous architecture/scope/policy decisions the RAID agent made. **Binding for the fix pass + the remaining wiring.**
+
+- **B1 — Canon model: glossary is the SINGLE SSOT; enrichment is a DISTINGUISHED SUPPLEMENT/VARIANT (`dị bản`) of the original canon, NOT a merge and NOT a parallel entity.** ✅ one-place canon (glossary SSOT; KG is derived). **Critical nuance:** enriched content must stay *distinguishable* from the original authored canon for life, or it causes lore disputes. → Implication for 053: promote must NOT overwrite/conflate the entity's original canonical `short_description`; the enrichment must attach to the SAME canonical entity as a clearly-marked supplement/variant layer (origin=enrichment retained, presented as a distinct enrichment section/attribute), so original-canon vs enrichment-variant is always tellable. This (with B3) is the fix direction for **F-C13-2**.
+- **B2 — Allow enrichment to extend glossary-service's API.** ✅ the new `canon-content` Go endpoint is ratified; enrichment MAY add glossary endpoints when needed (no scope violation).
+- **B3 — Writeback must RESOLVE the existing canonical glossary entity (via `glossary_entity_id`), never mint a new one from `target_ref`-as-name.** ✅ fixes the F-C13-2 root cause; `_anchor_name` using `target_ref` as an entity name is wrong.
+- **C1 — Cost-cap must use REAL token units, consistent with the platform's other features** (not abstract pre-charge units). ✅ → elevates DEFERRED-052 / D-C14-EMBED-METER to a real metering task; follow the existing token-metering convention used elsewhere (chat/knowledge).
+- **C2 — Judge-diversity / κ hard-gate: DEFER to a post-merge decision.** ⏸️ main branch is currently improving this logic; record it, follow main, and re-decide AFTER merging latest `main` into this branch. → DEFERRED-056 stays OPEN, tagged "blocked on main-branch merge — do NOT fix in this branch."
+- **C3 — Defenses: hybrid — flag-for-human by default, but AUTO-REJECT the egregiously-unreasonable.** ✅ advisory is not enough; anachronism/injection/contradiction that are clearly egregious should hard-reject; the rest flag for the human promote gate. **Needs deeper design** (define the auto-reject thresholds per defense). → new design task; touches F-C12-1 + 050 + 058.
+- **D1 — Wire gap auto-detection** (the C7 engine) into a production path. ✅ (closes F-C7-1; enrichment should surface under-described entities, not only enrich client-supplied targets).
+- **D2 — Wire ALL the built-but-not-wired capabilities.** ✅ retract-recycle (F-C13-1), resume (051), gap-auto-detect (F-C7-1 / D1), corpus-register (C3-501 stub) must be API-wired before "P1 complete."
+- **E1 — Keep a true cold-start review gate before merge.** ✅ the Coordinator-ran-adversary is not a substitute; a fresh-context review (like this QC) stays a pre-merge gate.
+
+**Net effect on the fix plan:** F-C13-1 (HIGH) + F-C13-2 (now with B1/B3 direction) + D1/D2 wiring + C1 metering are MUST-DO; C3 needs a design pass; C2 is parked until the main-branch merge. None relitigate H0 or the locked baseline.
+
+---
+
 ## Step 1 — Live stack-health (DONE)
 
 Stack: the full `infra-*` compose was already up and healthy (postgres/redis/neo4j/glossary/knowledge/book/provider-registry/lore-enrichment all `healthy`). LM Studio reachable on `:1234` with `qwen/qwen3.6-35b-a3b` (chat) + `text-embedding-bge-m3` (embed) loaded; both registered in `provider_registry` for the demo user.
