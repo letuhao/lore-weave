@@ -195,8 +195,8 @@ async def get_outcome_recompute(
         LEFT JOIN corrections c
           ON  c.user_id   = er.user_id
           AND (c.project_id = er.project_id OR c.project_id IS NULL)
-          AND c.correction_ts > er.created_at
-          AND c.correction_ts
+          AND c.created_at > er.created_at
+          AND c.created_at
                 <= er.created_at + ($3 * INTERVAL '1 day')
           AND (c.source_extraction_run_id = er.run_id
                OR c.source_extraction_run_id IS NULL)

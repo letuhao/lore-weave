@@ -1,36 +1,39 @@
-# Session Handoff — Session 102 (Phase E2 mining scaffold SHIPPED)
+# Session Handoff — Session 103 (E2 live-smoke PASSED; FE genre field SHIPPED)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-06-01 (session 102 — env knob fix + Phase E2 mining scaffold; human-in-loop v2.2).
-> **HEAD:** `89069c5a` (E2 mining query layer + router). Branch: `main` (pushed — all session-102 commits are remote).
+> **Date:** 2026-06-01 (session 103 — FE genre field + D-E2-LIVE-SMOKE; human-in-loop v2.2).
+> **HEAD:** `693473b0` (FE genre field). Branch: `main` (local — push pending).
 
 ## ▶ NEXT SESSION — start here
 
-**State:** **Phase E2 config data-mining scaffold is COMPLETE.** All committed and pushed. Eight commits this session:
-`a27afd6c` env-knob fix (worker-ai reads global autocreate env) · `2a374ecb` design+plan docs · `1376c741` KS `genre` on `knowledge_projects` · `fe0a2550` worker-ai genre emit · `54d1d95d` learning-service DDL+handler (genre on `extraction_runs`) · `89069c5a` learning mining query layer + read API.
+**State:** **D-E2-LIVE-SMOKE PASSED.** Three items completed this session:
 
-**What works now (E2 additions):**
-- `knowledge_projects.genre TEXT` (free-text, user-settable via PATCH) — returns in GET, emitted into `extraction_runs.genre` via run-completed event
-- `extraction_runs.genre` — denorm'd from project at run time, enables genre-segment queries without cross-DB join
-- `/v1/learning/mining/config-quality` — genre × config_hash success rate with explore/exploit + power-user segmentation
-- `/v1/learning/mining/model-matrix` — model_ref × scope weighted outcome
-- `/v1/learning/mining/default-drift` — convergent vs divergent param changes (popularity≠quality guardrail baked in)
-- `/v1/learning/mining/outcome-recompute` — correction-join recipe (returns empty at cold-start; establishes the join recipe per §2.4 Q2)
-- Global `KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED` env now readable by worker-ai as default-for-all
-- B2 base still fully live: per-project config drives extraction, telemetry, FE tuning panel
+1. **FE genre field** (`693473b0`) — `ProjectFormModal` now exposes genre input (create + edit), types updated, storybook fixture updated. 476 knowledge tests pass.
+2. **E2 stack rebuild** — gateway image was stale (2026-05-17, missing learning proxy). Rebuilt: gateway + KS + worker-ai + learning-service. All 4 services healthy.
+3. **`correction_ts` bug fixed** (`mining.py` `get_outcome_recompute`) — query used non-existent `c.correction_ts`; actual column is `c.created_at`. Caught during live smoke. Fixed, rebuilt, verified.
 
-**FIRST: no push needed** — all commits from this session are already pushed (`a27afd6c` through `89069c5a`). Stack needs rebuild (KS / worker-ai / learning-service changed). Redis read-timeout noise is an environment quirk, not a bug.
+**Live smoke evidence:**
+- `knowledge_projects.genre TEXT` ✓ (PATCH `"Tien hiep / Cultivation"` → version 1→2)
+- `extraction_runs.genre TEXT` ✓ (synthetic row inserted, genre visible)
+- All 4 mining endpoints respond via gateway (`/v1/learning/mining/*`):
+  - `config-quality` → `{items:[], exploration:[]}` (cold-start; `HAVING count(*) >= 2` — needs real run volume)
+  - `model-matrix` → `{items:[]}` (same)
+  - `default-drift` → `{items:[]}` (no adjustment events yet)
+  - `outcome-recompute` → `items=1 total=1` ✓ (reads synthetic row)
+
+**FIRST: push main** — `693473b0` is local only. Confirm clean working tree, then `git push origin main`.
 
 **NEXT — pick one:**
-1. **D-E2-LIVE-SMOKE** — rebuild stack + smoke the full genre emit path (extraction job → `extraction_runs.genre` populated → `/v1/learning/mining/config-quality` returns data). Validates the cross-service chain before mining queries see real data.
-2. **Resume eval R&D arc** — cycle-70s extraction-quality F1 work: independent judges, prompt/filter levers, host-orchestrated judge ensembles. Has active momentum; disjoint-median metric locked; next step is prod-readiness eval with independent judges.
-3. **FE genre field** — expose genre input on the project settings panel (deferred from E2 scope). Small [FE] task.
+1. **Resume eval R&D arc** — cycle-70s extraction-quality F1 work: independent judges, host-orchestrated ensembles. Disjoint-median metric locked; next = prod-readiness eval with independent judges.
+2. **Run a real extraction** to populate `extraction_runs` with real data and see mining queries return non-empty results (needs a project with passing benchmark + enabled LLM).
+3. **FE mining insights panel** — expose the 4 mining endpoints in a UI panel (deferred from E2 scope).
 
 **Deferred items (E2):**
-- D-E2-LIVE-SMOKE: cross-service integration smoke (worker-ai → extraction_runs.genre → mining endpoint)
-- FE genre input on project settings panel
+- D-E2-FULL-EXTRACTION-SMOKE: full pipeline smoke (worker-ai emits genre via join → event → extraction_runs.genre); needs a project with passing benchmark + LLM configured
 - Outcome refinement batch job (correction-join recompute UPDATE on extraction_runs; needs correction volume)
 - FE mining insights panel
+
+**Known:** `config-quality` / `model-matrix` / `default-drift` return empty until `extraction_runs` accumulates ≥2 runs per config_hash. This is expected cold-start behavior.
 
 <details><summary>(historical) Phase B complete — push options (all done/superseded)</summary>
 
