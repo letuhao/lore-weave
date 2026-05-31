@@ -77,6 +77,22 @@ def _fail(msg: str) -> None:
     raise SystemExit(1)
 
 
+def _assert_h0_routes_present() -> None:
+    """F-LIVE-1 guard: fail fast if a running service serves a STALE image missing
+    an H0-critical route — else this verify (or the smoke) dies mid-run with a
+    confusing 404. Uses the route-probe (reliable; no build-then-commit caveat)."""
+    script = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "scripts", "check_stack_freshness.py"))
+    if not os.path.exists(script):
+        return
+    rc = subprocess.run([sys.executable, script, "--probe-only", "--quiet"]).returncode
+    if rc == 1:
+        print("[t8] ABORT: a running service is missing an H0-critical route "
+              "(stale image). Rebuild: scripts/build-stack.sh <svc> && "
+              "docker compose up -d <svc>", file=sys.stderr)
+        raise SystemExit(3)
+
+
 async def _canonical_entity_id(gloss: asyncpg.Connection, name: str) -> UUID | None:
     """Resolve the canonical entity id by EXACT name (not the loc: parallel)."""
     row = await gloss.fetchrow(
@@ -94,6 +110,7 @@ async def _canonical_entity_id(gloss: asyncpg.Connection, name: str) -> UUID | N
 
 
 async def _main() -> int:
+    _assert_h0_routes_present()  # F-LIVE-1: catch a stale image before we start
     le = await asyncpg.connect(LE_DB)
     gloss = await asyncpg.connect(GLOSS_DB)
     try:

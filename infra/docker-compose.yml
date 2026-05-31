@@ -3,6 +3,15 @@
 # Browser: http://localhost:5296  |  Gateway: http://localhost:3123  |  Auth: http://localhost:8204
 # Optional env file: copy .env.example to .env and set JWT_SECRET (>= 32 chars) for production-like secrets.
 
+# Stale-image guard (F-LIVE-1): every first-party build target stamps the git SHA +
+# build time as image labels so scripts/check_stack_freshness.py can detect a running
+# container that is behind HEAD. Set via scripts/build-stack.sh (exports GIT_SHA +
+# BUILD_TIME before `docker compose build`); a plain build leaves them 'unknown' and
+# the guard falls back to its timestamp proxy.
+x-build-labels: &build-labels
+  org.loreweave.git_sha: "${GIT_SHA:-unknown}"
+  org.loreweave.build_time: "${BUILD_TIME:-unknown}"
+
 services:
   postgres:
     image: postgres:18-alpine
@@ -55,6 +64,7 @@ services:
     build:
       context: ../infra/mock-audio-service
       dockerfile: Dockerfile
+      labels: *build-labels
     ports:
       - "8600:8600"
     profiles:
@@ -77,6 +87,7 @@ services:
     build:
       context: ..
       dockerfile: services/auth-service/Dockerfile
+      labels: *build-labels
     environment:
       HTTP_ADDR: ":8081"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_auth?sslmode=disable
@@ -111,6 +122,7 @@ services:
     build:
       context: ..
       dockerfile: services/book-service/Dockerfile
+      labels: *build-labels
     environment:
       HTTP_ADDR: ":8082"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book?sslmode=disable
@@ -148,6 +160,7 @@ services:
     build:
       context: ..
       dockerfile: services/sharing-service/Dockerfile
+      labels: *build-labels
     environment:
       HTTP_ADDR: ":8083"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_sharing?sslmode=disable
@@ -176,6 +189,7 @@ services:
     build:
       context: ..
       dockerfile: services/catalog-service/Dockerfile
+      labels: *build-labels
     environment:
       HTTP_ADDR: ":8084"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_catalog?sslmode=disable
@@ -206,6 +220,7 @@ services:
     build:
       context: ..
       dockerfile: services/provider-registry-service/Dockerfile
+      labels: *build-labels
     environment:
       HTTP_ADDR: ":8085"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_provider_registry?sslmode=disable
@@ -268,6 +283,7 @@ services:
     build:
       context: ..
       dockerfile: services/usage-billing-service/Dockerfile
+      labels: *build-labels
     environment:
       HTTP_ADDR: ":8086"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_usage_billing?sslmode=disable
@@ -326,6 +342,7 @@ services:
     build:
       context: ..
       dockerfile: services/translation-service/Dockerfile
+      labels: *build-labels
     environment:
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_translation
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
@@ -363,6 +380,7 @@ services:
     build:
       context: ..
       dockerfile: services/translation-service/Dockerfile.worker
+      labels: *build-labels
     environment:
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_translation
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
@@ -392,6 +410,7 @@ services:
     build:
       context: ..
       dockerfile: services/glossary-service/Dockerfile
+      labels: *build-labels
     environment:
       HTTP_ADDR: ":8088"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary?sslmode=disable
@@ -428,6 +447,7 @@ services:
       # translation-service patterns.
       context: ..
       dockerfile: services/video-gen-service/Dockerfile
+      labels: *build-labels
     environment:
       HTTP_PORT: "8088"
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
@@ -459,6 +479,7 @@ services:
       # context until they migrate to the SDK.
       context: ..
       dockerfile: services/chat-service/Dockerfile
+      labels: *build-labels
     environment:
       PORT: "8090"
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_chat
@@ -510,6 +531,7 @@ services:
       # Mirrors chat-service Phase 1c-ii setup.
       context: ..
       dockerfile: services/knowledge-service/Dockerfile
+      labels: *build-labels
     environment:
       PORT: "8092"
       KNOWLEDGE_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge
@@ -573,6 +595,7 @@ services:
       # Repo-root context so a later cycle can COPY sdks/python (loreweave_llm).
       context: ..
       dockerfile: services/lore-enrichment-service/Dockerfile
+      labels: *build-labels
     environment:
       PORT: "8093"
       LORE_ENRICHMENT_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_lore_enrichment
@@ -611,6 +634,7 @@ services:
     build:
       context: ..
       dockerfile: services/worker-infra/Dockerfile
+      labels: *build-labels
     environment:
       WORKER_TASKS: "outbox-relay,outbox-cleanup,import-processor"
       EVENTS_DB_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_events
@@ -651,6 +675,7 @@ services:
     build:
       context: ..
       dockerfile: services/worker-ai/Dockerfile
+      labels: *build-labels
     environment:
       KNOWLEDGE_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
@@ -690,6 +715,7 @@ services:
     build:
       context: ..
       dockerfile: services/statistics-service/Dockerfile
+      labels: *build-labels
     environment:
       HTTP_ADDR: ":8089"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_statistics?sslmode=disable
@@ -723,6 +749,7 @@ services:
     build:
       context: ..
       dockerfile: services/notification-service/Dockerfile
+      labels: *build-labels
     environment:
       HTTP_ADDR: ":8091"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_notification?sslmode=disable
@@ -751,6 +778,7 @@ services:
     build:
       context: ../services/api-gateway-bff
       dockerfile: Dockerfile
+      labels: *build-labels
     environment:
       PORT: "3000"
       AUTH_SERVICE_URL: http://auth-service:8081
@@ -850,6 +878,7 @@ services:
     build:
       context: ../frontend
       dockerfile: Dockerfile
+      labels: *build-labels
       args:
         VITE_API_BASE: ${VITE_API_BASE:-http://localhost:3123}
     depends_on:
@@ -975,6 +1004,7 @@ services:
     build:
       context: ..
       dockerfile: services/tilemap-service/Dockerfile
+      labels: *build-labels
     environment:
       # Env name rewrite (LOW-2 from /review-impl 2026-05-24): the host /
       # .env reads `INTERNAL_SERVICE_TOKEN` (matching auth-service /
@@ -1025,6 +1055,7 @@ services:
     build:
       context: ../services/game-server
       dockerfile: Dockerfile
+      labels: *build-labels
     environment:
       PORT: "2567"
       # Dev auth token — EchoRoom.onAuth checks options.jwt against this.
@@ -1061,6 +1092,7 @@ services:
     build:
       context: ..
       dockerfile: frontend-game/Dockerfile
+      labels: *build-labels
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:5174/livez"]
       interval: 10s

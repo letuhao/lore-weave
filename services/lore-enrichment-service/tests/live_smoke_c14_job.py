@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import subprocess
 import sys
 import uuid
 
@@ -149,7 +150,22 @@ def _complete_with_retry(base_complete):
     return _fn
 
 
+def _assert_h0_routes_present() -> None:
+    """F-LIVE-1 guard: fail fast if a running service serves a STALE image missing
+    an H0-critical route — else this smoke dies mid-run with a confusing 404."""
+    script = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "scripts", "check_stack_freshness.py"))
+    if not os.path.exists(script):
+        return
+    if subprocess.run([sys.executable, script, "--probe-only", "--quiet"]).returncode == 1:
+        print("live infra unavailable: a running service is missing an H0-critical "
+              "route (stale image) — rebuild: scripts/build-stack.sh <svc> && "
+              "docker compose up -d <svc>", file=sys.stderr)
+        raise SystemExit(3)
+
+
 async def _main() -> int:  # noqa: C901 — a linear smoke script
+    _assert_h0_routes_present()  # F-LIVE-1: catch a stale image before we start
     db_dsn = os.environ.get("LORE_ENRICHMENT_DB_URL", "")
     pr_dsn = os.environ.get("PROVIDER_REGISTRY_DB_URL", "")
     pr_url = os.environ.get("PROVIDER_REGISTRY_URL", "http://localhost:8208")

@@ -119,7 +119,7 @@ retract → delete_enrichment_supplement(proposal_id) (soft-delete rows)      [g
 - ☐ D1 gap-auto-detection wired to a production path (C7 engine has no caller)
 - ☐ resume: persist request on job row + resume entrypoint that skips done gaps (DEFERRED-051)
 - ☐ corpus-register API (currently a C3 501 stub)
-- ☐ F-LIVE-1 stale-image guard: pin knowledge image ≥ C13 + CI check (recurs on plain `docker start`)
+- ✅ F-LIVE-1 stale-image guard *(spec [docs/specs/2026-05-31-stale-image-guard.md], PO: stamp+probe / all services / live-smoke+gate)* — `scripts/check_stack_freshness.py` (tier-2 git-SHA-label drift → tier-1 image-`.Created` proxy + H0 route-probe; 7 unit tests) · `x-build-labels` anchor on all 23 compose build blocks + `scripts/build-stack.sh` · wired into `live_smoke_c14_job.py`+`live_verify_t8.py` (probe gate, abort on 404) + `workflow-gate.py check-stack` (advisory). Live-proven: stamped knowledge rebuild → `FRESH sha=2fb036b8 (tier-2)`; probe distinguishes present vs 404. Route-probe = authoritative gate; drift = advisory (over-warns safely on build-then-commit — documented §6b).
 
 ### Cluster 3 — quality/policy (PO rulings C1/C3)
 - ☐ C1 real token metering, per-platform convention (DEFERRED-052, now MED)
