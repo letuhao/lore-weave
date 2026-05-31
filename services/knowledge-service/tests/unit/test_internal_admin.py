@@ -17,7 +17,16 @@ from app.db.neo4j_helpers import (
 from app.main import app
 
 
-_INTERNAL_TOKEN_HEADER = {"X-Internal-Token": "default_test_token"}
+import os as _os
+
+# Cycle 73f: pick up container env (compose sets dev_internal_token)
+# AND host conftest setdefault (default_test_token). Same header works
+# in both contexts.
+_INTERNAL_TOKEN_HEADER = {
+    "X-Internal-Token": _os.environ.get(
+        "INTERNAL_SERVICE_TOKEN", "default_test_token",
+    ),
+}
 
 
 @pytest.fixture
@@ -316,3 +325,218 @@ def test_prune_ignores_non_summary_indexes(client: TestClient):
     assert body["total_summary_indexes"] == 1
     # And it matches current model → no orphans.
     assert body["orphan_indexes"] == []
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Cycle 73f — /internal/admin/precision-filter/reload
+# ─────────────────────────────────────────────────────────────────────
+
+
+import os
+
+# Container env can override `default_test_token` (e.g. compose sets
+# INTERNAL_SERVICE_TOKEN=dev_internal_token). Read at test time so both
+# host pytest + container pytest pass without env-fiddling.
+_C73F_TOKEN = os.environ.get("INTERNAL_SERVICE_TOKEN", "default_test_token")
+_C73F_HEADER = {"X-Internal-Token": _C73F_TOKEN}
+
+
+def _counter_value(source: str, outcome: str) -> float:
+    from app.metrics import knowledge_extraction_filter_reload_total
+    return knowledge_extraction_filter_reload_total.labels(
+        source=source, outcome=outcome,
+    )._value.get()
+
+
+def test_filter_reload_requires_internal_token(client: TestClient):
+    """Auth: no X-Internal-Token header → 401."""
+    resp = client.post(
+        "/internal/admin/precision-filter/reload",
+        json={"model_ref": "x"},
+    )
+    assert resp.status_code == 401
+
+
+def test_filter_reload_sets_config_from_body(client: TestClient):
+    """Happy path: model_ref + categories override env defaults; Redis
+    set_filter_config + local set_precision_filter_config both fire."""
+    mock_redis = MagicMock()
+    mock_redis.set = AsyncMock()
+    mock_redis.publish = AsyncMock()
+    mock_redis.aclose = AsyncMock()
+
+    pre_applied = _counter_value("api", "applied")
+
+    with patch(
+        "app.routers.internal_admin.aioredis.from_url",
+        return_value=mock_redis,
+    ), patch(
+        "app.extraction.pass2_orchestrator.set_precision_filter_config",
+        side_effect=lambda cfg: cfg,  # echo input so endpoint can asdict() it
+    ) as mock_set_local:
+        resp = client.post(
+            "/internal/admin/precision-filter/reload",
+            headers=_INTERNAL_TOKEN_HEADER,
+            json={
+                "model_ref": "claude-uuid",
+                "partial_policy": "drop",
+                "categories": ["relation", "event"],
+            },
+        )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["redis_publish_status"] == "published"
+    assert body["knowledge_service_config"]["model_ref"] == "claude-uuid"
+    assert body["knowledge_service_config"]["categories"] == ["relation", "event"]
+    assert body["knowledge_service_config"]["partial_policy"] == "drop"
+    assert "T" in body["reloaded_at"]  # ISO8601 server-generated
+
+    mock_redis.set.assert_called_once()
+    mock_redis.publish.assert_called_once()
+    mock_set_local.assert_called_once()
+    assert _counter_value("api", "applied") == pre_applied + 1
+
+
+def test_filter_reload_disable_true_reverts_to_env_config(client: TestClient):
+    """Cycle 74b: disable=true is a clear-the-override op — Redis DELETE +
+    local cache reverts to ENV config (NOT None) when a filter env is set,
+    matching startup-hydrate + pubsub semantics. Closes the cycle-73f
+    live-smoke finding (runtime set None while restart reloaded env)."""
+    from loreweave_extraction import PrecisionFilterConfig
+
+    env_config = PrecisionFilterConfig(
+        model_ref="env-filter-uuid",
+        categories=("relation",),
+        partial_policy="drop",
+    )
+
+    mock_redis = MagicMock()
+    mock_redis.delete = AsyncMock(return_value=1)
+    mock_redis.publish = AsyncMock()
+    mock_redis.aclose = AsyncMock()
+
+    with patch(
+        "app.routers.internal_admin.aioredis.from_url",
+        return_value=mock_redis,
+    ), patch(
+        "app.extraction.pass2_orchestrator._load_precision_filter_config",
+        return_value=env_config,
+    ), patch(
+        "app.extraction.pass2_orchestrator.set_precision_filter_config",
+        side_effect=lambda cfg: cfg,  # echo input so endpoint can asdict() it
+    ) as mock_set_local:
+        resp = client.post(
+            "/internal/admin/precision-filter/reload",
+            headers=_INTERNAL_TOKEN_HEADER,
+            json={"disable": True},
+        )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # Reverted to env config, NOT None.
+    assert body["knowledge_service_config"]["model_ref"] == "env-filter-uuid"
+    assert body["knowledge_service_config"]["categories"] == ["relation"]
+    assert body["redis_publish_status"] == "published"
+    mock_redis.delete.assert_called_once()
+    mock_set_local.assert_called_once_with(env_config)
+
+
+def test_filter_reload_disable_true_none_when_no_filter_env(client: TestClient):
+    """Cycle 74b: disable=true with NO filter env set → env config is itself
+    None → local cache None + response config null. The genuinely-no-filter
+    deployment still ends disabled (the env-revert rule is uniform)."""
+    mock_redis = MagicMock()
+    mock_redis.delete = AsyncMock(return_value=1)
+    mock_redis.publish = AsyncMock()
+    mock_redis.aclose = AsyncMock()
+
+    with patch(
+        "app.routers.internal_admin.aioredis.from_url",
+        return_value=mock_redis,
+    ), patch(
+        "app.extraction.pass2_orchestrator._load_precision_filter_config",
+        return_value=None,
+    ), patch(
+        "app.extraction.pass2_orchestrator.set_precision_filter_config",
+        side_effect=lambda cfg: cfg,  # echo input so endpoint can asdict() it
+    ) as mock_set_local:
+        resp = client.post(
+            "/internal/admin/precision-filter/reload",
+            headers=_INTERNAL_TOKEN_HEADER,
+            json={"disable": True},
+        )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["knowledge_service_config"] is None
+    assert body["redis_publish_status"] == "published"
+    mock_redis.delete.assert_called_once()
+    mock_set_local.assert_called_once_with(None)
+
+
+def test_filter_reload_both_disable_and_model_ref_returns_422(client: TestClient):
+    """r1 H2 fold: disable=true AND model_ref both set → ambiguous → 422."""
+    resp = client.post(
+        "/internal/admin/precision-filter/reload",
+        headers=_INTERNAL_TOKEN_HEADER,
+        json={"disable": True, "model_ref": "x"},
+    )
+    assert resp.status_code == 422
+
+
+def test_filter_reload_empty_body_returns_422(client: TestClient):
+    """r1 H5 fold: no field set → 422 (no implicit fall-through)."""
+    resp = client.post(
+        "/internal/admin/precision-filter/reload",
+        headers=_INTERNAL_TOKEN_HEADER,
+        json={},
+    )
+    assert resp.status_code == 422
+
+
+def test_filter_reload_redis_publish_failure_returns_status_failed(client: TestClient):
+    """r1 H4 fold: Redis SET fails → 200 with redis_publish_status='failed'.
+    Local cache still applied; counter bumps 'failed' outcome."""
+    mock_redis = MagicMock()
+    mock_redis.set = AsyncMock(side_effect=RuntimeError("redis down"))
+    mock_redis.aclose = AsyncMock()
+
+    pre_failed = _counter_value("api", "failed")
+    pre_applied = _counter_value("api", "applied")
+
+    with patch(
+        "app.routers.internal_admin.aioredis.from_url",
+        return_value=mock_redis,
+    ), patch(
+        "app.extraction.pass2_orchestrator.set_precision_filter_config",
+        side_effect=lambda cfg: cfg,  # echo input so endpoint can asdict() it
+    ) as mock_set_local:
+        resp = client.post(
+            "/internal/admin/precision-filter/reload",
+            headers=_INTERNAL_TOKEN_HEADER,
+            json={"model_ref": "x"},
+        )
+
+    assert resp.status_code == 200  # NOT 502 per H4 fold; ops must check status field
+    body = resp.json()
+    assert body["redis_publish_status"] == "failed"
+    # Local cache STILL applied (cycle 73f intentional — KS reflects new config
+    # even if propagation to workers fails; ops sees drift via status field).
+    mock_set_local.assert_called_once()
+    # r3 M1 fold: BOTH counter outcomes fire additively for the redis-failed
+    # branch. `failed` records the publish error; `applied` records the
+    # successful local-apply. Dashboards summing outcomes = total attempts.
+    assert _counter_value("api", "failed") == pre_failed + 1
+    assert _counter_value("api", "applied") == pre_applied + 1
+
+
+def test_filter_reload_invalid_max_items_per_batch_returns_422(client: TestClient):
+    """Pydantic Field(ge=1) catches bad value BEFORE PrecisionFilterConfig
+    construction (r1 M2 fold)."""
+    resp = client.post(
+        "/internal/admin/precision-filter/reload",
+        headers=_INTERNAL_TOKEN_HEADER,
+        json={"model_ref": "x", "max_items_per_batch": 0},
+    )
+    assert resp.status_code == 422

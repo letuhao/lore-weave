@@ -107,8 +107,9 @@ struct Candidate {
 /// best-first order, returning at the first valid candidate. This produces a
 /// bit-identical winner to the pre-fix linear scan (proof: spec §4) at
 /// O(N log N) expected cost instead of O(N²).
-// 8 args — each is a distinct placement knob (spec D10 added `value`); bundling
-// them into a params struct would not aid clarity for a single-purpose engine fn.
+// 9 args — each is a distinct placement knob (TMP-Q4 added `tier_index` for
+// treasure value-band visualization); bundling them into a params struct would
+// not aid clarity for a single-purpose engine fn.
 #[allow(clippy::too_many_arguments)]
 pub fn place_and_connect_object(
     state: &mut TilemapBuildState,
@@ -116,6 +117,7 @@ pub fn place_and_connect_object(
     template: &TilemapObjectTemplate,
     kind: TilemapObjectKind,
     value: Option<u32>,
+    tier_index: Option<u8>,
     search_area: &TileMask,
     min_distance: f32,
     optimize: OptimizeType,
@@ -166,7 +168,7 @@ pub fn place_and_connect_object(
             Some(path) => path,
             None => continue,
         };
-        return Ok(commit_placement(state, c.anchor, c.footprint, c.blocking, access_path, kind, value, grid, registry));
+        return Ok(commit_placement(state, c.anchor, c.footprint, c.blocking, access_path, kind, value, tier_index, grid, registry));
     }
     Err(PlacementError::NoSpace)
 }
@@ -241,6 +243,7 @@ fn commit_placement(
     access_path: Path,
     kind: TilemapObjectKind,
     value: Option<u32>,
+    tier_index: Option<u8>,
     grid: GridSize,
     registry: &crate::registry::Registry,
 ) -> PlacementResult {
@@ -254,6 +257,7 @@ fn commit_placement(
         canon_ref: None,
         biome_object_type: None,
         value,
+        tier_index,
         primitive: Some(v2.primitive),
         tag: Some(v2.tag),
         footprint: Some(v2.footprint),
@@ -286,6 +290,7 @@ fn place_and_connect_object_naive(
     template: &TilemapObjectTemplate,
     kind: TilemapObjectKind,
     value: Option<u32>,
+    tier_index: Option<u8>,
     search_area: &TileMask,
     min_distance: f32,
     optimize: OptimizeType,
@@ -327,7 +332,7 @@ fn place_and_connect_object_naive(
 
     let Candidate { anchor, footprint, blocking, access_path, .. } =
         best.ok_or(PlacementError::NoSpace)?;
-    Ok(commit_placement(state, anchor, footprint, blocking, access_path, kind, value, grid, registry))
+    Ok(commit_placement(state, anchor, footprint, blocking, access_path, kind, value, tier_index, grid, registry))
 }
 
 /// Spec §6.3 step 2(c) — the access route. The search space is `zone_passable`
@@ -482,6 +487,7 @@ mod tests {
             &unit(),
             TilemapObjectKind::Treasure,
             None,
+            None,
             &search,
             0.0,
             OptimizeType::Center,
@@ -519,6 +525,7 @@ mod tests {
             &two_by_two,
             TilemapObjectKind::Landmark,
             None,
+            None,
             &search,
             0.0,
             OptimizeType::Center,
@@ -545,6 +552,7 @@ mod tests {
             &unit(),
             TilemapObjectKind::Treasure,
             None,
+            None,
             &search,
             0.0,
             OptimizeType::Center,
@@ -560,12 +568,12 @@ mod tests {
         let mut state = build_state(5, 5, &[(0, 0), (1, 0), (2, 0), (3, 0), (4, 0)], (2, 2));
         let search = state.zone_area_open(0);
         place_and_connect_object(
-            &mut state, 0, &unit(), TilemapObjectKind::Treasure, None, &search, 0.0, OptimizeType::Center, default_reg(),
+            &mut state, 0, &unit(), TilemapObjectKind::Treasure, None, None, &search, 0.0, OptimizeType::Center, default_reg(),
         )
         .unwrap();
         let search = state.zone_area_open(0);
         let err = place_and_connect_object(
-            &mut state, 0, &unit(), TilemapObjectKind::Treasure, None, &search, 100.0, OptimizeType::Distance, default_reg(),
+            &mut state, 0, &unit(), TilemapObjectKind::Treasure, None, None, &search, 100.0, OptimizeType::Distance, default_reg(),
         )
         .unwrap_err();
         assert_eq!(err, PlacementError::NoSpace);
@@ -576,7 +584,7 @@ mod tests {
         let mut state = build_state(4, 4, &[(0, 0)], (0, 0));
         let empty = TileMask::new(4, 4);
         let err = place_and_connect_object(
-            &mut state, 0, &unit(), TilemapObjectKind::Treasure, None, &empty, 0.0, OptimizeType::Center, default_reg(),
+            &mut state, 0, &unit(), TilemapObjectKind::Treasure, None, None, &empty, 0.0, OptimizeType::Center, default_reg(),
         )
         .unwrap_err();
         assert_eq!(err, PlacementError::NoSpace);
@@ -594,6 +602,7 @@ mod tests {
             0,
             &unit(),
             TilemapObjectKind::Treasure,
+            None,
             None,
             &search,
             0.0,
@@ -698,6 +707,7 @@ mod tests {
             &mixed,
             TilemapObjectKind::Landmark,
             None,
+            None,
             &search,
             0.0,
             OptimizeType::Center,
@@ -757,6 +767,7 @@ mod tests {
             &unit(),
             TilemapObjectKind::Treasure,
             None,
+            None,
             &search,
             0.0,
             OptimizeType::Center,
@@ -785,6 +796,7 @@ mod tests {
             0,
             &unit(),
             TilemapObjectKind::Treasure,
+            None,
             None,
             &search,
             0.0,
@@ -820,11 +832,11 @@ mod tests {
         let mut naive_state = build();
         for i in 0..placements {
             let prod = place_and_connect_object(
-                &mut prod_state, zone_idx, template, kind, None,
+                &mut prod_state, zone_idx, template, kind, None, None,
                 &search, min_distance, optimize, default_reg(),
             );
             let naive = place_and_connect_object_naive(
-                &mut naive_state, zone_idx, template, kind, None,
+                &mut naive_state, zone_idx, template, kind, None, None,
                 &search, min_distance, optimize, default_reg(),
             );
             assert_eq!(prod, naive, "placement #{i} result diverged: prod={prod:?} naive={naive:?}");
@@ -919,11 +931,11 @@ mod tests {
         let search = prod_state.zone_area_open(0); // {(1,0),(2,0),(3,0)}
         assert_eq!(search.count_ones(), 3, "search_area should be the three interior tiles");
         let prod = place_and_connect_object(
-            &mut prod_state, 0, &unit(), TilemapObjectKind::Treasure, None,
+            &mut prod_state, 0, &unit(), TilemapObjectKind::Treasure, None, None,
             &search, 0.0, OptimizeType::Center, default_reg(),
         );
         let naive = place_and_connect_object_naive(
-            &mut naive_state, 0, &unit(), TilemapObjectKind::Treasure, None,
+            &mut naive_state, 0, &unit(), TilemapObjectKind::Treasure, None, None,
             &search, 0.0, OptimizeType::Center, default_reg(),
         );
         assert_eq!(prod, Err(PlacementError::NoSpace));
@@ -943,7 +955,7 @@ mod tests {
         let mut state = build_state(5, 5, &[(0, 0), (1, 0), (2, 0), (3, 0), (4, 0)], (2, 2));
         let search = mask(5, 5, &[(1, 2), (3, 2)]);
         let result = place_and_connect_object(
-            &mut state, 0, &unit(), TilemapObjectKind::Treasure, None,
+            &mut state, 0, &unit(), TilemapObjectKind::Treasure, None, None,
             &search, 0.0, OptimizeType::Center, default_reg(),
         )
         .unwrap();
@@ -964,6 +976,7 @@ mod tests {
             99,
             &unit(),
             TilemapObjectKind::Treasure,
+            None,
             None,
             &search,
             0.0,

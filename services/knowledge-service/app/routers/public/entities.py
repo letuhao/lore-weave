@@ -41,6 +41,12 @@ from app.db.neo4j_repos.entities import (
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.entity_alias_map import EntityAliasMapRepo
 from app.deps import get_entity_alias_map_repo
+from app.events.outbox_emit import (
+    ENTITY_CORRECTED,
+    emit_correction,
+    entity_correction_payload,
+    entity_snapshot,
+)
 from app.middleware.jwt_auth import get_current_user
 
 
@@ -152,6 +158,14 @@ async def archive_user_entity(
     treat 204 + 404 symmetrically as "entity is now hidden".
     """
     async with neo4j_session() as session:
+        # Phase B: read the pre-archive snapshot first (for the correction
+        # event). archive is idempotent + op=delete → diff_class=spurious-drop
+        # regardless of `before` content, so a read-before-write here is
+        # low-stakes (unlike the versioned PATCH, which uses same-Cypher
+        # capture). `before` is None when the entity doesn't exist.
+        before_entity = await get_entity(
+            session, user_id=str(user_id), canonical_id=entity_id,
+        )
         result = await archive_entity(
             session,
             user_id=str(user_id),
@@ -163,9 +177,30 @@ async def archive_user_entity(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="entity not found",
         )
+    before = (
+        entity_snapshot(before_entity.name, before_entity.kind, before_entity.aliases)
+        if before_entity is not None
+        else None
+    )
     logger.info(
         "K19c.4: user archived entity user_id=%s entity_id=%s",
         user_id, entity_id,
+    )
+    # Phase B — a user archive (delete) is a "spurious-drop" correction
+    # (after=null). Best-effort emit after the Neo4j write (§6.6).
+    await emit_correction(
+        event_type=ENTITY_CORRECTED,
+        aggregate_id=entity_id,
+        payload=entity_correction_payload(
+            user_id=str(user_id),
+            project_id=result.project_id,
+            book_id=None,
+            target_id=entity_id,
+            op="delete",
+            before=before,
+            after=None,
+            actor_id=str(user_id),
+        ),
     )
 
 
@@ -342,7 +377,7 @@ async def patch_entity(
 
     async with neo4j_session() as session:
         try:
-            updated = await update_entity_fields(
+            updated, before = await update_entity_fields(
                 session,
                 user_id=str(user_id),
                 entity_id=entity_id,
@@ -374,6 +409,29 @@ async def patch_entity(
             if getattr(body, f) is not None
         ],
         updated.version,
+    )
+    # Phase B — capture the correction (best-effort, AFTER the Neo4j write
+    # committed; cross-store §6.6 → never fails the PATCH). diff_class
+    # (kind-change vs boundary) is derived downstream from before/after.
+    await emit_correction(
+        event_type=ENTITY_CORRECTED,
+        aggregate_id=entity_id,
+        payload=entity_correction_payload(
+            user_id=str(user_id),
+            project_id=updated.project_id,
+            book_id=None,
+            target_id=entity_id,
+            op="update",
+            # Route `before` through entity_snapshot for ONE canonical shape
+            # (adversary subB F2 — match the after/archive snapshots).
+            before=(
+                entity_snapshot(before.get("name"), before.get("kind"), before.get("aliases"))
+                if before
+                else None
+            ),
+            after=entity_snapshot(updated.name, updated.kind, updated.aliases),
+            actor_id=str(user_id),
+        ),
     )
     response.headers["ETag"] = _etag(updated.version)
     return updated
@@ -649,5 +707,26 @@ async def merge_entity_into(
         "K19d.6 + C17: user merged entity user_id=%s source=%s target=%s "
         "aliases_redirected=%d",
         user_id, entity_id, other_id, aliases_redirected,
+    )
+    # Phase B C3 — emit a merge correction (best-effort, §6.6). target_id is the
+    # surviving TARGET; before = the (now-deleted) SOURCE snapshot captured
+    # pre-merge; after = the merged target. diff_class derives `merge` from op.
+    await emit_correction(
+        event_type=ENTITY_CORRECTED,
+        aggregate_id=other_id,
+        payload=entity_correction_payload(
+            user_id=str(user_id),
+            project_id=target.project_id,
+            book_id=None,
+            target_id=other_id,
+            op="merge",
+            before=(
+                entity_snapshot(source.name, source.kind, source.aliases)
+                if source is not None
+                else None
+            ),
+            after=entity_snapshot(target.name, target.kind, target.aliases),
+            actor_id=str(user_id),
+        ),
     )
     return EntityMergeResponse(target=target, aliases_redirected=aliases_redirected)

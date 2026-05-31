@@ -170,6 +170,7 @@ fn place_in_zone(
                         canon_ref: None,
                         biome_object_type: None,
                         value: None,
+                        tier_index: None,
                         primitive: Some(ObjectPrimitive::Decoration),
                         tag: Some(current_tag.kind_id.clone()),
                         footprint: Some(FootprintSize::unit()),

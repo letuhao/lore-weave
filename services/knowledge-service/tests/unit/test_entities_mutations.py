@@ -71,9 +71,13 @@ async def test_update_entity_applies_on_matching_version(mock_run):
     """When expected_version matches the DB's current_version, the
     FOREACH body runs — Cypher returns the post-write entity + applied=True."""
     post_write = _entity_node(name="Kai", version=4, user_edited=True)
-    mock_run.return_value = _make_result({"e": post_write, "applied": True})
+    # Phase B: Cypher also returns the pre-edit `before` snapshot.
+    mock_run.return_value = _make_result(
+        {"e": post_write, "applied": True,
+         "before": {"name": "OldKai", "kind": "character", "aliases": ["OldKai"]}}
+    )
 
-    updated = await update_entity_fields(
+    updated, before = await update_entity_fields(
         session=MagicMock(),
         user_id="u-1",
         entity_id="ent-1",
@@ -85,6 +89,8 @@ async def test_update_entity_applies_on_matching_version(mock_run):
     assert updated is not None
     assert updated.version == 4
     assert updated.user_edited is True
+    # Phase B: the pre-edit snapshot is returned for the correction event.
+    assert before == {"name": "OldKai", "kind": "character", "aliases": ["OldKai"]}
     # expected_version threaded to Cypher as a kwarg.
     assert mock_run.await_args.kwargs["expected_version"] == 3
 
@@ -122,7 +128,7 @@ async def test_update_entity_returns_none_on_missing(mock_run):
     no record. Helper returns None (router collapses to 404)."""
     mock_run.return_value = _make_result(None)
 
-    result = await update_entity_fields(
+    result, before = await update_entity_fields(
         session=MagicMock(),
         user_id="u-1",
         entity_id="missing",
@@ -132,6 +138,7 @@ async def test_update_entity_returns_none_on_missing(mock_run):
         expected_version=1,
     )
     assert result is None
+    assert before is None
 
 
 # ── unlock_entity_user_edited: no If-Match, idempotent ──────────────
@@ -226,9 +233,12 @@ async def test_update_entity_pre_c9_node_with_expected_version_1_applies(
     anchors the Cypher side so the two tests together cover the
     invariant end-to-end."""
     post_write = _entity_node(name="Kai", version=2, user_edited=True)
-    mock_run.return_value = _make_result({"e": post_write, "applied": True})
+    mock_run.return_value = _make_result(
+        {"e": post_write, "applied": True,
+         "before": {"name": "Kai", "kind": "character", "aliases": ["Kai"]}}
+    )
 
-    updated = await update_entity_fields(
+    updated, _before = await update_entity_fields(
         session=MagicMock(),
         user_id="u-1",
         entity_id="pre-c9-ent",

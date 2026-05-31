@@ -9,7 +9,12 @@ from uuid import uuid4
 import pytest
 
 from app.events.dispatcher import EventData
-from app.events.handlers import handle_chat_turn, handle_chapter_saved, handle_chapter_deleted
+from app.events.handlers import (
+    handle_chat_turn,
+    handle_chapter_saved,
+    handle_chapter_deleted,
+    handle_glossary_entity_updated,
+)
 
 
 _USER = uuid4()
@@ -412,3 +417,172 @@ async def test_chapter_deleted_no_project_skips():
     )
     await handle_chapter_deleted(event, pool=pool)
     pool.execute.assert_not_called()
+
+
+# ── C4 (K14): glossary.entity_updated ────────────────────────────────
+
+_ENTITY = uuid4()
+
+
+def _glossary_event(payload=None, aggregate_id=None):
+    return EventData(
+        stream="loreweave:events:glossary",
+        message_id="9-0",
+        event_type="glossary.entity_updated",
+        aggregate_id=aggregate_id or str(_ENTITY),
+        payload=payload
+        if payload is not None
+        else {
+            "book_id": str(_BOOK),
+            "glossary_entity_id": str(_ENTITY),
+            "name": "玉虛宮",
+            "kind": "location",
+            "aliases": ["玉虚宫"],
+            "short_description": "Kunlun HQ",
+            "op": "updated",
+            "source_type": "glossary",
+        },
+        source="glossary",
+        raw={},
+    )
+
+
+@asynccontextmanager
+async def _fake_neo4j_session():
+    yield MagicMock()
+
+
+@pytest.mark.asyncio
+async def test_glossary_updated_triggers_sync(monkeypatch):
+    """Happy path: event with full payload + project found + NEO4J_URI set
+    → calls sync_glossary_entity_to_neo4j with resolved user/project."""
+    pool, _conn = _mock_pool()
+    pool.fetchrow = AsyncMock(
+        return_value={"project_id": _PROJECT, "user_id": _USER}
+    )
+
+    sync_mock = AsyncMock(
+        return_value={"glossary_entity_id": str(_ENTITY), "action": "updated",
+                      "canonical_name": "玉虛宮"}
+    )
+    with patch("app.config.settings") as ms:
+        ms.neo4j_uri = "bolt://fake"
+        monkeypatch.setattr("app.db.neo4j.neo4j_session", _fake_neo4j_session)
+        monkeypatch.setattr(
+            "app.extraction.glossary_sync.sync_glossary_entity_to_neo4j",
+            sync_mock,
+        )
+        await handle_glossary_entity_updated(_glossary_event(), pool=pool)
+
+    pool.fetchrow.assert_called_once()  # project/user resolution
+    sync_mock.assert_awaited_once()
+    kw = sync_mock.await_args.kwargs
+    assert kw["glossary_entity_id"] == str(_ENTITY)
+    assert kw["user_id"] == str(_USER)
+    assert kw["project_id"] == str(_PROJECT)
+    assert kw["name"] == "玉虛宮"
+    assert kw["kind"] == "location"
+    assert kw["aliases"] == ["玉虚宫"]
+
+
+@pytest.mark.asyncio
+async def test_glossary_updated_idempotent_on_replay(monkeypatch):
+    """At-least-once delivery: re-processing the SAME event simply calls
+    sync again (MERGE is keyed on glossary_entity_id → no duplication).
+    We assert the handler invokes sync once per delivery with a stable
+    MERGE key, which is the idempotency contract."""
+    pool, _conn = _mock_pool()
+    pool.fetchrow = AsyncMock(
+        return_value={"project_id": _PROJECT, "user_id": _USER}
+    )
+    sync_mock = AsyncMock(
+        return_value={"glossary_entity_id": str(_ENTITY), "action": "updated",
+                      "canonical_name": "玉虛宮"}
+    )
+    with patch("app.config.settings") as ms:
+        ms.neo4j_uri = "bolt://fake"
+        monkeypatch.setattr("app.db.neo4j.neo4j_session", _fake_neo4j_session)
+        monkeypatch.setattr(
+            "app.extraction.glossary_sync.sync_glossary_entity_to_neo4j",
+            sync_mock,
+        )
+        ev = _glossary_event()
+        await handle_glossary_entity_updated(ev, pool=pool)
+        await handle_glossary_entity_updated(ev, pool=pool)  # replay
+
+    assert sync_mock.await_count == 2
+    # Both calls carry the identical MERGE key (user_id, glossary_entity_id).
+    keys = {
+        (c.kwargs["user_id"], c.kwargs["glossary_entity_id"])
+        for c in sync_mock.await_args_list
+    }
+    assert keys == {(str(_USER), str(_ENTITY))}
+
+
+@pytest.mark.asyncio
+async def test_glossary_updated_skips_when_no_project(monkeypatch):
+    """No knowledge project for the book → clean no-op, no sync call."""
+    pool, _conn = _mock_pool()
+    pool.fetchrow = AsyncMock(return_value=None)
+    sync_mock = AsyncMock()
+    with patch("app.config.settings") as ms:
+        ms.neo4j_uri = "bolt://fake"
+        monkeypatch.setattr(
+            "app.extraction.glossary_sync.sync_glossary_entity_to_neo4j",
+            sync_mock,
+        )
+        await handle_glossary_entity_updated(_glossary_event(), pool=pool)
+
+    pool.fetchrow.assert_called_once()
+    sync_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_glossary_updated_skips_when_no_neo4j(monkeypatch):
+    """Track 1 mode (NEO4J_URI unset) → skip sync, never raise. Canonical
+    data stays safe in Postgres; backfill re-converges later."""
+    pool, _conn = _mock_pool()
+    pool.fetchrow = AsyncMock(
+        return_value={"project_id": _PROJECT, "user_id": _USER}
+    )
+    sync_mock = AsyncMock()
+    with patch("app.config.settings") as ms:
+        ms.neo4j_uri = ""  # Track 1
+        monkeypatch.setattr(
+            "app.extraction.glossary_sync.sync_glossary_entity_to_neo4j",
+            sync_mock,
+        )
+        await handle_glossary_entity_updated(_glossary_event(), pool=pool)
+
+    sync_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_glossary_updated_skips_empty_name_or_kind():
+    """A fresh-create event with empty name/kind must NOT attempt a sync
+    (can't MERGE a meaningful entity) and must NOT even resolve project —
+    the populated follow-up event handles it. Also no exception."""
+    pool, _conn = _mock_pool()
+    payload = {
+        "book_id": str(_BOOK),
+        "glossary_entity_id": str(_ENTITY),
+        "name": "",        # draft not yet named
+        "kind": "",
+        "op": "created",
+        "source_type": "glossary",
+    }
+    await handle_glossary_entity_updated(
+        _glossary_event(payload=payload), pool=pool
+    )
+    pool.fetchrow.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_glossary_updated_missing_ids_skips():
+    """Missing book_id/glossary_entity_id → warn + skip, no project lookup."""
+    pool, _conn = _mock_pool()
+    payload = {"name": "x", "kind": "location"}  # no ids
+    await handle_glossary_entity_updated(
+        _glossary_event(payload=payload, aggregate_id=""), pool=pool
+    )
+    pool.fetchrow.assert_not_called()

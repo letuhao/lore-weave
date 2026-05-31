@@ -750,5 +750,53 @@
       "description": "這會永久刪除所有專案與摘要。請在下方輸入 {{token}} 以確認。",
       "cancel": "取消"
     }
+  },
+  "relations": {
+    "edit": {
+      "cta": "Correct relation",
+      "title": "Correct relation",
+      "description": "Fix this relation's predicate, or mark it as wrong so it's removed.",
+      "field": {
+        "predicate": "Predicate"
+      },
+      "save": "Correct",
+      "saving": "Correcting…",
+      "cancel": "Cancel",
+      "correctSuccess": "Relation corrected.",
+      "invalidateSuccess": "Relation removed.",
+      "invalidateHint": "If this relation should never have been extracted, mark it wrong to remove it.",
+      "invalidateConfirm": "Mark this relation as wrong and remove it?",
+      "markWrong": "Mark wrong",
+      "invalidating": "Removing…",
+      "failed": "Couldn't save the correction: {{error}}"
+    }
+  },
+  "events": {
+    "edit": {
+      "cta": "Edit",
+      "title": "Edit event",
+      "description": "Adjust this event's title, summary, or timing.",
+      "field": {
+        "title": "Title",
+        "summary": "Summary",
+        "timeCue": "Time cue",
+        "dateIso": "Date (ISO)"
+      },
+      "dateIsoPlaceholder": "YYYY or YYYY-MM-DD",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "success": "Event updated.",
+      "conflict": "Another device updated this event. Review the latest and try again.",
+      "failed": "Couldn't update the event: {{error}}",
+      "invalidDate": "Date must be YYYY, YYYY-MM, or YYYY-MM-DD."
+    },
+    "archive": {
+      "cta": "Delete",
+      "confirm": "Delete (hide) this event?",
+      "archiving": "Deleting…",
+      "success": "Event deleted.",
+      "failed": "Couldn't delete the event: {{error}}"
+    }
   }
 }

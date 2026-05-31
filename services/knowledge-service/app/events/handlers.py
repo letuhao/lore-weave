@@ -1,9 +1,10 @@
-"""K14.5 + K14.6 + K14.7 — Event handlers.
+"""K14.5 + K14.6 + K14.7 + C4 — Event handlers.
 
 Each handler processes one event type:
-  - chat.turn_completed  → K14.5: queue or extract chat turn
-  - chapter.saved        → K14.6: queue or extract chapter
-  - chapter.deleted      → K14.7: cascade delete from Neo4j
+  - chat.turn_completed     → K14.5: queue or extract chat turn
+  - chapter.saved           → K14.6: queue or extract chapter
+  - chapter.deleted         → K14.7: cascade delete from Neo4j
+  - glossary.entity_updated → C4 (K14): trigger glossary_sync → Neo4j
 
 All handlers receive EventData + pool (via dispatcher kwargs).
 If extraction is disabled for the project, events are queued in
@@ -28,6 +29,7 @@ __all__ = [
     "handle_chat_turn",
     "handle_chapter_saved",
     "handle_chapter_deleted",
+    "handle_glossary_entity_updated",
 ]
 
 logger = logging.getLogger(__name__)
@@ -326,6 +328,123 @@ async def handle_chapter_deleted(event: EventData, *, pool: asyncpg.Pool) -> Non
             )
     else:
         logger.debug("No knowledge project for book %s — skipping delete cascade", book_id)
+
+
+async def handle_glossary_entity_updated(
+    event: EventData, *, pool: asyncpg.Pool,
+) -> None:
+    """C4 (K14) — glossary.entity_updated handler.
+
+    Triggers the EXISTING `sync_glossary_entity_to_neo4j` (K15.11) so a
+    glossary entity write in glossary-service automatically lands in Neo4j
+    — no manual /glossary-sync-entity call (resolves H1). This handler does
+    NOT write Neo4j canonical content directly: it only invokes glossary_sync,
+    which is the single SSOT→Neo4j path (Q2).
+
+    Payload (from glossary-service outbox.go):
+      book_id, glossary_entity_id, name, kind, aliases, short_description,
+      op, source_type, emitted_at
+
+    user_id/project_id are NOT in the payload — resolved here from the
+    knowledge_projects table via book_id (globally unique), mirroring
+    handle_chapter_saved. If no knowledge project exists for the book, the
+    event is a clean no-op (the user hasn't enabled the KG for that book).
+
+    Idempotency / at-least-once: Redis Streams may redeliver. The underlying
+    glossary_sync MERGE is keyed on (user_id, glossary_entity_id), so
+    re-processing the same event updates the node in place — never duplicates
+    nodes/edges. Safe to replay.
+
+    Neo4j unavailable (Track 1 / no NEO4J_URI) → clean skip: the canonical
+    glossary data still lives in Postgres; a later scope='glossary_sync'
+    backfill or the next event re-converges the graph once Neo4j is wired.
+    """
+    payload = event.payload
+    book_id = _uuid(payload.get("book_id"))
+    glossary_entity_id = _uuid(payload.get("glossary_entity_id")) or _uuid(
+        event.aggregate_id
+    )
+    name = (payload.get("name") or "").strip()
+    kind = (payload.get("kind") or "").strip()
+
+    if book_id is None or glossary_entity_id is None:
+        logger.warning(
+            "glossary.entity_updated missing book_id/glossary_entity_id: %s",
+            event.message_id,
+        )
+        return
+
+    # A freshly-created draft can arrive with an empty name/kind (the
+    # glossary create path emits before the name attribute is filled). We
+    # cannot MERGE a meaningful entity without a name+kind — skip cleanly;
+    # the follow-up PATCH/extract event carries the populated fields and
+    # re-emits, at which point the MERGE (keyed on glossary_entity_id)
+    # creates/updates the node. This is correct at-least-once behaviour,
+    # not a dropped event.
+    if not name or not kind:
+        logger.debug(
+            "glossary.entity_updated for %s has empty name/kind (op=%s) — "
+            "skipping until a populated event arrives",
+            glossary_entity_id, payload.get("op"),
+        )
+        return
+
+    # Resolve project + user via book_id (globally unique).
+    project_row = await pool.fetchrow(
+        "SELECT project_id, user_id FROM knowledge_projects WHERE book_id = $1 LIMIT 1",
+        book_id,
+    )
+    if project_row is None:
+        logger.debug(
+            "No knowledge project for book %s — skipping glossary sync", book_id
+        )
+        return
+
+    project_id = project_row["project_id"]
+    user_id = project_row["user_id"]
+
+    # Neo4j must be configured to sync. In Track 1 mode there is no graph
+    # to write — skip without error (canonical data is safe in Postgres).
+    from app.config import settings
+
+    if not settings.neo4j_uri:
+        logger.debug(
+            "glossary.entity_updated: NEO4J_URI unset (Track 1 mode) — "
+            "skipping sync for entity %s",
+            glossary_entity_id,
+        )
+        return
+
+    aliases = payload.get("aliases")
+    if not isinstance(aliases, list):
+        aliases = []
+    short_description = payload.get("short_description") or None
+
+    # Inline imports avoid circular imports at module load (consumer loads
+    # handlers at startup before the Neo4j driver is wired) — same pattern
+    # as handle_chapter_saved. Kept OUTSIDE the try/except so an ImportError
+    # crashes loud rather than being masked as a transient failure.
+    from app.db.neo4j import neo4j_session
+    from app.extraction.glossary_sync import sync_glossary_entity_to_neo4j
+
+    # Let exceptions propagate to the consumer's DLQ/retry path (K14.8):
+    # a transient Neo4j outage SHOULD redeliver, not silently drop the
+    # propagation. The MERGE keeps redelivery idempotent.
+    async with neo4j_session() as session:
+        result = await sync_glossary_entity_to_neo4j(
+            session,
+            user_id=str(user_id),
+            project_id=str(project_id),
+            glossary_entity_id=str(glossary_entity_id),
+            name=name,
+            kind=kind,
+            aliases=[str(a) for a in aliases],
+            short_description=short_description,
+        )
+    logger.info(
+        "C4: glossary.entity_updated synced to Neo4j: entity=%s action=%s project=%s",
+        glossary_entity_id, result.get("action"), project_id,
+    )
 
 
 def _uuid(val: str | None) -> UUID | None:

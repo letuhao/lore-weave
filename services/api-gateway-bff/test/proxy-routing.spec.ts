@@ -38,6 +38,7 @@ describe('Gateway proxy routing', () => {
   let statisticsServer: http.Server;
   let notificationServer: http.Server;
   let knowledgeServer: http.Server;
+  let loreEnrichmentServer: http.Server;
 
   beforeAll(async () => {
     [
@@ -54,6 +55,7 @@ describe('Gateway proxy routing', () => {
       statisticsServer,
       notificationServer,
       knowledgeServer,
+      loreEnrichmentServer,
     ] = await Promise.all([
       startUpstream('auth'),
       startUpstream('books'),
@@ -68,6 +70,7 @@ describe('Gateway proxy routing', () => {
       startUpstream('statistics'),
       startUpstream('notification'),
       startUpstream('knowledge'),
+      startUpstream('lore-enrichment'),
     ]);
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -89,6 +92,7 @@ describe('Gateway proxy routing', () => {
       statisticsUrl: urlOf(statisticsServer),
       notificationUrl: urlOf(notificationServer),
       knowledgeUrl: urlOf(knowledgeServer),
+      loreEnrichmentUrl: urlOf(loreEnrichmentServer),
     });
     await app.init();
   });
@@ -109,6 +113,7 @@ describe('Gateway proxy routing', () => {
       new Promise((resolve) => statisticsServer.close(resolve)),
       new Promise((resolve) => notificationServer.close(resolve)),
       new Promise((resolve) => knowledgeServer.close(resolve)),
+      new Promise((resolve) => loreEnrichmentServer.close(resolve)),
     ]);
   });
 
@@ -147,6 +152,10 @@ describe('Gateway proxy routing', () => {
 
   it('routes /v1/chat/* paths to chat service', async () => {
     await request(app.getHttpServer()).get('/v1/chat/sessions').expect(200).expect('chat');
+  });
+
+  it('routes /v1/lore-enrichment/* paths to lore-enrichment service', async () => {
+    await request(app.getHttpServer()).get('/v1/lore-enrichment/jobs').expect(200).expect('lore-enrichment');
   });
 
   it('returns 404 for unmatched path', async () => {

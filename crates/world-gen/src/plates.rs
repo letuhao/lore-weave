@@ -81,6 +81,7 @@ pub fn build(
     seed: u64,
     plate_count: u8,
     continental_fraction: f32,
+    continent_latitude_spread: f32,
     centers: &[[f32; 3]],
     neighbors: &[Vec<u32>],
 ) -> Plates {
@@ -128,16 +129,16 @@ pub fn build(
         }
     }
 
-    // 1b — plate kinds. `continental` plates picked from a seeded shuffle of
-    // the plate ids so the continental set is not always `0..k`.
+    // 1b — plate kinds. A seeded shuffle gives every plate a random **rank**
+    // (the shuffle is kept verbatim so the RNG stream — and the motion vectors
+    // drawn after it — stay byte-identical). The continental subset is then
+    // chosen by `select_continental_plates`, which blends that random rank with
+    // a latitude-spread term (`continent_latitude_spread`).
     let n_cont = ((n as f32) * continental_fraction).round() as usize;
     let n_cont = n_cont.clamp(1, n.saturating_sub(1).max(1));
     let mut order: Vec<usize> = (0..n).collect();
     crate::rng::shuffle(&mut rng, &mut order);
-    let mut kind = vec![PlateKind::Oceanic; n];
-    for &p in order.iter().take(n_cont) {
-        kind[p] = PlateKind::Continental;
-    }
+    let kind = select_continental_plates(&seeds, &order, n_cont, continent_latitude_spread);
 
     // 1c — plate motion: a random tangent unit vector at each plate seed.
     let motion: Vec<[f32; 3]> = seeds
@@ -216,6 +217,78 @@ pub fn build(
         base,
         uplift,
     }
+}
+
+/// Choose which `n_cont` plates are continental, blending the random shuffle
+/// **rank** with a **latitude-spread** term so continents cover a range of
+/// latitudes (a full tropics → boreal/polar biome gradient) instead of
+/// clustering by luck.
+///
+/// Greedy farthest-point selection over **signed sin-latitude** `z = seed[2] ∈
+/// [−1, 1]`. Each step picks the unchosen plate minimising
+/// `cost = (1 − spread)·(rank/n) − spread·min_zdist_to_chosen`, ties broken by
+/// rank then id (`total_cmp`, fully deterministic).
+///
+/// - `spread = 0` ⇒ `cost = rank/n` ⇒ picks the shuffle order `order[0..n_cont]`
+///   — **byte-identical to the legacy random selection**.
+/// - `spread = 1` ⇒ `cost = −min_zdist` ⇒ farthest-point spread covering both
+///   poles + the equator. Using *signed* z (not `|lat|`) guarantees the
+///   climate-cold `+z` pole is covered for every hemisphere orientation, with no
+///   terrain↔climate coupling.
+///
+/// Returns the per-plate `PlateKind` vector.
+fn select_continental_plates(
+    seeds: &[[f32; 3]],
+    order: &[usize],
+    n_cont: usize,
+    spread: f32,
+) -> Vec<PlateKind> {
+    let n = seeds.len();
+    let spread = spread.clamp(0.0, 1.0);
+    // rank[p] = position of plate p in the shuffled order (0 = picked first
+    // under the legacy behaviour).
+    let mut rank = vec![0usize; n];
+    for (i, &p) in order.iter().enumerate() {
+        rank[p] = i;
+    }
+    let z = |p: usize| seeds[p][2];
+
+    let mut is_cont = vec![false; n];
+    let mut chosen: Vec<usize> = Vec::with_capacity(n_cont);
+    for _ in 0..n_cont.min(n) {
+        let cost = |p: usize| -> f32 {
+            let min_d = if chosen.is_empty() {
+                0.0
+            } else {
+                chosen
+                    .iter()
+                    .map(|&q| (z(p) - z(q)).abs())
+                    .fold(f32::INFINITY, f32::min)
+            };
+            (1.0 - spread) * (rank[p] as f32 / n as f32) - spread * min_d
+        };
+        let pick = (0..n)
+            .filter(|&p| !is_cont[p])
+            .min_by(|&a, &b| {
+                cost(a)
+                    .total_cmp(&cost(b))
+                    .then(rank[a].cmp(&rank[b]))
+                    .then(a.cmp(&b))
+            })
+            .expect("n_cont <= n, so an unchosen plate always exists");
+        is_cont[pick] = true;
+        chosen.push(pick);
+    }
+
+    (0..n)
+        .map(|p| {
+            if is_cont[p] {
+                PlateKind::Continental
+            } else {
+                PlateKind::Oceanic
+            }
+        })
+        .collect()
 }
 
 /// Classify every adjacent plate pair's boundary by relative motion + kinds.
@@ -448,7 +521,7 @@ mod tests {
     #[test]
     fn every_cell_assigned_a_valid_plate() {
         let (centers, neighbors) = pocket();
-        let p = build(42, 8, 0.4, &centers, &neighbors);
+        let p = build(42, 8, 0.4, 0.0, &centers, &neighbors);
         assert_eq!(p.plate_of.len(), centers.len());
         assert!(p.plate_of.iter().all(|&id| (id as usize) < p.plates.len()));
         assert_eq!(p.plates.len(), 8);
@@ -457,7 +530,7 @@ mod tests {
     #[test]
     fn continental_count_matches_fraction() {
         let (centers, neighbors) = pocket();
-        let p = build(42, 10, 0.4, &centers, &neighbors);
+        let p = build(42, 10, 0.4, 0.0, &centers, &neighbors);
         let cont = p
             .plates
             .iter()
@@ -469,14 +542,14 @@ mod tests {
     #[test]
     fn plate_count_is_clamped() {
         let (centers, neighbors) = pocket();
-        assert_eq!(build(1, 2, 0.4, &centers, &neighbors).plates.len(), 3);
-        assert_eq!(build(1, 99, 0.4, &centers, &neighbors).plates.len(), 24);
+        assert_eq!(build(1, 2, 0.4, 0.0, &centers, &neighbors).plates.len(), 3);
+        assert_eq!(build(1, 99, 0.4, 0.0, &centers, &neighbors).plates.len(), 24);
     }
 
     #[test]
     fn motion_vectors_are_unit_and_tangent() {
         let (centers, neighbors) = pocket();
-        let p = build(7, 8, 0.4, &centers, &neighbors);
+        let p = build(7, 8, 0.4, 0.0, &centers, &neighbors);
         for pl in &p.plates {
             let m = pl.motion;
             let l = (m[0] * m[0] + m[1] * m[1] + m[2] * m[2]).sqrt();
@@ -492,7 +565,7 @@ mod tests {
     #[test]
     fn boundaries_are_sorted_and_classified() {
         let (centers, neighbors) = pocket();
-        let p = build(42, 8, 0.4, &centers, &neighbors);
+        let p = build(42, 8, 0.4, 0.0, &centers, &neighbors);
         assert!(!p.boundaries.is_empty(), "8 plates must share boundaries");
         for w in p.boundaries.windows(2) {
             assert!(
@@ -509,17 +582,70 @@ mod tests {
     #[test]
     fn uplift_is_finite_and_zero_in_deep_interior() {
         let (centers, neighbors) = pocket();
-        let p = build(42, 8, 0.4, &centers, &neighbors);
+        let p = build(42, 8, 0.4, 0.0, &centers, &neighbors);
         assert!(p.uplift.iter().all(|u| u.is_finite()));
         // at least some cells get non-zero uplift (boundaries exist).
         assert!(p.uplift.iter().any(|&u| u.abs() > 0.01));
     }
 
+    /// Six plates on a meridian with distinct, evenly-spaced signed latitudes
+    /// `z = −0.8..0.7`, and a fixed (non-identity) shuffle order.
+    fn meridian_seeds() -> (Vec<[f32; 3]>, Vec<usize>) {
+        let seeds: Vec<[f32; 3]> = (0..6)
+            .map(|i| {
+                let z = -0.8 + i as f32 * 0.3;
+                let r = (1.0 - z * z).sqrt();
+                [r, 0.0, z]
+            })
+            .collect();
+        (seeds, vec![3usize, 1, 5, 0, 4, 2])
+    }
+
+    #[test]
+    fn spread_zero_picks_the_shuffle_order() {
+        // spread=0 ⇒ continental = the first n_cont of the shuffle order
+        // ({3,1,5}) — byte-identical to the legacy `order.take(n_cont)`.
+        let (seeds, order) = meridian_seeds();
+        let kinds = select_continental_plates(&seeds, &order, 3, 0.0);
+        let cont: Vec<usize> = (0..6)
+            .filter(|&p| kinds[p] == PlateKind::Continental)
+            .collect();
+        assert_eq!(cont, vec![1, 3, 5], "spread=0 must equal shuffle order {{3,1,5}}");
+    }
+
+    #[test]
+    fn spread_one_covers_the_latitude_extremes() {
+        let (seeds, order) = meridian_seeds();
+        let zr = |kinds: &[PlateKind]| -> f32 {
+            let zs: Vec<f32> = (0..6)
+                .filter(|&p| kinds[p] == PlateKind::Continental)
+                .map(|p| seeds[p][2])
+                .collect();
+            zs.iter().cloned().fold(f32::MIN, f32::max)
+                - zs.iter().cloned().fold(f32::MAX, f32::min)
+        };
+        let lo = select_continental_plates(&seeds, &order, 3, 0.0);
+        let hi = select_continental_plates(&seeds, &order, 3, 1.0);
+        // Farthest-point spread widens the latitude range...
+        assert!(zr(&hi) > zr(&lo), "spread=1 range {} !> spread=0 range {}", zr(&hi), zr(&lo));
+        // ...and includes both extreme-latitude plates (0 = z−0.8, 5 = z+0.7).
+        assert_eq!(hi[0], PlateKind::Continental, "spread=1 must take the −0.8 pole plate");
+        assert_eq!(hi[5], PlateKind::Continental, "spread=1 must take the +0.7 pole plate");
+    }
+
+    #[test]
+    fn spread_one_is_deterministic() {
+        let (seeds, order) = meridian_seeds();
+        let a = select_continental_plates(&seeds, &order, 3, 1.0);
+        let b = select_continental_plates(&seeds, &order, 3, 1.0);
+        assert_eq!(a, b);
+    }
+
     #[test]
     fn deterministic() {
         let (centers, neighbors) = pocket();
-        let a = build(99, 8, 0.4, &centers, &neighbors);
-        let b = build(99, 8, 0.4, &centers, &neighbors);
+        let a = build(99, 8, 0.4, 0.0, &centers, &neighbors);
+        let b = build(99, 8, 0.4, 0.0, &centers, &neighbors);
         assert_eq!(a.plate_of, b.plate_of);
         assert_eq!(a.boundaries, b.boundaries);
         for i in 0..a.uplift.len() {

@@ -417,6 +417,31 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// C4 (K14) — emit glossary.entity_updated inside the SAME tx as the
+	// entity insert (true transactional outbox: the event row commits
+	// atomically with the entity, or not at all). A fresh draft has no
+	// name yet; the payload carries kind + book_id, and the later PATCH
+	// that fills the name re-emits — knowledge-service's glossary_sync
+	// MERGE (keyed on glossary_entity_id) makes both events idempotent.
+	createEntityUUID, _ := uuid.Parse(entityIDStr)
+	{
+		name, kind, aliases, shortDesc, ok := loadEntityEventFields(ctx, tx, createEntityUUID)
+		if !ok {
+			name, kind, aliases, shortDesc = "", "", []string{}, ""
+		}
+		// Phase B: a user-created entity is a "missing-add" correction
+		// (before=nil). The creator is the book owner (verifyBookOwner above),
+		// so actor_id = userID.
+		payload := buildEntityEventPayload(
+			bookID.String(), entityIDStr, name, kind, aliases, shortDesc, "created",
+			"user", userID.String(), nil,
+		)
+		if err := emitEntityUpdatedTx(ctx, tx, createEntityUUID, payload); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "outbox emit failed")
+			return
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")
 		return
@@ -775,13 +800,57 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 		updateSQL := fmt.Sprintf(
 			"UPDATE glossary_entities SET %s WHERE entity_id = $%d AND book_id = $%d",
 			strings.Join(setClauses, ", "), argN, argN+1)
-		tag, err := s.pool.Exec(ctx, updateSQL, args...)
+
+		// Phase B: PATCH is now transactional so the before/after snapshot is
+		// captured consistently with the UPDATE (no TOCTOU — design §5 /
+		// review-impl MED-3). The glossary.entity_updated event commits
+		// atomically with the edit (transactional outbox, like createEntity).
+		tx, err := s.pool.Begin(ctx)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "begin tx failed")
+			return
+		}
+		defer tx.Rollback(ctx)
+
+		// Capture BEFORE in-tx (FOR-UPDATE-equivalent: the subsequent UPDATE
+		// locks the row, so no concurrent writer can interleave).
+		beforeName, beforeKind, beforeAliases, beforeShortDesc, beforeOK :=
+			loadEntityEventFields(ctx, tx, entityID)
+
+		tag, err := tx.Exec(ctx, updateSQL, args...)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "update failed")
 			return
 		}
 		if tag.RowsAffected() == 0 {
 			writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "entity not found")
+			return
+		}
+
+		// Capture AFTER in-tx and emit transactionally. A user PATCH is a
+		// correction by construction (verifyBookOwner above → actor = owner).
+		afterName, afterKind, afterAliases, afterShortDesc, _ :=
+			loadEntityEventFields(ctx, tx, entityID)
+		var before *EntitySnapshot
+		if beforeOK {
+			before = &EntitySnapshot{
+				Name:             beforeName,
+				Kind:             beforeKind,
+				Aliases:          beforeAliases,
+				ShortDescription: beforeShortDesc,
+			}
+		}
+		payload := buildEntityEventPayload(
+			bookID.String(), entityID.String(),
+			afterName, afterKind, afterAliases, afterShortDesc, "updated",
+			"user", userID.String(), before,
+		)
+		if err := emitEntityUpdatedTx(ctx, tx, entityID, payload); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "outbox emit failed")
+			return
+		}
+		if err := tx.Commit(ctx); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")
 			return
 		}
 	}

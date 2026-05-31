@@ -183,6 +183,110 @@ async def test_select_2hop_for_relational_intent(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_select_2hop_passes_required_hop1_types(monkeypatch):
+    """Regression (audit HIGH — facts.py:183): the 2-hop call MUST pass a
+    non-empty ``hop1_types``. The repo declares it a required kw-only arg
+    with a non-empty guard; omitting it (the original bug) raised
+    ``TypeError`` that the Mode-3 ``_safe_l2_facts`` wrapper swallowed,
+    silently zeroing the ENTIRE L2 layer (1-hop + negations) for exactly
+    the RELATIONAL queries that most need graph reasoning.
+
+    The happy-path test above uses a bare ``AsyncMock`` which accepts ANY
+    kwargs and therefore cannot catch this. This stub instead mirrors the
+    REAL repo signature (required ``hop1_types`` + non-empty guard), so a
+    future drop of the kwarg surfaces as a missing 2-hop path here.
+    """
+    arthur = _entity("Arthur", "e-arthur")
+    r1 = _relation("r1", "Arthur", "e-arthur", "trusts", "Lancelot", "e-lan")
+    r2 = _relation("r2", "Lancelot", "e-lan", "loves", "Guinevere", "e-gue")
+    hop = RelationHop(
+        hop1=r1, hop2=r2,
+        via_id="e-lan", via_name="Lancelot", via_kind="character",
+    )
+
+    captured: dict = {}
+
+    async def real_signature_2hop(
+        session, *, user_id, entity_id, hop1_types,
+        hop2_types=None, project_id=None, min_confidence=0.8, limit=100,
+    ):
+        # Mirror db/neo4j_repos/relations.py::find_relations_2hop exactly.
+        if not hop1_types:
+            raise ValueError("hop1_types must be a non-empty list")
+        captured["hop1_types"] = hop1_types
+        return [hop]
+
+    monkeypatch.setattr(
+        "app.context.selectors.facts.find_entities_by_name",
+        AsyncMock(return_value=[arthur]),
+    )
+    monkeypatch.setattr(
+        "app.context.selectors.facts.find_relations_for_entity",
+        AsyncMock(return_value=[r1]),
+    )
+    monkeypatch.setattr(
+        "app.context.selectors.facts.find_relations_2hop",
+        real_signature_2hop,
+    )
+    monkeypatch.setattr(
+        "app.context.selectors.facts.list_facts_by_type",
+        AsyncMock(return_value=[]),
+    )
+
+    result = await select_l2_facts(
+        MagicMock(),
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        intent=_intent(intent=Intent.RELATIONAL, hop_count=2),
+    )
+    # Both the 1-hop fact AND the 2-hop path must be present — the 2-hop
+    # path proves the call did not raise (i.e. hop1_types was supplied).
+    assert "Arthur — trusts — Lancelot" in result.background
+    assert "Arthur — trusts — Lancelot — loves — Guinevere" in result.background
+    # The gate was passed and is non-empty (absent/empty pre-fix).
+    assert captured.get("hop1_types"), "2-hop must receive a non-empty hop1_types"
+    assert "disciple_of" in captured["hop1_types"]
+
+
+@pytest.mark.asyncio
+async def test_select_2hop_failure_degrades_to_1hop(monkeypatch):
+    """A 2-hop failure must NOT discard the 1-hop facts already gathered.
+
+    Before the fix the missing-kwarg TypeError propagated out of
+    ``select_l2_facts`` and ``_safe_l2_facts`` returned empty — losing the
+    1-hop facts too. The localized try/except now degrades to 1-hop-only.
+    """
+    arthur = _entity("Arthur", "e-arthur")
+    r1 = _relation("r1", "Arthur", "e-arthur", "trusts", "Lancelot", "e-lan")
+
+    monkeypatch.setattr(
+        "app.context.selectors.facts.find_entities_by_name",
+        AsyncMock(return_value=[arthur]),
+    )
+    monkeypatch.setattr(
+        "app.context.selectors.facts.find_relations_for_entity",
+        AsyncMock(return_value=[r1]),
+    )
+    monkeypatch.setattr(
+        "app.context.selectors.facts.find_relations_2hop",
+        AsyncMock(side_effect=RuntimeError("neo4j blip")),
+    )
+    monkeypatch.setattr(
+        "app.context.selectors.facts.list_facts_by_type",
+        AsyncMock(return_value=[]),
+    )
+
+    result = await select_l2_facts(
+        MagicMock(),
+        user_id=USER_ID,
+        project_id=PROJECT_ID,
+        intent=_intent(intent=Intent.RELATIONAL, hop_count=2),
+    )
+    # 1-hop survived despite the 2-hop crash.
+    assert result.background == ["Arthur — trusts — Lancelot"]
+
+
+@pytest.mark.asyncio
 async def test_select_dedupes_relations_across_entities(monkeypatch):
     """A shared relation (A → B) surfaced via A-query AND B-query
     must appear only once."""

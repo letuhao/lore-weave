@@ -5,6 +5,7 @@ import type {
   TilemapObjectKind,
   TilemapView,
 } from '@/types/tilemap';
+import { bandColor, pickValueBand, shouldStampBadge } from './treasure-badge';
 
 // L4 object overlay — Strategy B (Container chunked culling) + D (LOD)
 // from `docs/specs/2026-05-24-v1-tilemap-viewer-render-strategy.md`.
@@ -18,6 +19,17 @@ import type {
 // ~visible chunks × props-per-chunk instead of all 5k+ placements.
 
 const CHUNK_TILES = 16; // 16×16 tiles per chunk
+
+// TMP-Q4 chunk B — value-band badge constants. MED-1: stamp only on
+// `kind === 'treasure'` (lairs inherit tier_index but their `value` is
+// strength, not gold). LOW-3: BADGE_DEPTH_BASE = 100_000 plants badges
+// above all sprite depths (depth = 100 + anchor.y, max ~ grid height).
+const BADGE_RADIUS_PX = 4;
+const BADGE_DEPTH_BASE = 100_000;
+const BADGE_ALPHA = 0.95;
+const BADGE_BORDER_COLOR = 0x0f172a; // slate-900
+const BADGE_BORDER_ALPHA = 0.7;
+const BADGE_LOD_MIN_ZOOM = 0.4;
 
 // LOD: which tiers stay visible at a given camera zoom. Mirror spec §2 D.
 //   key = upper-bound zoom (exclusive); value = tiers to KEEP visible.
@@ -118,6 +130,10 @@ interface ChunkEntry {
   bh: number;
   /** Sprites grouped by tier — for LOD toggle without re-checking each sprite. */
   byTier: Record<SpriteMapping['tier'], Phaser.GameObjects.Image[]>;
+  /** TMP-Q4 chunk B — value-band badges, stamped only on `kind === 'treasure'`.
+   *  Separate from sprites so the LOD `cam.zoom < BADGE_LOD_MIN_ZOOM` cull
+   *  toggles only badges and not the underlying treasure sprite. */
+  badgeArcs: Phaser.GameObjects.Arc[];
 }
 
 const EMPTY_BY_TIER = (): Record<SpriteMapping['tier'], Phaser.GameObjects.Image[]> => ({
@@ -155,6 +171,7 @@ export function buildObjectOverlay(
         bw: chunkSize,
         bh: chunkSize,
         byTier: EMPTY_BY_TIER(),
+        badgeArcs: [],
       };
       // Render objects above the foundation; depth 100 leaves room for
       // overlays (200) and Player (1000) above.
@@ -172,6 +189,33 @@ export function buildObjectOverlay(
     sprite.setDepth(100 + p.anchor.y);
     entry.container.add(sprite);
     entry.byTier[tier].push(sprite);
+
+    // TMP-Q4 chunk B — stamp a value-band badge on treasure piles only
+    // (MED-1: NOT on MonsterLair guards even though they inherit
+    // tier_index, because their `value` is strength not gold). The
+    // gate routes through `shouldStampBadge` (treasure-badge.ts) so
+    // the V1+V2 dual-kind check + finite-value defense live in one
+    // testable predicate (LOW-2 + LOW-5 from chunk-B /review-impl).
+    // The badge color comes from `pickValueBand` which defends against
+    // malformed registry thresholds (LOW-6 from chunk-A /review-impl).
+    if (shouldStampBadge(p)) {
+      const band = pickValueBand(
+        p.value as number,
+        view.registry_ref?.value_band_thresholds ?? null,
+      );
+      const badge = scene.add
+        .circle(
+          screenX + displayPx * 0.35,
+          screenY - displayPx * 0.85,
+          BADGE_RADIUS_PX,
+          bandColor(band),
+          BADGE_ALPHA,
+        )
+        .setStrokeStyle(1, BADGE_BORDER_COLOR, BADGE_BORDER_ALPHA);
+      badge.setDepth(BADGE_DEPTH_BASE + p.anchor.y);
+      entry.container.add(badge);
+      entry.badgeArcs.push(badge);
+    }
   }
 
   const cam = scene.cameras.main;
@@ -179,6 +223,11 @@ export function buildObjectOverlay(
   function update(): void {
     const wv = cam.worldView;
     const lodKeep = tiersForZoom(cam.zoom);
+    // TMP-Q4 chunk B — badges culled at extreme zoom-out (small +
+    // unreadable). The badge LOD is independent of the tier LOD: at
+    // zoom 0.3 you can still see XL town sprites but a 4-px badge
+    // becomes unreadable noise.
+    const showBadges = cam.zoom >= BADGE_LOD_MIN_ZOOM;
     for (const entry of chunks.values()) {
       const visible = Phaser.Geom.Rectangle.Overlaps(
         wv,
@@ -200,6 +249,12 @@ export function buildObjectOverlay(
             sprite.visible = true;
           }
         }
+      }
+      // Badges visibility is independent of tier LOD — they only hide
+      // when the chunk is offscreen OR the camera is zoomed below the
+      // readability threshold.
+      for (const badge of entry.badgeArcs) {
+        badge.visible = visible && showBadges;
       }
     }
   }

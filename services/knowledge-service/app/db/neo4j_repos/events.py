@@ -34,6 +34,7 @@ from pydantic import BaseModel, Field
 
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 from app.db.neo4j_repos.canonical import canonicalize_text
+from app.db.repositories import VersionMismatchError
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,8 @@ __all__ = [
     "event_id",
     "merge_event",
     "get_event",
+    "update_event_fields",
+    "archive_event",
     "list_events_for_chapter",
     "list_events_in_order",
     "list_events_filtered",
@@ -133,6 +136,12 @@ class Event(BaseModel):
     evidence_count: int = 0
     mention_count: int = 0
     archived_at: datetime | None = None
+    # Phase B C2: optimistic-concurrency version for user edits (If-Match).
+    # ON CREATE = 1; bumped only by update_event_fields (user edit), NOT by
+    # extraction re-mention (merge_event ON MATCH leaves it) so a user's
+    # If-Match baseline stays valid across re-extractions. Pre-C2 nodes lack
+    # the property → defaults to 1 here + coalesce(e.version,1) in Cypher.
+    version: int = 1
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -170,6 +179,7 @@ ON CREATE SET
   e.evidence_count = 0,
   e.mention_count = 0,
   e.archived_at = NULL,
+  e.version = 1,
   e.created_at = datetime(),
   e.updated_at = datetime()
 ON MATCH SET
@@ -325,6 +335,116 @@ async def get_event(
     result = await run_read(
         session,
         _GET_EVENT_CYPHER,
+        user_id=user_id,
+        id=event_id,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    return _node_to_event(record["e"])
+
+
+# ── update_event_fields (Phase B C2 — user edit, optimistic concurrency) ─
+
+# Mirrors update_entity_fields: same-Cypher pre-edit `before` capture (§6.3),
+# FOREACH-gated SET on version match, version bump. Like entities, the node id
+# (a hash of the original title) is IMMUTABLE — a title edit updates the display
+# title + canonical_title but the id is stable, so a future extraction with the
+# OLD title still dedupes onto this node (rename has no downstream consequence
+# beyond display). merge_event ON MATCH does NOT bump version, so a user's
+# If-Match baseline survives extraction re-mentions.
+_UPDATE_EVENT_FIELDS_CYPHER = """
+MATCH (e:Event {id: $id})
+WHERE e.user_id = $user_id
+WITH e, coalesce(e.version, 1) AS current_version,
+     {title: e.title, summary: e.summary, time_cue: e.time_cue,
+      event_date_iso: e.event_date_iso,
+      participants: coalesce(e.participants, [])} AS before
+FOREACH (_ IN CASE WHEN current_version = $expected_version THEN [1] ELSE [] END |
+  SET
+    e.title = CASE WHEN $title IS NULL THEN e.title ELSE $title END,
+    e.canonical_title = CASE
+      WHEN $canonical_title IS NULL THEN e.canonical_title ELSE $canonical_title END,
+    e.summary = CASE WHEN $summary IS NULL THEN e.summary ELSE $summary END,
+    e.time_cue = CASE WHEN $time_cue IS NULL THEN e.time_cue ELSE $time_cue END,
+    e.event_date_iso = CASE
+      WHEN $event_date_iso IS NULL THEN e.event_date_iso ELSE $event_date_iso END,
+    e.version = current_version + 1,
+    e.updated_at = datetime()
+)
+RETURN e, current_version = $expected_version AS applied, before
+"""
+
+
+async def update_event_fields(
+    session: CypherSession,
+    *,
+    user_id: str,
+    event_id: str,
+    title: str | None,
+    summary: str | None,
+    time_cue: str | None,
+    event_date_iso: str | None,
+    expected_version: int,
+) -> tuple[Event | None, dict | None]:
+    """User-edit an event's display fields with optimistic concurrency.
+
+    Returns ``(event, before)`` — ``before`` is the pre-edit
+    ``{title, summary, time_cue, event_date_iso, participants}`` snapshot
+    (same-Cypher, §6.3) for the correction event. Raises
+    ``VersionMismatchError`` on a stale ``expected_version``; returns
+    ``(None, None)`` when no row matches. None fields mean "leave unchanged".
+    """
+    canonical_title = canonicalize_text(title) if title is not None else None
+    result = await run_write(
+        session,
+        _UPDATE_EVENT_FIELDS_CYPHER,
+        user_id=user_id,
+        id=event_id,
+        title=title,
+        canonical_title=canonical_title,
+        summary=summary,
+        time_cue=time_cue,
+        event_date_iso=event_date_iso,
+        expected_version=expected_version,
+    )
+    record = await result.single()
+    if record is None:
+        return None, None
+    event = _node_to_event(record["e"])
+    if not record["applied"]:
+        raise VersionMismatchError(event)
+    before_raw = record["before"]
+    before = dict(before_raw) if before_raw is not None else None
+    return event, before
+
+
+# ── archive_event (Phase B C2 — user delete) ──────────────────────────
+
+_ARCHIVE_EVENT_CYPHER = """
+MATCH (e:Event {id: $id})
+WHERE e.user_id = $user_id
+SET e.archived_at = datetime(),
+    e.updated_at = datetime()
+RETURN e
+"""
+
+
+async def archive_event(
+    session: CypherSession,
+    *,
+    user_id: str,
+    event_id: str,
+) -> Event | None:
+    """Soft-archive an event (user "delete" = hide). Idempotent — re-archiving
+    just rewrites `archived_at`. Returns the event or None (router 404s). The
+    correction `before` is read separately by the handler (op=delete →
+    spurious-drop, so a lagging before is low-stakes)."""
+    if not event_id:
+        raise ValueError("event_id must be a non-empty string")
+    result = await run_write(
+        session,
+        _ARCHIVE_EVENT_CYPHER,
         user_id=user_id,
         id=event_id,
     )

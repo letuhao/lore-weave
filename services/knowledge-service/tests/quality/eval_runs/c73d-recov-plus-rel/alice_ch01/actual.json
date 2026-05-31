@@ -1,0 +1,286 @@
+{
+  "entities": [
+    {
+      "name": "Alice",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "alice",
+      "canonical_id": "eid-loaded-0"
+    },
+    {
+      "name": "White Rabbit",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "white rabbit",
+      "canonical_id": "eid-loaded-1"
+    },
+    {
+      "name": "rabbit-hole",
+      "kind": "place",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "rabbit-hole",
+      "canonical_id": "eid-loaded-2"
+    },
+    {
+      "name": "watch",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "watch",
+      "canonical_id": "eid-loaded-3"
+    },
+    {
+      "name": "book",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "book",
+      "canonical_id": "eid-loaded-4"
+    },
+    {
+      "name": "daisy-chain",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "daisy-chain",
+      "canonical_id": "eid-loaded-5"
+    },
+    {
+      "name": "hedge",
+      "kind": "place",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "hedge",
+      "canonical_id": "eid-loaded-6"
+    },
+    {
+      "name": "field",
+      "kind": "place",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "field",
+      "canonical_id": "eid-loaded-7"
+    },
+    {
+      "name": "pink eyes",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "pink eyes",
+      "canonical_id": "eid-loaded-8"
+    },
+    {
+      "name": "sister",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "sister",
+      "canonical_id": "eid-loaded-9"
+    },
+    {
+      "name": "waistcoat-pocket",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "waistcoat-pocket",
+      "canonical_id": "eid-loaded-10"
+    }
+  ],
+  "relations": [
+    {
+      "subject": "Alice",
+      "predicate": "lives_with",
+      "object": "sister",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-0"
+    },
+    {
+      "subject": "Alice",
+      "predicate": "follows",
+      "object": "White Rabbit",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-1"
+    },
+    {
+      "subject": "White Rabbit",
+      "predicate": "has",
+      "object": "watch",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-2"
+    },
+    {
+      "subject": "Alice",
+      "predicate": "reads",
+      "object": "book",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-3"
+    },
+    {
+      "subject": "White Rabbit",
+      "predicate": "located_in",
+      "object": "field",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-4"
+    },
+    {
+      "subject": "sister",
+      "predicate": "reading",
+      "object": "book",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-7"
+    },
+    {
+      "subject": "Alice",
+      "predicate": "considers",
+      "object": "daisy-chain",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-8"
+    }
+  ],
+  "events": [
+    {
+      "name": "Alice contemplates whether making a dais",
+      "kind": "action",
+      "participants": [
+        "Alice"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Alice contemplates whether making a daisy-chain is worth the effort of getting up and picking daisies.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-0"
+    },
+    {
+      "name": "Alice descends into the rabbit-hole afte",
+      "kind": "action",
+      "participants": [
+        "Alice"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Alice descends into the rabbit-hole after the White Rabbit, without considering how she would get out.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-1"
+    },
+    {
+      "name": "The White Rabbit takes a watch from its ",
+      "kind": "action",
+      "participants": [
+        "White Rabbit"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "The White Rabbit takes a watch from its waistcoat-pocket, looks at it, and then hurriedly continues running.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-2"
+    },
+    {
+      "name": "The White Rabbit disappears into a large",
+      "kind": "action",
+      "participants": [
+        "White Rabbit"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "The White Rabbit disappears into a large rabbit-hole located beneath the hedge.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-3"
+    },
+    {
+      "name": "Alice becomes aware that she has never s",
+      "kind": "action",
+      "participants": [
+        "Alice"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Alice becomes aware that she has never seen a rabbit with both a waistcoat-pocket and a watch before.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-4"
+    },
+    {
+      "name": "Alice runs across the field to follow th",
+      "kind": "action",
+      "participants": [
+        "Alice"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "Alice runs across the field to follow the White Rabbit.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-5"
+    },
+    {
+      "name": "A White Rabbit with pink eyes runs close",
+      "kind": "action",
+      "participants": [
+        "White Rabbit"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "A White Rabbit with pink eyes runs close to Alice on the bank.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-6"
+    }
+  ],
+  "facts": []
+}

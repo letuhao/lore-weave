@@ -4,12 +4,19 @@
 //! `generate` stays pure, and the `name` fields are excluded from
 //! `content_hash`. A short LLM response leaves the surplus features unnamed;
 //! a failed request returns `Err` and leaves the map untouched.
+//!
+//! **Gateway invariant (CLAUDE.md, 2026-05-30)**: LLM calls flow through the
+//! `loreweave_llm` SDK via a `&dyn TextProvider` — typically
+//! [`crate::shape::GatewayTextProvider`] for the real backend or
+//! [`crate::shape::MockTextProvider`] for offline tests. The prior
+//! signature `(llm_url, model)` directly POSTed to an OpenAI-compatible
+//! URL via `author::llm_json_request`, which the invariant forbids.
 
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::author::llm_json_request;
 use crate::creative_seed::WorldArchetype;
+use crate::shape::llm::{LlmError, TextPrompt, TextProvider};
 use crate::world_map::WorldMap;
 
 /// System prompt — instructs the LLM on the naming task.
@@ -18,9 +25,12 @@ You are a world-naming assistant for a procedural fantasy-map generator. Given \
 a world's genre and the counts of its features, produce ONE JSON object of \
 name lists matching the provided schema. For each category produce exactly the \
 requested number of distinct, evocative proper names that fit the genre: place \
-names for settlements, realm names for states, region names for provinces, \
-people names for cultures, and natural-feature names for mountain ranges, \
-rivers, and water bodies. Output only the JSON object.";
+names for settlements; grand realm/empire names for realms; nation names for \
+states; province names for provinces; county/shire names for counties; people \
+names for cultures; and natural-feature names for mountain ranges, rivers, and \
+water bodies. The political tiers nest realm > state > province > county, so \
+their names should escalate in grandeur accordingly. Output only the JSON \
+object.";
 
 /// The LLM's name lists, one array per feature category. Each field is
 /// `#[serde(default)]` so an omitted category just leaves those features
@@ -30,9 +40,13 @@ struct WorldNames {
     #[serde(default)]
     settlements: Vec<String>,
     #[serde(default)]
+    realms: Vec<String>,
+    #[serde(default)]
     states: Vec<String>,
     #[serde(default)]
     provinces: Vec<String>,
+    #[serde(default)]
+    counties: Vec<String>,
     #[serde(default)]
     cultures: Vec<String>,
     #[serde(default)]
@@ -51,13 +65,15 @@ fn world_names_schema() -> Value {
         "type": "object",
         "additionalProperties": false,
         "required": [
-            "settlements", "states", "provinces", "cultures",
-            "mountain_ranges", "rivers", "water_bodies"
+            "settlements", "realms", "states", "provinces", "counties",
+            "cultures", "mountain_ranges", "rivers", "water_bodies"
         ],
         "properties": {
             "settlements": str_array(),
+            "realms": str_array(),
             "states": str_array(),
             "provinces": str_array(),
+            "counties": str_array(),
             "cultures": str_array(),
             "mountain_ranges": str_array(),
             "rivers": str_array(),
@@ -66,40 +82,45 @@ fn world_names_schema() -> Value {
     })
 }
 
-/// Name every feature of `map` in place via an LLM. The map's geometry is
-/// untouched, so `content_hash` (which excludes names) still verifies.
+/// Name every feature of `map` in place via a [`TextProvider`]. The map's
+/// geometry is untouched, so `content_hash` (which excludes names) still
+/// verifies.
 ///
-/// A short LLM response leaves the surplus features unnamed; a failed request
-/// returns `Err` and leaves the map unchanged.
+/// A short LLM response leaves the surplus features unnamed; a failed
+/// request returns [`Err`] and leaves the map unchanged.
+///
+/// **Soft-truncation contract preserved**: this naming step intentionally
+/// accepts partial responses (see [`apply_names_tolerates_a_short_list`]
+/// test). The civ-layer adapter (`civ_adapter::naming::name_civ_via_llm`)
+/// has the opposite contract (errors on under-delivery) because it
+/// follows a synthetic-naming pass that fills gaps; sphere `name_world`
+/// has no synthetic fallback, so partial-named is the documented design.
 pub fn name_world(
     map: &mut WorldMap,
     archetype: WorldArchetype,
-    llm_url: &str,
-    model: &str,
-) -> Result<(), String> {
+    provider: &dyn TextProvider,
+) -> Result<(), LlmError> {
     let user_prompt = format!(
         "Genre: {archetype:?}. Name these features — produce exactly the given \
          count of distinct names per category:\n\
-         - settlements: {}\n- states: {}\n- provinces: {}\n- cultures: {}\n\
+         - settlements: {}\n- realms: {}\n- states: {}\n- provinces: {}\n\
+         - counties: {}\n- cultures: {}\n\
          - mountain_ranges: {}\n- rivers: {}\n- water_bodies: {}",
         map.settlements.len(),
+        map.realms.len(),
         map.states.len(),
         map.provinces.len(),
+        map.counties.len(),
         map.culture_regions.len(),
         map.mountain_ranges.len(),
         map.rivers.len(),
         map.water_bodies.len(),
     );
-    let content = llm_json_request(
-        llm_url,
-        model,
-        SYSTEM_PROMPT,
-        &user_prompt,
-        world_names_schema(),
-        "world_names",
-    )?;
+    let prompt = TextPrompt::new(SYSTEM_PROMPT, user_prompt)
+        .with_schema(world_names_schema(), "world_names");
+    let content = provider.complete(&prompt)?;
     let names: WorldNames = serde_json::from_str(content.trim())
-        .map_err(|e| format!("WorldNames JSON parse failed: {e}"))?;
+        .map_err(|e| LlmError::InvalidResponse(format!("WorldNames JSON parse failed: {e}")))?;
     apply_names(map, &names);
     Ok(())
 }
@@ -111,11 +132,17 @@ fn apply_names(map: &mut WorldMap, names: &WorldNames) {
     for (s, n) in map.settlements.iter_mut().zip(&names.settlements) {
         s.name = n.clone();
     }
+    for (r, n) in map.realms.iter_mut().zip(&names.realms) {
+        r.name = n.clone();
+    }
     for (s, n) in map.states.iter_mut().zip(&names.states) {
         s.name = n.clone();
     }
     for (p, n) in map.provinces.iter_mut().zip(&names.provinces) {
         p.name = n.clone();
+    }
+    for (ct, n) in map.counties.iter_mut().zip(&names.counties) {
+        ct.name = n.clone();
     }
     for (c, n) in map.culture_regions.iter_mut().zip(&names.cultures) {
         c.name = n.clone();
@@ -146,8 +173,10 @@ mod tests {
         let mut map = generate(7, &CreativeSeed::default());
         let names = WorldNames {
             settlements: names_of_len("Town", map.settlements.len()),
-            states: names_of_len("Realm", map.states.len()),
+            realms: names_of_len("Empire", map.realms.len()),
+            states: names_of_len("Nation", map.states.len()),
             provinces: names_of_len("Shire", map.provinces.len()),
+            counties: names_of_len("County", map.counties.len()),
             cultures: names_of_len("Folk", map.culture_regions.len()),
             mountain_ranges: names_of_len("Peaks", map.mountain_ranges.len()),
             rivers: names_of_len("River", map.rivers.len()),
@@ -157,8 +186,14 @@ mod tests {
         for (i, s) in map.settlements.iter().enumerate() {
             assert_eq!(s.name, format!("Town{i}"));
         }
+        for (i, r) in map.realms.iter().enumerate() {
+            assert_eq!(r.name, format!("Empire{i}"));
+        }
         for (i, s) in map.states.iter().enumerate() {
-            assert_eq!(s.name, format!("Realm{i}"));
+            assert_eq!(s.name, format!("Nation{i}"));
+        }
+        for (i, ct) in map.counties.iter().enumerate() {
+            assert_eq!(ct.name, format!("County{i}"));
         }
         // Naming must not disturb the hashed geometry.
         assert!(map.verify_hash(), "naming changed the hashed geometry");
@@ -170,8 +205,10 @@ mod tests {
         assert!(map.settlements.len() > 1, "test needs >= 2 settlements");
         let names = WorldNames {
             settlements: vec!["Only".to_string()], // shorter than the vec
+            realms: Vec::new(),
             states: Vec::new(),
             provinces: Vec::new(),
+            counties: Vec::new(),
             cultures: Vec::new(),
             mountain_ranges: Vec::new(),
             rivers: Vec::new(),
@@ -191,8 +228,10 @@ mod tests {
             .expect("schema must have a properties object");
         for cat in [
             "settlements",
+            "realms",
             "states",
             "provinces",
+            "counties",
             "cultures",
             "mountain_ranges",
             "rivers",
@@ -209,8 +248,10 @@ mod tests {
         let mut map = generate(7, &CreativeSeed::default());
         let names = WorldNames {
             settlements: Vec::new(),
+            realms: Vec::new(),
             states: names_of_len("Realm", map.states.len() + 5),
             provinces: Vec::new(),
+            counties: Vec::new(),
             cultures: Vec::new(),
             mountain_ranges: Vec::new(),
             rivers: Vec::new(),
@@ -223,18 +264,50 @@ mod tests {
     }
 
     #[test]
-    fn name_world_unreachable_endpoint_errors_cleanly() {
-        // `.invalid` never resolves (RFC 6761) — `name_world` must surface a
-        // descriptive `Err`, never panic or hang, and leave the map untouched.
+    fn name_world_provider_error_leaves_map_untouched() {
+        // **2026-05-30 refactor**: the old `--llm-url unreachable-endpoint`
+        // path is dead; the equivalent SDK-era contract is that any
+        // TextProvider returning Err leaves the map unchanged. Verified
+        // with an inline always-failing provider.
+        use crate::shape::llm::{LlmError, TextPrompt, TextProvider};
+        #[derive(Debug)]
+        struct AlwaysFailProvider;
+        impl TextProvider for AlwaysFailProvider {
+            fn complete(&self, _: &TextPrompt) -> Result<String, LlmError> {
+                Err(LlmError::Transport("simulated unreachable gateway".into()))
+            }
+        }
         let mut map = generate(7, &CreativeSeed::default());
         let before = map.clone();
-        let r = name_world(
-            &mut map,
-            WorldArchetype::HighFantasy,
-            "http://geo-gen.invalid/v1",
-            "m",
-        );
-        assert!(r.is_err(), "unreachable endpoint must return Err, got {r:?}");
+        let r = name_world(&mut map, WorldArchetype::HighFantasy, &AlwaysFailProvider);
+        assert!(r.is_err(), "failed provider must return Err, got {r:?}");
         assert_eq!(map, before, "a failed naming call must leave the map unchanged");
+    }
+
+    #[test]
+    fn name_world_applies_realm_and_county_names_end_to_end() {
+        // Close the loop on C-2c: a provider returning realm + county names
+        // must flow prompt → parse → apply (catches any schema-key ↔ struct-
+        // field drift), and naming must not disturb the hash.
+        use crate::shape::llm::{LlmError, TextPrompt, TextProvider};
+        #[derive(Debug)]
+        struct CannedProvider;
+        impl TextProvider for CannedProvider {
+            fn complete(&self, _: &TextPrompt) -> Result<String, LlmError> {
+                Ok(r#"{"settlements":[],"realms":["Aurelia"],"states":[],
+                       "provinces":[],"counties":["Greendale"],"cultures":[],
+                       "mountain_ranges":[],"rivers":[],"water_bodies":[]}"#
+                    .to_string())
+            }
+        }
+        let mut map = generate(7, &CreativeSeed::default());
+        assert!(
+            !map.realms.is_empty() && !map.counties.is_empty(),
+            "the default world must have realms and counties to name"
+        );
+        name_world(&mut map, WorldArchetype::HighFantasy, &CannedProvider).expect("naming");
+        assert_eq!(map.realms[0].name, "Aurelia");
+        assert_eq!(map.counties[0].name, "Greendale");
+        assert!(map.verify_hash(), "naming the new tiers must not change the hash");
     }
 }

@@ -2,6 +2,7 @@ import { apiJson } from '../../api';
 import type {
   BenchmarkRunResponse,
   BenchmarkStatus,
+  ExtractionConfigPayload,
   Project,
   ProjectCreatePayload,
   ProjectListParams,
@@ -387,14 +388,38 @@ export interface TimelineEvent {
   chapter_title: string | null;
   event_order: number | null;
   chronological_order: number | null;
+  /** C18 — in-story ISO date (partial precision: YYYY / YYYY-MM / YYYY-MM-DD).
+   *  Present in the BE Event projection; declared here for the C-FE edit form. */
+  event_date_iso: string | null;
+  /** C18-DEF-01 — free-text narrative time hint (e.g. "the next morning"). */
+  time_cue: string | null;
   participants: string[];
   confidence: number;
   source_types: string[];
   evidence_count: number;
   mention_count: number;
   archived_at: string | null;
+  /** Phase B C2 — optimistic-concurrency version for user edits (If-Match).
+   *  Pre-C2 events default to 1 on the BE read path. */
+  version: number;
   created_at: string | null;
   updated_at: string | null;
+}
+
+// ── Phase B C — relation + event correction payloads ─────────────────
+
+export interface RelationCorrectPayload {
+  old_relation_id: string;
+  subject_id: string;
+  predicate: string;
+  object_id: string;
+}
+
+export interface EventUpdatePayload {
+  title?: string;
+  summary?: string;
+  time_cue?: string;
+  event_date_iso?: string;
 }
 
 export interface TimelineListParams {
@@ -596,6 +621,23 @@ export const knowledgeApi = {
     // returns 428 if the header is missing, 412 if it's stale.
     return apiJson<Project>(`${BASE}/projects/${projectId}`, {
       method: 'PATCH',
+      body: JSON.stringify(payload),
+      token,
+      headers: ifMatch(expectedVersion),
+    });
+  },
+
+  // B2-B/C — per-novel extraction-config tuning. PUT-REPLACE: the caller must
+  // send the COMPLETE config (read-modify-write off project.extraction_config),
+  // since an omitted section is dropped. If-Match strictly required (428 / 412).
+  updateExtractionConfig(
+    projectId: string,
+    payload: ExtractionConfigPayload,
+    token: string,
+    expectedVersion: number,
+  ): Promise<Project> {
+    return apiJson<Project>(`${BASE}/projects/${projectId}/extraction-config`, {
+      method: 'PUT',
       body: JSON.stringify(payload),
       token,
       headers: ifMatch(expectedVersion),
@@ -1054,6 +1096,64 @@ export const knowledgeApi = {
         method: 'POST',
         token,
       },
+    );
+  },
+
+  // ── Phase B C — relation corrections ─────────────────────────────────
+
+  getRelation(relationId: string, token: string): Promise<EntityRelation> {
+    return apiJson<EntityRelation>(
+      `${BASE}/relations/${encodeURIComponent(relationId)}`,
+      { token },
+    );
+  },
+
+  /** Mark a relation wrong → soft-invalidate (spurious-drop correction). */
+  invalidateRelation(relationId: string, token: string): Promise<EntityRelation> {
+    return apiJson<EntityRelation>(
+      `${BASE}/relations/${encodeURIComponent(relationId)}/invalidate`,
+      { method: 'POST', token },
+    );
+  },
+
+  /** Fix a relation: invalidate the old edge + recreate the corrected one
+   *  (predicate-fix correction). Returns the live (resurrected) edge. */
+  correctRelation(
+    body: RelationCorrectPayload,
+    token: string,
+  ): Promise<EntityRelation> {
+    return apiJson<EntityRelation>(`${BASE}/relations/correct`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      token,
+    });
+  },
+
+  // ── Phase B C — event corrections ────────────────────────────────────
+
+  updateEvent(
+    eventId: string,
+    body: EventUpdatePayload,
+    ifMatchVersion: number,
+    token: string,
+  ): Promise<TimelineEvent> {
+    return apiJson<TimelineEvent>(
+      `${BASE}/events/${encodeURIComponent(eventId)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+        token,
+        // C2: strict If-Match — BE 428s without it.
+        headers: ifMatch(ifMatchVersion),
+      },
+    );
+  },
+
+  /** Soft-archive an event (user "delete"). 204 No Content. */
+  archiveEvent(eventId: string, token: string): Promise<void> {
+    return apiJson<void>(
+      `${BASE}/events/${encodeURIComponent(eventId)}`,
+      { method: 'DELETE', token },
     );
   },
 

@@ -1,0 +1,75 @@
+{
+  "entities": [
+    {
+      "name": "Mr. Bennet",
+      "kind": "person",
+      "aliases": [
+        "Bennet"
+      ]
+    },
+    {
+      "name": "Mrs. Bennet",
+      "kind": "person",
+      "aliases": [
+        "his wife",
+        "his lady"
+      ]
+    },
+    {
+      "name": "Bingley",
+      "kind": "person",
+      "aliases": [
+        "Mr. Bingley"
+      ]
+    },
+    {
+      "name": "Netherfield Park",
+      "kind": "place",
+      "aliases": [
+        "Netherfield"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "subject": "Bingley",
+      "predicate": "rents",
+      "object": "Netherfield Park",
+      "polarity": "affirm"
+    }
+  ],
+  "events": [
+    {
+      "summary": "Mrs. Bennet tells Mr. Bennet that Netherfield Park has been rented by a wealthy single man named Bingley",
+      "participants": [
+        "Mrs. Bennet",
+        "Mr. Bennet",
+        "Bingley"
+      ]
+    },
+    {
+      "summary": "Mrs. Bennet urges Mr. Bennet to visit Bingley so their daughters might marry him",
+      "participants": [
+        "Mrs. Bennet",
+        "Mr. Bennet"
+      ]
+    }
+  ],
+  "traps": [
+    {
+      "kind": "entity",
+      "name": "Mrs. Long",
+      "reason": "Only mentioned as the source of gossip; not a participant in any scene"
+    },
+    {
+      "kind": "entity",
+      "name": "Lizzy",
+      "reason": "Referenced in dialogue but does not appear or act in this chapter"
+    },
+    {
+      "kind": "entity",
+      "name": "Sir William Lucas",
+      "reason": "Mentioned as planning to visit Bingley but does not appear in the chapter"
+    }
+  ]
+}

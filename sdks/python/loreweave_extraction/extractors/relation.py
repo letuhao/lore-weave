@@ -49,7 +49,7 @@ from loreweave_extraction.canonical import (
 )
 from loreweave_extraction.errors import ExtractionError
 from loreweave_extraction.extractors.entity import LLMEntityCandidate
-from loreweave_extraction.prompts import load_prompt
+from loreweave_extraction.prompts import apply_prompt_override, load_prompt
 
 __all__ = [
     "LLMRelationCandidate",
@@ -155,6 +155,7 @@ async def extract_relations(
     llm_client: LLMClientProtocol,
     on_dropped: DroppedHandler | None = None,
     context_budget: "ContextBudget | None" = None,
+    prompt_override_system: str | None = None,
 ) -> list[LLMRelationCandidate]:
     """Extract relations from *text* via the user's BYOK LLM.
 
@@ -190,7 +191,10 @@ async def extract_relations(
         known_entities, ensure_ascii=False
     ).replace("{", "{{").replace("}", "}}")
 
-    system_prompt = load_prompt("relation_system", known_entities=safe_known)
+    system_prompt = apply_prompt_override(
+        load_prompt("relation_system", known_entities=safe_known),
+        prompt_override_system,
+    )
     raw_relations = await _extract_via_llm_client(
         llm_client=llm_client,
         user_id=user_id,

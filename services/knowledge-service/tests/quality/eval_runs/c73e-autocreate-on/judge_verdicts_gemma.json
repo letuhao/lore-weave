@@ -1,0 +1,2967 @@
+{
+  "judge_uuid": "019dc3df-58f3-7170-bb48-f1f0c9bd604c",
+  "judge_label": "gemma",
+  "judge_status": "complete",
+  "failure_reason": "",
+  "chapters_complete": [
+    "alice_ch01",
+    "alice_ch02",
+    "journey_west_zh_ch01",
+    "journey_west_zh_ch14",
+    "little_women_ch01",
+    "pride_prejudice_ch01",
+    "sherlock_scandal_ch01",
+    "son_tinh_thuy_tinh_vi",
+    "tam_cam_vi"
+  ],
+  "chapters_incomplete": [],
+  "verdicts": [
+    {
+      "chapter": "alice_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 6,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 7,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 8,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 9,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 10,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 2,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "partial"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 6,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 7,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "uncovered"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 6,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "event",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "alice_ch01",
+      "category": "event",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "partial"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 6,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 7,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 8,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 9,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 10,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 11,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 12,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 2,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 3,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 4,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "partial"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "event",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "partial"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "event",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "event",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "event",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "event",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "event",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "event",
+      "kind": "precision",
+      "idx": 6,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "event",
+      "kind": "precision",
+      "idx": 7,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "event",
+      "kind": "precision",
+      "idx": 8,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "event",
+      "kind": "precision",
+      "idx": 9,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "event",
+      "kind": "precision",
+      "idx": 10,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "event",
+      "kind": "precision",
+      "idx": 11,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "event",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "event",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "event",
+      "kind": "recall",
+      "idx": 2,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "alice_ch02",
+      "category": "event",
+      "kind": "recall",
+      "idx": 3,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 6,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 7,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 8,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 9,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 10,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 11,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 12,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 13,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 14,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 15,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 16,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 17,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 2,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 3,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 4,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 5,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 6,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 7,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 8,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 9,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 6,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 7,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 8,
+      "verdict": "partial"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 2,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 3,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 4,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 5,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "partial"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "event",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "event",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "event",
+      "kind": "recall",
+      "idx": 2,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "event",
+      "kind": "recall",
+      "idx": 3,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch01",
+      "category": "event",
+      "kind": "recall",
+      "idx": 4,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 6,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 7,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 8,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 9,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 10,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 11,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 12,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 13,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 14,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 15,
+      "verdict": "partial"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 16,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 17,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 18,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 19,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 2,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 3,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 4,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 5,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 6,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 7,
+      "verdict": "uncovered"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 8,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 6,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 7,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 8,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 9,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 10,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 2,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 3,
+      "verdict": "uncovered"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "event",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "event",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "event",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "event",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "partial"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "event",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "event",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "event",
+      "kind": "precision",
+      "idx": 6,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "event",
+      "kind": "precision",
+      "idx": 7,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "event",
+      "kind": "precision",
+      "idx": 8,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "event",
+      "kind": "precision",
+      "idx": 9,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "event",
+      "kind": "precision",
+      "idx": 10,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "event",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "event",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "event",
+      "kind": "recall",
+      "idx": 2,
+      "verdict": "uncovered"
+    },
+    {
+      "chapter": "journey_west_zh_ch14",
+      "category": "event",
+      "kind": "recall",
+      "idx": 3,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 6,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 7,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 8,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 9,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 10,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 11,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 12,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 13,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 14,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 15,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 16,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 17,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 18,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 2,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 3,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 4,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 5,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "unjudged"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "unjudged"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "uncovered"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "partial"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 6,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 7,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 8,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 9,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 10,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 11,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 12,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 13,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 14,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 15,
+      "verdict": "partial"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 16,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 17,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 18,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 19,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 20,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 21,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 22,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 23,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 24,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 25,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 26,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 27,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 28,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 29,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 30,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 31,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 32,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 33,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 34,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 35,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 36,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 37,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "little_women_ch01",
+      "category": "event",
+      "kind": "recall",
+      "idx": 2,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "partial"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 6,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 7,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 2,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 3,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "partial"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "partial"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 6,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 7,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 8,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 9,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 10,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 11,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "event",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "pride_prejudice_ch01",
+      "category": "event",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "partial"
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 2,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 3,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "uncovered"
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "category": "event",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "category": "event",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "sherlock_scandal_ch01",
+      "category": "event",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 6,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 7,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 8,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 9,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 10,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 11,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 12,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 13,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 14,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 15,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 2,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 3,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 4,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 5,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 6,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 7,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 8,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 9,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 2,
+      "verdict": "uncovered"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 3,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 4,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 6,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 7,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 8,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 9,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "event",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "event",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "event",
+      "kind": "recall",
+      "idx": 2,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "event",
+      "kind": "recall",
+      "idx": 3,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "son_tinh_thuy_tinh_vi",
+      "category": "event",
+      "kind": "recall",
+      "idx": 4,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 6,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 7,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 8,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 9,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 10,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 11,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 12,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 13,
+      "verdict": "partial"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 14,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "precision",
+      "idx": 15,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 2,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 3,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 4,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 5,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "entity",
+      "kind": "recall",
+      "idx": 6,
+      "verdict": "uncovered"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 6,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 7,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 8,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 9,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 10,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "relation",
+      "kind": "precision",
+      "idx": 11,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 2,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 3,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "relation",
+      "kind": "recall",
+      "idx": 4,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 0,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 1,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 2,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 3,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 4,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 5,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 6,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 7,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 8,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 9,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 10,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 11,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 12,
+      "verdict": "supported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "event",
+      "kind": "precision",
+      "idx": 13,
+      "verdict": "unsupported"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "event",
+      "kind": "recall",
+      "idx": 0,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "event",
+      "kind": "recall",
+      "idx": 1,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "event",
+      "kind": "recall",
+      "idx": 2,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "event",
+      "kind": "recall",
+      "idx": 3,
+      "verdict": "covered"
+    },
+    {
+      "chapter": "tam_cam_vi",
+      "category": "event",
+      "kind": "recall",
+      "idx": 4,
+      "verdict": "covered"
+    }
+  ]
+}

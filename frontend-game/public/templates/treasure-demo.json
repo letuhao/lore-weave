@@ -1,0 +1,57 @@
+{
+  "template_id": "v1_viewer_treasure_demo",
+  "zones": [
+    {
+      "zone_id": "capital",
+      "zone_role": "hub",
+      "size": 100,
+      "terrain_types": [],
+      "connections": [{ "to_zone": "frontier", "kind": "threshold" }],
+      "treasure_tiers": [
+        { "min": 5000, "max": 9000, "density": 6 }
+      ]
+    },
+    {
+      "zone_id": "frontier",
+      "zone_role": "wilderness",
+      "size": 100,
+      "terrain_types": [],
+      "connections": [{ "to_zone": "borderlands", "kind": "open" }],
+      "treasure_tiers": [
+        { "min": 2000, "max": 5000, "density": 8 }
+      ]
+    },
+    {
+      "zone_id": "borderlands",
+      "zone_role": "wilderness",
+      "size": 100,
+      "terrain_types": [],
+      "connections": [],
+      "treasure_tiers": [
+        { "min": 300, "max": 1500, "density": 10 }
+      ]
+    },
+    {
+      "zone_id": "inland_sea",
+      "zone_role": "sea",
+      "size": 100,
+      "terrain_types": [],
+      "connections": [],
+      "treasure_tiers": []
+    },
+    {
+      "zone_id": "rival",
+      "zone_role": "forbidden",
+      "size": 100,
+      "terrain_types": [],
+      "connections": [],
+      "treasure_tiers": []
+    }
+  ],
+  "seed_offset": 0,
+  "decoration_density": {
+    "min_per_zone": 20,
+    "max_per_zone": 40,
+    "fraction_of_free": 0.10
+  }
+}

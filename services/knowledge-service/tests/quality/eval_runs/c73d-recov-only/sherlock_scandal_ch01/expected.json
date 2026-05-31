@@ -1,0 +1,78 @@
+{
+  "entities": [
+    {
+      "name": "Sherlock Holmes",
+      "kind": "person",
+      "aliases": [
+        "Holmes"
+      ]
+    },
+    {
+      "name": "Irene Adler",
+      "kind": "person",
+      "aliases": [
+        "THE woman",
+        "the woman"
+      ]
+    },
+    {
+      "name": "Watson",
+      "kind": "person",
+      "aliases": [
+        "I",
+        "narrator"
+      ]
+    },
+    {
+      "name": "Baker Street",
+      "kind": "place",
+      "aliases": []
+    }
+  ],
+  "relations": [
+    {
+      "subject": "Watson",
+      "predicate": "lives_with",
+      "object": "Sherlock Holmes",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Sherlock Holmes",
+      "predicate": "resides_at",
+      "object": "Baker Street",
+      "polarity": "affirm"
+    }
+  ],
+  "events": [
+    {
+      "summary": "Watson passes through Baker Street on the night of 20 March 1888",
+      "participants": [
+        "Watson"
+      ]
+    },
+    {
+      "summary": "Watson resolves to visit Sherlock Holmes again",
+      "participants": [
+        "Watson",
+        "Sherlock Holmes"
+      ]
+    }
+  ],
+  "traps": [
+    {
+      "kind": "event",
+      "summary": "Watson investigates the Study in Scarlet",
+      "reason": "Only referenced as a prior case; not happening in this text"
+    },
+    {
+      "kind": "entity",
+      "name": "cocaine",
+      "reason": "Mentioned in narration as Holmes's habit; not an actor or event subject"
+    },
+    {
+      "kind": "entity",
+      "name": "patient",
+      "reason": "Offscreen, unnamed, no identity"
+    }
+  ]
+}

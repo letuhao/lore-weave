@@ -378,6 +378,7 @@
       "archive": "Archive",
       "restore": "Restore",
       "delete": "Delete",
+      "tuneExtraction": "Tune extraction",
       "bookId": "book_id"
     },
     "form": {
@@ -594,6 +595,35 @@
       "failed": "Change failed: {{error}}",
       "alreadyAtModel": "Model already set to {{model}} — another device may have changed it."
     },
+    "extractionTuning": {
+      "title": "Tune extraction",
+      "description": "Per-novel extraction settings. Changes apply to the next extraction run for this project.",
+      "filterEnabled": "Precision filter (drops low-support extractions)",
+      "category": {
+        "entity": "Entities",
+        "relation": "Relations",
+        "event": "Events"
+      },
+      "categoriesRequired": "Select at least one category, or turn the filter off.",
+      "partialPolicy": "Partial matches:",
+      "policyKeep": "Keep",
+      "policyDrop": "Drop",
+      "recoveryEnabled": "Entity recovery (recover missed entities)",
+      "autocreateEnabled": "Writer autocreate (mint entities referenced by relations)",
+      "promptWarning": "Advanced: custom prompts replace the default extraction instructions for that step and can degrade quality. Leave blank to use the default. JSON output is always enforced.",
+      "promptPlaceholder": "Leave blank to use the default prompt",
+      "prompt": {
+        "entity": "Entity extraction prompt",
+        "relation": "Relation extraction prompt",
+        "event": "Event extraction prompt",
+        "fact": "Fact extraction prompt"
+      },
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "saved": "Extraction settings saved.",
+      "failed": "Save failed: {{error}}"
+    },
     "confirmDestructive": {
       "cancel": "Cancel",
       "deleteGraph": {
@@ -749,6 +779,54 @@
       "title": "Delete all knowledge data?",
       "description": "This will permanently delete every project and summary. Type {{token}} below to confirm.",
       "cancel": "Cancel"
+    }
+  },
+  "relations": {
+    "edit": {
+      "cta": "Correct relation",
+      "title": "Correct relation",
+      "description": "Fix this relation's predicate, or mark it as wrong so it's removed.",
+      "field": {
+        "predicate": "Predicate"
+      },
+      "save": "Correct",
+      "saving": "Correcting…",
+      "cancel": "Cancel",
+      "correctSuccess": "Relation corrected.",
+      "invalidateSuccess": "Relation removed.",
+      "invalidateHint": "If this relation should never have been extracted, mark it wrong to remove it.",
+      "invalidateConfirm": "Mark this relation as wrong and remove it?",
+      "markWrong": "Mark wrong",
+      "invalidating": "Removing…",
+      "failed": "Couldn't save the correction: {{error}}"
+    }
+  },
+  "events": {
+    "edit": {
+      "cta": "Edit",
+      "title": "Edit event",
+      "description": "Adjust this event's title, summary, or timing.",
+      "field": {
+        "title": "Title",
+        "summary": "Summary",
+        "timeCue": "Time cue",
+        "dateIso": "Date (ISO)"
+      },
+      "dateIsoPlaceholder": "YYYY or YYYY-MM-DD",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "success": "Event updated.",
+      "conflict": "Another device updated this event. Review the latest and try again.",
+      "failed": "Couldn't update the event: {{error}}",
+      "invalidDate": "Date must be YYYY, YYYY-MM, or YYYY-MM-DD."
+    },
+    "archive": {
+      "cta": "Delete",
+      "confirm": "Delete (hide) this event?",
+      "archiving": "Deleting…",
+      "success": "Event deleted.",
+      "failed": "Couldn't delete the event: {{error}}"
     }
   }
 }

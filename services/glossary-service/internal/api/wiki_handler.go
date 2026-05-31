@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -819,9 +820,19 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 		genLimit = *req.Limit
 	}
 
-	// Find entities without wiki articles
+	// Find entities without wiki articles.
+	// C5 (D4-03): also pull display_name + kind name so the renderer can
+	// build a real body. The display_name subselect mirrors the
+	// loadWikiArticleDetail pattern (first name/term attribute by
+	// sort_order).
 	querySQL := `
-		SELECT ge.entity_id, ek.code
+		SELECT ge.entity_id, ek.code, ek.name,
+			COALESCE((
+				SELECT eav.original_value FROM entity_attribute_values eav
+				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+				WHERE eav.entity_id = ge.entity_id AND ad.code IN ('name','term')
+				ORDER BY ad.sort_order LIMIT 1
+			), '') AS display_name
 		FROM glossary_entities ge
 		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
 		WHERE ge.book_id = $1
@@ -854,13 +865,15 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	type entityStub struct {
-		EntityID uuid.UUID
-		KindCode string
+		EntityID    uuid.UUID
+		KindCode    string
+		KindName    string
+		DisplayName string
 	}
 	var stubs []entityStub
 	for rows.Next() {
 		var s entityStub
-		if err := rows.Scan(&s.EntityID, &s.KindCode); err != nil {
+		if err := rows.Scan(&s.EntityID, &s.KindCode, &s.KindName, &s.DisplayName); err != nil {
 			slog.Error("generateWikiStubs scan", "error", err)
 			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
 			return
@@ -881,6 +894,36 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// C5 (D4-03): render a real body per entity BEFORE opening the tx.
+	// The KG-neighborhood read is a network call to knowledge-service —
+	// we must not hold a DB transaction open across it. Each body is
+	// assembled from the entity's glossary attributes (canon) + its
+	// 1-hop KG neighborhood (relations, source_type-tagged). The KG read
+	// degrades to nil (minimal body) when knowledge-service is
+	// unavailable — wiki generation never hard-fails on a down KG (Q6).
+	type renderedStub struct {
+		entity entityStub
+		body   json.RawMessage
+	}
+	rendered := make([]renderedStub, 0, len(stubs))
+	for _, stub := range stubs {
+		attrs, aerr := s.loadEntityWikiAttrs(r.Context(), stub.EntityID)
+		if aerr != nil {
+			// Attribute load failure is non-fatal — fall back to no
+			// attributes; the body is still generated from name/kind/KG.
+			slog.Warn("generateWikiStubs load attrs", "entity_id", stub.EntityID, "error", aerr)
+			attrs = nil
+		}
+		neighborhood, _ := s.fetchWikiNeighborhood(r.Context(), userID, stub.EntityID)
+		body := renderWikiBody(wikiRenderInput{
+			DisplayName:  stub.DisplayName,
+			KindName:     stub.KindName,
+			Attributes:   attrs,
+			Neighborhood: neighborhood,
+		})
+		rendered = append(rendered, renderedStub{entity: stub, body: body})
+	}
+
 	// Batch insert articles + revisions
 	tx, err := s.pool.Begin(r.Context())
 	if err != nil {
@@ -891,14 +934,13 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(r.Context())
 
 	var articleIDs []uuid.UUID
-	emptyBody := json.RawMessage("{}")
-	for _, stub := range stubs {
+	for _, rs := range rendered {
 		var aid uuid.UUID
 		err := tx.QueryRow(r.Context(), `
 			INSERT INTO wiki_articles (entity_id, book_id, body_json, status, template_code)
 			VALUES ($1, $2, $3, 'draft', $4)
 			RETURNING article_id`,
-			stub.EntityID, bookID, emptyBody, stub.KindCode,
+			rs.entity.EntityID, bookID, rs.body, rs.entity.KindCode,
 		).Scan(&aid)
 		if err != nil {
 			slog.Error("generateWikiStubs insert article", "error", err)
@@ -909,8 +951,8 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 
 		if _, err := tx.Exec(r.Context(), `
 			INSERT INTO wiki_revisions (article_id, version, body_json, author_id, author_type, summary)
-			VALUES ($1, 1, $2, $3, 'owner', 'Auto-generated stub')`,
-			aid, emptyBody, userID,
+			VALUES ($1, 1, $2, $3, 'owner', 'Auto-generated from KG')`,
+			aid, rs.body, userID,
 		); err != nil {
 			slog.Error("generateWikiStubs insert revision", "error", err)
 			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
@@ -981,6 +1023,38 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 		"created":  len(items),
 		"articles": items,
 	})
+}
+
+// ── loadEntityWikiAttrs (C5 D4-03) ───────────────────────────────────────────
+//
+// Loads an entity's glossary attribute values for the wiki renderer.
+// These are authored-canon attributes (source_type='glossary'). The
+// display-name attribute (code name/term) is excluded — it becomes the
+// article title, not a body row. Ordered by sort_order for stable,
+// reproducible bodies.
+func (s *Server) loadEntityWikiAttrs(ctx context.Context, entityID uuid.UUID) ([]wikiRenderAttr, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT ad.name, eav.original_value
+		FROM entity_attribute_values eav
+		JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+		WHERE eav.entity_id = $1
+		  AND ad.code NOT IN ('name','term')
+		  AND eav.original_value <> ''
+		ORDER BY ad.sort_order, ad.code`, entityID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var attrs []wikiRenderAttr
+	for rows.Next() {
+		var a wikiRenderAttr
+		if err := rows.Scan(&a.Label, &a.Value); err != nil {
+			return nil, err
+		}
+		attrs = append(attrs, a)
+	}
+	return attrs, rows.Err()
 }
 
 // ── loadWikiArticleDetail ────────────────────────────────────────────────────
@@ -1341,16 +1415,16 @@ func (s *Server) publicGetWikiArticle(w http.ResponseWriter, r *http.Request) {
 // ── Community Suggestions ────────────────────────────────────────────────────
 
 type wikiSuggestionResp struct {
-	SuggestionID       string           `json:"suggestion_id"`
-	ArticleID          string           `json:"article_id"`
-	UserID             string           `json:"user_id"`
-	DiffJSON           json.RawMessage  `json:"diff_json"`
-	Reason             string           `json:"reason"`
-	Status             string           `json:"status"`
-	ReviewerNote       *string          `json:"reviewer_note"`
-	CreatedAt          time.Time        `json:"created_at"`
-	ReviewedAt         *time.Time       `json:"reviewed_at"`
-	ArticleDisplayName string           `json:"article_display_name,omitempty"`
+	SuggestionID       string          `json:"suggestion_id"`
+	ArticleID          string          `json:"article_id"`
+	UserID             string          `json:"user_id"`
+	DiffJSON           json.RawMessage `json:"diff_json"`
+	Reason             string          `json:"reason"`
+	Status             string          `json:"status"`
+	ReviewerNote       *string         `json:"reviewer_note"`
+	CreatedAt          time.Time       `json:"created_at"`
+	ReviewedAt         *time.Time      `json:"reviewed_at"`
+	ArticleDisplayName string          `json:"article_display_name,omitempty"`
 }
 
 // ── 1. submitWikiSuggestion ──────────────────────────────────────────────────

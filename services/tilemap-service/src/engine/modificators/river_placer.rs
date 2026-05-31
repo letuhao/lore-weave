@@ -240,6 +240,7 @@ mod tests {
             canon_ref: None,
             biome_object_type: Some(kind),
             value: None,
+            tier_index: None,
             primitive: Some(v2.primitive),
             tag: Some(v2.tag),
             footprint: Some(v2.footprint),

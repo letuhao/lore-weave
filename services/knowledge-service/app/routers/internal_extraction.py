@@ -34,6 +34,7 @@ from loreweave_extraction.extractors.event import LLMEventCandidate
 from loreweave_extraction.extractors.fact import LLMFactCandidate
 from loreweave_extraction.extractors.relation import LLMRelationCandidate
 from app.extraction.pass2_orchestrator import (
+    _WRITER_AUTOCREATE_CONFIG,
     extract_pass2_chapter,
     extract_pass2_chat_turn,
 )
@@ -156,6 +157,13 @@ class PersistPass2Request(BaseModel):
     is_last_chapter_of_book: bool = False
     embedding_model_uuid: str | None = None
     embedding_dimension: int | None = Field(default=None, ge=1)
+    # B2 follow-up — per-project Pass2-writer Tier-B autocreate. None = use the
+    # KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED env default (back-compat /
+    # callers that don't resolve a per-project config). True/False = explicit
+    # per-project override. NOTE: worker-ai always sends a resolved bool, so on
+    # the worker path per-project config supersedes the env knob (and config_hash
+    # stays accurate). The env knob still applies for callers that omit this.
+    writer_autocreate: bool | None = None
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -453,6 +461,16 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             scenes=list(hp.scenes),
         )
 
+    # B2 follow-up — Pass2-writer Tier-B autocreate. Per-project override (sent
+    # by worker-ai) wins; else the env default. Previously this endpoint never
+    # passed the autocreate kwargs, so autocreate was DORMANT on the worker path
+    # regardless of the env knob — this wires it (default env=off → unchanged).
+    autocreate_enabled = (
+        body.writer_autocreate
+        if body.writer_autocreate is not None
+        else _WRITER_AUTOCREATE_CONFIG["autocreate_enabled"]
+    )
+
     async with neo4j_session() as session:
         result = await write_pass2_extraction(
             session,
@@ -468,6 +486,8 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             extraction_model=body.extraction_model,
             anchors=anchors,
             hierarchy_paths=hierarchy_paths,  # P3 D2a — Tx-bound hierarchy MERGE
+            autocreate_enabled=autocreate_enabled,
+            autocreate_max=_WRITER_AUTOCREATE_CONFIG["autocreate_max"],
         )
 
     elapsed = time.perf_counter() - started

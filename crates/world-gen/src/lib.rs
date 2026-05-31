@@ -20,6 +20,7 @@ pub mod erosion;
 pub mod feature;
 pub mod flat_climate;
 pub mod flatworld;
+pub mod hierarchy;
 pub mod hydrology;
 pub mod mesh;
 pub mod naming;
@@ -47,8 +48,9 @@ pub use creative_seed::{
     SettlementDensity, TerrainMode, WorldArchetype, WorldScale,
 };
 pub use world_map::{
-    BoundaryKind, Cell, CultureRegion, MountainRange, Plate, PlateBoundary, PlateKind, Province,
-    River, Route, RouteKind, Settlement, SettlementRole, State, WaterBody, WaterBodyKind, WorldMap,
+    BoundaryKind, Cell, Continent, County, CultureRegion, MountainRange, Plate, PlateBoundary,
+    PlateKind, Province, Realm, Region, River, Route, RouteKind, Settlement, SettlementRole, State,
+    Subcontinent, WaterBody, WaterBodyKind, World, WorldMap,
 };
 
 /// Generate a world map from a `u64` seed + creative direction.
@@ -95,9 +97,51 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         &hydro.is_coast,
     );
 
-    // Stage 5–8 — political, settlement, route, culture (great-circle
-    // distances on the sphere).
-    let political = political::build(seed, &mesh.centers, &mesh.neighbors, &biome);
+    // Plate layer (Phase 2) — present in Tectonic mode, empty in Profile mode.
+    // Computed before the hierarchy because L1 subcontinents reuse `plate_of`.
+    let n_cells = mesh.centers.len();
+    let (plate_of, plates, plate_boundaries) = match terrain.plates {
+        Some(p) => (p.plate_of, p.plates, p.boundaries),
+        None => (vec![u32::MAX; n_cells], Vec::new(), Vec::new()),
+    };
+
+    // Stage 9 — geometric region hierarchy (continents → subcontinents →
+    // regions; C3 arc, C-1a). Reuses the land-connectivity mask + the plate
+    // layer; only the L2 region Voronoi is new geometry.
+    let region_tree = hierarchy::build(
+        &mesh.centers,
+        &mesh.neighbors,
+        &biome,
+        &plate_of,
+        cs.region_subdivision,
+    );
+
+    // Stage 5–8 — political (5-tier strict-nested INSIDE the hierarchy, C-2:
+    // province⊆region, state⊆subcontinent, realm⊆continent, county⊆province),
+    // settlement, route, culture (great-circle distances on the sphere).
+    let nested = political::build_nested(
+        &mesh.centers,
+        &mesh.neighbors,
+        &biome,
+        &region_tree.region_of,
+        &region_tree.subcontinent_of,
+        &region_tree.continent_of,
+        region_tree.regions.len(),
+        region_tree.subcontinents.len(),
+        region_tree.continents.len(),
+        cs.county_subdivision,
+    );
+    let county_of = nested.county_of;
+    let counties = nested.counties;
+    let realms = nested.realms;
+    let world = nested.world;
+    // `settlement` consumes a `Political`; the 5-tier builder's province/state
+    // data fills it (the extra county/realm/world tiers ride alongside).
+    let political = political::Political {
+        province_of: nested.province_of,
+        provinces: nested.provinces,
+        states: nested.states,
+    };
     let settlements = settlement::build(
         seed,
         &mesh.centers,
@@ -119,7 +163,7 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
     );
     let culture = culture::build(seed, &mesh.centers, &mesh.neighbors, &biome, cs.culture_count);
 
-    // Stage 9 — geographic feature extraction (deterministic; names added
+    // Stage 9b — geographic feature extraction (deterministic; names added
     // later by the separate `naming` step).
     let features = feature::extract(&biome, &mesh.neighbors);
 
@@ -135,13 +179,6 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
             vertex_polygon: polygon.clone(),
         })
         .collect();
-
-    // Plate layer (Phase 2) — present in Tectonic mode, empty in Profile mode.
-    let cell_count = cells.len();
-    let (plate_of, plates, plate_boundaries) = match terrain.plates {
-        Some(p) => (p.plate_of, p.plates, p.boundaries),
-        None => (vec![u32::MAX; cell_count], Vec::new(), Vec::new()),
-    };
 
     let mut map = WorldMap {
         seed,
@@ -166,6 +203,16 @@ pub fn generate(seed: u64, cs: &CreativeSeed) -> WorldMap {
         plate_of,
         plates,
         plate_boundaries,
+        continent_of: region_tree.continent_of,
+        subcontinent_of: region_tree.subcontinent_of,
+        region_of: region_tree.region_of,
+        continents: region_tree.continents,
+        subcontinents: region_tree.subcontinents,
+        regions: region_tree.regions,
+        county_of,
+        counties,
+        realms,
+        world,
         content_hash: [0u8; 32],
     };
     // All f32 fields must be finite — non-finite values serialize as JSON
@@ -227,6 +274,163 @@ mod tests {
         assert!(!map.settlements.is_empty());
         assert!(!map.culture_regions.is_empty());
         assert!(!map.water_bodies.is_empty(), "a map always has ocean");
+    }
+
+    #[test]
+    fn region_hierarchy_partitions_land_coherently() {
+        let map = generate(7, &CreativeSeed::default());
+        let n = map.cell_count();
+        assert_eq!(map.continent_of.len(), n);
+        assert_eq!(map.subcontinent_of.len(), n);
+        assert_eq!(map.region_of.len(), n);
+        assert!(!map.continents.is_empty(), "land ⇒ ≥1 continent");
+        assert!(!map.subcontinents.is_empty());
+        assert!(!map.regions.is_empty());
+
+        const NONE: u32 = u32::MAX;
+        for c in 0..n {
+            if map.biome[c].is_water() {
+                // Water cells are unassigned at every level.
+                assert_eq!(map.continent_of[c], NONE);
+                assert_eq!(map.subcontinent_of[c], NONE);
+                assert_eq!(map.region_of[c], NONE);
+                continue;
+            }
+            // No orphan land cell.
+            assert_ne!(map.continent_of[c], NONE, "land cell {c} has no continent");
+            assert_ne!(map.subcontinent_of[c], NONE);
+            assert_ne!(map.region_of[c], NONE);
+            // Containment: region ⊆ subcontinent ⊆ continent.
+            let r = map.region_of[c] as usize;
+            let s = map.subcontinent_of[c];
+            assert_eq!(map.regions[r].subcontinent, s);
+            assert_eq!(map.subcontinents[s as usize].continent, map.continent_of[c]);
+            // A subcontinent is exactly one plate's slice of a continent.
+            assert_eq!(map.plate_of[c], map.subcontinents[s as usize].plate);
+        }
+        // Every level nests in the one above (counts are monotone non-decreasing
+        // because each parent yields ≥1 child).
+        assert!(map.subcontinents.len() >= map.continents.len());
+        assert!(map.regions.len() >= map.subcontinents.len());
+        for sc in &map.subcontinents {
+            assert!((sc.continent as usize) < map.continents.len());
+        }
+        for r in &map.regions {
+            assert!((r.subcontinent as usize) < map.subcontinents.len());
+        }
+    }
+
+    #[test]
+    fn region_hierarchy_handles_profile_mode_without_plates() {
+        // `Profile` mode has no plate layer (`plate_of` is all `u32::MAX`), so
+        // every continent collapses to a single subcontinent with the sentinel
+        // plate — the L1 fallback path the Tectonic default never exercises.
+        let cs = CreativeSeed {
+            terrain_mode: TerrainMode::Profile,
+            ..CreativeSeed::default()
+        };
+        let map = generate(7, &cs);
+        const NONE: u32 = u32::MAX;
+        assert!(!map.continents.is_empty(), "a Profile world still has land");
+        assert_eq!(
+            map.subcontinents.len(),
+            map.continents.len(),
+            "Profile mode: exactly one subcontinent per continent"
+        );
+        for sc in &map.subcontinents {
+            assert_eq!(sc.plate, NONE, "Profile mode: subcontinent plate is the sentinel");
+        }
+        // The partition invariants still hold without a plate layer.
+        for c in 0..map.cell_count() {
+            if map.biome[c].is_water() {
+                assert_eq!(map.continent_of[c], NONE);
+                continue;
+            }
+            assert_ne!(map.region_of[c], NONE, "land cell {c} unassigned in Profile mode");
+            let r = map.region_of[c] as usize;
+            let s = map.subcontinent_of[c];
+            assert_eq!(map.regions[r].subcontinent, s);
+            assert_eq!(map.subcontinents[s as usize].continent, map.continent_of[c]);
+        }
+    }
+
+    /// Assert the C-2 strict-nesting invariants on a generated map: province ⊆
+    /// region, county ⊆ province, state ⊆ subcontinent, realm ⊆ continent, plus
+    /// no-orphan, valid parent links, non-empty tiers, and monotone counts.
+    fn assert_political_nesting(map: &WorldMap) {
+        const NONE: u32 = u32::MAX;
+        assert!(!map.provinces.is_empty() && !map.states.is_empty());
+        assert!(!map.counties.is_empty() && !map.realms.is_empty());
+        for c in 0..map.cell_count() {
+            if map.biome[c].is_water() {
+                assert_eq!(map.province_of[c], NONE);
+                assert_eq!(map.county_of[c], NONE);
+                continue;
+            }
+            assert_ne!(map.province_of[c], NONE, "land cell {c} has no province");
+            assert_ne!(map.county_of[c], NONE, "land cell {c} has no county");
+            let prov = &map.provinces[map.province_of[c] as usize];
+            assert_eq!(prov.region, map.region_of[c], "province ⊄ region at cell {c}");
+            assert_eq!(
+                map.counties[map.county_of[c] as usize].province,
+                map.province_of[c],
+                "county ⊄ province at cell {c}"
+            );
+            let state = &map.states[prov.state as usize];
+            assert_eq!(
+                state.subcontinent, map.subcontinent_of[c],
+                "state ⊄ subcontinent at cell {c}"
+            );
+            assert_eq!(
+                map.realms[state.realm as usize].continent,
+                map.continent_of[c],
+                "realm ⊄ continent at cell {c}"
+            );
+        }
+        // Parent links valid + counts monotone (each parent yields ≥1 child).
+        for ct in &map.counties {
+            assert!((ct.province as usize) < map.provinces.len());
+        }
+        for p in &map.provinces {
+            assert!((p.state as usize) < map.states.len());
+        }
+        for s in &map.states {
+            assert!((s.realm as usize) < map.realms.len());
+        }
+        assert!(map.counties.len() >= map.provinces.len());
+        assert!(map.provinces.len() >= map.states.len());
+        assert!(map.states.len() >= map.realms.len());
+
+        // No dangling entity: every county/state/realm owns ≥1 cell / ≥1 child.
+        let mut province_has_county = vec![false; map.provinces.len()];
+        for ct in &map.counties {
+            province_has_county[ct.province as usize] = true;
+        }
+        assert!(province_has_county.iter().all(|&b| b), "a province has no county");
+        let mut subcontinents_used = std::collections::BTreeSet::new();
+        for s in &map.states {
+            subcontinents_used.insert(s.subcontinent);
+        }
+        assert!(!subcontinents_used.is_empty());
+    }
+
+    #[test]
+    fn political_tiers_nest_strictly_in_geometric_hierarchy() {
+        // C-2: province ⊆ region, county ⊆ province, state ⊆ subcontinent,
+        // realm ⊆ continent — verified per land cell against the C-1a frame.
+        assert_political_nesting(&generate(7, &CreativeSeed::default()));
+    }
+
+    #[test]
+    fn political_tiers_nest_in_profile_mode() {
+        // Profile mode (no plates ⇒ one subcontinent per continent) is a
+        // distinct geometric shape the Tectonic default never exercises; the
+        // strict-nesting invariants must still hold through `build_nested`.
+        let cs = CreativeSeed {
+            terrain_mode: TerrainMode::Profile,
+            ..CreativeSeed::default()
+        };
+        assert_political_nesting(&generate(11, &cs));
     }
 
     /// Count connected components of land cells (`elevation >= sea_level`).

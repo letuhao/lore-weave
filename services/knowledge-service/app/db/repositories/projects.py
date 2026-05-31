@@ -20,7 +20,7 @@ _SELECT_COLS = """
   extraction_enabled, extraction_status, embedding_model, embedding_dimension,
   extraction_config, last_extracted_at, estimated_cost_usd, actual_cost_usd,
   is_archived, tool_calling_enabled, memory_remember_confirm, save_raw_extraction,
-  version, created_at, updated_at
+  genre, version, created_at, updated_at
 """
 
 # Explicit allowlist for dynamic UPDATE SET. Pydantic's ProjectUpdate already
@@ -28,7 +28,7 @@ _SELECT_COLS = """
 # against this set before building SQL.
 _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
     {"name", "description", "instructions", "book_id", "is_archived",
-     "embedding_model",
+     "embedding_model", "genre",
      # K21.12-BE (design D9): per-project tool-calling toggle. NOT NULL,
      # so it is deliberately absent from _NULLABLE_UPDATE_COLUMNS — an
      # explicit None on this field is skipped like name/description.
@@ -59,7 +59,7 @@ _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
 # - `embedding_dimension` (D-EMB-MODEL-REF-01): caller-supplied; nullable
 #   so the model selection can be cleared.
 _NULLABLE_UPDATE_COLUMNS: frozenset[str] = frozenset(
-    {"book_id", "embedding_model", "embedding_dimension"}
+    {"book_id", "embedding_model", "embedding_dimension", "genre"}
 )
 
 
@@ -87,8 +87,8 @@ class ProjectsRepo:
     async def create(self, user_id: UUID, data: ProjectCreate) -> Project:
         query = f"""
         INSERT INTO knowledge_projects
-          (user_id, name, description, project_type, book_id, instructions)
-        VALUES ($1, $2, $3, $4, $5, $6)
+          (user_id, name, description, project_type, book_id, instructions, genre)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as conn:
@@ -100,6 +100,7 @@ class ProjectsRepo:
                 data.project_type,
                 data.book_id,
                 data.instructions,
+                data.genre,
             )
         return _row_to_project(row)
 
@@ -277,6 +278,39 @@ class ProjectsRepo:
         # concurrent DELETE would flip 412 → 404 which is acceptable
         # (the client sees "the row no longer exists" which is the
         # fresher truth).
+        current = await self.get(user_id, project_id)
+        if current is None:
+            return None
+        raise VersionMismatchError(current)
+
+    async def update_extraction_config(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        config: dict,
+        expected_version: int,
+    ) -> Project | None:
+        """B2-B-b1 — replace `extraction_config` (JSONB) + bump version.
+
+        Dedicated path (not the generic `update`) because the JSONB column
+        needs `json.dumps` + a `::jsonb` cast that the generic SET-clause loop
+        doesn't do. Mirrors `update`'s If-Match discipline: a 0-row result with
+        a version that exists raises VersionMismatchError (→ 412); a missing row
+        returns None (→ 404)."""
+        query = f"""
+        UPDATE knowledge_projects
+        SET extraction_config = $3::jsonb,
+            version = version + 1,
+            updated_at = now()
+        WHERE user_id = $1 AND project_id = $2 AND version = $4
+        RETURNING {_SELECT_COLS}
+        """
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                query, user_id, project_id, json.dumps(config), expected_version,
+            )
+        if row is not None:
+            return _row_to_project(row)
         current = await self.get(user_id, project_id)
         if current is None:
             return None

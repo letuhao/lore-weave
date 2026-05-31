@@ -61,5 +61,12 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
 
+    # ── Cycle 73h D-WORKER-AI-METRICS-INFRA ────────────────────────
+    # Prometheus /metrics scrape endpoint. Worker-ai has no FastAPI
+    # surface; metrics live on a dedicated port served by the
+    # prometheus_client built-in WSGI server (daemon thread). Set to
+    # 0 to disable (tests + dev runs without Prometheus).
+    metrics_port: int = 8094
+
 
 settings = Settings()

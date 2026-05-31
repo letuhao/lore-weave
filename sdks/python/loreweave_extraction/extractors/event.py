@@ -44,7 +44,7 @@ from loreweave_extraction.context_budget import (
 )
 from loreweave_extraction.errors import ExtractionError
 from loreweave_extraction.extractors.entity import LLMEntityCandidate
-from loreweave_extraction.prompts import load_prompt
+from loreweave_extraction.prompts import apply_prompt_override, load_prompt
 
 __all__ = [
     "LLMEventCandidate",
@@ -172,6 +172,7 @@ async def extract_events(
     llm_client: LLMClientProtocol,
     on_dropped: DroppedHandler | None = None,
     context_budget: "ContextBudget | None" = None,
+    prompt_override_system: str | None = None,
 ) -> list[LLMEventCandidate]:
     """Extract narrative events from *text* via the user's BYOK LLM.
 
@@ -207,7 +208,10 @@ async def extract_events(
         known_entities, ensure_ascii=False
     ).replace("{", "{{").replace("}", "}}")
 
-    system_prompt = load_prompt("event_system", known_entities=safe_known)
+    system_prompt = apply_prompt_override(
+        load_prompt("event_system", known_entities=safe_known),
+        prompt_override_system,
+    )
     raw_events = await _extract_via_llm_client(
         llm_client=llm_client,
         user_id=user_id,

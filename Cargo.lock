@@ -1906,7 +1906,6 @@ checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
 dependencies = [
  "base64",
  "bytes",
- "futures-channel",
  "futures-core",
  "futures-util",
  "http",
@@ -3478,13 +3477,15 @@ dependencies = [
  "geo-clipper",
  "geo-types",
  "image",
+ "loreweave_llm",
  "rand_chacha 0.3.1",
  "rand_core 0.6.4",
- "reqwest",
  "serde",
  "serde_json",
  "sqlx",
  "tokio",
+ "uuid",
+ "wiremock",
 ]
 
 [[package]]
