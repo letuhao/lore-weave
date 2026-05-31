@@ -87,6 +87,22 @@ def _mock_pool(book_id=_TEST_BOOK_ID):
     pool.execute = AsyncMock()
     # Default: no pending chat turns
     pool.fetch = AsyncMock(return_value=[])
+    # B2-A: the chapter-success/skip path advances the cursor + emits the
+    # extraction_run in ONE transaction via `async with pool.acquire() as conn,
+    # conn.transaction():`. Wire acquire()/transaction() as async context
+    # managers; the acquired conn SHARES pool.execute so existing
+    # call-inspection assertions still observe the cursor-advance (and the new
+    # INSERT INTO outbox_events).
+    conn = AsyncMock()
+    conn.execute = pool.execute
+    _txn = MagicMock()
+    _txn.__aenter__ = AsyncMock(return_value=None)
+    _txn.__aexit__ = AsyncMock(return_value=False)
+    conn.transaction = MagicMock(return_value=_txn)
+    _acq = MagicMock()
+    _acq.__aenter__ = AsyncMock(return_value=conn)
+    _acq.__aexit__ = AsyncMock(return_value=False)
+    pool.acquire = MagicMock(return_value=_acq)
     return pool
 
 
@@ -1288,6 +1304,7 @@ async def test_get_running_jobs_pulls_embedding_dimension(monkeypatch):
         "items_processed": 0, "current_cursor": None,
         "cost_spent_usd": Decimal("0"),
         "embedding_dimension": 1024,
+        "extraction_config": {},
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
@@ -1308,6 +1325,7 @@ async def test_get_running_jobs_handles_null_embedding_dimension():
         "items_processed": 0, "current_cursor": None,
         "cost_spent_usd": Decimal("0"),
         "embedding_dimension": None,
+        "extraction_config": None,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])

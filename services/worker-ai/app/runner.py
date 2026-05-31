@@ -21,8 +21,9 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Any
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import asyncpg
 from opentelemetry import trace as _ot_trace
@@ -30,7 +31,11 @@ from opentelemetry import trace as _ot_trace
 from loreweave_extraction import (
     EntityRecoveryConfig,
     PrecisionFilterConfig,
+    ResolvedConfig,
+    base_default_version,
+    config_hash,
     extract_pass2,
+    resolve_effective_config,
 )
 from loreweave_extraction.errors import ExtractionError
 
@@ -43,6 +48,7 @@ from app.clients import (
     KnowledgeClient,
 )
 from app.llm_client import LLMClient
+from app.outbox_emit import emit_extraction_run, emit_extraction_run_best_effort
 
 __all__ = ["process_job", "poll_and_run"]
 
@@ -318,6 +324,135 @@ _GLOSSARY_SYNC_COST_PER_ITEM = Decimal("0.0")
 _MAX_RETRIES_PER_ITEM = 3
 
 
+# ── B2-A — extraction-run telemetry helpers ────────────────────────────
+
+
+def _build_run_config(job: JobRow) -> tuple[ResolvedConfig, str, str]:
+    """Assemble the effective config snapshot for a job + (config_hash,
+    base_default_version).
+
+    Pinned ONCE per job at start (DESIGN self-review #2): a mid-job
+    precision-filter Redis reload does NOT change this snapshot, so every
+    chapter run of the job attributes to the same config_hash. For every
+    project today `extraction_config` is ``{}`` → the snapshot equals the
+    global env defaults (behaviour unchanged); B2-B starts populating it.
+    """
+    global_defaults = {
+        "model_ref": job.llm_model,
+        "model_source": "user_model",
+        "precision_filter": _PRECISION_FILTER_CONFIG,
+        "entity_recovery": _ENTITY_RECOVERY_CONFIG,
+        "writer_autocreate": False,
+    }
+    try:
+        snapshot = resolve_effective_config(
+            global_defaults=global_defaults,
+            project_overrides=job.extraction_config or {},
+        )
+    except Exception:
+        # /review-impl MED-3 — a malformed per-project extraction_config (e.g.
+        # precision_filter enabled with no model_ref) must NOT fail the whole
+        # job from the telemetry path. Degrade to global defaults + warn loudly.
+        # Unreachable in B2-A (overrides always {}); B2-B's edit endpoint is the
+        # primary guard (reject bad config at write time) — this is the net.
+        logger.warning(
+            "resolve_effective_config failed for job %s (malformed "
+            "extraction_config?) — falling back to global defaults for telemetry",
+            job.job_id, exc_info=True,
+        )
+        snapshot = resolve_effective_config(
+            global_defaults=global_defaults, project_overrides={},
+        )
+    return snapshot, config_hash(snapshot), base_default_version(global_defaults)
+
+
+async def _advance_cursor_and_emit_run(
+    pool: asyncpg.Pool, user_id: UUID, job_id: UUID, cursor: dict, payload: dict,
+) -> None:
+    """Advance the cursor + emit the extraction_run ATOMICALLY (B2-A).
+
+    Normal case: one transaction → the run row is guaranteed iff the cursor
+    advanced (no silent gaps under normal operation; avoids the §2.4
+    selection-bias the run telemetry exists to prevent).
+
+    Failure case (/review-impl MED-1): if the transaction fails (an infra blip
+    on the shared knowledge DB), fall back to a plain best-effort cursor-advance
+    so the job still PROGRESSES — the chapter's real work already persisted to
+    Neo4j, so we must not re-extract (re-spending LLM) nor fail the job. Run
+    telemetry is NEVER load-bearing for extraction; the rare, random loss here
+    is not systematic and does not bias config-vs-outcome analysis."""
+    try:
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                await _advance_cursor(conn, user_id, job_id, cursor)
+                await emit_extraction_run(conn, payload)
+    except Exception:
+        logger.warning(
+            "transactional run-emit failed for job %s; advancing cursor "
+            "best-effort (run telemetry lost for this item, non-fatal)",
+            job_id, exc_info=True,
+        )
+        await _advance_cursor(pool, user_id, job_id, cursor)
+
+
+def _run_payload(
+    *,
+    job: JobRow,
+    book_id: UUID | None,
+    chapter_ref: str,
+    snapshot: ResolvedConfig,
+    cfg_hash: str,
+    base_version: str,
+    outcome: str,
+    result: ExtractionResult | None,
+) -> dict:
+    """Build a `knowledge.extraction_run_completed` payload for one chapter.
+
+    `resolved_config` carries prompt IDENTITY (prompt_versions), never raw
+    prompt text (DESIGN Q5). metrics come from the per-chapter ExtractionResult
+    (None on skip/fail → zero counts) + the flat per-item cost estimate.
+    """
+    metrics: dict[str, Any] = {
+        "entities_merged": result.entities_merged if result else 0,
+        "relations_created": result.relations_created if result else 0,
+        "events_merged": result.events_merged if result else 0,
+        "facts_merged": result.facts_merged if result else 0,
+        "cost_usd": str(_DEFAULT_COST_PER_ITEM),
+    }
+    return {
+        "run_id": str(uuid4()),
+        "user_id": str(job.user_id),
+        "project_id": str(job.project_id),
+        "book_id": str(book_id) if book_id else None,
+        "job_id": str(job.job_id),
+        "scope": "chapter",
+        "chapter_ref": str(chapter_ref),
+        "config_hash": cfg_hash,
+        "resolved_config": {
+            "model_ref": snapshot.model_ref,
+            "model_source": snapshot.model_source,
+            "precision_filter": None if snapshot.precision_filter is None else {
+                "model_ref": snapshot.precision_filter.model_ref,
+                "model_source": snapshot.precision_filter.model_source,
+                "categories": sorted(snapshot.precision_filter.categories),
+                "partial_policy": snapshot.precision_filter.partial_policy,
+            },
+            "entity_recovery": None if snapshot.entity_recovery is None else {
+                "model_ref": snapshot.entity_recovery.model_ref,
+                "model_source": snapshot.entity_recovery.model_source,
+            },
+            "writer_autocreate": snapshot.writer_autocreate,
+        },
+        "prompt_versions": snapshot.prompt_versions,
+        "base_default_version": base_version,
+        "model_ref": snapshot.model_ref,
+        "metrics": metrics,
+        "outcome": outcome,
+        "outcome_source": "pipeline",
+        "emitted_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 # ── Data types ───────────────────────────────────────────────────────
 
 
@@ -342,6 +477,10 @@ class JobRow:
     # identity). NULL = project has no embedding configured → P3 enqueue
     # silently skipped by the receiving endpoint.
     embedding_dimension: int | None = None
+    # B2-A — per-project extraction-config overrides (knowledge_projects
+    # JSONB). {} for every project today; resolve_effective_config merges
+    # it onto the global defaults to produce the run's config snapshot.
+    extraction_config: dict | None = None
 
 
 # ── DB helpers ───────────────────────────────────────────────────────
@@ -359,7 +498,7 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
         SELECT j.job_id, j.user_id, j.project_id, j.scope, j.scope_range,
                j.status, j.llm_model, j.embedding_model, j.max_spend_usd,
                j.items_total, j.items_processed, j.current_cursor,
-               j.cost_spent_usd, p.embedding_dimension
+               j.cost_spent_usd, p.embedding_dimension, p.extraction_config
         FROM extraction_jobs j
         LEFT JOIN knowledge_projects p
           ON p.user_id = j.user_id AND p.project_id = j.project_id
@@ -375,6 +514,9 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
         cc = r["current_cursor"]
         if isinstance(cc, str):
             cc = json.loads(cc)
+        ec = r["extraction_config"]
+        if isinstance(ec, str):
+            ec = json.loads(ec)
         result.append(JobRow(
             job_id=r["job_id"],
             user_id=r["user_id"],
@@ -390,6 +532,7 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
             current_cursor=cc,
             cost_spent_usd=r["cost_spent_usd"],
             embedding_dimension=r["embedding_dimension"],
+            extraction_config=ec if isinstance(ec, dict) else None,
         ))
     return result
 
@@ -440,11 +583,17 @@ async def _try_spend(
 
 
 async def _advance_cursor(
-    pool: asyncpg.Pool, user_id: UUID, job_id: UUID,
+    executor: Any, user_id: UUID, job_id: UUID,
     cursor: dict, items_delta: int = 1,
 ) -> None:
-    """Persist progress so a restart can resume from here."""
-    await pool.execute(
+    """Persist progress so a restart can resume from here.
+
+    `executor` is a Pool (default) OR an asyncpg Connection — the latter lets
+    the chapter-success/skip path advance the cursor AND emit the
+    extraction_run in ONE transaction (B2-A): the run row is guaranteed iff the
+    cursor advanced, and an emit failure rolls back the advance (chapter
+    re-processed, never a silently-missing run)."""
+    await executor.execute(
         """
         UPDATE extraction_jobs
         SET current_cursor = $3::jsonb,
@@ -886,6 +1035,13 @@ async def process_job(
         # Resolve book_id from project (project_id ≠ book_id)
         book_id = await _get_project_book_id(pool, job.user_id, job.project_id)
 
+        # B2-A — pin the effective config snapshot ONCE per job (a mid-job
+        # filter reload won't change this job's config_hash). Used for the
+        # per-chapter extraction_run telemetry; behaviour is unchanged because
+        # extract_pass2 still reads the module globals in B2-A (B2-B wires the
+        # snapshot into the pipeline).
+        run_snapshot, run_cfg_hash, run_base_version = _build_run_config(job)
+
         # Pre-enumerate items. Done once — the results are reused for
         # both K16.7 items_total counting and the main processing loop,
         # avoiding a second HTTP call to book-service.
@@ -968,9 +1124,15 @@ async def process_job(
                             "reason": "text_unavailable",
                         },
                     )
-                    await _advance_cursor(
+                    unavail_payload = _run_payload(
+                        job=job, book_id=book_id, chapter_ref=ch.chapter_id,
+                        snapshot=run_snapshot, cfg_hash=run_cfg_hash,
+                        base_version=run_base_version, outcome="skipped", result=None,
+                    )
+                    await _advance_cursor_and_emit_run(
                         pool, job.user_id, job.job_id,
                         {"last_chapter_id": ch.chapter_id, "scope": "chapters"},
+                        unavail_payload,
                     )
                     continue
 
@@ -1056,6 +1218,14 @@ async def process_job(
                         )
                         await _fail_job(pool, job.user_id, job.job_id, result.error)
                         await _update_project_status(pool, job.user_id, job.project_id, "failed")
+                        # B2-A — record the failed run best-effort (no cursor
+                        # advance to ride): a config that reliably crashes must
+                        # be visible-as-bad, not invisible to the telemetry.
+                        await emit_extraction_run_best_effort(pool, _run_payload(
+                            job=job, book_id=book_id, chapter_ref=ch.chapter_id,
+                            snapshot=run_snapshot, cfg_hash=run_cfg_hash,
+                            base_version=run_base_version, outcome="failed", result=result,
+                        ))
                         return
                     # Track retry count in cursor to prevent infinite loops
                     retry_key = f"retry_{ch.chapter_id}"
@@ -1076,9 +1246,15 @@ async def process_job(
                                 "error": result.error,
                             },
                         )
-                        await _advance_cursor(
+                        skip_payload = _run_payload(
+                            job=job, book_id=book_id, chapter_ref=ch.chapter_id,
+                            snapshot=run_snapshot, cfg_hash=run_cfg_hash,
+                            base_version=run_base_version, outcome="skipped", result=None,
+                        )
+                        await _advance_cursor_and_emit_run(
                             pool, job.user_id, job.job_id,
                             {"last_chapter_id": ch.chapter_id, "scope": "chapters"},
+                            skip_payload,
                         )
                         items_processed += 1
                         continue
@@ -1094,10 +1270,17 @@ async def process_job(
                     )
                     return  # stop this run, retry on next poll
 
-                # Advance cursor
-                await _advance_cursor(
+                # Advance cursor + emit the extraction_run in ONE transaction
+                # (B2-A): the run row is guaranteed iff the cursor advanced.
+                run_payload = _run_payload(
+                    job=job, book_id=book_id, chapter_ref=ch.chapter_id,
+                    snapshot=run_snapshot, cfg_hash=run_cfg_hash,
+                    base_version=run_base_version, outcome="succeeded", result=result,
+                )
+                await _advance_cursor_and_emit_run(
                     pool, job.user_id, job.job_id,
                     {"last_chapter_id": ch.chapter_id, "scope": "chapters"},
+                    run_payload,
                 )
                 # D-K16.11-01: bump per-project monthly + all-time spend
                 # counters so CostSummary's GET /costs reflects reality.

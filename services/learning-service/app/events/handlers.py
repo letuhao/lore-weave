@@ -203,3 +203,80 @@ _TARGET_FROM_EVENT = {
     "knowledge.relation_corrected": "relation",
     "knowledge.event_corrected": "event",
 }
+
+
+async def handle_run_completed(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`knowledge.extraction_run_completed` → an `extraction_runs` row + a
+    content-addressed `config_registry` upsert (Phase B2-A).
+
+    worker-ai emits one event per chapter at completion. The registry upsert is
+    idempotent on `config_hash` (N runs of one config → 1 registry row); the run
+    insert is idempotent on the relay dedup key (`outbox_id`). Both run in ONE
+    transaction so a run never references a missing registry row.
+
+    Same loud-fail discipline as corrections: an empty `outbox_id` (dedup key)
+    or missing `user_id`/`config_hash`/`run_id` raises → the message goes to the
+    DLQ rather than being silently dropped or collapsed."""
+    payload = event.payload
+    origin_event_id = event.outbox_id
+    if not origin_event_id:
+        raise ValueError(
+            "extraction_run_completed has empty outbox_id — refusing to insert "
+            "(would collapse the run log)"
+        )
+    run_id = _uuid_or_none(payload.get("run_id"))
+    user_id = _uuid_or_none(payload.get("user_id"))
+    config_hash = payload.get("config_hash")
+    if run_id is None or user_id is None or not config_hash:
+        raise ValueError(
+            "extraction_run_completed missing run_id/user_id/config_hash "
+            f"(run_id={payload.get('run_id')!r} user_id={payload.get('user_id')!r} "
+            f"config_hash={config_hash!r}) — refusing to insert"
+        )
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                """
+                INSERT INTO config_registry
+                  (config_hash, resolved_config, base_default_version, prompt_versions)
+                VALUES ($1, $2::jsonb, $3, $4::jsonb)
+                ON CONFLICT (config_hash) DO NOTHING
+                """,
+                config_hash,
+                _jsonb(payload.get("resolved_config") or {}),
+                payload.get("base_default_version") or "",
+                _jsonb(payload.get("prompt_versions") or {}),
+            )
+            await conn.execute(
+                """
+                INSERT INTO extraction_runs (
+                  run_id, user_id, project_id, book_id, job_id, scope, chapter_ref,
+                  config_hash, model_ref, metrics, outcome, outcome_source,
+                  origin_service, origin_event_id, emitted_at
+                ) VALUES (
+                  $1, $2, $3, $4, $5, $6, $7,
+                  $8, $9, $10::jsonb, $11, $12,
+                  $13, $14, $15
+                )
+                ON CONFLICT (origin_service, origin_event_id) DO NOTHING
+                """,
+                run_id, user_id,
+                _uuid_or_none(payload.get("project_id")),
+                _uuid_or_none(payload.get("book_id")),
+                _uuid_or_none(payload.get("job_id")),
+                payload.get("scope"),
+                payload.get("chapter_ref"),
+                config_hash,
+                payload.get("model_ref"),
+                _jsonb(payload.get("metrics") or {}),
+                payload.get("outcome"),
+                payload.get("outcome_source") or "pipeline",
+                "knowledge",
+                origin_event_id,
+                _parse_ts(payload.get("emitted_at")),
+            )
+    logger.debug(
+        "extraction_run persisted: run=%s config=%s outcome=%s origin=knowledge:%s",
+        run_id, config_hash, payload.get("outcome"), origin_event_id,
+    )
