@@ -7,12 +7,17 @@
 
 ## ▶ NEXT SESSION — start here
 
-**State:** Phase B is **COMPLETE + fully browser-verified** (session 75). The D#054 Playwright browser smoke PASSED — a real UI relation-correction (ally_of→enemy_of via the dialog) refreshed the panel AND produced a `predicate-fix` correction in `learning.corrections`, end-to-end. **Nothing left in Phase B.** Next is push / Phase C / B2.
+**State:** Phase B is **COMPLETE, browser-verified, and PUSHED to `origin/main`** (session 75, merge `8919c678` + audit `f69da319`; resolved a deferred-ID collision with the world-gen track — my Phase-B2 deferred row renumbered 047→**055**). **Phase B2 (Axis-2 config telemetry) is started: CLARIFY done + scope locked.**
+
+**NEXT = Phase B2 DESIGN** (fresh session). Start from the CLARIFY/scope doc: [`docs/specs/2026-05-31-phase-b2-config-telemetry-clarify.md`](../specs/2026-05-31-phase-b2-config-telemetry-clarify.md) (D#055). It has the code-derived findings + PO-locked scope + design direction + open questions. **Scope locked (XL+):** (core) run plumbing — `extraction_runs` + content-addressed `config_registry` + `config_hash`/implicit-outcome emission from job-completion (no UI); (expansion) **also build per-novel extraction-config tuning** (BE: make `knowledge_projects.extraction_config` actually drive the pipeline + per-project override + edit endpoint; FE: a tuning panel) + `config_adjustment_events` (async/lossy-OK, NOT the outbox). Invoke `/amaw`; DESIGN → AMAW review → design-checkpoint-commit (mirror Phase B); BUILD spans B2-A/B/C sub-sessions (§4 of the doc). Key reality: per-novel tuning + run plumbing are BOTH unbuilt today (the plan assumed them) — same "build the producers too" shape as Phase B.
+
+<details><summary>(historical) Phase B complete — push options (all done/superseded)</summary>
 
 <details><summary>(historical) earlier state note</summary>
 **State:** Phase B was FEATURE-COMPLETE (pre-browser-smoke).</details> The full two-axis-Axis-1 correction loop is built + committed: users can correct **entities** (edit/delete/merge), **relations** (correct/mark-wrong), and **events** (edit/delete) in the UI → each emits a `knowledge.*_corrected` / enriched `glossary.entity_updated` → relay → `learning-service.corrections`. Backend live-smoke-verified end-to-end (all types); frontend tsc-clean + 469 knowledge vitest pass + AMAW-adversary-folded. **Only residual: a Playwright BROWSER smoke** (D#054, LOW) — the contract is already covered by component tests + BE live-smokes.
 
-**NEXT options:** (a) **close out Phase B** with the D#054 browser smoke (needs Vite dev server 5173 + stack up); (b) **push the 8 unpushed commits** (needs approval); (c) start **Phase C** (Tier-1 anchor reuse, D#048) or **Phase B2** (config telemetry, D#055) per the [accuracy plan](../plans/2026-05-31-extraction-accuracy-and-eval-plan.md) §4. The correction CAPTURE spine is done; Phases C–F/B2 build the *use* of corrections (anchor reuse, few-shot, organic gold, fine-tune) as volume accrues.
+**NEXT options (historical, resolved):** push done; Phase C (D#048) or B2 (D#055) were the choices — B2 was chosen.
+</details>
 
 <details><summary>(historical) C-FE views scope — now DONE</summary>
 
