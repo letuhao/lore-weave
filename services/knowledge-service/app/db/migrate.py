@@ -747,6 +747,15 @@ CREATE TABLE IF NOT EXISTS outbox_events (
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_pending
   ON outbox_events(created_at) WHERE published_at IS NULL;
+
+-- ═══════════════════════════════════════════════════════════════
+-- Phase E2 — genre tag on knowledge_projects (2026-06-01)
+-- Free-text, user-settable (e.g. "Tiên hiệp", "trinh thám").
+-- Copied to extraction_runs at run-emit time for genre-segment
+-- mining queries without a cross-DB join at query time.
+-- ═══════════════════════════════════════════════════════════════
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS genre TEXT;
 """
 
 

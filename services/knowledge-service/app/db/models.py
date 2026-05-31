@@ -68,6 +68,8 @@ class Project(BaseModel):
     # re-judge / debug / A-B prompt comparison. FE wire-up tracked as
     # D-P2-FE-SAVE-RAW.
     save_raw_extraction: bool = False
+    # E2 — user-set genre tag for per-genre config-quality mining.
+    genre: str | None = None
     version: int  # D-K8-03: bumped on every non-empty PATCH.
     created_at: datetime
     updated_at: datetime
@@ -79,6 +81,7 @@ class ProjectCreate(BaseModel):
     project_type: ProjectType
     book_id: UUID | None = None
     instructions: ProjectInstructions = ""
+    genre: str | None = None
 
 
 class ProjectUpdate(BaseModel):
@@ -129,6 +132,9 @@ class ProjectUpdate(BaseModel):
     tool_calling_enabled: bool | None = None
     memory_remember_confirm: bool | None = None
     save_raw_extraction: bool | None = None
+    # E2: None = "skip" (unchanged); explicitly set to None via PATCH uses
+    # _NULLABLE_UPDATE_COLUMNS so it clears (sets to SQL NULL).
+    genre: str | None = None
 
 
 # ── B2-B-b1 — per-project extraction-config tuning (structural subset) ──

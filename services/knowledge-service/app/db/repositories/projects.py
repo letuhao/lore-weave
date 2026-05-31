@@ -20,7 +20,7 @@ _SELECT_COLS = """
   extraction_enabled, extraction_status, embedding_model, embedding_dimension,
   extraction_config, last_extracted_at, estimated_cost_usd, actual_cost_usd,
   is_archived, tool_calling_enabled, memory_remember_confirm, save_raw_extraction,
-  version, created_at, updated_at
+  genre, version, created_at, updated_at
 """
 
 # Explicit allowlist for dynamic UPDATE SET. Pydantic's ProjectUpdate already
@@ -28,7 +28,7 @@ _SELECT_COLS = """
 # against this set before building SQL.
 _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
     {"name", "description", "instructions", "book_id", "is_archived",
-     "embedding_model",
+     "embedding_model", "genre",
      # K21.12-BE (design D9): per-project tool-calling toggle. NOT NULL,
      # so it is deliberately absent from _NULLABLE_UPDATE_COLUMNS — an
      # explicit None on this field is skipped like name/description.
@@ -59,7 +59,7 @@ _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
 # - `embedding_dimension` (D-EMB-MODEL-REF-01): caller-supplied; nullable
 #   so the model selection can be cleared.
 _NULLABLE_UPDATE_COLUMNS: frozenset[str] = frozenset(
-    {"book_id", "embedding_model", "embedding_dimension"}
+    {"book_id", "embedding_model", "embedding_dimension", "genre"}
 )
 
 
@@ -87,8 +87,8 @@ class ProjectsRepo:
     async def create(self, user_id: UUID, data: ProjectCreate) -> Project:
         query = f"""
         INSERT INTO knowledge_projects
-          (user_id, name, description, project_type, book_id, instructions)
-        VALUES ($1, $2, $3, $4, $5, $6)
+          (user_id, name, description, project_type, book_id, instructions, genre)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as conn:
@@ -100,6 +100,7 @@ class ProjectsRepo:
                 data.project_type,
                 data.book_id,
                 data.instructions,
+                data.genre,
             )
         return _row_to_project(row)
 
