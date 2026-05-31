@@ -428,18 +428,12 @@ export function BuildGraphDialog({
                 ? t('projects.buildDialog.llmModel.loading')
                 : t('projects.buildDialog.llmModel.placeholder')}
             </option>
-            {/* review-impl F7 — two providers can register the same
-                provider_model_name (e.g. openai/gpt-5 + proxy/gpt-5).
-                `value` must round-trip bare model name because the BE
-                `extraction_jobs.llm_model` column stores bare name; the
-                label disambiguates visually. Resolution of which
-                credential runs the job is BE-side user-model lookup. */}
             {chatModels.map((m) => {
               const label = m.alias
                 ? `${m.alias} (${m.provider_model_name})`
                 : `${m.provider_kind}/${m.provider_model_name}`;
               return (
-                <option key={m.user_model_id} value={m.provider_model_name}>
+                <option key={m.user_model_id} value={m.user_model_id}>
                   {label}
                 </option>
               );

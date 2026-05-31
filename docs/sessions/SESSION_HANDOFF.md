@@ -1,29 +1,30 @@
-# Session Handoff — Session 104 (FE mining panel + D-E2-FULL-EXTRACTION-SMOKE PASSED)
+# Session Handoff — Session 104 (mining panel + real extraction smoke + 3 bug fixes)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-06-01 (session 104 — FE mining insights panel + D-E2-FULL-EXTRACTION-SMOKE; human-in-loop v2.2).
-> **HEAD:** `f6faa2cf` (FE mining panel). Branch: `main` (pushed).
+> **Date:** 2026-06-01 (session 104 — FE mining panel + real extraction smoke + 3 bug fixes; human-in-loop v2.2).
+> **HEAD:** TBD (post-commit). Branch: `main` (local — push pending).
 
 ## ▶ NEXT SESSION — start here
 
-**State:** **Phase E2 COMPLETE.** All three E2 work items done:
+**State:** **Phase E2 + real extraction COMPLETE.** Three bugs found and fixed during real extraction smoke.
 
-1. **FE genre field** (session 103, `693473b0`) — `ProjectFormModal` exposes genre input.
-2. **D-E2-LIVE-SMOKE** (session 103, `ce3bf1fc`) — stack rebuilt, all 4 mining endpoints live via gateway.
-3. **FE mining panel** (session 104, `f6faa2cf`) — `insights` tab on KnowledgePage, 4 collapsible sections, 483/483 tests.
-4. **D-E2-FULL-EXTRACTION-SMOKE** (session 104, no code change) — full event pipeline verified: outbox_events → relay (published_at ✓) → learning-service consumer → `extraction_runs.genre = "Tien hiep / Cultivation"` ✓ → `config_registry` upserted ✓ → gateway `outcome-recompute` total=2 ✓.
+**Session 104 work:**
+1. **FE mining panel** (`f6faa2cf` — pushed) — `insights` tab, 4 sections, 483 tests.
+2. **D-E2-FULL-EXTRACTION-SMOKE** (no code) — synthetic event pipeline verified.
+3. **Bug fix: `embed.go` double `/v1` prefix** — `embedOpenAI` appended `/v1/embeddings` to URL already containing `/v1` → `/v1/v1/embeddings` (404 from LM Studio). Fixed: strip `/v1` suffix before append. Regression test added. Rebuilt provider-registry.
+4. **Bug fix: `BuildGraphDialog` LLM model UUID** — `value={m.provider_model_name}` should be `value={m.user_model_id}`. Worker-ai SDK requires UUID `model_ref`; all UI-triggered extractions were silently broken.
+5. **Bug fix: `pass2_writer` unknown fact type** — LLM produced `type='description'` (not in FACT_TYPES). `merge_fact` raised ValueError → entire chapter 500. Fix: skip unknown fact types with warning at writer layer. Rebuilt KS.
+6. **Real extraction smoke** — 5 chapters extracted (qwen3.6-35b + bge-m3). `extraction_runs.genre = "Tien hiep / Cultivation"` × 5 real rows. `config-quality` → `run_count=6, success_rate=0.83` ✓. `model-matrix` → `weighted_outcome=0.83` ✓.
 
-**NEXT — pick one:**
-1. **Resume eval R&D arc** — cycle-70s extraction-quality F1 work: independent judges, host-orchestrated ensembles. Disjoint-median metric locked; next = prod-readiness eval with independent judges.
-2. **Populate mining data** — run a real extraction on a project with passing benchmark + LLM to get `config-quality`/`model-matrix`/`default-drift` returning non-empty data.
+**FIRST: push main** — all bug fixes committed locally, not yet pushed.
 
-**Deferred items (E2 → cleared):**
-- ~~D-E2-FULL-EXTRACTION-SMOKE~~ — CLEARED this session (synthetic event pipeline smoke)
-- Outcome refinement batch job (correction-join recompute UPDATE on extraction_runs; needs correction volume accumulation)
+**NEXT:**
+1. **Resume eval R&D arc** — cycle-70s extraction-quality F1 work: independent judges, host-orchestrated ensembles. Disjoint-median metric locked.
+2. **Fix final extraction job 500** — job failed after all 5 chapters processed (LOW). The 5 chapter `extraction_run_completed` events all emitted, so mining data is intact.
 
-**Known:** `config-quality` / `model-matrix` / `default-drift` return empty until real extraction volume accumulates (HAVING count(*) ≥ 2 per config_hash). Expected behavior — UI shows informative cold-start message.
-
-**Known:** `config-quality` / `model-matrix` / `default-drift` return empty until `extraction_runs` accumulates ≥2 runs per config_hash. This is expected cold-start behavior.
+**Deferred:**
+- Outcome refinement batch job (correction-join recompute UPDATE on extraction_runs; needs correction volume)
+- Final extraction job 500 post-chapter-processing step (LOW)
 
 <details><summary>(historical) Phase B complete — push options (all done/superseded)</summary>
 

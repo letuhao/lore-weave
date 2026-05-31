@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -90,5 +92,33 @@ func TestParseOpenAIFallbackModel(t *testing.T) {
 	}
 	if result.Model != "my-fallback" {
 		t.Fatalf("expected fallback model, got %s", result.Model)
+	}
+}
+
+// TestEmbedOpenAI_V1SuffixStripped verifies that an endpointBaseURL ending in
+// "/v1" does NOT produce a doubled "/v1/v1/embeddings" path.  LM Studio and
+// other local providers store their base URL as "http://host:port/v1", so
+// embedOpenAI must strip the trailing /v1 before appending /v1/embeddings.
+func TestEmbedOpenAI_V1SuffixStripped(t *testing.T) {
+	var capturedPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":[{"embedding":[0.1,0.2,0.3],"index":0}],"model":"bge-m3"}`))
+	}))
+	defer srv.Close()
+
+	// Credential stored as "http://host:port/v1" — the typical LM Studio form.
+	endpointWithV1 := srv.URL + "/v1"
+	result, err := embedOpenAI(t.Context(), srv.Client(), endpointWithV1, "", "bge-m3", []string{"probe"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedPath != "/v1/embeddings" {
+		t.Fatalf("expected path /v1/embeddings, got %s (double-prefix bug)", capturedPath)
+	}
+	if result.Dimension != 3 {
+		t.Fatalf("expected dim 3, got %d", result.Dimension)
 	}
 }
