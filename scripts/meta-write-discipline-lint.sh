@@ -11,7 +11,15 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 violations=0
 
 # Authoritative table list — derived from migrations/meta/*.up.sql filenames.
-meta_tables=$(ls "$repo_root/migrations/meta/" 2>/dev/null | grep -E '^[0-9]+_.*\.up\.sql$' | sed -E 's/^[0-9]+_(.*)\.up\.sql$/\1/' || true)
+#
+# Exemptions (outbox TRANSPORT tables, not audited domain tables):
+#   - meta_outbox (030): written by MetaWrite's own appender (sdks/go/metaoutbox)
+#     INSIDE the write TX, and its publish-state is UPDATEd by the dedicated
+#     meta-outbox-relay drain (services/meta-outbox-relay) — exactly as the
+#     per-reality events_outbox is drained by the publisher. The relay's
+#     UPDATE is the drain, not a domain write that must route through MetaWrite.
+#     (events_outbox already escapes this lint by living in per_reality/, not meta/.)
+meta_tables=$(ls "$repo_root/migrations/meta/" 2>/dev/null | grep -E '^[0-9]+_.*\.up\.sql$' | sed -E 's/^[0-9]+_(.*)\.up\.sql$/\1/' | grep -vxE 'meta_outbox' || true)
 
 if [[ -z "$meta_tables" ]]; then
   echo "[meta-write-discipline] no meta tables discovered; nothing to lint"

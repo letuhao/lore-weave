@@ -43,6 +43,7 @@ import (
 
 	"github.com/loreweave/foundation/contracts/meta"
 	"github.com/loreweave/foundation/contracts/pii"
+	"github.com/loreweave/foundation/sdks/go/metaoutbox"
 	"github.com/loreweave/foundation/sdks/go/metapg"
 	"github.com/loreweave/foundation/sdks/go/piikms"
 	"github.com/loreweave/foundation/services/admin-cli/internal/audit_emitter"
@@ -99,15 +100,58 @@ func buildAuditSink(stderr *os.File, impact framework.ImpactClass, dryRun, confi
 			return nil, nil, fmt.Errorf("allowlist %s missing required table %q (audit path needs it)", allowPath, tbl)
 		}
 	}
+	// Outbox (P2/101): wire the meta-outbox appender so MetaWrite emits
+	// allowlisted events into meta_outbox. admin_action_audit emits nothing
+	// (events: []), so this is a no-op for the audit Sink today — wired for
+	// uniformity so a future allowlisted admin table can't silently drop its
+	// event. Loaded before the pool open = fail-fast with no pool to leak.
+	outbox, err := buildMetaOutbox(allowPath)
+	if err != nil {
+		return nil, nil, err
+	}
 	pool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
 		return nil, nil, fmt.Errorf("meta DB connect: %w", err)
 	}
+	if err := probeMetaOutbox(context.Background(), pool); err != nil {
+		pool.Close()
+		return nil, nil, err
+	}
 	cfg := &meta.Config{
 		DB: metapg.New(pool), Allowlist: allow, QueryBuilder: meta.PostgresQueryBuilder{},
 		Clock: sysClock{}, UUIDGen: randUUID{}, Scrubber: meta.NewRegexScrubber(nil),
+		Outbox: outbox,
 	}
 	return audit_emitter.NewMetaWriteSink(cfg), pool.Close, nil
+}
+
+// buildMetaOutbox constructs the production meta.OutboxAppender (P2/101) from
+// the allowlist's xreality_topic bindings, so MetaWrite emits allowlisted events
+// into the meta_outbox table (drained by meta-outbox-relay). Shared by the
+// audit-sink + erasure Config builders. A malformed xreality mapping fails fast.
+func buildMetaOutbox(allowPath string) (meta.OutboxAppender, error) {
+	topics, err := meta.LoadXRealityTopics(allowPath)
+	if err != nil {
+		return nil, fmt.Errorf("load xreality topics: %w", err)
+	}
+	return metaoutbox.New(topics), nil
+}
+
+// probeMetaOutbox fails fast at startup if the meta_outbox table is absent
+// (P2/101 /review-impl #1). Once cfg.Outbox is wired, a missing meta_outbox
+// makes EVERY allowlisted MetaWrite roll back (the outbox INSERT shares the
+// write TX) — which would otherwise surface mid-erasure-flow as "relation
+// meta_outbox does not exist" instead of at deploy. Mirrors buildAuditSink's
+// allow-table fail-fast. Cheap: a single to_regclass lookup.
+func probeMetaOutbox(ctx context.Context, pool *pgxpool.Pool) error {
+	var reg *string
+	if err := pool.QueryRow(ctx, `SELECT to_regclass('meta_outbox')::text`).Scan(&reg); err != nil {
+		return fmt.Errorf("probe meta_outbox: %w", err)
+	}
+	if reg == nil {
+		return fmt.Errorf("meta_outbox table missing — apply migrations/meta/030_meta_outbox.up.sql before running with Outbox wired (P2/101)")
+	}
+	return nil
 }
 
 // buildErasureHandler wires `erasure user-erasure` to the full PII SDK +
@@ -140,13 +184,26 @@ func buildErasureHandler() (framework.Handler, func(), error) {
 	if !allow.AllowsTable("user_consent_ledger") {
 		return nil, noop, fmt.Errorf("allowlist %s missing user_consent_ledger (erasure step 7 needs it)", allowPath)
 	}
+	// Outbox (P2/101): wire the meta-outbox appender so step 7's
+	// user_consent_ledger UPDATE emits user.consent.revoked into meta_outbox
+	// (the relay drains it). Before 101 this was Outbox=nil → the event was
+	// silently dropped (revoked_at was the only SSOT). Fail-fast before the pool.
+	outbox, err := buildMetaOutbox(allowPath)
+	if err != nil {
+		return nil, noop, err
+	}
 	pool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
 		return nil, noop, fmt.Errorf("erasure meta DB connect: %w", err)
 	}
+	if err := probeMetaOutbox(context.Background(), pool); err != nil {
+		pool.Close()
+		return nil, noop, err
+	}
 	cfg := &meta.Config{
 		DB: metapg.New(pool), Allowlist: allow, QueryBuilder: meta.PostgresQueryBuilder{},
 		Clock: sysClock{}, UUIDGen: randUUID{}, Scrubber: meta.NewRegexScrubber(nil),
+		Outbox: outbox,
 	}
 	// Real AWS KMS (KMS_ENDPOINT overrides BaseEndpoint for LocalStack).
 	region := os.Getenv("AWS_REGION")

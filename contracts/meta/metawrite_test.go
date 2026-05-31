@@ -91,6 +91,52 @@ func TestMetaWrite_InsertEmitsAuditAndOutbox(t *testing.T) {
 	}
 }
 
+// failingOutbox always errors on Append — proves the same-TX atomicity
+// (P2/101 /review-impl #3): a failed outbox append MUST roll back the data +
+// audit write, not leave them committed. This property became load-bearing in
+// 101 (the first production caller to set a non-nil cfg.Outbox).
+type failingOutbox struct{ err error }
+
+func (f failingOutbox) Append(context.Context, Tx, OutboxEvent) error { return f.err }
+
+func TestMetaWrite_OutboxAppendFailureRollsBack(t *testing.T) {
+	allow := newStaticAllowlist(
+		[]string{"reality_registry"},
+		map[string]map[MetaWriteOp]string{"reality_registry": {OpInsert: "reality.created"}},
+	)
+	db := &fakeDB{}
+	appendErr := errors.New("outbox table missing")
+	cfg := &Config{
+		DB:           db,
+		Allowlist:    allow,
+		Outbox:       failingOutbox{err: appendErr},
+		QueryBuilder: PostgresQueryBuilder{},
+		Clock:        newFakeClock(1_700_000_000_000_000_000),
+		UUIDGen:      &fakeUUIDGen{},
+	}
+	_, err := MetaWrite(context.Background(), cfg, MetaWriteIntent{
+		Table:     "reality_registry",
+		Operation: OpInsert,
+		PK:        map[string]any{"reality_id": uuid.New().String()},
+		NewValues: map[string]any{"status": "provisioning"},
+		Actor:     Actor{Type: ActorService, ID: "world-service"},
+		Reason:    "atomicity test",
+	})
+	if err == nil || !errors.Is(err, appendErr) {
+		t.Fatalf("want wrapped outbox append error, got %v", err)
+	}
+	if len(db.Txs) != 1 {
+		t.Fatalf("expected 1 TX, got %d", len(db.Txs))
+	}
+	tx := db.Txs[0]
+	if tx.committed {
+		t.Error("TX must NOT commit when outbox append fails (data + audit write must roll back)")
+	}
+	if tx.rollbacks < 1 {
+		t.Error("TX must be rolled back when outbox append fails")
+	}
+}
+
 func TestMetaWrite_NoOutboxWhenAllowlistSilent(t *testing.T) {
 	allow := newStaticAllowlist([]string{"publisher_heartbeats"}, nil)
 	cfg, _, out := newDefaultTestCfg(allow, nil)
@@ -201,8 +247,8 @@ func TestMetaWriteBatch_PartialFailureRollsBack(t *testing.T) {
 	// First intent succeeds (data + audit ok). Second intent's data exec
 	// returns an error → batch must roll back, no commit.
 	prequeue := &fakeDBPrequeue{queue: [][]txResponse{{
-		{rows: 1, err: nil}, // data 1 ok
-		{rows: 1, err: nil}, // audit 1 ok
+		{rows: 1, err: nil},                     // data 1 ok
+		{rows: 1, err: nil},                     // audit 1 ok
 		{rows: 0, err: errors.New("disk full")}, // data 2 fails
 	}}}
 	cfg.DB = prequeue

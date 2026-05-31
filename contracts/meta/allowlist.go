@@ -23,8 +23,14 @@ type Allowlist interface {
 // EventBinding maps a (table, operation) tuple to the outbox event name
 // the library appends after a successful write (in same TX).
 type EventBinding struct {
-	Op       MetaWriteOp `yaml:"op"`
-	EventName string     `yaml:"event_name"`
+	Op        MetaWriteOp `yaml:"op"`
+	EventName string      `yaml:"event_name"`
+	// XRealityTopic, when set, is the cross-reality fanout topic
+	// (xreality.<entity>.<verb>) the meta-outbox relay ALSO XADDs this event
+	// to, so per-reality consumers (e.g. meta-worker/user_erased_writer, 071)
+	// receive it. Empty ⇒ the event is meta-only (lw.meta.events stream only).
+	// Additive + optional: pre-101 allowlists omit it and unmarshal to "".
+	XRealityTopic string `yaml:"xreality_topic"`
 }
 
 // AllowlistEntry is one table's record in events_allowlist.yaml.
@@ -74,6 +80,44 @@ func (a *allowlistImpl) Tables() []string {
 		out = append(out, t)
 	}
 	return out
+}
+
+// LoadXRealityTopics parses events_allowlist.yaml and returns the
+// event_name → xreality_topic map for every event that declares one. Used by
+// the meta-outbox appender (sdks/go/metaoutbox) to stamp meta_outbox.xreality_topic
+// at write-time, and by the relay for documentation. Non-breaking: no event
+// with xreality_topic ⇒ empty map.
+//
+// Fails fast (Q-L1B-1 hygiene): a duplicate event_name mapped to two DIFFERENT
+// topics is a contract error (the relay routes by event_name, so the topic must
+// be unambiguous). Same event_name → same topic is tolerated (idempotent).
+func LoadXRealityTopics(path string) (map[string]string, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("meta: read allowlist %s: %w", path, err)
+	}
+	var f AllowlistFile
+	if err := yaml.Unmarshal(raw, &f); err != nil {
+		return nil, fmt.Errorf("meta: unmarshal allowlist: %w", err)
+	}
+	if f.Version != 1 {
+		return nil, fmt.Errorf("meta: allowlist version=%d unsupported (want 1)", f.Version)
+	}
+	out := make(map[string]string)
+	for _, e := range f.Entries {
+		for _, b := range e.Events {
+			topic := strings.TrimSpace(b.XRealityTopic)
+			if topic == "" {
+				continue
+			}
+			name := strings.TrimSpace(b.EventName)
+			if prev, ok := out[name]; ok && prev != topic {
+				return nil, fmt.Errorf("meta: event %q mapped to conflicting xreality topics %q and %q", name, prev, topic)
+			}
+			out[name] = topic
+		}
+	}
+	return out, nil
 }
 
 // LoadAllowlist parses an events_allowlist.yaml file. Fails fast on any
