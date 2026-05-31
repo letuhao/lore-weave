@@ -295,9 +295,91 @@ via `reportUnusedDisableDirectives: off` for this focused pass.)
 
 ---
 
-| Feature | Canonical draft | Diff vs live | Verdict (SUPPLEMENT/DRIFT/INTENTIONAL/OUTDATED) | Action |
+#### Translation (audited 2026-05-31) — live in browser
+
+Verified all 3 drafts on the running stack (matrix book = demo 封神演義 empty-state;
+viewer/workbench book = Dracula 3c with a real vi translation, 2 versions).
+
+| Draft | Live status | Verdict |
+|---|---|---|
+| `screen-translation-matrix` | **BUILT** — `TranslationTab`: 翻訳マトリックス, chapter×target-lang grid, per-cell status (完了), select-all, footer count, empty-state + 翻訳を開始 CTA. 0 console errors. | OK |
+| `screen-chapter-translations` (viewer) | **BUILT** — `ChapterTranslationsPage`: lang selector (en 原文 / vi 2版), version selector (v1/v2 with 使用中 in-use badge + timestamps), 再翻訳/比較モード, ブロック(40), コピー/レビュー, full block render. 0 errors. | OK |
+| `screen-translation-workbench` (block review) | **BUILT** — `TranslationReviewPage`/block-aligned: 戻る, en→vi, version combobox, "39/40 ブロック（1 件空）", すべて filter, 原文/翻訳 side-by-side block alignment w/ index+type tags. 0 errors. | OK |
+
+**Translation verdict: GREEN (all 3 built & work live).** No drift. (Note: the
+E2E test book's vi "translation" content mirrors the source — a test-data
+artifact, not a UI bug; structure renders correctly.)
+
+#### Chat (audited 2026-05-31) — live in browser
+
+| Draft facet | Live status | Verdict |
+|---|---|---|
+| `screen-chat` (base) | **BUILT** — `ChatPage`: conversation list (会話/新規/search), date-grouped (昨日/それ以前), per-convo model + actions (ピン留め/名前変更/アーカイブ/削除), empty-state. | OK |
+| `screen-chat-enhanced` | **BUILT** — thread render, 音声モード (voice mode), 音声設定, エクスポート, セッション設定, format selector (自動/簡潔/詳細/箇条書き/表), 熟考/高速 (thinking/fast) toggle, 音声入力 (STT), keyboard hints. | OK |
+| `screen-chat-context` | **BUILT** — ナレッジインジケーター (knowledge scope = グローバル) + コンテキストを添付 (attach context). | OK |
+
+**Chat verdict: GREEN (all 3 facets built & work live).** 0 console errors.
+(The 熟考 thinking-mode reasoning stream renders via `ThinkingBlock` — the
+component whose hook-order crash was fixed earlier this session.)
+
+#### Editor (audited 2026-05-31) — live in browser
+
+| Draft | Live status | Verdict |
+|---|---|---|
+| `screen-chapter-editor` | **BUILT** — `ChapterEditorPage`: title, TipTap rich editor (39 paragraphs), full toolbar (block types, marks, sub/sup, lists, quote, image/video/audio, code block, hr, undo/redo), char/word/paragraph counts, save-note, autosave status, status bar. | OK |
+| `screen-editor-modes` / `-classic` / `-mixed-media` | **BUILT** — クラシック/AI mode toggle (WA-1a) wired in header. | OK |
+| `screen-editor-version-history` | **BUILT** — right-panel 履歴 tab → リビジョン履歴 list (現在 + entries w/ note + timestamp + 表示). | OK |
+| `screen-editor-splitview` / `-workbench` (in-editor AI chat) | **AIチャット tab present but DISABLED** — = **ARCH-1** (rework to reuse canonical Chat component, not rebuild). Deferred, not in this pass. | DEFERRED (ARCH-1) |
+
+**Editor verdict: GREEN structurally** (all non-AI-panel facets built & render).
+AI-panel = ARCH-1 (deferred). **BUT found a backend/console finding ↓.**
+
+🔴 **EDITOR FINDING — LanguageTool grammar-check has NO backend (38 console 500s on every editor load).**
+The grammar feature is fully wired on the FE (vite proxy `/languagetool` →
+`http://localhost:8875`, `GrammarPlugin.ts` TipTap extension, `features/grammar/api.ts`
+client with a graceful-degrade circuit breaker) — but **no LanguageTool service
+is provisioned anywhere**: not in `infra/docker-compose.yml` (no `languagetool`
+service, no `8875`), no running container, port 8875 actively refuses
+connections. So the grammar toggle (文法・スペルチェック, **on by default**) fires on
+editor load and every check 500s.
+
+Two distinct issues:
+1. **INFRA/CONFIG GAP (PO decision)** — same class as worker-down / TTS-unregistered
+   / LLM-402: a feature wired in FE with no backend. Options: (a) add a
+   `languagetool` compose service (e.g. `erikvl87/languagetool` on :8010→8875) so
+   grammar works; (b) default the toggle **off** + mark grammar post-MVP. The
+   feature degrades *functionally* fine today (returns `[]`, no broken editing) —
+   it's the console noise + a dead default-on toggle that's the problem.
+2. **CODE SMELL (cheap fix, candidate now)** — `GrammarPlugin.runGrammarCheck`
+   checks **all blocks in parallel** (`Promise.all(blocks.map(checkGrammar))`,
+   line ~114). The circuit breaker in `api.ts` only opens *after the first
+   response returns* — but all 38 requests are already in-flight by then, so the
+   breaker (designed explicitly to stop "console-500 spam") **cannot suppress the
+   cold-load burst** (it does correctly suppress the subsequent debounced
+   edit-loop). Fix: probe ONE block first; if it fails, open the breaker and skip
+   the rest (38 console errors → 1). Note: the browser logs `Failed to load
+   resource` for any non-2xx fetch regardless of our `catch`, so 0 errors is only
+   reachable by *not sending* requests (probe-first, or default-off when absent).
+
+---
+
+### Cluster summary (all clusters audited 2026-05-31)
+
+| Feature | Canonical draft | Diff vs live | Verdict | Action |
 |---|---|---|---|---|
-| _(other clusters tbd)_ | | | | |
+| Reader (6) | reader-v2 parts 1–4 | v2 = extension of v1 | **GREEN** + v1 OUTDATED | archive `screen-reader.html`; register TTS model [config]; reader-social deferred |
+| Glossary (6) | management/entity-v2/attr/genre/integration | live ≥ drafts | **GREEN** + 1 crash fixed | archive `glossary_extraction_ui_draft.html` |
+| Translation (3) | matrix/viewer/workbench | extensions | **GREEN** | none |
+| Chat (3) | base/enhanced/context | facets | **GREEN** | none |
+| Editor (7) | chapter/modes/version-history | facets; AI-panel=ARCH-1 | **GREEN** struct. + LT finding | LanguageTool: PO decide infra vs default-off; probe-first fix candidate |
+| Components (2) | `00. components-v2-warm` | warm = current | — | archive `components-v2.html` |
+| Single-version (10) | 1:1 | — | **load-clean** (0 console err on sweep) | none |
+
+**Overall: NO real design drift found.** The drafts are extensions/facets, as the
+PO predicted. The audit's *value* was the live findings the status docs hid:
+translator-worker down (fixed), 2 Rules-of-Hooks crashes (fixed), TTS model not
+registered (config), and now **LanguageTool has no backend** (config + 1 code
+smell). Plus archive 3 outdated drafts.
 
 ---
 
@@ -310,4 +392,32 @@ container(s) alive + has restart policy · the action actually produces output
 
 | Feature | Runs live? | Needs fix / supplement |
 |---|---|---|
-| _(tbd)_ | | |
+| Reader (render/TTS/theme/review) | ✅ yes (0 err) | register local-tts-service as TTS model [config] |
+| Glossary (tab/entity/attr/genre) | ✅ yes (0 err, after hook fix) | archive `glossary_extraction_ui_draft.html` |
+| Translation (matrix/viewer/workbench) | ✅ yes (0 err) | — |
+| Chat (base/enhanced/context) | ✅ yes (0 err) | — |
+| Editor (editor/modes/version-history) | ✅ yes — editor works | **LanguageTool backend missing** (PO: add service OR default toggle off); probe-first code fix (38→1 console errs) |
+| Editor AI-panel | ⏸ disabled (ARCH-1) | reuse canonical Chat component — deferred |
+| Single-version ×10 | ✅ load-clean (0 err) | — |
+
+### Outputs — "needs fix / supplement" list (final)
+
+**Code (candidate fixes now):**
+- `GrammarPlugin.runGrammarCheck` probe-first so a missing LanguageTool doesn't
+  spam 38 console 500s on every editor load (38→1). Low-risk, S.
+
+**Config / infra (PO + provider setup, not code):**
+- LanguageTool: add a `languagetool` compose service, OR default the editor
+  grammar toggle off + mark post-MVP. (PO decision.)
+- Register `local-tts-service` (:9880, 55 voices) as a TTS model in
+  provider-registry so reader AI voices work.
+- Resolve LLM 402 "pricing not configured" on the model_ref (quota/pricing).
+
+**Drafts to archive (PO-classified OUTDATED):**
+- `screen-reader.html` (v1, superseded by reader-v2)
+- `components-v2.html` (superseded by `00. components-v2-warm.html`)
+- `glossary_extraction_ui_draft.html` (superseded by `ExtractionWizard`)
+
+**Deferred (post-MVP / large):**
+- ARCH-1 in-editor AI chat (reuse canonical Chat component) — editor AIチャット tab.
+- `screen-reader-social.html` (ratings/reviews/comments) — PO deferred post-MVP.
