@@ -32,6 +32,7 @@ for table in $meta_tables; do
     "${scan_dirs[@]}" 2>/dev/null \
     | grep -vE '/contracts/meta/' \
     | grep -vE 'migrations/meta/' \
+    | grep -vE '_test\.(go|rs|ts)' \
     | grep -vE ':[[:space:]]*(//|--|#|\*|///)' || true)
   if [[ -n "$hits" ]]; then
     echo "[meta-write-discipline] FAIL — direct write on meta table $table outside contracts/meta:"

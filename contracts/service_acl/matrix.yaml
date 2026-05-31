@@ -419,3 +419,19 @@ services:
         - SELECT
       meta_write_audit:
         - INSERT
+
+  # ── Cycle 37 (L7.*) — canary deploy controller
+  - name: canary-controller
+    svid_spiffe_id: spiffe://loreweave.dev/sa/canary-controller
+    notes: |
+      L7 canary deploy controller — reads deploy_audit (current stage +
+      canary_history) to drive cohort routing + stage advancement, and UPDATEs
+      deploy_audit (stage advance + appended canary_history) via contracts/meta
+      MetaWrite(). cohort_router is read-only; the controller is the sole writer.
+      NO DELETE (deploy_audit is append/advance-only).
+    permissions:
+      deploy_audit:
+        - SELECT
+        - UPDATE
+      meta_write_audit:
+        - INSERT
