@@ -1,4 +1,4 @@
-"""Pydantic models for the corrections read API."""
+"""Pydantic models for the learning-service read APIs."""
 
 from __future__ import annotations
 
@@ -46,3 +46,60 @@ class CorrectionStats(BaseModel):
     total: int
     by_diff_class: dict[str, int]
     by_target_type: dict[str, int]
+
+
+# ── Phase E2 — mining response models ────────────────────────────────
+
+
+class ConfigQualityRow(BaseModel):
+    genre: str | None = None
+    config_hash: str
+    run_count: int
+    succeeded: int
+    avg_entities_on_success: float | None = None
+    success_rate: float | None = None
+
+
+class ConfigQualityResponse(BaseModel):
+    items: list[ConfigQualityRow]
+    exploration: list[ConfigQualityRow]
+
+
+class ModelMatrixRow(BaseModel):
+    model_ref: str | None = None
+    scope: str | None = None
+    has_filter: bool
+    run_count: int
+    succeeded: int
+    weighted_outcome: float | None = None
+
+
+class ModelMatrixResponse(BaseModel):
+    items: list[ModelMatrixRow]
+
+
+class DriftRow(BaseModel):
+    target: str
+    base_default_version: str | None = None
+    affected_projects: int
+    distinct_after_values: int
+    drift_pattern: str
+    runs_with_outcome: int
+
+
+class DefaultDriftResponse(BaseModel):
+    items: list[DriftRow]
+
+
+class OutcomeRecomputeRow(BaseModel):
+    run_id: Any
+    project_id: Any
+    pipeline_outcome: str | None = None
+    created_at: Any
+    post_run_corrections: int
+    recomputed_outcome: str | None = None
+
+
+class OutcomeRecomputeResponse(BaseModel):
+    items: list[OutcomeRecomputeRow]
+    total: int

@@ -25,7 +25,7 @@ from app.events.handlers import (
     handle_run_completed,
 )
 from app.middleware.trace_id import TraceIdMiddleware
-from app.routers import corrections
+from app.routers import corrections, mining
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -75,6 +75,7 @@ app.add_middleware(
 )
 
 app.include_router(corrections.router)
+app.include_router(mining.router)
 
 
 @app.get("/health", response_class=PlainTextResponse)
