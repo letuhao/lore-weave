@@ -30,6 +30,31 @@ func TestDefaultPricing_UnknownModel_FailsClosed(t *testing.T) {
 	}
 }
 
+func TestDefaultPricing_LocalProviderKinds_FreeAcrossAllDimensions(t *testing.T) {
+	// Self-hosted providers run on the user's own compute → priced-free (every
+	// dimension explicit 0, NOT nil), so a local model never 402s regardless of
+	// operation (chat/tts/stt/image_gen/embedding). Regression-locks the
+	// TR-4-adjacent fix (2026-05-31): local TTS/LLM models were failing closed.
+	for _, kind := range []string{"lm_studio", "ollama", "kokoro_local", "whisper_local"} {
+		p, ok := DefaultPricing(kind, "any-local-model")
+		if !ok {
+			t.Fatalf("%s: local provider must pre-fill pricing (found=false)", kind)
+		}
+		dims := map[string]*float64{
+			"input": p.InputPerMTok, "output": p.OutputPerMTok,
+			"image": p.PerImage, "second": p.PerSecond, "kchar": p.PerKChar,
+		}
+		for name, v := range dims {
+			if v == nil {
+				t.Fatalf("%s: dimension %q must be non-nil (priced-free), got nil (unpriced→402)", kind, name)
+			}
+			if *v != 0 {
+				t.Fatalf("%s: dimension %q must be 0, got %v", kind, name, *v)
+			}
+		}
+	}
+}
+
 func TestDefaultPricing_ProviderKindIsPartOfKey(t *testing.T) {
 	// A model name registered under the wrong provider_kind is unknown —
 	// the key is the (provider_kind, model_name) pair.
