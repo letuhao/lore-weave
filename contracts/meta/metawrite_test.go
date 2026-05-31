@@ -137,6 +137,74 @@ func TestMetaWrite_OutboxAppendFailureRollsBack(t *testing.T) {
 	}
 }
 
+func TestMetaWrite_OutboxPayloadOverride(t *testing.T) {
+	allow := newStaticAllowlist(
+		[]string{"pii_kek"},
+		map[string]map[MetaWriteOp]string{"pii_kek": {OpUpdate: "user.erased"}},
+	)
+	cfg, _, out := newDefaultTestCfg(allow, nil)
+
+	domain := map[string]any{"user_id": "u-123", "erased_at": "2026-05-31T00:00:00Z"}
+	res, err := MetaWrite(context.Background(), cfg, MetaWriteIntent{
+		Table:          "pii_kek",
+		Operation:      OpUpdate,
+		PK:             map[string]any{"kek_id": "k-1"},
+		ExpectedBefore: map[string]any{"destroyed_at": nil},
+		NewValues:      map[string]any{"destroyed_at": "2026-05-31T00:00:00Z"},
+		Actor:          Actor{Type: ActorAdmin, ID: "op"},
+		Reason:         "gdpr erasure",
+		OutboxPayload:  domain, // P2/113 — emit the DOMAIN shape, not the CDC view
+	})
+	if err != nil {
+		t.Fatalf("MetaWrite: %v", err)
+	}
+	if len(out.events) != 1 {
+		t.Fatalf("want 1 outbox event, got %d", len(out.events))
+	}
+	got := out.events[0]
+	if got.EventName != "user.erased" {
+		t.Errorf("event_name = %q", got.EventName)
+	}
+	// Payload must be the EXACT domain map — not the generic {table,operation,pk,after}.
+	if got.Payload["user_id"] != "u-123" || got.Payload["erased_at"] != "2026-05-31T00:00:00Z" {
+		t.Errorf("override payload not used: %#v", got.Payload)
+	}
+	if _, leaked := got.Payload["table"]; leaked {
+		t.Errorf("generic CDC keys must NOT appear when OutboxPayload is set: %#v", got.Payload)
+	}
+	// /review-impl #1: the override must NOT bleed into the data write / audit
+	// path — those still reflect the real change (NewValues). The result echoes
+	// the data write's NewValues, so it must carry destroyed_at, not user_id.
+	if res.NewValues["destroyed_at"] != "2026-05-31T00:00:00Z" {
+		t.Errorf("data write must keep NewValues (the real change), got %#v", res.NewValues)
+	}
+	if _, bled := res.NewValues["user_id"]; bled {
+		t.Errorf("OutboxPayload (domain) must NOT leak into the data write/audit NewValues: %#v", res.NewValues)
+	}
+}
+
+func TestMetaWrite_DefaultOutboxPayloadWhenNoOverride(t *testing.T) {
+	allow := newStaticAllowlist(
+		[]string{"reality_registry"},
+		map[string]map[MetaWriteOp]string{"reality_registry": {OpInsert: "reality.created"}},
+	)
+	cfg, _, out := newDefaultTestCfg(allow, nil)
+	_, err := MetaWrite(context.Background(), cfg, MetaWriteIntent{
+		Table:     "reality_registry",
+		Operation: OpInsert,
+		PK:        map[string]any{"reality_id": uuid.New().String()},
+		NewValues: map[string]any{"status": "provisioning"},
+		Actor:     Actor{Type: ActorService, ID: "world-service"},
+		// no OutboxPayload → generic CDC default
+	})
+	if err != nil {
+		t.Fatalf("MetaWrite: %v", err)
+	}
+	if len(out.events) != 1 || out.events[0].Payload["table"] != "reality_registry" {
+		t.Errorf("expected generic CDC payload with table key, got %#v", out.events[0].Payload)
+	}
+}
+
 func TestMetaWrite_NoOutboxWhenAllowlistSilent(t *testing.T) {
 	allow := newStaticAllowlist([]string{"publisher_heartbeats"}, nil)
 	cfg, _, out := newDefaultTestCfg(allow, nil)

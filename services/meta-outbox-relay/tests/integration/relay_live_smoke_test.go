@@ -81,14 +81,17 @@ func TestLive_Relay_EndToEnd(t *testing.T) {
 	})
 
 	// Seed one cross-reality row whose xreality_topic targets our unique topic.
+	// Payload is the DOMAIN shape (P2/113): user_id + erased_at, plus a "big"
+	// field = 2^53+1 (a value float64 CANNOT represent exactly — proves the
+	// relay preserves int64 precision via json.Number, not a lossy round-trip).
 	evID := uuid.New()
-	// The "big" field is 2^53+1 — a value float64 CANNOT represent exactly. If
-	// the relay round-tripped payload through map[string]any it would corrupt to
-	// 9007199254740992; raw passthrough must preserve 9007199254740993.
+	userID := uuid.New()
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO meta_outbox (event_id, event_name, aggregate_id, payload, xreality_topic, recorded_at_nanos)
-		 VALUES ($1,'user.erased','u-smoke','{"table":"pii_kek","operation":"UPDATE","big":9007199254740993}'::jsonb,$2,42)`,
-		evID, xrealTopic); err != nil {
+		 VALUES ($1,'user.erased',$2,
+		         jsonb_build_object('user_id',$2::text,'erased_at','2026-05-31T00:00:00Z','big',9007199254740993::bigint),
+		         $3,42)`,
+		evID, userID, xrealTopic); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
@@ -123,7 +126,9 @@ func TestLive_Relay_EndToEnd(t *testing.T) {
 		t.Error("row not marked published after drain")
 	}
 
-	// Both streams must carry the envelope (same event_id).
+	// Both streams must carry the envelope (same event_id); each verified per its
+	// contract: home = generic (payload-as-json, no promotion); xreality = the
+	// domain fields promoted to top-level (so 071 reads user_id directly).
 	for _, stream := range []string{homeStream, xrealTopic} {
 		msgs, err := rdb.XRange(ctx, stream, "-", "+").Result()
 		if err != nil {
@@ -131,16 +136,33 @@ func TestLive_Relay_EndToEnd(t *testing.T) {
 		}
 		found := false
 		for _, msg := range msgs {
-			if msg.Values["event_id"] == evID.String() {
-				found = true
-				if msg.Values["event_name"] != "user.erased" {
-					t.Errorf("%s: event_name mismatch: %v", stream, msg.Values["event_name"])
+			if msg.Values["event_id"] != evID.String() {
+				continue
+			}
+			found = true
+			if msg.Values["event_name"] != "user.erased" {
+				t.Errorf("%s: event_name mismatch: %v", stream, msg.Values["event_name"])
+			}
+			payload, _ := msg.Values["payload"].(string)
+			if !strings.Contains(payload, "9007199254740993") {
+				t.Errorf("%s: payload lost int64 precision: %q", stream, payload)
+			}
+			if stream == xrealTopic {
+				// Promotion: domain keys are top-level fields (071 reads these).
+				if msg.Values["user_id"] != userID.String() {
+					t.Errorf("xreality: user_id not promoted to a top-level field: %v", msg.Values["user_id"])
 				}
-				// Payload fidelity: the 2^53+1 int must survive verbatim (raw
-				// jsonb passthrough — NOT a float64-lossy map round-trip).
-				payload, _ := msg.Values["payload"].(string)
-				if !strings.Contains(payload, "9007199254740993") {
-					t.Errorf("%s: payload lost int64 precision: %q", stream, payload)
+				if msg.Values["erased_at"] != "2026-05-31T00:00:00Z" {
+					t.Errorf("xreality: erased_at not promoted: %v", msg.Values["erased_at"])
+				}
+				// json.Number promotion preserves the 2^53+1 int exactly.
+				if msg.Values["big"] != "9007199254740993" {
+					t.Errorf("xreality: promoted int lost precision: %v", msg.Values["big"])
+				}
+			} else {
+				// Home stream must NOT promote — domain keys stay inside payload.
+				if _, promoted := msg.Values["user_id"]; promoted {
+					t.Errorf("home stream must not promote payload keys; found top-level user_id")
 				}
 			}
 		}

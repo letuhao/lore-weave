@@ -43,6 +43,16 @@ type MetaWriteIntent struct {
 	Actor          Actor
 	Reason         string // required for destructive ops (DELETE)
 	RequestContext RequestContext
+	// OutboxPayload OPTIONALLY overrides the emitted outbox event's payload
+	// (P2/113). nil ⇒ the generic CDC payload {table, operation, pk, after}.
+	// When set, this exact map is the OutboxEvent.Payload — so a caller can emit
+	// the canonical DOMAIN event shape (e.g. XRealityUserErasedV1 {user_id,
+	// erased_at}) that cross-reality consumers expect, instead of the CDC view.
+	// Only consulted when the (table, op) is allowlisted to emit an event AND a
+	// cfg.Outbox is configured. The caller owns this payload's PII posture
+	// (the generic CDC default's unscrubbed-NewValues caveat — 114 — does not
+	// apply; this is exactly what the caller put here).
+	OutboxPayload map[string]any
 }
 
 // Validate checks the intent against fail-fast rules:

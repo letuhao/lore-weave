@@ -302,17 +302,24 @@ func writeOneInTx(ctx context.Context, cfg *Config, tx Tx, in MetaWriteIntent) (
 	// Outbox event in same TX (if registered + appender configured)
 	if cfg.Outbox != nil {
 		if eventName, ok := cfg.Allowlist.EmitsEvent(in.Table, in.Operation); ok {
-			ev := OutboxEvent{
-				EventID:     cfg.UUIDGen.New(),
-				EventName:   eventName,
-				AggregateID: pkAsString(in.PK),
-				Payload: map[string]any{
+			// Payload: a caller-supplied OutboxPayload (P2/113 — the canonical
+			// DOMAIN event shape) overrides the generic CDC default. Default is
+			// the change view {table, operation, pk, after}.
+			payload := in.OutboxPayload
+			if payload == nil {
+				payload = map[string]any{
 					"table":     in.Table,
 					"operation": string(in.Operation),
 					"pk":        in.PK,
 					"after":     in.NewValues,
-				},
-				RecordedAt: cfg.Clock.NowUnixNano(),
+				}
+			}
+			ev := OutboxEvent{
+				EventID:     cfg.UUIDGen.New(),
+				EventName:   eventName,
+				AggregateID: pkAsString(in.PK),
+				Payload:     payload,
+				RecordedAt:  cfg.Clock.NowUnixNano(),
 			}
 			if err := cfg.Outbox.Append(ctx, tx, ev); err != nil {
 				return nil, fmt.Errorf("meta: outbox append: %w", err)

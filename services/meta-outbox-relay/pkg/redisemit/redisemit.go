@@ -11,7 +11,9 @@
 package redisemit
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -47,38 +49,91 @@ func (e *Emitter) Emit(ctx context.Context, row drain.Row) error {
 }
 
 // EmitXReality XADDs the row to its xreality_topic (the cross-reality bridge).
+//
+// Unlike the home stream, the xreality emit PROMOTES the (domain) payload's
+// top-level keys to top-level Redis fields (P2/113) — so canonical-envelope
+// consumers like meta-worker/user_erased_writer (071), which read top-level
+// `user_id`/`erased_at`, work directly. The full raw payload is still attached
+// as `payload` for consumers that want the whole object. Reserved envelope
+// fields (event_id/event_name/aggregate_id/recorded_at_nanos/payload) win on
+// any key collision.
 func (e *Emitter) EmitXReality(ctx context.Context, row drain.Row) error {
 	if row.XRealityTopic == "" {
 		return errors.New("redisemit: EmitXReality called with empty xreality_topic")
 	}
-	return e.xadd(ctx, row.XRealityTopic, row)
-}
-
-func (e *Emitter) xadd(ctx context.Context, stream string, row drain.Row) error {
-	// Redis Stream field values must be scalars; the payload is already the raw
-	// jsonb bytes from meta_outbox — pass it through verbatim (no remarshal, so
-	// int64 precision is preserved). Defensive: a zero-length payload becomes an
-	// empty object so a consumer's JSON parse never sees "".
 	payload := string(row.Payload)
 	if payload == "" {
 		payload = "{}"
 	}
-	args := &redis.XAddArgs{
-		Stream: stream,
-		Values: map[string]any{
-			"event_id":          row.EventID,
-			"event_name":        row.EventName,
-			"aggregate_id":      row.AggregateID,
-			"payload":           payload,
-			"recorded_at_nanos": row.RecordedAtNanos,
-		},
+	values := map[string]any{}
+	// Promote a flat domain payload's top-level scalar keys to fields. Numbers
+	// are decoded with UseNumber so int64 precision survives. Non-object payloads
+	// (or a decode error) simply skip promotion — `payload` still carries it.
+	if len(row.Payload) > 0 {
+		dec := json.NewDecoder(bytes.NewReader(row.Payload))
+		dec.UseNumber()
+		var obj map[string]any
+		if err := dec.Decode(&obj); err == nil {
+			for k, v := range obj {
+				values[k] = fieldValue(v)
+			}
+		}
 	}
+	// Reserved envelope fields win on collision.
+	values["event_id"] = row.EventID
+	values["event_name"] = row.EventName
+	values["aggregate_id"] = row.AggregateID
+	values["recorded_at_nanos"] = row.RecordedAtNanos
+	values["payload"] = payload
+	return e.xaddValues(ctx, row.XRealityTopic, row.EventID, values)
+}
+
+// fieldValue renders a decoded JSON value as a Redis Stream scalar field.
+// json.Number → its exact string (no float64 precision loss); strings/bools
+// pass through; nested objects/arrays are re-encoded as a JSON string.
+func fieldValue(v any) any {
+	switch x := v.(type) {
+	case string:
+		return x
+	case json.Number:
+		return x.String()
+	case bool:
+		return x
+	case nil:
+		return ""
+	default:
+		b, _ := json.Marshal(x)
+		return string(b)
+	}
+}
+
+func (e *Emitter) xadd(ctx context.Context, stream string, row drain.Row) error {
+	// Home stream: generic envelope; the payload is the raw jsonb bytes from
+	// meta_outbox passed through verbatim (no remarshal → int64 precision kept).
+	// Defensive: a zero-length payload becomes an empty object so a consumer's
+	// JSON parse never sees "".
+	payload := string(row.Payload)
+	if payload == "" {
+		payload = "{}"
+	}
+	return e.xaddValues(ctx, stream, row.EventID, map[string]any{
+		"event_id":          row.EventID,
+		"event_name":        row.EventName,
+		"aggregate_id":      row.AggregateID,
+		"payload":           payload,
+		"recorded_at_nanos": row.RecordedAtNanos,
+	})
+}
+
+// xaddValues performs the XADD with the configured MAXLEN cap.
+func (e *Emitter) xaddValues(ctx context.Context, stream, eventID string, values map[string]any) error {
+	args := &redis.XAddArgs{Stream: stream, Values: values}
 	if e.streamMaxLen > 0 {
 		args.MaxLen = e.streamMaxLen
 		args.Approx = true
 	}
 	if err := e.rdb.XAdd(ctx, args).Err(); err != nil {
-		return fmt.Errorf("redisemit: XADD %s event %s: %w", stream, row.EventID, err)
+		return fmt.Errorf("redisemit: XADD %s event %s: %w", stream, eventID, err)
 	}
 	return nil
 }
