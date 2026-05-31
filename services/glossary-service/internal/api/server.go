@@ -98,6 +98,9 @@ func (s *Server) Router() http.Handler {
 		// no user JWT, leaving the canonical entity + original canon untouched.
 		r.Post("/books/{book_id}/entities/{entity_id}/enrichments", s.internalUpsertEnrichments)
 		r.Delete("/books/{book_id}/entities/{entity_id}/enrichments", s.internalDeleteEnrichments)
+		// Per-entity enrichment coverage for the lore-enrichment gap engine (D1
+		// gap-auto-detect): entities + mention_count + promoted-enrichment dims.
+		r.Get("/books/{book_id}/enrichment-coverage", s.internalEnrichmentCoverage)
 	})
 
 	r.Route("/v1/glossary", func(r chi.Router) {

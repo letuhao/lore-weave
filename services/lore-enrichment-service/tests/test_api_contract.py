@@ -176,8 +176,8 @@ def test_stub_families_return_200_or_501(client):
     spec = _load_spec()
     failures = []
     for spec_path, methods in spec["paths"].items():
-        if "/proposals" in spec_path or "/jobs" in spec_path:
-            continue  # real C13/C14 routes — covered by their own suites
+        if "/proposals" in spec_path or "/jobs" in spec_path or "/detect-gaps" in spec_path:
+            continue  # real C13/C14/D1 routes — covered by their own suites
         url = _spec_to_concrete(spec_path)
         params = {}
         for op in methods.values():

@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from loreweave_obs import current_otel_trace_id, setup_tracing
 
 from app.api import eval as eval_api
-from app.api import jobs, observability, proposals, sources, templates
+from app.api import gaps, jobs, observability, proposals, sources, templates
 from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool
@@ -90,6 +90,7 @@ app.include_router(observability.router)
 # C3 contract-freeze stub routers (one per resource family). Behaviour ships in
 # later cycles; these mount the frozen OpenAPI surface as 200/501 stubs.
 app.include_router(jobs.router)
+app.include_router(gaps.router)  # D1 — gap auto-detection (read-only triage)
 app.include_router(proposals.router)
 app.include_router(sources.router)
 app.include_router(templates.router)

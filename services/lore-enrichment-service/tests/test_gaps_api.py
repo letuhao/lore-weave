@@ -1,0 +1,91 @@
+"""D1 — gap auto-detection: coverage-builder unit + detect-gaps endpoint tests.
+
+NO live stack: the glossary coverage read is respx-mocked; the engine + builder
+are pure. Proves the C7 engine is now wired to a production path (QC F-C7-1).
+"""
+
+from __future__ import annotations
+
+from uuid import uuid4
+
+import jwt as pyjwt
+import pytest
+import respx
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from app.api import gaps as gaps_api
+from app.api.gaps import coverages_from_rows
+from app.clients.glossary import EntityCoverageRow
+from app.config import settings
+from app.gaps.model import Dimension, EntityKind
+
+OWNER = "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c"
+
+
+def _row(name, kind="location", mentions=0, dims=()):
+    return EntityCoverageRow(entity_id="e", canonical_name=name, kind=kind,
+                             mention_count=mentions, dimensions=tuple(dims))
+
+
+def test_coverages_from_rows_maps_labels_and_skips_unmodeled():
+    rows = [
+        _row("蓬萊", mentions=3, dims=("历史", "features")),
+        _row("", mentions=0),                       # empty name → skip
+        _row("某人", kind="character"),              # unmodeled kind → skip
+        _row("某物", kind="bogus-kind"),             # unknown kind string → skip
+        _row("X", dims=("不存在的维度",)),            # unknown dim dropped (no drift)
+    ]
+    covs = coverages_from_rows(rows)
+    assert len(covs) == 2  # 蓬萊 + X
+    by_name = {c.canonical_name: c for c in covs}
+    assert by_name["蓬萊"].entity_kind == EntityKind.LOCATION
+    assert set(by_name["蓬萊"].present_dimensions) == {Dimension.HISTORY, Dimension.FEATURES}
+    assert by_name["X"].present_dimensions == ()  # unknown label dropped
+
+
+def _app() -> FastAPI:
+    app = FastAPI()
+    app.include_router(gaps_api.router)
+    return app
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_detect_gaps_endpoint_returns_ranked_gaps():
+    book, project = uuid4(), uuid4()
+    respx.get(
+        f"{settings.glossary_service_url}/internal/books/{book}/enrichment-coverage"
+    ).respond(200, json={"entities": [
+        {"entity_id": "e1", "canonical_name": "蓬萊", "kind": "location",
+         "mention_count": 3, "dimensions": ["历史"]},
+        {"entity_id": "e2", "canonical_name": "玉虛宮", "kind": "location",
+         "mention_count": 55, "dimensions": []},
+    ]})
+    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    resp = TestClient(_app()).post(
+        f"/v1/lore-enrichment/projects/{project}/detect-gaps",
+        json={"book_id": str(book)},
+        headers={"Authorization": f"Bearer {bearer}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["entities_scanned"] == 2
+    assert body["gap_count"] == 2  # both have missing dimensions
+    # 玉虛宮 (55 mentions, all 5 dims missing) outranks 蓬萊 (3 mentions, 4 missing).
+    assert body["gaps"][0]["canonical_name"] == "玉虛宮"
+    assert body["gaps"][0]["rank"] == 1
+    assert body["gaps"][0]["present_dimensions"] == []
+    # 蓬萊's promoted 历史 maps to the Dimension enum value 'history' (present).
+    penglai = next(g for g in body["gaps"] if g["canonical_name"] == "蓬萊")
+    assert "history" in penglai["present_dimensions"]
+    assert "history" not in penglai["missing_dimensions"]
+
+
+@pytest.mark.asyncio
+async def test_detect_gaps_requires_auth():
+    resp = TestClient(_app()).post(
+        f"/v1/lore-enrichment/projects/{uuid4()}/detect-gaps",
+        json={"book_id": str(uuid4())},
+    )
+    assert resp.status_code == 401

@@ -535,6 +535,66 @@ paths:
         '503':
           $ref: '#/components/responses/ErrorResponse'
 
+  # ────────────────────────────── gaps (D1) ─────────────────────────────
+  /v1/lore-enrichment/projects/{project_id}/detect-gaps:
+    post:
+      tags: [gaps]
+      summary: Detect + rank under-described entities (gap auto-detection, read-only)
+      description: >
+        Reads the book's per-entity enrichment coverage from the glossary SSOT,
+        runs the C7 gap-detection engine, and returns RANKED candidate gaps
+        (descending score) for the author to triage. READ-ONLY — it surfaces
+        under-described entities; it does not start enrichment (use the jobs
+        endpoint with chosen targets for that).
+      operationId: detectEnrichmentGaps
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [book_id]
+              properties:
+                book_id:
+                  type: string
+                  format: uuid
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 1000
+                  default: 200
+      responses:
+        '200':
+          description: OK — ranked candidate gaps for the project.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project_id: { type: string, format: uuid }
+                  book_id: { type: string, format: uuid }
+                  entities_scanned: { type: integer }
+                  gap_count: { type: integer }
+                  gaps:
+                    type: array
+                    items:
+                      type: object
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+
   # ────────────────────────────── sources ──────────────────────────────
   /v1/lore-enrichment/sources:
     get:

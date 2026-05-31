@@ -571,3 +571,95 @@ func TestLoadEntityEnrichments_OnlyPromotedLiveRows(t *testing.T) {
 		t.Errorf("wrong row surfaced: %+v", got[0])
 	}
 }
+
+// ── D1: enrichment-coverage read (gap-auto-detect input) ─────────────────────
+
+func TestEnrichmentCoverage_RequiresInternalToken(t *testing.T) {
+	srv, _ := newCanonContentServer(t)
+	req := httptest.NewRequest(http.MethodGet,
+		"/internal/books/00000000-0000-0000-0000-000000000001/enrichment-coverage", nil)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("no token: want 401, got %d", w.Code)
+	}
+}
+
+// TestEnrichmentCoverage_ReportsPromotedDimsAndMentions proves the coverage read
+// returns, per entity: the PROMOTED enrichment dimensions (proposed excluded),
+// mention_count, and orders by mention_count desc.
+func TestEnrichmentCoverage_ReportsPromotedDimsAndMentions(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runEnrichmentMigrations(t, pool)
+	bookID := "00000000-0000-0000-0005-000000000001"
+
+	// Two entities: 蓬萊 (1 promoted dim + 1 proposed dim, 3 mentions) and a
+	// well-known entity with 0 enrichment + 1 mention.
+	penglai := seedIdentityOnlyEntity(t, pool, bookID, "蓬萊")
+	other := seedIdentityOnlyEntity(t, pool, bookID, "玉虛宮")
+
+	mkEnr := func(eid, dim, status, proposal string) {
+		var pb any
+		if status == "promoted" {
+			pb = "00000000-0000-0000-0005-0000000000ff"
+		}
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO entity_enrichments
+			   (entity_id,book_id,dimension,content,technique,confidence,proposal_id,review_status,promoted_by)
+			 VALUES ($1,$2,$3,'c','retrieval',0.3,$4,$5,$6)`,
+			eid, bookID, dim, proposal, status, pb); err != nil {
+			t.Fatalf("seed enrichment: %v", err)
+		}
+	}
+	mkEnr(penglai, "历史", "promoted", "00000000-0000-0000-0005-0000000000a1")
+	mkEnr(penglai, "地理", "proposed", "00000000-0000-0000-0005-0000000000a2") // excluded
+	for i := range 3 {
+		ch := "00000000-0000-0000-0005-0000000000c" + string(rune('0'+i)) // valid 36-char UUIDs
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO chapter_entity_links(entity_id,chapter_id) VALUES($1,$2)`, penglai, ch); err != nil {
+			t.Fatalf("seed chapter link: %v", err)
+		}
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO chapter_entity_links(entity_id,chapter_id) VALUES($1,$2)`,
+		other, "00000000-0000-0000-0005-0000000000df"); err != nil {
+		t.Fatalf("seed chapter link: %v", err)
+	}
+
+	srv, token := newCanonContentServer(t)
+	srv.pool = pool
+	req := httptest.NewRequest(http.MethodGet,
+		"/internal/books/"+bookID+"/enrichment-coverage", nil)
+	req.Header.Set("X-Internal-Token", token)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("coverage: want 200, got %d body=%s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Entities []struct {
+			CanonicalName string   `json:"canonical_name"`
+			Kind          string   `json:"kind"`
+			MentionCount  int      `json:"mention_count"`
+			Dimensions    []string `json:"dimensions"`
+		} `json:"entities"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Entities) != 2 {
+		t.Fatalf("want 2 entities, got %d", len(resp.Entities))
+	}
+	// ordered by mention_count desc → 蓬萊 (3) first.
+	first := resp.Entities[0]
+	if first.CanonicalName != "蓬萊" || first.MentionCount != 3 {
+		t.Errorf("want 蓬萊/3 first, got %s/%d", first.CanonicalName, first.MentionCount)
+	}
+	if len(first.Dimensions) != 1 || first.Dimensions[0] != "历史" {
+		t.Errorf("want only the PROMOTED dim [历史] (proposed 地理 excluded), got %v", first.Dimensions)
+	}
+	if len(resp.Entities[1].Dimensions) != 0 {
+		t.Errorf("the un-enriched entity must have 0 coverage dims, got %v", resp.Entities[1].Dimensions)
+	}
+}

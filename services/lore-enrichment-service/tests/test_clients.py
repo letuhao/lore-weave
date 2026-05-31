@@ -11,7 +11,7 @@ import pytest
 import respx
 
 from app.clients.book import BookClient, BookServiceError
-from app.clients.glossary import GlossaryClient, GlossaryServiceError
+from app.clients.glossary import EntityCoverageRow, GlossaryClient, GlossaryServiceError
 from app.clients.knowledge import (
     BuiltContext,
     GraphStats,
@@ -209,6 +209,29 @@ async def test_glossary_internal_token_header():
     await g.list_entities(book_id=book)
     await g.aclose()
     assert route.calls.last.request.headers["X-Internal-Token"] == "glossary-tok"
+
+
+@respx.mock
+async def test_glossary_list_enrichment_coverage_parses_and_internal_token():
+    book = uuid4()
+    route = respx.get(f"{GL}/internal/books/{book}/enrichment-coverage").respond(
+        200,
+        json={"entities": [
+            {"entity_id": "e1", "canonical_name": "蓬萊", "kind": "location",
+             "mention_count": 3, "dimensions": ["历史"]},
+            {"entity_id": "e2", "canonical_name": "玉虛宮", "kind": "location",
+             "mention_count": 1, "dimensions": []},
+        ]},
+    )
+    g = GlossaryClient(base_url=GL, internal_token="glossary-tok")
+    rows = await g.list_enrichment_coverage(book_id=book)
+    await g.aclose()
+    assert route.calls.last.request.headers["X-Internal-Token"] == "glossary-tok"
+    assert len(rows) == 2
+    assert isinstance(rows[0], EntityCoverageRow)
+    assert rows[0].canonical_name == "蓬萊" and rows[0].mention_count == 3
+    assert rows[0].dimensions == ("历史",)
+    assert rows[1].dimensions == ()
 
 
 @respx.mock

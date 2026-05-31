@@ -31,6 +31,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -298,5 +299,93 @@ func (s *Server) internalDeleteEnrichments(w http.ResponseWriter, r *http.Reques
 		"book_id":      bookID.String(),
 		"proposal_id":  proposalID.String(),
 		"soft_deleted": softDeleted,
+	})
+}
+
+// internalEnrichmentCoverage lists the book's entities with the per-dimension
+// enrichment coverage the lore-enrichment gap engine (C7) needs to build
+// EntityCoverage and detect under-described entities (D1 gap-auto-detect).
+//
+//	GET /internal/books/{book_id}/enrichment-coverage
+//
+// Per live entity: canonical name, kind code, mention_count (chapter links —
+// the C6 ranking signal), and the DISTINCT PROMOTED enrichment dimensions
+// (review_status='promoted', not soft-deleted) it already has. The lore side
+// treats those as `present_dimensions`; the rest of the dimension table is the
+// gap. Proposed (still-quarantined) enrichment is intentionally NOT counted as
+// coverage — an un-promoted dimension is still a gap. Ordered by mention_count
+// desc (most-referenced first) then entity_id for a stable page.
+func (s *Server) internalEnrichmentCoverage(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	limit := 200
+	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 1000 {
+			limit = n
+		}
+	}
+
+	rows, err := s.pool.Query(r.Context(), `
+		SELECT
+			e.entity_id,
+			k.code AS kind_code,
+			COALESCE(name_av.original_value, '') AS name,
+			(SELECT COUNT(*) FROM chapter_entity_links cel WHERE cel.entity_id = e.entity_id) AS mention_count,
+			COALESCE(ARRAY(
+				SELECT DISTINCT ee.dimension FROM entity_enrichments ee
+				WHERE ee.entity_id = e.entity_id
+				  AND ee.review_status = 'promoted' AND ee.deleted_at IS NULL
+			), '{}') AS dimensions
+		FROM glossary_entities e
+		JOIN entity_kinds k ON k.kind_id = e.kind_id
+		LEFT JOIN entity_attribute_values name_av
+			ON name_av.entity_id = e.entity_id
+			AND name_av.attr_def_id = (
+				SELECT attr_def_id FROM attribute_definitions
+				WHERE kind_id = e.kind_id AND code = 'name' LIMIT 1
+			)
+		WHERE e.book_id = $1 AND e.deleted_at IS NULL
+		ORDER BY mention_count DESC, e.entity_id
+		LIMIT $2`, bookID, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "coverage query failed")
+		return
+	}
+	defer rows.Close()
+
+	type coverageItem struct {
+		EntityID      string   `json:"entity_id"`
+		CanonicalName string   `json:"canonical_name"`
+		Kind          string   `json:"kind"`
+		MentionCount  int      `json:"mention_count"`
+		Dimensions    []string `json:"dimensions"`
+	}
+	items := make([]coverageItem, 0)
+	for rows.Next() {
+		var it coverageItem
+		var eid, kind, name string
+		var mentions int
+		var dims []string
+		if err := rows.Scan(&eid, &kind, &name, &mentions, &dims); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "coverage scan failed")
+			return
+		}
+		it.EntityID, it.Kind, it.CanonicalName, it.MentionCount = eid, kind, name, mentions
+		it.Dimensions = dims
+		if it.Dimensions == nil {
+			it.Dimensions = []string{}
+		}
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "coverage rows failed")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"book_id":  bookID.String(),
+		"entities": items,
 	})
 }
