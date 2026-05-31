@@ -466,6 +466,7 @@ def _run_payload(
         "metrics": metrics,
         "outcome": outcome,
         "outcome_source": "pipeline",
+        "genre": job.genre,
         "emitted_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -498,6 +499,10 @@ class JobRow:
     # JSONB). {} for every project today; resolve_effective_config merges
     # it onto the global defaults to produce the run's config snapshot.
     extraction_config: dict | None = None
+    # E2 — user-set genre tag; copied from knowledge_projects.genre at
+    # job-fetch time and forwarded into the run-completed payload so
+    # extraction_runs.genre is populated for genre-segment mining.
+    genre: str | None = None
 
 
 # ── DB helpers ───────────────────────────────────────────────────────
@@ -515,7 +520,8 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
         SELECT j.job_id, j.user_id, j.project_id, j.scope, j.scope_range,
                j.status, j.llm_model, j.embedding_model, j.max_spend_usd,
                j.items_total, j.items_processed, j.current_cursor,
-               j.cost_spent_usd, p.embedding_dimension, p.extraction_config
+               j.cost_spent_usd, p.embedding_dimension, p.extraction_config,
+               p.genre
         FROM extraction_jobs j
         LEFT JOIN knowledge_projects p
           ON p.user_id = j.user_id AND p.project_id = j.project_id
@@ -550,6 +556,7 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
             cost_spent_usd=r["cost_spent_usd"],
             embedding_dimension=r["embedding_dimension"],
             extraction_config=ec if isinstance(ec, dict) else None,
+            genre=r["genre"],
         ))
     return result
 

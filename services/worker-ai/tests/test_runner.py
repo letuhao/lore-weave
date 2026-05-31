@@ -1305,12 +1305,14 @@ async def test_get_running_jobs_pulls_embedding_dimension(monkeypatch):
         "cost_spent_usd": Decimal("0"),
         "embedding_dimension": 1024,
         "extraction_config": {},
+        "genre": "Tiên hiệp",
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
     jobs = await _get_running_jobs(pool)
     assert len(jobs) == 1
     assert jobs[0].embedding_dimension == 1024
+    assert jobs[0].genre == "Tiên hiệp"
 
 
 @pytest.mark.asyncio
@@ -1326,6 +1328,7 @@ async def test_get_running_jobs_handles_null_embedding_dimension():
         "cost_spent_usd": Decimal("0"),
         "embedding_dimension": None,
         "extraction_config": None,
+        "genre": None,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])

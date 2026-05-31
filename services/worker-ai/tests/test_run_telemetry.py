@@ -200,7 +200,7 @@ def test_run_payload_key_set_is_pinned_to_consumer_contract():
         "run_id", "user_id", "project_id", "book_id", "job_id", "scope",
         "chapter_ref", "config_hash", "resolved_config", "prompt_versions",
         "base_default_version", "model_ref", "metrics", "outcome",
-        "outcome_source", "emitted_at",
+        "outcome_source", "genre", "emitted_at",
     }
 
 
@@ -326,6 +326,31 @@ def test_writer_autocreate_default_reads_env(monkeypatch):
     monkeypatch.setenv("KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED", "false")
     importlib.reload(runner)
     assert runner._WRITER_AUTOCREATE_DEFAULT is False
+
+
+def test_run_payload_forwards_genre():
+    """E2 — genre from JobRow appears as top-level key in the run payload."""
+    job = _job(genre="Tiên hiệp")
+    snapshot, cfg_hash, base_version = _build_run_config(job)
+    payload = _run_payload(
+        job=job, book_id=None, chapter_ref="ch01",
+        snapshot=snapshot, cfg_hash=cfg_hash, base_version=base_version,
+        outcome="succeeded", result=None,
+    )
+    assert payload["genre"] == "Tiên hiệp"
+
+
+def test_run_payload_genre_none_when_unset():
+    """E2 — genre=None propagates (not dropped from wire)."""
+    job = _job(genre=None)
+    snapshot, cfg_hash, base_version = _build_run_config(job)
+    payload = _run_payload(
+        job=job, book_id=None, chapter_ref="ch01",
+        snapshot=snapshot, cfg_hash=cfg_hash, base_version=base_version,
+        outcome="succeeded", result=None,
+    )
+    assert "genre" in payload
+    assert payload["genre"] is None
 
 
 async def test_extract_and_persist_explicit_none_disables_not_global(monkeypatch):
