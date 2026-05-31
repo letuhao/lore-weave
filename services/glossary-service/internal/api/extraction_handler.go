@@ -1077,7 +1077,13 @@ func (s *Server) internalListEntities(w http.ResponseWriter, r *http.Request) {
 			k.code AS kind_code,
 			COALESCE(name_av.original_value, '') AS name,
 			COALESCE(alias_av.original_value, '') AS aliases_raw,
-			short_av.original_value AS short_description
+			-- Prefer the AUTHORED canon column (the SSOT short_description set via
+			-- the canon-content path / wiki — see DEFERRED-053) over the EAV
+			-- attribute, which extract-entities cannot populate (silent no-op).
+			-- The enrichment contradiction check (F-C12-1) reads this to detect a
+			-- generated fact that NEGATES authored canon. Falls back to the EAV
+			-- value when the column is null (backward-compatible).
+			COALESCE(NULLIF(e.short_description, ''), short_av.original_value) AS short_description
 		FROM glossary_entities e
 		JOIN entity_kinds k ON k.kind_id = e.kind_id
 		LEFT JOIN entity_attribute_values name_av

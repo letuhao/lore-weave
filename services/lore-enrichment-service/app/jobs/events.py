@@ -67,6 +67,8 @@ class JobEventType(str, Enum):
     STARTED = "lore_enrichment.job.started"
     STAGE_COMPLETED = "lore_enrichment.job.stage_completed"
     PROPOSAL_CREATED = "lore_enrichment.job.proposal_created"
+    #: C3: an egregious proposal auto-rejected to a terminal `rejected` row (audit).
+    PROPOSAL_AUTO_REJECTED = "lore_enrichment.job.proposal_auto_rejected"
     PAUSED = "lore_enrichment.job.paused"
     COMPLETED = "lore_enrichment.job.completed"
     FAILED = "lore_enrichment.job.failed"
@@ -109,6 +111,8 @@ def _record_event_metric(event: "JobEvent") -> None:
                 else "enriched"
             )
             metrics.proposals_created_total.labels(source_type=source_type).inc()
+        elif et is JobEventType.PROPOSAL_AUTO_REJECTED:
+            metrics.proposals_auto_rejected_total.inc()
         elif et is JobEventType.STAGE_COMPLETED:
             elapsed = event.data.get("elapsed_seconds")
             technique = str(event.data.get("technique") or "")

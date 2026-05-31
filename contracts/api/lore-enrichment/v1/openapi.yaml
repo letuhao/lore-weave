@@ -936,6 +936,14 @@ components:
           type: string
           format: uuid
           description: Per-project scope (Q3). The user is taken from the JWT.
+        book_id:
+          type: string
+          format: uuid
+          description: >
+            Optional glossary book scope for the C12 contradiction check
+            (C3/F-C12-1). When set, the runner reads each entity's AUTHORED canon
+            and AUTO-REJECTS a generated fact that negates it. Absent → the
+            contradiction check degrades honestly (no false-green).
         technique:
           $ref: '#/components/schemas/Technique'
           description: >

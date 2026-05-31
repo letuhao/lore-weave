@@ -61,6 +61,7 @@ class PersistedProposal:
     pending_validation: bool
     dimensions: dict[str, str]
     deduped: bool = False
+    rejected_reason: str | None = None
 
 
 def _dimensions_from_facts(facts: list[EnrichedFact]) -> dict[str, str]:
@@ -93,14 +94,24 @@ def build_proposal_fields(
     source_refs: list[dict[str, Any]],
     base_provenance: dict[str, Any] | None = None,
     gap_ref: str | None = None,
+    review_status: str = "proposed",
+    rejected_reason: str | None = None,
 ) -> dict[str, Any]:
     """Assemble the H0-safe column values for one ``enrichment_proposal`` insert.
 
     Shared by both the Pg + in-memory stores so the persisted shape is identical.
-    H0 enforced here: origin fixed to 'enrichment', review_status to 'proposed',
-    confidence passed through (the generator already constrains it < 1.0; the DB
-    CHECK is the backstop). The generated dimensions + verify annotation are
-    folded into provenance_json (annotation only — never a canon marker).
+    H0 enforced here: origin fixed to 'enrichment', confidence passed through (the
+    generator already constrains it < 1.0; the DB CHECK is the backstop). The
+    generated dimensions + verify annotation are folded into provenance_json
+    (annotation only — never a canon marker).
+
+    ``review_status`` defaults to ``'proposed'`` (the H0 lifecycle entry). C3
+    auto-reject passes ``'rejected'`` + a ``rejected_reason`` to persist an
+    egregious proposal as a terminal, audited, NEVER-surfaced row — this is still
+    NOT canon (rejected is suppression, not promotion; origin stays 'enrichment',
+    confidence < 1.0, pending_validation True). The DB transition trigger guards
+    UPDATEs only, so a direct INSERT at 'rejected' (in the CHECK vocabulary) is
+    legal.
     """
     if not 0.0 < confidence < 1.0:
         # Defensive: the H0 carrier can never hold canon confidence. Refuse to
@@ -132,7 +143,11 @@ def build_proposal_fields(
         "provenance_json": provenance,
         "confidence": confidence,  # H0: < 1.0 (checked above + DB CHECK)
         "source_refs_json": source_refs,
-        "review_status": "proposed",  # H0: lifecycle entry, never canon
+        # H0: 'proposed' lifecycle entry by default; 'rejected' (C3 auto-reject)
+        # is terminal suppression, still never canon. Insert-time only — a real
+        # status TRANSITION still goes through the DB trigger.
+        "review_status": review_status,
+        "rejected_reason": rejected_reason,
         "pending_validation": True,
     }
 
@@ -209,8 +224,9 @@ class PgProposalStore:
                 """INSERT INTO enrichment_proposal
                      (job_id, project_id, user_id, entity_kind, target_ref,
                       gap_ref, canonical_name, content, origin, technique,
-                      provenance_json, confidence, source_refs_json, review_status)
-                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13::jsonb,$14)
+                      provenance_json, confidence, source_refs_json, review_status,
+                      rejected_reason)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13::jsonb,$14,$15)
                    ON CONFLICT (job_id, gap_ref) WHERE gap_ref IS NOT NULL
                      DO NOTHING
                    RETURNING proposal_id""",
@@ -222,6 +238,7 @@ class PgProposalStore:
                 fields["confidence"],
                 json.dumps(fields["source_refs_json"], ensure_ascii=False),
                 fields["review_status"],
+                fields.get("rejected_reason"),
             )
             deduped = row is None
             if deduped:
@@ -243,6 +260,7 @@ class PgProposalStore:
             pending_validation=bool(fields["pending_validation"]),
             dimensions=dict(fields["provenance_json"].get("dimensions", {})),
             deduped=deduped,
+            rejected_reason=fields.get("rejected_reason"),
         )
 
     async def mark_job_status(
@@ -342,6 +360,7 @@ class InMemoryProposalStore:
             confidence=float(fields["confidence"]),
             pending_validation=bool(fields["pending_validation"]),
             dimensions=dict(fields["provenance_json"].get("dimensions", {})),
+            rejected_reason=fields.get("rejected_reason"),
         )
         self.proposals.append(p)
         if gap_ref:

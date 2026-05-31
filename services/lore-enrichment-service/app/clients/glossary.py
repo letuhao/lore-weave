@@ -96,8 +96,13 @@ class GlossaryClient:
             GlossaryEntity(
                 entity_id=str(r.get("id") or r.get("entity_id") or ""),
                 name=neutralize_injection(r.get("name") or r.get("canonical_name")),
-                kind=str(r.get("kind") or r.get("kind_name") or ""),
-                description=neutralize_injection(r.get("description")),
+                kind=str(r.get("kind") or r.get("kind_code") or r.get("kind_name") or ""),
+                # The internal entities endpoint returns the authored canon under
+                # `short_description` (the column, F-C12-1) — fall back to the
+                # legacy `description` key. The contradiction check reads this.
+                description=neutralize_injection(
+                    r.get("short_description") or r.get("description")
+                ),
             )
             for r in rows
         ]

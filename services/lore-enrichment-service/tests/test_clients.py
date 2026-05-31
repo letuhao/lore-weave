@@ -190,6 +190,27 @@ async def test_glossary_list_entities_envelope_and_cjk():
 
 
 @respx.mock
+async def test_glossary_list_entities_reads_short_description_for_canon():
+    # F-C12-1: the real internal endpoint returns the authored canon under
+    # `short_description` (+ `kind_code`); the client must map it to `description`
+    # so the contradiction check can read canon (the C3 live-smoke caught this).
+    book = uuid4()
+    respx.get(f"{GL}/internal/books/{book}/entities").respond(
+        200,
+        json={"items": [
+            {"entity_id": "e1", "name": "Jonathan Harker", "kind_code": "character",
+             "aliases": [], "short_description": "Englishman traveling to Transylvania"},
+        ]},
+    )
+    g = GlossaryClient(base_url=GL, internal_token="t")
+    rows = await g.list_entities(book_id=book)
+    await g.aclose()
+    assert rows[0].name == "Jonathan Harker"
+    assert rows[0].kind == "character"
+    assert rows[0].description == "Englishman traveling to Transylvania"
+
+
+@respx.mock
 async def test_glossary_bare_list_payload():
     book = uuid4()
     respx.get(f"{GL}/internal/books/{book}/entities").respond(

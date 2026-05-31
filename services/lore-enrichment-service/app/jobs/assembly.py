@@ -25,6 +25,7 @@ from uuid import UUID
 
 import asyncpg
 
+from app.clients.glossary import GlossaryClient
 from app.clients.knowledge import KnowledgeClient
 from app.clients.port import KnowledgeReadHttp
 from app.config import settings
@@ -46,7 +47,8 @@ from app.strategies.factory import GateAwareStrategyFactory
 from app.strategies.gate_reader import make_eval_runs_gate_reader
 from app.strategies.licensing import SourceLicense
 from app.strategies.recook import ReCookStrategy
-from app.verify.canon_verify import CanonFact, CanonVerifier
+from app.verify.canon_lookup import make_glossary_canon_lookup
+from app.verify.canon_verify import CanonVerifier
 
 __all__ = ["build_live_runner", "LiveRunnerBundle"]
 
@@ -54,12 +56,21 @@ __all__ = ["build_live_runner", "LiveRunnerBundle"]
 class LiveRunnerBundle:
     """Owns the constructed runner + the resources that must be closed after."""
 
-    def __init__(self, runner: JobRunner, *, knowledge_client: KnowledgeClient) -> None:
+    def __init__(
+        self,
+        runner: JobRunner,
+        *,
+        knowledge_client: KnowledgeClient,
+        glossary_client: GlossaryClient | None = None,
+    ) -> None:
         self.runner = runner
         self._kc = knowledge_client
+        self._glossary = glossary_client
 
     async def aclose(self) -> None:
         await self._kc.aclose()
+        if self._glossary is not None:
+            await self._glossary.aclose()
 
 
 async def build_live_runner(
@@ -75,6 +86,7 @@ async def build_live_runner(
     top_k: int = 5,
     technique: str = Technique.RETRIEVAL.value,
     suite_version: str = "enrichment-v1",
+    book_id: str | None = None,
 ) -> LiveRunnerBundle:
     """Compose a :class:`JobRunner` from the real platform components.
 
@@ -130,14 +142,23 @@ async def build_live_runner(
     # ── C12 canon-verify (read port degrades safely; no canon-write) ────────────
     read_port = KnowledgeReadHttp(kc)
 
-    async def _canon_lookup(entity_name: str, dimension: str) -> list[CanonFact]:
-        # No authored-canon assertions are read in the demo path (the seeded
-        # LOCATIONs are sparse — that is precisely the gap). Returning [] is a
-        # genuine "no canon known" (not an error), so verify does not degrade on
-        # it; the read_port still gates reachability for the contradiction check.
-        return []
+    # F-C12-1: the REAL contradiction canon-lookup reads the entity's AUTHORED
+    # glossary canon (description), book-scoped, replacing the inert hardcoded `[]`.
+    # When `book_id` is absent (a job that didn't supply it) the lookup returns []
+    # (honest degrade — the read_port + verify still record verify_degraded, never
+    # a false-green). Demo LOCATIONs are sparse, so this mostly degrades — but the
+    # check is now LIVE, not inert (C3 can auto-reject a HIGH contradiction).
+    glossary_client: GlossaryClient | None = None
+    if book_id is not None:
+        glossary_client = GlossaryClient(
+            base_url=settings.glossary_service_url,
+            internal_token=settings.internal_service_token,
+        )
+    canon_lookup = make_glossary_canon_lookup(
+        glossary_client, book_id=UUID(book_id) if book_id is not None else None
+    )
 
-    verifier = CanonVerifier(read_port=read_port, canon_lookup=_canon_lookup)
+    verifier = CanonVerifier(read_port=read_port, canon_lookup=canon_lookup)
 
     # ── technique selection via the GATE-AWARE FACTORY (DEFERRED-054 e2e) ────────
     # The factory reads the LIVE persisted eval gate (the same row the
@@ -187,8 +208,10 @@ async def build_live_runner(
         )
     except Exception:
         # The factory's gate read fails CLOSED; an InactiveStrategyError (locked
-        # gate) or any selection error must NOT leak an open KnowledgeClient.
+        # gate) or any selection error must NOT leak an open client.
         await kc.aclose()
+        if glossary_client is not None:
+            await glossary_client.aclose()
         raise
 
     pipeline: JobPipeline
@@ -254,4 +277,6 @@ async def build_live_runner(
         # C1: the meter on the P1 token path (None for P2/P3 → no reconcile yet).
         meter=runner_meter,
     )
-    return LiveRunnerBundle(runner, knowledge_client=kc)
+    return LiveRunnerBundle(
+        runner, knowledge_client=kc, glossary_client=glossary_client
+    )

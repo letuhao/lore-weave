@@ -68,6 +68,11 @@ class CreateJobBody(BaseModel):
     embedding_model_ref: UUID  # provider-registry user_model id (the embed model)
     generation_model_ref: UUID  # provider-registry user_model id (the gen model)
     targets: list[GapTarget] = Field(min_length=1)
+    # Optional glossary book scope for the C12 contradiction check (C3/F-C12-1):
+    # when set, the runner reads the entity's authored canon to detect (and
+    # auto-reject) a generated fact that NEGATES canon. Absent → contradiction
+    # degrades honestly (no false-green); back-compatible.
+    book_id: UUID | None = None
     # Which enrichment TECHNIQUE drives the job. Default 'retrieval' (the P1 demo
     # path, unchanged). A P2/P3 technique (e.g. 'fabrication') is gate-enforced
     # END-TO-END: the runner resolves the pipeline through the gate-aware factory,
@@ -183,6 +188,7 @@ async def create_job(
             eval_reserve_fraction=body.eval_reserve_fraction,
             top_k=body.top_k,
             technique=technique.value,
+            book_id=str(body.book_id) if body.book_id else None,
         )
     except InactiveStrategyError as exc:
         await store.mark_job_status(

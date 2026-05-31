@@ -31,6 +31,7 @@ __all__ = [
     "jobs_failed_total",
     "jobs_paused_total",
     "proposals_created_total",
+    "proposals_auto_rejected_total",
     "stage_duration_seconds",
     "cost_cap_pauses_total",
     "llm_calls_total",
@@ -118,6 +119,16 @@ cost_cap_pauses_total = Counter(
     registry=registry,
 )
 cost_cap_pauses_total.inc(0)
+
+# ── Auto-reject (C3) ─────────────────────────────────────────────────────────
+proposals_auto_rejected_total = Counter(
+    "lore_enrichment_proposals_auto_rejected_total",
+    "Proposals AUTO-REJECTED as egregious (injection / HIGH contradiction / >=2 "
+    "distinct anachronism markers) — persisted as terminal `rejected`, never "
+    "surfaced; monitors the false-positive risk of the auto-reject gate (C3)",
+    registry=registry,
+)
+proposals_auto_rejected_total.inc(0)
 
 # ── External-call counts ─────────────────────────────────────────────────────
 # LLM completion + embedding calls made by the pipeline, by outcome. These move

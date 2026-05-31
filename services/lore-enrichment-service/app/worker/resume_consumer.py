@@ -84,6 +84,10 @@ async def redrive_one(
             top_k=int(request.get("top_k") or 5),
             technique=str(request.get("technique") or "retrieval"),
             spent_so_far=spent,
+            # C3/F-C12-1: book_id (saved on the request) lets the re-driven runner
+            # read authored glossary canon for the contradiction check. Absent →
+            # the lookup degrades honestly (no false-green).
+            book_id=str(request["book_id"]) if request.get("book_id") else None,
         )
     except (InactiveStrategyError, UnknownStrategyError) as exc:
         # Gate-locked / unknown technique → cannot re-drive; drop (not retryable).

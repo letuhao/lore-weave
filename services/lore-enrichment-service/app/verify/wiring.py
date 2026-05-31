@@ -21,10 +21,11 @@ does not advance the lifecycle DAG.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Sequence
 
-from app.verify.canon_verify import CanonVerifier, FlagKind, VerifyResult
+from app.verify.canon_verify import CanonVerifier, FlagKind, Severity, VerifyResult
 
 if TYPE_CHECKING:
     # Annotation-only (PEP 563 active above). Importing these leaf types eagerly runs
@@ -40,16 +41,27 @@ if TYPE_CHECKING:
 __all__ = [
     "VerifyStatus",
     "AnnotatedVerify",
+    "RejectDecision",
+    "decide_auto_reject",
+    "AUTO_REJECT_ANACHRONISM_MIN_MARKERS",
     "verify_and_annotate",
 ]
+
+#: C3: how many DISTINCT anachronism markers make a proposal egregiously
+#: anachronistic (auto-reject). One conservative-list marker stays advisory; two
+#: distinct out-of-era concepts in one proposal is a strong egregious signal.
+AUTO_REJECT_ANACHRONISM_MIN_MARKERS: int = 2
 
 
 class VerifyStatus(str, Enum):
     """The annotation a verify run attaches to a proposal (NONE are canon).
 
-    All four keep the proposal quarantined. ``verified_clean`` means the three
-    checks found nothing AND ran against real canon — it is NOT an admission to
-    canon, only "nothing inconsistent was detected". The human gate still decides.
+    All keep the proposal out of canon. ``verified_clean`` means the three checks
+    found nothing AND ran against real canon — NOT an admission to canon, only
+    "nothing inconsistent was detected". ``auto_rejected`` (C3) is the EGREGIOUS
+    case: the proposal is persisted as a terminal ``rejected`` row (audited) and
+    never surfaced to the human queue — still never canon (it is suppressed, not
+    promoted). The human gate decides every non-rejected case.
     """
 
     #: No flags AND contradiction ran against real canon (not degraded).
@@ -60,6 +72,58 @@ class VerifyStatus(str, Enum):
     QUARANTINED = "quarantined"
     #: KG/canon read unavailable — contradiction unverifiable; conservative.
     DEGRADED = "degraded"
+    #: C3: egregiously-unreasonable (injection / HIGH contradiction / >=2 distinct
+    #: anachronism markers) — auto-rejected (terminal `rejected`, never surfaced).
+    AUTO_REJECTED = "auto_rejected"
+
+
+@dataclass(frozen=True)
+class RejectDecision:
+    """The verdict that a proposal is EGREGIOUS enough to AUTO-REJECT (C3).
+
+    ``reason`` is a concise, human-readable evidence string persisted to the
+    ``rejected_reason`` column (audit: what tripped the auto-reject + why). It is
+    derived from the firing flags — never an opaque boolean.
+    """
+
+    reason: str
+
+
+def decide_auto_reject(result: VerifyResult) -> RejectDecision | None:
+    """Classify a verify result as EGREGIOUS (auto-reject) or not (advisory).
+
+    H0-safe: auto-reject is the CONSERVATIVE direction — it suppresses surfacing,
+    never admits canon — so the bar is high (false-positive-averse). Egregious iff:
+      * ANY injection flag (a neutralized payload is never legitimate lore), OR
+      * a CONTRADICTION flag at HIGH severity (direct canon negation), OR
+      * >= ``AUTO_REJECT_ANACHRONISM_MIN_MARKERS`` DISTINCT anachronism markers.
+    Returns a :class:`RejectDecision` (with evidence) when egregious, else None
+    (the proposal stays on the advisory flag-for-human path)."""
+    reasons: list[str] = []
+
+    injection = [f for f in result.flags if f.kind is FlagKind.INJECTION]
+    if injection:
+        reasons.append(f"injection ({injection[0].evidence})")
+
+    high_contradiction = [
+        f
+        for f in result.flags
+        if f.kind is FlagKind.CONTRADICTION and f.severity is Severity.HIGH
+    ]
+    if high_contradiction:
+        reasons.append(f"high-severity contradiction ({high_contradiction[0].evidence})")
+
+    distinct_anachronisms = {
+        f.evidence for f in result.flags if f.kind is FlagKind.ANACHRONISM
+    }
+    if len(distinct_anachronisms) >= AUTO_REJECT_ANACHRONISM_MIN_MARKERS:
+        reasons.append(
+            f"{len(distinct_anachronisms)} distinct anachronism markers"
+        )
+
+    if not reasons:
+        return None
+    return RejectDecision(reason="auto-reject: " + "; ".join(reasons))
 
 
 class AnnotatedVerify:
@@ -94,11 +158,15 @@ class AnnotatedVerify:
 
 
 def _derive_status(result: VerifyResult) -> VerifyStatus:
-    """Map a verify result to its (always-quarantined) annotation status.
+    """Map a verify result to its annotation status (none admit canon).
 
-    Priority: injection (hardest quarantine) > other flags (needs_review) >
-    degraded (conservative) > clean. A clean result is ``verified_clean`` only
-    when it both has no flags AND was not degraded (``result.passed``)."""
+    Priority: AUTO_REJECTED (C3 egregious — injection / HIGH contradiction / >=2
+    distinct anachronism markers) > quarantined (any injection) > other flags
+    (needs_review) > degraded (conservative) > clean. A clean result is
+    ``verified_clean`` only when it has no flags AND was not degraded
+    (``result.passed``)."""
+    if decide_auto_reject(result) is not None:
+        return VerifyStatus.AUTO_REJECTED
     if any(f.kind is FlagKind.INJECTION for f in result.flags):
         return VerifyStatus.QUARANTINED
     if result.flags:

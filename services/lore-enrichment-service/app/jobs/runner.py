@@ -59,6 +59,7 @@ from app.jobs.state_machine import JobRecord, JobStateMachine, PersistFn
 from app.jobs.tokens import UsageMeter
 from app.strategies.base import EnrichmentStrategy, StrategyContext
 from app.strategies.fabrication import FabricationError
+from app.verify.wiring import VerifyStatus, decide_auto_reject
 
 __all__ = [
     "JobOutcome",
@@ -92,6 +93,10 @@ class JobOutcome:
     #: exists (passed via skip_gap_refs) — neither budget nor an LLM call spent
     #: on them (the token-safe convergence fix, 051/F-C14-1).
     resumed_skipped: list[str] = field(default_factory=list)
+    #: gaps whose proposal was AUTO-REJECTED as egregious (C3): persisted as a
+    #: terminal `rejected` row (audited), NOT surfaced to the review queue/wiki,
+    #: and NOT counted as a created proposal. Still never canon (H0).
+    auto_rejected_gaps: list[str] = field(default_factory=list)
 
 
 class JobRunner:
@@ -260,6 +265,12 @@ class JobRunner:
                     (f.confidence for f in stage.facts),
                     default=stage.proposal.confidence,
                 )
+                # ── C3 auto-reject: an EGREGIOUS verify result (injection / HIGH
+                # contradiction / >=2 distinct anachronism markers) is persisted as
+                # a terminal `rejected` row (audited) and NOT surfaced to the review
+                # queue/wiki — still never canon (suppression, not promotion). The
+                # rest stay on the advisory `proposed` path (the human gate decides).
+                reject = decide_auto_reject(stage.verify.result)
                 fields = build_proposal_fields(
                     user_id=context.user_id,
                     project_id=context.project_id,
@@ -278,16 +289,23 @@ class JobRunner:
                     source_refs=stage.source_refs,
                     base_provenance=stage.proposal.provenance_json,
                     gap_ref=gap_ref,  # per-gap idempotency key (WARN-1)
+                    review_status="rejected" if reject else "proposed",
+                    rejected_reason=reject.reason if reject else None,
                 )
                 persisted = await self._store.persist_proposal(
                     job_id=job_id, fields=fields
                 )
-                outcome.proposals.append(persisted)
-                if persisted.deduped:
-                    # A resume/re-run re-processed an already-persisted gap; the
-                    # store reloaded the existing row instead of duplicating it.
-                    # Record it for visibility, but flag the no-op (WARN-1).
-                    outcome.deduped_gaps.append(gap_ref)
+                if reject:
+                    # Auditable terminal rejection — NOT counted as a created
+                    # proposal, NOT surfaced. Emit the audit event and move on.
+                    outcome.auto_rejected_gaps.append(gap_ref)
+                else:
+                    outcome.proposals.append(persisted)
+                    if persisted.deduped:
+                        # A resume/re-run re-processed an already-persisted gap; the
+                        # store reloaded the existing row instead of duplicating it.
+                        # Record it for visibility, but flag the no-op (WARN-1).
+                        outcome.deduped_gaps.append(gap_ref)
 
                 # ── events (idempotent per job+stage+gap) ───────────────────────
                 # ``elapsed_seconds`` + ``technique`` feed the C18 per-stage
@@ -305,19 +323,32 @@ class JobRunner:
                         "technique": self._pipeline.technique_value(),
                     },
                 )
-                await self._emitter.emit(
-                    JobEventType.PROPOSAL_CREATED,
-                    gap_ref=gap_ref,
-                    data={
-                        "proposal_id": persisted.proposal_id,
-                        "canonical_name": persisted.canonical_name,
-                        "origin": persisted.origin,
-                        "technique": persisted.technique,
-                        "review_status": persisted.review_status,
-                        "confidence": persisted.confidence,
-                        "pending_validation": persisted.pending_validation,
-                    },
-                )
+                if reject:
+                    await self._emitter.emit(
+                        JobEventType.PROPOSAL_AUTO_REJECTED,
+                        gap_ref=gap_ref,
+                        data={
+                            "proposal_id": persisted.proposal_id,
+                            "canonical_name": persisted.canonical_name,
+                            "review_status": persisted.review_status,
+                            "rejected_reason": persisted.rejected_reason,
+                            "verify_status": stage.verify.status.value,
+                        },
+                    )
+                else:
+                    await self._emitter.emit(
+                        JobEventType.PROPOSAL_CREATED,
+                        gap_ref=gap_ref,
+                        data={
+                            "proposal_id": persisted.proposal_id,
+                            "canonical_name": persisted.canonical_name,
+                            "origin": persisted.origin,
+                            "technique": persisted.technique,
+                            "review_status": persisted.review_status,
+                            "confidence": persisted.confidence,
+                            "pending_validation": persisted.pending_validation,
+                        },
+                    )
 
             # ── complete (running → completed) ──────────────────────────────────
             await machine.complete()

@@ -233,6 +233,9 @@ async def auto_enrich(
             "entity_kind": "location",
             "targets": targets,
             "user_id": str(principal.user_id),
+            # C3/F-C12-1: persist the book scope so the worker-driven runner reads
+            # authored glossary canon for the contradiction check (auto-reject).
+            "book_id": str(body.book_id),
         },
     )
 
