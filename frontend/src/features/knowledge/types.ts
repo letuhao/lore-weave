@@ -22,6 +22,7 @@ export interface Project {
   project_type: ProjectType;
   book_id: string | null;
   instructions: string;
+  genre: string | null;
   extraction_enabled: boolean;
   // K21-C (D3 / K21.12): when false, the chat tool loop skips this
   // project's memory tools entirely. Default true (the BE Cycle-B
@@ -53,6 +54,7 @@ export interface ProjectCreatePayload {
   project_type: ProjectType;
   book_id?: string | null;
   instructions?: string;
+  genre?: string | null;
 }
 
 export interface ProjectUpdatePayload {
@@ -61,6 +63,8 @@ export interface ProjectUpdatePayload {
   instructions?: string;
   // book_id: omit to leave unchanged; null to clear; UUID to set.
   book_id?: string | null;
+  // genre: omit to leave unchanged; null to clear; string to set.
+  genre?: string | null;
   // K-CLEAN-3 (D-K8-02 partial): the K7c PATCH endpoint accepts
   // is_archived for the Restore action. Setting to false on an
   // archived row un-archives it. Track 1 only ships the restore
