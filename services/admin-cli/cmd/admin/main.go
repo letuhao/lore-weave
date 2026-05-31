@@ -210,6 +210,31 @@ func buildErasureHandler() (framework.Handler, func(), error) {
 	return h, pool.Close, nil
 }
 
+// buildRealityStatsHandler wires the read-only `reality stats` command (073) to
+// a reality_registry SELECT. Owns its own meta pool (read-only; no allowlist /
+// scrubber / KMS needed). Returns a no-op closer (never nil); without
+// META_DATABASE_URL it leaves the command NotWired.
+func buildRealityStatsHandler() (framework.Handler, func(), error) {
+	noop := func() {}
+	dsn := os.Getenv("META_DATABASE_URL")
+	if dsn == "" {
+		return nil, noop, nil
+	}
+	pool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		return nil, noop, fmt.Errorf("reality-stats meta DB connect: %w", err)
+	}
+	reader := commands.NewPgRealityStatsReader(pool)
+	h := func(ctx context.Context, inv framework.Invocation) (string, error) {
+		rid, err := uuid.Parse(inv.Params["reality_id"])
+		if err != nil {
+			return "", fmt.Errorf("invalid reality_id %q: %w", inv.Params["reality_id"], err)
+		}
+		return commands.RunRealityStats(ctx, rid, reader)
+	}
+	return h, pool.Close, nil
+}
+
 // registryDirEnv lets ops override the registry path (defaults to the
 // canonical contracts/admin/registry relative to repo root).
 const registryDirEnv = "ADMIN_CLI_REGISTRY_DIR"
@@ -355,6 +380,19 @@ func run(args []string, stdout, stderr *os.File) int {
 		}
 	}
 	defer closeErasure()
+
+	// Read-only `reality stats` (073) — wired only for its own command.
+	closeReality := func() {}
+	if c.Name == "reality stats" {
+		rsH, rc, rerr := buildRealityStatsHandler()
+		closeReality = rc
+		if rerr != nil {
+			fmt.Fprintf(stderr, "admin: reality-stats handler not wired: %v\n", rerr)
+		} else if rsH != nil {
+			handlers.Register("reality stats", rsH)
+		}
+	}
+	defer closeReality()
 
 	handler := handlers.Resolve(c)
 	inv := framework.Invocation{

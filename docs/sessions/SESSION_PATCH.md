@@ -580,6 +580,14 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 
 ## Current Active Work
 
+### 2026-05-31 — 073 first command body: `reality stats` (S, read-only) — wired on metapg
+
+**What:** wired the first of 073's ~33 admin-cli command bodies — `reality stats` (tier-3 informational, read-only). Demonstrates the command-wiring pattern on the metapg/pool foundation.
+**Files:** `admin-cli/internal/commands/{reality_stats,reality_stats_pg,reality_stats_test,reality_stats_pg_test}.go` (RealityStats reader iface + `PgRealityStatsReader` reality_registry SELECT + `RunRealityStats` formatter + tests) · `cmd/admin/main.go` (`buildRealityStatsHandler` + gated registration) · `contracts/service_acl/matrix.yaml` (admin-cli +`reality_registry: SELECT`, least-privilege).
+**Tests:** 4 unit (format / lifecycle markers / not-found / nil-reader) + a PG-gated reader round-trip on pg16 (infra-postgres-1; seed values satisfy the real reality_registry CHECKs — db_host format, session caps, status enum). Full admin-cli suite green; service-acl + language-rule lint PASS.
+**Pattern for the rest:** the read-only/informational commands (archive/backup list, migration status, projection drift-check, …) follow the same low-risk shape; destructive tier-1 ones need per-command writers + review (073).
+**Infra note:** `foundation-dev-postgres` (55432) was removed mid-session; ran the PG test against `infra-postgres-1` (5555).
+
 ### 2026-05-31 — 078 CI-gate recon + 2 fixes (S) — deferral was STALE; partial green
 
 **Finding:** the D-CI-GATE-COVERAGE deferral was largely STALE. **I2 is already CI-enforced** (`foundation-ci.yml:70` runs `lint-no-direct-llm-imports.sh`), and `lint-foundation.yml` runs **15 invariant validators** via matrix on every PR/push. The real gap: `lint-foundation` is **RED** — 5 wired gates fail on the tree (`role-grant` 4, `pii-classify` 20, `observability-inventory` 25, `meta-write-discipline` 6, `service-acl-matrix` 1).

@@ -177,6 +177,9 @@ services:
       scaling_events:
         - INSERT
         - SELECT
+      # read-only: `reality stats` (073) summary query
+      reality_registry:
+        - SELECT
       admin_action_audit:
         - INSERT
       meta_write_audit:
