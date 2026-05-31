@@ -108,7 +108,7 @@ retract → delete_enrichment_supplement(proposal_id) (soft-delete rows)      [g
 ### Cluster 1 — F-C13-1 (HIGH) + F-C13-2 (MED): enrichment-as-supplement  [this plan, §C]
 - ✅ T1 glossary `entity_enrichments` table + migration register  *(`aff2c505` — migrate.go `UpEntityEnrichments` + main.go reg; 4 Go tests green incl. H0 conf<1.0 / origin<>'glossary' / multi-variant unique — DB `glossary_test`)*
 - ✅ T2 glossary internal endpoints (POST upsert + DELETE soft-delete + emit)  *(`enrichment_handler.go` + 2 routes in `server.go`; 13 Go tests green: auth/400/404/422 · upsert writes proposed rows + short_description untouched + emits · idempotent upsert · promoted markers · soft-delete + entity survives + idempotent. Pre-existing unrelated `TestListEntities_*` backfill failures noted — my code path isn't reached by them.)*
-- ☐ T3 lore-enrichment ports for the 2 endpoints
+- ✅ T3 lore-enrichment ports for the 2 endpoints  *(`clients/writeback.py` `upsert_enrichment_supplement` + `delete_enrichment_supplement`; 7 respx tests green: request shape · internal-token (no JWT) · query param · promoted markers · neutralize · idempotent-0 · retryable 503/timeout)*
 - ☐ T4 `_anchor_name`→canonical_name + writeback resolves+writes supplement  *(closes F-C13-2 pt.1)*
 - ☐ T5 promote writes supplement(promoted) + DROP short_description write  *(closes F-C13-2 pt.2)*
 - ☐ T6 retract → internal-token delete_enrichment_supplement (DROP user-jwt)  *(closes F-C13-1)*

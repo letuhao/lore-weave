@@ -340,6 +340,82 @@ class WritebackPorts:
         resp = await self._post(url, json=body)
         return int(resp.json().get("affected", 0))
 
+    # ── glossary enrichment SUPPLEMENT (B1 — the distinguished `dị bản`) ─────────
+
+    async def upsert_enrichment_supplement(
+        self,
+        *,
+        book_id: UUID,
+        entity_id: UUID,
+        proposal_id: UUID,
+        technique: str,
+        review_status: str,
+        facts: list[dict[str, Any]],
+        promoted_by: UUID | None = None,
+        promoted_at: datetime | None = None,
+    ) -> int:
+        """Upsert this proposal's enrichment SUPPLEMENT rows on the canonical
+        glossary entity (PO ruling B1 / F-C13-2).
+
+        The supplement is a DISTINGUISHED variant (`dị bản`) of the original
+        canon — written to its own ``entity_enrichments`` table, FK→the canonical
+        entity, NEVER onto the entity's ``short_description`` (which stays
+        original-authored canon). On write-back the rows are ``proposed``; on
+        promote they are ``promoted`` with the permanent markers. The glossary
+        endpoint forces ``origin='enrichment'`` and rejects canon confidence, so
+        a supplement row can never masquerade as canon (H0).
+
+        Idempotent: the endpoint upserts ON CONFLICT (entity, dimension,
+        proposal_id), so a re-promote / re-write-back is safe. Returns the number
+        of rows written. Internal-token (no user JWT). All text is
+        injection-neutralized first (deferred 050)."""
+        body: dict[str, Any] = {
+            "proposal_id": str(proposal_id),
+            "technique": technique,
+            "review_status": review_status,
+            "facts": [
+                {
+                    "dimension": _safe(f["dimension"]),
+                    "content": _safe(f["content"]),
+                    "confidence": float(f["confidence"]),
+                }
+                for f in facts
+            ],
+        }
+        if promoted_by is not None:
+            body["promoted_by"] = str(promoted_by)
+            body["promoted_at"] = (
+                promoted_at or datetime.now(timezone.utc)
+            ).isoformat()
+        url = f"{self._gloss}/internal/books/{book_id}/entities/{entity_id}/enrichments"
+        resp = await self._post(url, json=body)
+        return int(resp.json().get("written", 0))
+
+    async def delete_enrichment_supplement(
+        self, *, book_id: UUID, entity_id: UUID, proposal_id: UUID
+    ) -> int:
+        """Soft-delete a proposal's enrichment supplement rows via the INTERNAL
+        token (the F-C13-1 fix).
+
+        Retract un-canonizes the enrichment exactly the way promote canonized it
+        — over the service-to-service internal token, with NO dependency on a
+        user JWT (the old user-scoped recycle was structurally unreachable from
+        the handler — F-C13-1). The canonical entity and its original canon are
+        never touched; only the supplement rows get ``deleted_at``. Idempotent:
+        a missing/already-retracted proposal returns ``soft_deleted=0``. Returns
+        the soft-deleted row count."""
+        url = f"{self._gloss}/internal/books/{book_id}/entities/{entity_id}/enrichments"
+        try:
+            resp = await self._http.delete(
+                url, headers=self._headers, params={"proposal_id": str(proposal_id)}
+            )
+        except httpx.TimeoutException as exc:
+            raise WritebackError(f"timeout deleting {url}: {exc}", retryable=True)
+        except httpx.HTTPError as exc:
+            raise WritebackError(f"connection error deleting {url}: {exc}", retryable=True)
+        checked = self._check(resp, url)
+        return int(checked.json().get("soft_deleted", 0))
+
     # ── transport ──────────────────────────────────────────────────────────────
 
     async def _post(self, url: str, *, json: dict[str, Any]) -> httpx.Response:
