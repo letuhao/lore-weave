@@ -136,9 +136,68 @@ Before any compare, PO decides the source-of-truth draft (others → archive):
 
 ## 3. Decisions log (fill as we go)
 
-| Feature | Canonical draft (PO) | Diff vs live | PO verdict (DRIFT/INTENTIONAL/OUTDATED) | Action |
+**PO ruling 2026-05-31: the drafts are mostly EXTENSIONS / facets, not competing
+drift versions.** So the audit reframes: find (a) designed extensions NOT built
+live → *supplement*, (b) genuine divergences → *drift/fix*, (c) outdated drafts
+→ *archive*. Per-cluster PO decisions:
+
+| Feature | PO decision | Audit implication |
+|---|---|---|
+| **Editor (7)** | NOT competing versions — 3 facets of one feature (modes/classic/mixed-media). The AI-chat panel (splitview/workbench) is **NOT rejected** — it must be **reworked to REUSE the existing canonical Chat component** (chat page), *not* recoded. "Don't rebuild what already exists and is better." (= ARCH-1 framing: reuse, not rebuild.) | Verify mode-facets built; AI-panel = ARCH-1 reuse task (separate). version-history = built. |
+| **Reader (6)** | v2 is an **EXTENSION** of v1, not a replacement: v1 = text-only support, v2 = rich features (renderer/audio-tts/review-modes/audio-blocks). | Check each v2 part actually built live; `reader-social` likely not built → supplement candidate. |
+| **Translation (3)** | EXTENSIONS — 3 distinct screens (matrix / chapter-translations viewer / workbench block-review), not drift. | Verify all 3 exist + work (largely confirmed during i18n W8b). |
+| **Glossary (6)** | **Suspected OUTDATED drafts** — PO recalls glossary expanded a lot live (lots of settings) → live is likely AHEAD of the drafts. | Confirm live richness vs draft; archive outdated drafts; low fix-value (live ahead). |
+| **Components (2)** | `00. components-v2-warm` = **current**; `components-v2` = outdated. | Archive `components-v2`. |
+
+### Live-classification log (fill during compare)
+
+#### Reader (audited 2026-05-31) — code/wiring level
+
+ReaderPage wires: `ContentRenderer`, `TOCSidebar`, `ThemeCustomizer`, `TTSBar`,
+`TTSSettings`, `useTTS`, `useBlockScroll`, `useTTSShortcuts`, `useReadingTracker`,
+translation-version reading (`versionsApi`). Blocks live: Paragraph, Heading,
+Blockquote, Callout, Code, HorizontalRule, List, Image, Video, Audio (+ Inline).
+
+| Draft | Live status | Verdict | Action |
+|---|---|---|---|
+| `screen-reader.html` (v1, text-only) | superseded — live renders rich v2 | **OUTDATED** | archive v1 draft |
+| `reader-v2-part1-renderer` | **BUILT** — `ContentRenderer` + all 10 block types + themes + top bar, wired in ReaderPage | OK | none |
+| `reader-v2-part2-audio-tts` | **BUILT (verify depth)** — `TTSBar`/`TTSSettings`/`useTTS`/`useBlockScroll` + active-block highlight + auto-scroll wired. *Verify live:* AI-TTS mode (vs browser) + "audio drifted" asset state | OK / ⚠️verify | live-run TTS |
+| `reader-v2-part3-review-modes` | **BUILT** — this is the translation block-aligned review = `TranslationReviewPage`/`BlockAlignedReview` (cross-feature, not reader-only) | OK | none |
+| `reader-v2-part4-audio-blocks` | **⚠️ PARTIAL?** — `AudioBlock` + `AudioGenerationCard` + `AudioOverview` exist; the per-block *attach recorded audio + subtitle + audio↔text mismatch* detection needs live confirmation | ⚠️verify | live-run audio attach |
+| `reader-social` (ratings/reviews/comments/tag-vote/favorites) | **NOT BUILT** — no rating/review system (matches UI-2b DROP). | **DEFERRED post-MVP (PO 2026-05-31)** — not shipping in MVP; keep draft as future spec | none now |
+| `screen-theme-customizer` | **BUILT** — `ThemeCustomizer` wired (app+reader themes, fonts, spacing, presets) | OK | none |
+
+**Reader summary:** core rich reader (render + TTS + theme + translation review)
+is built & wired. `reader-social` deferred post-MVP (PO). v1 draft = archive.
+
+**LIVE-VERIFIED 2026-05-31 (Playwright + PO real browser):**
+- Render: full chapter renders as blocks, header/footer/progress, i18n (ja),
+  read-time estimate ("約25分で読了", "5,695 語"), **0 console errors**. ✅
+- TTS: clicking 読み上げ starts playback — bar shows prev/pause/next, active-block
+  highlight, mode=**ブラウザ**, speed 1x, **自動スクロール:オン** (UI-3b). PO confirms
+  **audio actually plays** on real Chrome. ✅
+- TTS設定 panel: speed slider, browser-voice select, **AI-TTS-model select**,
+  behavior toggles, now-playing — part2 fully built. ✅
+- **CONFIG GAP (not code):** AI-TTS dropdown = *"モデルが設定されていません"* — the
+  running `local-tts-service` (:9880, 55 kokoro/piper voices) is **not registered
+  as a TTS model** in provider-registry → AI voices unusable until added in
+  Settings > Providers. Same class as the LLM-402: service up, not wired to the
+  model registry. (Headless chromium also lacks Web Speech voices — expected; PO's
+  real browser has them.)
+- part4 per-block audio attach/subtitle/mismatch: components exist
+  (`AudioBlock`/`AudioGenerationCard`); depth not deep-verified this pass (low
+  priority — niche authoring feature).
+
+**Reader verdict: GREEN (built & works live).** No real drift. Actionable items:
+(1) register local-tts-service as a TTS model so AI voices work [config],
+(2) archive `reader.html` v1 draft, (3) `reader-social` deferred post-MVP.
+
+---
+
+| Feature | Canonical draft | Diff vs live | Verdict (SUPPLEMENT/DRIFT/INTENTIONAL/OUTDATED) | Action |
 |---|---|---|---|---|
-| _(tbd)_ | | | | |
+| _(other clusters tbd)_ | | | | |
 
 ---
 
