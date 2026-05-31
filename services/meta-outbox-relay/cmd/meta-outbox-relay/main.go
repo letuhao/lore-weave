@@ -99,9 +99,18 @@ func run() error {
 		}
 	}()
 
+	// Pending-depth gauge source (/review-impl #3): a cheap COUNT over the
+	// partial pending index, so SRE can see drain lag (relay down ⇒ rows pile up).
+	countPending := func(ctx context.Context) (int64, error) {
+		var n int64
+		err := pool.QueryRow(ctx,
+			`SELECT count(*) FROM meta_outbox WHERE published = FALSE AND dead_lettered_at IS NULL`).Scan(&n)
+		return n, err
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(1)
-	go func() { defer wg.Done(); runLoop(ctx, loop, m, cfg.PollInterval) }()
+	go func() { defer wg.Done(); runLoop(ctx, loop, m, countPending, cfg.PollInterval) }()
 
 	slog.Info("[meta-outbox-relay] started",
 		"home_stream", cfg.HomeStream, "poll_interval", cfg.PollInterval.String(), "batch_size", cfg.BatchSize)
@@ -117,7 +126,7 @@ func run() error {
 	return nil
 }
 
-func runLoop(ctx context.Context, loop *drain.Loop, m *metrics, interval time.Duration) {
+func runLoop(ctx context.Context, loop *drain.Loop, m *metrics, countPending func(context.Context) (int64, error), interval time.Duration) {
 	t := time.NewTicker(interval)
 	defer t.Stop()
 	for {
@@ -133,6 +142,13 @@ func runLoop(ctx context.Context, loop *drain.Loop, m *metrics, interval time.Du
 			if err != nil {
 				m.iterationErrors.Inc()
 				slog.Error("[meta-outbox-relay] drain iteration", "error", err)
+			}
+			// Update the drain-lag gauge (best-effort; a count failure is logged
+			// but never stops the loop).
+			if n, cerr := countPending(ctx); cerr == nil {
+				m.pending.Set(float64(n))
+			} else {
+				slog.Warn("[meta-outbox-relay] pending-depth count failed", "error", cerr)
 			}
 		}
 	}
@@ -205,6 +221,7 @@ type metrics struct {
 	deadLettered    prometheus.Counter
 	xreality        prometheus.Counter
 	iterationErrors prometheus.Counter
+	pending         prometheus.Gauge
 }
 
 func newMetrics() *metrics {
@@ -214,11 +231,12 @@ func newMetrics() *metrics {
 		deadLettered:    prometheus.NewCounter(prometheus.CounterOpts{Name: "lw_meta_outbox_dead_lettered_total", Help: "meta_outbox rows dead-lettered at max attempts."}),
 		xreality:        prometheus.NewCounter(prometheus.CounterOpts{Name: "lw_meta_outbox_xreality_total", Help: "meta_outbox rows ALSO emitted to an xreality.* topic (cross-reality bridge)."}),
 		iterationErrors: prometheus.NewCounter(prometheus.CounterOpts{Name: "lw_meta_outbox_iteration_errors_total", Help: "drain-loop iterations that returned an error."}),
+		pending:         prometheus.NewGauge(prometheus.GaugeOpts{Name: "lw_meta_outbox_pending", Help: "Unpublished, non-dead-lettered meta_outbox rows (drain lag — alert if it grows unbounded, i.e. relay down)."}),
 	}
 }
 
 func (m *metrics) collectors() []prometheus.Collector {
-	return []prometheus.Collector{m.published, m.retried, m.deadLettered, m.xreality, m.iterationErrors}
+	return []prometheus.Collector{m.published, m.retried, m.deadLettered, m.xreality, m.iterationErrors, m.pending}
 }
 
 // ── HTTP ────────────────────────────────────────────────────────────────────

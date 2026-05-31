@@ -100,27 +100,18 @@ func buildAuditSink(stderr *os.File, impact framework.ImpactClass, dryRun, confi
 			return nil, nil, fmt.Errorf("allowlist %s missing required table %q (audit path needs it)", allowPath, tbl)
 		}
 	}
-	// Outbox (P2/101): wire the meta-outbox appender so MetaWrite emits
-	// allowlisted events into meta_outbox. admin_action_audit emits nothing
-	// (events: []), so this is a no-op for the audit Sink today — wired for
-	// uniformity so a future allowlisted admin table can't silently drop its
-	// event. Loaded before the pool open = fail-fast with no pool to leak.
-	outbox, err := buildMetaOutbox(allowPath)
-	if err != nil {
-		return nil, nil, err
-	}
+	// NO Outbox here (P2/101 /review-impl #1): the audit Sink writes ONLY
+	// admin_action_audit, which is allowlisted events: [] (emits nothing). Wiring
+	// cfg.Outbox + probing meta_outbox here would be dead weight that needlessly
+	// couples EVERY admin-cli command to migration 030. The meta-outbox emit path
+	// lives where events actually emit — the erasure handler (buildErasureHandler).
 	pool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
 		return nil, nil, fmt.Errorf("meta DB connect: %w", err)
 	}
-	if err := probeMetaOutbox(context.Background(), pool); err != nil {
-		pool.Close()
-		return nil, nil, err
-	}
 	cfg := &meta.Config{
 		DB: metapg.New(pool), Allowlist: allow, QueryBuilder: meta.PostgresQueryBuilder{},
 		Clock: sysClock{}, UUIDGen: randUUID{}, Scrubber: meta.NewRegexScrubber(nil),
-		Outbox: outbox,
 	}
 	return audit_emitter.NewMetaWriteSink(cfg), pool.Close, nil
 }

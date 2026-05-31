@@ -4,12 +4,13 @@ package commands
 // (PgConsentRevoker + PgBalanceReader) against a real Postgres. Gated on
 // PIIKMS_TEST_PG_URL (skips in the normal job; run against infra/foundation-dev).
 //
-// Closes /review-impl finding #3: proves the consent-revoke MetaWrite path
-// (with the migration-fixed `revoked_at IS NULL` CAS) actually lands +
-// idempotently skips a re-revoke, and that the cost-ledger proxy sums correctly.
-// MetaWrite runs with Outbox=nil (the platform-wide state today), so the
-// user.consent.revoked event is intentionally not emitted — the revoked_at row
-// state is the SSOT this test asserts.
+// Proves the consent-revoke MetaWrite path (with the migration-fixed
+// `revoked_at IS NULL` CAS) actually lands + idempotently skips a re-revoke,
+// and that the cost-ledger proxy sums correctly. These two tests use Outbox=nil
+// to isolate the CAS/idempotency behaviour from event emission; the WIRED
+// outbox path (P2/101 — RevokeScope with a real appender emits
+// user.consent.revoked into meta_outbox) is covered separately by
+// TestLive_PgConsentRevoker_EmitsOutboxEvent below.
 
 import (
 	"context"
@@ -21,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/loreweave/foundation/contracts/meta"
+	"github.com/loreweave/foundation/sdks/go/metaoutbox"
 	"github.com/loreweave/foundation/sdks/go/metapg"
 )
 
@@ -67,8 +69,8 @@ func commandsPGEnv(t *testing.T) (*pgxpool.Pool, *meta.Config) {
 	cfg := &meta.Config{
 		DB: metapg.New(pool), Allowlist: allow, QueryBuilder: meta.PostgresQueryBuilder{},
 		Clock: testClock{}, UUIDGen: testUUID{}, Scrubber: meta.NewRegexScrubber(nil),
-		// Outbox intentionally nil: matches the platform-wide state (no appender
-		// wired). The user_consent_ledger UPDATE's allowlisted event is skipped.
+		// Outbox left nil HERE to isolate the CAS/idempotency tests from event
+		// emission; the wired path is exercised by TestLive_PgConsentRevoker_EmitsOutboxEvent.
 	}
 	return pool, cfg
 }
@@ -142,6 +144,80 @@ func TestLive_PgConsentRevoker_RevokeAndIdempotent(t *testing.T) {
 	}
 	if len(active) != 1 || active[0].Scope != "byok_telemetry" {
 		t.Fatalf("expected only byok_telemetry active, got %+v", active)
+	}
+}
+
+// TestLive_PgConsentRevoker_EmitsOutboxEvent proves the WIRED producer path
+// (P2/101 /review-impl #2): RevokeScope with a real meta-outbox appender set on
+// cfg.Outbox emits a user.consent.revoked row into meta_outbox in the SAME TX as
+// the data write — i.e. the headline 101 claim, exercised through the real
+// PgConsentRevoker → MetaWrite → appender chain (not the appender in isolation).
+func TestLive_PgConsentRevoker_EmitsOutboxEvent(t *testing.T) {
+	pool, cfg := commandsPGEnv(t)
+	ctx := context.Background()
+
+	// commandsPGEnv applies the consent + audit migrations; add meta_outbox (030).
+	sql, err := os.ReadFile("../../../../migrations/meta/030_meta_outbox.up.sql")
+	if err != nil {
+		t.Fatalf("read 030: %v", err)
+	}
+	if _, err := pool.Exec(ctx, string(sql)); err != nil {
+		t.Fatalf("apply 030: %v", err)
+	}
+
+	// Wire a real appender (with the allowlist's xreality topics) — exactly as
+	// buildErasureHandler does in production.
+	topics, err := meta.LoadXRealityTopics("../../../../contracts/meta/events_allowlist.yaml")
+	if err != nil {
+		t.Fatalf("load xreality topics: %v", err)
+	}
+	cfg.Outbox = metaoutbox.New(topics)
+
+	user := uuid.New()
+	seedConsent(t, pool, user, "core_service", "v1", false)
+
+	r := NewPgConsentRevoker(pool, cfg, "op-admin", time.Now)
+	already, err := r.RevokeScope(ctx, user, ConsentScope{"core_service", "v1"}, "gdpr erasure")
+	if err != nil {
+		t.Fatalf("RevokeScope: %v", err)
+	}
+	if already {
+		t.Fatal("first revoke must report alreadyRevoked=false")
+	}
+
+	// Assert exactly one meta_outbox row named user.consent.revoked for this user.
+	var (
+		count     int
+		eventName string
+		published bool
+	)
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*), max(event_name), bool_or(published)
+		   FROM meta_outbox
+		  WHERE event_name = 'user.consent.revoked' AND aggregate_id LIKE '%' || $1 || '%'`,
+		user.String()).Scan(&count, &eventName, &published); err != nil {
+		t.Fatalf("query meta_outbox: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly 1 user.consent.revoked meta_outbox row for the user, got %d", count)
+	}
+	if eventName != "user.consent.revoked" {
+		t.Errorf("event_name = %q, want user.consent.revoked", eventName)
+	}
+	if published {
+		t.Error("a freshly-emitted meta_outbox row must be unpublished (the relay drains it)")
+	}
+
+	// A meta-only event (no per-reality consumer) ⇒ xreality_topic must be NULL.
+	var xtopic *string
+	if err := pool.QueryRow(ctx,
+		`SELECT xreality_topic FROM meta_outbox
+		  WHERE event_name='user.consent.revoked' AND aggregate_id LIKE '%' || $1 || '%'`,
+		user.String()).Scan(&xtopic); err != nil {
+		t.Fatalf("query xreality_topic: %v", err)
+	}
+	if xtopic != nil {
+		t.Errorf("user.consent.revoked is meta-only; xreality_topic must be NULL, got %q", *xtopic)
 	}
 }
 

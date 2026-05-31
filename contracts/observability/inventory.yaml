@@ -944,6 +944,14 @@ metrics:
     description: 'meta-outbox-relay drain iterations that returned an error.'
     owner: sre
     source: services/meta-outbox-relay (drain)
+  - name: lw_meta_outbox_pending
+    kind: gauge
+    layer: L1
+    shipped_cycle: 101
+    labels: []
+    description: 'Unpublished, non-dead-lettered meta_outbox rows (drain lag — alert if it grows unbounded, i.e. relay down).'
+    owner: sre
+    source: services/meta-outbox-relay (pending-depth count)
   - name: lw_publisher_published_total
     kind: counter
     layer: L2
