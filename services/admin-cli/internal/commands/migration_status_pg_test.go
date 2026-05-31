@@ -65,11 +65,20 @@ func TestLive_PgMigrationStatusReader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListMigrationStatus: %v", err)
 	}
-	if len(rows) != 1 {
-		t.Fatalf("expected 1 reality summary, got %d", len(rows))
+	// Re-run-safe: ListMigrationStatus aggregates ALL realities, and the shared
+	// PG-gated test DB may carry realities seeded by prior runs / other tests.
+	// Locate THIS test's reality instead of asserting a global count.
+	found := false
+	for _, g := range rows {
+		if g.RealityID != rid {
+			continue
+		}
+		found = true
+		if g.Applied != 3 || g.Failures != 1 || g.LatestMigration != "003_c" {
+			t.Fatalf("aggregation mismatch for seeded reality: %+v", g)
+		}
 	}
-	g := rows[0]
-	if g.RealityID != rid || g.Applied != 3 || g.Failures != 1 || g.LatestMigration != "003_c" {
-		t.Fatalf("aggregation mismatch: %+v", g)
+	if !found {
+		t.Fatalf("seeded reality %s not found among %d summaries", rid, len(rows))
 	}
 }
