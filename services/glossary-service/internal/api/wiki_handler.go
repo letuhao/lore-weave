@@ -1066,14 +1066,20 @@ func (s *Server) loadEntityWikiAttrs(ctx context.Context, entityID uuid.UUID) ([
 	return attrs, rows.Err()
 }
 
-// loadEntityEnrichments reads the LIVE enrichment-supplement rows for an entity
-// (entity_enrichments, deleted_at IS NULL) so the wiki renderer can surface them
-// as a distinguished `dị bản` section (B1 / F-C13-2 T7). Ordered deterministically.
+// loadEntityEnrichments reads the LIVE, PROMOTED enrichment-supplement rows for
+// an entity (entity_enrichments, deleted_at IS NULL, review_status='promoted')
+// so the wiki renderer can surface them as a distinguished `dị bản` section
+// (B1 / F-C13-2 T7). Ordered deterministically.
+//
+// H0/quarantine (review-impl MED-1): ONLY 'promoted' (author-approved) supplements
+// reach the wiki — 'proposed' rows are still quarantined makeup not yet approved
+// by the author, and the wiki body is servable on the PUBLIC endpoints, so
+// surfacing un-promoted content (even labeled) would leak quarantine to readers.
 func (s *Server) loadEntityEnrichments(ctx context.Context, entityID uuid.UUID) ([]wikiRenderEnrichment, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT dimension, content, review_status, technique
 		FROM entity_enrichments
-		WHERE entity_id = $1 AND deleted_at IS NULL
+		WHERE entity_id = $1 AND deleted_at IS NULL AND review_status = 'promoted'
 		ORDER BY dimension, created_at`, entityID)
 	if err != nil {
 		return nil, err

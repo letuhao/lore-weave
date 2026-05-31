@@ -32,6 +32,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -115,6 +116,28 @@ func (s *Server) internalUpsertEnrichments(w http.ResponseWriter, r *http.Reques
 		promotedBy = &pb
 	}
 
+	// promoted_at: validate as RFC3339 if present (review-impl LOW-4) — a raw
+	// garbage string would otherwise reach the TIMESTAMPTZ column as a 500.
+	var promotedAt *time.Time
+	if req.PromotedAt != nil && strings.TrimSpace(*req.PromotedAt) != "" {
+		ts, terr := time.Parse(time.RFC3339, strings.TrimSpace(*req.PromotedAt))
+		if terr != nil {
+			writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY",
+				"promoted_at must be an RFC3339 timestamp")
+			return
+		}
+		promotedAt = &ts
+	}
+
+	// Provenance invariant (review-impl LOW-6): a 'promoted' supplement MUST carry
+	// the promoter marker — a promoted row without promoted_by is an untraceable
+	// canon-adjacent write. (The DB CHECK is the backstop; this is the clean 400.)
+	if reviewStatus == "promoted" && promotedBy == nil {
+		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY",
+			"promoted_by is required when review_status='promoted'")
+		return
+	}
+
 	ctx := r.Context()
 
 	// The entity must exist + belong to this book (not soft-deleted) — a stale
@@ -133,16 +156,26 @@ func (s *Server) internalUpsertEnrichments(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	written := 0
+	// Validate every fact BEFORE any write so a bad fact yields a clean 4xx and
+	// no partial state (review-impl LOW-5: the writes then run in ONE tx).
+	type vfact struct {
+		dimension  string
+		content    string
+		confidence float64
+	}
+	vfacts := make([]vfact, 0, len(req.Facts))
 	for _, f := range req.Facts {
-		dimension := strings.TrimSpace(f.Dimension)
+		// Untrusted LLM text → neutralize structural injection (chat-template /
+		// role-spoof tokens, zero-width smuggling) at the canon boundary,
+		// independent of the caller, exactly as canon-content does. NFC-safe.
+		// BOTH the dimension label and the content are neutralized — the
+		// dimension reaches the wiki render as 【增补·<dimension>】, so it is a
+		// stored-injection surface too (review-impl LOW-3).
+		dimension := strings.TrimSpace(sanitize.NeutralizeCanonText(f.Dimension))
 		if dimension == "" {
 			writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "fact dimension is required")
 			return
 		}
-		// Untrusted LLM text → neutralize structural injection (chat-template /
-		// role-spoof tokens, zero-width smuggling) at the canon boundary,
-		// independent of the caller, exactly as canon-content does. NFC-safe.
 		content := strings.TrimSpace(sanitize.NeutralizeCanonText(f.Content))
 		if content == "" {
 			writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "fact content is required")
@@ -160,11 +193,24 @@ func (s *Server) internalUpsertEnrichments(w http.ResponseWriter, r *http.Reques
 				"confidence must be in (0, 1.0)")
 			return
 		}
+		vfacts = append(vfacts, vfact{dimension, content, f.Confidence})
+	}
 
+	// All facts for the proposal upsert in ONE transaction — a mid-loop failure
+	// can no longer leave a partial supplement (review-impl LOW-5).
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx begin failed")
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	written := 0
+	for _, f := range vfacts {
 		// origin is NOT taken from the client — it is always 'enrichment'
 		// (the column DEFAULT). This makes it structurally impossible for a
 		// caller to write a 'glossary'-origin (canon) supplement row.
-		tag, err := s.pool.Exec(ctx,
+		tag, err := tx.Exec(ctx,
 			`INSERT INTO entity_enrichments
 			   (entity_id, book_id, dimension, content, technique, confidence,
 			    proposal_id, review_status, promoted_by, promoted_at, deleted_at, updated_at)
@@ -178,18 +224,22 @@ func (s *Server) internalUpsertEnrichments(w http.ResponseWriter, r *http.Reques
 			   promoted_at   = EXCLUDED.promoted_at,
 			   deleted_at    = NULL,
 			   updated_at    = now()`,
-			entityID, bookID, dimension, content, technique, f.Confidence,
-			proposalID, reviewStatus, promotedBy, req.PromotedAt)
+			entityID, bookID, f.dimension, f.content, technique, f.confidence,
+			proposalID, reviewStatus, promotedBy, promotedAt)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "enrichment upsert failed")
 			return
 		}
 		written += int(tag.RowsAffected())
 	}
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx commit failed")
+		return
+	}
 
 	// The supplement changed → re-run glossary_sync (C4/K14) best-effort.
-	// Already committed via pool.Exec; fire-and-forget so a broker hiccup can't
-	// fail a successful write.
+	// Already committed; fire-and-forget so a broker hiccup can't fail a
+	// successful write.
 	s.emitEntityUpdated(ctx, entityID, "updated")
 
 	writeJSON(w, http.StatusOK, map[string]any{

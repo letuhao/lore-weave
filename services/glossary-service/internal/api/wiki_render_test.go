@@ -237,13 +237,16 @@ func TestRenderWikiBody_Truncation_Noted(t *testing.T) {
 // `dị bản` section — separate from canon, multi-variant, never merged. ──────────
 
 func TestRenderWikiBody_EnrichmentSupplement_RenderedAsDistinctDiBan(t *testing.T) {
+	// NOTE (review-impl MED-1): the LOADER (loadEntityEnrichments) now supplies
+	// ONLY promoted, live rows to the renderer — so the renderer is exercised with
+	// promoted variants only. Multi-variant per dimension (dị bản) is still proven.
 	body := renderWikiBody(wikiRenderInput{
 		DisplayName: "蓬萊",
 		KindName:    "地点",
 		Attributes:  []wikiRenderAttr{{Label: "别名", Value: "蓬莱仙岛"}},
 		Enrichments: []wikiRenderEnrichment{
 			{Dimension: "历史", Content: "上古即为仙山（甲本）。", ReviewStatus: "promoted", Technique: "retrieval"},
-			{Dimension: "历史", Content: "另说乃东海神山（乙本）。", ReviewStatus: "proposed", Technique: "template"},
+			{Dimension: "历史", Content: "另说乃东海神山（乙本）。", ReviewStatus: "promoted", Technique: "fabrication"},
 			{Dimension: "features", Content: "宫室皆以金玉為之。", ReviewStatus: "promoted", Technique: "retrieval"},
 		},
 	})

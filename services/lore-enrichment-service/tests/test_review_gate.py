@@ -611,6 +611,33 @@ async def test_retract_soft_deletes_supplement_and_preserves_entity():
 
 
 @pytest.mark.asyncio
+async def test_retract_prefers_proposal_entity_over_wrong_client_id():
+    """review-impl MED-2: retract resolves the supplement entity from the
+    proposal's OWN promotion record, NOT a (possibly wrong/stale) client-supplied
+    glossary_entity_id — else a bad id would soft-delete 0 rows and orphan the
+    real supplement while reporting success (the F-C13-1 'looks-done' class)."""
+    p = _proposal(
+        status=ReviewStatus.PROMOTED,
+        promoted_entity_id=GLOSS,  # authoritative — the supplement lives here
+        promoted_by=OWNER,
+        promoted_at=datetime.now(timezone.utc),
+        original_technique="template",
+    )
+    p = replace(p, promoted_from_proposal_id=p.proposal_id)
+    ports = FakePorts(owner=OWNER)
+    svc = WritebackService(FakeRepo(p), ports)
+    wrong = UUID("019e0000-0000-7000-8000-000000000bad")
+    await svc.retract(
+        acting_user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
+        glossary_entity_id=wrong,  # caller passes a WRONG id
+    )
+    assert ports.supplement_deletes, "supplement must be soft-deleted"
+    # the proposal's promoted_entity_id wins, NOT the wrong client id.
+    assert ports.supplement_deletes[0]["entity_id"] == GLOSS
+    assert ports.supplement_deletes[0]["entity_id"] != wrong
+
+
+@pytest.mark.asyncio
 async def test_non_owner_cannot_retract():
     p = _proposal(status=ReviewStatus.APPROVED)
     ports = FakePorts(owner=OWNER)

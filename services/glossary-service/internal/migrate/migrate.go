@@ -1248,6 +1248,23 @@ CREATE TABLE IF NOT EXISTS entity_enrichments (
 
 CREATE INDEX IF NOT EXISTS idx_entity_enrichments_live
   ON entity_enrichments(book_id, entity_id) WHERE deleted_at IS NULL;
+
+-- Provenance backstop (review-impl LOW-6): a 'promoted' supplement row MUST
+-- carry the promoter marker. Mirrors the enrichment_proposal promote-only
+-- invariant; the handler also returns a clean 400, this is the DB guarantee.
+-- Idempotent DO-block (ADD CONSTRAINT IF NOT EXISTS isn't available pre-PG18
+-- for the project's historical pattern; kept hand-idempotent for consistency).
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'entity_enrichments_promoted_has_marker'
+  ) THEN
+    ALTER TABLE entity_enrichments
+      ADD CONSTRAINT entity_enrichments_promoted_has_marker
+      CHECK (review_status <> 'promoted' OR promoted_by IS NOT NULL);
+  END IF;
+END$$;
 `
 
 // UpEntityEnrichments creates the entity_enrichments table that holds the

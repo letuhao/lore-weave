@@ -126,6 +126,19 @@ retract → delete_enrichment_supplement(proposal_id) (soft-delete rows)      [g
 - ☐ C3 defenses: hybrid flag-for-human + AUTO-REJECT egregious — needs design pass first (F-C12-1 + 050 + 058)
 - ⏸️ C2 judge-diversity gate — PARKED until `main` merge (DEFERRED-056); re-decide post-merge
 
+### /review-impl round (post-T8 adversarial pass — 2026-05-31)
+Deep adversarial review of the 8 commits found 0 HIGH, 2 MED, 5 LOW/COSMETIC + a C6 note. **All fixed:**
+- ✅ MED-1 wiki surfaced PROPOSED (quarantined) enrichments → `loadEntityEnrichments` now filters `review_status='promoted'` (only author-approved supplements reach the public wiki).
+- ✅ MED-2 retract trusted client `glossary_entity_id` over the proposal's record → precedence flipped to `promoted_entity_id` → `writeback_entity_id` → client (last resort), so a wrong/stale id can't orphan the supplement.
+- ✅ LOW-3 Go endpoint now neutralizes the `dimension` label too (reaches the wiki render), not just content.
+- ✅ LOW-4 `promoted_at` validated as RFC3339 → clean 400 (was a DB 500 on garbage).
+- ✅ LOW-5 the per-fact upsert loop now runs in ONE transaction (no partial-write window); validate-all-before-write.
+- ✅ LOW-6 `promoted` row must carry `promoted_by` — handler 400 + DB CHECK `entity_enrichments_promoted_has_marker`.
+- ✅ LOW-7 `live_verify_t8.py` gained a Neo4j assertion (facts anchor on the canonical node).
+- ✅ COSMETIC-8 render test uses promoted-only inputs (matches the loader contract).
+- ✅ C6 cruft: `scripts/cleanup_loc_orphans.py` (dry-run default) soft-deleted 4 glossary `loc:` orphans + detach-deleted 4 Neo4j nodes / 40 orphan facts.
+Tests added: Go promoted-without-promoted_by 400, bad-promoted_at 400, dimension-neutralize, loader-promoted-only; pytest retract-prefers-proposal-id. Go enrichment+wiki suites green; pytest 443 pass.
+
 ### Done this QC/fix arc (for the record)
 - ✅ F-LIVE-2 circular import (`9a1555f0`) · ✅ do-nows 044+046 (`7be1b18d`) · ✅ QC review C0–C18 (`eed8b055`,`b42d1135`) · ✅ PO rulings (`f5cb9ae4`) · ✅ spec+plan (`9b2f012d`,`b92076e0`,`41f01c7f`,`0df29c72`)
 - ✅ Cleared live: F-C2-1 (trigger installed), F-C1617-1 (licenses clean) · stale-resolved defers 048/049

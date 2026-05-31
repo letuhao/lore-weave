@@ -515,14 +515,19 @@ class WritebackService:
 
         # Glossary side: soft-delete the enrichment SUPPLEMENT for this proposal
         # (reversible — sets deleted_at). Resolve which entity carries it in order
-        # of authority: an explicitly-supplied id, the promotion record, then the
-        # write-back anchor id persisted at write-back time (FIX-3/NIT-3) — the
-        # last covers a quarantined-never-promoted proposal. Internal-token; no
+        # of AUTHORITY (review-impl MED-2): the proposal's OWN promotion record,
+        # then its write-back anchor id (FIX-3/NIT-3, covers a quarantined-never-
+        # promoted proposal), and only THEN a caller-supplied id as a last resort.
+        # The supplement always lives on the entity the proposal resolved to at
+        # write-back/promote, so trusting a client-supplied glossary_entity_id OVER
+        # the stored record risks mis-targeting — a wrong/stale id would soft-delete
+        # 0 rows and orphan the real promoted supplement while the API still
+        # reported success (the F-C13-1 "looks-done" class). Internal-token; no
         # user JWT (F-C13-1). The canonical entity is NEVER deleted.
         supplement_target = (
-            glossary_entity_id
-            or proposal.promoted_entity_id
+            proposal.promoted_entity_id
             or proposal.writeback_entity_id
+            or glossary_entity_id
         )
         supplement_retracted = 0
         if supplement_target is not None:

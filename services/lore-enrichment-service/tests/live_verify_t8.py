@@ -25,12 +25,43 @@ from __future__ import annotations
 
 import asyncio
 import os
+import subprocess
 import sys
 from uuid import UUID
 
 import asyncpg
 import httpx
 import jwt as pyjwt
+
+NEO4J_CONTAINER = os.environ.get("NEO4J_CONTAINER", "infra-neo4j-1")
+NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")
+NEO4J_PASSWORD = os.environ.get("NEO4J_PASSWORD", "loreweave_dev_neo4j")
+
+
+def _neo4j_facts_on(gid: str) -> int | None:
+    """Count :Fact nodes anchored on the entity with this glossary_entity_id, via
+    `docker exec cypher-shell`. Returns the count, or None if Neo4j isn't reachable
+    (best-effort — the Postgres assertions are the hard gate; this is the KG
+    belt-and-suspenders for F-C13-2, review-impl LOW-7)."""
+    q = (
+        f"MATCH (e:Entity {{glossary_entity_id:'{gid}'}})--(f:Fact) "
+        f"RETURN count(f) AS n;"
+    )
+    try:
+        out = subprocess.run(
+            ["docker", "exec", NEO4J_CONTAINER, "cypher-shell", "-u", NEO4J_USER,
+             "-p", NEO4J_PASSWORD, "--format", "plain", q],
+            capture_output=True, text=True, timeout=30,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    if out.returncode != 0:
+        return None
+    for line in out.stdout.splitlines():
+        line = line.strip()
+        if line.isdigit():
+            return int(line)
+    return None
 
 GLOSS_DB = os.environ.get("GLOSSARY_DB_URL_H", "postgresql://loreweave:loreweave_dev@localhost:5555/loreweave_glossary")
 LE_DB = os.environ.get("LORE_ENRICHMENT_DB_URL", "postgresql://loreweave:loreweave_dev@localhost:5555/loreweave_lore_enrichment")
@@ -145,6 +176,22 @@ async def _main() -> int:
         print(f"[t8] ✓ F-C13-2.4 {len(live)} PROMOTED supplement rows on the canonical "
               f"entity (origin=enrichment, promoted_by set): "
               f"dims={[r['dimension'] for r in live]}")
+
+        # ── F-C13-2.5 (KG): the promoted facts anchor on the CANONICAL node ──
+        # The F-C13-2 orphan originally manifested in Neo4j (facts hung off a
+        # parallel loc: node). With the resolution fix the KG merge key is the
+        # canonical glossary_entity_id, so facts attach to the canonical node.
+        # Best-effort (review-impl LOW-7): skipped if Neo4j isn't reachable.
+        n_facts = _neo4j_facts_on(str(canonical_id))
+        if n_facts is None:
+            print("[t8] ⚠ F-C13-2.5 Neo4j not reachable — KG anchor check SKIPPED "
+                  "(Postgres assertions hold; merge key is glossary_entity_id)")
+        elif n_facts < len(live):
+            _fail(f"canonical KG node {canonical_id} carries {n_facts} facts, "
+                  f"expected ≥ {len(live)} (promote did not anchor on the canonical node)")
+        else:
+            print(f"[t8] ✓ F-C13-2.5 canonical KG node carries {n_facts} facts "
+                  f"(promoted facts anchored on the CANONICAL node, not a loc: orphan)")
 
         # ── F-C13-1: retract via the REAL API (owner bearer, no JWT threading) ──
         bearer = pyjwt.encode({"sub": DEMO_USER}, "irrelevant", algorithm="HS256")
