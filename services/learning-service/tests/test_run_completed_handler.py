@@ -94,8 +94,9 @@ async def test_run_completed_upserts_registry_then_inserts_run():
     assert run_params[7] == "a" * 64                           # config_hash FK
     assert run_params[10] == "succeeded"                       # outcome
     assert run_params[11] == "pipeline"                        # outcome_source
-    assert run_params[12] == "knowledge"                       # origin_service
-    assert run_params[13] == "outbox-run-1"                    # origin_event_id (dedup key)
+    # [12] = genre (None for events that predate E2)
+    assert run_params[13] == "knowledge"                       # origin_service
+    assert run_params[14] == "outbox-run-1"                    # origin_event_id (dedup key)
 
 
 async def test_outcome_source_defaults_to_pipeline_when_missing():
@@ -121,3 +122,23 @@ async def test_missing_required_field_raises(missing):
     with pytest.raises(ValueError, match="missing run_id/user_id/config_hash"):
         await handle_run_completed(ev, pool=pool)
     assert pool.conn.calls == []
+
+
+async def test_run_completed_stores_genre():
+    """E2 — genre from payload stored at param[12] in the runs INSERT."""
+    pool = FakePool()
+    ev = _run_event(genre="Tiên hiệp")
+    await handle_run_completed(ev, pool=pool)
+    _, run_params = pool.conn.calls[1]
+    assert run_params[12] == "Tiên hiệp"
+
+
+async def test_run_completed_genre_none_when_absent():
+    """E2 — genre absent from payload → NULL in DB (no KeyError)."""
+    pool = FakePool()
+    ev = _run_event()
+    # no "genre" key in payload (pre-E2 event)
+    ev.payload.pop("genre", None)
+    await handle_run_completed(ev, pool=pool)
+    _, run_params = pool.conn.calls[1]
+    assert run_params[12] is None

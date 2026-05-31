@@ -157,6 +157,14 @@ CREATE TABLE IF NOT EXISTS config_adjustment_events (
 );
 CREATE INDEX IF NOT EXISTS idx_adj_user_project
   ON config_adjustment_events(user_id, project_id, created_at DESC);
+
+-- ── Phase E2 — genre on extraction_runs (2026-06-01) ──────────────────
+-- Copied from knowledge_projects.genre at run-emit time so genre-segment
+-- mining queries operate within loreweave_learning (no cross-DB join).
+ALTER TABLE extraction_runs
+  ADD COLUMN IF NOT EXISTS genre TEXT;
+CREATE INDEX IF NOT EXISTS idx_runs_genre
+  ON extraction_runs(genre) WHERE genre IS NOT NULL;
 """
 
 

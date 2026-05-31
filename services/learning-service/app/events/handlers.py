@@ -253,11 +253,11 @@ async def handle_run_completed(event: EventData, *, pool: asyncpg.Pool) -> None:
                 INSERT INTO extraction_runs (
                   run_id, user_id, project_id, book_id, job_id, scope, chapter_ref,
                   config_hash, model_ref, metrics, outcome, outcome_source,
-                  origin_service, origin_event_id, emitted_at
+                  genre, origin_service, origin_event_id, emitted_at
                 ) VALUES (
                   $1, $2, $3, $4, $5, $6, $7,
                   $8, $9, $10::jsonb, $11, $12,
-                  $13, $14, $15
+                  $13, $14, $15, $16
                 )
                 ON CONFLICT (origin_service, origin_event_id) DO NOTHING
                 """,
@@ -272,6 +272,7 @@ async def handle_run_completed(event: EventData, *, pool: asyncpg.Pool) -> None:
                 _jsonb(payload.get("metrics") or {}),
                 payload.get("outcome"),
                 payload.get("outcome_source") or "pipeline",
+                payload.get("genre"),
                 "knowledge",
                 origin_event_id,
                 _parse_ts(payload.get("emitted_at")),
