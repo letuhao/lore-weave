@@ -233,6 +233,51 @@ opens clean, 0 console errors. **Meta-action:** enable
 
 ---
 
+#### Rapid live console-error sweep (2026-05-31) — page-load crash check
+
+Navigated every main screen logged-in (Playwright) and checked console errors
+on load. **All 0 errors:**
+
+| Screen | Errors |
+|---|---|
+| Chapter editor (`/…/edit`) | 0 |
+| Chat (`/chat`) | 0 |
+| Knowledge (`/knowledge`) | 0 |
+| Settings — Providers (`/settings/providers`) | 0 |
+| Usage (`/usage`) | 0 |
+| Leaderboard (`/leaderboard`) | 0 |
+| Notifications (`/notifications`) | 0 |
+| Browse (`/browse`) | 0 |
+| Translation matrix (`/…/translation`) | 0 |
+| Chapter translations viewer (`/…/translations`) | 0 |
+| Wiki tab (`/…/wiki`) | 0 |
+| Profile (`/users/:id`) | 0 |
+| Trash (`/trash`) | 0 |
+| Book sharing / settings tabs | 0 |
+| Reader (`/…/read`) + TTS | 0 |
+| Glossary tab + **entity editor** | 0 *(after the hooks fix; was crashing)* |
+
+**Caveat:** this is page-LOAD. The entity-editor crash was *interaction*-
+triggered (clicking an entity) — so load-clean ≠ bug-free for modals/dialogs
+opened by clicks. Exhaustively clicking every modal is impractical → see the
+meta-finding below for the systematic catch.
+
+#### META-FINDING — no ESLint in the project (root cause of the hook crash class)
+
+`frontend/` has **no ESLint** (no `eslint.config.*`/`.eslintrc`, no eslint in
+`package.json`). That's why the EntityEditorModal Rules-of-Hooks crash (and any
+sibling conditional-hook bug) was never caught — TypeScript doesn't check hook
+order, and there's no linter. **Recommendation (PO decision needed):** add a
+minimal ESLint with `eslint-plugin-react-hooks`:
+- `react-hooks/rules-of-hooks: "error"` — catches the *exact* crash class
+  statically across ALL components (low noise; only fires on real violations).
+- `react-hooks/exhaustive-deps: "warn"` — optional, noisier (would flag many
+  existing `useCallback`/`useEffect` dep gaps, incl. some `t` deps).
+This is the single highest-leverage fix to prevent recurrence of the live bug
+just found. Tooling/L decision — not done unilaterally.
+
+---
+
 | Feature | Canonical draft | Diff vs live | Verdict (SUPPLEMENT/DRIFT/INTENTIONAL/OUTDATED) | Action |
 |---|---|---|---|---|
 | _(other clusters tbd)_ | | | | |
