@@ -86,11 +86,24 @@ def test_extra_keys_dropped_but_recorded_not_silent():
     assert "乱入字段" in report.dropped_keys  # but RECORDED (no silent loss)
 
 
-def test_scalar_value_coerced_and_recorded():
+def test_numeric_scalar_in_chinese_dim_rejected():
+    # DEFERRED-046: a pure-numeric scalar for a CHINESE dimension is a digit
+    # hallucination (cjk_ratio 0) and must be REJECTED, not coerced-and-kept.
+    # (Updated from the pre-046 test that expected {"文化":123}→"123" to pass.)
     raw = '{"历史": "上古仙居。", "地理": "东海。", "文化": 123}'
-    out, report = repair_generation(raw, expected_keys=KEYS)
-    assert out["文化"] == "123"
-    assert "文化" in report.coerced_keys
+    with pytest.raises(RepairError):
+        repair_generation(raw, expected_keys=KEYS)
+
+
+def test_scalar_coerced_for_non_chinese_dim():
+    # The scalar→string COERCION mechanism (recorded in coerced_keys) still
+    # applies where the dimension is not required to be Chinese — only the
+    # downstream CJK-ratio reject (046) is scoped to chinese_dimensions.
+    keys = ["历史", "features"]
+    raw = '{"历史": "上古仙居于东海。", "features": 123}'
+    out, report = repair_generation(raw, expected_keys=keys, chinese_dimensions={"历史"})
+    assert out["features"] == "123"
+    assert "features" in report.coerced_keys
 
 
 def test_list_value_joined_with_chinese_separator():
