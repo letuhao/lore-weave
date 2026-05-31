@@ -2,6 +2,7 @@ import { apiJson } from '../../api';
 import type {
   BenchmarkRunResponse,
   BenchmarkStatus,
+  ExtractionConfigPayload,
   Project,
   ProjectCreatePayload,
   ProjectListParams,
@@ -620,6 +621,23 @@ export const knowledgeApi = {
     // returns 428 if the header is missing, 412 if it's stale.
     return apiJson<Project>(`${BASE}/projects/${projectId}`, {
       method: 'PATCH',
+      body: JSON.stringify(payload),
+      token,
+      headers: ifMatch(expectedVersion),
+    });
+  },
+
+  // B2-B/C — per-novel extraction-config tuning. PUT-REPLACE: the caller must
+  // send the COMPLETE config (read-modify-write off project.extraction_config),
+  // since an omitted section is dropped. If-Match strictly required (428 / 412).
+  updateExtractionConfig(
+    projectId: string,
+    payload: ExtractionConfigPayload,
+    token: string,
+    expectedVersion: number,
+  ): Promise<Project> {
+    return apiJson<Project>(`${BASE}/projects/${projectId}/extraction-config`, {
+      method: 'PUT',
       body: JSON.stringify(payload),
       token,
       headers: ifMatch(expectedVersion),

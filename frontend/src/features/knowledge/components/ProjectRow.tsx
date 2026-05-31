@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Archive, ArchiveRestore, Pencil, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, Pencil, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -14,6 +14,7 @@ import { readBackendError } from '../lib/readBackendError';
 import { BuildGraphDialog } from './BuildGraphDialog';
 import { ErrorViewerDialog } from './ErrorViewerDialog';
 import { ChangeModelDialog } from './ChangeModelDialog';
+import { ExtractionTuningPanel } from './ExtractionTuningPanel';
 
 // K19a.4 — replaces the Track 1 ProjectCard. One row per project:
 // header + CRUD toolbar (edit/archive/delete) above, state card
@@ -48,6 +49,7 @@ export function ProjectRow({ project, onEdit, onArchive, onRestore, onDelete }: 
   const [buildOpen, setBuildOpen] = useState(false);
   const [errorViewer, setErrorViewer] = useState<{ job: ExtractionJobSummary | null; error: string } | null>(null);
   const [changeModelOpen, setChangeModelOpen] = useState(false);
+  const [tuningOpen, setTuningOpen] = useState(false);
   // Rebuild is double-confirm: step1 explains the destruction, step2
   // is the final "are you sure". Two booleans instead of a single
   // enum keeps the JSX readable.
@@ -223,6 +225,15 @@ export function ProjectRow({ project, onEdit, onArchive, onRestore, onDelete }: 
           >
             <Pencil className="h-3.5 w-3.5" />
           </button>
+          {!isArchived && (
+            <button
+              onClick={() => setTuningOpen(true)}
+              title={t('projects.card.tuneExtraction')}
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+            </button>
+          )}
           {!isArchived ? (
             <button
               onClick={() => onArchive(project)}
@@ -282,6 +293,19 @@ export function ProjectRow({ project, onEdit, onArchive, onRestore, onDelete }: 
           invalidateJobs();
           // Invalidate the Project list too so the card picks up the
           // new embedding_model + refreshed extraction_enabled state.
+          void queryClient.invalidateQueries({
+            queryKey: ['knowledge-projects'],
+          });
+        }}
+      />
+
+      <ExtractionTuningPanel
+        open={tuningOpen}
+        onOpenChange={setTuningOpen}
+        project={project}
+        onChanged={() => {
+          // Refresh the Project list so the card picks up the new
+          // extraction_config + bumped version (next save's If-Match).
           void queryClient.invalidateQueries({
             queryKey: ['knowledge-projects'],
           });

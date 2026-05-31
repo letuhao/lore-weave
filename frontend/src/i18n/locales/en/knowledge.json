@@ -378,6 +378,7 @@
       "archive": "Archive",
       "restore": "Restore",
       "delete": "Delete",
+      "tuneExtraction": "Tune extraction",
       "bookId": "book_id"
     },
     "form": {
@@ -593,6 +594,34 @@
       "submitting": "Changing…",
       "failed": "Change failed: {{error}}",
       "alreadyAtModel": "Model already set to {{model}} — another device may have changed it."
+    },
+    "extractionTuning": {
+      "title": "Tune extraction",
+      "description": "Per-novel extraction settings. Changes apply to the next extraction run for this project.",
+      "filterEnabled": "Precision filter (drops low-support extractions)",
+      "category": {
+        "entity": "Entities",
+        "relation": "Relations",
+        "event": "Events"
+      },
+      "categoriesRequired": "Select at least one category, or turn the filter off.",
+      "partialPolicy": "Partial matches:",
+      "policyKeep": "Keep",
+      "policyDrop": "Drop",
+      "recoveryEnabled": "Entity recovery (recover missed entities)",
+      "promptWarning": "Advanced: custom prompts replace the default extraction instructions for that step and can degrade quality. Leave blank to use the default. JSON output is always enforced.",
+      "promptPlaceholder": "Leave blank to use the default prompt",
+      "prompt": {
+        "entity": "Entity extraction prompt",
+        "relation": "Relation extraction prompt",
+        "event": "Event extraction prompt",
+        "fact": "Fact extraction prompt"
+      },
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "saved": "Extraction settings saved.",
+      "failed": "Save failed: {{error}}"
     },
     "confirmDestructive": {
       "cancel": "Cancel",

@@ -85,6 +85,45 @@ export interface ProjectListResponse {
   next_cursor: string | null;
 }
 
+// ── B2-B/C — per-novel extraction-config tuning ────────────────────────────
+// Mirrors knowledge-service ProjectExtractionConfigUpdate (PUT-replace). The
+// FE does read-modify-write off the project's existing extraction_config so it
+// never drops keys it doesn't expose. `writer_autocreate` is intentionally NOT
+// surfaced yet (resolved+hashed BE-side but not applied — would be misleading).
+export type ExtractionModelSource = 'user_model' | 'platform_model';
+export type FilterCategory = 'entity' | 'relation' | 'event';
+export type PartialPolicy = 'keep' | 'drop';
+export type PromptOp = 'entity' | 'relation' | 'event' | 'fact';
+export const PROMPT_OPS: PromptOp[] = ['entity', 'relation', 'event', 'fact'];
+// Matches the BE 16 kB/field cap (loreweave/knowledge ProjectExtractionConfigUpdate).
+export const PROMPT_MAX_LEN = 16384;
+
+export interface PrecisionFilterOverride {
+  enabled?: boolean;
+  categories?: FilterCategory[];
+  partial_policy?: PartialPolicy;
+  model_ref?: string;
+  model_source?: ExtractionModelSource;
+}
+
+export interface EntityRecoveryOverride {
+  enabled?: boolean;
+  model_ref?: string;
+  model_source?: ExtractionModelSource;
+}
+
+export interface PromptOverride {
+  system?: string;
+}
+
+export interface ExtractionConfigPayload {
+  llm_model?: { model_ref?: string; model_source?: ExtractionModelSource };
+  precision_filter?: PrecisionFilterOverride;
+  entity_recovery?: EntityRecoveryOverride;
+  writer_autocreate?: { enabled?: boolean };
+  prompts?: Partial<Record<PromptOp, PromptOverride>>;
+}
+
 export interface ProjectListParams {
   limit?: number;
   cursor?: string | null;
