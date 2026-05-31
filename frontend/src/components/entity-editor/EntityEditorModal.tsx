@@ -94,46 +94,12 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
     setPendingChanges(new Map());
   };
 
-  // ── Render ──
-
-  const renderLoading = () => (
-    <div className="p-6 space-y-4">
-      <Skeleton className="h-6 w-48" />
-      <Skeleton className="h-20 w-full" />
-      <Skeleton className="h-8 w-full" />
-    </div>
-  );
-
-  if (!entity && loading) {
-    return (
-      <>
-        <div className="fixed inset-0 z-40 bg-black/60" onClick={onClose} />
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
-          <div className="w-full max-w-3xl rounded-xl border bg-background shadow-2xl">
-            {renderLoading()}
-          </div>
-        </div>
-      </>
-    );
-  }
-
-  if (!entity) return null;
-
-  // Filter attributes by genre: show if attr has no genre_tags (universal) or matches book genres
-  const genreMatch = (attr: AttributeValue) => {
-    const tags = attr.attribute_def.genre_tags ?? [];
-    return tags.length === 0 || tags.some((gt) => bookGenreTags.includes(gt));
-  };
-
-  const sortedAttrs = [...entity.attribute_values]
-    .filter(genreMatch)
-    .sort((a, b) => a.attribute_def.sort_order - b.attribute_def.sort_order);
-  const sysAttrs = sortedAttrs.filter((a) => a.attribute_def.is_system);
-  const usrAttrs = sortedAttrs.filter((a) => !a.attribute_def.is_system);
-
-  // Collect unique languages: book's original language + all existing translation languages
-  // Stable key: serialize translation language codes to avoid recalc on unrelated entity changes
-  const translationLangKey = entity.attribute_values
+  // Collect unique languages: book's original language + all existing translation languages.
+  // Stable key: serialize translation language codes to avoid recalc on unrelated entity changes.
+  // NOTE: these hooks MUST stay above the early returns below — moving them after a conditional
+  // return crashes with "Rendered more hooks than during the previous render" (entity loads
+  // null→data, so the early return is taken on the first render only). Null-safe on `entity`.
+  const translationLangKey = (entity?.attribute_values ?? [])
     .flatMap((av) => av.translations.map((tr) => tr.language_code))
     .sort().join(',');
   const availableLanguages = useMemo(() => {
@@ -172,6 +138,43 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
     });
     onSaved();
   }, [onSaved]);
+
+  // ── Render ──
+
+  const renderLoading = () => (
+    <div className="p-6 space-y-4">
+      <Skeleton className="h-6 w-48" />
+      <Skeleton className="h-20 w-full" />
+      <Skeleton className="h-8 w-full" />
+    </div>
+  );
+
+  if (!entity && loading) {
+    return (
+      <>
+        <div className="fixed inset-0 z-40 bg-black/60" onClick={onClose} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <div className="w-full max-w-3xl rounded-xl border bg-background shadow-2xl">
+            {renderLoading()}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  if (!entity) return null;
+
+  // Filter attributes by genre: show if attr has no genre_tags (universal) or matches book genres
+  const genreMatch = (attr: AttributeValue) => {
+    const tags = attr.attribute_def.genre_tags ?? [];
+    return tags.length === 0 || tags.some((gt) => bookGenreTags.includes(gt));
+  };
+
+  const sortedAttrs = [...entity.attribute_values]
+    .filter(genreMatch)
+    .sort((a, b) => a.attribute_def.sort_order - b.attribute_def.sort_order);
+  const sysAttrs = sortedAttrs.filter((a) => a.attribute_def.is_system);
+  const usrAttrs = sortedAttrs.filter((a) => !a.attribute_def.is_system);
 
   return (
     <>

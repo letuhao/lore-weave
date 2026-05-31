@@ -195,6 +195,44 @@ is built & wired. `reader-social` deferred post-MVP (PO). v1 draft = archive.
 
 ---
 
+#### Glossary (audited 2026-05-31) — live in browser
+
+Live GlossaryTab (richest book "封神演義 Lore Demo"): "11 entities · 9 kinds",
+toolbar 抽出/ジャンル/種類/新エンティティ (Extract/Genre/Kinds/New), search+filter,
+entity list (kind/status/chapter/evidence-count/delete). Entity editor (v2)
+opens with tabs 属性/根拠/翻訳言語 (Attributes/Evidences/Translation-lang),
+system+user attrs (name/aliases/description/...), status draft/active/inactive,
+move-to-trash. = matches/exceeds the 6 glossary drafts (live is rich, PO was
+right). No missing features.
+
+| Draft | Live status | Verdict |
+|---|---|---|
+| `glossary-management` | BUILT — GlossaryTab + kinds editor (種類) + genre (ジャンル) | OK |
+| `entity-editor-v2` | BUILT — `EntityEditorModal` (attrs/evidences/translations) | OK (had a live bug, fixed — see below) |
+| `attr-editor-modal` | BUILT — `AttrEditorModal` | OK |
+| `genre-groups` | BUILT — `GenreGroupsPanel` (i18n'd W9) | OK |
+| `glossary-editor-integration` | BUILT — `GlossaryPanel/Tooltip/Autocomplete` (in-editor) | OK |
+| `glossary_extraction_ui_draft` (old lowercase name) | superseded by `ExtractionWizard` | **OUTDATED** → archive draft |
+
+🐛 **LIVE BUG FOUND + FIXED (2026-05-31): EntityEditorModal crashed on open.**
+Clicking any entity threw *"Rendered more hooks than during the previous
+render"* (React Rules-of-Hooks). Cause: `useMemo(availableLanguages)` +
+`useCallback(handleTranslationChanged)` sat **after** two early returns
+(`if (!entity && loading) return …` / `if (!entity) return null`). Entity loads
+null→data, so the first render took the early return (fewer hooks) and the
+post-load render ran the extra hooks → crash → **entity editor unusable**.
+Static/i18n/tsc passes never caught it (TS doesn't check hook order; the unit
+mock for react-i18next doesn't exercise the load sequence). Fix: hoisted both
+hooks above the early returns, null-safe on `entity`. Verified live: editor now
+opens clean, 0 console errors. **Meta-action:** enable
+`react-hooks/rules-of-hooks` ESLint rule to catch this class pre-commit
+(candidate — likely not running, else it'd have flagged).
+
+**Glossary verdict: GREEN (built, live-verified) + 1 bug fixed.** Archive
+`glossary_extraction_ui_draft`.
+
+---
+
 | Feature | Canonical draft | Diff vs live | Verdict (SUPPLEMENT/DRIFT/INTENTIONAL/OUTDATED) | Action |
 |---|---|---|---|---|
 | _(other clusters tbd)_ | | | | |
