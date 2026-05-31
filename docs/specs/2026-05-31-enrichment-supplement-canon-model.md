@@ -2,8 +2,13 @@
 
 > Created 2026-05-31 · Track: lore-enrichment · Branch `lore-enrichment/foundation`
 > Origin: QC review of the RAID run (QC_REVIEW_C0-C18.md) + PO decision rulings B1/B2/B3.
-> Status: **CLARIFY/DESIGN — awaiting PO confirmation of the data-model option + open questions.**
+> Status: **DESIGN LOCKED — PO confirmed 2026-05-31. Ready for PLAN→BUILD.**
 > Size: **L/XL** (2 services + a glossary schema change) → spec-first per the workflow.
+
+## 0. DECISIONS LOCKED (PO, 2026-05-31)
+- **Data model = option (c): a separate `entity_enrichments` table** (FK→canonical entity). Enrichment is structurally separate from original canon.
+- **Multiple variants (`dị bản`) per (entity, dimension) ARE allowed.** A variant set is keyed by `proposal_id` (each enrichment proposal = one variant); the unique key is `(entity_id, dimension, proposal_id)`, NOT `(entity_id, dimension)`. The read/wiki shows original canon + each labeled enrichment variant.
+- **Open-Q defaults (PO did not object → adopt):** Q3 new-entity case → even when the entity has no original canon yet, enrichment stays a supplement (leave `short_description` empty/marked, never fill it with makeup). Q4 read surface → a distinct, clearly-labeled "enrichment (`dị bản`)" section, separate from original canon.
 
 ## 1. Problem (live-confirmed)
 The QC live audit proved the promote→canon path is broken at the entity level:
@@ -56,6 +61,20 @@ Where does the enrichment supplement live on the canonical entity?
 - Rebuild knowledge-service (F-LIVE-1) so enriched-* routes exist.
 - Live e2e on a fresh promote: assert (1) NO duplicate entity — the enrichment attaches to the canonical `glossary_entity_id`; (2) original `short_description` untouched; (3) the supplement rows carry origin=enrichment + markers; (4) `enriched-promote` canonizes facts on the canonical node; (5) **retract** soft-deletes the supplement (internal-token, no user JWT) while the canonical entity + original canon survive (`glossary_recycled`-equivalent = true).
 - Unit: writeback resolves-not-mints; promote doesn't touch `short_description`; retract removes only the supplement. API-level (TestClient) retract test (the gap F-C13-1's unit test missed).
+
+## 8. Build plan (ordered — for the BUILD session)
+**Pre-req:** `docker compose build knowledge-service` (clears F-LIVE-1) so enriched-* routes exist for live verify.
+
+1. **glossary-service (Go) — schema + endpoints:**
+   - `internal/migrate/migrate.go`: add `UpEntityEnrichments(ctx, pool)` (table per §0/§4, idempotent `CREATE TABLE IF NOT EXISTS`, unique `(entity_id, dimension, proposal_id)`, index on `(book_id, entity_id) WHERE deleted_at IS NULL`); register it in the `Up*` sequence in `cmd/glossary-service/main.go`.
+   - new `internal/api/enrichment_handler.go` (mirror `canon_content_handler.go`, internal-token): `POST /internal/books/{book_id}/entities/{entity_id}/enrichments` (upsert variant rows + emit `glossary.entity_updated` via outbox) + `DELETE …/enrichments?proposal_id=` (soft-delete `deleted_at` + emit). Register routes.
+   - Go tests mirroring `canon_content_test.go` (200/auth/404/soft-delete-emits).
+2. **lore-enrichment-service (Python):**
+   - `clients/writeback.py`: add `upsert_enrichment_supplement(...)` + `delete_enrichment_supplement(proposal_id)` ports (internal-token, new glossary endpoints). RESOLVE-entity helper (by `glossary_entity_id`/exact canonical-name; create canonical ONCE only if truly absent).
+   - `services/writeback.py`: `_anchor_name` no longer uses `target_ref`-as-name (B3); `write_back`/`promote` resolve the canonical entity + write the supplement via the new port — STOP calling `set_glossary_canon_content` with makeup (leave original `short_description` untouched, §0 Q3); `retract` calls `delete_enrichment_supplement` (internal-token) — drop the user-jwt `soft_delete_glossary_entity` for enrichment. **(fixes F-C13-1 + F-C13-2.)**
+   - Tests: writeback-resolves-not-mints; promote-leaves-short_description; retract-removes-supplement-not-entity; **API-level (TestClient) retract** (the gap F-C13-1's unit missed).
+3. **knowledge-service (Python):** confirm `enriched-writeback`/`enriched-promote` anchor on the now-canonical `glossary_entity_id` (keys already match glossary_sync, so the duplicate disappears once lore-enrichment passes the canonical id). Minor/none expected.
+4. **Live verify (§6).**
 
 ## 7. Acceptance
 - F-C13-2 closed: no parallel entity; enrichment on the canonical entity; original canon distinguishable.
