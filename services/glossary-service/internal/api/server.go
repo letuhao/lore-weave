@@ -91,6 +91,13 @@ func (s *Server) Router() http.Handler {
 		// re-promote SELF-HEAL (adversary WARN-1): if a prior canon-content
 		// write failed transiently, a re-promote reads NULL here and re-writes.
 		r.Get("/books/{book_id}/entities/{entity_id}/canon-content", s.internalGetCanonContent)
+		// Enrichment SUPPLEMENT layer (F-C13-1 + F-C13-2 / PO ruling B1):
+		// lore-enrichment writes/retracts the distinguished enrichment `dị bản`
+		// here (its own table, FK→entity) instead of overwriting short_description.
+		// DELETE is the F-C13-1 fix — retract un-canonizes via the internal token,
+		// no user JWT, leaving the canonical entity + original canon untouched.
+		r.Post("/books/{book_id}/entities/{entity_id}/enrichments", s.internalUpsertEnrichments)
+		r.Delete("/books/{book_id}/entities/{entity_id}/enrichments", s.internalDeleteEnrichments)
 	})
 
 	r.Route("/v1/glossary", func(r chi.Router) {
