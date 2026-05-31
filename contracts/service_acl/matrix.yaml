@@ -441,3 +441,21 @@ services:
         - UPDATE
       meta_write_audit:
         - INSERT
+
+  # ── Cycle P2/101 (slice B) — meta-outbox relay
+  - name: meta-outbox-relay
+    svid_spiffe_id: spiffe://loreweave.dev/sa/meta-outbox-relay
+    notes: |
+      P2/101 meta-DB outbox drain. SELECTs pending meta_outbox rows (FOR UPDATE
+      SKIP LOCKED) and UPDATEs their publish-state (published / attempts /
+      last_error / dead_lettered_at) as it XADDs each envelope to Redis Streams
+      (lw.meta.events + the xreality.* bridge). meta_outbox is an OUTBOX
+      TRANSPORT table (written by MetaWrite's sdks/go/metaoutbox appender;
+      drained here) — exempt from I8 meta-write-discipline, exactly as the
+      per-reality events_outbox is drained by the publisher. The relay calls NO
+      MetaWrite() (no meta_write_audit row); it never DELETEs (the pruner is a
+      separate, deferred task — D-META-OUTBOX-PRUNE).
+    permissions:
+      meta_outbox:
+        - SELECT
+        - UPDATE

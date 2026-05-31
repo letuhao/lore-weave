@@ -903,6 +903,47 @@ metrics:
   # stale-by-refactor — reconciling/retiring them is tracked in DEFERRED-111
   # (renaming emitted metrics is dashboard/alert-load-bearing).
   # ────────────────────────────────────────────────────────────────────
+  # ── P2/101 slice B — meta-outbox-relay (meta_outbox → Redis drain)
+  - name: lw_meta_outbox_published_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 101
+    labels: []
+    description: 'meta_outbox rows XADDed + marked published.'
+    owner: world-platform
+    source: services/meta-outbox-relay (drain)
+  - name: lw_meta_outbox_retried_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 101
+    labels: []
+    description: 'meta_outbox rows marked for retry after a transient XADD failure.'
+    owner: sre
+    source: services/meta-outbox-relay (retry policy)
+  - name: lw_meta_outbox_dead_lettered_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 101
+    labels: []
+    description: 'meta_outbox rows dead-lettered at max attempts.'
+    owner: sre
+    source: services/meta-outbox-relay (retry policy)
+  - name: lw_meta_outbox_xreality_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 101
+    labels: []
+    description: 'meta_outbox rows ALSO emitted to an xreality.* topic (cross-reality bridge).'
+    owner: world-platform
+    source: services/meta-outbox-relay (drain)
+  - name: lw_meta_outbox_iteration_errors_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 101
+    labels: []
+    description: 'meta-outbox-relay drain iterations that returned an error.'
+    owner: sre
+    source: services/meta-outbox-relay (drain)
   - name: lw_publisher_published_total
     kind: counter
     layer: L2

@@ -41,6 +41,7 @@ services:
   glossary-service: go
   incident-bot: go
   integrity-checker: go
+  meta-outbox-relay: go
   meta-worker: go
   migration-orchestrator: go
   notification-service: go
