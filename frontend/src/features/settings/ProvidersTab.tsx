@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Pencil, Loader2, Zap, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -35,6 +36,7 @@ const API_STANDARDS: { value: APIStandard; label: string }[] = [
 // ── Component ────────────────────────────────────────────────────────────────
 
 export function ProvidersTab() {
+  const { t } = useTranslation('settings');
   const { accessToken } = useAuth();
   const [providers, setProviders] = useState<ProviderCredential[]>([]);
   const [models, setModels] = useState<UserModel[]>([]);
@@ -77,7 +79,7 @@ export function ProvidersTab() {
       setProviders(p.items ?? []);
       setModels(m.items ?? []);
     } catch {
-      toast.error('Failed to load providers');
+      toast.error(t('providers.toast.load_failed'));
     } finally {
       setLoading(false);
     }
@@ -116,11 +118,11 @@ export function ProvidersTab() {
         endpoint_base_url: addEndpoint || undefined,
         api_standard: addApiStandard,
       });
-      toast.success(`${addDisplayName.trim()} added`);
+      toast.success(t('providers.toast.added', { name: addDisplayName.trim() }));
       setShowAddDialog(false);
       await refresh();
     } catch (e) {
-      toast.error((e as Error).message || 'Failed to add provider');
+      toast.error((e as Error).message || t('providers.toast.add_failed'));
     } finally {
       setAddSaving(false);
     }
@@ -136,11 +138,11 @@ export function ProvidersTab() {
       if (editSecret) payload.secret = editSecret;
       if (editApiStandard !== (editProvider.api_standard ?? 'openai_compatible')) payload.api_standard = editApiStandard;
       await providerApi.patchProvider(accessToken, editProvider.provider_credential_id, payload as any);
-      toast.success('Provider updated');
+      toast.success(t('providers.toast.updated'));
       setEditProvider(null);
       await refresh();
     } catch {
-      toast.error('Failed to update provider');
+      toast.error(t('providers.toast.update_failed'));
     } finally {
       setEditSaving(false);
     }
@@ -151,11 +153,11 @@ export function ProvidersTab() {
     setDeleting(true);
     try {
       await providerApi.deleteProvider(accessToken, deleteTarget.provider_credential_id);
-      toast.success('Provider removed');
+      toast.success(t('providers.toast.removed'));
       setDeleteTarget(null);
       await refresh();
     } catch {
-      toast.error('Failed to remove provider');
+      toast.error(t('providers.toast.remove_failed'));
     } finally {
       setDeleting(false);
     }
@@ -168,7 +170,7 @@ export function ProvidersTab() {
       await providerApi.patchActivation(accessToken, model.user_model_id, !model.is_active);
       await refresh();
     } catch {
-      toast.error('Failed to toggle model');
+      toast.error(t('providers.toast.toggle_failed'));
     } finally {
       setTogglingId(null);
     }
@@ -180,12 +182,12 @@ export function ProvidersTab() {
     try {
       const res = await providerApi.verifyUserModel(accessToken, model.user_model_id);
       if (res.verified) {
-        toast.success(`${model.alias || model.provider_model_name} — OK (${res.latency_ms}ms)`);
+        toast.success(t('providers.toast.verify_ok', { name: model.alias || model.provider_model_name, ms: res.latency_ms }));
       } else {
-        toast.error(`Verify failed: ${res.error ?? 'unknown error'}`);
+        toast.error(t('providers.toast.verify_failed', { error: res.error ?? t('providers.toast.unknown_error') }));
       }
     } catch {
-      toast.error('Verify request failed');
+      toast.error(t('providers.toast.verify_request_failed'));
     } finally {
       setVerifyingId(null);
     }
@@ -196,10 +198,10 @@ export function ProvidersTab() {
     setDeletingModelId(model.user_model_id);
     try {
       await providerApi.deleteUserModel(accessToken, model.user_model_id);
-      toast.success(`${model.alias || model.provider_model_name} removed`);
+      toast.success(t('providers.toast.model_removed', { name: model.alias || model.provider_model_name }));
       await refresh();
     } catch {
-      toast.error('Failed to delete model');
+      toast.error(t('providers.toast.model_delete_failed'));
     } finally {
       setDeletingModelId(null);
     }
@@ -222,15 +224,15 @@ export function ProvidersTab() {
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold">AI Model Providers</h2>
-          <p className="text-xs text-muted-foreground">Bring your own API keys. Your keys are encrypted and never shared.</p>
+          <h2 className="text-sm font-semibold">{t('providers.heading')}</h2>
+          <p className="text-xs text-muted-foreground">{t('providers.subtitle')}</p>
         </div>
         <button
           onClick={() => openAddDialog()}
           className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
         >
           <Plus className="h-3 w-3" />
-          Add Provider
+          {t('providers.add_provider')}
         </button>
       </div>
 
@@ -258,11 +260,11 @@ export function ProvidersTab() {
                         prov.status === 'active' ? 'bg-green-500/10 text-green-400' : 'bg-destructive/10 text-destructive',
                       )}>
                         <span className={cn('h-1.5 w-1.5 rounded-full', prov.status === 'active' ? 'bg-green-500' : 'bg-destructive')} />
-                        {prov.status === 'active' ? 'Connected' : prov.status}
+                        {prov.status === 'active' ? t('providers.connected') : prov.status}
                       </span>
                     </div>
                     <span className="text-[11px] text-muted-foreground">
-                      {prov.has_secret ? 'API key configured' : 'No API key'} · Added {new Date(prov.created_at).toLocaleDateString()}
+                      {prov.has_secret ? t('providers.key_configured') : t('providers.no_key')} · {t('providers.added_on', { date: new Date(prov.created_at).toLocaleDateString() })}
                     </span>
                   </div>
                 </div>
@@ -272,13 +274,13 @@ export function ProvidersTab() {
                     className="rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors hover:bg-secondary"
                   >
                     <Pencil className="mr-1 inline h-2.5 w-2.5" />
-                    Edit Key
+                    {t('providers.edit_key')}
                   </button>
                   <button
                     onClick={() => setDeleteTarget(prov)}
                     className="rounded-md px-2.5 py-1 text-[11px] font-medium text-destructive transition-colors hover:bg-destructive/10"
                   >
-                    Remove
+                    {t('providers.remove')}
                   </button>
                 </div>
               </div>
@@ -287,35 +289,35 @@ export function ProvidersTab() {
               <div className="overflow-hidden rounded-md border">
                 <div className="flex items-center justify-between bg-muted/30 px-3.5 py-2">
                   <span className="text-[11px] font-semibold text-muted-foreground">
-                    Models ({provModels.length} configured)
+                    {t('providers.models_count', { count: provModels.length })}
                   </span>
                   <button
                     onClick={() => setAddModelProvider(prov)}
                     className="flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                   >
-                    <Plus className="h-2.5 w-2.5" /> Add Model
+                    <Plus className="h-2.5 w-2.5" /> {t('providers.add_model')}
                   </button>
                 </div>
                 {provModels.length === 0 && (
-                  <div className="px-3.5 py-3 text-[11px] text-muted-foreground">No models configured yet.</div>
+                  <div className="px-3.5 py-3 text-[11px] text-muted-foreground">{t('providers.no_models')}</div>
                 )}
                 {provModels.map((model) => (
                   <div key={model.user_model_id} className="flex items-center gap-2.5 border-t px-3.5 py-2.5 transition-colors hover:bg-card-foreground/[0.02]">
                     <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setEditModel(model)}>
                       <div className="flex items-center gap-1.5">
                         <span className="text-[13px] font-medium truncate hover:text-primary">{model.alias || model.provider_model_name}</span>
-                        {model.is_favorite && <span className="rounded bg-secondary px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">Default</span>}
+                        {model.is_favorite && <span className="rounded bg-secondary px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">{t('providers.default_badge')}</span>}
                       </div>
                       <span className="block truncate font-mono text-[10px] text-muted-foreground">{model.provider_model_name}</span>
                     </div>
                     <span className="text-[11px] text-muted-foreground">
-                      {model.tags.map((t) => t.tag_name).join(', ') || '—'}
+                      {model.tags.map((tg) => tg.tag_name).join(', ') || '—'}
                     </span>
                     {/* Toggle */}
                     <button
                       onClick={() => handleToggleModel(model)}
                       disabled={togglingId === model.user_model_id}
-                      aria-label={model.is_active ? 'Deactivate model' : 'Activate model'}
+                      aria-label={model.is_active ? t('providers.deactivate_aria') : t('providers.activate_aria')}
                       className={cn(
                         'relative h-5 w-9 flex-shrink-0 rounded-full transition-colors disabled:opacity-50',
                         model.is_active ? 'bg-green-500' : 'bg-secondary',
@@ -337,13 +339,13 @@ export function ProvidersTab() {
                       ) : (
                         <Zap className="h-2.5 w-2.5" />
                       )}
-                      Test
+                      {t('providers.test')}
                     </button>
                     {/* Delete */}
                     <button
                       onClick={() => handleDeleteModel(model)}
                       disabled={deletingModelId === model.user_model_id}
-                      aria-label={`Delete ${model.alias || model.provider_model_name}`}
+                      aria-label={t('providers.delete_model_aria', { name: model.alias || model.provider_model_name })}
                       className="rounded p-1 text-muted-foreground/50 transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
                     >
                       {deletingModelId === model.user_model_id ? (
@@ -372,9 +374,9 @@ export function ProvidersTab() {
                   <div>
                     <div className="flex items-center gap-1.5">
                       <span className="text-sm font-semibold">{meta.label}</span>
-                      <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Not configured</span>
+                      <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{t('providers.not_configured')}</span>
                     </div>
-                    <span className="text-[11px] text-muted-foreground">{meta.desc}</span>
+                    <span className="text-[11px] text-muted-foreground">{t(`providers.desc.${kind}`)}</span>
                   </div>
                 </div>
                 <button
@@ -382,7 +384,7 @@ export function ProvidersTab() {
                   className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-secondary"
                 >
                   <Plus className="h-3 w-3" />
-                  Configure
+                  {t('providers.configure')}
                 </button>
               </div>
             </div>
@@ -398,19 +400,19 @@ export function ProvidersTab() {
           onKeyDown={(e) => { if (e.key === 'Escape') setShowAddDialog(false); }}
           role="dialog"
           aria-modal="true"
-          aria-label="Add provider"
+          aria-label={t('providers.add_dialog.aria')}
         >
           <div className="w-full max-w-md rounded-lg border bg-card p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-4 text-sm font-semibold">Add Provider</h3>
+            <h3 className="mb-4 text-sm font-semibold">{t('providers.add_dialog.title')}</h3>
 
             <div className="mb-3 grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1 block text-xs font-medium">Provider Kind</label>
+                <label className="mb-1 block text-xs font-medium">{t('providers.add_dialog.provider_kind')}</label>
                 <input
                   type="text"
                   value={addKind}
                   onChange={(e) => setAddKind(e.target.value)}
-                  placeholder="e.g. openai, groq, together..."
+                  placeholder={t('providers.add_dialog.provider_kind_ph')}
                   list="provider-kind-list"
                   className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
                 />
@@ -419,60 +421,60 @@ export function ProvidersTab() {
                 </datalist>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium">Display Name</label>
+                <label className="mb-1 block text-xs font-medium">{t('providers.add_dialog.display_name')}</label>
                 <input
                   type="text"
                   value={addDisplayName}
                   onChange={(e) => setAddDisplayName(e.target.value)}
-                  placeholder="e.g. My Groq"
+                  placeholder={t('providers.add_dialog.display_name_ph')}
                   className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
                 />
               </div>
             </div>
 
             <div className="mb-3">
-              <label className="mb-1 block text-xs font-medium">API Standard</label>
+              <label className="mb-1 block text-xs font-medium">{t('providers.add_dialog.api_standard')}</label>
               <select
                 value={addApiStandard}
                 onChange={(e) => setAddApiStandard(e.target.value as APIStandard)}
                 className="h-9 w-full rounded-md border bg-background px-3 text-[13px]"
               >
-                {API_STANDARDS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                {API_STANDARDS.map((s) => <option key={s.value} value={s.value}>{t(`providers.api_standard_opt.${s.value}`)}</option>)}
               </select>
-              <p className="mt-1 text-[10px] text-muted-foreground">Most third-party providers (Groq, Together, Mistral, DeepSeek) are OpenAI Compatible.</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">{t('providers.add_dialog.api_standard_hint')}</p>
             </div>
 
             <div className="mb-3">
-              <label className="mb-1 block text-xs font-medium">Endpoint URL</label>
+              <label className="mb-1 block text-xs font-medium">{t('providers.add_dialog.endpoint_url')}</label>
               <input
                 type="url"
                 value={addEndpoint}
                 onChange={(e) => setAddEndpoint(e.target.value)}
-                placeholder={addApiStandard === 'ollama' ? 'http://localhost:11434' : 'https://api.example.com'}
+                placeholder={addApiStandard === 'ollama' ? t('providers.add_dialog.endpoint_ph_ollama') : t('providers.add_dialog.endpoint_ph_default')}
                 className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
               />
-              <p className="mt-1 text-[10px] text-muted-foreground">Leave empty for default endpoint (OpenAI, Anthropic).</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">{t('providers.add_dialog.endpoint_hint')}</p>
             </div>
 
             <div className="mb-4">
-              <label className="mb-1 block text-xs font-medium">API Key</label>
+              <label className="mb-1 block text-xs font-medium">{t('providers.add_dialog.api_key')}</label>
               <input
                 type="password"
                 value={addSecret}
                 onChange={(e) => setAddSecret(e.target.value)}
-                placeholder={addApiStandard === 'ollama' ? 'Optional for local' : 'sk-...'}
+                placeholder={addApiStandard === 'ollama' ? t('providers.add_dialog.api_key_ph_local') : t('providers.add_dialog.api_key_ph')}
                 className="h-9 w-full rounded-md border bg-background px-3 font-mono text-[13px] tracking-wider focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
               />
             </div>
 
             <div className="flex justify-end gap-2">
-              <button onClick={() => setShowAddDialog(false)} className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-secondary">Cancel</button>
+              <button onClick={() => setShowAddDialog(false)} className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-secondary">{t('providers.add_dialog.cancel')}</button>
               <button
                 onClick={handleAddProvider}
                 disabled={addSaving || !addKind.trim() || !addDisplayName.trim()}
                 className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
               >
-                {addSaving ? 'Adding...' : 'Add Provider'}
+                {addSaving ? t('providers.add_dialog.adding') : t('providers.add_dialog.submit')}
               </button>
             </div>
           </div>
@@ -487,13 +489,13 @@ export function ProvidersTab() {
           onKeyDown={(e) => { if (e.key === 'Escape') setEditProvider(null); }}
           role="dialog"
           aria-modal="true"
-          aria-label="Edit provider"
+          aria-label={t('providers.edit_dialog.aria')}
         >
           <div className="w-full max-w-md rounded-lg border bg-card p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-4 text-sm font-semibold">Edit Provider — {editProvider.provider_kind}</h3>
+            <h3 className="mb-4 text-sm font-semibold">{t('providers.edit_dialog.title', { kind: editProvider.provider_kind })}</h3>
 
             <div className="mb-3">
-              <label className="mb-1 block text-xs font-medium">Display Name</label>
+              <label className="mb-1 block text-xs font-medium">{t('providers.edit_dialog.display_name')}</label>
               <input
                 type="text"
                 value={editDisplayName}
@@ -503,47 +505,47 @@ export function ProvidersTab() {
             </div>
 
             <div className="mb-3">
-              <label className="mb-1 block text-xs font-medium">API Standard</label>
+              <label className="mb-1 block text-xs font-medium">{t('providers.edit_dialog.api_standard')}</label>
               <select
                 value={editApiStandard}
                 onChange={(e) => setEditApiStandard(e.target.value as APIStandard)}
                 className="h-9 w-full rounded-md border bg-background px-3 text-[13px]"
               >
-                {API_STANDARDS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                {API_STANDARDS.map((s) => <option key={s.value} value={s.value}>{t(`providers.api_standard_opt.${s.value}`)}</option>)}
               </select>
             </div>
 
             <div className="mb-3">
-              <label className="mb-1 block text-xs font-medium">Endpoint URL</label>
+              <label className="mb-1 block text-xs font-medium">{t('providers.edit_dialog.endpoint_url')}</label>
               <input
                 type="url"
                 value={editEndpoint}
                 onChange={(e) => setEditEndpoint(e.target.value)}
-                placeholder="Leave empty for default"
+                placeholder={t('providers.edit_dialog.endpoint_ph_default')}
                 className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
               />
             </div>
 
             <div className="mb-4">
-              <label className="mb-1 block text-xs font-medium">API Key</label>
+              <label className="mb-1 block text-xs font-medium">{t('providers.edit_dialog.api_key')}</label>
               <input
                 type="password"
                 value={editSecret}
                 onChange={(e) => setEditSecret(e.target.value)}
-                placeholder={editProvider.has_secret ? '••••••••  (leave empty to keep current)' : 'sk-...'}
+                placeholder={editProvider.has_secret ? t('providers.edit_dialog.api_key_ph_keep') : t('providers.edit_dialog.api_key_ph')}
                 className="h-9 w-full rounded-md border bg-background px-3 font-mono text-[13px] tracking-wider focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
               />
-              <p className="mt-1 text-[10px] text-muted-foreground">Leave empty to keep the existing key.</p>
+              <p className="mt-1 text-[10px] text-muted-foreground">{t('providers.edit_dialog.api_key_keep_hint')}</p>
             </div>
 
             <div className="flex justify-end gap-2">
-              <button onClick={() => setEditProvider(null)} className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-secondary">Cancel</button>
+              <button onClick={() => setEditProvider(null)} className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-secondary">{t('providers.edit_dialog.cancel')}</button>
               <button
                 onClick={handleEditProvider}
                 disabled={editSaving}
                 className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
               >
-                {editSaving ? 'Saving...' : 'Save Changes'}
+                {editSaving ? t('providers.edit_dialog.saving') : t('providers.edit_dialog.submit')}
               </button>
             </div>
           </div>
@@ -554,9 +556,9 @@ export function ProvidersTab() {
       <ConfirmDialog
         open={!!deleteTarget}
         onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null); }}
-        title={`Remove ${deleteTarget?.display_name ?? 'provider'}?`}
-        description="This will remove the provider and all its configured models. This cannot be undone."
-        confirmLabel="Remove"
+        title={t('providers.delete.title', { name: deleteTarget?.display_name ?? t('providers.delete.name_fallback') })}
+        description={t('providers.delete.desc')}
+        confirmLabel={t('providers.delete.confirm')}
         variant="destructive"
         onConfirm={handleDelete}
         loading={deleting}

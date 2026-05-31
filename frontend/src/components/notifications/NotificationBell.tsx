@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bell, Check, CheckCheck, Trash2 } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import { Bell, CheckCheck } from 'lucide-react';
 import { useAuth } from '@/auth';
 import {
   fetchNotifications,
@@ -10,17 +11,9 @@ import {
   deleteNotification,
 } from '@/features/notifications/api';
 import type { Notification } from '@/features/notifications/api';
+import { CATEGORIES, type NotificationCategory } from '@/features/notifications/constants';
+import { NotificationItem } from '@/features/notifications/components/NotificationItem';
 import { useNotificationStream } from '@/features/notifications/hooks/useNotificationStream';
-
-const CATEGORIES = ['all', 'translation', 'social', 'wiki', 'system'] as const;
-type Category = (typeof CATEGORIES)[number];
-
-const CATEGORY_COLORS: Record<string, string> = {
-  translation: 'rgba(61,186,106,0.1)',
-  social: 'rgba(232,93,117,0.1)',
-  wiki: 'rgba(61,166,146,0.1)',
-  system: 'rgba(232,168,50,0.1)',
-};
 
 export function NotificationBell() {
   const { t } = useTranslation('notifications');
@@ -29,36 +22,27 @@ export function NotificationBell() {
   const [unread, setUnread] = useState(0);
   const [items, setItems] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
-  const [category, setCategory] = useState<Category>('all');
+  const [category, setCategory] = useState<NotificationCategory>('all');
+  const { pathname } = useLocation();
 
-  // Phase 2f — initial unread count fetch (SSE handles updates).
-  // We still need the one-shot to seed the badge before the first
-  // event arrives.
+  // Seed the badge before the first SSE event arrives, and re-sync on every
+  // route change — so reading notifications on the /notifications page (which
+  // owns its own state) is reflected back in this badge (MED-1: avoid the
+  // bell ↔ page unread-count drift).
   useEffect(() => {
     if (!accessToken) return;
     fetchUnreadCount(accessToken)
       .then((r) => setUnread(r.count))
       .catch(() => {});
-  }, [accessToken]);
+  }, [accessToken, pathname]);
 
-  // Phase 2f — live SSE subscription replaces the 30s poll. Each event
-  // bumps the unread badge; if the panel is open and the category is
-  // 'all' or matches the category we'd normally show, we also prepend
-  // a stub Notification row so the user sees it immediately. The
-  // canonical row lands in the DB via notification-service consumer
-  // (Phase 2d) and will be picked up on the next panel-open re-fetch.
+  // Live SSE subscription — each event bumps the unread badge.
   useNotificationStream(
     accessToken,
-    useCallback(
-      (event) => {
-        // Bell badge: every event is a new unread notification.
-        setUnread((c) => c + 1);
-      },
-      [],
-    ),
+    useCallback(() => setUnread((c) => c + 1), []),
   );
 
-  // Load notifications when panel opens or category changes
+  // Load notifications when panel opens or category changes.
   useEffect(() => {
     if (!open || !accessToken) return;
     setLoading(true);
@@ -98,17 +82,6 @@ export function NotificationBell() {
     },
     [accessToken, items],
   );
-
-  const timeAgo = (iso: string) => {
-    const diff = Date.now() - new Date(iso).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return t('justNow');
-    if (mins < 60) return t('minsAgo', { count: mins });
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return t('hrsAgo', { count: hrs });
-    const days = Math.floor(hrs / 24);
-    return t('daysAgo', { count: days });
-  };
 
   return (
     <div className="relative">
@@ -171,61 +144,27 @@ export function NotificationBell() {
                 </div>
               ) : (
                 items.map((n) => (
-                  <div
+                  <NotificationItem
                     key={n.id}
-                    className={`group flex cursor-pointer gap-3 border-b px-4 py-3 transition-colors last:border-b-0 hover:bg-[var(--card-hover)] ${
-                      !n.read ? 'border-l-2 border-l-[var(--primary)] bg-[rgba(232,168,50,0.03)]' : ''
-                    }`}
-                    onClick={() => !n.read && void handleMarkRead(n.id)}
-                  >
-                    {/* Icon */}
-                    <div
-                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-                      style={{ background: CATEGORY_COLORS[n.category] || CATEGORY_COLORS.system }}
-                    >
-                      <Bell className="h-4 w-4 text-muted-foreground" />
-                    </div>
-
-                    {/* Content */}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[13px] leading-snug">{n.title}</p>
-                      {n.body && (
-                        <p className="mt-0.5 text-[11px] text-muted-foreground line-clamp-1">
-                          {n.body}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Time + actions */}
-                    <div className="flex flex-col items-end gap-1">
-                      <span
-                        className={`text-[11px] ${!n.read ? 'text-[var(--primary)]' : 'text-muted-foreground'}`}
-                      >
-                        {timeAgo(n.created_at)}
-                      </span>
-                      <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
-                        {!n.read && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); void handleMarkRead(n.id); }}
-                            className="rounded p-0.5 text-muted-foreground hover:text-foreground"
-                            title={t('markRead')}
-                          >
-                            <Check className="h-3 w-3" />
-                          </button>
-                        )}
-                        <button
-                          onClick={(e) => { e.stopPropagation(); void handleDelete(n.id); }}
-                          className="rounded p-0.5 text-muted-foreground hover:text-destructive"
-                          title={t('delete')}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
-                      {!n.read && <span className="h-[7px] w-[7px] rounded-full bg-[var(--primary)]" />}
-                    </div>
-                  </div>
+                    notification={n}
+                    showActions
+                    onClick={(x) => !x.read && void handleMarkRead(x.id)}
+                    onMarkRead={(id) => void handleMarkRead(id)}
+                    onDelete={(id) => void handleDelete(id)}
+                  />
                 ))
               )}
+            </div>
+
+            {/* Footer — full notification center (design §2) */}
+            <div className="border-t px-4 py-2.5 text-center">
+              <Link
+                to="/notifications"
+                onClick={() => setOpen(false)}
+                className="text-xs text-[var(--primary)] hover:underline"
+              >
+                {t('viewAll')}
+              </Link>
             </div>
           </div>
         </>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
+import { apiBase } from '@/api';
 
 export type ImportStatusEvent = {
   type: 'import.status';
@@ -23,7 +24,10 @@ export function useImportEvents(
   const connect = useCallback(() => {
     if (!token) return;
 
-    const base = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
+    // WebSocket needs an ABSOLUTE url — a relative '' base (the default) won't do, so
+    // fall back to the page origin (vite/nginx proxy /ws → gateway). Honors VITE_API_BASE
+    // when set for custom setups.
+    const base = apiBase() || window.location.origin;
     const wsUrl = base.replace(/^http/, 'ws') + '/ws?token=' + encodeURIComponent(token);
 
     try {

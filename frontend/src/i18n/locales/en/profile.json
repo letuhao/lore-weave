@@ -14,7 +14,6 @@
   "unfollowError": "Failed to unfollow user.",
   "userNotFound": "User not found.",
   "achievements": "Achievements",
-  "comingSoon": "{{feature}} — Coming soon",
   "chapters": "chapters",
   "readers": "readers",
   "recentActivity": "Recent Activity",
@@ -39,10 +38,12 @@
     "fiftyChapters": "50+ Chapters Translated"
   },
   "loadError": "Failed to load books.",
+  "noWiki": "No wiki contributions yet.",
+  "wikiError": "Failed to load wiki contributions.",
+  "untitled": "Untitled",
   "tabs": {
     "books": "Books",
     "translations": "Translations",
-    "wiki": "Wiki Contributions",
-    "reviews": "Reviews"
+    "wiki": "Wiki Contributions"
   }
 }

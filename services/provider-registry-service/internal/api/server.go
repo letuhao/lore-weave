@@ -1412,9 +1412,24 @@ SELECT user_model_id FROM user_models WHERE owner_user_id=$1
 			}
 		}
 		if valid && len(capabilityFilter) <= 30 {
-			query += fmt.Sprintf(` AND capability_flags @> $%d::jsonb`, argPos)
-			args = append(args, fmt.Sprintf(`{"%s": true}`, capabilityFilter))
-			argPos++
+			// capability_flags exists in TWO historical schemas in the data (LW-PLAN F-4):
+			//   canonical:  {"chat": true}            (boolean capability keys)
+			//   legacy:     {"_capability": "chat"}   (single string key + metadata)
+			// plus undeclared ('{}' / absent). Match BOTH schemas. Additionally, treat
+			// undeclared as chat-capable by default: most BYOK/local (lm_studio) models
+			// never self-declare and there's no UI to set flags, so requiring an explicit
+			// chat flag would hide them from every chat/LLM picker (knowledge build,
+			// regenerate-bio, change-model) even though they work in chat/translation/
+			// extraction (which don't filter by capability). Non-chat caps (embedding, …)
+			// stay strict — an undeclared model must NOT be silently offered there.
+			boolArg := fmt.Sprintf(`{"%s": true}`, capabilityFilter)
+			if capabilityFilter == "chat" {
+				query += fmt.Sprintf(` AND (capability_flags @> $%d::jsonb OR capability_flags->>'_capability' = $%d OR capability_flags = '{}'::jsonb)`, argPos, argPos+1)
+			} else {
+				query += fmt.Sprintf(` AND (capability_flags @> $%d::jsonb OR capability_flags->>'_capability' = $%d)`, argPos, argPos+1)
+			}
+			args = append(args, boolArg, capabilityFilter)
+			argPos += 2
 		}
 	}
 	query += " ORDER BY created_at DESC"

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Outlet, useLocation, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { BookOpen, MessageCircle, Settings, LogOut, ChevronLeft } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { apiJson } from '@/api';
@@ -8,6 +9,7 @@ import { EditorDirtyProvider, useEditorDirty } from '@/contexts/EditorDirtyConte
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 
 function EditorSidebar() {
+  const { t } = useTranslation('common');
   const { bookId } = useParams();
   const location = useLocation();
   const { accessToken, user, logoutLocal } = useAuth();
@@ -55,7 +57,7 @@ function EditorSidebar() {
       {/* Logo */}
       <button
         onClick={() => guardedNavigate('/')}
-        title="Home"
+        title={t('nav.home')}
         className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground hover:bg-primary/90"
       >
         L
@@ -66,7 +68,7 @@ function EditorSidebar() {
         <div className="mt-3 w-full px-2">
           <button
             onClick={() => guardedNavigate(`/books/${bookId}`)}
-            title="Back to book"
+            title={t('nav.back_to_book')}
             className="flex w-full items-center justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -80,8 +82,8 @@ function EditorSidebar() {
 
       {/* Main nav */}
       <nav className="mt-2 flex w-full flex-col gap-1 px-2">
-        {iconBtn('/books', BookOpen, 'Workspace')}
-        {iconBtn('/chat', MessageCircle, 'Chat')}
+        {iconBtn('/books', BookOpen, t('nav.workspace'))}
+        {iconBtn('/chat', MessageCircle, t('nav.chat'))}
       </nav>
 
       {/* Spacer */}
@@ -89,14 +91,14 @@ function EditorSidebar() {
 
       {/* Bottom nav */}
       <div className="flex w-full flex-col gap-1 px-2">
-        {iconBtn('/settings/account', Settings, 'Settings')}
+        {iconBtn('/settings/account', Settings, t('nav.settings'))}
 
         {accessToken ? (
           <>
             {/* User avatar */}
             <button
               onClick={() => guardedNavigate('/settings/account')}
-              title={user?.display_name ?? user?.email ?? 'Account'}
+              title={user?.display_name ?? user?.email ?? t('nav.account')}
               className="flex items-center justify-center rounded-full p-1 transition-colors hover:bg-secondary"
             >
               <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/20 text-[10px] font-medium text-primary">
@@ -107,7 +109,7 @@ function EditorSidebar() {
             {/* Logout */}
             <button
               onClick={handleLogoutClick}
-              title="Log out"
+              title={t('nav.logout')}
               className="flex w-full items-center justify-center rounded-md p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             >
               <LogOut className="h-4 w-4" />
@@ -116,7 +118,7 @@ function EditorSidebar() {
         ) : (
           <button
             onClick={() => guardedNavigate('/login')}
-            title="Sign in"
+            title={t('nav.signin')}
             className="flex w-full items-center justify-center rounded-md bg-primary p-2 text-primary-foreground transition-colors hover:bg-primary/90"
           >
             <BookOpen className="h-4 w-4" />
@@ -128,10 +130,10 @@ function EditorSidebar() {
       <ConfirmDialog
         open={logoutPending}
         onOpenChange={setLogoutPending}
-        title="Log out with unsaved changes?"
-        description="You have unsaved changes that will be permanently lost if you log out now."
-        confirmLabel="Log out anyway"
-        cancelLabel="Stay on page"
+        title={t('logout_confirm.title')}
+        description={t('logout_confirm.description')}
+        confirmLabel={t('logout_confirm.confirm')}
+        cancelLabel={t('logout_confirm.cancel')}
         variant="destructive"
         onConfirm={() => void doLogout()}
       />

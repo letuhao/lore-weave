@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Brain, Copy, MoreHorizontal, RefreshCw, Send, Zap } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
@@ -51,6 +52,7 @@ export function AssistantMessage({
   voiceTtsSentences,
   toolCalls,
 }: AssistantMessageProps) {
+  const { t } = useTranslation('chat');
   const [showMore, setShowMore] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
 
@@ -66,18 +68,18 @@ export function AssistantMessage({
 
   async function handleCopy() {
     await navigator.clipboard.writeText(content);
-    toast.success('Copied to clipboard');
+    toast.success(t('message.copied'));
   }
 
   async function handleCopyMarkdown() {
     await navigator.clipboard.writeText(content);
-    toast.success('Copied as markdown');
+    toast.success(t('message.copied_markdown'));
     setShowMore(false);
   }
 
   function handleSendToEditor() {
     firePasteToEditor({ text: content });
-    toast.success('Sent to editor — open a chapter to paste');
+    toast.success(t('message.sent_to_editor'));
     setShowMore(false);
   }
 
@@ -123,12 +125,12 @@ export function AssistantMessage({
               {hasReasoning ? (
                 <span className="flex items-center gap-0.5 text-[#a78bfa]">
                   <Brain className="h-2.5 w-2.5" />
-                  Think
+                  {t('input.think')}
                 </span>
               ) : (
                 <span className="flex items-center gap-0.5 text-accent">
                   <Zap className="h-2.5 w-2.5" />
-                  Fast
+                  {t('input.fast')}
                 </span>
               )}
               {inputTokens != null && <span>&uarr;{inputTokens.toLocaleString()}</span>}
@@ -137,7 +139,7 @@ export function AssistantMessage({
                 <span>&middot; {(responseTimeMs / 1000).toFixed(1)}s</span>
               )}
               {timeToFirstTokenMs != null && (
-                <span title="Time to first token">TTFT {timeToFirstTokenMs}ms</span>
+                <span title={t('message.ttft')}>TTFT {timeToFirstTokenMs}ms</span>
               )}
             </div>
           )}
@@ -148,7 +150,7 @@ export function AssistantMessage({
               <button
                 type="button"
                 onClick={handleCopy}
-                title="Copy"
+                title={t('message.copy')}
                 className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
               >
                 <Copy className="h-3.5 w-3.5" />
@@ -157,7 +159,7 @@ export function AssistantMessage({
                 <button
                   type="button"
                   onClick={onRegenerate}
-                  title="Regenerate"
+                  title={t('message.regenerate')}
                   className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
@@ -168,7 +170,7 @@ export function AssistantMessage({
                 <button
                   type="button"
                   onClick={() => setShowMore(!showMore)}
-                  title="More actions"
+                  title={t('message.more_actions')}
                   className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
                 >
                   <MoreHorizontal className="h-3.5 w-3.5" />
@@ -181,7 +183,7 @@ export function AssistantMessage({
                       className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-secondary transition-colors"
                     >
                       <Copy className="h-3 w-3" />
-                      Copy Markdown
+                      {t('message.copy_markdown')}
                     </button>
                     <button
                       type="button"
@@ -189,7 +191,7 @@ export function AssistantMessage({
                       className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-secondary transition-colors"
                     >
                       <Send className="h-3 w-3" />
-                      Send to Editor
+                      {t('message.send_to_editor')}
                     </button>
                   </div>
                 )}

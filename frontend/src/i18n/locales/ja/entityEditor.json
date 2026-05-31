@@ -1,0 +1,131 @@
+{
+  "modal": {
+    "untitled": "無題",
+    "status": {
+      "draft": "下書き",
+      "active": "有効",
+      "inactive": "無効"
+    },
+    "discard": "破棄",
+    "save": "保存",
+    "save_entity": "エンティティを保存",
+    "cancel": "キャンセル",
+    "move_to_trash": "ゴミ箱へ移動",
+    "meta": {
+      "chapters": "{{count}} 章",
+      "translations": "{{count}} 件の翻訳",
+      "evidences": "{{count}} 件の根拠"
+    },
+    "tab": {
+      "attributes": "属性",
+      "evidences": "根拠"
+    },
+    "translation_lang_aria": "翻訳言語",
+    "no_translation": "翻訳なし",
+    "add_language": "+ 言語を追加...",
+    "lang_placeholder": "例: en",
+    "system_attrs": "システム属性",
+    "user_attrs": "ユーザー属性",
+    "no_attributes": "このエンティティ種別には属性が定義されていません。",
+    "toast": {
+      "saved": "エンティティを保存しました",
+      "status_changed": "ステータスを {{status}} に変更しました",
+      "invalid_lang": "無効な言語コードです（例: en、zh、zh-tw）"
+    }
+  },
+  "attr_card": {
+    "required": "*必須",
+    "modified": "変更済み",
+    "has_translations": "翻訳あり"
+  },
+  "translation_row": {
+    "confidence": {
+      "draft": "下書き",
+      "verified": "確認済み",
+      "machine": "機械翻訳"
+    },
+    "confidence_aria": "翻訳の信頼度",
+    "by": "{{name}} 訳",
+    "discard_aria": "変更を破棄",
+    "save": "保存",
+    "delete_aria": "翻訳を削除",
+    "placeholder": "{{lang}} の翻訳...",
+    "delete_title": "翻訳を削除しますか？",
+    "delete_desc": "この属性の {{lang}} 翻訳は完全に削除されます。",
+    "delete_confirm": "削除",
+    "toast": {
+      "updated": "翻訳を更新しました",
+      "created": "翻訳を作成しました",
+      "deleted": "翻訳を削除しました"
+    }
+  },
+  "evidence": {
+    "type": {
+      "quote": "引用",
+      "summary": "要約",
+      "reference": "参照"
+    },
+    "filter": {
+      "all": "すべて",
+      "attr_aria": "属性で絞り込み",
+      "all_attributes": "すべての属性",
+      "chapter_aria": "章で絞り込み",
+      "all_chapters": "すべての章",
+      "chapter_n": "第 {{n}} 章",
+      "lang_aria": "表示言語",
+      "original": "原文",
+      "sort_aria": "並び替え",
+      "sort": {
+        "created": "作成日",
+        "chapter": "章",
+        "block_line": "ブロック/行",
+        "attribute": "属性"
+      },
+      "ascending": "昇順",
+      "descending": "降順",
+      "add": "追加"
+    },
+    "create": {
+      "title": "新しい根拠",
+      "attribute": "属性 *",
+      "attr_aria": "新しい根拠の属性",
+      "type": "種類",
+      "type_aria": "根拠の種類",
+      "original_text": "原文 *",
+      "text_placeholder": "出典のテキストを貼り付け...",
+      "block_line": "ブロック / 行",
+      "block_placeholder": "例: p.42",
+      "note": "メモ",
+      "note_placeholder": "任意のメモ",
+      "cancel": "キャンセル",
+      "create": "作成"
+    },
+    "card": {
+      "edit_type_aria": "根拠の種類を編集",
+      "cancel_title": "キャンセル",
+      "block_line": "ブロック / 行",
+      "note": "メモ",
+      "cancel": "キャンセル",
+      "save": "保存",
+      "edit_title": "編集",
+      "delete_title": "削除",
+      "translated": "翻訳済み（{{lang}}）",
+      "note_label": "メモ: {{note}}"
+    },
+    "tab": {
+      "no_evidences": "根拠が見つかりません",
+      "clear_filters": "フィルターをクリア",
+      "prev_page": "前のページ",
+      "next_page": "次のページ",
+      "delete_title": "根拠を削除しますか？",
+      "delete_desc": "\"{{attr}}\" の根拠は完全に削除されます。",
+      "delete_confirm": "削除"
+    },
+    "toast": {
+      "updated": "根拠を更新しました",
+      "deleted": "根拠を削除しました",
+      "created": "根拠を作成しました",
+      "text_required": "原文は必須です"
+    }
+  }
+}

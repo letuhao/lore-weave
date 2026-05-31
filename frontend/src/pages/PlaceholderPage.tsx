@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { BookOpen, MessageCircle, Search, BarChart3, Settings, Trophy, Trash2, Bell } from 'lucide-react';
 
 const icons: Record<string, React.ElementType> = {
@@ -13,6 +14,7 @@ const icons: Record<string, React.ElementType> = {
 };
 
 export function PlaceholderPage({ title, description }: { title: string; description?: string }) {
+  const { t } = useTranslation('common');
   const Icon = icons[title] ?? BookOpen;
   const is404 = title === '404';
   return (
@@ -22,11 +24,11 @@ export function PlaceholderPage({ title, description }: { title: string; descrip
       </div>
       <h1 className="font-serif text-xl font-semibold">{title}</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        {description ?? `${title} page — coming in Phase 2.`}
+        {description ?? t('placeholder.coming_soon', { title })}
       </p>
       {is404 && (
         <Link to="/books" className="mt-4 text-sm text-primary hover:underline">
-          &larr; Back to Workspace
+          &larr; {t('nav.workspace')}
         </Link>
       )}
     </div>

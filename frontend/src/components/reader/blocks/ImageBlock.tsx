@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { JSONContent } from '@tiptap/react';
 
 interface ImageBlockProps {
@@ -6,6 +7,7 @@ interface ImageBlockProps {
 }
 
 export function ImageBlock({ node }: ImageBlockProps) {
+  const { t } = useTranslation('reader');
   const src = node.attrs?.src as string | null;
   const alt = (node.attrs?.alt as string) || '';
   const caption = (node.attrs?.caption as string) || '';
@@ -40,7 +42,7 @@ export function ImageBlock({ node }: ImageBlockProps) {
             <circle cx="8.5" cy="8.5" r="1.5" />
             <path d="M21 15l-5-5L5 21" />
           </svg>
-          <span>Image not available</span>
+          <span>{t('block.image_unavailable')}</span>
         </div>
         {caption && <figcaption>{caption}</figcaption>}
       </figure>

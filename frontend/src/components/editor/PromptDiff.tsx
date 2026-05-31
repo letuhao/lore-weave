@@ -1,4 +1,5 @@
 import { Sparkles } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface PromptDiffProps {
   oldPrompt: string;
@@ -11,12 +12,15 @@ interface PromptDiffProps {
  * Git-style line diff between two prompts.
  * Shows context lines (gray), deletions (red strikethrough), additions (green).
  */
-export function PromptDiff({ oldPrompt, newPrompt, oldLabel = 'Previous', newLabel = 'Current' }: PromptDiffProps) {
+export function PromptDiff({ oldPrompt, newPrompt, oldLabel, newLabel }: PromptDiffProps) {
+  const { t } = useTranslation('editor');
+  const oldL = oldLabel ?? t('version.diff_previous');
+  const newL = newLabel ?? t('version.diff_current');
   if (!oldPrompt && !newPrompt) return null;
   if (oldPrompt === newPrompt) {
     return (
       <div className="px-4 py-3">
-        <p className="text-[10px] text-muted-foreground/50">Prompts are identical</p>
+        <p className="text-[10px] text-muted-foreground/50">{t('version.diff_identical')}</p>
       </div>
     );
   }
@@ -27,7 +31,7 @@ export function PromptDiff({ oldPrompt, newPrompt, oldLabel = 'Previous', newLab
     <div className="border-t px-4 py-3">
       <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold">
         <Sparkles className="h-3 w-3 text-info" />
-        AI Prompt Diff ({oldLabel} → {newLabel})
+        {t('version.diff_title', { old: oldL, new: newL })}
       </div>
       <div className="rounded-md bg-secondary p-3 font-mono text-[11px] leading-relaxed">
         {diff.map((line, i) => (

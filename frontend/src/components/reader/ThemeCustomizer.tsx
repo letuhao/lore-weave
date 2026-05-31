@@ -1,4 +1,5 @@
 import { X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useReaderTheme } from '@/providers/ThemeProvider';
 import { cn } from '@/lib/utils';
 
@@ -7,16 +8,11 @@ interface ThemeCustomizerProps {
   onClose: () => void;
   showIndices: boolean;
   onShowIndicesChange: (v: boolean) => void;
+  autoNext: boolean;
+  onAutoNextChange: (v: boolean) => void;
+  autoScrollTTS: boolean;
+  onAutoScrollTTSChange: (v: boolean) => void;
 }
-
-const PRESET_DESCRIPTIONS: Record<string, string> = {
-  dark: 'Warm dark background',
-  light: 'Clean white background',
-  sepia: 'Warm paper tone',
-  oled: 'True black for OLED screens',
-  parchment: 'Classic parchment feel',
-  forest: 'Easy on the eyes at night',
-};
 
 const FONT_OPTIONS: { family: string; label: string; sample: string }[] = [
   { family: "'Lora', Georgia, serif", label: 'Lora', sample: 'The quick brown fox' },
@@ -26,7 +22,11 @@ const FONT_OPTIONS: { family: string; label: string; sample: string }[] = [
   { family: "'Noto Serif JP', serif", label: 'Noto Serif JP', sample: '素早い茶色の狐' },
 ];
 
-export function ThemeCustomizer({ open, onClose, showIndices, onShowIndicesChange }: ThemeCustomizerProps) {
+export function ThemeCustomizer({
+  open, onClose, showIndices, onShowIndicesChange,
+  autoNext, onAutoNextChange, autoScrollTTS, onAutoScrollTTSChange,
+}: ThemeCustomizerProps) {
+  const { t } = useTranslation('reader');
   const {
     theme, presetName, presets, setPreset,
     setFont, setFontSize, setLineHeight, setMaxWidth, setSpacing,
@@ -43,7 +43,7 @@ export function ThemeCustomizer({ open, onClose, showIndices, onShowIndicesChang
       <div className="fixed top-0 right-0 bottom-0 z-[31] w-[340px] border-l bg-card shadow-xl flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between border-b px-4 py-3">
-          <span className="text-sm font-semibold">Reading Theme</span>
+          <span className="text-sm font-semibold">{t('theme.title')}</span>
           <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:text-foreground">
             <X className="h-4 w-4" />
           </button>
@@ -54,7 +54,7 @@ export function ThemeCustomizer({ open, onClose, showIndices, onShowIndicesChang
 
           {/* Theme presets */}
           <section>
-            <h3 className="mb-2.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Theme Presets</h3>
+            <h3 className="mb-2.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{t('theme.presets')}</h3>
             <div className="flex flex-col gap-1">
               {Object.entries(presets).map(([key, preset]) => (
                 <button
@@ -74,8 +74,8 @@ export function ThemeCustomizer({ open, onClose, showIndices, onShowIndicesChang
                     Aa
                   </div>
                   <div>
-                    <div className="text-xs font-medium">{preset.name}</div>
-                    <div className="text-[10px] text-muted-foreground">{PRESET_DESCRIPTIONS[key] ?? ''}</div>
+                    <div className="text-xs font-medium">{t(`theme.preset.${key}.name`, { defaultValue: preset.name })}</div>
+                    <div className="text-[10px] text-muted-foreground">{t(`theme.preset.${key}.desc`, { defaultValue: '' })}</div>
                   </div>
                 </button>
               ))}
@@ -84,7 +84,7 @@ export function ThemeCustomizer({ open, onClose, showIndices, onShowIndicesChang
 
           {/* Font */}
           <section>
-            <h3 className="mb-2.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Font</h3>
+            <h3 className="mb-2.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{t('theme.font')}</h3>
             <div className="flex flex-col gap-0.5">
               {FONT_OPTIONS.map((opt) => (
                 <button
@@ -106,31 +106,31 @@ export function ThemeCustomizer({ open, onClose, showIndices, onShowIndicesChang
 
           {/* Typography sliders */}
           <section>
-            <h3 className="mb-2.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Typography</h3>
+            <h3 className="mb-2.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{t('theme.typography')}</h3>
             <div className="space-y-2">
               <SliderRow
-                label="Font size"
+                label={t('theme.font_size')}
                 min={12} max={28} step={1}
                 value={theme.fontSize}
                 display={`${theme.fontSize}px`}
                 onChange={setFontSize}
               />
               <SliderRow
-                label="Line height"
+                label={t('theme.line_height')}
                 min={1.4} max={2.2} step={0.05}
                 value={theme.lineHeight}
                 display={theme.lineHeight.toFixed(2)}
                 onChange={setLineHeight}
               />
               <SliderRow
-                label="Text width"
+                label={t('theme.text_width')}
                 min={480} max={960} step={20}
                 value={theme.maxWidth}
                 display={`${theme.maxWidth}px`}
                 onChange={setMaxWidth}
               />
               <SliderRow
-                label="Spacing"
+                label={t('theme.spacing')}
                 min={0.8} max={2.0} step={0.1}
                 value={theme.spacing ?? 1.2}
                 display={`${(theme.spacing ?? 1.2).toFixed(1)}em`}
@@ -141,7 +141,7 @@ export function ThemeCustomizer({ open, onClose, showIndices, onShowIndicesChang
 
           {/* Reading mode */}
           <section>
-            <h3 className="mb-2.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Reading Mode</h3>
+            <h3 className="mb-2.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{t('theme.reading_mode')}</h3>
             <div className="flex flex-col gap-2">
               <label className="flex items-center gap-2 text-xs cursor-pointer">
                 <input
@@ -150,15 +150,25 @@ export function ThemeCustomizer({ open, onClose, showIndices, onShowIndicesChang
                   onChange={(e) => onShowIndicesChange(e.target.checked)}
                   className="accent-primary"
                 />
-                Show block indices (translator mode)
+                {t('theme.show_indices')}
               </label>
-              <label className="flex items-center gap-2 text-xs cursor-pointer opacity-50">
-                <input type="checkbox" disabled className="accent-primary" />
-                Auto-load next chapter (coming soon)
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoNext}
+                  onChange={(e) => onAutoNextChange(e.target.checked)}
+                  className="accent-primary"
+                />
+                {t('theme.auto_next')}
               </label>
-              <label className="flex items-center gap-2 text-xs cursor-pointer opacity-50">
-                <input type="checkbox" disabled className="accent-primary" />
-                Auto-scroll with TTS (coming soon)
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoScrollTTS}
+                  onChange={(e) => onAutoScrollTTSChange(e.target.checked)}
+                  className="accent-primary"
+                />
+                {t('theme.auto_scroll')}
               </label>
             </div>
           </section>

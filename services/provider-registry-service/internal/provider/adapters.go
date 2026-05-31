@@ -769,6 +769,15 @@ func (a *openaiAdapter) Stream(ctx context.Context, endpointBaseURL, secret, mod
 		body["tool_choice"] = v
 	}
 	forwardOptionalChatFields(input, body)
+	// chat_template_kwargs (e.g. {enable_thinking:false}) is a llama.cpp/vLLM
+	// passthrough used by LM Studio / Ollama / local OpenAI-compatible servers
+	// to suppress reasoning-model thinking. Real OpenAI cloud rejects unknown
+	// fields with 400, so strip it when this is the DEFAULT OpenAI endpoint
+	// (no custom base_url). Custom base_url (a local OpenAI-compatible server)
+	// keeps it — that's how translation/extraction disable thinking. (TR-4)
+	if strings.TrimRight(endpointBaseURL, "/") == "" {
+		delete(body, "chat_template_kwargs")
+	}
 	resp, err := openCompletionStream(ctx, a.client, base+"/v1/chat/completions", headers, body)
 	if err != nil {
 		return err

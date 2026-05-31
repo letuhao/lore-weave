@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
 import { versionsApi, type ChapterTranslation } from '../api';
@@ -14,6 +15,7 @@ interface SplitCompareViewProps {
 }
 
 export function SplitCompareView({ bookId, chapterId, versionId, originalLanguage, targetLanguage }: SplitCompareViewProps) {
+  const { t } = useTranslation('translation');
   const { accessToken } = useAuth();
   const [originalBody, setOriginalBody] = useState<string | null>(null);
   const [originalBlocks, setOriginalBlocks] = useState<JSONContent[] | null>(null);
@@ -64,7 +66,7 @@ export function SplitCompareView({ bookId, chapterId, versionId, originalLanguag
       <div className="flex flex-1 flex-col overflow-hidden">
         <div className="shrink-0 border-b border-border bg-card px-4 py-2.5">
           <p className="text-[11px] font-semibold text-primary">
-            Original &mdash; {originalLanguage ?? 'Source'}
+            {t('compare.original_label', { lang: originalLanguage ?? t('compare.source_fallback') })}
           </p>
         </div>
         <div className="flex-1 overflow-y-auto p-6">
@@ -87,7 +89,7 @@ export function SplitCompareView({ bookId, chapterId, versionId, originalLanguag
       <div className="flex flex-1 flex-col overflow-hidden">
         <div className="shrink-0 border-b border-border bg-card px-4 py-2.5">
           <p className="text-[11px] font-semibold text-accent">
-            Translation &mdash; {targetLanguage}
+            {t('compare.translation_label', { lang: targetLanguage })}
           </p>
         </div>
         <div className="flex-1 overflow-y-auto p-6">
@@ -95,7 +97,7 @@ export function SplitCompareView({ bookId, chapterId, versionId, originalLanguag
             <div className="mx-auto max-w-[680px]"><ContentRenderer blocks={translatedBlocks} mode="compact" /></div>
           ) : (
             <div className="whitespace-pre-wrap font-serif text-[15px] leading-[1.9] text-foreground/90">
-              {translatedBody || '(No translated content)'}
+              {translatedBody || t('compare.no_translated')}
             </div>
           )}
         </div>

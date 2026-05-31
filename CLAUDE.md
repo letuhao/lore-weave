@@ -33,7 +33,7 @@ Monorepo layout:
 | `knowledge-service` | Python / FastAPI | Knowledge graph + memory (Postgres SSOT + Neo4j derived, via event pipeline) — planned, see `docs/03_planning/101_DATA_RE_ENGINEERING_PLAN.md` and `docs/03_planning/KNOWLEDGE_SERVICE_ARCHITECTURE.md`. **Two-layer pattern with glossary**: glossary-service remains authored SSOT; knowledge-service adds a fuzzy/semantic entity layer that anchors to glossary entries via `glossary_entity_id` FK. Extraction writes canonical entities through to glossary via its existing `/internal/books/{book_id}/extract-entities` bulk API, and wiki stubs via `/v1/glossary/books/{book_id}/wiki/generate`. Pattern validated by Microsoft GraphRAG seed-graph (arXiv:2404.16130) and HippoRAG (arXiv:2405.14831). |
 | `video-gen-service` | Python / FastAPI | Media generation gateway; ComfyUI implementation in sibling **local-image-generator-service** (SD 1.5, SDXL, Illustrious, Flux 1/2, Qwen Image, Wan, LTX Video; custom pipelines for game assets, object sheets, animation) |
 
-Data: Postgres (per-service DBs), Redis Streams (jobs), MinIO (objects).
+Data: Postgres (per-service DBs), RabbitMQ (job/event bus — translation & extraction workers, outbox events, via AMQP/aio_pika), Redis (cache / rate-limit / ephemeral state), MinIO (objects).
 
 ### Key Rules
 - **Contract-first**: API contract frozen before frontend flow
@@ -319,9 +319,9 @@ Read only the docs for the module you're actively working on.
 ## Project Constants
 ```
 project_id:      loreweave
-frontend_port:   5173 (Vite dev)
-gateway_port:    3001 (NestJS BFF)
-mcp_url:         http://localhost:3000/mcp (optional, ContextHub)
+frontend_port:   5174 (Vite dev — see frontend/vite.config.ts)
+gateway:         api-gateway-bff (NestJS BFF) listens on container :3000, host-mapped :3123 (dev). FE always talks to it via RELATIVE /v1 (vite proxy → :3123 in dev; nginx → gateway:3000 in prod). No :3001 — that was a stale doc value.
+mcp_url:         http://localhost:3000/mcp (optional, ContextHub — a DISTINCT service, NOT the gateway)
 ```
 
 ## Test Account

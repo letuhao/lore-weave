@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Plus, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
@@ -17,6 +18,7 @@ type Props = {
 };
 
 export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
+  const { t } = useTranslation('glossaryEditor');
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -68,7 +70,7 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
 
   const handleCreate = async (data: { name: string; color: string; description: string }) => {
     const created = await glossaryApi.createGenre(bookId, data, accessToken!);
-    toast.success('Genre created');
+    toast.success(t('genre.toast_created'));
     setSelectedId(created.id);
     setModalMode(null);
     invalidate();
@@ -108,7 +110,7 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
       queryClient.invalidateQueries({ queryKey: ['glossary-kinds'] });
     }
 
-    toast.success('Genre updated');
+    toast.success(t('genre.toast_updated'));
     setModalMode(null);
     invalidate();
   };
@@ -117,7 +119,7 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
     if (!deleteTarget) return;
     try {
       await glossaryApi.deleteGenre(bookId, deleteTarget.id, accessToken!);
-      toast.success('Genre deleted');
+      toast.success(t('genre.toast_deleted'));
       if (selectedId === deleteTarget.id) setSelectedId(null);
       setDeleteTarget(null);
       invalidate();
@@ -133,7 +135,7 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
         <button onClick={onClose} className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors">
           <ArrowLeft className="h-4 w-4" />
         </button>
-        <h3 className="text-sm font-semibold">Genre Groups</h3>
+        <h3 className="text-sm font-semibold">{t('genre.title')}</h3>
         <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">
           {genres.length}
         </span>
@@ -144,13 +146,13 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
         {/* Left: genre list */}
         <div className="w-64 flex-shrink-0 border-r overflow-y-auto">
           <div className="flex items-center justify-between border-b px-3 py-2">
-            <span className="text-xs font-medium text-muted-foreground">Genres</span>
+            <span className="text-xs font-medium text-muted-foreground">{t('genre.genres')}</span>
             <button
               onClick={() => setModalMode('create')}
               className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-[10px] font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
             >
               <Plus className="h-3 w-3" />
-              New
+              {t('genre.new')}
             </button>
           </div>
 
@@ -162,7 +164,7 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
 
           {!isLoading && genres.length === 0 && (
             <div className="p-4 text-center text-xs text-muted-foreground">
-              No genres yet. Create one to organize glossary attributes by genre.
+              {t('genre.empty_list')}
             </div>
           )}
 
@@ -179,7 +181,7 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
               <div className="flex-1 min-w-0">
                 <div className="truncate text-[13px] font-medium">{g.name}</div>
                 <div className="text-[10px] text-muted-foreground">
-                  {kindCountByGenre.get(g.name) ?? 0} kinds
+                  {t('genre.kinds_count', { count: kindCountByGenre.get(g.name) ?? 0 })}
                 </div>
               </div>
             </button>
@@ -190,7 +192,7 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
         <div className="flex-1 overflow-y-auto">
           {!selected ? (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              {genres.length === 0 ? 'Create a genre to get started' : 'Select a genre'}
+              {genres.length === 0 ? t('genre.create_to_start') : t('genre.select_genre')}
             </div>
           ) : (
             <div>
@@ -206,13 +208,13 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
                     className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-secondary transition-colors"
                   >
                     <Pencil className="h-3 w-3" />
-                    Edit
+                    {t('genre.edit')}
                   </button>
                   <button
                     onClick={() => setDeleteTarget(selected)}
                     className="rounded-md border px-2.5 py-1 text-[11px] font-medium text-destructive hover:bg-destructive/10 transition-colors"
                   >
-                    Delete
+                    {t('genre.delete')}
                   </button>
                 </div>
               </div>
@@ -224,11 +226,11 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
                 )}
                 <div className="flex gap-5 text-xs">
                   <div>
-                    <span className="block text-[10px] text-muted-foreground">Kinds tagged</span>
+                    <span className="block text-[10px] text-muted-foreground">{t('genre.kinds_tagged')}</span>
                     <span className="font-semibold">{taggedKinds.length}</span>
                   </div>
                   <div>
-                    <span className="block text-[10px] text-muted-foreground">Attributes tagged</span>
+                    <span className="block text-[10px] text-muted-foreground">{t('genre.attrs_tagged')}</span>
                     <span className="font-semibold">{totalAttrCount}</span>
                   </div>
                 </div>
@@ -237,10 +239,10 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
               {/* Tagged kinds */}
               <div className="border-b px-4 py-3">
                 <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Kinds with this genre tag
+                  {t('genre.kinds_with_tag')}
                 </h4>
                 {taggedKinds.length === 0 ? (
-                  <p className="text-[11px] text-muted-foreground">No kinds are tagged with &ldquo;{selected.name}&rdquo; yet.</p>
+                  <p className="text-[11px] text-muted-foreground">{t('genre.no_kinds_tagged', { name: selected.name })}</p>
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
                     {taggedKinds.map((k) => (
@@ -255,17 +257,17 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
                   </div>
                 )}
                 <p className="mt-1.5 text-[10px] text-muted-foreground">
-                  To tag/untag a kind, go to Kinds &amp; Attributes &rarr; Genres row.
+                  {t('genre.tag_hint')}
                 </p>
               </div>
 
               {/* Tagged attributes grouped by kind */}
               <div className="px-4 py-3">
                 <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Attributes scoped to this genre
+                  {t('genre.attrs_scoped')}
                 </h4>
                 {totalAttrCount === 0 ? (
-                  <p className="text-[11px] text-muted-foreground">No attributes are scoped to &ldquo;{selected.name}&rdquo; yet.</p>
+                  <p className="text-[11px] text-muted-foreground">{t('genre.no_attrs_scoped', { name: selected.name })}</p>
                 ) : (
                   <div className="space-y-3">
                     {[...taggedAttrs.entries()].map(([kindId, { kind, attrs }]) => (
@@ -293,7 +295,7 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
                   </div>
                 )}
                 <p className="mt-2 text-[10px] text-muted-foreground">
-                  To scope an attribute to a genre, edit the attribute in Kinds &amp; Attributes tab.
+                  {t('genre.scope_hint')}
                 </p>
               </div>
             </div>
@@ -311,9 +313,9 @@ export function GenreGroupsPanel({ bookId, kinds, onClose }: Props) {
       <ConfirmDialog
         open={!!deleteTarget}
         onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
-        title="Delete Genre"
-        description={`Delete "${deleteTarget?.name}"? This will not delete any entities or attributes — it only removes the genre group definition.`}
-        confirmLabel="Delete"
+        title={t('genre.delete_title')}
+        description={t('genre.delete_desc', { name: deleteTarget?.name ?? '' })}
+        confirmLabel={t('genre.delete_confirm')}
         variant="destructive"
         onConfirm={() => void handleDelete()}
       />

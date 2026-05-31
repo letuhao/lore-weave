@@ -1,4 +1,6 @@
 import { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Languages, Check, Clock, AlertCircle, Loader2, Plus, Filter, X, Sparkles } from 'lucide-react';
 import { useAuth } from '@/auth';
@@ -11,7 +13,7 @@ import { getLanguageName } from '@/lib/languages';
 import { TranslateModal } from './TranslateModal';
 import { ExtractionWizard } from '@/features/extraction/ExtractionWizard';
 
-function cellContent(cell: CoverageCell | undefined) {
+function cellContent(cell: CoverageCell | undefined, t: TFunction) {
   if (!cell || cell.version_count === 0) {
     return <span className="text-[11px] text-muted-foreground">—</span>;
   }
@@ -20,7 +22,7 @@ function cellContent(cell: CoverageCell | undefined) {
     return (
       <span className="inline-flex items-center gap-1 text-[11px] text-green-500">
         <Check className="h-3 w-3" strokeWidth={2.5} />
-        Done
+        {t('matrix.cell_done')}
       </span>
     );
   }
@@ -28,7 +30,7 @@ function cellContent(cell: CoverageCell | undefined) {
     return (
       <span className="inline-flex items-center gap-1 text-[11px] text-green-500/60">
         <Check className="h-3 w-3" strokeWidth={2.5} />
-        Done
+        {t('matrix.cell_done')}
       </span>
     );
   }
@@ -36,7 +38,7 @@ function cellContent(cell: CoverageCell | undefined) {
     return (
       <span className="inline-flex items-center gap-1 text-[11px] text-blue-400">
         <Loader2 className="h-3 w-3 animate-spin" />
-        Running
+        {t('matrix.cell_running')}
       </span>
     );
   }
@@ -44,7 +46,7 @@ function cellContent(cell: CoverageCell | undefined) {
     return (
       <span className="inline-flex items-center gap-1 text-[11px] text-destructive">
         <X className="h-3 w-3" strokeWidth={2.5} />
-        Failed
+        {t('matrix.cell_failed')}
       </span>
     );
   }
@@ -52,7 +54,7 @@ function cellContent(cell: CoverageCell | undefined) {
     return (
       <span className="inline-flex items-center gap-1 text-[11px] text-amber-400">
         <Clock className="h-3 w-3" />
-        Pending
+        {t('matrix.cell_pending')}
       </span>
     );
   }
@@ -86,6 +88,7 @@ function languagesWithData(coverage: BookCoverageResponse): Set<string> {
 }
 
 export function TranslationTab({ bookId }: { bookId: string }) {
+  const { t } = useTranslation('translation');
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
   const [selectedLangs, setSelectedLangs] = useState<Set<string> | null>(null);
@@ -175,7 +178,7 @@ export function TranslationTab({ bookId }: { bookId: string }) {
 
   if (!coverage || chapters.length === 0) {
     return (
-      <EmptyState icon={Languages} title="No chapters to translate" description="Create chapters first, then come back to translate them." />
+      <EmptyState icon={Languages} title={t('matrix.no_chapters_title')} description={t('matrix.no_chapters_desc')} />
     );
   }
 
@@ -189,10 +192,10 @@ export function TranslationTab({ bookId }: { bookId: string }) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold">Translation Matrix</h3>
+          <h3 className="text-sm font-semibold">{t('matrix.title')}</h3>
           <p className="text-xs text-muted-foreground">
-            {chapters.length} chapter{chapters.length !== 1 ? 's' : ''}
-            {allLanguages.length > 0 && ` · ${visibleLangs.length} target language${visibleLangs.length !== 1 ? 's' : ''}`}
+            {t('matrix.chapters_count', { count: chapters.length })}
+            {allLanguages.length > 0 && ` · ${t('matrix.target_langs', { count: visibleLangs.length })}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -205,7 +208,7 @@ export function TranslationTab({ bookId }: { bookId: string }) {
               )}
             >
               <Filter className="h-3.5 w-3.5" />
-              {isFiltered ? `${visibleLangs.length} selected` : 'Filter'}
+              {isFiltered ? t('matrix.selected_count', { count: visibleLangs.length }) : t('matrix.filter')}
             </button>
           )}
         </div>
@@ -222,9 +225,9 @@ export function TranslationTab({ bookId }: { bookId: string }) {
       {filterOpen && (
         <div className="rounded-lg border bg-card p-3 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-muted-foreground">Show languages</span>
+            <span className="text-xs font-medium text-muted-foreground">{t('matrix.show_languages')}</span>
             {isFiltered && (
-              <button onClick={resetFilter} className="text-[10px] text-primary hover:underline">Reset to auto</button>
+              <button onClick={resetFilter} className="text-[10px] text-primary hover:underline">{t('matrix.reset_auto')}</button>
             )}
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -254,15 +257,15 @@ export function TranslationTab({ bookId }: { bookId: string }) {
       {visibleLangs.length === 0 ? (
         <EmptyState
           icon={Languages}
-          title="No translations yet"
-          description="Start by translating your chapters into another language."
+          title={t('matrix.no_translations_title')}
+          description={t('matrix.no_translations_desc')}
           action={
             <button
               onClick={() => setTranslateOpen(true)}
               className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:brightness-110"
             >
               <Languages className="h-3.5 w-3.5" />
-              Start Translation
+              {t('matrix.start_translation')}
             </button>
           }
         />
@@ -283,7 +286,7 @@ export function TranslationTab({ bookId }: { bookId: string }) {
                   </th>
                   <th className="px-3 py-2.5 text-left font-medium text-muted-foreground font-mono" style={{ width: 40 }}>#</th>
                   <th className="sticky left-0 z-10 px-3 py-2.5 text-left font-medium text-muted-foreground" style={{ minWidth: 180, background: 'rgba(40,35,32,0.5)' }}>
-                    Chapter
+                    {t('matrix.col_chapter')}
                   </th>
                   {visibleLangs.map((lang) => (
                     <th key={lang} className="px-4 py-2.5 text-center font-medium text-muted-foreground" style={{ minWidth: 90 }}>
@@ -323,9 +326,9 @@ export function TranslationTab({ bookId }: { bookId: string }) {
                           <td
                             key={lang}
                             className={cn('px-4 py-2 text-center cursor-default transition-colors', cellBg(cell))}
-                            title={cell && cell.version_count > 0 ? `v${cell.latest_version_num} · ${cell.version_count} version(s)` : 'Not translated'}
+                            title={cell && cell.version_count > 0 ? t('matrix.cell_version_info', { num: cell.latest_version_num, count: cell.version_count }) : t('matrix.cell_not_translated')}
                           >
-                            {cellContent(cell)}
+                            {cellContent(cell, t)}
                           </td>
                         );
                       })}
@@ -338,26 +341,26 @@ export function TranslationTab({ bookId }: { bookId: string }) {
 
           {/* Summary legend */}
           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-            <span>Showing {coverage.coverage.length} of {chapters.length} chapters</span>
+            <span>{t('matrix.showing_chapters', { shown: coverage.coverage.length, total: chapters.length })}</span>
             <div className="flex items-center gap-3">
               {summaryCounts.done > 0 && (
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-green-500" />{summaryCounts.done} translated
+                  <span className="h-2 w-2 rounded-full bg-green-500" />{t('matrix.legend_translated', { count: summaryCounts.done })}
                 </span>
               )}
               {summaryCounts.running > 0 && (
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-blue-400" />{summaryCounts.running} running
+                  <span className="h-2 w-2 rounded-full bg-blue-400" />{t('matrix.legend_running', { count: summaryCounts.running })}
                 </span>
               )}
               {summaryCounts.partial > 0 && (
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-amber-400" />{summaryCounts.partial} pending
+                  <span className="h-2 w-2 rounded-full bg-amber-400" />{t('matrix.legend_pending', { count: summaryCounts.partial })}
                 </span>
               )}
               {summaryCounts.failed > 0 && (
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-destructive" />{summaryCounts.failed} failed
+                  <span className="h-2 w-2 rounded-full bg-destructive" />{t('matrix.legend_failed', { count: summaryCounts.failed })}
                 </span>
               )}
             </div>
@@ -365,8 +368,8 @@ export function TranslationTab({ bookId }: { bookId: string }) {
 
           {hiddenCount > 0 && !filterOpen && (
             <p className="text-[10px] text-muted-foreground text-center">
-              {hiddenCount} more language{hiddenCount !== 1 ? 's' : ''} hidden ·{' '}
-              <button onClick={() => setFilterOpen(true)} className="text-primary hover:underline">show filter</button>
+              {t('matrix.more_hidden', { count: hiddenCount })}{' '}
+              <button onClick={() => setFilterOpen(true)} className="text-primary hover:underline">{t('matrix.show_filter')}</button>
             </p>
           )}
         </>
@@ -374,24 +377,24 @@ export function TranslationTab({ bookId }: { bookId: string }) {
 
       {/* Floating action bar when chapters selected */}
       <FloatingActionBar visible={selectedChapters.size > 0}>
-        <span className="text-sm font-medium">{selectedChapters.size} chapter{selectedChapters.size !== 1 ? 's' : ''} selected</span>
+        <span className="text-sm font-medium">{t('matrix.chapters_selected', { count: selectedChapters.size })}</span>
         <FloatingActionDivider />
         <button
           onClick={() => setTranslateOpen(true)}
           className="btn-glow inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground"
         >
           <Languages className="h-3.5 w-3.5" />
-          Translate Selected
+          {t('matrix.translate_selected')}
         </button>
         <button
           onClick={() => setExtractionOpen(true)}
           className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-4 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
         >
           <Sparkles className="h-3.5 w-3.5" />
-          Extract Glossary
+          {t('matrix.extract_glossary')}
         </button>
         <button onClick={clearSelection} className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-          Clear
+          {t('matrix.clear')}
         </button>
       </FloatingActionBar>
 

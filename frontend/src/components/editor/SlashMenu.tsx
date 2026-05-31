@@ -7,13 +7,14 @@ import {
   Pilcrow, Heading1, Heading2, Heading3, Minus, List, ListOrdered, Quote, MessageSquareText, Code2,
   ImageIcon, Video, Music,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
 export type EditorMode = 'classic' | 'ai';
 
 interface SlashMenuItem {
-  title: string;
-  description: string;
+  /** Stable English-ish identity used for slash-query filtering + i18n key. */
+  key: string;
   icon: React.ReactNode;
   command: (editor: Editor) => void;
   /** If set, only show in these modes. If unset, show in all modes. */
@@ -21,88 +22,19 @@ interface SlashMenuItem {
 }
 
 const SLASH_ITEMS: SlashMenuItem[] = [
-  {
-    title: 'Paragraph',
-    description: 'Plain text block',
-    icon: <Pilcrow className="h-4 w-4" />,
-    command: (editor) => editor.chain().focus().setParagraph().run(),
-  },
-  {
-    title: 'Heading 1',
-    description: 'Large section heading',
-    icon: <Heading1 className="h-4 w-4" />,
-    command: (editor) => editor.chain().focus().toggleHeading({ level: 1 }).run(),
-  },
-  {
-    title: 'Heading 2',
-    description: 'Medium section heading',
-    icon: <Heading2 className="h-4 w-4" />,
-    command: (editor) => editor.chain().focus().toggleHeading({ level: 2 }).run(),
-  },
-  {
-    title: 'Heading 3',
-    description: 'Small section heading',
-    icon: <Heading3 className="h-4 w-4" />,
-    command: (editor) => editor.chain().focus().toggleHeading({ level: 3 }).run(),
-  },
-  {
-    title: 'Bullet List',
-    description: 'Unordered list',
-    icon: <List className="h-4 w-4" />,
-    command: (editor) => editor.chain().focus().toggleBulletList().run(),
-  },
-  {
-    title: 'Numbered List',
-    description: 'Ordered list',
-    icon: <ListOrdered className="h-4 w-4" />,
-    command: (editor) => editor.chain().focus().toggleOrderedList().run(),
-  },
-  {
-    title: 'Quote',
-    description: 'Block quotation',
-    icon: <Quote className="h-4 w-4" />,
-    command: (editor) => editor.chain().focus().toggleBlockquote().run(),
-  },
-  {
-    title: 'Image',
-    description: 'Upload, paste, or AI generate',
-    icon: <ImageIcon className="h-4 w-4" />,
-    command: (editor) => editor.chain().focus().insertContent({ type: 'imageBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run(),
-    modes: ['ai'],
-  },
-  {
-    title: 'Video',
-    description: 'Upload video file',
-    icon: <Video className="h-4 w-4" />,
-    command: (editor) => editor.chain().focus().insertContent({ type: 'videoBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run(),
-    modes: ['ai'],
-  },
-  {
-    title: 'Audio',
-    description: 'Upload audio file',
-    icon: <Music className="h-4 w-4" />,
-    command: (editor) => editor.chain().focus().insertContent({ type: 'audioBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run(),
-    modes: ['ai'],
-  },
-  {
-    title: 'Code Block',
-    description: 'Syntax highlighted code',
-    icon: <Code2 className="h-4 w-4" />,
-    command: (editor) => editor.chain().focus().toggleCodeBlock().run(),
-  },
-  {
-    title: 'Callout',
-    description: 'Author note or tip',
-    icon: <MessageSquareText className="h-4 w-4" />,
-    command: (editor) => editor.chain().focus().insertContent({ type: 'callout', attrs: { type: 'note' } }).run(),
-    modes: ['ai'],
-  },
-  {
-    title: 'Divider',
-    description: 'Horizontal rule',
-    icon: <Minus className="h-4 w-4" />,
-    command: (editor) => editor.chain().focus().setHorizontalRule().run(),
-  },
+  { key: 'paragraph', icon: <Pilcrow className="h-4 w-4" />, command: (editor) => editor.chain().focus().setParagraph().run() },
+  { key: 'heading1', icon: <Heading1 className="h-4 w-4" />, command: (editor) => editor.chain().focus().toggleHeading({ level: 1 }).run() },
+  { key: 'heading2', icon: <Heading2 className="h-4 w-4" />, command: (editor) => editor.chain().focus().toggleHeading({ level: 2 }).run() },
+  { key: 'heading3', icon: <Heading3 className="h-4 w-4" />, command: (editor) => editor.chain().focus().toggleHeading({ level: 3 }).run() },
+  { key: 'bullet', icon: <List className="h-4 w-4" />, command: (editor) => editor.chain().focus().toggleBulletList().run() },
+  { key: 'numbered', icon: <ListOrdered className="h-4 w-4" />, command: (editor) => editor.chain().focus().toggleOrderedList().run() },
+  { key: 'quote', icon: <Quote className="h-4 w-4" />, command: (editor) => editor.chain().focus().toggleBlockquote().run() },
+  { key: 'image', icon: <ImageIcon className="h-4 w-4" />, command: (editor) => editor.chain().focus().insertContent({ type: 'imageBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run(), modes: ['ai'] },
+  { key: 'video', icon: <Video className="h-4 w-4" />, command: (editor) => editor.chain().focus().insertContent({ type: 'videoBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run(), modes: ['ai'] },
+  { key: 'audio', icon: <Music className="h-4 w-4" />, command: (editor) => editor.chain().focus().insertContent({ type: 'audioBlock', attrs: { blockId: crypto.randomUUID().slice(0, 8) } }).run(), modes: ['ai'] },
+  { key: 'code', icon: <Code2 className="h-4 w-4" />, command: (editor) => editor.chain().focus().toggleCodeBlock().run() },
+  { key: 'callout', icon: <MessageSquareText className="h-4 w-4" />, command: (editor) => editor.chain().focus().insertContent({ type: 'callout', attrs: { type: 'note' } }).run(), modes: ['ai'] },
+  { key: 'divider', icon: <Minus className="h-4 w-4" />, command: (editor) => editor.chain().focus().setHorizontalRule().run() },
 ];
 
 const slashMenuPluginKey = new PluginKey('slashMenu');
@@ -165,6 +97,7 @@ export function getSlashMenuState(editor: Editor): SlashMenuState {
  * Floating slash menu popup — rendered in the TiptapEditor component.
  */
 export function SlashMenuPopup({ editor, mode = 'ai' }: { editor: Editor; mode?: EditorMode }) {
+  const { t } = useTranslation('editor');
   const [state, setState] = useState<SlashMenuState>({ active: false, query: '', from: 0, to: 0 });
   const [selectedIndex, setSelectedIndex] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -183,8 +116,12 @@ export function SlashMenuPopup({ editor, mode = 'ai' }: { editor: Editor; mode?:
   const filtered = SLASH_ITEMS.filter((item) => {
     // Filter by mode
     if (item.modes && !item.modes.includes(mode)) return false;
-    // Filter by query
-    if (state.query && !item.title.toLowerCase().includes(state.query.toLowerCase())) return false;
+    // Filter by query — match the stable key OR the localized title
+    if (state.query) {
+      const q = state.query.toLowerCase();
+      const title = t(`slash.${item.key}.title`).toLowerCase();
+      if (!item.key.includes(q) && !title.includes(q)) return false;
+    }
     return true;
   });
 
@@ -244,7 +181,7 @@ export function SlashMenuPopup({ editor, mode = 'ai' }: { editor: Editor; mode?:
       <div className="p-1">
         {filtered.map((item, i) => (
           <button
-            key={item.title}
+            key={item.key}
             className={cn(
               'flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left text-xs transition-colors',
               i === selectedIndex
@@ -258,8 +195,8 @@ export function SlashMenuPopup({ editor, mode = 'ai' }: { editor: Editor; mode?:
               {item.icon}
             </span>
             <div>
-              <div className="font-medium">{item.title}</div>
-              <div className="text-[10px] opacity-60">{item.description}</div>
+              <div className="font-medium">{t(`slash.${item.key}.title`)}</div>
+              <div className="text-[10px] opacity-60">{t(`slash.${item.key}.desc`)}</div>
             </div>
           </button>
         ))}

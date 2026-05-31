@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
@@ -22,6 +23,7 @@ function textToBlocks(text: string): JSONContent[] {
 export function RevisionHistory({ bookId, chapterId, onRestore }: {
   bookId: string; chapterId: string; onRestore: () => void;
 }) {
+  const { t } = useTranslation('editor');
   const { accessToken } = useAuth();
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,7 +59,7 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
       await booksApi.restoreRevision(accessToken, bookId, chapterId, restoreTarget.revision_id);
       setRestoreTarget(null);
       setPreview(null);
-      toast.success('Revision restored');
+      toast.success(t('revision.restored'));
       onRestore();
     } catch (e) {
       toast.error((e as Error).message);
@@ -78,30 +80,30 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
   return (
     <div className="flex h-full flex-col">
       <div className="flex-shrink-0 border-b px-4 py-3 text-xs font-semibold text-muted-foreground">
-        Revision History · {revisions.length}
+        {t('revision.header', { count: revisions.length })}
       </div>
       <div className="flex-1 overflow-y-auto">
         {revisions.length === 0 && (
-          <p className="p-4 text-xs text-muted-foreground italic">No revisions yet. Save to create one.</p>
+          <p className="p-4 text-xs text-muted-foreground italic">{t('revision.empty')}</p>
         )}
         {revisions.map((r, i) => (
           <div key={r.revision_id} className="border-b px-4 py-3 text-xs hover:bg-card">
             <div className="flex items-center justify-between gap-2">
-              <span className="font-medium">{i === 0 ? 'Current' : `v${revisions.length - i}`}</span>
+              <span className="font-medium">{i === 0 ? t('revision.current') : `v${revisions.length - i}`}</span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => void handleView(r)}
                   disabled={previewLoading}
                   className="text-muted-foreground hover:text-foreground"
                 >
-                  View
+                  {t('revision.view')}
                 </button>
                 {i > 0 && (
                   <button
                     onClick={() => setRestoreTarget(r)}
                     className="text-primary hover:underline"
                   >
-                    Restore
+                    {t('revision.restore')}
                   </button>
                 )}
               </div>
@@ -115,9 +117,9 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
       <ConfirmDialog
         open={!!restoreTarget}
         onOpenChange={(open) => { if (!open) setRestoreTarget(null); }}
-        title="Restore this revision?"
-        description="This will overwrite your current draft with this older version and create a new revision entry. This cannot be undone."
-        confirmLabel="Restore"
+        title={t('revision.confirm_title')}
+        description={t('revision.confirm_desc')}
+        confirmLabel={t('revision.restore')}
         variant="destructive"
         onConfirm={() => void handleRestore()}
       />
@@ -134,13 +136,13 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
               <button
                 onClick={() => setPreview(null)}
                 className="rounded p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-                title="Close preview"
+                title={t('revision.close_preview')}
               >
                 <X className="h-4 w-4" />
               </button>
               <div>
                 <p className="text-xs font-medium">
-                  Revision preview
+                  {t('revision.preview')}
                   <span className="ml-2 text-muted-foreground font-normal">
                     {new Date(preview.revision.created_at).toLocaleString()}
                   </span>
@@ -156,7 +158,7 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
                 className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10"
               >
                 <RotateCcw className="h-3.5 w-3.5" />
-                Restore this version
+                {t('revision.restore_version')}
               </button>
             </div>
           </div>
@@ -167,7 +169,7 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
               {preview.blocks.length > 0 ? (
                 <ContentRenderer blocks={preview.blocks} mode="compact" />
               ) : (
-                <p className="text-center text-sm text-muted-foreground italic">Empty revision.</p>
+                <p className="text-center text-sm text-muted-foreground italic">{t('revision.empty_revision')}</p>
               )}
             </div>
           </div>

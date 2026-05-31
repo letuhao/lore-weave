@@ -1,5 +1,6 @@
 import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { providerApi } from '@/features/settings/api';
@@ -65,6 +66,7 @@ export function useChatSession() {
 // ── Provider ───────────────────────────────────────────────────────────────────
 
 export function ChatSessionProvider({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation('chat');
   const { accessToken } = useAuth();
   const navigate = useNavigate();
   const { sessionId: urlSessionId } = useParams<{ sessionId?: string }>();
@@ -112,9 +114,9 @@ export function ChatSessionProvider({ children }: { children: React.ReactNode })
       setShowNewDialog(false);
       setContextItems([]);
     } catch (err) {
-      toast.error(`Failed to create chat: ${(err as Error).message}`);
+      toast.error(t('session_toast.create_failed', { error: (err as Error).message }));
     }
-  }, [createSessionApi, selectSession]);
+  }, [createSessionApi, selectSession, t]);
 
   const renameSession = useCallback(async (sessionId: string, title: string) => {
     try {
@@ -123,27 +125,27 @@ export function ChatSessionProvider({ children }: { children: React.ReactNode })
         setActiveSession((prev) => (prev ? { ...prev, title } : prev));
       }
     } catch (err) {
-      toast.error(`Rename failed: ${(err as Error).message}`);
+      toast.error(t('session_toast.rename_failed', { error: (err as Error).message }));
     }
-  }, [renameSessionApi, activeSession?.session_id]);
+  }, [renameSessionApi, activeSession?.session_id, t]);
 
   const archiveSession = useCallback(async (sessionId: string) => {
     try {
       await archiveSessionApi(sessionId);
       if (activeSession?.session_id === sessionId) selectSession(null);
     } catch (err) {
-      toast.error(`Archive failed: ${(err as Error).message}`);
+      toast.error(t('session_toast.archive_failed', { error: (err as Error).message }));
     }
-  }, [archiveSessionApi, activeSession?.session_id, selectSession]);
+  }, [archiveSessionApi, activeSession?.session_id, selectSession, t]);
 
   const deleteSession = useCallback(async (sessionId: string) => {
     try {
       await deleteSessionApi(sessionId);
       if (activeSession?.session_id === sessionId) selectSession(null);
     } catch (err) {
-      toast.error(`Delete failed: ${(err as Error).message}`);
+      toast.error(t('session_toast.delete_failed', { error: (err as Error).message }));
     }
-  }, [deleteSessionApi, activeSession?.session_id, selectSession]);
+  }, [deleteSessionApi, activeSession?.session_id, selectSession, t]);
 
   const togglePin = useCallback(async (sessionId: string, pinned: boolean) => {
     await togglePinApi(sessionId, pinned);
@@ -221,7 +223,7 @@ export function ChatSessionProvider({ children }: { children: React.ReactNode })
       const items = contextItemsRef.current;
       if (items.length === 0) {
         sendFn(content, thinking).catch((err) => {
-          toast.error(`Chat error: ${(err as Error).message}`);
+          toast.error(t('session_toast.chat_error', { error: (err as Error).message }));
         });
         return;
       }
@@ -246,7 +248,7 @@ export function ChatSessionProvider({ children }: { children: React.ReactNode })
               resolvedData.set(item.id, { entity });
             }
           } catch {
-            toast.warning(`Could not load context for "${item.label}" — sending without it`);
+            toast.warning(t('session_toast.context_load_failed', { label: item.label }));
           }
         }
 
@@ -254,11 +256,11 @@ export function ChatSessionProvider({ children }: { children: React.ReactNode })
         const finalContent = contextBlock ? contextBlock + content : content;
 
         sendFn(finalContent, thinking).catch((err) => {
-          toast.error(`Chat error: ${(err as Error).message}`);
+          toast.error(t('session_toast.chat_error', { error: (err as Error).message }));
         });
       })();
     },
-    [accessToken],
+    [accessToken, t],
   );
 
   // ── UI state ───────────────────────────────────────────────────────────────

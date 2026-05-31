@@ -1,6 +1,7 @@
 {
   "title": "Wiki",
   "search": "Search wiki...",
+  "searchEntities": "Search entities by name...",
   "noArticles": "No wiki articles yet",
   "noArticlesDesc": "Create wiki articles from your glossary entities to build a knowledge base for your book.",
   "noMatch": "No articles match your filters",
@@ -35,5 +36,17 @@
   "selectEntity": "Select an entity to create a wiki article",
   "deleteArticle": "Delete Article",
   "deleteConfirm": "This will permanently delete this wiki article and all its revisions.",
-  "deleted": "Article deleted"
+  "deleted": "Article deleted",
+  "restored": "Restored to version {{version}}",
+  "suggestionAccepted": "Suggestion accepted",
+  "suggestionRejected": "Suggestion rejected",
+  "unpublished": "Unpublished",
+  "saved": "Saved",
+  "saveFailed": "Failed to save",
+  "restoreFailed": "Failed to restore revision",
+  "reviewFailed": "Failed to review suggestion",
+  "statusFailed": "Failed to update status",
+  "deleteFailed": "Failed to delete",
+  "createFailed": "Failed to create article",
+  "generateFailed": "Failed to generate"
 }

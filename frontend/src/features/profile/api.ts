@@ -83,6 +83,26 @@ export function fetchUserBooks(userId: string, params?: { limit?: number; offset
   return apiJson<PagedResponse<CatalogBook>>(`/v1/catalog/books?${q}`);
 }
 
+export type WikiContribution = {
+  article_id: string;
+  entity_id: string;
+  book_id: string;
+  display_name: string;
+  kind: { kind_id: string; code: string; name: string; icon: string; color: string };
+  status: string;
+  last_contributed_at: string;
+};
+
+// Cross-book wiki contributions for a profile (UI-2a). Pass the token so the user's
+// own profile includes private/draft contributions; without it (other users) the
+// backend returns only published articles in public-wiki books.
+export function fetchWikiContributions(userId: string, token?: string | null) {
+  return apiJson<{ items: WikiContribution[] }>(
+    `/v1/glossary/users/${userId}/wiki-contributions`,
+    { token },
+  );
+}
+
 export function followUser(userId: string, token: string) {
   return apiJson<void>(`/v1/users/${userId}/follow`, { method: 'POST', token });
 }

@@ -1,0 +1,231 @@
+{
+  "empty": {
+    "open_conversations": "Mở cuộc trò chuyện",
+    "no_chat": "Chưa chọn cuộc trò chuyện",
+    "select_or_start": "Chọn một cuộc trò chuyện từ thanh bên hoặc bắt đầu cuộc mới.",
+    "start_new": "Bắt đầu trò chuyện mới"
+  },
+  "header": {
+    "open_conversations": "Mở cuộc trò chuyện",
+    "my_model": "Mô hình của tôi",
+    "platform": "Nền tảng",
+    "messages": "{{count}} tin nhắn",
+    "messages_other": "{{count}} tin nhắn",
+    "archived": "Đã lưu trữ",
+    "voice_mode": "Chế độ giọng nói",
+    "voice_settings": "Cài đặt giọng nói",
+    "export": "Xuất",
+    "rename": "Đổi tên",
+    "session_settings": "Cài đặt phiên"
+  },
+  "input": {
+    "format": "Định dạng:",
+    "format_opt": {
+      "auto": "Tự động",
+      "concise": "Ngắn gọn",
+      "detailed": "Chi tiết",
+      "bullets": "Gạch đầu dòng",
+      "table": "Bảng"
+    },
+    "placeholder": "Hỏi về truyện, nhân vật, xây dựng thế giới của bạn...",
+    "attach_context": "Đính kèm ngữ cảnh",
+    "assist": "Trợ lý",
+    "voice_assist_on": "Trợ lý giọng nói BẬT — phản hồi AI sẽ được đọc",
+    "voice_assist_off": "Bật Trợ lý giọng nói — nói để nhập, nghe phản hồi AI",
+    "toggle_voice_assist": "Bật/tắt Trợ lý giọng nói",
+    "mic_starting": "Đang khởi động mic...",
+    "mic_listening": "Đang nghe... (nhấn để dừng)",
+    "mic_transcribing": "Đang chép lời...",
+    "mic_error": "Lỗi mic — kiểm tra mô hình STT trong Cài đặt giọng nói",
+    "mic_speak": "Nói (Trợ lý giọng nói)",
+    "mic_input": "Nhập bằng giọng nói",
+    "stop_recording": "Dừng ghi âm",
+    "stop_audio": "Dừng âm thanh",
+    "think": "Suy nghĩ",
+    "fast": "Nhanh",
+    "stop_generating": "Dừng tạo (Esc)",
+    "send": "Gửi (Enter)",
+    "context_attached": "Đã đính kèm ngữ cảnh · ",
+    "hint": "Enter để gửi · Shift+Enter để xuống dòng",
+    "hint_thinking": " · Ctrl+Shift+Enter suy nghĩ · Ctrl+Enter nhanh"
+  },
+  "new": {
+    "preset": {
+      "novel": "Trợ lý tiểu thuyết",
+      "translator": "Phiên dịch",
+      "worldbuilder": "Kiến tạo thế giới",
+      "editor": "Biên tập"
+    },
+    "create_failed": "Không thể tạo cuộc trò chuyện: {{error}}",
+    "title": "Bắt đầu trò chuyện mới",
+    "model": "Mô hình",
+    "no_models": "Không có mô hình hoạt động. Thêm một mô hình trong Cài đặt → Nhà cung cấp.",
+    "search_models": "Tìm mô hình...",
+    "ctx": "{{n}}K ngữ cảnh",
+    "favorite": "Yêu thích",
+    "quick_start": "Bắt đầu nhanh",
+    "hide_prompt": "Ẩn system prompt",
+    "add_prompt": "Thêm system prompt",
+    "prompt_placeholder": "Hướng dẫn tùy chỉnh cho AI...",
+    "start_chat": "Bắt đầu trò chuyện"
+  },
+  "sidebar": {
+    "timeago": {
+      "just_now": "Vừa xong",
+      "mins": "{{n}} phút trước",
+      "hours": "{{n}} giờ trước",
+      "yesterday": "Hôm qua",
+      "days": "{{n}} ngày trước"
+    },
+    "pin": "Ghim",
+    "unpin": "Bỏ ghim",
+    "rename": "Đổi tên",
+    "archive": "Lưu trữ",
+    "delete": "Xóa",
+    "group": {
+      "pinned": "Đã ghim",
+      "today": "Hôm nay",
+      "yesterday": "Hôm qua",
+      "this_week": "Tuần này",
+      "older": "Cũ hơn"
+    },
+    "conversations": "Cuộc trò chuyện",
+    "new": "Mới",
+    "search": "Tìm cuộc trò chuyện...",
+    "empty": "Chưa có cuộc trò chuyện nào.",
+    "empty_cta": "Nhấn \"Mới\" để bắt đầu.",
+    "no_matches": "Không có kết quả cho \"{{query}}\"",
+    "message_matches": "Khớp tin nhắn"
+  },
+  "view": {
+    "configure_voice": "Cấu hình {{missing}} để bật Trợ lý giọng nói",
+    "missing_both": "mô hình STT và TTS",
+    "missing_stt": "một mô hình STT",
+    "missing_tts": "một mô hình TTS",
+    "loading_messages": "Đang tải tin nhắn...",
+    "edit_failed": "Sửa thất bại: {{error}}",
+    "regenerate_failed": "Tạo lại thất bại: {{error}}",
+    "delete_confirm": "Xóa tin nhắn này? Không thể hoàn tác.",
+    "delete_failed": "Xóa thất bại: {{error}}",
+    "consent_title": "Bật chế độ giọng nói",
+    "consent_desc": "Chế độ giọng nói sẽ dùng micro của bạn để nhận dạng giọng nói. Âm thanh có thể được lưu tối đa 48 giờ để phát lại. Bạn có thể xóa toàn bộ dữ liệu giọng nói bất cứ lúc nào trong Cài đặt.",
+    "cancel": "Hủy",
+    "continue": "Tiếp tục"
+  },
+  "message": {
+    "edit_hint": "Enter để xác nhận · Esc để hủy · Shift+Enter xuống dòng",
+    "cancel_title": "Hủy (Esc)",
+    "cancel": "Hủy",
+    "confirm_title": "Xác nhận (Enter)",
+    "save": "Lưu",
+    "edit_message": "Sửa tin nhắn",
+    "delete_message": "Xóa tin nhắn",
+    "copied": "Đã sao chép vào clipboard",
+    "copied_markdown": "Đã sao chép dạng markdown",
+    "sent_to_editor": "Đã gửi tới trình soạn thảo — mở một chương để dán",
+    "ttft": "Thời gian tới token đầu tiên",
+    "copy": "Sao chép",
+    "regenerate": "Tạo lại",
+    "more_actions": "Thêm thao tác",
+    "copy_markdown": "Sao chép Markdown",
+    "send_to_editor": "Gửi tới trình soạn thảo"
+  },
+  "tools": {
+    "title": "Công cụ dùng trong câu trả lời này",
+    "label": {
+      "memory_search": "🔍 Đã tìm bộ nhớ",
+      "memory_recall_entity": "📚 Đã gợi lại một thực thể",
+      "memory_timeline": "📅 Đã kiểm tra dòng thời gian",
+      "memory_remember": "📝 Đã ghi nhớ",
+      "memory_forget": "🗑 Đã quên một sự kiện"
+    },
+    "step": "bước {{n}}",
+    "ok": "ổn",
+    "failed": "thất bại"
+  },
+  "facts": {
+    "type": {
+      "decision": "Quyết định",
+      "preference": "Sở thích",
+      "milestone": "Cột mốc",
+      "negation": "Sửa lỗi"
+    },
+    "confirm_failed": "Xác nhận thất bại",
+    "reject_failed": "Từ chối thất bại",
+    "title": "Ký ức đang chờ bạn xác nhận",
+    "confirm_title": "Xác nhận — lưu ký ức này",
+    "confirm": "Xác nhận",
+    "reject_title": "Từ chối — bỏ ký ức này",
+    "reject": "Từ chối"
+  },
+  "output": {
+    "sent_to_editor": "Đã gửi tới trình soạn thảo",
+    "code": "Mã ({{lang}})",
+    "text": "Văn bản",
+    "copied": "Đã sao chép",
+    "copy": "Sao chép",
+    "to_editor": "Tới trình soạn thảo",
+    "save": "Lưu"
+  },
+  "context": {
+    "context": "Ngữ cảnh",
+    "clear_all": "Xóa hết",
+    "picker_aria": "Bộ chọn ngữ cảnh",
+    "tab": {
+      "book": "Sách",
+      "chapter": "Chương",
+      "glossary": "Thuật ngữ"
+    },
+    "all_kinds": "Tất cả loại",
+    "search_books": "Tìm sách...",
+    "search_chapters": "Tìm chương...",
+    "search_entities": "Tìm thực thể...",
+    "chapters_count": "{{count}} chương",
+    "attached": "đã đính kèm",
+    "untitled": "(chưa đặt tên)",
+    "words": "{{count}} từ",
+    "unnamed": "(chưa đặt tên)",
+    "no_matches": "Không tìm thấy kết quả.",
+    "no_items": "Không có mục nào."
+  },
+  "settings": {
+    "title": "Cài đặt phiên",
+    "model": "Mô hình",
+    "system_prompt": "System Prompt",
+    "preset": {
+      "Custom": "Tùy chỉnh",
+      "Novelist": "Tiểu thuyết gia",
+      "Translator": "Phiên dịch",
+      "Worldbuilder": "Kiến tạo thế giới",
+      "Editor": "Biên tập",
+      "Analyst": "Phân tích"
+    },
+    "prompt_placeholder": "Cho AI một vai trò, tính cách hoặc chỉ dẫn cụ thể...",
+    "gen_params": "Tham số tạo sinh",
+    "max_tokens": "Token tối đa",
+    "temperature": "Nhiệt độ",
+    "temp_min": "0 (chính xác)",
+    "temp_max": "2 (sáng tạo)",
+    "top_p": "Top P",
+    "topp_min": "0 (hẹp)",
+    "topp_max": "1 (đa dạng)",
+    "default_mode": "Chế độ mặc định",
+    "session_info": "Thông tin phiên",
+    "messages": "Tin nhắn",
+    "status": "Trạng thái",
+    "created": "Đã tạo",
+    "pinned": "Đã ghim",
+    "yes": "Có",
+    "no": "Không",
+    "reset": "Đặt lại mặc định",
+    "save_failed": "Lưu thất bại: {{error}}"
+  },
+  "session_toast": {
+    "create_failed": "Không thể tạo cuộc trò chuyện: {{error}}",
+    "rename_failed": "Đổi tên thất bại: {{error}}",
+    "archive_failed": "Lưu trữ thất bại: {{error}}",
+    "delete_failed": "Xóa thất bại: {{error}}",
+    "chat_error": "Lỗi trò chuyện: {{error}}",
+    "context_load_failed": "Không thể tải ngữ cảnh cho \"{{label}}\" — gửi mà không có nó"
+  }
+}

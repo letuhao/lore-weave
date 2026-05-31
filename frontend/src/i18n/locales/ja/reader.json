@@ -1,0 +1,136 @@
+{
+  "loading": "読み込み中...",
+  "chapter_of": "第{{current}}章 / 全{{total}}章",
+  "stop_reading": "読み上げを停止",
+  "read_aloud": "読み上げ",
+  "reading_theme": "読書テーマ",
+  "edit_chapter": "この章を編集",
+  "back_to_book": "書籍に戻る",
+  "chapter_label": "第{{n}}章",
+  "chars": "文字",
+  "words": "語",
+  "min_read": "約{{minutes}}分で読了",
+  "loading_translation": "翻訳を読み込み中...",
+  "empty_chapter": "空の章 — まだ何も書かれていません。",
+  "end_of_chapter": "第{{n}}章 終わり",
+  "next_in": "{{seconds}}秒後に次の章へ...",
+  "cancel": "キャンセル",
+  "progress": "第{{current}}章 / 全{{total}}章 · {{percent}}% 完了",
+  "ch_short": "第{{n}}章",
+  "history": {
+    "title": "読書履歴",
+    "subtitle": "最近読んだ書籍と章。",
+    "empty": "読書履歴はまだありません。章を読み始めましょう！",
+    "chapters_read": "{{count}} 章を読了",
+    "fully_read": "{{percent}}% 読了",
+    "last_read": "最終閲覧 {{date}}",
+    "continue": "続きを読む"
+  },
+  "theme": {
+    "title": "読書テーマ",
+    "presets": "テーマプリセット",
+    "preset": {
+      "dark": {
+        "name": "ダーク",
+        "desc": "暖かみのある暗い背景"
+      },
+      "light": {
+        "name": "ライト",
+        "desc": "クリーンな白い背景"
+      },
+      "sepia": {
+        "name": "セピア",
+        "desc": "暖かい紙の色合い"
+      },
+      "oled": {
+        "name": "OLED",
+        "desc": "OLED画面向けの完全な黒"
+      },
+      "parchment": {
+        "name": "羊皮紙",
+        "desc": "クラシックな羊皮紙の質感"
+      },
+      "forest": {
+        "name": "フォレスト",
+        "desc": "夜間も目に優しい"
+      }
+    },
+    "font": "フォント",
+    "typography": "タイポグラフィ",
+    "font_size": "文字サイズ",
+    "line_height": "行の高さ",
+    "text_width": "テキスト幅",
+    "spacing": "間隔",
+    "reading_mode": "読書モード",
+    "show_indices": "ブロックインデックスを表示（翻訳者モード）",
+    "auto_next": "次の章を自動読み込み",
+    "auto_scroll": "TTSに合わせて自動スクロール"
+  },
+  "tts": {
+    "source": {
+      "attached": "添付",
+      "ai": "AI TTS",
+      "browser": "ブラウザ",
+      "inline": "音声"
+    },
+    "prev_block": "前のブロック (Shift+Left)",
+    "play": "再生 (Space)",
+    "pause": "一時停止 (Space)",
+    "next_block": "次のブロック (Shift+Right)",
+    "cycle_speed": "速度を切り替え",
+    "autoscroll_on": "自動スクロール: オン",
+    "autoscroll_off": "自動スクロール: オフ",
+    "settings": "TTS設定",
+    "stop": "停止 (Escape)",
+    "speed": "速度",
+    "browser_voice": "ブラウザ音声",
+    "default": "デフォルト",
+    "no_voices": "利用可能な音声がありません。ブラウザがWeb Speech APIに対応していない可能性があります。",
+    "ai_model": "AI TTSモデル",
+    "none_browser": "なし（ブラウザTTSのみ）",
+    "no_models": "モデルが設定されていません。設定 > プロバイダーでプロバイダーを追加してください。",
+    "ai_voice": "AI音声",
+    "openai_voices": "OpenAI音声: alloy, echo, fable, onyx, nova, shimmer",
+    "behavior": "動作",
+    "autoscroll_active": "アクティブなブロックへ自動スクロール",
+    "highlight_active": "アクティブなブロックをハイライト",
+    "now_playing": "再生中",
+    "block_label": "ブロック: {{id}}",
+    "status": {
+      "playing": "再生中",
+      "paused": "一時停止",
+      "loading": "読み込み中"
+    }
+  },
+  "audio": {
+    "source": {
+      "attached": "添付",
+      "ai": "AI TTS",
+      "browser": "ブラウザ",
+      "inline": "音声ブロック",
+      "none": "なし"
+    },
+    "coverage": "音声カバレッジ",
+    "summary": "{{speakable}}個の読み上げ可能ブロック · {{missing}}個がブラウザTTS使用",
+    "generate_missing": "不足している音声を生成",
+    "block_chars": "{{count}}ブロック · 約{{chars}}文字",
+    "block_chars_other": "{{count}}ブロック · 約{{chars}}文字",
+    "est_cost": "推定 ${{cost}}",
+    "generating": "生成中... {{progress}}/{{total}}",
+    "select_model_alert": "先にTTS設定でTTSモデルを選択してください。",
+    "generate_all": "すべて生成 ({{count}})",
+    "blocks": "ブロック",
+    "audio_block_preview": "音声ブロック"
+  },
+  "block": {
+    "audio_unavailable": "音声を利用できません",
+    "audio_fallback": "お使いのブラウザは audio 要素に対応していません。",
+    "image_unavailable": "画像を利用できません",
+    "video_unavailable": "動画を利用できません"
+  },
+  "indicator": {
+    "pause": "一時停止",
+    "play": "添付音声を再生",
+    "mismatch": "音声字幕がブロックのテキストと異なります"
+  }
+}

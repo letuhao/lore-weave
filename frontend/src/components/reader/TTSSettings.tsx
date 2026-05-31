@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, Settings } from 'lucide-react';
 import { useTTSState, useTTSControls } from '@/hooks/useTTS';
 import { BrowserTTSEngine } from '@/hooks/engines/BrowserTTSEngine';
@@ -50,6 +51,7 @@ interface TTSSettingsProps {
 }
 
 export function TTSSettings({ open, onClose }: TTSSettingsProps) {
+  const { t } = useTranslation('reader');
   const state = useTTSState();
   const controls = useTTSControls();
   const { accessToken } = useAuth();
@@ -105,7 +107,7 @@ export function TTSSettings({ open, onClose }: TTSSettingsProps) {
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-2 text-sm font-medium">
           <Settings className="h-4 w-4" />
-          TTS Settings
+          {t('tts.settings')}
         </div>
         <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:text-foreground">
           <X className="h-4 w-4" />
@@ -116,7 +118,7 @@ export function TTSSettings({ open, onClose }: TTSSettingsProps) {
         {/* Speed */}
         <div>
           <label className="mb-2 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            Speed
+            {t('tts.speed')}
           </label>
           <div className="flex gap-1">
             {SPEEDS.map((s) => (
@@ -139,14 +141,14 @@ export function TTSSettings({ open, onClose }: TTSSettingsProps) {
         {/* Browser Voice */}
         <div>
           <label className="mb-2 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            Browser Voice
+            {t('tts.browser_voice')}
           </label>
           <select
             value={prefs.voiceURI || ''}
             onChange={(e) => updatePref('voiceURI', e.target.value || null)}
             className="w-full rounded-md border bg-background px-2 py-1.5 text-xs text-foreground outline-none"
           >
-            <option value="">Default</option>
+            <option value="">{t('tts.default')}</option>
             {voices.map((v) => (
               <option key={v.voiceURI} value={v.voiceURI}>
                 {v.name} ({v.lang})
@@ -155,7 +157,7 @@ export function TTSSettings({ open, onClose }: TTSSettingsProps) {
           </select>
           {voices.length === 0 && (
             <p className="mt-1 text-[9px] text-muted-foreground">
-              No voices available. Your browser may not support Web Speech API.
+              {t('tts.no_voices')}
             </p>
           )}
         </div>
@@ -163,14 +165,14 @@ export function TTSSettings({ open, onClose }: TTSSettingsProps) {
         {/* AI TTS Model */}
         <div>
           <label className="mb-2 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            AI TTS Model
+            {t('tts.ai_model')}
           </label>
           <select
             value={prefs.ttsModelId || ''}
             onChange={(e) => updatePref('ttsModelId', e.target.value || null)}
             className="w-full rounded-md border bg-background px-2 py-1.5 text-xs text-foreground outline-none"
           >
-            <option value="">None (browser TTS only)</option>
+            <option value="">{t('tts.none_browser')}</option>
             {models.filter((m) => m.is_active).map((m) => (
               <option key={m.user_model_id} value={m.user_model_id}>
                 {m.alias || m.provider_model_name} ({m.provider_kind})
@@ -179,7 +181,7 @@ export function TTSSettings({ open, onClose }: TTSSettingsProps) {
           </select>
           {models.length === 0 && accessToken && (
             <p className="mt-1 text-[9px] text-muted-foreground">
-              No models configured. Add a provider in Settings &gt; Providers.
+              {t('tts.no_models')}
             </p>
           )}
         </div>
@@ -188,7 +190,7 @@ export function TTSSettings({ open, onClose }: TTSSettingsProps) {
         {prefs.ttsModelId && (
           <div>
             <label className="mb-2 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-              AI Voice
+              {t('tts.ai_voice')}
             </label>
             <input
               type="text"
@@ -198,7 +200,7 @@ export function TTSSettings({ open, onClose }: TTSSettingsProps) {
               className="w-full rounded-md border bg-background px-2 py-1.5 text-xs text-foreground outline-none"
             />
             <p className="mt-1 text-[9px] text-muted-foreground">
-              OpenAI voices: alloy, echo, fable, onyx, nova, shimmer
+              {t('tts.openai_voices')}
             </p>
           </div>
         )}
@@ -206,16 +208,16 @@ export function TTSSettings({ open, onClose }: TTSSettingsProps) {
         {/* Behavior toggles */}
         <div>
           <label className="mb-2 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            Behavior
+            {t('tts.behavior')}
           </label>
           <div className="space-y-2">
             <ToggleRow
-              label="Auto-scroll to active block"
+              label={t('tts.autoscroll_active')}
               checked={prefs.autoScroll}
               onChange={(v) => updatePref('autoScroll', v)}
             />
             <ToggleRow
-              label="Highlight active block"
+              label={t('tts.highlight_active')}
               checked={prefs.highlight}
               onChange={(v) => updatePref('highlight', v)}
             />
@@ -226,7 +228,7 @@ export function TTSSettings({ open, onClose }: TTSSettingsProps) {
         {state.status !== 'idle' && (
           <div>
             <label className="mb-2 block text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-              Now Playing
+              {t('tts.now_playing')}
             </label>
             <div className="rounded-md border bg-secondary p-2 text-[11px]">
               <div className="flex items-center gap-2">
@@ -234,13 +236,13 @@ export function TTSSettings({ open, onClose }: TTSSettingsProps) {
                   'h-2 w-2 rounded-full',
                   state.status === 'playing' ? 'bg-green-500 animate-pulse' : 'bg-yellow-500',
                 )} />
-                <span className="capitalize text-foreground">{state.status}</span>
+                <span className="text-foreground">{t(`tts.status.${state.status}`, { defaultValue: state.status })}</span>
                 <span className="text-muted-foreground">·</span>
                 <span className="text-muted-foreground">{state.source}</span>
               </div>
               {state.activeBlockId && (
                 <div className="mt-1 truncate text-muted-foreground">
-                  Block: {state.activeBlockId}
+                  {t('tts.block_label', { id: state.activeBlockId })}
                 </div>
               )}
             </div>

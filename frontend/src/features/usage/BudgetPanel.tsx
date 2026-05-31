@@ -3,6 +3,7 @@
 // read-only platform balance (free tier + credits). Render-only — logic
 // lives in useBudget.
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useBudget } from './useBudget';
@@ -46,6 +47,7 @@ function LimitRow({
 }
 
 export function BudgetPanel() {
+  const { t } = useTranslation('usage');
   const { guardrail, platform, loading, saving, saveLimits } = useBudget();
   const [editing, setEditing] = useState(false);
   const [dailyInput, setDailyInput] = useState('');
@@ -54,7 +56,7 @@ export function BudgetPanel() {
   if (loading) {
     return (
       <div className="rounded-lg border bg-card p-4 text-xs text-muted-foreground">
-        Loading budget…
+        {t('budget.loading')}
       </div>
     );
   }
@@ -78,13 +80,13 @@ export function BudgetPanel() {
   return (
     <div className="rounded-lg border bg-card p-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">Spend Guardrail</h2>
+        <h2 className="text-sm font-semibold">{t('budget.spend_guardrail')}</h2>
         {!editing && (
           <button
             onClick={startEdit}
             className="flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
           >
-            <Pencil className="h-3 w-3" /> Edit limits
+            <Pencil className="h-3 w-3" /> {t('budget.edit_limits')}
           </button>
         )}
       </div>
@@ -92,13 +94,13 @@ export function BudgetPanel() {
       {!editing ? (
         <div className="mt-3 space-y-3">
           <LimitRow
-            label="Daily"
+            label={t('budget.daily')}
             limit={guardrail.daily_limit_usd}
             spent={guardrail.daily_spent_usd}
             reserved={guardrail.reserved_usd}
           />
           <LimitRow
-            label="Monthly"
+            label={t('budget.monthly')}
             limit={guardrail.monthly_limit_usd}
             spent={guardrail.monthly_spent_usd}
             reserved={guardrail.reserved_usd}
@@ -107,7 +109,7 @@ export function BudgetPanel() {
       ) : (
         <div className="mt-3 space-y-2">
           <label className="block text-xs">
-            <span className="text-muted-foreground">Daily limit (USD)</span>
+            <span className="text-muted-foreground">{t('budget.daily_limit_usd')}</span>
             <input
               type="number"
               min="0"
@@ -118,7 +120,7 @@ export function BudgetPanel() {
             />
           </label>
           <label className="block text-xs">
-            <span className="text-muted-foreground">Monthly limit (USD)</span>
+            <span className="text-muted-foreground">{t('budget.monthly_limit_usd')}</span>
             <input
               type="number"
               min="0"
@@ -129,7 +131,7 @@ export function BudgetPanel() {
             />
           </label>
           {invalid && (
-            <p className="text-[10px] text-destructive">Limits must be greater than 0.</p>
+            <p className="text-[10px] text-destructive">{t('budget.limits_invalid')}</p>
           )}
           <div className="flex gap-2 pt-1">
             <button
@@ -137,14 +139,14 @@ export function BudgetPanel() {
               disabled={saving || invalid}
               className="rounded bg-primary px-3 py-1 text-xs font-medium text-primary-foreground transition-opacity disabled:opacity-50"
             >
-              {saving ? 'Saving…' : 'Save'}
+              {saving ? t('budget.saving') : t('budget.save')}
             </button>
             <button
               onClick={() => setEditing(false)}
               disabled={saving}
               className="rounded border px-3 py-1 text-xs transition-colors hover:bg-secondary"
             >
-              Cancel
+              {t('budget.cancel')}
             </button>
           </div>
         </div>
@@ -153,9 +155,9 @@ export function BudgetPanel() {
       {/* Subsystem B — platform balance (LoreWeave-funded; read-only). */}
       {platform && (
         <div className="mt-4 border-t pt-3">
-          <div className="text-[11px] text-muted-foreground">Platform balance</div>
+          <div className="text-[11px] text-muted-foreground">{t('budget.platform_balance')}</div>
           <div className="mt-1 flex items-baseline justify-between text-xs">
-            <span className="text-muted-foreground">Free tier</span>
+            <span className="text-muted-foreground">{t('budget.free_tier')}</span>
             <span className="font-mono">
               {usd(platform.free_tier_used_usd)}{' '}
               <span className="text-muted-foreground">
@@ -164,7 +166,7 @@ export function BudgetPanel() {
             </span>
           </div>
           <div className="mt-1 flex items-baseline justify-between text-xs">
-            <span className="text-muted-foreground">Credits</span>
+            <span className="text-muted-foreground">{t('budget.credits')}</span>
             <span className="font-mono">{usd(platform.credits_balance_usd)}</span>
           </div>
         </div>

@@ -1,10 +1,18 @@
-// In dev: Vite proxy handles /v1 → localhost:3001 (gateway)
-// In Docker: nginx proxy handles /v1 → api-gateway-bff:3000
-// VITE_API_BASE override for custom setups
+// SINGLE source of truth for the FE→BE base URL. Default '' = relative/same-origin,
+// which rides the proxy→gateway path in BOTH environments:
+//   dev:  Vite proxy  /v1 → localhost:3123  (host port of api-gateway-bff)
+//   prod: nginx proxy /v1 → api-gateway-bff:3000 (container port)
+// Set VITE_API_BASE only for non-proxied custom setups.
+// NOTE: every FE caller (incl. SSE/WebSocket/upload) MUST use `apiBase` — do NOT
+// re-declare a local base with a hardcoded host:port (that was the LW-PLAN F-3 rot:
+// 8 call-sites defaulting to http://localhost:3000, the gateway's *container* port,
+// which the browser cannot reach → silently broke chat/stats/media/import when
+// VITE_API_BASE was unset).
 const base = () => import.meta.env.VITE_API_BASE || '';
 
 /** Same base URL `apiJson` uses — exported for callers that bypass
- *  fetch (EventSource, WebSocket, direct multipart upload, etc.) */
+ *  fetch (EventSource, WebSocket, direct multipart upload, etc.).
+ *  WebSocket callers need an absolute URL: use `apiBase() || window.location.origin`. */
 export const apiBase = base;
 
 export type ApiError = { code: string; message: string };

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { BookOpen, GitCompare, RefreshCw } from 'lucide-react';
 import type { LanguageVersionGroup, VersionSummary } from '../api';
 import { cn } from '@/lib/utils';
@@ -47,6 +48,7 @@ export function VersionSidebar({
   onCompareToggle,
   compareMode,
 }: VersionSidebarProps) {
+  const { t } = useTranslation('translation');
   const selectedGroup = languages.find((g) => g.target_language === selectedLang);
 
   return (
@@ -55,7 +57,7 @@ export function VersionSidebar({
       <div className="border-b border-border px-4 py-3">
         <h2 className="font-serif text-sm font-semibold leading-tight">{chapterTitle}</h2>
         <p className="mt-1 text-[10px] text-muted-foreground">
-          {wordCount ? `${wordCount.toLocaleString()} words` : ''}
+          {wordCount ? t('sidebar.words', { count: wordCount.toLocaleString() }) : ''}
           {wordCount && originalLanguage ? ' · ' : ''}
           {originalLanguage ?? ''}
         </p>
@@ -63,7 +65,7 @@ export function VersionSidebar({
 
       {/* Language tabs */}
       <div className="px-3 py-2.5">
-        <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Languages</p>
+        <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">{t('sidebar.languages')}</p>
         <div className="flex flex-col gap-1">
           {/* Original */}
           <button
@@ -77,7 +79,7 @@ export function VersionSidebar({
             )}
           >
             <span className="font-mono text-[10px] opacity-60">{originalLanguage ?? '??'}</span>
-            Original
+            {t('sidebar.original')}
           </button>
 
           {/* Target languages */}
@@ -98,7 +100,7 @@ export function VersionSidebar({
                 {g.target_language}
               </span>
               <span className={cn('text-[9px]', g.versions.some((v) => v.status === 'running') ? 'text-[#5496e8]' : 'text-muted-foreground')}>
-                {g.versions.some((v) => v.status === 'running') ? 'running' : `${g.versions.length} ver`}
+                {g.versions.some((v) => v.status === 'running') ? t('sidebar.running') : t('sidebar.ver_count', { count: g.versions.length })}
               </span>
             </button>
           ))}
@@ -109,7 +111,7 @@ export function VersionSidebar({
       {selectedGroup && (
         <div className="flex-1 overflow-y-auto px-3 pb-3">
           <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
-            {selectedGroup.target_language} Versions
+            {t('sidebar.versions_heading', { lang: selectedGroup.target_language })}
           </p>
           <div className="flex flex-col gap-1">
             {selectedGroup.versions.map((v) => (
@@ -127,18 +129,18 @@ export function VersionSidebar({
                 <div>
                   <p className="text-xs font-medium">v{v.version_num}</p>
                   <p className="text-[9px] text-muted-foreground">
-                    {v.model_source === 'user_model' ? 'User model' : v.model_ref?.slice(0, 8) ?? '?'}
+                    {v.model_source === 'user_model' ? t('sidebar.user_model') : v.model_ref?.slice(0, 8) ?? '?'}
                     {' · '}
                     {relativeTime(v.created_at)}
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className={cn('text-[9px] font-medium', STATUS_STYLES[v.status] ?? 'text-muted-foreground')}>
-                    {v.status}
+                    {t(`status.${v.status}`, { defaultValue: v.status })}
                   </span>
                   {v.is_active && (
                     <span className="rounded-full bg-[#3dba6a]/10 px-1.5 py-0.5 text-[8px] font-medium text-[#3dba6a]">
-                      Active
+                      {t('sidebar.active')}
                     </span>
                   )}
                 </div>
@@ -156,7 +158,7 @@ export function VersionSidebar({
           className="flex w-full items-center justify-center gap-1.5 rounded-md bg-accent px-3 py-2 text-xs font-medium text-white transition-colors hover:brightness-110"
         >
           <RefreshCw className="h-3 w-3" />
-          Re-translate
+          {t('sidebar.re_translate')}
         </button>
         <button
           type="button"
@@ -169,7 +171,7 @@ export function VersionSidebar({
           )}
         >
           <GitCompare className="h-3 w-3" />
-          {compareMode ? 'Exit Compare' : 'Compare Mode'}
+          {compareMode ? t('sidebar.exit_compare') : t('sidebar.compare_mode')}
         </button>
       </div>
     </div>

@@ -6,6 +6,7 @@ import {
 } from '@tiptap/react';
 import { ImageIcon, Accessibility, Upload, Loader2, Lock, History, Trash2, Replace } from 'lucide-react';
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { booksApi } from '@/features/books/api';
 import { aiModelsApi } from '@/features/ai-models/api';
@@ -91,19 +92,20 @@ export const ImageBlockExtension = Node.create({
   },
 });
 
-// --- Upload validation ---
-function validateFile(file: File): string | null {
+// --- Upload validation --- (returns an i18n key + params, or null when valid)
+function validateFile(file: File): { key: string; params?: Record<string, unknown> } | null {
   if (!ALLOWED_TYPES.has(file.type)) {
-    return `Unsupported type: ${file.type}. Use PNG, JPG, GIF, or WebP.`;
+    return { key: 'image.err_type', params: { type: file.type } };
   }
   if (file.size > MAX_FILE_SIZE) {
-    return `File too large: ${(file.size / 1024 / 1024).toFixed(1)} MB. Max 10 MB.`;
+    return { key: 'image.err_size', params: { size: (file.size / 1024 / 1024).toFixed(1) } };
   }
   return null;
 }
 
 // --- NodeView component ---
 function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNode }: NodeViewProps) {
+  const { t } = useTranslation('editor');
   const editorMode = ((editor.storage as any).mediaGuard?.editorMode as string) || 'ai';
   const isClassic = editorMode === 'classic';
   const src = node.attrs.src as string | null;
@@ -157,11 +159,11 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
     async (file: File) => {
       const err = validateFile(file);
       if (err) {
-        setUploadError(err);
+        setUploadError(t(err.key, err.params));
         return;
       }
       if (!_uploadCtx) {
-        setUploadError('Upload not available — save the chapter first.');
+        setUploadError(t('image.upload_unavailable'));
         return;
       }
       setUploading(true);
@@ -188,7 +190,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
           title: result.filename,
         });
       } catch (e: any) {
-        setUploadError(e.message || 'Upload failed');
+        setUploadError(e.message || t('image.upload_failed'));
       } finally {
         setUploading(false);
       }
@@ -246,7 +248,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
     if (!prompt) return;
     const ctx = getUploadContext();
     if (!ctx) {
-      setRegenerateError('Save the chapter first to enable AI generation.');
+      setRegenerateError(t('image.regen_save_first'));
       return;
     }
     setRegenerating(true);
@@ -257,7 +259,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
       const savedId = localStorage.getItem('loreweave:media-prefs') ? JSON.parse(localStorage.getItem('loreweave:media-prefs')!).imageModelId : '';
       const imageModel = (savedId && models.find(m => m.user_model_id === savedId)) || models.find(m => m.is_active) || models[0];
       if (!imageModel) {
-        setRegenerateError('No AI model configured. Add a provider in Settings.');
+        setRegenerateError(t('image.regen_no_model'));
         return;
       }
       const blockId = (node.attrs.blockId as string) || crypto.randomUUID().slice(0, 8);
@@ -271,9 +273,9 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
       updateAttributes({ src: result.url });
     } catch (e: any) {
       if (e.status === 402) {
-        setRegenerateError('No active AI provider. Configure one in Settings → Providers.');
+        setRegenerateError(t('image.regen_no_provider'));
       } else {
-        setRegenerateError(e.message || 'Generation failed');
+        setRegenerateError(e.message || t('image.regen_failed'));
       }
     } finally {
       setRegenerating(false);
@@ -282,7 +284,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
 
   // --- Classic mode: compact locked placeholder with hover preview ---
   if (isClassic) {
-    const title = (node.attrs.title as string) || 'Image';
+    const title = (node.attrs.title as string) || t('image.default_title');
     return (
       <NodeViewWrapper className="group my-2">
         <div className="flex items-center gap-2 rounded-lg border bg-secondary px-3 py-2 text-muted-foreground">
@@ -302,7 +304,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
               type="button"
               onClick={() => _onOpenHistory?.((node.attrs.blockId as string) || 'unknown', title, src)}
               className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] transition-colors hover:bg-card hover:text-foreground"
-              title="Version history"
+              title={t('image.version_history')}
             >
               <History className="h-2.5 w-2.5" />
             </button>
@@ -310,15 +312,15 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
           <button
             type="button"
             onClick={() => {
-              if (title && title !== 'Image') navigator.clipboard.writeText(title);
+              if (title && title !== t('image.default_title')) navigator.clipboard.writeText(title);
             }}
             className="hidden flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-card hover:text-foreground group-hover:flex"
-            title="Copy filename"
+            title={t('image.copy_filename')}
           >
-            Copy
+            {t('image.copy')}
           </button>
           <span className="flex items-center gap-1 rounded bg-card px-1.5 py-0.5 text-[9px]">
-            <Lock className="h-2.5 w-2.5" /> AI mode
+            <Lock className="h-2.5 w-2.5" /> {t('image.ai_mode')}
           </span>
         </div>
         {/* Hover preview — shows larger thumbnail */}
@@ -373,16 +375,16 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
                 onClick={() => fileInputRef.current?.click()}
                 onMouseDown={(e) => e.preventDefault()}
                 className="rounded bg-black/60 px-2 py-1 text-[10px] text-white backdrop-blur transition hover:bg-black/80"
-                title="Replace image"
+                title={t('image.replace_title')}
               >
-                <Replace className="inline h-3 w-3" /> Replace
+                <Replace className="inline h-3 w-3" /> {t('image.replace')}
               </button>
               <button
                 type="button"
                 onClick={() => deleteNode()}
                 onMouseDown={(e) => e.preventDefault()}
                 className="rounded bg-black/60 px-2 py-1 text-[10px] text-white backdrop-blur transition hover:bg-destructive"
-                title="Delete block"
+                title={t('image.delete_block')}
               >
                 <Trash2 className="inline h-3 w-3" />
               </button>
@@ -409,7 +411,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
             {uploading ? (
               <>
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                <span className="text-xs">Uploading... {uploadPct}%</span>
+                <span className="text-xs">{t('image.uploading', { pct: uploadPct })}</span>
                 <div className="mx-8 h-1.5 w-48 overflow-hidden rounded-full bg-secondary">
                   <div
                     className="h-full rounded-full bg-primary transition-all"
@@ -421,10 +423,10 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
               <>
                 <Upload className="h-6 w-6 opacity-40" />
                 <span className="text-xs font-medium">
-                  {dragOver ? 'Drop image here' : 'Drop an image, click to browse, or Ctrl+V'}
+                  {dragOver ? t('image.drop_here') : t('image.drop_hint')}
                 </span>
                 <span className="text-[9px] opacity-50">
-                  PNG, JPG, GIF, WebP — Max 10 MB
+                  {t('image.formats')}
                 </span>
               </>
             )}
@@ -443,7 +445,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
             )}
             onPointerDown={handlePointerDown}
             contentEditable={false}
-            title={`Width: ${currentWidth}%`}
+            title={t('image.width_title', { width: currentWidth })}
           >
             <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor" className="text-primary-fg">
               <circle cx="6" cy="6" r="1" />
@@ -464,9 +466,9 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
           type="text"
           value={caption}
           onChange={handleCaptionChange}
-          placeholder="Add a caption..."
+          placeholder={t('image.caption_placeholder')}
           className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground/40"
-          aria-label="Image caption"
+          aria-label={t('image.caption_aria')}
         />
         {currentWidth < 100 && (
           <span className="flex-shrink-0 font-mono text-[9px] text-muted-foreground">
@@ -479,7 +481,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
             type="button"
             onClick={() => fileInputRef.current?.click()}
             className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            title="Replace image"
+            title={t('image.replace_title')}
           >
             <Replace className="h-3 w-3" />
           </button>
@@ -487,9 +489,9 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         {src && _onOpenHistory && (
           <button
             type="button"
-            onClick={() => _onOpenHistory?.((node.attrs.blockId as string) || 'unknown', (node.attrs.title as string) || 'Image', src)}
+            onClick={() => _onOpenHistory?.((node.attrs.blockId as string) || 'unknown', (node.attrs.title as string) || t('image.default_title'), src)}
             className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            title="Version history"
+            title={t('image.version_history')}
           >
             <History className="h-3 w-3" />
           </button>
@@ -499,7 +501,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
           type="button"
           onClick={() => deleteNode()}
           className="flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-          title="Delete image block"
+          title={t('image.delete_image_block')}
         >
           <Trash2 className="h-3 w-3" />
         </button>
@@ -514,8 +516,8 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
           aria-expanded={showAlt}
         >
           <Accessibility className="h-3 w-3" />
-          <span>Alt text</span>
-          {alt && <span className="rounded bg-success/10 px-1 text-[8px] text-success">set</span>}
+          <span>{t('image.alt_text')}</span>
+          {alt && <span className="rounded bg-success/10 px-1 text-[8px] text-success">{t('image.alt_set')}</span>}
           <span className="ml-auto text-[9px]">{showAlt ? '▾' : '▸'}</span>
         </button>
         {showAlt && (
@@ -524,12 +526,12 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
               type="text"
               value={alt}
               onChange={handleAltChange}
-              placeholder="Describe this image for screen readers and EPUB export..."
+              placeholder={t('image.alt_placeholder')}
               className="w-full bg-transparent text-[11px] text-foreground outline-none placeholder:text-muted-foreground/40"
-              aria-label="Image alt text"
+              aria-label={t('image.alt_aria')}
             />
             <p className="mt-1 text-[9px] text-muted-foreground/60">
-              Used by screen readers, search, and EPUB export. Different from caption.
+              {t('image.alt_note')}
             </p>
           </div>
         )}
@@ -541,7 +543,7 @@ function ImageBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
         onChange={(val) => updateAttributes({ ai_prompt: val })}
         onRegenerate={() => handleRegenerate()}
         regenerateDisabled={regenerating || !(node.attrs.ai_prompt as string)?.trim()}
-        regenerateLabel={regenerating ? 'Generating...' : 'Re-generate'}
+        regenerateLabel={regenerating ? t('media.generating') : t('media.regenerate')}
       />
       {regenerateError && (
         <div className="border-t px-3 py-1 text-[10px] text-destructive" contentEditable={false}>

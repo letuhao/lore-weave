@@ -44,6 +44,7 @@ import TranslationReviewPage from '@/pages/TranslationReviewPage';
 import ReadingHistoryPage from '@/pages/ReadingHistoryPage';
 import { LeaderboardPage } from '@/pages/LeaderboardPage';
 import { ProfilePage } from '@/pages/ProfilePage';
+import { NotificationsPage } from '@/pages/NotificationsPage';
 
 function AuthenticatedThemeProvider({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuth();
@@ -133,7 +134,7 @@ export function App() {
             <Route path="/settings/:tab" element={<SettingsPage />} />
 
             {/* Notifications */}
-            <Route path="/notifications" element={<PlaceholderPage title="Notifications" description="Notification center — coming in P2-09." />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
           </Route>
 
           {/* 404 */}

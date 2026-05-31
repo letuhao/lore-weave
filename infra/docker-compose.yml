@@ -360,6 +360,10 @@ services:
 
   translation-worker:
     # Phase 4c-α: context bumped to repo root for SDK install.
+    # restart policy matches sibling background workers (worker-infra/worker-ai):
+    # without it, a stack restart that exits the worker leaves translation
+    # silently broken (jobs enqueue to RabbitMQ but nothing consumes them).
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: services/translation-service/Dockerfile.worker
@@ -885,6 +889,11 @@ services:
 
   languagetool:
     image: erikvl87/languagetool:latest
+    # restart policy added 2026-05-31: the service block existed but the
+    # container was never started (same class as the translation-worker gap),
+    # so the editor grammar check 500'd. unless-stopped keeps it alive across
+    # daemon restarts; the frontend container hard-depends on it (see below).
+    restart: unless-stopped
     environment:
       Java_Xms: 256m
       Java_Xmx: 512m
@@ -892,6 +901,12 @@ services:
       - "8875:8010"
     volumes:
       - loreweave_languagetool:/LanguageTool/languagetool-data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8010/v2/languages >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
 
   pandoc-server:
     image: pandoc/core:latest

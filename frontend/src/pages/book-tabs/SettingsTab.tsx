@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { Save, Loader2, Upload, X, ChevronDown, Check, Plus, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
@@ -15,6 +16,7 @@ type Props = {
 };
 
 export function SettingsTab({ bookId, book, onReload }: Props) {
+  const { t } = useTranslation('books');
   const { accessToken } = useAuth();
 
   // ── Form state ──
@@ -116,7 +118,7 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
         await booksApi.patchSharing(accessToken, bookId, { visibility });
       }
 
-      toast.success('Settings saved');
+      toast.success(t('settings.saved'));
       onReload();
     } catch (e) {
       toast.error((e as Error).message);
@@ -130,7 +132,7 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
     setUploadingCover(true);
     try {
       await booksApi.uploadCover(accessToken, bookId, file);
-      toast.success('Cover uploaded');
+      toast.success(t('settings.cover_uploaded'));
       onReload();
     } catch (e) {
       toast.error((e as Error).message);
@@ -144,7 +146,7 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
     try {
       await apiJson<void>(`/v1/books/${bookId}/cover`, { method: 'DELETE', token: accessToken });
       setCoverUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return null; });
-      toast.success('Cover removed');
+      toast.success(t('settings.cover_removed'));
       onReload();
     } catch (e) {
       toast.error((e as Error).message);
@@ -153,7 +155,7 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
 
   const toggleGenre = (name: string) => {
     setGenreTags((prev) =>
-      prev.includes(name) ? prev.filter((t) => t !== name) : [...prev, name],
+      prev.includes(name) ? prev.filter((g) => g !== name) : [...prev, name],
     );
   };
 
@@ -162,10 +164,10 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
   return (
     <div className="mx-auto max-w-2xl space-y-0 p-6">
       {/* ── Basic Info ── */}
-      <SectionHeader>Basic Information</SectionHeader>
+      <SectionHeader>{t('settings.basic_info')}</SectionHeader>
 
       <div className="mb-5">
-        <Label required>Title</Label>
+        <Label required>{t('settings.title')}</Label>
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -174,11 +176,11 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
       </div>
 
       <div className="mb-5">
-        <Label>Description</Label>
+        <Label>{t('settings.description')}</Label>
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="A brief summary of this book..."
+          placeholder={t('settings.description_placeholder')}
           rows={3}
           className="w-full rounded-md border bg-background px-3 py-1.5 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30 resize-vertical"
         />
@@ -186,20 +188,20 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
 
       <div className="mb-5 grid grid-cols-2 gap-4">
         <div>
-          <Label>Original Language</Label>
+          <Label>{t('settings.language')}</Label>
           <input
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
-            placeholder="e.g. ja, en, vi"
+            placeholder={t('settings.language_placeholder')}
             className="w-full rounded-md border bg-background px-3 py-1.5 text-sm font-mono focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
           />
         </div>
         <div>
-          <Label>Summary <span className="font-normal text-muted-foreground">(for catalog)</span></Label>
+          <Label>{t('settings.summary')} <span className="font-normal text-muted-foreground">{t('settings.summary_hint')}</span></Label>
           <input
             value={summary}
             onChange={(e) => setSummary(e.target.value)}
-            placeholder="One-line summary shown in browse cards..."
+            placeholder={t('settings.summary_placeholder')}
             className="w-full rounded-md border bg-background px-3 py-1.5 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
           />
         </div>
@@ -208,18 +210,18 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
       <Divider />
 
       {/* ── Cover Image ── */}
-      <SectionHeader>Cover Image</SectionHeader>
+      <SectionHeader>{t('settings.cover')}</SectionHeader>
 
       <div className="mb-5 flex gap-4 items-start">
         <div className="w-[100px] h-[150px] flex-shrink-0 rounded-md border bg-card flex items-center justify-center overflow-hidden">
           {coverUrl ? (
-            <img src={coverUrl} alt="Cover" className="h-full w-full object-cover" />
+            <img src={coverUrl} alt={t('settings.cover')} className="h-full w-full object-cover" />
           ) : (
-            <span className="text-[10px] text-muted-foreground">No cover</span>
+            <span className="text-[10px] text-muted-foreground">{t('settings.no_cover')}</span>
           )}
         </div>
         <div>
-          <p className="mb-2 text-xs text-muted-foreground">Upload a cover image (JPG/PNG, max 5 MB, recommended 2:3 ratio)</p>
+          <p className="mb-2 text-xs text-muted-foreground">{t('settings.cover_hint')}</p>
           <div className="flex gap-2">
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { if (e.target.files?.[0]) void handleUploadCover(e.target.files[0]); }} />
             <button
@@ -228,14 +230,14 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
               className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
             >
               {uploadingCover ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
-              Upload Cover
+              {t('settings.upload_cover')}
             </button>
             {coverUrl && (
               <button
                 onClick={() => void handleRemoveCover()}
                 className="rounded-md px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors"
               >
-                Remove
+                {t('settings.remove')}
               </button>
             )}
           </div>
@@ -245,10 +247,10 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
       <Divider />
 
       {/* ── Genre Tags ── */}
-      <SectionHeader>Genre Tags</SectionHeader>
+      <SectionHeader>{t('settings.genre_tags')}</SectionHeader>
 
       <div className="mb-2">
-        <Label>Genres <span className="font-normal text-muted-foreground">Select genres that apply to this book</span></Label>
+        <Label>{t('settings.genres')} <span className="font-normal text-muted-foreground">{t('settings.genres_hint')}</span></Label>
 
         {/* Selected pills */}
         {genreTags.length > 0 && (
@@ -279,7 +281,7 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
             className="flex w-full items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-xs text-muted-foreground hover:border-border/80 transition-colors"
           >
             <Plus className="h-3 w-3" />
-            Add genre...
+            {t('settings.add_genre')}
             <span className="flex-1" />
             <ChevronDown className={cn('h-3 w-3 transition-transform', genreDropdownOpen && 'rotate-180')} />
           </button>
@@ -290,8 +292,8 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
               <div className="absolute left-0 right-0 z-40 mt-1 rounded-lg border bg-card shadow-lg overflow-hidden">
                 {genres.length === 0 ? (
                   <p className="px-3 py-4 text-center text-xs text-muted-foreground">
-                    No genres defined for this book yet.
-                    <br />Create genres in Glossary &rarr; Genre Groups tab.
+                    {t('settings.no_genres')}
+                    <br />{t('settings.create_genres')}
                   </p>
                 ) : (
                   genres.map((g) => {
@@ -323,7 +325,7 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
         </div>
 
         <p className="mt-1.5 text-[11px] text-muted-foreground">
-          Genres control which glossary attributes are active. Manage genres in Glossary &rarr; Genre Groups tab.
+          {t('settings.genres_help')}
         </p>
       </div>
 
@@ -332,15 +334,15 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
         <div className="mb-5 rounded-md border border-violet-500/15 bg-violet-500/5 px-3 py-2.5">
           <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-violet-400">
             <Info className="h-3 w-3" />
-            Genre impact on glossary
+            {t('settings.genre_impact')}
           </div>
           <div className="text-[11px] leading-relaxed text-muted-foreground">
             {genreImpact.map((gi) => (
               <div key={gi.genre}>
                 <strong className="text-foreground">{gi.genre}</strong>
                 {gi.attrs.length > 0
-                  ? <> activates: {gi.attrs.join(', ')}</>
-                  : <> has no genre-specific attributes yet</>}
+                  ? <> {t('settings.activates', { attrs: gi.attrs.join(', ') })}</>
+                  : <> {t('settings.no_attrs')}</>}
               </div>
             ))}
           </div>
@@ -350,7 +352,7 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
       <Divider />
 
       {/* ── Visibility ── */}
-      <SectionHeader>Visibility</SectionHeader>
+      <SectionHeader>{t('settings.visibility')}</SectionHeader>
 
       <div className="mb-5 flex flex-col gap-2">
         {(['private', 'unlisted', 'public'] as const).map((v) => (
@@ -370,11 +372,9 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
               className="accent-primary"
             />
             <div>
-              <div className="text-xs font-medium capitalize">{v}</div>
+              <div className="text-xs font-medium">{t(`sharing.options.${v}.label`)}</div>
               <div className="text-[10px] text-muted-foreground">
-                {v === 'private' && 'Only you can see this book'}
-                {v === 'unlisted' && 'Anyone with the link can read, but not listed in browse'}
-                {v === 'public' && 'Visible to everyone in the catalog'}
+                {t(`settings.visibility_desc.${v}`)}
               </div>
             </div>
           </label>
@@ -395,7 +395,7 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
           disabled={!isDirty}
           className="rounded-md border px-4 py-1.5 text-xs font-medium text-foreground hover:bg-secondary disabled:opacity-30 transition-colors"
         >
-          Discard Changes
+          {t('settings.discard')}
         </button>
         <button
           onClick={() => void handleSave()}
@@ -403,7 +403,7 @@ export function SettingsTab({ bookId, book, onReload }: Props) {
           className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
         >
           {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-          Save Settings
+          {t('settings.save')}
         </button>
       </div>
     </div>

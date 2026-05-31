@@ -1,0 +1,131 @@
+{
+  "modal": {
+    "untitled": "未命名",
+    "status": {
+      "draft": "草稿",
+      "active": "啟用",
+      "inactive": "停用"
+    },
+    "discard": "捨棄",
+    "save": "儲存",
+    "save_entity": "儲存實體",
+    "cancel": "取消",
+    "move_to_trash": "移至垃圾桶",
+    "meta": {
+      "chapters": "{{count}} 章",
+      "translations": "{{count}} 個翻譯",
+      "evidences": "{{count}} 個佐證"
+    },
+    "tab": {
+      "attributes": "屬性",
+      "evidences": "佐證"
+    },
+    "translation_lang_aria": "翻譯語言",
+    "no_translation": "不翻譯",
+    "add_language": "+ 新增語言...",
+    "lang_placeholder": "例如：en",
+    "system_attrs": "系統屬性",
+    "user_attrs": "使用者屬性",
+    "no_attributes": "此實體類型尚未定義任何屬性。",
+    "toast": {
+      "saved": "已儲存實體",
+      "status_changed": "已將狀態變更為 {{status}}",
+      "invalid_lang": "無效的語言代碼（例如：en、zh、zh-tw）"
+    }
+  },
+  "attr_card": {
+    "required": "*必填",
+    "modified": "已修改",
+    "has_translations": "有翻譯"
+  },
+  "translation_row": {
+    "confidence": {
+      "draft": "草稿",
+      "verified": "已驗證",
+      "machine": "機器翻譯"
+    },
+    "confidence_aria": "翻譯信賴度",
+    "by": "由 {{name}} 翻譯",
+    "discard_aria": "捨棄變更",
+    "save": "儲存",
+    "delete_aria": "刪除翻譯",
+    "placeholder": "{{lang}} 翻譯...",
+    "delete_title": "刪除翻譯？",
+    "delete_desc": "此屬性的 {{lang}} 翻譯將被永久刪除。",
+    "delete_confirm": "刪除",
+    "toast": {
+      "updated": "已更新翻譯",
+      "created": "已建立翻譯",
+      "deleted": "已刪除翻譯"
+    }
+  },
+  "evidence": {
+    "type": {
+      "quote": "引用",
+      "summary": "摘要",
+      "reference": "參照"
+    },
+    "filter": {
+      "all": "全部",
+      "attr_aria": "依屬性篩選",
+      "all_attributes": "所有屬性",
+      "chapter_aria": "依章節篩選",
+      "all_chapters": "所有章節",
+      "chapter_n": "第 {{n}} 章",
+      "lang_aria": "顯示語言",
+      "original": "原文",
+      "sort_aria": "排序方式",
+      "sort": {
+        "created": "建立時間",
+        "chapter": "章節",
+        "block_line": "區塊/行",
+        "attribute": "屬性"
+      },
+      "ascending": "遞增",
+      "descending": "遞減",
+      "add": "新增"
+    },
+    "create": {
+      "title": "新佐證",
+      "attribute": "屬性 *",
+      "attr_aria": "新佐證的屬性",
+      "type": "類型",
+      "type_aria": "佐證類型",
+      "original_text": "原文 *",
+      "text_placeholder": "貼上來源文字...",
+      "block_line": "區塊 / 行",
+      "block_placeholder": "例如：p.42",
+      "note": "備註",
+      "note_placeholder": "選填備註",
+      "cancel": "取消",
+      "create": "建立"
+    },
+    "card": {
+      "edit_type_aria": "編輯佐證類型",
+      "cancel_title": "取消",
+      "block_line": "區塊 / 行",
+      "note": "備註",
+      "cancel": "取消",
+      "save": "儲存",
+      "edit_title": "編輯",
+      "delete_title": "刪除",
+      "translated": "已翻譯（{{lang}}）",
+      "note_label": "備註：{{note}}"
+    },
+    "tab": {
+      "no_evidences": "找不到佐證",
+      "clear_filters": "清除篩選",
+      "prev_page": "上一頁",
+      "next_page": "下一頁",
+      "delete_title": "刪除佐證？",
+      "delete_desc": "來自「{{attr}}」的佐證將被永久刪除。",
+      "delete_confirm": "刪除"
+    },
+    "toast": {
+      "updated": "已更新佐證",
+      "deleted": "已刪除佐證",
+      "created": "已建立佐證",
+      "text_required": "原文為必填"
+    }
+  }
+}

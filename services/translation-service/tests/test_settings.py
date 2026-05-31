@@ -156,3 +156,58 @@ def test_put_book_settings_rejects_missing_chapter_text(client, fake_pool):
         "user_prompt_tpl": "No placeholder.",
     })
     assert resp.status_code == 422
+
+
+def test_put_book_settings_partial_payload_keeps_existing_via_coalesce(client, fake_pool):
+    """T1 Fix-A (atomic PATCH-semantics): a partial PUT — only language + model, no
+    prompts — must succeed (no 422) and must NOT clobber stored prompts. The mechanism
+    is a single atomic upsert: omitted fields are sent as NULL and the SQL keeps the
+    existing value via COALESCE(param, existing-column) — no read-modify-write race."""
+    fake_pool.fetchrow.return_value = _BOOK_ROW
+    new_model = str(uuid4())
+    resp = client.put(f"/v1/translation/books/{BOOK_ID}/settings", json={
+        "target_language": "ja",
+        "model_source": "user_model",
+        "model_ref": new_model,
+        # NOTE: prompts / compact_* / chunk / timeout intentionally omitted
+    })
+    assert resp.status_code == 200
+
+    call = fake_pool.fetchrow.call_args
+    sql, args = call.args[0], call.args
+    # Provided fields are passed as params...
+    assert args[3] == "ja"                  # target_language
+    assert str(args[5]) == new_model        # model_ref
+    # ...every omitted field is passed as NULL so the SQL keeps the stored value.
+    assert args[6] is None                  # system_prompt
+    assert args[7] is None                  # user_prompt_tpl
+    assert args[8] is None                  # compact_model_source
+    assert args[9] is None                  # compact_model_ref
+    assert args[10] is None                 # compact_system_prompt
+    assert args[11] is None                 # compact_user_prompt_tpl
+    assert args[12] is None                 # chunk_size_tokens
+    assert args[13] is None                 # invoke_timeout_secs
+    # Keep-existing must be COALESCE(param, existing-column) for prompts AND compact/limits,
+    # not EXCLUDED (which would write the COALESCE'd INSERT default on update).
+    assert "EXCLUDED" not in sql
+    for col in (
+        "system_prompt", "user_prompt_tpl",
+        "compact_system_prompt", "compact_user_prompt_tpl",
+        "compact_model_source", "compact_model_ref",
+        "chunk_size_tokens", "invoke_timeout_secs",
+    ):
+        assert f"book_translation_settings.{col}" in sql, f"missing COALESCE-keep for {col}"
+
+
+def test_put_book_settings_full_payload_does_not_keep_existing(client, fake_pool):
+    """Counterpart: when a field IS sent, its value is passed as the param (not NULL),
+    so COALESCE uses it — proving the partial test above isn't just asserting all-NULL."""
+    fake_pool.fetchrow.return_value = _BOOK_ROW
+    resp = client.put(f"/v1/translation/books/{BOOK_ID}/settings", json={
+        "system_prompt": "Brand new prompt.",
+        "user_prompt_tpl": "New {chapter_text}",
+    })
+    assert resp.status_code == 200
+    args = fake_pool.fetchrow.call_args.args
+    assert args[6] == "Brand new prompt."   # system_prompt passed through
+    assert args[7] == "New {chapter_text}"  # user_prompt_tpl passed through

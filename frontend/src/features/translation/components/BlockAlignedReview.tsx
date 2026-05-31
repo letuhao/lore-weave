@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { JSONContent } from '@tiptap/react';
 import { cn } from '@/lib/utils';
 import { InlineRenderer } from '@/components/reader/InlineRenderer';
@@ -116,6 +117,7 @@ interface BlockRowProps {
 }
 
 function BlockRow({ index, original, translated, action, isActive, onClick }: BlockRowProps) {
+  const { t } = useTranslation('translation');
   const block = original ?? translated!;
   const label = blockTypeLabel(block);
   const badgeColor = typeBadgeColor(action);
@@ -139,7 +141,7 @@ function BlockRow({ index, original, translated, action, isActive, onClick }: Bl
               {extractText(block.content)}
             </pre>
           ) : (
-            <span className="text-xs italic">Unchanged</span>
+            <span className="text-xs italic">{t('block_review.unchanged')}</span>
           )}
         </div>
       </div>
@@ -169,7 +171,7 @@ function BlockRow({ index, original, translated, action, isActive, onClick }: Bl
                 <img src={src} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
               </div>
             )}
-            <span className="text-xs text-muted-foreground">{origCaption || '(no caption)'}</span>
+            <span className="text-xs text-muted-foreground">{origCaption || t('block_review.no_caption')}</span>
           </div>
           {/* Divider */}
           <div className="w-px bg-border/50 shrink-0" />
@@ -181,7 +183,7 @@ function BlockRow({ index, original, translated, action, isActive, onClick }: Bl
               </div>
             )}
             <span className={cn('text-xs', transCaption !== origCaption ? 'text-foreground' : 'text-muted-foreground')}>
-              {transCaption || '(no caption)'}
+              {transCaption || t('block_review.no_caption')}
             </span>
           </div>
         </div>
@@ -209,7 +211,7 @@ function BlockRow({ index, original, translated, action, isActive, onClick }: Bl
           'flex-1 px-4 py-2.5 font-serif leading-[1.7] text-foreground/80',
           isHeading ? 'text-base font-semibold' : 'text-sm',
         )}>
-          {original ? <BlockContent block={original} /> : <span className="text-xs text-muted-foreground italic">(missing)</span>}
+          {original ? <BlockContent block={original} /> : <span className="text-xs text-muted-foreground italic">{t('block_review.missing')}</span>}
         </div>
         {/* Divider */}
         <div className="w-px bg-border/50 shrink-0" />
@@ -220,7 +222,7 @@ function BlockRow({ index, original, translated, action, isActive, onClick }: Bl
           isEmpty ? 'text-muted-foreground/40 italic' : 'text-foreground/90',
         )}>
           {isEmpty ? (
-            '(not translated)'
+            t('block_review.not_translated')
           ) : translated ? (
             <BlockContent block={translated} />
           ) : (
@@ -246,6 +248,7 @@ function BlockContent({ block }: { block: JSONContent }) {
 // ── Gutter ─────────────────────────────────────────────────────────────────
 
 function Gutter({ index, label, badgeColor, hasWarning }: { index: number; label: string; badgeColor: string; hasWarning?: boolean }) {
+  const { t } = useTranslation('translation');
   return (
     <div className="w-9 shrink-0 flex flex-col items-center pt-2.5 gap-1 border-r border-border/30">
       <span className="font-mono text-[9px] text-border-hover font-medium">{index}</span>
@@ -253,7 +256,7 @@ function Gutter({ index, label, badgeColor, hasWarning }: { index: number; label
         {label}
       </span>
       {hasWarning && (
-        <span className="h-1.5 w-1.5 rounded-full bg-[#e8a832]" title="Not translated" />
+        <span className="h-1.5 w-1.5 rounded-full bg-[#e8a832]" title={t('block_review.not_translated_title')} />
       )}
     </div>
   );

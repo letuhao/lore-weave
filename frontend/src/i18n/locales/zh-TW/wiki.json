@@ -1,6 +1,7 @@
 {
   "title": "Wiki",
   "search": "搜尋 Wiki...",
+  "searchEntities": "依名稱搜尋實體...",
   "noArticles": "尚無 Wiki 文章",
   "noArticlesDesc": "從詞彙表實體建立 Wiki 文章，為您的書籍打造知識庫。",
   "noMatch": "沒有符合篩選條件的文章",
@@ -35,5 +36,17 @@
   "selectEntity": "選擇實體以建立 Wiki 文章",
   "deleteArticle": "刪除文章",
   "deleteConfirm": "此操作將永久刪除此 Wiki 文章及所有版本。",
-  "deleted": "文章已刪除"
+  "deleted": "文章已刪除",
+  "restored": "已還原至版本 {{version}}",
+  "suggestionAccepted": "已接受建議",
+  "suggestionRejected": "已拒絕建議",
+  "unpublished": "已取消發佈",
+  "saved": "已儲存",
+  "saveFailed": "儲存失敗",
+  "restoreFailed": "還原修訂版失敗",
+  "reviewFailed": "審閱建議失敗",
+  "statusFailed": "更新狀態失敗",
+  "deleteFailed": "刪除失敗",
+  "createFailed": "建立文章失敗",
+  "generateFailed": "生成失敗"
 }

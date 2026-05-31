@@ -1,4 +1,5 @@
 import { useTTSState, useTTSControls, type AudioSource } from '@/hooks/useTTS';
+import { useTranslation } from 'react-i18next';
 import { Play, Pause, SkipBack, SkipForward, X, Settings, ScrollText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -7,13 +8,6 @@ const SOURCE_COLORS: Record<AudioSource, string> = {
   ai: '#5496e8',
   browser: '#9e9488',
   inline: '#8b5cf6',
-};
-
-const SOURCE_LABELS: Record<AudioSource, string> = {
-  attached: 'Attached',
-  ai: 'AI TTS',
-  browser: 'Browser',
-  inline: 'Audio',
 };
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -36,13 +30,14 @@ interface TTSBarProps {
 }
 
 export function TTSBar({ activeBlockText, onOpenSettings, autoScroll, onToggleAutoScroll }: TTSBarProps) {
+  const { t } = useTranslation('reader');
   const state = useTTSState();
   const controls = useTTSControls();
 
   if (state.status === 'idle') return null;
 
   const sourceColor = SOURCE_COLORS[state.source || 'browser'];
-  const sourceLabel = SOURCE_LABELS[state.source || 'browser'];
+  const sourceLabel = t(`tts.source.${state.source || 'browser'}`);
   const isPlaying = state.status === 'playing';
   const hasProgress = state.durationMs > 0;
   const progressPct = hasProgress ? Math.min(100, (state.currentMs / state.durationMs) * 100) : 0;
@@ -73,7 +68,7 @@ export function TTSBar({ activeBlockText, onOpenSettings, autoScroll, onToggleAu
         type="button"
         onClick={controls.prevBlock}
         className="rounded p-1 text-muted-foreground transition hover:text-foreground"
-        title="Previous block (Shift+Left)"
+        title={t('tts.prev_block')}
       >
         <SkipBack className="h-3.5 w-3.5" />
       </button>
@@ -84,7 +79,7 @@ export function TTSBar({ activeBlockText, onOpenSettings, autoScroll, onToggleAu
         onClick={isPlaying ? controls.pause : controls.play}
         className="flex h-8 w-8 items-center justify-center rounded-full text-white transition"
         style={{ background: sourceColor }}
-        title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
+        title={isPlaying ? t('tts.pause') : t('tts.play')}
       >
         {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="ml-0.5 h-4 w-4" />}
       </button>
@@ -94,7 +89,7 @@ export function TTSBar({ activeBlockText, onOpenSettings, autoScroll, onToggleAu
         type="button"
         onClick={controls.nextBlock}
         className="rounded p-1 text-muted-foreground transition hover:text-foreground"
-        title="Next block (Shift+Right)"
+        title={t('tts.next_block')}
       >
         <SkipForward className="h-3.5 w-3.5" />
       </button>
@@ -133,7 +128,7 @@ export function TTSBar({ activeBlockText, onOpenSettings, autoScroll, onToggleAu
         type="button"
         onClick={cycleSpeed}
         className="flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition hover:bg-secondary hover:text-foreground"
-        title="Cycle speed"
+        title={t('tts.cycle_speed')}
       >
         {state.speed}x
       </button>
@@ -144,7 +139,7 @@ export function TTSBar({ activeBlockText, onOpenSettings, autoScroll, onToggleAu
           type="button"
           onClick={onToggleAutoScroll}
           className={`rounded p-1 transition ${autoScroll ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-          title={autoScroll ? 'Auto-scroll: ON' : 'Auto-scroll: OFF'}
+          title={autoScroll ? t('tts.autoscroll_on') : t('tts.autoscroll_off')}
         >
           <ScrollText className="h-3.5 w-3.5" />
         </button>
@@ -156,7 +151,7 @@ export function TTSBar({ activeBlockText, onOpenSettings, autoScroll, onToggleAu
           type="button"
           onClick={onOpenSettings}
           className="rounded p-1 text-muted-foreground transition hover:text-foreground"
-          title="TTS Settings"
+          title={t('tts.settings')}
         >
           <Settings className="h-3.5 w-3.5" />
         </button>
@@ -167,7 +162,7 @@ export function TTSBar({ activeBlockText, onOpenSettings, autoScroll, onToggleAu
         type="button"
         onClick={controls.stop}
         className="rounded p-1 text-muted-foreground transition hover:text-destructive"
-        title="Stop (Escape)"
+        title={t('tts.stop')}
       >
         <X className="h-3.5 w-3.5" />
       </button>

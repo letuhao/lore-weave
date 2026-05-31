@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Check, Copy, SplitSquareVertical } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -15,6 +16,7 @@ interface TranslationViewerProps {
 }
 
 export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSetActive }: TranslationViewerProps) {
+  const { t } = useTranslation('translation');
   const navigate = useNavigate();
   const { accessToken } = useAuth();
   const [version, setVersion] = useState<ChapterTranslation | null>(null);
@@ -26,7 +28,7 @@ export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSe
     setLoading(true);
     versionsApi.getChapterVersion(accessToken, chapterId, versionId)
       .then((data) => { if (mounted) setVersion(data); })
-      .catch((e) => { if (mounted) toast.error(`Failed to load version: ${(e as Error).message}`); })
+      .catch((e) => { if (mounted) toast.error(t('viewer.load_failed', { error: (e as Error).message })); })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, [accessToken, chapterId, versionId]);
@@ -34,7 +36,7 @@ export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSe
   async function handleCopy() {
     if (!version?.translated_body) return;
     await navigator.clipboard.writeText(version.translated_body);
-    toast.success('Copied to clipboard');
+    toast.success(t('viewer.copied'));
   }
 
   async function handleSetActive() {
@@ -42,9 +44,9 @@ export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSe
     try {
       await versionsApi.setActiveVersion(accessToken, chapterId, versionId);
       onSetActive(versionId);
-      toast.success('Set as active version');
+      toast.success(t('viewer.set_active_success'));
     } catch (e) {
-      toast.error(`Failed: ${(e as Error).message}`);
+      toast.error(t('viewer.set_active_failed', { error: (e as Error).message }));
     }
   }
 
@@ -68,7 +70,7 @@ export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSe
   if (!version) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-        Version not found.
+        {t('viewer.version_not_found')}
       </div>
     );
   }
@@ -87,21 +89,21 @@ export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSe
             : version.status === 'failed' ? 'bg-[#dc4e4e]/10 text-[#dc4e4e]'
             : 'bg-secondary text-muted-foreground'
           }`}>
-            {version.status}
+            {t(`status.${version.status}`, { defaultValue: version.status })}
           </span>
           {isActive && (
             <span className="flex items-center gap-1 rounded-full border border-[#3dba6a]/15 bg-[#3dba6a]/10 px-2 py-0.5 text-[10px] font-medium text-[#3dba6a]">
               <Check className="h-2.5 w-2.5" />
-              Active
+              {t('viewer.active')}
             </span>
           )}
           {version.translated_body_format === 'json' ? (
             <span className="rounded-full bg-[#8b5cf6]/10 px-2 py-0.5 text-[10px] font-medium text-[#8b5cf6]">
-              Block {Array.isArray(version.translated_body_json) ? `(${version.translated_body_json.length})` : ''}
+              {t('viewer.block_badge')} {Array.isArray(version.translated_body_json) ? `(${version.translated_body_json.length})` : ''}
             </span>
           ) : version.status === 'completed' && (
             <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-              Text
+              {t('viewer.text_badge')}
             </span>
           )}
         </div>
@@ -118,7 +120,7 @@ export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSe
             className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors disabled:opacity-30"
           >
             <Copy className="h-3 w-3" />
-            Copy
+            {t('viewer.copy')}
           </button>
           {bookId && version.status === 'completed' && (
             <button
@@ -127,7 +129,7 @@ export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSe
               className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-[#8b5cf6] hover:bg-[#8b5cf6]/10 transition-colors"
             >
               <SplitSquareVertical className="h-3 w-3" />
-              Review
+              {t('viewer.review')}
             </button>
           )}
           {version.status === 'completed' && !isActive && (
@@ -137,7 +139,7 @@ export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSe
               className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-accent hover:bg-accent/10 transition-colors"
             >
               <Check className="h-3 w-3" />
-              Set Active
+              {t('viewer.set_active')}
             </button>
           )}
         </div>
@@ -155,9 +157,9 @@ export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSe
           </div>
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            {version.status === 'running' ? 'Translation in progress...'
-              : version.status === 'failed' ? `Translation failed: ${version.error_message || 'Unknown error'}`
-              : 'No translated content available.'}
+            {version.status === 'running' ? t('viewer.in_progress')
+              : version.status === 'failed' ? t('viewer.failed_msg', { error: version.error_message || t('viewer.unknown_error') })
+              : t('viewer.no_content')}
           </div>
         )}
       </div>

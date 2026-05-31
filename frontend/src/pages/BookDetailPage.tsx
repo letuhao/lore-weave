@@ -18,12 +18,12 @@ import { WikiTab } from '@/pages/book-tabs/WikiTab';
 import { SharingTab } from '@/pages/book-tabs/SharingTab';
 
 const tabs = [
-  { key: '', label: 'Chapters' },
-  { key: '/translation', label: 'Translation' },
-  { key: '/glossary', label: 'Glossary' },
-  { key: '/wiki', label: 'Wiki' },
-  { key: '/sharing', label: 'Sharing' },
-  { key: '/settings', label: 'Settings' },
+  { key: '', labelKey: 'detail.tabs.chapters' },
+  { key: '/translation', labelKey: 'detail.tabs.translation' },
+  { key: '/glossary', labelKey: 'detail.tabs.glossary' },
+  { key: '/wiki', labelKey: 'detail.tabs.wiki' },
+  { key: '/sharing', labelKey: 'detail.tabs.sharing' },
+  { key: '/settings', labelKey: 'detail.tabs.settings' },
 ];
 
 export function BookDetailPage() {
@@ -65,7 +65,7 @@ export function BookDetailPage() {
   }
 
   if (error || !book) {
-    return <p className="text-sm text-destructive">{(error as Error)?.message || 'Book not found'}</p>;
+    return <p className="text-sm text-destructive">{(error as Error)?.message || t('detail.not_found')}</p>;
   }
 
   // Determine active tab from URL
@@ -88,13 +88,13 @@ export function BookDetailPage() {
             {book.updated_at && (
               <>
                 <span className="text-border">·</span>
-                <span>Updated {new Date(book.updated_at).toLocaleDateString()}</span>
+                <span>{t('detail.updated', { date: new Date(book.updated_at).toLocaleDateString() })}</span>
               </>
             )}
             {bookStats && bookStats.total_readers > 0 && (
               <>
                 <span className="text-border">·</span>
-                <span>{bookStats.total_readers} {bookStats.total_readers === 1 ? 'reader' : 'readers'}</span>
+                <span>{t('detail.readers', { count: bookStats.total_readers })}</span>
               </>
             )}
           </span>
@@ -129,7 +129,7 @@ export function BookDetailPage() {
                     : 'border-transparent text-muted-foreground hover:text-foreground',
                 )}
               >
-                {tab.label}
+                {t(tab.labelKey)}
               </Link>
             ))}
           </div>
@@ -144,9 +144,9 @@ export function BookDetailPage() {
       <ConfirmDialog
         open={trashOpen}
         onOpenChange={setTrashOpen}
-        title="Move to trash?"
-        description={`"${book.title}" and all chapters will be moved to trash. You can restore within 30 days.`}
-        confirmLabel="Move to Trash"
+        title={t('detail.trash_confirm.title')}
+        description={t('detail.trash_confirm.description', { title: book.title })}
+        confirmLabel={t('detail.trash_confirm.confirm')}
         variant="destructive"
         onConfirm={() => void handleTrash()}
       />

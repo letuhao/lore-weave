@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Copy, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
@@ -13,6 +14,7 @@ type Props = {
 };
 
 export function ExpandedRow({ usageLogId, colSpan }: Props) {
+  const { t } = useTranslation('usage');
   const { accessToken } = useAuth();
   const [detail, setDetail] = useState<UsageLogDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,7 +63,7 @@ export function ExpandedRow({ usageLogId, colSpan }: Props) {
       <tr>
         <td colSpan={colSpan} className="px-3 pb-3">
           <div className="rounded-md border bg-background p-3 text-xs text-destructive">
-            {error || 'Failed to load detail'}
+            {error || t('detail.load_failed')}
           </div>
         </td>
       </tr>
@@ -73,8 +75,8 @@ export function ExpandedRow({ usageLogId, colSpan }: Props) {
   const isEmpty = (v: unknown) => !v || (typeof v === 'object' && Object.keys(v as object).length === 0) || (typeof v === 'string' && (v === 'null' || v.includes('ciphertext')));
 
   const tabContent: Record<Tab, string> = {
-    input: isEmpty(input_payload) ? '(No input payload recorded for this request)' : JSON.stringify(input_payload, null, 2),
-    output: isEmpty(output_payload) ? '(No output payload recorded for this request)' : JSON.stringify(output_payload, null, 2),
+    input: isEmpty(input_payload) ? t('detail.no_input') : JSON.stringify(input_payload, null, 2),
+    output: isEmpty(output_payload) ? t('detail.no_output') : JSON.stringify(output_payload, null, 2),
     raw: JSON.stringify({ usage_log, input_payload, output_payload }, null, 2),
   };
 
@@ -85,53 +87,53 @@ export function ExpandedRow({ usageLogId, colSpan }: Props) {
           {/* Request metadata */}
           <div className="flex flex-wrap gap-x-6 gap-y-1 border-b px-4 py-3 text-[11px]">
             <div>
-              <span className="text-muted-foreground">Request ID: </span>
+              <span className="text-muted-foreground">{t('detail.request_id')} </span>
               <span className="font-mono text-muted-foreground">{usage_log.request_id.slice(0, 12)}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">Provider: </span>
+              <span className="text-muted-foreground">{t('detail.provider')} </span>
               <span className="capitalize">{usage_log.provider_kind}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">Model Ref: </span>
+              <span className="text-muted-foreground">{t('detail.model_ref')} </span>
               <span className="font-mono text-muted-foreground">{usage_log.model_ref.slice(0, 12)}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">Billing: </span>
+              <span className="text-muted-foreground">{t('detail.billing')} </span>
               <span className="capitalize">{usage_log.billing_decision}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">Viewed at: </span>
+              <span className="text-muted-foreground">{t('detail.viewed_at')} </span>
               <span>{detail.viewed_at}</span>
             </div>
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-0 border-b px-4" role="tablist" aria-label="Payload view">
-            {(['input', 'output', 'raw'] as Tab[]).map((t) => (
+          <div className="flex gap-0 border-b px-4" role="tablist" aria-label={t('detail.payload_view_aria')}>
+            {(['input', 'output', 'raw'] as Tab[]).map((tabKey) => (
               <button
-                key={t}
+                key={tabKey}
                 role="tab"
-                aria-selected={tab === t}
-                onClick={() => setTab(t)}
+                aria-selected={tab === tabKey}
+                onClick={() => setTab(tabKey)}
                 className={cn(
-                  'border-b-2 px-3 py-2 text-xs font-medium capitalize transition-colors',
-                  tab === t
+                  'border-b-2 px-3 py-2 text-xs font-medium transition-colors',
+                  tab === tabKey
                     ? 'border-primary text-primary'
                     : 'border-transparent text-muted-foreground hover:text-foreground',
                 )}
               >
-                {t === 'input' ? 'Input (System + User)' : t === 'output' ? 'Output' : 'Raw JSON'}
+                {tabKey === 'input' ? t('detail.tab_input') : tabKey === 'output' ? t('detail.tab_output') : t('detail.tab_raw')}
               </button>
             ))}
             <div className="flex-1" />
             <button
               onClick={() => handleCopy(tabContent[tab])}
-              aria-label="Copy to clipboard"
+              aria-label={t('detail.copy_aria')}
               className="flex items-center gap-1 px-2 text-[10px] text-muted-foreground hover:text-foreground"
             >
               {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-              {copied ? 'Copied' : 'Copy'}
+              {copied ? t('detail.copied') : t('detail.copy')}
             </button>
           </div>
 

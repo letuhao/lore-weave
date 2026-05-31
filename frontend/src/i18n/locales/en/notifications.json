@@ -9,6 +9,41 @@
   "minsAgo": "{{count}}m ago",
   "hrsAgo": "{{count}}h ago",
   "daysAgo": "{{count}}d ago",
+  "viewAll": "View all notifications",
+  "loadMore": "Load more",
+  "pageTitle": "Notifications",
+  "notif": {
+    "translation": {
+      "completed": "Translation complete — {{count}} chapters of \"{{book}}\"",
+      "partial": "Translation partial — {{done}} done, {{failed}} failed",
+      "failed": "Translation failed — \"{{book}}\""
+    },
+    "social": {
+      "followed": "{{name}} started following you"
+    }
+  },
+  "event": {
+    "title": "{{op}} {{status}}",
+    "operation": {
+      "chat": "Chat",
+      "completion": "Completion",
+      "embedding": "Embedding",
+      "entity_extraction": "Entity extraction",
+      "fact_extraction": "Fact extraction",
+      "relation_extraction": "Relation extraction",
+      "event_extraction": "Event extraction",
+      "translation": "Translation",
+      "image_gen": "Image generation",
+      "video_gen": "Video generation"
+    },
+    "status": {
+      "completed": "completed",
+      "failed": "failed",
+      "cancelled": "cancelled",
+      "running": "running",
+      "pending": "pending"
+    }
+  },
   "category": {
     "all": "All",
     "translation": "Translation",

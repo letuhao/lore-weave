@@ -144,7 +144,18 @@ export const translationApi = {
     return apiJson(`/v1/translation/books/${bookId}/coverage`, { token });
   },
 
-  createJob(token: string, bookId: string, payload: { chapter_ids: string[] }): Promise<TranslationJob> {
+  createJob(
+    token: string,
+    bookId: string,
+    payload: {
+      chapter_ids: string[];
+      // Per-job overrides (T1 Fix-C): when set, the job uses these directly and does
+      // not depend on book translation settings having been persisted first.
+      target_language?: string;
+      model_source?: string;
+      model_ref?: string;
+    },
+  ): Promise<TranslationJob> {
     return apiJson(`/v1/translation/books/${bookId}/jobs`, {
       method: 'POST',
       body: JSON.stringify(payload),
