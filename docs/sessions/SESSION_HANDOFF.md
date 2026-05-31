@@ -1,29 +1,27 @@
-# Session Handoff — Session 104 (mining panel + real extraction smoke + 4 bug fixes)
+# Session Handoff — Session 105 (eval R&D closed + Production Eval Flywheel track planned)
 
-> **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-06-01 (session 104 — FE mining panel + real extraction smoke + 3 bug fixes; human-in-loop v2.2).
-> **HEAD:** TBD (post-commit). Branch: `main` (local — push pending).
+> **Purpose:** orient the next agent in one read. This file is the single, unversioned handoff — updated in place at the end of each session. (Older `SESSION_PATCH.md` is deprecated → archive later.)
+> **Date:** 2026-06-01 (session 105 — closed knowledge R&D arc; designed the production eval+feedback track; human-in-loop v2.2).
+> **HEAD:** TBD (post-commit). Branch: `main`.
 
 ## ▶ NEXT SESSION — start here
 
-**State:** **Phase E2 + real extraction COMPLETE.** Three bugs found and fixed during real extraction smoke.
+**State:** **Knowledge-extraction R&D arc CLOSED.** Independent-judge baseline measured + locked: **F1 = 0.869**, 95% CI [0.842, 0.895] (disjoint median, gemma + phi4 over 9 golden chapters; `tests/quality/eval_runs/c74c-clean-rejudge` via `compute_ensemble_macros.py`). Confirms the ~4-5pp self-reinforcement (0.913 self-graded → 0.869 clean). 0.869 is now the honest baseline of record.
 
-**Session 104 work:**
-1. **FE mining panel** (`f6faa2cf` — pushed) — `insights` tab, 4 sections, 483 tests.
-2. **D-E2-FULL-EXTRACTION-SMOKE** (no code) — synthetic event pipeline verified.
-3. **Bug fix: `embed.go` double `/v1` prefix** — `embedOpenAI` appended `/v1/embeddings` to URL already containing `/v1` → `/v1/v1/embeddings` (404 from LM Studio). Fixed: strip `/v1` suffix before append. Regression test added. Rebuilt provider-registry.
-4. **Bug fix: `BuildGraphDialog` LLM model UUID** — `value={m.provider_model_name}` should be `value={m.user_model_id}`. Worker-ai SDK requires UUID `model_ref`; all UI-triggered extractions were silently broken.
-5. **Bug fix: `pass2_writer` unknown fact type** — LLM produced `type='description'` (not in FACT_TYPES). `merge_fact` raised ValueError → entire chapter 500. Fix: skip unknown fact types with warning at writer layer. Rebuilt KS.
-6. **Real extraction smoke** — 5 chapters extracted (qwen3.6-35b + bge-m3). `extraction_runs.genre = "Tien hiep / Cultivation"` × 5 real rows. `config-quality` → `run_count=6, success_rate=0.83` ✓. `model-matrix` → `weighted_outcome=0.83` ✓.
-7. **Bug fix: `runner.py` source_type 'chat_turn'** (`5077a2aa`) — `scope=all` chat-turn branch sent `source_type="chat_turn"`; provenance.py requires `"chat_message"`. 1-line fix. Extraction now completes clean: `status=complete p=6` (5 chapters + 1 chat stub) ✓.
+**NEW TRACK DESIGNED (this session):** **Production Eval + Feedback Flywheel** — design-checkpoint artifact written + committed (NO code yet): [`docs/plans/2026-06-01-production-eval-feedback-flywheel-track.md`](../plans/2026-06-01-production-eval-feedback-flywheel-track.md). Grounded in a 6-dimension industry research workflow (OpenAI / Anthropic / Google Vertex / LLM-observability platforms / vendor-neutral ML patterns / codebase audit) + an adversarial critique pass (all 6 fixes folded). 12 phases Q0→Q9 (Q10 LoRA spun out to Track-2).
 
-**FIRST: push main** — 2 commits local (0bf049cd + 5077a2aa).
+**PO decisions locked (doc §11):** (1) Q2 = time-window attribution first (no node→run link unless noise hurts); (2) Q4 = structural-only online eval first, `save_raw_extraction` LLM-judge opt-in is fast-follow; (3) baseline of record = **0.869** (retire 0.913 from gate use); (4) stays in `docs/plans/`, promote to numbered track if BUILD >5 sessions.
 
-**NEXT:**
-1. **Resume eval R&D arc** — cycle-70s extraction-quality F1 work: independent judges, host-orchestrated ensembles. Disjoint-median metric locked.
+**NEXT = BUILD the foundation checkpoint (Q0 → Q1):**
+1. **Q0 (M)** — Lift `tests/quality/` scorer (`eval_harness`/`llm_judge`/`judge_ensemble`/`compute_ensemble_macros`) into `services/learning-service/app/eval/` as a `Scorer` + `PersistenceAdapter` (FileSink + DbSink stub). **Two commits:** pure move (byte-identical lock) THEN parameterize the hardcoded extractor/filter UUIDs (`compute_ensemble_macros.py:48-49`) into a `JudgePanel` config. Preserve gateway response shape `result["messages"][0]["content"]`.
+2. **Q1 (M)** — Quality DB schema: `eval_runs`/`eval_results`/`quality_scores`/`score_config` in learning-service. Materialize 0.869 (and 0.913 historical) as `eval_runs` rows. Dual dedup key on `quality_scores`. OTel `gen_ai.*` naming. `GET /v1/learning/eval-runs`.
+
+(Critical path: Q0→Q1→Q2→Q3.5→Q4→Q6a→Q6b→Q8; Q9 privacy gate before any cross-tenant Q7 surface. See doc §5.)
 
 **Deferred:**
-- Outcome refinement batch job (correction-join recompute UPDATE on extraction_runs; needs correction volume)
+- Outcome refinement batch job (correction-join recompute on `extraction_runs`; needs correction volume) — subsumed by track Q2.
+- Archive job: `SESSION_PATCH.md` (974KB) + trim this file — separate session.
+- Track-2 (doc §10): LoRA distillation, weighted-canary rollout state machine, CUPED/sequential testing.
 
 <details><summary>(historical) Phase B complete — push options (all done/superseded)</summary>
 
