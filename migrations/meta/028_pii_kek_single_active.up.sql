@@ -1,4 +1,14 @@
 -- 028_pii_kek_single_active.up.sql
+--
+-- PII/retention classification (S08 §12X.3/§12X.4; pii-classify-lint). ALTER
+-- (UNIQUE partial index) on the existing pii_kek table — the per-user KEK
+-- envelope whose destruction IS the GDPR Art.17 crypto-shred (Slice B).
+-- @pii_sensitivity: sensitive (the KEK is the key material gating the user's PII)
+-- @retention_class: pii_envelope  -- NOTE: §12X.4 matrix has no PII-envelope row yet (pii_registry/pii_kek); flag → DEFERRED-111 to add it
+-- @retention_hot: until_erasure (KEK retained while the user's PII exists; destroyed on Art.17 erasure)
+-- @erasure_method: crypto_shred
+-- @legal_basis: contract
+--
 -- 076 Slice B (code-review BLOCK) — enforce AT MOST ONE active (non-destroyed)
 -- KEK per user, structurally.
 --

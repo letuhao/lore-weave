@@ -1,6 +1,14 @@
 -- 029 (cycle-4 / 076 Slice C): add pii_user_get + pii_user_erase to the
 -- meta_read_audit query_type CHECK.
 --
+-- PII/retention classification (S08 §12X.3/§12X.4; pii-classify-lint). ALTER on
+-- the existing meta_read_audit table — per the §12X.4 matrix row.
+-- @pii_sensitivity: low (query metadata; parameters carry only opaque user_ref_id, never PII values)
+-- @retention_class: meta_read_audit
+-- @retention_hot: 2y
+-- @erasure_method: crypto_shred_actor
+-- @legal_basis: legitimate_interest
+--
 -- WHY: the canonical SSOT contracts/meta/meta-sensitive-read-paths.yml already
 -- lists `pii_user_get` and `pii_user_erase` as valid query_type ids, but
 -- migration 014 shipped an older enum that omitted them. The cycle-4 PII SDK

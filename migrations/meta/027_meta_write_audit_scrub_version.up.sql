@@ -1,4 +1,13 @@
 -- 027_meta_write_audit_scrub_version.up.sql
+--
+-- PII/retention classification (S08 §12X.3/§12X.4; pii-classify-lint). ALTER on
+-- the existing meta_write_audit table — per the §12X.4 matrix row.
+-- @pii_sensitivity: low (before/after copies are PII-scrubbed per Slice A; row_pk/actor carry only opaque user_ref_id)
+-- @retention_class: meta_write_audit
+-- @retention_hot: 5y
+-- @erasure_method: crypto_shred_actor
+-- @legal_basis: legitimate_interest
+--
 -- 076 D-PII-PRODUCTION Slice A — record which scrubber ruleset redacted a
 -- meta_write_audit row's before/after/reason, so retroactive re-scrub jobs can
 -- target rows by ruleset version.
