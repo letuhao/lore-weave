@@ -588,7 +588,9 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 
 **Files:** `contracts/service_acl/matrix.yaml`, `contracts/observability/inventory.yaml`, `scripts/meta-write-discipline-lint.sh`, `docs/deferred/DEFERRED.md` (078 corrected + 111 opened/scoped), this entry. Commits `1e5847af` · `96e80c80` · `fa8a1dad` · `a61f0a80` (+ this).
 
-**Remaining → 111 D-CI-GATE-GREENING (HIGH)** — 3 red gates, each genuinely load-bearing/judgment-heavy (NOT session-end-safe): `meta-write` 3 (publisher-hb liveness + world-svc s2s-audit likely-exempt; **meta-worker `pgwrite` AMBIGUOUS** = possible real I8 gap); `role-grant` 4 (event tables reality-scoped/unbuilt → tangled with meta-outbox 101); `pii-classify` (026 book CREATE + my 027/028/029 ALTERs — needs S08 §12X.4 compliance classification or a lint-design call).
+**Also fixed pii-classify (my regressions):** tagged my migrations 027/028/029 per S08 §12X.4 (meta_write_audit 5y, meta_read_audit 2y, pii_kek crypto_shred) → pii-classify 20→5 missing tags; surfaced a real §12X.4 spec gap (no PII-envelope retention_class for pii_registry/pii_kek).
+
+**Remaining → 111 D-CI-GATE-GREENING (HIGH)** — irreducible-for-me / load-bearing, NOT session-end-safe: `meta-write` 3 (publisher-hb + world-svc s2s-audit likely-exempt; **meta-worker `pgwrite` AMBIGUOUS** = possible real I8 gap); `role-grant` 4 (event tables reality-scoped/unbuilt → meta-outbox 101); `pii-classify` 1 (**026** book-service CREATE — its owner classifies) + close the §12X.4 PII-envelope-class gap.
 
 ### 2026-05-31 — 072 GDPR Art.33 breach-notification: live wiring (L · AMAW + /review-impl) — 072 ADDRESSED
 
