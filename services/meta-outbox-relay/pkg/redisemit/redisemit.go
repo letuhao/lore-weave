@@ -82,6 +82,11 @@ func (e *Emitter) EmitXReality(ctx context.Context, row drain.Row) error {
 	// Reserved envelope fields win on collision.
 	values["event_id"] = row.EventID
 	values["event_name"] = row.EventName
+	// event_type = the xreality topic, so cross-reality consumers (e.g.
+	// meta-worker, whose dispatcher routes by event_type) route EXPLICITLY to
+	// the topic's handler instead of relying on the stream-name fallback
+	// (P2/071 /review-impl #1; matches the publisher fanout's event_type contract).
+	values["event_type"] = row.XRealityTopic
 	values["aggregate_id"] = row.AggregateID
 	values["recorded_at_nanos"] = row.RecordedAtNanos
 	values["payload"] = payload

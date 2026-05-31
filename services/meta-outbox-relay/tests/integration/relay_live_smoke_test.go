@@ -148,6 +148,10 @@ func TestLive_Relay_EndToEnd(t *testing.T) {
 				t.Errorf("%s: payload lost int64 precision: %q", stream, payload)
 			}
 			if stream == xrealTopic {
+				// event_type = the xreality topic → explicit consumer routing (071).
+				if msg.Values["event_type"] != xrealTopic {
+					t.Errorf("xreality: event_type must equal the topic for explicit routing, got %v", msg.Values["event_type"])
+				}
 				// Promotion: domain keys are top-level fields (071 reads these).
 				if msg.Values["user_id"] != userID.String() {
 					t.Errorf("xreality: user_id not promoted to a top-level field: %v", msg.Values["user_id"])

@@ -15,10 +15,12 @@ package pglive
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/loreweave/foundation/contracts/meta"
 	uew "github.com/loreweave/foundation/services/meta-worker/pkg/user_erased_writer"
 )
 
@@ -100,5 +102,85 @@ func (s *PgPerRealityScrubber) ScrubUserRefs(ctx context.Context, in uew.ScrubIn
 		in.UserID, erasedNameSentinel); err != nil {
 		return fmt.Errorf("pglive: scrub pc_projection user %s in reality %s: %w", in.UserID, in.RealityID, err)
 	}
+	return nil
+}
+
+// PgMetaScrubber scrubs the user's PII in the META cross-reality index
+// (player_character_index.pc_name) — the copy the per-reality pc_projection
+// scrub does not reach (P2/071). It routes through contracts/meta MetaWriteBatch
+// (one UPDATE intent per non-deleted pc_index row) so each scrub is
+// same-TX-audited in meta_write_audit + (if cfg.Outbox is set) emits
+// pc.index.status.changed. Enumerate-then-batch (like the KEK shred) keeps the
+// multi-PC scrub atomic; the `status <> 'deleted'` SELECT filter makes a re-run
+// a no-op (idempotent).
+type PgMetaScrubber struct {
+	meta    *pgxpool.Pool
+	cfg     *meta.Config
+	actorID string
+}
+
+// NewPgMetaScrubber binds the meta pool + the MetaWrite Config + the actor
+// recorded in meta_write_audit (the meta-worker service performing the scrub).
+func NewPgMetaScrubber(metaPool *pgxpool.Pool, cfg *meta.Config, actorID string) *PgMetaScrubber {
+	return &PgMetaScrubber{meta: metaPool, cfg: cfg, actorID: actorID}
+}
+
+var _ uew.MetaScrubber = (*PgMetaScrubber)(nil)
+
+// ScrubUserMetaRefs tombstones every non-deleted player_character_index row for
+// the user (pc_name → '[erased]', status → 'deleted') via MetaWriteBatch.
+func (s *PgMetaScrubber) ScrubUserMetaRefs(ctx context.Context, userID uuid.UUID) error {
+	rows, err := s.meta.Query(ctx,
+		`SELECT pc_index_id FROM player_character_index WHERE user_ref_id = $1 AND status <> 'deleted'`, userID)
+	if err != nil {
+		return fmt.Errorf("pglive: enumerate pc_index for user %s: %w", userID, err)
+	}
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return fmt.Errorf("pglive: scan pc_index_id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("pglive: iterate pc_index: %w", err)
+	}
+	if len(ids) == 0 {
+		return nil // already scrubbed / no PCs — idempotent
+	}
+	intents := make([]meta.MetaWriteIntent, 0, len(ids))
+	for _, id := range ids {
+		intents = append(intents, meta.MetaWriteIntent{
+			Table:     "player_character_index",
+			Operation: meta.OpUpdate,
+			PK:        map[string]any{"pc_index_id": id},
+			NewValues: map[string]any{"pc_name": erasedNameSentinel, "status": "deleted"},
+			Actor:     meta.Actor{Type: meta.ActorService, ID: s.actorID},
+			Reason:    "gdpr erasure: scrub cross-reality PC index (P2/071)",
+		})
+	}
+	if _, err := meta.MetaWriteBatch(ctx, s.cfg, intents); err != nil {
+		return fmt.Errorf("pglive: meta-scrub player_character_index for user %s: %w", userID, err)
+	}
+	return nil
+}
+
+// LogAuditSink is a V1 structured-log AuditSink for the per-reality scrub
+// (P2/071). Durable audit-table persistence is deferred — the per-reality scrub
+// is a per-reality projection write (not a meta-table MetaWrite), so its audit
+// home (a per-reality audit table vs service_to_service_audit) is a follow-up
+// decision; for V1 we emit a structured log line per scrub (Q-L1A-3 visibility).
+type LogAuditSink struct{}
+
+var _ uew.AuditSink = LogAuditSink{}
+
+// WriteAudit logs the scrub. Never errors (a log write must not NACK erasure).
+func (LogAuditSink) WriteAudit(_ context.Context, e uew.AuditEntry) error {
+	slog.Info("[user-erased] per-reality scrub",
+		"event_id", e.EventID, "user_id", e.UserID, "reality_id", e.RealityID,
+		"outcome", e.Outcome, "erased_at", e.ErasedAt, "scrubbed_at", e.ScrubbedAt)
 	return nil
 }

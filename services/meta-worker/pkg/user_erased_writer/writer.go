@@ -96,10 +96,10 @@ type ScrubIntent struct {
 	UserID    uuid.UUID
 	// EventID is the source xreality.user.erased event_id, propagated
 	// for audit + idempotency (the DB adapter may use it as a dedupe key).
-	EventID    uuid.UUID
-	ErasedAt   time.Time
-	RequestID  string
-	IssuedAt   time.Time
+	EventID   uuid.UUID
+	ErasedAt  time.Time
+	RequestID string
+	IssuedAt  time.Time
 }
 
 // PerRealityDB scrubs PII references for the user in the named reality.
@@ -126,6 +126,16 @@ type PerRealityDB interface {
 // safe; under-scrubbing leaks PII).
 type UserRealityLookup interface {
 	RealitiesForUser(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error)
+}
+
+// MetaScrubber scrubs the user's PII in META tables (P2/071) — the
+// cross-reality player_character_index.pc_name copy that the per-reality
+// pc_projection scrub does NOT reach. Production routes it through MetaWrite
+// (so each row is self-audited + emits pc.index.status.changed). Called once
+// per Handle. MUST be idempotent (re-delivery is safe). A non-nil error → NACK
+// (Q-L5H-1 inverted: leaving the PII copy alive is the UNSAFE direction).
+type MetaScrubber interface {
+	ScrubUserMetaRefs(ctx context.Context, userID uuid.UUID) error
 }
 
 // AuditEntry is the per-reality cascade audit record.
@@ -159,10 +169,11 @@ func (realClock) Now() time.Time { return time.Now().UTC() }
 
 // Writer is the L5.C user-erased per-reality cascade writer.
 type Writer struct {
-	lookup UserRealityLookup
-	db     PerRealityDB
-	audit  AuditSink
-	clock  Clock
+	lookup       UserRealityLookup
+	db           PerRealityDB
+	audit        AuditSink
+	metaScrubber MetaScrubber // optional
+	clock        Clock
 }
 
 // Config bundles the dependencies.
@@ -170,10 +181,15 @@ type Config struct {
 	Lookup UserRealityLookup
 	DB     PerRealityDB
 	Audit  AuditSink
-	Clock  Clock // optional
+	// MetaScrubber is OPTIONAL (P2/071): when set, Handle also scrubs the
+	// user's PII in META tables (the cross-reality player_character_index.pc_name
+	// copy) exactly once per event, via MetaWrite (self-audited). nil = skip
+	// (back-compat for existing callers/tests that only cascade per-reality).
+	MetaScrubber MetaScrubber
+	Clock        Clock // optional
 }
 
-// New constructs a Writer. All non-Clock deps required.
+// New constructs a Writer. All non-Clock/MetaScrubber deps required.
 func New(cfg Config) (*Writer, error) {
 	if cfg.Lookup == nil {
 		return nil, errors.New("user_erased_writer: Lookup nil")
@@ -189,10 +205,11 @@ func New(cfg Config) (*Writer, error) {
 		clk = realClock{}
 	}
 	return &Writer{
-		lookup: cfg.Lookup,
-		db:     cfg.DB,
-		audit:  cfg.Audit,
-		clock:  clk,
+		lookup:       cfg.Lookup,
+		db:           cfg.DB,
+		audit:        cfg.Audit,
+		metaScrubber: cfg.MetaScrubber,
+		clock:        clk,
 	}, nil
 }
 
@@ -254,6 +271,17 @@ func (w *Writer) Handle(ctx context.Context, fields map[string]any) error {
 			if firstErr == nil {
 				firstErr = fmt.Errorf("user_erased_writer: audit reality=%s user=%s: %w",
 					realityID, payload.UserID, err)
+			}
+		}
+	}
+
+	// Meta-side scrub (P2/071): the cross-reality player_character_index.pc_name
+	// copy. Once per event, via MetaWrite (self-audited). Idempotent. Runs after
+	// the per-reality cascade; a failure NACKs the whole event (Q-L5H-1).
+	if w.metaScrubber != nil {
+		if err := w.metaScrubber.ScrubUserMetaRefs(ctx, payload.UserID); err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("user_erased_writer: meta-scrub user=%s: %w", payload.UserID, err)
 			}
 		}
 	}

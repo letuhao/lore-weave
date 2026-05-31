@@ -45,7 +45,7 @@ declare -A allow=(
   [admin.canon.override.consented]="by-design: meta-worker override writers (audit), not projected"
   [admin.canon.override.vetoed]="by-design: meta-worker override writers (audit), not projected"
   [admin.canon.override.compensating]="by-design: meta-worker force_propagate compensating writer"
-  [xreality.user.erased]="DEFERRED GAP: GDPR projection-side erasure not yet implemented — D-PROJECTION-ERASURE (PRR-09)"
+  [xreality.user.erased]="by-design: handled by meta-worker user_erased_writer (P2/071) — GDPR erasure is a per-reality pc_projection scrub + meta player_character_index scrub, NOT a read-model projection rebuild"
 )
 
 violations=0

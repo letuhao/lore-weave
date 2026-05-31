@@ -26,16 +26,21 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/loreweave/foundation/contracts/meta"
+	"github.com/loreweave/foundation/sdks/go/metapg"
 	"github.com/loreweave/foundation/services/meta-worker/pkg/canon_writer"
 	"github.com/loreweave/foundation/services/meta-worker/pkg/consumer"
 	"github.com/loreweave/foundation/services/meta-worker/pkg/dispatch"
 	"github.com/loreweave/foundation/services/meta-worker/pkg/pgwrite"
 	"github.com/loreweave/foundation/services/meta-worker/pkg/redisconsume"
+	"github.com/loreweave/foundation/services/meta-worker/pkg/user_erased_writer"
+	"github.com/loreweave/foundation/services/meta-worker/pkg/user_erased_writer/pglive"
 	"github.com/loreweave/foundation/services/publisher/pkg/realityreg"
 )
 
@@ -45,6 +50,16 @@ func main() {
 		os.Exit(1)
 	}
 }
+
+// sysClock / randUUID are the production Clock/UUIDGen for the meta-scrub
+// MetaWrite path (P2/071).
+type sysClock struct{}
+
+func (sysClock) NowUnixNano() int64 { return time.Now().UnixNano() }
+
+type randUUID struct{}
+
+func (randUUID) New() uuid.UUID { return uuid.New() }
 
 func run() error {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
@@ -101,7 +116,7 @@ func run() error {
 	}
 	source, err := redisconsume.New(redisconsume.Config{
 		RDB:      rdb,
-		Streams:  []string{cfg.CanonStream},
+		Streams:  []string{cfg.CanonStream, cfg.UserErasedStream},
 		Group:    cfg.ConsumerGroup,
 		Consumer: cfg.ConsumerID,
 		Block:    cfg.Block,
@@ -126,6 +141,44 @@ func run() error {
 	for _, et := range canon_writer.EventTypes() {
 		d.Register(et, cw.Handle)
 	}
+
+	// ── user-erased cascade (P2/071): xreality.user.erased → scrub PII ──────────
+	// Per-reality pc_projection scrub (always) + meta player_character_index.pc_name
+	// scrub via MetaWrite (only when META_ALLOWLIST_PATH is set → graceful degrade:
+	// the canon path + the per-reality scrub work without it; the meta-index scrub
+	// needs the allowlist/MetaWrite Config).
+	uerCfg := user_erased_writer.Config{
+		Lookup: pglive.NewPgUserRealityLookup(metaPool),
+		DB: pglive.NewPgPerRealityScrubber(func(rid uuid.UUID) (*pgxpool.Pool, error) {
+			p, ok := realityPools[rid.String()]
+			if !ok {
+				return nil, fmt.Errorf("no pool for reality %s", rid)
+			}
+			return p, nil
+		}),
+		Audit: pglive.LogAuditSink{},
+	}
+	if allowPath := os.Getenv("META_ALLOWLIST_PATH"); allowPath != "" {
+		allow, aerr := meta.LoadAllowlist(allowPath)
+		if aerr != nil {
+			return fmt.Errorf("load allowlist: %w", aerr)
+		}
+		mwCfg := &meta.Config{
+			DB: metapg.New(metaPool), Allowlist: allow, QueryBuilder: meta.PostgresQueryBuilder{},
+			Clock: sysClock{}, UUIDGen: randUUID{},
+		}
+		uerCfg.MetaScrubber = pglive.NewPgMetaScrubber(metaPool, mwCfg, "meta-worker")
+	} else {
+		slog.Warn("[meta-worker] META_ALLOWLIST_PATH unset — user.erased per-reality scrub wired, but the meta player_character_index.pc_name scrub is DISABLED (set it to complete erasure)")
+	}
+	uer, uerr := user_erased_writer.New(uerCfg)
+	if uerr != nil {
+		return fmt.Errorf("user_erased_writer: %w", uerr)
+	}
+	for _, et := range user_erased_writer.EventTypes() {
+		d.Register(et, uer.Handle)
+	}
+
 	if err := d.ValidateAllowlist(); err != nil {
 		return fmt.Errorf("I7 allowlist: %w", err)
 	}
@@ -228,15 +281,16 @@ func openPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 // ── Config ────────────────────────────────────────────────────────────────
 
 type config struct {
-	MetaDBURL     string
-	RedisURL      string
-	DSN           realityreg.DSNConfig
-	CanonStream   string
-	ConsumerGroup string
-	ConsumerID    string
-	Block         time.Duration
-	BatchSize     int
-	HTTPAddr      string
+	MetaDBURL        string
+	RedisURL         string
+	DSN              realityreg.DSNConfig
+	CanonStream      string
+	UserErasedStream string
+	ConsumerGroup    string
+	ConsumerID       string
+	Block            time.Duration
+	BatchSize        int
+	HTTPAddr         string
 }
 
 func loadConfig() (config, error) {
@@ -279,6 +333,10 @@ func loadConfig() (config, error) {
 	c.CanonStream = os.Getenv("CANON_STREAM")
 	if c.CanonStream == "" {
 		c.CanonStream = "xreality.book.canon.updated"
+	}
+	c.UserErasedStream = os.Getenv("USER_ERASED_STREAM")
+	if c.UserErasedStream == "" {
+		c.UserErasedStream = "xreality.user.erased"
 	}
 	c.ConsumerGroup = os.Getenv("CONSUMER_GROUP")
 	if c.ConsumerGroup == "" {
