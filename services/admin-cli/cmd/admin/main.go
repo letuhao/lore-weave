@@ -235,6 +235,26 @@ func buildRealityStatsHandler() (framework.Handler, func(), error) {
 	return h, pool.Close, nil
 }
 
+// buildMigrationStatusHandler wires the read-only `migration status` command
+// (073) to a single-meta-table aggregation read of instance_schema_migrations
+// (the orchestrator's central per-reality migration ledger). Own read-only pool.
+func buildMigrationStatusHandler() (framework.Handler, func(), error) {
+	noop := func() {}
+	dsn := os.Getenv("META_DATABASE_URL")
+	if dsn == "" {
+		return nil, noop, nil
+	}
+	pool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		return nil, noop, fmt.Errorf("migration-status meta DB connect: %w", err)
+	}
+	reader := commands.NewPgMigrationStatusReader(pool)
+	h := func(ctx context.Context, inv framework.Invocation) (string, error) {
+		return commands.RunMigrationStatus(ctx, inv.Params["scope"], reader)
+	}
+	return h, pool.Close, nil
+}
+
 // registryDirEnv lets ops override the registry path (defaults to the
 // canonical contracts/admin/registry relative to repo root).
 const registryDirEnv = "ADMIN_CLI_REGISTRY_DIR"
@@ -393,6 +413,19 @@ func run(args []string, stdout, stderr *os.File) int {
 		}
 	}
 	defer closeReality()
+
+	// Read-only `migration status` (073) — wired only for its own command.
+	closeMig := func() {}
+	if c.Name == "migration status" {
+		mh, mc, merr := buildMigrationStatusHandler()
+		closeMig = mc
+		if merr != nil {
+			fmt.Fprintf(stderr, "admin: migration-status handler not wired: %v\n", merr)
+		} else if mh != nil {
+			handlers.Register("migration status", mh)
+		}
+	}
+	defer closeMig()
 
 	handler := handlers.Resolve(c)
 	inv := framework.Invocation{

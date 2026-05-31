@@ -580,6 +580,13 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 
 ## Current Active Work
 
+### 2026-05-31 — 073 command body #2: `migration status` (S, read-only)
+
+**What:** second 073 command body — `migration status` (tier-3 informational, read-only). A single-meta-table aggregation read of `instance_schema_migrations` (the orchestrator's central per-reality migration ledger — so it's single-DB, not the multi-DB fan-out it first appeared).
+**Files:** `admin-cli/internal/commands/{migration_status,migration_status_pg,migration_status_test,migration_status_pg_test}.go` (MigrationStatusReader iface + `PgMigrationStatusReader` GROUP BY reality_id aggregation + `RunMigrationStatus` scope handling) · `cmd/admin/main.go` (`buildMigrationStatusHandler` + gated registration) · `contracts/service_acl/matrix.yaml` (admin-cli +`instance_schema_migrations: SELECT`).
+**Honest scope:** `scope=meta` explains the meta-DB's own migrations aren't tracked in this table (reported, not silently empty); `per-reality`/`all` give the real summary.
+**Tests:** 6 unit (per-reality / meta-scope / empty / invalid-scope / reader-err / nil) + PG-gated aggregation read on pg16. Full admin-cli suite green; service-acl + language-rule PASS.
+
 ### 2026-05-31 — 073 first command body: `reality stats` (S, read-only) — wired on metapg
 
 **What:** wired the first of 073's ~33 admin-cli command bodies — `reality stats` (tier-3 informational, read-only). Demonstrates the command-wiring pattern on the metapg/pool foundation.
