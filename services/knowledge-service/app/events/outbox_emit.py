@@ -111,12 +111,17 @@ def config_adjustment_payload(
     project_id: str,
     actor_id: str,
     target: str,
-    before_structural: Any,
-    after_structural: Any,
+    before_structural: Any = None,
+    after_structural: Any = None,
+    before_content_hash: str | None = None,
+    after_content_hash: str | None = None,
 ) -> dict[str, Any]:
-    """Build a knowledge.config_adjusted payload (one per changed top-level
-    target, e.g. 'precision_filter'). Structural-only in b1 — raw-prompt
-    targets (content-hash) land in b2."""
+    """Build a knowledge.config_adjusted payload (one per changed target).
+
+    Structural targets (e.g. 'precision_filter') carry before/after_structural.
+    Raw-prompt targets (e.g. 'prompts.entity', b2) carry before/after_content_hash
+    ONLY — the prompt TEXT is content-hashed at the producer and NEVER sent to
+    learning-service (DESIGN Q5 redact-by-default)."""
     return {
         "user_id": user_id,
         "project_id": project_id,
@@ -126,6 +131,8 @@ def config_adjustment_payload(
         "op": "set",
         "before_structural": before_structural,
         "after_structural": after_structural,
+        "before_content_hash": before_content_hash,
+        "after_content_hash": after_content_hash,
         "emitted_at": now_iso(),
     }
 

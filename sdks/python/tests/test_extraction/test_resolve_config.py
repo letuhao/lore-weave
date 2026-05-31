@@ -223,9 +223,20 @@ def test_prompt_override_changes_hash():
     g = _globals()
     base = config_hash(resolve_effective_config(global_defaults=g, project_overrides={}))
     custom = config_hash(resolve_effective_config(
-        global_defaults=g, project_overrides={"prompts": {"entity": {"user": "different"}}},
+        global_defaults=g, project_overrides={"prompts": {"entity": {"system": "different"}}},
     ))
     assert base != custom
+
+
+def test_user_only_prompt_override_is_inert():
+    """b2 is system-only — a prompts override carrying only `user` has no effect
+    (the user message is always the raw chapter text), so the hash is unchanged."""
+    g = _globals()
+    base = config_hash(resolve_effective_config(global_defaults=g, project_overrides={}))
+    user_only = config_hash(resolve_effective_config(
+        global_defaults=g, project_overrides={"prompts": {"entity": {"user": "ignored"}}},
+    ))
+    assert base == user_only
 
 
 def test_different_custom_prompts_differ():

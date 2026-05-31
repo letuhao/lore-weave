@@ -252,6 +252,39 @@ async def test_extract_and_persist_omitted_filter_uses_global(monkeypatch):
     assert captured["precision_filter"] is sentinel_cfg
 
 
+async def test_extract_and_persist_forwards_prompt_overrides(monkeypatch):
+    """B2-B-b2 — per-op prompt_overrides from the snapshot reach extract_pass2."""
+    from app import runner
+
+    captured = {}
+
+    class _Cands:
+        entities = []
+        relations = []
+        events = []
+        facts = []
+        filter_status = "skipped"
+
+    async def fake_extract_pass2(**kwargs):
+        captured.update(kwargs)
+        return _Cands()
+
+    monkeypatch.setattr(runner, "extract_pass2", fake_extract_pass2)
+    kc = AsyncMock()
+    kc.persist_pass2 = AsyncMock(return_value=ExtractionResult(
+        source_id="s", entities_merged=0, relations_created=0,
+        events_merged=0, facts_merged=0,
+    ))
+    overrides = {"entity": {"system": "custom entity prompt"}}
+    await runner._extract_and_persist(
+        knowledge_client=kc, llm_client=MagicMock(), user_id=uuid.uuid4(),
+        project_id=uuid.uuid4(), source_type="chapter", source_id="s",
+        job_id=uuid.uuid4(), model_ref="m", text="hello",
+        prompt_overrides=overrides,
+    )
+    assert captured["prompt_overrides"] == overrides
+
+
 async def test_extract_and_persist_explicit_none_disables_not_global(monkeypatch):
     """Explicit precision_filter=None → DISABLED, must NOT fall back to the
     global (memory sdk-default-arg-dropped-from-wire — the sentinel guards this)."""

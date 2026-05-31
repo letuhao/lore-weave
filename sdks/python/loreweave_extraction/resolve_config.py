@@ -167,9 +167,13 @@ def _resolve_prompt_versions(prompts: dict[str, dict[str, str]]) -> dict[str, st
     out: dict[str, str] = {}
     for op in PROMPT_OPS:
         ov = prompts.get(op)
-        if ov and (ov.get("system") or ov.get("user")):
-            override_text = (ov.get("system") or "") + "\x1f" + (ov.get("user") or "")
-            out[op] = get_extractor_version(op, override_text=override_text)
+        system = (ov or {}).get("system")
+        if system:
+            # /review-impl LOW-1 — hash the BARE system text so the registry's
+            # custom-<8hex> is the 8-char prefix of the KS adjustment-event's
+            # content_hash (sha256(system)); keeps the two joinable in E2 mining.
+            # Only `system` is overridable in b2 (the user message is raw text).
+            out[op] = get_extractor_version(op, override_text=system)
         else:
             out[op] = get_extractor_version(op)
     return out

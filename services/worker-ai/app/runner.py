@@ -928,6 +928,9 @@ async def _extract_and_persist(
     # didn't pass" (use global) from "caller passed None" (override = disabled).
     precision_filter: "PrecisionFilterConfig | None" = _GLOBAL_FILTER_SENTINEL,
     entity_recovery: "EntityRecoveryConfig | None" = _GLOBAL_RECOVERY_SENTINEL,
+    # B2-B-b2 — per-op raw system-prompt overrides {op: {"system": str}} from
+    # the job's resolved snapshot ({} when the project has no custom prompts).
+    prompt_overrides: dict | None = None,
     # P3 D-P3-EXTRACTION-CALLER-WIRE-UP — all optional. Caller (chapter
     # branch) supplies these to opt into hierarchy MERGE + summary
     # enqueue. chat_turn branch keeps the legacy behaviour.
@@ -986,6 +989,8 @@ async def _extract_and_persist(
             # resolvable. Runs BEFORE filter. Worker-ai has no glossary access
             # so all unmatched names go to the LLM classifier (Tier 3).
             entity_recovery=eff_recovery,
+            # B2-B-b2 — per-op raw system-prompt overrides ({} = all defaults).
+            prompt_overrides=prompt_overrides,
         )
     except ExtractionError as exc:
         retryable = exc.stage == "provider_exhausted"
@@ -1223,6 +1228,7 @@ async def process_job(
                     model_ref=run_snapshot.model_ref,
                     precision_filter=run_snapshot.precision_filter,
                     entity_recovery=run_snapshot.entity_recovery,
+                    prompt_overrides=run_snapshot.prompts,
                     text=text,
                     hierarchy_paths=p3_hierarchy_paths,
                     book_parts=p3_book_parts,

@@ -87,6 +87,10 @@ from loreweave_extraction.extractors.precision_filter_prompts import (
     build_precision_prompt,
     precision_prompt_body,
 )
+from loreweave_extraction.prompts import (
+    OUTPUT_CONTRACT_REMINDER,
+    apply_prompt_override,
+)
 from loreweave_extraction.resolve_config import (
     PROMPT_OPS,
     ResolvedConfig,
@@ -158,6 +162,9 @@ __all__ = [
     "config_hash",
     "base_default_version",
     "PROMPT_OPS",
+    # B2-B-b2 — raw per-op prompt override + injection-safe output contract
+    "apply_prompt_override",
+    "OUTPUT_CONTRACT_REMINDER",
     # Model-context-aware chunking + concurrency
     "ContextBudget",
     "Language",

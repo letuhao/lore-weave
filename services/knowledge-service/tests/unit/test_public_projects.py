@@ -1201,3 +1201,87 @@ def test_put_extraction_config_not_found(
         json={"precision_filter": {"categories": ["relation"]}},
     )
     assert resp.status_code == 404
+
+
+# ── B2-B-b2: raw-prompt override (security) ────────────────────────────────
+
+
+def test_put_extraction_config_persists_prompts(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
+):
+    p = _make_project(auth_user_id, version=1)
+    repo.seed(p)
+    resp = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"1"'},
+        json={"prompts": {"entity": {"system": "Extract only people and places."}}},
+    )
+    assert resp.status_code == 200
+    cfg = resp.json()["extraction_config"]
+    assert cfg["prompts"]["entity"]["system"] == "Extract only people and places."
+
+
+def test_put_extraction_config_prompt_emits_content_hash_not_raw_text(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
+):
+    """Privacy regression-lock (DESIGN Q5): the config_adjusted event for a
+    prompt target carries a content-HASH, never the raw prompt text."""
+    import hashlib
+
+    secret = "MY PROPRIETARY GENRE-SPECIFIC EXTRACTION PROMPT"
+    p = _make_project(auth_user_id, version=1)
+    repo.seed(p)
+    resp = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"1"'},
+        json={"prompts": {"entity": {"system": secret}}},
+    )
+    assert resp.status_code == 200
+    emit = next(c for c in captured_emits if c["payload"]["target"] == "prompts.entity")
+    pl = emit["payload"]
+    assert pl["after_content_hash"] == hashlib.sha256(secret.encode()).hexdigest()
+    assert pl["before_content_hash"] is None
+    # the raw text must NOT appear anywhere in the emitted payload
+    import json as _json
+    assert secret not in _json.dumps(pl)
+    assert pl["after_structural"] is None
+
+
+def test_put_extraction_config_rejects_overlong_prompt(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
+):
+    p = _make_project(auth_user_id, version=1)
+    repo.seed(p)
+    resp = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"1"'},
+        json={"prompts": {"entity": {"system": "x" * 16385}}},  # > 16384 cap
+    )
+    assert resp.status_code == 422
+    assert captured_emits == []
+
+
+def test_put_extraction_config_rejects_unknown_prompt_op(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
+):
+    p = _make_project(auth_user_id, version=1)
+    repo.seed(p)
+    resp = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"1"'},
+        json={"prompts": {"bogus_op": {"system": "x"}}},
+    )
+    assert resp.status_code == 422
+
+
+def test_put_extraction_config_rejects_unknown_prompt_field(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
+):
+    p = _make_project(auth_user_id, version=1)
+    repo.seed(p)
+    resp = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"1"'},
+        json={"prompts": {"entity": {"user": "not allowed"}}},  # only `system`
+    )
+    assert resp.status_code == 422

@@ -170,14 +170,36 @@ class WriterAutocreateOverride(BaseModel):
     enabled: bool | None = None
 
 
+# B2-B-b2 — raw per-op system-prompt override (SECURITY-sensitive). Only the
+# `system` instructions are overridable (the user message is always the raw
+# chapter text). Capped at 16 kB/field (DESIGN §2.5 — the SDK context_budget
+# absorbs oversize as more chunks; the cap only stops the absurd whole-novel
+# paste). The SDK appends a fixed output-contract reminder so a custom prompt
+# can't break the JSON-only discipline. Raw text lives ONLY in the owner's
+# project row — it is content-hashed, never copied raw, into learning-service.
+# /review-impl MED-1 — only the ops extract_pass2 actually applies overrides
+# for. `summarize_level` runs in a separate P3 path that doesn't thread
+# prompt_overrides yet, so offering it here would accept an inert override.
+PromptOpLit = Literal["entity", "relation", "event", "fact"]
+_PROMPT_MAX_LEN = 16384  # ~16 kB
+
+
+class PromptOverride(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    system: Annotated[str, StringConstraints(max_length=_PROMPT_MAX_LEN)] | None = None
+
+
 class ProjectExtractionConfigUpdate(BaseModel):
-    """The full per-project extraction-config (structural subset). PUT replaces
-    the stored `extraction_config` with the non-None fields of this body."""
+    """The full per-project extraction-config. PUT replaces the stored
+    `extraction_config` with the non-None fields of this body — the caller
+    (FE) must send the COMPLETE config (structural + prompts) each time, or an
+    omitted section is dropped (PUT-replace, not merge)."""
     model_config = ConfigDict(extra="forbid")
     llm_model: LlmModelOverride | None = None
     precision_filter: PrecisionFilterOverride | None = None
     entity_recovery: EntityRecoveryOverride | None = None
     writer_autocreate: WriterAutocreateOverride | None = None
+    prompts: dict[PromptOpLit, PromptOverride] | None = None
 
 
 class Summary(BaseModel):

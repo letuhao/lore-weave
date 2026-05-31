@@ -16,6 +16,7 @@ returns None which we map to 404.
 """
 
 import base64
+import hashlib
 import re
 from datetime import datetime
 from uuid import UUID
@@ -47,6 +48,14 @@ _EXTRACTION_CONFIG_TARGETS = (
     "entity_recovery",
     "writer_autocreate",
 )
+
+
+def _prompt_hash(text: str | None) -> str | None:
+    """sha256 of a custom prompt's system text (or None). Used so the raw text
+    never crosses to learning-service — only its identity (DESIGN Q5)."""
+    if not text:
+        return None
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 # D-K8-03: accept `If-Match: W/"<version>"` or `If-Match: "<version>"`
 # or even the bare integer. Strict about the quoted form but tolerant
@@ -380,7 +389,7 @@ async def put_extraction_config(
     if updated is None:
         raise _not_found()
 
-    # Emit one best-effort config_adjusted event per changed top-level target
+    # Emit one best-effort config_adjusted event per changed STRUCTURAL target
     # (analytics; never fails the edit — DESIGN Q3).
     for target in _EXTRACTION_CONFIG_TARGETS:
         before = old_config.get(target)
@@ -395,6 +404,26 @@ async def put_extraction_config(
                     target=target,
                     before_structural=before,
                     after_structural=after,
+                ),
+            )
+
+    # B2-B-b2 — raw-prompt targets: emit per changed op with a CONTENT-HASH of
+    # the system text (never the raw text — DESIGN Q5 redact-by-default).
+    old_prompts = old_config.get("prompts") or {}
+    new_prompts = new_config.get("prompts") or {}
+    for op in sorted(set(old_prompts) | set(new_prompts)):
+        before_sys = (old_prompts.get(op) or {}).get("system")
+        after_sys = (new_prompts.get(op) or {}).get("system")
+        if before_sys != after_sys:
+            await emit_config_adjustment(
+                aggregate_id=str(project_id),
+                payload=config_adjustment_payload(
+                    user_id=str(user_id),
+                    project_id=str(project_id),
+                    actor_id=str(user_id),
+                    target=f"prompts.{op}",
+                    before_content_hash=_prompt_hash(before_sys),
+                    after_content_hash=_prompt_hash(after_sys),
                 ),
             )
 
