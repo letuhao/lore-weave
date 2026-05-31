@@ -12,14 +12,15 @@
 
 **PO decisions locked (doc §11):** (1) Q2 = time-window attribution first (no node→run link unless noise hurts); (2) Q4 = structural-only online eval first, `save_raw_extraction` LLM-judge opt-in is fast-follow; (3) baseline of record = **0.869** (retire 0.913 from gate use); (4) stays in `docs/plans/`, promote to numbered track if BUILD >5 sessions.
 
-**NEXT = BUILD the foundation checkpoint (Q0 → Q1):**
-1. **Q0 (M)** — Lift `tests/quality/` scorer (`eval_harness`/`llm_judge`/`judge_ensemble`/`compute_ensemble_macros`) into `services/learning-service/app/eval/` as a `Scorer` + `PersistenceAdapter` (FileSink + DbSink stub). **Two commits:** pure move (byte-identical lock) THEN parameterize the hardcoded extractor/filter UUIDs (`compute_ensemble_macros.py:48-49`) into a `JudgePanel` config. Preserve gateway response shape `result["messages"][0]["content"]`.
-2. **Q1 (M)** — Quality DB schema: `eval_runs`/`eval_results`/`quality_scores`/`score_config` in learning-service. Materialize 0.869 (and 0.913 historical) as `eval_runs` rows. Dual dedup key on `quality_scores`. OTel `gen_ai.*` naming. `GET /v1/learning/eval-runs`.
+**Q0 DONE (this session)** — `loreweave_eval` SDK package created (`sdks/python/loreweave_eval/`): the cycle-72–74 scorer lifted out of `tests/quality/` so learning-service (Q4) + knowledge-service (R&D) import the SAME code. **0a** = byte-identical lift (4 modules copied; `canonicalize_entity_name`→SDK direct; `LLMClient`→injected `JudgeLLMClient` Protocol; old `tests/quality/*` are re-export shims; 2 file-path lock tests + the SDK ensemble test repointed). **0b** = `JudgePanel` (parameterized the hardcoded extractor/filter UUIDs `019e6a20`/`019e5650`) + `score_dump`→`EvalResult` facade + `EvalSink` Protocol + `FileSink` (DbSink deferred to Q1, NOT in SDK). **Verified:** byte-identical new≡shim≡0.869 on c74c; SDK suite 398 passed (6 pre-existing fails, net-zero new); KS unit 1929 passed; 5 new 0b tests. Single commit (files mix 0a/0b in `__init__`/`compute_ensemble_macros`).
 
-(Critical path: Q0→Q1→Q2→Q3.5→Q4→Q6a→Q6b→Q8; Q9 privacy gate before any cross-tenant Q7 surface. See doc §5.)
+**NEXT = Q1 (M)** — Quality DB schema in learning-service: `eval_runs`/`eval_results`/`quality_scores`/`score_config` (mirror `project_embedding_benchmark_runs` DDL house style). Implement **`DbSink`** (the `loreweave_eval.EvalSink` Protocol) in learning-service writing those rows. Materialize 0.869 (and 0.913 historical) as `eval_runs` rows tied to a real `config_hash`. Dual dedup key on `quality_scores` (consumed `origin_event_id` + self-produced `source_eval_run_id+target+metric+judge`). OTel `gen_ai.*` naming on `score_config`. `GET /v1/learning/eval-runs` (per-owner). learning-service must add the SDK to its `requirements.txt` + Dockerfile (it doesn't depend on it yet).
 
-**Deferred:**
-- Outcome refinement batch job (correction-join recompute on `extraction_runs`; needs correction volume) — subsumed by track Q2.
+(Critical path: Q0✓→Q1→Q2→Q3.5→Q4→Q6a→Q6b→Q8; Q9 privacy gate before any cross-tenant Q7 surface. See track doc §5.)
+
+**Deferred / flagged:**
+- **3 pre-existing `test_pass2_writer.py` failures** (`test_facts_merged_with_evidence`, `test_k17_9_fact_content_injection_sanitized`, `test_full_pipeline_all_candidate_types`) — from last session's FACT_TYPES filter (`0bf049cd`); the tests assert pre-filter behavior (type='description' facts merged) but they're now skipped. **Small fix: update the 3 tests** (or reconsider filter). Outside Q0 scope; do next.
+- Outcome refinement batch job (correction-join recompute on `extraction_runs`) — subsumed by track Q2.
 - Archive job: `SESSION_PATCH.md` (974KB) + trim this file — separate session.
 - Track-2 (doc §10): LoRA distillation, weighted-canary rollout state machine, CUPED/sequential testing.
 

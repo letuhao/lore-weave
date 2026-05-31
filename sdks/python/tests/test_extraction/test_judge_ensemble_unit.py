@@ -19,41 +19,13 @@ both trees.
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import pytest
 
-_REPO_ROOT = Path(__file__).resolve().parents[4]
-_KSVC_TESTS = _REPO_ROOT / "services" / "knowledge-service" / "tests"
-_KSVC_APP = _REPO_ROOT / "services" / "knowledge-service"
-if str(_KSVC_TESTS) not in sys.path:
-    sys.path.insert(0, str(_KSVC_TESTS))
-# Also add the knowledge-service root so `from tests.quality.judge_ensemble
-# import ...` (used by llm_judge._chapter_judgement_to_verdicts as a lazy
-# import) resolves.
-if str(_KSVC_APP) not in sys.path:
-    sys.path.insert(0, str(_KSVC_APP))
-
-# Stub `app.clients.llm_client` so quality.llm_judge can import without the
-# full knowledge-service app on sys.path. The stub only needs to satisfy the
-# `from ... import LLMClient` statement; the unit tests below don't exercise
-# any LLMClient behavior.
-import types  # noqa: E402
-
-if "app" not in sys.modules:
-    _stub_app = types.ModuleType("app")
-    _stub_clients = types.ModuleType("app.clients")
-    _stub_llm_client = types.ModuleType("app.clients.llm_client")
-    _stub_llm_client.LLMClient = type("LLMClient", (), {})  # type: ignore[attr-defined]
-    _stub_app.clients = _stub_clients  # type: ignore[attr-defined]
-    _stub_clients.llm_client = _stub_llm_client  # type: ignore[attr-defined]
-    sys.modules["app"] = _stub_app
-    sys.modules["app.clients"] = _stub_clients
-    sys.modules["app.clients.llm_client"] = _stub_llm_client
-
-# Import after sys.path + stub
-from quality.judge_ensemble import (  # noqa: E402
+# loreweave_eval is the shared SDK home of the ensemble + judge (lifted from
+# knowledge-service/tests/quality in track phase Q0). No sys.path hacks or
+# app-module stubs are needed any more — these are plain installed-SDK imports,
+# and the judge's LLM client is an injected Protocol, not an `app.clients` dep.
+from loreweave_eval.judge_ensemble import (
     BiasMetric,
     EnsembleItemVote,
     EnsembleReport,
@@ -461,8 +433,8 @@ def test_chapter_judgement_to_verdicts_uses_gold_idx_on_recall() -> None:
     `'GoldVerdict' object has no attribute 'idx'` on every judge's first
     chapter, wasting ~60 min of LM Studio work."""
 
-    from quality.judge_ensemble import chapter_judgement_to_verdicts
-    from quality.llm_judge import (
+    from loreweave_eval.judge_ensemble import chapter_judgement_to_verdicts
+    from loreweave_eval.llm_judge import (
         ItemVerdict,
         GoldVerdict,
         CategoryJudgement,
@@ -510,8 +482,8 @@ def test_chapter_judgement_to_verdicts_uses_gold_idx_on_recall() -> None:
 def test_chapter_judgement_to_verdicts_unjudged_gold_label() -> None:
     """Recall verdicts marked judged=False produce verdict label 'unjudged'."""
 
-    from quality.judge_ensemble import chapter_judgement_to_verdicts
-    from quality.llm_judge import (
+    from loreweave_eval.judge_ensemble import chapter_judgement_to_verdicts
+    from loreweave_eval.llm_judge import (
         CategoryJudgement,
         ChapterJudgement,
         GoldVerdict,
