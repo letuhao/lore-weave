@@ -595,6 +595,67 @@ paths:
         '503':
           $ref: '#/components/responses/ErrorResponse'
 
+  /v1/lore-enrichment/projects/{project_id}/auto-enrich:
+    post:
+      tags: [gaps]
+      summary: Auto-detect under-described entities and enqueue an enrichment job
+      description: >
+        Composes detect-gaps + the job runner: detects under-described entities
+        from the glossary coverage, takes the top `max_gaps` ranked, creates an
+        enrichment job whose targets are those gaps, persists the request, and
+        ENQUEUES it to the background worker (the same consumer as resume).
+        Non-blocking — returns 202 with the job_id. H0: the job only ever produces
+        QUARANTINED proposals; spend is bounded by max_gaps + the per-job cost-cap.
+      operationId: autoEnrichProject
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [book_id, embedding_model_ref, generation_model_ref]
+              properties:
+                book_id: { type: string, format: uuid }
+                embedding_model_ref: { type: string, format: uuid }
+                generation_model_ref: { type: string, format: uuid }
+                technique: { type: string, default: retrieval }
+                max_gaps: { type: integer, minimum: 1, maximum: 100, default: 10 }
+                coverage_limit: { type: integer, minimum: 1, maximum: 1000, default: 200 }
+                max_spend_usd: { type: number, minimum: 0 }
+                eval_reserve_fraction: { type: number, minimum: 0, default: 0.15 }
+                top_k: { type: integer, minimum: 1, maximum: 20, default: 5 }
+      responses:
+        '202':
+          description: Detected + enqueued (or nothing to enrich).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project_id: { type: string, format: uuid }
+                  job_id: { type: string, format: uuid }
+                  entities_scanned: { type: integer }
+                  detected: { type: integer }
+                  enqueued_gaps: { type: integer }
+                  enqueued: { type: boolean }
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+
   # ────────────────────────────── sources ──────────────────────────────
   /v1/lore-enrichment/sources:
     get:

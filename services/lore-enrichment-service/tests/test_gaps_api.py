@@ -18,6 +18,7 @@ from app.api import gaps as gaps_api
 from app.api.gaps import coverages_from_rows
 from app.clients.glossary import EntityCoverageRow
 from app.config import settings
+from app.deps import get_db
 from app.gaps.model import Dimension, EntityKind
 
 OWNER = "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c"
@@ -47,6 +48,9 @@ def test_coverages_from_rows_maps_labels_and_skips_unmodeled():
 def _app() -> FastAPI:
     app = FastAPI()
     app.include_router(gaps_api.router)
+    # auto-enrich depends on get_db (detect-gaps doesn't); a stub keeps wiring valid
+    # — the store + save_job_request are monkeypatched in the test that uses it.
+    app.dependency_overrides[get_db] = lambda: object()
     return app
 
 
@@ -87,5 +91,76 @@ async def test_detect_gaps_requires_auth():
     resp = TestClient(_app()).post(
         f"/v1/lore-enrichment/projects/{uuid4()}/detect-gaps",
         json={"book_id": str(uuid4())},
+    )
+    assert resp.status_code == 401
+
+
+# ── auto-enrich (D1 follow-up): detect → create job + persist request + enqueue ─
+
+class _RecordingProducer:
+    """Captures the enqueued resume/auto-enrich trigger."""
+    def __init__(self):
+        self.calls = []
+
+    async def xadd(self, stream, fields, maxlen=None):
+        self.calls.append((stream, fields))
+        return "1-0"
+
+    async def aclose(self):
+        pass
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_auto_enrich_detects_creates_job_and_enqueues(monkeypatch):
+    book, project, jid = uuid4(), uuid4(), uuid4()
+    respx.get(
+        f"{settings.glossary_service_url}/internal/books/{book}/enrichment-coverage"
+    ).respond(200, json={"entities": [
+        {"entity_id": "e1", "canonical_name": "玉虛宮", "kind": "location",
+         "mention_count": 55, "dimensions": []},
+        {"entity_id": "e2", "canonical_name": "蓬萊", "kind": "location",
+         "mention_count": 3, "dimensions": ["历史"]},
+    ]})
+
+    from app.api import gaps as g
+    created, saved, prod = {}, {}, _RecordingProducer()
+
+    class _FakeStore:
+        def __init__(self, pool): ...
+        async def create_job(self, **kw):
+            created.update(kw)
+            return str(jid)
+
+    async def _fake_save(*, pool, job_id, request):
+        saved["job_id"], saved["request"] = job_id, request
+
+    monkeypatch.setattr(g, "PgProposalStore", _FakeStore)
+    monkeypatch.setattr(g, "save_job_request", _fake_save)
+    monkeypatch.setattr(g, "make_redis_producer", lambda url: prod)
+
+    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    resp = TestClient(_app()).post(
+        f"/v1/lore-enrichment/projects/{project}/auto-enrich",
+        json={"book_id": str(book), "embedding_model_ref": str(uuid4()),
+              "generation_model_ref": str(uuid4()), "max_gaps": 1},
+        headers={"Authorization": f"Bearer {bearer}"},
+    )
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert body["detected"] == 2 and body["enqueued_gaps"] == 1 and body["enqueued"] is True
+    # top-N: only the highest-ranked gap (玉虛宮, 55 mentions) is enqueued as a target.
+    assert len(saved["request"]["targets"]) == 1
+    assert saved["request"]["targets"][0]["canonical_name"] == "玉虛宮"
+    # the trigger was enqueued to the worker stream with the new job_id.
+    assert prod.calls and prod.calls[0][1]["job_id"] == str(jid)
+
+
+@pytest.mark.asyncio
+async def test_auto_enrich_requires_auth():
+    resp = TestClient(_app()).post(
+        f"/v1/lore-enrichment/projects/{uuid4()}/auto-enrich",
+        json={"book_id": str(uuid4()), "embedding_model_ref": str(uuid4()),
+              "generation_model_ref": str(uuid4())},
     )
     assert resp.status_code == 401
