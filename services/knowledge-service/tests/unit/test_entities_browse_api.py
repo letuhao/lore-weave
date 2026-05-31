@@ -262,7 +262,8 @@ def test_entity_detail_rejects_oversized_id(mock_detail):
 @patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
 def test_patch_entity_happy(mock_update):
     stub = _entity_stub(name="Kai the Brave")
-    mock_update.return_value = stub
+    # Phase B: update_entity_fields now returns (entity, before_snapshot).
+    mock_update.return_value = (stub, {"name": "Kai", "kind": "character", "aliases": ["Kai"]})
     client = _make_client()
     resp = client.patch(
         f"/v1/knowledge/entities/{_ENTITY_ID}",
@@ -323,7 +324,7 @@ def test_patch_entity_rejects_empty_alias(mock_update):
 )
 @patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
 def test_patch_entity_not_found(mock_update):
-    mock_update.return_value = None
+    mock_update.return_value = (None, None)  # Phase B: (entity, before)
     client = _make_client()
     resp = client.patch(
         f"/v1/knowledge/entities/{_ENTITY_ID}",

@@ -7,7 +7,12 @@
 
 ## ▶ NEXT SESSION — start here
 
-**State:** Phase-B **BUILD sub-session A (foundation) is DONE + committed** (session 75). Next = **sub-session B** (KS Postgres outbox + emit `knowledge.entity_corrected` on the existing entity-edit endpoints + add `knowledge:` to `OUTBOX_SOURCES`). Then sub-session C (rel/event edit endpoints + FE). Design + sequencing: [`docs/specs/2026-05-31-phase-b-correction-capture.md`](../specs/2026-05-31-phase-b-correction-capture.md) §6, §12.
+**State:** Phase-B **BUILD sub-sessions A + B DONE + committed** (session 75). Next = **sub-session C** — the relation + event user-correction edit endpoints (BE + FE) + emission, the last B slice. Design + sequencing: [`docs/specs/2026-05-31-phase-b-correction-capture.md`](../specs/2026-05-31-phase-b-correction-capture.md) §6.4–6.5, §8, §12.
+
+**Sub-session C scope:** new relation correction endpoints (`GET /v1/knowledge/relations/{id}`, `POST .../invalidate`, `POST /relations/correct`) using the **dedicated `recreate_relation`** primitive (F5 — structurally absent from the extraction `create_relation` so re-extraction can't resurrect a user-invalidated edge; add the 2 regression-locks); new event correction primitives (`update_event_fields`/`archive_event` + `:Event.version`) + endpoints; emit `knowledge.relation_corrected`/`knowledge.event_corrected` (reuse `emit_correction`); **+ entity MERGE emission** (deferred from B — `merge_entity_into` → before=source snapshot, after=target, op=merge); FE relation/event edit UI (mirror `EntityEditDialog`). learning-service already consumes + handles all three `knowledge.*_corrected` types (wired in A). Live-smoke each.
+
+### (prior) sub-session B — KS entity-correction emission (session 75c)
+Next was sub-session B; now DONE (see cycle 75c below).
 
 **Sub-session A shipped (cycle 75b):** new `learning-service` (Python/FastAPI, host 8222) with `corrections` table (redact/hash schema) + Redis-Streams consumer (`learning-collector`, with `XAUTOCLAIM` reclaim) + read API (`/v1/learning/corrections`) + gateway proxy + compose/db-ensure. worker-infra relay now carries `outbox_id` on the wire (F1/F2) + `streamMaxLen` 200k for glossary/knowledge + retention 30d. glossary `entity_updated` enriched with `actor_type`/`actor_id`/before/after (PATCH made transactional for consistent capture). **Cross-service live smoke PASSED** (glossary outbox→relay→learning: user corrections persisted+deduped on outbox_id, pipeline skipped, raw content NULL). AMAW code-review REJECTED→fixed (dead-retry reclaim F-A1, PATCH-contract F-A3; F-A2 deferred D#052). 23 learning unit tests + Go suites green.
 
@@ -44,6 +49,20 @@ GOAL: BUILD sub-session A (foundation) per design §12 — learning-service scaf
 Hard gotchas from the design review: origin_event_id := EventData.outbox_id (NOT aggregate_id, NOT message_id); EventData lives in dispatcher.py:19-28; empty outbox_id → DLQ not silent ""; grep outbox_id ≥5 hits before VERIFY.
 ```
 </details>
+
+## Session 75 — cycle 75c: Phase B BUILD sub-session B (KS entity-correction emission)
+
+**AMAW. KS→learning correction capture, live-smoke verified.**
+
+- **knowledge-service gained its FIRST transactional outbox:** `outbox_events` (aggregate_type='knowledge') in `migrate.py`; `app/events/outbox_emit.py` `emit_correction` — best-effort, acquires the pool internally + wraps everything in try/except (cross-store §6.6: Neo4j is SoT, a dropped row never fails the user edit nor corrupts the graph; aggregate_id = the 32-hex canonical id, UUID-coercible).
+- **Same-Cypher before-capture (design §6.3):** `_UPDATE_ENTITY_FIELDS_CYPHER` now projects a pre-edit `{name,kind,aliases}` map in the `WITH` (eager, before the FOREACH SET); `update_entity_fields` returns `(entity, before)`. `archive_entity` kept single-return (12 integration sites) — archive captures `before` via read-before-`get_entity` in the handler (idempotent + op=delete → spurious-drop, so low-stakes; documented).
+- **Emission wired:** `patch_entity` → `knowledge.entity_corrected` op=update (before via canonical `entity_snapshot`); `archive_user_entity` → op=delete (after=null). Merge emission deferred to sub-session C.
+- **compose:** `knowledge:<dsn>` added to `OUTBOX_SOURCES` (relay now polls loreweave_knowledge).
+- **Tests:** updated `update_entity_fields` tuple call sites (unit mutations + browse-api + user-entities archive route mocks `get_entity` + 2 integration sites) + new `test_outbox_emit.py` (payload shape, UUID coercion, pool-failure swallow). **Full KS unit suite 1871 pass.**
+- **LIVE SMOKE PASS (KS→learning):** KS outbox(`knowledge.entity_corrected`) → relay (knowledge source, `outbox_id`) → learning persisted `update→kind-change` + `delete→spurious-drop`, `origin_service=knowledge`, `origin_event_id`=outbox PK. KS `outbox_events` migration created live on restart.
+- **AMAW code-review APPROVED_WITH_WARNINGS:** F2 (canonical before shape) fixed; F1 (permanent emit-failure surfacing) deferred D#053; F3 (read-before-archive) accepted.
+
+**NEXT:** sub-session C (relation + event edits + FE + merge emission). See ▶ NEXT SESSION.
 
 ## Session 75 — cycle 75b: Phase B BUILD sub-session A (foundation)
 

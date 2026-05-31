@@ -725,6 +725,28 @@ DO $$ BEGIN
     CHECK (status IN ('pending','running','summarizing','completed','failed'));
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
+
+-- Phase B (correction capture) — knowledge-service's FIRST transactional
+-- outbox. User edits to the graph (entity PATCH / archive; relations + events
+-- in sub-session C) emit knowledge.*_corrected events here; worker-infra's
+-- relay ships them to loreweave:events:knowledge (aggregate_type='knowledge')
+-- for learning-service to persist as corrections. NOTE the cross-store caveat
+-- (design §6.6): the graph write is in Neo4j, this outbox is in Postgres, so
+-- emission is BEST-EFFORT post-Neo4j-success — never atomic. A dropped row
+-- under-counts the correction log; the §10.1 replay tool is the backstop.
+CREATE TABLE IF NOT EXISTS outbox_events (
+  id             UUID PRIMARY KEY DEFAULT uuidv7(),
+  aggregate_type TEXT NOT NULL DEFAULT 'knowledge',
+  aggregate_id   UUID NOT NULL,
+  event_type     TEXT NOT NULL,
+  payload        JSONB NOT NULL DEFAULT '{}',
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  published_at   TIMESTAMPTZ,
+  retry_count    INT NOT NULL DEFAULT 0,
+  last_error     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_outbox_pending
+  ON outbox_events(created_at) WHERE published_at IS NULL;
 """
 
 

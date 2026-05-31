@@ -650,7 +650,10 @@ services:
       # rows (aggregate_type='glossary' → stream loreweave:events:glossary)
       # for knowledge-service's glossary-sync consumer. Additive — existing
       # book/translation/chat sources unchanged.
-      OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book,translation:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_translation,chat:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_chat,glossary:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary"
+      # Phase B sub-session B: knowledge added so the relay ships KS's new
+      # transactional outbox (knowledge.*_corrected, aggregate_type='knowledge')
+      # to loreweave:events:knowledge for learning-service.
+      OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book,translation:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_translation,chat:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_chat,glossary:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary,knowledge:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge"
       # Phase B (§10.1): bumped 7→30 days. glossary now also feeds
       # learning-service's append-only correction log; a longer retention on the
       # source outbox rows + event_log is the replay backstop so a learning-

@@ -1689,7 +1689,11 @@ async def get_neighborhood_by_glossary_id(
 _UPDATE_ENTITY_FIELDS_CYPHER = """
 MATCH (e:Entity {id: $id})
 WHERE e.user_id = $user_id
-WITH e, coalesce(e.version, 1) AS current_version
+// Phase B: capture the pre-edit snapshot in the SAME query (design §6.3 —
+// same-Cypher, NOT read-before-write, so before/after are TOCTOU-consistent).
+// The WITH materialises `before` eagerly, before the FOREACH SET mutates e.
+WITH e, coalesce(e.version, 1) AS current_version,
+     {name: e.name, kind: e.kind, aliases: coalesce(e.aliases, [])} AS before
 FOREACH (_ IN CASE WHEN current_version = $expected_version THEN [1] ELSE [] END |
   SET
     e.name = CASE WHEN $name IS NULL THEN e.name ELSE $name END,
@@ -1706,7 +1710,7 @@ FOREACH (_ IN CASE WHEN current_version = $expected_version THEN [1] ELSE [] END
     e.version = current_version + 1,
     e.updated_at = datetime()
 )
-RETURN e, current_version = $expected_version AS applied
+RETURN e, current_version = $expected_version AS applied, before
 """
 
 
@@ -1719,9 +1723,16 @@ async def update_entity_fields(
     kind: str | None,
     aliases: list[str] | None,
     expected_version: int,
-) -> Entity | None:
+) -> tuple[Entity | None, dict | None]:
     """K19d.5 + C9 — patch an entity's display fields with optimistic
     concurrency.
+
+    Phase B: returns ``(entity, before)`` where ``before`` is the pre-edit
+    ``{name, kind, aliases}`` snapshot captured in the SAME Cypher (design §6.3)
+    — used by the router to emit a ``knowledge.entity_corrected`` event.
+    ``before`` is ``None`` when no row matched. On a version mismatch the
+    function still raises ``VersionMismatchError`` (before is irrelevant — no
+    edit happened).
 
     Sets `user_edited=true` + bumps `version` on any successful write.
     `expected_version` must match the row's current version (coalesced
@@ -1762,11 +1773,13 @@ async def update_entity_fields(
     )
     record = await result.single()
     if record is None:
-        return None
+        return None, None
     entity = _node_to_entity(record["e"])
     if not record["applied"]:
         raise VersionMismatchError(entity)
-    return entity
+    before_raw = record["before"]
+    before = dict(before_raw) if before_raw is not None else None
+    return entity, before
 
 
 # C9 (D-K19d-γa-02) — unlock user_edited so extractions can contribute
