@@ -57,7 +57,7 @@ describe('TranslateModal — T1 fixes', () => {
   it('Fix-C: submit passes per-job target_language/model_source/model_ref to createJob', async () => {
     render(<TranslateModal {...baseProps} />);
     // Wait for async load (chapters/settings/models) to finish.
-    const submit = await screen.findByRole('button', { name: 'Start Translation' });
+    const submit = await screen.findByRole('button', { name: 'translate.submit' });
     expect(submit).not.toBeDisabled(); // settings pre-fill language + model
 
     fireEvent.click(submit);
@@ -75,7 +75,7 @@ describe('TranslateModal — T1 fixes', () => {
     render(<TranslateModal {...baseProps} />);
 
     // Wait for load, then change the language → triggers handleSaveSettings (best-effort persist).
-    await screen.findByRole('button', { name: 'Start Translation' });
+    await screen.findByRole('button', { name: 'translate.submit' });
     const langSelect = screen.getAllByRole('combobox')[0]; // Target Language
     fireEvent.change(langSelect, { target: { value: 'ja' } });
 

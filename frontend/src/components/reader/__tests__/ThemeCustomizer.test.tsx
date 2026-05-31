@@ -30,7 +30,8 @@ describe('ThemeCustomizer reading-mode toggles (UI-3a/b drift fix)', () => {
   it('Auto-load next chapter is enabled (not "coming soon"), reflects state, and toggles', () => {
     const onAutoNextChange = vi.fn();
     render(<ThemeCustomizer {...baseProps} autoNext={true} onAutoNextChange={onAutoNextChange} />);
-    const cb = checkboxFor('Auto-load next chapter');
+    // i18n mock returns keys; label renders as `theme.auto_next`.
+    const cb = checkboxFor('theme.auto_next');
     expect(cb.disabled).toBe(false);
     expect(cb.checked).toBe(true);
     fireEvent.click(cb);
@@ -42,7 +43,7 @@ describe('ThemeCustomizer reading-mode toggles (UI-3a/b drift fix)', () => {
   it('Auto-scroll with TTS is enabled, reflects state, and toggles', () => {
     const onAutoScrollTTSChange = vi.fn();
     render(<ThemeCustomizer {...baseProps} autoScrollTTS={false} onAutoScrollTTSChange={onAutoScrollTTSChange} />);
-    const cb = checkboxFor('Auto-scroll with TTS');
+    const cb = checkboxFor('theme.auto_scroll');
     expect(cb.disabled).toBe(false);
     expect(cb.checked).toBe(false);
     fireEvent.click(cb);
