@@ -276,6 +276,23 @@ minimal ESLint with `eslint-plugin-react-hooks`:
 This is the single highest-leverage fix to prevent recurrence of the live bug
 just found. Tooling/L decision — not done unilaterally.
 
+**✅ DONE (PO-approved 2026-05-31):** added `eslint` + `eslint-plugin-react-hooks`
++ `typescript-eslint`, minimal flat config (`eslint.config.js`) scoped to
+**`react-hooks/rules-of-hooks: error`** only (exhaustive-deps left off). Added
+`npm run lint`. The scan **immediately found a SECOND latent crash of the same
+class**:
+- 🐛 `features/chat/components/ThinkingBlock.tsx` — `useState` / `useRef`×2 /
+  `useEffect`×2 all called **after** the `if (!reasoning && !isStreaming)
+  return null` early return → would crash when an instance flips
+  empty↔streaming. Fixed: hoisted all 5 hooks above the early return.
+  tsc 0, chat tests 24/24, `eslint` exit 0.
+(Also surfaced stale `// eslint-disable react-hooks/exhaustive-deps` comments
+across the codebase → a prior eslint setup was removed at some point; silenced
+via `reportUnusedDisableDirectives: off` for this focused pass.)
+
+**Net: the live audit + ESLint found & fixed 2 real Rules-of-Hooks crashes
+(EntityEditorModal, ThinkingBlock) that tsc + the unit suite never caught.**
+
 ---
 
 | Feature | Canonical draft | Diff vs live | Verdict (SUPPLEMENT/DRIFT/INTENTIONAL/OUTDATED) | Action |

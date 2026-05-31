@@ -11,11 +11,9 @@ interface ThinkingBlockProps {
 const LONG_THINKING_THRESHOLD = 10;
 
 export function ThinkingBlock({ reasoning, isStreaming, elapsed, contentEmpty }: ThinkingBlockProps) {
-  if (!reasoning && !isStreaming) return null;
-
-  const timeLabel = elapsed != null ? `${elapsed.toFixed(1)}s` : '';
-  const isLongThinking = isStreaming && elapsed != null && elapsed > LONG_THINKING_THRESHOLD;
-
+  // Hooks MUST run unconditionally — before any early return — or the hook
+  // count changes between renders (e.g. empty→streaming) and React crashes
+  // with "Rendered more hooks than during the previous render".
   // Toggle: open while streaming, closed for persisted messages
   const [expanded, setExpanded] = useState(!!isStreaming);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -38,6 +36,11 @@ export function ThinkingBlock({ reasoning, isStreaming, elapsed, contentEmpty }:
       wasStreamingRef.current = true;
     }
   }, [isStreaming]);
+
+  if (!reasoning && !isStreaming) return null;
+
+  const timeLabel = elapsed != null ? `${elapsed.toFixed(1)}s` : '';
+  const isLongThinking = isStreaming && elapsed != null && elapsed > LONG_THINKING_THRESHOLD;
 
   if (isStreaming) {
     return (
