@@ -113,6 +113,15 @@ describe('ExtractionTuningPanel', () => {
     expect(payload.entity_recovery.enabled).toBe(true);
   });
 
+  it('toggling writer autocreate sends writer_autocreate.enabled', async () => {
+    renderPanel(makeProject());
+    fireEvent.click(screen.getByLabelText('projects.extractionTuning.autocreateEnabled'));
+    fireEvent.click(saveBtn());
+    await waitFor(() => expect(updateExtractionConfigMock).toHaveBeenCalledTimes(1));
+    const payload = updateExtractionConfigMock.mock.calls[0][1];
+    expect(payload.writer_autocreate).toEqual({ enabled: true });
+  });
+
   it('disabling the filter sends an explicit enabled:false', async () => {
     const project = makeProject({
       precision_filter: { enabled: true, categories: ['relation'] },

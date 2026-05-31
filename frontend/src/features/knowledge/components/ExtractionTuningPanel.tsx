@@ -122,6 +122,17 @@ export function ExtractionTuningPanel({ open, onOpenChange, project, onChanged }
           {t('projects.extractionTuning.recoveryEnabled')}
         </label>
 
+        {/* Writer autocreate */}
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <input
+            type="checkbox"
+            checked={draft.autocreateEnabled}
+            onChange={(e) => setField('autocreateEnabled', e.target.checked)}
+            disabled={submitting}
+          />
+          {t('projects.extractionTuning.autocreateEnabled')}
+        </label>
+
         {/* Raw prompts (advanced) */}
         <RawPromptEditor
           prompts={draft.prompts}

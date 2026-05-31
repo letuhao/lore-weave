@@ -207,6 +207,10 @@ class KnowledgeClient:
         is_last_chapter_of_book: bool = False,
         embedding_model_uuid: str | None = None,
         embedding_dimension: int | None = None,
+        # B2 follow-up — per-project Pass2-writer Tier-B autocreate override.
+        # None = caller didn't resolve it (endpoint falls back to the env
+        # default); True/False = explicit per-project setting.
+        writer_autocreate: bool | None = None,
     ) -> ExtractionResult:
         """Phase 4b-γ — POST /internal/extraction/persist-pass2.
 
@@ -250,6 +254,11 @@ class KnowledgeClient:
             body["embedding_model_uuid"] = embedding_model_uuid
         if embedding_dimension is not None:
             body["embedding_dimension"] = embedding_dimension
+        # B2 follow-up — only include when the caller resolved it (explicit
+        # None check per feedback_sdk_default_arg_dropped_from_wire) so the
+        # endpoint can distinguish "use env default" from an explicit toggle.
+        if writer_autocreate is not None:
+            body["writer_autocreate"] = writer_autocreate
 
         try:
             resp = await self._http.post(url, json=body)

@@ -931,6 +931,9 @@ async def _extract_and_persist(
     # B2-B-b2 — per-op raw system-prompt overrides {op: {"system": str}} from
     # the job's resolved snapshot ({} when the project has no custom prompts).
     prompt_overrides: dict | None = None,
+    # B2 follow-up — per-project Pass2-writer autocreate override (forwarded to
+    # /persist-pass2). None = chat/glossary callers leave the env default.
+    writer_autocreate: bool | None = None,
     # P3 D-P3-EXTRACTION-CALLER-WIRE-UP — all optional. Caller (chapter
     # branch) supplies these to opt into hierarchy MERGE + summary
     # enqueue. chat_turn branch keeps the legacy behaviour.
@@ -1026,6 +1029,7 @@ async def _extract_and_persist(
         is_last_chapter_of_book=is_last_chapter_of_book,
         embedding_model_uuid=embedding_model_uuid,
         embedding_dimension=embedding_dimension,
+        writer_autocreate=writer_autocreate,
     )
 
 
@@ -1229,6 +1233,7 @@ async def process_job(
                     precision_filter=run_snapshot.precision_filter,
                     entity_recovery=run_snapshot.entity_recovery,
                     prompt_overrides=run_snapshot.prompts,
+                    writer_autocreate=run_snapshot.writer_autocreate,
                     text=text,
                     hierarchy_paths=p3_hierarchy_paths,
                     book_parts=p3_book_parts,

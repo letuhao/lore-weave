@@ -32,6 +32,7 @@ interface Draft {
   filterCategories: FilterCategory[];
   filterPartialPolicy: PartialPolicy;
   recoveryEnabled: boolean;
+  autocreateEnabled: boolean;
   prompts: Record<PromptOp, string>; // per-op system text ('' = no override)
 }
 
@@ -42,6 +43,7 @@ function asRecord(v: unknown): Record<string, unknown> {
 function deriveDraft(config: Record<string, unknown>): Draft {
   const pf = asRecord(config.precision_filter);
   const er = asRecord(config.entity_recovery);
+  const ac = asRecord(config.writer_autocreate);
   const promptsCfg = asRecord(config.prompts);
   const prompts = {} as Record<PromptOp, string>;
   for (const op of PROMPT_OPS) {
@@ -58,6 +60,7 @@ function deriveDraft(config: Record<string, unknown>): Draft {
       : ALL_CATEGORIES,
     filterPartialPolicy: pf.partial_policy === 'drop' ? 'drop' : 'keep',
     recoveryEnabled: er.enabled === true,
+    autocreateEnabled: ac.enabled === true,
     prompts,
   };
 }
@@ -117,6 +120,7 @@ export function useExtractionConfig(project: Project, open: boolean, onChanged: 
       ...asRecord(project.extraction_config.entity_recovery),
       enabled: draft.recoveryEnabled,
     };
+    payload.writer_autocreate = { enabled: draft.autocreateEnabled };
     const prompts: ExtractionConfigPayload['prompts'] = {};
     for (const op of PROMPT_OPS) {
       const sys = draft.prompts[op];
