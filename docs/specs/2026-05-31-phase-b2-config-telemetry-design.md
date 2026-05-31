@@ -1,6 +1,6 @@
 # DESIGN — Phase B2: Axis-2 config telemetry + per-novel tuning
 
-**Date:** 2026-05-31 · **Status:** DESIGN (human-in-loop v2.2; AMAW off) · **Size:** XL+
+**Date:** 2026-05-31 · **Status:** ✅ SHIPPED (session 101 — A `360231a3` / b1 `b4a14c97` / b2 `e28f6f50` / C `965cd52b` / autocreate `62584b1b` / validated `3328d7d0`) · **Size:** XL+
 **CLARIFY ref:** [`2026-05-31-phase-b2-config-telemetry-clarify.md`](2026-05-31-phase-b2-config-telemetry-clarify.md) · **Plan ref:** extraction-accuracy-and-eval-plan §2.1 / §2.4 · **Deferred:** D#055
 **Predecessor:** Phase B (Axis-1 correction capture) — shipped session 75 (learning-service + corrections spine).
 

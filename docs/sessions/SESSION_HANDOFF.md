@@ -1,15 +1,23 @@
-# Session Handoff — Session 74 (74a F1-eval · 74b disable-fix · 74c relation-lever refutations + ARCHITECTURE AUDIT)
+# Session Handoff — Session 101 (Phase B2 config-telemetry: full arc SHIPPED + validated)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-05-30 (session 74 — 74a F1 eval (NEUTRAL) + 74a-smoke (73f live smoke PASS) + 74b (disable-semantics fix) + 74c (relation-lever refutations + full RAG/eval architecture audit)).
-> **HEAD:** `bca5819a` (74d, 2-hop hotfix committed). 74e (data survey + plan) is docs/data, checkpoint-committed separately.
-> **Branch:** `main`.
+> **Date:** 2026-05-31 (session 101 — Phase B2 A+B+C + writer_autocreate + end-to-end validation; human-in-loop v2.2).
+> **HEAD:** `3328d7d0` (B2 e2e validation note). Branch: `main` (NOT pushed — all session-101 commits are local).
 
 ## ▶ NEXT SESSION — start here
 
-**State:** Phase B is **COMPLETE, browser-verified, and PUSHED to `origin/main`** (session 75, merge `8919c678` + audit `f69da319`; resolved a deferred-ID collision with the world-gen track — my Phase-B2 deferred row renumbered 047→**055**). **Phase B2 (Axis-2 config telemetry) is started: CLARIFY done + scope locked.**
+**State:** **Phase B2 (Axis-2 config telemetry + per-novel tuning) is COMPLETE, verified, and validated end-to-end on a real qwen extraction.** All local on `main`, unpushed. Seven commits:
+`a1adef1a` design+plan ckpt · `360231a3` B2-A run-plumbing (`config_registry`/`extraction_runs` + SDK `resolve_config`) · `b4a14c97` B2-B-b1 structural overrides BE + `PUT /extraction-config` + `config_adjustment_events` · `e28f6f50` B2-B-b2 raw-prompt editing (injection-safe output-contract + redact-by-default) · `965cd52b` B2-C FE tuning panel · `62584b1b` writer_autocreate wiring (was dormant on persist-pass2) · `3328d7d0` e2e validation record.
 
-**NEXT = Phase B2 DESIGN** (fresh session). Start from the CLARIFY/scope doc: [`docs/specs/2026-05-31-phase-b2-config-telemetry-clarify.md`](../specs/2026-05-31-phase-b2-config-telemetry-clarify.md) (D#055). It has the code-derived findings + PO-locked scope + design direction + open questions. **Scope locked (XL+):** (core) run plumbing — `extraction_runs` + content-addressed `config_registry` + `config_hash`/implicit-outcome emission from job-completion (no UI); (expansion) **also build per-novel extraction-config tuning** (BE: make `knowledge_projects.extraction_config` actually drive the pipeline + per-project override + edit endpoint; FE: a tuning panel) + `config_adjustment_events` (async/lossy-OK, NOT the outbox). Invoke `/amaw`; DESIGN → AMAW review → design-checkpoint-commit (mirror Phase B); BUILD spans B2-A/B/C sub-sessions (§4 of the doc). Key reality: per-novel tuning + run plumbing are BOTH unbuilt today (the plan assumed them) — same "build the producers too" shape as Phase B.
+**What works now:** per-project `knowledge_projects.extraction_config` drives extraction (model / precision-filter / entity-recovery / writer-autocreate / raw per-op system prompts); each chapter emits a transactional `extraction_runs` row + content-addressed `config_registry` (prompt content-hashed, never raw); edits log `config_adjustment_events`; all through the existing outbox→relay→learning-collector spine. Proven live: real qwen3.6-35b extraction → config drove the run → accurate telemetry (hash verified). Unit: SDK 260 / KS 63 / worker-ai 89 / learning 33 / FE 274 components. Two `/review-impl` security passes folded.
+
+**FIRST: push `main`** (`git push origin main` — 7 unpushed commits + any earlier). Stack is rebuilt on the new code (KS / worker-ai / learning-service / FE); redis read-timeout noise in service logs is an environment quirk (self-recovering), not a bug.
+
+**NEXT — pick one (both are fresh, substantial tracks; ask PO which):**
+1. **Phase E2 mining** (config-vs-outcome insights — what B2 feeds). Now unblocked *in principle* but wants real run/correction VOLUME accumulated over actual use; guardrails per plan §2.4: popularity≠quality (JOIN `outcome`, never raw change-frequency) + explore/exploit + selection-bias weighting. The `extraction_runs.outcome` is provisional (`succeeded`/`skipped`/`failed`); the *refined* correction-join outcome is E2 work.
+2. **Resume eval R&D arc** (cycle-70s extraction-quality F1: prompt/filter levers, host-orchestrated judge ensembles). See the eval plan + the `today-*.md`/`recent.md` R&D history.
+
+**Small optional follow-up (not started):** make worker-ai read the autocreate env so the global env knob stays a default-for-all (currently per-project supersedes it on the worker path; deliberate, flagged in `62584b1b`).
 
 <details><summary>(historical) Phase B complete — push options (all done/superseded)</summary>
 
