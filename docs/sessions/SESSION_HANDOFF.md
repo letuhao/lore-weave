@@ -66,7 +66,7 @@ Hard gotchas from the design review: origin_event_id := EventData.outbox_id (NOT
 - i18n `relations.*` + `events.*` added to all 4 locales (en/ja/vi/zh-TW).
 - **Tests:** 9 new dialog tests (pre-fill, diff-only+If-Match, 412 conflict, no-op, mark-wrong confirm/cancel) + 24 affected (EntityDetailPanel/TimelineTab) green. **469 knowledge vitest pass; frontend tsc clean.**
 - **AMAW cold-start adversary (FE): WARN×3** — the high-value `version`-undefined probe CLEARED (BE timeline list returns `version`). F1/F2 (date integrity) + F3 (per-row dialog hoist) all folded + re-tested.
-- **Residual:** D#054 (LOW) — a Playwright **browser smoke** through the live stack. Contract already covered by component tests + BE live-smokes.
+- **Residual:** D#054 (LOW) — the pure browser-CLICK layer. **Post-commit (session 75): the REAL relation `invalidate` endpoint was live-smoked end-to-end** — KS-direct HTTP route → `invalidate_relation` → emit → relay → learning corrections row (seeded an `:Entity→:Entity` relation; the test user's real graph only has `:Entity→:Fact` edges + 0 events, so the in-UI flow needs seeded data). Empirically confirmed D#053 (a non-UUID-coercible id → `emit_correction` silently drops — harmless for real 32-hex ids). gateway + auth-service are currently **Exited** (restart for any gateway-routed work).
 
 **Phase B = FEATURE-COMPLETE.** See ▶ NEXT SESSION for options (browser smoke / push / Phase C or B2).
 
