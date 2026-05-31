@@ -708,4 +708,25 @@ async def merge_entity_into(
         "aliases_redirected=%d",
         user_id, entity_id, other_id, aliases_redirected,
     )
+    # Phase B C3 — emit a merge correction (best-effort, §6.6). target_id is the
+    # surviving TARGET; before = the (now-deleted) SOURCE snapshot captured
+    # pre-merge; after = the merged target. diff_class derives `merge` from op.
+    await emit_correction(
+        event_type=ENTITY_CORRECTED,
+        aggregate_id=other_id,
+        payload=entity_correction_payload(
+            user_id=str(user_id),
+            project_id=target.project_id,
+            book_id=None,
+            target_id=other_id,
+            op="merge",
+            before=(
+                entity_snapshot(source.name, source.kind, source.aliases)
+                if source is not None
+                else None
+            ),
+            after=entity_snapshot(target.name, target.kind, target.aliases),
+            actor_id=str(user_id),
+        ),
+    )
     return EntityMergeResponse(target=target, aliases_redirected=aliases_redirected)

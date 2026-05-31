@@ -38,6 +38,7 @@ from app.routers.public import entities as public_entities
 from app.routers.public import extraction as public_extraction
 from app.routers.public import logs as public_logs
 from app.routers.public import pending_facts as public_pending_facts
+from app.routers.public import events as public_events
 from app.routers.public import projects as public_projects
 from app.routers.public import relations as public_relations
 from app.routers.public import summaries as public_summaries
@@ -576,6 +577,7 @@ app.include_router(public_drawers.router)
 app.include_router(public_entities.router)
 app.include_router(public_entities.entities_router)
 app.include_router(public_relations.relations_router)
+app.include_router(public_events.events_router)
 app.include_router(public_extraction.router)
 app.include_router(public_extraction.jobs_router)
 app.include_router(public_logs.router)

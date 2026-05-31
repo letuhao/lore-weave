@@ -141,6 +141,54 @@ def relation_correction_payload(
     }
 
 
+def event_correction_payload(
+    *,
+    user_id: str,
+    project_id: str | None,
+    book_id: str | None,
+    target_id: str,
+    op: str,
+    before: dict[str, Any] | None,
+    after: dict[str, Any] | None,
+    source_chapter: str | None,
+    actor_id: str,
+) -> dict[str, Any]:
+    """knowledge.event_corrected payload core."""
+    return {
+        "user_id": user_id,
+        "project_id": project_id,
+        "book_id": book_id,
+        "target_type": "event",
+        "target_id": target_id,
+        "op": op,
+        "before": before,
+        "after": after,
+        "source_chapter": source_chapter,
+        "actor_type": "user",
+        "actor_id": actor_id,
+        "emitted_at": now_iso(),
+    }
+
+
+def event_snapshot_dict(
+    *,
+    title: str | None,
+    summary: str | None,
+    time_cue: str | None,
+    event_date_iso: str | None,
+    participants: list[str] | None,
+) -> dict[str, Any]:
+    """The diffable event snapshot learning-service splits: structural =
+    event_date_iso; content-hashed = title/summary/time_cue/participants."""
+    return {
+        "title": title,
+        "summary": summary,
+        "time_cue": time_cue,
+        "event_date_iso": event_date_iso,
+        "participants": list(participants) if participants else [],
+    }
+
+
 def relation_snapshot(rel: Any) -> dict[str, Any] | None:
     """The diffable relation snapshot learning-service splits — ALL fields are
     structural (endpoint ids + predicate + confidence + valid_until; no content

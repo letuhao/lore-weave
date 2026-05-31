@@ -7,7 +7,14 @@
 
 ## ▶ NEXT SESSION — start here
 
-**State:** Phase-B **BUILD A + B + C1(relations) DONE + committed** (session 75). Next = **C2** — event correction primitives + endpoints + emission; then **C3** — entity MERGE emission; then **C-FE** — the relation/event edit frontend. Design: [`docs/specs/2026-05-31-phase-b-correction-capture.md`](../specs/2026-05-31-phase-b-correction-capture.md) §6.5, §8.
+**State:** Phase-B **BUILD A + B + C1(relations) + C2(events) + C3(merge) DONE + committed** (session 75). The **entire backend capture spine is complete** — all four correction types (entity edit/delete, relation invalidate/correct, event edit/delete, entity merge) emit `knowledge.*_corrected` → relay → learning, each live-smoke-verified. **Only C-FE (frontend) remains** for Phase B.
+
+**C-FE scope (the last Phase-B slice — its own cycle, needs wireframe + browser smoke):** mirror `EntityEditDialog`+`useEntityMutations`+`ifMatch`/`isVersionConflict` →
+- `RelationEditDialog` (predicate/endpoint correct → `POST /v1/knowledge/relations/correct`; "mark wrong" → `POST /relations/{id}/invalidate`), wired from the read-only `RelationRow` in [EntityDetailPanel.tsx](../../frontend/src/features/knowledge/components/EntityDetailPanel.tsx).
+- `EventEditDialog` (title/summary/time_cue/event_date_iso edit → `PATCH /v1/knowledge/events/{id}` with If-Match; archive → `DELETE /events/{id}`), wired from [TimelineEventRow.tsx](../../frontend/src/features/knowledge/components/TimelineEventRow.tsx).
+- `api.ts`: `getRelation`/`correctRelation`/`invalidateRelation`/`updateEvent`/`archiveEvent`; hooks `useRelationMutations`/`useEventMutations` (react-query invalidation + 412 refetch).
+- a11y: 44×44 icon-only tap targets; visibility-transition tests for both dialogs (standing FE lessons).
+- A FINAL cold-start AMAW adversary on the full C surface (BE + FE) is recommended at C-FE close (deferred from the BE cycles, which got self-review since they mirror the adversary-reviewed entity patterns).
 
 **C1 (relations) shipped (cycle 75d):** `recreate_relation` (F5 — separate from extraction `create_relation`, resurrects `valid_until`; invariant test-locked) + public relations router (`GET /relations/{id}`, `POST /relations/{id}/invalidate`, `POST /relations/correct`) + emit `knowledge.relation_corrected`. Live-smoke PASSED (predicate-fix + spurious-drop, target_type=relation). Correct = recreate-FIRST-then-invalidate (a 409 leaves the old edge intact — no half-applied state).
 
@@ -57,6 +64,19 @@ GOAL: BUILD sub-session A (foundation) per design §12 — learning-service scaf
 Hard gotchas from the design review: origin_event_id := EventData.outbox_id (NOT aggregate_id, NOT message_id); EventData lives in dispatcher.py:19-28; empty outbox_id → DLQ not silent ""; grep outbox_id ≥5 hits before VERIFY.
 ```
 </details>
+
+## Session 75 — cycle 75e: Phase B BUILD C2 + C3 — event corrections + entity merge emission
+
+**AMAW. Completes the BE capture spine — all 4 correction types now flow.**
+
+- **C2 events:** added `version` to `:Event` (ON CREATE=1; merge_event ON MATCH does NOT bump → user If-Match baseline survives re-extraction; test-locked). `update_event_fields` (same-Cypher before-capture §6.3, If-Match, version bump, returns `(event, before)`) + `archive_event` (single-return, read-before in handler) in [events.py](../../services/knowledge-service/app/db/neo4j_repos/events.py). New events router ([events.py](../../services/knowledge-service/app/routers/public/events.py)): `PATCH /v1/knowledge/events/{id}` (428/412 ETag, mirrors entity PATCH) + `DELETE /{id}` (archive). Emits `knowledge.event_corrected`.
+- **C3 merge emission:** `merge_entity_into` now emits `knowledge.entity_corrected` op=merge (before=source snapshot read pre-merge, after=merged target). `merge_entities` repo unchanged.
+- `outbox_emit` gained `event_correction_payload`/`event_snapshot_dict` (structural=`event_date_iso`, content=`title/summary/time_cue/participants`).
+- **Tests:** 12 new event tests (update/archive repo + router 428/412/404/204 + version-no-bump-on-merge lock). Full KS unit **1892 pass**. Merge route tests unaffected by the emit (best-effort no-op in unit).
+- **LIVE SMOKE PASS:** `knowledge.event_corrected` → learning: `update→other` (events have no kind/name → coarser than entities) + `delete→spurious-drop`, target_type=event. (relation + entity smokes in prior cycles.)
+- Self-review (event PATCH mirrors the adversary-reviewed entity PATCH; merge emit mirrors entity emit); full cold-start adversary deferred to C-FE close.
+
+**NEXT:** C-FE (frontend) — the last Phase-B slice. See ▶ NEXT SESSION.
 
 ## Session 75 — cycle 75d: Phase B BUILD C1 — relation corrections (F5)
 
