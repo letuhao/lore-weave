@@ -129,6 +129,9 @@ class FakePorts:
         self.glossary_write_calls: list[dict] = []
         self.canon_content_calls: list[dict] = []
         self.get_canon_content_calls: list[dict] = []
+        # Enrichment SUPPLEMENT calls (B1 — entity_enrichments).
+        self.supplement_upserts: list[dict] = []
+        self.supplement_deletes: list[dict] = []
         # The glossary-side canon content, keyed by entity_id. None => NULL (the
         # post-write-back quarantine state); a string => already-canon content.
         # WARN-1: the re-promote self-heal reads this to decide whether to heal.
@@ -195,6 +198,25 @@ class FakePorts:
     async def soft_delete_glossary_entity(self, *, book_id, entity_id, jwt):
         self.recycle_calls.append({"entity_id": entity_id})
         return True
+
+    async def upsert_enrichment_supplement(
+        self, *, book_id, entity_id, proposal_id, technique, review_status,
+        facts, promoted_by=None, promoted_at=None,
+    ):
+        self.supplement_upserts.append(
+            {
+                "book_id": book_id, "entity_id": entity_id, "proposal_id": proposal_id,
+                "technique": technique, "review_status": review_status,
+                "facts": facts, "promoted_by": promoted_by, "promoted_at": promoted_at,
+            }
+        )
+        return len(facts)
+
+    async def delete_enrichment_supplement(self, *, book_id, entity_id, proposal_id):
+        self.supplement_deletes.append(
+            {"book_id": book_id, "entity_id": entity_id, "proposal_id": proposal_id}
+        )
+        return 1
 
 
 # ── lifecycle DAG ─────────────────────────────────────────────────────────────
@@ -276,6 +298,56 @@ async def test_writeback_writes_identity_only_no_content_leak():
         assert call["attributes"] == {}, "no enriched content on the canon anchor pre-promote"
     # DEFERRED-053: and no canonical-content write pre-promote either.
     assert ports.canon_content_calls == []
+
+
+# ── T4 (F-C13-2): write-back RESOLVES the canonical entity + writes the supplement
+
+
+@pytest.mark.asyncio
+async def test_writeback_resolves_canonical_name_not_target_ref():
+    """F-C13-2 root-cause fix (B3): write-back must pass the faithful
+    ``canonical_name`` (蓬萊) to glossary — NOT the synthetic ``target_ref``
+    (loc:蓬萊) that minted a parallel entity. The anchor name resolves the
+    EXISTING canonical entity."""
+    p = _proposal(status=ReviewStatus.APPROVED, target_ref="loc:蓬萊", canonical_name="蓬萊")
+    ports = FakePorts()
+    svc = WritebackService(FakeRepo(p), ports)
+    await svc.write_back(
+        user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
+        glossary_entity_id=None,  # force anchor resolution by name
+    )
+    assert ports.glossary_write_calls
+    name = ports.glossary_write_calls[0]["name"]
+    assert name == "蓬萊", f"anchor must resolve by canonical_name, got {name!r}"
+    assert name != "loc:蓬萊", "the synthetic target_ref must NOT be used as the entity name"
+    # the KG quarantine fact-anchor uses the same faithful name.
+    assert ports.writeback_calls[0]["canonical_name"] == "蓬萊"
+
+
+@pytest.mark.asyncio
+async def test_writeback_writes_proposed_supplement_not_short_description():
+    """F-C13-2: write-back writes the enriched dimensions to the
+    entity_enrichments SUPPLEMENT (review_status='proposed') on the resolved
+    entity — and NEVER to short_description (original canon stays untouched)."""
+    p = _proposal(status=ReviewStatus.APPROVED)
+    ports = FakePorts()
+    svc = WritebackService(FakeRepo(p), ports)
+    result = await svc.write_back(
+        user_id=OWNER, project_id=PROJECT, proposal_id=p.proposal_id, book_id=BOOK,
+        glossary_entity_id=GLOSS,
+    )
+    # supplement written, proposed, on the resolved entity, carrying the facts.
+    assert len(ports.supplement_upserts) == 1
+    sup = ports.supplement_upserts[0]
+    assert sup["review_status"] == "proposed"
+    assert sup["entity_id"] == GLOSS
+    assert sup["proposal_id"] == p.proposal_id
+    assert sup["promoted_by"] is None
+    assert len(sup["facts"]) >= 1
+    # original canon (short_description) is NEVER written by write-back.
+    assert ports.canon_content_calls == []
+    # still quarantined.
+    assert result.canon is False
 
 
 @pytest.mark.asyncio

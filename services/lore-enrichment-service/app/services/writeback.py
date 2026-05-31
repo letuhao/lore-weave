@@ -100,16 +100,27 @@ def _anchor_name(proposal: ProposalRow) -> str:
     H0 (FIX-1 / WARN-1): enriched ``content`` must NEVER become a canon entity
     name. We resolve the faithful identity in strict order:
 
-      1. ``target_ref`` — the canon entity the proposal enriches (demo path).
-      2. ``canonical_name`` — the faithful entity name carried from the Gap
-         (new-entity case where there is no pre-existing canon ref).
+      1. ``canonical_name`` — the faithful entity name (e.g. ``蓬萊``). This is
+         what glossary ``extract-entities`` resolves against
+         (``findEntityByNameOrAlias`` → MERGE existing, else create), so passing
+         it lets write-back RESOLVE the EXISTING canonical entity instead of
+         minting a parallel one. (B3 / F-C13-2 root-cause fix.)
+      2. ``target_ref`` — the canon-entity reference the proposal enriches. Used
+         only as a fallback when no canonical_name is carried; NOT preferred,
+         because a synthetic ref like ``loc:蓬萊`` is NOT a real entity name and
+         caused glossary to mint a duplicate ``loc:蓬萊`` entity (F-C13-2).
       3. ``proposal:{proposal_id}`` — a non-makeup SYNTHETIC identifier, used
          only when neither faithful name exists, so the anchor still has a stable
          identity that is provably NOT generated lore.
 
     ``content[:32]`` (makeup) is intentionally NOT a fallback — that was the leak.
+
+    NOTE (B3): the previous order preferred ``target_ref`` first, which passed a
+    synthetic ref (``loc:蓬萊``) as the glossary entity NAME → a parallel entity
+    orphaned from the canonical one. Preferring ``canonical_name`` resolves onto
+    the real canonical entity, so the enrichment supplement attaches there.
     """
-    name = (proposal.target_ref or "").strip() or (proposal.canonical_name or "").strip()
+    name = (proposal.canonical_name or "").strip() or (proposal.target_ref or "").strip()
     if name:
         return name
     return f"proposal:{proposal.proposal_id}"
@@ -281,6 +292,33 @@ class WritebackService:
             technique=proposal.technique,
             facts=facts,
         )
+
+        # 5. Glossary SUPPLEMENT write (B1 — the distinguished `dị bản`).
+        # The enriched dimensions land in the entity_enrichments table on the
+        # RESOLVED canonical entity, quarantined (review_status='proposed') —
+        # NEVER on short_description (which stays original-authored canon). This
+        # is the supplement layer the wiki/entity read surfaces as a labeled
+        # variant. Best-effort for the success of write-back: a transient
+        # glossary hiccup is logged, not fatal — the KG quarantine already holds
+        # and a re-write / promote re-upserts idempotently.
+        try:
+            await self._ports.upsert_enrichment_supplement(
+                book_id=book_id,
+                entity_id=glossary_entity_id,
+                proposal_id=proposal_id,
+                technique=proposal.technique,
+                review_status="proposed",
+                facts=facts,
+            )
+        except Exception:  # noqa: BLE001 — supplement write is non-fatal here
+            logger.warning(
+                "glossary enrichment-supplement write failed for proposal %s "
+                "entity %s; KG quarantine holds, a re-write/promote re-upserts",
+                proposal_id,
+                glossary_entity_id,
+                exc_info=True,
+            )
+
         return WritebackResult(
             proposal=proposal.as_dict(),
             glossary_entity_id=str(glossary_entity_id),
