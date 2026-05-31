@@ -360,6 +360,10 @@ services:
 
   translation-worker:
     # Phase 4c-α: context bumped to repo root for SDK install.
+    # restart policy matches sibling background workers (worker-infra/worker-ai):
+    # without it, a stack restart that exits the worker leaves translation
+    # silently broken (jobs enqueue to RabbitMQ but nothing consumes them).
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: services/translation-service/Dockerfile.worker
