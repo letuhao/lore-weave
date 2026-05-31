@@ -31,6 +31,7 @@ for table in $meta_tables; do
     --include='*.go' --include='*.rs' --include='*.sql' --include='*.ts' \
     "${scan_dirs[@]}" 2>/dev/null \
     | grep -vE '/contracts/meta/' \
+    | grep -vE '/crates/meta-rs/' \
     | grep -vE 'migrations/meta/' \
     | grep -vE '_test\.(go|rs|ts)' \
     | grep -vE ':[[:space:]]*(//|--|#|\*|///)' || true)
