@@ -131,6 +131,55 @@ class ProjectUpdate(BaseModel):
     save_raw_extraction: bool | None = None
 
 
+# ── B2-B-b1 — per-project extraction-config tuning (structural subset) ──
+# These drive worker-ai's resolve_effective_config (project override > global
+# default). `extra="forbid"` rejects out-of-subset keys with 422 (DESIGN Q4).
+# Raw prompt editing (`prompts`) is the SEPARATE security-sensitive b2 pass —
+# deliberately NOT here. PUT semantics: the body REPLACES extraction_config;
+# omit a sub-object to drop that override (fall back to the global default).
+
+ModelSourceLit = Literal["user_model", "platform_model"]
+FilterCategoryLit = Literal["entity", "relation", "event"]
+PartialPolicyLit = Literal["keep", "drop"]
+
+
+class LlmModelOverride(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    model_ref: str | None = None
+    model_source: ModelSourceLit | None = None
+
+
+class PrecisionFilterOverride(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool | None = None
+    categories: list[FilterCategoryLit] | None = None
+    partial_policy: PartialPolicyLit | None = None
+    model_ref: str | None = None
+    model_source: ModelSourceLit | None = None
+
+
+class EntityRecoveryOverride(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool | None = None
+    model_ref: str | None = None
+    model_source: ModelSourceLit | None = None
+
+
+class WriterAutocreateOverride(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool | None = None
+
+
+class ProjectExtractionConfigUpdate(BaseModel):
+    """The full per-project extraction-config (structural subset). PUT replaces
+    the stored `extraction_config` with the non-None fields of this body."""
+    model_config = ConfigDict(extra="forbid")
+    llm_model: LlmModelOverride | None = None
+    precision_filter: PrecisionFilterOverride | None = None
+    entity_recovery: EntityRecoveryOverride | None = None
+    writer_autocreate: WriterAutocreateOverride | None = None
+
+
 class Summary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

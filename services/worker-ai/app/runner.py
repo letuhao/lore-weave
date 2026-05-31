@@ -323,6 +323,13 @@ _GLOSSARY_SYNC_COST_PER_ITEM = Decimal("0.0")
 # when a specific item consistently triggers a retryable LLM error.
 _MAX_RETRIES_PER_ITEM = 3
 
+# B2-B-b1 — sentinels distinguishing "caller omitted the arg" (use the module
+# global) from "caller passed None" (override DISABLES the pass). An `is not
+# None` gate would conflate the two (memory sdk-default-arg-dropped-from-wire):
+# a project that disables its precision filter must get None, not the global.
+_GLOBAL_FILTER_SENTINEL: Any = object()
+_GLOBAL_RECOVERY_SENTINEL: Any = object()
+
 
 # ── B2-A — extraction-run telemetry helpers ────────────────────────────
 
@@ -914,6 +921,13 @@ async def _extract_and_persist(
     job_id: UUID,
     model_ref: str,
     text: str,
+    # B2-B-b1 — per-project resolved config. Default to the module globals so
+    # the chat_turn / glossary callers keep the legacy behaviour; the chapter
+    # branch passes the job's resolved snapshot so a project's extraction_config
+    # override actually drives the pipeline. `_SENTINEL` distinguishes "caller
+    # didn't pass" (use global) from "caller passed None" (override = disabled).
+    precision_filter: "PrecisionFilterConfig | None" = _GLOBAL_FILTER_SENTINEL,
+    entity_recovery: "EntityRecoveryConfig | None" = _GLOBAL_RECOVERY_SENTINEL,
     # P3 D-P3-EXTRACTION-CALLER-WIRE-UP — all optional. Caller (chapter
     # branch) supplies these to opt into hierarchy MERGE + summary
     # enqueue. chat_turn branch keeps the legacy behaviour.
@@ -942,6 +956,19 @@ async def _extract_and_persist(
     short-circuits without calling LLM); persist-pass2 still writes
     the source row for idempotency.
     """
+    # B2-B-b1 — resolve the effective filter/recovery: a caller that omitted
+    # the arg gets the module global (chat_turn/glossary); the chapter branch
+    # passes the job's resolved snapshot (which is the global when the project
+    # has no override, None when the project disabled it, or a per-project
+    # config when overridden).
+    eff_filter = (
+        _PRECISION_FILTER_CONFIG if precision_filter is _GLOBAL_FILTER_SENTINEL
+        else precision_filter
+    )
+    eff_recovery = (
+        _ENTITY_RECOVERY_CONFIG if entity_recovery is _GLOBAL_RECOVERY_SENTINEL
+        else entity_recovery
+    )
     try:
         candidates = await extract_pass2(
             text=text,
@@ -951,16 +978,14 @@ async def _extract_and_persist(
             model_source="user_model",
             model_ref=model_ref,
             llm_client=llm_client,
-            # Cycle 72 — opt-in precision filter via
-            # WORKER_AI_PRECISION_FILTER_MODEL_REF env. None = current
-            # behavior (no filter). Filter degraded path is
-            # surfaced via candidates.filter_status without raising.
-            precision_filter=_PRECISION_FILTER_CONFIG,
-            # Cycle 73d — opt-in entity recovery (3-tier) via
-            # WORKER_AI_ENTITY_RECOVERY_MODEL_REF env. Runs BEFORE
-            # filter. Worker-ai has no glossary access so all unmatched
-            # names go to the LLM classifier (Tier 3).
-            entity_recovery=_ENTITY_RECOVERY_CONFIG,
+            # Cycle 72 / B2-B-b1 — precision filter, now per-project-resolvable.
+            # None = no filter; degraded path surfaces via
+            # candidates.filter_status without raising.
+            precision_filter=eff_filter,
+            # Cycle 73d / B2-B-b1 — entity recovery (3-tier), per-project-
+            # resolvable. Runs BEFORE filter. Worker-ai has no glossary access
+            # so all unmatched names go to the LLM classifier (Tier 3).
+            entity_recovery=eff_recovery,
         )
     except ExtractionError as exc:
         retryable = exc.stage == "provider_exhausted"
@@ -1192,7 +1217,12 @@ async def process_job(
                     source_type="chapter",
                     source_id=ch.chapter_id,
                     job_id=job.job_id,
-                    model_ref=job.llm_model,
+                    # B2-B-b1 — the job's resolved snapshot drives extraction:
+                    # per-project model + filter + recovery overrides (or the
+                    # global defaults when the project has no extraction_config).
+                    model_ref=run_snapshot.model_ref,
+                    precision_filter=run_snapshot.precision_filter,
+                    entity_recovery=run_snapshot.entity_recovery,
                     text=text,
                     hierarchy_paths=p3_hierarchy_paths,
                     book_parts=p3_book_parts,

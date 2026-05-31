@@ -280,3 +280,62 @@ async def handle_run_completed(event: EventData, *, pool: asyncpg.Pool) -> None:
         "extraction_run persisted: run=%s config=%s outcome=%s origin=knowledge:%s",
         run_id, config_hash, payload.get("outcome"), origin_event_id,
     )
+
+
+async def handle_config_adjusted(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`knowledge.config_adjusted` → a `config_adjustment_events` row (B2-B).
+
+    Append-only per-novel tuning log; best-effort upstream (analytics, lossy-OK).
+    b1 carries structural targets only (before/after_structural); raw-prompt
+    targets (before/after_content_hash) land in b2 — `*_content` stays NULL
+    until a tenant opts into raw retention (DESIGN Q5). Same loud-fail
+    discipline: empty outbox_id or missing user_id → DLQ."""
+    payload = event.payload
+    origin_event_id = event.outbox_id
+    if not origin_event_id:
+        raise ValueError(
+            "config_adjusted has empty outbox_id — refusing to insert "
+            "(would collapse the adjustment log)"
+        )
+    user_id = _uuid_or_none(payload.get("user_id"))
+    target = payload.get("target")
+    if user_id is None or not target:
+        raise ValueError(
+            "config_adjusted missing user_id/target "
+            f"(user_id={payload.get('user_id')!r} target={target!r}) — refusing to insert"
+        )
+
+    await pool.execute(
+        """
+        INSERT INTO config_adjustment_events (
+          user_id, project_id, actor_type, actor_id, base_default_version,
+          target, op, before_structural, after_structural,
+          before_content_hash, after_content_hash,
+          origin_service, origin_event_id, emitted_at
+        ) VALUES (
+          $1, $2, $3, $4, $5,
+          $6, $7, $8::jsonb, $9::jsonb,
+          $10, $11,
+          $12, $13, $14
+        )
+        ON CONFLICT (origin_service, origin_event_id) DO NOTHING
+        """,
+        user_id,
+        _uuid_or_none(payload.get("project_id")),
+        payload.get("actor_type") or "user",
+        _uuid_or_none(payload.get("actor_id")),
+        payload.get("base_default_version"),
+        target,
+        payload.get("op") or "set",
+        _jsonb(payload.get("before_structural")),
+        _jsonb(payload.get("after_structural")),
+        payload.get("before_content_hash"),
+        payload.get("after_content_hash"),
+        "knowledge",
+        origin_event_id,
+        _parse_ts(payload.get("emitted_at")),
+    )
+    logger.debug(
+        "config_adjustment persisted: target=%s origin=knowledge:%s",
+        target, origin_event_id,
+    )

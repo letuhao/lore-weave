@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from loreweave_extraction import PrecisionFilterConfig
+
 from app.clients import ExtractionResult
 from app.outbox_emit import (
     RUN_COMPLETED_EVENT,
@@ -212,3 +214,76 @@ def test_run_payload_skip_has_zero_metrics():
     assert p["outcome"] == "skipped"
     assert p["book_id"] is None
     assert p["metrics"]["entities_merged"] == 0
+
+
+# ── B2-B-b1: per-project config drives extract_pass2 (sentinel resolution) ──
+
+async def test_extract_and_persist_omitted_filter_uses_global(monkeypatch):
+    """Omitting precision_filter → the module global (chat_turn/glossary path)."""
+    from app import runner
+
+    captured = {}
+
+    class _Cands:
+        entities = []
+        relations = []
+        events = []
+        facts = []
+        filter_status = "skipped"
+
+    async def fake_extract_pass2(**kwargs):
+        captured.update(kwargs)
+        return _Cands()
+
+    sentinel_cfg = PrecisionFilterConfig(model_ref="global-filter")
+    monkeypatch.setattr(runner, "extract_pass2", fake_extract_pass2)
+    monkeypatch.setattr(runner, "_PRECISION_FILTER_CONFIG", sentinel_cfg)
+
+    kc = AsyncMock()
+    kc.persist_pass2 = AsyncMock(return_value=ExtractionResult(
+        source_id="s", entities_merged=0, relations_created=0,
+        events_merged=0, facts_merged=0,
+    ))
+    await runner._extract_and_persist(
+        knowledge_client=kc, llm_client=MagicMock(), user_id=uuid.uuid4(),
+        project_id=uuid.uuid4(), source_type="chat_turn", source_id="s",
+        job_id=uuid.uuid4(), model_ref="m", text="hello",
+    )
+    assert captured["precision_filter"] is sentinel_cfg
+
+
+async def test_extract_and_persist_explicit_none_disables_not_global(monkeypatch):
+    """Explicit precision_filter=None → DISABLED, must NOT fall back to the
+    global (memory sdk-default-arg-dropped-from-wire — the sentinel guards this)."""
+    from app import runner
+
+    captured = {}
+
+    class _Cands:
+        entities = []
+        relations = []
+        events = []
+        facts = []
+        filter_status = "skipped"
+
+    async def fake_extract_pass2(**kwargs):
+        captured.update(kwargs)
+        return _Cands()
+
+    monkeypatch.setattr(runner, "extract_pass2", fake_extract_pass2)
+    monkeypatch.setattr(runner, "_PRECISION_FILTER_CONFIG",
+                        PrecisionFilterConfig(model_ref="global-filter"))
+
+    kc = AsyncMock()
+    kc.persist_pass2 = AsyncMock(return_value=ExtractionResult(
+        source_id="s", entities_merged=0, relations_created=0,
+        events_merged=0, facts_merged=0,
+    ))
+    await runner._extract_and_persist(
+        knowledge_client=kc, llm_client=MagicMock(), user_id=uuid.uuid4(),
+        project_id=uuid.uuid4(), source_type="chapter", source_id="s",
+        job_id=uuid.uuid4(), model_ref="m", text="hello",
+        precision_filter=None, entity_recovery=None,
+    )
+    assert captured["precision_filter"] is None
+    assert captured["entity_recovery"] is None

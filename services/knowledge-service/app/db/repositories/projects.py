@@ -282,6 +282,39 @@ class ProjectsRepo:
             return None
         raise VersionMismatchError(current)
 
+    async def update_extraction_config(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        config: dict,
+        expected_version: int,
+    ) -> Project | None:
+        """B2-B-b1 — replace `extraction_config` (JSONB) + bump version.
+
+        Dedicated path (not the generic `update`) because the JSONB column
+        needs `json.dumps` + a `::jsonb` cast that the generic SET-clause loop
+        doesn't do. Mirrors `update`'s If-Match discipline: a 0-row result with
+        a version that exists raises VersionMismatchError (→ 412); a missing row
+        returns None (→ 404)."""
+        query = f"""
+        UPDATE knowledge_projects
+        SET extraction_config = $3::jsonb,
+            version = version + 1,
+            updated_at = now()
+        WHERE user_id = $1 AND project_id = $2 AND version = $4
+        RETURNING {_SELECT_COLS}
+        """
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                query, user_id, project_id, json.dumps(config), expected_version,
+            )
+        if row is not None:
+            return _row_to_project(row)
+        current = await self.get(user_id, project_id)
+        if current is None:
+            return None
+        raise VersionMismatchError(current)
+
     async def set_extraction_state(
         self,
         user_id: UUID,

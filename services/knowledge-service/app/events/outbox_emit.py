@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 ENTITY_CORRECTED = "knowledge.entity_corrected"
 RELATION_CORRECTED = "knowledge.relation_corrected"  # sub-session C
 EVENT_CORRECTED = "knowledge.event_corrected"        # sub-session C
+CONFIG_ADJUSTED = "knowledge.config_adjusted"        # Phase B2-B
 
 
 def now_iso() -> str:
@@ -72,6 +73,61 @@ async def emit_correction(
             "under-counts; graph write already committed)",
             event_type, aggregate_id, exc_info=True,
         )
+
+
+async def emit_config_adjustment(
+    *,
+    aggregate_id: str,
+    payload: dict[str, Any],
+) -> None:
+    """Phase B2-B — best-effort insert of a config-adjustment event.
+
+    Same best-effort discipline as `emit_correction`: a per-novel tuning edit
+    has already committed to `knowledge_projects.extraction_config`; this
+    analytics event is async/lossy-OK (DESIGN Q3) and must NEVER fail the edit.
+    `aggregate_id` is the project_id."""
+    try:
+        pool = get_knowledge_pool()
+        await pool.execute(
+            """
+            INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
+            VALUES ('knowledge', $1, $2, $3::jsonb)
+            """,
+            uuid.UUID(str(aggregate_id)),
+            CONFIG_ADJUSTED,
+            json.dumps(payload, default=str),
+        )
+    except Exception:
+        logger.warning(
+            "outbox: failed to emit config_adjusted for project %s (non-fatal "
+            "— adjustment log under-counts; the config edit already committed)",
+            aggregate_id, exc_info=True,
+        )
+
+
+def config_adjustment_payload(
+    *,
+    user_id: str,
+    project_id: str,
+    actor_id: str,
+    target: str,
+    before_structural: Any,
+    after_structural: Any,
+) -> dict[str, Any]:
+    """Build a knowledge.config_adjusted payload (one per changed top-level
+    target, e.g. 'precision_filter'). Structural-only in b1 — raw-prompt
+    targets (content-hash) land in b2."""
+    return {
+        "user_id": user_id,
+        "project_id": project_id,
+        "actor_type": "user",
+        "actor_id": actor_id,
+        "target": target,
+        "op": "set",
+        "before_structural": before_structural,
+        "after_structural": after_structural,
+        "emitted_at": now_iso(),
+    }
 
 
 def entity_correction_payload(
