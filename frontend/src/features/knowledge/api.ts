@@ -393,8 +393,27 @@ export interface TimelineEvent {
   evidence_count: number;
   mention_count: number;
   archived_at: string | null;
+  /** Phase B C2 — optimistic-concurrency version for user edits (If-Match).
+   *  Pre-C2 events default to 1 on the BE read path. */
+  version: number;
   created_at: string | null;
   updated_at: string | null;
+}
+
+// ── Phase B C — relation + event correction payloads ─────────────────
+
+export interface RelationCorrectPayload {
+  old_relation_id: string;
+  subject_id: string;
+  predicate: string;
+  object_id: string;
+}
+
+export interface EventUpdatePayload {
+  title?: string;
+  summary?: string;
+  time_cue?: string;
+  event_date_iso?: string;
 }
 
 export interface TimelineListParams {
@@ -1054,6 +1073,64 @@ export const knowledgeApi = {
         method: 'POST',
         token,
       },
+    );
+  },
+
+  // ── Phase B C — relation corrections ─────────────────────────────────
+
+  getRelation(relationId: string, token: string): Promise<EntityRelation> {
+    return apiJson<EntityRelation>(
+      `${BASE}/relations/${encodeURIComponent(relationId)}`,
+      { token },
+    );
+  },
+
+  /** Mark a relation wrong → soft-invalidate (spurious-drop correction). */
+  invalidateRelation(relationId: string, token: string): Promise<EntityRelation> {
+    return apiJson<EntityRelation>(
+      `${BASE}/relations/${encodeURIComponent(relationId)}/invalidate`,
+      { method: 'POST', token },
+    );
+  },
+
+  /** Fix a relation: invalidate the old edge + recreate the corrected one
+   *  (predicate-fix correction). Returns the live (resurrected) edge. */
+  correctRelation(
+    body: RelationCorrectPayload,
+    token: string,
+  ): Promise<EntityRelation> {
+    return apiJson<EntityRelation>(`${BASE}/relations/correct`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      token,
+    });
+  },
+
+  // ── Phase B C — event corrections ────────────────────────────────────
+
+  updateEvent(
+    eventId: string,
+    body: EventUpdatePayload,
+    ifMatchVersion: number,
+    token: string,
+  ): Promise<TimelineEvent> {
+    return apiJson<TimelineEvent>(
+      `${BASE}/events/${encodeURIComponent(eventId)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+        token,
+        // C2: strict If-Match — BE 428s without it.
+        headers: ifMatch(ifMatchVersion),
+      },
+    );
+  },
+
+  /** Soft-archive an event (user "delete"). 204 No Content. */
+  archiveEvent(eventId: string, token: string): Promise<void> {
+    return apiJson<void>(
+      `${BASE}/events/${encodeURIComponent(eventId)}`,
+      { method: 'DELETE', token },
     );
   },
 

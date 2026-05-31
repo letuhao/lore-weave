@@ -7,9 +7,9 @@
 
 ## ▶ NEXT SESSION — start here
 
-**State:** Phase-B **BUILD A + B + C1(relations) + C2(events) + C3(merge) DONE + committed** (session 75). The **entire backend capture spine is complete** — all four correction types (entity edit/delete, relation invalidate/correct, event edit/delete, entity merge) emit `knowledge.*_corrected` → relay → learning, each live-smoke-verified. **Only C-FE (frontend) remains** for Phase B.
+**State:** Phase-B **BE complete + C-FE data layer DONE + committed** (session 75). The entire backend capture spine (entity edit/delete/merge, relation invalidate/correct, event edit/delete) is live-smoke-verified, and the **FE data/controller layer** (api methods + `useRelationMutations`/`useEventMutations`, tsc-clean) is committed. **Only the C-FE VIEWS remain** (dialogs + wiring + browser smoke) → tracked **D#054**.
 
-**C-FE scope (the last Phase-B slice — its own cycle, needs wireframe + browser smoke):** mirror `EntityEditDialog`+`useEntityMutations`+`ifMatch`/`isVersionConflict` →
+**NEXT = C-FE views (the final Phase-B slice — fresh session for browser verification):** the api + hooks are READY (`knowledgeApi.{getRelation,invalidateRelation,correctRelation,updateEvent,archiveEvent}`, `useInvalidateRelation`/`useCorrectRelation`, `useUpdateEvent`/`useArchiveEvent`). Build the views that consume them — mirror `EntityEditDialog`+`useEntityMutations`+`ifMatch`/`isVersionConflict` →
 - `RelationEditDialog` (predicate/endpoint correct → `POST /v1/knowledge/relations/correct`; "mark wrong" → `POST /relations/{id}/invalidate`), wired from the read-only `RelationRow` in [EntityDetailPanel.tsx](../../frontend/src/features/knowledge/components/EntityDetailPanel.tsx).
 - `EventEditDialog` (title/summary/time_cue/event_date_iso edit → `PATCH /v1/knowledge/events/{id}` with If-Match; archive → `DELETE /events/{id}`), wired from [TimelineEventRow.tsx](../../frontend/src/features/knowledge/components/TimelineEventRow.tsx).
 - `api.ts`: `getRelation`/`correctRelation`/`invalidateRelation`/`updateEvent`/`archiveEvent`; hooks `useRelationMutations`/`useEventMutations` (react-query invalidation + 412 refetch).
@@ -64,6 +64,17 @@ GOAL: BUILD sub-session A (foundation) per design §12 — learning-service scaf
 Hard gotchas from the design review: origin_event_id := EventData.outbox_id (NOT aggregate_id, NOT message_id); EventData lives in dispatcher.py:19-28; empty outbox_id → DLQ not silent ""; grep outbox_id ≥5 hits before VERIFY.
 ```
 </details>
+
+## Session 75 — cycle 75f: Phase B C-FE data layer (api + hooks)
+
+**The FE data/controller layer for relation/event corrections (MVC split: api.ts + hooks/). Views deferred to D#054.**
+
+- [api.ts](../../frontend/src/features/knowledge/api.ts): added `version: number` to `TimelineEvent` (If-Match); `RelationCorrectPayload` + `EventUpdatePayload` types; methods `getRelation`, `invalidateRelation`, `correctRelation`, `updateEvent` (If-Match), `archiveEvent` — mirroring `updateEntity`/`mergeEntityInto`.
+- `hooks/useRelationMutations.ts` (`useInvalidateRelation`, `useCorrectRelation` — invalidate `['knowledge-entity-detail', userId]` prefix so either endpoint's open detail refreshes) + `hooks/useEventMutations.ts` (`useUpdateEvent` w/ 412-refetch, `useArchiveEvent` — invalidate `['knowledge-timeline', userId]`).
+- **frontend `tsc --noEmit` clean.** No FE runtime path until the views wire it; BE endpoints already live-smoked.
+- Self-review: hooks are thin wrappers mirroring the adversary-reviewed `useEntityMutations`; invalidation keys verified.
+
+**NEXT:** C-FE views (D#054) — `RelationEditDialog` + `EventEditDialog` + wiring into `RelationRow`/`TimelineEventRow` + i18n + vitest + **browser smoke** + final cold-start adversary on the full C surface. **This is the LAST Phase-B slice.**
 
 ## Session 75 — cycle 75e: Phase B BUILD C2 + C3 — event corrections + entity merge emission
 
