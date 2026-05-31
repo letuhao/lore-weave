@@ -1,4 +1,4 @@
-# Session Handoff — Session 104 (mining panel + real extraction smoke + 3 bug fixes)
+# Session Handoff — Session 104 (mining panel + real extraction smoke + 4 bug fixes)
 
 > **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
 > **Date:** 2026-06-01 (session 104 — FE mining panel + real extraction smoke + 3 bug fixes; human-in-loop v2.2).
@@ -15,16 +15,15 @@
 4. **Bug fix: `BuildGraphDialog` LLM model UUID** — `value={m.provider_model_name}` should be `value={m.user_model_id}`. Worker-ai SDK requires UUID `model_ref`; all UI-triggered extractions were silently broken.
 5. **Bug fix: `pass2_writer` unknown fact type** — LLM produced `type='description'` (not in FACT_TYPES). `merge_fact` raised ValueError → entire chapter 500. Fix: skip unknown fact types with warning at writer layer. Rebuilt KS.
 6. **Real extraction smoke** — 5 chapters extracted (qwen3.6-35b + bge-m3). `extraction_runs.genre = "Tien hiep / Cultivation"` × 5 real rows. `config-quality` → `run_count=6, success_rate=0.83` ✓. `model-matrix` → `weighted_outcome=0.83` ✓.
+7. **Bug fix: `runner.py` source_type 'chat_turn'** (`5077a2aa`) — `scope=all` chat-turn branch sent `source_type="chat_turn"`; provenance.py requires `"chat_message"`. 1-line fix. Extraction now completes clean: `status=complete p=6` (5 chapters + 1 chat stub) ✓.
 
-**FIRST: push main** — all bug fixes committed locally, not yet pushed.
+**FIRST: push main** — 2 commits local (0bf049cd + 5077a2aa).
 
 **NEXT:**
 1. **Resume eval R&D arc** — cycle-70s extraction-quality F1 work: independent judges, host-orchestrated ensembles. Disjoint-median metric locked.
-2. **Fix final extraction job 500** — job failed after all 5 chapters processed (LOW). The 5 chapter `extraction_run_completed` events all emitted, so mining data is intact.
 
 **Deferred:**
 - Outcome refinement batch job (correction-join recompute UPDATE on extraction_runs; needs correction volume)
-- Final extraction job 500 post-chapter-processing step (LOW)
 
 <details><summary>(historical) Phase B complete — push options (all done/superseded)</summary>
 
