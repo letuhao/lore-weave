@@ -2,7 +2,7 @@
 
 > Started 2026-05-31 · Branch `lore-enrichment/foundation` · HEAD `8b864487` · Reviewer: human-in-loop (default v2.2)
 > Method (per PO): risk-weighted · `/review-impl` adversarial on load-bearing cycles · **live stack-health = full demo re-run**.
-> Status (2026-05-31): **NEAR-FINAL** — Step 1 ✅, Step 2 high-risk (C2/C11/C12/C13/C15/C16/C17 + C14) ✅, Step 2 low-risk tier (C0,1,3,6,7,8,9,10,18) ✅ light pass (C5 only outstanding), Step 3 live audit ✅ (F-C2-1/F-C1617-1 cleared, F-C13-2 confirmed, F-LIVE-1 recurs), Step 4 defer-triage ✅, Step 5 go/no-go ✅. **Remaining:** C5 deep review + live capstone (knowledge rebuild → F-C13-1 retract e2e). Verdict: **CONDITIONAL GO** — 1 HIGH + 3 MED to fix (+044/046 cheap do-now); core invariants sound. See Step 5 (bottom).
+> Status (2026-05-31): **REVIEW COMPLETE** — Step 1 ✅, Step 2 high-risk (C2/C11/C12/C13/C15/C16/C17 + C14) ✅, Step 2 low-risk tier incl. C5 ✅, Step 3 live audit ✅ (F-C2-1/F-C1617-1 cleared, F-C13-2 confirmed, **F-C13-1 live-confirmed**, F-LIVE-1 recurs), Step 4 defer-triage ✅, Step 5 go/no-go ✅, PO decision audit ✅. Verdict: **CONDITIONAL GO** — 1 HIGH + 3 MED. Do-nows 044/046 FIXED; F-C13-1/F-C13-2 fix spec'd + DESIGN-LOCKED (`docs/specs/2026-05-31-enrichment-supplement-canon-model.md`); C2 parked for main merge. See Step 5 (bottom).
 
 ---
 
@@ -230,7 +230,9 @@ The C4 glossary_sync MERGE key is `(user_id, glossary_entity_id)` (knowledge-ser
 
 **Stack left UP** (postgres/neo4j/redis + glossary/book/provider-registry/knowledge/lore-enrichment), knowledge image stale. Pre-retract glossary state captured for the eventual test: entities `019e7850…` (canon 蓬萊) + `019e78d4…` (enriched anchor) both `deleted_at=NULL`, book `019e7850-a8d9…`.
 
-**⏳ Still deferred (need knowledge rebuild + LM Studio):** complete F-C13-1 retract e2e; fresh-stack promote→canon re-confirm with the anchor-canonization (F-C13-2) consideration.
+**✅ F-C13-1 LIVE-CONFIRMED 2026-05-31 (capstone done).** Rebuilt knowledge-service (`docker compose build` → the C13 enriched-* routes are back; confirms a plain `docker start` was the F-LIVE-1 trigger). Called retract on the promoted 蓬萊 proposal as the book owner → **`200 {"facts_retracted":5, "glossary_recycled":false}`**. KG facts soft-retracted, but the glossary recycle NEVER fired (jwt never threaded). DB proof: both glossary entities (canonical `019e7850…` + enriched anchor `019e78d4…`) keep `deleted_at=NULL` — **the promoted makeup's canon entity SURVIVES a "successful" retract.** F-C13-1 is now live-proven, not just code-confirmed. (Side effect: the demo's 5 KG facts now carry `valid_until` — re-promote to restore for a future demo.)
+
+**Review COMPLETE — no outstanding items.** (C5 deep review done; F-C13-1 capstone done.)
 
 ---
 
@@ -265,7 +267,7 @@ Risk-appropriate spot-check (not full `/review-impl`): deliverable present? stub
 | C0 skeleton | ✅ | `/health`,`/ready` live-200 (Step 1) |
 | C1 KG-read clients + port | ✅ | `KnowledgeReadPort/Http` seen in canon_verify/assembly; Q6-degrades to typed empties |
 | C3 OpenAPI contract + stubs | ✅* | contract frozen; **`sources.create_source` + `templates` routers still 501 stubs** — the corpus-register API is unimplemented (ingest happens via a direct/smoke path, not the public API) |
-| C5 wiki-from-KG | ◻️ | NOT deeply reviewed (cross-service, knowledge-service) — residual coverage gap |
+| C5 wiki-from-KG | ✅ | **DONE 2026-05-31.** `glossary-service/internal/api/wiki_render.go` — structurally enforces canon/enriched distinction: `splitRelations` is **fail-safe** (anything ≠ `'glossary'` → enriched, never silently canon, :131-137); enriched relations get a distinct heading 「补充关系（增补·待校验）」 + disclaimer 「非原典正史」 + per-item `source_type` attr + 【增补】 prefix (:93-106,220-234). Pure/deterministic (no LLM invention). **Notably the wiki layer ALREADY embodies the B1 "distinguished supplement" principle — the canon/glossary layer (F-C13-2) should mirror this exact pattern in the fix.** No findings. |
 | C6 gap model + dims + fixtures | ✅ | frozen dimension table, deterministic ranking |
 | C7 gap-detection engine | ✅* | engine pure/deterministic/Q6-degrade, BUT **`EntityCoverage` is constructed nowhere in `app/` → the engine has zero production callers**; the job API enriches **client-supplied `body.targets`** (`_gap_from_target`), not KG auto-detected gaps |
 | C8 strategy-core (registry/cost/state) | ✅* | verified via C14/C16; **cost is a fixed PRE-charge estimate, not real token metering** (`jobs/cost.py:89` TODO D-C14-EMBED-METER) — the cap is an abstract-unit guardrail, not real-$ |
