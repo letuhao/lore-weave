@@ -915,11 +915,20 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 			attrs = nil
 		}
 		neighborhood, _ := s.fetchWikiNeighborhood(r.Context(), userID, stub.EntityID)
+		// T7 (B1 / F-C13-2): surface the enrichment supplement as a labeled
+		// `dị bản` section. Non-fatal: a load failure falls back to no
+		// supplement (the canon body still renders).
+		enrichments, eerr := s.loadEntityEnrichments(r.Context(), stub.EntityID)
+		if eerr != nil {
+			slog.Warn("generateWikiStubs load enrichments", "entity_id", stub.EntityID, "error", eerr)
+			enrichments = nil
+		}
 		body := renderWikiBody(wikiRenderInput{
 			DisplayName:  stub.DisplayName,
 			KindName:     stub.KindName,
 			Attributes:   attrs,
 			Neighborhood: neighborhood,
+			Enrichments:  enrichments,
 		})
 		rendered = append(rendered, renderedStub{entity: stub, body: body})
 	}
@@ -1055,6 +1064,31 @@ func (s *Server) loadEntityWikiAttrs(ctx context.Context, entityID uuid.UUID) ([
 		attrs = append(attrs, a)
 	}
 	return attrs, rows.Err()
+}
+
+// loadEntityEnrichments reads the LIVE enrichment-supplement rows for an entity
+// (entity_enrichments, deleted_at IS NULL) so the wiki renderer can surface them
+// as a distinguished `dị bản` section (B1 / F-C13-2 T7). Ordered deterministically.
+func (s *Server) loadEntityEnrichments(ctx context.Context, entityID uuid.UUID) ([]wikiRenderEnrichment, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT dimension, content, review_status, technique
+		FROM entity_enrichments
+		WHERE entity_id = $1 AND deleted_at IS NULL
+		ORDER BY dimension, created_at`, entityID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []wikiRenderEnrichment
+	for rows.Next() {
+		var e wikiRenderEnrichment
+		if err := rows.Scan(&e.Dimension, &e.Content, &e.ReviewStatus, &e.Technique); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
 
 // ── loadWikiArticleDetail ────────────────────────────────────────────────────

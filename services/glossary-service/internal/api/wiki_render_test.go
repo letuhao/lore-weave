@@ -232,3 +232,58 @@ func TestRenderWikiBody_Truncation_Noted(t *testing.T) {
 		t.Errorf("expected truncation note mentioning total count; got %q", text)
 	}
 }
+
+// ── T7 (F-C13-2 / B1): the enrichment SUPPLEMENT renders as a distinguished
+// `dị bản` section — separate from canon, multi-variant, never merged. ──────────
+
+func TestRenderWikiBody_EnrichmentSupplement_RenderedAsDistinctDiBan(t *testing.T) {
+	body := renderWikiBody(wikiRenderInput{
+		DisplayName: "蓬萊",
+		KindName:    "地点",
+		Attributes:  []wikiRenderAttr{{Label: "别名", Value: "蓬莱仙岛"}},
+		Enrichments: []wikiRenderEnrichment{
+			{Dimension: "历史", Content: "上古即为仙山（甲本）。", ReviewStatus: "promoted", Technique: "retrieval"},
+			{Dimension: "历史", Content: "另说乃东海神山（乙本）。", ReviewStatus: "proposed", Technique: "template"},
+			{Dimension: "features", Content: "宫室皆以金玉為之。", ReviewStatus: "promoted", Technique: "retrieval"},
+		},
+	})
+	text, sourceTypes := docText(t, body)
+
+	// Distinct, clearly-labeled supplement section + non-canon disclaimer.
+	if !strings.Contains(text, "增补设定") {
+		t.Errorf("expected the 增补设定 supplement heading; got %q", text)
+	}
+	if !strings.Contains(text, "非原典正史") {
+		t.Errorf("expected the non-canon disclaimer; got %q", text)
+	}
+	// Per-dimension prefix + content present.
+	for _, want := range []string{"【增补·历史】", "甲本", "乙本", "【增补·features】", "金玉為之"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("expected supplement to contain %q; got %q", want, text)
+		}
+	}
+	// B1: even a PROMOTED enrichment renders in the supplement section — it is
+	// NOT merged into the canon attributes (基本资料), so it stays tellable-apart.
+	// The canon attribute value must not carry the 增补 prefix.
+	if strings.Contains(text, "【增补·历史】") && strings.Contains(text, "蓬莱仙岛【增补") {
+		t.Errorf("enrichment must not merge into canon attributes; got %q", text)
+	}
+	// H0: every supplement item carries the structural source_type=enriched attr.
+	foundMarker := false
+	for _, st := range sourceTypes {
+		if st == sourceTypeEnriched {
+			foundMarker = true
+		}
+	}
+	if !foundMarker {
+		t.Errorf("supplement items must carry source_type=enriched; sourceTypes=%v", sourceTypes)
+	}
+}
+
+func TestRenderWikiBody_NoEnrichments_NoSupplementSection(t *testing.T) {
+	body := renderWikiBody(wikiRenderInput{DisplayName: "蓬萊", KindName: "地点"})
+	text, _ := docText(t, body)
+	if strings.Contains(text, "增补设定") {
+		t.Errorf("no enrichments → no supplement section; got %q", text)
+	}
+}
