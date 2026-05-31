@@ -2,8 +2,8 @@
 
 > Created 2026-05-31 · Track lore-enrichment · Branch `lore-enrichment/foundation`
 > Companion to the DESIGN-LOCKED spec: [docs/specs/2026-05-31-enrichment-supplement-canon-model.md](../specs/2026-05-31-enrichment-supplement-canon-model.md)
-> Phase: **CLARIFY + DESIGN + PLAN (this session).** BUILD is a later session.
-> Size: **L** (3 services; but smaller than first thought — see CLARIFY C1).
+> Phase: **CLARIFY + DESIGN + PLAN — PO-APPROVED 2026-05-31. BUILD-READY.** BUILD is the next session.
+> Size: **L** (3 services; smaller than first thought — see CLARIFY C1).
 
 ---
 
@@ -101,7 +101,7 @@ retract → delete_enrichment_supplement(proposal_id) (soft-delete rows)      [g
 - H0 intact: supplement quarantined (`proposed`, conf<1.0) until promote; markers permanent; retract reversible.
 - No relitigation of H0 / locked baseline; DEFERRED-053 superseded (no short_description overwrite).
 
-## E. Open confirmations for PO (before BUILD)
-1. **C6** — fix-forward only (no data migration for the existing broken `蓬萊`)? (rec yes)
-2. **C7** — wiki read surfacing of `entity_enrichments` as a separate task (#7), not blocking the F-C13 fix? (rec yes)
-3. Scope: this plan covers **only** the F-C13-1/F-C13-2 cluster. D1 (gap-auto-detect), D2-other (resume, corpus-register), C1 (token metering), C3 (auto-reject design) get their own plans after. Confirm that sequencing.
+## E. Open confirmations for PO (before BUILD) — ✅ APPROVED 2026-05-31
+1. **C6 — APPROVED:** fix-forward only (no data migration for the existing broken `蓬萊` orphan; clean manually or leave dev cruft).
+2. **C7 — APPROVED:** wiki read surfacing of `entity_enrichments` is a separate task (#7), NOT blocking the F-C13 fix.
+3. **Scope — APPROVED:** this plan covers ONLY the F-C13-1/F-C13-2 cluster. D1 (gap-auto-detect), resume, corpus-register, C1 (token metering), C3 (auto-reject design) each get their own plan AFTER this cluster ships.
