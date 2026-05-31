@@ -952,6 +952,14 @@ metrics:
     description: 'Unpublished, non-dead-lettered meta_outbox rows (drain lag — alert if it grows unbounded, i.e. relay down).'
     owner: sre
     source: services/meta-outbox-relay (pending-depth count)
+  - name: lw_meta_outbox_pruned_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 112
+    labels: []
+    description: 'Spent (published, past-grace) meta_outbox rows deleted by the pruner (P2/112 ephemeral retention).'
+    owner: sre
+    source: services/meta-outbox-relay (prune)
   - name: lw_publisher_published_total
     kind: counter
     layer: L2

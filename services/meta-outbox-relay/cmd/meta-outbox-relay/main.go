@@ -31,6 +31,7 @@ import (
 
 	"github.com/loreweave/foundation/services/meta-outbox-relay/pkg/drain"
 	"github.com/loreweave/foundation/services/meta-outbox-relay/pkg/pgsource"
+	"github.com/loreweave/foundation/services/meta-outbox-relay/pkg/prune"
 	"github.com/loreweave/foundation/services/meta-outbox-relay/pkg/redisemit"
 	"github.com/loreweave/foundation/services/publisher/pkg/retry"
 )
@@ -108,9 +109,18 @@ func run() error {
 		return n, err
 	}
 
+	pruner, err := prune.New(pool, cfg.PruneGrace, cfg.PruneBatch)
+	if err != nil {
+		return fmt.Errorf("pruner: %w", err)
+	}
+
 	var wg sync.WaitGroup
-	wg.Add(1)
+	wg.Add(2)
 	go func() { defer wg.Done(); runLoop(ctx, loop, m, countPending, cfg.PollInterval) }()
+	// Prune runs on its own goroutine: it DELETEs spent (published) rows, a row
+	// set disjoint from the drain's pending-row SELECT/UPDATE, so there is no
+	// shared mutable state (the pgx pool is concurrency-safe).
+	go func() { defer wg.Done(); runPrune(ctx, pruner, m, cfg.PruneInterval) }()
 
 	slog.Info("[meta-outbox-relay] started",
 		"home_stream", cfg.HomeStream, "poll_interval", cfg.PollInterval.String(), "batch_size", cfg.BatchSize)
@@ -154,16 +164,42 @@ func runLoop(ctx context.Context, loop *drain.Loop, m *metrics, countPending fun
 	}
 }
 
+// runPrune deletes spent (published, past-grace) meta_outbox rows on a ticker.
+// A prune failure is logged and retried next tick (never fatal).
+func runPrune(ctx context.Context, pruner *prune.Pruner, m *metrics, interval time.Duration) {
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			n, err := pruner.PruneOnce(ctx, time.Now().UTC())
+			if err != nil {
+				slog.Error("[meta-outbox-relay] prune", "error", err)
+				continue
+			}
+			if n > 0 {
+				m.pruned.Add(float64(n))
+				slog.Info("[meta-outbox-relay] pruned spent meta_outbox rows", "count", n)
+			}
+		}
+	}
+}
+
 // ── Config ──────────────────────────────────────────────────────────────────
 
 type config struct {
-	MetaDBURL    string
-	RedisURL     string
-	HomeStream   string
-	PollInterval time.Duration
-	BatchSize    int
-	StreamMaxLen int64
-	HTTPAddr     string
+	MetaDBURL     string
+	RedisURL      string
+	HomeStream    string
+	PollInterval  time.Duration
+	BatchSize     int
+	StreamMaxLen  int64
+	HTTPAddr      string
+	PruneInterval time.Duration
+	PruneGrace    time.Duration
+	PruneBatch    int
 }
 
 func loadConfig() (config, error) {
@@ -188,6 +224,9 @@ func loadConfig() (config, error) {
 	c.PollInterval = durationEnv("POLL_INTERVAL", time.Second)
 	c.BatchSize = intEnv("BATCH_SIZE", 100)
 	c.StreamMaxLen = int64(intEnv("STREAM_MAXLEN", 0))
+	c.PruneInterval = durationEnv("PRUNE_INTERVAL", time.Hour)
+	c.PruneGrace = durationEnv("PRUNE_GRACE", 7*24*time.Hour) // = meta_outbox @retention_hot
+	c.PruneBatch = intEnv("PRUNE_BATCH", 1000)
 	c.HTTPAddr = os.Getenv("HTTP_ADDR")
 	if c.HTTPAddr == "" {
 		c.HTTPAddr = ":8080"
@@ -222,6 +261,7 @@ type metrics struct {
 	xreality        prometheus.Counter
 	iterationErrors prometheus.Counter
 	pending         prometheus.Gauge
+	pruned          prometheus.Counter
 }
 
 func newMetrics() *metrics {
@@ -232,11 +272,12 @@ func newMetrics() *metrics {
 		xreality:        prometheus.NewCounter(prometheus.CounterOpts{Name: "lw_meta_outbox_xreality_total", Help: "meta_outbox rows ALSO emitted to an xreality.* topic (cross-reality bridge)."}),
 		iterationErrors: prometheus.NewCounter(prometheus.CounterOpts{Name: "lw_meta_outbox_iteration_errors_total", Help: "drain-loop iterations that returned an error."}),
 		pending:         prometheus.NewGauge(prometheus.GaugeOpts{Name: "lw_meta_outbox_pending", Help: "Unpublished, non-dead-lettered meta_outbox rows (drain lag — alert if it grows unbounded, i.e. relay down)."}),
+		pruned:          prometheus.NewCounter(prometheus.CounterOpts{Name: "lw_meta_outbox_pruned_total", Help: "Spent (published, past-grace) meta_outbox rows deleted by the pruner."}),
 	}
 }
 
 func (m *metrics) collectors() []prometheus.Collector {
-	return []prometheus.Collector{m.published, m.retried, m.deadLettered, m.xreality, m.iterationErrors, m.pending}
+	return []prometheus.Collector{m.published, m.retried, m.deadLettered, m.xreality, m.iterationErrors, m.pending, m.pruned}
 }
 
 // ── HTTP ────────────────────────────────────────────────────────────────────
