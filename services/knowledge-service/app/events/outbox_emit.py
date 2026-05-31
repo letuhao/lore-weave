@@ -110,3 +110,48 @@ def entity_snapshot(name: str | None, kind: str | None, aliases: list[str] | Non
         "kind": kind,
         "aliases": list(aliases) if aliases else [],
     }
+
+
+def relation_correction_payload(
+    *,
+    user_id: str,
+    project_id: str | None,
+    book_id: str | None,
+    target_id: str,
+    op: str,
+    before: dict[str, Any] | None,
+    after: dict[str, Any] | None,
+    source_chapter: str | None,
+    actor_id: str,
+) -> dict[str, Any]:
+    """knowledge.relation_corrected payload core."""
+    return {
+        "user_id": user_id,
+        "project_id": project_id,
+        "book_id": book_id,
+        "target_type": "relation",
+        "target_id": target_id,
+        "op": op,
+        "before": before,
+        "after": after,
+        "source_chapter": source_chapter,
+        "actor_type": "user",
+        "actor_id": actor_id,
+        "emitted_at": now_iso(),
+    }
+
+
+def relation_snapshot(rel: Any) -> dict[str, Any] | None:
+    """The diffable relation snapshot learning-service splits — ALL fields are
+    structural (endpoint ids + predicate + confidence + valid_until; no content
+    hash). `rel` is a `Relation` model or None."""
+    if rel is None:
+        return None
+    valid_until = getattr(rel, "valid_until", None)
+    return {
+        "subject_id": getattr(rel, "subject_id", None),
+        "object_id": getattr(rel, "object_id", None),
+        "predicate": getattr(rel, "predicate", None),
+        "confidence": getattr(rel, "confidence", None),
+        "valid_until": valid_until.isoformat() if valid_until is not None else None,
+    }

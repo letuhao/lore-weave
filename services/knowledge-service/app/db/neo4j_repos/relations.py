@@ -56,6 +56,7 @@ __all__ = [
     "RelationHop",
     "relation_id",
     "create_relation",
+    "recreate_relation",
     "find_relations_for_entity",
     "find_relations_2hop",
     "invalidate_relation",
@@ -612,6 +613,95 @@ async def find_relations_2hop(
             )
         )
     return hops
+
+
+# ── recreate_relation (user-correction path) ──────────────────────────
+
+
+# Phase B (F5) — the user-correction recreate. DELIBERATELY SEPARATE from
+# create_relation: its ON MATCH clears `valid_until` (RESURRECTS a previously-
+# invalidated edge) and pins confidence=1.0 + pending_validation=false. The
+# extraction path (create_relation) must NEVER resurrect a user-invalidated
+# edge on re-mention — so this resurrect logic lives in its own query that the
+# extraction writers do not call. A user "correct this relation" produces a
+# fresh, authoritative edge even if the (subject,predicate,object) tuple was
+# invalidated before.
+_RECREATE_RELATION_CYPHER = """
+MATCH (subj:Entity {id: $subject_id})
+WHERE subj.user_id = $user_id
+MATCH (obj:Entity {id: $object_id})
+WHERE obj.user_id = $user_id
+MERGE (subj)-[r:RELATES_TO {id: $relation_id}]->(obj)
+ON CREATE SET
+  r.user_id = $user_id,
+  r.subject_id = $subject_id,
+  r.object_id = $object_id,
+  r.predicate = $predicate,
+  r.confidence = 1.0,
+  r.source_event_ids = [],
+  r.source_chapter = $source_chapter,
+  r.valid_from = datetime(),
+  r.valid_until = NULL,
+  r.pending_validation = false,
+  r.created_at = datetime(),
+  r.updated_at = datetime()
+ON MATCH SET
+  r.confidence = 1.0,
+  r.pending_validation = false,
+  r.valid_until = NULL,
+  r.updated_at = datetime()
+RETURN properties(r) AS rel,
+       properties(subj) AS subj,
+       properties(obj) AS obj
+"""
+
+
+async def recreate_relation(
+    session: CypherSession,
+    *,
+    user_id: str,
+    subject_id: str,
+    predicate: str,
+    object_id: str,
+    source_chapter: str | None = None,
+) -> Relation | None:
+    """User-authored relation (the "correct" path). Creates the
+    `(subject)-[predicate]->(object)` edge with confidence 1.0 and, crucially,
+    **resurrects `valid_until` to NULL** if the tuple was previously
+    invalidated (F5). This is a separate primitive from `create_relation` so
+    the extraction writers can never accidentally revive a user-invalidated
+    edge on re-extraction.
+
+    Returns the edge, or `None` if either endpoint is missing for this user.
+    """
+    if not predicate:
+        raise ValueError("predicate must be a non-empty string")
+    if not subject_id or not object_id:
+        raise ValueError("subject_id and object_id must be non-empty")
+    rid = relation_id(
+        user_id=user_id,
+        subject_id=subject_id,
+        predicate=predicate,
+        object_id=object_id,
+    )
+    result = await run_write(
+        session,
+        _RECREATE_RELATION_CYPHER,
+        user_id=user_id,
+        relation_id=rid,
+        subject_id=subject_id,
+        object_id=object_id,
+        predicate=predicate,
+        source_chapter=source_chapter,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    return _edge_props_to_relation(
+        rel_props=dict(record["rel"]),
+        subject=dict(record["subj"]),
+        object_=dict(record["obj"]),
+    )
 
 
 # ── invalidate_relation ───────────────────────────────────────────────

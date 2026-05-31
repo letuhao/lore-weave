@@ -7,9 +7,17 @@
 
 ## ▶ NEXT SESSION — start here
 
-**State:** Phase-B **BUILD sub-sessions A + B DONE + committed** (session 75). Next = **sub-session C** — the relation + event user-correction edit endpoints (BE + FE) + emission, the last B slice. Design + sequencing: [`docs/specs/2026-05-31-phase-b-correction-capture.md`](../specs/2026-05-31-phase-b-correction-capture.md) §6.4–6.5, §8, §12.
+**State:** Phase-B **BUILD A + B + C1(relations) DONE + committed** (session 75). Next = **C2** — event correction primitives + endpoints + emission; then **C3** — entity MERGE emission; then **C-FE** — the relation/event edit frontend. Design: [`docs/specs/2026-05-31-phase-b-correction-capture.md`](../specs/2026-05-31-phase-b-correction-capture.md) §6.5, §8.
 
-**Sub-session C scope:** new relation correction endpoints (`GET /v1/knowledge/relations/{id}`, `POST .../invalidate`, `POST /relations/correct`) using the **dedicated `recreate_relation`** primitive (F5 — structurally absent from the extraction `create_relation` so re-extraction can't resurrect a user-invalidated edge; add the 2 regression-locks); new event correction primitives (`update_event_fields`/`archive_event` + `:Event.version`) + endpoints; emit `knowledge.relation_corrected`/`knowledge.event_corrected` (reuse `emit_correction`); **+ entity MERGE emission** (deferred from B — `merge_entity_into` → before=source snapshot, after=target, op=merge); FE relation/event edit UI (mirror `EntityEditDialog`). learning-service already consumes + handles all three `knowledge.*_corrected` types (wired in A). Live-smoke each.
+**C1 (relations) shipped (cycle 75d):** `recreate_relation` (F5 — separate from extraction `create_relation`, resurrects `valid_until`; invariant test-locked) + public relations router (`GET /relations/{id}`, `POST /relations/{id}/invalidate`, `POST /relations/correct`) + emit `knowledge.relation_corrected`. Live-smoke PASSED (predicate-fix + spurious-drop, target_type=relation). Correct = recreate-FIRST-then-invalidate (a 409 leaves the old edge intact — no half-applied state).
+
+**C2 (events) scope:** add `version` to `:Event` (ON CREATE=1, bump on edit); `update_event_fields` (same-Cypher before-capture, If-Match) + `archive_event` (read-before, op=delete) in [events.py](../../services/knowledge-service/app/db/neo4j_repos/events.py); new events router (`PATCH /v1/knowledge/events/{id}` 428/412 ETag, `DELETE .../{id}`); emit `knowledge.event_corrected` (add `event_correction_payload`/`event_snapshot` to outbox_emit — structural=`event_date_iso`, content=`title/summary/time_cue/participants`). Extract the duplicated `_parse_if_match`/`_etag` helpers to a shared module (or duplicate per existing convention).
+
+**C3 (merge emission) scope:** `merge_entity_into` ([entities.py router](../../services/knowledge-service/app/routers/public/entities.py)) → emit `knowledge.entity_corrected` op=merge, before=source snapshot (read source via `get_entity` BEFORE merge), after=target. `merge_entities` repo unchanged.
+
+**C-FE scope:** mirror `EntityEditDialog`+`useEntityMutations`+`ifMatch` → `RelationEditDialog` (predicate/endpoint correct + mark-wrong→invalidate, wired from `RelationRow` in `EntityDetailPanel.tsx`) + `EventEditDialog` (title/summary/time + archive, from `TimelineEventRow.tsx`); `api.ts` methods; 44×44 tap targets; visibility-transition tests. Needs its own wireframe + browser smoke.
+
+learning-service already consumes + handles all three `knowledge.*_corrected` types (wired in A). Live-smoke each BE slice.
 
 ### (prior) sub-session B — KS entity-correction emission (session 75c)
 Next was sub-session B; now DONE (see cycle 75c below).
@@ -49,6 +57,19 @@ GOAL: BUILD sub-session A (foundation) per design §12 — learning-service scaf
 Hard gotchas from the design review: origin_event_id := EventData.outbox_id (NOT aggregate_id, NOT message_id); EventData lives in dispatcher.py:19-28; empty outbox_id → DLQ not silent ""; grep outbox_id ≥5 hits before VERIFY.
 ```
 </details>
+
+## Session 75 — cycle 75d: Phase B BUILD C1 — relation corrections (F5)
+
+**AMAW. Relation correction endpoints + the F5-critical `recreate_relation`.**
+
+- **`recreate_relation`** ([relations.py](../../services/knowledge-service/app/db/neo4j_repos/relations.py)) — the user-correct primitive, DELIBERATELY separate from extraction's `create_relation`: its ON MATCH clears `valid_until` (resurrects a previously-invalidated edge) + pins confidence=1.0/pending=false. Extraction's `create_relation` ON MATCH still never touches `valid_until` (F5 invariant — test-locked in `test_recreate_cypher_resurrects_valid_until`, asserting create's ON MATCH has no `valid_until`).
+- **Public relations router** (`/v1/knowledge/relations`): `GET /{id}`, `POST /{id}/invalidate` (op=invalidate, after=null → spurious-drop), `POST /relations/correct` (invalidate old + recreate new). **Correct ordering = recreate-FIRST-then-invalidate** (self-review fix: a 409 on a missing endpoint leaves the old edge intact, no half-applied state) + skips invalidate when the corrected id maps onto the same edge. `after` is re-read post-write (F3).
+- `emit_correction` reused; `relation_correction_payload` + `relation_snapshot` (all-structural: subject/object/predicate/confidence/valid_until) added to outbox_emit.
+- **Tests:** 9 (recreate resurrect-invariant + create-doesn't-resurrect lock; builds-edge; endpoint-missing→None; router GET 404, invalidate happy/404, correct happy/old-404/recreate-409). Full KS unit **1880 pass**.
+- **LIVE SMOKE PASS:** `knowledge.relation_corrected` → relay → learning: `predicate_fix→predicate-fix` + `invalidate→spurious-drop`, target_type=relation, origin_service=knowledge.
+- Self-review caught + fixed the recreate/invalidate ordering; full cold-start adversary deferred to C-complete.
+
+**NEXT:** C2 (events), C3 (merge emission), C-FE. See ▶ NEXT SESSION.
 
 ## Session 75 — cycle 75c: Phase B BUILD sub-session B (KS entity-correction emission)
 
