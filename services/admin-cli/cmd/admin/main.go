@@ -171,9 +171,13 @@ func buildErasureHandler() (framework.Handler, func(), error) {
 	if err != nil {
 		return nil, noop, fmt.Errorf("load allowlist: %w", err)
 	}
-	// Fail-fast: step 7 writes user_consent_ledger via MetaWrite.
-	if !allow.AllowsTable("user_consent_ledger") {
-		return nil, noop, fmt.Errorf("allowlist %s missing user_consent_ledger (erasure step 7 needs it)", allowPath)
+	// Fail-fast: step 7 writes user_consent_ledger + step 3's crypto-shred writes
+	// pii_kek, both via MetaWrite (P2/113). A missing allowlist row would
+	// otherwise fail mid-erasure (ErrTableNotAllowlisted) instead of at startup.
+	for _, tbl := range []string{"user_consent_ledger", "pii_kek"} {
+		if !allow.AllowsTable(tbl) {
+			return nil, noop, fmt.Errorf("allowlist %s missing %q (erasure needs it)", allowPath, tbl)
+		}
 	}
 	// Outbox (P2/101): wire the meta-outbox appender so step 7's
 	// user_consent_ledger UPDATE emits user.consent.revoked into meta_outbox
@@ -217,7 +221,7 @@ func buildErasureHandler() (framework.Handler, func(), error) {
 		sdk, err := pii.NewSDK(pii.Config{
 			KMS:         piikms.NewAWSKMSClient(kmsClient),
 			DB:          piikms.NewPgPIIReader(pool),
-			KEKManager:  piikms.NewPgKEKManager(pool, kmsClient, 30),
+			KEKManager:  piikms.NewPgKEKManager(pool, kmsClient, 30, cfg, inv.Actor),
 			AuditWriter: piikms.NewPgReadAuditWriter(pool),
 			ActorID:     inv.Actor,               // live admin subject (meta_read_audit.actor_id is TEXT)
 			ActorType:   string(meta.ActorAdmin), // enum-valid "admin" (migration-014); typed const, NOT a magic "admin-cli"

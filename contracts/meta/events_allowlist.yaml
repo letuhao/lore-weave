@@ -118,7 +118,7 @@ entries:
   # ── L1.A-2 §2.2 (cycle 3) — KEK envelope; user.erased on UPDATE-with-destroyed_at (crypto-shred)
   - table: pii_kek
     owner: auth-service
-    notes: "L1A §2.2 — per-user KEK. Crypto-shred = UPDATE destroyed_at; emits user.erased so downstream caches purge. xreality_topic feeds meta-worker/user_erased_writer (071) the per-reality cascade. NOTE: today DestroyKEK is a direct set-based UPDATE (sdks/go/piikms), NOT MetaWrite — so user.erased does NOT yet emit; routing the shred onto MetaWrite is D-KEK-DESTROY-VIA-METAWRITE. This binding is the forward-correct routing contract for when it does."
+    notes: "L1A §2.2 — per-user KEK. Crypto-shred = UPDATE destroyed_at; emits user.erased so downstream caches purge. xreality_topic feeds meta-worker/user_erased_writer (071) the per-reality cascade. P2/113: piikms.DestroyKEK shreds via MetaWriteBatch (atomic total shred) with a DOMAIN OutboxPayload {user_id, erased_at} (XRealityUserErasedV1), so user.erased now emits + the relay's xreality bridge promotes user_id/erased_at to top-level fields for 071."
     events:
       - op: UPDATE
         event_name: user.erased

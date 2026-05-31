@@ -58,7 +58,7 @@ func realKMSClient(t *testing.T, endpoint string) *awskms.Client {
 }
 
 func TestLive_ErasePII_WritesRealAuditRow(t *testing.T) {
-	pool := kekPGPool(t) // skips if PIIKMS_TEST_PG_URL unset; applies 009/010/028
+	pool, cfg := kekPGEnv(t) // skips if PIIKMS_TEST_PG_URL unset; applies pii + meta_write_audit + meta_outbox
 	applyReadAuditMigrations(t, pool)
 	ep := os.Getenv("PIIKMS_TEST_KMS_ENDPOINT")
 	if ep == "" {
@@ -79,7 +79,7 @@ func TestLive_ErasePII_WritesRealAuditRow(t *testing.T) {
 	sdk, err := pii.NewSDK(pii.Config{
 		KMS:         NewAWSKMSClient(cl),
 		DB:          NewPgPIIReader(pool),
-		KEKManager:  NewPgKEKManager(pool, cl, 7),
+		KEKManager:  NewPgKEKManager(pool, cl, 7, cfg, actorID),
 		AuditWriter: NewPgReadAuditWriter(pool),
 		ActorID:     actorID,
 		ActorType:   "admin", // BLOCK#1: enum-valid; "admin-cli" would fail the CHECK
@@ -112,7 +112,7 @@ func TestLive_ErasePII_WritesRealAuditRow(t *testing.T) {
 }
 
 func TestLive_PgPIIReader_RoundTrip(t *testing.T) {
-	pool := kekPGPool(t)
+	pool, _ := kekPGEnv(t)
 	ctx := context.Background()
 	user, kek := seedKEK(t, pool, "aws-kms:cmk-"+uuid.NewString())
 
