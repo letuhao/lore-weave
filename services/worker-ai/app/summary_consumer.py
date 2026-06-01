@@ -180,6 +180,13 @@ async def consume_summary_stream(
                 )
             except asyncio.CancelledError:
                 raise
+            except aioredis.TimeoutError:
+                # redis-py 8: a blocking XREADGROUP(block=) with no data within
+                # `block` raises TimeoutError (5.x returned empty). Normal idle —
+                # re-block immediately. TimeoutError IS a RedisError subclass, so
+                # without this it hit the handler below and logged a WARNING +
+                # slept 1s on every idle tick (noise + throughput drag).
+                continue
             except aioredis.RedisError as exc:
                 logger.warning(
                     "summary consumer XREADGROUP failed (will retry): %s", exc,
