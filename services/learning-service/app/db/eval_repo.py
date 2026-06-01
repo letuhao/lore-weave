@@ -61,6 +61,9 @@ SCORE_CONFIG_SEED: list[dict[str, Any]] = [
     {"name": "online_structural_completeness", "data_type": "numeric", "min_value": 0.0, "max_value": 1.0,
      "description": "Online structural health of an extraction run: fraction of core "
                     "categories (entity/relation/event) that produced output. No source/gold needed."},
+    {"name": "online_judge_precision", "data_type": "numeric", "min_value": 0.0, "max_value": 1.0,
+     "description": "Online LLM-judge precision: per-item supported-credit of an extraction "
+                    "vs its source text (Q4b; needs items + source from an opted-in run)."},
 ]
 
 

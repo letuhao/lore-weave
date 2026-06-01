@@ -87,3 +87,68 @@ async def test_handle_acks_even_on_error(monkeypatch):
     r = AsyncMock()
     await runner._handle(r, "1-0", _fields(payload=_run_payload()))
     r.xack.assert_awaited_once()  # best-effort: ack despite the handler error
+
+
+# ── Q4b — judge-path gating ───────────────────────────────────────────
+
+
+def _run():
+    return {"run_id": str(uuid.uuid4()), "user_id": uuid.uuid4(),
+            "project_id": None, "book_id": None, "config_hash": None}
+
+
+def _enable_judge(monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "online_judge_enabled", True)
+    monkeypatch.setattr(settings, "online_judge_model_ref", "jm")
+    monkeypatch.setattr(settings, "online_judge_user_id", "u")
+
+
+async def test_judge_runs_when_opted_in(monkeypatch):
+    _enable_judge(monkeypatch)
+    rj = AsyncMock(return_value={"overall_precision": 0.8})
+    pj = AsyncMock(return_value=uuid.uuid4())
+    monkeypatch.setattr("app.db.online_judge.run_online_judge", rj)
+    monkeypatch.setattr("app.db.online_judge.persist_online_judge", pj)
+    runner = _runner()
+    monkeypatch.setattr(runner, "_ensure_judge_client", AsyncMock(return_value=object()))
+    await runner._maybe_judge(
+        {"judge_panel_id": uuid.uuid4()}, _run(),
+        {"items": {"entity": [{}]}, "source_text": "Alice fell down the hole."},
+    )
+    rj.assert_awaited_once()
+    pj.assert_awaited_once()
+
+
+async def test_judge_skipped_without_items(monkeypatch):
+    _enable_judge(monkeypatch)
+    rj = AsyncMock()
+    monkeypatch.setattr("app.db.online_judge.run_online_judge", rj)
+    runner = _runner()
+    await runner._maybe_judge({"judge_panel_id": uuid.uuid4()}, _run(), {"items": None, "source_text": None})
+    rj.assert_not_awaited()  # no items/source -> structural-only
+
+
+async def test_judge_skipped_when_disabled(monkeypatch):
+    from app.config import settings
+    monkeypatch.setattr(settings, "online_judge_enabled", False)
+    rj = AsyncMock()
+    monkeypatch.setattr("app.db.online_judge.run_online_judge", rj)
+    runner = _runner()
+    await runner._maybe_judge(
+        {"judge_panel_id": uuid.uuid4()}, _run(),
+        {"items": {"entity": [{}]}, "source_text": "x"},
+    )
+    rj.assert_not_awaited()
+
+
+async def test_judge_skipped_without_panel(monkeypatch):
+    _enable_judge(monkeypatch)
+    rj = AsyncMock()
+    monkeypatch.setattr("app.db.online_judge.run_online_judge", rj)
+    runner = _runner()
+    await runner._maybe_judge(
+        {"judge_panel_id": None}, _run(),
+        {"items": {"entity": [{}]}, "source_text": "x"},
+    )
+    rj.assert_not_awaited()  # rule has no judge panel -> structural-only

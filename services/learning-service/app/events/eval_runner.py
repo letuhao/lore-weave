@@ -57,6 +57,7 @@ class EvalRunner:
         self._consumer_name = consumer_name or f"eval-runner-{platform.node()}"
         self._redis: aioredis.Redis | None = None
         self._running = False
+        self._judge_client = None  # lazily built (Q4b)
 
     async def _ensure_redis(self) -> aioredis.Redis:
         if self._redis is None:
@@ -144,6 +145,58 @@ class EvalRunner:
         logger.debug(
             "online eval persisted run=%s completeness=%.2f", run["run_id"], completeness
         )
+        # Q4b — LLM-as-judge, only for opted-in runs that carry items + source.
+        await self._maybe_judge(rule, run, payload)
+
+    async def _ensure_judge_client(self):
+        if self._judge_client is None:
+            from app.clients.llm_client import build_judge_client
+            from app.config import settings
+            self._judge_client = build_judge_client(
+                base_url=settings.provider_registry_internal_url,
+                internal_token=settings.internal_service_token,
+            )
+        return self._judge_client
+
+    async def _maybe_judge(self, rule: dict, run: dict, payload: dict) -> None:
+        """Run the online LLM judge when (a) a judge panel is configured on the
+        rule, (b) online judging is enabled + a judge model is set, and (c) the
+        payload carries the extracted items + source text (an opted-in run —
+        redact-by-default keeps these out of non-opted events)."""
+        from app.config import settings
+        from app.db.online_judge import persist_online_judge, run_online_judge
+
+        if not (settings.online_judge_enabled and rule.get("judge_panel_id")):
+            return
+        if not (settings.online_judge_model_ref and settings.online_judge_user_id):
+            return
+        items = payload.get("items")
+        source_text = payload.get("source_text")
+        if not isinstance(items, dict) or not source_text:
+            return  # not an opted-in run -> structural-only
+
+        client = await self._ensure_judge_client()
+        result = await run_online_judge(
+            client,
+            source_text=source_text,
+            items_by_category=items,
+            judge_model=settings.online_judge_model_ref,
+            model_source=settings.online_judge_model_source,
+            user_id=settings.online_judge_user_id,
+        )
+        await persist_online_judge(
+            self._pool,
+            run_id=run["run_id"],
+            user_id=run["user_id"],
+            judge_model=settings.online_judge_model_ref,
+            judge_result=result,
+            project_id=run["project_id"],
+            book_id=run["book_id"],
+            config_hash=run["config_hash"],
+        )
+        logger.info(
+            "online judge: run=%s precision=%s", run["run_id"], result.get("overall_precision")
+        )
 
     async def stop(self) -> None:
         self._running = False
@@ -151,3 +204,5 @@ class EvalRunner:
     async def close(self) -> None:
         if self._redis is not None:
             await self._redis.aclose()
+        if self._judge_client is not None:
+            await self._judge_client.aclose()
