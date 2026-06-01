@@ -48,6 +48,34 @@ class CorrectionStats(BaseModel):
     by_target_type: dict[str, int]
 
 
+# ── Q2 — gold-label projection (corrections as preference triples) ───
+
+
+class GoldLabelRow(BaseModel):
+    """One correction projected as a gold-label triple: the user's ``preferred``
+    output over the extractor's ``non_preferred`` original (structural + hash
+    only — redact-by-default)."""
+
+    target_type: str
+    target_id: str
+    op: str
+    diff_class: str | None = None
+    non_preferred: dict[str, Any] | None = None  # extractor's original output
+    preferred: dict[str, Any] | None = None       # the user's correction (gold)
+    before_content_hash: str | None = None
+    after_content_hash: str | None = None
+    change_magnitude: int
+    source_chapter: str | None = None
+    source_extraction_run_id: str | None = None
+    origin_service: str
+    created_at: datetime
+
+
+class GoldLabelsResponse(BaseModel):
+    items: list[GoldLabelRow]
+    total: int
+
+
 # ── Phase E2 — mining response models ────────────────────────────────
 
 

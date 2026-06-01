@@ -18,12 +18,13 @@
 
 Baseline tool: `services/learning-service/scripts/materialize_eval_baseline.py <dump> <owner_uuid> [label]`.
 
-**NEXT = Q2 + Q3 (both depend on Q1, parallelizable):**
-- **Q2 (M/L) corrections-as-gold** — PO locked **time-window attribution first** (no node→run link unless noise hurts; verify `get_outcome_recompute` current output). Reconcile BOTH correction routes (`knowledge.*_corrected` + `glossary.entity_updated` actor=user). `gold_labels` projection (structural before=non_preferred/after=preferred + edit-distance).
-- **Q3 (M) chat feedback** — chat-service `message_feedback` table + `POST /v1/chat/messages/{id}/feedback` + outbox `chat.message_feedback`; learning-service `handle_chat_feedback` → `quality_scores`(target_kind=chat_message); add `loreweave:events:chat` to STREAMS; FE thumbs/regenerate.
-- Then **Q3.5 judge calibration** (gates Q4).
+**Q2 DONE (this session)** — corrections-as-gold projection. `app/db/gold.py` `get_gold_labels` projects the corrections log into preference triples (`preferred`=after / `non_preferred`=before + `change_magnitude` = # differing structural keys), redact-by-default (structural + hash only), per-owner, both routes via `origin_service`. `GET /v1/learning/gold-labels` (corrections router). Fixed the stale `get_outcome_recompute` docstring (it uses **time-window attribution** via the `source_extraction_run_id IS NULL` branch — PO-locked; returns one row PER RUN, not empty). **Live-verified**: gold_labels SQL runs (0 corrections→empty), outcome_recompute returns all 14 runs for owner `019d5e3c` (NOT empty). 7 gold tests + 67 lrn suite green. Node→run provenance link deferred (time-window suffices until noise hurts).
 
-(Critical path: Q0✓→Q1✓→Q2→Q3.5→Q4→Q6a→Q6b→Q8; Q9 privacy gate before any cross-tenant Q7 surface. See track doc §5.)
+**NEXT = Q3 then Q3.5:**
+- **Q3 (M) chat feedback** — chat-service `message_feedback` table + `POST /v1/chat/messages/{id}/feedback` + outbox `chat.message_feedback`; learning-service `handle_chat_feedback` → `quality_scores`(target_kind=chat_message); add `loreweave:events:chat` to STREAMS; FE thumbs/regenerate. (Full-stack — fresh session recommended.)
+- **Q3.5 judge calibration** (gates Q4) — consumes Q2 gold_labels: judge-vs-human agreement (balanced acc + Cohen κ ≥ 75-90%); enforce disjoint-median exclude-generator in code.
+
+(Critical path: Q0✓→Q1✓→Q2✓→Q3.5→Q4→Q6a→Q6b→Q8; Q9 privacy gate before any cross-tenant Q7 surface. See track doc §5.)
 
 **Q1 note:** 0.913 historical NOT materialized (it's the retired self-graded number from a different 3-judge dump; PO retired it from gate use, so it's not needed as a row). For c74c's 2 independent judges, full-panel == disjoint == 0.869.
 
