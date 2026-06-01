@@ -7,6 +7,7 @@
 
 ## Document Metadata
 
+- Last Updated: 2026-06-01 **(session 103 — ARCH-1 C5 SHIPPED [arch-unify-chat-rag, human-in-loop v2.2, XL])** [on `arch-unify-chat-rag`] — **reusable `<Chat>` + editor AI panel** (the visible half of ARCH-1). KS `?book_id=` project filter (book↔project link owned by KS); `<Chat>` wraps providers (additive `embedded` mode) + `useEmbeddedChatBinding` (resolve book→project, bind session); editor AI tab enabled, renders `<Chat key={bookId}>`, auto-attaches the chapter. **Live smoke** (rebuilt KS+chat): filter (2→1), session bound, model called memory_search+memory_recall_entity over real wire ({ok,result} envelope) — clears C5 + the C4 tool-call live gap. `/review-impl`: HIGH cross-book bleed fixed (`key={bookId}` remount) + no-DB SQL coverage + patch-fail toast + dead-payload cleanup. **Verify**: FE **672** + KS **70**. **NEXT**: C6 (editor write-back / WA-4).
 - Last Updated: 2026-06-01 **(session 103 — ARCH-1 C4 SHIPPED + first live AG-UI round-trip [arch-unify-chat-rag, human-in-loop v2.2, L])** [on `arch-unify-chat-rag`] — **FE consumes AG-UI end-to-end**. `useChatMessages` parser swapped to an AG-UI `EventType` switch; sends `x-loreweave-stream-format: agui`; 17-field hook contract byte-identical (9 consumers untouched). Dep guard → local `agUiEvents.ts` (avoided `@ag-ui/core`'s zod v3 vs FE zod v4 conflict). **Live round-trip verified** (rebuilt chat-service, real turn via gateway: 3346 events, 100% AG-UI, 0 legacy leak) — clears the C3 stream-seam smoke deferral. `/review-impl`: fixed tool ok/failed at the C3 source (explicit `{ok,...}` TOOL_CALL_RESULT envelope; C4 reads `parsed.ok`) + combined-shape/fallback/abort tests. **Verify**: FE **661** vitest + tsc + build clean; chat-service **309** passed. **NEXT**: C5 (`<Chat>` component + editor AI panel).
 - Last Updated: 2026-06-01 **(session 103 — ARCH-1 C3 SHIPPED [arch-unify-chat-rag, human-in-loop v2.2, L])** [on `arch-unify-chat-rag`] — **AG-UI event emission, per-request header negotiation**. New `app/services/stream_events.py` (`StreamEmitter` + `LegacyEmitter` byte-for-byte + stateful `AgUiEmitter`); `stream_response` 8 emit sites → emitter + `open_run`/`close_message`; `messages.py` reads `x-loreweave-stream-format` (default legacy until C4); tool-call dict gains provider `id`. Full AG-UI lifecycle (RUN_/TEXT_MESSAGE_/REASONING_/TOOL_CALL_/CUSTOM/RUN_FINISHED). `/review-impl`: 3 fixed (post-finish-outside-try kills RUN_FINISHED→RUN_ERROR window; byte-level legacy golden guard; uuid fallback for empty toolCallId) + latent `pool.fetchval` fixture gap. **Verify**: chat **308 passed** (was 269, +39). Default stays legacy → zero visible change on merge. **NEXT**: C4 (FE AG-UI client).
 - Last Updated: 2026-06-01 **(session 103 — ARCH-1/2 C1+C2 SHIPPED [arch-unify-chat-rag, human-in-loop v2.2, XL])** [on `arch-unify-chat-rag`] — **MCP transport dual-run** (adopt LF 3-layer standard per design `618bedd3`). **C1 knowledge-service MCP server facade**: `app/mcp/server.py` (FastMCP `knowledge-memory`, 5 memory tools each a thin shim → existing `executor.execute_tool()`, NO logic dup; `_build_tool_context` derives scope from headers only per D3; constant-time `secrets.compare_digest` token check), mounted `/mcp` in `main.py` (lifespan runs `session_manager.run()`, stopped before pools; non-fatal startup → bespoke `/internal/tools/*` stays up = dual-run). **C2 chat-service MCP client**: `knowledge_client.mcp_execute_tool()` (identical `{success,result,error}` envelope; 30s timeout parity via explicit `sse_read_timeout`; X-Trace-Id forwarding; empty-success→`{}` on BOTH client methods), `USE_MCP_TOOLS` dual-run gate in `stream_service` (**default false** — bespoke path stays live, zero runtime exposure). **Reviews**: Phase-7 (5 LOW fixed + caught dup-deps) + `/review-impl` (21 raised → 18 confirmed, 0 HIGH; all fixed): MCP timeout/trace parity, `mcp ...,<2` boot-safety ceiling, lifespan start/teardown coverage (`test_lifespan_mcp.py`), schema enums/bounds restored (`Literal`/`Field`/`FactType`), infra-error propagation pin, real-handler success-key pins. **Verify**: KS **1952** / chat **269** (independent reruns). **Deferred**: D-ARCH2-MCP-LIVE-SMOKE (real cross-process `/mcp` round-trip before flipping `USE_MCP_TOOLS` true). **NEXT**: C3 (AG-UI events) → C4 (FE AG-UI client) → C5 (`<Chat>` + editor panel) → C6 (editor write-back/WA-4).
@@ -580,6 +581,67 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 ---
 
 ## Current Active Work
+
+### ARCH-1 C5 — Reusable `<Chat>` + editor AI panel (session 103, arch-unify-chat-rag, FS [XL]) ✅
+
+The **visible half of ARCH-1**: packaged `features/chat` as a reusable `<Chat>`
+component and wired it into the editor's previously-disabled "AI Chat" side panel,
+bound to the book's knowledge project with the current chapter auto-attached as
+context. Assisted creation now lives in the writing workspace.
+
+**Part A — knowledge-service `?book_id=` filter (BE).** The book↔project link is
+owned by knowledge-service (`knowledge_projects.book_id`), so the by-book lookup
+went there (not book-service): optional `book_id` query param on
+`GET /v1/knowledge/projects` → `ProjectsRepo.list(book_id=…)` extra WHERE predicate
+(dynamic `$N`, ANDed with the existing `user_id` scope). Repo + router tests + a
+**no-DB SQL-coverage test** asserting the generated query/params for all 4
+cursor/book combos (the integration repo tests skip without `KNOWLEDGE_DB_URL`).
+
+**Part B — reusable `<Chat>` (FE).** `frontend/src/features/chat/Chat.tsx` wraps the
+providers + ChatView. New additive `embedded` flag on `ChatSessionProvider` gates
+URL-reading/navigation (page mode unchanged — regression-tested). Binding logic
+extracted to `useEmbeddedChatBinding.ts` (CLAUDE.md MVC): resolve book→project →
+select existing book-scoped session or prompt-create → patch-bind the session's
+`project_id`. Degrades to no-project memory if the book has no project.
+
+**Part C — editor AI panel (FE).** `ChapterEditorPage` AI tab enabled, renders
+`<Chat key={bookId} bookId={bookId}>`; on tab-open it fires the existing
+`send-to-chat` event so `ChatSessionContext`'s listener auto-attaches the chapter.
+
+**Live smoke (rebuilt KS + chat images) — clears C5 deferral AND the C4 tool-call
+live gap.** `?book_id=` filter live via gateway (2 projects → 1). Session bound to
+the book's project. Model called **`memory_search` + `memory_recall_entity` over the
+real wire** (full `TOOL_CALL_*` ×2) — the C4 `{ok: true, result}` envelope read
+correctly. First live exercise of the whole MCP→AG-UI→tool→envelope chain on a real
+socket (the C4 reasoning-only smoke never hit a tool call).
+
+**`/review-impl` (deep pass; both verifiers read real code): 1 HIGH fixed + 3
+extras.** **HIGH — cross-book session bleed:** `<Chat>` had no `key`, the editor
+route doesn't remount on book change, and `boundRef` latched forever → book B's
+panel kept book A's session AND effect #3 **re-patched book A's session to book B's
+project** (data corruption). Fixed with `key={bookId}` (full per-book remount;
+also resolves a dialog-dismiss dead-end) + a cross-book regression test. **Extras:**
+no-DB SQL `$N` coverage test (MED — the cursor+book combo was untested anywhere);
+patch-failure now toasts instead of silent swallow (+ test); removed the dead `text`
+field from the send-to-chat payload (body is re-fetched at send time — it was never
+consumed). Verifier corrected two of my POST-REVIEW worries (no patch retry-loop;
+empty-text fire was harmless).
+
+**Files.** KS: `app/db/repositories/projects.py`, `app/routers/public/projects.py`,
+`tests/integration/db/test_projects_repo.py`, `tests/unit/test_public_projects.py`,
+`tests/unit/test_projects_repo_sql.py` (new). FE new:
+`features/chat/Chat.tsx`, `features/chat/useEmbeddedChatBinding.ts`,
+`features/chat/__tests__/{useEmbeddedChatBinding,ChatSessionProvider.embedded}.test.tsx`.
+FE modified: `features/chat/providers/ChatSessionContext.tsx`,
+`features/chat/context/sendToChat.ts`, `features/knowledge/{api,types}.ts`,
+`pages/ChapterEditorPage.tsx`.
+
+**VERIFY** (independent reruns): FE **672** vitest + tsc + vite build clean;
+knowledge-service **70** project tests (incl. SQL coverage). Live cross-service smoke
+GREEN.
+
+**NEXT**: C6 (editor write-back / frontend tool-calls / WA-4 — the agent editing the
+document). The backend legacy emitter stays (dual-run) until voice migrates.
 
 ### ARCH-1 C4 — Frontend AG-UI client + first live round-trip (session 103, arch-unify-chat-rag, FE [L]) ✅
 

@@ -132,6 +132,8 @@ export interface ProjectListParams {
   limit?: number;
   cursor?: string | null;
   include_archived?: boolean;
+  // ARCH-1 C5: filter to the project linked to this book (editor AI panel).
+  book_id?: string;
 }
 
 export interface Summary {

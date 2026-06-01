@@ -37,6 +37,7 @@ def _make_project(
     version: int = 1,
     extraction_status: str = "disabled",
     embedding_model: str | None = None,
+    book_id: UUID | None = None,
 ) -> Project:
     now = created_at or datetime.now(timezone.utc)
     return Project(
@@ -45,7 +46,7 @@ def _make_project(
         name=name,
         description="",
         project_type="book",
-        book_id=None,
+        book_id=book_id,
         instructions="",
         extraction_enabled=False,
         extraction_status=extraction_status,
@@ -83,10 +84,12 @@ class FakeProjectsRepo:
         limit: int = 50,
         cursor_created_at: datetime | None = None,
         cursor_project_id: UUID | None = None,
+        book_id: UUID | None = None,
     ) -> list[Project]:
         rows = [
             p for (uid, _), p in self._rows.items()
             if uid == user_id and (include_archived or not p.is_archived)
+            and (book_id is None or p.book_id == book_id)
         ]
         rows.sort(key=lambda p: (p.created_at, p.project_id), reverse=True)
         if cursor_created_at is not None and cursor_project_id is not None:
@@ -230,6 +233,31 @@ def test_list_excludes_archived_by_default(
 
     resp = client.get("/v1/knowledge/projects?include_archived=true")
     assert {p["name"] for p in resp.json()["items"]} == {"active", "dead"}
+
+
+def test_list_filters_by_book_id(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID
+):
+    """C5 (ARCH-1): the editor AI panel resolves a book's project via
+    ?book_id=. Returns only the matching project; empty when none."""
+    book = uuid4()
+    repo.seed(_make_project(auth_user_id, name="linked", book_id=book))
+    repo.seed(_make_project(auth_user_id, name="other", book_id=uuid4()))
+    repo.seed(_make_project(auth_user_id, name="unlinked"))
+
+    resp = client.get(f"/v1/knowledge/projects?book_id={book}")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert [p["name"] for p in items] == ["linked"]
+
+    # a book with no project → empty
+    resp = client.get(f"/v1/knowledge/projects?book_id={uuid4()}")
+    assert resp.json()["items"] == []
+
+
+def test_list_book_id_invalid_uuid_returns_422(client: TestClient):
+    resp = client.get("/v1/knowledge/projects?book_id=not-a-uuid")
+    assert resp.status_code == 422
 
 
 def test_list_pagination_cursor_round_trip(

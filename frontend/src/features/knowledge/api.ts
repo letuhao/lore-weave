@@ -589,6 +589,7 @@ export const knowledgeApi = {
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.cursor) qs.set('cursor', params.cursor);
     if (params.include_archived) qs.set('include_archived', 'true');
+    if (params.book_id) qs.set('book_id', params.book_id);
     const q = qs.toString();
     return apiJson<ProjectListResponse>(
       `${BASE}/projects${q ? `?${q}` : ''}`,

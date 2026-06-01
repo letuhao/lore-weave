@@ -65,7 +65,16 @@ export function useChatSession() {
 
 // ── Provider ───────────────────────────────────────────────────────────────────
 
-export function ChatSessionProvider({ children }: { children: React.ReactNode }) {
+interface ChatSessionProviderProps {
+  children: React.ReactNode;
+  // ARCH-1 C5: embedded mode (e.g. the editor AI panel). When true the
+  // provider does NOT read the URL session param or navigate on selection —
+  // the host owns which session is active. Default false = today's URL-driven
+  // page behavior, unchanged.
+  embedded?: boolean;
+}
+
+export function ChatSessionProvider({ children, embedded = false }: ChatSessionProviderProps) {
   const { t } = useTranslation('chat');
   const { accessToken } = useAuth();
   const navigate = useNavigate();
@@ -87,23 +96,27 @@ export function ChatSessionProvider({ children }: { children: React.ReactNode })
 
   const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
 
-  // Restore session from URL param
+  // Restore session from URL param (page mode only — embedded hosts inject
+  // the active session themselves via selectSession).
   useEffect(() => {
-    if (!urlSessionId || sessions.length === 0) return;
+    if (embedded || !urlSessionId || sessions.length === 0) return;
     const match = sessions.find((s) => s.session_id === urlSessionId);
     if (match && match.session_id !== activeSession?.session_id) {
       setActiveSession(match);
     }
-  }, [urlSessionId, sessions]);
+  }, [embedded, urlSessionId, sessions]);
 
   const selectSession = useCallback((session: ChatSession | null) => {
     setActiveSession(session);
+    // Embedded hosts (editor panel) have no chat route to navigate — selecting
+    // a session is pure state. Page mode keeps URL ↔ session in sync.
+    if (embedded) return;
     if (session) {
       navigate(`/chat/${session.session_id}`, { replace: true });
     } else {
       navigate('/chat', { replace: true });
     }
-  }, [navigate]);
+  }, [embedded, navigate]);
 
   // ── Session CRUD ───────────────────────────────────────────────────────────
 

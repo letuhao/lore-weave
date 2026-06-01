@@ -27,6 +27,8 @@ import { GlossaryAutocomplete } from '@/components/editor/GlossaryAutocomplete';
 import { GlossaryPanel } from '@/components/editor/GlossaryPanel';
 import { glossaryApi } from '@/features/glossary/api';
 import type { EntityNameEntry } from '@/features/glossary/types';
+import { Chat } from '@/features/chat/Chat';
+import { fireSendToChat } from '@/features/chat/context/sendToChat';
 
 function wordCount(text: string): number {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
@@ -60,6 +62,27 @@ export function ChapterEditorPage() {
   // Panels
   const [rightTab, setRightTab] = useState<'history' | 'ai'>('history');
   const [revKey, setRevKey] = useState(0);
+
+  // ARCH-1 C5: when the AI panel opens (or the chapter changes while it's
+  // open), auto-attach the current chapter as chat context via the existing
+  // send-to-chat event. The chat listener re-fetches the chapter body fresh at
+  // send time, so we only pass identity (book/chapter/title) — the title is
+  // read through a ref so editing it doesn't re-fire on every keystroke; only
+  // tab-open / chapter change triggers it. A microtask defer lets <Chat>'s
+  // listener mount first (the defer is belt-and-suspenders for toggle-open).
+  const chapterTitleRef = useRef('');
+  chapterTitleRef.current = title;
+  useEffect(() => {
+    if (rightTab !== 'ai' || !bookId || !chapterId) return;
+    const id = setTimeout(() => {
+      fireSendToChat({
+        bookId,
+        chapterId,
+        chapterTitle: chapterTitleRef.current || 'Untitled chapter',
+      });
+    }, 0);
+    return () => clearTimeout(id);
+  }, [rightTab, bookId, chapterId]);
 
   // Glossary integration
   const [glossaryEntities, setGlossaryEntities] = useState<EntityNameEntry[]>([]);
@@ -700,16 +723,24 @@ export function ChapterEditorPage() {
               </button>
               <button
                 onClick={() => setRightTab('ai')}
-                className={cn('flex-1 cursor-not-allowed px-3 py-2 text-xs text-muted-foreground/40')}
-                title={t('coming_soon')}
-                disabled
+                className={cn('flex-1 px-3 py-2 text-xs font-medium', rightTab === 'ai' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground')}
               >
-                {t('ai_chat')}
+                <Sparkles className="mr-1.5 inline h-3 w-3" />{t('ai_chat')}
               </button>
             </div>
             <div className="flex-1 overflow-hidden">
               {rightTab === 'history' && (
                 <RevisionHistory key={revKey} bookId={bookId} chapterId={chapterId} onRestore={() => void load()} />
+              )}
+              {/* ARCH-1 C5: the editor AI panel — the reusable <Chat> bound to
+                  the book's knowledge project, with the current chapter
+                  auto-attached as context (fired below when the tab opens).
+                  key={bookId} forces a full remount when the user navigates to
+                  a different book, so the per-book binding (session, project,
+                  dialog state) resets instead of bleeding the previous book's
+                  session into the new book (review-impl C5 #1). */}
+              {rightTab === 'ai' && (
+                <Chat key={bookId} bookId={bookId} className="h-full" />
               )}
             </div>
           </div>
