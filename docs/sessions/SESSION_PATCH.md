@@ -7,6 +7,7 @@
 
 ## Document Metadata
 
+- Last Updated: 2026-06-01 **(session 103 — ARCH-1 C4 SHIPPED + first live AG-UI round-trip [arch-unify-chat-rag, human-in-loop v2.2, L])** [on `arch-unify-chat-rag`] — **FE consumes AG-UI end-to-end**. `useChatMessages` parser swapped to an AG-UI `EventType` switch; sends `x-loreweave-stream-format: agui`; 17-field hook contract byte-identical (9 consumers untouched). Dep guard → local `agUiEvents.ts` (avoided `@ag-ui/core`'s zod v3 vs FE zod v4 conflict). **Live round-trip verified** (rebuilt chat-service, real turn via gateway: 3346 events, 100% AG-UI, 0 legacy leak) — clears the C3 stream-seam smoke deferral. `/review-impl`: fixed tool ok/failed at the C3 source (explicit `{ok,...}` TOOL_CALL_RESULT envelope; C4 reads `parsed.ok`) + combined-shape/fallback/abort tests. **Verify**: FE **661** vitest + tsc + build clean; chat-service **309** passed. **NEXT**: C5 (`<Chat>` component + editor AI panel).
 - Last Updated: 2026-06-01 **(session 103 — ARCH-1 C3 SHIPPED [arch-unify-chat-rag, human-in-loop v2.2, L])** [on `arch-unify-chat-rag`] — **AG-UI event emission, per-request header negotiation**. New `app/services/stream_events.py` (`StreamEmitter` + `LegacyEmitter` byte-for-byte + stateful `AgUiEmitter`); `stream_response` 8 emit sites → emitter + `open_run`/`close_message`; `messages.py` reads `x-loreweave-stream-format` (default legacy until C4); tool-call dict gains provider `id`. Full AG-UI lifecycle (RUN_/TEXT_MESSAGE_/REASONING_/TOOL_CALL_/CUSTOM/RUN_FINISHED). `/review-impl`: 3 fixed (post-finish-outside-try kills RUN_FINISHED→RUN_ERROR window; byte-level legacy golden guard; uuid fallback for empty toolCallId) + latent `pool.fetchval` fixture gap. **Verify**: chat **308 passed** (was 269, +39). Default stays legacy → zero visible change on merge. **NEXT**: C4 (FE AG-UI client).
 - Last Updated: 2026-06-01 **(session 103 — ARCH-1/2 C1+C2 SHIPPED [arch-unify-chat-rag, human-in-loop v2.2, XL])** [on `arch-unify-chat-rag`] — **MCP transport dual-run** (adopt LF 3-layer standard per design `618bedd3`). **C1 knowledge-service MCP server facade**: `app/mcp/server.py` (FastMCP `knowledge-memory`, 5 memory tools each a thin shim → existing `executor.execute_tool()`, NO logic dup; `_build_tool_context` derives scope from headers only per D3; constant-time `secrets.compare_digest` token check), mounted `/mcp` in `main.py` (lifespan runs `session_manager.run()`, stopped before pools; non-fatal startup → bespoke `/internal/tools/*` stays up = dual-run). **C2 chat-service MCP client**: `knowledge_client.mcp_execute_tool()` (identical `{success,result,error}` envelope; 30s timeout parity via explicit `sse_read_timeout`; X-Trace-Id forwarding; empty-success→`{}` on BOTH client methods), `USE_MCP_TOOLS` dual-run gate in `stream_service` (**default false** — bespoke path stays live, zero runtime exposure). **Reviews**: Phase-7 (5 LOW fixed + caught dup-deps) + `/review-impl` (21 raised → 18 confirmed, 0 HIGH; all fixed): MCP timeout/trace parity, `mcp ...,<2` boot-safety ceiling, lifespan start/teardown coverage (`test_lifespan_mcp.py`), schema enums/bounds restored (`Literal`/`Field`/`FactType`), infra-error propagation pin, real-handler success-key pins. **Verify**: KS **1952** / chat **269** (independent reruns). **Deferred**: D-ARCH2-MCP-LIVE-SMOKE (real cross-process `/mcp` round-trip before flipping `USE_MCP_TOOLS` true). **NEXT**: C3 (AG-UI events) → C4 (FE AG-UI client) → C5 (`<Chat>` + editor panel) → C6 (editor write-back/WA-4).
 - Last Updated: 2026-06-01 **(session 102 — Phase E2 mining scaffold SHIPPED [lore/eval track, human-in-loop v2.2, L])** [on `main`] — **(1) env knob fix** (`a27afd6c`): worker-ai now reads `KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED` as global default (was hardcoded False; per-project still supersedes). 91→93 tests. **(2) Phase E2 mining scaffold** (6 commits `2a374ecb`–`89069c5a`): design+plan docs / KS `genre TEXT` on `knowledge_projects` (ADD COLUMN IF NOT EXISTS; models + repo) / worker-ai emits `genre` in `extraction_run_completed` payload (JobRow + SELECT + `_run_payload`) / learning-service `genre TEXT` on `extraction_runs` + handler reads payload / `app/db/mining.py` 4 query functions (config_quality explore/exploit + power-user segmentation; model_matrix weighted outcome; default_drift convergent/divergent; outcome_recompute correction-join recipe scaffold — returns empty at cold-start, establishes the join recipe) / `app/routers/mining.py` 4 GET endpoints at `/v1/learning/mining/*` + response models. Gateway: NO change (proxies all `/v1/learning/*`). Guardrails baked in: `success_rate = succeeded/total` (never raw count); `exploration` array from tail (explore/exploit); `segment_power_users`/`power_user_threshold` params. **Verify**: KS 1932 / worker-ai 93 / learning 50 tests pass. Live-smoke deferred (D-E2-LIVE-SMOKE). **NEXT**: D-E2-LIVE-SMOKE OR resume eval R&D arc (cycle-70s independent judges).
@@ -579,6 +580,63 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 ---
 
 ## Current Active Work
+
+### ARCH-1 C4 — Frontend AG-UI client + first live round-trip (session 103, arch-unify-chat-rag, FE [L]) ✅
+
+The chat frontend now consumes the **AG-UI protocol** end-to-end. Replaced the
+hand-rolled SSE parser inside `useChatMessages` with an AG-UI `EventType` switch;
+the request sends `x-loreweave-stream-format: agui`. The hook's **17-field public
+return is byte-identical** — all 9 consumers (MessageList, ThinkingBlock,
+ToolCallIndicator, MemoryIndicator, voice pipeline, ChatInputBar, …) untouched.
+
+**Dependency guard fired → local types.** `@ag-ui/core` depends on `zod@^3` but the
+FE runs `zod@4` (breaking major), so importing it would install a second nested zod
+to deliver ~7 symbols. Per the "don't import what we won't use" rule, pinned the
+canonical AG-UI wire strings + consumed event shapes in a local
+`frontend/src/features/chat/hooks/agUiEvents.ts` instead — zero dep cost, zero
+spec-drift on our subset. **Conscious deviation** from the locked doc's "implement via
+AI-SDK useChat" wording: C3 emits raw AG-UI events, not the AI-SDK data-stream
+`useChat` parses, so `useChat` would need an uncertain bridge.
+
+**Event mapping** (AG-UI → existing hook state, all downstream effects unchanged):
+`REASONING_MESSAGE_CONTENT`→reasoning accum + thinking phase; `TEXT_MESSAGE_CONTENT`→
+text accum + responding phase; `TOOL_CALL_START`+`TOOL_CALL_RESULT`→`{tool,ok}` chip;
+`CUSTOM(memoryMode)`→`onMemoryModeRef`; `CUSTOM(persisted)`→message id; `RUN_FINISHED`
+→usage/timing; `RUN_ERROR`→throw→existing catch. Framing-only events (START/END) are
+no-ops; no `[DONE]` in agui.
+
+**🎯 First live cross-process AG-UI round-trip — clears the C3 stream-seam smoke
+deferral.** Rebuilt the chat-service image (running container was a 4h-old pre-C3
+image), sent a real turn through the gateway with the agui header: **3346 events,
+100% AG-UI, zero legacy leak** — `RUN_STARTED → CUSTOM(memoryMode) → REASONING_*
+fully framed → CUSTOM(persisted) → RUN_FINISHED{usage,timing,messageId}`. Happened
+to be a reasoning-only turn (50s think, no final text) → exercised C3's
+close-before-finish path on a real socket; it held.
+
+**`/review-impl` (deep pass; verified the live emission order + all 5 memory-handler
+success shapes): 1 fixed at source, 1 dismissed, coverage added.** **Fixed (#1, was
+MED→LOW):** C4 inferred tool ok/failed by sniffing for an `error` key in the result
+payload — a cross-service implicit invariant (not exploitable today: no handler
+success dict has a top-level `error`, but a future one could). **Fixed at the C3
+source**: `TOOL_CALL_RESULT.content` now carries an explicit `{ok, result}`/`{ok,
+error}` envelope (spec-legal JSON string); C4 reads `parsed.ok` directly. **Dismissed:**
+memory-mode badge timing (CUSTOM still precedes the first content event — preserved).
+**Coverage added:** full combined reasoning+tool+text turn, message-id fallback,
+abort-mid-stream, ok-not-misread-from-result-error-key.
+
+**Files.** FE new: `hooks/agUiEvents.ts`, `hooks/__tests__/useChatMessages.agui.test.tsx`.
+FE modified: `hooks/useChatMessages.ts`, `hooks/__tests__/useChatMessages.toolCalls.test.tsx`.
+chat-service (C3 envelope follow-up): `app/services/stream_events.py`,
+`tests/test_stream_events.py`.
+
+**VERIFY** (independent reruns): FE **661** vitest passed + tsc + vite build clean;
+chat-service **309** passed. NOTE: the `{ok,...}` envelope change postdates the live
+smoke (which was reasoning-only, no tool call) — covered by unit tests on both sides;
+a tool-call live turn would re-confirm it.
+
+**NEXT**: C5 (`<Chat>` reusable component + wire the editor AI panel) → C6 (editor
+write-back / frontend tool-calls / WA-4). The backend legacy emitter stays (dual-run)
+until other clients (voice) are confirmed migrated.
 
 ### ARCH-1 C3 — AG-UI event emission from chat stream (session 103, arch-unify-chat-rag, BE [L]) ✅
 

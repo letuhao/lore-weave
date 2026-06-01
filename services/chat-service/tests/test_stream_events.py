@@ -208,7 +208,8 @@ class TestAgUiEmitter:
         assert start["toolCallName"] == "memory_search"
         assert start["parentMessageId"] == "msg-1"
         assert json.loads(args["delta"]) == {"query": "Kai"}
-        assert json.loads(result["content"]) == {"hits": [1]}
+        # content carries the authoritative ok flag + the result envelope.
+        assert json.loads(result["content"]) == {"ok": True, "result": {"hits": [1]}}
         assert result["role"] == "tool"
 
     def test_tool_call_missing_id_gets_synthesized_unique_id(self):
@@ -229,7 +230,18 @@ class TestAgUiEmitter:
         tc = {"id": "c1", "tool": "memory_search", "args": {}, "ok": False,
               "result": None, "error": "entity not found"}
         result = _parse(em.tool_call(tc)[-1])
-        assert json.loads(result["content"]) == {"error": "entity not found"}
+        assert json.loads(result["content"]) == {"ok": False, "error": "entity not found"}
+
+    def test_tool_call_ok_flag_independent_of_result_shape(self):
+        # review-impl C4 #1: a SUCCESSFUL result that itself contains an
+        # "error" key must still carry ok=True, so the client can't misread it.
+        em = self._em()
+        tc = {"id": "c1", "tool": "memory_search", "args": {}, "ok": True,
+              "result": {"hits": [], "error": None}, "error": None}
+        result = _parse(em.tool_call(tc)[-1])
+        payload = json.loads(result["content"])
+        assert payload["ok"] is True
+        assert payload["result"] == {"hits": [], "error": None}
 
     def test_tool_call_does_not_close_open_text(self):
         em = self._em()

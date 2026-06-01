@@ -2,6 +2,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/auth';
 import { chatApi } from '../api';
 import type { ChatMessage, ToolCallRecord } from '../types';
+import { AgUiEventType } from './agUiEvents';
+import type {
+  CustomEvent as AgUiCustomEvent,
+  ReasoningMessageContentEvent,
+  RunErrorEvent,
+  RunFinishedEvent,
+  TextMessageContentEvent,
+  ToolCallResultEvent,
+  ToolCallStartEvent,
+} from './agUiEvents';
 
 type StreamStatus = 'idle' | 'streaming' | 'error';
 type StreamPhase = 'idle' | 'thinking' | 'responding';
@@ -86,6 +96,11 @@ export function useChatMessages(sessionId: string | null) {
       // to the locally-appended assistantMessage so the indicator works
       // from the live stream without a refetch.
       const accumulatedToolCalls: ToolCallRecord[] = [];
+      // ARCH-1 C4: AG-UI frames a tool call across TOOL_CALL_START (carries the
+      // name) and TOOL_CALL_RESULT (carries ok). Hold the name by toolCallId
+      // between the two so the resolved record is {tool, ok} like the legacy
+      // `tool-call` event produced in one shot.
+      const openToolCalls = new Map<string, string>();
       let streamMessageId: string | null = null;
       let streamUsage: { promptTokens?: number; completionTokens?: number } = {};
       let streamTiming: { responseTimeMs?: number; timeToFirstTokenMs?: number } = {};
@@ -118,6 +133,10 @@ export function useChatMessages(sessionId: string | null) {
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${accessToken}`,
+            // ARCH-1 C4: request the AG-UI event protocol (chat-service C3).
+            // The backend defaults to the legacy vocabulary for any client
+            // that doesn't send this, so other consumers are unaffected.
+            'x-loreweave-stream-format': 'agui',
           },
           body: JSON.stringify(body),
           signal: controller.signal,
@@ -148,49 +167,97 @@ export function useChatMessages(sessionId: string | null) {
             if (payload === '[DONE]') continue;
 
             try {
-              const event = JSON.parse(payload);
-              if (event.type === 'reasoning-delta' && event.delta) {
-                if (accumulatedReasoning === '') {
-                  setStreamPhase('thinking');
-                  startThinkingTimer();
+              // ARCH-1 C4: the stream now speaks the AG-UI protocol (chat
+              // service C3). Map each AG-UI event onto the same internal
+              // accumulators/phases the legacy parser drove, so every
+              // consumer of this hook is unaffected. Framing-only events
+              // (TEXT_MESSAGE_START/END, REASONING_* boundaries,
+              // TOOL_CALL_ARGS/END) need no handling — the hook lazily
+              // transitions phase on the first content delta.
+              const event = JSON.parse(payload) as { type?: string };
+              switch (event.type) {
+                case AgUiEventType.REASONING_MESSAGE_CONTENT: {
+                  const delta = (event as ReasoningMessageContentEvent).delta;
+                  if (!delta) break;
+                  if (accumulatedReasoning === '') {
+                    setStreamPhase('thinking');
+                    startThinkingTimer();
+                  }
+                  accumulatedReasoning += delta;
+                  setStreamingReasoning(accumulatedReasoning);
+                  onStreamDeltaRef.current?.(delta, 'reasoning');
+                  break;
                 }
-                accumulatedReasoning += event.delta;
-                setStreamingReasoning(accumulatedReasoning);
-                onStreamDeltaRef.current?.(event.delta, 'reasoning');
-              } else if (event.type === 'text-delta' && event.delta) {
-                if (accumulatedContent === '' && accumulatedReasoning !== '') {
-                  // Transition from thinking → responding
-                  stopThinkingTimer();
-                  setStreamPhase('responding');
-                } else if (accumulatedContent === '') {
-                  setStreamPhase('responding');
+                case AgUiEventType.TEXT_MESSAGE_CONTENT: {
+                  const delta = (event as TextMessageContentEvent).delta;
+                  if (!delta) break;
+                  if (accumulatedContent === '' && accumulatedReasoning !== '') {
+                    // Transition from thinking → responding
+                    stopThinkingTimer();
+                    setStreamPhase('responding');
+                  } else if (accumulatedContent === '') {
+                    setStreamPhase('responding');
+                  }
+                  accumulatedContent += delta;
+                  setStreamingText(accumulatedContent);
+                  onStreamDeltaRef.current?.(delta, 'content');
+                  break;
                 }
-                accumulatedContent += event.delta;
-                setStreamingText(accumulatedContent);
-                onStreamDeltaRef.current?.(event.delta, 'content');
-              } else if (event.type === 'memory-mode' && event.mode) {
-                // K-CLEAN-5 (D-K8-04): chat-service emits this as the
-                // first SSE event of every turn so the FE can flip the
-                // header indicator before any tokens render. Mode is
-                // one of 'no_project' | 'static' | 'degraded'.
-                onMemoryModeRef.current?.(event.mode);
-              } else if (event.type === 'tool-call' && event.tool) {
-                // K21-C (D2): chat-service emits a `tool-call` event
-                // per memory tool invocation in the turn's tool loop.
-                // Accumulate {tool, ok} for the indicator. `ok`
-                // defaults to false so a malformed event degrades to a
-                // failed-call chip rather than a misleading success.
-                accumulatedToolCalls.push({
-                  tool: String(event.tool),
-                  ok: event.ok === true,
-                });
-              } else if (event.type === 'data' && event.data?.[0]) {
-                streamMessageId = event.data[0].message_id || null;
-              } else if (event.type === 'finish-message') {
-                streamUsage = event.usage || {};
-                streamTiming = event.timing || {};
-              } else if (event.type === 'error') {
-                throw new Error(event.errorText || 'Stream error');
+                case AgUiEventType.TOOL_CALL_START: {
+                  // Hold the tool name until its RESULT resolves (AG-UI frames
+                  // a tool call across START → … → RESULT).
+                  const e = event as ToolCallStartEvent;
+                  if (e.toolCallId) openToolCalls.set(e.toolCallId, e.toolCallName);
+                  break;
+                }
+                case AgUiEventType.TOOL_CALL_RESULT: {
+                  // K21-C (D2): one chip per executed memory tool. The server
+                  // encodes the authoritative outcome as {ok, result|error}
+                  // inside content (chat-service C3) — we read `ok` directly
+                  // rather than inferring it from payload shape, so a tool
+                  // result that legitimately contains an "error" field can't be
+                  // misread as a failure.
+                  const e = event as ToolCallResultEvent;
+                  const tool = openToolCalls.get(e.toolCallId);
+                  if (tool === undefined) break; // RESULT without a START — skip
+                  openToolCalls.delete(e.toolCallId);
+                  let ok = true;
+                  try {
+                    const parsed = JSON.parse(e.content);
+                    if (parsed && typeof parsed === 'object' && parsed.ok === false) {
+                      ok = false;
+                    }
+                  } catch {
+                    // non-JSON content → treat as a successful opaque result
+                  }
+                  accumulatedToolCalls.push({ tool, ok });
+                  break;
+                }
+                case AgUiEventType.CUSTOM: {
+                  const e = event as AgUiCustomEvent;
+                  if (e.name === 'memoryMode') {
+                    // K-CLEAN-5 (D-K8-04): flip the header memory indicator.
+                    // Mode is 'no_project' | 'static' | 'degraded'.
+                    const mode = e.value?.mode;
+                    if (mode) onMemoryModeRef.current?.(mode as 'no_project' | 'static' | 'degraded');
+                  } else if (e.name === 'persisted') {
+                    // The saved message id (+ output id / has_reasoning).
+                    streamMessageId = (e.value?.messageId as string) || null;
+                  }
+                  break;
+                }
+                case AgUiEventType.RUN_FINISHED: {
+                  const result = (event as RunFinishedEvent).result;
+                  streamUsage = result?.usage || {};
+                  streamTiming = result?.timing || {};
+                  break;
+                }
+                case AgUiEventType.RUN_ERROR: {
+                  throw new Error((event as RunErrorEvent).message || 'Stream error');
+                }
+                // RUN_STARTED + all framing-only events: no-op.
+                default:
+                  break;
               }
             } catch (parseErr) {
               if (parseErr instanceof SyntaxError) continue;

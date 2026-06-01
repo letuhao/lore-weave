@@ -226,10 +226,16 @@ class AgUiEmitter:
         # id we synthesize a unique one so the four events still correlate and
         # two id-less calls in the same turn can't collide on "".
         tool_id = tc.get("id") or str(uuid4())
+        # TOOL_CALL_RESULT.content is a string per AG-UI; we put a structured
+        # envelope inside it carrying the authoritative `ok` flag (the same
+        # tc["ok"] the legacy path emits) plus the result/error. The client
+        # reads `ok` directly rather than inferring success from payload shape,
+        # so a tool result that legitimately contains an "error" field can't be
+        # misread as a failure (review-impl C4 #1).
         if tc.get("ok"):
-            content = json.dumps(tc.get("result"))
+            content = json.dumps({"ok": True, "result": tc.get("result")})
         else:
-            content = json.dumps({"error": tc.get("error")})
+            content = json.dumps({"ok": False, "error": tc.get("error")})
         return [
             _sse({
                 "type": "TOOL_CALL_START",
