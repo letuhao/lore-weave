@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 STREAMS = [
     "loreweave:events:glossary",
     "loreweave:events:knowledge",
+    "loreweave:events:chat",  # Q3 — chat.message_feedback (user thumbs/regenerate)
 ]
 GROUP_NAME = "learning-collector"
 MAX_RETRIES = 3

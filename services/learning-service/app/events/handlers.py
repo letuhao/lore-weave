@@ -22,6 +22,7 @@ from typing import Any
 
 import asyncpg
 
+from app.db.eval_repo import persist_consumed_score
 from app.events.diff_class import derive_diff_class
 from app.events.dispatcher import EventData
 from app.events.snapshot import split_snapshot
@@ -339,4 +340,49 @@ async def handle_config_adjusted(event: EventData, *, pool: asyncpg.Pool) -> Non
     logger.debug(
         "config_adjustment persisted: target=%s origin=knowledge:%s",
         target, origin_event_id,
+    )
+
+
+async def handle_chat_feedback(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`chat.message_feedback` → a `quality_scores` row (track Q3).
+
+    The user's explicit thumbs (+1/-1) or implicit regenerate-as-negative on a
+    chat turn becomes a `source='human'` quality_score keyed to the message
+    (`target_kind='chat_message'`, `metric_name='chat_user_rating'`). Validated
+    against score_config; idempotent on the relay `outbox_id`. An empty
+    `outbox_id` or missing `user_id` raises → DLQ (R3-W1)."""
+    payload = event.payload
+    if not event.outbox_id:
+        raise ValueError(
+            "chat.message_feedback has empty outbox_id — refusing to insert"
+        )
+    message_id = payload.get("message_id") or event.aggregate_id
+    user_id = _uuid_or_none(payload.get("user_id"))
+    if user_id is None or not message_id:
+        raise ValueError(
+            "chat.message_feedback missing user_id/message_id "
+            f"(user_id={payload.get('user_id')!r} message_id={message_id!r}) — refusing"
+        )
+    try:
+        rating = float(payload.get("rating"))
+    except (TypeError, ValueError) as e:
+        raise ValueError(
+            f"chat.message_feedback rating not numeric: {payload.get('rating')!r}"
+        ) from e
+
+    await persist_consumed_score(
+        pool,
+        target_kind="chat_message",
+        target_id=str(message_id),
+        user_id=user_id,
+        metric_name="chat_user_rating",
+        value_num=rating,
+        source="human",
+        origin_service="chat",
+        origin_event_id=event.outbox_id,
+        comment=payload.get("reason"),
+    )
+    logger.debug(
+        "chat feedback persisted: message=%s rating=%s origin=chat:%s",
+        message_id, rating, event.outbox_id,
     )

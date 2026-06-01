@@ -56,6 +56,8 @@ SCORE_CONFIG_SEED: list[dict[str, Any]] = [
      "description": "Per-judge macro recall over chapters."},
     {"name": "fleiss_kappa", "data_type": "numeric", "min_value": -1.0, "max_value": 1.0,
      "description": "Inter-judge agreement (Fleiss kappa)."},
+    {"name": "chat_user_rating", "data_type": "numeric", "min_value": -1.0, "max_value": 1.0,
+     "description": "Explicit user rating of a chat turn (+1 up / -1 down; regenerate = -1)."},
 ]
 
 
@@ -226,6 +228,52 @@ async def persist_eval_result(
                 )
 
     return eval_run_id
+
+
+async def persist_consumed_score(
+    pool: asyncpg.Pool,
+    *,
+    target_kind: str,
+    target_id: str,
+    user_id: UUID,
+    metric_name: str,
+    source: str,
+    origin_service: str,
+    origin_event_id: str,
+    value_num: float | None = None,
+    value_label: str | None = None,
+    book_id: UUID | None = None,
+    comment: str | None = None,
+    judge_model: str = "",
+) -> bool:
+    """Persist a quality_score from a CONSUMED event (chat feedback Q3; future
+    human/heuristic signals). Validated against score_config; idempotent on the
+    relay's ``(origin_service, origin_event_id)`` dedup key. Returns True if a
+    new row was inserted, False on conflict. An empty ``origin_event_id`` is a
+    hard error (the handler lets it bubble to the DLQ rather than collapse the
+    log with "")."""
+    if not origin_event_id:
+        raise ValueError(
+            f"consumed score from {origin_service} has empty origin_event_id — refusing to insert"
+        )
+    async with pool.acquire() as conn:
+        cfgs = await _load_score_configs(conn)
+        data_type = _validate_score(cfgs, metric_name, value_num, value_label)
+        status = await conn.execute(
+            """
+            INSERT INTO quality_scores
+              (target_kind, target_id, user_id, book_id, metric_name, value_num,
+               value_label, data_type, source, judge_model, comment,
+               origin_service, origin_event_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            ON CONFLICT (origin_service, origin_event_id)
+              WHERE origin_event_id IS NOT NULL DO NOTHING
+            """,
+            target_kind, target_id, user_id, book_id, metric_name, value_num,
+            value_label, data_type, source, judge_model, comment,
+            origin_service, origin_event_id,
+        )
+    return status.endswith(" 1")  # "INSERT 0 1" inserted vs "INSERT 0 0" conflict
 
 
 def _parse_eval_run_row(row: asyncpg.Record) -> dict:

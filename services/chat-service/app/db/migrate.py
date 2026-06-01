@@ -147,6 +147,28 @@ DO $$ BEGIN
     ALTER TABLE chat_messages ADD COLUMN tool_calls JSONB;
   END IF;
 END $$;
+
+-- ══════════════════════════════════════════════════════════════════════
+-- Track "Production Eval + Feedback Flywheel" — Q3: chat-turn feedback.
+-- The only absent feedback primitive (chat-service had none). Captures
+-- explicit thumbs/rating + implicit regenerate-as-negative; emitted via the
+-- existing outbox -> relay -> loreweave:events:chat -> learning-service, which
+-- writes a quality_scores row (target_kind=chat_message, source=human).
+-- ══════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS message_feedback (
+  id                         UUID PRIMARY KEY DEFAULT uuidv7(),
+  message_id                 UUID NOT NULL REFERENCES chat_messages(message_id) ON DELETE CASCADE,
+  session_id                 UUID NOT NULL,
+  user_id                    UUID NOT NULL,                  -- corpus owner (== message owner)
+  rating                     SMALLINT NOT NULL,             -- +1 thumb up, -1 thumb down
+  reason                     TEXT,                          -- optional free-text / 'regenerated'
+  regenerated_from_message_id UUID,                         -- set when this is the implicit negative from a regenerate
+  created_at                 TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_message_feedback_message
+  ON message_feedback(message_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_message_feedback_user
+  ON message_feedback(user_id, created_at DESC);
 """
 
 

@@ -20,6 +20,7 @@ from app.db.pool import close_pool, create_pool, get_pool
 from app.events.consumer import EventConsumer
 from app.events.dispatcher import EventDispatcher
 from app.events.handlers import (
+    handle_chat_feedback,
     handle_config_adjusted,
     handle_glossary_entity_updated,
     handle_knowledge_corrected,
@@ -41,6 +42,7 @@ def build_dispatcher() -> EventDispatcher:
     dispatcher.register("knowledge.event_corrected", handle_knowledge_corrected)
     dispatcher.register("knowledge.extraction_run_completed", handle_run_completed)
     dispatcher.register("knowledge.config_adjusted", handle_config_adjusted)
+    dispatcher.register("chat.message_feedback", handle_chat_feedback)  # Q3
     return dispatcher
 
 
