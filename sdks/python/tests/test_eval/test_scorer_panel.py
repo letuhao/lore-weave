@@ -86,6 +86,9 @@ def test_score_dump_reproduces_metric_of_record() -> None:
     assert round(result.disjoint_median_f1, 3) == 0.869
     assert round(result.disjoint_ci_low, 3) == 0.842
     assert round(result.disjoint_ci_high, 3) == 0.895
+    # Q3.5 — gemma + phi4 are both independent (neither is the qwen
+    # extractor/filter), so the metric-of-record panel is safe.
+    assert result.panel_safe is True
 
 
 @pytest.mark.skipif(not _C74C.is_dir(), reason="c74c baseline dump not present")

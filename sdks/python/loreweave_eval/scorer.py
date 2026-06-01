@@ -17,6 +17,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .calibration import panel_safety
 from .compute_ensemble_macros import (
     _median,
     disjoint_median_with_ci,
@@ -56,6 +57,10 @@ class EvalResult:
     n_common_chapters: int = 0
     fleiss_kappa: float | None = None
     n_judges_total: int = 0
+    # Q3.5 — anti-self-reinforcement, enforced + visible. False when the
+    # metric-of-record panel has <2 disjoint judges or a generator self-grades.
+    panel_safe: bool = False
+    panel_safety_reason: str = ""
 
 
 def _read_fleiss(dump_root: Path) -> float | None:
@@ -101,6 +106,8 @@ def score_dump(
     disjoint = [j for j in judges if j["uuid"] not in panel.excluded]
     res = disjoint_median_with_ci(disjoint, n_boot=n_boot)
 
+    safety = panel_safety(panel.excluded, [j["uuid"] for j in judges])
+
     return EvalResult(
         variant_label=variant_label or dump_root.name,
         per_judge=per_judge,
@@ -112,4 +119,6 @@ def score_dump(
         n_common_chapters=res["n_common_chapters"],
         fleiss_kappa=_read_fleiss(dump_root),
         n_judges_total=len(judges),
+        panel_safe=safety.safe,
+        panel_safety_reason=safety.reason,
     )

@@ -45,6 +45,13 @@ __all__ = [
     "score_dump",
     "EvalSink",
     "FileSink",
+    # calibration (Q3.5) — pure, but lazy to keep import loreweave_eval cheap
+    "calibrate_judge",
+    "JudgeCalibration",
+    "panel_safety",
+    "PanelSafety",
+    "cohen_kappa",
+    "balanced_accuracy",
 ]
 
 _LAZY = {
@@ -53,6 +60,12 @@ _LAZY = {
     "score_dump": ("scorer", "score_dump"),
     "EvalSink": ("sinks", "EvalSink"),
     "FileSink": ("sinks", "FileSink"),
+    "calibrate_judge": ("calibration", "calibrate_judge"),
+    "JudgeCalibration": ("calibration", "JudgeCalibration"),
+    "panel_safety": ("calibration", "panel_safety"),
+    "PanelSafety": ("calibration", "PanelSafety"),
+    "cohen_kappa": ("calibration", "cohen_kappa"),
+    "balanced_accuracy": ("calibration", "balanced_accuracy"),
 }
 
 
