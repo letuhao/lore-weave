@@ -92,6 +92,10 @@ class EvalRunner:
             except asyncio.CancelledError:
                 logger.info("eval-runner cancelled, shutting down")
                 break
+            except aioredis.TimeoutError:
+                # redis-py 8: a blocking XREADGROUP with no data within `block`
+                # raises TimeoutError (5.x returned empty). Normal idle — re-block.
+                continue
             except aioredis.ConnectionError:
                 logger.warning("eval-runner redis lost; reconnecting in 5s")
                 self._redis = None

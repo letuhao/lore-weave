@@ -29,11 +29,22 @@ Baseline tool: `services/learning-service/scripts/materialize_eval_baseline.py <
 
 **Q4a DONE (online-eval consumer, this session)** — the flywheel now samples production runs automatically. Online eval of a production chapter has NO gold/source (golden-set P/R/F1 N/A), so per the PO-locked structural-first decision the signal is `structural_completeness` = fraction of core categories (entity/relation/event) with output (`app/db/online_eval.py`). New **`eval-runner`** second Redis consumer group on `loreweave:events:knowledge` (`app/events/eval_runner.py`) — best-effort (droppable, no DLQ), **every msg XACKed** (sampled-out immediately, no PEL churn), group at `$` (forward-looking). `should_sample` = deterministic `sha256(run_id) mod` (idempotent re-delivery). `online_eval_rule` table (rate+enabled, seeded global default 0.1). `persist_online_eval` → `eval_runs`(source=online, idempotent `online:<run_id>`) + `quality_scores`(online_structural_completeness, validated). **Cleared Q3.5 defer:** `panel_safe`/`panel_safety_reason` columns on `eval_runs`; `persist_eval_result` writes them. Wired into `main.py` lifespan (gated `online_eval_enabled`). **Verified:** 15 Q4 + 89 learning suite. **Live (Postgres :5555):** migration idempotent ×2, rule seeded, 14 runs eval'd + idempotent, `panel_safe=True`; **real completeness dist 0.0×3 / 0.33×3 / 0.67×8** (3 degenerate runs surfaced; none reached 1.0 — a genuine pipeline-health finding). Smoke rows cleaned up.
 
-**NEXT (Q4 structural done; the LLM-judge half + downstream phases):**
-- **Q4b (LLM-judge online eval)** — the richer semantic signal. Needs `save_raw_extraction` opt-in (source text) + per-item judge verdict persistence (so Q3.5 `calibrate_judge` runs live). Host-orchestrate the judge via provider-registry :8208 (NOT in-container 26B); sorted-set paced queue as the cost governor; call `panel_safety` to gate. Data-gated (0 opted-in projects today).
-- **Q5 (L) eval-case dataset from failures** (depends Q2) — promote corrections + judge-disagreement + (later) shadow-divergence into versioned `eval_cases` (frozen fixtures); filtered-view not annotation-queue (critique). Now unblocked.
-- **Q6a/b (shadow runs)** (depends Q4) — replay a challenger config on real chapters, log structural projection, paired compare. Now unblocked.
-- Deferred: **D-Q3-CHAT-FEEDBACK-E2E** + **D-Q4-EVAL-RUNNER-E2E** (both need `docker compose build` to live-smoke the consumer loops).
+**★ FULL LIVE E2E Q0→Q4 PASSED (this session)** — rebuilt + restarted learning-service + chat-service containers, ran the whole flywheel through the gateway (:3123):
+- **Q1**: `GET /v1/learning/eval-runs` → test-acct baseline (0.869, 2 judges); `/{id}` detail → 2 per-judge results. Owner-isolation confirmed (the 019d4966 baseline is invisible to other users).
+- **Q2**: `GET /v1/learning/gold-labels` → 200 (empty, 0 corrections).
+- **Q3a** (FULL cross-service): gateway `POST /v1/chat/messages/{id}/feedback` → chat `message_feedback` → outbox → relay → `loreweave:events:chat` → learning → `quality_scores`(chat_user_rating=1.0, source=human, origin=chat). ✓
+- **Q3.5**: `panel_safe=True` ("2 disjoint judges, no generator in panel") persisted on the baseline.
+- **Q4**: injected a synthetic `extraction_run_completed` onto the knowledge stream → **eval-runner consumed it in the live container** → `eval_runs`(source=online, completeness=1.0). ✓
+- **D-Q3-CHAT-FEEDBACK-E2E + D-Q4-EVAL-RUNNER-E2E → CLEARED.** Synthetic E2E data cleaned up; rule rate reset to 0.1.
+
+**⚠ Regression fixed during E2E (`<commit>`)**: the rebuild pulled **redis-py 8.0** (`redis>=5.0` unpinned). In redis-py 8 a blocking `XREADGROUP(block=N)` with no data raises `TimeoutError` (5.x returned empty) → BOTH learning consumers hot-looped. Fixed: catch `aioredis.TimeoutError` → `continue` (normal idle) in `consumer.py` + `eval_runner.py`. **Platform risk (D-REDIS8-CONSUMERS):** knowledge-service `consumer.py` + any other blocking Redis consumer have the same unpinned dep + pattern — they'll hot-loop on their next rebuild until they get the same catch OR redis is pinned `<8`.
+
+**NEXT (Q4 structural done; LLM-judge half + downstream):**
+- **Q4b (LLM-judge online eval)** — richer semantic signal. Needs `save_raw_extraction` opt-in (source text) + per-item judge verdict persistence (so Q3.5 `calibrate_judge` runs live). Host-orchestrate judge via provider-registry :8208 (NOT in-container 26B); sorted-set paced queue cost governor. Data-gated (0 opted-in projects).
+- **Q5 (L) eval-case dataset from failures** (depends Q2) — versioned `eval_cases` from corrections + judge-disagreement; filtered-view not annotation-queue (critique). Unblocked.
+- **Q6a/b (shadow runs)** (depends Q4) — replay challenger config, log projection, paired compare. Unblocked.
+- Small: add `panel_safe` to the `eval-runs` read model + `list_eval_runs`/`get_eval_run` queries (column is written + live-confirmed, just not surfaced by the API yet).
+- **D-REDIS8-CONSUMERS** (above) — port the TimeoutError catch to knowledge-service consumer / pin redis.
 
 (Critical path: Q0✓→Q1✓→Q2✓→Q3✓→Q3.5✓→Q4✓→Q6a→Q6b→Q8; Q9 privacy gate before any cross-tenant Q7 surface. See track doc §5.)
 
