@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     online_judge_model_ref: str = ""          # judge model UUID (BYOK user_model)
     online_judge_model_source: str = "user_model"
     online_judge_user_id: str = ""            # BYOK owner of the judge model
+    # Q4b-feed — knowledge-service internal base URL. The eval-runner fetches
+    # the run's items+source sample from here (GET /internal/extraction/runs/
+    # {run_id}/sample) for opted-in runs, then feeds the online judge.
+    knowledge_internal_url: str = "http://knowledge-service:8092"
 
     class Config:
         env_file = ".env"

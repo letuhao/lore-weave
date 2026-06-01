@@ -114,10 +114,27 @@ async def test_judge_runs_when_opted_in(monkeypatch):
     monkeypatch.setattr(runner, "_ensure_judge_client", AsyncMock(return_value=object()))
     await runner._maybe_judge(
         {"judge_panel_id": uuid.uuid4()}, _run(),
-        {"items": {"entity": [{}]}, "source_text": "Alice fell down the hole."},
+        # inline override still requires the consent flag (/review-impl LOW#2)
+        {"save_raw_extraction": True,
+         "items": {"entity": [{}]}, "source_text": "Alice fell down the hole."},
     )
     rj.assert_awaited_once()
     pj.assert_awaited_once()
+
+
+async def test_judge_inline_items_skipped_without_consent_flag(monkeypatch):
+    """/review-impl LOW#2 regression-lock: inline items WITHOUT
+    save_raw_extraction are NOT judged — consent gate governs the inline
+    path too (defense-in-depth for redact-by-default)."""
+    _enable_judge(monkeypatch)
+    rj = AsyncMock()
+    monkeypatch.setattr("app.db.online_judge.run_online_judge", rj)
+    runner = _runner()
+    await runner._maybe_judge(
+        {"judge_panel_id": uuid.uuid4()}, _run(),
+        {"items": {"entity": [{}]}, "source_text": "x"},  # no save_raw_extraction
+    )
+    rj.assert_not_awaited()
 
 
 async def test_judge_skipped_without_items(monkeypatch):
@@ -152,3 +169,63 @@ async def test_judge_skipped_without_panel(monkeypatch):
         {"items": {"entity": [{}]}, "source_text": "x"},
     )
     rj.assert_not_awaited()  # rule has no judge panel -> structural-only
+
+
+# ── Q4b-feed — fetch path (production: items+source NOT inline) ────────
+
+
+async def test_judge_fetches_sample_for_opted_in_run(monkeypatch):
+    """Production path: the event carries NO items (redact-by-default) but
+    save_raw_extraction=true → fetch the sample from knowledge-service, judge."""
+    _enable_judge(monkeypatch)
+    rj = AsyncMock(return_value={"overall_precision": 0.8})
+    pj = AsyncMock(return_value=uuid.uuid4())
+    monkeypatch.setattr("app.db.online_judge.run_online_judge", rj)
+    monkeypatch.setattr("app.db.online_judge.persist_online_judge", pj)
+    runner = _runner()
+    monkeypatch.setattr(runner, "_ensure_judge_client", AsyncMock(return_value=object()))
+    fake_kc = AsyncMock()
+    fake_kc.fetch_run_sample = AsyncMock(return_value={
+        "items": {"entity": [{"name": "Alice", "kind": "person"}]},
+        "source_text": "Alice fell down the hole.",
+    })
+    monkeypatch.setattr(runner, "_ensure_knowledge_client", AsyncMock(return_value=fake_kc))
+    await runner._maybe_judge(
+        {"judge_panel_id": uuid.uuid4()}, _run(),
+        {"save_raw_extraction": True},  # no inline items/source
+    )
+    fake_kc.fetch_run_sample.assert_awaited_once()
+    rj.assert_awaited_once()
+    pj.assert_awaited_once()
+    # judged against the FETCHED items+source
+    assert rj.await_args.kwargs["source_text"] == "Alice fell down the hole."
+
+
+async def test_judge_skipped_when_not_opted_in_no_fetch(monkeypatch):
+    """save_raw_extraction falsy + no inline → NO knowledge call at all."""
+    _enable_judge(monkeypatch)
+    rj = AsyncMock()
+    monkeypatch.setattr("app.db.online_judge.run_online_judge", rj)
+    runner = _runner()
+    fake_kc = AsyncMock()
+    fake_kc.fetch_run_sample = AsyncMock()
+    monkeypatch.setattr(runner, "_ensure_knowledge_client", AsyncMock(return_value=fake_kc))
+    await runner._maybe_judge({"judge_panel_id": uuid.uuid4()}, _run(), {})
+    fake_kc.fetch_run_sample.assert_not_awaited()  # never fetched
+    rj.assert_not_awaited()
+
+
+async def test_judge_skipped_when_sample_404(monkeypatch):
+    """Opted-in but knowledge returns None (404/pruned) → structural-only."""
+    _enable_judge(monkeypatch)
+    rj = AsyncMock()
+    monkeypatch.setattr("app.db.online_judge.run_online_judge", rj)
+    runner = _runner()
+    fake_kc = AsyncMock()
+    fake_kc.fetch_run_sample = AsyncMock(return_value=None)
+    monkeypatch.setattr(runner, "_ensure_knowledge_client", AsyncMock(return_value=fake_kc))
+    await runner._maybe_judge(
+        {"judge_panel_id": uuid.uuid4()}, _run(), {"save_raw_extraction": True},
+    )
+    fake_kc.fetch_run_sample.assert_awaited_once()
+    rj.assert_not_awaited()

@@ -98,5 +98,11 @@ class Settings(BaseSettings):
     # fails open if Redis is unavailable.
     tool_remember_limit_per_session: int = 10
 
+    # Q4b-feed — retention window for extraction_run_samples (the transient
+    # items+source buffer feeding the online LLM judge). Pruned on startup.
+    # 7 days is long enough for the sampled eval-runner to consume a run;
+    # past that the row is dead novel-text weight.
+    extraction_run_sample_ttl_days: int = 7
+
 
 settings = Settings()

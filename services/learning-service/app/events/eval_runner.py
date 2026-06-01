@@ -58,6 +58,7 @@ class EvalRunner:
         self._redis: aioredis.Redis | None = None
         self._running = False
         self._judge_client = None  # lazily built (Q4b)
+        self._knowledge_client = None  # lazily built (Q4b-feed)
 
     async def _ensure_redis(self) -> aioredis.Redis:
         if self._redis is None:
@@ -158,11 +159,53 @@ class EvalRunner:
             )
         return self._judge_client
 
+    async def _ensure_knowledge_client(self):
+        if self._knowledge_client is None:
+            from app.clients.knowledge_client import build_knowledge_client
+            from app.config import settings
+            self._knowledge_client = build_knowledge_client(
+                base_url=settings.knowledge_internal_url,
+                internal_token=settings.internal_service_token,
+            )
+        return self._knowledge_client
+
+    async def _resolve_items_source(
+        self, run: dict, payload: dict,
+    ) -> tuple[dict | None, str | None]:
+        """Get the extracted items + source for judging.
+
+        `save_raw_extraction` is the UNCONDITIONAL consent gate (/review-impl
+        LOW#2): no novel content is judged for a non-opted run, whether the
+        items arrive inline or via fetch. For an opted-in run, two sources, in
+        order:
+          1. INLINE on the event (test/demo override) — `payload.items` +
+             `payload.source_text`. Production events never carry these
+             (redact-by-default keeps novel content off the broker).
+          2. Q4b-feed FETCH — pull the run-sample from knowledge-service by
+             run_id. None on 404 / error → structural-only.
+        """
+        if not payload.get("save_raw_extraction"):
+            return None, None  # consent gate: no judging without raw-retention opt-in
+        items = payload.get("items")
+        source_text = payload.get("source_text")
+        if isinstance(items, dict) and source_text:
+            return items, source_text  # inline override (test/demo)
+        client = await self._ensure_knowledge_client()
+        sample = await client.fetch_run_sample(run["run_id"])
+        if not sample:
+            return None, None
+        s_items = sample.get("items")
+        s_source = sample.get("source_text")
+        if not isinstance(s_items, dict) or not s_source:
+            return None, None
+        return s_items, s_source
+
     async def _maybe_judge(self, rule: dict, run: dict, payload: dict) -> None:
         """Run the online LLM judge when (a) a judge panel is configured on the
         rule, (b) online judging is enabled + a judge model is set, and (c) the
-        payload carries the extracted items + source text (an opted-in run —
-        redact-by-default keeps these out of non-opted events)."""
+        run's extracted items + source text are resolvable — inline on the event
+        (test/demo) or fetched from knowledge-service for an opted-in run
+        (Q4b-feed). Non-opted / unfetchable → structural-only."""
         from app.config import settings
         from app.db.online_judge import persist_online_judge, run_online_judge
 
@@ -170,10 +213,9 @@ class EvalRunner:
             return
         if not (settings.online_judge_model_ref and settings.online_judge_user_id):
             return
-        items = payload.get("items")
-        source_text = payload.get("source_text")
+        items, source_text = await self._resolve_items_source(run, payload)
         if not isinstance(items, dict) or not source_text:
-            return  # not an opted-in run -> structural-only
+            return  # structural-only
 
         client = await self._ensure_judge_client()
         result = await run_online_judge(

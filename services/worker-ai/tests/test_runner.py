@@ -47,17 +47,29 @@ def _job(**overrides) -> JobRow:
     return JobRow(**defaults)
 
 
-def _ok_result(source_id: str = "ch-1") -> ExtractionResult:
+class _FakeCandidates:
+    """Q4b-feed — minimal Pass2Candidates stand-in. `_extract_and_persist`
+    now returns (ExtractionResult, candidates); process_job unpacks the tuple.
+    Empty lists → project_items yields empty categories (and save_raw defaults
+    False in these tests, so the sample write is skipped anyway)."""
+    entities: list = []
+    relations: list = []
+    events: list = []
+    facts: list = []
+
+
+def _ok_result(source_id: str = "ch-1") -> tuple[ExtractionResult, _FakeCandidates]:
+    """Q4b-feed: returns the (result, candidates) tuple the chapter loop unpacks."""
     return ExtractionResult(
         source_id=source_id,
         entities_merged=2,
         relations_created=1,
         events_merged=1,
         facts_merged=3,
-    )
+    ), _FakeCandidates()
 
 
-def _error_result(retryable: bool = True) -> ExtractionResult:
+def _error_result(retryable: bool = True) -> tuple[ExtractionResult, None]:
     return ExtractionResult(
         source_id="ch-1",
         entities_merged=0,
@@ -66,7 +78,7 @@ def _error_result(retryable: bool = True) -> ExtractionResult:
         facts_merged=0,
         retryable=retryable,
         error="something broke",
-    )
+    ), None
 
 
 _TEST_BOOK_ID = uuid4()
@@ -114,7 +126,12 @@ def _mock_knowledge_client():
     glossary_sync path which still goes through glossary_sync_entity).
     """
     client = AsyncMock(spec=KnowledgeClient)
-    client.persist_pass2 = AsyncMock(return_value=_ok_result())
+    # persist_pass2 returns a single ExtractionResult (NOT the tuple _ok_result
+    # now returns) — the real _extract_and_persist wraps it with candidates.
+    client.persist_pass2 = AsyncMock(return_value=ExtractionResult(
+        source_id="ch-1", entities_merged=2, relations_created=1,
+        events_merged=1, facts_merged=3,
+    ))
     return client
 
 
@@ -193,6 +210,57 @@ async def test_process_job_chapters_success(mock_extract_persist):
     mock_extract_persist.assert_called_once()
     # Should have advanced cursor + recorded spending + completed job
     assert pool.execute.call_count >= 3
+
+
+def _execs_with(pool, needle):
+    return [
+        c for c in pool.execute.call_args_list
+        if isinstance(c.args[0], str) and needle in c.args[0]
+    ]
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_q4b_feed_no_sample_when_not_opted_in(mock_extract_persist):
+    """Q4b-feed redact-by-default: a project WITHOUT save_raw_extraction writes
+    NO extraction_run_samples row (the online judge never sees its content)."""
+    mock_extract_persist.return_value = _ok_result()
+    job = _job(scope="chapters", save_raw_extraction=False)
+    pool = _mock_pool()
+    await process_job(pool, _mock_knowledge_client(), _mock_llm_client(),
+                      _mock_book_client(), _mock_glossary_client(), job)
+    assert _execs_with(pool, "INSERT INTO extraction_run_samples") == []
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_q4b_feed_sample_written_with_run_id_parity(mock_extract_persist):
+    """Q4b-feed #1 risk regression-lock: an opted-in project writes exactly one
+    sample, keyed by the SAME run_id that lands in the extraction_run event —
+    parity is load-bearing (the online judge fetches the sample by that id)."""
+    mock_extract_persist.return_value = _ok_result()
+    job = _job(scope="chapters", save_raw_extraction=True)
+    pool = _mock_pool()
+    await process_job(pool, _mock_knowledge_client(), _mock_llm_client(),
+                      _mock_book_client(), _mock_glossary_client(), job)
+
+    samples = _execs_with(pool, "INSERT INTO extraction_run_samples")
+    assert len(samples) == 1
+    sample_run_id = samples[0].args[1]  # $1 run_id (UUID)
+
+    # the run_id in the emitted event payload must equal the sample's run_id
+    import json as _json
+    outbox = _execs_with(pool, "INSERT INTO outbox_events")
+    # find the run-completed event (payload param carries run_id)
+    event_run_ids = [
+        _json.loads(c.args[3])["run_id"]
+        for c in outbox
+        if len(c.args) > 3 and isinstance(c.args[3], str) and "run_id" in c.args[3]
+    ]
+    assert event_run_ids, "no run-completed event emitted"
+    assert str(sample_run_id) in event_run_ids, (
+        f"run_id parity broken: sample={sample_run_id} not in event {event_run_ids}"
+    )
 
 
 @pytest.mark.asyncio
@@ -846,12 +914,15 @@ async def test_extract_and_persist_happy_path_calls_persist_with_candidates(
     )
     mock_extract.return_value = candidates
     kc = AsyncMock(spec=KnowledgeClient)
-    kc.persist_pass2 = AsyncMock(return_value=_ok_result())
+    kc.persist_pass2 = AsyncMock(return_value=ExtractionResult(
+        source_id="ch-1", entities_merged=2, relations_created=1,
+        events_merged=1, facts_merged=3,
+    ))
     user_id = uuid4()
     project_id = uuid4()
     job_id = uuid4()
 
-    result = await _extract_and_persist(
+    result, _candidates = await _extract_and_persist(
         knowledge_client=kc,
         llm_client=_mock_llm_client(),
         user_id=user_id,
@@ -899,7 +970,7 @@ async def test_extract_and_persist_provider_exhausted_is_retryable(mock_extract)
     kc = AsyncMock(spec=KnowledgeClient)
     kc.persist_pass2 = AsyncMock()
 
-    result = await _extract_and_persist(
+    result, _candidates = await _extract_and_persist(
         knowledge_client=kc, llm_client=_mock_llm_client(),
         user_id=uuid4(), project_id=uuid4(),
         source_type="chapter", source_id="ch-1", job_id=uuid4(),
@@ -926,7 +997,7 @@ async def test_extract_and_persist_provider_stage_is_not_retryable(mock_extract)
     kc = AsyncMock(spec=KnowledgeClient)
     kc.persist_pass2 = AsyncMock()
 
-    result = await _extract_and_persist(
+    result, _candidates = await _extract_and_persist(
         knowledge_client=kc, llm_client=_mock_llm_client(),
         user_id=uuid4(), project_id=uuid4(),
         source_type="chapter", source_id="ch-1", job_id=uuid4(),
@@ -953,7 +1024,7 @@ async def test_extract_and_persist_cancelled_stage_is_not_retryable(mock_extract
     kc = AsyncMock(spec=KnowledgeClient)
     kc.persist_pass2 = AsyncMock()
 
-    result = await _extract_and_persist(
+    result, _candidates = await _extract_and_persist(
         knowledge_client=kc, llm_client=_mock_llm_client(),
         user_id=uuid4(), project_id=uuid4(),
         source_type="chapter", source_id="ch-1", job_id=uuid4(),
@@ -978,9 +1049,12 @@ async def test_extract_and_persist_empty_text_still_persists(mock_extract):
 
     mock_extract.return_value = Pass2Candidates()  # all 4 lists empty
     kc = AsyncMock(spec=KnowledgeClient)
-    kc.persist_pass2 = AsyncMock(return_value=_ok_result(source_id="turn-1"))
+    kc.persist_pass2 = AsyncMock(return_value=ExtractionResult(
+        source_id="turn-1", entities_merged=0, relations_created=0,
+        events_merged=0, facts_merged=0,
+    ))
 
-    result = await _extract_and_persist(
+    result, _candidates = await _extract_and_persist(
         knowledge_client=kc, llm_client=_mock_llm_client(),
         user_id=uuid4(), project_id=uuid4(),
         source_type="chat_turn", source_id="turn-1", job_id=uuid4(),
@@ -1306,6 +1380,7 @@ async def test_get_running_jobs_pulls_embedding_dimension(monkeypatch):
         "embedding_dimension": 1024,
         "extraction_config": {},
         "genre": "Tiên hiệp",
+        "save_raw_extraction": True,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
@@ -1313,6 +1388,7 @@ async def test_get_running_jobs_pulls_embedding_dimension(monkeypatch):
     assert len(jobs) == 1
     assert jobs[0].embedding_dimension == 1024
     assert jobs[0].genre == "Tiên hiệp"
+    assert jobs[0].save_raw_extraction is True  # Q4b-feed: threaded onto JobRow
 
 
 @pytest.mark.asyncio
@@ -1329,11 +1405,13 @@ async def test_get_running_jobs_handles_null_embedding_dimension():
         "embedding_dimension": None,
         "extraction_config": None,
         "genre": None,
+        "save_raw_extraction": False,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
     jobs = await _get_running_jobs(pool)
     assert jobs[0].embedding_dimension is None
+    assert jobs[0].save_raw_extraction is False  # Q4b-feed: default OFF
 
 
 # ── D-PHASE6C-WORKERAI-JOB-SPAN: parent span per process_job call ───
@@ -1548,7 +1626,7 @@ async def test_runner_filter_degraded_status_still_persists_pass_a() -> None:
         kc = _mock_knowledge_client()
         llm = _mock_llm_client()
 
-        result = await _extract_and_persist(
+        result, _candidates = await _extract_and_persist(
             knowledge_client=kc,
             llm_client=llm,
             user_id=uuid4(),
