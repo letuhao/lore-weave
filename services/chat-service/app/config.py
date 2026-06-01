@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     # per-call timeout so a slow write doesn't ReadTimeout (D-K21B-06).
     knowledge_tool_timeout_s: float = 30.0
 
+    # ARCH-2 C2 — MCP tool execution gate. When true, chat-service routes
+    # execute_tool() calls through the MCP client (mcp.client.streamable_http).
+    # false = legacy bespoke path (/internal/tools/execute). Dual-run default.
+    use_mcp_tools: bool = False
+
     # D-T2-03 — degraded-mode fallback when knowledge-service is unreachable
     # or returns an error. Must agree with knowledge-service's Mode 1 + Mode 2
     # `recent_message_count` (which also defaults to 50). Both services read

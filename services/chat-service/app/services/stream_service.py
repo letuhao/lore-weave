@@ -290,13 +290,26 @@ async def _stream_with_tools(
             })
             for c in calls:
                 args_obj = _parse_tool_args(c["arguments"])
-                envelope = await knowledge_client.execute_tool(
-                    user_id=user_id,
-                    session_id=session_id,
-                    project_id=project_id,
-                    tool_name=c["name"],
-                    tool_args=args_obj,
-                )
+                # ARCH-2 C2 dual-run gate. USE_MCP_TOOLS=true routes through
+                # the MCP client (streamable HTTP); false = existing bespoke
+                # path. No other change to the loop — the result envelope
+                # shape is identical for both paths.
+                if settings.use_mcp_tools:
+                    envelope = await knowledge_client.mcp_execute_tool(
+                        user_id=user_id,
+                        session_id=session_id,
+                        project_id=project_id,
+                        tool_name=c["name"],
+                        tool_args=args_obj,
+                    )
+                else:
+                    envelope = await knowledge_client.execute_tool(
+                        user_id=user_id,
+                        session_id=session_id,
+                        project_id=project_id,
+                        tool_name=c["name"],
+                        tool_args=args_obj,
+                    )
                 ok = bool(envelope.get("success"))
                 tool_payload = (
                     envelope.get("result") if ok

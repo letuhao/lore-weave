@@ -41,3 +41,9 @@ deepeval==4.0.4
 seqeval==1.2.2
 datasets==2.21.0
 krippendorff==0.7.0
+
+# ARCH-1 C1 (2026-06-01) — MCP server facade for the memory tools.
+# FastMCP ships inside the official `mcp` SDK; the [cli] extra adds the
+# fastmcp CLI + dev tooling. Mounted at /mcp in app/main.py. The
+# bespoke /internal/tools/* path is retained (dual-run).
+mcp[cli]>=1.9,<2
