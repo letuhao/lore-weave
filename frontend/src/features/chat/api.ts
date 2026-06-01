@@ -91,6 +91,22 @@ export const chatApi = {
     });
   },
 
+  // ── Feedback (Production Eval + Feedback Flywheel, Q3) ─────────────────────────
+  // Explicit thumbs (+1/-1) or implicit regenerate-as-negative on an assistant
+  // turn. Server is the source of truth (the rating is persisted + flows to the
+  // learning-service quality plane); the UI keeps only ephemeral highlight state.
+
+  submitMessageFeedback(
+    token: string,
+    messageId: string,
+    payload: { rating: 1 | -1; reason?: string; regenerated_from_message_id?: string },
+  ) {
+    return apiJson<{ id: string; message_id: string; rating: number; created_at: string }>(
+      `/v1/chat/messages/${messageId}/feedback`,
+      { method: 'POST', token, body: JSON.stringify(payload) },
+    );
+  },
+
   // ── Branches ─────────────────────────────────────────────────────────────────
 
   listBranches(token: string, sessionId: string, sequenceNum: number) {

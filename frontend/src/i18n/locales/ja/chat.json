@@ -128,7 +128,11 @@
     "regenerate": "再生成",
     "more_actions": "その他の操作",
     "copy_markdown": "Markdownをコピー",
-    "send_to_editor": "エディタに送信"
+    "send_to_editor": "エディタに送信",
+    "feedback_up": "良い回答",
+    "feedback_down": "悪い回答",
+    "feedback_thanks": "フィードバックありがとうございます",
+    "feedback_error": "フィードバックを保存できませんでした"
   },
   "tools": {
     "title": "この返信で使用したツール",
