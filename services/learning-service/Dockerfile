@@ -4,11 +4,18 @@ WORKDIR /app
 
 # Build context is the repo root (compose sets `context: ..`,
 # `dockerfile: services/learning-service/Dockerfile`) to match the other
-# Python services. learning-service makes NO LLM calls this cycle, so it does
-# NOT copy the loreweave_llm SDK — keep the image lean.
+# Python services.
 
 COPY services/learning-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Q1 (Production Eval + Feedback Flywheel): learning-service now hosts the
+# quality plane and imports `loreweave_eval` (the lifted extraction-quality
+# scorer: EvalResult, EvalSink, JudgePanel). Install the local SDK — same
+# pattern as knowledge-service. It also brings loreweave_llm/extraction, which
+# the online-eval consumer (phase Q4) will use to run the judge via the gateway.
+COPY sdks/python /sdk
+RUN pip install --no-cache-dir /sdk
 
 COPY services/learning-service/app/ ./app/
 

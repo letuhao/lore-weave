@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
 from app.config import settings
+from app.db.eval_repo import ensure_score_configs
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool, get_pool
 from app.events.consumer import EventConsumer
@@ -25,7 +26,7 @@ from app.events.handlers import (
     handle_run_completed,
 )
 from app.middleware.trace_id import TraceIdMiddleware
-from app.routers import corrections, mining
+from app.routers import corrections, eval as eval_routes, mining
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ def build_dispatcher() -> EventDispatcher:
 async def lifespan(app: FastAPI):
     pool = await create_pool(settings.learning_db_url)
     await run_migrations(pool)
+    await ensure_score_configs(pool)  # Q1 — seed the metric-of-record score_config rows
     dispatcher = build_dispatcher()
     consumer = EventConsumer(settings.redis_url, pool, dispatcher)
     consumer_task = asyncio.create_task(consumer.run())
@@ -76,6 +78,7 @@ app.add_middleware(
 
 app.include_router(corrections.router)
 app.include_router(mining.router)
+app.include_router(eval_routes.router)
 
 
 @app.get("/health", response_class=PlainTextResponse)

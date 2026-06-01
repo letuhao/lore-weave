@@ -165,6 +165,131 @@ ALTER TABLE extraction_runs
   ADD COLUMN IF NOT EXISTS genre TEXT;
 CREATE INDEX IF NOT EXISTS idx_runs_genre
   ON extraction_runs(genre) WHERE genre IS NOT NULL;
+
+-- ══════════════════════════════════════════════════════════════════════
+-- Track "Production Eval + Feedback Flywheel" — Q1: the quality plane.
+-- (docs/plans/2026-06-01-production-eval-feedback-flywheel-track.md §3)
+--
+-- The three-object eval model (OpenAI Eval/Run/Output-Item) + a universal
+-- append-only Score entity (Langfuse). Item-level by design so paired/
+-- clustered standard errors stay recomputable (Anthropic: never store only
+-- the aggregate). Structural + content-hash only (redact-by-default). Metric
+-- names mirror the OTel `gen_ai.evaluation.*` semantic conventions so the
+-- telemetry stays portable.
+-- ══════════════════════════════════════════════════════════════════════
+
+-- ── score_config (Q1) ────────────────────────────────────────────────
+-- Registered, versioned metric definitions (Langfuse ScoreConfig). Validates
+-- quality_scores at WRITE time (datatype / range / categories) so a malformed
+-- judge output is rejected, not silently stored.
+CREATE TABLE IF NOT EXISTS score_config (
+  score_config_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name             TEXT NOT NULL UNIQUE,         -- e.g. 'disjoint_median_f1', 'macro_f1'
+  data_type        TEXT NOT NULL,                -- 'numeric' | 'categorical' | 'boolean'
+  min_value        DOUBLE PRECISION,             -- numeric lower bound (inclusive)
+  max_value        DOUBLE PRECISION,             -- numeric upper bound (inclusive)
+  categories       JSONB,                        -- allowed labels for categorical
+  description      TEXT,
+  is_archived      BOOLEAN NOT NULL DEFAULT false,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ── eval_runs (Q1) ───────────────────────────────────────────────────
+-- One row per scored dump (OpenAI 'Run' / Vertex summary_metrics). Logical
+-- links to config_registry(config_hash) + extraction_runs (no enforced FK —
+-- baselines pre-date a registry row; preserves decoupled best-effort emit).
+-- `disjoint_median_f1` is the metric-of-record; `judges` carries the panel
+-- composition inline (the dedicated judge_panel table is deferred until a 2nd
+-- panel exists — track critique). `idempotency_key` makes re-scoring / baseline
+-- materialization safe to re-run.
+CREATE TABLE IF NOT EXISTS eval_runs (
+  eval_run_id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id                  UUID NOT NULL,
+  project_id               UUID,
+  book_id                  UUID,
+  source_extraction_run_id UUID,                 -- logical link to extraction_runs (best-effort)
+  config_hash              TEXT,                 -- logical link to config_registry (nullable)
+  judge_panel_id           UUID,                 -- RESERVED (judge_panel table deferred)
+  dataset_version          TEXT,                 -- golden-set fixture / dump label
+  source                   TEXT NOT NULL DEFAULT 'offline',  -- offline|online|shadow|baseline
+  judges                   JSONB NOT NULL DEFAULT '[]'::jsonb,  -- [{label,uuid,role,macro_p,macro_r,macro_f1}]
+  disjoint_median_f1       DOUBLE PRECISION,
+  full_panel_median_f1     DOUBLE PRECISION,
+  fleiss_kappa             DOUBLE PRECISION,
+  bootstrap_ci             JSONB,                -- {low, high, n_common_chapters}
+  bias_metrics             JSONB,
+  n_chapters               INT,
+  n_disjoint_judges        INT,
+  idempotency_key          TEXT,                 -- caller-supplied dedup key (baseline / run+panel)
+  origin_service           TEXT,
+  origin_event_id          TEXT,
+  created_at               TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_eval_runs_idempotency
+  ON eval_runs(idempotency_key) WHERE idempotency_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_eval_runs_user
+  ON eval_runs(user_id, project_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_eval_runs_config
+  ON eval_runs(config_hash) WHERE config_hash IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_eval_runs_source_run
+  ON eval_runs(source_extraction_run_id) WHERE source_extraction_run_id IS NOT NULL;
+
+-- ── eval_results (Q1) ────────────────────────────────────────────────
+-- Per-slice result (OpenAI 'Output Item' / Vertex metrics_table). Q1 writes
+-- one row per (judge, category='all'); `chapter_ref` is reserved for the Q6b
+-- per-chapter rows that make clustered SE recomputable. Cascades with the run.
+CREATE TABLE IF NOT EXISTS eval_results (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  eval_run_id     UUID NOT NULL REFERENCES eval_runs(eval_run_id) ON DELETE CASCADE,
+  category        TEXT NOT NULL,                 -- entity|relation|event|all
+  chapter_ref     TEXT,                          -- cluster unit (reserved, Q6b)
+  judge_label     TEXT,                          -- which judge produced this slice
+  judge_uuid      TEXT,
+  precision       DOUBLE PRECISION,
+  recall          DOUBLE PRECISION,
+  f1              DOUBLE PRECISION,
+  input_hash      TEXT,
+  gold_projection JSONB,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_eval_results_run
+  ON eval_results(eval_run_id, category);
+
+-- ── quality_scores (Q1) ──────────────────────────────────────────────
+-- Universal append-only Score/Feedback entity (Langfuse/LangSmith/Phoenix).
+-- 3-judge ensemble + human corrections (Q2) + chat ratings (Q3) coexist
+-- without mutating the scored output. DUAL dedup (track critique fix #5):
+--   * consumed producer events (Q3 chat feedback): (origin_service, origin_event_id)
+--   * self-produced judge verdicts (Q1/Q4, no outbox id):
+--       (source_eval_run_id, target_kind, target_id, metric_name, judge_model)
+CREATE TABLE IF NOT EXISTS quality_scores (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  target_kind        TEXT NOT NULL,             -- entity|relation|event|extraction_run|eval_run|chat_message
+  target_id          TEXT NOT NULL,
+  book_id            UUID,
+  user_id            UUID NOT NULL,
+  metric_name        TEXT NOT NULL,             -- FK-by-name to score_config.name
+  value_num          DOUBLE PRECISION,
+  value_label        TEXT,
+  data_type          TEXT NOT NULL,             -- numeric|categorical|boolean (validated vs score_config)
+  source             TEXT NOT NULL,             -- human|llm_judge|heuristic
+  judge_model        TEXT,                      -- the judge that produced it (self-produced rows)
+  comment            TEXT,
+  source_eval_run_id UUID,                      -- the eval_run this score belongs to (self-produced)
+  origin_service     TEXT,                      -- consumed-event provenance (Q3)
+  origin_event_id    TEXT,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_quality_scores_origin
+  ON quality_scores(origin_service, origin_event_id)
+  WHERE origin_event_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_quality_scores_self
+  ON quality_scores(source_eval_run_id, target_kind, target_id, metric_name, judge_model)
+  WHERE source_eval_run_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_quality_scores_target
+  ON quality_scores(target_kind, target_id);
+CREATE INDEX IF NOT EXISTS idx_quality_scores_user_metric
+  ON quality_scores(user_id, metric_name, created_at DESC);
 """
 
 

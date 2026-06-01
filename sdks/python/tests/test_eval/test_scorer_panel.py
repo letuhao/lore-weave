@@ -89,10 +89,10 @@ def test_score_dump_reproduces_metric_of_record() -> None:
 
 
 @pytest.mark.skipif(not _C74C.is_dir(), reason="c74c baseline dump not present")
-def test_filesink_writes_json(tmp_path: Path) -> None:
+async def test_filesink_writes_json(tmp_path: Path) -> None:
     panel = panel_from_env(env={})
     result = score_dump(_C74C, panel, n_boot=200, variant_label="c74c")
-    path = FileSink(tmp_path).write_eval_result(result)
+    path = await FileSink(tmp_path).write_eval_result(result)
     assert path.is_file()
     data = json.loads(path.read_text(encoding="utf-8"))
     assert data["variant_label"] == "c74c"

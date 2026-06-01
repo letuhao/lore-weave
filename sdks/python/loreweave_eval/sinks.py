@@ -19,22 +19,24 @@ from .scorer import EvalResult
 
 @runtime_checkable
 class EvalSink(Protocol):
-    """Persist a scored EvalResult. Implementations: ``FileSink`` (here),
-    ``DbSink`` (learning-service, phase Q1)."""
+    """Persist a scored EvalResult. Async because the production sink
+    (``DbSink`` in learning-service, phase Q1) does DB I/O; ``FileSink`` is
+    async too so every caller awaits the same contract."""
 
-    def write_eval_result(self, result: EvalResult) -> Any: ...
+    async def write_eval_result(self, result: EvalResult) -> Any: ...
 
 
 class FileSink:
     """Write the EvalResult as JSON to ``<out_dir>/eval_result.json`` — the
     R&D-parity sink (keeps the structured result next to the dump). Returns the
-    written path.
+    written path. ``async`` to match the EvalSink contract (the file write
+    itself is synchronous).
     """
 
     def __init__(self, out_dir: Path) -> None:
         self._out = Path(out_dir)
 
-    def write_eval_result(self, result: EvalResult) -> Path:
+    async def write_eval_result(self, result: EvalResult) -> Path:
         self._out.mkdir(parents=True, exist_ok=True)
         path = self._out / "eval_result.json"
         path.write_text(

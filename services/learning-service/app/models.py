@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Correction(BaseModel):
@@ -103,3 +103,46 @@ class OutcomeRecomputeRow(BaseModel):
 class OutcomeRecomputeResponse(BaseModel):
     items: list[OutcomeRecomputeRow]
     total: int
+
+
+# ── Q1 — quality-plane eval-run read models ──────────────────────────
+
+
+class EvalRunRow(BaseModel):
+    """One scored eval run (the metric-of-record + panel composition)."""
+
+    eval_run_id: str
+    user_id: str
+    project_id: str | None = None
+    book_id: str | None = None
+    source_extraction_run_id: str | None = None
+    config_hash: str | None = None
+    dataset_version: str | None = None
+    source: str
+    judges: list[dict[str, Any]] = Field(default_factory=list)
+    disjoint_median_f1: float | None = None
+    full_panel_median_f1: float | None = None
+    fleiss_kappa: float | None = None
+    bootstrap_ci: dict[str, Any] | None = None
+    bias_metrics: dict[str, Any] | None = None
+    n_chapters: int | None = None
+    n_disjoint_judges: int | None = None
+    created_at: datetime
+
+
+class EvalRunList(BaseModel):
+    items: list[EvalRunRow]
+
+
+class EvalResultRow(BaseModel):
+    category: str
+    judge_label: str | None = None
+    judge_uuid: str | None = None
+    precision: float | None = None
+    recall: float | None = None
+    f1: float | None = None
+    chapter_ref: str | None = None
+
+
+class EvalRunDetail(EvalRunRow):
+    results: list[EvalResultRow] = Field(default_factory=list)
