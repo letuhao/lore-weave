@@ -359,6 +359,9 @@ class TestStreamWithToolsOneToolCall:
         assert tc["args"] == {"query": "Kai"}
         assert tc["result"] == {"entities": ["Kai"]}
         assert tc["error"] is None
+        # ARCH-1 C3: the provider tool-call id is propagated so the AG-UI
+        # TOOL_CALL_* events key on the same id persisted in the message.
+        assert tc["id"] == "call_1"
 
         # Text from BOTH passes was streamed.
         text = "".join(c["content"] for c in chunks if c.get("content"))

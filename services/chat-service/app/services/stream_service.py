@@ -35,6 +35,7 @@ from app.client.knowledge_client import get_knowledge_client
 from app.config import settings
 from app.models import ProviderCredentials
 from app.services.output_extractor import extract_outputs
+from app.services.stream_events import make_emitter
 
 logger = logging.getLogger(__name__)
 
@@ -321,6 +322,10 @@ async def _stream_with_tools(
                     "content": json.dumps(tool_payload),
                 })
                 yield {"tool_call": {
+                    # ARCH-1 C3: propagate the provider tool-call id so the
+                    # AG-UI TOOL_CALL_* events key on the same id persisted in
+                    # the assistant message's tool_calls. Legacy emit ignores it.
+                    "id": c["id"],
                     "iteration": iteration,
                     "tool": c["name"],
                     "args": args_obj,
@@ -351,8 +356,15 @@ async def stream_response(
     parent_message_id: str | None = None,
     context: str | None = None,
     thinking: bool | None = None,
+    stream_format: str = "legacy",
 ) -> AsyncGenerator[str, None]:
-    """Async generator that yields AI SDK data stream protocol v1 SSE lines."""
+    """Async generator that yields chat-turn SSE lines.
+
+    ARCH-1 C3: the event serialization is selected per request via
+    ``stream_format`` ("legacy" | "agui"). Both share this transport and all
+    business logic below; only the wire event vocabulary differs (see
+    app/services/stream_events.py). Default stays "legacy" until the AG-UI
+    frontend (C4) ships."""
 
     # ── Load session settings ───────────────────────────────────────────────
     session_row = await pool.fetchrow(
@@ -492,11 +504,28 @@ async def stream_response(
     stream_start = _time.monotonic()
     time_to_first_token: float | None = None
 
-    # K-CLEAN-5 (D-K8-04): emit memory_mode as the FIRST SSE event so the
-    # FE can flip the indicator badge before any tokens render. Yielded
-    # outside the try/except below so it lands even if the LLM call
+    # ARCH-1 C3: select the wire-event serializer for this request. The emitter
+    # owns ALL event encoding from here on; the business logic below is unchanged.
+    emitter = make_emitter(stream_format, thread_id=session_id, message_id=msg_id)
+
+    # AG-UI requires a RUN_STARTED before any other event (no-op in legacy mode).
+    for line in emitter.open_run():
+        yield line
+
+    # K-CLEAN-5 (D-K8-04): emit memory_mode as the FIRST content-bearing SSE
+    # event so the FE can flip the indicator badge before any tokens render.
+    # Yielded outside the try/except below so it lands even if the LLM call
     # immediately fails downstream.
-    yield f'data: {json.dumps({"type": "memory-mode", "mode": fe_memory_mode})}\n\n'
+    for line in emitter.memory_mode(fe_memory_mode):
+        yield line
+
+    # ARCH-1 C3: once finish() (RUN_FINISHED in agui) is emitted, the turn is
+    # terminated and no later event may follow it — especially not an error /
+    # RUN_ERROR. We set this AFTER finish so the post-turn best-effort work
+    # (auto-title, billing) runs OUTSIDE this try and can never route a stray
+    # raise into the error path below.
+    turn_succeeded = False
+    post_finish_state: dict | None = None
 
     try:
         if use_tools:
@@ -526,13 +555,8 @@ async def stream_response(
             tool_call = chunk_data.get("tool_call")
             if tool_call is not None:
                 tool_calls_history.append(tool_call)
-                yield (
-                    'data: '
-                    + json.dumps({"type": "tool-call",
-                                  "tool": tool_call["tool"],
-                                  "ok": tool_call["ok"]})
-                    + '\n\n'
-                )
+                for line in emitter.tool_call(tool_call):
+                    yield line
                 continue
             reasoning = chunk_data["reasoning_content"]
             content = chunk_data["content"]
@@ -545,10 +569,18 @@ async def stream_response(
 
             if reasoning:
                 full_reasoning.append(reasoning)
-                yield f'data: {json.dumps({"type": "reasoning-delta", "delta": reasoning})}\n\n'
+                for line in emitter.reasoning_delta(reasoning):
+                    yield line
             if content:
                 full_content.append(content)
-                yield f'data: {json.dumps({"type": "text-delta", "delta": content})}\n\n'
+                for line in emitter.text_delta(content):
+                    yield line
+
+        # ARCH-1 C3: token stream is done — close the open assistant/reasoning
+        # message so its END frames the content, before the run-level
+        # persisted/finish events (no-op in legacy mode).
+        for line in emitter.close_message():
+            yield line
 
         response_time_ms = (_time.monotonic() - stream_start) * 1000
         final_text = "".join(full_content)
@@ -650,7 +682,8 @@ async def stream_response(
             data_payload["output_id"] = output_id
         if final_reasoning:
             data_payload["has_reasoning"] = True
-        yield f'data: {json.dumps({"type": "data", "data": [data_payload]})}\n\n'
+        for line in emitter.persisted_data(data_payload):
+            yield line
 
         # Finish event — includes timing metrics
         finish = {
@@ -665,42 +698,20 @@ async def stream_response(
                 "timeToFirstTokenMs": round(time_to_first_token) if time_to_first_token is not None else None,
             },
         }
-        yield f'data: {json.dumps(finish)}\n\n'
+        for line in emitter.finish(finish):
+            yield line
 
-        # Auto-title: generate title after first assistant message
-        current_count = await pool.fetchval(
-            "SELECT message_count FROM chat_sessions WHERE session_id = $1",
-            session_id,
-        )
-        if current_count is not None and current_count <= 2:
-            asyncio.create_task(
-                _auto_generate_title(
-                    session_id=session_id,
-                    user_id=user_id,
-                    user_message=user_message_content,
-                    assistant_message=final_text[:500],
-                    model_source=model_source,
-                    model_ref=model_ref,
-                    pool=pool,
-                )
-            )
-
-        # Log usage async (non-blocking)
-        if last_usage:
-            asyncio.create_task(
-                billing.log_usage(
-                    user_id=user_id,
-                    model_source=model_source,
-                    model_ref=model_ref,
-                    provider_kind=creds.provider_kind,
-                    input_tokens=input_tok or 0,
-                    output_tokens=output_tok or 0,
-                    session_id=session_id,
-                    message_id=msg_id,
-                    input_payload={"messages": messages},
-                    output_payload={"content": final_text, "reasoning": final_reasoning or None},
-                )
-            )
+        # The turn is durably persisted and finished; everything below is
+        # best-effort post-turn work that must NOT be able to emit another
+        # terminator. Carry the values it needs out of the try.
+        turn_succeeded = True
+        post_finish_state = {
+            "final_text": final_text,
+            "final_reasoning": final_reasoning,
+            "input_tok": input_tok,
+            "output_tok": output_tok,
+            "last_usage": last_usage,
+        }
 
     except Exception as exc:
         logger.exception("Stream error for session %s", session_id)
@@ -708,9 +719,61 @@ async def stream_response(
         safe_msg = str(exc)
         if any(kw in safe_msg.lower() for kw in ("traceback", "file ", "/usr/", "password", "secret")):
             safe_msg = "An internal error occurred. Please try again."
-        yield f'data: {json.dumps({"type": "error", "errorText": safe_msg})}\n\n'
+        for line in emitter.error(safe_msg):
+            yield line
 
-    yield "data: [DONE]\n\n"
+    # ── Post-turn best-effort side-effects (auto-title + billing) ────────────
+    # Runs OUTSIDE the try so a failure here can never emit error/RUN_ERROR
+    # after finish/RUN_FINISHED. Both branches schedule background tasks (which
+    # swallow their own errors); only the auto-title count read touches the DB,
+    # so it is guarded.
+    if turn_succeeded and post_finish_state is not None:
+        try:
+            current_count = await pool.fetchval(
+                "SELECT message_count FROM chat_sessions WHERE session_id = $1",
+                session_id,
+            )
+        except Exception:
+            logger.warning(
+                "auto-title count lookup failed for session %s (post-finish)",
+                session_id, exc_info=True,
+            )
+            current_count = None
+        if current_count is not None and current_count <= 2:
+            asyncio.create_task(
+                _auto_generate_title(
+                    session_id=session_id,
+                    user_id=user_id,
+                    user_message=user_message_content,
+                    assistant_message=post_finish_state["final_text"][:500],
+                    model_source=model_source,
+                    model_ref=model_ref,
+                    pool=pool,
+                )
+            )
+
+        # Log usage async (non-blocking)
+        if post_finish_state["last_usage"]:
+            asyncio.create_task(
+                billing.log_usage(
+                    user_id=user_id,
+                    model_source=model_source,
+                    model_ref=model_ref,
+                    provider_kind=creds.provider_kind,
+                    input_tokens=post_finish_state["input_tok"] or 0,
+                    output_tokens=post_finish_state["output_tok"] or 0,
+                    session_id=session_id,
+                    message_id=msg_id,
+                    input_payload={"messages": messages},
+                    output_payload={
+                        "content": post_finish_state["final_text"],
+                        "reasoning": post_finish_state["final_reasoning"] or None,
+                    },
+                )
+            )
+
+    for line in emitter.done():
+        yield line
 
 
 async def _auto_generate_title(

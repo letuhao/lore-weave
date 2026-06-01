@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     # false = legacy bespoke path (/internal/tools/execute). Dual-run default.
     use_mcp_tools: bool = False
 
+    # ARCH-1 C3 — default stream event format when a request sends no
+    # x-loreweave-stream-format header. "legacy" (LoreWeave SSE vocabulary) or
+    # "agui" (AG-UI protocol). Per-request header overrides this; the default
+    # stays "legacy" until the AG-UI frontend (C4) ships.
+    default_stream_format: str = "legacy"
+
     # D-T2-03 — degraded-mode fallback when knowledge-service is unreachable
     # or returns an error. Must agree with knowledge-service's Mode 1 + Mode 2
     # `recent_message_count` (which also defaults to 50). Both services read

@@ -2,14 +2,31 @@ import json
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from app.client.billing_client import get_billing_client
 from app.client.provider_client import get_provider_client
+from app.config import settings
 from app.deps import get_current_user, get_db
 from app.models import ChatMessage, MessageListResponse, SendMessageRequest
 from app.services.stream_service import stream_response
+
+# ARCH-1 C3 — per-request stream-format negotiation. A multi-device deployment
+# serves the legacy frontend and the AG-UI frontend (C4) at once, so the format
+# is chosen per request, not by a global flag.
+STREAM_FORMAT_HEADER = "x-loreweave-stream-format"
+_VALID_STREAM_FORMATS = {"legacy", "agui"}
+
+
+def _resolve_stream_format(raw: str | None) -> str:
+    """Map the request header to a valid format, falling back to the configured
+    default for an absent or unrecognized value."""
+    if raw is not None:
+        candidate = raw.strip().lower()
+        if candidate in _VALID_STREAM_FORMATS:
+            return candidate
+    return settings.default_stream_format
 
 router = APIRouter(prefix="/v1/chat/sessions", tags=["messages"])
 
@@ -135,6 +152,7 @@ async def send_message(
     body: SendMessageRequest,
     user_id: str = Depends(get_current_user),
     pool: asyncpg.Pool = Depends(get_db),
+    x_loreweave_stream_format: str | None = Header(default=None),
 ) -> StreamingResponse:
     # Verify session ownership and get model info
     session = await pool.fetchrow(
@@ -219,10 +237,14 @@ async def send_message(
 
     billing = get_billing_client()
 
+    stream_format = _resolve_stream_format(x_loreweave_stream_format)
+
     headers = {
         "x-vercel-ai-ui-message-stream": "v1",
         "Cache-Control": "no-cache",
         "X-Accel-Buffering": "no",
+        # Echo the negotiated format so the client can confirm what it's parsing.
+        STREAM_FORMAT_HEADER: stream_format,
     }
     return StreamingResponse(
         stream_response(
@@ -237,6 +259,7 @@ async def send_message(
             parent_message_id=parent_message_id,
             context=body.context,
             thinking=body.thinking,
+            stream_format=stream_format,
         ),
         media_type="text/event-stream",
         headers=headers,
