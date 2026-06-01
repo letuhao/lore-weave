@@ -290,6 +290,32 @@ CREATE INDEX IF NOT EXISTS idx_quality_scores_target
   ON quality_scores(target_kind, target_id);
 CREATE INDEX IF NOT EXISTS idx_quality_scores_user_metric
   ON quality_scores(user_id, metric_name, created_at DESC);
+
+-- ── Q3.5/Q4 — panel safety on eval_runs (anti-self-reinforcement, visible) ──
+-- Records whether a scored run's metric-of-record panel was trustworthy
+-- (>= 2 disjoint judges, no generator self-grading). Structural-only online
+-- runs (no judge) set panel_safe = TRUE with a 'structural-only' reason.
+ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS panel_safe BOOLEAN;
+ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS panel_safety_reason TEXT;
+
+-- ── online_eval_rule (Q4) ─────────────────────────────────────────────
+-- The (filter + sampling_rate) automation for the eval-runner consumer.
+-- sampling_rate is the local-LLM cost governor (the future LLM-judge path,
+-- Q4b); the structural-completeness default needs no LLM so it can sample
+-- higher. A NULL user_id = a global default rule.
+CREATE TABLE IF NOT EXISTS online_eval_rule (
+  rule_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID,                          -- NULL = global default
+  name            TEXT NOT NULL,
+  filter_jsonb    JSONB NOT NULL DEFAULT '{}'::jsonb,  -- event predicate (genre, config_hash, ...)
+  sampling_rate   DOUBLE PRECISION NOT NULL DEFAULT 0.1 CHECK (sampling_rate >= 0 AND sampling_rate <= 1),
+  judge_panel_id  UUID,                          -- NULL = structural-only (no LLM judge)
+  metric_set      JSONB NOT NULL DEFAULT '["online_structural_completeness"]'::jsonb,
+  enabled         BOOLEAN NOT NULL DEFAULT true,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_online_eval_rule_name
+  ON online_eval_rule(name);
 """
 
 

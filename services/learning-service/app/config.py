@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     internal_service_token: str
     redis_url: str = "redis://redis:6379"
     port: int = 8094
+    # Q4 — online-eval sampler (eval-runner consumer group). Master switch;
+    # the sampling rate itself lives in the online_eval_rule table.
+    online_eval_enabled: bool = True
 
     class Config:
         env_file = ".env"
