@@ -298,4 +298,26 @@ All four resolved by PO at design-checkpoint approval (recommendations accepted)
 
 ---
 
-*This is a design-checkpoint artifact (no code). BUILD starts at Q0 in a future session, inheriting the interfaces locked here. Per [[feedback_design_checkpoint_commit_separates_design_from_implementation]], commit this discretely so future BUILD sessions don't re-litigate the decisions.*
+## 12 · Early-stage posture (PO decision — session 105, after Q4b-feed)
+
+**Q0–Q4 (+Q4b-feed) shipped + live-verified. Q5–Q9 are DEFERRED at early stage, by trigger — not by date.**
+
+**Why this is safe (the load-bearing insight):** Q0–Q4 are the *collection* layer; Q5–Q9 are the *consumer* layer. Collection is already live in production — every extraction writes `extraction_runs` (config_hash, outcome, genre, metrics); 10%-sampled runs write `online_structural_completeness`; chat writes `message_feedback`; user edits write corrections. **Because the raw signal accumulates regardless, deferring the consumers costs nothing — the data waits.** This is exactly why the collect-first ordering was correct: you build the data-consumers *against real accumulated data*, not a synthetic/empty set.
+
+| Phase | Decision | Trigger to build |
+|---|---|---|
+| **Q5** eval-case dataset | **Defer** | Value is *real* failures (corrections + judge-disagreement). Can't be predicted/synthesized — synthetic fixtures are the brittle thing Q5 exists to replace. Build when corrections/disagreements reach ~dozens. |
+| **Q6** shadow runs | **Defer** | A *scale* feature: doubles LLM cost (replay challenger), needs many chapters for clustered-SE paired stats, and compares config A-vs-B (only one config exists today). Build when chapter throughput supports paired stats AND a concrete challenger config needs validating before rollout. |
+| **Q7** dev log (version→F1 delta) | **Defer** | Needs ≥2 config versions to compare; groundwork (`config_registry` + `eval_runs`) already accumulating. Build at the 2nd production config change. |
+| **Q8** promotion gate | **Defer** | Coupled to Q6/Q7. Build alongside them. |
+| **Q9** Clio privacy gate | **Defer** | Only gates *cross-tenant* insight rollup; today "strictly per-owner". Build when cross-tenant insight sharing is a real need. |
+
+**Mining is collecting now.** E2 mining (genre-field + query endpoints) runs on `extraction_runs`, which is written on every extraction. No new build to *start* collecting — the periodic-query/insight step is what's pending, and that only gets richer with time.
+
+**One cheap, non-retroactive option:** structural completeness accumulates for all runs, but **LLM-judge precision is only recordable at run-time for opted-in runs** (can't backfill). To start a real judge-precision baseline, optionally enable `online_judge_enabled` for a self-owned `save_raw`-opted project at a low sample rate. Corrections/feedback/structural accumulate regardless, so this is insurance, not urgent.
+
+**Revisit triggers are data-volume-based, not calendar-based** — re-read this table when correction/feedback/throughput volume grows, not on a schedule.
+
+---
+
+*This is a design-checkpoint artifact (no code). BUILD ran Q0–Q4+Q4b-feed (sessions 105–106); Q5–Q9 deferred per §12. Per [[feedback_design_checkpoint_commit_separates_design_from_implementation]], commit this discretely so future BUILD sessions don't re-litigate the decisions.*
