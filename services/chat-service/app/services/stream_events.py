@@ -278,12 +278,17 @@ class AgUiEmitter:
         # START/ARGS/END but NO RESULT. The result arrives later on the resume
         # request (after the user applies/dismisses). The FE reads the proposal
         # from TOOL_CALL_ARGS and holds the call open until then.
+        #
+        # `tc` is the suspend chunk's `pending_tool_call` — its canonical shape
+        # is {id, name, args} (the same dict `finish(pending=...)` reads `name`
+        # /`id` from below). Accept the legacy `tool` key too for safety.
         tool_id = tc.get("id") or str(uuid4())
+        tool_name = tc.get("name") or tc.get("tool")
         return [
             _sse({
                 "type": "TOOL_CALL_START",
                 "toolCallId": tool_id,
-                "toolCallName": tc["tool"],
+                "toolCallName": tool_name,
                 "parentMessageId": self._message_id,
             }),
             _sse({

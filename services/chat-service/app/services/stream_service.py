@@ -973,7 +973,14 @@ async def resume_stream_response(
     except Exception:
         tool_defs = []
     # The editor tool stays advertised on resume (the agent may propose again).
-    if tool_defs and stream_format == "agui":
+    # Append it WHENEVER agui — mirror the fresh path (stream_response), which
+    # adds the frontend tool regardless of whether memory tools are present.
+    # Gating on `tool_defs` was a bug: with no memory tools (no project) the
+    # frontend tool was dropped AND the run fell through to the no-tools gateway
+    # path, which ignores seed_usage → resume usage was NOT summed across the two
+    # runs (caught by C6 live smoke). Going through _stream_with_tools keeps the
+    # seed and re-advertises the tool.
+    if stream_format == "agui":
         tool_defs = tool_defs + frontend_tool_defs()
     use_tools = bool(tool_defs)
 

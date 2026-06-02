@@ -11,10 +11,13 @@ Reuses the _FakeClient scripting harness from test_stream_tools. Covers:
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import pytest
 
+from app.db.suspended_runs import SuspendedRun
+from app.models import ProviderCredentials
 from app.services.frontend_tools import (
     FRONTEND_TOOL_NAMES,
     PROPOSE_EDIT_TOOL,
@@ -22,6 +25,9 @@ from app.services.frontend_tools import (
     is_frontend_tool,
 )
 from app.services.stream_events import AgUiEmitter, LegacyEmitter
+from app.services.stream_service import resume_stream_response
+from tests.conftest import TEST_MODEL_REF, TEST_SESSION_ID, TEST_USER_ID
+from tests.test_stream_service import _make_pool_with_conn
 from tests.test_stream_tools import (
     _FakeClient,
     _drain,
@@ -158,14 +164,51 @@ def _parse(line: str) -> dict:
 
 class TestPendingEmitter:
     def test_agui_tool_call_pending_omits_result(self):
+        # Use the PRODUCTION shape: the suspend chunk's pending_tool_call is
+        # {id, name, args} (NOT {tool}). A live smoke caught a KeyError here
+        # because the test previously used {tool} while the producer emits
+        # {name} — the boundary mismatch slipped past both isolated tests.
         em = AgUiEmitter(thread_id="s", message_id="m")
-        lines = em.tool_call_pending({"id": "c1", "tool": "propose_edit",
+        lines = em.tool_call_pending({"id": "c1", "name": "propose_edit",
                                       "args": {"operation": "insert_at_cursor", "text": "Hi"}})
         types = [_parse(x)["type"] for x in lines]
         assert types == ["TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END"]
+        assert _parse(lines[0])["toolCallName"] == "propose_edit"
         assert "TOOL_CALL_RESULT" not in types  # result comes on resume
         args = _parse(lines[1])
         assert json.loads(args["delta"]) == {"operation": "insert_at_cursor", "text": "Hi"}
+
+    @pytest.mark.asyncio
+    async def test_suspend_chunk_pending_call_feeds_emitter(self):
+        """Regression (live-smoke KeyError 'tool'): the dict the suspend
+        producer emits (`chunk["suspend"]["pending_tool_call"]`) must flow
+        through BOTH emitter consumers — tool_call_pending() and
+        finish(pending=...) — exactly as _emit_chat_turn wires them, with no
+        KeyError and a correct toolCallName. Pins the producer↔consumer key
+        contract that the two isolated tests missed."""
+        scripts = [[
+            tool_frag(index=0, id="call_fe", name="propose_edit"),
+            tool_frag(index=0, arguments_delta='{"operation":"insert_at_cursor","text":"Hi"}'),
+            usage(10, 4),
+            done("tool_calls"),
+        ]]
+        with _patch_client(scripts):
+            chunks = await _drain(_run(
+                scripts, knowledge_client=AsyncMock(),
+                tools=[{"type": "function", "function": {"name": "propose_edit"}}],
+            ))
+        pending = [c for c in chunks if "suspend" in c][0]["suspend"]["pending_tool_call"]
+
+        em = AgUiEmitter(thread_id="s", message_id="m")
+        # mirrors stream_service _emit_chat_turn suspend branch
+        start = _parse(em.tool_call_pending(pending)[0])
+        assert start["toolCallName"] == "propose_edit"
+        fin = em.finish(
+            {"type": "finish-message", "finishReason": "tool_calls", "usage": {}, "timing": {}},
+            status="suspended",
+            pending={"runId": "r1", "toolCallId": pending["id"], "toolName": pending["name"]},
+        )
+        assert _parse(fin[-1])["result"]["pendingToolCall"]["toolName"] == "propose_edit"
 
     def test_agui_finish_suspended_carries_pending(self):
         em = AgUiEmitter(thread_id="s", message_id="m")
@@ -181,3 +224,85 @@ class TestPendingEmitter:
 
     def test_legacy_pending_is_noop(self):
         assert LegacyEmitter().tool_call_pending({"id": "c", "tool": "propose_edit", "args": {}}) == []
+
+
+# ── resume: usage summed + tool re-advertised even with NO memory tools ───────
+
+
+def _creds() -> ProviderCredentials:
+    return ProviderCredentials(
+        provider_kind="lm_studio", provider_model_name="qwen/qwen3-coder-30b",
+        base_url="", api_key="x", context_length=32768,
+    )
+
+
+def _suspended(seed_in: int, seed_out: int) -> SuspendedRun:
+    return SuspendedRun(
+        run_id="run-1",
+        session_id=str(TEST_SESSION_ID),
+        owner_user_id=str(TEST_USER_ID),
+        message_id=str(uuid4()),
+        working=[
+            {"role": "user", "content": "rewrite this"},
+            {"role": "assistant", "content": "",
+             "tool_calls": [{"id": "c1", "type": "function",
+                             "function": {"name": "propose_edit", "arguments": "{}"}}]},
+        ],
+        pending_tool_call={"id": "c1", "name": "propose_edit", "args": {}},
+        input_tokens=seed_in,
+        output_tokens=seed_out,
+        model_source="user_model",
+        model_ref=str(TEST_MODEL_REF),
+        parent_message_id=None,
+        user_message_content="rewrite this",
+    )
+
+
+class TestResumeUsageSummed:
+    @pytest.mark.asyncio
+    async def test_resume_with_no_memory_tools_sums_usage(self):
+        """Regression (C6 live smoke): on resume with NO memory tools (no
+        project), the frontend tool must STILL be advertised so the run goes
+        through _stream_with_tools — otherwise it falls to the no-tools gateway
+        path which ignores seed_usage and the two-run usage is NOT summed.
+
+        Seed = 100/20 (run 1); the resumed pass reports 500/30 → the persisted
+        finish must carry the SUM 600/50, not 500/30."""
+        pool, conn = _make_pool_with_conn()
+        conn.fetchval.return_value = 1
+        pool.fetchrow.return_value = {"generation_params": {}, "project_id": None}
+        billing = AsyncMock()
+
+        kc = AsyncMock()
+        kc.get_tool_definitions.return_value = []  # the no-project / empty case
+
+        # resumed pass: a plain text answer + its own usage
+        scripts = [[tok("Applied."), usage(500, 30), done("stop")]]
+
+        with _patch_client(scripts), \
+             patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service.load_suspended_run",
+                   AsyncMock(return_value=_suspended(100, 20))), \
+             patch("app.services.stream_service.delete_suspended_run", AsyncMock()):
+            lines = []
+            async for line in resume_stream_response(
+                session_id=str(TEST_SESSION_ID), user_id=str(TEST_USER_ID),
+                run_id="run-1", tool_call_id="c1", outcome="applied",
+                applied_text="Applied.", creds=_creds(), pool=pool, billing=billing,
+                stream_format="agui",
+            ):
+                lines.append(line)
+
+        # the resumed pass went through the TOOL path (frontend tool re-advertised)
+        req = _FakeClient.instances[0].requests[0]
+        names = [t["function"]["name"] for t in (req.tools or [])]
+        assert "propose_edit" in names
+
+        run_finished = [
+            json.loads(x.removeprefix("data: ").strip())
+            for x in lines if '"RUN_FINISHED"' in x
+        ][-1]
+        assert run_finished["result"]["status"] == "success"
+        # seed (100/20) + resumed pass (500/30) = 600/50
+        assert run_finished["result"]["usage"]["promptTokens"] == 600
+        assert run_finished["result"]["usage"]["completionTokens"] == 50
