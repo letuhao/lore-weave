@@ -235,6 +235,42 @@ ANACHRONISM_MARKERS: tuple[tuple[str, str], ...] = (
     ("耶稣", "基督教非东方上古封神体系"),
     ("银两", "白银货币流通远晚于商周"),
     ("纸币", "纸币远晚于商周"),
+    # ── LE-058: broadened batch. RUTHLESSLY CONSERVATIVE (review-impl MED-1): a
+    #    bare substring match means a marker built from high-frequency classical
+    #    morphemes false-positives on PLAUSIBLE 封神 prose — e.g. 总统六师 (command
+    #    of the six armies), 安民国家 (民国), 共和 (the 841 BCE Zhou regency!),
+    #    警察奸宄, 摄政 (摄氏), 里/米/斤 (classical units). Those were DROPPED. Only
+    #    tokens whose characters cannot plausibly sit adjacent in 商周 lore remain
+    #    (modern-tech compounds, foreign/late faiths, 隋朝). Classical homographs
+    #    民主 (民之主) / 选举 (荐举) likewise excluded.
+    ("隋朝", "隋朝晚于商周封神纪元"),  # 隋 essentially only names the Sui dynasty
+    # modern technology (compounds — no bare 电, mirrors the existing 电话/电脑)
+    ("电报", "电报为近代产物"),
+    ("电影", "电影为近现代产物"),
+    ("电梯", "电梯为近现代产物"),
+    ("收音机", "收音机为现代产物"),
+    ("冰箱", "冰箱为现代产物"),
+    ("空调", "空调为现代产物"),
+    ("照相机", "照相机为近现代产物"),
+    ("高铁", "高铁为现代产物"),
+    ("地铁", "地铁为现代产物"),
+    ("导弹", "导弹为现代军事产物"),
+    ("核弹", "核武器为现代军事产物"),
+    ("原子弹", "原子弹为现代军事产物"),
+    ("机器人", "机器人为现代产物"),
+    # modern science / medicine
+    ("抗生素", "抗生素为现代医学产物"),
+    ("显微镜", "显微镜为近现代科学仪器"),
+    ("望远镜", "望远镜为近现代科学仪器"),
+    # foreign / later faiths (not in the 封神 cosmology frame)
+    ("伊斯兰", "伊斯兰教非东方上古封神体系"),
+    ("教堂", "基督教堂非商周封神体系"),
+    ("牧师", "基督教牧师非商周封神体系"),
+    ("圣经", "基督教圣经非东方上古封神体系"),
+    ("喇嘛", "藏传佛教喇嘛远晚于商周"),
+    # modern finance — 股票 only (股+票 don't form a classical adjacency; the
+    # silver-currency anachronism is already covered by the existing 银两).
+    ("股票", "股票为近现代金融产物"),
 )
 
 # Chinese contradiction / negation markers — when one of these co-occurs with a

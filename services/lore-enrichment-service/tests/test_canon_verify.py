@@ -199,6 +199,40 @@ async def test_anachronism_no_overreach_on_classical_compounds():
 
 
 @pytest.mark.asyncio
+async def test_le058_broadened_markers_flag_more_out_of_era_concepts():
+    # LE-058: the broadened batch catches more modern tech / faiths / finance.
+    verifier = CanonVerifier(read_port=_NonEmptyRead(), canon_lookup=_empty_canon_lookup())
+    for term in ("电影", "导弹", "机器人", "教堂", "显微镜", "股票", "隋朝"):
+        result = await verifier.verify(
+            _proposal(), [_fact(f"蓬萊竟有{term}出现。")], jwt="jwt"
+        )
+        anach = [f for f in result.flags if f.kind is FlagKind.ANACHRONISM]
+        assert anach, f"LE-058 marker not flagged: {term}"
+        assert term in " ".join(f.evidence for f in anach)
+
+
+@pytest.mark.asyncio
+async def test_le058_excludes_classical_homographs_no_false_positive():
+    # LE-058 conservativeness (review-impl MED-1): markers built from common
+    # classical morphemes were DROPPED because a bare substring match false-
+    # positives on PLAUSIBLE 封神 prose — which (with ≥2 hits) would wrongly
+    # auto-reject (C3). None of these legitimate phrases may be flagged.
+    verifier = CanonVerifier(read_port=_NonEmptyRead(), canon_lookup=_empty_canon_lookup())
+    for legit in (
+        "天惟时求民主，乃眷西顾。",       # 民主 = lord-of-the-people (Classical)
+        "诸侯选举贤能，以辅王室。",       # 选举 = select-and-recommend (Classical)
+        "姜子牙总统六师，吊民伐罪。",     # 总统(六师) — dropped marker; must NOT fire
+        "武王安民国家，万邦咸宁。",       # 安民国家 contains 民国 — dropped; no flag
+        "周召共和，国人乃安。",           # 共和 = the 841 BCE Zhou regency; no flag
+        "其法院落幽深，结庐修真。",       # 法 + 院 incidental adjacency; no flag
+    ):
+        result = await verifier.verify(_proposal(), [_fact(legit)], jwt="jwt")
+        assert not [
+            f for f in result.flags if f.kind is FlagKind.ANACHRONISM
+        ], f"false-positive anachronism on legitimate prose: {legit!r}"
+
+
+@pytest.mark.asyncio
 async def test_anachronism_zerowidth_evasion_is_flagged():
     # WARN-2: the anachronism check must prenormalize (strip zero-width / bidi +
     # NFKC) like the injection scanner, else a marker split by a zero-width char
