@@ -8,7 +8,7 @@ import { booksApi, type Book } from '@/features/books/api';
 import { glossaryApi } from '@/features/glossary/api';
 import type { GlossaryEntity } from '@/features/glossary/types';
 import { useSessions } from '../hooks/useSessions';
-import { buildContextBlock } from '../context/formatContext';
+import { buildContextBlock, tiptapDocToText } from '../context/formatContext';
 import { onSendToChat } from '../context/sendToChat';
 import type { ContextItem } from '../context/types';
 import type { ChatSession, CreateSessionPayload } from '../types';
@@ -255,7 +255,11 @@ export function ChatSessionProvider({ children, embedded = false }: ChatSessionP
               resolvedData.set(item.id, { book });
             } else if (item.type === 'chapter' && item.bookId && item.chapterId) {
               const draft = await booksApi.getDraft(accessToken, item.bookId, item.chapterId);
-              resolvedData.set(item.id, { chapterBody: draft.body ?? '' });
+              // draft.body is raw Tiptap JSON; use the server's extracted
+              // text_content (fall back to client-side extraction). Passing
+              // draft.body directly produced "[object Object]" (C5-era bug).
+              const chapterBody = draft.text_content ?? tiptapDocToText(draft.body);
+              resolvedData.set(item.id, { chapterBody });
             } else if (item.type === 'glossary' && item.bookId) {
               const entity = await glossaryApi.getEntity(item.bookId, item.id, accessToken);
               resolvedData.set(item.id, { entity });
