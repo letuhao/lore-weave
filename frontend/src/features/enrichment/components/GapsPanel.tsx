@@ -20,6 +20,10 @@ export function GapsPanel() {
   const [genModel, setGenModel] = useState('');
   const [embedModel, setEmbedModel] = useState('');
   const [maxGaps, setMaxGaps] = useState(3);
+  // Cost-cap (USD). Empty = no cap (backend default). The spend-safety control.
+  const [maxSpend, setMaxSpend] = useState('');
+  // Retrieval breadth — defaults to the backend default (5) so untouched = no change.
+  const [topK, setTopK] = useState(5);
 
   const { data: chatModels } = useQuery({
     queryKey: ['user-models', 'chat'],
@@ -146,6 +150,30 @@ export function GapsPanel() {
               className="w-16 rounded border bg-background px-2 py-1"
             />
           </label>
+          <label className="flex items-center gap-1">
+            <span className="text-muted-foreground">{t('gaps.max_spend')}</span>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={maxSpend}
+              placeholder={t('gaps.no_cap')}
+              onChange={(e) => setMaxSpend(e.target.value)}
+              data-testid="enrichment-max-spend"
+              className="w-20 rounded border bg-background px-2 py-1"
+            />
+          </label>
+          <label className="flex items-center gap-1">
+            <span className="text-muted-foreground">{t('gaps.top_k')}</span>
+            <input
+              type="number"
+              min={1}
+              max={20}
+              value={topK}
+              onChange={(e) => setTopK(Number(e.target.value))}
+              className="w-16 rounded border bg-background px-2 py-1"
+            />
+          </label>
         </div>
         <div className="flex items-center justify-between gap-3">
           <p className="text-[11px] text-muted-foreground">{t('gaps.gate_note')}</p>
@@ -156,6 +184,8 @@ export function GapsPanel() {
                 embedding_model_ref: embedModel,
                 technique,
                 max_gaps: maxGaps,
+                max_spend_usd: maxSpend.trim() === '' ? null : Number(maxSpend),
+                top_k: topK,
               })
             }
             disabled={!canEnrich}

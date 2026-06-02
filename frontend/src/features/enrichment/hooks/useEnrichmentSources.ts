@@ -34,11 +34,33 @@ export function useEnrichmentSources(bookId: string) {
     }
   };
 
+  /** Chunk + REAL-embed text into a registered corpus. Idempotent server-side
+   *  (UNIQUE(corpus_id, chunk_index) + content hash). On success the chunk_count
+   *  on the source row updates, so refresh the list. */
+  const ingest = async (
+    corpusId: string,
+    body: { text: string; embedding_model_ref: string; target_chars?: number },
+  ) => {
+    setBusy(true);
+    try {
+      const r = await enrichmentApi.ingestSource(corpusId, bookId, body, accessToken!);
+      toast.success(t('sources.ingested', { count: r.chunks_embedded }));
+      qc.invalidateQueries({ queryKey: ['enrichment-sources', bookId] });
+      return r;
+    } catch (e) {
+      toast.error((e as Error).message);
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return {
     ...query,
     items: query.data?.items ?? [],
     total: query.data?.total ?? 0,
     register,
+    ingest,
     busy,
   };
 }

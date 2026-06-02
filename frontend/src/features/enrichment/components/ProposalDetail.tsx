@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ConfirmDialog } from '@/components/shared';
 import { TechniqueBadge, VerifyBadge, ReviewStatusBadge, H0Marker } from './badges';
 import { DimensionList } from './DimensionList';
 import { VerifyPanel } from './VerifyPanel';
@@ -15,6 +16,7 @@ interface ProposalActions {
   reject: (p: Proposal, reason?: string) => Promise<unknown>;
   edit: (p: Proposal, content: string) => Promise<unknown>;
   promote: (p: Proposal) => Promise<unknown>;
+  retract: (p: Proposal) => Promise<unknown>;
 }
 
 /** The full draft: H0 header + dimensions (editable) + verify (③/C12) + provenance
@@ -23,6 +25,7 @@ interface ProposalActions {
 export function ProposalDetail({ proposal, actions }: { proposal: Proposal; actions: ProposalActions }) {
   const { t } = useTranslation('enrichment');
   const [promoteOpen, setPromoteOpen] = useState(false);
+  const [retractOpen, setRetractOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(proposal.content);
 
@@ -41,7 +44,16 @@ export function ProposalDetail({ proposal, actions }: { proposal: Proposal; acti
             <VerifyBadge status={verifyStatus} />
             <H0Marker />
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">{t('detail.h0_note')}</p>
+          <div
+            className="mt-2 rounded-md border border-warning/30 bg-warning/5 px-3 py-2"
+            data-testid="enrichment-h0-banner"
+          >
+            <p className="text-xs font-medium text-warning">{t('detail.h0_banner')}</p>
+            <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+              origin={proposal.origin} · confidence={proposal.confidence.toFixed(2)} ·{' '}
+              {t(`review.${proposal.review_status}`, { defaultValue: proposal.review_status })}
+            </p>
+          </div>
         </div>
 
         <Section title={t('detail.content')}>
@@ -95,12 +107,14 @@ export function ProposalDetail({ proposal, actions }: { proposal: Proposal; acti
           busy={actions.busy}
           onPromote={() => setPromoteOpen(true)}
           onApprove={() => void actions.approve(proposal)}
-          onReject={() => void actions.reject(proposal)}
+          onReject={(reason) => void actions.reject(proposal, reason)}
+          onRetract={() => setRetractOpen(true)}
           onEdit={() => {
             setDraft(proposal.content);
             setEditing(true);
           }}
         />
+        <p className="mt-2 text-right text-[10px] text-muted-foreground">{t('actions.author_only')}</p>
       </div>
 
       <PromoteDialog
@@ -111,6 +125,21 @@ export function ProposalDetail({ proposal, actions }: { proposal: Proposal; acti
         onConfirm={async () => {
           await actions.promote(proposal);
           setPromoteOpen(false);
+        }}
+      />
+
+      <ConfirmDialog
+        open={retractOpen}
+        onOpenChange={setRetractOpen}
+        variant="destructive"
+        title={t('actions.retract_confirm_title')}
+        description={t('actions.retract_confirm_desc')}
+        confirmLabel={t('actions.retract')}
+        cancelLabel={t('actions.cancel')}
+        loading={actions.busy}
+        onConfirm={async () => {
+          await actions.retract(proposal);
+          setRetractOpen(false);
         }}
       />
     </div>

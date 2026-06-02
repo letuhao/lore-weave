@@ -170,9 +170,19 @@ export interface Source {
   name: string;
   kind: SourceKind | string;
   license: License | string;
+  /** # of ingested+embedded chunks (GET /sources echoes it; absent before ingest). */
+  chunk_count?: number;
   provenance_json: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+}
+
+/** POST /sources/{id}/ingest result — chunk+embed counts. */
+export interface IngestResult {
+  corpus_id: string;
+  chunks_total: number;
+  chunks_inserted: number;
+  chunks_embedded: number;
 }
 
 export interface SourceListResponse {

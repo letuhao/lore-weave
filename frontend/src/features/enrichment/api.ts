@@ -7,6 +7,7 @@ import type {
   AutoEnrichResponse,
   SourceListResponse,
   Source,
+  IngestResult,
   JobListResponse,
 } from './types';
 
@@ -145,13 +146,8 @@ export const enrichmentApi = {
     bookId: string,
     body: { text: string; embedding_model_ref: string; target_chars?: number },
     token: string,
-  ): Promise<{
-    corpus_id: string;
-    chunks_total: number;
-    chunks_inserted: number;
-    chunks_embedded: number;
-  }> {
-    return apiJson(`${BASE}/sources/${corpusId}/ingest`, {
+  ): Promise<IngestResult> {
+    return apiJson<IngestResult>(`${BASE}/sources/${corpusId}/ingest`, {
       method: 'POST',
       body: JSON.stringify({ project_id: bookId, ...body }),
       token,

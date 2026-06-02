@@ -1,22 +1,33 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Plus } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/shared';
+import { useAuth } from '@/auth';
+import { providerApi } from '@/features/settings/api';
 import { useEnrichmentSources } from '../hooks/useEnrichmentSources';
 import { useEnrichmentContext } from '../context/EnrichmentContext';
-import { isRecookable } from '../types';
+import { SourceCard } from './SourceCard';
 
 /** The corpus side: license-tagged source material for retrieval / recook.
- *  Default-deny — only public_domain / licensed corpora are recookable (① layer). */
+ *  Default-deny — only public_domain / licensed corpora are recookable (① layer).
+ *  Register creates an empty corpus; each card ingests text into it (real embed). */
 export function SourcesPanel() {
   const { t } = useTranslation('enrichment');
+  const { accessToken } = useAuth();
   const { bookId } = useEnrichmentContext();
-  const { items, isLoading, register, busy } = useEnrichmentSources(bookId);
+  const { items, isLoading, register, ingest, busy } = useEnrichmentSources(bookId);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [kind, setKind] = useState('history');
   const [license, setLicense] = useState('public_domain');
+
+  const { data: embedModels } = useQuery({
+    queryKey: ['user-models', 'embedding'],
+    queryFn: () => providerApi.listUserModels(accessToken!, { capability: 'embedding' }),
+    enabled: !!accessToken,
+  });
+  const embeds = embedModels?.items ?? [];
 
   const submit = async () => {
     if (!name.trim()) return;
@@ -88,27 +99,9 @@ export function SourcesPanel() {
         </p>
       ) : (
         <div className="grid grid-cols-2 gap-3">
-          {items.map((s) => {
-            const ok = isRecookable(s.license);
-            return (
-              <div key={s.corpus_id} className="rounded-lg border bg-card px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-serif font-medium">{s.name}</span>
-                  <span
-                    className={cn(
-                      'rounded-full px-2 py-0.5 text-[10px] font-medium',
-                      ok ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive',
-                    )}
-                  >
-                    {t(`license.${s.license}`, { defaultValue: s.license })}
-                  </span>
-                </div>
-                <p className="mt-1 font-mono text-[11px] text-muted-foreground">
-                  kind={s.kind} · {ok ? t('sources.recook_ok') : t('sources.recook_refused')}
-                </p>
-              </div>
-            );
-          })}
+          {items.map((s) => (
+            <SourceCard key={s.corpus_id} source={s} embeds={embeds} onIngest={ingest} busy={busy} />
+          ))}
         </div>
       )}
       <p className="text-[11px] text-muted-foreground">{t('sources.default_deny')}</p>

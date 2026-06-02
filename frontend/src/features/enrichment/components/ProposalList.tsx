@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { ProposalCard } from './ProposalCard';
-import type { Proposal, ReviewStatus } from '../types';
+import type { Proposal, ReviewStatus, Tier } from '../types';
 
 const STATUSES: (ReviewStatus | 'all')[] = [
   'all',
@@ -10,6 +10,8 @@ const STATUSES: (ReviewStatus | 'all')[] = [
   'promoted',
   'rejected',
 ];
+
+const TIERS: (Tier | 'all')[] = ['all', 'P1', 'P2', 'P3'];
 
 /** Left pane: search + status filter + (when a book's enrichment spans >1 general
  *  project) a client-side project picker, over a scrollable list of ProposalCards. */
@@ -21,6 +23,8 @@ export function ProposalList({
   onSearch,
   status,
   onStatus,
+  tier,
+  onTier,
   projectIds,
   projectFilter,
   onProjectFilter,
@@ -32,6 +36,8 @@ export function ProposalList({
   onSearch: (s: string) => void;
   status: ReviewStatus | 'all';
   onStatus: (s: ReviewStatus | 'all') => void;
+  tier: Tier | 'all';
+  onTier: (tier: Tier | 'all') => void;
   projectIds: string[];
   projectFilter: string | null;
   onProjectFilter: (p: string | null) => void;
@@ -61,6 +67,24 @@ export function ProposalList({
               )}
             >
               {s === 'all' ? t('proposals.status_all') : t(`review.${s}`)}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-[10px] text-muted-foreground">{t('proposals.technique')}:</span>
+          {TIERS.map((tg) => (
+            <button
+              key={tg}
+              onClick={() => onTier(tg)}
+              data-testid={`enrichment-tier-${tg}`}
+              className={cn(
+                'rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors',
+                tier === tg
+                  ? 'bg-primary/15 text-primary'
+                  : 'bg-secondary text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {tg === 'all' ? t('proposals.status_all') : tg}
             </button>
           ))}
         </div>
