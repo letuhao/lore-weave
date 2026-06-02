@@ -147,6 +147,40 @@ DO $$ BEGIN
     ALTER TABLE chat_messages ADD COLUMN tool_calls JSONB;
   END IF;
 END $$;
+
+-- ARCH-1 C6 — suspended runs for AG-UI frontend-tool-calls. When the model
+-- calls a frontend tool (e.g. propose_edit), the turn pauses: the in-flight
+-- conversation `working` list + the dangling assistant tool-call cannot be
+-- rebuilt from chat_messages (the assistant row isn't written until end-of-
+-- turn), so the whole state is persisted here keyed by run_id. The resume
+-- endpoint rehydrates it, appends the tool result, and runs a 2nd LLM pass.
+-- Rows are deleted on resume; an `expires_at` sweep reclaims abandoned ones.
+CREATE TABLE IF NOT EXISTS chat_suspended_runs (
+  run_id            UUID PRIMARY KEY,
+  session_id        UUID NOT NULL REFERENCES chat_sessions(session_id) ON DELETE CASCADE,
+  owner_user_id     UUID NOT NULL,
+  -- the assistant message id shared by both runs of the logical turn
+  message_id        UUID NOT NULL,
+  -- full conversation passed to the LLM at suspend time (incl. the dangling
+  -- assistant tool-call message), as a JSON array of chat messages
+  working           JSONB NOT NULL,
+  -- the pending frontend tool call awaiting a client result
+  pending_tool_call JSONB NOT NULL,  -- {id, name, args}
+  -- usage accumulated in the first run, summed with the resume run at the end
+  input_tokens      INT NOT NULL DEFAULT 0,
+  output_tokens     INT NOT NULL DEFAULT 0,
+  model_source      VARCHAR(20) NOT NULL,
+  model_ref         UUID NOT NULL,
+  parent_message_id UUID,
+  user_message_content TEXT NOT NULL DEFAULT '',
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at        TIMESTAMPTZ NOT NULL DEFAULT now() + interval '6 hours'
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_suspended_runs_session
+  ON chat_suspended_runs(session_id);
+CREATE INDEX IF NOT EXISTS idx_chat_suspended_runs_sweep
+  ON chat_suspended_runs(expires_at);
 """
 
 

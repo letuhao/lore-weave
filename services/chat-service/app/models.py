@@ -95,11 +95,30 @@ class SearchResponse(BaseModel):
 
 # ── Messages ──────────────────────────────────────────────────────────────────
 
+class EditorContext(BaseModel):
+    """ARCH-1 C6 — present when the editor `<Chat>` panel sends a message.
+    Signals chat-service to advertise the frontend write-back tool, and carries
+    which chapter the assistant is editing (for the proposal's chapter guard)."""
+    book_id: str
+    chapter_id: str
+
+
 class SendMessageRequest(BaseModel):
     content: str
     edit_from_sequence: int | None = None
     context: str | None = None  # Optional context block (book/chapter/glossary text) injected as system message
     thinking: bool | None = None  # Override session default: true=think, false=fast, None=use session default
+    editor_context: EditorContext | None = None  # ARCH-1 C6: editor panel → enable frontend write-back tool
+
+
+class ToolResultRequest(BaseModel):
+    """ARCH-1 C6 — the resume request: the FE executed a frontend tool (the
+    user reviewed + applied/dismissed the proposed edit) and returns the
+    outcome so the agent can continue."""
+    run_id: str
+    tool_call_id: str
+    outcome: str  # "applied" | "dismissed"
+    applied_text: str | None = None
 
 
 class ChatMessage(BaseModel):

@@ -67,6 +67,12 @@ class StreamEmitter(Protocol):
         ``_stream_with_tools`` — {id, iteration, tool, args, ok, result, error}."""
         ...
 
+    def tool_call_pending(self, tc: dict) -> list[str]:
+        """ARCH-1 C6 — a FRONTEND tool call awaiting client execution. Emits
+        START/ARGS/END but NO RESULT (the result comes later, on the resume
+        request, after the user applies/dismisses). ``tc`` = {id, tool, args}."""
+        ...
+
     def close_message(self) -> list[str]:
         """Close the open assistant/reasoning message — called once the token
         stream ends, before persistence/finish, so the message END frames the
@@ -77,8 +83,10 @@ class StreamEmitter(Protocol):
         """Post-persistence ids ({message_id, output_id?, has_reasoning?})."""
         ...
 
-    def finish(self, payload: dict) -> list[str]:
-        """Successful end-of-turn — the finish dict (finishReason/usage/timing)."""
+    def finish(self, payload: dict, *, status: str = "success", pending: dict | None = None) -> list[str]:
+        """End-of-turn. ``status`` is "success" normally, or "suspended" when a
+        frontend tool call is awaiting client execution (``pending`` =
+        {runId, toolCallId, toolName} so the FE knows what to execute/resume)."""
         ...
 
     def error(self, safe_msg: str) -> list[str]:
@@ -114,6 +122,11 @@ class LegacyEmitter:
         # Legacy emits only {tool, ok}; the propagated id key is ignored.
         return [_sse({"type": "tool-call", "tool": tc["tool"], "ok": tc["ok"]})]
 
+    def tool_call_pending(self, tc: dict) -> list[str]:
+        # Frontend tools are agui-only; legacy clients never advertise them.
+        # Defensive no-op so a stray call can't break the legacy wire.
+        return []
+
     def close_message(self) -> list[str]:
         # Legacy deltas are stateless — no message to close.
         return []
@@ -121,9 +134,11 @@ class LegacyEmitter:
     def persisted_data(self, payload: dict) -> list[str]:
         return [_sse({"type": "data", "data": [payload]})]
 
-    def finish(self, payload: dict) -> list[str]:
+    def finish(self, payload: dict, *, status: str = "success", pending: dict | None = None) -> list[str]:
         # payload is built in stream_response with keys finishReason/usage/timing
-        # in that order; **spread preserves it so output is identical.
+        # in that order; **spread preserves it so output is identical. Legacy has
+        # no suspend concept, so status/pending are ignored (frontend tools are
+        # agui-only).
         return [_sse({"type": "finish-message", **payload})]
 
     def error(self, safe_msg: str) -> list[str]:
@@ -258,6 +273,27 @@ class AgUiEmitter:
             }),
         ]
 
+    def tool_call_pending(self, tc: dict) -> list[str]:
+        # ARCH-1 C6 — a frontend tool call awaiting client execution: emit
+        # START/ARGS/END but NO RESULT. The result arrives later on the resume
+        # request (after the user applies/dismisses). The FE reads the proposal
+        # from TOOL_CALL_ARGS and holds the call open until then.
+        tool_id = tc.get("id") or str(uuid4())
+        return [
+            _sse({
+                "type": "TOOL_CALL_START",
+                "toolCallId": tool_id,
+                "toolCallName": tc["tool"],
+                "parentMessageId": self._message_id,
+            }),
+            _sse({
+                "type": "TOOL_CALL_ARGS",
+                "toolCallId": tool_id,
+                "delta": json.dumps(tc.get("args", {})),
+            }),
+            _sse({"type": "TOOL_CALL_END", "toolCallId": tool_id}),
+        ]
+
     def close_message(self) -> list[str]:
         return self._close_open()
 
@@ -269,13 +305,18 @@ class AgUiEmitter:
             value["hasReasoning"] = payload["has_reasoning"]
         return [_sse({"type": "CUSTOM", "name": "persisted", "value": value})]
 
-    def finish(self, payload: dict) -> list[str]:
+    def finish(self, payload: dict, *, status: str = "success", pending: dict | None = None) -> list[str]:
         # Any open message was already closed by close_message() at end-of-stream;
         # _close_open() here is a defensive no-op if so.
         lines = self._close_open()
         # payload carries finishReason/usage/timing (+ leading "type" key we drop).
         result = {k: v for k, v in payload.items() if k != "type"}
         result["messageId"] = self._message_id
+        # C6: surface the run status so the FE knows a frontend tool is awaiting
+        # execution (status="suspended" + pending={runId,toolCallId,toolName}).
+        result["status"] = status
+        if pending is not None:
+            result["pendingToolCall"] = pending
         lines.append(_sse({"type": "RUN_FINISHED", "result": result}))
         return lines
 

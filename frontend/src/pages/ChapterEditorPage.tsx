@@ -29,6 +29,7 @@ import { glossaryApi } from '@/features/glossary/api';
 import type { EntityNameEntry } from '@/features/glossary/types';
 import { Chat } from '@/features/chat/Chat';
 import { fireSendToChat } from '@/features/chat/context/sendToChat';
+import { registerEditorTarget } from '@/features/chat/context/editorBridge';
 
 function wordCount(text: string): number {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
@@ -83,6 +84,15 @@ export function ChapterEditorPage() {
     }, 0);
     return () => clearTimeout(id);
   }, [rightTab, bookId, chapterId]);
+
+  // ARCH-1 C6 — register this chapter's Tiptap handle so the AI panel's
+  // Apply-edit handler can write back to the open document (and verify the
+  // proposal targets THIS chapter). Cleared on unmount / chapter change.
+  useEffect(() => {
+    if (!bookId || !chapterId) return;
+    registerEditorTarget({ bookId, chapterId, handleRef: tiptapEditorRef });
+    return () => registerEditorTarget(null);
+  }, [bookId, chapterId]);
 
   // Glossary integration
   const [glossaryEntities, setGlossaryEntities] = useState<EntityNameEntry[]>([]);
@@ -740,7 +750,12 @@ export function ChapterEditorPage() {
                   dialog state) resets instead of bleeding the previous book's
                   session into the new book (review-impl C5 #1). */}
               {rightTab === 'ai' && (
-                <Chat key={bookId} bookId={bookId} className="h-full" />
+                <Chat
+                  key={bookId}
+                  bookId={bookId}
+                  editorContext={{ book_id: bookId, chapter_id: chapterId }}
+                  className="h-full"
+                />
               )}
             </div>
           </div>

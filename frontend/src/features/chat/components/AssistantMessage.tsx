@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { ThinkingBlock } from './ThinkingBlock';
 import { AudioReplayPlayer } from './AudioReplayPlayer';
 import { ToolCallIndicator } from './ToolCallIndicator';
+import { ProposeEditCard } from './ProposeEditCard';
 import { firePasteToEditor } from '../utils/pasteToEditor';
 import type { ToolCallRecord } from '../types';
 
@@ -108,8 +109,21 @@ export function AssistantMessage({
       </div>
 
       {/* K21-C (D2): memory tool calls used in this reply. Renders
-          nothing when toolCalls is empty/null. */}
-      {toolCalls && toolCalls.length > 0 && <ToolCallIndicator toolCalls={toolCalls} />}
+          nothing when toolCalls is empty/null. ARCH-1 C6: a pending
+          propose_edit (frontend write-back tool) renders as an interactive
+          Apply/Dismiss card instead of a passive chip. */}
+      {toolCalls && toolCalls.length > 0 && (() => {
+        const proposals = toolCalls.filter((tc) => tc.pending && tc.tool === 'propose_edit');
+        const rest = toolCalls.filter((tc) => !(tc.pending && tc.tool === 'propose_edit'));
+        return (
+          <>
+            {rest.length > 0 && <ToolCallIndicator toolCalls={rest} />}
+            {proposals.map((tc) => (
+              <ProposeEditCard key={tc.toolCallId ?? tc.tool} record={tc} />
+            ))}
+          </>
+        );
+      })()}
 
       {/* Audio replay (voice pipeline V2) */}
       {!isStreaming && sessionId && messageId && voiceTtsSentences && voiceTtsSentences > 0 && (

@@ -30,7 +30,10 @@ export type OnMemoryMode = (mode: 'no_project' | 'static' | 'degraded') => void;
  * Unified hook: owns message list + SSE streaming for send/edit/regenerate.
  * Supports reasoning-delta (thinking) and text-delta (content) events.
  */
-export function useChatMessages(sessionId: string | null) {
+export function useChatMessages(
+  sessionId: string | null,
+  editorContext?: { book_id: string; chapter_id: string },
+) {
   const { accessToken } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -75,7 +78,15 @@ export function useChatMessages(sessionId: string | null) {
   // ── SSE streaming ─────────────────────────────────────────────────────────────
 
   const streamPost = useCallback(
-    async (content: string, editFromSequence?: number, thinking?: boolean): Promise<string> => {
+    async (
+      content: string,
+      editFromSequence?: number,
+      thinking?: boolean,
+      // ARCH-1 C6: when set, POST this descriptor instead of the messages
+      // endpoint (used by the resume / tool-result path). The consume loop is
+      // identical, so send + resume share all stream handling.
+      override?: { url: string; body: Record<string, unknown> },
+    ): Promise<string> => {
       if (!accessToken || !sessionId) throw new Error('Not ready');
 
       // Abort any in-progress stream
@@ -101,6 +112,9 @@ export function useChatMessages(sessionId: string | null) {
       // between the two so the resolved record is {tool, ok} like the legacy
       // `tool-call` event produced in one shot.
       const openToolCalls = new Map<string, string>();
+      // ARCH-1 C6: accumulate TOOL_CALL_ARGS per id so a frontend tool's
+      // proposal payload (operation/text) reaches the chip.
+      const openToolArgs = new Map<string, string>();
       let streamMessageId: string | null = null;
       let streamUsage: { promptTokens?: number; completionTokens?: number } = {};
       let streamTiming: { responseTimeMs?: number; timeToFirstTokenMs?: number } = {};
@@ -127,8 +141,13 @@ export function useChatMessages(sessionId: string | null) {
         if (thinking != null) {
           body.thinking = thinking;
         }
+        // ARCH-1 C6: editor panel → advertise the write-back frontend tool +
+        // carry which chapter the assistant is editing.
+        if (editorContext) {
+          body.editor_context = editorContext;
+        }
 
-        const res = await fetch(chatApi.messagesUrl(sessionId), {
+        const res = await fetch(override?.url ?? chatApi.messagesUrl(sessionId), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -138,7 +157,7 @@ export function useChatMessages(sessionId: string | null) {
             // that doesn't send this, so other consumers are unaffected.
             'x-loreweave-stream-format': 'agui',
           },
-          body: JSON.stringify(body),
+          body: JSON.stringify(override?.body ?? body),
           signal: controller.signal,
         });
 
@@ -210,6 +229,14 @@ export function useChatMessages(sessionId: string | null) {
                   if (e.toolCallId) openToolCalls.set(e.toolCallId, e.toolCallName);
                   break;
                 }
+                case AgUiEventType.TOOL_CALL_ARGS: {
+                  // ARCH-1 C6: accumulate args (one or more deltas) per id.
+                  const e = event as { toolCallId?: string; delta?: string };
+                  if (e.toolCallId) {
+                    openToolArgs.set(e.toolCallId, (openToolArgs.get(e.toolCallId) ?? '') + (e.delta ?? ''));
+                  }
+                  break;
+                }
                 case AgUiEventType.TOOL_CALL_RESULT: {
                   // K21-C (D2): one chip per executed memory tool. The server
                   // encodes the authoritative outcome as {ok, result|error}
@@ -247,9 +274,35 @@ export function useChatMessages(sessionId: string | null) {
                   break;
                 }
                 case AgUiEventType.RUN_FINISHED: {
-                  const result = (event as RunFinishedEvent).result;
+                  const result = (event as RunFinishedEvent).result as
+                    | (RunFinishedEvent['result'] & {
+                        status?: string;
+                        pendingToolCall?: { runId: string; toolCallId: string; toolName: string };
+                      })
+                    | undefined;
                   streamUsage = result?.usage || {};
                   streamTiming = result?.timing || {};
+                  // ARCH-1 C6: a suspended run — a frontend tool (propose_edit)
+                  // is awaiting the user's apply/dismiss. Record the pending
+                  // call + push a frontend-tool chip carrying the proposal args
+                  // so the UI can render Apply/Dismiss.
+                  if (result?.status === 'suspended' && result.pendingToolCall) {
+                    const p = result.pendingToolCall;
+                    let parsedArgs: Record<string, unknown> = {};
+                    try {
+                      parsedArgs = JSON.parse(openToolArgs.get(p.toolCallId) ?? '{}');
+                    } catch {
+                      parsedArgs = {};
+                    }
+                    accumulatedToolCalls.push({
+                      tool: p.toolName,
+                      ok: true,
+                      pending: true,
+                      runId: p.runId,
+                      toolCallId: p.toolCallId,
+                      args: parsedArgs,
+                    });
+                  }
                   break;
                 }
                 case AgUiEventType.RUN_ERROR: {
@@ -323,7 +376,22 @@ export function useChatMessages(sessionId: string | null) {
         setStreamingReasoning('');
       }
     },
-    [accessToken, sessionId, fetchMessages],
+    [accessToken, sessionId, fetchMessages, editorContext],
+  );
+
+  // ── ARCH-1 C6: resume a suspended run after a frontend-tool decision ──────────
+  /** POST the outcome of a frontend tool (the user applied/dismissed a proposed
+   *  edit) to the resume endpoint and consume the agent's 2nd pass. Reuses the
+   *  full stream consumer via streamPost's override. */
+  const submitToolResult = useCallback(
+    (runId: string, toolCallId: string, outcome: 'applied' | 'dismissed', appliedText?: string) => {
+      if (!sessionId) return Promise.resolve('');
+      return streamPost('', undefined, undefined, {
+        url: chatApi.toolResultsUrl(sessionId),
+        body: { run_id: runId, tool_call_id: toolCallId, outcome, applied_text: appliedText },
+      });
+    },
+    [sessionId, streamPost],
   );
 
   // ── Public API ────────────────────────────────────────────────────────────────
@@ -419,6 +487,8 @@ export function useChatMessages(sessionId: string | null) {
     stop,
     refresh: fetchMessages,
     refreshBranch,
+    /** ARCH-1 C6: resume a suspended run with a frontend-tool outcome. */
+    submitToolResult,
     /** Set a callback to receive per-token deltas during streaming */
     onStreamDeltaRef,
     /** Set a callback for when streaming ends (success or abort) */

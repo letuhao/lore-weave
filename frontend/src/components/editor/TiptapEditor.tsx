@@ -38,6 +38,15 @@ export interface TiptapEditorHandle {
   setGlossaryEnabled: (enabled: boolean) => void;
   /** Get current glossary match count */
   getGlossaryCount: () => number;
+  /** ARCH-1 C6 — current selection (ProseMirror positions + selected text),
+   *  or null if the editor isn't ready. `empty` = a caret with no selection. */
+  getSelection: () => { from: number; to: number; empty: boolean; text: string } | null;
+  /** ARCH-1 C6 — insert plain text at the cursor. Returns false if no editor.
+   *  Flows through onUpdate (NOT setContent) so it dirties + autosaves. */
+  insertAtCursor: (text: string) => boolean;
+  /** ARCH-1 C6 — replace the current selection with text. Returns false if
+   *  there is no (non-empty) selection. One chained transaction = one undo. */
+  replaceSelection: (text: string) => boolean;
 }
 
 interface TiptapEditorProps {
@@ -172,6 +181,27 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
       getGlossaryCount: () => {
         if (editor) return getGlossaryCount(editor);
         return 0;
+      },
+      // ARCH-1 C6 — editor write-back for AG-UI frontend tools. These mutate
+      // through editor.chain() (NOT setContent), so onUpdate fires and the doc
+      // dirties/autosaves exactly like typing. We deliberately do NOT set
+      // isExternalUpdate here.
+      getSelection: () => {
+        if (!editor) return null;
+        const { from, to, empty } = editor.state.selection;
+        return { from, to, empty, text: editor.state.doc.textBetween(from, to, ' ') };
+      },
+      insertAtCursor: (text: string) => {
+        if (!editor || !text) return false;
+        editor.chain().focus().insertContentAt(editor.state.selection.from, text).run();
+        return true;
+      },
+      replaceSelection: (text: string) => {
+        if (!editor) return false;
+        const { from, to, empty } = editor.state.selection;
+        if (empty) return false;  // nothing selected — caller falls back / toasts
+        editor.chain().focus().deleteRange({ from, to }).insertContentAt(from, text).run();
+        return true;
       },
     }), [setContentHandler, editor]);
 

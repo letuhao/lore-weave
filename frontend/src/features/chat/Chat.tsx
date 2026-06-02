@@ -9,6 +9,9 @@ interface ChatProps {
   /** When set, the chat binds to this book's knowledge project (memory/RAG)
    *  and a book-scoped session is auto-selected or created. */
   bookId?: string;
+  /** ARCH-1 C6: editor panel context — enables the write-back frontend tool
+   *  (propose_edit) and carries the chapter the assistant can edit. */
+  editorContext?: { book_id: string; chapter_id: string };
   className?: string;
 }
 
@@ -21,10 +24,10 @@ interface ChatProps {
  * hook owns which session is active and binds it to the book's knowledge
  * project so the assistant has the book's lore/memory.
  */
-export function Chat({ bookId, className }: ChatProps) {
+export function Chat({ bookId, editorContext, className }: ChatProps) {
   return (
     <ChatSessionProvider embedded>
-      <ChatStreamProvider>
+      <ChatStreamProvider editorContext={editorContext}>
         <EmbeddedChat bookId={bookId} className={className} />
       </ChatStreamProvider>
     </ChatSessionProvider>

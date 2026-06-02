@@ -52,6 +52,12 @@ export interface ToolCallRecord {
   args?: unknown;
   result?: unknown;
   error?: string | null;
+  // ARCH-1 C6 — frontend tool (propose_edit) awaiting the user's apply/dismiss.
+  // When `pending`, the chip renders Apply/Dismiss; runId/toolCallId resume the
+  // suspended run via the tool-results endpoint.
+  pending?: boolean;
+  runId?: string;
+  toolCallId?: string;
 }
 
 export interface ChatMessage {

@@ -33,7 +33,13 @@ from loreweave_llm import (
 from app.client.billing_client import BillingClient
 from app.client.knowledge_client import get_knowledge_client
 from app.config import settings
+from app.db.suspended_runs import (
+    delete_suspended_run,
+    load_suspended_run,
+    save_suspended_run,
+)
 from app.models import ProviderCredentials
+from app.services.frontend_tools import is_frontend_tool
 from app.services.output_extractor import extract_outputs
 from app.services.stream_events import make_emitter
 
@@ -180,6 +186,7 @@ async def _stream_with_tools(
     knowledge_client,
     session_id: str,
     project_id: str | None,
+    seed_usage: tuple[int, int] | None = None,
 ) -> AsyncGenerator[dict, None]:
     """K21-B — the tool-calling loop.
 
@@ -204,8 +211,10 @@ async def _stream_with_tools(
     )
     try:
         working: list[dict] = list(messages)
-        total_input = 0
-        total_output = 0
+        # C6: on a resume pass, seed the token totals from the suspended first
+        # run so the final usage is summed across both runs (design D10).
+        total_input = seed_usage[0] if seed_usage else 0
+        total_output = seed_usage[1] if seed_usage else 0
         max_tokens = gen_params.get("max_tokens")
         if max_tokens is not None and max_tokens <= 0:
             max_tokens = None
@@ -289,50 +298,65 @@ async def _stream_with_tools(
                     for c in calls
                 ],
             })
+
+            # ARCH-1 C6 — frontend tool: SUSPEND instead of executing. The first
+            # frontend tool call pauses the run; the FE executes it (the user
+            # reviews + applies/dismisses) and POSTs the result to the resume
+            # endpoint, which re-enters this loop with the result appended. Any
+            # backend tools in the SAME pass already ran above? No — execution
+            # happens in the loop below, which we have NOT entered yet. So if a
+            # pass mixes backend + frontend tools, we execute the backend ones
+            # first (so their results are in `working`), THEN suspend on the
+            # frontend one. Process calls in order: run backend tools inline,
+            # and on the first frontend tool, suspend with the partial state.
+            suspended_call: dict | None = None
             for c in calls:
+                if is_frontend_tool(c["name"]):
+                    suspended_call = {
+                        "id": c["id"],
+                        "name": c["name"],
+                        "args": _parse_tool_args(c["arguments"]),
+                    }
+                    break
+                # backend tool — execute inline (existing path, below)
                 args_obj = _parse_tool_args(c["arguments"])
-                # ARCH-2 C2 dual-run gate. USE_MCP_TOOLS=true routes through
-                # the MCP client (streamable HTTP); false = existing bespoke
-                # path. No other change to the loop — the result envelope
-                # shape is identical for both paths.
                 if settings.use_mcp_tools:
                     envelope = await knowledge_client.mcp_execute_tool(
-                        user_id=user_id,
-                        session_id=session_id,
-                        project_id=project_id,
-                        tool_name=c["name"],
-                        tool_args=args_obj,
+                        user_id=user_id, session_id=session_id, project_id=project_id,
+                        tool_name=c["name"], tool_args=args_obj,
                     )
                 else:
                     envelope = await knowledge_client.execute_tool(
-                        user_id=user_id,
-                        session_id=session_id,
-                        project_id=project_id,
-                        tool_name=c["name"],
-                        tool_args=args_obj,
+                        user_id=user_id, session_id=session_id, project_id=project_id,
+                        tool_name=c["name"], tool_args=args_obj,
                     )
                 ok = bool(envelope.get("success"))
-                tool_payload = (
-                    envelope.get("result") if ok
-                    else {"error": envelope.get("error")}
-                )
+                tool_payload = envelope.get("result") if ok else {"error": envelope.get("error")}
                 working.append({
-                    "role": "tool",
-                    "tool_call_id": c["id"],
+                    "role": "tool", "tool_call_id": c["id"],
                     "content": json.dumps(tool_payload),
                 })
                 yield {"tool_call": {
-                    # ARCH-1 C3: propagate the provider tool-call id so the
-                    # AG-UI TOOL_CALL_* events key on the same id persisted in
-                    # the assistant message's tool_calls. Legacy emit ignores it.
-                    "id": c["id"],
-                    "iteration": iteration,
-                    "tool": c["name"],
-                    "args": args_obj,
-                    "ok": ok,
+                    "id": c["id"], "iteration": iteration, "tool": c["name"],
+                    "args": args_obj, "ok": ok,
                     "result": envelope.get("result") if ok else None,
                     "error": None if ok else envelope.get("error"),
                 }}
+
+            if suspended_call is not None:
+                # Hand the full conversation + the pending frontend call back to
+                # the caller, which persists the suspended run and emits the
+                # pending tool-call events + a "suspended" finish. No further
+                # passes; the resume request continues the loop.
+                yield {"suspend": {
+                    "working": working,
+                    "pending_tool_call": suspended_call,
+                    "input_tokens": total_input,
+                    "output_tokens": total_output,
+                }}
+                return
+            # (all-backend-tools case: the inline loop above already executed
+            # them and appended results; just continue to the next pass.)
 
         # MAX_TOOL_ITERATIONS exhausted. The final pass is forced
         # tool-free (D7) so this is unreachable in practice — defensive.
@@ -357,14 +381,17 @@ async def stream_response(
     context: str | None = None,
     thinking: bool | None = None,
     stream_format: str = "legacy",
+    editor_context: dict | None = None,
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields chat-turn SSE lines.
 
     ARCH-1 C3: the event serialization is selected per request via
-    ``stream_format`` ("legacy" | "agui"). Both share this transport and all
-    business logic below; only the wire event vocabulary differs (see
-    app/services/stream_events.py). Default stays "legacy" until the AG-UI
-    frontend (C4) ships."""
+    ``stream_format`` ("legacy" | "agui").
+
+    ARCH-1 C6: ``editor_context`` ({book_id, chapter_id}) — when present (agui +
+    editor `<Chat>` panel), the frontend write-back tool (propose_edit) is
+    advertised to the LLM; a call to it SUSPENDS the run for client execution
+    (see _emit_chat_turn + resume_stream_response)."""
 
     # ── Load session settings ───────────────────────────────────────────────
     session_row = await pool.fetchrow(
@@ -380,13 +407,14 @@ async def stream_response(
     # that pass a plain dict without project_id continue to work.
     project_id = session_row.get("project_id") if session_row else None
 
+    knowledge_client = get_knowledge_client()
+
     # ── K5: build memory block via knowledge-service ────────────────────────
     # Always called — Mode 1 (no project) returns just the user's global
     # bio + a short instruction; Mode 2 (project linked) returns the
     # full L0/L1/glossary block. Failures degrade silently inside the
     # client and return KnowledgeContext(mode="degraded", context="",
     # recent_message_count=50).
-    knowledge_client = get_knowledge_client()
     kctx = await knowledge_client.build_context(
         user_id=user_id,
         session_id=session_id,
@@ -492,38 +520,97 @@ async def stream_response(
     tool_defs: list[dict] = []
     if kctx.tool_calling_enabled:
         tool_defs = await knowledge_client.get_tool_definitions()
+        # ARCH-1 C6: advertise the editor write-back frontend tool ONLY for the
+        # editor <Chat> panel (agui + editor_context present). Other clients
+        # (standalone chat page, voice) never see it, so the memory_* path is
+        # unaffected.
+        if stream_format == "agui" and editor_context:
+            from app.services.frontend_tools import frontend_tool_defs
+            tool_defs = tool_defs + frontend_tool_defs()
     use_tools = bool(tool_defs)
 
-    # ── Stream ──────────────────────────────────────────────────────────────
+    # ── Stream the turn ──────────────────────────────────────────────────────
+    # The Stream/persist/finish body is shared with the C6 resume path via
+    # _emit_chat_turn — both a fresh turn and a resumed (post-frontend-tool)
+    # turn run the same consume→persist→finish logic.
+    async for line in _emit_chat_turn(
+        session_id=session_id,
+        user_message_content=user_message_content,
+        user_id=user_id,
+        model_source=model_source,
+        model_ref=model_ref,
+        creds=creds,
+        pool=pool,
+        billing=billing,
+        parent_message_id=parent_message_id,
+        project_id=str(project_id) if project_id else None,
+        stream_format=stream_format,
+        editor_context=editor_context,
+        messages=messages,
+        gen_params=gen_params,
+        tool_defs=tool_defs,
+        use_tools=use_tools,
+        knowledge_client=knowledge_client,
+        fe_memory_mode=fe_memory_mode,
+        msg_id=str(uuid4()),
+        seed_usage=None,
+    ):
+        yield line
+
+
+async def _emit_chat_turn(
+    *,
+    session_id: str,
+    user_message_content: str,
+    user_id: str,
+    model_source: str,
+    model_ref: str,
+    creds: ProviderCredentials,
+    pool: asyncpg.Pool,
+    billing: BillingClient,
+    parent_message_id: str | None,
+    project_id: str | None,
+    stream_format: str,
+    editor_context: dict | None,
+    messages: list[dict],
+    gen_params: dict,
+    tool_defs: list[dict],
+    use_tools: bool,
+    knowledge_client,
+    fe_memory_mode: str | None,
+    msg_id: str,
+    seed_usage: tuple[int, int] | None,
+) -> AsyncGenerator[str, None]:
+    """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
+
+    Consumes chunks from the LLM (tool loop or plain), emits AG-UI/legacy events,
+    persists the assistant message, and runs post-turn best-effort work. When the
+    tool loop yields a ``suspend`` chunk (a frontend tool awaiting client
+    execution), this persists the suspended run instead and emits a "suspended"
+    finish — NO assistant message is written (the turn isn't done yet)."""
     full_content: list[str] = []
     full_reasoning: list[str] = []
     tool_calls_history: list[dict] = []
     last_usage = None
-    msg_id = str(uuid4())
     import time as _time
     stream_start = _time.monotonic()
     time_to_first_token: float | None = None
+    # C6: set when the tool loop suspends on a frontend tool.
+    suspend_state: dict | None = None
 
-    # ARCH-1 C3: select the wire-event serializer for this request. The emitter
-    # owns ALL event encoding from here on; the business logic below is unchanged.
+    # ARCH-1 C3: select the wire-event serializer for this request.
     emitter = make_emitter(stream_format, thread_id=session_id, message_id=msg_id)
 
     # AG-UI requires a RUN_STARTED before any other event (no-op in legacy mode).
     for line in emitter.open_run():
         yield line
 
-    # K-CLEAN-5 (D-K8-04): emit memory_mode as the FIRST content-bearing SSE
-    # event so the FE can flip the indicator badge before any tokens render.
-    # Yielded outside the try/except below so it lands even if the LLM call
-    # immediately fails downstream.
-    for line in emitter.memory_mode(fe_memory_mode):
-        yield line
+    # K-CLEAN-5: emit memory_mode first (skipped on resume — the FE already has
+    # it from run 1, so fe_memory_mode is None there).
+    if fe_memory_mode is not None:
+        for line in emitter.memory_mode(fe_memory_mode):
+            yield line
 
-    # ARCH-1 C3: once finish() (RUN_FINISHED in agui) is emitted, the turn is
-    # terminated and no later event may follow it — especially not an error /
-    # RUN_ERROR. We set this AFTER finish so the post-turn best-effort work
-    # (auto-title, billing) runs OUTSIDE this try and can never route a stray
-    # raise into the error path below.
     turn_succeeded = False
     post_finish_state: dict | None = None
 
@@ -538,7 +625,8 @@ async def stream_response(
                 tools=tool_defs,
                 knowledge_client=knowledge_client,
                 session_id=session_id,
-                project_id=str(project_id) if project_id else None,
+                project_id=project_id,
+                seed_usage=seed_usage,
             )
         else:
             chunk_stream = _stream_via_gateway(
@@ -550,6 +638,11 @@ async def stream_response(
             )
 
         async for chunk_data in chunk_stream:
+            # ARCH-1 C6: a suspend chunk — a frontend tool is awaiting client
+            # execution. Capture it, stop consuming, and handle below.
+            if chunk_data.get("suspend") is not None:
+                suspend_state = chunk_data["suspend"]
+                break
             # K21-B: a tool_call chunk → record it for persistence + emit
             # the SSE indicator. It carries no text/usage, so skip the rest.
             tool_call = chunk_data.get("tool_call")
@@ -575,6 +668,47 @@ async def stream_response(
                 full_content.append(content)
                 for line in emitter.text_delta(content):
                     yield line
+
+        # ARCH-1 C6: SUSPEND path — a frontend tool was called. Persist the
+        # suspended run (so the resume request can rehydrate it) and emit the
+        # pending tool-call events + a "suspended" finish. NO assistant message
+        # is written; the logical turn completes on resume.
+        if suspend_state is not None:
+            run_id = str(uuid4())
+            pending = suspend_state["pending_tool_call"]
+            await save_suspended_run(
+                pool,
+                run_id=run_id,
+                session_id=session_id,
+                owner_user_id=user_id,
+                message_id=msg_id,
+                working=suspend_state["working"],
+                pending_tool_call=pending,
+                input_tokens=suspend_state["input_tokens"],
+                output_tokens=suspend_state["output_tokens"],
+                model_source=model_source,
+                model_ref=model_ref,
+                parent_message_id=parent_message_id,
+                user_message_content=user_message_content,
+            )
+            # close any open assistant/reasoning message first
+            for line in emitter.close_message():
+                yield line
+            for line in emitter.tool_call_pending(pending):
+                yield line
+            finish = {"type": "finish-message", "finishReason": "tool_calls",
+                      "usage": {"promptTokens": suspend_state["input_tokens"],
+                                "completionTokens": suspend_state["output_tokens"]},
+                      "timing": {}}
+            for line in emitter.finish(
+                finish, status="suspended",
+                pending={"runId": run_id, "toolCallId": pending["id"],
+                         "toolName": pending["name"]},
+            ):
+                yield line
+            for line in emitter.done():
+                yield line
+            return
 
         # ARCH-1 C3: token stream is done — close the open assistant/reasoning
         # message so its END frames the content, before the run-level
@@ -773,6 +907,101 @@ async def stream_response(
             )
 
     for line in emitter.done():
+        yield line
+
+
+async def resume_stream_response(
+    *,
+    session_id: str,
+    user_id: str,
+    run_id: str,
+    tool_call_id: str,
+    outcome: str,
+    applied_text: str | None,
+    creds: ProviderCredentials,
+    pool: asyncpg.Pool,
+    billing: BillingClient,
+    stream_format: str = "agui",
+) -> AsyncGenerator[str, None]:
+    """ARCH-1 C6 — resume a suspended run after the FE executed a frontend tool.
+
+    Loads the suspended run (scoped to user), appends the tool result to the
+    rehydrated conversation, re-derives tool defs, and streams the 2nd LLM pass
+    via the shared _emit_chat_turn. Yields an AG-UI RUN_ERROR if the suspended
+    run is missing/expired."""
+    from app.services.frontend_tools import frontend_tool_defs
+
+    susp = await load_suspended_run(pool, run_id, user_id)
+    if susp is None or susp.pending_tool_call.get("id") != tool_call_id:
+        # Unknown/expired/mismatched — surface a clean AG-UI error.
+        emitter = make_emitter(stream_format, thread_id=session_id, message_id=str(uuid4()))
+        for line in emitter.open_run():
+            yield line
+        for line in emitter.error("This suggestion has expired. Please ask again."):
+            yield line
+        for line in emitter.done():
+            yield line
+        return
+
+    # Append the frontend tool's result (the human's apply decision) so the
+    # agent can acknowledge it in the 2nd pass.
+    working = list(susp.working)
+    result_payload = {"outcome": outcome}
+    if applied_text is not None:
+        result_payload["applied_text"] = applied_text
+    working.append({
+        "role": "tool",
+        "tool_call_id": tool_call_id,
+        "content": json.dumps(result_payload),
+    })
+
+    # Re-derive session gen_params + tool defs for the 2nd pass.
+    session_row = await pool.fetchrow(
+        "SELECT generation_params, project_id FROM chat_sessions WHERE session_id = $1",
+        session_id,
+    )
+    gp_raw = session_row["generation_params"] if session_row else {}
+    if isinstance(gp_raw, str):
+        gp_raw = json.loads(gp_raw)
+    gen_params: dict = gp_raw if gp_raw else {}
+    project_id = session_row.get("project_id") if session_row else None
+
+    knowledge_client = get_knowledge_client()
+    tool_defs: list[dict] = []
+    try:
+        tool_defs = await knowledge_client.get_tool_definitions()
+    except Exception:
+        tool_defs = []
+    # The editor tool stays advertised on resume (the agent may propose again).
+    if tool_defs and stream_format == "agui":
+        tool_defs = tool_defs + frontend_tool_defs()
+    use_tools = bool(tool_defs)
+
+    # Delete the suspended run up front — the 2nd pass owns the turn now.
+    await delete_suspended_run(pool, run_id)
+
+    async for line in _emit_chat_turn(
+        session_id=session_id,
+        user_message_content=susp.user_message_content,
+        user_id=user_id,
+        model_source=susp.model_source,
+        model_ref=susp.model_ref,
+        creds=creds,
+        pool=pool,
+        billing=billing,
+        parent_message_id=susp.parent_message_id,
+        project_id=str(project_id) if project_id else None,
+        stream_format=stream_format,
+        editor_context={"resumed": True},  # truthy so the frontend tool stays advertised
+        messages=working,
+        gen_params=gen_params,
+        tool_defs=tool_defs,
+        use_tools=use_tools,
+        knowledge_client=knowledge_client,
+        fe_memory_mode=None,  # already sent in run 1
+        msg_id=susp.message_id,  # share the assistant message id across both runs
+        seed_usage=(susp.input_tokens, susp.output_tokens),
+    ):
         yield line
 
 
