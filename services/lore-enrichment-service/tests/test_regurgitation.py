@@ -34,13 +34,36 @@ def test_containment_directional():
     assert char_ngram_containment("完全不同的一段全新文字描述内容", SRC) == 0.0
 
 
-def test_egregious_verbatim_copy_is_high():
-    # The output reproduces a long contiguous run of the source verbatim → HIGH
-    # (a derivative-work liability) → C3 auto-rejects.
-    copied = "此宫之事：" + SRC  # embeds the whole source sentence verbatim
+def test_wholesale_verbatim_copy_is_high():
+    # The output is ALMOST ENTIRELY a verbatim copy of the source (a long run covering
+    # most of the output) → HIGH (a derivative-work liability) → C3 auto-rejects.
+    copied = "此宫之事：" + SRC  # output is ~88% the source sentence verbatim
     res = detect_regurgitation(copied, [SRC])
     assert res.severity == "high" and res.flagged
     assert res.max_lcs >= LCS_REJECT
+
+
+def test_short_but_complete_copy_is_high():
+    # A short output that is the ENTIRE source verbatim is still a wholesale copy
+    # (the run covers 100% of the output) → HIGH, even below the overlap-metric's
+    # min length (the auto-reject uses the run/length fraction, not n-gram overlap).
+    res = detect_regurgitation(SRC, [SRC])
+    assert res.severity == "high"
+
+
+def test_single_copied_sentence_in_original_output_is_advisory_not_high():
+    # ④-calibration: ONE copied sentence inside a largely-ORIGINAL output → a long
+    # verbatim run (high LCS) but a SMALL fraction of the output → ADVISORY (the human
+    # approval gate decides — it may be a legitimate short attributed quote), NOT
+    # auto-reject.
+    original = (
+        "玉虛宮者，東海之上一處仙山也，雲霞繚繞，羽客往還，"
+        "層樓疊閣，金玉為階，世人罕至其境，唯傳說中偶見其名，歷代真仙輪值鎮守於此。"
+    )  # ~50 chars of fresh prose
+    embedded = original + SRC  # SRC (~35 chars) appended → high LCS, small fraction
+    res = detect_regurgitation(embedded, [SRC])
+    assert res.max_lcs >= LCS_REJECT       # the long verbatim run IS present
+    assert res.severity == "medium"        # …but it is NOT most of the output → advisory
 
 
 def test_moderate_overlap_is_advisory_not_high():

@@ -29,14 +29,26 @@ __all__ = [
     "char_ngram_containment",
     "detect_regurgitation",
     "LCS_REJECT",
+    "LCS_FRACTION",
     "LCS_FLAG",
     "OVERLAP_FLAG",
     "NGRAM_N",
 ]
 
-#: A contiguous shared run >= this ⟹ EGREGIOUS verbatim copy (a whole sentence) →
-#: auto-reject. High enough that fact-reuse / shared proper nouns never reach it.
+# AUTO-REJECT is reserved for a WHOLESALE copy — BOTH a long verbatim run AND most
+# of the output overlapping the source. Rationale (layer-④ calibration): the human
+# approval gate (H0 — enrichment is a private draft until the author promotes it) is
+# the real decision point, so the machine auto-rejects only the egregious case a
+# human should never have to see; everything softer is ADVISORY (the author decides,
+# and may legitimately keep e.g. a short attributed quotation = fair use).
+#: Contiguous shared run >= this is PART of the auto-reject test (paired with the
+#: fraction below) — long enough that fact-reuse / shared proper nouns never reach it.
 LCS_REJECT: int = 24
+#: …AND that verbatim run covers >= this FRACTION of the whole output ⟹ the output is
+#: "almost entirely a copy" → auto-reject. Length-independent (works for a short
+#: but complete copy too). A single copied sentence inside an otherwise-original
+#: output has a high LCS but a SMALL fraction, so it stays advisory (not rejected).
+LCS_FRACTION: float = 0.75
 #: A contiguous shared run >= this ⟹ ADVISORY (surfaced to the human gate, NOT
 #: auto-rejected — a re-cook legitimately re-uses some phrasing, esp. from PD).
 LCS_FLAG: int = 12
@@ -131,11 +143,14 @@ def detect_regurgitation(
     """Compare generated ``content`` against the grounding ``excerpts`` (the real
     source material) and classify the worst overlap.
 
-    EGREGIOUS (``high`` → auto-reject): a contiguous shared run ≥ :data:`LCS_REJECT`
-    (a whole sentence copied verbatim). ADVISORY (``medium`` → human gate): a run ≥
-    :data:`LCS_FLAG` OR n-gram containment ≥ :data:`OVERLAP_FLAG`. Otherwise clean.
-    Conservative: shared proper nouns / short idioms (2–4 chars) never reach the
-    advisory threshold, so normal fact-reuse is not flagged."""
+    EGREGIOUS (``high`` → auto-reject): a WHOLESALE copy — a contiguous run ≥
+    :data:`LCS_REJECT` that covers ≥ :data:`LCS_FRACTION` of the output (the output
+    is almost entirely the source). ADVISORY (``medium`` → the human approval gate decides):
+    a run ≥ :data:`LCS_FLAG` OR containment ≥ :data:`OVERLAP_FLAG` — including a
+    single copied sentence inside an otherwise-original output (high LCS, low overall
+    overlap), which the author may legitimately keep as a short attributed quote.
+    Otherwise clean. Conservative: shared proper nouns / short idioms (2–4 chars)
+    never reach the advisory threshold, so normal fact-reuse is not flagged."""
     c = _normalize(content)
     if not c:
         return RegurgitationResult(0, 0.0, None, "")
@@ -155,11 +170,17 @@ def detect_regurgitation(
     # Containment is only meaningful on long-enough content (a short factual
     # statement that is a substring of the source would falsely read 100%-contained).
     overlap_applies = len(c) >= MIN_OVERLAP_LEN
-    if max_lcs >= LCS_REJECT:
+    # AUTO-REJECT only a WHOLESALE copy: a long verbatim run that covers MOST of the
+    # output (the output is "almost entirely a copy"). A single copied sentence in an
+    # otherwise-original output (high LCS, small fraction) is ADVISORY — the human
+    # approval gate (layer ④) decides it. This reduces false-blocks of good drafts
+    # without losing the insurance against bulk copy-paste.
+    lcs_fraction = max_lcs / len(c)
+    if max_lcs >= LCS_REJECT and lcs_fraction >= LCS_FRACTION:
         sev: str | None = "high"
         ev = (
-            f"输出与授权来源逐字重合 {max_lcs} 字（疑似直接复制原文表达，"
-            f"非再创作）— 版权风险，自动拒绝"
+            f"输出几乎整体复制授权来源原文表达（最长逐字 {max_lcs} 字，"
+            f"占输出 {lcs_fraction:.0%}）— 非再创作，版权风险，自动拒绝"
         )
     elif max_lcs >= LCS_FLAG or (overlap_applies and max_overlap >= OVERLAP_FLAG):
         sev = "medium"
