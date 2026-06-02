@@ -96,6 +96,14 @@ class FakeRepo:
         self._p = replace(self._p, review_status=to_status, rejected_reason=rejected_reason or self._p.rejected_reason)
         return self._p
 
+    async def approve(self, *, user_id, project_id, proposal_id):
+        # Mirror the real repo: walk proposed → author_reviewing → approved (LE-063).
+        if self._p.review_status == ReviewStatus.PROPOSED:
+            await self.set_status(user_id=user_id, project_id=project_id,
+                                  proposal_id=proposal_id, to_status=ReviewStatus.AUTHOR_REVIEWING)
+        return await self.set_status(user_id=user_id, project_id=project_id,
+                                     proposal_id=proposal_id, to_status=ReviewStatus.APPROVED)
+
     async def mark_promoted(self, *, user_id, project_id, proposal_id, promoted_entity_id, promoted_by, promoted_at):
         if self._p.review_status != ReviewStatus.APPROVED:
             raise IllegalTransitionError(self._p.review_status, "promoted")
@@ -231,6 +239,26 @@ async def test_approve_is_not_canon():
     assert p.confidence < 1.0
     assert p.promoted_entity_id is None
     assert p.promoted_by is None
+
+
+@pytest.mark.asyncio
+async def test_approve_from_proposed_walks_through_reviewing():
+    """LE-063: a freshly-created `proposed` proposal can be approved in ONE call
+    via repo.approve — it auto-walks proposed → author_reviewing → approved.
+    Before the fix, the only endpoint set APPROVED directly, which the DAG
+    rejects (proposed → approved is not a legal edge), dead-ending promote."""
+    repo = FakeRepo(_proposal(status=ReviewStatus.PROPOSED))
+    pid = repo._p.proposal_id
+    p = await repo.approve(user_id=OWNER, project_id=PROJECT, proposal_id=pid)
+    assert p.review_status == "approved"
+    # idempotent-ish: approving again from author_reviewing also lands on approved.
+    repo2 = FakeRepo(_proposal(status=ReviewStatus.AUTHOR_REVIEWING))
+    p2 = await repo2.approve(user_id=OWNER, project_id=PROJECT, proposal_id=repo2._p.proposal_id)
+    assert p2.review_status == "approved"
+    # an already-terminal proposal still cannot be approved (no illegal canon path).
+    repo3 = FakeRepo(_proposal(status=ReviewStatus.REJECTED))
+    with pytest.raises(IllegalTransitionError):
+        await repo3.approve(user_id=OWNER, project_id=PROJECT, proposal_id=repo3._p.proposal_id)
 
 
 # ── (a) write-back is QUARANTINED, NOT canon ──────────────────────────────────

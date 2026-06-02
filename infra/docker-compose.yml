@@ -666,6 +666,16 @@ services:
       REDIS_URL: redis://redis:6379
       RESUME_CONSUMER_ENABLED: ${RESUME_CONSUMER_ENABLED:-true}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    # LE-062: the worker is a headless consumer (no HTTP server), so override the
+    # image's HTTP /health probe with a heartbeat-file freshness check. The worker
+    # touches the heartbeat from a background task while its event loop is alive
+    # (stays fresh during long generations; goes stale only on a real hang/crash).
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.worker.healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     depends_on:
       postgres:
         condition: service_healthy

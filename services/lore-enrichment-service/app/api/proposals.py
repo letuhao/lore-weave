@@ -159,11 +159,12 @@ async def approve_proposal(
 ) -> dict:
     user_id = _require_scope(principal, project_id)
     try:
-        proposal = await repo.set_status(
+        # Accepts proposed OR author_reviewing (the documented contract); a
+        # `proposed` proposal is walked through author_reviewing first (LE-063).
+        proposal = await repo.approve(
             user_id=user_id,
             project_id=project_id,
             proposal_id=proposal_id,
-            to_status=ReviewStatus.APPROVED,
         )
     except LookupError:
         raise _not_found()

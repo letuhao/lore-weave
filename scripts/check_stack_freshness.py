@@ -51,6 +51,13 @@ PROBE_ROUTES = [
     ("glossary-service", "GLOSSARY_SERVICE_URL_H", "http://localhost:8211",
      ["/internal/books/00000000-0000-0000-0000-000000000000/entities/"
       "00000000-0000-0000-0000-000000000000/enrichments"]),
+    # LE-061: the embed seam every retrieval/enrichment path depends on. A POST
+    # with an empty body returns a 4xx (validation), not 404 — so this catches a
+    # provider-registry image so stale the route is gone. (It does NOT catch a
+    # behavioural bug like the /v1 double-path; that class is covered by tier-2
+    # SHA-drift, which requires the image to be SHA-stamped — see drift_note.)
+    ("provider-registry-service", "PROVIDER_REGISTRY_URL_H", "http://localhost:8208",
+     ["/internal/embed"]),
 ]
 
 
@@ -88,6 +95,18 @@ def decide_drift_by_time(image_created_iso: str, last_commit_iso: str) -> str:
     if img is None or commit is None:
         return "unknown"
     return "stale" if img < commit else "fresh"
+
+
+def drift_note(has_sha_label: bool) -> str:
+    """A first-party image with NO ``org.loreweave.git_sha`` label was built
+    OUTSIDE ``build-stack.sh``, so the precise tier-2 SHA-drift check can't run —
+    only the coarse ``.Created``-vs-last-commit timestamp proxy, which a rebuilt-
+    for-unrelated-reasons image can pass while still carrying stale code. This is
+    exactly how the provider-registry embed ``/v1`` staleness went undetected
+    (LE-061). Empty when the image IS stamped (tier-2 available)."""
+    if has_sha_label:
+        return ""
+    return "UNSTAMPED (built outside build-stack.sh → drift=tier-1 proxy only) "
 
 
 def decide_status(drift: str, probe_ok: bool | None) -> str:
@@ -201,7 +220,11 @@ def check_drift(services: list[str]) -> list[tuple[str, str, str]]:
             # tier-1 proxy uses the SERVICE dir only (shared-path timestamps would
             # over-flag every service on any sdk change).
             drift = decide_drift_by_time(created, last_commit_iso([f"services/{svc}"]))
-            detail = f"built={created[:19]} (tier-1)" if created else "no image meta"
+            # LE-061: flag the degraded-detection (unstamped) case so an operator
+            # sees WHY a stale binary could slip the tier-1 proxy.
+            detail = drift_note(False) + (
+                f"built={created[:19]} (tier-1)" if created else "no image meta"
+            )
         rows.append((svc, drift, detail))
     return rows
 
@@ -238,12 +261,22 @@ def main() -> int:
     if not args.probe_only:
         svcs = flt or running_services()
         drift_rows = check_drift(svcs)
+        unstamped = []
         for svc, drift, detail in drift_rows:
             status = decide_status(drift, None)
             if status in ("STALE",):
                 bad = True
+            if detail.startswith("UNSTAMPED"):
+                unstamped.append(svc)
             if not args.quiet or status != "FRESH":
                 print(f"[drift] {status:<8} {svc:<28} {detail}")
+        if unstamped:
+            # Advisory (does not fail the run): precise drift detection is degraded
+            # for these — rebuild them via scripts/build-stack.sh to SHA-stamp.
+            print("[stack-freshness] WARN: unstamped first-party image(s) "
+                  f"(drift=tier-1 proxy only): {', '.join(unstamped)} — rebuild via "
+                  "scripts/build-stack.sh to enable precise SHA-drift detection",
+                  file=sys.stderr)
 
     if not args.drift_only:
         probe_rows = check_probes(flt)

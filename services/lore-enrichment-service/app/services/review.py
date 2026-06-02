@@ -271,6 +271,36 @@ class ProposalsRepo:
             )
         return _row(r)
 
+    async def approve(
+        self, *, user_id: UUID, project_id: UUID, proposal_id: UUID
+    ) -> ProposalRow:
+        """Approve a proposal, accepting EITHER ``proposed`` or ``author_reviewing``
+        as the start state (the documented ``proposed/reviewing → approved``
+        contract). The DAG has no direct ``proposed → approved`` edge — author
+        review is a distinct state — so a ``proposed`` proposal is first walked
+        ``proposed → author_reviewing`` and then ``author_reviewing → approved``.
+        Each hop is individually DAG- and DB-trigger-legal, so H0 is unchanged;
+        this only removes the API dead-end where a freshly-created (``proposed``)
+        proposal could never reach ``approved`` (and therefore never ``promote``)
+        because no endpoint exposed the intermediate transition (LE-063)."""
+        current = await self.get(
+            user_id=user_id, project_id=project_id, proposal_id=proposal_id
+        )
+        if current is None:
+            raise LookupError("proposal not found")
+        if current.review_status == ReviewStatus.PROPOSED:
+            await self.set_status(
+                user_id=user_id, project_id=project_id, proposal_id=proposal_id,
+                to_status=ReviewStatus.AUTHOR_REVIEWING,
+            )
+        # author_reviewing → approved (also the entry point when the proposal was
+        # already in author_reviewing); an illegal start state (approved/promoted/
+        # rejected) raises IllegalTransitionError here, as before.
+        return await self.set_status(
+            user_id=user_id, project_id=project_id, proposal_id=proposal_id,
+            to_status=ReviewStatus.APPROVED,
+        )
+
     async def edit_content(
         self,
         *,

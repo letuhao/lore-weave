@@ -57,3 +57,20 @@ def test_decide_status_precedence():
     # the all-clear.
     assert g.decide_status("fresh", True) == "FRESH"
     assert g.decide_status("fresh", None) == "FRESH"
+
+
+def test_drift_note_flags_unstamped_only():
+    # LE-061: a stamped image gets no note; an unstamped one is flagged so the
+    # degraded (tier-1-only) detection is visible.
+    assert g.drift_note(True) == ""
+    note = g.drift_note(False)
+    assert "UNSTAMPED" in note and "build-stack.sh" in note
+
+
+def test_provider_registry_is_probed():
+    # LE-061: the embed seam must be in the route-presence probe set so a fully
+    # stale provider-registry (route gone) is caught.
+    probed = {svc for svc, _env, _default, _routes in g.PROBE_ROUTES}
+    assert "provider-registry-service" in probed
+    pr = next(r for r in g.PROBE_ROUTES if r[0] == "provider-registry-service")
+    assert "/internal/embed" in pr[3]
