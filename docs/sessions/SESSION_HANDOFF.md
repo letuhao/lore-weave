@@ -1,11 +1,523 @@
-# Session Handoff — Session 73 (cycle 73a verify + 73b SHIPPED + 73c realized-F1 confirmation)
+# Session Handoff — Session 105 (eval R&D closed + Production Eval Flywheel track planned)
 
-> **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-05-30 (session 73 — 3 cycles: cycle 72 verify + cycle 73b relation-only ship + cycle 73c realized-F1 analytics + re-judge).
-> **HEAD:** pending ship commit on top of `998e59a1` (cycle 73b SHIP) + `609e9655` (merge).
-> **Branch:** `main`.
+> **Purpose:** orient the next agent in one read. This file is the single, unversioned handoff — updated in place at the end of each session. (Older `SESSION_PATCH.md` is deprecated → archive later.)
+> **Date:** 2026-06-01 (session 105 — closed knowledge R&D arc; designed the production eval+feedback track; human-in-loop v2.2).
+> **HEAD:** TBD (post-commit). Branch: `main`.
 
-## Session 73 summary — cycle 73a verify CLEAN + cycle 73b SHIPPED relation-only filter (44% latency win) + cycle 73c realized-F1 CONFIRMS c73b ship strictly better
+## ▶ NEXT SESSION — start here
+
+**State:** **Knowledge-extraction R&D arc CLOSED.** Independent-judge baseline measured + locked: **F1 = 0.869**, 95% CI [0.842, 0.895] (disjoint median, gemma + phi4 over 9 golden chapters; `tests/quality/eval_runs/c74c-clean-rejudge` via `compute_ensemble_macros.py`). Confirms the ~4-5pp self-reinforcement (0.913 self-graded → 0.869 clean). 0.869 is now the honest baseline of record.
+
+**NEW TRACK DESIGNED (this session):** **Production Eval + Feedback Flywheel** — design-checkpoint artifact written + committed (NO code yet): [`docs/plans/2026-06-01-production-eval-feedback-flywheel-track.md`](../plans/2026-06-01-production-eval-feedback-flywheel-track.md). Grounded in a 6-dimension industry research workflow (OpenAI / Anthropic / Google Vertex / LLM-observability platforms / vendor-neutral ML patterns / codebase audit) + an adversarial critique pass (all 6 fixes folded). 12 phases Q0→Q9 (Q10 LoRA spun out to Track-2).
+
+**PO decisions locked (doc §11):** (1) Q2 = time-window attribution first (no node→run link unless noise hurts); (2) Q4 = structural-only online eval first, `save_raw_extraction` LLM-judge opt-in is fast-follow; (3) baseline of record = **0.869** (retire 0.913 from gate use); (4) stays in `docs/plans/`, promote to numbered track if BUILD >5 sessions.
+
+**Q0 DONE (this session)** — `loreweave_eval` SDK package created (`sdks/python/loreweave_eval/`): the cycle-72–74 scorer lifted out of `tests/quality/` so learning-service (Q4) + knowledge-service (R&D) import the SAME code. **0a** = byte-identical lift (4 modules copied; `canonicalize_entity_name`→SDK direct; `LLMClient`→injected `JudgeLLMClient` Protocol; old `tests/quality/*` are re-export shims; 2 file-path lock tests + the SDK ensemble test repointed). **0b** = `JudgePanel` (parameterized the hardcoded extractor/filter UUIDs `019e6a20`/`019e5650`) + `score_dump`→`EvalResult` facade + `EvalSink` Protocol + `FileSink` (DbSink deferred to Q1, NOT in SDK). **Verified:** byte-identical new≡shim≡0.869 on c74c; SDK suite 398 passed (6 pre-existing fails, net-zero new); KS unit 1929 passed; 5 new 0b tests. Single commit (files mix 0a/0b in `__init__`/`compute_ensemble_macros`).
+
+**Q1 DONE (this session)** — quality DB schema in learning-service: `score_config`/`eval_runs`/`eval_results`/`quality_scores` (idempotent DDL, mirrors `project_embedding_benchmark_runs` house style). `app/db/eval_repo.py` (`persist_eval_result` with fail-fast write-time score_config validation + idempotent re-score; `ensure_score_configs` seed; `list_eval_runs`/`get_eval_run`); `app/db/eval_sink.py` `DbSink` (impl `loreweave_eval.EvalSink`, now async — sinks.py made async in SDK); `routers/eval.py` `GET /v1/learning/eval-runs` (+ `/{id}`), per-owner. Dual dedup on `quality_scores` (partial unique: consumed `origin_event_id` + self-produced `source_eval_run_id+target+metric+judge`). `judge_panel` table DEFERRED (panel inline in `eval_runs.judges` JSONB). learning-service Dockerfile now installs the SDK. **Live-smoke PASSED** (host→Postgres :5555): DDL idempotent ×2, persist idempotent (same key→same row, children replaced), **0.869 baseline materialized** (`source='baseline'`, eval_run `6bd195f7…`), owner-isolation (other user→0 rows), read path OK. 60 lrn unit + 5 SDK eval tests green.
+
+Baseline tool: `services/learning-service/scripts/materialize_eval_baseline.py <dump> <owner_uuid> [label]`.
+
+**Q2 DONE (this session)** — corrections-as-gold projection. `app/db/gold.py` `get_gold_labels` projects the corrections log into preference triples (`preferred`=after / `non_preferred`=before + `change_magnitude` = # differing structural keys), redact-by-default (structural + hash only), per-owner, both routes via `origin_service`. `GET /v1/learning/gold-labels` (corrections router). Fixed the stale `get_outcome_recompute` docstring (it uses **time-window attribution** via the `source_extraction_run_id IS NULL` branch — PO-locked; returns one row PER RUN, not empty). **Live-verified**: gold_labels SQL runs (0 corrections→empty), outcome_recompute returns all 14 runs for owner `019d5e3c` (NOT empty). 7 gold tests + 67 lrn suite green. Node→run provenance link deferred (time-window suffices until noise hurts).
+
+**Q3a DONE (backend, this session)** — chat-turn feedback capture. chat-service: `message_feedback` table + `POST /v1/chat/messages/{id}/feedback` (owner-scoped, txn INSERT + outbox emit `chat.message_feedback`) + `MessageFeedbackRequest/Response` models. Gateway needs NO change (`/v1/chat` catch-all proxy). learning-service: added `loreweave:events:chat` to consumer STREAMS + `handle_chat_feedback` (registered `chat.message_feedback`) → `persist_consumed_score` (new in eval_repo: validate vs score_config + ON CONFLICT origin dedup) → `quality_scores`(target_kind=chat_message, metric=`chat_user_rating`, source=human); seeded `chat_user_rating` numeric[-1,1]. Regenerate-as-negative = rating −1 + `regenerated_from_message_id`. **Verified:** chat 253 suite + 4 feedback tests; learning 74 suite + 7 handler tests. **Live (both DB halves, host→Postgres :5555):** chat `message_feedback` DDL idempotent ×2 (8 cols); learning persist writes a `chat_message` score + **consumed-event dedup held** (insert#1 True, #2 False, 1 row). **Full E2E POST→outbox→relay→learning deferred to D-Q3-CHAT-FEEDBACK-E2E** (needs chat+learning container rebuild — contract covered by unit + both live DB halves).
+
+**Q3b DONE (FE, this session)** — chat feedback UI. `api.ts` `submitMessageFeedback` → `POST /v1/chat/messages/{id}/feedback`; `hooks/useMessageFeedback.ts` (controller: rating state + optimistic/rollback + toast, server source of truth, no localStorage); `AssistantMessage.tsx` thumbs up/down (aria-pressed highlight) + wrapped regenerate to post implicit `rating=-1 reason=regenerated`; i18n `message.feedback_{up,down,thanks,error}` ×4 locales. **Verified:** 5 feedback vitest + 29 chat-feature tests green; tsc clean. **Q3 COMPLETE (a+b).**
+
+**Q3.5 DONE (this session)** — judge calibration + panel safety, in `loreweave_eval/calibration.py` (pure, data-independent): `cohen_kappa` / `balanced_accuracy` / `confusion` / `raw_agreement` over paired `(human_correct, judge_correct)` labels; `calibrate_judge → JudgeCalibration` with the trust gate (`passed` = balanced_acc ≥ 0.75 AND κ ≥ 0.4, both tunable; degenerate single-class set → not passed). **Anti-self-reinforcement enforced + visible:** `panel_safety(excluded_refs, judge_uuids) → PanelSafety`; `score_dump` now sets `EvalResult.panel_safe` + `panel_safety_reason` on EVERY run (False when <2 disjoint judges or a generator self-grades). **Verified:** 18 calibration + 5 scorer tests; full SDK suite net-zero new; learning 74. c74c baseline `panel_safe=True`.
+- **Data note:** the live judge-vs-human agreement (pair construction from corrections + per-item judge verdicts) is NOT wired — live DB has 0 corrections AND per-item judge verdicts aren't persisted yet (Q1 stores per-judge macro). Q4 builds the pairs (it produces per-item verdicts) and calls `calibrate_judge`; Q4 also calls `panel_safety` in-process to gate before trusting scores. panel_safe DB persistence (eval_runs column) deferred to Q4.
+
+**Q4a DONE (online-eval consumer, this session)** — the flywheel now samples production runs automatically. Online eval of a production chapter has NO gold/source (golden-set P/R/F1 N/A), so per the PO-locked structural-first decision the signal is `structural_completeness` = fraction of core categories (entity/relation/event) with output (`app/db/online_eval.py`). New **`eval-runner`** second Redis consumer group on `loreweave:events:knowledge` (`app/events/eval_runner.py`) — best-effort (droppable, no DLQ), **every msg XACKed** (sampled-out immediately, no PEL churn), group at `$` (forward-looking). `should_sample` = deterministic `sha256(run_id) mod` (idempotent re-delivery). `online_eval_rule` table (rate+enabled, seeded global default 0.1). `persist_online_eval` → `eval_runs`(source=online, idempotent `online:<run_id>`) + `quality_scores`(online_structural_completeness, validated). **Cleared Q3.5 defer:** `panel_safe`/`panel_safety_reason` columns on `eval_runs`; `persist_eval_result` writes them. Wired into `main.py` lifespan (gated `online_eval_enabled`). **Verified:** 15 Q4 + 89 learning suite. **Live (Postgres :5555):** migration idempotent ×2, rule seeded, 14 runs eval'd + idempotent, `panel_safe=True`; **real completeness dist 0.0×3 / 0.33×3 / 0.67×8** (3 degenerate runs surfaced; none reached 1.0 — a genuine pipeline-health finding). Smoke rows cleaned up.
+
+**★ FULL LIVE E2E Q0→Q4 PASSED (this session)** — rebuilt + restarted learning-service + chat-service containers, ran the whole flywheel through the gateway (:3123):
+- **Q1**: `GET /v1/learning/eval-runs` → test-acct baseline (0.869, 2 judges); `/{id}` detail → 2 per-judge results. Owner-isolation confirmed (the 019d4966 baseline is invisible to other users).
+- **Q2**: `GET /v1/learning/gold-labels` → 200 (empty, 0 corrections).
+- **Q3a** (FULL cross-service): gateway `POST /v1/chat/messages/{id}/feedback` → chat `message_feedback` → outbox → relay → `loreweave:events:chat` → learning → `quality_scores`(chat_user_rating=1.0, source=human, origin=chat). ✓
+- **Q3.5**: `panel_safe=True` ("2 disjoint judges, no generator in panel") persisted on the baseline.
+- **Q4**: injected a synthetic `extraction_run_completed` onto the knowledge stream → **eval-runner consumed it in the live container** → `eval_runs`(source=online, completeness=1.0). ✓
+- **D-Q3-CHAT-FEEDBACK-E2E + D-Q4-EVAL-RUNNER-E2E → CLEARED.** Synthetic E2E data cleaned up; rule rate reset to 0.1.
+
+**⚠ Regression fixed during E2E (`fa10b35d`)**: the rebuild pulled **redis-py 8.0** (`redis>=5.0` unpinned). In redis-py 8 a blocking `XREADGROUP(block=N)` with no data raises `TimeoutError` (5.x returned empty) → BOTH learning consumers hot-looped. Fixed: catch `aioredis.TimeoutError` → `continue` (normal idle) in `consumer.py` + `eval_runner.py`. **Platform risk (D-REDIS8-CONSUMERS):** knowledge-service `consumer.py` + any other blocking Redis consumer have the same unpinned dep + pattern — they'll hot-loop on their next rebuild until they get the same catch OR redis is pinned `<8`.
+
+**Q4b DONE (LLM-as-judge online eval, this session)** — the real semantic judge. `app/clients/llm_client.py` `JudgeClient` (thin `submit_and_wait` over the loreweave_llm SDK Client → satisfies the Q0 `JudgeLLMClient` Protocol). `app/db/online_judge.py`: `run_online_judge` reuses the lifted `loreweave_eval.llm_judge.judge_precision` (the same judge that made the locked F1) → per-item verdicts + PRECISION (no gold needed — judges items vs source text); `persist_online_judge` → `eval_runs`(source=online, idempotent `online-judge:<run>:<judge>`) + per-category `eval_results` + `quality_scores`(online_judge_precision), `panel_safe=False` (single judge, honest). eval-runner `_maybe_judge` runs it only when the rule has a `judge_panel_id` + `online_judge_enabled` + the payload carries `items`+`source_text` (opted-in). config: `provider_registry_internal_url` + `online_judge_model/user`. Seeded `online_judge_precision`. **Verified:** 15 Q4b + 99 learning suite. **★ LIVE (real LM Studio judge via provider-registry :8208):** judged c74c alice_ch01 (26 items) → entity 0.864 / relation 0.688 / event 1.0 / **overall precision 0.846**; persisted eval_run + 3 eval_results + score; `panel_safe=False`. The LLM-online-judge engine works end-to-end.
+- **Remaining = Q4b-feed (the only missing piece):** how `items`+`source_text` reach the consumer for REAL production runs. The event carries only counts today. Options: worker-ai includes an items+source projection in `extraction_run_completed` for `save_raw_extraction`-opted projects (cleanest), OR the consumer fetches items from knowledge-service `extraction_leaves` + source from book-service. Until then the judge path is config+data-gated (off by default; structural-only runs for all events). Also: `sorted-set paced queue` cost governor (matters once many runs judge via LLM).
+
+**NEXT:**
+- **Q4b-feed** (above) — wire worker-ai (or service fetches) so opted-in production runs carry items+source → the online judge runs automatically.
+- **Q5 (L) eval-case dataset from failures** (depends Q2) — versioned `eval_cases` from corrections + judge-disagreement; filtered-view not annotation-queue (critique). Unblocked.
+- **Q6a/b (shadow runs)** (depends Q4) — replay challenger config, log projection, paired compare. Unblocked.
+- Small: add `panel_safe` + the online scores to the `eval-runs` read model + queries (columns written + live-confirmed, not yet surfaced by the API).
+- **D-REDIS8-CONSUMERS** — port the TimeoutError catch to knowledge-service consumer / pin redis (will hot-loop on their next rebuild).
+- Deployed learning-service container is at Q4a; rebuild to deploy Q4b code (online judge is off by default + feed-gated, so inert until wired).
+
+(Critical path: Q0✓→Q1✓→Q2✓→Q3✓→Q3.5✓→Q4✓→Q6a→Q6b→Q8; Q9 privacy gate before any cross-tenant Q7 surface. See track doc §5.)
+
+**Q1 note:** 0.913 historical NOT materialized (it's the retired self-graded number from a different 3-judge dump; PO retired it from gate use, so it's not needed as a row). For c74c's 2 independent judges, full-panel == disjoint == 0.869.
+
+**Deferred / flagged:**
+- **3 pre-existing `test_pass2_writer.py` failures** (`test_facts_merged_with_evidence`, `test_k17_9_fact_content_injection_sanitized`, `test_full_pipeline_all_candidate_types`) — from last session's FACT_TYPES filter (`0bf049cd`); the tests assert pre-filter behavior (type='description' facts merged) but they're now skipped. **Small fix: update the 3 tests** (or reconsider filter). Outside Q0 scope; do next.
+- Outcome refinement batch job (correction-join recompute on `extraction_runs`) — subsumed by track Q2.
+- Archive job: `SESSION_PATCH.md` (974KB) + trim this file — separate session.
+- Track-2 (doc §10): LoRA distillation, weighted-canary rollout state machine, CUPED/sequential testing.
+
+<details><summary>(historical) Phase B complete — push options (all done/superseded)</summary>
+
+<details><summary>(historical) earlier state note</summary>
+**State:** Phase B was FEATURE-COMPLETE (pre-browser-smoke).</details> The full two-axis-Axis-1 correction loop is built + committed: users can correct **entities** (edit/delete/merge), **relations** (correct/mark-wrong), and **events** (edit/delete) in the UI → each emits a `knowledge.*_corrected` / enriched `glossary.entity_updated` → relay → `learning-service.corrections`. Backend live-smoke-verified end-to-end (all types); frontend tsc-clean + 469 knowledge vitest pass + AMAW-adversary-folded. **Only residual: a Playwright BROWSER smoke** (D#054, LOW) — the contract is already covered by component tests + BE live-smokes.
+
+**NEXT options (historical, resolved):** push done; Phase C (D#048) or B2 (D#055) were the choices — B2 was chosen.
+</details>
+
+<details><summary>(historical) C-FE views scope — now DONE</summary>
+
+Built this session: mirror `EntityEditDialog`+`useEntityMutations`+`ifMatch`/`isVersionConflict` →
+- `RelationEditDialog` (predicate/endpoint correct → `POST /v1/knowledge/relations/correct`; "mark wrong" → `POST /relations/{id}/invalidate`), wired from the read-only `RelationRow` in [EntityDetailPanel.tsx](../../frontend/src/features/knowledge/components/EntityDetailPanel.tsx).
+- `EventEditDialog` (title/summary/time_cue/event_date_iso edit → `PATCH /v1/knowledge/events/{id}` with If-Match; archive → `DELETE /events/{id}`), wired from [TimelineEventRow.tsx](../../frontend/src/features/knowledge/components/TimelineEventRow.tsx).
+- `api.ts`: `getRelation`/`correctRelation`/`invalidateRelation`/`updateEvent`/`archiveEvent`; hooks `useRelationMutations`/`useEventMutations` (react-query invalidation + 412 refetch).
+- a11y: 44×44 icon-only tap targets; visibility-transition tests for both dialogs (standing FE lessons).
+- a11y: 44×44 icon-only tap targets; 412 conflict handling per the entity pattern.
+</details>
+
+**Sub-session A shipped (cycle 75b):** new `learning-service` (Python/FastAPI, host 8222) with `corrections` table (redact/hash schema) + Redis-Streams consumer (`learning-collector`, with `XAUTOCLAIM` reclaim) + read API (`/v1/learning/corrections`) + gateway proxy + compose/db-ensure. worker-infra relay now carries `outbox_id` on the wire (F1/F2) + `streamMaxLen` 200k for glossary/knowledge + retention 30d. glossary `entity_updated` enriched with `actor_type`/`actor_id`/before/after (PATCH made transactional for consistent capture). **Cross-service live smoke PASSED** (glossary outbox→relay→learning: user corrections persisted+deduped on outbox_id, pipeline skipped, raw content NULL). AMAW code-review REJECTED→fixed (dead-retry reclaim F-A1, PATCH-contract F-A3; F-A2 deferred D#052). 23 learning unit tests + Go suites green.
+
+**Sub-session B specifics:** KS gains its first outbox (`outbox_events` in `migrate.py`, `aggregate_type='knowledge'`); `app/events/outbox_emit.py` best-effort `emit_correction` (cross-store try/except — Neo4j is SoT, PG outbox best-effort, §6.6); emit on `patch_entity`/`merge_entity_into`/`archive_user_entity` ([entities.py](../../services/knowledge-service/app/routers/public/entities.py)) with SAME-Cypher before-capture (§6.3, MED-3 — NOT read-before-write); `update_entity_fields` must RETURN the pre-edit snapshot. Add `knowledge:<dsn>` to `OUTBOX_SOURCES` in compose. learning-service already consumes `loreweave:events:knowledge` + handles `knowledge.*_corrected` (wired in subA, untested live until B). Live-smoke KS-entity-edit→learning.
+
+**Carry-forward gotchas (live-verified in A):** `origin_event_id := EventData.outbox_id` (NOT aggregate_id/message_id); empty outbox_id → DLQ not silent ""; diff_class is op-first; relation correct needs the dedicated `recreate_relation` (F5, sub-session C). Port the XAUTOCLAIM reclaim to knowledge-service too (D#051).
+
+---
+
+### (prior) Phase-B DESIGN checkpoint — session 75a
+
+**State:** Phase-B **DESIGN is locked + checkpoint-committed** (session 75). The design doc [`docs/specs/2026-05-31-phase-b-correction-capture.md`](../specs/2026-05-31-phase-b-correction-capture.md) survived 3 AMAW adversary rounds (REJECTED→REJECTED→APPROVED_WITH_WARNINGS) + a /review-impl pass; all BLOCK/MED findings folded. Prior cycles 74d–74f + this design checkpoint on `main`, **NOT pushed** (push needs approval).
+
+**Scope locked with PO (bigger than the original handoff):** Phase B = **XL** = the correction CAPTURE spine **+ build the rel/event user-edit endpoints that produce corrections** (they didn't exist — `invalidate_relation` was unwired, events had no edit primitive). Decisions: **new `learning-service`** (Python/FastAPI) owns the corrections store; **redact/hash content** (no raw novel text persisted — structural + content-hash only); **build the replay/backfill tool** (high MAXLEN + retained `event_log` + worker-infra idempotent replay). Tier-1 anchor reuse → **Phase C** (deferred, D#048); config telemetry → **B2** (D#055).
+
+**NEXT = BUILD, in 3 sub-sessions (each its own VERIFY+POST-REVIEW+COMMIT), per design §12:**
+1. **Sub-session A (foundation):** `learning-service` scaffold (clone chat-service shell + KS consumer) + `corrections` DDL (redact/hash schema §3) + consumer (`learning-collector` group) + read API + gateway route + compose/db-ensure. **worker-infra: add `outbox_id` to relay XADD (F1/F2 — 5-place sync, §4.0), high `streamMaxLen` for glossary/knowledge, replay task (§10.1).** glossary `entity_updated` enrichment (actor + before/after, SELECT-old-in-tx on PATCH). Live-smoke glossary→learning.
+2. **Sub-session B:** KS first Postgres outbox + `emit_correction` + emit on existing entity edits (PATCH/merge/archive, same-Cypher before-capture §6.3) + add `knowledge:` to `OUTBOX_SOURCES`. Live-smoke KS-entity→learning.
+3. **Sub-session C:** new relation + event correction repo primitives (`recreate_relation` — structurally separate from extraction `create_relation`, F5; `update_event_fields`/`archive_event` + `:Event.version`) + public routers + emission; FE relation/event edit UI.
+
+**BUILD must-dos baked into the design:** F4 grep-gate (`outbox_id` ≥5 hits); F5 regression-lock (Pass-2 re-extraction leaves invalidated SVO `valid_until` NON-null); empty-`outbox_id`→DLQ (R3-W1); cross-service live-smoke token. Deferred rows: D#045 live-smoke, D#046 reconcile, D#055 B2, D#048 Phase-C anchor, D#049 replay tool, D#050 raw-content opt-in.
+
+**Eval note (unchanged):** for any A/B use the **DISJOINT median of record** (`compute_ensemble_macros.py`), never the full-panel 0.913. Host harness: `tests/quality/run_rejudge_resumable.py` docstring (host → provider-registry `:8208` → LM Studio `:1234`, token `dev_internal_token`).
+
+<details><summary>Copy-paste resume prompt</summary>
+
+```
+Resume LoreWeave session 76. Read docs/sessions/SESSION_HANDOFF.md (top "NEXT SESSION" block) + the locked design docs/specs/2026-05-31-phase-b-correction-capture.md (esp §3 schema, §4.0 outbox_id sync, §6 KS changes, §10.1 durability, §12 BUILD sequencing) FIRST. AMAW is the workflow.
+
+State: Phase-B DESIGN locked + checkpoint-committed on main (NOT pushed). Phase B = XL = correction-capture spine + new rel/event user-edit endpoints, into a NEW learning-service (Python/FastAPI). Redact/hash content (no raw text); build the replay tool. Tier-1 anchor = Phase C (deferred).
+
+GOAL: BUILD sub-session A (foundation) per design §12 — learning-service scaffold + corrections DDL (§3 redact/hash) + consumer (learning-collector) + read API + gateway + compose/db-ensure; worker-infra outbox_id XADD (§4.0 5-place sync) + high streamMaxLen + replay task (§10.1); glossary entity_updated enrichment (actor + before/after, SELECT-old in tx). Live-smoke glossary→learning. Each sub-session = its own VERIFY+POST-REVIEW+COMMIT.
+
+Hard gotchas from the design review: origin_event_id := EventData.outbox_id (NOT aggregate_id, NOT message_id); EventData lives in dispatcher.py:19-28; empty outbox_id → DLQ not silent ""; grep outbox_id ≥5 hits before VERIFY.
+```
+</details>
+
+## Session 75 — cycle 75g: Phase B C-FE views — relation/event edit UI (FEATURE-COMPLETE)
+
+**The user-facing correction UI. Phase B is now feature-complete.**
+
+- **`RelationEditDialog`** ([components](../../frontend/src/features/knowledge/components/RelationEditDialog.tsx)): predicate correct → `correctRelation`; "mark wrong" (confirm) → `invalidateRelation`. Mounted **once at panel scope** (adversary F3 — keyed by `editingRelation`, not one-per-row), opened from the Pencil CTA on each `RelationRow` in `EntityDetailPanel.tsx`.
+- **`EventEditDialog`** ([components](../../frontend/src/features/knowledge/components/EventEditDialog.tsx)): title/summary/time_cue/event_date_iso edit with If-Match → `updateEvent`; **ISO-date validation** (`YYYY|YYYY-MM|YYYY-MM-DD`, adversary F1) + empty-date = no-change (F2, avoids `""` corrupting the lexicographic date axis). Wired into `TimelineEventRow` expanded detail + an archive (`DELETE`) button → `archiveEvent`.
+- i18n `relations.*` + `events.*` added to all 4 locales (en/ja/vi/zh-TW).
+- **Tests:** 9 new dialog tests (pre-fill, diff-only+If-Match, 412 conflict, no-op, mark-wrong confirm/cancel) + 24 affected (EntityDetailPanel/TimelineTab) green. **469 knowledge vitest pass; frontend tsc clean.**
+- **AMAW cold-start adversary (FE): WARN×3** — the high-value `version`-undefined probe CLEARED (BE timeline list returns `version`). F1/F2 (date integrity) + F3 (per-row dialog hoist) all folded + re-tested.
+- **Residual:** D#054 (LOW) — the pure browser-CLICK layer. **Post-commit (session 75): the REAL relation `invalidate` endpoint was live-smoked end-to-end** — KS-direct HTTP route → `invalidate_relation` → emit → relay → learning corrections row (seeded an `:Entity→:Entity` relation; the test user's real graph only has `:Entity→:Fact` edges + 0 events, so the in-UI flow needs seeded data). Empirically confirmed D#053 (a non-UUID-coercible id → `emit_correction` silently drops — harmless for real 32-hex ids). gateway + auth-service are currently **Exited** (restart for any gateway-routed work).
+
+**Phase B = COMPLETE + browser-verified** (D#054 Playwright smoke passed — see ▶ NEXT SESSION). Options: push / Phase C / B2.
+
+## Session 75 — cycle 75f: Phase B C-FE data layer (api + hooks)
+
+**The FE data/controller layer for relation/event corrections (MVC split: api.ts + hooks/). Views deferred to D#054.**
+
+- [api.ts](../../frontend/src/features/knowledge/api.ts): added `version: number` to `TimelineEvent` (If-Match); `RelationCorrectPayload` + `EventUpdatePayload` types; methods `getRelation`, `invalidateRelation`, `correctRelation`, `updateEvent` (If-Match), `archiveEvent` — mirroring `updateEntity`/`mergeEntityInto`.
+- `hooks/useRelationMutations.ts` (`useInvalidateRelation`, `useCorrectRelation` — invalidate `['knowledge-entity-detail', userId]` prefix so either endpoint's open detail refreshes) + `hooks/useEventMutations.ts` (`useUpdateEvent` w/ 412-refetch, `useArchiveEvent` — invalidate `['knowledge-timeline', userId]`).
+- **frontend `tsc --noEmit` clean.** No FE runtime path until the views wire it; BE endpoints already live-smoked.
+- Self-review: hooks are thin wrappers mirroring the adversary-reviewed `useEntityMutations`; invalidation keys verified.
+
+**NEXT:** C-FE views (D#054) — `RelationEditDialog` + `EventEditDialog` + wiring into `RelationRow`/`TimelineEventRow` + i18n + vitest + **browser smoke** + final cold-start adversary on the full C surface. **This is the LAST Phase-B slice.**
+
+## Session 75 — cycle 75e: Phase B BUILD C2 + C3 — event corrections + entity merge emission
+
+**AMAW. Completes the BE capture spine — all 4 correction types now flow.**
+
+- **C2 events:** added `version` to `:Event` (ON CREATE=1; merge_event ON MATCH does NOT bump → user If-Match baseline survives re-extraction; test-locked). `update_event_fields` (same-Cypher before-capture §6.3, If-Match, version bump, returns `(event, before)`) + `archive_event` (single-return, read-before in handler) in [events.py](../../services/knowledge-service/app/db/neo4j_repos/events.py). New events router ([events.py](../../services/knowledge-service/app/routers/public/events.py)): `PATCH /v1/knowledge/events/{id}` (428/412 ETag, mirrors entity PATCH) + `DELETE /{id}` (archive). Emits `knowledge.event_corrected`.
+- **C3 merge emission:** `merge_entity_into` now emits `knowledge.entity_corrected` op=merge (before=source snapshot read pre-merge, after=merged target). `merge_entities` repo unchanged.
+- `outbox_emit` gained `event_correction_payload`/`event_snapshot_dict` (structural=`event_date_iso`, content=`title/summary/time_cue/participants`).
+- **Tests:** 12 new event tests (update/archive repo + router 428/412/404/204 + version-no-bump-on-merge lock). Full KS unit **1892 pass**. Merge route tests unaffected by the emit (best-effort no-op in unit).
+- **LIVE SMOKE PASS:** `knowledge.event_corrected` → learning: `update→other` (events have no kind/name → coarser than entities) + `delete→spurious-drop`, target_type=event. (relation + entity smokes in prior cycles.)
+- Self-review (event PATCH mirrors the adversary-reviewed entity PATCH; merge emit mirrors entity emit); full cold-start adversary deferred to C-FE close.
+
+**NEXT:** C-FE (frontend) — the last Phase-B slice. See ▶ NEXT SESSION.
+
+## Session 75 — cycle 75d: Phase B BUILD C1 — relation corrections (F5)
+
+**AMAW. Relation correction endpoints + the F5-critical `recreate_relation`.**
+
+- **`recreate_relation`** ([relations.py](../../services/knowledge-service/app/db/neo4j_repos/relations.py)) — the user-correct primitive, DELIBERATELY separate from extraction's `create_relation`: its ON MATCH clears `valid_until` (resurrects a previously-invalidated edge) + pins confidence=1.0/pending=false. Extraction's `create_relation` ON MATCH still never touches `valid_until` (F5 invariant — test-locked in `test_recreate_cypher_resurrects_valid_until`, asserting create's ON MATCH has no `valid_until`).
+- **Public relations router** (`/v1/knowledge/relations`): `GET /{id}`, `POST /{id}/invalidate` (op=invalidate, after=null → spurious-drop), `POST /relations/correct` (invalidate old + recreate new). **Correct ordering = recreate-FIRST-then-invalidate** (self-review fix: a 409 on a missing endpoint leaves the old edge intact, no half-applied state) + skips invalidate when the corrected id maps onto the same edge. `after` is re-read post-write (F3).
+- `emit_correction` reused; `relation_correction_payload` + `relation_snapshot` (all-structural: subject/object/predicate/confidence/valid_until) added to outbox_emit.
+- **Tests:** 9 (recreate resurrect-invariant + create-doesn't-resurrect lock; builds-edge; endpoint-missing→None; router GET 404, invalidate happy/404, correct happy/old-404/recreate-409). Full KS unit **1880 pass**.
+- **LIVE SMOKE PASS:** `knowledge.relation_corrected` → relay → learning: `predicate_fix→predicate-fix` + `invalidate→spurious-drop`, target_type=relation, origin_service=knowledge.
+- Self-review caught + fixed the recreate/invalidate ordering; full cold-start adversary deferred to C-complete.
+
+**NEXT:** C2 (events), C3 (merge emission), C-FE. See ▶ NEXT SESSION.
+
+## Session 75 — cycle 75c: Phase B BUILD sub-session B (KS entity-correction emission)
+
+**AMAW. KS→learning correction capture, live-smoke verified.**
+
+- **knowledge-service gained its FIRST transactional outbox:** `outbox_events` (aggregate_type='knowledge') in `migrate.py`; `app/events/outbox_emit.py` `emit_correction` — best-effort, acquires the pool internally + wraps everything in try/except (cross-store §6.6: Neo4j is SoT, a dropped row never fails the user edit nor corrupts the graph; aggregate_id = the 32-hex canonical id, UUID-coercible).
+- **Same-Cypher before-capture (design §6.3):** `_UPDATE_ENTITY_FIELDS_CYPHER` now projects a pre-edit `{name,kind,aliases}` map in the `WITH` (eager, before the FOREACH SET); `update_entity_fields` returns `(entity, before)`. `archive_entity` kept single-return (12 integration sites) — archive captures `before` via read-before-`get_entity` in the handler (idempotent + op=delete → spurious-drop, so low-stakes; documented).
+- **Emission wired:** `patch_entity` → `knowledge.entity_corrected` op=update (before via canonical `entity_snapshot`); `archive_user_entity` → op=delete (after=null). Merge emission deferred to sub-session C.
+- **compose:** `knowledge:<dsn>` added to `OUTBOX_SOURCES` (relay now polls loreweave_knowledge).
+- **Tests:** updated `update_entity_fields` tuple call sites (unit mutations + browse-api + user-entities archive route mocks `get_entity` + 2 integration sites) + new `test_outbox_emit.py` (payload shape, UUID coercion, pool-failure swallow). **Full KS unit suite 1871 pass.**
+- **LIVE SMOKE PASS (KS→learning):** KS outbox(`knowledge.entity_corrected`) → relay (knowledge source, `outbox_id`) → learning persisted `update→kind-change` + `delete→spurious-drop`, `origin_service=knowledge`, `origin_event_id`=outbox PK. KS `outbox_events` migration created live on restart.
+- **AMAW code-review APPROVED_WITH_WARNINGS:** F2 (canonical before shape) fixed; F1 (permanent emit-failure surfacing) deferred D#053; F3 (read-before-archive) accepted.
+
+**NEXT:** sub-session C (relation + event edits + FE + merge emission). See ▶ NEXT SESSION.
+
+## Session 75 — cycle 75b: Phase B BUILD sub-session A (foundation)
+
+**AMAW. The correction-capture foundation, end-to-end live-smoke verified.**
+
+- **NEW `learning-service`** (`services/learning-service/`, Python/FastAPI, internal 8094 / host 8222, DB `loreweave_learning`): `corrections` table (redact/hash schema — structural + content-hash, raw `*_content` reserved NULL); Redis-Streams consumer (`learning-collector` group, `XAUTOCLAIM` reclaim); `diff_class` derivation (op-first); snapshot privacy-split; read API `GET /v1/learning/corrections(/stats)` (keyset pagination, strict JWT user-scoping); gateway `/v1/learning` proxy; compose + db-ensure + postgres-init.
+- **worker-infra relay (F1/F2):** XADD now carries `outbox_id` (the row PK — the end-to-end dedup key; extracted to `relayStreamValues` + unit-tested); `streamMaxLen` glossary/knowledge → 200k; `OUTBOX_CLEANUP_RETAIN_DAYS` 7→30 (§10.1 replay backstop).
+- **glossary-service:** `glossary.entity_updated` enriched with `actor_type`/`actor_id`/`before`/`after` (additive — KS glossary_sync unaffected). CREATE+PATCH thread `actor=user`; PATCH made **transactional** for consistent before/after capture (MED-3); bulk = `pipeline`. Removed the dead best-effort `emitEntityUpdated`.
+- **Tests:** 23 learning unit (diff_class, snapshot, handlers incl. F2 + R3-W1, read-API scoping/redact); glossary outbox payload tests (actor/before/after); worker-infra `relayStreamValues` outbox_id contract + maxLenFor. All green; gateway tsc clean.
+- **LIVE SMOKE PASS (cross-service):** inserted enriched glossary outbox rows → real relay shipped with `outbox_id` (verified on the Redis stream via XREVRANGE) → learning-service persisted 2 user corrections (`missing-add` + `boundary`), **skipped the pipeline event**, **deduped on outbox_id not aggregate_id** (F2), `before_content` NULL (R2 redact). 3 images rebuilt + healthy.
+- **AMAW code-review: REJECTED → fixed.** F-A1 (BLOCK) dead-retry-in-steady-state → periodic `XAUTOCLAIM` reclaim; F-A3 (WARN) transactional-PATCH contract → outbox.go comment; F-A2 (WARN) diff_class description granularity → deferred D#052. KS has the same reclaim bug → D#051.
+
+**NEXT:** sub-session B (KS outbox + entity-correction emission). See ▶ NEXT SESSION.
+
+## Session 75 — cycle 75a: Phase B DESIGN checkpoint (correction capture + learning-service)
+
+**DESIGN-only, no code (checkpoint-commit artifact).** AMAW. Doc: [`docs/specs/2026-05-31-phase-b-correction-capture.md`](../specs/2026-05-31-phase-b-correction-capture.md).
+
+- **CLARIFY found 3 plan-vs-code divergences:** (1) `glossary.entity_updated` carries no actor field + fires on user-create/patch AND pipeline bulk (route middleware distinguishes via JWT-vs-internal-token, payload doesn't); (2) `invalidate_relation` is **unwired** + events have **no edit primitive** → no user path to correct a relation/event today; (3) knowledge-service has **no outbox** (graph is Neo4j, outbox must be Postgres → no true atomicity).
+- **PO locked scope (maximal):** build the rel/event edit endpoints too (XL); **new `learning-service`** (Python/FastAPI, port 8094/host 8222, DB `loreweave_learning`); **redact/hash content** (no raw novel text — structural + content-hash; raw reserved for Phase-E per-tenant opt-in); **build the replay tool** (high MAXLEN + retained `event_log` + worker-infra idempotent replay). Tier-1 anchor reuse correctly re-scoped to **Phase C** (plan §4; handoff had conflated it into B).
+- **AMAW design review (3 cold-start adversary rounds): REJECTED → REJECTED → APPROVED_WITH_WARNINGS.** Caught + folded: **F1/F2 (BLOCK)** — the idempotency key didn't exist on the wire (relay never XADDs the outbox row id; `aggregate_id` is the reused target id) → relay now carries `outbox_id` (5-place platform sync, §4.0); **F5 (BLOCK)** — "extend `create_relation` ON MATCH to clear `valid_until`" would silently resurrect user-invalidated relations on every re-extraction → forced a dedicated `recreate_relation`; F3/F4/F6 + R3-W1 folded.
+- **/review-impl pass:** 5 more findings — MED-2 (before/after shape unpinned per target_type), MED-3 (KS before-capture must be same-Cypher, TOCTOU), LOW-4 (user_id-vs-actor_id latent under future write-collab), LOW-5 (cross-store drop = chain-break) all folded; MED-1 (durability) → PO chose build-replay-now.
+- **All open questions R1–R5 + MED-1 resolved** (design §13). Audit trail: `docs/audit/AUDIT_LOG.jsonl` (3 review-design rounds + review-impl). Deferred: D#045–D#050.
+
+**NEXT:** BUILD sub-session A (foundation) — see the ▶ NEXT SESSION block + design §12.
+
+## Session 74 — cycle 74f: Phase A eval hygiene — disjoint-judge metric of record + bootstrap CI
+
+**Plan §3 Phase A (first implementation cycle off the 74e plan).** [compute_ensemble_macros.py](../../services/knowledge-service/tests/quality/compute_ensemble_macros.py) now:
+- discovers ALL `judge_verdicts_*.json`, reads each `judge_uuid`, and flags the **EXTRACTOR** (`019e6a20`) / **FILTER** (`019e5650`) judges by role (env-overridable `KNOWLEDGE_EXTRACTOR_MODEL`/`KNOWLEDGE_FILTER_MODEL`);
+- reports the **DISJOINT median of record** (median F1 over judges that are NEITHER extractor nor filter) alongside the historical full-panel median, with a **deterministic percentile bootstrap CI** over the common chapter set (seed `0xC74E`, `KNOWLEDGE_BOOTSTRAP_N` default 2000); warns when <2 disjoint judges.
+- **Measured:** c73b-drop-realized full-panel **0.913** vs disjoint **0.888** (gemma only → 1J warn = why phi4/qwen35 were added); c74c-clean disjoint **0.869** 95% CI **[0.842, 0.895]** (±2.6pp — proves cycle deltas of ±0.1–0.3pp are sub-noise).
+- A3 (demote external anchors): **already done** — `test_anchor_eval.py` only asserts the sanity-floor, F1 is informational. A4 (rename `claude-4.7-opus`): mitigated by the role column; full historical-filename rename deferred (low-value cosmetic).
+
+**Tests:** `test_compute_ensemble_macros.py` 4/4 (per-chapter PR, harmonic F1, disjoint exclusion by uuid, deterministic CI). Backward-compat `compute_per_judge_macros` wrapper kept.
+
+**NEXT:** Phase B/B2 capture plumbing (corrections log + config telemetry) per plan §2.1/§4. Phase A is A/B-trustworthiness; the loop is the accuracy engine.
+
+## Session 74 — cycle 74e: eval-data survey + accuracy/eval PLAN (correction + config-telemetry loop)
+
+**Docs/data checkpoint (no code).** Resolved the production-readiness gate and reframed the eval strategy after PO feedback.
+
+- **Clean re-judge (self-reinforcement quantified):** judges disjoint from extractor `019e6a20` + filter `019e5650` → 2 cross-arch judges (gemma `019dc3df` **0.888** + phi4 `019dc3ab-2b65` **0.851**) median **0.869** vs locked **0.913**; extractor self-grades **0.972**. → ~4–5pp self-inflation on the *relative* signal. (qwen35 3rd judge stopped — pathologically slow, conclusion already firm.) Artifacts in `eval_runs/c74c-clean-rejudge/`. Gotcha: clean judges needed a `{input_per_mtok:0,output_per_mtok:0}` pricing row in provider_registry or the gateway 402s.
+- **Public dataset survey** → [docs/reports/2026-05-31-eval-dataset-survey.md](../reports/2026-05-31-eval-dataset-survey.md): LitBank (CC-BY 4.0, en entities) usable as independent anchor; lancopku (no license, modern-zh, coarse) + NCRE (no license, Jin-Yong-copyrighted, great taxonomy) = anchor/reference only. **No drop-in relation gold exists.** LitBank alignment measured: shared-kind P≈0.80, recall low **by design** (omission) — external numbers deflated by *definition*, not model error.
+- **PO reframe (key):** genre + dynamic-taxonomy bias is a **FEATURE**, not a defect. → external benchmarks = sanity-floor only; don't grow a "neutral" gold set. Real accuracy engine = **learning-from-users loop**.
+- **PLAN** → [docs/plans/2026-05-31-extraction-accuracy-and-eval-plan.md](../plans/2026-05-31-extraction-accuracy-and-eval-plan.md): production **ship-ready**; two-axis loop (Axis 1 corrections + Axis 2 config-adjustment telemetry) on existing outbox/EAV/wiki_suggestions infra; 3-part content-addressed capture schema (config_registry + adjustment_events + runs.outcome); data-mining tier (golden prompts/model×task/default-drift) with popularity≠quality + explore/exploit guards; cheap eval hygiene (disjoint-judge metric + bootstrap CI) as near-term Phase A.
+- **5 candidate chapters** sourced (verbatim PD) in `tests/fixtures/golden_candidates/` (S&S, P&P ch3, 三國 oath, 紅樓夢 ch3, Lục Vân Tiên) — un-annotated, relation-dense; kept as small product-policy regression set.
+
+**NEXT:** Phase A — cheap eval hygiene (bake disjoint-judge metric + bootstrap CI into the locked metric; demote external anchors to sanity-floor; rename `claude-4.7-opus`). Then Phase B/B2 capture plumbing.
+
+## Session 74 — cycle 74d: Neo4j 2-hop retrieval hotfix (audit HIGH) + clean-judge re-judge
+
+**Cycle 74d (S/SHIP-pending-approval) — D-RAG-2HOP-DEAD-CODE → FIXED.**
+
+The audit's HIGH defect is fixed: [facts.py](../../services/knowledge-service/app/context/selectors/facts.py) `select_l2_facts` now passes the **required** `hop1_types` to `find_relations_2hop()`. Gate = new module constant `_RELATIONAL_HOP1_PREDICATES` (durable structural predicates only — kinship/mentorship/authority/social-state; spatial+action deliberately excluded as fan-out explosions, mirrors `relation_extraction_system.md` vocab). The 2-hop block is wrapped in its own `try/except` so a future 2-hop failure degrades to 1-hop-only instead of letting `_safe_l2_facts` swallow it and zero the whole L2 layer.
+
+**Why it slipped:** the happy-path unit test mocked `find_relations_2hop` with a bare `AsyncMock` (accepts any kwargs). Added 2 regressions in [test_facts_selector.py](../../services/knowledge-service/tests/unit/test_facts_selector.py): (1) `test_select_2hop_passes_required_hop1_types` uses a stub mirroring the REAL required-kwarg+non-empty contract; (2) `test_select_2hop_failure_degrades_to_1hop`.
+
+**VERIFY:** 11/11 facts selector unit (9+2) + 30/30 mode_full green on host. **LIVE SMOKE PASS** — host python (edited source) → live Neo4j (`bolt://localhost:7688`): seeded `Arthur -married_to-> Guinevere -knows-> Lancelot`, RELATIONAL intent → L2 returns 1-hop `Arthur — married_to — Guinevere` AND 2-hop `Arthur — married_to — Guinevere — knows — Lancelot` (was empty/`TypeError` pre-fix). MED L2 temporal-bucketing (all→`background`) still deferred, untouched.
+
+**Clean-judge re-judge (eval-flaw #1 quantified)** over the c73b-drop-realized ship dump, judges disjoint from extractor `019e6a20` + filter `019e5650`: gemma `019dc3df` **0.888** + phi4 `019dc3ab-2b65` **0.851** (+ qwen35 `019dc3fb` running). 2-judge clean median **0.869** vs locked headline **0.913** = **~4–5pp self-inflation** (extractor self-grades **0.972**, filter self-grades 0.913 = the pinned median). Confirms the audit's self-reinforcement claim empirically. Needed a one-time provider-registry pricing row (`{input_per_mtok:0,output_per_mtok:0}`) on phi4+qwen35 to clear the gateway 402. Artifacts: `tests/quality/eval_runs/c74c-clean-rejudge/` (not committed with the hotfix).
+
+**NEXT:** eval-architecture cycle (bake disjoint-judge metric + bootstrap CIs + rename claude-4.7-opus). User drives scope.
+
+## Session 74 — cycle 74c: relation-lever refutations + full architecture/eval audit
+
+### Part A — four relation/events R&D levers investigated, ALL refuted (no code shipped)
+
+User wanted to push extraction quality. I rigorously investigated and **refuted every candidate cheap lever** — banked as negatives so they are not re-litigated:
+
+1. **Events fuzzy-match (D-EVENT-AGGREGATOR-FUZZY-MATCH) → STALE.** Premise ("events weakest") dates to cycle 69. Current macro F1 by category (c73e-on verdicts): entity 0.93–0.99, **relation 0.69–0.94 (weakest)**, event 0.945–0.983 (strong). The LLM recall judge already matches "under any phrasing", so granularity drift is absorbed. **Close this deferred row as stale.**
+2. **Filter confirmed-endpoint exemption → REFUTED.** "Keep relations whose both endpoints are confirmed entities" would recover 39/48 filter-dropped relations — but ~37 are garbage the filter correctly dropped (`White Rabbit -located_in-> waistcoat-pocket`, `Bingley -married_to-> Netherfield Park`). Both-endpoints-are-entities ≠ predicate is correct. Would tank precision.
+3. **Deterministic predicate↔object-kind rule → REFUTED.** No clean separator: same predicates/kinds appear in garbage AND good (person obj 16 dropped/35 kept; `lives_in` 3/9; `married_to` 1/3). Garbage-vs-good is semantic — exactly what the LLM filter judges.
+4. **Confidence-threshold prune → UNMEASURABLE.** Eval dumps carry no confidence (0/121 relations) — needs re-extraction.
+
+**Conclusion:** the relation extractor over-extracts spurious relations (48 dropped corpus-wide, mostly garbage); the filter correctly cleans them; shipped relation *precision* is already 0.89–0.94. No cheap lever remains; the only path is a risky+expensive prompt-tightening re-extraction (cycle-71 lessons warn of regression). Pass2 relation R&D is at the **cheap-lever frontier**.
+
+### Part B — full RAG + extraction + eval architecture audit → [docs/reports/2026-05-30-rag-pipeline-audit.html](../reports/2026-05-30-rag-pipeline-audit.html)
+
+User distrusted the eval results. I ran a 3-pipeline audit (extraction, RAG retrieval, eval framework) via parallel subagents + direct verification, and produced a detailed technical HTML report. **Corrected verdict (after user feedback that local models are strong + a strong model already validated outputs):**
+
+- **Models are NOT the problem.** Extractor/judges are near-top-tier open models (Google Gemma-26B, Alibaba Qwen-30B/35B). Strong-model (Claude) manual review across sessions — incl. this session's spot-checks — corroborates the extraction output is genuinely good. Results are **not fake**.
+- **RAG retrieval architecture = correct** (mode dispatch, L0–L3 layers, bge-m3 1024-d cosine vector + MMR λ=0.7 + hub-penalty/recency, oversample-then-tenant-filter, token budgeting). Standard, sound. **Two defects, not design errors:**
+  - 🐞 **HIGH — 2-hop graph retrieval is dead code.** `app/context/selectors/facts.py:183` calls `find_relations_2hop()` without the **required** kw-only `hop1_types` (`db/neo4j_repos/relations.py:547`, no default) → `TypeError` swallowed by `_safe_l2_facts` → **entire L2 fact layer returns empty for every RELATIONAL-intent query**. Verified. Fix + regression test.
+  - MED — L2 temporal bucketing unimplemented (all relations → `background`).
+- **Eval design = above-average, but two SETUP-correctness flaws inflate the absolute numbers (independent of model quality):**
+  - **Self-reinforcement WIRING:** extractor `019e6a20` == ensemble Judge B (qwen-30b); precision filter `019e5650` == ensemble Judge C ("claude-4.7-opus", which is actually a local `huihui-qwen3.6-35b-…-abliterated` fine-tune, NOT Anthropic Claude). Only Judge A (gemma `019dc3df`) is independent. Grading your own output inflates F1 regardless of grader strength. The locked 3-judge median includes both self-overlapping judges.
+  - **Undersized gold set + no CIs:** 9 chapters, 1–6 gold items each (3 chapters have exactly 1 gold relation), macro-averaged, no confidence intervals — yet ships on ±0.1–0.3pp. A single-run nondeterminism swing of −29pp on alice_ch01 already exceeds every cycle's claimed lift.
+  - CoNLL 0.219 / DocRED 0.127 are a **domain-mismatch sanity floor (news/Wiki NER ≠ fiction extraction), NOT a quality verdict** — do not read as "real accuracy is 0.22".
+- **Net:** eval is reliable as a *relative same-judge drift signal*; its *absolute F1 is inflated by self-grading* and *sub-0.5pp deltas are noise*. Fixable without new models: make judges disjoint from extractor/filter, grow the gold set, add CIs.
+
+### NEXT WORK (user directive) — production-readiness evaluation, then conditional improvement plan
+
+Decision gate the next session must resolve:
+- **If the architecture is already good at production level → STOP.**
+- **If quality is low OR cost is too high → make a plan** to improve via architecture changes / additional algorithms / techniques that **reduce cost and improve quality**. **Priority order: precision (quality) FIRST, cost SECOND, latency LAST** (a precision-first RAG pipeline tolerates latency).
+
+To evaluate cleanly, the next session should FIRST neutralize the two eval-setup flaws so the readiness number isn't self-inflated:
+1. **Get a self-reinforcement-free quality number** — re-judge with the judge set restricted to models that are NEITHER the extractor (`019e6a20`) NOR the filter (`019e5650`); i.e. judge with gemma + one or more *other* models not used in extraction/filtering. Compare to the current 0.913. (Re-judge runs from HOST via `tests/quality/run_rejudge_resumable.py`, host→provider-registry :8208→LM Studio :1234 — bypasses the container OOM blocker.)
+2. **Measure COST** — tokens + wall-clock per chapter for the full pipeline (extract ×4 + relation filter + writes + embeddings). The relation-only drop filter adds ~18.9s/chapter; quantify $/chapter-equivalent and throughput on the local LM Studio target.
+3. **Then judge production-readiness** on precision-first criteria and either stop or write an improvement plan (candidate levers: better/smaller extractor, prompt-tightening with proper re-extraction measurement, cheaper filter, retrieval improvements, fixing the 2-hop bug which is pure correctness).
+
+## Session 74 summary — cycle 74a-smoke + 74b: 73f live smoke + disable-semantics fix (D-CYCLE73F-LIVE-SMOKE)
+
+**Result: 73f reload happy-path PASS (cross-service) + found & fixed a MED disable-semantics divergence (74b).**
+
+**Setup gotcha:** deployed images PREDATED 73f/73h — both KS + worker-ai images were built ~2-5h before the 73f/73h commits (KS reload endpoint 404'd live; worker-ai had no `:8226` port). `compose up` doesn't rebuild. Had to `compose build knowledge-service worker-ai && up -d` first. (Lesson: `feedback_verify_deployed_image_matches_source` — caught before chasing a phantom bug.)
+
+**73f happy-path smoke (PASS, cross-service):** `POST :8216/internal/admin/precision-filter/reload` (auth `X-Internal-Token: dev_internal_token`) with a custom config → 200 `redis_publish_status=published` + echoed config → Redis key `loreweave:precision-filter-config` written with `schema_version:1` envelope → worker-ai logged `WORKER_FILTER_RELOAD outcome=applied active=True` sub-ms later → `worker_ai_filter_reload_total{outcome=applied}` bumped → 73h `:8226/metrics` reachable (`startup=1`). Empty body → 422; auth works. **Note:** worker pubsub subscriber connects ~2s after boot (SDK resilient-backoff); POSTing within that window misses the signal (documented fire-and-forget limitation #1) — re-POST converges.
+
+**74b fix — `disable=true` semantics were inconsistent (MED, found by the smoke):** the runtime pubsub path did `set(get_filter_config())` unconditionally → key-absent (after a `disable` DELETE) set the cache to **None (filter OFF)**, while startup hydrate did `if cached is not None: set(...)` → key-absent **kept env config (filter ON)**. So a runtime disable silently reverted to env-config on the NEXT restart — a cross-path divergence unit tests couldn't catch (they mock `get_filter_config` + assert `set(None)`). **Fix (user chose consistency-fix):** runtime now matches startup — on key-absent, reload `_load_precision_filter_config()` (env) instead of None, in all 3 paths: KS pubsub `_on_reload` ([pass2_orchestrator.py](../../services/knowledge-service/app/extraction/pass2_orchestrator.py)), worker pubsub `_on_reload` ([runner.py](../../services/worker-ai/app/runner.py)), KS endpoint local-apply ([internal_admin.py](../../services/knowledge-service/app/routers/internal_admin.py)) + docstrings. `disable=true` is now a **clear-the-override** op (reverts to env-config), NOT a force-off. Trade-off (accepted): can't fully disable the filter at runtime when env sets one; `_load` returns None when no filter env is set so a no-filter deployment still lands disabled.
+
+**Re-smoke after 74b (PASS):** `POST custom` → worker `active=True model_ref=custom-uuid-2`; `POST disable` → worker `active=True model_ref=019e5650…` (env config, **NOT** active=False/None) + KS response returned env config not null. Counter `applied=2`, key absent.
+
+**Tests:** KS `test_internal_admin.py` (50) + `test_pass2_orchestrator.py` — replaced the old `disable→None` lock with `disable→env-config` + added env-revert pubsub test; worker `test_runner.py` (59) — added env-revert consume test. All green on host.
+
+**D-CYCLE73F-LIVE-SMOKE → CLOSED** (smoke ran + cross-service verified). 74b folded the finding inline.
+
+## Session 74 summary — cycle 74a: c73e writer-autocreate realized-F1 eval (D-PASS2-WRITER-AUTOCREATE-F1-EVAL)
+
+**Result: F1-NEUTRAL. Compose default stays OFF (SDK opt-in unchanged). Deferred row CLOSED.**
+
+Ran the 3-judge ensemble re-judge (gemma + qwen-30b + claude-4.7-opus) on the saved `c73e-autocreate-on` dump that was blocked twice in session 73 by container OOM.
+
+**Blocker permanently sidestepped — host orchestration.** The session-73 deaths happened because the re-judge ran *in* knowledge-service, and LM Studio JIT model-load → host memory pressure → Docker Desktop OOM-kills the heaviest container. Session 74 ran the orchestrator on **host Python** instead: `host → provider-registry (:8208) → LM Studio (:1234)`. knowledge-service is NOT in the re-judge path, so its OOM-killer can't reach the run. New reusable driver [`run_rejudge_resumable.py`](../../services/knowledge-service/tests/quality/run_rejudge_resumable.py) persists each judge's verdicts the instant it finishes (crash only loses the in-flight judge) and resumes by skipping already-complete judges. Run completed clean in ~23 min, all 3 judges `complete`, κ=0.738. **This makes D-DOCKER-RESTART-INVESTIGATION non-blocking for all future F1 cycles.**
+
+**Measured F1 (3-judge ensemble):**
+
+| Variant | gemma | qwen-30b | claude (median) | **3J median** | mean | κ |
+|---|---:|---:|---:|---:|---:|---:|
+| c73b-drop realized (SHIP) | 0.888 | 0.972 | 0.913 | **0.913** | 0.924 | 0.756 |
+| c73e-autocreate-on | 0.901 | 0.979 | 0.911 | **0.911** | 0.930 | 0.738 |
+| **Δ** | +1.3pp | +0.7pp | −0.2pp | **−0.2pp** | +0.6pp | −0.018 |
+
+The locked metric (3J median) moved **−0.2pp (within noise)** — the expected +0.3-0.6pp lift did NOT materialize. gemma/qwen improved but the median pins to claude (flat). The +6 cascade-recovered relations are low-confidence (`≤0.3`, `kind=concept`) abstract subjects (`仙卿`, `大海`, `Bụt`, `cha Tấm`, `cung`); judges weight them near-indifferently — zero precision cost, zero median lift. Confound ruled out: claude judged 0/421 unjudged; the 190 truncation warnings (83% budget) all parsed cleanly. D10 clause (a) does not clear → keep default OFF. Detail in [`c73e_compare.md`](../../services/knowledge-service/tests/quality/eval_runs/c73e_compare.md).
+
+**Deferred rows resolved:**
+- **D-PASS2-WRITER-AUTOCREATE-F1-EVAL** → CLOSED (measured: F1-neutral).
+- **D-PASS2-WRITER-CASCADE-GAP-CLOSE** → can CLOSE (gap measured as F1-immaterial; further closing chases a flat lever).
+- **D-DOCKER-RESTART-INVESTIGATION** → de-prioritized for F1 work (host-orchestration bypass); still open for general stack stability if desired.
+
+**Methodology note for next F1 cycle:** raise `KNOWLEDGE_JUDGE_BASE_TOKENS` above 3072 to clear the claude truncation warnings (harmless here — JSON recovered — but cleaner). Run from host with the exact env block in `run_rejudge_resumable.py`'s docstring; provider-registry host port is `:8208`, internal token `dev_internal_token`.
+
+## Session 73 summary — cycle 73h Prometheus metrics infra for worker-ai
+
+### Cycle 73h (L) — D-WORKER-AI-METRICS-INFRA
+
+Worker-ai now exposes `worker_ai_filter_reload_total{outcome}` on `:8226/metrics` (host) → `:8094` (container). Closes cycle 73f r3 M4 log-only stopgap.
+
+**What ships:**
+- `prometheus-client>=0.20` worker-ai dep
+- NEW `services/worker-ai/app/metrics.py` — dedicated CollectorRegistry + counter (4 outcomes: applied, failed, startup, startup_failed) + `start_metrics_server()` helper using built-in WSGI server (daemon thread, runs alongside asyncio)
+- `config.py` `metrics_port` setting (default 8094; set 0 to disable)
+- `main.py` starts metrics server at boot
+- `runner.py` bumps counter on hydrate (startup/startup_failed) + on_reload (applied/failed)
+- `docker-compose.yml` worker-ai ports `["8226:8094"]`
+
+**Tests:** 12/12 worker-ai cycle 73f+73h pass (+4 cycle 73h regression-locks: counter bumps on applied/failed/startup + no-op when port=0). KS 94/94 unchanged.
+
+### Cycle 73g (M) — D-CYCLE73F-r3-MEDLOW-CLEANUP
+
+Batch fold of 4 MED + 2 LOW findings from cycle 73f r3 /review-impl:
+
+- **M1** counter outcome=applied now ADDITIVE with failed (was mutually-exclusive, masked local-applied + redis-failed branch from dashboards). Matches cycle 73e M4 pattern.
+- **M3** KS subscriber task cancel block added in lifespan shutdown (was leaking redis client + pubsub connection on container shutdown).
+- **M4** worker-ai distinct structured log token `WORKER_FILTER_RELOAD` (later promoted to Prometheus counter in cycle 73h).
+- **L1** added KS hydrate function tests (2 regression-locks; previously hydrate was wired but untested).
+- **L2** added real-function mutation regression-lock for `set_precision_filter_config` (mock-only tests would have hidden a regression where the function early-returns without rebinding).
+- **L3+L4** endpoint docstring expanded with pubsub-message-loss + redis-restart documented limitations.
+
+**Tests:** 94/94 KS + 11/11 worker-ai pass after fold.
+
+### Cycle 73f r3 fix (L/FIX) — `/review-impl` round 3 catches 2 HIGH that survived rounds 1+2
+
+User invoked /review-impl r3 via slash command. Findings:
+
+- **H1** worker-ai missing startup hydrate (asymmetric with KS r2 H1 fold) → worker restart silently dropped ops-override. Added `hydrate_precision_filter_config_from_redis()` in worker-ai/app/runner.py + wired into main.py before asyncio.gather. 2 new regression-lock tests.
+- **H2** KS double-read of `_PRECISION_FILTER_CONFIG` (race window with concurrent pubsub) → AttributeError crash on `config.categories` access if reload swaps to None mid-call. Snapshot to local var at `_maybe_apply_precision_filter` entry. 1 new race-simulation regression-lock test.
+- 4 MED + 5 LOW deferred to cycle 73g (now closed).
+
+Lesson: r3 typically catches orphans from r1+r2 fixes — `feedback_review_impl_round_3_on_fix_delta` validated again.
+
+## Session 73 summary — cycle 73f runtime filter reload (Redis-key + pubsub hybrid)
+
+### Cycle 73f (L) — D-PASS2-FILTER-RUNTIME-FLAG ops endpoint for runtime config reload
+
+Goal: ops can change Pass2 precision filter config (categories, partial_policy, model_ref) WITHOUT compose restart. Architecture: Redis-key as source of truth + pubsub for change notification + module-level cache in both KS + worker-ai. Bypasses container restart pattern that killed 73e ensemble 2x.
+
+**Architecture:**
+
+```
+POST KS endpoint → SET Redis key + PUBLISH pubsub channel
+                 → KS local cache swap (immediate)
+                 → workers receive pubsub → re-read Redis → update cache
+KS startup       → GET Redis key → seed cache (hydrate)
+KS pubsub sub    → listen for cross-replica reload signals
+```
+
+**What ships:**
+- NEW `sdks/python/loreweave_extraction/filter_config_store.py` (~220 lines, 10 tests) — duck-typed Redis helpers, schema_version envelope, defensive deserializer, subscriber loop with backoff
+- KS `POST /internal/admin/precision-filter/reload` endpoint (body-based config, server-generated timestamp, model_validator catches disable+model_ref ambiguity + empty-body, Field validators, try/finally Redis cleanup)
+- KS lifespan hydrate + subscriber task (r2 H1 fold — was missing, would have broken multi-replica)
+- Worker-ai subscriber wired into `asyncio.gather`
+- `set_precision_filter_config()` setter in both KS + worker-ai (atomic module-level swap via Python GIL)
+- NEW Prometheus counter `knowledge_extraction_filter_reload_total{source, outcome}` (9 series)
+
+**Tests:** 106/106 pass (90 KS + 10 SDK + 6 worker-ai incl. 2 new cycle 73f tests)
+
+**3-round /review-impl:**
+- r1 on DESIGN: 7H + 9M + 6L; 7H + 5M + 2L folded inline (server-timestamp, ge=1 validation, list→tuple, subscriber resilience, schema_version envelope, swap-then-publish order, metric counter, channel naming, connection cleanup, validation truth table)
+- r2 on BUILD diff: 2H (1 critical) + 4M + 4L; H1 critical "KS never subscribes to own pubsub" folded (added hydrate + consume_filter_reload_signal in pass2_orchestrator + wired into main.py lifespan). H2 verified clean. M+L folded or deferred.
+
+**Documented limitations (accepted):**
+1. Pub/sub miss while worker restarting → ops re-reloads manually; monitor via metric counter
+2. KS-local apply succeeds even when Redis publish fails → `redis_publish_status="failed"` surfaces drift via response field
+3. Cross-service live smoke deferred to D-CYCLE73F-LIVE-SMOKE per container restart pattern (3x in this session)
+4. In-flight job consistency: orchestrator reads `_PRECISION_FILTER_CONFIG` per call; reload mid-job means chapter N uses old, N+1 uses new (acceptable for ops-tooling)
+
+**Deferred rows added:**
+- **D-CYCLE73F-LIVE-SMOKE** — cross-service smoke (curl KS reload → tail worker logs → verify cache swap) when container stable
+- **D-PASS2-FILTER-PER-JOB-OVERRIDE** — per-job override via StartJobRequest.filter_override field
+- **D-PASS2-FILTER-PER-USER-UI** — FE surface (cycle 72 deferred)
+
+### Cycle 73e (L) — Pass2 writer Tier-A name repair + Tier-B autocreate — closes 73c's writer-cascade gap WITHOUT LLM (no self-reinforcement risk)
+
+## Session 73 summary — cycle 73e Pass2 writer Tier-A + Tier-B autocreate ship decision
+
+### Cycle 73e (L) — Pass2 writer Tier-A name repair + Tier-B autocreate — closes 73c's writer-cascade gap WITHOUT LLM (no self-reinforcement risk)
+
+Goal: close the baseline 10.7% writer-cascade gap (cycle 73c finding) by promoting unresolved relation subjects/objects via 3 mechanisms — all LLM-free, bypass-by-construction the self-reinforcement risk that blocked cycle 73d.
+
+**Three tiers:**
+
+- **Tier A.1** — chapter-local canonical-name map repair (free, always-on). Catches relation subject name matching extracted entity but with mismatched/missing IDs.
+- **Tier A.2** — anchor index pre-check (free, always-on). Catches names that match a glossary anchor.
+- **Tier B** — env-gated MERGE of new `:Entity` with `kind="concept"`, `auto_created=true`, `confidence=min(rel.confidence, 0.3)`. Per-chapter cap default 20.
+
+**Cascade simulation (c73b-drop dump input, 73 relations):**
+
+| Variant | Cascade-skip | Recovered | Verdict |
+|---|---:|---:|---|
+| c73e-autocreate-off | 13.7% (10/73) | 0 | baseline (≡ c73b-drop-realized) |
+| **c73e-autocreate-on** | **5.5% (4/73)** | **+6 relations** | mechanism works |
+
+Per-chapter detail: `journey_west_zh_ch01` recovers `仙卿` + `大海`; `tam_cam_vi` recovers `Bụt` + `cha Tấm` + `cung`; `little_women_ch01` correctly noise-skips 4 compound subjects ("fancy words and refined speech" etc.). Tier A.1 didn't fire on this fixture — all cascade-skips were due to LLM not extracting the relation subject as an entity (not ID-drift within chapter).
+
+**Realized F1 (3-judge ensemble re-judge):** **DEFERRED to D-PASS2-WRITER-AUTOCREATE-F1-EVAL.** Two ensemble attempts both killed by knowledge-service container restart mid-run (gemma judge in flight; LM Studio JIT-load triggered host memory pressure → Docker Desktop killed container, /tmp wiped on restart). Same recurring pattern as cycle 73b first run (2026-05-30 06:14 UTC). Per CLAUDE.md "No Deadline · No Defer Drift," **D-PASS2-WRITER-AUTOCREATE-F1-EVAL is added to Naturally-next-phase deferred items** — re-run when container is stable for 30+ min uninterrupted.
+
+**Ship decision: SDK ships opt-in (cycle 73d pattern); compose default OFF.** Mechanism validated via cascade simulation (+6 relations recovered, 5.5% cascade-skip vs 13.7% baseline, 0 noise false-positives). Quantitative F1 lift unevaluated. Power users can opt-in via `KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED=true` in `.env` to AB-test in their own deployments.
+
+**Ship gate D10 5-clause:** unevaluable without realized F1 — deferred to F1 eval cycle.
+
+**Deferred rows added:**
+- **D-PASS2-WRITER-AUTOCREATE-F1-EVAL** (NEW) — re-run 3-judge ensemble on c73e-autocreate-on when container stable. Expected lift ~+0.3-0.6pp 3-judge median F1 based on cycle 73c proportionality (6 supported-cascade-recovered ≈ inverse of c73b's -0.3pp / c72c's -1.3pp realized loss).
+- **D-PASS2-WRITER-CASCADE-GAP-CLOSE** (still OPEN) — mechanism shipped opt-in; activation pending F1 confirmation.
+
+**What ships regardless of ship verdict:**
+- ✅ `services/knowledge-service/app/db/neo4j_repos/entities.py` — `auto_created` property + ON MATCH promotion CASE
+- ✅ `services/knowledge-service/app/extraction/entity_resolver.py` — `auto_created` kwarg plumbed
+- ✅ `services/knowledge-service/app/extraction/pass2_writer.py` — Tier A.1 + A.2 + B logic + new `entities_autocreated` + `endpoints_repaired_by_name` Pass2WriteResult fields
+- ✅ `services/knowledge-service/app/extraction/pass2_orchestrator.py` — `_load_writer_autocreate_config()` + TypedDict + spread into 3 writer call sites
+- ✅ `services/knowledge-service/app/metrics.py` — NEW `knowledge_extraction_writer_autocreate_total{role, outcome}` counter (9 outcomes)
+- ✅ Compose envs default OFF (`KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED=false`, `MAX_PER_CHAPTER=20`)
+- ✅ Eval driver `run_c73e_writer_autocreate.py` + 2 eval fixture dirs + `c73e_compare.md`
+- ✅ 28 new unit tests (7 entities + 18 writer + 3 orchestrator env-loader)
+
+**`/review-impl` round 1 on DESIGN:** 5 HIGH + 7 MED + 5 LOW findings, all HIGHs + 6 MEDs + 4 LOWs folded inline before BUILD. Notable folds:
+- H1: kind-collision in Tier A.1 chapter map → multi-kind triggers `kind_ambiguous` outcome, skip both A and B
+- H2: word-count heuristic broken for CJK → combined char-budget(60) + word-budget(3)
+- H3: hardcoded `confidence=0.0` defeats ON MATCH ratchet → use `min(rel.confidence, 0.3)`
+- H4: anchor hit silently marked auto → pre-check separates `tier_a_anchor_repair` outcome from `tier_b_autocreated`
+- M1: ON MATCH never clears `auto_created` → CASE clause clears on legit `auto_created=False` write (promotion)
+- M7: ship gate too permissive → added clause (e) per-category regression cap
+
+**`/review-impl` round 3 on FIX delta (post-r2 folds):** 2 real HIGH + 1 false-alarm HIGH + 3 MED + 3 LOW findings. Fold:
+- H1: eval driver's `entity_names_set` raw-name shortcut bypassed fold logic → DELETED the shortcut; now every endpoint routes through fold map. **Effect:** revealed correct attribution (136 tier_a_name_repair across 9 chapters; previously under-counted as 0). Cascade-skip rate UNCHANGED (5.5% with autocreate-on, 13.7% off) — only the BOOKKEEPING was wrong, not the mechanism.
+- H2: dead `cascade_dropped` inline bump in autocreate-disabled branch → removed (recompute formula at end was correct)
+- H3: CONFIRMED OK (parity-correct, not a regression)
+- M3 + L1: strengthened 2 tests with `evidence_edges` assertion (H3 fold proof) + create_relation kwargs verification (H2 fold proof)
+- M1 + M2: deferred (SDK fallback in eval driver runs in container; evidence confidence semantic documented but not blocking)
+
+**Re-framed cycle 73c finding (via r3 H1 discovery):** the "10.7% cascade gap" is mostly Tier A.1's job — relations have `subject_id=null` because the LLM-relation-extractor never resolves them, and the writer's name-to-ID Tier A.1 catches 93% (136/146 endpoints). Only ~5% (6/146) need Tier B autocreate. Cycle 73e's real contribution: providing the structured tier-resolution path + telemetry to attribute and tune the residual.
+
+**`/review-impl` round 2 on BUILD diff (post-implementation):** 3 HIGH + 5 MED + 5 LOW findings. All HIGHs + 3 MEDs + 1 LOW folded inline before ensemble re-judge:
+- H1: fold-key drift between Step 2 (sanitized) and Step 3 (raw) silently missed Tier A.1 → moved `_sanitize` before `_fold_name` in Step 3
+- H2: `setattr(rel, ...)` mutated input Pydantic model, breaking retry semantics → refactored to use LOCAL `resolved_subject_id`/`resolved_object_id` vars
+- H3: Tier A.2 anchor repair skipped `add_evidence` for the anchor entity → added evidence accrual after anchor repair
+- M1: eval driver used SIMPLIFIED canonicalize (no honorific strip) → imported production `canonicalize_entity_name` from SDK
+- M3: counter assertions break under pytest-xdist → added `pytestmark = pytest.mark.xdist_group("c73e-writer-autocreate-metrics")` module-level
+- M4: cap_exhausted metric was mutually-exclusive with cap_exhausted_high_conf, diverging from eval driver → made additive (high_conf BOTH bumps cap_exhausted + cap_exhausted_high_conf)
+- L3: added 2 regression-lock tests (self-reference relation Tier B→A.1 propagation, input-relation-id-not-mutated)
+
+Final test count: **101 focused regression passes** (entity_auto_created 7 + entities_mutations 8 + entity_resolver 21 + pass2_writer pre-existing 19 + pass2_writer_autocreate 20 + pass2_orchestrator 26). +30 net new tests vs pre-73e baseline.
+
+### Cycle 73d (M) — entity recovery (3-tier glossary→hints→LLM) — NEGATIVE; SDK ships opt-in, NOT activated
+
+Goal: close the baseline 10.7% writer-cascade gap identified in cycle 73c by promoting unmatched relation subjects/objects as :Entity nodes via 3-tier resolution (glossary → optional author hints → LLM classifier fallback).
+
+**Empirical 4-variant comparison** (all on c70a saved fixture, ensemble re-judged):
+
+| Variant | Filter-output F1 | Cascade-skip rate | Realized F1 | Per-chapter latency |
+|---|---:|---:|---:|---:|
+| c70a baseline | 0.895 | 10.7% | ~0.88 (est) | — |
+| c72c-drop realized (cycle-72 retired) | — | 22.5% | 0.904 | 42.5s |
+| c73b-drop realized (current SHIP) | — | 12.3% | **0.913** | **18.9s** |
+| c73d-recov-only | 0.898 | **0%** | 0.898 | **2.0s** |
+| c73d-recov-plus-rel (proposed) | 0.922 | **0%** | 0.922 | ~30s |
+
+3-judge median F1 lift of c73d-recov-plus-rel: **+0.9pp** vs c73b-drop-realized. But D10(c) self-reinforcement check catches it:
+
+**Self-reinforcement check** (recompute median over judge-subset excluding the filter+classifier model):
+
+| Variant | 3-judge median | **2-judge mean (no claude)** | Δ 2J vs c73b ship |
+|---|---:|---:|---:|
+| c73b-drop realized (SHIP) | 0.913 | 0.9300 | — |
+| c73d-recov-plus-rel (proposed) | 0.922 | **0.9285** | **-0.15pp** |
+
+The +0.9pp 3-judge lift came **entirely from the claude judge**. With claude removed, c73d-recov-plus-rel is **slightly WORSE** than c73b-drop. Classic self-reinforcement signature — claude classifier's output over-credited by claude judge.
+
+**Ship decision: don't activate c73d as default.** SDK ships opt-in:
+- ✅ `sdks/python/loreweave_extraction/entity_recovery.py` (~340 lines, 13 unit tests)
+- ✅ `EntityRecoveryConfig` + env loaders (knowledge-service + worker-ai)
+- ✅ New Prometheus counter `knowledge_extraction_recovery_decisions_total{source, verdict}`
+- ✅ Compose envs default OFF
+- ✅ Eval driver `run_c73d_recovery.py`
+- ✅ Eval results `eval_runs/c73d-recov-only/` + `eval_runs/c73d-recov-plus-rel/`
+- ✅ `eval_runs/c73d_compare.md` documenting the negative ship outcome
+
+**Re-validation conditions** (re-evaluate when ANY of):
+- Non-claude classifier model available (cloud claude-haiku-4-5 BYOK lands)
+- 4th non-claude judge added to ensemble (e.g. cloud Claude judge)
+- Author-hints API in book-service (Tier 2 use case grows, less reliance on Tier 3 LLM)
+
+**Bonus finding (cycle 73d sub-result):** recovery successfully closes the c73c baseline cascade gap — 0% cascade-skip on c73d-recov-only (vs c70a's 10.7%, c73b's 12.3%). The mechanism works; the ship blocker is the self-reinforcement check, NOT the recovery itself.
+
+**Memory lesson:** `feedback_anti_self_reinforcement_via_judge_subset_recompute` — when filter/classifier model is also in ensemble, recompute median over judge subset excluding that model; if lift disappears, it was self-reinforcement.
+
+**Deferred rows added:**
+- **D-ENTITY-RECOVERY-NON-CLAUDE-CLASSIFIER** (NEW) — re-validate c73d when a non-claude classifier model is available
+
+### Cycle 73c (S→M scope-bump) — Neo4j-realized F1 cascade analysis + empirical re-judge
 
 ### Cycle 73c (S→M scope-bump) — Neo4j-realized F1 cascade analysis + empirical re-judge
 

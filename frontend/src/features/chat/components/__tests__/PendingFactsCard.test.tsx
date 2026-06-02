@@ -49,9 +49,9 @@ describe('PendingFactsCard', () => {
     const rows = screen.getAllByTestId('pending-fact-row');
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent('Likes tea.');
-    expect(rows[0]).toHaveTextContent('Preference');
+    expect(rows[0]).toHaveTextContent('facts.type.preference');
     expect(rows[1]).toHaveTextContent('Quit the guild.');
-    expect(rows[1]).toHaveTextContent('Milestone');
+    expect(rows[1]).toHaveTextContent('facts.type.milestone');
   });
 
   it('calls onConfirm with the fact id when Confirm is clicked', async () => {

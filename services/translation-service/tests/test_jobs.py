@@ -144,6 +144,69 @@ def test_create_job_returns_201_and_creates_rows(client, fake_pool):
     assert data["book_id"] == BOOK_ID
 
 
+def test_create_job_uses_per_job_override_without_settings(client, fake_pool):
+    """Fix-C: a job carrying its own model_ref/target_language succeeds even when NO
+    book settings and NO user prefs exist (resolver returns defaults with model_ref=None)."""
+    override_model = str(uuid4())
+    job_row = FakeRecord({**_JOB_ROW, "model_ref": UUID(override_model), "target_language": "vi"})
+    fake_pool.fetchrow.side_effect = [
+        None,       # resolve: no book settings row
+        None,       # resolve: no user prefs row
+        job_row,    # INSERT translation_jobs RETURNING *
+    ]
+
+    with patch("app.routers.jobs.httpx.AsyncClient") as mock_client_cls, \
+         patch("app.routers.jobs.publish", new_callable=AsyncMock) as mock_publish, \
+         patch("app.routers.jobs.publish_event", new_callable=AsyncMock):
+        mock_http = AsyncMock()
+        mock_client_cls.return_value.__aenter__.return_value = mock_http
+        mock_http.get.return_value = _mock_book_service_response()
+
+        resp = client.post(
+            f"/v1/translation/books/{BOOK_ID}/jobs",
+            json={
+                "chapter_ids": [CHAPTER_ID],
+                "target_language": "vi",
+                "model_source": "user_model",
+                "model_ref": override_model,
+            },
+        )
+
+    assert resp.status_code == 201
+    # The job snapshot + broker message must carry the override, not the defaults.
+    published = mock_publish.call_args.args[1]
+    assert published["model_ref"] == override_model
+    assert published["target_language"] == "vi"
+    assert published["model_source"] == "user_model"
+    # The override target_language must also flow into the chapter_translations row
+    # (used for version_num scoping + the stored target), not just the broker message.
+    chapter_insert_args = fake_pool.execute.call_args.args
+    assert chapter_insert_args[5] == "vi"
+
+
+def test_create_job_override_satisfies_model_check_when_settings_have_none(client, fake_pool):
+    """Fix-C: book settings exist but model_ref is None; a per-job model_ref override
+    must satisfy the 'no model configured' guard."""
+    override_model = str(uuid4())
+    no_model_row = FakeRecord({**_BOOK_SETTINGS_ROW, "model_ref": None})
+    job_row = FakeRecord({**_JOB_ROW, "model_ref": UUID(override_model)})
+    fake_pool.fetchrow.side_effect = [no_model_row, job_row]
+
+    with patch("app.routers.jobs.httpx.AsyncClient") as mock_client_cls, \
+         patch("app.routers.jobs.publish", new_callable=AsyncMock), \
+         patch("app.routers.jobs.publish_event", new_callable=AsyncMock):
+        mock_http = AsyncMock()
+        mock_client_cls.return_value.__aenter__.return_value = mock_http
+        mock_http.get.return_value = _mock_book_service_response()
+
+        resp = client.post(
+            f"/v1/translation/books/{BOOK_ID}/jobs",
+            json={"chapter_ids": [CHAPTER_ID], "model_ref": override_model},
+        )
+
+    assert resp.status_code == 201
+
+
 def test_create_job_publishes_to_broker_not_background_tasks(client, fake_pool):
     """Plan §6.1: job creation must publish to RabbitMQ, NOT use BackgroundTasks."""
     fake_pool.fetchrow.side_effect = [_BOOK_SETTINGS_ROW, _JOB_ROW]

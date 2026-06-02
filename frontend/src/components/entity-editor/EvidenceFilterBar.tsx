@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Plus } from 'lucide-react';
 import type {
   EvidenceType,
@@ -40,6 +41,7 @@ export function EvidenceFilterBar({
   sortBy, onSortBy, sortDir, onSortDir,
   onAdd,
 }: EvidenceFilterBarProps) {
+  const { t } = useTranslation('entityEditor');
   return (
     <div className="flex flex-wrap items-center gap-2">
       {/* Evidence type chips */}
@@ -51,18 +53,18 @@ export function EvidenceFilterBar({
             !typeFilter ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'
           }`}
         >
-          All
+          {t('evidence.filter.all')}
         </button>
-        {EVIDENCE_TYPES.map((t) => (
+        {EVIDENCE_TYPES.map((ty) => (
           <button
-            key={t}
+            key={ty}
             type="button"
-            onClick={() => onTypeFilter(typeFilter === t ? '' : t)}
-            className={`rounded-full px-2.5 py-1 text-[10px] font-medium capitalize transition-colors ${
-              typeFilter === t ? TYPE_COLORS[t] : 'bg-muted text-muted-foreground hover:text-foreground'
+            onClick={() => onTypeFilter(typeFilter === ty ? '' : ty)}
+            className={`rounded-full px-2.5 py-1 text-[10px] font-medium transition-colors ${
+              typeFilter === ty ? TYPE_COLORS[ty] : 'bg-muted text-muted-foreground hover:text-foreground'
             }`}
           >
-            {t}
+            {t(`evidence.type.${ty}`)}
           </button>
         ))}
       </div>
@@ -73,9 +75,9 @@ export function EvidenceFilterBar({
           value={attrFilter}
           onChange={(e) => onAttrFilter(e.target.value)}
           className="rounded border bg-background px-2 py-1 text-[11px] focus:outline-none"
-          aria-label="Filter by attribute"
+          aria-label={t('evidence.filter.attr_aria')}
         >
-          <option value="">All attributes</option>
+          <option value="">{t('evidence.filter.all_attributes')}</option>
           {availAttrs.map((a) => (
             <option key={a.attr_value_id} value={a.attr_value_id}>{a.name}</option>
           ))}
@@ -88,12 +90,12 @@ export function EvidenceFilterBar({
           value={chapterFilter}
           onChange={(e) => onChapterFilter(e.target.value)}
           className="rounded border bg-background px-2 py-1 text-[11px] focus:outline-none"
-          aria-label="Filter by chapter"
+          aria-label={t('evidence.filter.chapter_aria')}
         >
-          <option value="">All chapters</option>
+          <option value="">{t('evidence.filter.all_chapters')}</option>
           {availChapters.map((c) => (
             <option key={c.chapter_id} value={c.chapter_id}>
-              {c.chapter_title ?? `Chapter ${c.chapter_index ?? '?'}`}
+              {c.chapter_title ?? t('evidence.filter.chapter_n', { n: c.chapter_index ?? '?' })}
             </option>
           ))}
         </select>
@@ -104,9 +106,9 @@ export function EvidenceFilterBar({
         value={language}
         onChange={(e) => onLanguage(e.target.value)}
         className="rounded border bg-background px-2 py-1 text-[11px] focus:outline-none"
-        aria-label="Display language"
+        aria-label={t('evidence.filter.lang_aria')}
       >
-        <option value="">Original</option>
+        <option value="">{t('evidence.filter.original')}</option>
         {availLanguages.map((lang) => (
           <option key={lang} value={lang}>{lang}</option>
         ))}
@@ -119,18 +121,18 @@ export function EvidenceFilterBar({
         value={sortBy}
         onChange={(e) => onSortBy(e.target.value as EvidenceListParams['sort_by'])}
         className="rounded border bg-background px-2 py-1 text-[11px] focus:outline-none"
-        aria-label="Sort by"
+        aria-label={t('evidence.filter.sort_aria')}
       >
-        <option value="created_at">Created</option>
-        <option value="chapter_index">Chapter</option>
-        <option value="block_or_line">Block/Line</option>
-        <option value="attribute_name">Attribute</option>
+        <option value="created_at">{t('evidence.filter.sort.created')}</option>
+        <option value="chapter_index">{t('evidence.filter.sort.chapter')}</option>
+        <option value="block_or_line">{t('evidence.filter.sort.block_line')}</option>
+        <option value="attribute_name">{t('evidence.filter.sort.attribute')}</option>
       </select>
       <button
         type="button"
         onClick={() => onSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
         className="rounded border bg-background px-2 py-1 text-[10px] font-medium hover:bg-secondary transition-colors"
-        title={sortDir === 'asc' ? 'Ascending' : 'Descending'}
+        title={sortDir === 'asc' ? t('evidence.filter.ascending') : t('evidence.filter.descending')}
       >
         {sortDir === 'asc' ? '\u2191' : '\u2193'}
       </button>
@@ -141,7 +143,7 @@ export function EvidenceFilterBar({
         onClick={onAdd}
         className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-[10px] font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
       >
-        <Plus className="h-3 w-3" /> Add
+        <Plus className="h-3 w-3" /> {t('evidence.filter.add')}
       </button>
     </div>
   );

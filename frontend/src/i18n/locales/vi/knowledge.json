@@ -10,7 +10,8 @@
       "entities": "Thực thể",
       "timeline": "Dòng thời gian",
       "raw": "Dữ liệu thô",
-      "privacy": "Quyền riêng tư"
+      "privacy": "Quyền riêng tư",
+      "insights": "Phân tích"
     }
   },
   "mobile": {
@@ -750,5 +751,102 @@
       "description": "Thao tác này xóa vĩnh viễn mọi dự án và tóm tắt. Nhập {{token}} để xác nhận.",
       "cancel": "Hủy"
     }
+  },
+  "relations": {
+    "edit": {
+      "cta": "Correct relation",
+      "title": "Correct relation",
+      "description": "Fix this relation's predicate, or mark it as wrong so it's removed.",
+      "field": {
+        "predicate": "Predicate"
+      },
+      "save": "Correct",
+      "saving": "Correcting…",
+      "cancel": "Cancel",
+      "correctSuccess": "Relation corrected.",
+      "invalidateSuccess": "Relation removed.",
+      "invalidateHint": "If this relation should never have been extracted, mark it wrong to remove it.",
+      "invalidateConfirm": "Mark this relation as wrong and remove it?",
+      "markWrong": "Mark wrong",
+      "invalidating": "Removing…",
+      "failed": "Couldn't save the correction: {{error}}"
+    }
+  },
+  "events": {
+    "edit": {
+      "cta": "Edit",
+      "title": "Edit event",
+      "description": "Adjust this event's title, summary, or timing.",
+      "field": {
+        "title": "Title",
+        "summary": "Summary",
+        "timeCue": "Time cue",
+        "dateIso": "Date (ISO)"
+      },
+      "dateIsoPlaceholder": "YYYY or YYYY-MM-DD",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "success": "Event updated.",
+      "conflict": "Another device updated this event. Review the latest and try again.",
+      "failed": "Couldn't update the event: {{error}}",
+      "invalidDate": "Date must be YYYY, YYYY-MM, or YYYY-MM-DD."
+    },
+    "archive": {
+      "cta": "Delete",
+      "confirm": "Delete (hide) this event?",
+      "archiving": "Deleting…",
+      "success": "Event deleted.",
+      "failed": "Couldn't delete the event: {{error}}"
+    }
+  },
+  "mining": {
+    "sections": {
+      "configQuality": {
+        "title": "Chất lượng cấu hình",
+        "description": "Tỷ lệ thành công theo thể loại và cấu hình. Có dữ liệu sau 2+ lần trích xuất dùng cùng config hash.",
+        "empty": "Chưa có dữ liệu — cần 2+ lần trích xuất với cùng config hash trên mỗi thể loại.",
+        "exploration": "Mẫu khám phá (ngẫu nhiên)"
+      },
+      "modelMatrix": {
+        "title": "Ma trận mô hình",
+        "description": "Điểm kết quả theo mô hình và phạm vi tác vụ. succeeded=1.0 · skipped=0.3 · failed=0.0.",
+        "empty": "Chưa có dữ liệu — cần 2+ lần trích xuất với cùng mô hình và phạm vi."
+      },
+      "defaultDrift": {
+        "title": "Độ lệch cấu hình",
+        "description": "Tham số nào khác so với mặc định, và liệu các dự án có hội tụ về cùng giá trị không.",
+        "empty": "Chưa ghi nhận điều chỉnh tham số nào."
+      },
+      "outcomeRecompute": {
+        "title": "Tái tính kết quả",
+        "description": "Các lần trích xuất được đánh giá lại sau khi áp dụng hiệu chỉnh của người dùng.",
+        "empty": "Chưa có dữ liệu hiệu chỉnh. Tính năng này kích hoạt khi hiệu chỉnh được liên kết với lần trích xuất."
+      }
+    },
+    "columns": {
+      "genre": "Thể loại",
+      "configHash": "Cấu hình",
+      "runs": "Lượt",
+      "successRate": "Tỷ lệ thành công",
+      "avgEntities": "TB thực thể",
+      "model": "Mô hình",
+      "scope": "Phạm vi",
+      "filter": "Bộ lọc",
+      "weightedOutcome": "Điểm",
+      "target": "Tham số",
+      "affectedProjects": "Dự án",
+      "driftPattern": "Kiểu lệch",
+      "runsWithOutcome": "Lượt có kết quả",
+      "runId": "Lượt",
+      "outcome": "Kết quả",
+      "recomputed": "Tái tính",
+      "corrections": "Hiệu chỉnh"
+    },
+    "driftPattern": {
+      "convergent": "Hội tụ",
+      "divergent": "Phân kỳ"
+    },
+    "totalRuns": "{{count}} lượt tổng cộng"
   }
 }

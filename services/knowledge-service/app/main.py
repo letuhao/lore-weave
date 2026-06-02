@@ -39,7 +39,9 @@ from app.routers.public import entities as public_entities
 from app.routers.public import extraction as public_extraction
 from app.routers.public import logs as public_logs
 from app.routers.public import pending_facts as public_pending_facts
+from app.routers.public import events as public_events
 from app.routers.public import projects as public_projects
+from app.routers.public import relations as public_relations
 from app.routers.public import summaries as public_summaries
 from app.routers.public.summaries import close_cooldown_client
 from app.routers.public import timeline as public_timeline
@@ -129,12 +131,56 @@ async def lifespan(app: FastAPI):
                 "D-P2-STALE-CLAIM-LIFESPAN-HOOK: stale-claim recovery failed (non-fatal)",
                 exc_info=True,
             )
+        # Q4b-feed — prune extraction_run_samples older than the judging
+        # window. The sample is a transient buffer feeding the online judge;
+        # rows past the window are dead novel-text weight. Best-effort: a
+        # Postgres hiccup here MUST NOT block service startup.
+        try:
+            from app.db.repositories.extraction_run_samples import (
+                ExtractionRunSamplesRepo,
+            )
+            pruned_n = await ExtractionRunSamplesRepo(
+                get_knowledge_pool()
+            ).prune_older_than(settings.extraction_run_sample_ttl_days)
+            if pruned_n > 0:
+                logger.info(
+                    "Q4b-feed: pruned %d extraction_run_samples older than %d days",
+                    pruned_n, settings.extraction_run_sample_ttl_days,
+                )
+        except Exception:
+            logger.warning(
+                "Q4b-feed: extraction_run_samples prune failed (non-fatal)",
+                exc_info=True,
+            )
     except Exception:
         logger.exception(
             "lifespan startup failed before yield — running partial cleanup"
         )
         await _close_all_startup_resources()
         raise
+    # Cycle 73f r2 H1 fold — hydrate filter config from Redis on startup
+    # so a container restart preserves ops-override. Spawn subscriber
+    # task so multi-replica KS deployments see each others' reloads via
+    # pubsub. Non-fatal: failure logs warn and falls through to env.
+    filter_reload_task = None
+    if settings.redis_url:
+        try:
+            from app.extraction.pass2_orchestrator import (
+                consume_filter_reload_signal,
+                hydrate_precision_filter_config_from_redis,
+            )
+            await hydrate_precision_filter_config_from_redis(settings.redis_url)
+            filter_reload_task = asyncio.create_task(
+                consume_filter_reload_signal(settings.redis_url),
+            )
+            logger.info("cycle 73f: filter reload hydrate + subscriber started")
+        except Exception:
+            logger.warning(
+                "cycle 73f: filter reload startup failed (non-fatal — "
+                "using env defaults)",
+                exc_info=True,
+            )
+
     # K14.1 — start event consumer as background task.
     # Imports inline to avoid circular imports (consumer needs pool).
     consumer_task = None
@@ -373,6 +419,22 @@ async def lifespan(app: FastAPI):
                     "Error stopping cache invalidator", exc_info=True,
                 )
 
+        # Cycle 73f r3 M3 fold: stop filter-reload subscriber. Without
+        # this cancel block, the BG task leaks its Redis client + pubsub
+        # connection on container shutdown — slow teardown + connection
+        # exhaustion on repeated dev restarts.
+        if filter_reload_task is not None:
+            filter_reload_task.cancel()
+            try:
+                await filter_reload_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.warning(
+                    "cycle 73f: error stopping filter-reload subscriber",
+                    exc_info=True,
+                )
+
         # Stop anchor-refresh loop next (quick cancel).
         if refresh_task is not None:
             refresh_task.cancel()
@@ -537,6 +599,8 @@ app.include_router(public_costs.router)
 app.include_router(public_drawers.router)
 app.include_router(public_entities.router)
 app.include_router(public_entities.entities_router)
+app.include_router(public_relations.relations_router)
+app.include_router(public_events.events_router)
 app.include_router(public_extraction.router)
 app.include_router(public_extraction.jobs_router)
 app.include_router(public_logs.router)

@@ -10,7 +10,8 @@
       "entities": "エンティティ",
       "timeline": "タイムライン",
       "raw": "生データ",
-      "privacy": "プライバシー"
+      "privacy": "プライバシー",
+      "insights": "インサイト"
     }
   },
   "mobile": {
@@ -750,5 +751,102 @@
       "description": "これによりすべてのプロジェクトと要約が永久に削除されます。確認のため {{token}} と入力してください。",
       "cancel": "キャンセル"
     }
+  },
+  "relations": {
+    "edit": {
+      "cta": "Correct relation",
+      "title": "Correct relation",
+      "description": "Fix this relation's predicate, or mark it as wrong so it's removed.",
+      "field": {
+        "predicate": "Predicate"
+      },
+      "save": "Correct",
+      "saving": "Correcting…",
+      "cancel": "Cancel",
+      "correctSuccess": "Relation corrected.",
+      "invalidateSuccess": "Relation removed.",
+      "invalidateHint": "If this relation should never have been extracted, mark it wrong to remove it.",
+      "invalidateConfirm": "Mark this relation as wrong and remove it?",
+      "markWrong": "Mark wrong",
+      "invalidating": "Removing…",
+      "failed": "Couldn't save the correction: {{error}}"
+    }
+  },
+  "events": {
+    "edit": {
+      "cta": "Edit",
+      "title": "Edit event",
+      "description": "Adjust this event's title, summary, or timing.",
+      "field": {
+        "title": "Title",
+        "summary": "Summary",
+        "timeCue": "Time cue",
+        "dateIso": "Date (ISO)"
+      },
+      "dateIsoPlaceholder": "YYYY or YYYY-MM-DD",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "success": "Event updated.",
+      "conflict": "Another device updated this event. Review the latest and try again.",
+      "failed": "Couldn't update the event: {{error}}",
+      "invalidDate": "Date must be YYYY, YYYY-MM, or YYYY-MM-DD."
+    },
+    "archive": {
+      "cta": "Delete",
+      "confirm": "Delete (hide) this event?",
+      "archiving": "Deleting…",
+      "success": "Event deleted.",
+      "failed": "Couldn't delete the event: {{error}}"
+    }
+  },
+  "mining": {
+    "sections": {
+      "configQuality": {
+        "title": "設定品質",
+        "description": "ジャンルと設定別の成功率。同じ設定ハッシュの抽出を 2 回以上実行後に表示されます。",
+        "empty": "データなし — ジャンルごとに同じ設定ハッシュで 2 回以上の抽出が必要です。",
+        "exploration": "探索サンプル（ランダム末尾）"
+      },
+      "modelMatrix": {
+        "title": "モデルマトリクス",
+        "description": "モデルとタスクスコープ別の重み付き結果スコア。succeeded=1.0 · skipped=0.3 · failed=0.0。",
+        "empty": "データなし — 同じモデルとスコープで 2 回以上の抽出が必要です。"
+      },
+      "defaultDrift": {
+        "title": "設定ドリフト",
+        "description": "デフォルトと異なる抽出パラメータと、プロジェクト間で同じ値に収束しているかどうか。",
+        "empty": "パラメータ調整の記録がまだありません。"
+      },
+      "outcomeRecompute": {
+        "title": "結果再計算",
+        "description": "ユーザー修正を適用後に再評価された抽出実行。",
+        "empty": "修正データがまだありません。修正が抽出実行に結び付いた時点で機能が有効になります。"
+      }
+    },
+    "columns": {
+      "genre": "ジャンル",
+      "configHash": "設定",
+      "runs": "実行数",
+      "successRate": "成功率",
+      "avgEntities": "平均エンティティ",
+      "model": "モデル",
+      "scope": "スコープ",
+      "filter": "フィルタ",
+      "weightedOutcome": "スコア",
+      "target": "パラメータ",
+      "affectedProjects": "プロジェクト",
+      "driftPattern": "パターン",
+      "runsWithOutcome": "結果あり実行",
+      "runId": "実行",
+      "outcome": "結果",
+      "recomputed": "再計算",
+      "corrections": "修正"
+    },
+    "driftPattern": {
+      "convergent": "収束",
+      "divergent": "分岐"
+    },
+    "totalRuns": "合計 {{count}} 件"
   }
 }

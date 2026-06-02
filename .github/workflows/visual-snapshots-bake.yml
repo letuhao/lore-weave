@@ -1,0 +1,163 @@
+name: Bake Linux visual snapshots
+
+# Manual-trigger workflow that re-bakes the Playwright visual regression
+# snapshots ON LINUX (matching the Ubuntu CI runner the
+# `frontend-game-e2e-with-backend` job uses). Run this once after rendering
+# changes — adding/removing UI sections, font changes, color tweaks,
+# Chromium upgrades — then review the auto-committed PNG diffs in the
+# follow-up commit.
+#
+# Why: Playwright snapshot files are platform-suffixed
+# (`*-chromium-win32.png` vs `*-chromium-linux.png`). The repo's existing
+# PNGs were baked on Windows-x86_64 during chunk C/D dev. CI runs on Linux,
+# so the WIN32 baselines can't be used directly. This workflow generates
+# the Linux baselines so the same Ubuntu CI runner can verify against them.
+#
+# Trigger: workflow_dispatch (GitHub UI → Actions → "Bake Linux visual
+# snapshots" → Run workflow on the target branch).
+#
+# Outputs: commits new/changed `*-chromium-linux.png` files in
+# `frontend-game/e2e/**-snapshots/` back to the same branch via
+# `stefanzweifel/git-auto-commit-action` with a "ci(visual-snapshots):"
+# commit message.
+#
+# Permissions: requires `contents: write` for the auto-commit. The default
+# `GITHUB_TOKEN` is sufficient on branches without protection rules; for
+# protected branches, configure a PAT or change the action to open a PR
+# instead of pushing directly.
+
+on:
+  workflow_dispatch:
+    inputs:
+      browsers:
+        description: "Playwright browsers to bake (comma-separated). Default chromium only — the CI verifier also runs chromium-only."
+        required: false
+        default: 'chromium'
+        type: string
+
+concurrency:
+  # Serialize so two simultaneous bakes don't race on the same snapshot
+  # files. Cancel-in-progress=false because a partial bake would leave the
+  # repo with mixed-version PNGs (worse than queuing).
+  group: visual-snapshots-bake-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  # Required by stefanzweifel/git-auto-commit-action to push back.
+  contents: write
+
+jobs:
+  bake:
+    name: Bake Playwright Linux PNGs + commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # auto-commit-action needs the full ref so it can push back.
+          fetch-depth: 0
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          cache: true
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build tilemap-service (release)
+        run: cargo build --release -p tilemap-service --bin tilemap-service
+
+      - name: Start tilemap-service in background
+        env:
+          LOREWEAVE_INTERNAL_TOKEN: dev_internal_token
+          TILEMAP_HTTP_BIND: 0.0.0.0:8220
+        run: |
+          ./target/release/tilemap-service serve &
+          echo $! > /tmp/tilemap.pid
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8220/livez > /dev/null; then
+              echo "backend ready after $((i * 2))s"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "backend failed to bind to /livez within 60s" >&2
+          exit 1
+
+      - name: Install Playwright browsers
+        # Re-uses the existing pnpm workspace install command. Browsers
+        # cache is keyed by the playwright version in pnpm-lock.yaml so
+        # repeat runs reuse a single ~500 MB download.
+        run: pnpm --filter frontend-game exec playwright install --with-deps ${{ inputs.browsers }}
+
+      - name: Bake snapshots (--update-snapshots all)
+        # `--update-snapshots all` rewrites every snapshot, including
+        # ones that match — useful when fonts/Chromium roll forward
+        # and produce a stable shift everywhere. Filter to the specs
+        # this branch knows about; new specs added later will land in
+        # the same dir and be picked up on the next bake.
+        run: |
+          PROJECTS=""
+          for browser in $(echo "${{ inputs.browsers }}" | tr ',' ' '); do
+            PROJECTS="$PROJECTS --project=$browser"
+          done
+          pnpm --filter frontend-game exec playwright test \
+            --update-snapshots all \
+            $PROJECTS \
+            || true
+          # `|| true` because `--update-snapshots all` still exits 1 when
+          # snapshots are written for the first time (no prior baseline
+          # to compare against). The auto-commit below is the real
+          # success signal — if there are zero changes, the bake produced
+          # nothing new and the operator should review why.
+
+      - name: Stop tilemap-service
+        if: always()
+        run: |
+          if [ -f /tmp/tilemap.pid ]; then
+            kill "$(cat /tmp/tilemap.pid)" 2>/dev/null || true
+          fi
+
+      - name: Show snapshot diff stats (before commit)
+        run: |
+          echo "─── new/changed PNG snapshots ───"
+          git status --short frontend-game/e2e/**-snapshots/ || true
+          echo "─── total Linux snapshots in tree ───"
+          find frontend-game/e2e -type f -name "*-chromium-linux.png" \
+            | sort
+
+      - name: Commit Linux snapshots back to branch
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          file_pattern: 'frontend-game/e2e/**/*.png'
+          commit_message: |
+            ci(visual-snapshots): bake Linux PNG goldens via GitHub Actions
+
+            Auto-generated by `.github/workflows/visual-snapshots-bake.yml`
+            on Ubuntu runner so the `frontend-game-e2e-with-backend` CI
+            job can verify visual regression specs against Linux-rendered
+            baselines.
+
+            See docs/runbooks/visual-snapshots.md for the bake flow +
+            review checklist.
+          commit_user_name: github-actions[bot]
+          commit_user_email: github-actions[bot]@users.noreply.github.com
+
+      - name: Upload Playwright test-results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-bake-test-results
+          path: |
+            frontend-game/playwright-report/
+            frontend-game/test-results/
+          if-no-files-found: warn
+          retention-days: 7

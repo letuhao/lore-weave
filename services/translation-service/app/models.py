@@ -3,7 +3,7 @@ import json as _json
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 # ── Settings ──────────────────────────────────────────────────────────────────
@@ -45,8 +45,29 @@ class UserTranslationPreferences(BaseModel):
     updated_at: datetime
 
 
-class BookSettingsPayload(PreferencesPayload):
-    pass
+class BookSettingsPayload(BaseModel):
+    """PATCH-semantics payload: every field optional. Omitted (None) fields keep
+    the existing stored value; only provided fields are written. This lets callers
+    (e.g. the inline TranslateModal) persist a partial selection — language + model —
+    without resetting custom prompts. See LW-PLAN-MVP-RELEASE T1."""
+    target_language: Optional[str] = None
+    model_source: Optional[str] = None
+    model_ref: Optional[UUID] = None
+    system_prompt: Optional[str] = None
+    user_prompt_tpl: Optional[str] = None
+    compact_model_source: Optional[str] = None
+    compact_model_ref: Optional[UUID] = None
+    compact_system_prompt: Optional[str] = None
+    compact_user_prompt_tpl: Optional[str] = None
+    chunk_size_tokens: Optional[int] = None
+    invoke_timeout_secs: Optional[int] = None
+
+    @field_validator("user_prompt_tpl")
+    @classmethod
+    def must_contain_chapter_text(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and "{chapter_text}" not in v:
+            raise ValueError("user_prompt_tpl must contain {chapter_text}")
+        return v
 
 
 class BookTranslationSettings(UserTranslationPreferences):
@@ -74,6 +95,12 @@ class ChapterTranslationChunk(BaseModel):
 
 class CreateJobPayload(BaseModel):
     chapter_ids: list[UUID]
+    # Per-job overrides (LW-PLAN-MVP-RELEASE T1 Fix-C): when provided, these win over
+    # the book's persisted translation settings, so a one-off translation does not
+    # depend on a prior settings write succeeding. Omitted → fall back to settings.
+    target_language: Optional[str] = None
+    model_source: Optional[str] = None
+    model_ref: Optional[UUID] = None
 
     @field_validator("chapter_ids")
     @classmethod
@@ -81,6 +108,15 @@ class CreateJobPayload(BaseModel):
         if not v:
             raise ValueError("chapter_ids must not be empty")
         return v
+
+    @model_validator(mode="after")
+    def _model_source_requires_ref(self):
+        # Overriding model_source without a model_ref would leave a mismatched pair
+        # (e.g. source=platform_model but the inherited ref points at a user model).
+        # model_ref alone is fine — it inherits the resolved model_source.
+        if self.model_source is not None and self.model_ref is None:
+            raise ValueError("model_ref is required when model_source is overridden")
+        return self
 
 
 class ChapterTranslation(BaseModel):

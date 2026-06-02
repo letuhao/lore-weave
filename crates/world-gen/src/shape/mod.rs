@@ -19,14 +19,20 @@
 //! See [`dispatch`] for [`ShapeRegistry`] and [`DispatchMode`] (the wire-up).
 //! See [`ellipse`] for the v3.0 algorithm extracted as [`ellipse::EllipseGenerator`].
 
-pub mod anthropic;
+// **shape/{anthropic,openai,ollama}.rs DELETED 2026-05-30** — per CLAUDE.md
+// provider gateway invariant, all LLM calls go through the loreweave_llm SDK
+// (`shape::llm::GatewayLlmProvider` / `GatewayTextProvider`). The deleted
+// modules directly POSTed to provider URLs with API keys, which the
+// invariant forbids. v4.3c-d shape dispatchers that constructed
+// `DispatchMode::Llm { provider: AnthropicProvider::new(key), ... }` now
+// construct `GatewayLlmProvider::new(gateway_client, model_source,
+// model_ref, user_id, runtime)` instead.
+
 pub mod coastline;
 pub mod csg;
 pub mod dispatch;
 pub mod ellipse;
 pub mod llm;
-pub mod ollama;
-pub mod openai;
 pub mod polar;
 pub mod postgres_cache;
 pub mod raster;
@@ -42,13 +48,10 @@ pub use dispatch::{
     engine_v3_4_weights, engine_v3_6_weights,
 };
 pub use ellipse::EllipseGenerator;
-pub use anthropic::AnthropicProvider;
 pub use llm::{
-    DispatchCache, InMemoryDispatchCache, LlmDecision, LlmError, LlmProvider, LlmPrompt,
-    MockLlmProvider, MockTextProvider, TextPrompt, TextProvider,
+    DispatchCache, GatewayLlmProvider, GatewayTextProvider, InMemoryDispatchCache, LlmDecision,
+    LlmError, LlmProvider, LlmPrompt, MockLlmProvider, MockTextProvider, TextPrompt, TextProvider,
 };
-pub use ollama::OllamaProvider;
-pub use openai::OpenAIProvider;
 pub use postgres_cache::{PostgresCacheError, PostgresDispatchCache};
 pub use polar::{PolarGenerator, PolarTemplate};
 pub use raster::MarchingNoiseGenerator;

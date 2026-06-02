@@ -144,6 +144,12 @@ class EventConsumer:
             except asyncio.CancelledError:
                 logger.info("Consumer loop cancelled, shutting down")
                 break
+            except aioredis.TimeoutError:
+                # redis-py 8: a blocking XREADGROUP(block=) with no data within
+                # `block` raises TimeoutError (5.x returned empty). Normal idle —
+                # re-block. NOT a ConnectionError subclass, so it would otherwise
+                # fall to the generic handler below (ERROR log + 2s sleep).
+                continue
             except aioredis.ConnectionError:
                 logger.warning("Redis connection lost, reconnecting in 5s")
                 self._redis = None

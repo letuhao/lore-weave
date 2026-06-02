@@ -1,0 +1,369 @@
+{
+  "chapter": "pride_prejudice_ch01",
+  "entities": {
+    "tp": [
+      {
+        "actual_idx": 0,
+        "expected_idx": 0,
+        "actual_name": "Mr. Bennet",
+        "actual_kind": "person",
+        "expected_name": "Mr. Bennet",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 1,
+        "expected_idx": 3,
+        "actual_name": "Netherfield Park",
+        "actual_kind": "place",
+        "expected_name": "Netherfield Park",
+        "expected_kind": "place",
+        "matched_via": "canonical_name"
+      },
+      {
+        "actual_idx": 2,
+        "expected_idx": 2,
+        "actual_name": "Bingley",
+        "actual_kind": "person",
+        "expected_name": "Bingley",
+        "expected_kind": "person",
+        "matched_via": "canonical_name"
+      }
+    ],
+    "fp": [
+      {
+        "actual_idx": 3,
+        "actual_name": "Mrs. Long",
+        "actual_kind": "person"
+      },
+      {
+        "actual_idx": 4,
+        "actual_name": "Lizzy",
+        "actual_kind": "person"
+      },
+      {
+        "actual_idx": 5,
+        "actual_name": "Sir William and Lady Lucas",
+        "actual_kind": "organization"
+      },
+      {
+        "actual_idx": 6,
+        "actual_name": "Jane",
+        "actual_kind": "person"
+      },
+      {
+        "actual_idx": 7,
+        "actual_name": "Lydia",
+        "actual_kind": "person"
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 1,
+        "expected_name": "Mrs. Bennet",
+        "expected_kind": "person",
+        "expected_aliases": [
+          "his wife",
+          "his lady"
+        ]
+      }
+    ],
+    "fp_trap": [
+      {
+        "actual_idx": 3,
+        "actual_name": "Mrs. Long",
+        "actual_kind": "person",
+        "trap_idx": 0,
+        "trap_name": "Mrs. Long",
+        "trap_reason": "Only mentioned as the source of gossip; not a participant in any scene"
+      },
+      {
+        "actual_idx": 4,
+        "actual_name": "Lizzy",
+        "actual_kind": "person",
+        "trap_idx": 1,
+        "trap_name": "Lizzy",
+        "trap_reason": "Referenced in dialogue but does not appear or act in this chapter"
+      }
+    ],
+    "fp_annotation_gap": []
+  },
+  "relations": {
+    "tp": [
+      {
+        "actual_idx": 3,
+        "expected_idx": 0,
+        "actual": [
+          "Bingley",
+          "rents",
+          "Netherfield Park",
+          "affirm"
+        ],
+        "expected": [
+          "Bingley",
+          "rents",
+          "Netherfield Park",
+          "affirm"
+        ]
+      }
+    ],
+    "fp": [
+      {
+        "actual_idx": 1,
+        "actual": [
+          "Lizzy",
+          "child_of",
+          "Mr. Bennet",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 4,
+        "actual": [
+          "Bingley",
+          "born_from",
+          "north of England",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 5,
+        "actual": [
+          "Jane",
+          "sibling_of",
+          "Lydia",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 6,
+        "actual": [
+          "Lydia",
+          "sibling_of",
+          "Jane",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 7,
+        "actual": [
+          "Mrs. Long",
+          "instructs",
+          "Mr. Bennet",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 8,
+        "actual": [
+          "Mr. Bennet",
+          "knows",
+          "Sir William and Lady Lucas",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 9,
+        "actual": [
+          "Mr. Bennet",
+          "commands",
+          "Mrs. Long",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 10,
+        "actual": [
+          "Mrs. Long",
+          "works_for",
+          "Netherfield Park",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 11,
+        "actual": [
+          "Mr. Bennet",
+          "trusts",
+          "Mrs. Long",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 12,
+        "actual": [
+          "Mr. Bennet",
+          "instructs",
+          "Mrs. Long",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 13,
+        "actual": [
+          "Mr. Bennet",
+          "helps",
+          "Mrs. Long",
+          "affirm"
+        ]
+      },
+      {
+        "actual_idx": 14,
+        "actual": [
+          "Mr. Bennet",
+          "member_of",
+          "Sir William and Lady Lucas",
+          "affirm"
+        ]
+      }
+    ],
+    "fn": [],
+    "fp_trap": [],
+    "fp_annotation_gap": [
+      {
+        "actual_idx": 0,
+        "actual": [
+          "Bingley",
+          "lives_in",
+          "Netherfield Park",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 2,
+        "actual": [
+          "Mr. Bennet",
+          "lives_in",
+          "Netherfield Park",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      },
+      {
+        "actual_idx": 15,
+        "actual": [
+          "Bingley",
+          "married_to",
+          "Netherfield Park",
+          "affirm"
+        ],
+        "reason": "Both endpoints in fixture entity list, predicate canonical, polarity affirm — likely correct but missing from conservative annotation"
+      }
+    ]
+  },
+  "events": {
+    "tp": [
+      {
+        "actual_idx": 5,
+        "expected_idx": 1,
+        "actual_summary": "Mrs. Bennet insists that Mr. Bennet must visit Bingley, arguing that it will benefit their daughters and be essential for securing a marriage.",
+        "actual_participants": [
+          "Mrs. Bennet",
+          "Mr. Bennet"
+        ],
+        "expected_summary": "Mrs. Bennet urges Mr. Bennet to visit Bingley so their daughters might marry him",
+        "expected_participants": [
+          "Mrs. Bennet",
+          "Mr. Bennet"
+        ],
+        "overlap_score": 0.545,
+        "participants_jaccard": 1.0
+      }
+    ],
+    "fp": [
+      {
+        "actual_idx": 0,
+        "actual_summary": "Mrs. Bennet informs Mr. Bennet that a young man named Bingley has taken Netherfield Park, and she elaborates on his background and intentions.",
+        "actual_participants": [
+          "Mrs. Bennet",
+          "Mr. Bennet"
+        ]
+      },
+      {
+        "actual_idx": 1,
+        "actual_summary": "Mrs. Long informs Mrs. Bennet that Netherfield Park has finally been leased.",
+        "actual_participants": [
+          "Mrs. Long"
+        ]
+      },
+      {
+        "actual_idx": 2,
+        "actual_summary": "Bingley finalizes the lease agreement with Mr. Morris upon being delighted by Netherfield Park.",
+        "actual_participants": [
+          "Bingley",
+          "Mr. Morris"
+        ]
+      },
+      {
+        "actual_idx": 3,
+        "actual_summary": "A young man of large fortune from the north of England arrives at Netherfield Park in a chaise and four to inspect the property.",
+        "actual_participants": [
+          "Bingley"
+        ]
+      },
+      {
+        "actual_idx": 4,
+        "actual_summary": "Mrs. Bennet formulates the idea that Mr. Bingley may marry one of her daughters, and she begins to plan accordingly.",
+        "actual_participants": [
+          "Mrs. Bennet"
+        ]
+      },
+      {
+        "actual_idx": 6,
+        "actual_summary": "It is announced that Bingley will assume full residence at Netherfield Park prior to the feast of Michaelmas.",
+        "actual_participants": [
+          "Bingley"
+        ]
+      },
+      {
+        "actual_idx": 7,
+        "actual_summary": "Mr. Bennet composes and dispatches a letter to Mr. Bingley, expressing his hearty consent for him to marry any of the daughters.",
+        "actual_participants": [
+          "Mr. Bennet"
+        ]
+      },
+      {
+        "actual_idx": 8,
+        "actual_summary": "Mr. Bennet decides to visit Mr. Bingley upon his arrival in the neighbourhood.",
+        "actual_participants": [
+          "Mr. Bennet"
+        ]
+      },
+      {
+        "actual_idx": 9,
+        "actual_summary": "It is suggested that Bingley might fall in love with one of the Bennet daughters during his stay at Netherfield.",
+        "actual_participants": [
+          "Bingley"
+        ]
+      },
+      {
+        "actual_idx": 10,
+        "actual_summary": "Some of Bingley’s servants are expected to be in Netherfield Park by the conclusion of the following week.",
+        "actual_participants": [
+          "Bingley"
+        ]
+      },
+      {
+        "actual_idx": 11,
+        "actual_summary": "The Lucases resolve to visit Mr. Bingley, motivated by the prospect of one of their daughters marrying him.",
+        "actual_participants": [
+          "Sir William and Lady Lucas"
+        ]
+      }
+    ],
+    "fn": [
+      {
+        "expected_idx": 0,
+        "expected_summary": "Mrs. Bennet tells Mr. Bennet that Netherfield Park has been rented by a wealthy single man named Bingley",
+        "expected_participants": [
+          "Mrs. Bennet",
+          "Mr. Bennet",
+          "Bingley"
+        ]
+      }
+    ],
+    "fp_trap": [],
+    "fp_annotation_gap": []
+  }
+}

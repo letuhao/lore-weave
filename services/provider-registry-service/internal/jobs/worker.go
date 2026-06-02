@@ -323,9 +323,10 @@ func (w *Worker) Process(
 	// shape for chat/completion AND for the *_extraction operations:
 	// adapter.Stream emits StreamChunks; aggregator routes them to the
 	// right result map. The only difference is the aggregator factory
-	// (see NewAggregator below). Embedding/translation use different
-	// upstream HTTP shapes — those stay gated until their dedicated
-	// cycles wire adapters. (image_gen now has dispatch above.)
+	// (see NewAggregator below). Embedding uses a different upstream HTTP
+	// shape — it stays gated until its dedicated cycle wires an adapter.
+	// (image_gen now has dispatch above; translation is chat-shaped and is
+	// whitelisted in streamableOperations.)
 	if !isStreamableOperation(operation) {
 		w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil,
 			"LLM_OPERATION_NOT_SUPPORTED",
@@ -520,7 +521,7 @@ type EmitFn = func(provider.StreamChunk) error
 // messages → SSE token deltas) but get different per-op aggregators via
 // NewAggregator(operation). Operations not in this set fail fast with
 // LLM_OPERATION_NOT_SUPPORTED — kept that way until their dedicated
-// adapters land (embedding/translation/image_gen).
+// adapters land (embedding/image_gen have different upstream HTTP shapes).
 //
 // stt is NOT here — it routes through audioJobOperations + adapter.Transcribe.
 // tts is NOT here — it streams only via /v1/llm/stream.
@@ -532,6 +533,13 @@ var streamableOperations = map[string]struct{}{
 	"event_extraction":    {},
 	"fact_extraction":     {}, // Phase 4a-β
 	"summarize_level":     {}, // P3 hierarchical reduce — chat-shaped, default aggregator
+	// translation-service submits operation="translation" via the SDK. It is
+	// chat-shaped (prompt → text completion; the block translator does its own
+	// marker-based parsing of result.content), so it uses the default
+	// chatAggregator. Was previously gated here → LLM_OPERATION_NOT_SUPPORTED,
+	// which silently broke every chapter translation (caught by the TR-4 live
+	// acceptance run, 2026-05-31).
+	"translation": {},
 }
 
 // audioJobOperations — Phase 5a. Job operations dispatched through

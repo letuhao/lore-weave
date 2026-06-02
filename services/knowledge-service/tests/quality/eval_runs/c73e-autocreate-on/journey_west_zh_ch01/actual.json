@@ -1,0 +1,316 @@
+{
+  "entities": [
+    {
+      "name": "傲來國",
+      "kind": "place",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "傲來國",
+      "canonical_id": "eid-loaded-0"
+    },
+    {
+      "name": "千里眼",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "千里眼",
+      "canonical_id": "eid-loaded-1"
+    },
+    {
+      "name": "東勝神洲",
+      "kind": "place",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "東勝神洲",
+      "canonical_id": "eid-loaded-2"
+    },
+    {
+      "name": "玉皇大天尊玄穹高上帝",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "玉皇大天尊玄穹高上帝",
+      "canonical_id": "eid-loaded-3"
+    },
+    {
+      "name": "石猴",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "石猴",
+      "canonical_id": "eid-loaded-4"
+    },
+    {
+      "name": "花果山",
+      "kind": "place",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "花果山",
+      "canonical_id": "eid-loaded-5"
+    },
+    {
+      "name": "順風耳",
+      "kind": "person",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "順風耳",
+      "canonical_id": "eid-loaded-6"
+    },
+    {
+      "name": "仙石",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "仙石",
+      "canonical_id": "eid-loaded-7"
+    },
+    {
+      "name": "北俱蘆洲",
+      "kind": "place",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "北俱蘆洲",
+      "canonical_id": "eid-loaded-8"
+    },
+    {
+      "name": "南贍部洲",
+      "kind": "place",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "南贍部洲",
+      "canonical_id": "eid-loaded-9"
+    },
+    {
+      "name": "盤古開闢",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "盤古開闢",
+      "canonical_id": "eid-loaded-10"
+    },
+    {
+      "name": "西牛賀洲",
+      "kind": "place",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "西牛賀洲",
+      "canonical_id": "eid-loaded-11"
+    },
+    {
+      "name": "金闕雲宮靈霄寶殿",
+      "kind": "place",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "金闕雲宮靈霄寶殿",
+      "canonical_id": "eid-loaded-12"
+    },
+    {
+      "name": "三皇治世",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "三皇治世",
+      "canonical_id": "eid-loaded-13"
+    },
+    {
+      "name": "五帝定倫",
+      "kind": "concept",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "五帝定倫",
+      "canonical_id": "eid-loaded-14"
+    },
+    {
+      "name": "石卵",
+      "kind": "artifact",
+      "aliases": [],
+      "confidence": 1.0,
+      "canonical_name": "石卵",
+      "canonical_id": "eid-loaded-15"
+    },
+    {
+      "name": "仙卿",
+      "kind": "concept",
+      "confidence": 0.3,
+      "auto_created": true
+    },
+    {
+      "name": "大海",
+      "kind": "concept",
+      "confidence": 0.3,
+      "auto_created": true
+    }
+  ],
+  "relations": [
+    {
+      "subject": "仙石",
+      "predicate": "located_in",
+      "object": "花果山",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-0"
+    },
+    {
+      "subject": "千里眼",
+      "predicate": "works_for",
+      "object": "玉皇大天尊玄穹高上帝",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-1"
+    },
+    {
+      "subject": "石卵",
+      "predicate": "born_from",
+      "object": "仙石",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-2"
+    },
+    {
+      "subject": "石猴",
+      "predicate": "lives_in",
+      "object": "花果山",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-3"
+    },
+    {
+      "subject": "花果山",
+      "predicate": "located_in",
+      "object": "東勝神洲",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-4"
+    },
+    {
+      "subject": "順風耳",
+      "predicate": "works_for",
+      "object": "玉皇大天尊玄穹高上帝",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-5"
+    },
+    {
+      "subject": "玉皇大天尊玄穹高上帝",
+      "predicate": "commands",
+      "object": "仙卿",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-6"
+    },
+    {
+      "subject": "玉皇大天尊玄穹高上帝",
+      "predicate": "trusts",
+      "object": "石猴",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-7"
+    },
+    {
+      "subject": "花果山",
+      "predicate": "located_on",
+      "object": "大海",
+      "polarity": "affirm",
+      "modality": "actual",
+      "confidence": 1.0,
+      "subject_id": null,
+      "object_id": null,
+      "relation_id": "rid-loaded-8"
+    }
+  ],
+  "events": [
+    {
+      "name": "The Jade Emperor, seated in the Golden P",
+      "kind": "action",
+      "participants": [
+        "玉皇大天尊玄穹高上帝"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "The Jade Emperor, seated in the Golden Palace of Clouds and Palaces, observes golden light from Earth and summons his celestial ministers.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-0"
+    },
+    {
+      "name": "The two celestial officials return and r",
+      "kind": "action",
+      "participants": [
+        "千里眼",
+        "順風耳"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "The two celestial officials return and report that the golden light originates from a stone egg on Flower-God Mountain in Aolai Country, which has hatched into a stone monkey now worshiping the four directions.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-1"
+    },
+    {
+      "name": "The Jade Emperor declares that the stone",
+      "kind": "action",
+      "participants": [
+        "玉皇大天尊玄穹高上帝"
+      ],
+      "participant_ids": [
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "The Jade Emperor declares that the stone monkey, born from earthly essence and celestial light, is a remarkable being worthy of divine recognition.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-2"
+    },
+    {
+      "name": "The celestial officials Thousand-Eyed an",
+      "kind": "action",
+      "participants": [
+        "千里眼",
+        "順風耳"
+      ],
+      "participant_ids": [
+        null,
+        null
+      ],
+      "location": null,
+      "time_cue": null,
+      "event_date": null,
+      "summary": "The celestial officials Thousand-Eyed and Thousand-Hearing are sent from the Jade Emperor’s palace to observe the source of the golden light.",
+      "confidence": 1.0,
+      "event_id": "evid-loaded-3"
+    }
+  ],
+  "facts": []
+}

@@ -69,7 +69,8 @@
     "skipped": "Bỏ qua",
     "activityLog": "Nhật ký hoạt động",
     "cancel": "Hủy",
-    "cancelConfirm": "Hủy công việc trích xuất? Các chương đã xử lý sẽ giữ kết quả."
+    "cancelConfirm": "Hủy công việc trích xuất? Các chương đã xử lý sẽ giữ kết quả.",
+    "cancelRequested": "Đã yêu cầu hủy"
   },
   "results": {
     "title": "Trích xuất hoàn tất",

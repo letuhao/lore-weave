@@ -1,5 +1,5 @@
 import { Navigate, useParams, Link } from 'react-router-dom';
-import { FolderOpen, User, Lock, Briefcase, Users, Clock, Database } from 'lucide-react';
+import { FolderOpen, User, Lock, Briefcase, Users, Clock, Database, BarChart2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { ProjectsTab } from '@/features/knowledge/components/ProjectsTab';
@@ -9,16 +9,17 @@ import { ExtractionJobsTab } from '@/features/knowledge/components/ExtractionJob
 import { EntitiesTab } from '@/features/knowledge/components/EntitiesTab';
 import { TimelineTab } from '@/features/knowledge/components/TimelineTab';
 import { RawDrawersTab } from '@/features/knowledge/components/RawDrawersTab';
+import { MiningInsightsTab } from '@/features/knowledge/components/MiningInsightsTab';
 import {
   MobileKnowledgePage,
   MobilePrivacyShell,
 } from '@/features/knowledge/components/MobileKnowledgePage';
 import { useIsMobile } from '@/features/knowledge/hooks/useIsMobile';
 
-type Tab = 'projects' | 'jobs' | 'global' | 'entities' | 'timeline' | 'raw' | 'privacy';
+type Tab = 'projects' | 'jobs' | 'global' | 'entities' | 'timeline' | 'raw' | 'insights' | 'privacy';
 
-// All 7 tabs are live as of K19e Cycle γ-b.
-// K19b.2 jobs · K19d β entities · K19e β timeline · K19e γ-b raw.
+// All 8 tabs are live as of Phase E2.
+// K19b.2 jobs · K19d β entities · K19e β timeline · K19e γ-b raw · E2 insights.
 
 const TAB_DEFS: { id: Tab; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'projects', icon: FolderOpen },
@@ -27,6 +28,7 @@ const TAB_DEFS: { id: Tab; icon: React.ComponentType<{ className?: string }> }[]
   { id: 'entities', icon: Users },
   { id: 'timeline', icon: Clock },
   { id: 'raw', icon: Database },
+  { id: 'insights', icon: BarChart2 },
   { id: 'privacy', icon: Lock },
 ];
 
@@ -89,6 +91,7 @@ export function KnowledgePage() {
       {activeTab === 'entities' && <EntitiesTab />}
       {activeTab === 'timeline' && <TimelineTab />}
       {activeTab === 'raw' && <RawDrawersTab />}
+      {activeTab === 'insights' && <MiningInsightsTab />}
       {activeTab === 'privacy' && <PrivacyTab />}
     </div>
   );

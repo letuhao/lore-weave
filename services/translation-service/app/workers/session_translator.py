@@ -686,10 +686,18 @@ CRITICAL RULES:
 2. Translate ONLY the text after each [BLOCK N] label. Do NOT add, remove, or reorder blocks.
 3. Preserve inline formatting: **bold**, *italic*, `code`, ~~strikethrough~~, __underline__, [link text](url).
 4. Output ONLY the translated blocks. No explanations, no commentary, no extra text.
-5. You MUST output exactly {block_count} blocks."""
+5. You MUST output exactly {block_count} blocks.
+6. Do NOT think, reason, or deliberate. Begin the translated output immediately with [BLOCK ...]."""
 
 # Max retries per batch when validation fails
 _MAX_BATCH_RETRIES = 2
+
+# Output-token ceiling for a translation batch. Reasoning models (Qwen3, R1)
+# otherwise burn the default 4096-token output budget on hidden thinking and
+# truncate the answer (TR-4, 2026-05-31). Headroom for a full-batch translation
+# (a chapter chunk is ~7-8k input tokens; CJK output runs denser). Capped
+# against the context window at the call site so input+output can't overflow.
+_TRANSLATION_MAX_OUTPUT_TOKENS = 16384
 
 
 # ── Output validation ────────────────────────────────────────────────────────
@@ -823,7 +831,12 @@ async def translate_chapter_blocks(
         context_window:         Model context window in tokens.
 
     Returns:
-        (translated_blocks, total_input_tokens, total_output_tokens)
+        (translated_blocks, total_input_tokens, total_output_tokens,
+         translated_count, translatable_count)
+        translated_count/translatable_count let the caller detect a total
+        failure (translatable blocks existed but none translated) and mark the
+        chapter FAILED instead of silently persisting all-original blocks as
+        "completed".
     """
     from .block_classifier import rebuild_block, extract_translatable_text
     from .block_batcher import build_batch_plan, parse_translated_blocks
@@ -843,7 +856,7 @@ async def translate_chapter_blocks(
     )
 
     if not plan.batches:
-        return blocks, 0, 0
+        return blocks, 0, 0, 0, plan.translatable_count
 
     user_id = msg["user_id"]
 
@@ -921,6 +934,14 @@ async def translate_chapter_blocks(
         )
         user_content = "\n".join(user_parts)
 
+        # Output-token budget for this batch: generous headroom (thinking is
+        # disabled below, so reasoning shouldn't eat it), capped so
+        # input+output stays within the model context window.
+        out_max = min(
+            _TRANSLATION_MAX_OUTPUT_TOKENS,
+            max(2048, context_window - batch.token_estimate - 2048),
+        )
+
         # Retry loop with validation
         parsed = None
         correction_hint = ""
@@ -946,7 +967,25 @@ async def translate_chapter_blocks(
                     operation="translation",
                     model_source=msg["model_source"],
                     model_ref=str(msg["model_ref"]),
-                    input={"messages": messages},
+                    input={
+                        "messages": messages,
+                        "max_tokens": out_max,
+                        # Suppress hidden thinking on reasoning models so
+                        # reasoning_tokens don't burn the output budget and
+                        # truncate the answer (TR-4, 2026-05-31).
+                        #   - reasoning_effort="none": the param that actually
+                        #     works for LM Studio + Qwen3.6 (verified: zero
+                        #     reasoning, direct answer). Standard OpenAI field,
+                        #     safe for cloud too — gateway forwards it as-is.
+                        #   - chat_template_kwargs.enable_thinking: llama.cpp/
+                        #     vLLM toggle (kept for models that honor it; the
+                        #     gateway strips it before real OpenAI cloud).
+                        # NOTE: `chat_template_kwargs:{enable_thinking:false}`
+                        # alone did NOT disable thinking on qwen3.6-35b-a3b in
+                        # LM Studio — reasoning_effort is the working knob.
+                        "reasoning_effort": "none",
+                        "chat_template_kwargs": {"enable_thinking": False},
+                    },
                     chunking=None,
                     job_meta={
                         "chapter_translation_id": str(chapter_translation_id),
@@ -1076,4 +1115,4 @@ async def translate_chapter_blocks(
             sorted(failed_blocks), chapter_translation_id,
         )
 
-    return result_blocks, total_input, total_output
+    return result_blocks, total_input, total_output, translated_count, plan.translatable_count

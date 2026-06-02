@@ -56,3 +56,7 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_notificatio
 -- Lore Enrichment (enriched/"makeup" lore proposals; tables created by the C2 migration)
 SELECT 'CREATE DATABASE loreweave_lore_enrichment'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_lore_enrichment')\gexec
+
+-- Learning (Axis-1 correction capture; tables created by learning-service migrate.py)
+SELECT 'CREATE DATABASE loreweave_learning'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_learning')\gexec

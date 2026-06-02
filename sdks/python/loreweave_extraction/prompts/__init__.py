@@ -35,7 +35,36 @@ __all__ = [
     "PromptName",
     "load_prompt",
     "ALLOWED_PROMPT_NAMES",
+    "OUTPUT_CONTRACT_REMINDER",
+    "apply_prompt_override",
 ]
+
+# B2-B-b2 — the SDK-controlled output-contract block. ALWAYS appended LAST to a
+# project's custom system prompt so a hostile/garbage override cannot remove the
+# JSON-only discipline that persistence depends on (DESIGN §2.5 injection
+# defense). It enforces FORMAT only — the custom prompt still owns field/schema
+# guidance, so a wrong-schema prompt degrades the user's OWN extraction quality
+# (their BYOK spend) but can never break the contract, escalate, or reach
+# another tenant's data.
+OUTPUT_CONTRACT_REMINDER = (
+    "\n\n---\n"
+    "CRITICAL OUTPUT CONTRACT (enforced by the system, not optional): respond "
+    "with ONLY a single valid JSON value matching the structure described "
+    "above. No prose, no explanation before or after, no markdown code fences, "
+    "no <think> tags. Output JSON and nothing else."
+)
+
+
+def apply_prompt_override(default_system: str, override_system: str | None) -> str:
+    """Return the effective system prompt for an op (B2-B-b2).
+
+    No override (None/blank) → the default verbatim (it already carries the
+    contract). A custom override → the custom text verbatim + the SDK-controlled
+    `OUTPUT_CONTRACT_REMINDER` appended LAST, so the JSON-only discipline is
+    guaranteed regardless of what the custom prompt says (DESIGN §2.5)."""
+    if not override_system or not override_system.strip():
+        return default_system
+    return override_system.rstrip() + OUTPUT_CONTRACT_REMINDER
 
 # Real Literal type so static checkers flag typoed callers at
 # compile-time instead of relying only on the runtime KeyError.

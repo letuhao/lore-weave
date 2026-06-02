@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { BookOpen, FileText, Search } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Book, type Chapter } from '@/features/books/api';
@@ -18,6 +19,7 @@ interface ContextPickerProps {
 }
 
 export function ContextPicker({ attached, onAttach, onDetach, onClose }: ContextPickerProps) {
+  const { t } = useTranslation('chat');
   const { accessToken } = useAuth();
   const [tab, setTab] = useState<PickerTab>('book');
   const [search, setSearch] = useState('');
@@ -126,12 +128,11 @@ export function ContextPicker({ attached, onAttach, onDetach, onClose }: Context
 
   // ── Tab config ────────────────────────────────────────────────────────────
 
-  const TABS: { value: PickerTab; label: string; icon: React.ReactNode }[] = [
-    { value: 'book', label: 'Books', icon: <BookOpen className="h-3 w-3" /> },
-    { value: 'chapter', label: 'Chapters', icon: <FileText className="h-3 w-3" /> },
+  const TABS: { value: PickerTab; icon: React.ReactNode }[] = [
+    { value: 'book', icon: <BookOpen className="h-3 w-3" /> },
+    { value: 'chapter', icon: <FileText className="h-3 w-3" /> },
     {
       value: 'glossary',
-      label: 'Glossary',
       icon: (
         <svg className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
           <path d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 01-1.806-1.741L3.842 10.1a2 2 0 011.075-2.029l1.29-.645a6 6 0 013.86-.517l.318.158a6 6 0 003.86.517l2.387-.477a2 2 0 012.368 2.367l-.402 2.814a2 2 0 01-.77 1.34z" />
@@ -155,19 +156,19 @@ export function ContextPicker({ attached, onAttach, onDetach, onClose }: Context
     <div className="w-[380px] max-h-[70vh] overflow-hidden rounded-xl border border-border bg-card shadow-[0_16px_48px_rgba(0,0,0,0.5)]">
       {/* Tabs */}
       <div className="flex border-b border-border">
-        {TABS.map((t) => (
+        {TABS.map((tb) => (
           <button
-            key={t.value}
-            onClick={() => { setTab(t.value); setSearch(''); }}
+            key={tb.value}
+            onClick={() => { setTab(tb.value); setSearch(''); }}
             className={cn(
               'flex items-center gap-1.5 border-b-2 px-3.5 py-2 text-[12px] font-medium transition-colors',
-              tab === t.value
+              tab === tb.value
                 ? 'border-primary text-foreground'
                 : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
-            {t.icon}
-            {t.label}
+            {tb.icon}
+            {t(`context.tab.${tb.value}`)}
           </button>
         ))}
       </div>
@@ -191,7 +192,7 @@ export function ContextPicker({ attached, onAttach, onDetach, onClose }: Context
             onChange={(e) => setGlossaryKind(e.target.value)}
             className="w-[100px] rounded border border-border bg-input px-2 py-1 text-[11px] text-muted-foreground"
           >
-            <option value="">All kinds</option>
+            <option value="">{t('context.all_kinds')}</option>
             {kinds.map((k) => (
               <option key={k.kind_id} value={k.code}>
                 {k.name}
@@ -208,7 +209,7 @@ export function ContextPicker({ attached, onAttach, onDetach, onClose }: Context
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={
-            tab === 'book' ? 'Search books...' : tab === 'chapter' ? 'Search chapters...' : 'Search entities...'
+            tab === 'book' ? t('context.search_books') : tab === 'chapter' ? t('context.search_chapters') : t('context.search_entities')
           }
           className="w-full border-none bg-transparent py-2 pl-8 pr-3 text-[12px] text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
         />
@@ -233,10 +234,10 @@ export function ContextPicker({ attached, onAttach, onDetach, onClose }: Context
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[12px] font-medium">{b.title}</p>
                   <p className="text-[10px] text-muted-foreground">
-                    {b.chapter_count} chapters{b.original_language ? ` \u00B7 ${b.original_language}` : ''}
+                    {t('context.chapters_count', { count: b.chapter_count })}{b.original_language ? ` \u00B7 ${b.original_language}` : ''}
                   </p>
                 </div>
-                {isAttached && <span className="text-[10px] text-accent">{'\u2713'} attached</span>}
+                {isAttached && <span className="text-[10px] text-accent">{'\u2713'} {t('context.attached')}</span>}
               </button>
             );
           })}
@@ -252,7 +253,7 @@ export function ContextPicker({ attached, onAttach, onDetach, onClose }: Context
                 const item: ContextItem = {
                   id: ch.chapter_id,
                   type: 'chapter',
-                  label: ch.title || ch.original_filename || '(untitled)',
+                  label: ch.title || ch.original_filename || t('context.untitled'),
                   bookId: ch.book_id,
                   chapterId: ch.chapter_id,
                 };
@@ -271,13 +272,13 @@ export function ContextPicker({ attached, onAttach, onDetach, onClose }: Context
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[12px] font-medium">
-                        {ch.title || ch.original_filename || '(untitled)'}
+                        {ch.title || ch.original_filename || t('context.untitled')}
                       </p>
                       <p className="text-[10px] text-muted-foreground">
-                        {Math.round(ch.byte_size / 5).toLocaleString()} words
+                        {t('context.words', { count: Math.round(ch.byte_size / 5).toLocaleString() })}
                       </p>
                     </div>
-                    {isAttached && <span className="text-[10px] text-accent">{'\u2713'} attached</span>}
+                    {isAttached && <span className="text-[10px] text-accent">{'\u2713'} {t('context.attached')}</span>}
                   </button>
                 );
               })}
@@ -290,7 +291,7 @@ export function ContextPicker({ attached, onAttach, onDetach, onClose }: Context
             const item: ContextItem = {
               id: e.entity_id,
               type: 'glossary',
-              label: e.display_name || '(unnamed)',
+              label: e.display_name || t('context.unnamed'),
               bookId: e.book_id,
               kindColor: e.kind.color,
             };
@@ -306,12 +307,12 @@ export function ContextPicker({ attached, onAttach, onDetach, onClose }: Context
                   style={{ background: e.kind.color }}
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[12px] font-medium">{e.display_name || '(unnamed)'}</p>
+                  <p className="truncate text-[12px] font-medium">{e.display_name || t('context.unnamed')}</p>
                   <p className="text-[10px] text-muted-foreground">
                     {e.kind.name} {'\u00B7'} {(e as unknown as { attribute_count?: number }).attribute_count ?? ''} {e.bookTitle}
                   </p>
                 </div>
-                {isAttached && <span className="text-[10px] text-accent">{'\u2713'} attached</span>}
+                {isAttached && <span className="text-[10px] text-accent">{'\u2713'} {t('context.attached')}</span>}
               </button>
             );
           })}
@@ -321,7 +322,7 @@ export function ContextPicker({ attached, onAttach, onDetach, onClose }: Context
           (tab === 'chapter' && filteredChapters.length === 0) ||
           (tab === 'glossary' && filteredEntities.length === 0)) && (
           <p className="py-6 text-center text-[11px] text-muted-foreground">
-            {search ? 'No matches found.' : 'No items available.'}
+            {search ? t('context.no_matches') : t('context.no_items')}
           </p>
         )}
       </div>

@@ -80,7 +80,12 @@ def _event(
 
 
 def _fact(
-    content: str, type: str = "description",
+    # Default to a valid FACT_TYPES member ('decision'|'preference'|'milestone'
+    # |'negation'). Was 'description' — never a valid type; it only survived
+    # because merge_fact is mocked here, but pass2_writer now (correctly) filters
+    # off-taxonomy facts BEFORE merge_fact, so the invalid default produced 0
+    # merges. See app/db/neo4j_repos/facts.py:FACT_TYPES.
+    content: str, type: str = "milestone",
     subject: str | None = None, subject_id: str | None = None,
     confidence: float = 0.9,
 ) -> LLMFactCandidate:
@@ -383,7 +388,7 @@ async def test_facts_merged_with_evidence(
         user_id=USER_ID, project_id=PROJECT_ID,
         source_type="chapter", source_id="ch-1",
         job_id=JOB_ID,
-        facts=[_fact("Kai is brave.", "attribute", subject="Kai",
+        facts=[_fact("Kai is brave.", "milestone", subject="Kai",
                      subject_id="eid-kai")],
     )
 

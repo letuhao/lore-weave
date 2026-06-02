@@ -47,17 +47,29 @@ def _job(**overrides) -> JobRow:
     return JobRow(**defaults)
 
 
-def _ok_result(source_id: str = "ch-1") -> ExtractionResult:
+class _FakeCandidates:
+    """Q4b-feed — minimal Pass2Candidates stand-in. `_extract_and_persist`
+    now returns (ExtractionResult, candidates); process_job unpacks the tuple.
+    Empty lists → project_items yields empty categories (and save_raw defaults
+    False in these tests, so the sample write is skipped anyway)."""
+    entities: list = []
+    relations: list = []
+    events: list = []
+    facts: list = []
+
+
+def _ok_result(source_id: str = "ch-1") -> tuple[ExtractionResult, _FakeCandidates]:
+    """Q4b-feed: returns the (result, candidates) tuple the chapter loop unpacks."""
     return ExtractionResult(
         source_id=source_id,
         entities_merged=2,
         relations_created=1,
         events_merged=1,
         facts_merged=3,
-    )
+    ), _FakeCandidates()
 
 
-def _error_result(retryable: bool = True) -> ExtractionResult:
+def _error_result(retryable: bool = True) -> tuple[ExtractionResult, None]:
     return ExtractionResult(
         source_id="ch-1",
         entities_merged=0,
@@ -66,7 +78,7 @@ def _error_result(retryable: bool = True) -> ExtractionResult:
         facts_merged=0,
         retryable=retryable,
         error="something broke",
-    )
+    ), None
 
 
 _TEST_BOOK_ID = uuid4()
@@ -87,6 +99,22 @@ def _mock_pool(book_id=_TEST_BOOK_ID):
     pool.execute = AsyncMock()
     # Default: no pending chat turns
     pool.fetch = AsyncMock(return_value=[])
+    # B2-A: the chapter-success/skip path advances the cursor + emits the
+    # extraction_run in ONE transaction via `async with pool.acquire() as conn,
+    # conn.transaction():`. Wire acquire()/transaction() as async context
+    # managers; the acquired conn SHARES pool.execute so existing
+    # call-inspection assertions still observe the cursor-advance (and the new
+    # INSERT INTO outbox_events).
+    conn = AsyncMock()
+    conn.execute = pool.execute
+    _txn = MagicMock()
+    _txn.__aenter__ = AsyncMock(return_value=None)
+    _txn.__aexit__ = AsyncMock(return_value=False)
+    conn.transaction = MagicMock(return_value=_txn)
+    _acq = MagicMock()
+    _acq.__aenter__ = AsyncMock(return_value=conn)
+    _acq.__aexit__ = AsyncMock(return_value=False)
+    pool.acquire = MagicMock(return_value=_acq)
     return pool
 
 
@@ -98,7 +126,12 @@ def _mock_knowledge_client():
     glossary_sync path which still goes through glossary_sync_entity).
     """
     client = AsyncMock(spec=KnowledgeClient)
-    client.persist_pass2 = AsyncMock(return_value=_ok_result())
+    # persist_pass2 returns a single ExtractionResult (NOT the tuple _ok_result
+    # now returns) — the real _extract_and_persist wraps it with candidates.
+    client.persist_pass2 = AsyncMock(return_value=ExtractionResult(
+        source_id="ch-1", entities_merged=2, relations_created=1,
+        events_merged=1, facts_merged=3,
+    ))
     return client
 
 
@@ -177,6 +210,57 @@ async def test_process_job_chapters_success(mock_extract_persist):
     mock_extract_persist.assert_called_once()
     # Should have advanced cursor + recorded spending + completed job
     assert pool.execute.call_count >= 3
+
+
+def _execs_with(pool, needle):
+    return [
+        c for c in pool.execute.call_args_list
+        if isinstance(c.args[0], str) and needle in c.args[0]
+    ]
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_q4b_feed_no_sample_when_not_opted_in(mock_extract_persist):
+    """Q4b-feed redact-by-default: a project WITHOUT save_raw_extraction writes
+    NO extraction_run_samples row (the online judge never sees its content)."""
+    mock_extract_persist.return_value = _ok_result()
+    job = _job(scope="chapters", save_raw_extraction=False)
+    pool = _mock_pool()
+    await process_job(pool, _mock_knowledge_client(), _mock_llm_client(),
+                      _mock_book_client(), _mock_glossary_client(), job)
+    assert _execs_with(pool, "INSERT INTO extraction_run_samples") == []
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_q4b_feed_sample_written_with_run_id_parity(mock_extract_persist):
+    """Q4b-feed #1 risk regression-lock: an opted-in project writes exactly one
+    sample, keyed by the SAME run_id that lands in the extraction_run event —
+    parity is load-bearing (the online judge fetches the sample by that id)."""
+    mock_extract_persist.return_value = _ok_result()
+    job = _job(scope="chapters", save_raw_extraction=True)
+    pool = _mock_pool()
+    await process_job(pool, _mock_knowledge_client(), _mock_llm_client(),
+                      _mock_book_client(), _mock_glossary_client(), job)
+
+    samples = _execs_with(pool, "INSERT INTO extraction_run_samples")
+    assert len(samples) == 1
+    sample_run_id = samples[0].args[1]  # $1 run_id (UUID)
+
+    # the run_id in the emitted event payload must equal the sample's run_id
+    import json as _json
+    outbox = _execs_with(pool, "INSERT INTO outbox_events")
+    # find the run-completed event (payload param carries run_id)
+    event_run_ids = [
+        _json.loads(c.args[3])["run_id"]
+        for c in outbox
+        if len(c.args) > 3 and isinstance(c.args[3], str) and "run_id" in c.args[3]
+    ]
+    assert event_run_ids, "no run-completed event emitted"
+    assert str(sample_run_id) in event_run_ids, (
+        f"run_id parity broken: sample={sample_run_id} not in event {event_run_ids}"
+    )
 
 
 @pytest.mark.asyncio
@@ -830,12 +914,15 @@ async def test_extract_and_persist_happy_path_calls_persist_with_candidates(
     )
     mock_extract.return_value = candidates
     kc = AsyncMock(spec=KnowledgeClient)
-    kc.persist_pass2 = AsyncMock(return_value=_ok_result())
+    kc.persist_pass2 = AsyncMock(return_value=ExtractionResult(
+        source_id="ch-1", entities_merged=2, relations_created=1,
+        events_merged=1, facts_merged=3,
+    ))
     user_id = uuid4()
     project_id = uuid4()
     job_id = uuid4()
 
-    result = await _extract_and_persist(
+    result, _candidates = await _extract_and_persist(
         knowledge_client=kc,
         llm_client=_mock_llm_client(),
         user_id=user_id,
@@ -883,7 +970,7 @@ async def test_extract_and_persist_provider_exhausted_is_retryable(mock_extract)
     kc = AsyncMock(spec=KnowledgeClient)
     kc.persist_pass2 = AsyncMock()
 
-    result = await _extract_and_persist(
+    result, _candidates = await _extract_and_persist(
         knowledge_client=kc, llm_client=_mock_llm_client(),
         user_id=uuid4(), project_id=uuid4(),
         source_type="chapter", source_id="ch-1", job_id=uuid4(),
@@ -910,7 +997,7 @@ async def test_extract_and_persist_provider_stage_is_not_retryable(mock_extract)
     kc = AsyncMock(spec=KnowledgeClient)
     kc.persist_pass2 = AsyncMock()
 
-    result = await _extract_and_persist(
+    result, _candidates = await _extract_and_persist(
         knowledge_client=kc, llm_client=_mock_llm_client(),
         user_id=uuid4(), project_id=uuid4(),
         source_type="chapter", source_id="ch-1", job_id=uuid4(),
@@ -937,7 +1024,7 @@ async def test_extract_and_persist_cancelled_stage_is_not_retryable(mock_extract
     kc = AsyncMock(spec=KnowledgeClient)
     kc.persist_pass2 = AsyncMock()
 
-    result = await _extract_and_persist(
+    result, _candidates = await _extract_and_persist(
         knowledge_client=kc, llm_client=_mock_llm_client(),
         user_id=uuid4(), project_id=uuid4(),
         source_type="chapter", source_id="ch-1", job_id=uuid4(),
@@ -962,9 +1049,12 @@ async def test_extract_and_persist_empty_text_still_persists(mock_extract):
 
     mock_extract.return_value = Pass2Candidates()  # all 4 lists empty
     kc = AsyncMock(spec=KnowledgeClient)
-    kc.persist_pass2 = AsyncMock(return_value=_ok_result(source_id="turn-1"))
+    kc.persist_pass2 = AsyncMock(return_value=ExtractionResult(
+        source_id="turn-1", entities_merged=0, relations_created=0,
+        events_merged=0, facts_merged=0,
+    ))
 
-    result = await _extract_and_persist(
+    result, _candidates = await _extract_and_persist(
         knowledge_client=kc, llm_client=_mock_llm_client(),
         user_id=uuid4(), project_id=uuid4(),
         source_type="chat_turn", source_id="turn-1", job_id=uuid4(),
@@ -1288,12 +1378,17 @@ async def test_get_running_jobs_pulls_embedding_dimension(monkeypatch):
         "items_processed": 0, "current_cursor": None,
         "cost_spent_usd": Decimal("0"),
         "embedding_dimension": 1024,
+        "extraction_config": {},
+        "genre": "Tiên hiệp",
+        "save_raw_extraction": True,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
     jobs = await _get_running_jobs(pool)
     assert len(jobs) == 1
     assert jobs[0].embedding_dimension == 1024
+    assert jobs[0].genre == "Tiên hiệp"
+    assert jobs[0].save_raw_extraction is True  # Q4b-feed: threaded onto JobRow
 
 
 @pytest.mark.asyncio
@@ -1308,11 +1403,15 @@ async def test_get_running_jobs_handles_null_embedding_dimension():
         "items_processed": 0, "current_cursor": None,
         "cost_spent_usd": Decimal("0"),
         "embedding_dimension": None,
+        "extraction_config": None,
+        "genre": None,
+        "save_raw_extraction": False,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
     jobs = await _get_running_jobs(pool)
     assert jobs[0].embedding_dimension is None
+    assert jobs[0].save_raw_extraction is False  # Q4b-feed: default OFF
 
 
 # ── D-PHASE6C-WORKERAI-JOB-SPAN: parent span per process_job call ───
@@ -1527,7 +1626,7 @@ async def test_runner_filter_degraded_status_still_persists_pass_a() -> None:
         kc = _mock_knowledge_client()
         llm = _mock_llm_client()
 
-        result = await _extract_and_persist(
+        result, _candidates = await _extract_and_persist(
             knowledge_client=kc,
             llm_client=llm,
             user_id=uuid4(),
@@ -1641,3 +1740,431 @@ def test_load_precision_filter_config_categories_comma_separated() -> None:
             os.environ.pop(k, None)
             if v is not None:
                 os.environ[k] = v
+
+
+# ── Cycle 73d — entity recovery env loader ─────────────────────────────
+
+
+def test_load_entity_recovery_config_env_unset_returns_none() -> None:
+    import os
+    from app.runner import _load_entity_recovery_config
+
+    saved = os.environ.pop("WORKER_AI_ENTITY_RECOVERY_MODEL_REF", None)
+    try:
+        assert _load_entity_recovery_config() is None
+    finally:
+        if saved is not None:
+            os.environ["WORKER_AI_ENTITY_RECOVERY_MODEL_REF"] = saved
+
+
+def test_load_entity_recovery_config_env_set_builds_config() -> None:
+    import os
+    from app.runner import _load_entity_recovery_config
+
+    saved = {
+        k: os.environ.pop(k, None) for k in (
+            "WORKER_AI_ENTITY_RECOVERY_MODEL_REF",
+            "WORKER_AI_ENTITY_RECOVERY_MODEL_SOURCE",
+            "WORKER_AI_ENTITY_RECOVERY_MAX_BATCH",
+        )
+    }
+    try:
+        os.environ["WORKER_AI_ENTITY_RECOVERY_MODEL_REF"] = "claude-4.7-opus-uuid"
+        os.environ["WORKER_AI_ENTITY_RECOVERY_MODEL_SOURCE"] = "platform_model"
+        os.environ["WORKER_AI_ENTITY_RECOVERY_MAX_BATCH"] = "8"
+        config = _load_entity_recovery_config()
+        assert config is not None
+        assert config.model_ref == "claude-4.7-opus-uuid"
+        assert config.model_source == "platform_model"
+        assert config.max_items_per_batch == 8
+        # worker-ai has no glossary → empty known_kinds
+        assert dict(config.known_entity_kinds) == {}
+    finally:
+        for k, v in saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+
+
+@pytest.mark.asyncio
+async def test_runner_recovery_env_set_passes_config_to_extract_pass2() -> None:
+    """Cycle 73d — when WORKER_AI_ENTITY_RECOVERY_MODEL_REF is set, the
+    runner threads the recovery config to extract_pass2 alongside any
+    precision filter config."""
+    from loreweave_extraction import EntityRecoveryConfig
+    from app.runner import _extract_and_persist
+
+    recovery_sentinel = EntityRecoveryConfig(model_ref="recov-model")
+
+    captured: list[dict] = []
+
+    async def _stub_extract_pass2(**kwargs):
+        captured.append(kwargs)
+        from loreweave_extraction import Pass2Candidates
+        return Pass2Candidates()
+
+    with patch("app.runner._PRECISION_FILTER_CONFIG", None), \
+         patch("app.runner._ENTITY_RECOVERY_CONFIG", recovery_sentinel), \
+         patch("app.runner.extract_pass2", new=_stub_extract_pass2):
+        kc = _mock_knowledge_client()
+        llm = _mock_llm_client()
+        await _extract_and_persist(
+            knowledge_client=kc,
+            llm_client=llm,
+            user_id=uuid4(),
+            project_id=uuid4(),
+            source_type="chapter",
+            source_id="ch-recovery",
+            job_id=uuid4(),
+            model_ref="test-model",
+            text="short passage",
+        )
+
+    assert len(captured) == 1
+    assert captured[0].get("entity_recovery") is recovery_sentinel
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Cycle 73f — runtime filter config reload (subscriber + setter)
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_set_precision_filter_config_swaps_module_cache():
+    """Cycle 73f: setter atomically swaps module-level _PRECISION_FILTER_CONFIG.
+    Subscriber path calls this on each Redis re-read."""
+    from loreweave_extraction import PrecisionFilterConfig
+    import app.runner as runner_module
+
+    saved = runner_module._PRECISION_FILTER_CONFIG
+    try:
+        new_config = PrecisionFilterConfig(
+            model_ref="cycle-73f-uuid",
+            categories=("relation", "event"),
+            partial_policy="drop",
+        )
+        returned = runner_module.set_precision_filter_config(new_config)
+        assert returned is new_config
+        assert runner_module._PRECISION_FILTER_CONFIG is new_config
+
+        # Reverse: set to None disables filter.
+        runner_module.set_precision_filter_config(None)
+        assert runner_module._PRECISION_FILTER_CONFIG is None
+    finally:
+        # Restore original module state for downstream tests.
+        runner_module.set_precision_filter_config(saved)
+
+
+@pytest.mark.asyncio
+async def test_consume_filter_reload_signal_reads_redis_and_swaps_cache(monkeypatch):
+    """Cycle 73f: on pubsub signal, subscriber re-reads Redis key + swaps
+    cache. Mock SDK's subscribe_filter_reload to fire one signal then exit."""
+    from loreweave_extraction import PrecisionFilterConfig
+    import app.runner as runner_module
+
+    new_config = PrecisionFilterConfig(
+        model_ref="from-redis-uuid",
+        categories=("event",),
+        partial_policy="drop",
+    )
+
+    async def fake_subscribe_filter_reload(redis_client, on_reload, **kwargs):
+        # Simulate one pubsub signal arriving.
+        await on_reload()
+        # Exit cleanly (subscriber's outer loop accepts this).
+        return
+
+    async def fake_get_filter_config(redis_client):
+        return new_config
+
+    saved = runner_module._PRECISION_FILTER_CONFIG
+    monkeypatch.setattr(
+        "loreweave_extraction.subscribe_filter_reload",
+        fake_subscribe_filter_reload,
+    )
+    monkeypatch.setattr(
+        "loreweave_extraction.get_filter_config",
+        fake_get_filter_config,
+    )
+    # Mock aioredis.from_url so we don't open a real Redis connection.
+    fake_redis = MagicMock()
+    fake_redis.aclose = AsyncMock()
+    monkeypatch.setattr(
+        "redis.asyncio.from_url",
+        lambda *args, **kwargs: fake_redis,
+    )
+
+    try:
+        await runner_module.consume_filter_reload_signal("redis://fake")
+        # After the simulated signal, module cache should reflect new_config.
+        assert runner_module._PRECISION_FILTER_CONFIG is new_config
+    finally:
+        runner_module.set_precision_filter_config(saved)
+
+
+@pytest.mark.asyncio
+async def test_consume_filter_reload_reverts_to_env_when_key_absent(monkeypatch):
+    """Cycle 74b: pubsub re-read with the key absent (e.g. after a
+    disable=true DELETE) reverts to ENV config, NOT None — the runtime path
+    now matches startup hydrate. Closes the cycle-73f live-smoke cross-path
+    divergence (runtime set None while a restart reloaded env config)."""
+    from loreweave_extraction import PrecisionFilterConfig
+    import app.runner as runner_module
+
+    env_config = PrecisionFilterConfig(
+        model_ref="env-revert-uuid",
+        categories=("relation",),
+        partial_policy="drop",
+    )
+
+    async def fake_subscribe_filter_reload(redis_client, on_reload, **kwargs):
+        await on_reload()
+        return
+
+    async def fake_get_filter_config(redis_client):
+        return None  # key absent
+
+    saved = runner_module._PRECISION_FILTER_CONFIG
+    monkeypatch.setattr(
+        "loreweave_extraction.subscribe_filter_reload",
+        fake_subscribe_filter_reload,
+    )
+    monkeypatch.setattr(
+        "loreweave_extraction.get_filter_config",
+        fake_get_filter_config,
+    )
+    monkeypatch.setattr(
+        runner_module, "_load_precision_filter_config", lambda: env_config
+    )
+    fake_redis = MagicMock()
+    fake_redis.aclose = AsyncMock()
+    monkeypatch.setattr(
+        "redis.asyncio.from_url",
+        lambda *args, **kwargs: fake_redis,
+    )
+
+    try:
+        await runner_module.consume_filter_reload_signal("redis://fake")
+        # Reverted to env config, not None.
+        assert runner_module._PRECISION_FILTER_CONFIG is env_config
+    finally:
+        runner_module.set_precision_filter_config(saved)
+
+
+# Cycle 73f r3 H1 fold — worker startup hydrate (symmetric with KS).
+
+
+@pytest.mark.asyncio
+async def test_hydrate_precision_filter_config_seeds_cache_from_redis(monkeypatch):
+    """r3 H1 fold: on worker startup, hydrate reads Redis key + swaps
+    cache. Without this, worker restart silently reverts to env defaults
+    even when Redis has an active ops-override."""
+    from loreweave_extraction import PrecisionFilterConfig
+    import app.runner as runner_module
+
+    persisted_config = PrecisionFilterConfig(
+        model_ref="persisted-uuid",
+        categories=("relation",),
+        partial_policy="drop",
+    )
+
+    async def fake_get_filter_config(redis_client):
+        return persisted_config
+
+    saved = runner_module._PRECISION_FILTER_CONFIG
+    monkeypatch.setattr(
+        "loreweave_extraction.get_filter_config",
+        fake_get_filter_config,
+    )
+    fake_redis = MagicMock()
+    fake_redis.aclose = AsyncMock()
+    monkeypatch.setattr(
+        "redis.asyncio.from_url",
+        lambda *args, **kwargs: fake_redis,
+    )
+
+    try:
+        await runner_module.hydrate_precision_filter_config_from_redis("redis://fake")
+        # Worker cache reflects what Redis had.
+        assert runner_module._PRECISION_FILTER_CONFIG is persisted_config
+    finally:
+        runner_module.set_precision_filter_config(saved)
+
+
+@pytest.mark.asyncio
+async def test_hydrate_precision_filter_config_leaves_cache_when_redis_empty(monkeypatch):
+    """r3 H1 fold edge case: Redis key absent → hydrate is a no-op
+    (cache stays at whatever env-load produced). Defends the worker
+    from clobbering env defaults when Redis exists but key is empty."""
+    import app.runner as runner_module
+
+    async def fake_get_filter_config(redis_client):
+        return None  # Redis empty / key absent
+
+    saved = runner_module._PRECISION_FILTER_CONFIG
+    monkeypatch.setattr(
+        "loreweave_extraction.get_filter_config",
+        fake_get_filter_config,
+    )
+    fake_redis = MagicMock()
+    fake_redis.aclose = AsyncMock()
+    monkeypatch.setattr(
+        "redis.asyncio.from_url",
+        lambda *args, **kwargs: fake_redis,
+    )
+
+    try:
+        await runner_module.hydrate_precision_filter_config_from_redis("redis://fake")
+        # Cache should remain at its pre-hydrate value (no clobber).
+        assert runner_module._PRECISION_FILTER_CONFIG is saved
+    finally:
+        runner_module.set_precision_filter_config(saved)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Cycle 73h — Prometheus counter regression-lock
+# (closes cycle 73f r3 M4 / cycle 73g log-only stopgap)
+# ─────────────────────────────────────────────────────────────────────
+
+
+def _worker_reload_counter_value(outcome: str) -> float:
+    """Snapshot the worker-ai filter-reload counter for delta assertions."""
+    from app.metrics import worker_ai_filter_reload_total
+    return worker_ai_filter_reload_total.labels(outcome=outcome)._value.get()
+
+
+@pytest.mark.asyncio
+async def test_worker_filter_reload_counter_bumps_on_successful_re_read(monkeypatch):
+    """Cycle 73h: pubsub-driven re-read success → bumps
+    `worker_ai_filter_reload_total{outcome=applied}`."""
+    from loreweave_extraction import PrecisionFilterConfig
+    import app.runner as runner_module
+
+    new_config = PrecisionFilterConfig(
+        model_ref="counter-test-uuid",
+        categories=("event",),
+        partial_policy="drop",
+    )
+
+    async def fake_subscribe_filter_reload(redis_client, on_reload, **kwargs):
+        await on_reload()
+        return
+
+    async def fake_get_filter_config(redis_client):
+        return new_config
+
+    saved = runner_module._PRECISION_FILTER_CONFIG
+    pre_applied = _worker_reload_counter_value("applied")
+
+    monkeypatch.setattr(
+        "loreweave_extraction.subscribe_filter_reload",
+        fake_subscribe_filter_reload,
+    )
+    monkeypatch.setattr(
+        "loreweave_extraction.get_filter_config",
+        fake_get_filter_config,
+    )
+    fake_redis = MagicMock()
+    fake_redis.aclose = AsyncMock()
+    monkeypatch.setattr(
+        "redis.asyncio.from_url",
+        lambda *args, **kwargs: fake_redis,
+    )
+
+    try:
+        await runner_module.consume_filter_reload_signal("redis://fake")
+        assert _worker_reload_counter_value("applied") == pre_applied + 1
+    finally:
+        runner_module.set_precision_filter_config(saved)
+
+
+@pytest.mark.asyncio
+async def test_worker_filter_reload_counter_bumps_failed_on_exception(monkeypatch):
+    """Cycle 73h: pubsub re-read failure → bumps
+    `worker_ai_filter_reload_total{outcome=failed}` (NOT applied)."""
+    import app.runner as runner_module
+
+    async def fake_subscribe_filter_reload(redis_client, on_reload, **kwargs):
+        await on_reload()
+        return
+
+    async def fake_get_filter_config_raises(redis_client):
+        raise RuntimeError("simulated redis read failure")
+
+    saved = runner_module._PRECISION_FILTER_CONFIG
+    pre_failed = _worker_reload_counter_value("failed")
+    pre_applied = _worker_reload_counter_value("applied")
+
+    monkeypatch.setattr(
+        "loreweave_extraction.subscribe_filter_reload",
+        fake_subscribe_filter_reload,
+    )
+    monkeypatch.setattr(
+        "loreweave_extraction.get_filter_config",
+        fake_get_filter_config_raises,
+    )
+    fake_redis = MagicMock()
+    fake_redis.aclose = AsyncMock()
+    monkeypatch.setattr(
+        "redis.asyncio.from_url",
+        lambda *args, **kwargs: fake_redis,
+    )
+
+    try:
+        await runner_module.consume_filter_reload_signal("redis://fake")
+        # Failed bumps; applied does NOT.
+        assert _worker_reload_counter_value("failed") == pre_failed + 1
+        assert _worker_reload_counter_value("applied") == pre_applied
+    finally:
+        runner_module.set_precision_filter_config(saved)
+
+
+@pytest.mark.asyncio
+async def test_worker_hydrate_counter_bumps_on_startup(monkeypatch):
+    """Cycle 73h: startup hydrate (success) → bumps
+    `worker_ai_filter_reload_total{outcome=startup}`. Distinct from
+    `applied` so dashboards can attribute "where did the cache value
+    come from"."""
+    from loreweave_extraction import PrecisionFilterConfig
+    import app.runner as runner_module
+
+    persisted = PrecisionFilterConfig(
+        model_ref="hydrate-counter-uuid",
+        categories=("relation",),
+        partial_policy="drop",
+    )
+
+    async def fake_get_filter_config(redis_client):
+        return persisted
+
+    saved = runner_module._PRECISION_FILTER_CONFIG
+    pre_startup = _worker_reload_counter_value("startup")
+
+    monkeypatch.setattr(
+        "loreweave_extraction.get_filter_config",
+        fake_get_filter_config,
+    )
+    fake_redis = MagicMock()
+    fake_redis.aclose = AsyncMock()
+    monkeypatch.setattr(
+        "redis.asyncio.from_url",
+        lambda *args, **kwargs: fake_redis,
+    )
+
+    try:
+        await runner_module.hydrate_precision_filter_config_from_redis("redis://fake")
+        assert _worker_reload_counter_value("startup") == pre_startup + 1
+    finally:
+        runner_module.set_precision_filter_config(saved)
+
+
+def test_start_metrics_server_no_op_when_port_zero(caplog):
+    """Cycle 73h: METRICS_PORT=0 disables the WSGI server cleanly
+    (no port collision in tests / dev runs)."""
+    import logging
+    from app.metrics import start_metrics_server
+
+    with caplog.at_level(logging.INFO, logger="app.metrics"):
+        start_metrics_server(0)
+    assert any(
+        "metrics server disabled" in r.getMessage() for r in caplog.records
+    )

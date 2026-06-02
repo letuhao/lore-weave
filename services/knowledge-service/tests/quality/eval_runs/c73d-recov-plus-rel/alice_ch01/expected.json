@@ -1,0 +1,66 @@
+{
+  "entities": [
+    {
+      "name": "Alice",
+      "kind": "person",
+      "aliases": []
+    },
+    {
+      "name": "White Rabbit",
+      "kind": "person",
+      "aliases": [
+        "Rabbit",
+        "the Rabbit"
+      ]
+    },
+    {
+      "name": "sister",
+      "kind": "person",
+      "aliases": [
+        "her sister"
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "subject": "Alice",
+      "predicate": "sits_by",
+      "object": "sister",
+      "polarity": "affirm"
+    },
+    {
+      "subject": "Alice",
+      "predicate": "follows",
+      "object": "White Rabbit",
+      "polarity": "affirm"
+    }
+  ],
+  "events": [
+    {
+      "summary": "White Rabbit runs past Alice on the bank",
+      "participants": [
+        "Alice",
+        "White Rabbit"
+      ]
+    },
+    {
+      "summary": "Alice follows the White Rabbit down a rabbit hole",
+      "participants": [
+        "Alice",
+        "White Rabbit"
+      ]
+    }
+  ],
+  "traps": [
+    {
+      "kind": "event",
+      "summary": "Alice makes a daisy chain",
+      "reason": "Only considered, never performed"
+    },
+    {
+      "kind": "entity",
+      "name": "the watch",
+      "reason": "Prop referenced by the Rabbit; not a first-class entity at this scale"
+    }
+  ]
+}

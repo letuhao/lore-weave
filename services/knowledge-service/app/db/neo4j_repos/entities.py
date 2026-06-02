@@ -128,6 +128,14 @@ class Entity(BaseModel):
     # `W/"<version>"` and requires If-Match on PATCH.
     version: int = 1
 
+    # Cycle 73e: True when minted by Pass2 writer's Tier-B autocreate
+    # (relation subject/object unresolved against extracted entity
+    # list AND not in anchors). Cleared on legit re-extraction via
+    # `_MERGE_ENTITY_CYPHER`'s ON MATCH promotion CASE. Legacy nodes
+    # without the property read as False via `_node_to_entity` +
+    # `coalesce(e.auto_created, false)` Cypher idiom.
+    auto_created: bool = False
+
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -166,6 +174,11 @@ def _node_to_entity(node: Any) -> Entity:
     # `test_cypher_version_coalesce_default_matches_read_path`.
     if data.get("version") is None:
         data["version"] = 1
+    # Cycle 73e: legacy (pre-73e) entities lack `auto_created`. Coalesce
+    # to False at read time; Cypher read sites mirror via `coalesce(
+    # e.auto_created, false)` per the same backfill idiom.
+    if data.get("auto_created") is None:
+        data["auto_created"] = False
     return Entity.model_validate(data)
 
 
@@ -179,6 +192,16 @@ def _node_to_entity(node: Any) -> Entity:
 # γ-a nodes lacking the property (null → false = un-edited) so
 # existing extraction behaviour is preserved until a user explicitly
 # touches the row. The remaining arms are the pre-γ-a append logic.
+#
+# Cycle 73e: `auto_created` flag tracks entities minted by the
+# Pass2 writer's Tier-B autocreate path (relation subject/object
+# unresolved against extracted entity list AND not in anchors).
+# Read sites MUST use `coalesce(e.auto_created, false)` because
+# legacy nodes (pre-73e) lack the property — same backfill idiom
+# as `user_edited` and `version`. ON MATCH promotion: any non-auto
+# write (default `$auto_created = false`) clears the flag — so
+# a real extractor hit on a previously-auto-created entity promotes
+# it (cycle 73e M1 fold).
 _MERGE_ENTITY_CYPHER = """
 MERGE (e:Entity {id: $id})
 ON CREATE SET
@@ -198,6 +221,7 @@ ON CREATE SET
   e.mention_count = 0,
   e.user_edited = false,
   e.version = 1,
+  e.auto_created = $auto_created,
   e.created_at = datetime(),
   e.updated_at = datetime()
 ON MATCH SET
@@ -213,6 +237,10 @@ ON MATCH SET
   e.confidence = CASE
     WHEN $confidence > e.confidence THEN $confidence
     ELSE e.confidence
+  END,
+  e.auto_created = CASE
+    WHEN $auto_created = false THEN false
+    ELSE coalesce(e.auto_created, false)
   END,
   e.version = coalesce(e.version, 1) + 1,
   e.updated_at = datetime()
@@ -232,6 +260,7 @@ async def merge_entity(
     source_type: str,
     confidence: float = 0.0,
     canonical_version: int = 1,
+    auto_created: bool = False,
 ) -> Entity:
     """Idempotent upsert. Re-running with the same (user_id, project_id,
     name, kind) tuple returns the same node — no duplicates.
@@ -245,6 +274,13 @@ async def merge_entity(
     because the MERGE has already mutated the node by the time
     the WHERE filters the return. K11.5a-R1/R2: docstring fixed
     to be honest. The real defense is the canonical_id hash.
+
+    Cycle 73e: `auto_created` defaults False (legit extractor write).
+    When True, marks the entity as minted by Pass2 writer's autocreate
+    path (relation subject/object unresolved). ON MATCH promotion
+    semantics: a later auto_created=False call (real extraction)
+    clears the flag, so the "show only auto-created" UI list shrinks
+    naturally on legit re-extraction.
     """
     canonical_id = entity_canonical_id(
         user_id=user_id,
@@ -268,6 +304,7 @@ async def merge_entity(
         canonical_version=canonical_version,
         source_type=source_type,
         confidence=confidence,
+        auto_created=auto_created,
     )
     record = await result.single()
     if record is None:
@@ -1652,7 +1689,11 @@ async def get_neighborhood_by_glossary_id(
 _UPDATE_ENTITY_FIELDS_CYPHER = """
 MATCH (e:Entity {id: $id})
 WHERE e.user_id = $user_id
-WITH e, coalesce(e.version, 1) AS current_version
+// Phase B: capture the pre-edit snapshot in the SAME query (design §6.3 —
+// same-Cypher, NOT read-before-write, so before/after are TOCTOU-consistent).
+// The WITH materialises `before` eagerly, before the FOREACH SET mutates e.
+WITH e, coalesce(e.version, 1) AS current_version,
+     {name: e.name, kind: e.kind, aliases: coalesce(e.aliases, [])} AS before
 FOREACH (_ IN CASE WHEN current_version = $expected_version THEN [1] ELSE [] END |
   SET
     e.name = CASE WHEN $name IS NULL THEN e.name ELSE $name END,
@@ -1669,7 +1710,7 @@ FOREACH (_ IN CASE WHEN current_version = $expected_version THEN [1] ELSE [] END
     e.version = current_version + 1,
     e.updated_at = datetime()
 )
-RETURN e, current_version = $expected_version AS applied
+RETURN e, current_version = $expected_version AS applied, before
 """
 
 
@@ -1682,9 +1723,16 @@ async def update_entity_fields(
     kind: str | None,
     aliases: list[str] | None,
     expected_version: int,
-) -> Entity | None:
+) -> tuple[Entity | None, dict | None]:
     """K19d.5 + C9 — patch an entity's display fields with optimistic
     concurrency.
+
+    Phase B: returns ``(entity, before)`` where ``before`` is the pre-edit
+    ``{name, kind, aliases}`` snapshot captured in the SAME Cypher (design §6.3)
+    — used by the router to emit a ``knowledge.entity_corrected`` event.
+    ``before`` is ``None`` when no row matched. On a version mismatch the
+    function still raises ``VersionMismatchError`` (before is irrelevant — no
+    edit happened).
 
     Sets `user_edited=true` + bumps `version` on any successful write.
     `expected_version` must match the row's current version (coalesced
@@ -1725,11 +1773,13 @@ async def update_entity_fields(
     )
     record = await result.single()
     if record is None:
-        return None
+        return None, None
     entity = _node_to_entity(record["e"])
     if not record["applied"]:
         raise VersionMismatchError(entity)
-    return entity
+    before_raw = record["before"]
+    before = dict(before_raw) if before_raw is not None else None
+    return entity, before
 
 
 # C9 (D-K19d-γa-02) — unlock user_edited so extractions can contribute

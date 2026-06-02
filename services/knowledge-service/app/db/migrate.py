@@ -725,6 +725,69 @@ DO $$ BEGIN
     CHECK (status IN ('pending','running','summarizing','completed','failed'));
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
+
+-- Phase B (correction capture) — knowledge-service's FIRST transactional
+-- outbox. User edits to the graph (entity PATCH / archive; relations + events
+-- in sub-session C) emit knowledge.*_corrected events here; worker-infra's
+-- relay ships them to loreweave:events:knowledge (aggregate_type='knowledge')
+-- for learning-service to persist as corrections. NOTE the cross-store caveat
+-- (design §6.6): the graph write is in Neo4j, this outbox is in Postgres, so
+-- emission is BEST-EFFORT post-Neo4j-success — never atomic. A dropped row
+-- under-counts the correction log; the §10.1 replay tool is the backstop.
+CREATE TABLE IF NOT EXISTS outbox_events (
+  id             UUID PRIMARY KEY DEFAULT uuidv7(),
+  aggregate_type TEXT NOT NULL DEFAULT 'knowledge',
+  aggregate_id   UUID NOT NULL,
+  event_type     TEXT NOT NULL,
+  payload        JSONB NOT NULL DEFAULT '{}',
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  published_at   TIMESTAMPTZ,
+  retry_count    INT NOT NULL DEFAULT 0,
+  last_error     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_outbox_pending
+  ON outbox_events(created_at) WHERE published_at IS NULL;
+
+-- ═══════════════════════════════════════════════════════════════
+-- Phase E2 — genre tag on knowledge_projects (2026-06-01)
+-- Free-text, user-settable (e.g. "Tiên hiệp", "trinh thám").
+-- Copied to extraction_runs at run-emit time for genre-segment
+-- mining queries without a cross-DB join at query time.
+-- ═══════════════════════════════════════════════════════════════
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS genre TEXT;
+
+-- ═══════════════════════════════════════════════════════════════
+-- Q4b-feed — per-run items+source sample for the online LLM judge
+-- (2026-06-01). docs/plans/2026-06-01-q4b-feed-extraction-run-samples.md
+--
+-- The ONLY run-attributable store of the extracted items + chapter
+-- source: the live persist-pass2 path writes only post-merge Neo4j
+-- (no run_id), and never extraction_leaves. worker-ai writes one row
+-- here per SUCCEEDED chapter run, but ONLY for projects opted into
+-- save_raw_extraction (the existing raw-retention consent — same gate
+-- as extraction_leaves_raw). Non-opted runs write nothing
+-- (redact-by-default). learning-service's eval-runner fetches by
+-- run_id to feed run_online_judge.
+--
+-- TRANSIENT judging buffer, not history: pruned after 7 days on
+-- knowledge-service startup. items_jsonb holds the minimal judge-shape
+-- projection only ({entity:[{name,kind}], relation:[{subject,predicate,
+-- object,polarity}], event:[{summary,participants}]}) — confidence,
+-- canonical_ids, offsets dropped.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS extraction_run_samples (
+  run_id       UUID PRIMARY KEY,
+  user_id      UUID NOT NULL,
+  project_id   UUID,
+  book_id      UUID,
+  config_hash  TEXT,
+  items_jsonb  JSONB NOT NULL,
+  source_text  TEXT NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_extraction_run_samples_created
+  ON extraction_run_samples(created_at);
 """
 
 

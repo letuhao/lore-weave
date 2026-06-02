@@ -21,15 +21,21 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Any
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import asyncpg
 from opentelemetry import trace as _ot_trace
 
 from loreweave_extraction import (
+    EntityRecoveryConfig,
     PrecisionFilterConfig,
+    ResolvedConfig,
+    base_default_version,
+    config_hash,
     extract_pass2,
+    resolve_effective_config,
 )
 from loreweave_extraction.errors import ExtractionError
 
@@ -42,6 +48,8 @@ from app.clients import (
     KnowledgeClient,
 )
 from app.llm_client import LLMClient
+from app.outbox_emit import emit_extraction_run, emit_extraction_run_best_effort
+from app.sample_emit import persist_run_sample_best_effort
 
 __all__ = ["process_job", "poll_and_run"]
 
@@ -96,7 +104,171 @@ def _load_precision_filter_config() -> PrecisionFilterConfig | None:
 
 
 # Cached at module load; None when env unset = zero-overhead default.
+# Cycle 73f: runtime-overridable via Redis pubsub (consume_filter_reload_signal
+# below). Module-level rebind is atomic via Python GIL.
 _PRECISION_FILTER_CONFIG: PrecisionFilterConfig | None = _load_precision_filter_config()
+
+
+def set_precision_filter_config(
+    new_config: PrecisionFilterConfig | None,
+) -> PrecisionFilterConfig | None:
+    """Cycle 73f — atomically replace module-level cache from subscriber."""
+    global _PRECISION_FILTER_CONFIG
+    _PRECISION_FILTER_CONFIG = new_config
+    return _PRECISION_FILTER_CONFIG
+
+
+async def hydrate_precision_filter_config_from_redis(redis_url: str) -> None:
+    """Cycle 73f r3 H1 fold — symmetric with KS hydrate. On worker
+    startup, GET the Redis key + seed module-level cache. Without this,
+    a worker container restart silently drops the ops-override and
+    reverts to env defaults until next manual reload POST — defeating
+    the cycle's "persistent across restart" promise (asymmetric with
+    KS r2 H1 fold which already had hydrate).
+
+    Cycle 73h: bumps `worker_ai_filter_reload_total{outcome=startup}`
+    on success or `startup_failed` on exception (replaces cycle 73g
+    M4's log-only emission)."""
+    import redis.asyncio as aioredis
+    from loreweave_extraction import get_filter_config
+
+    from app.metrics import worker_ai_filter_reload_total
+
+    redis_client = aioredis.from_url(redis_url, decode_responses=False)
+    try:
+        cached = await get_filter_config(redis_client)
+        if cached is not None:
+            set_precision_filter_config(cached)
+            logger.info(
+                "WORKER_FILTER_RELOAD outcome=startup active=true "
+                "model_ref=%s categories=%s",
+                cached.model_ref, cached.categories,
+            )
+        else:
+            logger.info(
+                "WORKER_FILTER_RELOAD outcome=startup active=false "
+                "reason=redis_key_absent",
+            )
+        worker_ai_filter_reload_total.labels(outcome="startup").inc()
+    except Exception:
+        worker_ai_filter_reload_total.labels(outcome="startup_failed").inc()
+        logger.exception(
+            "WORKER_FILTER_RELOAD outcome=startup_failed reason=exception"
+        )
+    finally:
+        try:
+            await redis_client.aclose()
+        except Exception:
+            pass
+
+
+async def consume_filter_reload_signal(redis_url: str) -> None:
+    """Cycle 73f — subscribe to filter-reload pubsub; on each signal,
+    re-read Redis key + atomically swap module-level cache.
+
+    Resilient: SDK's subscribe_filter_reload has outer try/except with
+    backoff so this never bubbles into asyncio.gather and kills the
+    extraction job loop.
+    """
+    import redis.asyncio as aioredis
+    from loreweave_extraction import (
+        get_filter_config,
+        subscribe_filter_reload,
+    )
+
+    redis_client = aioredis.from_url(redis_url, decode_responses=False)
+
+    async def _on_reload() -> None:
+        # Cycle 73h fold (closes cycle 73g M4 stopgap): bump Prometheus
+        # counter on each pubsub-driven re-read outcome. Structured log
+        # line retained for legacy ops grep tooling.
+        from app.metrics import worker_ai_filter_reload_total
+        try:
+            new_config = await get_filter_config(redis_client)
+            if new_config is None:
+                # Cycle 74b — key absent (e.g. after a disable=true DELETE)
+                # reverts to env config, matching startup-hydrate semantics
+                # (hydrate keeps env config when the key is absent). Without
+                # this, the runtime path set None (filter OFF) while a restart
+                # reloads env config (filter ON) — a silent cross-path
+                # divergence surfaced by the cycle-73f live smoke. `_load`
+                # itself returns None when no filter env is set, so the
+                # genuinely-no-filter deployment still ends at None.
+                new_config = _load_precision_filter_config()
+            set_precision_filter_config(new_config)
+            worker_ai_filter_reload_total.labels(outcome="applied").inc()
+            logger.info(
+                "WORKER_FILTER_RELOAD outcome=applied active=%s "
+                "model_ref=%s",
+                new_config is not None,
+                new_config.model_ref if new_config else None,
+            )
+        except Exception:
+            worker_ai_filter_reload_total.labels(outcome="failed").inc()
+            logger.exception(
+                "WORKER_FILTER_RELOAD outcome=failed reason=exception"
+            )
+
+    try:
+        await subscribe_filter_reload(redis_client, _on_reload)
+    finally:
+        try:
+            await redis_client.aclose()
+        except Exception:
+            pass
+
+
+def _load_entity_recovery_config() -> EntityRecoveryConfig | None:
+    """Cycle 73d — read entity recovery env config.
+
+    Returns:
+        ``EntityRecoveryConfig`` when
+        ``WORKER_AI_ENTITY_RECOVERY_MODEL_REF`` is set; ``None`` otherwise.
+
+    Envs:
+        WORKER_AI_ENTITY_RECOVERY_MODEL_REF: gateway model_ref / UUID
+            for the Tier 3 LLM classifier.
+        WORKER_AI_ENTITY_RECOVERY_MODEL_SOURCE: default "user_model".
+        WORKER_AI_ENTITY_RECOVERY_MAX_BATCH: int (default 5).
+
+    Note: worker-ai has no glossary access; `known_entity_kinds` stays
+    empty. Tier 1 (glossary) is never used in this caller; Tier 3 (LLM)
+    handles all unmatched names. Knowledge-service callers use the
+    glossary-aware variant in pass2_orchestrator.
+    """
+    model_ref = os.environ.get(
+        "WORKER_AI_ENTITY_RECOVERY_MODEL_REF", ""
+    ).strip()
+    if not model_ref:
+        return None
+    model_source = os.environ.get(
+        "WORKER_AI_ENTITY_RECOVERY_MODEL_SOURCE", "user_model"
+    ).strip() or "user_model"
+    max_batch_env = os.environ.get(
+        "WORKER_AI_ENTITY_RECOVERY_MAX_BATCH", "5"
+    ).strip() or "5"
+    try:
+        max_batch = int(max_batch_env)
+    except ValueError:
+        max_batch = 5
+    return EntityRecoveryConfig(
+        model_ref=model_ref,
+        model_source=model_source,  # type: ignore[arg-type]
+        max_items_per_batch=max(1, max_batch),
+    )
+
+
+_ENTITY_RECOVERY_CONFIG: EntityRecoveryConfig | None = _load_entity_recovery_config()
+
+# B2 follow-up — global env knob as default-for-all autocreate.
+# Per-project extraction_config.writer_autocreate still supersedes this
+# (resolve_effective_config merges it on top).  Setting the env var to
+# "true" here makes the knob functional for projects that have no
+# per-project override (the previous behaviour was always-False).
+_WRITER_AUTOCREATE_DEFAULT: bool = (
+    os.environ.get("KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED", "false").lower()
+    in {"1", "true", "yes"}
+)
 
 # D-PHASE6C-WORKERAI-JOB-SPAN. Module-level tracer; when OTel is no-op
 # (OTEL_EXPORTER_OTLP_ENDPOINT unset) this is the NoOp tracer and
@@ -162,6 +334,153 @@ _GLOSSARY_SYNC_COST_PER_ITEM = Decimal("0.0")
 # when a specific item consistently triggers a retryable LLM error.
 _MAX_RETRIES_PER_ITEM = 3
 
+# B2-B-b1 — sentinels distinguishing "caller omitted the arg" (use the module
+# global) from "caller passed None" (override DISABLES the pass). An `is not
+# None` gate would conflate the two (memory sdk-default-arg-dropped-from-wire):
+# a project that disables its precision filter must get None, not the global.
+_GLOBAL_FILTER_SENTINEL: Any = object()
+_GLOBAL_RECOVERY_SENTINEL: Any = object()
+
+
+# ── B2-A — extraction-run telemetry helpers ────────────────────────────
+
+
+def _build_run_config(job: JobRow) -> tuple[ResolvedConfig, str, str]:
+    """Assemble the effective config snapshot for a job + (config_hash,
+    base_default_version).
+
+    Pinned ONCE per job at start (DESIGN self-review #2): a mid-job
+    precision-filter Redis reload does NOT change this snapshot, so every
+    chapter run of the job attributes to the same config_hash. For every
+    project today `extraction_config` is ``{}`` → the snapshot equals the
+    global env defaults (behaviour unchanged); B2-B starts populating it.
+    """
+    global_defaults = {
+        "model_ref": job.llm_model,
+        "model_source": "user_model",
+        "precision_filter": _PRECISION_FILTER_CONFIG,
+        "entity_recovery": _ENTITY_RECOVERY_CONFIG,
+        "writer_autocreate": _WRITER_AUTOCREATE_DEFAULT,
+    }
+    try:
+        snapshot = resolve_effective_config(
+            global_defaults=global_defaults,
+            project_overrides=job.extraction_config or {},
+        )
+    except Exception:
+        # /review-impl MED-3 — a malformed per-project extraction_config (e.g.
+        # precision_filter enabled with no model_ref) must NOT fail the whole
+        # job from the telemetry path. Degrade to global defaults + warn loudly.
+        # Unreachable in B2-A (overrides always {}); B2-B's edit endpoint is the
+        # primary guard (reject bad config at write time) — this is the net.
+        logger.warning(
+            "resolve_effective_config failed for job %s (malformed "
+            "extraction_config?) — falling back to global defaults for telemetry",
+            job.job_id, exc_info=True,
+        )
+        snapshot = resolve_effective_config(
+            global_defaults=global_defaults, project_overrides={},
+        )
+    return snapshot, config_hash(snapshot), base_default_version(global_defaults)
+
+
+async def _advance_cursor_and_emit_run(
+    pool: asyncpg.Pool, user_id: UUID, job_id: UUID, cursor: dict, payload: dict,
+) -> None:
+    """Advance the cursor + emit the extraction_run ATOMICALLY (B2-A).
+
+    Normal case: one transaction → the run row is guaranteed iff the cursor
+    advanced (no silent gaps under normal operation; avoids the §2.4
+    selection-bias the run telemetry exists to prevent).
+
+    Failure case (/review-impl MED-1): if the transaction fails (an infra blip
+    on the shared knowledge DB), fall back to a plain best-effort cursor-advance
+    so the job still PROGRESSES — the chapter's real work already persisted to
+    Neo4j, so we must not re-extract (re-spending LLM) nor fail the job. Run
+    telemetry is NEVER load-bearing for extraction; the rare, random loss here
+    is not systematic and does not bias config-vs-outcome analysis."""
+    try:
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                await _advance_cursor(conn, user_id, job_id, cursor)
+                await emit_extraction_run(conn, payload)
+    except Exception:
+        logger.warning(
+            "transactional run-emit failed for job %s; advancing cursor "
+            "best-effort (run telemetry lost for this item, non-fatal)",
+            job_id, exc_info=True,
+        )
+        await _advance_cursor(pool, user_id, job_id, cursor)
+
+
+def _run_payload(
+    *,
+    job: JobRow,
+    book_id: UUID | None,
+    chapter_ref: str,
+    snapshot: ResolvedConfig,
+    cfg_hash: str,
+    base_version: str,
+    outcome: str,
+    result: ExtractionResult | None,
+    run_id: str | None = None,
+) -> dict:
+    """Build a `knowledge.extraction_run_completed` payload for one chapter.
+
+    `resolved_config` carries prompt IDENTITY (prompt_versions), never raw
+    prompt text (DESIGN Q5). metrics come from the per-chapter ExtractionResult
+    (None on skip/fail → zero counts) + the flat per-item cost estimate.
+
+    Q4b-feed: pass `run_id` so the caller can key an extraction_run_sample by
+    the SAME id that lands in the event (parity is load-bearing — the online
+    judge fetches the sample by the event's run_id). Defaults to a fresh uuid4
+    for the skip/fail callers that don't sample.
+    """
+    metrics: dict[str, Any] = {
+        "entities_merged": result.entities_merged if result else 0,
+        "relations_created": result.relations_created if result else 0,
+        "events_merged": result.events_merged if result else 0,
+        "facts_merged": result.facts_merged if result else 0,
+        "cost_usd": str(_DEFAULT_COST_PER_ITEM),
+    }
+    return {
+        "run_id": run_id or str(uuid4()),
+        "user_id": str(job.user_id),
+        "project_id": str(job.project_id),
+        "book_id": str(book_id) if book_id else None,
+        "job_id": str(job.job_id),
+        "scope": "chapter",
+        "chapter_ref": str(chapter_ref),
+        "config_hash": cfg_hash,
+        "resolved_config": {
+            "model_ref": snapshot.model_ref,
+            "model_source": snapshot.model_source,
+            "precision_filter": None if snapshot.precision_filter is None else {
+                "model_ref": snapshot.precision_filter.model_ref,
+                "model_source": snapshot.precision_filter.model_source,
+                "categories": sorted(snapshot.precision_filter.categories),
+                "partial_policy": snapshot.precision_filter.partial_policy,
+            },
+            "entity_recovery": None if snapshot.entity_recovery is None else {
+                "model_ref": snapshot.entity_recovery.model_ref,
+                "model_source": snapshot.entity_recovery.model_source,
+            },
+            "writer_autocreate": snapshot.writer_autocreate,
+        },
+        "prompt_versions": snapshot.prompt_versions,
+        "base_default_version": base_version,
+        "model_ref": snapshot.model_ref,
+        "metrics": metrics,
+        "outcome": outcome,
+        "outcome_source": "pipeline",
+        "genre": job.genre,
+        # Q4b-feed — structural metadata (NOT content): tells the eval-runner
+        # whether a run-sample exists to fetch, so it skips the knowledge call
+        # for non-opted projects. Redact-safe (a bool, no novel text).
+        "save_raw_extraction": job.save_raw_extraction,
+        "emitted_at": datetime.now(timezone.utc).isoformat(),
+    }
+
 
 # ── Data types ───────────────────────────────────────────────────────
 
@@ -187,6 +506,19 @@ class JobRow:
     # identity). NULL = project has no embedding configured → P3 enqueue
     # silently skipped by the receiving endpoint.
     embedding_dimension: int | None = None
+    # B2-A — per-project extraction-config overrides (knowledge_projects
+    # JSONB). {} for every project today; resolve_effective_config merges
+    # it onto the global defaults to produce the run's config snapshot.
+    extraction_config: dict | None = None
+    # E2 — user-set genre tag; copied from knowledge_projects.genre at
+    # job-fetch time and forwarded into the run-completed payload so
+    # extraction_runs.genre is populated for genre-segment mining.
+    genre: str | None = None
+    # Q4b-feed — the project's raw-retention opt-in (knowledge_projects.
+    # save_raw_extraction, default OFF). When True, the chapter loop persists
+    # an extraction_run_sample {run_id, items, source} for the online LLM
+    # judge; when False, nothing is stored (redact-by-default).
+    save_raw_extraction: bool = False
 
 
 # ── DB helpers ───────────────────────────────────────────────────────
@@ -204,7 +536,8 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
         SELECT j.job_id, j.user_id, j.project_id, j.scope, j.scope_range,
                j.status, j.llm_model, j.embedding_model, j.max_spend_usd,
                j.items_total, j.items_processed, j.current_cursor,
-               j.cost_spent_usd, p.embedding_dimension
+               j.cost_spent_usd, p.embedding_dimension, p.extraction_config,
+               p.genre, p.save_raw_extraction
         FROM extraction_jobs j
         LEFT JOIN knowledge_projects p
           ON p.user_id = j.user_id AND p.project_id = j.project_id
@@ -220,6 +553,9 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
         cc = r["current_cursor"]
         if isinstance(cc, str):
             cc = json.loads(cc)
+        ec = r["extraction_config"]
+        if isinstance(ec, str):
+            ec = json.loads(ec)
         result.append(JobRow(
             job_id=r["job_id"],
             user_id=r["user_id"],
@@ -235,6 +571,9 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
             current_cursor=cc,
             cost_spent_usd=r["cost_spent_usd"],
             embedding_dimension=r["embedding_dimension"],
+            extraction_config=ec if isinstance(ec, dict) else None,
+            genre=r["genre"],
+            save_raw_extraction=bool(r["save_raw_extraction"]),
         ))
     return result
 
@@ -285,11 +624,17 @@ async def _try_spend(
 
 
 async def _advance_cursor(
-    pool: asyncpg.Pool, user_id: UUID, job_id: UUID,
+    executor: Any, user_id: UUID, job_id: UUID,
     cursor: dict, items_delta: int = 1,
 ) -> None:
-    """Persist progress so a restart can resume from here."""
-    await pool.execute(
+    """Persist progress so a restart can resume from here.
+
+    `executor` is a Pool (default) OR an asyncpg Connection — the latter lets
+    the chapter-success/skip path advance the cursor AND emit the
+    extraction_run in ONE transaction (B2-A): the run row is guaranteed iff the
+    cursor advanced, and an emit failure rolls back the advance (chapter
+    re-processed, never a silently-missing run)."""
+    await executor.execute(
         """
         UPDATE extraction_jobs
         SET current_cursor = $3::jsonb,
@@ -610,6 +955,19 @@ async def _extract_and_persist(
     job_id: UUID,
     model_ref: str,
     text: str,
+    # B2-B-b1 — per-project resolved config. Default to the module globals so
+    # the chat_turn / glossary callers keep the legacy behaviour; the chapter
+    # branch passes the job's resolved snapshot so a project's extraction_config
+    # override actually drives the pipeline. `_SENTINEL` distinguishes "caller
+    # didn't pass" (use global) from "caller passed None" (override = disabled).
+    precision_filter: "PrecisionFilterConfig | None" = _GLOBAL_FILTER_SENTINEL,
+    entity_recovery: "EntityRecoveryConfig | None" = _GLOBAL_RECOVERY_SENTINEL,
+    # B2-B-b2 — per-op raw system-prompt overrides {op: {"system": str}} from
+    # the job's resolved snapshot ({} when the project has no custom prompts).
+    prompt_overrides: dict | None = None,
+    # B2 follow-up — per-project Pass2-writer autocreate override (forwarded to
+    # /persist-pass2). None = chat/glossary callers leave the env default.
+    writer_autocreate: bool | None = None,
     # P3 D-P3-EXTRACTION-CALLER-WIRE-UP — all optional. Caller (chapter
     # branch) supplies these to opt into hierarchy MERGE + summary
     # enqueue. chat_turn branch keeps the legacy behaviour.
@@ -618,7 +976,7 @@ async def _extract_and_persist(
     is_last_chapter_of_book: bool = False,
     embedding_model_uuid: str | None = None,
     embedding_dimension: int | None = None,
-) -> ExtractionResult:
+) -> tuple[ExtractionResult, "Pass2Candidates | None"]:
     """Phase 4b-γ — replaces the legacy `knowledge_client.extract_item`.
 
     Two-step flow:
@@ -634,10 +992,28 @@ async def _extract_and_persist(
       - stage='provider_exhausted' → retryable=True (worker retries)
       - all other stages → retryable=False (skip / fail per caller)
 
+    Q4b-feed: also returns the in-memory `Pass2Candidates` (or None on the
+    LLM-error path) so the chapter loop can persist a run-sample for the
+    online judge — the ONLY place run_id + items + source coexist. The
+    returned `ExtractionResult` stays counts-only (the event/telemetry shape).
+
     Empty / whitespace `text` → empty Pass2Candidates (library
     short-circuits without calling LLM); persist-pass2 still writes
     the source row for idempotency.
     """
+    # B2-B-b1 — resolve the effective filter/recovery: a caller that omitted
+    # the arg gets the module global (chat_turn/glossary); the chapter branch
+    # passes the job's resolved snapshot (which is the global when the project
+    # has no override, None when the project disabled it, or a per-project
+    # config when overridden).
+    eff_filter = (
+        _PRECISION_FILTER_CONFIG if precision_filter is _GLOBAL_FILTER_SENTINEL
+        else precision_filter
+    )
+    eff_recovery = (
+        _ENTITY_RECOVERY_CONFIG if entity_recovery is _GLOBAL_RECOVERY_SENTINEL
+        else entity_recovery
+    )
     try:
         candidates = await extract_pass2(
             text=text,
@@ -647,11 +1023,16 @@ async def _extract_and_persist(
             model_source="user_model",
             model_ref=model_ref,
             llm_client=llm_client,
-            # Cycle 72 — opt-in precision filter via
-            # WORKER_AI_PRECISION_FILTER_MODEL_REF env. None = current
-            # behavior (no filter). Filter degraded path is
-            # surfaced via candidates.filter_status without raising.
-            precision_filter=_PRECISION_FILTER_CONFIG,
+            # Cycle 72 / B2-B-b1 — precision filter, now per-project-resolvable.
+            # None = no filter; degraded path surfaces via
+            # candidates.filter_status without raising.
+            precision_filter=eff_filter,
+            # Cycle 73d / B2-B-b1 — entity recovery (3-tier), per-project-
+            # resolvable. Runs BEFORE filter. Worker-ai has no glossary access
+            # so all unmatched names go to the LLM classifier (Tier 3).
+            entity_recovery=eff_recovery,
+            # B2-B-b2 — per-op raw system-prompt overrides ({} = all defaults).
+            prompt_overrides=prompt_overrides,
         )
     except ExtractionError as exc:
         retryable = exc.stage == "provider_exhausted"
@@ -667,9 +1048,9 @@ async def _extract_and_persist(
             facts_merged=0,
             retryable=retryable,
             error=f"extraction failed (stage={exc.stage}): {exc}",
-        )
+        ), None
 
-    return await knowledge_client.persist_pass2(
+    persist_result = await knowledge_client.persist_pass2(
         user_id=user_id,
         project_id=project_id,
         source_type=source_type,
@@ -687,7 +1068,9 @@ async def _extract_and_persist(
         is_last_chapter_of_book=is_last_chapter_of_book,
         embedding_model_uuid=embedding_model_uuid,
         embedding_dimension=embedding_dimension,
+        writer_autocreate=writer_autocreate,
     )
+    return persist_result, candidates
 
 
 # ── Core job processing ─────────────────────────────────────────────
@@ -725,6 +1108,13 @@ async def process_job(
     try:
         # Resolve book_id from project (project_id ≠ book_id)
         book_id = await _get_project_book_id(pool, job.user_id, job.project_id)
+
+        # B2-A — pin the effective config snapshot ONCE per job (a mid-job
+        # filter reload won't change this job's config_hash). Used for the
+        # per-chapter extraction_run telemetry; behaviour is unchanged because
+        # extract_pass2 still reads the module globals in B2-A (B2-B wires the
+        # snapshot into the pipeline).
+        run_snapshot, run_cfg_hash, run_base_version = _build_run_config(job)
 
         # Pre-enumerate items. Done once — the results are reused for
         # both K16.7 items_total counting and the main processing loop,
@@ -808,9 +1198,15 @@ async def process_job(
                             "reason": "text_unavailable",
                         },
                     )
-                    await _advance_cursor(
+                    unavail_payload = _run_payload(
+                        job=job, book_id=book_id, chapter_ref=ch.chapter_id,
+                        snapshot=run_snapshot, cfg_hash=run_cfg_hash,
+                        base_version=run_base_version, outcome="skipped", result=None,
+                    )
+                    await _advance_cursor_and_emit_run(
                         pool, job.user_id, job.job_id,
                         {"last_chapter_id": ch.chapter_id, "scope": "chapters"},
+                        unavail_payload,
                     )
                     continue
 
@@ -862,7 +1258,8 @@ async def process_job(
                 # Extract: Phase 4b-γ — worker-ai now runs the LLM
                 # stage in-process via loreweave_extraction.extract_pass2,
                 # then POSTs candidates to /persist-pass2.
-                result = await _extract_and_persist(
+                # Q4b-feed: candidates captured for the run-sample write below.
+                result, candidates = await _extract_and_persist(
                     knowledge_client=knowledge_client,
                     llm_client=llm_client,
                     user_id=job.user_id,
@@ -870,7 +1267,14 @@ async def process_job(
                     source_type="chapter",
                     source_id=ch.chapter_id,
                     job_id=job.job_id,
-                    model_ref=job.llm_model,
+                    # B2-B-b1 — the job's resolved snapshot drives extraction:
+                    # per-project model + filter + recovery overrides (or the
+                    # global defaults when the project has no extraction_config).
+                    model_ref=run_snapshot.model_ref,
+                    precision_filter=run_snapshot.precision_filter,
+                    entity_recovery=run_snapshot.entity_recovery,
+                    prompt_overrides=run_snapshot.prompts,
+                    writer_autocreate=run_snapshot.writer_autocreate,
                     text=text,
                     hierarchy_paths=p3_hierarchy_paths,
                     book_parts=p3_book_parts,
@@ -896,6 +1300,14 @@ async def process_job(
                         )
                         await _fail_job(pool, job.user_id, job.job_id, result.error)
                         await _update_project_status(pool, job.user_id, job.project_id, "failed")
+                        # B2-A — record the failed run best-effort (no cursor
+                        # advance to ride): a config that reliably crashes must
+                        # be visible-as-bad, not invisible to the telemetry.
+                        await emit_extraction_run_best_effort(pool, _run_payload(
+                            job=job, book_id=book_id, chapter_ref=ch.chapter_id,
+                            snapshot=run_snapshot, cfg_hash=run_cfg_hash,
+                            base_version=run_base_version, outcome="failed", result=result,
+                        ))
                         return
                     # Track retry count in cursor to prevent infinite loops
                     retry_key = f"retry_{ch.chapter_id}"
@@ -916,9 +1328,15 @@ async def process_job(
                                 "error": result.error,
                             },
                         )
-                        await _advance_cursor(
+                        skip_payload = _run_payload(
+                            job=job, book_id=book_id, chapter_ref=ch.chapter_id,
+                            snapshot=run_snapshot, cfg_hash=run_cfg_hash,
+                            base_version=run_base_version, outcome="skipped", result=None,
+                        )
+                        await _advance_cursor_and_emit_run(
                             pool, job.user_id, job.job_id,
                             {"last_chapter_id": ch.chapter_id, "scope": "chapters"},
+                            skip_payload,
                         )
                         items_processed += 1
                         continue
@@ -934,10 +1352,37 @@ async def process_job(
                     )
                     return  # stop this run, retry on next poll
 
-                # Advance cursor
-                await _advance_cursor(
+                # Advance cursor + emit the extraction_run in ONE transaction
+                # (B2-A): the run row is guaranteed iff the cursor advanced.
+                # Q4b-feed: generate run_id ONCE here and pass it to both the
+                # payload and the run-sample below — parity is load-bearing
+                # (the online judge fetches the sample by the event's run_id).
+                run_id = str(uuid4())
+                # Q4b-feed: persist the items+source run-sample for the online
+                # LLM judge — ONLY for opted-in projects (save_raw_extraction),
+                # keyed by the SAME run_id as the event. Written BEFORE the event
+                # is emitted (/review-impl MED#1): the eval-runner fetches the
+                # sample by the event's run_id, so the sample must be committed
+                # before the event is consumable — else a fast consumer 404s and
+                # silently falls back to structural-only. Best-effort: a lost
+                # sample only drops a (droppable) judging opportunity; it must
+                # never fail the extraction. Non-opted → write nothing.
+                if job.save_raw_extraction and candidates is not None:
+                    await persist_run_sample_best_effort(
+                        pool, run_id=run_id, job=job, book_id=book_id,
+                        config_hash=run_cfg_hash, candidates=candidates,
+                        source_text=text,
+                    )
+                run_payload = _run_payload(
+                    job=job, book_id=book_id, chapter_ref=ch.chapter_id,
+                    snapshot=run_snapshot, cfg_hash=run_cfg_hash,
+                    base_version=run_base_version, outcome="succeeded", result=result,
+                    run_id=run_id,
+                )
+                await _advance_cursor_and_emit_run(
                     pool, job.user_id, job.job_id,
                     {"last_chapter_id": ch.chapter_id, "scope": "chapters"},
+                    run_payload,
                 )
                 # D-K16.11-01: bump per-project monthly + all-time spend
                 # counters so CostSummary's GET /costs reflects reality.
@@ -985,12 +1430,14 @@ async def process_job(
                 # the LLM, then persist-pass2 writes the source row for
                 # idempotency. Will be fleshed out when chat-service
                 # exposes a message-text endpoint.
-                result = await _extract_and_persist(
+                # Q4b-feed: chat turns aren't sampled (no source text yet);
+                # candidates ignored.
+                result, _ = await _extract_and_persist(
                     knowledge_client=knowledge_client,
                     llm_client=llm_client,
                     user_id=job.user_id,
                     project_id=job.project_id,
-                    source_type="chat_turn",
+                    source_type="chat_message",
                     source_id=str(turn["aggregate_id"]),
                     job_id=job.job_id,
                     model_ref=job.llm_model,

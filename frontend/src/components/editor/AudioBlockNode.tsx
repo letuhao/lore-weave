@@ -6,6 +6,7 @@ import {
 } from '@tiptap/react';
 import { Music, Upload, Loader2, Lock, Trash2, Replace, Play, Pause } from 'lucide-react';
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { booksApi } from '@/features/books/api';
 import { getUploadContext } from './ImageBlockNode';
@@ -89,12 +90,12 @@ export const AudioBlockExtension = Node.create({
 });
 
 // --- Validation ---
-function validateAudioFile(file: File): string | null {
+function validateAudioFile(file: File): { key: string; params?: Record<string, unknown> } | null {
   if (!ALLOWED_AUDIO_TYPES.has(file.type)) {
-    return `Unsupported type: ${file.type}. Use MP3, WAV, OGG, WebM, or M4A.`;
+    return { key: 'audio.err_type', params: { type: file.type } };
   }
   if (file.size > MAX_AUDIO_SIZE) {
-    return `File too large: ${(file.size / 1024 / 1024).toFixed(1)} MB. Max 20 MB.`;
+    return { key: 'audio.err_size', params: { size: (file.size / 1024 / 1024).toFixed(1) } };
   }
   return null;
 }
@@ -116,11 +117,12 @@ function formatSize(bytes: number | null): string {
 
 // --- NodeView component ---
 function AudioBlockNodeView({ node, updateAttributes, selected, editor, deleteNode }: NodeViewProps) {
+  const { t } = useTranslation('editor');
   const editorMode = ((editor.storage as any).mediaGuard?.editorMode as string) || 'ai';
   const isClassic = editorMode === 'classic';
   const src = node.attrs.src as string | null;
   const subtitle = (node.attrs.subtitle as string) || '';
-  const title = (node.attrs.title as string) || 'Audio';
+  const title = (node.attrs.title as string) || t('audio.default_title');
   const durationMs = node.attrs.duration_ms as number | null;
   const sizeBytes = node.attrs.size_bytes as number | null;
   const [uploading, setUploading] = useState(false);
@@ -157,12 +159,12 @@ function AudioBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
     async (file: File) => {
       const err = validateAudioFile(file);
       if (err) {
-        setUploadError(err);
+        setUploadError(t(err.key, err.params));
         return;
       }
       const ctx = getUploadContext();
       if (!ctx) {
-        setUploadError('Upload not available — save the chapter first.');
+        setUploadError(t('audio.upload_unavailable'));
         return;
       }
       setUploading(true);
@@ -200,7 +202,7 @@ function AudioBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
           duration_ms: clientDuration || result.duration_ms,
         });
       } catch (e: any) {
-        setUploadError(e.message || 'Upload failed');
+        setUploadError(e.message || t('audio.upload_failed'));
       } finally {
         setUploading(false);
       }
@@ -247,7 +249,7 @@ function AudioBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
             <span className="hidden text-[9px] opacity-50 group-hover:inline">{subtitle}</span>
           )}
           <span className="flex items-center gap-1 rounded bg-card px-1.5 py-0.5 text-[9px]">
-            <Lock className="h-2.5 w-2.5" /> AI mode
+            <Lock className="h-2.5 w-2.5" /> {t('audio.ai_mode')}
           </span>
         </div>
       </NodeViewWrapper>
@@ -281,7 +283,7 @@ function AudioBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
             type="button"
             onClick={togglePlay}
             className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-purple-600 text-white transition hover:bg-purple-500"
-            title={playing ? 'Pause' : 'Play'}
+            title={playing ? t('audio.pause') : t('audio.play')}
           >
             {playing ? <Pause className="h-4 w-4" /> : <Play className="ml-0.5 h-4 w-4" />}
           </button>
@@ -300,7 +302,7 @@ function AudioBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
             <div className="mt-0.5 flex gap-3 text-[9px] text-muted-foreground">
               {durationMs != null && <span>{formatDuration(durationMs)}</span>}
               {sizeBytes != null && <span>{formatSize(sizeBytes)}</span>}
-              {title && title !== 'Audio' && <span className="truncate">{title}</span>}
+              {title && title !== t('audio.default_title') && <span className="truncate">{title}</span>}
             </div>
           </div>
 
@@ -310,7 +312,7 @@ function AudioBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
               type="button"
               onClick={() => fileInputRef.current?.click()}
               className="rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              title="Replace audio"
+              title={t('audio.replace_title')}
             >
               <Replace className="h-3 w-3" />
             </button>
@@ -318,7 +320,7 @@ function AudioBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
               type="button"
               onClick={() => deleteNode()}
               className="rounded px-1.5 py-0.5 text-[9px] text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-              title="Delete audio block"
+              title={t('audio.delete_audio_block')}
             >
               <Trash2 className="h-3 w-3" />
             </button>
@@ -345,7 +347,7 @@ function AudioBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
           {uploading ? (
             <>
               <Loader2 className="h-6 w-6 animate-spin text-purple-500" />
-              <span className="text-xs">Uploading... {uploadPct}%</span>
+              <span className="text-xs">{t('audio.uploading', { pct: uploadPct })}</span>
               <div className="mx-8 h-1.5 w-48 overflow-hidden rounded-full bg-secondary">
                 <div
                   className="h-full rounded-full bg-purple-500 transition-all"
@@ -357,9 +359,9 @@ function AudioBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
             <>
               <Upload className="h-6 w-6 opacity-40" />
               <span className="text-xs font-medium">
-                {dragOver ? 'Drop audio here' : 'Drop an audio file or click to browse'}
+                {dragOver ? t('audio.drop_here') : t('audio.drop_hint')}
               </span>
-              <span className="text-[9px] opacity-50">MP3, WAV, OGG, WebM, M4A — Max 20 MB</span>
+              <span className="text-[9px] opacity-50">{t('audio.formats')}</span>
             </>
           )}
           {uploadError && (
@@ -378,9 +380,9 @@ function AudioBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
           type="text"
           value={subtitle}
           onChange={(e) => updateAttributes({ subtitle: e.target.value })}
-          placeholder="Add a subtitle..."
+          placeholder={t('audio.subtitle_placeholder')}
           className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground/40"
-          aria-label="Audio subtitle"
+          aria-label={t('audio.subtitle_aria')}
         />
         {durationMs != null && (
           <span className="flex-shrink-0 text-[9px] text-muted-foreground">

@@ -6,6 +6,10 @@ python-json-logger>=2.0
 # P3 D-P3-WORKER-AI-CONSUMER-WIRING — Redis Stream consumer for the
 # extraction.summarize job feed. Async client only (sync API unused).
 redis>=5.0
+# Cycle 73h D-WORKER-AI-METRICS-INFRA — Prometheus client for the
+# worker_ai_filter_reload_total counter + /metrics scrape endpoint
+# (built-in WSGI server via start_http_server; runs alongside asyncio).
+prometheus-client>=0.20
 
 # Phase 4b-γ: loreweave_llm + loreweave_extraction SDKs are installed
 # via Dockerfile COPY of sdks/python (build context is repo root).

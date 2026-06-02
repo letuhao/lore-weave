@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
@@ -9,6 +10,7 @@ import { TranslationViewer } from '@/features/translation/components/Translation
 import { SplitCompareView } from '@/features/translation/components/SplitCompareView';
 
 export function ChapterTranslationsPage() {
+  const { t } = useTranslation('translation');
   const { bookId = '', chapterId = '' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const { accessToken } = useAuth();
@@ -37,7 +39,7 @@ export function ChapterTranslationsPage() {
       ]);
 
       const ch = chaptersRes.items?.find((c: any) => c.chapter_id === chapterId) as any;
-      setChapterTitle(ch?.title || `Chapter ${ch?.sort_order ?? '?'}`);
+      setChapterTitle(ch?.title || t('page.chapter_fallback', { n: ch?.sort_order ?? '?' }));
       setOriginalLanguage(ch?.original_language);
       setWordCount(ch?.word_count_estimate as number | undefined);
       setLanguages(versionsRes.languages);
@@ -51,7 +53,7 @@ export function ChapterTranslationsPage() {
         setSearchParams((p) => { p.set('lang', best.target_language); return p; }, { replace: true });
       }
     } catch (e) {
-      toast.error(`Failed to load: ${(e as Error).message}`);
+      toast.error(t('page.load_failed', { error: (e as Error).message }));
     } finally {
       setLoading(false);
     }
@@ -148,11 +150,11 @@ export function ChapterTranslationsPage() {
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Breadcrumb */}
         <div className="flex items-center gap-1.5 border-b border-border px-5 py-2.5 text-xs text-muted-foreground shrink-0">
-          <Link to={`/books/${bookId}`} className="text-accent hover:underline">Book</Link>
+          <Link to={`/books/${bookId}`} className="text-accent hover:underline">{t('page.breadcrumb_book')}</Link>
           <span>&rsaquo;</span>
-          <Link to={`/books/${bookId}`} className="text-accent hover:underline">Chapters</Link>
+          <Link to={`/books/${bookId}`} className="text-accent hover:underline">{t('page.breadcrumb_chapters')}</Link>
           <span>&rsaquo;</span>
-          <span className="text-foreground">{chapterTitle} &mdash; Translations</span>
+          <span className="text-foreground">{chapterTitle} &mdash; {t('page.translations')}</span>
         </div>
 
         {selectedLang === null ? (
@@ -162,13 +164,13 @@ export function ChapterTranslationsPage() {
           // No versions for this language
           <div className="flex flex-1 items-center justify-center">
             <div className="text-center">
-              <p className="text-sm text-muted-foreground">No translations for this language yet.</p>
+              <p className="text-sm text-muted-foreground">{t('page.no_translations_yet')}</p>
               <button
                 type="button"
                 onClick={() => setTranslateOpen(true)}
                 className="mt-3 rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:brightness-110"
               >
-                Translate Now
+                {t('page.translate_now')}
               </button>
             </div>
           </div>
@@ -199,6 +201,7 @@ export function ChapterTranslationsPage() {
 // ── OriginalViewer ──────────────────────────────────────────────────────────
 
 function OriginalViewer({ bookId, chapterId }: { bookId: string; chapterId: string }) {
+  const { t } = useTranslation('translation');
   const { accessToken } = useAuth();
   const [body, setBody] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -208,7 +211,7 @@ function OriginalViewer({ bookId, chapterId }: { bookId: string; chapterId: stri
     let mounted = true;
     booksApi.getDraft(accessToken, bookId, chapterId)
       .then((d) => { if (mounted) setBody(d.text_content || (typeof d.body === 'string' ? d.body : '')); })
-      .catch((e) => { if (mounted) { setBody(null); toast.error(`Failed to load draft: ${(e as Error).message}`); } })
+      .catch((e) => { if (mounted) { setBody(null); toast.error(t('page.load_draft_failed', { error: (e as Error).message })); } })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, [accessToken, bookId, chapterId]);
@@ -228,7 +231,7 @@ function OriginalViewer({ bookId, chapterId }: { bookId: string; chapterId: stri
   if (!body) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-        No draft content available.
+        {t('page.no_draft')}
       </div>
     );
   }
@@ -236,7 +239,7 @@ function OriginalViewer({ bookId, chapterId }: { bookId: string; chapterId: stri
   return (
     <div className="flex-1 overflow-y-auto p-6">
       <div className="mx-auto max-w-[680px]">
-        <p className="mb-3 text-[11px] font-medium text-primary">Original Draft</p>
+        <p className="mb-3 text-[11px] font-medium text-primary">{t('page.original_draft')}</p>
         <div className="whitespace-pre-wrap font-serif text-[15px] leading-[2.0] text-foreground/85">
           {body}
         </div>

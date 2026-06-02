@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { BookOpen, FileText, MessageSquare, Search, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -21,17 +22,18 @@ function sortItems(items: TrashItem[], sort: SortKey): TrashItem[] {
   }
 }
 
-const TAB_DEFS: { value: TrashType; label: string; icon: React.ReactNode }[] = [
-  { value: 'book',    label: 'Books',         icon: <BookOpen className="h-3.5 w-3.5" /> },
-  { value: 'chapter', label: 'Chapters',      icon: <FileText className="h-3.5 w-3.5" /> },
+const TAB_DEFS: { value: TrashType; labelKey: string; icon: React.ReactNode }[] = [
+  { value: 'book',    labelKey: 'trash.tabs.books',    icon: <BookOpen className="h-3.5 w-3.5" /> },
+  { value: 'chapter', labelKey: 'trash.tabs.chapters', icon: <FileText className="h-3.5 w-3.5" /> },
   {
-    value: 'glossary', label: 'Glossary',
+    value: 'glossary', labelKey: 'trash.tabs.glossary',
     icon: <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 01-1.806-1.741L3.842 10.1a2 2 0 011.075-2.029l1.29-.645a6 6 0 013.86-.517l.318.158a6 6 0 003.86.517l2.387-.477a2 2 0 012.368 2.367l-.402 2.814a2 2 0 01-.77 1.34z" /></svg>,
   },
-  { value: 'chat',    label: 'Chat Sessions', icon: <MessageSquare className="h-3.5 w-3.5" /> },
+  { value: 'chat',    labelKey: 'trash.tabs.chat',     icon: <MessageSquare className="h-3.5 w-3.5" /> },
 ];
 
 export function TrashPage() {
+  const { t } = useTranslation('books');
   const { items: allItems, counts, isLoading, restoreItem, purgeItem } = useTrashItems();
   const [activeTab, setActiveTab] = useState<TrashType>('book');
   const [search, setSearch] = useState('');
@@ -70,9 +72,9 @@ export function TrashPage() {
     try {
       await restoreItem(item);
       setSelected((prev) => { const n = new Set(prev); n.delete(item.id); return n; });
-      toast.success(`Restored "${item.title}"`);
+      toast.success(t('trash.restored_one', { title: item.title }));
     } catch (e) {
-      toast.error(`Restore failed: ${(e as Error).message}`);
+      toast.error(t('trash.restore_failed', { error: (e as Error).message }));
     } finally { setActionLoading(false); }
   }
 
@@ -83,7 +85,7 @@ export function TrashPage() {
     for (const item of items) { try { await restoreItem(item); restored++; } catch {} }
     setSelected(new Set());
     setActionLoading(false);
-    toast.success(`Restored ${restored} item${restored !== 1 ? 's' : ''}`);
+    toast.success(t('trash.restored_n', { count: restored }));
   }
 
   async function executePurge() {
@@ -94,7 +96,7 @@ export function TrashPage() {
     setSelected((prev) => { const n = new Set(prev); for (const item of confirmPurge) n.delete(item.id); return n; });
     setConfirmPurge(null);
     setActionLoading(false);
-    toast.success(`Permanently deleted ${purged} item${purged !== 1 ? 's' : ''}`);
+    toast.success(t('trash.purged_n', { count: purged }));
   }
 
   return (
@@ -104,14 +106,14 @@ export function TrashPage() {
         <div>
           <div className="flex items-center gap-2.5">
             <Trash2 className="h-5 w-5 text-muted-foreground" />
-            <h1 className="text-lg font-semibold">Recycle Bin</h1>
+            <h1 className="text-lg font-semibold">{t('trash.title')}</h1>
           </div>
           <p className="ml-[30px] mt-1 text-xs text-muted-foreground">
-            Items here will be permanently deleted after 30 days.
+            {t('trash.subtitle')}
           </p>
         </div>
         <Link to="/books" className="text-[13px] text-muted-foreground hover:text-foreground">
-          &larr; Back to Workspace
+          &larr; {t('trash.back')}
         </Link>
       </div>
 
@@ -131,7 +133,7 @@ export function TrashPage() {
               )}
             >
               {tab.icon}
-              {tab.label}
+              {t(tab.labelKey)}
               {counts[tab.value] > 0 && (
                 <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                   {counts[tab.value]}
@@ -145,7 +147,7 @@ export function TrashPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search trash…"
+            placeholder={t('trash.search')}
             className="h-8 w-[200px] rounded-md border bg-input pl-8 pr-3 text-[13px] text-foreground placeholder:text-muted-foreground/60 focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
           />
         </div>
@@ -162,7 +164,7 @@ export function TrashPage() {
             className="h-4 w-4 cursor-pointer rounded border-border bg-input accent-primary"
           />
           <span className="text-xs text-muted-foreground">
-            {tabItems.length} item{tabItems.length !== 1 ? 's' : ''}
+            {t('trash.item_count', { count: tabItems.length })}
           </span>
         </div>
         <select
@@ -170,9 +172,9 @@ export function TrashPage() {
           onChange={(e) => setSort(e.target.value as SortKey)}
           className="h-7 rounded-md border bg-input px-2 text-xs text-muted-foreground outline-none"
         >
-          <option value="newest">Newest first</option>
-          <option value="oldest">Oldest first</option>
-          <option value="name">Name A-Z</option>
+          <option value="newest">{t('trash.sort.newest')}</option>
+          <option value="oldest">{t('trash.sort.oldest')}</option>
+          <option value="name">{t('trash.sort.name')}</option>
         </select>
       </div>
 
@@ -206,9 +208,9 @@ export function TrashPage() {
       {!isLoading && tabItems.length === 0 && (
         <div className="flex flex-col items-center justify-center gap-3 py-16">
           <Trash2 className="h-12 w-12 text-muted-foreground/20" />
-          <p className="text-sm font-medium">Trash is empty</p>
+          <p className="text-sm font-medium">{t('trash.empty')}</p>
           <p className="text-xs text-muted-foreground">
-            {search ? 'No items match your search.' : 'Deleted items will appear here for 30 days before permanent removal.'}
+            {search ? t('trash.empty_search') : t('trash.empty_hint')}
           </p>
         </div>
       )}
@@ -226,14 +228,14 @@ export function TrashPage() {
       <ConfirmDialog
         open={confirmPurge !== null}
         onOpenChange={(open) => { if (!open) setConfirmPurge(null); }}
-        title="Delete permanently?"
+        title={t('trash.purge_confirm.title')}
         description={
           confirmPurge?.length === 1
-            ? `"${confirmPurge[0].title}" will be permanently deleted. This cannot be undone.`
-            : `${confirmPurge?.length ?? 0} items will be permanently deleted. This cannot be undone.`
+            ? t('trash.purge_confirm.one', { title: confirmPurge[0].title })
+            : t('trash.purge_confirm.many', { count: confirmPurge?.length ?? 0 })
         }
-        confirmLabel={actionLoading ? 'Deleting…' : 'Delete Permanently'}
-        cancelLabel="Cancel"
+        confirmLabel={actionLoading ? t('trash.purge_confirm.deleting') : t('trash.purge_confirm.confirm')}
+        cancelLabel={t('trash.purge_confirm.cancel')}
         variant="destructive"
         onConfirm={() => void executePurge()}
       />

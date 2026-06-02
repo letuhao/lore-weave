@@ -30,6 +30,7 @@ func TestIsStreamableOperation_WhitelistedOps(t *testing.T) {
 		"relation_extraction",
 		"event_extraction",
 		"fact_extraction", // Phase 4a-β
+		"translation",     // chat-shaped; wired 2026-05-31 after TR-4 caught it gated
 	}
 	for _, op := range cases {
 		if !isStreamableOperation(op) {
@@ -45,13 +46,14 @@ func TestIsStreamableOperation_RejectsNonStreamable(t *testing.T) {
 	//   - stt, tts → audioJobOperations (adapter.Transcribe/Speak)
 	//   - image_gen → imageJobOperations (adapter.GenerateImage)
 	//   - video_gen → videoJobOperations (adapter.GenerateVideo)
-	//   - embedding, translation → not yet wired (LLM_OPERATION_NOT_SUPPORTED
-	//     at the worker until their dedicated adapters land)
+	//   - embedding → not yet wired (LLM_OPERATION_NOT_SUPPORTED at the worker
+	//     until its dedicated adapter lands; different upstream HTTP shape)
 	// Either way, isStreamableOperation MUST return false for all of these
 	// so they don't accidentally route through the chat aggregator.
+	// (translation is NOT here — it is chat-shaped and now streamable; see
+	// TestIsStreamableOperation_WhitelistedOps.)
 	cases := []string{
 		"embedding",
-		"translation",
 		"stt",
 		"tts",
 		"image_gen",

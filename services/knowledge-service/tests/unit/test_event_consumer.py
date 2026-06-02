@@ -24,6 +24,44 @@ def pool():
     return AsyncMock()
 
 
+@pytest.mark.asyncio
+async def test_run_continues_on_idle_timeout(monkeypatch):
+    """D-REDIS8-CONSUMERS: redis-py 8 makes a blocking XREADGROUP(block=) raise
+    TimeoutError on idle (5.x returned empty). TimeoutError is NOT a
+    ConnectionError subclass, so without an explicit catch it fell to the generic
+    handler (ERROR log + 2s sleep) on every idle tick. The loop must treat it as
+    normal idle: continue, no ERROR, keep reading."""
+    import redis.asyncio as aioredis
+
+    consumer = EventConsumer("redis://x", AsyncMock(), MagicMock())
+    fake_r = AsyncMock()
+    monkeypatch.setattr(consumer, "_ensure_groups", AsyncMock())
+    monkeypatch.setattr(consumer, "_process_pending", AsyncMock())
+    monkeypatch.setattr(consumer, "_ensure_redis", AsyncMock(return_value=fake_r))
+
+    calls = {"n": 0}
+
+    async def _xread(*a, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise aioredis.TimeoutError("Timeout reading from redis:6379")
+        consumer._running = False  # stop after the 2nd (post-timeout) read
+        return []
+
+    fake_r.xreadgroup = AsyncMock(side_effect=_xread)
+
+    err_logged = []
+    monkeypatch.setattr(
+        "app.events.consumer.logger.exception",
+        lambda *a, **k: err_logged.append(a),
+    )
+
+    await consumer.run()
+
+    assert calls["n"] == 2  # continued past the idle TimeoutError to a 2nd read
+    assert err_logged == []  # TimeoutError did NOT hit the generic ERROR handler
+
+
 def test_parse_event():
     """Consumer correctly parses Redis Stream fields."""
     consumer = EventConsumer.__new__(EventConsumer)

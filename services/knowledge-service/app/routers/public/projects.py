@@ -16,6 +16,7 @@ returns None which we map to 404.
 """
 
 import base64
+import hashlib
 import re
 from datetime import datetime
 from uuid import UUID
@@ -26,12 +27,35 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.clients.embedding_client import EmbeddingError, probe_embedding_dimension
-from app.db.models import Project, ProjectCreate, ProjectUpdate
+from app.db.models import (
+    Project,
+    ProjectCreate,
+    ProjectExtractionConfigUpdate,
+    ProjectUpdate,
+)
 from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.projects import ProjectsRepo
 from app.deps import get_projects_repo
+from app.events.outbox_emit import config_adjustment_payload, emit_config_adjustment
 from app.middleware.jwt_auth import get_current_user
+
+# B2-B-b1 — the top-level extraction-config targets we diff + emit adjustments
+# for. Order is stable so emitted events are deterministic.
+_EXTRACTION_CONFIG_TARGETS = (
+    "llm_model",
+    "precision_filter",
+    "entity_recovery",
+    "writer_autocreate",
+)
+
+
+def _prompt_hash(text: str | None) -> str | None:
+    """sha256 of a custom prompt's system text (or None). Used so the raw text
+    never crosses to learning-service — only its identity (DESIGN Q5)."""
+    if not text:
+        return None
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 # D-K8-03: accept `If-Match: W/"<version>"` or `If-Match: "<version>"`
 # or even the bare integer. Strict about the quoted form but tolerant
@@ -311,6 +335,98 @@ async def patch_project(
         )
     if updated is None:
         raise _not_found()
+    response.headers["ETag"] = _etag(updated.version)
+    return updated
+
+
+@router.put("/{project_id}/extraction-config", response_model=Project)
+async def put_extraction_config(
+    project_id: UUID,
+    body: ProjectExtractionConfigUpdate,
+    response: Response,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    user_id: UUID = Depends(get_current_user),
+    repo: ProjectsRepo = Depends(get_projects_repo),
+) -> Project:
+    """B2-B-b1 — replace a project's per-novel extraction tuning (structural
+    subset; raw-prompt editing is the separate b2 surface).
+
+    Dedicated sub-resource (not generic PATCH) because the write has side
+    effects: it drives the extraction pipeline AND emits a `config_adjusted`
+    analytics event per changed target. PUT semantics: the body REPLACES the
+    stored config; omit a sub-object to drop that override. Out-of-subset keys
+    are rejected by the model's `extra='forbid'` → 422. If-Match required (428);
+    version mismatch → 412 with the current row.
+    """
+    expected_version = _parse_if_match(if_match)
+    if expected_version is None:
+        raise HTTPException(
+            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+            detail="If-Match header required — GET the row first to obtain an ETag",
+        )
+
+    current = await repo.get(user_id, project_id)
+    if current is None:
+        raise _not_found()
+
+    # New config = the non-None, non-empty fields of the body (PUT replace).
+    new_config = {
+        k: v for k, v in body.model_dump(exclude_none=True).items() if v
+    }
+    old_config = current.extraction_config or {}
+
+    try:
+        updated = await repo.update_extraction_config(
+            user_id, project_id, new_config, expected_version=expected_version,
+        )
+    except VersionMismatchError as exc:
+        assert isinstance(exc.current, Project)
+        return JSONResponse(
+            status_code=status.HTTP_412_PRECONDITION_FAILED,
+            content=exc.current.model_dump(mode="json"),
+            headers={"ETag": _etag(exc.current.version)},
+        )
+    if updated is None:
+        raise _not_found()
+
+    # Emit one best-effort config_adjusted event per changed STRUCTURAL target
+    # (analytics; never fails the edit — DESIGN Q3).
+    for target in _EXTRACTION_CONFIG_TARGETS:
+        before = old_config.get(target)
+        after = new_config.get(target)
+        if before != after:
+            await emit_config_adjustment(
+                aggregate_id=str(project_id),
+                payload=config_adjustment_payload(
+                    user_id=str(user_id),
+                    project_id=str(project_id),
+                    actor_id=str(user_id),
+                    target=target,
+                    before_structural=before,
+                    after_structural=after,
+                ),
+            )
+
+    # B2-B-b2 — raw-prompt targets: emit per changed op with a CONTENT-HASH of
+    # the system text (never the raw text — DESIGN Q5 redact-by-default).
+    old_prompts = old_config.get("prompts") or {}
+    new_prompts = new_config.get("prompts") or {}
+    for op in sorted(set(old_prompts) | set(new_prompts)):
+        before_sys = (old_prompts.get(op) or {}).get("system")
+        after_sys = (new_prompts.get(op) or {}).get("system")
+        if before_sys != after_sys:
+            await emit_config_adjustment(
+                aggregate_id=str(project_id),
+                payload=config_adjustment_payload(
+                    user_id=str(user_id),
+                    project_id=str(project_id),
+                    actor_id=str(user_id),
+                    target=f"prompts.{op}",
+                    before_content_hash=_prompt_hash(before_sys),
+                    after_content_hash=_prompt_hash(after_sys),
+                ),
+            )
+
     response.headers["ETag"] = _etag(updated.version)
     return updated
 

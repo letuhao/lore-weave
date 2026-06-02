@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Save, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
@@ -17,6 +18,7 @@ const LANGUAGES = [
 ];
 
 export function TranslationTab() {
+  const { t } = useTranslation('settings');
   const { accessToken } = useAuth();
   const [prefs, setPrefs] = useState<UserTranslationPreferences | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,7 +49,7 @@ export function TranslationTab() {
       setSystemPrompt(p.system_prompt);
       setUserPromptTpl(p.user_prompt_tpl);
     }).catch(() => {
-      if (!cancelled) toast.error('Failed to load translation preferences');
+      if (!cancelled) toast.error(t('translation.toast.load_failed'));
     }).finally(() => {
       if (!cancelled) setLoading(false);
     });
@@ -84,7 +86,7 @@ export function TranslationTab() {
 
     // Validate user_prompt_tpl contains {chapter_text}
     if (!userPromptTpl.includes('{chapter_text}')) {
-      toast.error('User prompt template must contain {chapter_text}');
+      toast.error(t('translation.toast.tpl_needs_chapter'));
       return;
     }
 
@@ -98,9 +100,9 @@ export function TranslationTab() {
         user_prompt_tpl: userPromptTpl,
       });
       setPrefs(updated);
-      toast.success('Translation defaults saved');
+      toast.success(t('translation.toast.saved'));
     } catch (e) {
-      toast.error((e as Error).message || 'Failed to save translation preferences');
+      toast.error((e as Error).message || t('translation.toast.save_failed'));
     } finally {
       setSaving(false);
     }
@@ -129,16 +131,16 @@ export function TranslationTab() {
   return (
     <div>
       <div className="border-b py-5">
-        <h2 className="text-sm font-semibold">Translation Defaults</h2>
-        <p className="mb-4 text-xs text-muted-foreground">Default settings for new translation jobs.</p>
+        <h2 className="text-sm font-semibold">{t('translation.heading')}</h2>
+        <p className="mb-4 text-xs text-muted-foreground">{t('translation.subtitle')}</p>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs font-medium">Default Target Language</label>
+            <label className="mb-1 block text-xs font-medium">{t('translation.target_lang')}</label>
             <select
               value={targetLang}
               onChange={(e) => setTargetLang(e.target.value)}
-              aria-label="Default target language"
+              aria-label={t('translation.target_lang_aria')}
               className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
             >
               {LANGUAGES.map((l) => (
@@ -148,14 +150,14 @@ export function TranslationTab() {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-medium">Default Model</label>
+            <label className="mb-1 block text-xs font-medium">{t('translation.default_model')}</label>
             {loadingModels ? (
               <div className="flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-[13px] text-muted-foreground">
-                <Loader2 className="h-3 w-3 animate-spin" /> Loading models...
+                <Loader2 className="h-3 w-3 animate-spin" /> {t('translation.loading_models')}
               </div>
             ) : userModels.length === 0 ? (
               <div className="rounded-md border border-dashed bg-background px-3 py-2 text-xs text-muted-foreground">
-                No models configured. Add models in the <strong>Model Providers</strong> tab first.
+                {t('translation.no_models')}
               </div>
             ) : (
               <select
@@ -165,10 +167,10 @@ export function TranslationTab() {
                   setModelRef(e.target.value);
                   if (model) setModelSource('user_model');
                 }}
-                aria-label="Default translation model"
+                aria-label={t('translation.model_aria')}
                 className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
               >
-                <option value="">— Select a model —</option>
+                <option value="">{t('translation.select_model')}</option>
                 {Array.from(modelsByProvider.entries()).map(([provId, models]) => {
                   const prov = providers.find((p) => p.provider_credential_id === provId);
                   return (
@@ -192,32 +194,32 @@ export function TranslationTab() {
         </div>
 
         <div className="mt-4">
-          <label className="mb-1 block text-xs font-medium">System Prompt Template</label>
+          <label className="mb-1 block text-xs font-medium">{t('translation.system_prompt_tpl')}</label>
           <textarea
             value={systemPrompt}
             onChange={(e) => setSystemPrompt(e.target.value)}
             rows={4}
-            placeholder="You are a professional {source_language}-to-{target_language} translator..."
-            aria-label="System prompt template"
+            placeholder={t('translation.system_prompt_ph')}
+            aria-label={t('translation.system_prompt_tpl')}
             className="w-full resize-y rounded-md border bg-background px-3 py-2 text-xs leading-relaxed focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
           />
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Variables: {'{source_language}'}, {'{target_language}'}, {'{book_title}'}, {'{glossary_context}'}
+            {t('translation.variables')} {'{source_language}'}, {'{target_language}'}, {'{book_title}'}, {'{glossary_context}'}
           </p>
         </div>
 
         <div className="mt-4">
-          <label className="mb-1 block text-xs font-medium">User Prompt Template</label>
+          <label className="mb-1 block text-xs font-medium">{t('translation.user_prompt_tpl')}</label>
           <textarea
             value={userPromptTpl}
             onChange={(e) => setUserPromptTpl(e.target.value)}
             rows={3}
-            placeholder={'Translate the following text to {target_language}:\n\n{chapter_text}'}
-            aria-label="User prompt template"
+            placeholder={t('translation.user_prompt_ph')}
+            aria-label={t('translation.user_prompt_tpl')}
             className="w-full resize-y rounded-md border bg-background px-3 py-2 text-xs leading-relaxed focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
           />
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Must contain {'{chapter_text}'}. Variables: {'{chapter_text}'}, {'{target_language}'}, {'{source_language}'}
+            {t('translation.must_contain')} {t('translation.variables')} {'{chapter_text}'}, {'{target_language}'}, {'{source_language}'}
           </p>
         </div>
 
@@ -228,7 +230,7 @@ export function TranslationTab() {
             className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
           >
             <Save className="h-3 w-3" />
-            {saving ? 'Saving...' : 'Save Defaults'}
+            {saving ? t('translation.saving') : t('translation.save_defaults')}
           </button>
         </div>
       </div>

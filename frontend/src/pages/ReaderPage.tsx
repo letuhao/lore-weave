@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Menu, X, ChevronLeft, ChevronRight, Pencil, Volume2, Sun } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Book, type Chapter } from '@/features/books/api';
@@ -39,6 +40,7 @@ function computeReadingStats(blocks: JSONContent[], language?: string) {
 }
 
 export function ReaderPage() {
+  const { t } = useTranslation('reader');
   const { bookId = '', chapterId = '' } = useParams();
   const { accessToken, user } = useAuth();
   // GA4-style reading tracker — zero re-renders, flushes via sendBeacon
@@ -55,7 +57,7 @@ export function ReaderPage() {
   const [ttsSettingsOpen, setTtsSettingsOpen] = useState(false);
   const [showIndices, setShowIndices] = useState(() => localStorage.getItem('lw_reader_indices') === 'true');
   const [loading, setLoading] = useState(true);
-  const [autoNextEnabled] = useState(() => localStorage.getItem('lw_reader_auto_next') !== 'false');
+  const [autoNextEnabled, setAutoNextEnabled] = useState(() => localStorage.getItem('lw_reader_auto_next') !== 'false');
   const [autoScrollTTS, setAutoScrollTTS] = useState(() => localStorage.getItem('lw_reader_tts_scroll') !== 'false');
   const [autoNextCountdown, setAutoNextCountdown] = useState<number | null>(null);
   const chapterEndRef = useRef<HTMLDivElement>(null);
@@ -252,7 +254,7 @@ export function ReaderPage() {
     return () => window.removeEventListener('keydown', handler);
   }, [tocOpen, themeOpen, anyOverlayOpen, prevCh, nextCh, bookId, navigate]);
 
-  if (loading) return <div className="flex h-screen items-center justify-center text-sm text-muted-foreground">Loading...</div>;
+  if (loading) return <div className="flex h-screen items-center justify-center text-sm text-muted-foreground">{t('loading')}</div>;
 
   return (
     <div className="relative flex h-screen flex-col" style={{ background: readerTheme.bg }}>
@@ -273,7 +275,7 @@ export function ReaderPage() {
           <span className="text-xs text-muted-foreground">
             <span className="font-medium text-foreground">{book?.title}</span>
             <span className="mx-1.5 text-border">/</span>
-            Chapter {currentIdx + 1} of {chapters.length}
+            {t('chapter_of', { current: currentIdx + 1, total: chapters.length })}
           </span>
         </div>
         <div className="flex gap-1">
@@ -281,20 +283,20 @@ export function ReaderPage() {
           <button
             onClick={handleStartTTS}
             className={`rounded p-1.5 transition-colors ${ttsState.status !== 'idle' ? 'bg-purple-500/15 text-purple-400' : 'text-muted-foreground hover:bg-secondary'}`}
-            title={ttsState.status !== 'idle' ? 'Stop reading' : 'Read aloud'}
+            title={ttsState.status !== 'idle' ? t('stop_reading') : t('read_aloud')}
           >
             <Volume2 className="h-4 w-4" />
           </button>
           {/* Theme customizer toggle */}
-          <button onClick={() => { setThemeOpen((v) => !v); setTocOpen(false); }} className={`rounded p-1.5 transition-colors ${themeOpen ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary'}`} title="Reading theme">
+          <button onClick={() => { setThemeOpen((v) => !v); setTocOpen(false); }} className={`rounded p-1.5 transition-colors ${themeOpen ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-secondary'}`} title={t('reading_theme')}>
             <Sun className="h-4 w-4" />
           </button>
           {accessToken && user && book?.owner_user_id === user.user_id && (
-            <Link to={`/books/${bookId}/chapters/${chapterId}/edit`} className="rounded p-1.5 text-muted-foreground hover:bg-secondary" title="Edit this chapter">
+            <Link to={`/books/${bookId}/chapters/${chapterId}/edit`} className="rounded p-1.5 text-muted-foreground hover:bg-secondary" title={t('edit_chapter')}>
               <Pencil className="h-4 w-4" />
             </Link>
           )}
-          <Link to={`/books/${bookId}`} className="rounded p-1.5 text-muted-foreground hover:bg-secondary" title="Back to book">
+          <Link to={`/books/${bookId}`} className="rounded p-1.5 text-muted-foreground hover:bg-secondary" title={t('back_to_book')}>
             <X className="h-4 w-4" />
           </Link>
         </div>
@@ -322,6 +324,17 @@ export function ReaderPage() {
         onClose={() => setThemeOpen(false)}
         showIndices={showIndices}
         onShowIndicesChange={(v) => { setShowIndices(v); localStorage.setItem('lw_reader_indices', String(v)); }}
+        autoNext={autoNextEnabled}
+        onAutoNextChange={(v) => {
+          setAutoNextEnabled(v);
+          localStorage.setItem('lw_reader_auto_next', String(v));
+          if (!v) setAutoNextCountdown(null); // cancel any pending auto-advance
+        }}
+        autoScrollTTS={autoScrollTTS}
+        onAutoScrollTTSChange={(v) => {
+          setAutoScrollTTS(v);
+          localStorage.setItem('lw_reader_tts_scroll', String(v));
+        }}
       />
 
       {/* Reading area — reader theme applied here, chrome stays on app theme */}
@@ -330,15 +343,15 @@ export function ReaderPage() {
 
           {/* Chapter header */}
           <div className="chapter-header">
-            <p className="ch-label">Chapter {currentIdx + 1}</p>
+            <p className="ch-label">{t('chapter_label', { n: currentIdx + 1 })}</p>
             {(chapter?.title || chapter?.original_filename) && (
               <h1 className="ch-title">{chapter?.title || chapter?.original_filename}</h1>
             )}
             <div className="ch-divider" />
             <div className="ch-meta">
-              <span>{stats.count} {stats.unit}</span>
+              <span>{stats.count} {t(stats.unit)}</span>
               <span style={{ color: 'var(--border)' }}>&middot;</span>
-              <span>~{stats.minutes} min read</span>
+              <span>{t('min_read', { minutes: stats.minutes })}</span>
               {chapterLang && (
                 <>
                   <span style={{ color: 'var(--border)' }}>&middot;</span>
@@ -352,7 +365,7 @@ export function ReaderPage() {
 
           {/* Chapter content — ContentRenderer */}
           {langLoading && (
-            <div className="mb-6 text-center text-xs text-muted-foreground animate-pulse">Loading translation...</div>
+            <div className="mb-6 text-center text-xs text-muted-foreground animate-pulse">{t('loading_translation')}</div>
           )}
           {blocks.length > 0 ? (
             <ContentRenderer
@@ -364,23 +377,23 @@ export function ReaderPage() {
             />
           ) : (
             <p className="text-center font-serif text-muted-foreground italic">
-              Empty chapter — nothing written yet.
+              {t('empty_chapter')}
             </p>
           )}
 
           {/* End of chapter marker */}
           <div ref={chapterEndRef} className="chapter-end">
-            <p>End of Chapter {currentIdx + 1}</p>
+            <p>{t('end_of_chapter', { n: currentIdx + 1 })}</p>
             {autoNextCountdown !== null && nextCh && (
               <div className="mt-3 flex flex-col items-center gap-2">
                 <p className="text-xs text-muted-foreground">
-                  Next chapter in {autoNextCountdown}s...
+                  {t('next_in', { seconds: autoNextCountdown })}
                 </p>
                 <button
                   onClick={() => setAutoNextCountdown(null)}
                   className="rounded border px-3 py-1 text-[11px] text-muted-foreground hover:bg-secondary"
                 >
-                  Cancel
+                  {t('cancel')}
                 </button>
               </div>
             )}
@@ -413,15 +426,15 @@ export function ReaderPage() {
       >
         {prevCh ? (
           <Link to={`/books/${bookId}/chapters/${prevCh.chapter_id}/read`} className="inline-flex items-center gap-2 rounded-lg border bg-card px-4 py-2 text-xs transition-colors hover:border-[hsl(var(--border-hover,25_6%_24%))] hover:bg-[hsl(var(--card-hover,25_7%_14%))]">
-            <ChevronLeft className="h-3.5 w-3.5" /> {prevCh.title || `Ch. ${currentIdx}`}
+            <ChevronLeft className="h-3.5 w-3.5" /> {prevCh.title || t('ch_short', { n: currentIdx })}
           </Link>
         ) : <div />}
         <span className="text-[11px] text-muted-foreground">
-          Chapter {currentIdx + 1} of {chapters.length} &middot; {Math.round(progress)}% complete
+          {t('progress', { current: currentIdx + 1, total: chapters.length, percent: Math.round(progress) })}
         </span>
         {nextCh ? (
           <Link to={`/books/${bookId}/chapters/${nextCh.chapter_id}/read`} className="btn-glow inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition-all hover:bg-primary/90">
-            {nextCh.title || `Ch. ${currentIdx + 2}`} <ChevronRight className="h-3.5 w-3.5" />
+            {nextCh.title || t('ch_short', { n: currentIdx + 2 })} <ChevronRight className="h-3.5 w-3.5" />
           </Link>
         ) : <div />}
       </div>

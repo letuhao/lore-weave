@@ -48,6 +48,25 @@ pub struct CreativeSeed {
     /// `#[serde(default)]` = 0.4; clamped to `0.1..=0.9` at use.
     #[serde(default = "default_continental_fraction")]
     pub continental_fraction: f32,
+    /// How strongly continents are spread across latitude bands (`Tectonic`
+    /// mode). `0.0` = the legacy random continental-plate pick (byte-identical);
+    /// `1.0` = farthest-point spread so land covers equator → both poles, for a
+    /// full latitudinal biome gradient (tropics + boreal/polar/tundra). Clamped
+    /// to `0.0..=1.0` at use. `#[serde(default)]` = **0.0** (opt-in — the
+    /// default world is byte-identical to the legacy random placement; the full
+    /// tropics→tundra gradient also needs the v2 seasonality fix, DEFERRED #045).
+    #[serde(default = "default_continent_latitude_spread")]
+    pub continent_latitude_spread: f32,
+    /// Target number of geographic **regions** (L2) per subcontinent in the
+    /// geometric hierarchy (C3 arc). `#[serde(default)]` = 4; clamped to
+    /// `1..=12` at use. A subcontinent with fewer cells than this gets one
+    /// region per cell.
+    #[serde(default = "default_region_subdivision")]
+    pub region_subdivision: u8,
+    /// Target number of **counties** per province (political tier, C-2).
+    /// `#[serde(default)]` = 4; clamped to `1..=8` at use.
+    #[serde(default = "default_county_subdivision")]
+    pub county_subdivision: u8,
 }
 
 fn default_plate_count() -> u8 {
@@ -56,6 +75,18 @@ fn default_plate_count() -> u8 {
 
 fn default_continental_fraction() -> f32 {
     0.4
+}
+
+fn default_continent_latitude_spread() -> f32 {
+    0.0
+}
+
+fn default_region_subdivision() -> u8 {
+    4
+}
+
+fn default_county_subdivision() -> u8 {
+    4
 }
 
 impl Default for CreativeSeed {
@@ -73,6 +104,9 @@ impl Default for CreativeSeed {
             terrain_mode: TerrainMode::Tectonic,
             plate_count: default_plate_count(),
             continental_fraction: default_continental_fraction(),
+            continent_latitude_spread: default_continent_latitude_spread(),
+            region_subdivision: default_region_subdivision(),
+            county_subdivision: default_county_subdivision(),
         }
     }
 }
@@ -384,5 +418,31 @@ mod tests {
             let back: CreativeSeed = serde_json::from_str(&json).expect("deserialize");
             assert_eq!(back.erosion, e);
         }
+    }
+
+    #[test]
+    fn continent_latitude_spread_defaults_when_absent() {
+        // A pre-field config JSON (no `continent_latitude_spread`) must load
+        // with the 0.6 serde default — backward compatibility.
+        let json = r#"{
+            "world_scale": "Continent",
+            "world_archetype": "HighFantasy",
+            "coastline_profile": "Coastal",
+            "hemisphere_orientation": "Northern",
+            "climate_bias": null,
+            "settlement_density": "Medium",
+            "culture_count": 5
+        }"#;
+        let cs: CreativeSeed = serde_json::from_str(json).expect("deserialize pre-field JSON");
+        assert!(
+            cs.continent_latitude_spread.abs() < 1e-6,
+            "expected default 0.0 (opt-in, byte-identical), got {}",
+            cs.continent_latitude_spread
+        );
+        // And an explicit value round-trips.
+        let cs2 = CreativeSeed { continent_latitude_spread: 1.0, ..CreativeSeed::default() };
+        let back: CreativeSeed =
+            serde_json::from_str(&serde_json::to_string(&cs2).unwrap()).unwrap();
+        assert!((back.continent_latitude_spread - 1.0).abs() < 1e-6);
     }
 }

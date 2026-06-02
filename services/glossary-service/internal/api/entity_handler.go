@@ -429,8 +429,12 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			name, kind, aliases, shortDesc = "", "", []string{}, ""
 		}
+		// Phase B: a user-created entity is a "missing-add" correction
+		// (before=nil). The creator is the book owner (verifyBookOwner above),
+		// so actor_id = userID.
 		payload := buildEntityEventPayload(
 			bookID.String(), entityIDStr, name, kind, aliases, shortDesc, "created",
+			"user", userID.String(), nil,
 		)
 		if err := emitEntityUpdatedTx(ctx, tx, createEntityUUID, payload); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "outbox emit failed")
@@ -796,7 +800,24 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 		updateSQL := fmt.Sprintf(
 			"UPDATE glossary_entities SET %s WHERE entity_id = $%d AND book_id = $%d",
 			strings.Join(setClauses, ", "), argN, argN+1)
-		tag, err := s.pool.Exec(ctx, updateSQL, args...)
+
+		// Phase B: PATCH is now transactional so the before/after snapshot is
+		// captured consistently with the UPDATE (no TOCTOU — design §5 /
+		// review-impl MED-3). The glossary.entity_updated event commits
+		// atomically with the edit (transactional outbox, like createEntity).
+		tx, err := s.pool.Begin(ctx)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "begin tx failed")
+			return
+		}
+		defer tx.Rollback(ctx)
+
+		// Capture BEFORE in-tx (FOR-UPDATE-equivalent: the subsequent UPDATE
+		// locks the row, so no concurrent writer can interleave).
+		beforeName, beforeKind, beforeAliases, beforeShortDesc, beforeOK :=
+			loadEntityEventFields(ctx, tx, entityID)
+
+		tag, err := tx.Exec(ctx, updateSQL, args...)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "update failed")
 			return
@@ -805,10 +826,33 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "entity not found")
 			return
 		}
-		// C4 (K14) — entity changed → emit best-effort (already committed
-		// via pool.Exec above; fire-and-forget so a broker hiccup can't
-		// turn a successful PATCH into a 500).
-		s.emitEntityUpdated(ctx, entityID, "updated")
+
+		// Capture AFTER in-tx and emit transactionally. A user PATCH is a
+		// correction by construction (verifyBookOwner above → actor = owner).
+		afterName, afterKind, afterAliases, afterShortDesc, _ :=
+			loadEntityEventFields(ctx, tx, entityID)
+		var before *EntitySnapshot
+		if beforeOK {
+			before = &EntitySnapshot{
+				Name:             beforeName,
+				Kind:             beforeKind,
+				Aliases:          beforeAliases,
+				ShortDescription: beforeShortDesc,
+			}
+		}
+		payload := buildEntityEventPayload(
+			bookID.String(), entityID.String(),
+			afterName, afterKind, afterAliases, afterShortDesc, "updated",
+			"user", userID.String(), before,
+		)
+		if err := emitEntityUpdatedTx(ctx, tx, entityID, payload); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "outbox emit failed")
+			return
+		}
+		if err := tx.Commit(ctx); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")
+			return
+		}
 	}
 
 	detail, err := s.loadEntityDetail(ctx, bookID, entityID)

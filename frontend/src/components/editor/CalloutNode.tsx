@@ -1,5 +1,6 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent } from '@tiptap/react';
+import { useTranslation } from 'react-i18next';
 import { MessageSquareText } from 'lucide-react';
 
 /**
@@ -57,6 +58,7 @@ const CALLOUT_STYLES: Record<string, { border: string; bg: string; icon: string 
 };
 
 function CalloutNodeView({ node, updateAttributes }: any) {
+  const { t } = useTranslation('editor');
   const type = node.attrs.type as string;
   const styles = CALLOUT_STYLES[type] || CALLOUT_STYLES.note;
 
@@ -73,7 +75,7 @@ function CalloutNodeView({ node, updateAttributes }: any) {
         contentEditable={false}
         onClick={cycleType}
         className={`mt-0.5 flex-shrink-0 cursor-pointer rounded p-0.5 transition-colors hover:bg-foreground/10 ${styles.icon}`}
-        title={`${type} — click to change type`}
+        title={t('callout.title', { type: t(`callout.type.${type}`) })}
       >
         <MessageSquareText className="h-4 w-4" />
       </button>

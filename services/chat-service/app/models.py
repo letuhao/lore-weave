@@ -4,7 +4,27 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+# ── Message feedback (Q3 — Production Eval + Feedback Flywheel) ───────────────
+
+
+class MessageFeedbackRequest(BaseModel):
+    """Explicit thumbs (+1/-1) or implicit regenerate-as-negative on a chat
+    turn. ``regenerated_from_message_id`` is set when the FE regenerate flow
+    posts the implicit negative on the original message."""
+
+    rating: int = Field(..., description="+1 thumb up, -1 thumb down")
+    reason: str | None = None
+    regenerated_from_message_id: UUID | None = None
+
+
+class MessageFeedbackResponse(BaseModel):
+    id: str
+    message_id: str
+    rating: int
+    created_at: datetime
 
 
 # ── Sessions ──────────────────────────────────────────────────────────────────

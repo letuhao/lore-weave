@@ -143,6 +143,21 @@ class FakeProjectsRepo:
         self.seed(updated)
         return updated
 
+    async def update_extraction_config(
+        self, user_id: UUID, project_id: UUID, config: dict, expected_version: int,
+    ) -> Project | None:
+        existing = self._rows.get((user_id, project_id))
+        if existing is None:
+            return None
+        if existing.version != expected_version:
+            from app.db.repositories import VersionMismatchError
+            raise VersionMismatchError(existing)
+        updated = existing.model_copy(update={
+            "extraction_config": config, "version": existing.version + 1,
+        })
+        self.seed(updated)
+        return updated
+
     async def archive(
         self, user_id: UUID, project_id: UUID
     ) -> Project | None:
@@ -1043,3 +1058,230 @@ def test_no_jwt_returns_401(repo: FakeProjectsRepo):
     raw = TestClient(app)
     resp = raw.get("/v1/knowledge/projects")
     assert resp.status_code == 401
+
+
+# ── B2-B-b1: PUT /{id}/extraction-config ──────────────────────────────────
+
+
+@pytest.fixture
+def captured_emits(monkeypatch):
+    """Capture config_adjusted emits from the endpoint (the real emit is
+    best-effort + needs a knowledge pool, absent in unit tests)."""
+    calls: list[dict] = []
+
+    async def _fake_emit(*, aggregate_id, payload):
+        calls.append({"aggregate_id": aggregate_id, "payload": payload})
+
+    monkeypatch.setattr(
+        "app.routers.public.projects.emit_config_adjustment", _fake_emit
+    )
+    return calls
+
+
+def test_put_extraction_config_requires_if_match(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
+):
+    p = _make_project(auth_user_id)
+    repo.seed(p)
+    resp = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        json={"precision_filter": {"categories": ["relation"]}},
+    )
+    assert resp.status_code == 428
+    assert captured_emits == []
+
+
+def test_put_extraction_config_rejects_unknown_key(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
+):
+    p = _make_project(auth_user_id)
+    repo.seed(p)
+    resp = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"1"'},
+        json={"bogus_key": {"x": 1}},
+    )
+    assert resp.status_code == 422
+
+
+def test_put_extraction_config_rejects_invalid_category(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
+):
+    p = _make_project(auth_user_id)
+    repo.seed(p)
+    resp = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"1"'},
+        json={"precision_filter": {"categories": ["nonsense"]}},
+    )
+    assert resp.status_code == 422
+
+
+def test_put_extraction_config_version_mismatch(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
+):
+    p = _make_project(auth_user_id, version=3)
+    repo.seed(p)
+    resp = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"1"'},  # stale
+        json={"precision_filter": {"categories": ["relation"]}},
+    )
+    assert resp.status_code == 412
+    assert captured_emits == []
+
+
+def test_put_extraction_config_persists_and_emits_changed_targets(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
+):
+    p = _make_project(auth_user_id, version=1)
+    repo.seed(p)
+    resp = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"1"'},
+        json={
+            "precision_filter": {"categories": ["relation"], "partial_policy": "drop"},
+            "entity_recovery": {"enabled": True},
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["extraction_config"]["precision_filter"]["categories"] == ["relation"]
+    assert body["version"] == 2
+    assert resp.headers["ETag"] == 'W/"2"'
+    # one emit per changed top-level target (filter + recovery), not the others
+    targets = sorted(c["payload"]["target"] for c in captured_emits)
+    assert targets == ["entity_recovery", "precision_filter"]
+    pf = next(c for c in captured_emits if c["payload"]["target"] == "precision_filter")
+    assert pf["payload"]["before_structural"] is None
+    assert pf["payload"]["after_structural"]["categories"] == ["relation"]
+    assert pf["payload"]["op"] == "set"
+
+
+def test_put_extraction_config_no_change_no_emit(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
+):
+    p = _make_project(auth_user_id, version=1)
+    p = p.model_copy(update={"extraction_config": {"entity_recovery": {"enabled": True}}})
+    repo.seed(p)
+    # re-PUT the identical config → no target changed → no emit
+    resp = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"1"'},
+        json={"entity_recovery": {"enabled": True}},
+    )
+    assert resp.status_code == 200
+    assert captured_emits == []
+
+
+def test_put_extraction_config_empty_subobject_dropped(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
+):
+    """An all-None sub-object (e.g. {}) is dropped from the stored config so a
+    stray empty override doesn't get persisted."""
+    p = _make_project(auth_user_id, version=1)
+    repo.seed(p)
+    resp = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"1"'},
+        json={"precision_filter": {}, "entity_recovery": {"enabled": True}},
+    )
+    assert resp.status_code == 200
+    cfg = resp.json()["extraction_config"]
+    assert "precision_filter" not in cfg
+    assert cfg["entity_recovery"] == {"enabled": True}
+
+
+def test_put_extraction_config_not_found(
+    client: TestClient, auth_user_id: UUID, captured_emits
+):
+    resp = client.put(
+        f"/v1/knowledge/projects/{uuid4()}/extraction-config",
+        headers={"If-Match": '"1"'},
+        json={"precision_filter": {"categories": ["relation"]}},
+    )
+    assert resp.status_code == 404
+
+
+# ── B2-B-b2: raw-prompt override (security) ────────────────────────────────
+
+
+def test_put_extraction_config_persists_prompts(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
+):
+    p = _make_project(auth_user_id, version=1)
+    repo.seed(p)
+    resp = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"1"'},
+        json={"prompts": {"entity": {"system": "Extract only people and places."}}},
+    )
+    assert resp.status_code == 200
+    cfg = resp.json()["extraction_config"]
+    assert cfg["prompts"]["entity"]["system"] == "Extract only people and places."
+
+
+def test_put_extraction_config_prompt_emits_content_hash_not_raw_text(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
+):
+    """Privacy regression-lock (DESIGN Q5): the config_adjusted event for a
+    prompt target carries a content-HASH, never the raw prompt text."""
+    import hashlib
+
+    secret = "MY PROPRIETARY GENRE-SPECIFIC EXTRACTION PROMPT"
+    p = _make_project(auth_user_id, version=1)
+    repo.seed(p)
+    resp = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"1"'},
+        json={"prompts": {"entity": {"system": secret}}},
+    )
+    assert resp.status_code == 200
+    emit = next(c for c in captured_emits if c["payload"]["target"] == "prompts.entity")
+    pl = emit["payload"]
+    assert pl["after_content_hash"] == hashlib.sha256(secret.encode()).hexdigest()
+    assert pl["before_content_hash"] is None
+    # the raw text must NOT appear anywhere in the emitted payload
+    import json as _json
+    assert secret not in _json.dumps(pl)
+    assert pl["after_structural"] is None
+
+
+def test_put_extraction_config_rejects_overlong_prompt(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
+):
+    p = _make_project(auth_user_id, version=1)
+    repo.seed(p)
+    resp = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"1"'},
+        json={"prompts": {"entity": {"system": "x" * 16385}}},  # > 16384 cap
+    )
+    assert resp.status_code == 422
+    assert captured_emits == []
+
+
+def test_put_extraction_config_rejects_unknown_prompt_op(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
+):
+    p = _make_project(auth_user_id, version=1)
+    repo.seed(p)
+    resp = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"1"'},
+        json={"prompts": {"bogus_op": {"system": "x"}}},
+    )
+    assert resp.status_code == 422
+
+
+def test_put_extraction_config_rejects_unknown_prompt_field(
+    client: TestClient, repo: FakeProjectsRepo, auth_user_id: UUID, captured_emits
+):
+    p = _make_project(auth_user_id, version=1)
+    repo.seed(p)
+    resp = client.put(
+        f"/v1/knowledge/projects/{p.project_id}/extraction-config",
+        headers={"If-Match": '"1"'},
+        json={"prompts": {"entity": {"user": "not allowed"}}},  # only `system`
+    )
+    assert resp.status_code == 422

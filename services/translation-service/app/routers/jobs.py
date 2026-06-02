@@ -4,41 +4,12 @@ import asyncpg
 import httpx
 
 from ..deps import get_current_user, get_db
-from ..config import settings as app_settings, DEFAULT_SYSTEM_PROMPT, DEFAULT_USER_PROMPT_TPL, DEFAULT_COMPACT_SYSTEM_PROMPT, DEFAULT_COMPACT_USER_PROMPT_TPL
+from ..config import settings as app_settings, DEFAULT_COMPACT_SYSTEM_PROMPT, DEFAULT_COMPACT_USER_PROMPT_TPL
 from ..models import CreateJobPayload, TranslationJob, ChapterTranslation, ErrorResponse
 from ..broker import publish, publish_event
+from ..effective_settings import resolve_effective_settings
 
 router = APIRouter(prefix="/v1/translation", tags=["translation-jobs"])
-
-
-async def _resolve_effective_settings(user_id: UUID, book_id: UUID, db: asyncpg.Pool):
-    """Returns (settings_dict, is_default)."""
-    row = await db.fetchrow(
-        "SELECT * FROM book_translation_settings WHERE book_id=$1 AND owner_user_id=$2",
-        book_id, user_id,
-    )
-    if row:
-        return dict(row), False
-
-    row = await db.fetchrow(
-        "SELECT * FROM user_translation_preferences WHERE user_id=$1", user_id
-    )
-    if row:
-        return dict(row), True
-
-    return {
-        "target_language":       "en",
-        "model_source":          "platform_model",
-        "model_ref":             None,
-        "system_prompt":         DEFAULT_SYSTEM_PROMPT,
-        "user_prompt_tpl":       DEFAULT_USER_PROMPT_TPL,
-        "compact_model_source":  None,
-        "compact_model_ref":     None,
-        "compact_system_prompt": DEFAULT_COMPACT_SYSTEM_PROMPT,
-        "compact_user_prompt_tpl": DEFAULT_COMPACT_USER_PROMPT_TPL,
-        "chunk_size_tokens":     2000,
-        "invoke_timeout_secs":   300,
-    }, True
 
 
 def _job_row_to_model(row, chapter_rows=None) -> TranslationJob:
@@ -82,8 +53,19 @@ async def create_job(
     if str(projection.get("owner_user_id")) != user_id:
         raise HTTPException(status_code=403, detail={"code": "TRANSL_FORBIDDEN", "message": "Not your book"})
 
-    # Resolve effective settings
-    eff, _ = await _resolve_effective_settings(uid, book_id, db)
+    # Resolve effective settings, then overlay any per-job overrides (Fix-C): a one-off
+    # translation can carry its own language/model so it does not depend on a prior
+    # settings write having succeeded.
+    # AUTHZ: a client-supplied model_ref is NOT trusted here — provider-registry resolves
+    # it scoped to this user (`WHERE user_model_id=$1 AND owner_user_id=$2 AND is_active`,
+    # server.go), so a forged/other-user model_ref resolves to nothing and the job fails.
+    eff, _is_default, _updated_at = await resolve_effective_settings(uid, book_id, db)
+    if payload.target_language:
+        eff["target_language"] = payload.target_language
+    if payload.model_source:
+        eff["model_source"] = payload.model_source
+    if payload.model_ref:
+        eff["model_ref"] = payload.model_ref
     if not eff.get("model_ref"):
         raise HTTPException(
             status_code=422,

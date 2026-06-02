@@ -394,7 +394,7 @@ function CreateArticleDialog({ bookId, open, onClose }: {
       }, accessToken);
       onClose(article.article_id);
     } catch {
-      toast.error('Failed to create article');
+      toast.error(t('createFailed'));
     } finally {
       setCreating(false);
     }
@@ -416,7 +416,7 @@ function CreateArticleDialog({ bookId, open, onClose }: {
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
               className="h-9 w-full rounded-md border bg-background pl-8 pr-3 text-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
-              placeholder="Search entities by name..."
+              placeholder={t('searchEntities')}
               value={entitySearch}
               onChange={e => { setEntitySearch(e.target.value); setOffset(0); }}
               autoFocus
@@ -579,7 +579,7 @@ export function WikiTab({ bookId }: { bookId: string }) {
         toast.info(t('generatedNone'));
       }
     } catch {
-      toast.error('Failed to generate');
+      toast.error(t('generateFailed'));
     } finally {
       setGenerating(false);
     }

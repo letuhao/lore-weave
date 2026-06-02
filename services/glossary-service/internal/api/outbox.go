@@ -24,13 +24,21 @@ import (
 // SSOT → glossary_sync path (Q2) — this service never writes Neo4j.
 //
 // Backward-compatible / fire-and-forget contract: emitting an event MUST
-// NOT change any API response shape and MUST NOT break the primary entity
-// write. The single-create path inserts the outbox row inside the SAME tx
-// as the entity insert (true transactional outbox — atomic). Paths that
-// have already committed (patch, bulk) emit best-effort with the shared
-// pool and only log on failure, mirroring the bulk path's existing
-// fire-and-forget side effects (chapter links, evidence). A broker/relay
-// hiccup never rolls back or fails the entity write.
+// NOT change any API response shape. Phase B updated the durability split:
+//
+//   - CREATE and PATCH are now STRICT transactional outbox — the event row is
+//     inserted in the SAME tx as the entity write (PATCH was moved into a tx in
+//     Phase B precisely so the before/after correction snapshot is captured
+//     consistently with the UPDATE — design §5 / review-impl MED-3). The outbox
+//     INSERT is a LOCAL Postgres write, so it only fails when the DB is
+//     unhealthy — in which case the entity write would fail anyway; coupling
+//     them is therefore safe and atomic. (Adversary subA F-A3: this is a
+//     deliberate change from PATCH's prior best-effort emit.)
+//   - The BULK extract-entities path stays best-effort fire-and-forget (already
+//     committed per-entity above; a hiccup must not fail a 100-entity batch).
+//
+// In all cases a BROKER/RELAY hiccup never affects the entity write — the relay
+// is downstream of the committed outbox row, not in the write path.
 
 // entityUpdatedEvent is the canonical event type string published on the
 // glossary stream. Stable wire contract consumed by knowledge-service.
@@ -53,25 +61,56 @@ type entityEventPayload struct {
 	Op               string   `json:"op"`          // "created" | "updated"
 	SourceType       string   `json:"source_type"` // "glossary" (authored canon)
 	EmittedAt        string   `json:"emitted_at"`  // RFC3339
+	// Phase B correction-capture enrichment (ADDITIVE — knowledge-service's
+	// glossary_sync consumer ignores these). actor_type distinguishes a USER
+	// correction ("user") from a pipeline write ("pipeline"); before/after
+	// carry the diffable snapshot. learning-service persists ONLY actor_type
+	// =="user" events as corrections. See
+	// docs/specs/2026-05-31-phase-b-correction-capture.md §4.1.
+	ActorType string          `json:"actor_type"`
+	ActorID   string          `json:"actor_id,omitempty"`
+	Before    *EntitySnapshot `json:"before,omitempty"`
+	After     *EntitySnapshot `json:"after,omitempty"`
+}
+
+// EntitySnapshot is the diffable before/after view of an entity carried by
+// glossary.entity_updated. learning-service splits it into structural (kind)
+// + content-hash (name/aliases/short_description) at ingest.
+type EntitySnapshot struct {
+	Name             string   `json:"name"`
+	Kind             string   `json:"kind"`
+	Aliases          []string `json:"aliases"`
+	ShortDescription string   `json:"short_description,omitempty"`
 }
 
 // buildEntityEventPayload assembles the event payload. Pure / DB-free so
 // it is unit-testable without a database. `op` is normalised to one of
 // "created"/"updated" (anything else falls back to "updated"). source_type
-// defaults to "glossary" (authored canon) — the C4 cycle never emits
-// enriched content (that is C11/C13, gated by H0).
+// defaults to "glossary" (authored canon).
+//
+// Phase B: `actorType` is normalised to "user" or "pipeline" (anything else
+// falls back to "pipeline" — fail-safe so a mislabelled caller is never
+// mis-persisted as a user correction). `before` is the pre-edit snapshot
+// (nil on create). The `after` snapshot is built from the name/kind/aliases/
+// shortDescription args (the current/after state). before/after are attached
+// ONLY for user ops — pipeline (bulk-extract) events stay lean and are skipped
+// by learning-service anyway.
 func buildEntityEventPayload(
 	bookID, entityID, name, kind string,
 	aliases []string,
-	shortDescription, op string,
+	shortDescription, op, actorType, actorID string,
+	before *EntitySnapshot,
 ) entityEventPayload {
 	if op != "created" && op != "updated" {
 		op = "updated"
 	}
+	if actorType != "user" {
+		actorType = "pipeline"
+	}
 	if aliases == nil {
 		aliases = []string{}
 	}
-	return entityEventPayload{
+	p := entityEventPayload{
 		BookID:           bookID,
 		GlossaryEntityID: entityID,
 		Name:             name,
@@ -81,7 +120,19 @@ func buildEntityEventPayload(
 		Op:               op,
 		SourceType:       "glossary",
 		EmittedAt:        time.Now().UTC().Format(time.RFC3339),
+		ActorType:        actorType,
 	}
+	if actorType == "user" {
+		p.ActorID = actorID
+		p.Before = before
+		p.After = &EntitySnapshot{
+			Name:             name,
+			Kind:             kind,
+			Aliases:          aliases,
+			ShortDescription: shortDescription,
+		}
+	}
+	return p
 }
 
 // loadEntityEventFields reads the snapshot fields needed for the event
@@ -166,43 +217,44 @@ func emitEntityUpdatedTx(
 	}, entityID, payload)
 }
 
-// emitEntityUpdated emits best-effort using the server pool, after the
-// entity write has already committed (patch / bulk paths). Never returns
-// an error: a failure is logged and swallowed so a broker/DB hiccup on the
-// secondary event cannot surface as a 500 on a write that already
-// succeeded. The outbox row is the source of truth — if the insert itself
-// fails, the relay simply has nothing to ship for this write; the next
-// write (or a manual glossary_sync) re-converges Neo4j.
+// Phase B: the prior best-effort `emitEntityUpdated` used by the PATCH path was
+// removed — PATCH now emits transactionally via `emitEntityUpdatedTx` so it can
+// capture a consistent before/after snapshot in the SAME tx as the UPDATE (no
+// TOCTOU — design §5 / review-impl MED-3).
+//
+// emitEntityUpdated is re-provided here (lore-enrichment merge, 2026-06-01) for
+// the SERVICE/pipeline write paths that have NO user tx in hand and only need to
+// drive the C4/K14 glossary_sync → Neo4j anchor: the canon-content endpoint and
+// the enrichment-supplement upsert/delete. It is BEST-EFFORT + post-commit
+// (failures are logged, never fatal — the entity write already committed), and
+// emits actor_type="pipeline" so learning-service IGNORES it (these are not user
+// corrections); only the glossary_sync consumer acts on it. USER edits must keep
+// using the transactional emitEntityUpdatedTx path (before/after capture).
 func (s *Server) emitEntityUpdated(ctx context.Context, entityID uuid.UUID, op string) {
 	name, kind, aliases, shortDesc, ok := loadEntityEventFields(ctx, s.pool, entityID)
 	if !ok {
-		slog.Warn("outbox: failed to load entity fields for event (skipping emit)",
-			"entity_id", entityID, "op", op)
+		slog.Warn("emitEntityUpdated: entity fields unavailable (non-fatal)",
+			"entity_id", entityID.String())
+		return
+	}
+	var bookID uuid.UUID
+	if err := s.pool.QueryRow(ctx,
+		`SELECT book_id FROM glossary_entities WHERE entity_id = $1`, entityID,
+	).Scan(&bookID); err != nil {
+		slog.Warn("emitEntityUpdated: book_id lookup failed (non-fatal)",
+			"entity_id", entityID.String(), "err", err)
 		return
 	}
 	payload := buildEntityEventPayload(
-		s.bookIDForEntity(ctx, entityID), entityID.String(),
-		name, kind, aliases, shortDesc, op,
+		bookID.String(), entityID.String(), name, kind, aliases, shortDesc,
+		op, "pipeline", "", nil,
 	)
-	err := insertEntityOutboxEvent(ctx, func(ctx context.Context, sql string, args ...any) error {
+	exec := func(ctx context.Context, sql string, args ...any) error {
 		_, e := s.pool.Exec(ctx, sql, args...)
 		return e
-	}, entityID, payload)
-	if err != nil {
-		slog.Warn("outbox: failed to emit glossary.entity_updated (non-fatal)",
-			"entity_id", entityID, "op", op, "error", err)
 	}
-}
-
-// bookIDForEntity resolves the owning book_id for an entity. Returns ""
-// on lookup failure (the event still publishes; the consumer skips a
-// payload with an empty book_id rather than crashing).
-func (s *Server) bookIDForEntity(ctx context.Context, entityID uuid.UUID) string {
-	var bookID string
-	if err := s.pool.QueryRow(ctx,
-		`SELECT book_id::text FROM glossary_entities WHERE entity_id = $1`, entityID,
-	).Scan(&bookID); err != nil {
-		return ""
+	if err := insertEntityOutboxEvent(ctx, exec, entityID, payload); err != nil {
+		slog.Warn("emitEntityUpdated: outbox insert failed (non-fatal)",
+			"entity_id", entityID.String(), "err", err)
 	}
-	return bookID
 }

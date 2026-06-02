@@ -1,7 +1,7 @@
 // ── Chat V2 API Client ────────────────────────────────────────────────────────
 // Uses the shared apiJson wrapper from @/api.
 
-import { apiJson } from '@/api';
+import { apiJson, apiBase } from '@/api';
 import type {
   ChatMessage,
   ChatOutput,
@@ -11,7 +11,9 @@ import type {
   PendingFact,
 } from './types';
 
-const base = () => import.meta.env.VITE_API_BASE || 'http://localhost:3000';
+// Shared base from @/api (relative '' by default → rides the same proxy→gateway
+// path as apiJson). Used for SSE/streaming callers that bypass apiJson.
+const base = apiBase;
 
 export const chatApi = {
   // ── Sessions ──────────────────────────────────────────────────────────────────
@@ -87,6 +89,22 @@ export const chatApi = {
       method: 'DELETE',
       token,
     });
+  },
+
+  // ── Feedback (Production Eval + Feedback Flywheel, Q3) ─────────────────────────
+  // Explicit thumbs (+1/-1) or implicit regenerate-as-negative on an assistant
+  // turn. Server is the source of truth (the rating is persisted + flows to the
+  // learning-service quality plane); the UI keeps only ephemeral highlight state.
+
+  submitMessageFeedback(
+    token: string,
+    messageId: string,
+    payload: { rating: 1 | -1; reason?: string; regenerated_from_message_id?: string },
+  ) {
+    return apiJson<{ id: string; message_id: string; rating: number; created_at: string }>(
+      `/v1/chat/messages/${messageId}/feedback`,
+      { method: 'POST', token, body: JSON.stringify(payload) },
+    );
   },
 
   // ── Branches ─────────────────────────────────────────────────────────────────

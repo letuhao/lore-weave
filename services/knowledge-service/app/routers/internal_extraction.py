@@ -34,6 +34,7 @@ from loreweave_extraction.extractors.event import LLMEventCandidate
 from loreweave_extraction.extractors.fact import LLMFactCandidate
 from loreweave_extraction.extractors.relation import LLMRelationCandidate
 from app.extraction.pass2_orchestrator import (
+    _WRITER_AUTOCREATE_CONFIG,
     extract_pass2_chapter,
     extract_pass2_chat_turn,
 )
@@ -156,6 +157,13 @@ class PersistPass2Request(BaseModel):
     is_last_chapter_of_book: bool = False
     embedding_model_uuid: str | None = None
     embedding_dimension: int | None = Field(default=None, ge=1)
+    # B2 follow-up — per-project Pass2-writer Tier-B autocreate. None = use the
+    # KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED env default (back-compat /
+    # callers that don't resolve a per-project config). True/False = explicit
+    # per-project override. NOTE: worker-ai always sends a resolved bool, so on
+    # the worker path per-project config supersedes the env knob (and config_hash
+    # stays accurate). The env knob still applies for callers that omit this.
+    writer_autocreate: bool | None = None
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -453,6 +461,16 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             scenes=list(hp.scenes),
         )
 
+    # B2 follow-up — Pass2-writer Tier-B autocreate. Per-project override (sent
+    # by worker-ai) wins; else the env default. Previously this endpoint never
+    # passed the autocreate kwargs, so autocreate was DORMANT on the worker path
+    # regardless of the env knob — this wires it (default env=off → unchanged).
+    autocreate_enabled = (
+        body.writer_autocreate
+        if body.writer_autocreate is not None
+        else _WRITER_AUTOCREATE_CONFIG["autocreate_enabled"]
+    )
+
     async with neo4j_session() as session:
         result = await write_pass2_extraction(
             session,
@@ -468,6 +486,8 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             extraction_model=body.extraction_model,
             anchors=anchors,
             hierarchy_paths=hierarchy_paths,  # P3 D2a — Tx-bound hierarchy MERGE
+            autocreate_enabled=autocreate_enabled,
+            autocreate_max=_WRITER_AUTOCREATE_CONFIG["autocreate_max"],
         )
 
     elapsed = time.perf_counter() - started
@@ -708,6 +728,59 @@ async def invalidate_cache(
         invalidated_ops=target_ops,
         deleted_leaves=deleted_leaves,
         deleted_raw=deleted_raw,
+    )
+
+
+# ── Q4b-feed: run-sample fetch for the online LLM judge ──────────────
+
+
+class RunSampleResponse(BaseModel):
+    """Wire shape of one `extraction_run_samples` row.
+
+    `items` is the minimal judge-shape projection keyed by category
+    ({entity:[{name,kind}], relation:[{subject,predicate,object,polarity}],
+    event:[{summary,participants}]}). learning-service's eval-runner feeds
+    `items` + `source_text` straight into `run_online_judge`.
+    """
+    run_id: str
+    project_id: str | None = None
+    book_id: str | None = None
+    config_hash: str | None = None
+    items: dict[str, list[dict]]
+    source_text: str
+
+
+@router.get(
+    "/runs/{run_id}/sample",
+    response_model=RunSampleResponse,
+    summary="Q4b-feed — fetch the items+source sample for one extraction run",
+    description=(
+        "Returns the run-attributable extracted items + chapter source for "
+        "an opted-in run (save_raw_extraction). 404 when no sample exists — "
+        "the run's project didn't opt in, the run wasn't a SUCCEEDED chapter, "
+        "or the 7-day TTL pruned it. Behind X-Internal-Token; called by "
+        "learning-service's eval-runner for sampled runs."
+    ),
+)
+async def get_run_sample(run_id: UUID) -> RunSampleResponse:
+    from app.db.repositories.extraction_run_samples import (
+        ExtractionRunSamplesRepo,
+    )
+
+    repo = ExtractionRunSamplesRepo(get_knowledge_pool())
+    sample = await repo.fetch_sample(run_id)
+    if sample is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="no sample for this run (non-opted, not succeeded, or pruned)",
+        )
+    return RunSampleResponse(
+        run_id=str(sample.run_id),
+        project_id=str(sample.project_id) if sample.project_id else None,
+        book_id=str(sample.book_id) if sample.book_id else None,
+        config_hash=sample.config_hash,
+        items=sample.items,
+        source_text=sample.source_text,
     )
 
 

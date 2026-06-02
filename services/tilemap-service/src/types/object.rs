@@ -153,6 +153,17 @@ pub struct TilemapObjectPlacement {
     /// loot/economy/combat to recover without re-derivation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value: Option<u32>,
+    /// TMP-Q4 — sort position within the zone's effective tier list (high-`max`
+    /// first, so `Some(0)` is the HIGHEST band of that zone). Populated by
+    /// TreasurePlacer for both pile placements AND their guards (the guard
+    /// inherits the tier_index of the pile it guards, so the inspector reads
+    /// "tier 0 pile + tier 0 guard"). `None` for non-treasure placements
+    /// (obstacles, connections, monoliths, decorations, roads, rivers). 0 is
+    /// a meaningful value (highest band), NOT a sentinel — so `Option<u8>`
+    /// over `Option<NonZeroU8>`. u8 is overspec; HIGH-1 rejects template-load
+    /// with `treasure_tiers.len() > u8::MAX` so the cast can never saturate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tier_index: Option<u8>,
 
     // ── V2 fields (additive; populated by placer alongside V1 fields) ──
     /// V2 engine primitive. Derived from registry lookup of `tag`.
@@ -201,6 +212,7 @@ mod tests {
             canon_ref: None,
             biome_object_type: Some(BiomeObjectType::Mountain),
             value: None,
+            tier_index: None,
             primitive: Some(v2.primitive),
             tag: Some(v2.tag),
             footprint: Some(v2.footprint),
@@ -236,6 +248,7 @@ mod tests {
             canon_ref: None,
             biome_object_type: None,
             value: Some(4200),
+            tier_index: None,
             primitive: Some(v2.primitive),
             tag: Some(v2.tag),
             footprint: Some(v2.footprint),
@@ -259,6 +272,7 @@ mod tests {
             canon_ref: None,
             biome_object_type: None,
             value: None,
+            tier_index: None,
             primitive: Some(v2.primitive),
             tag: Some(v2.tag),
             footprint: Some(v2.footprint),
@@ -270,5 +284,56 @@ mod tests {
         let back: TilemapObjectPlacement = serde_json::from_str(&json).unwrap();
         assert_eq!(p, back);
         assert_eq!(back.kind, TilemapObjectKind::Ferry);
+    }
+
+    #[test]
+    fn placement_deserializes_pre_q4_fixture_without_tier_index() {
+        // TMP-Q4 LOW-2 — a pre-Q4 fixture JSON without the `tier_index` field
+        // round-trips via `#[serde(default)]` to `None`. The existing
+        // golden fixtures (pre-Q4) MUST keep loading.
+        let json = r#"{"kind":"treasure","anchor":{"x":3,"y":4},"value":1500}"#;
+        let p: TilemapObjectPlacement = serde_json::from_str(json).unwrap();
+        assert!(p.tier_index.is_none());
+        assert_eq!(p.value, Some(1500));
+        // And it MUST re-serialise without the field (skip_serializing_if
+        // ensures V2 byte-identical wire shape for None).
+        let back = serde_json::to_string(&p).unwrap();
+        assert!(!back.contains("tier_index"), "None tier_index must not appear on wire: {back}");
+    }
+
+    #[test]
+    fn treasure_placement_round_trips_with_tier_index() {
+        // TMP-Q4 AC-VBT-1 — a `Some(N)` tier_index serialises + deserialises.
+        let v2 = TilemapObjectKind::Treasure.v2_defaults(None);
+        let p = TilemapObjectPlacement {
+            kind: TilemapObjectKind::Treasure,
+            anchor: TileCoord::new(5, 6),
+            canon_ref: None,
+            biome_object_type: None,
+            value: Some(8500),
+            tier_index: Some(0),
+            primitive: Some(v2.primitive),
+            tag: Some(v2.tag),
+            footprint: Some(v2.footprint),
+            orientation: None,
+            properties: JsonValue::Null,
+        };
+        let s = serde_json::to_string(&p).unwrap();
+        assert!(s.contains("\"tier_index\":0"), "Some(0) must appear on wire: {s}");
+        let back: TilemapObjectPlacement = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.tier_index, Some(0));
+        assert_eq!(back.value, Some(8500));
+    }
+
+    #[test]
+    fn obstacle_placement_skip_serializes_tier_index_when_none() {
+        // TMP-Q4 AC-VBT-1 — V2 byte-identical preserved for non-treasure
+        // placements: a None tier_index omits the field, matching the
+        // existing `value: None` pattern.
+        let json = r#"{"kind":"obstacle","anchor":{"x":3,"y":4}}"#;
+        let p: TilemapObjectPlacement = serde_json::from_str(json).unwrap();
+        assert!(p.tier_index.is_none());
+        let s = serde_json::to_string(&p).unwrap();
+        assert!(!s.contains("tier_index"), "None tier_index must be skipped: {s}");
     }
 }

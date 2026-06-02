@@ -1,0 +1,136 @@
+{
+  "loading": "載入中...",
+  "chapter_of": "第 {{current}} 章 / 共 {{total}} 章",
+  "stop_reading": "停止朗讀",
+  "read_aloud": "朗讀",
+  "reading_theme": "閱讀主題",
+  "edit_chapter": "編輯此章節",
+  "back_to_book": "返回書籍",
+  "chapter_label": "第 {{n}} 章",
+  "chars": "字元",
+  "words": "字",
+  "min_read": "約 {{minutes}} 分鐘閱讀",
+  "loading_translation": "正在載入翻譯...",
+  "empty_chapter": "空白章節 — 尚未撰寫任何內容。",
+  "end_of_chapter": "第 {{n}} 章結束",
+  "next_in": "{{seconds}} 秒後前往下一章...",
+  "cancel": "取消",
+  "progress": "第 {{current}} 章 / 共 {{total}} 章 · {{percent}}% 完成",
+  "ch_short": "第 {{n}} 章",
+  "history": {
+    "title": "閱讀記錄",
+    "subtitle": "你最近閱讀的書籍與章節。",
+    "empty": "尚無閱讀記錄。開始閱讀章節吧！",
+    "chapters_read": "已讀 {{count}} 章",
+    "fully_read": "完整閱讀 {{percent}}%",
+    "last_read": "上次閱讀 {{date}}",
+    "continue": "繼續"
+  },
+  "theme": {
+    "title": "閱讀主題",
+    "presets": "主題預設",
+    "preset": {
+      "dark": {
+        "name": "深色",
+        "desc": "溫暖的深色背景"
+      },
+      "light": {
+        "name": "淺色",
+        "desc": "乾淨的白色背景"
+      },
+      "sepia": {
+        "name": "棕褐色",
+        "desc": "溫暖的紙張色調"
+      },
+      "oled": {
+        "name": "OLED",
+        "desc": "適合 OLED 螢幕的純黑"
+      },
+      "parchment": {
+        "name": "羊皮紙",
+        "desc": "經典羊皮紙質感"
+      },
+      "forest": {
+        "name": "森林",
+        "desc": "夜間護眼"
+      }
+    },
+    "font": "字型",
+    "typography": "排版",
+    "font_size": "字型大小",
+    "line_height": "行高",
+    "text_width": "文字寬度",
+    "spacing": "間距",
+    "reading_mode": "閱讀模式",
+    "show_indices": "顯示區塊索引（譯者模式）",
+    "auto_next": "自動載入下一章",
+    "auto_scroll": "隨 TTS 自動捲動"
+  },
+  "tts": {
+    "source": {
+      "attached": "附加",
+      "ai": "AI TTS",
+      "browser": "瀏覽器",
+      "inline": "音訊"
+    },
+    "prev_block": "上一個區塊 (Shift+Left)",
+    "play": "播放 (Space)",
+    "pause": "暫停 (Space)",
+    "next_block": "下一個區塊 (Shift+Right)",
+    "cycle_speed": "切換速度",
+    "autoscroll_on": "自動捲動：開",
+    "autoscroll_off": "自動捲動：關",
+    "settings": "TTS 設定",
+    "stop": "停止 (Escape)",
+    "speed": "速度",
+    "browser_voice": "瀏覽器語音",
+    "default": "預設",
+    "no_voices": "沒有可用的語音。您的瀏覽器可能不支援 Web Speech API。",
+    "ai_model": "AI TTS 模型",
+    "none_browser": "無（僅瀏覽器 TTS）",
+    "no_models": "未設定模型。請在設定 > 供應商中新增供應商。",
+    "ai_voice": "AI 語音",
+    "openai_voices": "OpenAI 語音：alloy, echo, fable, onyx, nova, shimmer",
+    "behavior": "行為",
+    "autoscroll_active": "自動捲動至作用中區塊",
+    "highlight_active": "標示作用中區塊",
+    "now_playing": "正在播放",
+    "block_label": "區塊：{{id}}",
+    "status": {
+      "playing": "播放中",
+      "paused": "已暫停",
+      "loading": "載入中"
+    }
+  },
+  "audio": {
+    "source": {
+      "attached": "附加",
+      "ai": "AI TTS",
+      "browser": "瀏覽器",
+      "inline": "音訊區塊",
+      "none": "無"
+    },
+    "coverage": "音訊涵蓋範圍",
+    "summary": "{{speakable}} 個可朗讀區塊 · {{missing}} 個使用瀏覽器 TTS",
+    "generate_missing": "生成缺少的音訊",
+    "block_chars": "{{count}} 個區塊 · 約 {{chars}} 字元",
+    "block_chars_other": "{{count}} 個區塊 · 約 {{chars}} 字元",
+    "est_cost": "預估 ${{cost}}",
+    "generating": "生成中... {{progress}}/{{total}}",
+    "select_model_alert": "請先在 TTS 設定中選擇 TTS 模型。",
+    "generate_all": "全部生成 ({{count}})",
+    "blocks": "區塊",
+    "audio_block_preview": "音訊區塊"
+  },
+  "block": {
+    "audio_unavailable": "音訊無法使用",
+    "audio_fallback": "您的瀏覽器不支援 audio 元素。",
+    "image_unavailable": "圖片無法使用",
+    "video_unavailable": "影片無法使用"
+  },
+  "indicator": {
+    "pause": "暫停",
+    "play": "播放附加音訊",
+    "mismatch": "音訊字幕與區塊文字不符"
+  }
+}

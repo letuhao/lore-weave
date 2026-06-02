@@ -40,6 +40,7 @@ export function projectFixture(overrides: Partial<Project> = {}): Project {
     project_type: 'book',
     book_id: '00000000-0000-0000-0000-000000000b01',
     instructions: '',
+    genre: null,
     extraction_enabled: true,
     // K21-C (D3/D4): memory-tool toggles. Defaults match the BE
     // column defaults — tool calling on, confirm-before-save off.

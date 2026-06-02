@@ -69,7 +69,8 @@
     "skipped": "跳過",
     "activityLog": "活動日誌",
     "cancel": "取消",
-    "cancelConfirm": "取消此提取任務？已處理的章節結果將保留。"
+    "cancelConfirm": "取消此提取任務？已處理的章節結果將保留。",
+    "cancelRequested": "已要求取消"
   },
   "results": {
     "title": "提取完成",

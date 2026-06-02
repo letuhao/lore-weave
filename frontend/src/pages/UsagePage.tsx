@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -41,6 +42,7 @@ function escapeCSV(val: string | number): string {
 }
 
 export function UsagePage() {
+  const { t } = useTranslation('usage');
   const { accessToken } = useAuth();
   const [period, setPeriod] = useState<Period>('last_7d');
   const [summary, setSummary] = useState<UsageSummary | null>(null);
@@ -69,7 +71,7 @@ export function UsagePage() {
       setBalance(b);
     }).catch(() => {
       if (cancelled) return;
-      toast.error('Failed to load usage summary');
+      toast.error(t('page.load_summary_failed'));
     });
     return () => { cancelled = true; };
   }, [accessToken, period]);
@@ -154,14 +156,14 @@ export function UsagePage() {
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-serif text-xl font-semibold">AI Usage Monitor</h1>
+          <h1 className="font-serif text-xl font-semibold">{t('page.title')}</h1>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Track token usage, costs, and performance across all AI operations.
+            {t('page.subtitle')}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {/* Period selector */}
-          <div className="flex items-center gap-0.5 rounded-md bg-secondary p-0.5" role="group" aria-label="Time period selector">
+          <div className="flex items-center gap-0.5 rounded-md bg-secondary p-0.5" role="group" aria-label={t('page.period_aria')}>
             {PERIODS.map((p) => (
               <button
                 key={p.value}
@@ -183,7 +185,7 @@ export function UsagePage() {
             className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-secondary"
           >
             <Download className="h-3 w-3" />
-            Export CSV
+            {t('page.export_csv')}
           </button>
         </div>
       </div>

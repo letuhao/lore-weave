@@ -24,6 +24,7 @@ loreweave_statistics
 loreweave_notification
 loreweave_knowledge
 loreweave_lore_enrichment
+loreweave_learning
 "
 
 for db in $DATABASES; do

@@ -24,6 +24,7 @@ interface SessionSettingsPanelProps {
 }
 
 export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: SessionSettingsPanelProps) {
+  const { t } = useTranslation('chat');
   const { t: tKnowledge } = useTranslation('knowledge');
   const { accessToken } = useAuth();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -113,7 +114,7 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
       .patchSession(accessToken, session.session_id, patch)
       .then((updated) => onSessionUpdate(updated))
       .catch((err) => {
-        toast.error(`Save failed: ${(err as Error).message}`);
+        toast.error(t('settings.save_failed', { error: (err as Error).message }));
       });
   }, [accessToken, session.session_id, onSessionUpdate]);
 
@@ -228,7 +229,7 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
       <div className="flex items-center justify-between border-b border-border px-5 py-4">
         <div className="flex items-center gap-2">
           <Settings className="h-4 w-4 text-muted-foreground" />
-          <h3 className="text-sm font-semibold">Session Settings</h3>
+          <h3 className="text-sm font-semibold">{t('settings.title')}</h3>
         </div>
         <button
           type="button"
@@ -244,7 +245,7 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
 
         {/* ── Model Selector ─────────────────────────────────────────── */}
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Model</label>
+          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{t('settings.model')}</label>
           {modelsLoading ? (
             <div className="h-9 animate-pulse rounded-md bg-muted" />
           ) : (
@@ -307,21 +308,21 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
         {/* ── System Prompt ──────────────────────────────────────────── */}
         <div>
           <div className="mb-1.5 flex items-center justify-between">
-            <label className="text-xs font-medium text-muted-foreground">System Prompt</label>
+            <label className="text-xs font-medium text-muted-foreground">{t('settings.system_prompt')}</label>
             <select
               value={selectedPreset}
               onChange={(e) => handlePresetChange(e.target.value)}
               className="bg-transparent border-none text-xs text-accent cursor-pointer outline-none"
             >
               {Object.keys(SYSTEM_PROMPT_PRESETS).map((p) => (
-                <option key={p}>{p}</option>
+                <option key={p} value={p}>{t(`settings.preset.${p}`)}</option>
               ))}
             </select>
           </div>
           <textarea
             value={systemPrompt}
             onChange={(e) => handleSystemPromptChange(e.target.value)}
-            placeholder="Give the AI a role, personality, or specific instructions..."
+            placeholder={t('settings.prompt_placeholder')}
             className="min-h-[100px] w-full resize-y rounded-md border border-border bg-background p-2.5 text-xs leading-relaxed text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-ring focus:shadow-[0_0_0_3px_rgba(212,149,42,0.2)]"
           />
         </div>
@@ -330,13 +331,13 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
         <details open>
           <summary className="mb-3 flex cursor-pointer items-center gap-1.5 text-xs font-medium text-muted-foreground">
             <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" /></svg>
-            Generation Parameters
+            {t('settings.gen_params')}
           </summary>
 
           {/* Max Tokens */}
           <div className="mb-4">
             <div className="mb-1.5 flex items-center justify-between">
-              <label className="text-[11px] text-muted-foreground">Max Tokens</label>
+              <label className="text-[11px] text-muted-foreground">{t('settings.max_tokens')}</label>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
@@ -375,7 +376,7 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
           {/* Temperature */}
           <div className="mb-4">
             <div className="mb-1.5 flex items-center justify-between">
-              <label className="text-[11px] text-muted-foreground">Temperature</label>
+              <label className="text-[11px] text-muted-foreground">{t('settings.temperature')}</label>
               <span className="font-mono text-xs text-foreground">{temperature.toFixed(1)}</span>
             </div>
             <input
@@ -388,14 +389,14 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
               className="w-full accent-primary"
             />
             <div className="flex justify-between text-[9px] text-muted-foreground">
-              <span>0 (precise)</span><span>2 (creative)</span>
+              <span>{t('settings.temp_min')}</span><span>{t('settings.temp_max')}</span>
             </div>
           </div>
 
           {/* Top P */}
           <div className="mb-4">
             <div className="mb-1.5 flex items-center justify-between">
-              <label className="text-[11px] text-muted-foreground">Top P</label>
+              <label className="text-[11px] text-muted-foreground">{t('settings.top_p')}</label>
               <span className="font-mono text-xs text-foreground">{topP.toFixed(2)}</span>
             </div>
             <input
@@ -408,14 +409,14 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
               className="w-full accent-primary"
             />
             <div className="flex justify-between text-[9px] text-muted-foreground">
-              <span>0 (narrow)</span><span>1 (diverse)</span>
+              <span>{t('settings.topp_min')}</span><span>{t('settings.topp_max')}</span>
             </div>
           </div>
 
           {/* Thinking Mode Default */}
           <div className="mb-2">
             <div className="flex items-center justify-between">
-              <label className="text-[11px] text-muted-foreground">Default Mode</label>
+              <label className="text-[11px] text-muted-foreground">{t('settings.default_mode')}</label>
               <div className="inline-flex rounded-md bg-secondary p-0.5 gap-0.5">
                 <button
                   type="button"
@@ -427,7 +428,7 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
                   }`}
                 >
                   <Brain className="h-2.5 w-2.5" />
-                  Think
+                  {t('input.think')}
                 </button>
                 <button
                   type="button"
@@ -439,7 +440,7 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
                   }`}
                 >
                   <Zap className="h-2.5 w-2.5" />
-                  Fast
+                  {t('input.fast')}
                 </button>
               </div>
             </div>
@@ -448,25 +449,25 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
 
         {/* ── Session Info ────────────────────────────────────────────── */}
         <div className="border-t border-border pt-4">
-          <label className="mb-2.5 block text-xs font-medium text-muted-foreground">Session Info</label>
+          <label className="mb-2.5 block text-xs font-medium text-muted-foreground">{t('settings.session_info')}</label>
           <div className="grid grid-cols-2 gap-2">
             <div className="rounded-md bg-secondary p-2.5">
-              <p className="text-[10px] text-muted-foreground">Messages</p>
+              <p className="text-[10px] text-muted-foreground">{t('settings.messages')}</p>
               <p className="mt-0.5 font-mono text-base font-semibold">{session.message_count}</p>
             </div>
             <div className="rounded-md bg-secondary p-2.5">
-              <p className="text-[10px] text-muted-foreground">Status</p>
+              <p className="text-[10px] text-muted-foreground">{t('settings.status')}</p>
               <p className="mt-0.5 text-sm font-medium capitalize">{session.status}</p>
             </div>
             <div className="rounded-md bg-secondary p-2.5">
-              <p className="text-[10px] text-muted-foreground">Created</p>
+              <p className="text-[10px] text-muted-foreground">{t('settings.created')}</p>
               <p className="mt-0.5 text-sm font-medium">
                 {new Date(session.created_at).toLocaleDateString()}
               </p>
             </div>
             <div className="rounded-md bg-secondary p-2.5">
-              <p className="text-[10px] text-muted-foreground">Pinned</p>
-              <p className="mt-0.5 text-sm font-medium">{session.is_pinned ? 'Yes' : 'No'}</p>
+              <p className="text-[10px] text-muted-foreground">{t('settings.pinned')}</p>
+              <p className="mt-0.5 text-sm font-medium">{session.is_pinned ? t('settings.yes') : t('settings.no')}</p>
             </div>
           {/* Reset + Actions */}
           <div className="mt-4 flex gap-2">
@@ -487,7 +488,7 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
               }}
               className="flex-1 rounded-md border border-border px-3 py-2 text-xs text-muted-foreground hover:bg-secondary transition-colors"
             >
-              Reset to Defaults
+              {t('settings.reset')}
             </button>
           </div>
           </div>

@@ -1,4 +1,7 @@
-const base = () => import.meta.env.VITE_API_BASE || 'http://localhost:3000';
+import { apiBase } from '@/api';
+
+// Shared base (relative '' default → proxy→gateway).
+const base = apiBase;
 
 export type GenerateVideoResponse = {
   status: 'completed' | 'pending' | 'failed' | 'not_implemented';

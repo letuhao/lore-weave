@@ -79,12 +79,12 @@ function RevisionPanel({ bookId, articleId }: { bookId: string; articleId: strin
     if (!restoreTarget || !accessToken) return;
     try {
       await wikiApi.restoreRevision(bookId, articleId, restoreTarget.revision_id, accessToken);
-      toast.success(`Restored to version ${restoreTarget.version}`);
+      toast.success(t('restored', { version: restoreTarget.version }));
       queryClient.invalidateQueries({ queryKey: ['wiki-article', bookId, articleId] });
       queryClient.invalidateQueries({ queryKey: ['wiki-revisions', bookId, articleId] });
       setRestoreTarget(null);
     } catch {
-      toast.error('Failed to restore revision');
+      toast.error(t('restoreFailed'));
     }
   };
 
@@ -168,14 +168,14 @@ function SuggestionPanel({ bookId, articleId }: { bookId: string; articleId: str
     if (!accessToken) return;
     try {
       await wikiApi.reviewSuggestion(bookId, sug.article_id, sug.suggestion_id, { action }, accessToken);
-      toast.success(action === 'accept' ? 'Suggestion accepted' : 'Suggestion rejected');
+      toast.success(action === 'accept' ? t('suggestionAccepted') : t('suggestionRejected'));
       queryClient.invalidateQueries({ queryKey: ['wiki-suggestions', bookId] });
       if (action === 'accept') {
         queryClient.invalidateQueries({ queryKey: ['wiki-article', bookId, sug.article_id] });
         queryClient.invalidateQueries({ queryKey: ['wiki-revisions', bookId, sug.article_id] });
       }
     } catch {
-      toast.error('Failed to review suggestion');
+      toast.error(t('reviewFailed'));
     }
   };
 
@@ -272,30 +272,30 @@ export function WikiEditorPage() {
         body_json: body,
         summary: summary || 'Updated article',
       }, accessToken);
-      toast.success('Saved');
+      toast.success(t('saved'));
       setDirty(false);
       queryClient.invalidateQueries({ queryKey: ['wiki-article', bookId, articleId] });
       queryClient.invalidateQueries({ queryKey: ['wiki-revisions', bookId, articleId] });
       queryClient.invalidateQueries({ queryKey: ['wiki-articles', bookId] });
     } catch {
-      toast.error('Failed to save');
+      toast.error(t('saveFailed'));
     } finally {
       setSaving(false);
     }
-  }, [accessToken, article, body, bookId, articleId, queryClient]);
+  }, [accessToken, article, body, bookId, articleId, queryClient, t]);
 
   const handleTogglePublish = useCallback(async () => {
     if (!accessToken || !article) return;
     const newStatus = article.status === 'published' ? 'draft' : 'published';
     try {
       await wikiApi.patchArticle(bookId, articleId, { status: newStatus }, accessToken);
-      toast.success(newStatus === 'published' ? 'Published' : 'Unpublished');
+      toast.success(newStatus === 'published' ? t('published') : t('unpublished'));
       queryClient.invalidateQueries({ queryKey: ['wiki-article', bookId, articleId] });
       queryClient.invalidateQueries({ queryKey: ['wiki-articles', bookId] });
     } catch {
-      toast.error('Failed to update status');
+      toast.error(t('statusFailed'));
     }
-  }, [accessToken, article, bookId, articleId, queryClient]);
+  }, [accessToken, article, bookId, articleId, queryClient, t]);
 
   const handleDelete = useCallback(async () => {
     if (!accessToken) return;
@@ -305,7 +305,7 @@ export function WikiEditorPage() {
       queryClient.invalidateQueries({ queryKey: ['wiki-articles', bookId] });
       navigate(`/books/${bookId}/wiki`);
     } catch {
-      toast.error('Failed to delete');
+      toast.error(t('deleteFailed'));
     }
   }, [accessToken, bookId, articleId, queryClient, navigate, t]);
 

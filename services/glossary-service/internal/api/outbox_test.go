@@ -9,18 +9,21 @@ import (
 // These are DB-free: they exercise the pure payload builder + the
 // single-vs-bulk fan-out contract (one event per written entity). The
 // DB insert + relay + Neo4j propagation are covered by the cross-service
-// live smoke (scripts/raid/verify-cycle-4.sh).
+// live smoke.
+//
+// Phase B adds actor_type + before/after enrichment coverage.
 
 func TestBuildEntityEventPayload_DefaultsAndShape(t *testing.T) {
 	p := buildEntityEventPayload(
 		"book-1", "ent-1", "玉虛宮", "location",
 		[]string{"玉虚宫"}, "Kunlun HQ", "created",
+		"user", "actor-1", nil,
 	)
 	if p.Op != "created" {
 		t.Fatalf("op = %q, want created", p.Op)
 	}
 	if p.SourceType != "glossary" {
-		t.Fatalf("source_type = %q, want glossary (authored canon, never enriched in C4)", p.SourceType)
+		t.Fatalf("source_type = %q, want glossary", p.SourceType)
 	}
 	if p.BookID != "book-1" || p.GlossaryEntityID != "ent-1" {
 		t.Fatalf("ids not carried: book=%q entity=%q", p.BookID, p.GlossaryEntityID)
@@ -41,21 +44,20 @@ func TestBuildEntityEventPayload_DefaultsAndShape(t *testing.T) {
 
 func TestBuildEntityEventPayload_NormalisesOp(t *testing.T) {
 	for _, in := range []string{"", "weird", "deleted", "merge"} {
-		p := buildEntityEventPayload("b", "e", "n", "k", nil, "", in)
+		p := buildEntityEventPayload("b", "e", "n", "k", nil, "", in, "user", "a", nil)
 		if p.Op != "updated" {
 			t.Fatalf("op %q normalised to %q, want updated", in, p.Op)
 		}
 	}
-	// Valid ops pass through unchanged.
 	for _, in := range []string{"created", "updated"} {
-		if got := buildEntityEventPayload("b", "e", "n", "k", nil, "", in).Op; got != in {
+		if got := buildEntityEventPayload("b", "e", "n", "k", nil, "", in, "user", "a", nil).Op; got != in {
 			t.Fatalf("op %q changed to %q", in, got)
 		}
 	}
 }
 
 func TestBuildEntityEventPayload_NilAliasesSerialisesAsEmptyArray(t *testing.T) {
-	p := buildEntityEventPayload("b", "e", "n", "k", nil, "", "created")
+	p := buildEntityEventPayload("b", "e", "n", "k", nil, "", "created", "pipeline", "", nil)
 	if p.Aliases == nil {
 		t.Fatalf("nil aliases must normalise to non-nil slice")
 	}
@@ -63,7 +65,6 @@ func TestBuildEntityEventPayload_NilAliasesSerialisesAsEmptyArray(t *testing.T) 
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	// Empty short_description must be omitted (omitempty); aliases must be [].
 	var decoded map[string]json.RawMessage
 	if err := json.Unmarshal(b, &decoded); err != nil {
 		t.Fatalf("unmarshal: %v", err)
@@ -76,12 +77,47 @@ func TestBuildEntityEventPayload_NilAliasesSerialisesAsEmptyArray(t *testing.T) 
 	}
 }
 
-// TestBulkFanOut_OneEventPerWrittenEntity locks the critical bulk-path
-// contract: a batch of mixed created/updated/skipped statuses must yield
-// exactly ONE event per CREATED or UPDATED entity, and ZERO for skipped.
-// This is the adversary's flagged easy-miss (silent batch drop). We model
-// the per-entity loop's emit decision the same way bulkExtractEntities
-// does (emit iff status in {created, updated}).
+// Phase B — actor_type normalisation + user attaches before/after.
+func TestBuildEntityEventPayload_UserActorAttachesBeforeAfter(t *testing.T) {
+	before := &EntitySnapshot{Name: "Old", Kind: "person", Aliases: []string{"o"}, ShortDescription: "was"}
+	p := buildEntityEventPayload(
+		"b", "e", "New", "person", []string{"n"}, "now", "updated",
+		"user", "user-42", before,
+	)
+	if p.ActorType != "user" {
+		t.Fatalf("actor_type = %q, want user", p.ActorType)
+	}
+	if p.ActorID != "user-42" {
+		t.Fatalf("actor_id = %q, want user-42", p.ActorID)
+	}
+	if p.Before == nil || p.Before.Name != "Old" {
+		t.Fatalf("before not carried: %+v", p.Before)
+	}
+	if p.After == nil || p.After.Name != "New" || p.After.ShortDescription != "now" {
+		t.Fatalf("after must be built from the current-state args: %+v", p.After)
+	}
+}
+
+// Phase B — anything not "user" is forced to "pipeline" (fail-safe: a
+// mislabelled caller is never persisted as a correction) and carries NO
+// before/after (lean pipeline event, skipped by learning-service).
+func TestBuildEntityEventPayload_PipelineHasNoActorOrSnapshots(t *testing.T) {
+	for _, in := range []string{"pipeline", "", "weird", "USER"} {
+		p := buildEntityEventPayload("b", "e", "n", "k", nil, "", "created", in, "x", &EntitySnapshot{Name: "Old"})
+		if in == "USER" || in != "user" {
+			if p.ActorType != "pipeline" {
+				t.Fatalf("actor_type %q must normalise to pipeline, got %q", in, p.ActorType)
+			}
+			if p.ActorID != "" || p.Before != nil || p.After != nil {
+				t.Fatalf("pipeline event must carry no actor_id/before/after; got id=%q before=%v after=%v",
+					p.ActorID, p.Before, p.After)
+			}
+		}
+	}
+}
+
+// TestBulkFanOut_OneEventPerWrittenEntity locks the bulk-path contract: one
+// event per created/updated entity, zero for skipped, and all are pipeline.
 func TestBulkFanOut_OneEventPerWrittenEntity(t *testing.T) {
 	type ent struct {
 		id, name, kind, status string
@@ -89,7 +125,7 @@ func TestBulkFanOut_OneEventPerWrittenEntity(t *testing.T) {
 	batch := []ent{
 		{"e1", "玉虛宮", "location", "created"},
 		{"e2", "碧遊宮", "location", "updated"},
-		{"e3", "蓬萊", "location", "skipped"}, // no change → no event
+		{"e3", "蓬萊", "location", "skipped"},
 		{"e4", "陳塘關", "location", "created"},
 	}
 
@@ -97,20 +133,21 @@ func TestBulkFanOut_OneEventPerWrittenEntity(t *testing.T) {
 	for _, e := range batch {
 		if e.status == "created" || e.status == "updated" {
 			events = append(events, buildEntityEventPayload(
-				"book-1", e.id, e.name, e.kind, nil, "", e.status,
+				"book-1", e.id, e.name, e.kind, nil, "", e.status, "pipeline", "", nil,
 			))
 		}
 	}
 
 	if len(events) != 3 {
-		t.Fatalf("fan-out produced %d events, want 3 (one per created/updated, skipped excluded)", len(events))
+		t.Fatalf("fan-out produced %d events, want 3", len(events))
 	}
-	// Confirm identity + op fidelity per event (no silent entity drop /
-	// no id collapse into a single batch event).
 	wantIDs := map[string]string{"e1": "created", "e2": "updated", "e4": "created"}
 	gotIDs := map[string]string{}
 	for _, ev := range events {
 		gotIDs[ev.GlossaryEntityID] = ev.Op
+		if ev.ActorType != "pipeline" {
+			t.Fatalf("bulk event for %s must be actor_type=pipeline, got %q", ev.GlossaryEntityID, ev.ActorType)
+		}
 	}
 	for id, op := range wantIDs {
 		if gotIDs[id] != op {
