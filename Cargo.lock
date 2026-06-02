@@ -3777,6 +3777,7 @@ dependencies = [
  "meta-rs",
  "pgvector",
  "prometheus",
+ "reqwest",
  "serde",
  "serde_json",
  "sqlx",
@@ -3785,6 +3786,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "wiremock",
 ]
 
 [[package]]

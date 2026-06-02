@@ -27,8 +27,8 @@ use tokio::sync::watch;
 use tracing_subscriber::EnvFilter;
 
 use world_service::embedding_queue::live::{
-    AppState, Config, MetaAuditWriter, Metrics, MetricsAuditWriter, NotWiredProvider,
-    SqlxEmbeddingWriter, run_worker_loop,
+    AppState, Config, EmbedProviderConfig, HttpEmbeddingProvider, MetaAuditWriter, Metrics,
+    MetricsAuditWriter, NotWiredProvider, SqlxEmbeddingWriter, run_worker_loop,
 };
 use world_service::embedding_queue::{
     AuditWriter, EmbeddingProvider, EmbeddingWriter, Queue as EmbeddingQueue,
@@ -69,7 +69,25 @@ async fn run() -> Result<(), String> {
     let inner_audit: Arc<dyn AuditWriter> = Arc::new(MetaAuditWriter::new(meta_pool));
     let audit: Arc<dyn AuditWriter> =
         Arc::new(MetricsAuditWriter::new(inner_audit, metrics.clone()));
-    let provider: Arc<dyn EmbeddingProvider> = Arc::new(NotWiredProvider);
+    // 089 D-EMBEDDING-PROVIDER-WIRING: real BYOK-gateway provider when the platform
+    // embedding credential is configured (EMBEDDING_GATEWAY_URL/INTERNAL_TOKEN/
+    // PLATFORM_USER_ID/MODEL_REF); else keep the fail-closed NotWiredProvider so a
+    // deployment without the credential is still observable + drains (every call audited
+    // as a ProviderError) rather than silently faking success.
+    let provider: Arc<dyn EmbeddingProvider> = match EmbedProviderConfig::from_env()? {
+        Some(embed_cfg) => {
+            tracing::info!("embedding provider: BYOK gateway (HttpEmbeddingProvider)");
+            Arc::new(HttpEmbeddingProvider::new(embed_cfg)?)
+        }
+        None => {
+            tracing::warn!(
+                "embedding provider: NOT wired (set EMBEDDING_GATEWAY_URL/INTERNAL_TOKEN/\
+                 PLATFORM_USER_ID/MODEL_REF to enable BYOK-gateway embedding) — every \
+                 call will be audited as a ProviderError"
+            );
+            Arc::new(NotWiredProvider)
+        }
+    };
 
     let ready = Arc::new(AtomicBool::new(true));
     let app = world_service::embedding_queue::live::router(AppState {
@@ -112,7 +130,7 @@ async fn run() -> Result<(), String> {
         reality_id = %cfg.reality_id,
         http_addr = %cfg.http_addr,
         tick_secs = cfg.tick_interval.as_secs(),
-        "embedding-worker started (provider NOT wired — D-EMBEDDING-PROVIDER-WIRING)"
+        "embedding-worker started"
     );
 
     wait_for_signal().await;

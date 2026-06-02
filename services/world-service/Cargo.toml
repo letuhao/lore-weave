@@ -50,9 +50,17 @@ pgvector = { workspace = true }
 axum = { workspace = true }
 prometheus = { workspace = true }
 tracing-subscriber = { workspace = true }
+# 089 D-EMBEDDING-PROVIDER-WIRING — reqwest client to the BYOK gateway
+# (provider-registry POST /internal/embed). First reqwest in world-service; calls
+# OUR gateway, NOT a vendor SDK (provider-gateway invariant). Workspace-pinned.
+reqwest = { workspace = true }
 
 [dev-dependencies]
 # Embedding-queue unit tests are async (#[tokio::test]) over the async IO
 # traits; the live-smoke integration test (tests/embedding_live.rs) is gated
 # on LOREWEAVE_TEST_PG_URL + LOREWEAVE_TEST_META_URL.
 tokio = { workspace = true }
+# 089: pins the BYOK-gateway request shape (HttpEmbeddingProvider) against a stub
+# server without needing provider-registry up (the real round-trip is the deferred
+# live-smoke). Workspace-pinned.
+wiremock = { workspace = true }
