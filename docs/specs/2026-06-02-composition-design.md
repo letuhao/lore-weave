@@ -236,12 +236,15 @@ Reuse the `loreweave_eval` harness (JudgeLLMClient via gateway · EvalResult · 
 
 ## §5 API contract
 
-Gateway `/v1/composition/*` (catch-all proxy, like chat); contract-first → new `contracts/api/composition/v1/openapi.yaml` (additive). Prose editing stays FE↔book-service (existing editor); generation / outline / canon / grounding = FE↔composition. JWT user-scoped; cross-user = 404.
+Gateway `/v1/composition/*` (catch-all proxy, like chat); contract-first → new `contracts/api/composition/v1/openapi.yaml` (additive). **Prose I/O goes FE↔composition (decision B):** composition exposes a thin **prose-source** that proxies book-service for canonical content — so the reused editor never reworks its backend when V1 adds sandbox branch/take prose. Generation / outline / canon / grounding = FE↔composition. JWT user-scoped; cross-user = 404.
 
 **Work** (COMP-A2/A5):
 - `GET /books/{book_id}/work` — resolve. **Prefers the book-typed project that has a `composition_work` row** (marker-by-presence); else `{candidates}` (>1 project) or `{none}`.
 - `POST /books/{book_id}/work` — confirm-create (ensure book-typed project via knowledge `ProjectCreate`, then `composition_work`).
 - `GET / PATCH /works/{project_id}` (If-Match).
+
+**Prose (source proxy — decision B):**
+- `GET / PUT /works/{project_id}/chapters/{chapter_id}/prose` — canonical content proxied to book-service (+ revisions). *(V1 adds `?variant=` / `?branch=` to serve sandbox take/branch prose from `scene_variant`.)*
 
 **Outline / Scene Graph:**
 - `GET /works/{project_id}/outline` (tree + scene_links).
@@ -267,7 +270,7 @@ FE → gateway → composition POST /generate
   packer: ← knowledge (drawers/search · timeline?before_order=story_order · entity/relations)
           ← glossary (select-for-context) ← book (chapter via SceneAnchor) ← COMP DB (outline · canon)
   budget pre-check → composition → /v1/llm/stream(packed) → tokens → FE (ghost)
-FE: Accept → write text into chapter (book-service, + provenance mark)
+FE: Accept → composition prose-source PUT → book-service (canonical) + provenance mark
 FE → composition POST /jobs/{id}/critique{revision} → judge_prose(gateway) → critic → FE inline
 book-service: chapter approved → event → (existing) knowledge extraction → graph
   → next /generate grounding is richer   ← flywheel closed
@@ -295,3 +298,218 @@ Stress-tested by scenario. **Applied inline:** `story_order` (§1, non-linear ch
 
 **Design-carefully risk:**
 - **`SceneAnchor` ↔ `outline_node` sync** under concurrent edits (the cost of sub-chapter granularity, D1=b): content-order is the source of truth for intra-chapter scene order; metadata uses version/If-Match — the reconciliation logic must handle both. BUILD covers this with care + tests.
+
+---
+
+## §8 V1 design
+
+V1 = full studio + non-linear exploration. **Prose backend = decision B** (composition prose-source): canonical proxies book-service; sandbox take/branch prose lives in `scene_variant` — so the editor never reworks its data layer.
+
+### §8.1 V1 schema (approved 2026-06-02)
+```sql
+-- branch: what-if sandbox (in-work fork that collapses)
+CREATE TABLE IF NOT EXISTS branch (
+  id                 UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id            UUID NOT NULL,
+  project_id         UUID NOT NULL,
+  name               TEXT NOT NULL,
+  divergence_node_id UUID NOT NULL REFERENCES outline_node(id) ON DELETE CASCADE,
+  prompt             TEXT NOT NULL DEFAULT '',
+  status             TEXT NOT NULL DEFAULT 'exploring' CHECK (status IN ('exploring','promoted','discarded')),
+  judge_summary      JSONB,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- scene_variant: alternate prose — "takes" of a canonical scene AND prose of branch scenes
+CREATE TABLE IF NOT EXISTS scene_variant (
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id         UUID NOT NULL,
+  project_id      UUID NOT NULL,
+  outline_node_id UUID NOT NULL REFERENCES outline_node(id) ON DELETE CASCADE,
+  branch_id       UUID REFERENCES branch(id) ON DELETE CASCADE,  -- NULL = a take of the canonical scene
+  label           TEXT NOT NULL DEFAULT '',
+  content         JSONB NOT NULL DEFAULT '{}'::jsonb,             -- TipTap doc (sandbox prose)
+  critic          JSONB,
+  is_selected     BOOLEAN NOT NULL DEFAULT false,                 -- selected take → promoted to book chapter
+  source          TEXT NOT NULL DEFAULT 'ai' CHECK (source IN ('ai','human')),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_scene_variant_node ON scene_variant(outline_node_id);
+CREATE INDEX IF NOT EXISTS idx_scene_variant_branch ON scene_variant(branch_id) WHERE branch_id IS NOT NULL;
+
+-- outline_node gains branch tagging (NULL = canonical)
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS branch_id UUID REFERENCES branch(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_outline_node_branch ON outline_node(branch_id) WHERE branch_id IS NOT NULL;
+
+-- style / voice / references
+CREATE TABLE IF NOT EXISTS style_profile (
+  id UUID PRIMARY KEY DEFAULT uuidv7(), user_id UUID NOT NULL, project_id UUID NOT NULL,
+  name TEXT NOT NULL, params JSONB NOT NULL DEFAULT '{}'::jsonb,   -- density, pace, interiority, tone…
+  is_active BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS voice_profile (
+  id UUID PRIMARY KEY DEFAULT uuidv7(), user_id UUID NOT NULL, project_id UUID NOT NULL,
+  entity_id UUID,                                                  -- → glossary (POV character/narrator)
+  traits JSONB NOT NULL DEFAULT '{}'::jsonb, samples JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS reference_source (
+  id UUID PRIMARY KEY DEFAULT uuidv7(), user_id UUID NOT NULL, project_id UUID NOT NULL,
+  title TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'comp', content TEXT NOT NULL DEFAULT '',
+  embedding_model_ref TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- generation_run: groups autonomous per-scene jobs for a chapter/arc run (§8.3)
+CREATE TABLE IF NOT EXISTS generation_run (
+  id UUID PRIMARY KEY DEFAULT uuidv7(), user_id UUID NOT NULL, project_id UUID NOT NULL,
+  target_node_id UUID REFERENCES outline_node(id) ON DELETE SET NULL,   -- chapter/arc to write
+  mode TEXT NOT NULL DEFAULT 'auto',
+  status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('planning','running','paused','completed','failed','cancelled')),
+  progress JSONB NOT NULL DEFAULT '{}'::jsonb,   -- {scenes_total, scenes_done, scenes_failed}
+  cap JSONB NOT NULL DEFAULT '{}'::jsonb,         -- {max_scenes, max_cost_usd}
+  cost_usd NUMERIC(10,4) NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE generation_job ADD COLUMN IF NOT EXISTS run_id UUID REFERENCES generation_run(id) ON DELETE SET NULL;
+```
+
+### §8.2 Fork engine (what-if branch + alternate takes)
+
+**Alternate takes** (one scene, N executions): generate N = N parallel `completion` jobs → N `scene_variant` (branch_id=NULL) → each judged → author compares → select one → `is_selected`, content → book chapter (via prose-source); prune the rest.
+
+**What-if branch** (divergent downstream): from `divergence_node` + "what if X?" → a `branch` row + AI generates `outline_node`(branch_id=B) + prose (`scene_variant` branch_id=B); each branch scene judged; `judge_summary` aggregates (esp. canon-consistency vs the work's canon).
+
+**Branch grounding = packer COW-merge (branch mode):**
+```
+ground a branch scene = canonical graph/canon ≤ divergence_node.story_order
+                      + branch's own prior scenes (read from scene_variant — sandbox, NOT extracted to the real graph)
+```
+→ **Two COW-merge modes, designed once:** branch delta = raw `scene_variant`; derivative (V2) delta = real delta-graph. (Unifies branch ↔ derivative.)
+
+**Lifecycle:** **Promote (collapse)** `status=promoted` → branch scenes replace canonical from the divergence point (canonical downstream archived · `outline_node.branch_id→NULL` · content → book chapters via prose-source) · **Discard** archived · **→ 同人 (V2 bridge)** "promote-as-derivative" → seed `derivative_work` from the branch delta.
+
+**Takes = a degenerate branch** (one scene, no downstream) — same engine, judge, and prune-lifecycle (avoids History-card rot, the Sudowrite lesson).
+### §8.3 Autonomous loop (generator–critic–revise, hard gate)
+
+V0 = co-write (human in loop). V1 auto = AI drafts whole scenes/chapters with the critic as a **hard gate**.
+
+**Planner (new agent):** target (chapter/arc) + outline + template → generates/refines the beat→scene plan (`outline_node`: beat/goal/present_entities/synopsis); drafts the outline if empty. **Human checkpoint:** review/edit the plan before drafting. (Reuses the extraction structured-output pattern.)
+
+**Per-scene loop:**
+```
+for each scene in order:
+  Retrieve (packer §2)
+  Draft    (completion JOB, not stream)
+  Critique (judge_prose) — GATE:
+     canon_consistency < threshold (or coherence too low)
+        → Revise: re-draft with the violation injected as a hard constraint, ≤ N times
+        → still failing after N → flag human + skip/stop
+  Commit (pass) → book chapter (prose-source) → flywheel → next-scene grounding richer
+```
+
+**Run grouping:** `generation_run` (§8.1) groups the per-scene child `generation_job`s (`run_id`); tracks `progress`, `cap` (max_scenes/max_cost), `cost`. Progress → FE via WS gateway (`job.chapter_done`/`status`), like translation jobs.
+
+**Checkpoints (U3, configurable):** per-scene gate · **per-chapter review (default)** · fully-auto-review-after. **Budget:** pre-check + per-run cap; stop on cap.
+
+**vs co-write:** co-write `Retrieve→Draft(stream)→human accept→Critique(advisory)`; auto `Plan→[Retrieve→Draft(job)→Critique GATE→Revise≤N→Commit]→human checkpoint`.
+### §8.4 Style / voice / references — integration
+
+**Authoring:** `style_profile` (active per work; sliders density/pace/interiority/tone) · `voice_profile` (per POV entity; traits + samples; **AI-suggest** = analyze existing prose → infer voice, à la NovelCrafter) · `reference_source` (comps + sample passages; embedded via knowledge embedding infra for semantic retrieval).
+
+**Into the PACKER (extends §2.4 assembly):**
+```
+<style>   active style_profile.params
+<voice>   POV's voice_profile (traits + 1-2 samples)   ← POV scene only
+<lore>    + reference_source retrieved (extends L4: "influences", never copied)
+```
+Stable parts (style, voice) are **cacheable** (rarely change) — good for prompt cache.
+
+**Into the CRITIC (§4):** `voice_match` scores output vs `voice_profile` (traits + samples) + style. V0 used inferred/recent-prose voice; V1 uses explicit `voice_profile` → **closes V0-limit G6 (voice drift)**.
+
+`voice_profile.entity_id` → glossary character; a POV change pulls that character's voice; derivative (V2) POV-shift overrides map here too. → 3 new prompt sources + 1 critic input, no new mechanism.
+### §8.5 Layout / composability engine
+
+Studio's dock/float/pop-out system. **Server = truth; layout = per-device UI.**
+
+**FE:** **PanelManager** (hook/context) — registry of panels (Co-writer/Grounding/Critic/Outline/Canon/Cast/Threads/Style…) + placement + dock/float/pop-out; extends `useEditorPanels` from 2 panels → N tabs. **Panel registry** — each declares `id`/`title`/`default-dock`/`can-popout`. **Views** (Scene Graph/Timeline/Beat Sheet) = opt-in full-width overlays, separate from panels.
+
+**Pop-out (multi-window):** standalone route `/composition/panel/{type}?work={id}` renders one panel in a new window. **Sync** = server state (same composition API) **+** `BroadcastChannel('composition:{workId}')` for soft selection/context only. Server authoritative; conflicts → optimistic If-Match (§1). **Persist** layout → localStorage per-device (NFR-4). **BE impact ≈ zero** (pop-out calls existing APIs; selection sync is client-side).
+### §8.6 Consistency sweep (closes V0-limit G3 — retroactive edits)
+
+**Trigger** (canon changes): chapter edit/re-extract changes a fact · `canon_rule` added/edited · entity correction · **branch promote** (VS1).
+**Scope — CRITICAL (avoid cost-bomb, VS7):** re-validate ONLY scenes whose grounding *depended on* the changed item = scenes with the changed entity in `present_entity_ids` **or** mentioning it, **and** `story_order ≥` the change. **Never sweep the whole book.**
+**Re-validate:** `judge_prose` (canon-consistency dimension only — cheap) on affected scenes vs the NEW canon → flag.
+**Run:** `generation_run(mode='sweep')` + `generation_job(operation='canon_check')`; async, budget-capped.
+**Surface:** consistency report (chapters with new contradictions) → author fixes (manual / AI-rewrite).
+
+### §8.7 V1 benchmark
+
+| # | Scenario | Verdict | Handling |
+|---|---|---|---|
+| VS1 | Promote a branch replacing scenes 3–5; canonical scene 6 referenced something the branch changed | **fold** | promote **triggers a consistency sweep** on canonical scenes after the branch range (§8.6) |
+| VS2 | Autonomous gate fails N times | PASS | N-cap → flag human + stop; no budget burn |
+| VS3 | Generate 5 takes, keep 1 | PASS | cheap multiplicity + budget cap + prune-lifecycle |
+| VS4 | Long branch — later branch scenes ground on raw `scene_variant` (sandbox, un-extracted) | **LIMIT** | branch grounding degrades when long → nudge "promote / spin-off to 同人 past ~K scenes" |
+| VS5 | POV switch mid-chapter (2 POVs) | PASS | voice is per-scene-POV |
+| VS6 | Pop-out a panel, close the main window | PASS | popped-out still works (server state); loses selection sync only |
+| VS7 | Sweep after editing Ch.2 of a 200-chapter book | **fold** | sweep MUST be dependency-scoped (§8.6), not whole-book |
+
+**Folded:** VS1 → promote triggers sweep · VS7 → scoped sweep (§8.6) · VS4 → V1-limit "long branch → promote/spin-off".
+
+---
+
+## §9 V2 design (同人 / derivative)
+
+Architecture in [vision §9](2026-06-02-composition-service-vision.md) + UX in [studio-ux §7](2026-06-02-composition-studio-ux.md). This adds DDL + the packer's 3rd mode + benchmark.
+
+### §9.1 V2 schema
+```sql
+-- a derivative = its own Work (own project+book → own composition_work) pointing at the source
+ALTER TABLE composition_work ADD COLUMN IF NOT EXISTS source_project_id UUID;                                  -- NULL = original
+ALTER TABLE composition_work ADD COLUMN IF NOT EXISTS divergence_spec   JSONB NOT NULL DEFAULT '{}'::jsonb;     -- {branch_point, pov_anchor, au_template}
+
+CREATE TABLE IF NOT EXISTS entity_override (
+  id               UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id          UUID NOT NULL,
+  project_id       UUID NOT NULL,                 -- the derivative's project
+  source_entity_id UUID NOT NULL,                 -- → source glossary entity
+  field            TEXT NOT NULL,                 -- gender | name | alignment | pronoun | ...
+  new_value        JSONB NOT NULL,
+  kind             TEXT NOT NULL CHECK (kind IN ('genderbend','dark_turn','role_reversal','attribute','pov')),
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_entity_override_project ON entity_override(project_id);
+```
+
+### §9.2 Packer — 3rd mode (2-layer COW)
+The packer now has **3 modes, one shape** (`base + delta [+ overrides]`):
+- **canonical** (V0) — one project graph.
+- **branch** (V1) — canonical + branch `scene_variant` delta (raw prose).
+- **derivative** (V2) — `source-graph(≤ branch_point.story_order)` **with `entity_override` applied** + the derivative's own project graph (delta).
+Override applied **at retrieve** (fetch source entity → apply override). Cache the read-only source layer.
+
+### §9.3 V2 benchmark
+| # | Scenario | Verdict | Handling |
+|---|---|---|---|
+| DS1 | "Kael→female" + a relation "Kael is *son* of X" | **LIMIT** | override is attribute-level; gendered relations/cascades = **AI rewrite at gen** (vision §9.4), not auto |
+| DS2 | Original edits a PRE-branch fact after the derivative forked | **NOTE** | COW reads source live ≤ branch → pre-branch edits flow into the derivative base (offer "snapshot-at-fork" later) |
+| DS3 | Derivative's own flywheel | PASS | derivative = own project → own graph; its chapters extract into IT |
+| DS4 | Delete a source that has derivatives | **fold** | **block source deletion** while derivatives reference it |
+| DS5 | 2-layer retrieval cost | PASS | bounded; cache read-only source layer |
+
+**Folded:** DS4 → guard source deletion.
+
+---
+
+## §10 Full-design cross-version review (2026-06-02)
+
+V0 + V1 + V2 compose without contradiction:
+- **Packer unification holds** — 3 modes are one shape (`base + delta [+overrides]`). **Finding:** design the packer as an **N-layer merge** (a stack of layers, each optionally overridden), *not* hardcoded 2-layer — so a **what-if branch *inside* a derivative** (source+override + derivative-delta + branch-delta) composes. (Branches/takes are per-project → derivatives, being Works, inherit the full V1 toolkit.)
+- **One judge** (`judge_prose`) across V0 critic / V1 gate+sweep / V2 derivative — always scores against "the effective canon the packer assembled" → no per-mode special-casing.
+- **One job model** (`generation_job`/`generation_run`) across co-write / auto / sweep / branch / take / derivative (modes + operations).
+- **prose-source (B)** serves canonical (book) + sandbox (`scene_variant`) + derivative (own book) uniformly → editor stays uniform.
+- **Flywheel** consistent: V0 book→graph · branch sandbox (no extract) · derivative own-book→own-graph.
+- **Forward-compat verified:** V0 `story_order` → V1 `branch_id` → V2 `entity_override`/`source_project_id` layer cleanly; no V0 schema rework.
+
+**Net:** one engine (packer **N-layer merge** + judge + flywheel + studio) parameterized across canonical / branch / derivative. Design is internally consistent.
