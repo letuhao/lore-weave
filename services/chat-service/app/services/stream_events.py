@@ -73,6 +73,12 @@ class StreamEmitter(Protocol):
         request, after the user applies/dismisses). ``tc`` = {id, tool, args}."""
         ...
 
+    def composing(self, active: bool) -> list[str]:
+        """A2A phase-2 — the in-turn composer model started/stopped streaming.
+        Lets the UI show a transient "✍️ Drafting…" indicator while the (often
+        slow) writer model runs, instead of a silent panel."""
+        ...
+
     def close_message(self) -> list[str]:
         """Close the open assistant/reasoning message — called once the token
         stream ends, before persistence/finish, so the message END frames the
@@ -111,6 +117,10 @@ class LegacyEmitter:
 
     def memory_mode(self, mode: str) -> list[str]:
         return [_sse({"type": "memory-mode", "mode": mode})]
+
+    def composing(self, active: bool) -> list[str]:
+        # Legacy chat page has no composer model → no-op.
+        return []
 
     def reasoning_delta(self, delta: str) -> list[str]:
         return [_sse({"type": "reasoning-delta", "delta": delta})]
@@ -193,6 +203,13 @@ class AgUiEmitter:
             "type": "CUSTOM",
             "name": "memoryMode",
             "value": {"mode": mode},
+        })]
+
+    def composing(self, active: bool) -> list[str]:
+        return [_sse({
+            "type": "CUSTOM",
+            "name": "composing",
+            "value": {"active": active},
         })]
 
     def reasoning_delta(self, delta: str) -> list[str]:

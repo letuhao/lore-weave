@@ -46,6 +46,9 @@ export function useChatMessages(
   const [streamPhase, setStreamPhase] = useState<StreamPhase>('idle');
   const [thinkingElapsed, setThinkingElapsed] = useState(0);
   const [streamStatus, setStreamStatus] = useState<StreamStatus>('idle');
+  // A2A phase-2: true while the in-turn composer model is drafting prose
+  // (compose_prose). Drives a transient "✍️ Drafting…" indicator.
+  const [isComposing, setIsComposing] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const thinkingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const thinkingStartRef = useRef<number>(0);
@@ -278,6 +281,9 @@ export function useChatMessages(
                   } else if (e.name === 'persisted') {
                     // The saved message id (+ output id / has_reasoning).
                     streamMessageId = (e.value?.messageId as string) || null;
+                  } else if (e.name === 'composing') {
+                    // A2A phase-2: the composer model is drafting (on/off).
+                    setIsComposing(!!e.value?.active);
                   }
                   break;
                 }
@@ -382,6 +388,7 @@ export function useChatMessages(
         abortRef.current = null;
         setStreamingText('');
         setStreamingReasoning('');
+        setIsComposing(false);  // never leave the drafting indicator stuck on
       }
     },
     [accessToken, sessionId, fetchMessages, editorContext, composeMode],
@@ -489,6 +496,8 @@ export function useChatMessages(
     thinkingElapsed,
     streamStatus,
     isStreaming: streamStatus === 'streaming',
+    /** A2A phase-2: composer model is drafting prose this turn. */
+    isComposing,
     send,
     edit,
     regenerate,

@@ -19,9 +19,24 @@ from app.services.composer import (
     compose_prose_defs,
     is_composer_tool,
 )
+from app.services.stream_events import AgUiEmitter, LegacyEmitter
 from app.services.stream_service import _Usage, _stream_with_tools
 from tests.conftest import TEST_MODEL_REF, TEST_SESSION_ID, TEST_USER_ID
 from tests.test_stream_tools import _drain, _patch_client, done, tok, tool_frag, usage
+
+
+class TestComposingEvent:
+    def test_agui_composing_emits_custom(self):
+        import json
+        em = AgUiEmitter(thread_id="s", message_id="m")
+        on = json.loads(em.composing(True)[0].removeprefix("data: ").strip())
+        assert on["type"] == "CUSTOM" and on["name"] == "composing"
+        assert on["value"]["active"] is True
+        off = json.loads(em.composing(False)[0].removeprefix("data: ").strip())
+        assert off["value"]["active"] is False
+
+    def test_legacy_composing_is_noop(self):
+        assert LegacyEmitter().composing(True) == []
 
 
 class TestComposeProseDefs:
@@ -87,6 +102,10 @@ class TestComposeProseLoop:
         assert tcall["tool"] == "compose_prose"
         assert tcall["ok"] is True
         assert tcall["result"]["prose"] == "The rain fell in silver threads."
+
+        # "✍️ Drafting" UI signal: composing on before the writer streams, off after
+        composing = [c["composing"]["active"] for c in chunks if "composing" in c]
+        assert composing == [True, False]
 
         # final text + summed usage (10/2 + 50/8 + 5/4 = 65/14)
         assert any(c.get("content") == "Drafted it for you." for c in chunks)

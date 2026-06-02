@@ -142,6 +142,7 @@ export function ChatView({ className }: ChatViewProps) {
         streamPhase={chat.streamPhase}
         thinkingElapsed={chat.thinkingElapsed}
         isStreaming={chat.isStreaming}
+        isComposing={chat.isComposing}
         onEditMessage={!isArchived ? handleEdit : undefined}
         onRegenerateMessage={!isArchived ? handleRegenerate : undefined}
         onDeleteMessage={!isArchived ? handleDeleteMessage : undefined}

@@ -361,9 +361,15 @@ async def _stream_with_tools(
                 # and return its prose as the tool result. Usage is summed into
                 # the turn (design D10) so both models are billed.
                 if is_composer_tool(c["name"]) and composer_model is not None:
-                    prose, c_in, c_out = await _run_composer(
-                        client, composer_model, composer_system_prompt, args_obj, gen_params,
-                    )
+                    # Signal the UI before the (often slow) composer streams, so
+                    # it can show "✍️ Drafting…" instead of a silent panel.
+                    yield {"composing": {"active": True}}
+                    try:
+                        prose, c_in, c_out = await _run_composer(
+                            client, composer_model, composer_system_prompt, args_obj, gen_params,
+                        )
+                    finally:
+                        yield {"composing": {"active": False}}
                     total_input += c_in
                     total_output += c_out
                     working.append({
@@ -730,6 +736,12 @@ async def _emit_chat_turn(
             if tool_call is not None:
                 tool_calls_history.append(tool_call)
                 for line in emitter.tool_call(tool_call):
+                    yield line
+                continue
+            # A2A phase-2: composer drafting on/off → transient UI indicator.
+            composing = chunk_data.get("composing")
+            if composing is not None:
+                for line in emitter.composing(composing["active"]):
                     yield line
                 continue
             reasoning = chunk_data["reasoning_content"]

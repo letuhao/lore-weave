@@ -15,6 +15,8 @@ interface MessageListProps {
   /** Elapsed thinking time in seconds */
   thinkingElapsed?: number;
   isStreaming: boolean;
+  /** A2A phase-2: the in-turn composer model is drafting prose. */
+  isComposing?: boolean;
   onEditMessage?: (content: string, sequenceNum: number) => void;
   onRegenerateMessage?: (userContent: string, userSequenceNum: number) => void;
   onDeleteMessage?: (messageId: string) => void;
@@ -30,6 +32,7 @@ export function MessageList({
   streamPhase,
   thinkingElapsed,
   isStreaming,
+  isComposing,
   onEditMessage,
   onRegenerateMessage,
   onDeleteMessage,
@@ -123,8 +126,23 @@ export function MessageList({
           />
         )}
 
-        {/* Typing indicator (before any text arrives) */}
-        {isStreaming && !streamingText && !streamingReasoning && (
+        {/* A2A phase-2: while the in-turn composer model drafts (compose_prose),
+            show a "✍️ Drafting…" pill so the panel isn't silent during the
+            (often slow) writer pass — shown even if the orchestrator already
+            streamed some reasoning above. */}
+        {isComposing && (
+          <div className="flex justify-start">
+            <div className="flex items-center gap-1.5 rounded-[12px_12px_12px_4px] border border-accent/30 bg-accent/5 px-4 py-3">
+              <span className="mr-0.5 text-xs text-accent">✍️ Drafting</span>
+              <span className="inline-block h-1.5 w-1.5 animate-[typing-dot_1.4s_infinite_0s] rounded-full bg-accent" />
+              <span className="inline-block h-1.5 w-1.5 animate-[typing-dot_1.4s_infinite_0.2s] rounded-full bg-accent" />
+              <span className="inline-block h-1.5 w-1.5 animate-[typing-dot_1.4s_infinite_0.4s] rounded-full bg-accent" />
+            </div>
+          </div>
+        )}
+
+        {/* Typing indicator (before any text arrives, and not drafting). */}
+        {isStreaming && !streamingText && !streamingReasoning && !isComposing && (
           <div className="flex justify-start">
             <div className="flex items-center gap-1.5 rounded-[12px_12px_12px_4px] border border-border bg-card px-4 py-3">
               <span className="inline-block h-1.5 w-1.5 animate-[typing-dot_1.4s_infinite_0s] rounded-full bg-accent" />
