@@ -30,6 +30,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/loreweave/foundation/contracts/incidents"
 	"github.com/loreweave/foundation/services/incident-bot/internal/breach"
 )
@@ -71,20 +73,39 @@ func main() {
 		return
 	}
 
-	// GDPR Art.33 breach intake (072 D-GDPR-BREACH-WIRING): an authenticated
-	// POST /internal/breach starts the 72h clock, emits the breach lifecycle as
-	// events, and monitors the deadline. The monitor is IN-PROCESS ONLY —
-	// reminders do NOT survive a restart (D-BREACH-DURABLE-STORE; the
-	// GDPRBreachOpenedV1 event is the durable anchor a future consumer replays).
-	// Actual DPO delivery is a downstream consumer's job (D-BREACH-DELIVERY-CONSUMER).
-	emitter := breach.NewStructuredEmitter(os.Stdout)
-	monitor := breach.NewMonitor(emitter, time.Now, time.Minute)
+	// GDPR Art.33 breach intake (072): an authenticated POST /internal/breach starts
+	// the 72h clock, emits the breach lifecycle as events, and monitors the deadline.
+	//
+	// Transport (108 D-BREACH-BROKER-EMITTER): when REDIS_URL is set the events go to
+	// a durable Redis stream (the 106 delivery consumer reads it); else the 072 stdout
+	// StructuredEmitter (dev/no-broker). Durability (107 D-BREACH-DURABLE-STORE): with
+	// the Redis broker, the monitor is REBUILT on boot by replaying the stream, so the
+	// 72h reminders survive a restart — incident-bot still holds no DB (Q-L7-1).
+	breachStream := envOr("LW_BREACH_STREAM", breach.DefaultBreachStream)
+	var emitter breach.EventEmitter
+	var monitor *breach.Monitor
+	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
+		if re, mon, serr := setupRedisBreach(redisURL, breachStream); serr != nil {
+			// DEGRADE, do NOT crash: incident-bot is multi-responsibility (severity /
+			// statuspage / war-room / health). A breach-broker boot failure must not
+			// take the whole service down — fall back to the in-process path so the
+			// rest of incident-bot still boots (and the operator sees the WARNING).
+			log.Printf("[incident-bot] WARNING: Redis breach broker unavailable (%v) — DEGRADING to stdout emitter + in-process monitor (reminders will NOT survive restart until Redis is reachable)", serr)
+			emitter = breach.NewStructuredEmitter(os.Stdout)
+			monitor = breach.NewMonitor(emitter, time.Now, time.Minute)
+		} else {
+			emitter, monitor = re, mon
+		}
+	} else {
+		emitter = breach.NewStructuredEmitter(os.Stdout)
+		monitor = breach.NewMonitor(emitter, time.Now, time.Minute)
+		log.Printf("[incident-bot] GDPR breach: stdout emitter; monitor IN-PROCESS ONLY (set REDIS_URL for the durable broker + restart-replay)")
+	}
 	go monitor.Run(context.Background())
 	internalToken := os.Getenv("INCIDENT_INTERNAL_TOKEN")
 	if internalToken == "" {
 		log.Printf("[incident-bot] WARNING: INCIDENT_INTERNAL_TOKEN unset — POST /internal/breach intake DISABLED (fail-closed)")
 	}
-	log.Printf("[incident-bot] GDPR breach deadline monitor: IN-PROCESS ONLY — reminders do NOT survive restart (D-BREACH-DURABLE-STORE)")
 
 	mux := http.NewServeMux()
 	mux.Handle("/internal/breach", breach.NewHandler(emitter, monitor, time.Now, internalToken, 0))
@@ -106,6 +127,41 @@ func main() {
 	if err := http.ListenAndServe(*addr, mux); err != nil {
 		log.Fatalf("[incident-bot] http server: %v", err)
 	}
+}
+
+// setupRedisBreach builds the Redis-backed breach emitter (108) + a deadline monitor
+// rebuilt from the durable stream (107). It returns an error (rather than crashing) so
+// a boot-time Redis failure DEGRADES breach to the in-process path instead of taking
+// down the whole multi-responsibility service. The redis client lives for the process
+// (closed by exit); it is closed here only on the error paths.
+func setupRedisBreach(redisURL, stream string) (breach.EventEmitter, *breach.Monitor, error) {
+	opts, err := redis.ParseURL(redisURL)
+	if err != nil {
+		return nil, nil, fmt.Errorf("REDIS_URL parse: %w", err)
+	}
+	rdb := redis.NewClient(opts)
+	bootCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := rdb.Ping(bootCtx).Err(); err != nil {
+		_ = rdb.Close()
+		return nil, nil, fmt.Errorf("redis ping: %w", err)
+	}
+	em, err := breach.NewRedisEmitter(rdb, stream, breach.DefaultTrimHorizon, time.Now)
+	if err != nil {
+		_ = rdb.Close()
+		return nil, nil, err
+	}
+	recs, err := breach.ReplayOpenBreaches(bootCtx, rdb, stream)
+	if err != nil {
+		_ = rdb.Close()
+		return nil, nil, fmt.Errorf("replay: %w", err)
+	}
+	mon := breach.NewMonitor(em, time.Now, time.Minute)
+	for _, rec := range recs {
+		mon.Track(rec)
+	}
+	log.Printf("[incident-bot] GDPR breach: Redis broker stream %q; replayed %d open breach(es) into the deadline monitor (durable across restart)", stream, len(recs))
+	return em, mon, nil
 }
 
 // missingProviderCreds lists which provider credential env vars are unset.
