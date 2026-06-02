@@ -35,6 +35,10 @@ class CreateSessionRequest(BaseModel):
     # the source of truth and rejects unknown project_ids on context
     # build (returns 404 → graceful degrade to no memory).
     project_id: UUID | None = None
+    # A2A phase-2: optional "composer" model. When set, the orchestrator
+    # (model_ref) can call compose_prose, which streams THIS model for prose.
+    composer_model_source: str | None = None
+    composer_model_ref: UUID | None = None
 
 
 class PatchSessionRequest(BaseModel):
@@ -48,6 +52,9 @@ class PatchSessionRequest(BaseModel):
     # K5: PATCH can set or clear project_id. Use Pydantic's model_dump
     # exclude_unset semantics — explicit `null` clears, omitted leaves alone.
     project_id: UUID | None = None
+    # A2A phase-2: set/clear the composer model (same exclude_unset semantics).
+    composer_model_source: str | None = None
+    composer_model_ref: UUID | None = None
 
 
 class ChatSession(BaseModel):
@@ -65,6 +72,8 @@ class ChatSession(BaseModel):
     created_at: datetime
     updated_at: datetime
     project_id: UUID | None = None  # K5
+    composer_model_source: str | None = None  # A2A phase-2
+    composer_model_ref: UUID | None = None
     # K-CLEAN-5 (D-K8-04): client-derived initial memory mode for the
     # session header indicator. The router computes this from
     # `project_id` alone (no_project / static) on GET — `degraded` only

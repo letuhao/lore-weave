@@ -120,6 +120,17 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_project
   ON chat_sessions(project_id) WHERE project_id IS NOT NULL;
 
+-- A2A phase-2 — optional "composer" model for in-turn prose delegation. When
+-- set, the orchestrator (session model) may call the server-side compose_prose
+-- tool, which streams THIS model to generate prose and returns it as the tool
+-- result. NULL → compose_prose is not advertised (single-model behaviour).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='composer_model_ref') THEN
+    ALTER TABLE chat_sessions ADD COLUMN composer_model_source VARCHAR(20);
+    ALTER TABLE chat_sessions ADD COLUMN composer_model_ref UUID;
+  END IF;
+END $$;
+
 -- K13.1 — outbox_events: transactional outbox for event-driven pipeline.
 -- Matches book-service schema so worker-infra outbox-relay can pick up
 -- events uniformly. Worker-infra publishes to Redis Stream

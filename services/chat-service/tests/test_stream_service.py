@@ -813,6 +813,45 @@ class TestK21BToolCallingIntegration:
         gateway_mock.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_composer_model_advertises_compose_prose_and_passes_it_down(self):
+        """A2A phase-2: when the session has a composer model, stream_response
+        adds compose_prose to the tool list and passes composer_model into the
+        tool loop."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        # session row carries the composer model columns
+        pool.fetchrow.return_value = {
+            "system_prompt": None, "generation_params": {}, "project_id": None,
+            "composer_model_source": "user_model",
+            "composer_model_ref": "11111111-1111-1111-1111-111111111111",
+        }
+
+        kc = _patched_knowledge(stable="", volatile="", mode="static", tool_defs=[])
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "ok", "reasoning_content": "",
+                   "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop) as loop_mock, \
+             patch("app.services.stream_service._stream_via_gateway") as gateway_mock:
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Draft a scene",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(), stream_format="agui",
+            ):
+                pass
+
+        loop_mock.assert_called_once()
+        gateway_mock.assert_not_called()
+        kwargs = loop_mock.call_args.kwargs
+        names = [t["function"]["name"] for t in kwargs["tools"]]
+        assert "compose_prose" in names
+        assert kwargs["composer_model"] == ("user_model", "11111111-1111-1111-1111-111111111111")
+
+    @pytest.mark.asyncio
     async def test_empty_tool_defs_falls_back_to_gateway(self):
         """tool_calling_enabled=True but knowledge-service serves no
         schemas (fetch failed → []) → the turn runs tool-free via

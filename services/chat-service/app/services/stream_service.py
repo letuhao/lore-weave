@@ -39,6 +39,7 @@ from app.db.suspended_runs import (
     save_suspended_run,
 )
 from app.models import ProviderCredentials
+from app.services.composer import build_composer_messages, is_composer_tool
 from app.services.frontend_tools import is_frontend_tool
 from app.services.output_extractor import extract_outputs
 from app.services.stream_events import make_emitter
@@ -176,6 +177,41 @@ def _reassemble_tool_calls(frags: dict) -> list[dict]:
     return calls
 
 
+async def _run_composer(
+    client,
+    composer_model: tuple[str, str],
+    composer_system_prompt: str | None,
+    args_obj: dict,
+    gen_params: dict,
+) -> tuple[str, int, int]:
+    """A2A phase-2 — stream the composer (writer) model for a compose_prose call.
+
+    Returns (prose, input_tokens, output_tokens). Reuses the orchestrator's
+    `client` (the gateway resolves the model per request via model_ref), offers
+    NO tools (pure generation), and discards the composer's reasoning — only its
+    prose is returned to the orchestrator."""
+    src, ref = composer_model
+    msgs = build_composer_messages(args_obj, composer_system_prompt)
+    kwargs: dict = {"model_source": src, "model_ref": ref, "messages": msgs}
+    max_tokens = gen_params.get("max_tokens")
+    if max_tokens is not None and max_tokens > 0:
+        kwargs["max_tokens"] = max_tokens
+    if gen_params.get("temperature") is not None:
+        kwargs["temperature"] = gen_params["temperature"]
+    req = StreamRequest(**kwargs)
+    parts: list[str] = []
+    used_in = 0
+    used_out = 0
+    async for ev in client.stream(req):
+        if isinstance(ev, TokenEvent):
+            parts.append(ev.delta)
+        elif isinstance(ev, UsageEvent):
+            used_in += ev.input_tokens
+            used_out += ev.output_tokens
+        # ReasoningEvent (composer's thinking) and DoneEvent are intentionally ignored.
+    return "".join(parts).strip(), used_in, used_out
+
+
 async def _stream_with_tools(
     model_source: str,
     model_ref: str,
@@ -187,6 +223,8 @@ async def _stream_with_tools(
     session_id: str,
     project_id: str | None,
     seed_usage: tuple[int, int] | None = None,
+    composer_model: tuple[str, str] | None = None,
+    composer_system_prompt: str | None = None,
 ) -> AsyncGenerator[dict, None]:
     """K21-B — the tool-calling loop.
 
@@ -318,8 +356,27 @@ async def _stream_with_tools(
                         "args": _parse_tool_args(c["arguments"]),
                     }
                     break
-                # backend tool — execute inline (existing path, below)
                 args_obj = _parse_tool_args(c["arguments"])
+                # A2A phase-2: compose_prose → stream the composer model inline
+                # and return its prose as the tool result. Usage is summed into
+                # the turn (design D10) so both models are billed.
+                if is_composer_tool(c["name"]) and composer_model is not None:
+                    prose, c_in, c_out = await _run_composer(
+                        client, composer_model, composer_system_prompt, args_obj, gen_params,
+                    )
+                    total_input += c_in
+                    total_output += c_out
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": json.dumps({"prose": prose}),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": True,
+                        "result": {"prose": prose}, "error": None,
+                    }}
+                    continue
+                # backend (memory) tool — execute inline (existing path, below)
                 if settings.use_mcp_tools:
                     envelope = await knowledge_client.mcp_execute_tool(
                         user_id=user_id, session_id=session_id, project_id=project_id,
@@ -403,7 +460,8 @@ async def stream_response(
 
     # ── Load session settings ───────────────────────────────────────────────
     session_row = await pool.fetchrow(
-        "SELECT system_prompt, generation_params, project_id FROM chat_sessions WHERE session_id = $1",
+        "SELECT system_prompt, generation_params, project_id, composer_model_source, composer_model_ref "
+        "FROM chat_sessions WHERE session_id = $1",
         session_id,
     )
     system_prompt = session_row["system_prompt"] if session_row else None
@@ -414,6 +472,10 @@ async def stream_response(
     # asyncpg.Record supports .get() since 0.27; using it lets test mocks
     # that pass a plain dict without project_id continue to work.
     project_id = session_row.get("project_id") if session_row else None
+    # A2A phase-2: optional composer model for in-turn prose delegation.
+    composer_src = session_row.get("composer_model_source") if session_row else None
+    composer_ref = session_row.get("composer_model_ref") if session_row else None
+    composer_model = (composer_src, str(composer_ref)) if composer_src and composer_ref else None
 
     knowledge_client = get_knowledge_client()
 
@@ -535,6 +597,11 @@ async def stream_response(
         if stream_format == "agui" and editor_context:
             from app.services.frontend_tools import frontend_tool_defs
             tool_defs = tool_defs + frontend_tool_defs()
+        # A2A phase-2: advertise compose_prose only when a composer model is
+        # configured for this session (orchestrator → writer delegation).
+        if composer_model is not None:
+            from app.services.composer import compose_prose_defs
+            tool_defs = tool_defs + compose_prose_defs()
     use_tools = bool(tool_defs)
 
     # ── Stream the turn ──────────────────────────────────────────────────────
@@ -562,6 +629,8 @@ async def stream_response(
         fe_memory_mode=fe_memory_mode,
         msg_id=str(uuid4()),
         seed_usage=None,
+        composer_model=composer_model,
+        composer_system_prompt=system_prompt,
     ):
         yield line
 
@@ -588,6 +657,8 @@ async def _emit_chat_turn(
     fe_memory_mode: str | None,
     msg_id: str,
     seed_usage: tuple[int, int] | None,
+    composer_model: tuple[str, str] | None = None,
+    composer_system_prompt: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
 
@@ -635,6 +706,8 @@ async def _emit_chat_turn(
                 session_id=session_id,
                 project_id=project_id,
                 seed_usage=seed_usage,
+                composer_model=composer_model,
+                composer_system_prompt=composer_system_prompt,
             )
         else:
             chunk_stream = _stream_via_gateway(
@@ -965,7 +1038,8 @@ async def resume_stream_response(
 
     # Re-derive session gen_params + tool defs for the 2nd pass.
     session_row = await pool.fetchrow(
-        "SELECT generation_params, project_id FROM chat_sessions WHERE session_id = $1",
+        "SELECT generation_params, project_id, system_prompt, composer_model_source, composer_model_ref "
+        "FROM chat_sessions WHERE session_id = $1",
         session_id,
     )
     gp_raw = session_row["generation_params"] if session_row else {}
@@ -973,6 +1047,12 @@ async def resume_stream_response(
         gp_raw = json.loads(gp_raw)
     gen_params: dict = gp_raw if gp_raw else {}
     project_id = session_row.get("project_id") if session_row else None
+    # A2A phase-2: keep compose_prose available on resume too (the agent may
+    # delegate prose again after the user's apply/dismiss).
+    composer_src = session_row.get("composer_model_source") if session_row else None
+    composer_ref = session_row.get("composer_model_ref") if session_row else None
+    composer_model = (composer_src, str(composer_ref)) if composer_src and composer_ref else None
+    composer_system_prompt = session_row.get("system_prompt") if session_row else None
 
     knowledge_client = get_knowledge_client()
     tool_defs: list[dict] = []
@@ -990,6 +1070,9 @@ async def resume_stream_response(
     # seed and re-advertises the tool.
     if stream_format == "agui":
         tool_defs = tool_defs + frontend_tool_defs()
+    if composer_model is not None:
+        from app.services.composer import compose_prose_defs
+        tool_defs = tool_defs + compose_prose_defs()
     use_tools = bool(tool_defs)
 
     # Delete the suspended run up front — the 2nd pass owns the turn now.
@@ -1016,6 +1099,8 @@ async def resume_stream_response(
         fe_memory_mode=None,  # already sent in run 1
         msg_id=susp.message_id,  # share the assistant message id across both runs
         seed_usage=(susp.input_tokens, susp.output_tokens),
+        composer_model=composer_model,
+        composer_system_prompt=composer_system_prompt,
     ):
         yield line
 

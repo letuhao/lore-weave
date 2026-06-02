@@ -28,6 +28,10 @@ export interface ChatSession {
   // (static project memory). Mirrors the backend column added
   // by chat-service's K5 migration.
   project_id: string | null;
+  // A2A phase-2: optional "composer" model. When set, the orchestrator
+  // (model_ref) can call compose_prose, which streams THIS model for prose.
+  composer_model_source?: string | null;
+  composer_model_ref?: string | null;
   // K-CLEAN-5 (D-K8-04): memory mode for the chat header
   // MemoryIndicator.
   //   no_project — no project linked, AI sees only the global bio
@@ -143,4 +147,8 @@ export interface PatchSessionPayload {
   // must emit `"project_id": null` for the clear case — keep this
   // explicitly nullable rather than `string | undefined`.
   project_id?: string | null;
+  // A2A phase-2: set/clear the composer model. Same model_fields_set
+  // semantics as project_id — emit explicit null to clear.
+  composer_model_source?: string | null;
+  composer_model_ref?: string | null;
 }
