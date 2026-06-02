@@ -123,7 +123,8 @@ CREATE TABLE IF NOT EXISTS generation_job (
   result             JSONB,                               -- generated text + meta
   critic             JSONB,                               -- {coherence,voice,pacing,canon_consistency,issues[]}
   target_chapter_id  UUID,                                -- book chapter the critic scored
-  target_revision_id UUID,                                -- book-chapter revision (anti-staleness)
+  base_revision_id   UUID,                                -- book-chapter revision the draft was GROUNDED on (accept-staleness guard, OI-2)
+  target_revision_id UUID,                                -- book-chapter revision the critic scored (anti-staleness)
   cost_usd           NUMERIC(10,4) NOT NULL DEFAULT 0,    -- display only; usage-billing is authoritative
   idempotency_key    TEXT,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -178,6 +179,8 @@ Assembles **constraint-shaped** context for one target scene (`outline_node`). R
 ### §2.2 Spoiler cutoff
 All time-aware lenses (L1 events · L4 · L5) filter `chronological_order ≤ scene.story_order`, via `timeline?before_order=`. **Cutoff = the scene's `story_order`** (in-world time on `outline_node`, ≠ reading order `rank`) — so a Ch.12 **flashback** with a low `story_order` correctly sees only canon up to that in-world moment (non-linear / dual-timeline safe). Aligns with knowledge's `chronological_order`. *(V2 derivative: also ≤ `branch_point`.)*
 
+> **Semantic-lens spoiler guard (OI-A2).** `drawers/search` (L4) and summaries (L5) do **not** natively accept a chronological cutoff, and COMP cannot add one (COMP-A6). So COMP **post-filters** every retrieved passage by its source position: drop any hit whose source `chronological_order > story_order`. Requires each hit to carry source position; if a hit lacks it → **conservative drop** + log. Without this, the semantic lens silently leaks future-chapter lore — defeating the headline spoiler-safety guarantee that L1/L5 enforce.
+
 ### §2.3 Priority ladder (budget trim — drop lowest first)
 - **Never drop:** L0 canon · L1 core state · L2 beat/goal · L3 immediate-preceding prose.
 - **Drop order:** L4 refs → L5 summaries (chapter first, book last) → L2 stale threads → L1 2-hop → L3 older prose.
@@ -188,6 +191,8 @@ All time-aware lenses (L1 events · L4 · L5) filter `chronological_order ≤ sc
 
 ### §2.5 Runtime
 Parallel gather of lenses with per-lens timeout + graceful degrade (mirrors `app/context/modes/full.py` `_safe_*`). Stable parts (canon, beat, voice) cacheable; volatile (recent prose) not. Budget = configured token target.
+
+**Isolation invariant (OI-A1).** EVERY lens read is scoped by `project_id` (+ `user_id`) — no global/unscoped semantic search (a cross-project `drawers/search` would leak another Work's lore). **Mode purity:** canonical-mode reads `branch_id IS NULL` strictly; sandbox `scene_variant` enters only in branch mode (V1). A canonical pack must never include sandbox prose.
 
 ---
 
@@ -203,11 +208,12 @@ Trigger (Continue / selection tool + guide)
  → Author    Accept / Edit / Regenerate
  → Critique  (advisory) — judge_prose on accepted text vs canon → flag inline
  → Commit    text → book chapter (book-service auto-save + revision)
- → Flywheel  approved chapter → existing extraction → graph → next-scene grounding;
+ → Flywheel  **reviewed** chapter → existing extraction → graph → next-scene grounding;
              refresh outline_node.status + present_entity_ids (from extraction)
 ```
 - `generation_job`: `pending → running(stream) → completed(accepted) / cancelled`.
 - Critic is **advisory** in co-write (flags inline; never blocks) — U2 default.
+- **Canonization gate (OI-1).** The flywheel fires the authoritative graph extraction on chapter **review-state** (`outline_node.status='done'` / AI-unreviewed provenance marks cleared), **NOT** on bare accept. **Accept ≠ canon; human review = canon** — otherwise a fabricated fact in accepted-but-unread AI prose is extracted as ground truth, then the critic *enforces* it forever (defends its own hallucination). Richer fact-provenance tiers (author_declared > human_prose > ai_provisional, with provisional-fact contradictions scored soft) = **V1**.
 - Selection tools (rewrite/expand/describe, V1) reuse this loop with a different `operation` + the selection as input.
 
 ### §3.2 Autonomous loop (V1 — reference)
@@ -513,3 +519,23 @@ V0 + V1 + V2 compose without contradiction:
 - **Forward-compat verified:** V0 `story_order` → V1 `branch_id` → V2 `entity_override`/`source_project_id` layer cleanly; no V0 schema rework.
 
 **Net:** one engine (packer **N-layer merge** + judge + flywheel + studio) parameterized across canonical / branch / derivative. Design is internally consistent.
+
+---
+
+## §11 Operational & integrity benchmark (2026-06-02)
+
+§7–§10 stress-tested the **creative/structural** axis (chronology, out-of-order grounding, COW-merge composition). This pass exercises three untested **operational/integrity** classes: flywheel integrity, concurrency/multi-device, cross-work isolation. **Applied inline:** OI-1 review-gate (§3.1) · OI-2 `base_revision_id` (§1.2) · A1 isolation invariant (§2.5) · A2 semantic spoiler-filter (§2.2).
+
+| # | Class | Scenario | Verdict | Handling |
+|---|---|---|---|---|
+| **OI-1** | Flywheel | AI fabricates a fact in prose; author bulk-accepts without reading → extraction canonizes it → critic then **enforces** the hallucination on every later scene (defends its own error) | **fold V0** | Authoritative extraction gates on **review-state** (`status=done`/AI-marks cleared), not bare accept (§3.1). Accept ≠ canon. Fact-provenance tiers + soft provisional-facts = V1. |
+| **OI-2** | Concurrency | Co-write streams into Ch.X grounded on revision R; another device edits Ch.X → R′; author accepts → blind PUT clobbers the concurrent edit (violates server-SSOT/multi-device) | **fold V0** | `generation_job.base_revision_id` = grounding revision (§1.2); accept = If-Match on current chapter revision; mismatch → conflict surface (re-ground/merge), never blind overwrite. Streamed ghost tokens stay editor-local — excluded from the 5-min autosave until accepted. |
+| **OI-3** | Concurrency | Two devices reorder scenes / split a SceneAnchor / edit the same node concurrently | **PASS** | LexoRank `rank` (concurrent inserts → distinct ranks) + If-Match on node metadata + content-order-wins for anchors (§7 risk). No new mechanism. |
+| **A1** | Isolation | Work-A's packer issues an unscoped `drawers/search` → returns Work-B's lore; or a canonical pack pulls sandbox `scene_variant` | **fold V0** | Isolation invariant (§2.5): every lens read `project_id`(+`user_id`)-scoped; canonical mode reads `branch_id IS NULL` strictly. |
+| **A2** ★ | Isolation | Spoiler-cutoff holds for L1/L5 but **L4 semantic search has no chronological filter** → retrieves a future-chapter lore drawer → spoiler leak through the headline feature | **fold V0** | COMP post-filters L4/L5 hits by source `chronological_order ≤ story_order`; missing-position → conservative drop (§2.2). Can't add a param to `drawers/search` (A6) → filter COMP-side. |
+| **A3** | Isolation | 同人 forks **another user's** shared work → derivative packer reads cross-user source prose | **defer V2** | V2 guard: derivative source MUST be same-user; cross-user public-work forks gated by sharing-service visibility (later). |
+| **A4** | Isolation | Long branch / promote leaks sandbox prose into the canonical graph via the flywheel | **defer V1** | Covered by A1 mode-purity (canonical reads `branch_id IS NULL`; sandbox never extracted, §8.2). Re-verify at V1 build. |
+
+**Folded into V0:** OI-1 (review-gate the flywheel) · OI-2 (accept-staleness + ghost-not-autosaved) · A1 (isolation invariant) · A2 (semantic spoiler-filter). **Deferred guards:** A3 (V2 same-user source) · A4 (V1 re-verify sandbox isolation).
+
+**Sharpest finding = A2.** Spoiler-safety is the differentiator, and the *semantic* lens was the one place the cutoff didn't reach — exactly the kind of architectural hole that is cheap to close now and expensive after the packer ships. Benchmark goal met.
