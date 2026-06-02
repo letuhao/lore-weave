@@ -1204,6 +1204,49 @@ metrics:
     source: services/world-service (embedding_queue)
     cardinality_notes: 'outcome is a small bounded enum (ok/write_error/…).'
 
+  # ────────────────────────────────────────────────────────────────────
+  # L7.K — canary deploy controller (cycle 38, live-wired 064 / 2026-06-03)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_canary_stage
+    kind: gauge
+    layer: L7
+    shipped_cycle: 38
+    labels: []
+    description: 'Current canary stage (0..4) of the active major deploy; -1 when no active canary. Drives the deploy-progress dashboard. Emitted by canary-controller per tick (064 live wiring).'
+    owner: sre
+    source: services/canary-controller (internal/metrics)
+    cardinality_notes: 'unlabeled single gauge — 1 series.'
+
+  - name: lw_canary_controller_observed_burn
+    kind: gauge
+    layer: L7
+    shipped_cycle: 38
+    labels: []
+    description: 'Last cohort SLI burn the canary-controller observed for the active canary (diagnostic; set from each Prometheus Observe). DISTINCT from the authoritative per-cohort series lw_canary_sli_cohort{stage,service} the deployed services emit (added to inventory when D-CANARY-LIVE-SMOKE lands), which the controller QUERIES and compares against 2× baseline (§12AH.4).'
+    owner: sre
+    source: services/canary-controller (internal/metrics)
+    cardinality_notes: 'unlabeled single gauge — 1 series.'
+
+  - name: lw_canary_abort_total
+    kind: counter
+    layer: L7
+    shipped_cycle: 38
+    labels: []
+    description: 'Total canary auto-aborts (cohort SLI burn breach or stage-0 error). A non-zero increment is an SRE-paged rollback (§12AH.4).'
+    owner: sre
+    source: services/canary-controller (internal/metrics)
+    cardinality_notes: 'unlabeled single counter — 1 series.'
+
+  - name: lw_deploy_freeze_active
+    kind: gauge
+    layer: L7
+    shipped_cycle: 38
+    labels: []
+    description: '1 when a deploy freeze is active, else 0. Freeze source wired with the deploy pipeline (D-CANARY-LIVE-SMOKE); stays 0 in V1.'
+    owner: sre
+    source: services/canary-controller (internal/metrics)
+    cardinality_notes: 'unlabeled single gauge — 1 series.'
+
 # ────────────────────────────────────────────────────────────────────
 # CARDINALITY BUDGET (V1)
 # ────────────────────────────────────────────────────────────────────
