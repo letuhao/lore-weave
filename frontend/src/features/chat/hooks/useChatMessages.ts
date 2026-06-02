@@ -33,6 +33,10 @@ export type OnMemoryMode = (mode: 'no_project' | 'static' | 'degraded') => void;
 export function useChatMessages(
   sessionId: string | null,
   editorContext?: { book_id: string; chapter_id: string },
+  /** Editor "Compose" mode: send `disable_tools` so the server advertises no
+   *  tools this turn — the model writes prose to Apply manually (best for a
+   *  reasoning model). Tools stay off until the user flips back to Agent. */
+  composeMode?: boolean,
 ) {
   const { accessToken } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -145,6 +149,10 @@ export function useChatMessages(
         // carry which chapter the assistant is editing.
         if (editorContext) {
           body.editor_context = editorContext;
+        }
+        // Compose mode: prose-only turn, no tool advertising (server-side gate).
+        if (composeMode) {
+          body.disable_tools = true;
         }
 
         const res = await fetch(override?.url ?? chatApi.messagesUrl(sessionId), {
@@ -376,7 +384,7 @@ export function useChatMessages(
         setStreamingReasoning('');
       }
     },
-    [accessToken, sessionId, fetchMessages, editorContext],
+    [accessToken, sessionId, fetchMessages, editorContext, composeMode],
   );
 
   // ── ARCH-1 C6: resume a suspended run after a frontend-tool decision ──────────

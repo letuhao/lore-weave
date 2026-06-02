@@ -382,6 +382,7 @@ async def stream_response(
     thinking: bool | None = None,
     stream_format: str = "legacy",
     editor_context: dict | None = None,
+    disable_tools: bool = False,
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields chat-turn SSE lines.
 
@@ -391,7 +392,14 @@ async def stream_response(
     ARCH-1 C6: ``editor_context`` ({book_id, chapter_id}) — when present (agui +
     editor `<Chat>` panel), the frontend write-back tool (propose_edit) is
     advertised to the LLM; a call to it SUSPENDS the run for client execution
-    (see _emit_chat_turn + resume_stream_response)."""
+    (see _emit_chat_turn + resume_stream_response).
+
+    ``disable_tools`` — when True, advertise NO tools this turn (memory tools
+    AND the editor write-back tool). This is the editor "Compose" mode: the
+    user wants the model to write prose to Apply manually, not call tools. Lore
+    still reaches the model via the injected context (build_context), only
+    tool-*calling* is off — which lets a reasoning model (Qwen 3.5/3.6) draft
+    without spending its budget deciding whether to call a tool."""
 
     # ── Load session settings ───────────────────────────────────────────────
     session_row = await pool.fetchrow(
@@ -518,7 +526,7 @@ async def stream_response(
     # (kctx.tool_calling_enabled) AND knowledge-service serves the tool
     # schemas. A fetch failure → empty list → the turn runs tool-free.
     tool_defs: list[dict] = []
-    if kctx.tool_calling_enabled:
+    if not disable_tools and kctx.tool_calling_enabled:
         tool_defs = await knowledge_client.get_tool_definitions()
         # ARCH-1 C6: advertise the editor write-back frontend tool ONLY for the
         # editor <Chat> panel (agui + editor_context present). Other clients

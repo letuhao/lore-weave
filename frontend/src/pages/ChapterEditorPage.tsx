@@ -102,6 +102,17 @@ export function ChapterEditorPage() {
   }, [panels.leftWidth, panels.setLeftWidth]);
   const leftWidth = liveLeftWidth ?? panels.leftWidth ?? 300;
 
+  // Editor AI "Compose" mode (per-device UI pref). Agent = tools on
+  // (propose_edit edits the doc). Compose = prose-only, no tools — for
+  // reasoning models that write well but stumble on tool-calling.
+  const [composeMode, setComposeModeState] = useState<boolean>(() => {
+    try { return localStorage.getItem('lw_editor_compose_mode') === '1'; } catch { return false; }
+  });
+  const setComposeMode = useCallback((v: boolean) => {
+    setComposeModeState(v);
+    try { localStorage.setItem('lw_editor_compose_mode', v ? '1' : '0'); } catch { /* ignore */ }
+  }, []);
+
   // Draft state
   const [version, setVersion] = useState<number | undefined>();
   const [saving, setSaving] = useState(false);
@@ -831,12 +842,40 @@ export function ChapterEditorPage() {
                   dialog state) resets instead of bleeding the previous book's
                   session into the new book (review-impl C5 #1). */}
               {rightTab === 'ai' && (
-                <Chat
-                  key={bookId}
-                  bookId={bookId}
-                  editorContext={{ book_id: bookId, chapter_id: chapterId }}
-                  className="h-full"
-                />
+                <div className="flex h-full flex-col">
+                  {/* Agent vs Compose mode. Agent = AI may call tools + edit the
+                      doc (propose_edit). Compose = prose-only (no tools) so a
+                      reasoning model drafts and you Apply via "Send to editor" —
+                      reasoning models write better but stumble on tool-calling. */}
+                  <div className="flex items-center gap-1.5 border-b px-2 py-1.5">
+                    <span className="text-[10px] text-muted-foreground">{t('chat_mode', { defaultValue: 'Mode' })}</span>
+                    <div className="ml-auto inline-flex rounded-md bg-secondary p-0.5 text-[10px] font-medium">
+                      <button
+                        type="button"
+                        onClick={() => setComposeMode(false)}
+                        title={t('mode_agent_hint', { defaultValue: 'AI can use tools and edit your document' })}
+                        className={cn('flex items-center gap-1 rounded px-2 py-0.5 transition-colors', !composeMode ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground')}
+                      >
+                        <Sparkles className="h-2.5 w-2.5" />{t('mode_agent', { defaultValue: 'Agent' })}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setComposeMode(true)}
+                        title={t('mode_compose_hint', { defaultValue: 'Prose only — AI writes, you Apply. Best for reasoning models.' })}
+                        className={cn('flex items-center gap-1 rounded px-2 py-0.5 transition-colors', composeMode ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground')}
+                      >
+                        <Pen className="h-2.5 w-2.5" />{t('mode_compose', { defaultValue: 'Compose' })}
+                      </button>
+                    </div>
+                  </div>
+                  <Chat
+                    key={bookId}
+                    bookId={bookId}
+                    editorContext={{ book_id: bookId, chapter_id: chapterId }}
+                    composeMode={composeMode}
+                    className="min-h-0 flex-1"
+                  />
+                </div>
               )}
             </div>
           </div>

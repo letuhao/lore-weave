@@ -773,6 +773,46 @@ class TestK21BToolCallingIntegration:
         gateway_mock.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_disable_tools_advertises_no_tools_compose_mode(self):
+        """Editor 'Compose' mode: disable_tools=True advertises NO tools —
+        not memory tools, not the editor write-back tool — even though
+        tool_calling is enabled, schemas are served, and editor_context is
+        present (which would otherwise add propose_edit). The turn runs
+        tool-free via the gateway so a reasoning model just drafts prose."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+
+        kc = _patched_knowledge(
+            stable="", volatile="", mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        )
+
+        async def fake_gateway(**kwargs):
+            yield {"content": "Once upon a time…", "reasoning_content": "",
+                   "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_via_gateway", side_effect=fake_gateway) as gateway_mock, \
+             patch("app.services.stream_service._stream_with_tools") as loop_mock:
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="Write a vivid paragraph",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+                stream_format="agui",
+                editor_context={"book_id": "b1", "chapter_id": "c1"},
+                disable_tools=True,
+            ):
+                pass
+
+        # disable_tools short-circuits the whole tool block: no fetch, no loop,
+        # no propose_edit — straight to the plain gateway path.
+        kc.get_tool_definitions.assert_not_awaited()
+        loop_mock.assert_not_called()
+        gateway_mock.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_empty_tool_defs_falls_back_to_gateway(self):
         """tool_calling_enabled=True but knowledge-service serves no
         schemas (fetch failed → []) → the turn runs tool-free via

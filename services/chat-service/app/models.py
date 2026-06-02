@@ -109,6 +109,7 @@ class SendMessageRequest(BaseModel):
     context: str | None = None  # Optional context block (book/chapter/glossary text) injected as system message
     thinking: bool | None = None  # Override session default: true=think, false=fast, None=use session default
     editor_context: EditorContext | None = None  # ARCH-1 C6: editor panel → enable frontend write-back tool
+    disable_tools: bool = False  # Editor "Compose" mode: advertise no tools this turn (prose-only; reasoning model drafts, user Applies)
 
 
 class ToolResultRequest(BaseModel):
