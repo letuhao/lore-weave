@@ -157,6 +157,57 @@ async def test_consistent_fact_against_canon_not_flagged():
     assert not [f for f in result.flags if f.kind is FlagKind.CONTRADICTION]
 
 
+@pytest.mark.asyncio
+async def test_fix5_affirming_canon_with_distant_negation_not_flagged():
+    # FIX-5 (live-found false-positive): a fact that AFFIRMS the canon entity but
+    # happens to contain an UNRELATED negation marker elsewhere in the passage must
+    # NOT be flagged. Pre-fix, "canon-term anywhere + negation-marker anywhere"
+    # auto-rejected good content (the live 玉虛宮 re-cook: it affirmed 元始天尊 but
+    # said `历劫…并无损毁` later → wrongly flagged term 元始).
+    canon = {
+        ("蓬萊", "历史"): [
+            CanonFact(entity_name="蓬萊", dimension="历史",
+                      assertion="蓬萊乃元始天尊所设之东海仙岛。", terms=("元始", "东海")),
+        ]
+    }
+    verifier = CanonVerifier(read_port=_NonEmptyRead(), canon_lookup=_canon_lookup_factory(canon))
+    # affirms 元始 + 东海; the negation (并无) is far from both terms (sentence end).
+    fact = _fact("元始天尊所设之东海仙岛，气运绵长，历经万劫而并无损毁。")
+    result = await verifier.verify(_proposal(), [fact], jwt="jwt")
+    assert not [f for f in result.flags if f.kind is FlagKind.CONTRADICTION]
+
+
+@pytest.mark.asyncio
+async def test_fix5_negation_directly_governing_term_still_flags():
+    # FIX-5 keeps the TRUE positive: a negation IMMEDIATELY before the canon term
+    # ("并非东海") is still a contradiction.
+    canon = {
+        ("蓬萊", "历史"): [
+            CanonFact(entity_name="蓬萊", dimension="历史", assertion="蓬萊位于东海。", terms=("东海",)),
+        ]
+    }
+    verifier = CanonVerifier(read_port=_NonEmptyRead(), canon_lookup=_canon_lookup_factory(canon))
+    fact = _fact("蓬萊并非东海之岛，实居西陲。")
+    result = await verifier.verify(_proposal(), [fact], jwt="jwt")
+    flags = [f for f in result.flags if f.kind is FlagKind.CONTRADICTION]
+    assert len(flags) == 1 and "东海" in flags[0].evidence
+
+
+@pytest.mark.asyncio
+async def test_fix5_positive_copula_shiwei_is_not_a_negation():
+    # FIX-5: 实为 ("actually IS") is a POSITIVE copula — it must NOT count as a
+    # negation marker (it affirms its object). The live false-positive matched 实为.
+    canon = {
+        ("蓬萊", "历史"): [
+            CanonFact(entity_name="蓬萊", dimension="历史", assertion="蓬萊位于东海。", terms=("东海",)),
+        ]
+    }
+    verifier = CanonVerifier(read_port=_NonEmptyRead(), canon_lookup=_canon_lookup_factory(canon))
+    fact = _fact("蓬萊实为东海中之仙岛，自古为修真胜地。")  # affirms 东海, not a contradiction
+    result = await verifier.verify(_proposal(), [fact], jwt="jwt")
+    assert not [f for f in result.flags if f.kind is FlagKind.CONTRADICTION]
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # (b) anachronism flagged
 # ═══════════════════════════════════════════════════════════════════════════
@@ -356,23 +407,32 @@ async def test_clean_proposal_against_real_canon_passes():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# KG-unavailable → verify_degraded (NO false-green)
+# canon-source availability → degrade ONLY on a read error (NO false-green)
+# (FIX-1: degrade moved from KG graph-stats to the glossary canon lookup)
 # ═══════════════════════════════════════════════════════════════════════════
 @pytest.mark.asyncio
-async def test_kg_unavailable_records_degraded_not_passed():
-    # NullKnowledgeRead always returns an EMPTY graph (degraded / dep absent).
+async def test_no_authored_canon_is_clean_not_degraded():
+    # FIX-1: the contradiction check reads AUTHORED canon via the glossary
+    # canon_lookup, NOT KG graph-stats. An entity with NO authored canon → the
+    # lookup returns [] WITHOUT erroring → nothing to contradict → legitimately
+    # CLEAN (not a degrade). The degrade signal now comes from a canon-read ERROR
+    # (test_canon_lookup_failure_degrades_gracefully). The KG read port is
+    # irrelevant to the contradiction verdict here (NullKnowledgeRead is harmless).
     verifier = CanonVerifier(read_port=NullKnowledgeRead(), canon_lookup=_empty_canon_lookup())
     fact = _fact("蓬萊位于东海之上，仙人乘鹤往来。")
     result = await verifier.verify(_proposal(), [fact], jwt="jwt")
-    assert result.verify_degraded is True
-    # critical: a degraded run is NOT a pass — no false-green when KG is down
-    assert result.passed is False
-    # no contradiction flag (we could not read canon) — but NOT silently green
+    assert result.verify_degraded is False  # no canon to check, no read error → clean
+    assert result.passed is True            # flag-free + not degraded
     assert not [f for f in result.flags if f.kind is FlagKind.CONTRADICTION]
 
 
 @pytest.mark.asyncio
-async def test_malformed_project_id_degrades_not_crashes():
+async def test_malformed_project_id_does_not_crash():
+    # FIX-1: project_id is no longer read by the contradiction check (canon is
+    # looked up by entity name through the glossary, scoped by book_id). A
+    # malformed project_id must therefore NOT crash the verify — and with an empty
+    # canon lookup it is simply clean. (A genuine canon-source error still degrades:
+    # see test_canon_lookup_failure_degrades_gracefully.)
     bad = GroundedProposal(
         user_id="u1", project_id="not-a-uuid", entity_kind="location",
         canonical_name="蓬萊", dimensions={"历史": ""},
@@ -380,8 +440,8 @@ async def test_malformed_project_id_degrades_not_crashes():
     )
     verifier = CanonVerifier(read_port=_NonEmptyRead(), canon_lookup=_empty_canon_lookup())
     result = await verifier.verify(bad, [_fact("蓬萊乃仙岛。")], jwt="jwt")
-    assert result.verify_degraded is True
-    assert result.passed is False
+    assert result.verify_degraded is False  # project_id not used → no degrade
+    assert not [f for f in result.flags if f.kind is FlagKind.CONTRADICTION]
 
 
 @pytest.mark.asyncio
@@ -467,9 +527,12 @@ async def test_wiring_every_status_keeps_quarantine():
     assert ann.status is VerifyStatus.NEEDS_REVIEW
     assert ann.is_quarantined is True
 
-    # clean (empty graph here is degraded, not clean) → DEGRADED
+    # canon source ERRORS (glossary unreachable) → DEGRADED (no false-green).
+    # FIX-1: the degrade is driven by a canon-read error, not an empty KG graph.
+    async def _boom(entity_name: str, dimension: str):
+        raise RuntimeError("glossary down")
     ann = await verify_and_annotate(
-        CanonVerifier(read_port=NullKnowledgeRead(), canon_lookup=_empty_canon_lookup()),
+        CanonVerifier(read_port=_NonEmptyRead(), canon_lookup=_boom),
         _proposal(), [_fact("蓬萊乃东海仙岛。")], jwt="j",
     )
     assert ann.status is VerifyStatus.DEGRADED

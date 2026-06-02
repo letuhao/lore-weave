@@ -276,10 +276,23 @@ ANACHRONISM_MARKERS: tuple[tuple[str, str], ...] = (
 # Chinese contradiction / negation markers — when one of these co-occurs with a
 # canon term in a generated value for the same entity+dimension, the generated
 # fact is asserting the OPPOSITE of canon → contradiction.
+# Contradiction-NEGATION markers — phrases that NEGATE a following canon term
+# ("不是东海" / "并非东海" / "而非东海"). FIX-5: the positive copulas 实为/实则/其实是
+# ("actually IS …") were REMOVED — they AFFIRM their object ("实为东海" = "truly is
+# the East Sea"), so as a bare marker they over-fired (a fact that merely said
+# "实为…" elsewhere flagged an UNRELATED canon term as contradicted). A real
+# "actually Y not X" contradiction is still caught by the negation half (而非).
 _NEGATION_MARKERS: tuple[str, ...] = (
     "不是", "并非", "并不是", "绝非", "从未", "从来不", "没有", "毫无",
-    "实为", "实则", "其实是", "而非", "并无",
+    "而非", "并无",
 )
+#: FIX-5 proximity bound: a negation marker only counts as contradicting a canon
+#: term when it appears within this many characters IMMEDIATELY BEFORE the term
+#: ("并非<term>"), not merely somewhere in the passage. Long generated prose almost
+#: always contains an unrelated negation, so a co-occurrence test over-fired
+#: (auto-rejecting good content that AFFIRMED canon). Tight enough to require the
+#: negation to govern the term, loose enough for "并非"/"是 not " + a particle.
+_NEGATION_WINDOW: int = 10
 # Latin-script negation (in case grounding/excerpt leaked English).
 _EN_NEGATION_RE = re.compile(
     r"\b(?:is\s+not|was\s+not|never|no\s+longer|not\s+a|isn't|wasn't|"
@@ -409,19 +422,26 @@ class CanonVerifier:
     ) -> None:
         """Flag a generated fact that NEGATES an existing canon assertion.
 
-        Reachability/degradation is decided through the C1 read port: if the graph
-        is unavailable or empty (Q6), the canon read cannot be trusted, so we
-        record ``verify_degraded=True`` and DO NOT pass — a down KG never yields a
-        false-green. When canon IS available, a generated value that mentions a
-        canon term together with a negation marker (Chinese or English) for the
-        same entity+dimension is flagged as a contradiction with evidence.
-        """
-        stats = await self._read_stats(proposal, jwt=jwt)
-        if stats is None or stats.is_empty:
-            # No reachable / non-empty canon graph → cannot verify contradiction.
-            result.verify_degraded = True
-            return
+        Canon is read through the injected :data:`CanonLookupFn` — the glossary
+        AUTHORED canon SSOT (F-C12-1), NOT the KG graph. So the availability signal
+        is the CANON LOOKUP itself, not KG graph-stats: ``_lookup_canon`` records
+        ``verify_degraded=True`` if the canon read ERRORS (e.g. glossary
+        unreachable) — a down canon source never yields a false-green. A
+        successful-but-EMPTY lookup means "no authored canon for this entity" =
+        nothing to contradict = legitimately clean (NOT a degrade). When canon IS
+        found, a generated value that mentions a canon term together with a negation
+        marker (Chinese or English) for the same entity+dimension is flagged.
 
+        FIX-1 (2026-06-03): this previously GATED on a KG graph-stats read
+        (``_read_stats``) requiring the caller's user JWT. The background
+        job/worker path runs with ``jwt=""`` (no user token; the graph-stats route
+        is JWT-only, no internal path), so that read always returned empty → the
+        contradiction check (and its jieba canon-terms + the C3 HIGH-contradiction
+        auto-reject) DEGRADED on EVERY live job — inert in production. Canon moved
+        to the glossary SSOT in F-C12-1 but the KG-stats gate was left behind;
+        removing it completes that move. The KG read port is still accepted by the
+        constructor (unused here) for compatibility.
+        """
         for fact in facts:
             canon_facts = await self._lookup_canon(
                 proposal.canonical_name, fact.dimension, result
@@ -477,22 +497,34 @@ class CanonVerifier:
 
     @staticmethod
     def _contradicted_term(content: str, canon: CanonFact) -> str | None:
-        """Return the canon term the content negates, or None.
+        """Return the canon term the content NEGATES, or None.
 
         Heuristic (consistency, not correctness): a contradiction is a canon term
-        appearing in the generated content alongside a negation/contradiction
-        marker (Chinese ``不是/并非/实为…`` or English ``is not/never/rather than``).
-        Returns the first such canon term as evidence; None when no canon term is
-        negated.
-        """
+        the content places DIRECTLY AFTER a negation/contradiction marker — the
+        content asserts ``<negation><canon-term>`` (并非东海 / 不是东海 / 而非东海 /
+        ``rather than Dracula``). FIX-5: the negation must IMMEDIATELY GOVERN the
+        term — appear within :data:`_NEGATION_WINDOW` chars before an occurrence of
+        it — not merely co-occur ANYWHERE in the passage. The old co-occurrence test
+        over-fired: long generated prose almost always contains some unrelated
+        negation (``历劫不磨`` / a ``没有…`` clause elsewhere), so a fact that AFFIRMED
+        a canon entity (e.g. ``元始天尊镇守此宫``) was wrongly flagged as contradicting
+        it and AUTO-REJECTED. Returns the first directly-negated canon term as
+        evidence, else None (conservative — under-fires rather than over-fires, the
+        safe direction for a check that can feed an auto-reject)."""
         if not canon.terms:
             return None
-        has_negation = any(neg in content for neg in _NEGATION_MARKERS) or bool(
-            _EN_NEGATION_RE.search(content)
-        )
-        if not has_negation:
-            return None
         for term in canon.terms:
-            if term and term in content:
-                return term
+            if not term:
+                continue
+            start = 0
+            while True:
+                i = content.find(term, start)
+                if i < 0:
+                    break
+                window = content[max(0, i - _NEGATION_WINDOW):i]
+                if any(neg in window for neg in _NEGATION_MARKERS) or (
+                    _EN_NEGATION_RE.search(window)
+                ):
+                    return term
+                start = i + len(term)
         return None

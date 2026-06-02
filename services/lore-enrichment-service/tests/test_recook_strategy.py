@@ -330,9 +330,10 @@ async def test_recook_admits_licensed_source():
     assert all(f.origin == "enriched:recook" for f in rc.facts)
 
 
-async def test_recook_refuses_if_any_source_unlicensed():
-    # Two grounding sources, one PD + one copyrighted → the WHOLE proposal is
-    # refused (no partial re-cook that silently drops the unlicensed grounding).
+async def test_recook_skips_unlicensed_keeps_licensed():
+    # FIX-2: two grounding sources, one PD + one copyrighted → re-cook from the PD
+    # and SKIP the copyrighted (it is NEVER consumed), instead of refusing the whole
+    # job. The skipped source is recorded in provenance so the decision is auditable.
     grounding = _grounding(1, corpus="corpus-pd") + _grounding(1, corpus="corpus-bad")
     s = ReCookStrategy(
         retrieval=_FakeRetrieval([_proposal(grounding=grounding)]),
@@ -343,7 +344,30 @@ async def test_recook_refuses_if_any_source_unlicensed():
              "corpus-bad": LicenseStatus.COPYRIGHTED}
         ),
     )
-    with pytest.raises(UnlicensedSourceError):
+    results = await s.run([object()], _ctx())  # does NOT raise — skips the bad one
+    rc = results[0]
+    # only the PD source is admitted; the copyrighted is skipped (never consumed)
+    assert [lic.corpus_id for lic in rc.licenses] == ["corpus-pd"]
+    basis = rc.facts[0].provenance["recook_basis"]
+    assert [s["corpus_id"] for s in basis["licensed_sources"]] == ["corpus-pd"]
+    assert [s["corpus_id"] for s in basis["skipped_unlicensed_sources"]] == ["corpus-bad"]
+    # the re-cook grounded ONLY on the admissible chunk (copyrighted filtered out)
+    assert basis["corpus_grounding_count"] == 1
+
+
+async def test_recook_refuses_when_all_sources_unlicensed():
+    # FIX-2 boundary: if NO source is admissible there is nothing licensed to
+    # re-cook from → still REFUSE the whole proposal (the per-source refusal holds).
+    grounding = _grounding(1, corpus="bad1") + _grounding(1, corpus="bad2")
+    s = ReCookStrategy(
+        retrieval=_FakeRetrieval([_proposal(grounding=grounding)]),
+        complete=_complete(_VALID),
+        verifier=_verifier(),
+        license_lookup=_license_lookup_map(
+            {"bad1": LicenseStatus.COPYRIGHTED, "bad2": LicenseStatus.UNKNOWN}
+        ),
+    )
+    with pytest.raises(UnlicensedSourceError, match="NO admissible"):
         await s.run([object()], _ctx())
 
 

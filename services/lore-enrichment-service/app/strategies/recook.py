@@ -52,6 +52,7 @@ Boundaries (locked — docs/raid/cycle_briefs/17_strategy-recook.md):
 
 from __future__ import annotations
 
+import logging
 from typing import Awaitable, Callable, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -74,11 +75,14 @@ from app.strategies.base import (
 from app.strategies.licensing import (
     LicenseStatus,
     SourceLicense,
+    UnlicensedSourceError,
     check_admissible,
 )
 from app.verify.canon_verify import CanonVerifier
 from app.verify.sanitize import neutralize_proposal_text
 from app.verify.wiring import AnnotatedVerify, verify_and_annotate
+
+logger = logging.getLogger("lore_enrichment.recook")
 
 __all__ = [
     "CompleteFn",
@@ -297,9 +301,11 @@ class ReCookStrategy(EnrichmentStrategy):
         """Re-cook licensed real material into 商周/封神 lore for each gap.
 
         One :class:`ReCookedProposal` per gap, in input order. A gap with no
-        grounding is REFUSED (:class:`ReCookError`); a gap grounded on an
-        unlicensed source is REFUSED (:class:`UnlicensedSourceError`) — re-cook
-        consumes only public-domain / licensed material.
+        grounding is REFUSED (:class:`ReCookError`). FIX-2: a gap whose grounding
+        mixes licensed and unlicensed sources re-cooks from the LICENSED ones and
+        SKIPS the unlicensed (never consuming them); a gap with NO admissible source
+        is REFUSED (:class:`UnlicensedSourceError`) — re-cook consumes only
+        public-domain / licensed material.
         """
         results: list[ReCookedProposal] = []
         proposals = await self._retrieval.run(gap_batch, context)
@@ -330,11 +336,35 @@ class ReCookStrategy(EnrichmentStrategy):
             )
 
         # ── (1) LICENSING CHECK at CORPUS-ADMISSION — every grounding source ─────
-        # Resolve + verify the license of every distinct source corpus this
-        # proposal is grounded on BEFORE any generation. An inadmissible source
-        # raises UnlicensedSourceError (NOT swallowed) — re-cook of that source is
-        # refused + escalated, never silently included.
-        licenses = await self._admit_sources(proposal, stage="corpus-admission")
+        # Resolve every distinct source's license BEFORE any generation. FIX-2:
+        # SKIP inadmissible sources (drop their grounding so they are NEVER fed to
+        # the model) and re-cook from the admissible ones; refuse the WHOLE proposal
+        # ONLY if no source is licensed. This keeps the per-source refusal (an
+        # unlicensed source is never consumed) without letting one copyrighted
+        # corpus poison a re-cook that has licensed grounding to work from.
+        admissible, skipped = await self._admit_sources(proposal)
+        admissible_ids = {lic.corpus_id for lic in admissible}
+        kept = [g for g in proposal.grounding if g.corpus_id in admissible_ids]
+        if not kept:
+            names = ", ".join(
+                f"{s.name!r}({s.status.value})" for s in skipped
+            ) or "—"
+            raise UnlicensedSourceError(
+                f"re-cook refused [corpus-admission]: proposal for "
+                f"{proposal.canonical_name!r} has NO admissible (public_domain / "
+                f"licensed) grounding — all {len(skipped)} source(s) inadmissible: "
+                f"{names}. Nothing licensed to re-cook from."
+            )
+        if skipped:
+            logger.info(
+                "re-cook %s: skipped %d unlicensed source(s) (%s), re-cooking from "
+                "%d admissible",
+                proposal.canonical_name, len(skipped),
+                [s.corpus_id for s in skipped], len(admissible),
+            )
+        # Re-cook ONLY the admissible grounding from here on (filtered copy).
+        proposal = proposal.model_copy(update={"grounding": kept})
+        licenses = admissible
 
         source_refs = _source_refs_from_grounding(proposal.grounding)
         prompt = build_recook_prompt(proposal)
@@ -355,7 +385,8 @@ class ReCookStrategy(EnrichmentStrategy):
             check_admissible(lic, stage="fact-emit")
 
         facts = self._tag_facts(
-            proposal, repaired, expected_keys, source_refs, licenses, context
+            proposal, repaired, expected_keys, source_refs, licenses, context,
+            skipped=skipped,
         )
 
         # C12 canon-verify BEFORE the proposal is done — re-contextualising MODERN
@@ -372,19 +403,24 @@ class ReCookStrategy(EnrichmentStrategy):
         )
 
     async def _admit_sources(
-        self, proposal: GroundedProposal, *, stage: str
-    ) -> list[SourceLicense]:
-        """Resolve + check the license of every distinct grounding source.
+        self, proposal: GroundedProposal
+    ) -> tuple[list[SourceLicense], list[SourceLicense]]:
+        """Resolve the license of every distinct grounding source and PARTITION it.
 
-        Returns the admissible :class:`SourceLicense`\\ s (in first-seen order).
-        RAISES :class:`UnlicensedSourceError` on the first inadmissible source —
-        re-cook refuses the whole proposal rather than silently dropping the
-        unlicensed grounding (a partial re-cook on a censored corpus would hide
-        the licensing problem). A source the lookup cannot resolve is treated as
-        UNKNOWN (refused — default-deny: never re-cook a source you can't license).
-        """
+        Returns ``(admissible, skipped)`` in first-seen order. FIX-2: an
+        inadmissible source is SKIPPED (its grounding is dropped before any
+        generation — never consumed), NOT a whole-job refusal. A single copyrighted
+        corpus in a multi-corpus project must not poison a re-cook that can still
+        ground on the project's licensed sources. The per-source refusal is
+        preserved (an unlicensed source is never re-cooked) and the skipped set is
+        recorded in provenance + logged, so the licensing decision stays auditable —
+        never silently hidden. The all-inadmissible case is handled by the caller
+        (raises — nothing licensed to re-cook from). A source the lookup cannot
+        resolve is UNKNOWN → skipped (default-deny: never re-cook what you can't
+        license)."""
         seen: set[str] = set()
-        licenses: list[SourceLicense] = []
+        admissible: list[SourceLicense] = []
+        skipped: list[SourceLicense] = []
         for ref in proposal.grounding:
             if ref.corpus_id in seen:
                 continue
@@ -395,9 +431,8 @@ class ReCookStrategy(EnrichmentStrategy):
                 name=ref.corpus_id,
                 status=LicenseStatus.UNKNOWN,
             )
-            check_admissible(lic, stage=stage)  # raises on inadmissible
-            licenses.append(lic)
-        return licenses
+            (admissible if lic.admissible else skipped).append(lic)
+        return admissible, skipped
 
     def _tag_facts(
         self,
@@ -407,17 +442,25 @@ class ReCookStrategy(EnrichmentStrategy):
         source_refs: list[SourceRef],
         licenses: Sequence[SourceLicense],
         context: StrategyContext,
+        *,
+        skipped: Sequence[SourceLicense] = (),
     ) -> list[EnrichedFact]:
         """Mint one H0-tagged fact per re-cooked dimension via the C11 chokepoint.
 
         origin='enriched:recook', confidence<1.0, pending_validation, non-empty
         provenance that EXPLICITLY records ``recooked=True`` + the LICENSED source
         basis (corpus refs + their license statuses) so a reviewer sees this
-        content was re-cooked from a specific licensed source. The chokepoint makes
-        a canon-looking fact impossible to construct."""
+        content was re-cooked from a specific licensed source — PLUS any
+        ``skipped_unlicensed_sources`` (FIX-2) so the licensing decision is
+        auditable, never hidden. The chokepoint makes a canon-looking fact
+        impossible to construct."""
         source_basis = [
             {"corpus_id": lic.corpus_id, "name": lic.name, "license": lic.status.value}
             for lic in licenses
+        ]
+        skipped_basis = [
+            {"corpus_id": s.corpus_id, "name": s.name, "license": s.status.value}
+            for s in skipped
         ]
         facts: list[EnrichedFact] = []
         for dimension in expected_keys:  # C6 declaration order, deterministic
@@ -440,6 +483,7 @@ class ReCookStrategy(EnrichmentStrategy):
                         "recook_basis": {
                             "corpus_grounding_count": len(proposal.grounding),
                             "licensed_sources": source_basis,
+                            "skipped_unlicensed_sources": skipped_basis,
                         },
                     },
                 )
