@@ -32,6 +32,35 @@ def test_extract_terms_empty_is_empty():
     assert extract_canon_terms("   ", entity_name="蓬萊") == ()
 
 
+def test_le060_segmenter_failure_propagates_so_verifier_degrades(monkeypatch):
+    # review-impl LOW-1: if jieba is unavailable (e.g. an un-rebuilt image) the
+    # segmenter raises — extract_canon_terms must PROPAGATE it (NOT swallow → a
+    # silent [] would look like "no canon" = a false-green). The verifier's
+    # _lookup_canon try/except then records verify_degraded (honest degrade).
+    import app.verify.canon_lookup as cl
+
+    def _boom():
+        raise ImportError("jieba not installed")
+
+    monkeypatch.setattr(cl, "_segmenter", _boom)
+    monkeypatch.setattr(cl, "_posseg", None)  # force re-resolution via _segmenter
+    with pytest.raises(ImportError):
+        cl.extract_canon_terms("蓬萊位于东海。", entity_name="某宫")
+
+
+def test_le060_jieba_keeps_proper_nouns_drops_generic_and_verbs():
+    # LE-060: real CJK segmentation (jieba POS) extracts PROPER nouns as canon
+    # terms and DROPS generic nouns / verbs / adjectives — so a benign fact
+    # mentioning a common word + a negation can't false-positive a contradiction
+    # (the C3 over-fire risk). entity='某宫' so 蓬萊 (a proper noun here) is kept.
+    terms = extract_canon_terms(
+        "蓬萊与昆仑皆为仙山，乃神奇地方，仙人居此修道", entity_name="某宫"
+    )
+    assert "蓬萊" in terms and "昆仑" in terms and "仙山" in terms  # proper nouns (nr/ns)
+    for generic in ("地方", "仙人", "修道", "神奇"):  # generic n / v / a → dropped
+        assert generic not in terms
+
+
 def test_extract_terms_latin_keeps_proper_nouns_drops_common_words():
     # review-impl MED#1: only PROPER-NOUN-like (Capitalized) tokens become terms,
     # so common words can't drive a false-positive contradiction auto-reject.

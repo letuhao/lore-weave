@@ -32,8 +32,32 @@ from app.verify.canon_verify import CanonFact, CanonLookupFn
 
 __all__ = ["extract_canon_terms", "make_glossary_canon_lookup"]
 
-#: Maximal CJK runs; everything else is a delimiter.
-_CJK_RUN = re.compile(r"[一-鿿]+")
+#: Detects whether a string contains any CJK character (→ run the segmenter).
+_HAS_CJK = re.compile(r"[一-鿿]")
+
+#: jieba POS tags kept as canon TERMS — PROPER nouns only (place / person / org /
+#: other-proper). Generic nouns ('n') + verbs/adjectives are DROPPED: keeping
+#: generic common nouns would re-open the C3 false-positive risk (a benign fact
+#: mentioning a common noun + a negation would wrongly flag a contradiction →
+#: auto-reject). Proper nouns are the SPECIFIC canon tokens a real contradiction
+#: negates — consistent with the Latin Capitalized-proper-noun rule below.
+_PROPER_NOUN_POS = frozenset({"ns", "nr", "nt", "nz", "nrt", "nrfg", "nsfg"})
+
+#: Lazily-loaded jieba POS segmenter (LE-060) — imported on first extraction so
+#: its dictionary cost is paid only when a contradiction canon term is actually
+#: needed (rare on sparse canon), not at module/service import time.
+_posseg = None
+
+
+def _segmenter():
+    global _posseg
+    if _posseg is None:
+        import jieba  # noqa: PLC0415 — intentional lazy import (dict-load cost)
+        import jieba.posseg as pseg  # noqa: PLC0415
+        import logging as _logging
+        jieba.setLogLevel(_logging.ERROR)  # silence the one-time dict-build INFO
+        _posseg = pseg
+    return _posseg
 
 #: Latin words (>=3 chars) — for non-CJK / mixed canon (the platform is
 #: multilingual). Short function words are excluded via _LATIN_STOPWORDS.
@@ -45,25 +69,22 @@ _LATIN_STOPWORDS = frozenset({
     "whom", "what", "than", "then", "they", "them", "she", "him",
 })
 
-#: Common Classical/modern grammatical particles used as crude split points so a
-#: CJK run like 蓬萊位于东海 yields the salient tokens (蓬萊, 东海) rather than one
-#: opaque blob. Not a real segmenter — a conservative approximation.
-_PARTICLE_CHARS = set("之的了也其以而與与和及或在乃為为是位於于有與则即将且故所被把")
-
-#: Fragments at/below this length are kept as candidate canon terms (a longer run
-#: is too specific to re-match in a contradicting fact); 2 is the CJK floor.
-_MIN_TERM, _MAX_TERM = 2, 4
+#: A CJK proper-noun shorter than this is too generic to be a useful term.
+_MIN_TERM = 2
 _MAX_TERMS = 8
 
 
 def extract_canon_terms(text: str, *, entity_name: str) -> tuple[str, ...]:
-    """Best-effort canon TERMS from authored canon prose (coarse, CJK-aware).
+    """Canon TERMS from authored canon prose — the salient PROPER nouns a
+    contradicting fact would have to negate.
 
-    Splits each maximal CJK run on common particles and keeps short (2–4 char)
-    fragments — candidate salient nouns a contradicting fact would have to negate.
-    EXCLUDES ``entity_name`` (a fact mentioning the entity's own name is not a
-    contradiction signal). Deduped, order-preserving, capped. Coarse by design
-    (no segmenter) → contradiction stays conservative (under-fires)."""
+    CJK (LE-060): real word segmentation via jieba POS-tagging, keeping ONLY
+    proper-noun tags (place/person/org/other-proper) — generic nouns + verbs are
+    dropped so a benign fact mentioning a common word + a negation can't
+    false-positive a contradiction (the C3 over-fire risk). Latin: Capitalized
+    proper-noun-like tokens. EXCLUDES ``entity_name`` (+ its component words) — a
+    fact mentioning the entity's own name is not a contradiction signal. Deduped,
+    order-preserving, capped. Conservative by design (under-fires)."""
     if not text or not text.strip():
         return ()
     out: list[str] = []
@@ -71,23 +92,18 @@ def extract_canon_terms(text: str, *, entity_name: str) -> tuple[str, ...]:
     # name is not a contradiction signal).
     seen: set[str] = {entity_name}
     seen.update(w.lower() for w in _LATIN_WORD.findall(entity_name))
-    # ── CJK terms: split runs on common particles, keep short fragments ──────
-    for run in _CJK_RUN.findall(text):
-        buf = ""
-        fragments: list[str] = []
-        for ch in run:
-            if ch in _PARTICLE_CHARS:
-                if buf:
-                    fragments.append(buf)
-                buf = ""
-            else:
-                buf += ch
-        if buf:
-            fragments.append(buf)
-        for frag in fragments:
-            if _MIN_TERM <= len(frag) <= _MAX_TERM and frag not in seen:
-                seen.add(frag)
-                out.append(frag)
+    # ── CJK terms: jieba segmentation, PROPER nouns only (LE-060) ────────────
+    if _HAS_CJK.search(text):
+        for tok in _segmenter().cut(text):
+            word, flag = tok.word, tok.flag
+            if (
+                flag in _PROPER_NOUN_POS
+                and len(word) >= _MIN_TERM
+                and word not in seen
+                and word not in entity_name  # drop a fragment of the entity name
+            ):
+                seen.add(word)
+                out.append(word)
                 if len(out) >= _MAX_TERMS:
                     return tuple(out)
     # ── Latin words: keep only PROPER-NOUN-like (Capitalized) tokens ─────────
