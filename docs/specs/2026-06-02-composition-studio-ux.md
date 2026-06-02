@@ -116,3 +116,30 @@ From [competitor-ui-ux-audit.md](../research/2026-06-02-competitor-ui-ux-audit.m
 3. **In-prose mention-linking + heatmap** (NovelCrafter Codex) — entities underlined in prose (reuse the existing glossary highlight); a Grounding **mention heatmap** + "Show heatmap in prose" toggle make *what the AI will get* visible before generating.
 
 Deferred-but-noted: **V1** — beats-with-`[directives]`, filter Scene-Graph by entity, command palette (Power), Linked-Mentions per entity, curated colored relationship web. **V2** — adaptive goals/stats, whole-draft snapshots, export-with-wizard. **Skip** — NovelAI keyed-injection, canvas-as-whole-app.
+
+---
+
+## §7 Derivative works (同人 / AU / 番外)
+
+High-demand feature: spin an existing Work into a **persistent, independent derivative** (fan-fiction / alternate-universe / side-story). Distinct from the what-if branch (scene-level, transient, *collapses* into one manuscript): a 同人 is a **whole new Work** that forks from the original and is written **chapter-by-chapter**, inheriting the original's world + applying a **divergence**. Mockup: [composition-doujin-mockup.html](composition-doujin-mockup.html). Architecture: [vision §9](2026-06-02-composition-service-vision.md).
+
+### §7.1 Divergence taxonomy (grounded in fanfic convention — [AO3 AU tags](https://archiveofourown.org/tags/Alternate%20Universe/works))
+| Family | Types | Author's examples |
+|---|---|---|
+| **POV shift** (视角) | side-character narrator · same character new lens · new inserted character | "thêm nhân vật góc nhìn khác", "cùng nhân vật góc nhìn khác" |
+| **Character transform** (人物改写) | 性转 genderbend · 黑化 dark-turn · role-reversal · fix-it/redemption · CP/relationship rewrite | "hắc hóa", "đổi giới tính" |
+| **Universe / AU** (架空) | canon-divergence (from Ch.N) · total AU (modern/school) · crossover/fusion | — |
+
+### §7.2 The Divergence Wizard (4 steps; progressive disclosure)
+1. **Source & branch point** — Work + where it diverges (from Ch.1 = full AU · from Ch.N = canon-divergence · parallel to Ch.5–8 = 番外). Inherits canon ≤ branch point.
+2. **Divergence type** — one+ cards (POV / Character transform / AU); each expands to pick focal character / transform(s) / setting template.
+3. **Overrides preview** — inherited (grey) vs overridden (highlighted) vs new; editable in place (reuses Cast & Codex + Canon Rules).
+4. **Name & create** — title + auto-suggested tags → a new derivative Work.
+
+### §7.3 The derivative opens in the studio (v3), with:
+- A **divergence banner** (同人 of «…» · diverges from Ch.N · transforms · POV) → opens the spec.
+- **Grounding shows 2 layers** — ⬡ *inherited* base (read-only) + ◆ *this AU's* own canon (building); entities badged **OVERRIDDEN** vs **INHERITED**; the critic enforces the override (e.g. "Kaela = female") across every chapter written.
+- A **reference spine** — the original's chapters available to *adapt with overrides* or ignore; Scene Graph shows original (grey) + derivative (solid).
+
+### §7.4 Bridge to what-if
+The what-if **Promote** action gains a third option — **"spin off as a 同人"** — a loved exploratory branch becomes its own persistent story.

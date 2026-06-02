@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — Derivative (同人) writing</title>
+<style>
+  :root{
+    --bg:25 8% 8%; --fg:40 30% 95%; --card:25 7% 11%; --pop:25 7% 13%;
+    --primary:35 85% 55%; --primary-fg:25 10% 6%;
+    --secondary:25 6% 16%; --muted:25 5% 16%; --muted-fg:30 8% 62%;
+    --accent:170 45% 50%; --accent-fg:170 45% 88%;
+    --violet:270 50% 65%;
+    --destructive:0 72% 58%; --success:150 65% 48%; --warning:38 92% 55%;
+    --border:25 6% 18%;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --serif:"Iowan Old Style",Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:var(--sans);background:hsl(var(--bg));color:hsl(var(--fg));font-size:13px;-webkit-font-smoothing:antialiased}
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  .app{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+
+  /* toolbar */
+  .tb{display:flex;height:42px;flex-shrink:0;align-items:center;justify-content:space-between;border-bottom:1px solid hsl(var(--border));background:hsl(var(--card));padding:0 16px}
+  .crumb{display:flex;align-items:center;gap:6px;font-size:12px;color:hsl(var(--muted-fg))}
+  .crumb b{color:hsl(var(--fg));font-weight:600}
+  .crumb .dj{color:hsl(var(--violet));font-weight:700}
+  .tbR{display:flex;align-items:center;gap:8px}
+  .pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 9px;font-size:10px;font-weight:600}
+  .pill.ai{background:hsl(var(--primary)/.14);color:hsl(var(--primary))}
+  .pill.ok{background:hsl(var(--success)/.12);color:hsl(var(--success))}
+  .save{display:inline-flex;align-items:center;gap:6px;background:hsl(var(--primary));color:hsl(var(--primary-fg));border-radius:6px;padding:5px 11px;font-size:12px;font-weight:600}
+
+  /* divergence banner */
+  .dbanner{display:flex;align-items:center;gap:12px;flex-shrink:0;padding:8px 16px;border-bottom:1px solid hsl(var(--violet)/.3);background:linear-gradient(90deg,hsl(var(--violet)/.16),hsl(var(--accent)/.08));font-size:12px}
+  .dbanner .ico{font-size:15px}
+  .dbanner b{color:hsl(var(--fg));font-weight:700}
+  .dbanner .src{color:hsl(var(--accent-fg))}
+  .dbanner .ov{display:inline-flex;align-items:center;gap:5px;background:hsl(var(--primary)/.16);color:hsl(var(--primary));border:1px solid hsl(var(--primary)/.35);border-radius:99px;padding:2px 9px;font-weight:700}
+  .dbanner .from{color:hsl(var(--muted-fg))}
+  .dbanner .spec{margin-left:auto;border:1px solid hsl(var(--border));border-radius:6px;padding:4px 10px;font-size:11px;font-weight:600;color:hsl(var(--muted-fg))}
+  .dbanner .spec:hover{color:hsl(var(--fg));background:hsl(var(--secondary))}
+
+  .area{display:flex;flex:1;overflow:hidden;min-height:0}
+  .lp,.rp{flex-shrink:0;display:flex;flex-direction:column;background:hsl(var(--card));overflow-y:auto}
+  .lp{width:248px;border-right:1px solid hsl(var(--border))}
+  .rp{width:330px;border-left:1px solid hsl(var(--border))}
+  .secttl{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:hsl(var(--muted-fg));margin:12px 13px 6px}
+
+  /* left: derivative chapters + source link */
+  .srcbox{margin:11px 13px;border:1px solid hsl(var(--border));border-radius:9px;padding:9px;background:hsl(var(--bg))}
+  .srcbox .sl{font-size:10px;color:hsl(var(--muted-fg))}
+  .srcbox .sn{font-family:var(--serif);font-weight:600;font-size:13px;margin:2px 0 4px}
+  .srcbox .go{font-size:11px;color:hsl(var(--accent));font-weight:600}
+  .chrow{display:flex;gap:8px;align-items:center;width:100%;padding:8px 13px;text-align:left;color:hsl(var(--muted-fg));font-size:12px}
+  .chrow:hover{background:hsl(var(--secondary)/.5);color:hsl(var(--fg))}
+  .chrow.cur{border-left:2px solid hsl(var(--violet));background:hsl(var(--violet)/.08);color:hsl(var(--fg))}
+  .chrow .n{width:16px;font-family:ui-monospace,monospace;font-size:10px;opacity:.5}
+  .chrow .st{margin-left:auto;font-size:9px}
+  .dot{width:6px;height:6px;border-radius:50%}.dot.cur{background:hsl(var(--violet))}.dot.e{background:hsl(var(--border))}
+
+  /* center editor */
+  .center{display:flex;flex:1;flex-direction:column;overflow:hidden;background:hsl(var(--bg))}
+  .titlebar{flex-shrink:0;border-bottom:1px solid hsl(var(--border));padding:16px 30px 12px}
+  .titlebar input{width:100%;background:transparent;border:none;outline:none;font-family:var(--serif);font-size:21px;font-weight:600;color:hsl(var(--fg))}
+  .tmeta{margin-top:6px;display:flex;gap:9px;font-size:10px;color:hsl(var(--muted-fg))}
+  .edit{flex:1;overflow-y:auto;padding:18px 0 40px}
+  .refcard{max-width:640px;margin:0 auto 18px;padding:9px 13px;border:1px dashed hsl(var(--accent)/.4);border-radius:9px;background:hsl(var(--accent)/.06);display:flex;align-items:center;gap:10px;font-size:11.5px;color:hsl(var(--accent-fg))}
+  .refcard .rt{flex:1}.refcard b{color:hsl(var(--fg))}
+  .refcard button{font-size:11px;font-weight:600;border:1px solid hsl(var(--accent)/.4);border-radius:6px;padding:4px 9px;color:hsl(var(--accent))}
+  .refcard button:hover{background:hsl(var(--accent)/.12)}
+  .prose{max-width:640px;margin:0 auto;padding:0 30px;font-family:var(--serif);font-size:17px;line-height:1.85;color:hsl(40 22% 86%)}
+  .prose p{margin:0 0 16px}
+  .ovr-m{color:hsl(var(--primary));border-bottom:1.5px dotted hsl(var(--primary));cursor:help;font-weight:500}
+  .inh-m{border-bottom:1.5px dotted hsl(var(--accent));cursor:help}
+  .ghost{color:hsl(35 60% 62%);border-left:2px solid hsl(var(--primary)/.5);padding-left:10px;background:linear-gradient(90deg,hsl(var(--primary)/.06),transparent);display:block}
+  .savenote{flex-shrink:0;border-top:1px solid hsl(var(--border));padding:8px 16px}
+  .savenote input{width:100%;background:hsl(var(--bg));border:1px solid hsl(var(--border));border-radius:6px;padding:6px 11px;font-size:12px;color:hsl(var(--fg))}
+
+  /* right: grounding with inherited vs overridden */
+  .rhead{padding:11px 13px;border-bottom:1px solid hsl(var(--border));font-weight:700;font-size:12.5px}
+  .layers{display:flex;gap:6px;margin:10px 13px}
+  .layer{flex:1;border:1px solid hsl(var(--border));border-radius:8px;padding:7px 9px;font-size:10.5px}
+  .layer .lt{font-weight:700;display:flex;align-items:center;gap:5px;margin-bottom:2px}
+  .layer.base .lt{color:hsl(var(--accent-fg))}.layer.delta .lt{color:hsl(var(--violet))}
+  .layer .lc{color:hsl(var(--muted-fg))}
+  .cut{font-size:10px;font-weight:700;color:hsl(var(--muted-fg));background:hsl(var(--muted));border-radius:6px;padding:5px 8px;margin:0 13px}
+  .ent{margin:8px 13px;border:1px solid hsl(var(--border));border-radius:9px;padding:9px 10px;background:hsl(var(--bg))}
+  .ent.over{border-color:hsl(var(--primary)/.45);background:hsl(var(--primary)/.05)}
+  .ent .eh{display:flex;align-items:center;gap:7px;margin-bottom:4px}
+  .ent .en{font-weight:700;font-size:13px}
+  .badge{font-size:8.5px;font-weight:800;letter-spacing:.03em;border-radius:5px;padding:2px 6px}
+  .badge.ov{background:hsl(var(--primary)/.18);color:hsl(var(--primary))}
+  .badge.inh{background:hsl(var(--accent)/.16);color:hsl(var(--accent-fg))}
+  .ent .row{font-size:11.5px;color:hsl(var(--muted-fg));padding:1px 0}
+  .ent .chg{color:hsl(var(--primary))}
+  .ent .was{color:hsl(var(--muted-fg)/.7);text-decoration:line-through}
+  .building{margin:8px 13px;font-size:11px;color:hsl(var(--muted-fg));border:1px dashed hsl(var(--border));border-radius:8px;padding:9px;text-align:center}
+  .dsum{margin:10px 13px;font-size:11px;color:hsl(var(--muted-fg));display:flex;gap:6px;flex-wrap:wrap}
+  .dsum span{background:hsl(var(--secondary));border-radius:99px;padding:2px 8px}
+
+  .sb{display:flex;height:24px;flex-shrink:0;align-items:center;justify-content:space-between;border-top:1px solid hsl(var(--border));padding:0 12px;font-size:10px;color:hsl(var(--muted-fg));background:hsl(25 10% 7%)}
+
+  /* divergence spec popover */
+  .specpop{position:absolute;top:80px;right:18px;width:300px;background:hsl(var(--pop));border:1px solid hsl(var(--violet)/.4);border-radius:11px;box-shadow:0 16px 44px #000b;padding:13px;z-index:30;display:none}
+  .specpop.on{display:block}
+  .specpop h4{margin:0 0 8px;font-size:13px}
+  .sprow{display:flex;gap:8px;font-size:12px;padding:5px 0;border-top:1px solid hsl(var(--border))}
+  .sprow .k{width:90px;color:hsl(var(--muted-fg))}
+  .sprow .v{color:hsl(var(--fg))}
+  .sprow .v .chg{color:hsl(var(--primary));font-weight:600}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="tb">
+    <div class="crumb">Workspace › <span class="dj">同人 Library</span> › <b>Embers · Kaela 性转 AU</b></div>
+    <div class="tbR">
+      <span class="pill ai">✦ AI</span>
+      <span class="pill ok">● Saved</span>
+      <button class="save">↓ Save</button>
+    </div>
+  </div>
+
+  <!-- divergence banner -->
+  <div class="dbanner">
+    <span class="ico">🌀</span>
+    <b>同人 derivative</b> <span class="from">of</span> <span class="src">«Embers of the Ashen Gate»</span>
+    <span class="from">·</span> <span class="from">diverges from <b style="color:hsl(var(--fg))">Ch.1</b> (full AU)</span>
+    <span class="from">·</span> <span class="ov">✦ Kael → 性转 female «Kaela» · she/her</span>
+    <span class="from">·</span> <span class="from">POV Kaela</span>
+    <button class="spec" id="specBtn">⚙ Divergence spec</button>
+  </div>
+
+  <div class="area" style="position:relative">
+
+    <!-- LEFT -->
+    <div class="lp">
+      <div class="srcbox">
+        <div class="sl">based on</div>
+        <div class="sn">Embers of the Ashen Gate</div>
+        <div class="go">↗ open original · inherits 24 entities · 60 relations</div>
+      </div>
+      <div class="secttl">This work — chapters</div>
+      <button class="chrow cur"><span class="n">1</span> Arrival <span class="dot cur st"></span></button>
+      <button class="chrow"><span class="n">2</span> <span style="opacity:.5">untitled</span> <span class="dot e st"></span></button>
+      <button class="chrow"><span class="n">+</span> <span style="opacity:.5">new chapter</span></button>
+      <div class="secttl">Reference spine (original)</div>
+      <button class="chrow"><span class="n">1</span> Arrival <span style="margin-left:auto;font-size:9px;color:hsl(var(--accent))">adapt ▸</span></button>
+      <button class="chrow"><span class="n">2</span> The Broken Oath</button>
+      <button class="chrow"><span class="n">9</span> <span style="color:hsl(var(--muted-fg)/.6)">sword shatters (future)</span></button>
+    </div>
+
+    <!-- CENTER -->
+    <div class="center">
+      <div class="titlebar">
+        <input value="Chapter 1 · Arrival" />
+        <div class="tmeta"><span>English</span><span>· 1,210 words</span><span>· 同人 / 性转 / AU</span></div>
+      </div>
+      <div class="edit">
+        <div class="refcard">
+          <span>📖</span>
+          <div class="rt"><b>Original Ch.1 «Arrival»</b> available as a reference spine — let the AI retell it with your overrides applied, or write fresh.</div>
+          <button>✦ Adapt with overrides</button>
+          <button>Write fresh</button>
+        </div>
+        <div class="prose">
+          <p><span class="ovr-m" title="OVERRIDDEN — Kael → female «Kaela», she/her (was: male «Kael»)">Kaela</span> had walked a long way to reach a place she'd been warned never to find. The <span class="inh-m" title="INHERITED from original — world location">Gate of Ash</span> rose out of the fog like a wound that had never closed, and <span class="ovr-m" title="OVERRIDDEN — she/her">she</span> felt the old cold settle into the hollow at <span class="ovr-m" title="OVERRIDDEN — her/hers">her</span> hip where a scabbard should have hung.</p>
+          <p><span class="inh-m" title="INHERITED — character carried over unchanged">Mira</span> was already there, of course — <span class="inh-m" title="INHERITED trait: always reaches dangerous places first">she always reached the dangerous places first</span>. "You came," she said, and something in the word landed wrong.</p>
+          <p class="ghost">"I came." <span style="border-bottom:1.5px dotted hsl(var(--primary))">Kaela</span> let her empty fingers fall open. The habit of a swordswoman with no sword — that, at least, the gate could not take from her.</p>
+        </div>
+      </div>
+      <div class="savenote"><input placeholder="Save note (optional)…" /></div>
+    </div>
+
+    <!-- RIGHT: grounding -->
+    <div class="rp">
+      <div class="rhead">🔎 Grounding · derivative canon</div>
+      <div class="layers">
+        <div class="layer base"><div class="lt">⬡ Inherited</div><div class="lc">«Embers» world, cast, relations — read-only base</div></div>
+        <div class="layer delta"><div class="lt">◆ This AU</div><div class="lc">Kaela's canon — Ch.1, building</div></div>
+      </div>
+      <div class="cut">⏳ Injected for next generation · derivative canon ≤ Ch.1</div>
+
+      <div class="secttl">Present in scene</div>
+      <div class="ent over">
+        <div class="eh"><span class="en">Kaela</span><span class="badge ov">✦ OVERRIDDEN</span></div>
+        <div class="row chg">gender female <span class="was">was male</span></div>
+        <div class="row chg">name «Kaela» <span class="was">was «Kael»</span> · she/her</div>
+        <div class="row">essence inherited: wandering swordswoman · dry, distrustful</div>
+      </div>
+      <div class="ent">
+        <div class="eh"><span class="en">Mira</span><span class="badge inh">⬡ INHERITED</span></div>
+        <div class="row">reaches danger first · (planned: hidden allegiance)</div>
+      </div>
+      <div class="ent">
+        <div class="eh"><span class="en">The Gate of Ash</span><span class="badge inh">⬡ INHERITED</span></div>
+        <div class="row">a dead-stone arch where oaths burn</div>
+      </div>
+
+      <div class="secttl">This AU's own canon</div>
+      <div class="building">◆ Ch.1 facts extract here as you write → feeds Ch.2's grounding</div>
+
+      <div class="dsum">
+        <span>1 override</span><span>inherits 24 entities</span><span>60 relations</span><span>critic enforces: Kaela = female</span>
+      </div>
+    </div>
+
+    <!-- divergence spec popover -->
+    <div class="specpop" id="specpop">
+      <h4>⚙ Divergence spec</h4>
+      <div class="sprow"><span class="k">Source</span><span class="v">«Embers of the Ashen Gate»</span></div>
+      <div class="sprow"><span class="k">Branch point</span><span class="v">Ch.1 — full AU</span></div>
+      <div class="sprow"><span class="k">POV</span><span class="v">Kaela</span></div>
+      <div class="sprow"><span class="k">Overrides</span><span class="v"><span class="chg">Kael → 性转 female</span><br>name «Kaela» · she/her</span></div>
+      <div class="sprow"><span class="k">Inherits</span><span class="v">world · cast · relations · outline (as reference)</span></div>
+      <div class="sprow"><span class="k">+ Add</span><span class="v" style="color:hsl(var(--accent))">another transform / new character / canon rule…</span></div>
+    </div>
+  </div>
+
+  <div class="sb">
+    <div style="display:flex;gap:12px"><span>● Connected</span><span>同人 of «Embers»</span><span>2-layer canon</span></div>
+    <div style="display:flex;gap:12px"><span>Kaela = female (enforced)</span></div>
+  </div>
+</div>
+
+<script>
+  const pop=document.getElementById('specpop');
+  document.getElementById('specBtn').addEventListener('click',e=>{e.stopPropagation();pop.classList.toggle('on');});
+  document.addEventListener('click',e=>{ if(pop.classList.contains('on') && !e.target.closest('#specpop') && !e.target.closest('#specBtn')) pop.classList.remove('on'); });
+</script>
+</body>
+</html>

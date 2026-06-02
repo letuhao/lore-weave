@@ -166,3 +166,32 @@ Follows the repo's **React MVC** rules (hooks=controllers, context=services, com
 1. Resolve COMP-Q1..Q4 with the author.
 2. Read companion research (§ companion link) for prior-art positioning + differentiation.
 3. Promote to a DESIGN spec: service skeleton, DB schema, API contract, agent-loop sequencing, glossary/knowledge/eval integration points, GUI flow.
+
+---
+
+## §9 Derivative works (同人 / AU) — architecture (added 2026-06-02)
+
+A persistent, **work-level** fork of an existing Work (fan-fiction / AU / 番外), written chapter-by-chapter, inheriting the original's canon + applying overrides. UX: [composition-studio-ux.md §7](2026-06-02-composition-studio-ux.md). The scene-level twin (what-if branch) collapses into one manuscript; a derivative **persists as its own Work**.
+
+### §9.1 New entities (COMP DB)
+- **`derivative_work`** — a composition Work with `source_work_id` (→ the original's project/book) + `divergence_spec`.
+- **`divergence_spec`** — `branch_point` (chapter/scene; or "full" = from Ch.1) · `pov_anchor` (entity) · `entity_override[]` · new `canon_rule[]` · optional `au_template`.
+- **`entity_override`** — `(entity_id, field, new_value, kind ∈ {genderbend, dark_turn, role_reversal, attribute, pov, …})`. Shadows a specific inherited entity attribute/arc.
+
+### §9.2 Two-layer copy-on-write knowledge graph (NO knowledge-service change)
+The derivative inherits the source graph by **reference (COW)** and accumulates its own divergent canon:
+- **base layer** = source project's graph, read-only, **filtered ≤ `branch_point`**;
+- **delta layer** = the derivative's own project graph (its written chapters' extracted facts, via the existing flywheel).
+
+**The retrieval merge happens in COMP's packer** (per **COMP-A6** — COMP self-packs): `query source-graph(≤ branch)` → `apply entity_override` → `merge with derivative-graph` → budget → inject. The override is applied **at every retrieve** → cross-chapter consistency for free (e.g. "Kael→female" never drifts), no find/replace, **no touch to knowledge-service**.
+
+### §9.3 Generation · critic · flywheel — same engine
+- **Generate**: grounded on `(base ≤ branch + overrides) + (derivative canon so far) + (original Ch.N as optional reference spine)`.
+- **Critic**: checks each chapter against the **derivative's effective canon** — catches override slips ("called Kaela 'he'") and derivative-internal contradictions.
+- **Flywheel**: approved derivative chapters extract into the **delta layer** → richer grounding for the next chapter.
+
+### §9.4 Scope (honest)
+Surface transforms (name / pronoun / title) are **deterministic** via the override; deeper cascades (relationship dynamics, plot shifts from a gender change) are **AI + author co-created**, grounded on the override and kept consistent by the critic — not auto-derived.
+
+### §9.5 Bridge: promote what-if → 同人
+The what-if branch **Promote** gains a third option — **spin off as a derivative Work** — turning a loved exploratory branch into a persistent 同人 (its `divergence_spec` seeded from the branch's deltas).
