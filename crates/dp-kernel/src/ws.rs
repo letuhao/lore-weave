@@ -100,6 +100,13 @@ impl Envelope {
         if matches!(self.kind, MessageKind::Data) && self.nonce.is_empty() {
             return Err("data envelope requires nonce (replay defense)".into());
         }
+        // ws/v1.yaml: seq is `minimum: 1`, required for data, omitted for
+        // control. seq 0 on a data frame is reserved/invalid (mirrors the Go
+        // `Envelope.Validate` rule + `WSSession::accept_seq` 0-reserved guard).
+        // 068 / D-WS-TICKET-WIRE — added in lockstep with the Go side (Q-L4-1).
+        if matches!(self.kind, MessageKind::Data) && self.seq < 1 {
+            return Err("data envelope requires seq>=1".into());
+        }
         Ok(())
     }
 }
@@ -502,6 +509,24 @@ mod tests {
             payload: serde_json::Value::Null,
         };
         assert!(e.validate().is_err());
+    }
+
+    #[test]
+    fn envelope_data_requires_seq() {
+        // seq 0 on a data frame must be rejected (ws/v1.yaml minimum:1) — 068,
+        // in lockstep with the Go `Envelope.Validate` rule.
+        let mut e = Envelope {
+            version: ENVELOPE_VERSION,
+            kind: MessageKind::Data,
+            message_type: "chat.message".into(),
+            direction: Direction::ClientToServer,
+            seq: 0,
+            nonce: "n1".into(),
+            payload: serde_json::Value::Null,
+        };
+        assert!(e.validate().is_err(), "data seq=0 must be rejected");
+        e.seq = 1;
+        assert!(e.validate().is_ok(), "data seq>=1 must pass");
     }
 
     #[test]

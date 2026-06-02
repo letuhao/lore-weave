@@ -80,6 +80,27 @@ func TestEnvelope_Validate_ControlNoNonce(t *testing.T) {
 	}
 }
 
+func TestEnvelope_Validate_DataRequiresSeq(t *testing.T) {
+	// Data frame with seq 0 (zero value / "omitted") must be rejected —
+	// ws/v1.yaml seq minimum:1, required for data (068 / D-WS-TICKET-WIRE).
+	e := Envelope{Version: EnvelopeVersion, Kind: KindData, Type: "chat.message", Direction: DirectionClientToServer, Nonce: "n1"}
+	if err := e.Validate(); err == nil {
+		t.Fatalf("Validate = nil; want seq>=1 error for data frame with seq 0")
+	}
+	e.Seq = 1
+	if err := e.Validate(); err != nil {
+		t.Fatalf("Validate err = %v; want nil once seq>=1", err)
+	}
+}
+
+func TestEnvelope_Validate_ControlSeqZeroOK(t *testing.T) {
+	// Control frames omit seq (0) — must NOT trip the data seq>=1 rule.
+	e := Envelope{Version: EnvelopeVersion, Kind: KindControl, Type: "ws.ping", Direction: DirectionClientToServer}
+	if err := e.Validate(); err != nil {
+		t.Errorf("Validate err = %v; want nil for control seq=0", err)
+	}
+}
+
 func TestCloseCode_Count(t *testing.T) {
 	if got, want := len(AllCloseCodes()), 11; got != want {
 		t.Fatalf("AllCloseCodes count = %d; want %d (S12 §12AB.9: 1000 + 4001..4010)", got, want)

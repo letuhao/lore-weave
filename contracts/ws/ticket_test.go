@@ -2,7 +2,10 @@ package ws
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,8 +18,8 @@ func goodTicket(now time.Time) Ticket {
 		UserRefID:             uuid.New(),
 		AllowedRealities:      []uuid.UUID{uuid.New()},
 		AllowedScopes:         []string{"chat", "presence"},
-		OriginHash:            [32]byte{1, 2, 3, 4},
-		ClientFingerprintHash: [32]byte{5, 6, 7, 8},
+		OriginHash:            Hash32{1, 2, 3, 4},
+		ClientFingerprintHash: Hash32{5, 6, 7, 8},
 		IssuedAt:              now,
 		ExpiresAt:             now.Add(TicketTTL),
 	}
@@ -38,8 +41,8 @@ func TestTicket_Validate_Required(t *testing.T) {
 	}{
 		{"id", func(t *Ticket) { t.TicketID = "" }},
 		{"user", func(t *Ticket) { t.UserRefID = uuid.Nil }},
-		{"origin", func(t *Ticket) { t.OriginHash = [32]byte{} }},
-		{"fingerprint", func(t *Ticket) { t.ClientFingerprintHash = [32]byte{} }},
+		{"origin", func(t *Ticket) { t.OriginHash = Hash32{} }},
+		{"fingerprint", func(t *Ticket) { t.ClientFingerprintHash = Hash32{} }},
 		{"iat", func(t *Ticket) { t.IssuedAt = time.Time{} }},
 		{"exp", func(t *Ticket) { t.ExpiresAt = time.Time{} }},
 	}
@@ -76,7 +79,7 @@ func TestTicket_BindsToOriginAndFingerprint(t *testing.T) {
 	if !tk.BindsToOrigin(tk.OriginHash) {
 		t.Errorf("BindsToOrigin self-match = false; want true")
 	}
-	if tk.BindsToOrigin([32]byte{99}) {
+	if tk.BindsToOrigin(Hash32{99}) {
 		t.Errorf("BindsToOrigin foreign = true; want false")
 	}
 	if !tk.BindsToFingerprint(tk.ClientFingerprintHash) {
@@ -123,5 +126,51 @@ func TestInMemoryTicketStore_Expired(t *testing.T) {
 	_, err := st.Redeem(context.Background(), tk.TicketID, now.Add(2*TicketTTL))
 	if !errors.Is(err, ErrTicketExpired) {
 		t.Errorf("Redeem expired err = %v; want ErrTicketExpired", err)
+	}
+}
+
+// TestTicket_HashWireFormat_Base64 pins the D-WS-TICKET-WIRE (068) fix: the
+// ticket hashes MUST marshal as base64 STRINGS (ws/v1.yaml format: byte), not
+// the Go-default [N]byte int-array, and MUST round-trip back byte-for-byte.
+func TestTicket_HashWireFormat_Base64(t *testing.T) {
+	tk := goodTicket(time.Now())
+	raw, err := json.Marshal(tk)
+	if err != nil {
+		t.Fatalf("marshal err = %v", err)
+	}
+	js := string(raw)
+	wantOrigin := base64.StdEncoding.EncodeToString(tk.OriginHash[:])
+	if !strings.Contains(js, `"origin_hash":"`+wantOrigin+`"`) {
+		t.Fatalf("origin_hash not a base64 string in JSON:\n%s", js)
+	}
+	if strings.Contains(js, `"origin_hash":[`) {
+		t.Fatalf("origin_hash marshaled as int-array (068 regression):\n%s", js)
+	}
+	var got Ticket
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal err = %v", err)
+	}
+	if got.OriginHash != tk.OriginHash || got.ClientFingerprintHash != tk.ClientFingerprintHash {
+		t.Fatalf("hash round-trip mismatch: origin %x→%x fp %x→%x",
+			tk.OriginHash, got.OriginHash, tk.ClientFingerprintHash, got.ClientFingerprintHash)
+	}
+}
+
+// TestHash32_UnmarshalEnforces32Bytes proves UnmarshalJSON rejects a
+// wrong-length or non-base64 digest rather than silently zero-padding.
+func TestHash32_UnmarshalEnforces32Bytes(t *testing.T) {
+	var h Hash32
+	for _, n := range []int{0, 31, 33, 64} {
+		s := base64.StdEncoding.EncodeToString(make([]byte, n))
+		if err := h.UnmarshalJSON([]byte(`"` + s + `"`)); err == nil {
+			t.Errorf("UnmarshalJSON accepted %d-byte hash; want error", n)
+		}
+	}
+	if err := h.UnmarshalJSON([]byte(`"!!! not base64 !!!"`)); err == nil {
+		t.Error("UnmarshalJSON accepted non-base64; want error")
+	}
+	valid := base64.StdEncoding.EncodeToString(make([]byte, 32))
+	if err := h.UnmarshalJSON([]byte(`"` + valid + `"`)); err != nil {
+		t.Errorf("UnmarshalJSON rejected valid 32-byte hash: %v", err)
 	}
 }

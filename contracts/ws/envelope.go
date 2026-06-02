@@ -101,6 +101,12 @@ func (e Envelope) Validate() error {
 	if e.Kind == KindData && e.Nonce == "" {
 		return errors.New("ws: data envelope requires nonce (replay defense)")
 	}
+	if e.Kind == KindData && e.Seq < 1 {
+		// ws/v1.yaml: seq is `minimum: 1`, required for data, omitted for
+		// control. Seq 0 on a data frame is reserved/invalid (it would also
+		// trip WSSession.AcceptSeq's "seq=0 reserved for control" guard).
+		return errors.New("ws: data envelope requires seq>=1")
+	}
 	return nil
 }
 

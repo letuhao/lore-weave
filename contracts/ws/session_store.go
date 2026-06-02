@@ -38,9 +38,12 @@ type WSSession struct {
 	AllowedScopes    []string
 
 	// OriginHash + ClientFingerprint — pinned at handshake; mid-connection
-	// checks re-compute and compare (L4 + L6 defenses).
-	OriginHash        [32]byte
-	ClientFingerprint [32]byte
+	// checks re-compute and compare (L4 + L6 defenses). Hash32 for type-parity
+	// with Ticket (this struct is server-side only / never serialized, so the
+	// base64 marshaling is irrelevant here — the type just keeps == comparisons
+	// and the NewSession assignment from the ticket clean).
+	OriginHash        Hash32
+	ClientFingerprint Hash32
 
 	// SubscribedTopics — current subscription set (server tracks for
 	// fanout). Foundation does NOT constrain TopicRef shape — strings.
@@ -215,7 +218,7 @@ func (s *WSSession) Subscribe(topic string) error {
 
 // Sentinel errors for session-state operations.
 var (
-	ErrNonceReplay              = errors.New("ws: nonce replay")
+	ErrNonceReplay               = errors.New("ws: nonce replay")
 	ErrSubscriptionLimitExceeded = errors.New("ws: subscription limit exceeded")
 )
 

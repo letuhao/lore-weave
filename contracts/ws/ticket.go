@@ -2,6 +2,8 @@ package ws
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -9,6 +11,40 @@ import (
 
 	"github.com/google/uuid"
 )
+
+// Hash32 is a 32-byte SHA-256 digest that marshals to/from JSON as a base64
+// string — matching contracts/ws/v1.yaml, where origin_hash +
+// client_fingerprint_hash are `{type: string, format: byte}` ("32 raw bytes
+// base64"). A plain [32]byte ARRAY would JSON-marshal as a 32-int array
+// (`encoding/json` base64-encodes []byte SLICES but renders [N]byte arrays as
+// int arrays) → the D-WS-TICKET-WIRE (068) interop break vs the spec + the
+// TS/browser side. base64.StdEncoding matches the OpenAPI `format: byte`
+// default (RFC-4648 with padding; Node `Buffer.from(s,"base64")` reads it).
+type Hash32 [32]byte
+
+// MarshalJSON renders the digest as a base64 string.
+func (h Hash32) MarshalJSON() ([]byte, error) {
+	return json.Marshal(base64.StdEncoding.EncodeToString(h[:]))
+}
+
+// UnmarshalJSON decodes a base64 string and REQUIRES exactly 32 bytes — a
+// wrong-length hash is a hard error (defense against truncated/oversized
+// digests silently zero-padding or overflowing).
+func (h *Hash32) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return fmt.Errorf("ws: Hash32 must be a base64 string: %w", err)
+	}
+	raw, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return fmt.Errorf("ws: Hash32 base64 decode: %w", err)
+	}
+	if len(raw) != 32 {
+		return fmt.Errorf("ws: Hash32 must be exactly 32 bytes, got %d", len(raw))
+	}
+	copy(h[:], raw)
+	return nil
+}
 
 // TicketTTL is the canonical V1 window per S12 §12AB.2. Tickets are
 // strictly one-shot; redemption DELETEs them.
@@ -48,13 +84,15 @@ type Ticket struct {
 	AllowedScopes []string `json:"allowed_scopes"`
 
 	// OriginHash — SHA-256 of the issuer-canonicalized origin string
-	// (e.g., "https://app.loreweave.dev"). Wire format = 32 raw bytes
-	// (NOT hex) to match the ticket store wire shape.
-	OriginHash [32]byte `json:"origin_hash"`
+	// (e.g., "https://app.loreweave.dev"). Wire (JSON) = base64 string of the
+	// 32-byte digest (Hash32, ws/v1.yaml `format: byte`); the in-store /
+	// in-memory value is the 32 raw bytes (NOT hex).
+	OriginHash Hash32 `json:"origin_hash"`
 
 	// ClientFingerprintHash — SHA-256 over (user_agent || ip_/24 ||
-	// tls_session_id_first_16b). 32 raw bytes.
-	ClientFingerprintHash [32]byte `json:"client_fingerprint_hash"`
+	// tls_session_id_first_16b). Wire (JSON) = base64 string (Hash32);
+	// in-store value = 32 raw bytes.
+	ClientFingerprintHash Hash32 `json:"client_fingerprint_hash"`
 
 	// ExpiresAt — wall clock time after which the ticket is invalid
 	// even if not yet redeemed. ~60s past IssuedAt.
@@ -77,10 +115,10 @@ func (t Ticket) Validate(now time.Time) error {
 	if t.UserRefID == uuid.Nil {
 		return errors.New("ws: user_ref_id zero")
 	}
-	if t.OriginHash == ([32]byte{}) {
+	if t.OriginHash == (Hash32{}) {
 		return errors.New("ws: origin_hash zero (auth-service must hash before issuing)")
 	}
-	if t.ClientFingerprintHash == ([32]byte{}) {
+	if t.ClientFingerprintHash == (Hash32{}) {
 		return errors.New("ws: client_fingerprint_hash zero")
 	}
 	if t.IssuedAt.IsZero() {
@@ -102,7 +140,7 @@ func (t Ticket) Validate(now time.Time) error {
 
 // BindsToOrigin returns true iff the supplied originHash (gateway-recomputed
 // over the Origin header) matches the ticket's bound origin.
-func (t Ticket) BindsToOrigin(originHash [32]byte) bool {
+func (t Ticket) BindsToOrigin(originHash Hash32) bool {
 	return t.OriginHash == originHash
 }
 
@@ -110,7 +148,7 @@ func (t Ticket) BindsToOrigin(originHash [32]byte) bool {
 // the ticket's bound fingerprint exactly. See S12 §12AB.7 for the
 // soft-mismatch (mobile handoff) policy — that policy lives in the
 // gateway, not the foundation contract.
-func (t Ticket) BindsToFingerprint(fp [32]byte) bool {
+func (t Ticket) BindsToFingerprint(fp Hash32) bool {
 	return t.ClientFingerprintHash == fp
 }
 
@@ -137,10 +175,10 @@ type TicketStore interface {
 
 // Sentinel errors. Callers MUST use errors.Is to classify.
 var (
-	ErrTicketNotFound       = errors.New("ws: ticket not found or already redeemed")
-	ErrTicketExpired        = errors.New("ws: ticket expired")
-	ErrTicketAlreadyExists  = errors.New("ws: ticket id collision")
-	ErrTicketOriginMismatch = errors.New("ws: ticket origin mismatch")
+	ErrTicketNotFound            = errors.New("ws: ticket not found or already redeemed")
+	ErrTicketExpired             = errors.New("ws: ticket expired")
+	ErrTicketAlreadyExists       = errors.New("ws: ticket id collision")
+	ErrTicketOriginMismatch      = errors.New("ws: ticket origin mismatch")
 	ErrTicketFingerprintMismatch = errors.New("ws: ticket fingerprint mismatch")
 )
 

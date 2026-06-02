@@ -129,7 +129,7 @@ func TestSession_Refresh_FingerprintMismatch(t *testing.T) {
 	refresh := goodTicket(now)
 	refresh.UserRefID = s.UserRefID
 	refresh.OriginHash = s.OriginHash
-	refresh.ClientFingerprintHash = [32]byte{99} // mismatch
+	refresh.ClientFingerprintHash = Hash32{99} // mismatch
 	refresh.AllowedScopes = s.AllowedScopes
 	refresh.AllowedRealities = s.AllowedRealities
 	if err := s.Refresh(refresh, now); !errors.Is(err, ErrTicketFingerprintMismatch) {
