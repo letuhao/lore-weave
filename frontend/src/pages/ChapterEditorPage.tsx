@@ -785,7 +785,7 @@ export function ChapterEditorPage() {
             <TiptapEditor
               ref={tiptapEditorRef}
               content={savedBody}
-              onUpdate={(json) => setTiptapJson(json)}
+              onUpdate={(json, text) => { setTiptapJson(json); setTextContent(text); }}
               grammarEnabled={grammarEnabled}
               editorMode={editorMode}
               className="flex-1 overflow-y-auto"

@@ -51,7 +51,10 @@ export interface TiptapEditorHandle {
 
 interface TiptapEditorProps {
   content: any;
-  onUpdate: (json: any) => void;
+  /** Fires on every doc mutation (typing OR programmatic insert via the handle).
+   *  `text` is the editor's live plain text — lets hosts keep char/word counters
+   *  in sync without re-deriving from JSON. */
+  onUpdate: (json: any, text: string) => void;
   editable?: boolean;
   grammarEnabled?: boolean;
   editorMode?: EditorMode;
@@ -109,7 +112,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
       editable,
       onUpdate: ({ editor }) => {
         if (isExternalUpdate.current) return;
-        onUpdate(addTextSnapshots(editor.getJSON()));
+        onUpdate(addTextSnapshots(editor.getJSON()), editor.getText());
       },
       editorProps: {
         attributes: {
