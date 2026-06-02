@@ -1,0 +1,149 @@
+{
+  "header": "Enrichment Review",
+  "subtitle": "Review AI-proposed lore for under-described entities, then promote what you approve into this book's canon. Enriched drafts are private variants until you promote them.",
+  "untitled": "Untitled",
+  "panel": { "proposals": "Proposals", "gaps": "Gaps", "sources": "Sources", "jobs": "Jobs" },
+  "h0": {
+    "marker": "variant",
+    "tooltip": "An enriched variant — never authored canon until you promote it."
+  },
+  "technique": {
+    "template": "template",
+    "retrieval": "retrieval",
+    "fabrication": "fabrication",
+    "recook": "recook"
+  },
+  "review": {
+    "proposed": "Proposed",
+    "author_reviewing": "Reviewing",
+    "approved": "Approved",
+    "promoted": "Promoted",
+    "rejected": "Rejected"
+  },
+  "verify": {
+    "none": "No verification annotation.",
+    "clean": "Verified clean — no contradiction, anachronism, injection, or regurgitation found.",
+    "degraded": "Verification degraded — canon was unavailable, so contradiction couldn't be fully checked.",
+    "status": {
+      "verified_clean": "verified",
+      "needs_review": "needs review",
+      "quarantined": "quarantined",
+      "degraded": "degraded",
+      "auto_rejected": "auto-rejected"
+    },
+    "flag": {
+      "contradiction": "Contradicts canon",
+      "anachronism": "Anachronism",
+      "injection": "Prompt injection",
+      "regurgitation": "Source regurgitation"
+    },
+    "severity": { "low": "low", "medium": "medium", "high": "high" }
+  },
+  "prov": {
+    "technique": "Technique",
+    "confidence": "Confidence",
+    "origin": "Origin",
+    "entity_kind": "Kind",
+    "grounding": "Grounding sources",
+    "skipped": "Skipped (unlicensed) sources"
+  },
+  "license": {
+    "public_domain": "public domain",
+    "public-domain": "public domain",
+    "licensed": "licensed",
+    "unlicensed": "unlicensed",
+    "copyrighted": "copyrighted",
+    "restricted": "restricted",
+    "unknown": "unknown"
+  },
+  "detail": {
+    "h0_note": "This is an enriched variant (origin=enrichment, confidence<1.0). It becomes canon only when you promote it.",
+    "content": "Generated lore",
+    "verify": "Verification",
+    "provenance": "Provenance & sources"
+  },
+  "proposals": {
+    "search": "Search proposals…",
+    "status_all": "All",
+    "project": "Project",
+    "all_projects": "All",
+    "none": "No proposals match.",
+    "empty": {
+      "title": "No proposals yet",
+      "description": "Detect gaps and auto-enrich to generate proposals for this book."
+    }
+  },
+  "actions": {
+    "promote": "Promote to canon",
+    "approve": "Approve",
+    "edit": "Edit",
+    "reject": "Reject",
+    "save": "Save",
+    "cancel": "Cancel",
+    "already_promoted": "Promoted to canon.",
+    "rejected_note": "This proposal was rejected.",
+    "approved": "Proposal approved",
+    "rejected": "Proposal rejected",
+    "edited": "Proposal updated",
+    "promoted": "Promoted to canon",
+    "retracted": "Retracted"
+  },
+  "promote": {
+    "title": "Promote to canon",
+    "h0": "This enriched variant will become authored canon for this book. The permanent origin marker is kept, so it stays traceable as originally enriched.",
+    "responsibility": "By promoting, you adopt this content as the author and confirm you hold the rights to the sources it was built from. Not legal advice.",
+    "confirm": "Promote",
+    "promoting": "Promoting…"
+  },
+  "gaps": {
+    "title": "Gaps",
+    "subtitle": "Under-described entities in this book's glossary, ranked by importance. Detect, then auto-enrich chosen gaps as a background job.",
+    "detect": "Detect gaps",
+    "detect_hint": "Click \"Detect gaps\" to scan this book's glossary coverage.",
+    "none": "No gaps detected — every entity is well described.",
+    "technique": "Technique",
+    "gen_model": "Generation model",
+    "embed_model": "Embedding model",
+    "select_model": "Select…",
+    "max_gaps": "Max gaps",
+    "gate_note": "P2 fabrication / P3 recook require the eval gate to pass (diverse judges).",
+    "auto_enrich": "Auto-enrich",
+    "enriching": "Enqueuing…",
+    "enqueued": "Enqueued {{count}} gap(s) for enrichment",
+    "col": { "entity": "Entity", "kind": "Kind", "missing": "Missing dimensions", "rank": "Rank" }
+  },
+  "sources": {
+    "title": "Sources",
+    "subtitle": "License-tagged corpus for retrieval / recook.",
+    "register": "Register source",
+    "name": "Name",
+    "kind": "Kind",
+    "license": "License",
+    "none": "No sources registered yet.",
+    "recook_ok": "recook-OK",
+    "recook_refused": "recook refused (default-deny)",
+    "default_deny": "Default-deny: only public-domain / licensed sources may be recooked. You are responsible for the license of sources you register.",
+    "registered": "Source registered"
+  },
+  "jobs": {
+    "none": "No enrichment jobs yet.",
+    "resume": "Resume",
+    "resumed": "Job resume enqueued",
+    "col": {
+      "technique": "Technique",
+      "status": "Status",
+      "proposals": "Proposals",
+      "cost": "Cost",
+      "created": "Created"
+    },
+    "status": {
+      "pending": "Pending",
+      "estimating": "Estimating",
+      "running": "Running",
+      "paused": "Paused",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    }
+  }
+}

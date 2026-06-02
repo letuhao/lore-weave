@@ -210,6 +210,12 @@ CREATE TABLE IF NOT EXISTS enrichment_job (
   technique       TEXT NOT NULL
     CHECK (technique IN ('template','retrieval','fabrication','recook')),
   entity_kind     TEXT,                           -- demo: 'location'
+  book_id         UUID,                           -- glossary/book scope. Enrichment is
+                                                  --   BOOK-bound (the GUI lives in the
+                                                  --   book), so this is always set by the
+                                                  --   GUI; project_id stays the GENERAL
+                                                  --   scope. Nullable (cross-DB, no FK;
+                                                  --   legacy rows predate it).
   estimated_cost_usd NUMERIC(10,4) NOT NULL DEFAULT 0,
   actual_cost_usd    NUMERIC(10,4) NOT NULL DEFAULT 0,
   max_spend_usd      NUMERIC(10,4),               -- cost guardrail (C8)
@@ -228,6 +234,18 @@ CREATE INDEX IF NOT EXISTS idx_enrichment_job_scope
 CREATE INDEX IF NOT EXISTS idx_enrichment_job_active
   ON enrichment_job(status)
   WHERE status IN ('pending','estimating','running','paused');
+
+-- ── book scope (additive) ────────────────────────────────────────────────────
+-- Enrichment is book-bound; persist the book_id so the review GUI can list a
+-- book's jobs/proposals by their always-present book anchor (proposals join here
+-- on job_id). project_id remains the GENERAL scope. ADD COLUMN IF NOT EXISTS
+-- brings an already-deployed table up to schema (no data loss, no down-migration
+-- needed); the index serves the GUI's (user, book) listing.
+ALTER TABLE enrichment_job
+  ADD COLUMN IF NOT EXISTS book_id UUID;
+
+CREATE INDEX IF NOT EXISTS idx_enrichment_job_book
+  ON enrichment_job(user_id, book_id, created_at DESC);
 
 -- ═══════════════════════════════════════════════════════════════
 -- enrichment_job_request (F-C14-1 / 051) — the request payload needed to
@@ -461,12 +479,19 @@ CREATE INDEX IF NOT EXISTS idx_enrichment_eval_runs_latest
 
 
 # Reverse FK dependency order: drop the proposal (refs job + grounding_ref)
-# first, then job, then template, then grounding_ref (refs corpus), then
-# corpus. The trigger goes with its table; the function is dropped last.
+# first, then enrichment_job_request (refs job, F-C14-1/051) + the proposal,
+# then job, then template, then grounding_ref (refs corpus), then corpus. The
+# trigger goes with its table; the function is dropped last.
+#   NOTE: enrichment_job_request MUST be dropped before enrichment_job — its
+#   job_id FK depends on the job table, so omitting it made `DROP TABLE
+#   enrichment_job` fail (DependentObjectsStillExistError) on any DB that had
+#   been up-migrated, breaking the down→up round-trip (and the db-test fixture's
+#   per-test reset). It was added to the UP DDL but not here.
 DOWN_DDL = """
 DROP TABLE IF EXISTS enrichment_eval_runs;
 DROP TRIGGER IF EXISTS trg_enrichment_proposal_h0 ON enrichment_proposal;
 DROP TABLE IF EXISTS enrichment_proposal;
+DROP TABLE IF EXISTS enrichment_job_request;
 DROP TABLE IF EXISTS enrichment_job;
 DROP TABLE IF EXISTS enrichment_template;
 DROP TABLE IF EXISTS cultural_grounding_ref;

@@ -160,6 +160,7 @@ class ProposalStore(Protocol):
         *,
         user_id: str,
         project_id: str,
+        book_id: str | None = None,
         technique: str,
         entity_kind: str | None,
         max_spend: float | None,
@@ -192,6 +193,7 @@ class PgProposalStore:
         *,
         user_id: str,
         project_id: str,
+        book_id: str | None = None,
         technique: str,
         entity_kind: str | None,
         max_spend: float | None,
@@ -200,11 +202,13 @@ class PgProposalStore:
         async with self._pool.acquire() as conn:
             job_id = await conn.fetchval(
                 """INSERT INTO enrichment_job
-                     (project_id, user_id, technique, entity_kind, status,
+                     (project_id, user_id, book_id, technique, entity_kind, status,
                       max_spend_usd, estimated_cost_usd)
-                   VALUES ($1,$2,$3,$4,'pending',$5,$6)
+                   VALUES ($1,$2,$3,$4,$5,'pending',$6,$7)
                    RETURNING job_id""",
-                UUID(project_id), UUID(user_id), technique, entity_kind,
+                UUID(project_id), UUID(user_id),
+                UUID(book_id) if book_id else None,
+                technique, entity_kind,
                 max_spend, estimated_cost,
             )
         return str(job_id)
@@ -309,6 +313,7 @@ class InMemoryProposalStore:
         *,
         user_id: str,
         project_id: str,
+        book_id: str | None = None,
         technique: str,
         entity_kind: str | None,
         max_spend: float | None,
@@ -318,6 +323,7 @@ class InMemoryProposalStore:
         self.jobs[job_id] = {
             "user_id": user_id,
             "project_id": project_id,
+            "book_id": book_id,
             "technique": technique,
             "entity_kind": entity_kind,
             "max_spend": max_spend,

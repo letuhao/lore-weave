@@ -1,0 +1,149 @@
+{
+  "header": "增補審閱",
+  "subtitle": "審閱 AI 為描述不足的實體所提出的設定，再將你核可的內容晉升為本書的正典。增補草稿在晉升前皆為私人異本。",
+  "untitled": "未命名",
+  "panel": { "proposals": "提案", "gaps": "缺口", "sources": "來源", "jobs": "作業" },
+  "h0": {
+    "marker": "異本",
+    "tooltip": "增補的異本 — 晉升前絕非正典。"
+  },
+  "technique": {
+    "template": "範本",
+    "retrieval": "檢索",
+    "fabrication": "虛構",
+    "recook": "再製"
+  },
+  "review": {
+    "proposed": "已提案",
+    "author_reviewing": "審閱中",
+    "approved": "已核可",
+    "promoted": "已晉升",
+    "rejected": "已拒絕"
+  },
+  "verify": {
+    "none": "無驗證註記。",
+    "clean": "驗證乾淨 — 未發現矛盾、時代錯置、注入或來源複述。",
+    "degraded": "驗證降級 — 正典無法取得，矛盾未能完整檢查。",
+    "status": {
+      "verified_clean": "已驗證",
+      "needs_review": "待審閱",
+      "quarantined": "隔離",
+      "degraded": "降級",
+      "auto_rejected": "自動拒絕"
+    },
+    "flag": {
+      "contradiction": "與正典矛盾",
+      "anachronism": "時代錯置",
+      "injection": "提示注入",
+      "regurgitation": "來源複述"
+    },
+    "severity": { "low": "低", "medium": "中", "high": "高" }
+  },
+  "prov": {
+    "technique": "技法",
+    "confidence": "信賴度",
+    "origin": "來源",
+    "entity_kind": "類型",
+    "grounding": "依據來源",
+    "skipped": "略過（未授權）來源"
+  },
+  "license": {
+    "public_domain": "公共領域",
+    "public-domain": "公共領域",
+    "licensed": "已授權",
+    "unlicensed": "未授權",
+    "copyrighted": "受著作權保護",
+    "restricted": "受限",
+    "unknown": "未知"
+  },
+  "detail": {
+    "h0_note": "這是增補的異本（origin=enrichment, confidence<1.0）。唯有你晉升後才成為正典。",
+    "content": "已生成設定",
+    "verify": "驗證",
+    "provenance": "來歷與來源"
+  },
+  "proposals": {
+    "search": "搜尋提案…",
+    "status_all": "全部",
+    "project": "專案",
+    "all_projects": "全部",
+    "none": "沒有符合的提案。",
+    "empty": {
+      "title": "尚無提案",
+      "description": "偵測缺口並 auto-enrich 以為本書產生提案。"
+    }
+  },
+  "actions": {
+    "promote": "晉升為正典",
+    "approve": "核可",
+    "edit": "編輯",
+    "reject": "拒絕",
+    "save": "儲存",
+    "cancel": "取消",
+    "already_promoted": "已晉升為正典。",
+    "rejected_note": "此提案已被拒絕。",
+    "approved": "已核可提案",
+    "rejected": "已拒絕提案",
+    "edited": "已更新提案",
+    "promoted": "已晉升為正典",
+    "retracted": "已撤回"
+  },
+  "promote": {
+    "title": "晉升為正典",
+    "h0": "此增補異本將成為本書的正典。永久的來源標記會保留，因此仍可追溯其原為增補。",
+    "responsibility": "晉升即表示你以作者身分採用此內容，並確認你擁有其所依據來源的權利。此非法律意見。",
+    "confirm": "晉升",
+    "promoting": "晉升中…"
+  },
+  "gaps": {
+    "title": "缺口",
+    "subtitle": "本書詞彙表中描述不足的實體，依重要性排序。偵測後將選定缺口以背景作業 auto-enrich。",
+    "detect": "偵測缺口",
+    "detect_hint": "點「偵測缺口」以掃描本書詞彙表的涵蓋度。",
+    "none": "未偵測到缺口 — 每個實體都描述良好。",
+    "technique": "技法",
+    "gen_model": "生成模型",
+    "embed_model": "嵌入模型",
+    "select_model": "選擇…",
+    "max_gaps": "最多",
+    "gate_note": "P2 虛構 / P3 再製 需通過評估閘門（多元評審）。",
+    "auto_enrich": "Auto-enrich",
+    "enriching": "排入佇列中…",
+    "enqueued": "已將 {{count}} 個缺口排入增補佇列",
+    "col": { "entity": "實體", "kind": "類型", "missing": "缺少的維度", "rank": "排名" }
+  },
+  "sources": {
+    "title": "來源",
+    "subtitle": "供檢索／再製的授權標記語料。",
+    "register": "登錄來源",
+    "name": "名稱",
+    "kind": "類型",
+    "license": "授權",
+    "none": "尚未登錄任何來源。",
+    "recook_ok": "可再製",
+    "recook_refused": "拒絕再製（預設拒絕）",
+    "default_deny": "預設拒絕：僅公共領域／已授權的來源可再製。你需為自己登錄的來源授權負責。",
+    "registered": "已登錄來源"
+  },
+  "jobs": {
+    "none": "尚無增補作業。",
+    "resume": "繼續",
+    "resumed": "已排入作業繼續佇列",
+    "col": {
+      "technique": "技法",
+      "status": "狀態",
+      "proposals": "提案",
+      "cost": "成本",
+      "created": "建立時間"
+    },
+    "status": {
+      "pending": "待處理",
+      "estimating": "估算中",
+      "running": "執行中",
+      "paused": "已暫停",
+      "completed": "已完成",
+      "failed": "失敗",
+      "cancelled": "已取消"
+    }
+  }
+}

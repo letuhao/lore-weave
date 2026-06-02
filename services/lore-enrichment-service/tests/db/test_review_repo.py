@@ -185,6 +185,58 @@ async def test_canonical_name_column_persists_for_null_target_ref(pool):
     assert p.as_dict()["canonical_name"] == "昆侖虛"
 
 
+async def _seed_with_book(conn, *, project_id, book_id, name) -> uuid.UUID:
+    """Seed one proposal under a job tagged with ``book_id`` (the book anchor)."""
+    job_id = await conn.fetchval(
+        """INSERT INTO enrichment_job (project_id, user_id, book_id, technique, entity_kind)
+           VALUES ($1,$2,$3,'template','location') RETURNING job_id""",
+        project_id, _USER, book_id,
+    )
+    return await conn.fetchval(
+        """INSERT INTO enrichment_proposal
+             (job_id, project_id, user_id, entity_kind, target_ref, content,
+              technique, confidence, provenance_json)
+           VALUES ($1,$2,$3,'location',$4,'x','template',0.30,'{}'::jsonb)
+           RETURNING proposal_id""",
+        job_id, project_id, _USER, name,
+    )
+
+
+async def test_list_by_book_id_spans_projects(pool):
+    """book_id is the BOOK anchor (enrichment is book-bound): list(book_id=...)
+    returns the book's proposals ACROSS its general project_ids (via the JOIN to
+    enrichment_job), while project_id-only listing stays narrow. A different book
+    is excluded; each returned row still carries its OWN project_id for the
+    per-proposal actions; cross-user sees nothing."""
+    book_a, book_b = uuid.uuid4(), uuid.uuid4()
+    proj_1, proj_2 = uuid.uuid4(), uuid.uuid4()
+    async with pool.acquire() as conn:
+        p1 = await _seed_with_book(conn, project_id=proj_1, book_id=book_a, name="蓬萊")
+        p2 = await _seed_with_book(conn, project_id=proj_2, book_id=book_a, name="昆侖")
+        p3 = await _seed_with_book(conn, project_id=proj_1, book_id=book_b, name="陳塘關")
+    repo = ProposalsRepo(pool)
+
+    # book_id filter → BOTH of book A's proposals, across proj_1 + proj_2.
+    items, total = await repo.list(user_id=_USER, book_id=book_a, limit=50)
+    assert total == 2 and {p.proposal_id for p in items} == {p1, p2}
+    # each row carries its own (general) project_id — the GUI derives the picker.
+    assert {p.project_id for p in items} == {proj_1, proj_2}
+
+    # project_id-only stays narrow: proj_1 has p1 (book A) + p3 (book B).
+    items_p1, total_p1 = await repo.list(user_id=_USER, project_id=proj_1, limit=50)
+    assert total_p1 == 2 and {p.proposal_id for p in items_p1} == {p1, p3}
+
+    # book_id + project_id → intersection (book A under proj_1 = just p1).
+    items_both, total_both = await repo.list(
+        user_id=_USER, project_id=proj_1, book_id=book_a, limit=50,
+    )
+    assert total_both == 1 and items_both[0].proposal_id == p1
+
+    # cross-user → nothing (Q3 scope holds with the join).
+    items_other, total_other = await repo.list(user_id=_OTHER_USER, book_id=book_a)
+    assert total_other == 0 and items_other == []
+
+
 async def test_set_writeback_entity_id_persists_and_is_idempotent(pool):
     """FIX-3 (DB): the additive writeback_entity_id column exists; the repo
     persists the resolved anchor id (NOT trigger-guarded, set in any state) and

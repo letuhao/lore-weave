@@ -214,6 +214,7 @@ async def auto_enrich(
     db_job_id = await store.create_job(
         user_id=str(principal.user_id),
         project_id=str(project_id),
+        book_id=str(body.book_id),
         technique=technique.value,
         entity_kind="location",
         max_spend=body.max_spend_usd,

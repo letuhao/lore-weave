@@ -151,6 +151,14 @@ _COLS = """
   created_at, updated_at
 """
 
+# ``p.``-prefixed column list for queries that JOIN enrichment_job (the book_id
+# filter): job_id/project_id/user_id/created_at exist on BOTH tables, so an
+# unqualified SELECT would be ambiguous. asyncpg returns columns by their bare
+# name, so ``_row`` (which reads r["proposal_id"] …) is unaffected.
+_COLS_P = ", ".join(
+    f"p.{c.strip()}" for c in _COLS.replace("\n", " ").split(",") if c.strip()
+)
+
 
 def _row(r: asyncpg.Record) -> ProposalRow:
     import json
@@ -201,28 +209,46 @@ class ProposalsRepo:
         self,
         *,
         user_id: UUID,
-        project_id: UUID,
+        project_id: UUID | None = None,
+        book_id: UUID | None = None,
         review_status: str | None = None,
         job_id: UUID | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[ProposalRow], int]:
-        params: list[Any] = [user_id, project_id]
-        preds = ["user_id = $1", "project_id = $2"]
+        """List the user's proposals, filtered by ``project_id`` and/or ``book_id``.
+
+        ``book_id`` is the BOOK anchor (enrichment is book-bound). Proposals carry no
+        book_id column — the JOB does — so it filters via a JOIN to enrichment_job.
+        Passing only ``book_id`` returns the book's proposals ACROSS its project_ids
+        (the GUI derives the project picker client-side from the rows). The router
+        requires at least one of project_id/book_id (400 otherwise); this method
+        tolerates either/both."""
+        params: list[Any] = [user_id]
+        preds = ["p.user_id = $1"]
+        join = ""
+        if project_id is not None:
+            params.append(project_id)
+            preds.append(f"p.project_id = ${len(params)}")
+        if book_id is not None:
+            join = "JOIN enrichment_job j ON j.job_id = p.job_id"
+            params.append(book_id)
+            preds.append(f"j.book_id = ${len(params)}")
         if review_status is not None:
             params.append(review_status)
-            preds.append(f"review_status = ${len(params)}")
+            preds.append(f"p.review_status = ${len(params)}")
         if job_id is not None:
             params.append(job_id)
-            preds.append(f"job_id = ${len(params)}")
+            preds.append(f"p.job_id = ${len(params)}")
         where = " AND ".join(preds)
         async with self._pool.acquire() as conn:
             total = await conn.fetchval(
-                f"SELECT COUNT(*) FROM enrichment_proposal WHERE {where}", *params
+                f"SELECT COUNT(*) FROM enrichment_proposal p {join} WHERE {where}",
+                *params,
             )
             rows = await conn.fetch(
-                f"""SELECT {_COLS} FROM enrichment_proposal WHERE {where}
-                    ORDER BY created_at DESC, proposal_id DESC
+                f"""SELECT {_COLS_P} FROM enrichment_proposal p {join} WHERE {where}
+                    ORDER BY p.created_at DESC, p.proposal_id DESC
                     LIMIT ${len(params)+1} OFFSET ${len(params)+2}""",
                 *params, limit, offset,
             )

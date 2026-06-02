@@ -1,0 +1,149 @@
+{
+  "header": "Duyệt bồi đắp",
+  "subtitle": "Xem xét lore do AI đề xuất cho các thực thể thiếu mô tả, rồi thăng những gì bạn duyệt vào canon của sách này. Bản nháp bồi đắp là dị bản riêng tư cho đến khi bạn thăng.",
+  "untitled": "Chưa đặt tên",
+  "panel": { "proposals": "Đề xuất", "gaps": "Thiếu hụt", "sources": "Nguồn", "jobs": "Tác vụ" },
+  "h0": {
+    "marker": "dị bản",
+    "tooltip": "Dị bản bồi đắp — không phải canon cho đến khi bạn thăng."
+  },
+  "technique": {
+    "template": "mẫu",
+    "retrieval": "truy hồi",
+    "fabrication": "hư cấu",
+    "recook": "tái chế"
+  },
+  "review": {
+    "proposed": "Đề xuất",
+    "author_reviewing": "Đang duyệt",
+    "approved": "Đã duyệt",
+    "promoted": "Đã thăng",
+    "rejected": "Đã từ chối"
+  },
+  "verify": {
+    "none": "Không có chú thích kiểm chứng.",
+    "clean": "Kiểm chứng sạch — không mâu thuẫn, lỗi thời, tiêm nhiễm hay sao chép nguồn.",
+    "degraded": "Kiểm chứng suy giảm — canon không khả dụng nên chưa kiểm tra đầy đủ mâu thuẫn.",
+    "status": {
+      "verified_clean": "đã kiểm",
+      "needs_review": "cần xem",
+      "quarantined": "cách ly",
+      "degraded": "suy giảm",
+      "auto_rejected": "tự loại"
+    },
+    "flag": {
+      "contradiction": "Mâu thuẫn canon",
+      "anachronism": "Lỗi thời",
+      "injection": "Tiêm prompt",
+      "regurgitation": "Sao chép nguồn"
+    },
+    "severity": { "low": "thấp", "medium": "vừa", "high": "cao" }
+  },
+  "prov": {
+    "technique": "Kỹ thuật",
+    "confidence": "Độ tin",
+    "origin": "Nguồn gốc",
+    "entity_kind": "Loại",
+    "grounding": "Nguồn căn cứ",
+    "skipped": "Nguồn bị bỏ (không phép)"
+  },
+  "license": {
+    "public_domain": "phạm vi công cộng",
+    "public-domain": "phạm vi công cộng",
+    "licensed": "có giấy phép",
+    "unlicensed": "chưa cấp phép",
+    "copyrighted": "có bản quyền",
+    "restricted": "hạn chế",
+    "unknown": "không rõ"
+  },
+  "detail": {
+    "h0_note": "Đây là dị bản bồi đắp (origin=enrichment, confidence<1.0). Chỉ thành canon khi bạn thăng.",
+    "content": "Lore đã tạo",
+    "verify": "Kiểm chứng",
+    "provenance": "Xuất xứ & nguồn"
+  },
+  "proposals": {
+    "search": "Tìm đề xuất…",
+    "status_all": "Tất cả",
+    "project": "Dự án",
+    "all_projects": "Tất cả",
+    "none": "Không có đề xuất khớp.",
+    "empty": {
+      "title": "Chưa có đề xuất",
+      "description": "Phát hiện thiếu hụt và auto-enrich để tạo đề xuất cho sách này."
+    }
+  },
+  "actions": {
+    "promote": "Thăng vào canon",
+    "approve": "Duyệt",
+    "edit": "Sửa",
+    "reject": "Từ chối",
+    "save": "Lưu",
+    "cancel": "Huỷ",
+    "already_promoted": "Đã thăng vào canon.",
+    "rejected_note": "Đề xuất này đã bị từ chối.",
+    "approved": "Đã duyệt đề xuất",
+    "rejected": "Đã từ chối đề xuất",
+    "edited": "Đã cập nhật đề xuất",
+    "promoted": "Đã thăng vào canon",
+    "retracted": "Đã thu hồi"
+  },
+  "promote": {
+    "title": "Thăng vào canon",
+    "h0": "Dị bản bồi đắp này sẽ trở thành canon của sách. Dấu nguồn gốc vĩnh viễn được giữ lại nên vẫn truy vết được là vốn bồi đắp.",
+    "responsibility": "Khi thăng, bạn với tư cách tác giả tiếp nhận nội dung này và xác nhận có quyền với các nguồn dùng để tạo ra nó. Không phải tư vấn pháp lý.",
+    "confirm": "Thăng",
+    "promoting": "Đang thăng…"
+  },
+  "gaps": {
+    "title": "Thiếu hụt",
+    "subtitle": "Các thực thể thiếu mô tả trong glossary của sách, xếp theo độ quan trọng. Phát hiện rồi auto-enrich các mục chọn dưới dạng tác vụ nền.",
+    "detect": "Phát hiện",
+    "detect_hint": "Bấm \"Phát hiện\" để quét độ phủ glossary của sách.",
+    "none": "Không phát hiện thiếu hụt — mọi thực thể đều được mô tả tốt.",
+    "technique": "Kỹ thuật",
+    "gen_model": "Model sinh",
+    "embed_model": "Model embedding",
+    "select_model": "Chọn…",
+    "max_gaps": "Tối đa",
+    "gate_note": "P2 hư cấu / P3 tái chế cần cổng eval đạt (nhiều giám khảo).",
+    "auto_enrich": "Auto-enrich",
+    "enriching": "Đang xếp hàng…",
+    "enqueued": "Đã xếp {{count}} mục để bồi đắp",
+    "col": { "entity": "Thực thể", "kind": "Loại", "missing": "Chiều thiếu", "rank": "Hạng" }
+  },
+  "sources": {
+    "title": "Nguồn",
+    "subtitle": "Corpus gắn nhãn license cho truy hồi / tái chế.",
+    "register": "Đăng ký nguồn",
+    "name": "Tên",
+    "kind": "Loại",
+    "license": "Giấy phép",
+    "none": "Chưa đăng ký nguồn nào.",
+    "recook_ok": "tái chế OK",
+    "recook_refused": "từ chối tái chế (mặc định cấm)",
+    "default_deny": "Mặc định cấm: chỉ nguồn phạm-vi-công-cộng / có-phép mới được tái chế. Bạn chịu trách nhiệm về giấy phép của nguồn mình đăng ký.",
+    "registered": "Đã đăng ký nguồn"
+  },
+  "jobs": {
+    "none": "Chưa có tác vụ bồi đắp.",
+    "resume": "Tiếp tục",
+    "resumed": "Đã xếp hàng tiếp tục tác vụ",
+    "col": {
+      "technique": "Kỹ thuật",
+      "status": "Trạng thái",
+      "proposals": "Đề xuất",
+      "cost": "Chi phí",
+      "created": "Tạo lúc"
+    },
+    "status": {
+      "pending": "Chờ",
+      "estimating": "Ước tính",
+      "running": "Đang chạy",
+      "paused": "Tạm dừng",
+      "completed": "Hoàn tất",
+      "failed": "Lỗi",
+      "cancelled": "Đã huỷ"
+    }
+  }
+}

@@ -74,16 +74,20 @@ import zhTWEntityEditor from './locales/zh-TW/entityEditor.json';
 import zhTWCatalog from './locales/zh-TW/catalog.json';
 import zhTWTranslation from './locales/zh-TW/translation.json';
 import zhTWUsage from './locales/zh-TW/usage.json';
+import enEnrichment from './locales/en/enrichment.json';
+import viEnrichment from './locales/vi/enrichment.json';
+import jaEnrichment from './locales/ja/enrichment.json';
+import zhTWEnrichment from './locales/zh-TW/enrichment.json';
 
 i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
     resources: {
-      en: { common: enCommon, auth: enAuth, books: enBooks, leaderboard: enLeaderboard, profile: enProfile, notifications: enNotifications, glossaryEditor: enGlossaryEditor, wiki: enWiki, extraction: enExtraction, knowledge: enKnowledge, editor: enEditor, reader: enReader, chat: enChat, settings: enSettings, entityEditor: enEntityEditor, catalog: enCatalog, translation: enTranslation, usage: enUsage },
-      vi: { common: viCommon, auth: viAuth, books: viBooks, leaderboard: viLeaderboard, profile: viProfile, notifications: viNotifications, glossaryEditor: viGlossaryEditor, wiki: viWiki, extraction: viExtraction, knowledge: viKnowledge, editor: viEditor, reader: viReader, chat: viChat, settings: viSettings, entityEditor: viEntityEditor, catalog: viCatalog, translation: viTranslation, usage: viUsage },
-      ja: { common: jaCommon, auth: jaAuth, books: jaBooks, leaderboard: jaLeaderboard, profile: jaProfile, notifications: jaNotifications, glossaryEditor: jaGlossaryEditor, wiki: jaWiki, extraction: jaExtraction, knowledge: jaKnowledge, editor: jaEditor, reader: jaReader, chat: jaChat, settings: jaSettings, entityEditor: jaEntityEditor, catalog: jaCatalog, translation: jaTranslation, usage: jaUsage },
-      'zh-TW': { common: zhTWCommon, auth: zhTWAuth, books: zhTWBooks, leaderboard: zhTWLeaderboard, profile: zhTWProfile, notifications: zhTWNotifications, glossaryEditor: zhTWGlossaryEditor, wiki: zhTWWiki, extraction: zhTWExtraction, knowledge: zhTWKnowledge, editor: zhTWEditor, reader: zhTWReader, chat: zhTWChat, settings: zhTWSettings, entityEditor: zhTWEntityEditor, catalog: zhTWCatalog, translation: zhTWTranslation, usage: zhTWUsage },
+      en: { common: enCommon, auth: enAuth, books: enBooks, leaderboard: enLeaderboard, profile: enProfile, notifications: enNotifications, glossaryEditor: enGlossaryEditor, wiki: enWiki, extraction: enExtraction, knowledge: enKnowledge, editor: enEditor, reader: enReader, chat: enChat, settings: enSettings, entityEditor: enEntityEditor, catalog: enCatalog, translation: enTranslation, usage: enUsage, enrichment: enEnrichment },
+      vi: { common: viCommon, auth: viAuth, books: viBooks, leaderboard: viLeaderboard, profile: viProfile, notifications: viNotifications, glossaryEditor: viGlossaryEditor, wiki: viWiki, extraction: viExtraction, knowledge: viKnowledge, editor: viEditor, reader: viReader, chat: viChat, settings: viSettings, entityEditor: viEntityEditor, catalog: viCatalog, translation: viTranslation, usage: viUsage, enrichment: viEnrichment },
+      ja: { common: jaCommon, auth: jaAuth, books: jaBooks, leaderboard: jaLeaderboard, profile: jaProfile, notifications: jaNotifications, glossaryEditor: jaGlossaryEditor, wiki: jaWiki, extraction: jaExtraction, knowledge: jaKnowledge, editor: jaEditor, reader: jaReader, chat: jaChat, settings: jaSettings, entityEditor: jaEntityEditor, catalog: jaCatalog, translation: jaTranslation, usage: jaUsage, enrichment: jaEnrichment },
+      'zh-TW': { common: zhTWCommon, auth: zhTWAuth, books: zhTWBooks, leaderboard: zhTWLeaderboard, profile: zhTWProfile, notifications: zhTWNotifications, glossaryEditor: zhTWGlossaryEditor, wiki: zhTWWiki, extraction: zhTWExtraction, knowledge: zhTWKnowledge, editor: zhTWEditor, reader: zhTWReader, chat: zhTWChat, settings: zhTWSettings, entityEditor: zhTWEntityEditor, catalog: zhTWCatalog, translation: zhTWTranslation, usage: zhTWUsage, enrichment: zhTWEnrichment },
     },
     defaultNS: 'common',
     fallbackLng: 'en',

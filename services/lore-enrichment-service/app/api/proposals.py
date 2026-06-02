@@ -106,7 +106,8 @@ def _not_found() -> HTTPException:
 
 @router.get("")
 async def list_proposals(
-    project_id: UUID = Query(...),
+    project_id: Optional[UUID] = Query(None),
+    book_id: Optional[UUID] = Query(None),
     job_id: Optional[UUID] = Query(None),
     review_status: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=100),
@@ -114,10 +115,21 @@ async def list_proposals(
     principal: Principal = Depends(require_principal),
     repo: ProposalsRepo = Depends(get_repo),
 ) -> dict:
-    user_id = _require_scope(principal, project_id)
+    """List the caller's proposals, scoped by ``book_id`` (the book anchor — what
+    the enrichment GUI passes) and/or ``project_id`` (the general scope). At least
+    one is required. ``book_id`` returns the book's proposals across its project_ids;
+    each row still carries its own ``project_id`` for the per-proposal actions."""
+    if principal.user_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="auth required")
+    if project_id is None and book_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="one of project_id or book_id is required",
+        )
     items, total = await repo.list(
-        user_id=user_id,
+        user_id=principal.user_id,
         project_id=project_id,
+        book_id=book_id,
         review_status=review_status,
         job_id=job_id,
         limit=limit,

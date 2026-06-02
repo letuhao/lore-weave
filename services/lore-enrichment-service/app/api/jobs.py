@@ -160,6 +160,7 @@ async def create_job(
     db_job_id = await store.create_job(
         user_id=str(user_id),
         project_id=str(body.project_id),
+        book_id=str(body.book_id) if body.book_id else None,
         technique=technique.value,
         entity_kind="location",
         max_spend=body.max_spend_usd,
@@ -252,29 +253,45 @@ async def create_job(
 
 @router.get("")
 async def list_jobs(
-    project_id: UUID = Query(...),
+    project_id: UUID | None = Query(None),
+    book_id: UUID | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     principal: Principal = Depends(require_principal),
     pool: asyncpg.Pool = Depends(get_db),
 ) -> dict:
+    """List the caller's jobs scoped by ``book_id`` (the book anchor the GUI passes)
+    and/or ``project_id`` (the general scope). At least one is required."""
     if principal.user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="auth required"
         )
+    if project_id is None and book_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="one of project_id or book_id is required",
+        )
+    params = [principal.user_id]
+    preds = ["user_id=$1"]
+    if project_id is not None:
+        params.append(project_id)
+        preds.append(f"project_id=${len(params)}")
+    if book_id is not None:
+        params.append(book_id)
+        preds.append(f"book_id=${len(params)}")
+    where = " AND ".join(preds)
     async with pool.acquire() as conn:
         total = await conn.fetchval(
-            "SELECT COUNT(*) FROM enrichment_job WHERE user_id=$1 AND project_id=$2",
-            principal.user_id, project_id,
+            f"SELECT COUNT(*) FROM enrichment_job WHERE {where}", *params
         )
         rows = await conn.fetch(
-            """SELECT job_id, status, technique, entity_kind, proposals_total,
+            f"""SELECT job_id, project_id, status, technique, entity_kind, book_id, proposals_total,
                       estimated_cost_usd, actual_cost_usd, max_spend_usd,
                       error_message, created_at
                FROM enrichment_job
-               WHERE user_id=$1 AND project_id=$2
-               ORDER BY created_at DESC LIMIT $3 OFFSET $4""",
-            principal.user_id, project_id, limit, offset,
+               WHERE {where}
+               ORDER BY created_at DESC LIMIT ${len(params)+1} OFFSET ${len(params)+2}""",
+            *params, limit, offset,
         )
     return {
         "items": [_job_row(r) for r in rows],
@@ -297,7 +314,7 @@ async def get_job(
         )
     async with pool.acquire() as conn:
         r = await conn.fetchrow(
-            """SELECT job_id, status, technique, entity_kind, proposals_total,
+            """SELECT job_id, project_id, status, technique, entity_kind, book_id, proposals_total,
                       estimated_cost_usd, actual_cost_usd, max_spend_usd,
                       error_message, created_at
                FROM enrichment_job
@@ -314,9 +331,11 @@ async def get_job(
 def _job_row(r: asyncpg.Record) -> dict:
     return {
         "job_id": str(r["job_id"]),
+        "project_id": str(r["project_id"]),
         "status": r["status"],
         "technique": r["technique"],
         "entity_kind": r["entity_kind"],
+        "book_id": str(r["book_id"]) if r["book_id"] is not None else None,
         "proposals_total": r["proposals_total"],
         "estimated_cost": float(r["estimated_cost_usd"]),
         "actual_cost": float(r["actual_cost_usd"]),
