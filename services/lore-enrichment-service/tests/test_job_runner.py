@@ -662,8 +662,8 @@ async def test_skip_reconciles_embed_only_spend_not_full_estimate():
 
 
 async def test_no_meter_keeps_pre_charge_estimate_as_spend():
-    """Without a meter (P2/P3 opaque path), spend stays the pre-charged estimate
-    — no reconcile happens (back-compat)."""
+    """With NO meter passed, spend stays the pre-charged estimate — no reconcile
+    (back-compat for any caller that doesn't wire a meter)."""
     from app.jobs.cost import PER_GAP_WORKING_COST
 
     store = InMemoryProposalStore()
@@ -676,6 +676,39 @@ async def test_no_meter_keeps_pre_charge_estimate_as_spend():
     )
     assert outcome.final_state == "completed"
     assert outcome.spent == pytest.approx(PER_GAP_WORKING_COST)  # estimate, unreconciled
+
+
+async def test_le059_p2_fabrication_cost_reconciles_to_real_multipass_tokens():
+    """LE-059(a): P2/P3 now get the meter too (assembly wires it for all techniques),
+    so a fabrication gap's higher pre-charge (FABRICATION_GAP_COST tokens) is
+    reconciled DOWN to the REAL tokens its (multi-pass) seams recorded — exactly
+    like P1. The meter sums every LLM/embed call (UsageMeter accumulation), so a
+    multi-pass technique's full spend is captured."""
+    from app.strategies.fabrication import FABRICATION_GAP_COST
+    from app.strategies.base import CostEstimate, Technique
+
+    class _FabricationCost(TemplateStrategy):
+        def estimate_cost(self, gap_batch):
+            n = len(gap_batch)
+            return CostEstimate(technique=Technique.TEMPLATE, gap_count=n,
+                                units=float(n), cost=FABRICATION_GAP_COST * n)
+
+    store = InMemoryProposalStore()
+    meter = UsageMeter()
+    # real spend = 80 embed + 2200 gen (a multi-pass-magnitude total) ≪ the 3000
+    # fabrication pre-charge → reconcile DOWN to the real 2280.
+    runner = JobRunner(
+        store=store,
+        pipeline=_metered_pipeline(meter, embed_tokens=80, gen_tokens=2200),
+        cost_strategy=_FabricationCost(),
+        emitter=_emitter(),
+        budget=JobCostBudget(None),
+        meter=meter,
+    )
+    outcome = await runner.run_job(job_id="job-1", gaps=[_gap("蓬萊")], context=_ctx())
+    assert outcome.final_state == "completed"
+    assert outcome.spent == pytest.approx(2280)        # REAL tokens, not 3000
+    assert outcome.spent != pytest.approx(FABRICATION_GAP_COST)
 
 
 # ── persistence H0 guard + SSE collector (pure unit) ──────────────────────────

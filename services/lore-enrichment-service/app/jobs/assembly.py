@@ -216,23 +216,28 @@ async def build_live_runner(
 
     pipeline: JobPipeline
     cost_strategy: EnrichmentStrategy
-    # The runner reconciles real tokens ONLY on the P1 token path; P2/P3 keep
-    # their opaque pre-charge (8.0/12.0 per gap) until their token-denomination
-    # lands at gate activation (DEFERRED-059) — meter=None → no reconcile.
-    runner_meter: UsageMeter | None = None
+    # LE-059(a): the runner reconciles REAL tokens for ALL techniques. P2/P3 now
+    # pre-charge in tokens too (FABRICATION_GAP_COST=3000 / RECOOK_GAP_COST=4500,
+    # C1-redenominated) and use the SAME metered complete/embed seams, so a
+    # multi-pass fabrication / re-generate re-cook gap's REAL token spend (every
+    # LLM call) is captured by the meter and reconciled per gap — exactly like P1.
+    # (Residual LE-059(b): the embed leg is still an estimate — /internal/embed
+    # returns no provider token count; truthful embed metering is a provider-
+    # registry contract change, tracked separately.)
+    runner_meter: UsageMeter | None = meter
     if selected.technique is Technique.FABRICATION:
         # P2: the fabrication pipeline (retrieve → fabricate → verify per gap).
-        # Its OWN estimate_cost (FABRICATION_GAP_COST=8.0/gap) is what the cost-cap
-        # charges, so the higher P2 cost actually binds (not the inert P1 model).
+        # Its OWN estimate_cost (FABRICATION_GAP_COST tokens/gap) is the pre-charge;
+        # the runner then reconciles to the real multi-pass token spend (LE-059a).
         pipeline = FabricationPipeline(strategy=selected)  # type: ignore[arg-type]
         cost_strategy = selected
     elif selected.technique is Technique.RECOOK:
         # P3: the re-cook pipeline (retrieve → licensing-check → re-contextualise →
         # verify per gap). Reachable ONLY when the gate is CLEARED (the factory
         # forces P3 OFF on a locked gate). Its OWN estimate_cost
-        # (RECOOK_GAP_COST=12.0/gap) is what the cost-cap charges, so the highest
-        # P3 cost binds soonest. The licensing gate inside the strategy refuses any
-        # unlicensed source (UnlicensedSourceError propagates → job refused).
+        # (RECOOK_GAP_COST tokens/gap) is the pre-charge; reconciled to real tokens.
+        # The licensing gate inside the strategy refuses any unlicensed source
+        # (UnlicensedSourceError propagates → job refused).
         pipeline = ReCookPipeline(strategy=selected)  # type: ignore[arg-type]
         cost_strategy = selected
     else:
@@ -243,9 +248,8 @@ async def build_live_runner(
             retrieval=retrieval, generator=generator, verifier=verifier
         )
         cost_strategy = GapCostModel()
-        # P1 is token-denominated: hand the runner the meter so it reconciles each
-        # gap's pre-charge to the REAL tokens the embed + LLM seams recorded (C1).
-        runner_meter = meter
+        # runner_meter is already `meter` for every technique (LE-059a) — the
+        # runner reconciles the GapCostModel pre-charge to the real embed+LLM tokens.
 
     # ── persistence (C2) ────────────────────────────────────────────────────────
     pg_store = PgProposalStore(pool)
