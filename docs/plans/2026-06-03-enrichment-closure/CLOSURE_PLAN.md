@@ -28,12 +28,16 @@
 
 | Phase | What | Output | Status |
 |---|---|---|---|
-| 0 | Audit: write-wiring · draft-parity · FE test cov · BE test cov (parallel workflow) | [AUDIT.md](AUDIT.md) | running |
-| 1 | Build/wire missing GUI trigger controls (auto-enrich form, source register/ingest, job controls) + fix broken action paths. MVC rules + i18n ×4 | FE diff | pending |
-| 2 | Full FE vitest suite vs the drafts | `*.test.tsx` | pending |
-| 3 | Fill backend pytest/contract gaps | pytest | pending |
-| 4 | Playwright full-loop e2e (create→detect→enrich→review→promote) or documented skip | e2e evidence | pending |
-| 5 | Closure: docs, deferreds, SESSION_HANDOFF, commit+push | commits | pending |
+| 0 | Audit: write-wiring · draft-parity · FE test cov · BE test cov (parallel workflow) | [AUDIT.md](AUDIT.md) | ✅ done |
+| 1a | Functional GUI: ingest-source · retract · auto-enrich cost-cap+top_k · reject-reason + i18n×4 | FE diff (tsc clean) | ✅ done |
+| 1b | Parity GUI: ProposalCard enrich · technique filter · live H0 banner · author-only · error-state · dim count + i18n×4 | FE diff (tsc clean) | ✅ done |
+| 2 | Full FE vitest suite vs the drafts | **20 files / 149 tests GREEN** (was 0) | ✅ done |
+| 3 | Backend HTTP-handler tests (jobs lifecycle, eval-gate fail-closed, single-read IDOR, auto-enrich cost-cap) | **+35 tests, 614 pass / 30 skip** | ✅ done |
+| 4 | Live e2e (read-smoke + retract↔promote write-cycle); browser layer deferred | [E2E_RESULTS.md](E2E_RESULTS.md) | ✅ done (browser deferred S7) |
+| 5 | Closure: docs, deferreds, SESSION_HANDOFF, commit+push | commits `2ba5050a` + this | ✅ done |
+
+**Commits:** `2ba5050a` (phases 1–3: GUI + FE/BE tests, pushed) · closure-docs commit (phase 4–5).
+**Net result:** the 2 functional gaps (ingest, retract) + 2 partials (cost-cap, reject-reason) closed; high-value parity gaps closed; FE 0→149 tests, BE +35; retract↔promote proven live. Backlog → LOW residuals (S1–S7) all documented.
 
 ## Done bar (closure definition)
 
