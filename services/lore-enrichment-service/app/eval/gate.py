@@ -89,8 +89,9 @@ def gate_decision(
 
     if not scorecard.judge_ensemble_acceptable:
         reasons.append(
-            "judge ensemble not acceptable (< 2 judges voted) — usefulness "
-            "untrustworthy, P2/P3 stay blocked"
+            "judge ensemble not acceptable — needs ≥2 judges from ≥2 DISTINCT "
+            "model families AND inter-rater κ at/above the floor (C2/LE-056); "
+            "usefulness untrustworthy, P2/P3 stay blocked"
         )
 
     for sub, floor in GATE_CRITICAL_FLOORS.items():

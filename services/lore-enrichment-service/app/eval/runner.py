@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Sequence
 
+from app.config import settings
 from app.eval import scorers
 from app.eval.gate import GateDecision, gate_decision
 from app.eval.judge_usefulness import (
@@ -102,7 +103,9 @@ async def run_eval(
             ProposalForJudging(name=p.name, dimensions=p.dimensions)
             for p in proposals
         ]
-        usefulness_res = await score_usefulness_ensemble(forjudge, judges, judge_fn_for)
+        usefulness_res = await score_usefulness_ensemble(
+            forjudge, judges, judge_fn_for, kappa_floor=settings.judge_kappa_floor
+        )
     else:
         usefulness_res = JudgeUsefulnessResult(
             usefulness=0.0, fleiss_kappa=None, kappa_interpretation="n/a",

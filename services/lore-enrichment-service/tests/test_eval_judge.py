@@ -94,7 +94,12 @@ def test_ensemble_majority_vote_picks_plurality():
     res = asyncio.run(score_usefulness_ensemble(_props(), judges, fn))
     # p0 majority good(1.0), p1 majority poor(0.0) → mean credit 0.5 → 50.0
     assert res.usefulness == 50.0
-    assert res.acceptable
+    # C2/LE-056: 3 DISTINCT families voted, but they DISAGREE (κ below-chance) →
+    # NOT a trustworthy consensus → not acceptable (the κ-floor gate). The
+    # plurality/usefulness math is still computed + returned for transparency.
+    assert res.fleiss_kappa is not None and res.fleiss_kappa < 0.0
+    assert not res.acceptable
+    assert any("κ" in r for r in res.reasons)
 
 
 def test_ensemble_tie_takes_lower_credit_no_false_green():
@@ -184,4 +189,93 @@ def test_injection_prose_output_is_unjudged_not_forced_high():
     # No parseable verdict from any judge → no credits → usefulness 0, not high.
     assert res.usefulness == 0.0
     assert res.n_judges_voting == 0
+    assert not res.acceptable
+
+
+# ── C2 / LE-056: judge-family diversity + κ floor ─────────────────────────────
+
+def test_same_family_judges_not_acceptable():
+    """The LE-056 fix: two judges that AGREE perfectly but share a model family
+    (qwen-30b + qwen-35b, family='qwen') are NOT a multi-perspective consensus —
+    one family cannot self-certify the gate, even at κ=1.0."""
+    judges = [
+        JudgeSpec("qwen-30b", "r1", family="qwen"),
+        JudgeSpec("qwen-35b", "r2", family="qwen"),
+    ]
+    fn = _judge_returning({
+        "qwen-30b": ["excellent", "excellent"],
+        "qwen-35b": ["excellent", "excellent"],
+    })
+    res = asyncio.run(score_usefulness_ensemble(_props(), judges, fn))
+    assert res.usefulness == 100.0           # they agree (high credit)...
+    assert res.n_judges_voting == 2
+    assert res.n_families_voting == 1
+    assert not res.acceptable                # ...but only ONE family → blocked
+    assert any("famil" in r for r in res.reasons)
+
+
+def test_two_distinct_families_agreeing_is_acceptable():
+    judges = [
+        JudgeSpec("qwen-30b", "r1", family="qwen"),
+        JudgeSpec("gemma", "r2", family="gemma"),
+    ]
+    fn = _judge_returning({
+        "qwen-30b": ["excellent", "good"],
+        "gemma": ["excellent", "good"],
+    })
+    res = asyncio.run(score_usefulness_ensemble(_props(), judges, fn))
+    assert res.n_families_voting == 2
+    assert res.fleiss_kappa is not None and res.fleiss_kappa >= 0.0
+    assert res.acceptable
+    assert res.reasons == []
+
+
+def test_kappa_floor_is_configurable():
+    """Below-chance κ blocks at the default floor (0.0) but a lowered floor lets
+    it through — the floor is the tunable knob (settings.judge_kappa_floor)."""
+    judges = [
+        JudgeSpec("qwen", "r1", family="qwen"),
+        JudgeSpec("gemma", "r2", family="gemma"),
+        JudgeSpec("claude", "r3", family="claude"),
+    ]
+    fn = _judge_returning({  # deliberate split → below-chance κ
+        "qwen": ["good", "poor"],
+        "gemma": ["good", "poor"],
+        "claude": ["poor", "good"],
+    })
+    # default floor 0.0 → below-chance κ disqualifies (3 distinct families notwithstanding)
+    res = asyncio.run(score_usefulness_ensemble(_props(), judges, fn))
+    assert res.fleiss_kappa < 0.0 and not res.acceptable
+    # lowering the floor below the κ admits it (family-diversity already satisfied)
+    res2 = asyncio.run(
+        score_usefulness_ensemble(_props(), judges, fn, kappa_floor=-1.0)
+    )
+    assert res2.acceptable
+
+
+def test_family_defaults_to_label():
+    # Back-compat: no explicit family → family_key is the label (distinct labels
+    # stay distinct families), so existing distinct-label ensembles are unaffected.
+    assert JudgeSpec("gemma", "r1").family_key == "gemma"
+    assert JudgeSpec("qwen-30b", "r2", family="qwen").family_key == "qwen"
+
+
+def test_family_key_is_normalized_against_caller_inconsistency():
+    # review-impl MED-1: case/whitespace variants must collapse to ONE family so a
+    # caller typo can't fake diversity and re-open the single-family hole.
+    assert JudgeSpec("a", "r1", family="Qwen").family_key == "qwen"
+    assert JudgeSpec("b", "r2", family=" qwen ").family_key == "qwen"
+
+
+def test_case_variant_families_do_not_fake_diversity():
+    judges = [
+        JudgeSpec("qwen-30b", "r1", family="qwen"),
+        JudgeSpec("qwen-35b", "r2", family="Qwen"),  # same family, different case
+    ]
+    fn = _judge_returning({
+        "qwen-30b": ["excellent", "excellent"],
+        "qwen-35b": ["excellent", "excellent"],
+    })
+    res = asyncio.run(score_usefulness_ensemble(_props(), judges, fn))
+    assert res.n_families_voting == 1   # 'qwen' and 'Qwen' collapse → ONE family
     assert not res.acceptable

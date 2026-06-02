@@ -33,6 +33,14 @@ class Settings(BaseSettings):
         validation_alias="LORE_ENRICHMENT_GATE_MAX_AGE_SECONDS",
     )
 
+    # C2 / LE-056 — judge-ensemble κ (Fleiss inter-rater agreement) floor. An eval
+    # run is only `acceptable` (unlocks P2/P3) when ≥2 DISTINCT judge families voted
+    # AND κ ≥ this floor. Default 0.0 = reject only BELOW-CHANCE agreement (judges
+    # actively disagree); raise toward 0.2 to also reject merely-slight agreement.
+    judge_kappa_floor: float = Field(
+        default=0.0, validation_alias="LORE_ENRICHMENT_JUDGE_KAPPA_FLOOR"
+    )
+
     port: int = 8093
 
     # C18 — structured-logging level. INFO in prod; DEBUG locally via env.

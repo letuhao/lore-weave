@@ -183,11 +183,11 @@ async def _main() -> int:
         owner_by_ref: dict[str, str] = {}
         gemma_ref, gemma_owner = await _resolve_ref(pr_dsn, gemma_name)
         if gemma_ref:
-            judges.append(JudgeSpec(label="gemma", model_ref=gemma_ref))
+            judges.append(JudgeSpec(label="gemma", model_ref=gemma_ref, family="gemma"))
             owner_by_ref[gemma_ref] = gemma_owner
         qwen_ref, qwen_owner = await _resolve_ref(pr_dsn, qwen_name)
         if qwen_ref:
-            judges.append(JudgeSpec(label="qwen-30b", model_ref=qwen_ref))
+            judges.append(JudgeSpec(label="qwen-30b", model_ref=qwen_ref, family="qwen"))
             owner_by_ref[qwen_ref] = qwen_owner
         # 3rd judge — claude (cloud) per the locked ensemble, included if registered.
         claude_name = os.environ.get("JUDGE_CLAUDE_NAME", "")
@@ -200,19 +200,20 @@ async def _main() -> int:
         for cname in claude_candidates:
             cref, cowner = await _resolve_ref(pr_dsn, cname)
             if cref and cref not in owner_by_ref:
-                judges.append(JudgeSpec(label="claude", model_ref=cref))
+                judges.append(JudgeSpec(label="claude", model_ref=cref, family="claude"))
                 owner_by_ref[cref] = cowner
                 break
-        # Resilience judge — a distinct local model (a 35b qwen variant) added so
-        # the ensemble still reaches the ≥2-voting-judge bar if a cloud/gemma judge
-        # is unbillable in this stack. A judge that errors simply does not vote
-        # (D11 policy); this keeps the ensemble robust without faking a verdict.
+        # Resilience judge — a 35b qwen variant for robustness (a judge that errors
+        # simply does not vote, D11). NOTE (C2/LE-056): it is family='qwen', the
+        # SAME family as qwen-30b, so it does NOT add family-diversity — the gate
+        # now needs ≥2 DISTINCT families, so gemma or claude must also vote for the
+        # ensemble to be `acceptable` (two qwen near-clones can't self-certify).
         third_name = os.environ.get("JUDGE_THIRD_NAME", "qwen/qwen3.6-35b-a3b")
         tref, towner = await _resolve_ref(pr_dsn, third_name, owner=user)
         if not tref:
             tref, towner = await _resolve_ref(pr_dsn, third_name)
         if tref and tref not in owner_by_ref:
-            judges.append(JudgeSpec(label="qwen-35b", model_ref=tref))
+            judges.append(JudgeSpec(label="qwen-35b", model_ref=tref, family="qwen"))
             owner_by_ref[tref] = towner
 
         if len(judges) < 2:

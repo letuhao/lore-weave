@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Sequence
@@ -112,12 +113,30 @@ class JudgeSpec:
 
     ``model_ref`` is an OPAQUE registry reference (user_model UUID), NEVER a
     model name (no-hardcoded-names invariant). The ``label`` is a short
-    human-readable id for the scorecard (e.g. a family tag like gemma / qwen /
-    claude), supplied by the caller — not resolved from any name in this code.
+    human-readable id for the scorecard (e.g. ``qwen-30b``), supplied by the
+    caller — not resolved from any name in this code.
+
+    ``family`` (C2 / LE-056) is the model FAMILY used by the judge-diversity
+    floor: an ensemble is only ``acceptable`` if ≥2 DISTINCT families voted, so
+    two near-clones (``qwen-30b`` + ``qwen-35b``) sharing ``family='qwen'`` do
+    NOT count as independent perspectives. The caller supplies it explicitly (no
+    fragile label-parsing); it DEFAULTS to ``label`` when unset, so callers that
+    pass genuinely-distinct labels are treated as distinct families.
     """
 
     label: str
     model_ref: str
+    family: str = ""
+
+    @property
+    def family_key(self) -> str:
+        """The family used for the diversity count — explicit ``family`` or, when
+        unset, the ``label`` (back-compat: distinct labels ⇒ distinct families).
+
+        NORMALIZED (strip + casefold) so a caller case/whitespace inconsistency
+        ('qwen' vs 'Qwen' vs ' qwen ') can't silently masquerade as two distinct
+        families and re-open the LE-056 single-family hole (review-impl MED-1)."""
+        return (self.family or self.label).strip().casefold()
 
 
 @dataclass(frozen=True)
@@ -139,8 +158,12 @@ class JudgeUsefulnessResult:
     ``usefulness`` is the mean ensemble credit × 100 (the 0..100 sub-score).
     ``fleiss_kappa`` / ``kappa_interpretation`` surface inter-rater agreement.
     ``per_proposal`` records each proposal's majority verdict + credit + the
-    per-judge votes (for the scorecard + audit). ``acceptable`` mirrors the
-    knowledge-service D11 gate: ≥ 2 judges must have produced verdicts.
+    per-judge votes (for the scorecard + audit).
+
+    ``acceptable`` (C2 / LE-056) requires ALL of: ≥2 judges voted, ≥2 DISTINCT
+    families voted (no single-family bias), AND κ is not below the configured
+    floor (below-chance agreement ⇒ not a trustworthy consensus). ``reasons``
+    records why an ensemble was NOT acceptable (for the scorecard / gate message).
     """
 
     usefulness: float
@@ -149,6 +172,8 @@ class JudgeUsefulnessResult:
     n_judges: int
     n_judges_voting: int
     acceptable: bool
+    n_families_voting: int = 0
+    reasons: list[str] = field(default_factory=list)
     per_proposal: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -250,6 +275,8 @@ async def score_usefulness_ensemble(
     proposals: Sequence[ProposalForJudging],
     judges: Sequence[JudgeSpec],
     judge_fn_for: Callable[[JudgeSpec], JudgeFn],
+    *,
+    kappa_floor: float = 0.0,
 ) -> JudgeUsefulnessResult:
     """Score the subjective ``usefulness`` sub-score via the judge ENSEMBLE.
 
@@ -259,6 +286,12 @@ async def score_usefulness_ensemble(
     partial credit, and aggregate. Fleiss κ is computed over the proposals ALL
     voting judges scored (D11: never silent-downgrade the κ basis).
 
+    ``acceptable`` (C2 / LE-056) requires ≥2 judges voted, ≥2 DISTINCT families
+    voted, AND κ ≥ ``kappa_floor`` (below-chance agreement disqualifies; κ=None
+    — uncomputable — does NOT disqualify on its own, family-diversity still must
+    hold). ``kappa_floor`` defaults to 0.0 (below-chance); the runner passes
+    ``settings.judge_kappa_floor``.
+
     Returns a :class:`JudgeUsefulnessResult`. With < 2 judges voting, the
     ensemble is ``acceptable=False`` and κ is None (single-judge agreement is
     undefined) but the mean credit is still returned for transparency.
@@ -267,6 +300,7 @@ async def score_usefulness_ensemble(
         return JudgeUsefulnessResult(
             usefulness=0.0, fleiss_kappa=None, kappa_interpretation="n/a",
             n_judges=len(judges), n_judges_voting=0, acceptable=False,
+            n_families_voting=0, reasons=["no proposals to judge"],
         )
 
     # Run each judge sequentially (JIT model swaps happen LM-Studio-side).
@@ -278,6 +312,8 @@ async def score_usefulness_ensemble(
 
     voting_judges = [j for j, v in per_judge if v]
     n_voting = len(voting_judges)
+    voting_families = {j.family_key for j in voting_judges}
+    n_families = len(voting_families)
 
     # Per-proposal majority vote + credit.
     per_proposal: list[dict[str, Any]] = []
@@ -326,7 +362,29 @@ async def score_usefulness_ensemble(
     interp = "n/a"
     if n_voting >= 2 and kappa_items:
         kappa = round(fleiss_kappa(kappa_items, n_voting), 3)
-        interp = kappa_interpretation(kappa)
+        # Guard a degenerate κ (NaN/inf — e.g. a single all-one-category item from
+        # the imported helper): treat it as UNCOMPUTABLE (None) so it can never
+        # slip the floor via `NaN < floor == False` (review-impl LOW-2).
+        if not math.isfinite(kappa):
+            kappa = None
+        else:
+            interp = kappa_interpretation(kappa)
+
+    # ── C2 / LE-056: acceptable = quorum AND family-diversity AND κ-floor ────────
+    reasons: list[str] = []
+    if n_voting < 2:
+        reasons.append(f"< 2 judges voted (only {n_voting})")
+    if n_families < 2:
+        reasons.append(
+            f"< 2 distinct judge families voted (only {n_families}: "
+            f"{sorted(voting_families)}) — one model family cannot self-certify"
+        )
+    if kappa is not None and kappa < kappa_floor:
+        reasons.append(
+            f"inter-rater agreement κ={kappa} below floor {kappa_floor} "
+            f"({interp}) — not a trustworthy consensus"
+        )
+    acceptable = not reasons
 
     return JudgeUsefulnessResult(
         usefulness=usefulness,
@@ -334,6 +392,8 @@ async def score_usefulness_ensemble(
         kappa_interpretation=interp,
         n_judges=len(judges),
         n_judges_voting=n_voting,
-        acceptable=n_voting >= 2,
+        acceptable=acceptable,
+        n_families_voting=n_families,
+        reasons=reasons,
         per_proposal=per_proposal,
     )
