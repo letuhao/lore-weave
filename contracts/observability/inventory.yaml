@@ -960,6 +960,47 @@ metrics:
     description: 'Spent (published, past-grace) meta_outbox rows deleted by the pruner (P2/112 ephemeral retention).'
     owner: sre
     source: services/meta-outbox-relay (prune)
+  # ── P2/106 — breach-notifier (lw.incidents.breach → DPO delivery)
+  - name: lw_breach_delivery_delivered_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 106
+    labels: []
+    description: 'GDPR Art.33 DPO notices delivered + recorded (delivery-confirmed).'
+    owner: sre
+    source: services/breach-notifier (handler)
+  - name: lw_breach_delivery_failed_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 106
+    labels: []
+    description: 'DPO notice delivery attempts that failed (left pending for redelivery).'
+    owner: sre
+    source: services/breach-notifier (handler)
+  - name: lw_breach_delivery_skipped_duplicate_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 106
+    labels: []
+    description: 'DPO notices skipped because already delivered (idempotency guard).'
+    owner: sre
+    source: services/breach-notifier (handler)
+  - name: lw_breach_delivery_malformed_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 106
+    labels: []
+    description: 'dpo_notice obligations dropped as malformed (failed contract Validate) — alertable.'
+    owner: sre
+    source: services/breach-notifier (handler)
+  - name: lw_breach_delivery_iteration_errors_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 106
+    labels: []
+    description: 'breach-notifier consumer loop iterations that returned an error.'
+    owner: sre
+    source: services/breach-notifier (loop)
   - name: lw_publisher_published_total
     kind: counter
     layer: L2
