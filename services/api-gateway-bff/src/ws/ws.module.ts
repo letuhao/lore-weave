@@ -4,6 +4,8 @@ import { EventsGateway } from './events.gateway';
 import { WsV1Gateway } from './ws-server';
 import { TicketController, TICKET_STORE_TOKEN } from './ticket-endpoint';
 import { InMemoryTicketStore, type TicketStore } from './ticket-store';
+import { RedisTicketStore } from './redis-ticket-store';
+import { makeWsRedisFromEnv } from './redis-client';
 import { InMemoryAuthzProvider, type SessionAuthzProvider } from './per-message-authz';
 
 /**
@@ -26,7 +28,11 @@ import { InMemoryAuthzProvider, type SessionAuthzProvider } from './per-message-
  * parallel rollout — frontend-game flips clients to /ws/v1 once the
  * browser ticket lib (their domain, per Q-L6-3) is ready.
  */
-const sharedTicketStore: TicketStore = new InMemoryTicketStore();
+// Config-gated store: when LW_WS_REDIS_URL is set, tickets go to a shared Redis
+// store so the SEPARATE game-server process can redeem them (077). Unset (dev/
+// test) → the per-replica in-memory store (the gateway's existing behavior).
+const wsRedis = makeWsRedisFromEnv();
+const sharedTicketStore: TicketStore = wsRedis ? new RedisTicketStore(wsRedis) : new InMemoryTicketStore();
 const sharedAuthzProvider: SessionAuthzProvider = new InMemoryAuthzProvider();
 
 @Module({

@@ -174,3 +174,23 @@ func TestHash32_UnmarshalEnforces32Bytes(t *testing.T) {
 		t.Errorf("UnmarshalJSON rejected valid 32-byte hash: %v", err)
 	}
 }
+
+// TestHash32_GoldenLiteralCrossImpl pins the 132 cross-impl golden fixture in
+// Go: base64(StdEncoding) of bytes 0..31 → the EXACT literal also asserted by
+// the gateway redis-ticket-store.spec.ts + the game-server ticket-store.test.ts.
+// Makes the golden fixture genuinely tri-impl (Go / gateway / game-server), so
+// a silent StdEncoding-vs-URLEncoding drift in ANY impl is caught (077 LOW-1).
+func TestHash32_GoldenLiteralCrossImpl(t *testing.T) {
+	const golden = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+	var h Hash32
+	for i := range h {
+		h[i] = byte(i)
+	}
+	b, err := json.Marshal(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != `"`+golden+`"` {
+		t.Fatalf("Hash32 golden literal mismatch: got %s want %q", b, golden)
+	}
+}

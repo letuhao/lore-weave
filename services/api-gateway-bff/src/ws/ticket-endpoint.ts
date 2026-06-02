@@ -118,9 +118,12 @@ export class TicketController {
       throw new HttpException('missing_user_agent', HttpStatus.BAD_REQUEST);
     }
 
-    // Use trusted-proxy header for the IP/24 component — matches the
-    // upgrade-handler logic so the hashes line up. Without trusted proxy,
-    // fall back to socket remoteAddress.
+    // IP/24 component: the first X-Forwarded-For token if present, else the
+    // socket remoteAddress. NOTE this is UNCONDITIONAL XFF-trust (not gated like
+    // upgrade-handler's parseUpgradeRequest). The game-server redeemer mirrors
+    // it — auth.ts wsTrustedProxy() defaults TRUE — so issuer + redeemer hash the
+    // same client IP and the fingerprint binds (077 review HIGH-1). The ALB /
+    // Envoy MUST strip client-supplied XFF so this can't be spoofed.
     const xff = ((req.headers['x-forwarded-for'] as string | undefined) ?? '').split(',')[0].trim();
     const ip = xff || req.socket?.remoteAddress || '';
     const ipPrefix = ipToPrivacyPrefix(ip);
