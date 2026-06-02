@@ -209,6 +209,38 @@ async def test_fix5_positive_copula_shiwei_is_not_a_negation():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# copyright-safety ③ — output regurgitation guard (wired into verify + C3)
+# ═══════════════════════════════════════════════════════════════════════════
+_REG_SRC = "蓬萊海島，海外仙家之地，僅於斬蛟龍一語中略見其名，自上古即為修真之所。"
+
+
+@pytest.mark.asyncio
+async def test_regurgitation_verbatim_copy_auto_rejects():
+    # ③: a generated fact reproducing a long verbatim run of the grounding source
+    # EXPRESSION → REGURGITATION HIGH → AUTO_REJECTED (the C3 gate). Never canon.
+    proposal = _proposal(grounding_excerpt=_REG_SRC)
+    verifier = CanonVerifier(read_port=_NonEmptyRead(), canon_lookup=_empty_canon_lookup())
+    ann = await verify_and_annotate(verifier, proposal, [_fact("此宫旧事：" + _REG_SRC)], jwt="j")
+    assert ann.status is VerifyStatus.AUTO_REJECTED
+    assert any(
+        f.kind is FlagKind.REGURGITATION and f.severity is Severity.HIGH
+        for f in ann.result.flags
+    )
+    assert ann.is_quarantined is True  # H0 — auto-reject still quarantines, never canon
+
+
+@pytest.mark.asyncio
+async def test_regurgitation_fresh_expression_not_flagged():
+    # Legitimate re-contextualisation (fresh prose; shares only the proper noun 蓬萊
+    # + the facts) → NO regurgitation flag, stays on the normal path.
+    proposal = _proposal(grounding_excerpt=_REG_SRC)
+    verifier = CanonVerifier(read_port=_NonEmptyRead(), canon_lookup=_empty_canon_lookup())
+    fresh = "蓬萊者，东海之上一处仙山也；云气蒸腾，常有羽客往还，世人罕知其详。"
+    ann = await verify_and_annotate(verifier, proposal, [_fact(fresh)], jwt="j")
+    assert not any(f.kind is FlagKind.REGURGITATION for f in ann.result.flags)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # (b) anachronism flagged
 # ═══════════════════════════════════════════════════════════════════════════
 @pytest.mark.asyncio

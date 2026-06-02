@@ -178,8 +178,41 @@ def _grounding_block(grounding: Sequence[GroundingRef]) -> str:
     )
 
 
-def build_recook_prompt(proposal: GroundedProposal) -> str:
+def build_abstract_prompt(canonical_name: str, grounding: Sequence[GroundingRef]) -> str:
+    """Build the ABSTRACTION prompt (copyright-safety layer ②).
+
+    Turns the real source excerpts into NEUTRAL factual bullets — entities, events,
+    places, dates, relationships — DELIBERATELY DISCARDING the source's specific
+    wording. The downstream re-cook generator then composes from these FACTS, never
+    from the source prose, so it cannot reproduce protected EXPRESSION it never saw
+    (copyright protects expression, not facts). This is the engineering form of
+    'create from the IDEA, not a derivative'. Excerpts are injection-neutralized
+    (defence-in-depth) before entering the prompt."""
+    block = "\n".join(
+        f"［{i + 1}］{neutralize_proposal_text(g.excerpt)[0]}"
+        for i, g in enumerate(grounding)
+    )
+    return (
+        f"下面是关于「{canonical_name}」的若干真实参考材料。\n"
+        f"请只提炼其中的【客观事实要点】：人物、事件、地点、时间、关系、职能等，"
+        f"以简短的中文要点列出（每行一个要点，用「- 」开头）。\n"
+        f"严格要求：\n"
+        f"1. 只保留事实信息，彻底改写为你自己的中性措辞，"
+        f"不得照抄或保留原文的句子、修辞、独特表达；\n"
+        f"2. 不要加入原文没有的信息，也不要做任何评价或演绎；\n"
+        f"3. 仅输出要点列表，不要输出任何其它说明。\n\n"
+        f"参考材料：\n{block}\n\n请输出事实要点："
+    )
+
+
+def build_recook_prompt(proposal: GroundedProposal, source_block: str | None = None) -> str:
     """Build the RE-COOK prompt (Chinese, source-faithful).
+
+    ``source_block`` is the reference material to re-contextualise. Copyright-safety
+    layer ② passes the ABSTRACTED fact bullets (from :func:`build_abstract_prompt`)
+    so the generator never sees the source prose; when ``None`` it falls back to the
+    raw (injection-neutralized) grounding excerpts (the ③ output guard backstops
+    either path).
 
     Distinct from the C11 retrieval-generation prompt (fill only what the excerpts
     directly support) and the C16 fabrication prompt (extrapolate within canon):
@@ -209,8 +242,8 @@ def build_recook_prompt(proposal: GroundedProposal) -> str:
         f"4. 内容必须为中文，文言-白话皆可，须与原著语气一致；\n"
         f"5. 仅输出一个 JSON 对象，键为上述维度名，值为对应中文描述，"
         f"不要输出任何额外说明。\n\n"
-        f"真实参考材料（授权/公有领域来源，待再语境化）：\n"
-        f"{_grounding_block(proposal.grounding)}\n\n"
+        f"参考要点（授权/公有领域来源提炼的事实，待再语境化）：\n"
+        f"{source_block if source_block is not None else _grounding_block(proposal.grounding)}\n\n"
         f"请输出 JSON：{{{json_skeleton}}}"
     )
 
@@ -367,7 +400,13 @@ class ReCookStrategy(EnrichmentStrategy):
         licenses = admissible
 
         source_refs = _source_refs_from_grounding(proposal.grounding)
-        prompt = build_recook_prompt(proposal)
+        # ② copyright-safety: abstract the source to NEUTRAL FACTS first so the
+        # generator composes from the uncopyrightable fact layer, not the source
+        # prose (it cannot copy expression it never sees). Falls back to the raw
+        # excerpts on any abstraction failure — the ③ output regurgitation guard
+        # backstops either path.
+        source_block = await self._abstract_facts(proposal, context)
+        prompt = build_recook_prompt(proposal, source_block)
         raw = await self._complete(prompt, context)
 
         try:
@@ -401,6 +440,30 @@ class ReCookStrategy(EnrichmentStrategy):
             verify=verify,
             licenses=list(licenses),
         )
+
+    async def _abstract_facts(
+        self, proposal: GroundedProposal, context: StrategyContext
+    ) -> str | None:
+        """② copyright-safety: extract NEUTRAL fact bullets from the grounding so
+        the re-cook generator composes from the uncopyrightable fact layer, not the
+        source prose. Returns the fact block, or ``None`` to fall back to the raw
+        excerpts on any failure / empty result — the ③ output regurgitation guard
+        protects the output either way (defence in depth, never a false sense of
+        safety from ② alone)."""
+        try:
+            facts = await self._complete(
+                build_abstract_prompt(proposal.canonical_name, proposal.grounding),
+                context,
+            )
+        except Exception:  # noqa: BLE001 — abstraction is best-effort; fall back to raw
+            logger.warning(
+                "re-cook %s: fact-abstraction failed; falling back to raw excerpts "
+                "(the output regurgitation guard still applies)",
+                proposal.canonical_name, exc_info=True,
+            )
+            return None
+        facts = (facts or "").strip()
+        return facts or None
 
     async def _admit_sources(
         self, proposal: GroundedProposal

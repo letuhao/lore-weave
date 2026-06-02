@@ -372,6 +372,54 @@ async def test_recook_refuses_when_all_sources_unlicensed():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# 4b. copyright-safety ② — abstract to FACTS, generate from facts not source prose
+# ═══════════════════════════════════════════════════════════════════════════════
+async def test_recook_abstracts_to_facts_before_generating():
+    # ②: re-cook first abstracts the source to neutral facts, then generates from
+    # the FACTS — so the generation prompt carries the abstracted facts and NOT the
+    # raw source prose (the model cannot copy expression it never sees).
+    prompts: list[str] = []
+
+    async def _recording(prompt: str, ctx: StrategyContext) -> str:
+        prompts.append(prompt)
+        # abstraction call → fact bullets; generation call → the JSON.
+        return "- 陈塘关：商代边境要塞\n- 镇守者：李靖" if "事实要点" in prompt else _VALID
+
+    s = ReCookStrategy(
+        retrieval=_FakeRetrieval([_proposal()]),
+        complete=_recording,
+        verifier=_verifier(),
+        license_lookup=_license_lookup(),
+    )
+    results = await s.run([object()], _ctx())
+    assert len(results) == 1 and results[0].facts
+    assert len(prompts) == 2                      # abstraction THEN generation
+    assert "事实要点" in prompts[0]                # ① abstraction prompt
+    assert "段史料" in prompts[0]                  # abstraction sees the RAW excerpt
+    assert "再创作" in prompts[1]                  # ② re-cook generation prompt
+    assert "李靖" in prompts[1]                    # generation gets the ABSTRACTED facts
+    assert "段史料" not in prompts[1]              # …but NOT the raw source prose
+
+
+async def test_recook_falls_back_to_raw_when_abstraction_fails():
+    # ② is best-effort: if abstraction errors, re-cook falls back to the raw
+    # excerpts (the ③ output guard still protects the output) — it does NOT crash.
+    async def _flaky(prompt: str, ctx: StrategyContext) -> str:
+        if "事实要点" in prompt:
+            raise RuntimeError("abstraction model error")
+        return _VALID
+
+    s = ReCookStrategy(
+        retrieval=_FakeRetrieval([_proposal()]),
+        complete=_flaky,
+        verifier=_verifier(),
+        license_lookup=_license_lookup(),
+    )
+    results = await s.run([object()], _ctx())  # no crash — fell back to raw
+    assert len(results) == 1 and results[0].facts
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # 5. canon-verify runs on re-cooked content (anachronism on re-cooked MODERN!)
 # ═══════════════════════════════════════════════════════════════════════════════
 async def test_canon_verify_runs_clean_passes():

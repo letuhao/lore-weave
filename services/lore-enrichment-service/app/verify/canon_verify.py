@@ -44,6 +44,7 @@ from uuid import UUID
 
 from app.clients.knowledge import GraphStats
 from app.clients.port import KnowledgeReadPort
+from app.verify.regurgitation import detect_regurgitation
 from app.verify.sanitize import (
     _prenormalize,
     neutralize_proposal_text,
@@ -75,11 +76,14 @@ __all__ = [
 
 
 class FlagKind(str, Enum):
-    """The three consistency dimensions C12 checks (the ``kind`` of a flag)."""
+    """The consistency dimensions C12 checks (the ``kind`` of a flag)."""
 
     CONTRADICTION = "contradiction"
     ANACHRONISM = "anachronism"
     INJECTION = "injection"
+    #: Copyright-safety layer ③ — generated content reproduces substantial verbatim
+    #: / near-verbatim EXPRESSION from the grounding source (derivative-work risk).
+    REGURGITATION = "regurgitation"
 
 
 class Severity(str, Enum):
@@ -358,7 +362,13 @@ class CanonVerifier:
         for fact in facts:
             self._check_anachronism(fact, result)
 
-        # ── (a) contradiction — vs canon read through the C1 port (Q6 degrade) ─
+        # ── (d) regurgitation — copyright-safety layer ③: the generated content
+        #        must NOT reproduce substantial verbatim/near-verbatim EXPRESSION
+        #        from the grounding source (derivative-work risk). Uses the
+        #        NEUTRALIZED content (post-injection-defense) vs the source excerpts.
+        self._check_regurgitation(proposal, facts, result)
+
+        # ── (a) contradiction — vs authored glossary canon (FIX-1) ──────────────
         await self._check_contradiction(proposal, facts, result, jwt=jwt)
 
         return result
@@ -410,6 +420,39 @@ class CanonVerifier:
                         severity=Severity.MEDIUM,
                     )
                 )
+
+    # ── (d) regurgitation — copyright-safety layer ③ ───────────────────────────
+    def _check_regurgitation(
+        self,
+        proposal: GroundedProposal,
+        facts: Sequence[EnrichedFact],
+        result: VerifyResult,
+    ) -> None:
+        """Flag generated content that reproduces substantial verbatim/near-verbatim
+        EXPRESSION from the grounding source (copyright-safety layer ③).
+
+        Copyright protects expression, not facts — so a re-cooked fact may reuse the
+        IDEAS of its licensed/PD source but must be FRESH prose, never a copy of the
+        source's wording. :func:`detect_regurgitation` compares each generated fact
+        against the grounding excerpts: an EGREGIOUS verbatim run → HIGH (the C3
+        gate auto-rejects it, like injection), softer overlap → MEDIUM advisory for
+        the human gate. Conservative — shared proper nouns / short idioms never trip
+        it (see the LCS/overlap thresholds). No grounding → nothing to copy → skip."""
+        excerpts = [g.excerpt for g in proposal.grounding if getattr(g, "excerpt", "")]
+        if not excerpts:
+            return
+        for fact in facts:
+            res = detect_regurgitation(fact.content, excerpts)
+            if not res.flagged:
+                continue
+            result.flags.append(
+                VerifyFlag(
+                    kind=FlagKind.REGURGITATION,
+                    dimension=fact.dimension,
+                    evidence=res.evidence,
+                    severity=Severity.HIGH if res.severity == "high" else Severity.MEDIUM,
+                )
+            )
 
     # ── (a) contradiction ─────────────────────────────────────────────────────
     async def _check_contradiction(

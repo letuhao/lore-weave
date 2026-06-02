@@ -96,7 +96,9 @@ def decide_auto_reject(result: VerifyResult) -> RejectDecision | None:
     never admits canon — so the bar is high (false-positive-averse). Egregious iff:
       * ANY injection flag (a neutralized payload is never legitimate lore), OR
       * a CONTRADICTION flag at HIGH severity (direct canon negation), OR
-      * >= ``AUTO_REJECT_ANACHRONISM_MIN_MARKERS`` DISTINCT anachronism markers.
+      * >= ``AUTO_REJECT_ANACHRONISM_MIN_MARKERS`` DISTINCT anachronism markers, OR
+      * a HIGH-severity REGURGITATION flag (copyright-safety ③: the output copied
+        substantial verbatim source EXPRESSION — a derivative-work liability).
     Returns a :class:`RejectDecision` (with evidence) when egregious, else None
     (the proposal stays on the advisory flag-for-human path)."""
     reasons: list[str] = []
@@ -120,6 +122,17 @@ def decide_auto_reject(result: VerifyResult) -> RejectDecision | None:
         reasons.append(
             f"{len(distinct_anachronisms)} distinct anachronism markers"
         )
+
+    # Copyright-safety ③: an EGREGIOUS (HIGH) regurgitation flag = the output copied
+    # substantial verbatim source EXPRESSION — a derivative-work liability that must
+    # NEVER reach canon. Softer (MEDIUM) overlap stays advisory (human gate).
+    high_regurgitation = [
+        f
+        for f in result.flags
+        if f.kind is FlagKind.REGURGITATION and f.severity is Severity.HIGH
+    ]
+    if high_regurgitation:
+        reasons.append(f"verbatim source regurgitation ({high_regurgitation[0].evidence})")
 
     if not reasons:
         return None
