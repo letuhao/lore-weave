@@ -132,10 +132,10 @@ export function AssistantMessage({
 
       {/* Token footer + action buttons */}
       {!isStreaming && (
-        <div className="mt-1.5 flex items-center justify-between opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
+        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-y-1 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
           {/* Token counts + timing */}
           {hasMetrics && (
-            <div className="flex items-center gap-2 font-mono text-[10px] text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px] text-muted-foreground">
               {hasReasoning ? (
                 <span className="flex items-center gap-0.5 text-[#a78bfa]">
                   <Brain className="h-2.5 w-2.5" />

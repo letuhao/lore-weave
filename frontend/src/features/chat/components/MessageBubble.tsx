@@ -89,8 +89,8 @@ export function MessageBubble({
   }, [isUser, isStreamingMsg, rawContent, message.message_id]);
 
   return (
-    <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
-      <div className="max-w-[85%]">
+    <div className={cn('flex min-w-0', isUser ? 'justify-end' : 'justify-start')}>
+      <div className="min-w-0 max-w-[85%]">
         {/* Context pills above user message */}
         {messageHasContext && contextLabels.length > 0 && (
           <div className="mb-1 flex flex-wrap justify-end gap-1">
@@ -117,7 +117,7 @@ export function MessageBubble({
 
         <div
           className={cn(
-            'px-4 py-3 text-sm',
+            'min-w-0 overflow-hidden break-words px-4 py-3 text-sm',
             isUser
               ? 'rounded-[12px_12px_4px_12px] bg-secondary text-foreground'
               : 'rounded-[12px_12px_12px_4px] border border-border bg-card text-foreground',

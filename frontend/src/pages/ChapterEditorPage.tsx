@@ -41,6 +41,67 @@ export function ChapterEditorPage() {
   const { accessToken } = useAuth();
   const panels = useEditorPanels();
 
+  // Resizable right panel — drag the left edge. Width is per-device UI state
+  // (persisted in useEditorPanels → localStorage per CLAUDE.md). During the
+  // drag we update a transient `liveRightWidth` for instant feedback and only
+  // persist on mouse-up (avoids a localStorage write every frame).
+  const [liveRightWidth, setLiveRightWidth] = useState<number | null>(null);
+  const rightDragRef = useRef(0);
+  const startRightResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = panels.rightWidth ?? 320;
+    const clamp = (w: number) => Math.min(Math.max(w, 280), Math.min(window.innerWidth * 0.7, 900));
+    rightDragRef.current = startW;
+    const onMove = (ev: MouseEvent) => {
+      // dragging left → panel grows (right panel is anchored to the right edge)
+      rightDragRef.current = clamp(startW + (startX - ev.clientX));
+      setLiveRightWidth(rightDragRef.current);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      panels.setRightWidth(rightDragRef.current);
+      setLiveRightWidth(null);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [panels.rightWidth, panels.setRightWidth]);
+  const rightWidth = liveRightWidth ?? panels.rightWidth ?? 320;
+
+  // Resizable left panel — drag its RIGHT edge (left panel is anchored to the
+  // left, so dragging right grows it). Same persist-on-mouse-up pattern.
+  const [liveLeftWidth, setLiveLeftWidth] = useState<number | null>(null);
+  const leftDragRef = useRef(0);
+  const startLeftResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = panels.leftWidth ?? 300;
+    const clamp = (w: number) => Math.min(Math.max(w, 240), Math.min(window.innerWidth * 0.5, 720));
+    leftDragRef.current = startW;
+    const onMove = (ev: MouseEvent) => {
+      leftDragRef.current = clamp(startW + (ev.clientX - startX));
+      setLiveLeftWidth(leftDragRef.current);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      panels.setLeftWidth(leftDragRef.current);
+      setLiveLeftWidth(null);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [panels.leftWidth, panels.setLeftWidth]);
+  const leftWidth = liveLeftWidth ?? panels.leftWidth ?? 300;
+
   // Draft state
   const [version, setVersion] = useState<number | undefined>();
   const [saving, setSaving] = useState(false);
@@ -534,7 +595,17 @@ export function ChapterEditorPage() {
 
         {/* Left panel */}
         {panels.left && (
-          <div className="flex w-[300px] flex-shrink-0 flex-col border-r bg-card">
+          <div className="relative flex flex-shrink-0 flex-col border-r bg-card" style={{ width: leftWidth }}>
+            {/* Drag handle — resize by dragging the right edge. */}
+            <div
+              onMouseDown={startLeftResize}
+              role="separator"
+              aria-orientation="vertical"
+              title={t('resize_panel', { defaultValue: 'Drag to resize' })}
+              className="group absolute right-0 top-0 z-20 h-full w-1.5 translate-x-1/2 cursor-col-resize"
+            >
+              <div className="mx-auto h-full w-px bg-transparent transition-colors group-hover:bg-primary/50" />
+            </div>
             {/* Tab bar */}
             <div className="flex border-b">
               <button
@@ -723,7 +794,17 @@ export function ChapterEditorPage() {
 
         {/* Right panel */}
         {panels.right && (
-          <div className="flex w-[300px] flex-shrink-0 flex-col border-l bg-card">
+          <div className="relative flex flex-shrink-0 flex-col border-l bg-card" style={{ width: rightWidth }}>
+            {/* Drag handle — resize the panel by dragging its left edge. */}
+            <div
+              onMouseDown={startRightResize}
+              role="separator"
+              aria-orientation="vertical"
+              title={t('resize_panel', { defaultValue: 'Drag to resize' })}
+              className="group absolute left-0 top-0 z-20 h-full w-1.5 -translate-x-1/2 cursor-col-resize"
+            >
+              <div className="mx-auto h-full w-px bg-transparent transition-colors group-hover:bg-primary/50" />
+            </div>
             <div className="flex border-b">
               <button
                 onClick={() => setRightTab('history')}
