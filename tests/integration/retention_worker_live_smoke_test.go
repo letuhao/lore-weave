@@ -53,6 +53,9 @@ func TestRetentionWorkerLiveSmoke_OutboxAndAuditPrune(t *testing.T) {
 	db := openSQL(t, dsn)
 	mustApply(t, db, "contracts/migrations/per_reality/0003_event_audit_table.up.sql")
 	mustApply(t, db, "contracts/migrations/per_reality/0005_events_outbox_table.up.sql")
+	// 088 D-OUTBOX-PRUNE-INDEX: apply the prune-supporting partial index so the
+	// prune below runs against it (proves the index doesn't change prune results).
+	mustApply(t, db, "contracts/migrations/per_reality/0012_events_outbox_prune_index.up.sql")
 
 	realityID := uuid.New()
 
