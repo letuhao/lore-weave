@@ -60,6 +60,7 @@ pub mod embedding_queue;
 pub mod errors;
 pub mod provisioner;
 pub mod reality_seeder;
+pub mod rebuild;
 
 pub use capacity_planner::{CapacityPlanner, CapacityThresholds, ShardCapacity, ShardId};
 pub use db_pool::{DbPoolKey, DbPoolRegistry, ShardHost};

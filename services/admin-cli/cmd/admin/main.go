@@ -334,20 +334,26 @@ func buildShardDSN(host, dbname string) (string, error) {
 	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", user, pass, host, port, dbname, sslmode), nil
 }
 
-// perRealityPool resolves a reality's per-reality DB pool: look up db_host/db_name
-// from reality_registry (meta pool) → build the shard DSN → open a pool. The
-// caller closes it (per-invocation for a read-only CLI command).
-func perRealityPool(ctx context.Context, metaPool *pgxpool.Pool, realityID uuid.UUID) (*pgxpool.Pool, error) {
+// perRealityDSN resolves a reality's per-reality DB DSN: look up db_host/db_name
+// from reality_registry (meta pool) → build the shard DSN. ErrRealityNotFound on
+// a missing reality.
+func perRealityDSN(ctx context.Context, metaPool *pgxpool.Pool, realityID uuid.UUID) (string, error) {
 	var host, name string
 	err := metaPool.QueryRow(ctx,
 		`SELECT db_host, db_name FROM reality_registry WHERE reality_id = $1`, realityID).Scan(&host, &name)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, commands.ErrRealityNotFound
+			return "", commands.ErrRealityNotFound
 		}
-		return nil, fmt.Errorf("resolve reality %s DSN: %w", realityID, err)
+		return "", fmt.Errorf("resolve reality %s DSN: %w", realityID, err)
 	}
-	dsn, err := buildShardDSN(host, name)
+	return buildShardDSN(host, name)
+}
+
+// perRealityPool resolves a reality's per-reality DB pool. The caller closes it
+// (per-invocation for a CLI command).
+func perRealityPool(ctx context.Context, metaPool *pgxpool.Pool, realityID uuid.UUID) (*pgxpool.Pool, error) {
+	dsn, err := perRealityDSN(ctx, metaPool, realityID)
 	if err != nil {
 		return nil, err
 	}
@@ -453,6 +459,329 @@ func buildArchiveFetchHandler() (framework.Handler, func(), error) {
 		defer rpool.Close()
 		return commands.RunArchiveFetch(ctx, rid, inv.Params["month"], inv.Params["out_path"], inv.DryRun,
 			commands.NewPgArchiveMetaReader(rpool), fetcher)
+	}
+	return h, metaPool.Close, nil
+}
+
+// buildCapacityOverrideHandler wires `reality capacity-override` (073) to a
+// scaling_events INSERT via MetaWrite (Tier-2 griefing; 24h auto-expire). Owns
+// its OWN meta pool + allowlist (write path needs the allowlist + scrubber),
+// isolated from buildAuditSink's pool. Outbox is nil: scaling_events emits
+// scaling.event.recorded but no V1 consumer reads it (mirrors PgConsentRevoker).
+// NotWired without META_DATABASE_URL; dev tokens are rejected on the audited path.
+func buildCapacityOverrideHandler() (framework.Handler, func(), error) {
+	noop := func() {}
+	dsn := os.Getenv("META_DATABASE_URL")
+	if dsn == "" {
+		return nil, noop, nil // no DB → leave NotWired (dispatcher refuses real runs)
+	}
+	if os.Getenv("ADMIN_CLI_ALLOW_DEV_TOKENS") == "1" {
+		return nil, noop, fmt.Errorf("ADMIN_CLI_ALLOW_DEV_TOKENS=1 is incompatible with META_DATABASE_URL (a dev-token non-UUID subject cannot be scaling_events.initiated_by)")
+	}
+	allowPath := os.Getenv("META_ALLOWLIST_PATH")
+	if allowPath == "" {
+		return nil, noop, fmt.Errorf("META_ALLOWLIST_PATH required for capacity-override (scaling_events write)")
+	}
+	allow, err := meta.LoadAllowlist(allowPath)
+	if err != nil {
+		return nil, noop, fmt.Errorf("load allowlist: %w", err)
+	}
+	if !allow.AllowsTable("scaling_events") {
+		return nil, noop, fmt.Errorf("allowlist %s missing scaling_events (capacity-override needs it)", allowPath)
+	}
+	pool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		return nil, noop, fmt.Errorf("capacity-override meta DB connect: %w", err)
+	}
+	cfg := &meta.Config{
+		DB: metapg.New(pool), Allowlist: allow, QueryBuilder: meta.PostgresQueryBuilder{},
+		Clock: sysClock{}, UUIDGen: randUUID{}, Scrubber: meta.NewRegexScrubber(nil),
+	}
+	writer := commands.NewPgScalingEventWriter(cfg)
+	h := func(ctx context.Context, inv framework.Invocation) (string, error) {
+		hours, err := strconv.Atoi(strings.TrimSpace(inv.Params["hours"]))
+		if err != nil {
+			return "", fmt.Errorf("invalid --hours %q: %w", inv.Params["hours"], err)
+		}
+		req := commands.CapacityOverrideRequest{
+			ShardHost: inv.Params["shard_host"],
+			Reason:    inv.Reason,
+			Hours:     hours,
+			Actor:     inv.Actor,
+			DryRun:    inv.DryRun,
+		}
+		return commands.RunCapacityOverride(ctx, req, writer, time.Now)
+	}
+	return h, pool.Close, nil
+}
+
+// enableUnprovenRebuildEnv gates the Tier-1 destructive rebuild commands
+// (rebuild-projection + catastrophic-rebuild). Their worker (the world-service
+// `rebuilder`) is the FIRST live projection-apply path and is NOT yet validated
+// against real events by the L3.E/F integrity checker — so wiring a catastrophic
+// recovery tool to it is unproven. Until L3.E/F lands the commands stay fail-
+// closed NotWired unless an operator consciously sets this to "1".
+// See docs/plans/2026-06-03-073-destructive-admin-commands.md + DEFERRED.md.
+const enableUnprovenRebuildEnv = "ADMIN_CLI_ENABLE_UNPROVEN_REBUILD"
+
+// defaultTransitionsPath discovers contracts/meta/transitions.yaml (the reality
+// state-machine graph AttemptStateTransition needs), overridable via
+// META_TRANSITIONS_PATH.
+func defaultTransitionsPath() string {
+	if p := os.Getenv("META_TRANSITIONS_PATH"); p != "" {
+		return p
+	}
+	for _, c := range []string{
+		"contracts/meta/transitions.yaml",
+		"../../contracts/meta/transitions.yaml",
+		"../../../contracts/meta/transitions.yaml",
+	} {
+		if abs, err := filepath.Abs(c); err == nil {
+			if _, serr := os.Stat(abs); serr == nil {
+				return abs
+			}
+		}
+	}
+	return "contracts/meta/transitions.yaml"
+}
+
+// buildRebuildProjectionHandler wires `reality rebuild-projection` (073, L3.G) —
+// Tier-1 destructive freeze-truncate-rebuild-thaw. GATED: registered only when
+// enableUnprovenRebuildEnv=1 (else returns a nil handler → the command stays
+// fail-closed NotWired). Owns the meta pool (lifecycle gate + DSN resolution);
+// the per-reality truncator pool + rebuilder subprocess DSN are resolved PER
+// INVOCATION inside the closure (reality_id is a runtime param).
+func buildRebuildProjectionHandler() (framework.Handler, func(), error) {
+	noop := func() {}
+	if os.Getenv(enableUnprovenRebuildEnv) != "1" {
+		return nil, noop, nil // gated off → leave NotWired (fail-closed)
+	}
+	dsn := os.Getenv("META_DATABASE_URL")
+	if dsn == "" {
+		return nil, noop, nil
+	}
+	if os.Getenv("ADMIN_CLI_ALLOW_DEV_TOKENS") == "1" {
+		return nil, noop, fmt.Errorf("ADMIN_CLI_ALLOW_DEV_TOKENS=1 is incompatible with META_DATABASE_URL (a dev-token non-UUID subject cannot be lifecycle_transition_audit.actor_id)")
+	}
+	allowPath := os.Getenv("META_ALLOWLIST_PATH")
+	if allowPath == "" {
+		return nil, noop, fmt.Errorf("META_ALLOWLIST_PATH required for rebuild-projection (reality_registry state transition)")
+	}
+	allow, err := meta.LoadAllowlist(allowPath)
+	if err != nil {
+		return nil, noop, fmt.Errorf("load allowlist: %w", err)
+	}
+	if !allow.AllowsTable("reality_registry") {
+		return nil, noop, fmt.Errorf("allowlist %s missing reality_registry (freeze/thaw needs it)", allowPath)
+	}
+	graph, err := meta.LoadTransitions(defaultTransitionsPath())
+	if err != nil {
+		return nil, noop, fmt.Errorf("load transitions graph: %w", err)
+	}
+	metaPool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		return nil, noop, fmt.Errorf("rebuild-projection meta DB connect: %w", err)
+	}
+	cfg := &meta.Config{
+		DB: metapg.New(metaPool), Allowlist: allow, QueryBuilder: meta.PostgresQueryBuilder{},
+		Clock: sysClock{}, UUIDGen: randUUID{}, Scrubber: meta.NewRegexScrubber(nil),
+		Transitions: graph,
+	}
+	lifecycle := commands.NewPgLifecycleGate(cfg)
+	binPath := os.Getenv("REBUILDER_BIN_PATH")
+	if binPath == "" {
+		binPath = "rebuilder"
+	}
+
+	h := func(ctx context.Context, inv framework.Invocation) (string, error) {
+		rid, err := uuid.Parse(inv.Params["reality_id"])
+		if err != nil {
+			return "", fmt.Errorf("invalid reality_id %q: %w", inv.Params["reality_id"], err)
+		}
+		// Dry-run needs no shard wiring (the orchestrator short-circuits).
+		if inv.DryRun {
+			return commands.RunRebuildProjection(ctx, commands.RebuildProjectionRequest{
+				RealityID: rid, ProjectionName: inv.Params["projection_name"],
+				Actor: inv.Actor, Reason: inv.Reason, DryRun: true,
+			}, commands.RebuildProjectionDeps{})
+		}
+		rdsn, err := perRealityDSN(ctx, metaPool, rid)
+		if err != nil {
+			return "", err
+		}
+		rpool, err := pgxpool.New(ctx, rdsn)
+		if err != nil {
+			return "", fmt.Errorf("rebuild-projection per-reality DB connect: %w", err)
+		}
+		defer rpool.Close()
+		deps := commands.RebuildProjectionDeps{
+			Lifecycle: lifecycle,
+			Truncator: commands.NewPgProjectionTruncator(rpool),
+			Invoker:   commands.NewSubprocessRebuildInvoker(binPath, rdsn),
+		}
+		return commands.RunRebuildProjection(ctx, commands.RebuildProjectionRequest{
+			RealityID: rid, ProjectionName: inv.Params["projection_name"],
+			Actor: inv.Actor, Reason: inv.Reason, Confirm: inv.Confirm, DryRun: inv.DryRun,
+		}, deps)
+	}
+	return h, metaPool.Close, nil
+}
+
+// resolveCatastrophicRealities turns --scope into a concrete reality-id list:
+// reality (--reality_ids comma/space-separated), all-realities (every ACTIVE
+// reality_registry row — only active realities can be frozen), or aggregate-list
+// (--aggregate_file, one UUID per line; '#' comments + blanks skipped).
+func resolveCatastrophicRealities(ctx context.Context, metaPool *pgxpool.Pool, scope string, params map[string]string) ([]string, error) {
+	switch scope {
+	case "reality":
+		return splitIDs(params["reality_ids"]), nil
+	case "aggregate-list":
+		path := strings.TrimSpace(params["aggregate_file"])
+		if path == "" {
+			return nil, fmt.Errorf("scope=aggregate-list requires --aggregate_file")
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("read aggregate_file %q: %w", path, err)
+		}
+		var ids []string
+		for _, line := range strings.Split(string(raw), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			ids = append(ids, line)
+		}
+		return ids, nil
+	case "all-realities":
+		rows, err := metaPool.Query(ctx, `SELECT reality_id::text FROM reality_registry WHERE status = 'active'`)
+		if err != nil {
+			return nil, fmt.Errorf("enumerate active realities: %w", err)
+		}
+		defer rows.Close()
+		var ids []string
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				return nil, fmt.Errorf("scan reality_id: %w", err)
+			}
+			ids = append(ids, id)
+		}
+		return ids, rows.Err()
+	default:
+		return nil, fmt.Errorf("unknown scope %q (reality|all-realities|aggregate-list)", scope)
+	}
+}
+
+// splitIDs splits a comma/whitespace-separated id list, dropping empties.
+func splitIDs(s string) []string {
+	fields := strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' || r == '\n' })
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if f = strings.TrimSpace(f); f != "" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// buildCatastrophicRebuildHandler wires `reality catastrophic-rebuild` (073,
+// L3.H) — Tier-1 destructive rolling rebuild across N realities. Same gate as
+// rebuild-projection (ADMIN_CLI_ENABLE_UNPROVEN_REBUILD=1 → else NotWired). Owns
+// the meta pool (lifecycle gate + reality enumeration + DSN resolution); each
+// reality's truncator pool + rebuilder DSN are resolved by the PerRealityResolver
+// inside the rolling orchestrator's worker.
+func buildCatastrophicRebuildHandler() (framework.Handler, func(), error) {
+	noop := func() {}
+	if os.Getenv(enableUnprovenRebuildEnv) != "1" {
+		return nil, noop, nil
+	}
+	dsn := os.Getenv("META_DATABASE_URL")
+	if dsn == "" {
+		return nil, noop, nil
+	}
+	if os.Getenv("ADMIN_CLI_ALLOW_DEV_TOKENS") == "1" {
+		return nil, noop, fmt.Errorf("ADMIN_CLI_ALLOW_DEV_TOKENS=1 is incompatible with META_DATABASE_URL")
+	}
+	allowPath := os.Getenv("META_ALLOWLIST_PATH")
+	if allowPath == "" {
+		return nil, noop, fmt.Errorf("META_ALLOWLIST_PATH required for catastrophic-rebuild")
+	}
+	allow, err := meta.LoadAllowlist(allowPath)
+	if err != nil {
+		return nil, noop, fmt.Errorf("load allowlist: %w", err)
+	}
+	if !allow.AllowsTable("reality_registry") {
+		return nil, noop, fmt.Errorf("allowlist %s missing reality_registry", allowPath)
+	}
+	graph, err := meta.LoadTransitions(defaultTransitionsPath())
+	if err != nil {
+		return nil, noop, fmt.Errorf("load transitions graph: %w", err)
+	}
+	metaPool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		return nil, noop, fmt.Errorf("catastrophic-rebuild meta DB connect: %w", err)
+	}
+	cfg := &meta.Config{
+		DB: metapg.New(metaPool), Allowlist: allow, QueryBuilder: meta.PostgresQueryBuilder{},
+		Clock: sysClock{}, UUIDGen: randUUID{}, Scrubber: meta.NewRegexScrubber(nil),
+		Transitions: graph,
+	}
+	lifecycle := commands.NewPgLifecycleGate(cfg)
+	binPath := os.Getenv("REBUILDER_BIN_PATH")
+	if binPath == "" {
+		binPath = "rebuilder"
+	}
+
+	// Per-reality resolver: DSN → its own pool (truncator) + DSN (subprocess).
+	resolve := func(ctx context.Context, realityID uuid.UUID) (commands.ProjectionTruncator, commands.RebuildInvoker, func(), error) {
+		rdsn, err := perRealityDSN(ctx, metaPool, realityID)
+		if err != nil {
+			return nil, nil, func() {}, err
+		}
+		rpool, err := pgxpool.New(ctx, rdsn)
+		if err != nil {
+			return nil, nil, func() {}, fmt.Errorf("per-reality DB connect: %w", err)
+		}
+		return commands.NewPgProjectionTruncator(rpool),
+			commands.NewSubprocessRebuildInvoker(binPath, rdsn),
+			rpool.Close, nil
+	}
+
+	h := func(ctx context.Context, inv framework.Invocation) (string, error) {
+		scope := inv.Params["scope"]
+		concurrency := 10
+		if raw := strings.TrimSpace(inv.Params["rolling_concurrency"]); raw != "" {
+			n, perr := strconv.Atoi(raw)
+			if perr != nil {
+				return "", fmt.Errorf("invalid --rolling_concurrency %q: %w", raw, perr)
+			}
+			concurrency = n
+		}
+		timeout := 30 * time.Minute
+		if raw := strings.TrimSpace(inv.Params["per_reality_timeout"]); raw != "" {
+			d, perr := time.ParseDuration(raw)
+			if perr != nil {
+				return "", fmt.Errorf("invalid --per_reality_timeout %q: %w", raw, perr)
+			}
+			timeout = d
+		}
+		// Resolution is read-only (SELECT / file read), so it runs for dry-run too
+		// — the preview then reports the real reality count.
+		realityIDs, rerr := resolveCatastrophicRealities(ctx, metaPool, scope, inv.Params)
+		if rerr != nil {
+			return "", rerr
+		}
+		req := commands.CatastrophicRebuildRequest{
+			Scope: scope, RealityIDs: realityIDs, Actor: inv.Actor, Reason: inv.Reason,
+			Confirm: inv.Confirm, DryRun: inv.DryRun,
+			RollingConcurrency: concurrency, PerRealityTimeout: timeout,
+		}
+		rebuilder := &commands.MultiProjectionRebuilder{
+			Lifecycle: lifecycle, Resolve: commands.PerRealityResolver(resolve),
+			Projections: commands.AllProjectionTables(),
+		}
+		return commands.RunCatastrophicRebuild(ctx, req, rebuilder)
 	}
 	return h, metaPool.Close, nil
 }
@@ -668,6 +997,46 @@ func run(args []string, stdout, stderr *os.File) int {
 		}
 	}
 	defer closeFetch()
+
+	// `reality capacity-override` (073) — Tier-2 griefing scaling_events write.
+	closeCapOverride := func() {}
+	if c.Name == "reality capacity-override" {
+		coH, cc, coErr := buildCapacityOverrideHandler()
+		closeCapOverride = cc
+		if coErr != nil {
+			fmt.Fprintf(stderr, "admin: capacity-override handler not wired: %v\n", coErr)
+		} else if coH != nil {
+			handlers.Register("reality capacity-override", coH)
+		}
+	}
+	defer closeCapOverride()
+
+	// `reality rebuild-projection` (073, L3.G) — Tier-1 destructive; GATED behind
+	// ADMIN_CLI_ENABLE_UNPROVEN_REBUILD=1 (else stays fail-closed NotWired).
+	closeRebuild := func() {}
+	if c.Name == "reality rebuild-projection" {
+		rh, rc, rerr := buildRebuildProjectionHandler()
+		closeRebuild = rc
+		if rerr != nil {
+			fmt.Fprintf(stderr, "admin: rebuild-projection handler not wired: %v\n", rerr)
+		} else if rh != nil {
+			handlers.Register("reality rebuild-projection", rh)
+		}
+	}
+	defer closeRebuild()
+
+	// `reality catastrophic-rebuild` (073, L3.H) — Tier-1 destructive; same gate.
+	closeCatastrophic := func() {}
+	if c.Name == "reality catastrophic-rebuild" {
+		ch, cc, cerr := buildCatastrophicRebuildHandler()
+		closeCatastrophic = cc
+		if cerr != nil {
+			fmt.Fprintf(stderr, "admin: catastrophic-rebuild handler not wired: %v\n", cerr)
+		} else if ch != nil {
+			handlers.Register("reality catastrophic-rebuild", ch)
+		}
+	}
+	defer closeCatastrophic()
 
 	handler := handlers.Resolve(c)
 	inv := framework.Invocation{

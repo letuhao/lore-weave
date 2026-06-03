@@ -31,6 +31,15 @@ path = "src/bin/orphan_scanner.rs"
 name = "embedding-worker"
 path = "src/bin/embedding_worker.rs"
 
+# 073 (L3.G/H) — projection rebuilder binary. The per-reality WORKER that the
+# admin-cli rebuild-projection / catastrophic-rebuild commands invoke (Q-L3-3):
+# replays the events log through the L3.B projection crates into a TRUNCATEd
+# projection table, emitting JSON RebuildStats on stdout. First live projection-
+# apply path; correctness validation gated on the L3.E/F integrity checker.
+[[bin]]
+name = "rebuilder"
+path = "src/bin/rebuilder.rs"
+
 # L1.C provisioner core + L1.G.3 db_pool share these. All workspace-pinned.
 [dependencies]
 thiserror = { workspace = true }
@@ -54,6 +63,18 @@ tracing-subscriber = { workspace = true }
 # (provider-registry POST /internal/embed). First reqwest in world-service; calls
 # OUR gateway, NOT a vendor SDK (provider-gateway invariant). Workspace-pinned.
 reqwest = { workspace = true }
+# 073 (L3.G/H) projection rebuilder — the per-aggregate parallel replay engine
+# (crates/rebuilder) + the L3.B projection trait/envelope (crates/dp-kernel) +
+# the 6 concrete projection crates. world-service is the first consumer of these
+# (the "wired in cycle 15+" path the rebuilder doc names).
+rebuilder = { path = "../../crates/rebuilder" }
+dp-kernel = { path = "../../crates/dp-kernel" }
+projections-canon = { path = "../../crates/projections/canon" }
+projections-npc = { path = "../../crates/projections/npc" }
+projections-pc = { path = "../../crates/projections/pc" }
+projections-region = { path = "../../crates/projections/region" }
+projections-session = { path = "../../crates/projections/session" }
+projections-world-kv = { path = "../../crates/projections/world_kv" }
 
 [dev-dependencies]
 # Embedding-queue unit tests are async (#[tokio::test]) over the async IO
