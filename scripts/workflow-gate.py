@@ -752,6 +752,25 @@ def cmd_reset(_args: list[str]) -> None:
     print(msg)
 
 
+def cmd_check_stack(args: list[str]) -> None:
+    """ADVISORY stale-image guard (F-LIVE-1). Runs scripts/check_stack_freshness.py
+    and surfaces drift / missing H0 routes — but NEVER blocks (always exits 0),
+    mirroring the cross-service live-smoke soft-warning. Pass-through args (e.g.
+    --probe-only, --drift-only, --services) are forwarded."""
+    script = Path(__file__).resolve().parent / "check_stack_freshness.py"
+    if not script.exists():
+        print("WARN: check_stack_freshness.py not found — skipping stack-freshness check")
+        return
+    result = subprocess.run([sys.executable, str(script), *args])
+    if result.returncode == 1:
+        print("⚠️  WARN (advisory): a running image is STALE or an H0 route is "
+              "missing — rebuild with scripts/build-stack.sh before a live run. "
+              "(not blocking)")
+    elif result.returncode == 3:
+        print("note: docker/git unavailable — stack-freshness check skipped")
+    # Advisory: never propagate a non-zero exit.
+
+
 # ── Main ─────────────────────────────────────────────────────────────
 
 
@@ -760,6 +779,7 @@ COMMANDS = {
     "phase": cmd_phase,
     "complete": cmd_complete,
     "check": cmd_check,
+    "check-stack": cmd_check_stack,
     "skip": cmd_skip,
     "pre-commit": cmd_pre_commit,
     "status": cmd_status,
@@ -782,6 +802,7 @@ def main() -> None:
         print("  check <name>                                   Check if phase done")
         print("  skip <name> <reason>                           Skip with reason")
         print("  pre-commit                                     Gate check for commits")
+        print("  check-stack [--probe-only|--drift-only]        ADVISORY: warn if a running image is stale (F-LIVE-1)")
         print("  status                                         Show current state")
         print("  reset                                          Reset for new task")
         print()

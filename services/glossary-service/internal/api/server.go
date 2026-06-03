@@ -83,6 +83,24 @@ func (s *Server) Router() http.Handler {
 		r.Post("/books/{book_id}/extract-entities", s.bulkExtractEntities)
 		r.Get("/books/{book_id}/entity-count", s.internalEntityCount)
 		r.Get("/books/{book_id}/entities", s.internalListEntities)
+		// Set canonical content (short_description) on an existing entity.
+		// Used by lore-enrichment promote to write enriched canon THROUGH the
+		// glossary SSOT (Q2) — extract-entities can't set this column.
+		r.Post("/books/{book_id}/entities/{entity_id}/canon-content", s.internalSetCanonContent)
+		// Read the current canonical content. Used by the lore-enrichment
+		// re-promote SELF-HEAL (adversary WARN-1): if a prior canon-content
+		// write failed transiently, a re-promote reads NULL here and re-writes.
+		r.Get("/books/{book_id}/entities/{entity_id}/canon-content", s.internalGetCanonContent)
+		// Enrichment SUPPLEMENT layer (F-C13-1 + F-C13-2 / PO ruling B1):
+		// lore-enrichment writes/retracts the distinguished enrichment `dị bản`
+		// here (its own table, FK→entity) instead of overwriting short_description.
+		// DELETE is the F-C13-1 fix — retract un-canonizes via the internal token,
+		// no user JWT, leaving the canonical entity + original canon untouched.
+		r.Post("/books/{book_id}/entities/{entity_id}/enrichments", s.internalUpsertEnrichments)
+		r.Delete("/books/{book_id}/entities/{entity_id}/enrichments", s.internalDeleteEnrichments)
+		// Per-entity enrichment coverage for the lore-enrichment gap engine (D1
+		// gap-auto-detect): entities + mention_count + promoted-enrichment dims.
+		r.Get("/books/{book_id}/enrichment-coverage", s.internalEnrichmentCoverage)
 	})
 
 	r.Route("/v1/glossary", func(r chi.Router) {

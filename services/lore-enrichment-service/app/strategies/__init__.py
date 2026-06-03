@@ -35,6 +35,41 @@ from app.strategies.registry import (
     StrategyRegistry,
     UnknownStrategyError,
 )
+from app.strategies.template import (
+    SCAFFOLD_CONFIDENCE,
+    SCAFFOLD_PLACEHOLDER,
+    ScaffoldedProposal,
+    TemplateStrategy,
+)
+from app.strategies.factory import (
+    GateAwareStrategyFactory,
+    GateStatusReader,
+    LiveGateStatus,
+)
+from app.strategies.fabrication import (
+    FABRICATION_CONFIDENCE,
+    FABRICATION_GAP_COST,
+    FabricatedProposal,
+    FabricationError,
+    FabricationStrategy,
+    NeighborFact,
+)
+from app.strategies.licensing import (
+    ADMISSIBLE_LICENSES,
+    LicenseStatus,
+    SourceLicense,
+    UnlicensedSourceError,
+    check_admissible,
+    is_admissible,
+    normalize_license,
+)
+from app.strategies.recook import (
+    RECOOK_CONFIDENCE,
+    RECOOK_GAP_COST,
+    ReCookedProposal,
+    ReCookError,
+    ReCookStrategy,
+)
 
 __all__ = [
     "CostEstimate",
@@ -48,4 +83,31 @@ __all__ = [
     "StrategyRegistry",
     "UnknownStrategyError",
     "InactiveStrategyError",
+    "TemplateStrategy",
+    "ScaffoldedProposal",
+    "SCAFFOLD_CONFIDENCE",
+    "SCAFFOLD_PLACEHOLDER",
+    # C16 — fabrication (P2) + gate-aware factory (DEFERRED-054)
+    "GateAwareStrategyFactory",
+    "GateStatusReader",
+    "LiveGateStatus",
+    "FabricationStrategy",
+    "FabricatedProposal",
+    "FabricationError",
+    "NeighborFact",
+    "FABRICATION_CONFIDENCE",
+    "FABRICATION_GAP_COST",
+    # C17 — re-cook (P3) + licensing gate
+    "ReCookStrategy",
+    "ReCookedProposal",
+    "ReCookError",
+    "RECOOK_CONFIDENCE",
+    "RECOOK_GAP_COST",
+    "LicenseStatus",
+    "SourceLicense",
+    "UnlicensedSourceError",
+    "ADMISSIBLE_LICENSES",
+    "normalize_license",
+    "is_admissible",
+    "check_admissible",
 ]

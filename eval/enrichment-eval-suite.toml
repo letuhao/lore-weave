@@ -1,0 +1,51 @@
+# Enrichment eval suite (RAID C15) — cultural-fidelity scoring for enriched
+# 封神演义 lore proposals. EXTENDS the platform eval pattern ADDITIVELY in a
+# SEPARATE namespace from the climate/geo eval (eval/climate-eval-suite.toml +
+# eval/baselines/v*.json) — those are NEVER edited by this cycle.
+#
+# Composite = weighted sum of five sub-scores (each 0..100):
+#   schema       — game-ready normalization: required Chinese dimensions
+#                  (历史/地理/文化) present + non-empty + CJK-faithful, optional
+#                  (features/inhabitants) present, valid lifecycle vocab.
+#   canon        — M2 consistency: no contradiction vs KG/glossary (C12
+#                  canon-verify annotation); degraded KG never auto-passes.
+#   anachronism  — no post-Shang/Zhou (商周/封神) intrusions in the Chinese
+#                  content (C12 curated out-of-era CONCEPT markers).
+#   provenance   — H0: every fact carries origin (enriched, NOT glossary) +
+#                  confidence<1.0 + grounding refs. A canon-shaped proposal
+#                  (origin=glossary or conf>=1.0) scores 0 (H0 leak).
+#   usefulness   — SUBJECTIVE cultural-fidelity, judged by the multi-judge
+#                  ENSEMBLE (gemma + qwen-30b + claude via provider-registry;
+#                  majority vote + Fleiss κ + partial-credit). Judges treat the
+#                  proposal text as DATA (050 injection defense).
+
+version = "enrichment-v1"
+
+# Scoring weights (composite = weighted sum). MUST sum to 1.0.
+# Provenance is weighted heavily (H0 is the core invariant); usefulness +
+# schema carry the bulk of "is this good lore"; canon + anachronism guard
+# consistency + era-fidelity.
+[weights]
+schema      = 0.20
+canon       = 0.15
+anachronism = 0.15
+provenance  = 0.25
+usefulness  = 0.25
+
+# Regression thresholds (used by --baseline diff mode). A batch regresses if the
+# composite drops > composite_max_regression OR any sub-score drops >
+# subscore_max_regression vs the frozen baseline.
+[regression]
+composite_max_regression = 5.0
+subscore_max_regression  = 10.0
+
+# The GATE: the threshold C16 (fabrication, P2) / C17 (re-cook, P3) read. P2/P3
+# stay BLOCKED unless the latest eval run for this suite_version has
+# composite >= min_composite, no regression, an acceptable judge ensemble, and
+# the gate-critical sub-score floors hold (provenance >= 90, anachronism >= 75 —
+# enforced in app/eval/gate.py GATE_CRITICAL_FLOORS).
+[gate]
+min_composite = 70.0
+# techniques this gate guards (informational; the actual gating is in gate.py
+# via the C8 feature-flags tier table — P2/P3 forced OFF when the gate fails).
+guards = ["fabrication", "recook"]

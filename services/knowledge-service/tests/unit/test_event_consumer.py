@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.events.consumer import EventConsumer
+from app.events.consumer import BLOCK_MS, EventConsumer
 from app.events.dispatcher import EventDispatcher
 
 
@@ -143,6 +143,36 @@ async def test_handle_message_dlq_after_retries(pool):
     # Should have written to DLQ and acked
     pool.execute.assert_called_once()  # DLQ insert
     redis.xack.assert_called_once()  # ack after DLQ
+
+
+@pytest.mark.asyncio
+async def test_ensure_redis_disables_socket_read_timeout(pool):
+    """Regression: the blocking XREADGROUP loop must use a connection whose
+    socket read timeout never pre-empts the server-side BLOCK.
+
+    redis-py 8.0 changed AbstractConnection's default socket_timeout from
+    None to 5s. With BLOCK_MS=5000 the per-read socket timeout races the
+    BLOCK and wins every cycle, raising TimeoutError and wedging the
+    consumer (zero events processed on all streams). _ensure_redis MUST
+    pass socket_timeout=None so blocking reads are never pre-empted.
+
+    Invariant asserted: socket_timeout is None (unbounded) OR strictly
+    greater than BLOCK_MS/1000.
+    """
+    consumer = EventConsumer.__new__(EventConsumer)
+    consumer._redis_url = "redis://redis:6379"
+    consumer._redis = None
+
+    with patch("app.events.consumer.aioredis.from_url") as from_url:
+        from_url.return_value = AsyncMock()
+        await consumer._ensure_redis()
+
+    from_url.assert_called_once()
+    socket_timeout = from_url.call_args.kwargs.get("socket_timeout", "MISSING")
+    assert socket_timeout is None or socket_timeout > BLOCK_MS / 1000, (
+        f"socket_timeout={socket_timeout!r} must be None or > {BLOCK_MS / 1000}s "
+        "to avoid pre-empting the XREADGROUP BLOCK"
+    )
 
 
 @pytest.mark.asyncio

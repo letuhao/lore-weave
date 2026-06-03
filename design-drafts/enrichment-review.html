@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="vi" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LoreWeave — Enrichment Review (mockup)</title>
+<!--
+  DESIGN DRAFT — enrichment review feature (the ④ author approval gate).
+  Mirrors the LIVE GUI: dark warm theme (index.css HSL tokens), Lora serif titles +
+  Inter body, Radix-style cards/badges/dialog idioms (StatusBadge / AttrCard /
+  ConfirmDialog / PageHeader / FilterToolbar). Tailwind CDN here is ONLY for the
+  mockup — the real build uses the project's Tailwind + shared components.
+  Toggle the Promote dialog with the "Promote to canon" button.
+-->
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ── design tokens from frontend/src/index.css (dark default) ── */
+  :root{
+    --background:25 8% 8%; --foreground:40 30% 95%;
+    --card:25 7% 11%; --card-foreground:40 30% 95%;
+    --primary:35 85% 55%; --primary-foreground:25 30% 10%;
+    --secondary:25 6% 20%; --muted:25 10% 35%; --muted-foreground:25 10% 60%;
+    --border:25 6% 18%; --ring:35 85% 55%;
+    --success:120 40% 50%; --warning:35 85% 55%; --info:200 60% 50%; --destructive:0 84% 60%;
+    --radius:0.5rem;
+  }
+  tailwind.config = {}; /* placeholder */
+  body{font-family:Inter,system-ui,sans-serif;background:hsl(var(--background));color:hsl(var(--foreground));}
+  .font-serif{font-family:Lora,Georgia,serif;}
+  .font-mono{font-family:'JetBrains Mono',monospace;}
+  .bg-background{background:hsl(var(--background));} .bg-card{background:hsl(var(--card));}
+  .bg-secondary{background:hsl(var(--secondary));} .text-foreground{color:hsl(var(--foreground));}
+  .text-muted-foreground{color:hsl(var(--muted-foreground));} .text-primary{color:hsl(var(--primary));}
+  .bg-primary{background:hsl(var(--primary));} .text-primary-foreground{color:hsl(var(--primary-foreground));}
+  .border-c{border-color:hsl(var(--border));}
+  .text-success{color:hsl(var(--success));}.text-warning{color:hsl(var(--warning));}
+  .text-info{color:hsl(var(--info));}.text-destructive{color:hsl(var(--destructive));}
+  .bg-success\/10{background:hsl(var(--success)/0.12);}.bg-warning\/12{background:hsl(var(--warning)/0.14);}
+  .bg-info\/10{background:hsl(var(--info)/0.12);}.bg-destructive\/10{background:hsl(var(--destructive)/0.12);}
+  .bg-primary\/10{background:hsl(var(--primary)/0.12);}
+  .ring-primary{box-shadow:0 0 0 1px hsl(var(--primary)/0.5);}
+  .scroll::-webkit-scrollbar{width:8px}.scroll::-webkit-scrollbar-thumb{background:hsl(var(--border));border-radius:8px}
+</style>
+</head>
+<body class="text-foreground">
+<div class="flex h-screen overflow-hidden text-sm">
+
+  <!-- ── Sidebar (mirrors components/layout/Sidebar.tsx) ── -->
+  <aside class="w-56 shrink-0 border-r border-c bg-card flex flex-col">
+    <div class="px-4 py-4 flex items-center gap-2 border-b border-c">
+      <div class="h-7 w-7 rounded-md bg-primary flex items-center justify-center text-primary-foreground font-serif font-bold">L</div>
+      <span class="font-serif font-semibold text-base">LoreWeave</span>
+    </div>
+    <nav class="flex-1 px-2 py-3 space-y-0.5">
+      <p class="px-3 pt-1 pb-2 text-[10px] uppercase tracking-wider text-muted-foreground">Workspace</p>
+      <a class="flex items-center gap-2.5 rounded-md px-3 py-2 text-muted-foreground hover:bg-secondary">📚 <span>Books</span></a>
+      <a class="flex items-center gap-2.5 rounded-md px-3 py-2 text-muted-foreground hover:bg-secondary">💬 <span>Chat</span></a>
+      <a class="flex items-center gap-2.5 rounded-md px-3 py-2 text-muted-foreground hover:bg-secondary">🧠 <span>Knowledge</span></a>
+      <a class="flex items-center gap-2.5 rounded-md px-3 py-2 bg-primary/10 text-primary ring-primary">✨ <span class="font-medium">Enrichment</span></a>
+      <a class="flex items-center gap-2.5 rounded-md px-3 py-2 text-muted-foreground hover:bg-secondary">🔍 <span>Browse</span></a>
+      <p class="px-3 pt-4 pb-2 text-[10px] uppercase tracking-wider text-muted-foreground">Manage</p>
+      <a class="flex items-center gap-2.5 rounded-md px-3 py-2 text-muted-foreground hover:bg-secondary">🗑 <span>Trash</span></a>
+      <a class="flex items-center gap-2.5 rounded-md px-3 py-2 text-muted-foreground hover:bg-secondary">📊 <span>Usage</span></a>
+      <a class="flex items-center gap-2.5 rounded-md px-3 py-2 text-muted-foreground hover:bg-secondary">⚙ <span>Settings</span></a>
+    </nav>
+    <div class="px-3 py-3 border-t border-c flex items-center gap-2 text-muted-foreground">
+      <div class="h-7 w-7 rounded-full bg-secondary"></div><span class="text-xs">claude-test</span>
+    </div>
+  </aside>
+
+  <!-- ── Main ── -->
+  <main class="flex-1 flex flex-col overflow-hidden">
+
+    <!-- PageHeader (mirrors layout/PageHeader.tsx) -->
+    <div class="px-6 pt-5 pb-3 border-b border-c space-y-4">
+      <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span>Books</span> <span>›</span> <span>封神演義 (Fengshen) — Lore Enrichment Demo</span> <span>›</span> <span class="text-foreground">Enrichment</span>
+      </div>
+      <div class="flex items-start justify-between">
+        <div>
+          <h1 class="font-serif text-xl font-semibold flex items-center gap-2">Lore Enrichment
+            <span class="rounded-full bg-warning/12 px-2 py-0.5 text-[11px] font-medium text-warning">enriched ≠ canon · H0</span>
+          </h1>
+          <p class="mt-0.5 text-xs text-muted-foreground">Tác giả duyệt bản bồi đắp — mọi đề xuất là <em>dị bản</em> riêng tư, chỉ thành canon khi bạn promote.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="rounded-md border border-c px-3 py-1.5 text-xs font-medium hover:bg-secondary">⟳ Detect gaps</button>
+          <button class="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90">✨ Auto-enrich ▾</button>
+        </div>
+      </div>
+      <!-- Tabs -->
+      <div class="flex items-center gap-1 -mb-3">
+        <button class="border-b-2 border-primary px-3 py-2 text-sm font-medium text-primary">Proposals <span class="ml-1 rounded-full bg-secondary px-1.5 text-[10px]">7</span></button>
+        <button class="border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground">Gaps <span class="ml-1 rounded-full bg-secondary px-1.5 text-[10px]">5</span></button>
+        <button class="border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground">Sources <span class="ml-1 rounded-full bg-secondary px-1.5 text-[10px]">5</span></button>
+        <button class="border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground">Jobs</button>
+      </div>
+    </div>
+
+    <!-- FilterToolbar -->
+    <div class="px-6 py-3 border-b border-c flex flex-wrap items-center gap-3">
+      <div class="relative min-w-[220px] max-w-sm flex-1">
+        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">🔍</span>
+        <input placeholder="Tìm theo entity / nội dung…" class="w-full rounded-md border border-c bg-background py-2 pl-9 pr-3 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/40" />
+      </div>
+      <div class="flex items-center gap-1.5 text-xs">
+        <span class="rounded-full border border-primary bg-primary/10 px-2.5 py-0.5 font-medium text-primary">proposed ✕</span>
+        <span class="rounded-full border border-c px-2.5 py-0.5 text-muted-foreground hover:text-foreground cursor-pointer">approved</span>
+        <span class="rounded-full border border-c px-2.5 py-0.5 text-muted-foreground hover:text-foreground cursor-pointer">promoted</span>
+        <span class="rounded-full border border-c px-2.5 py-0.5 text-muted-foreground hover:text-foreground cursor-pointer">rejected</span>
+      </div>
+      <div class="ml-auto flex items-center gap-1.5 text-xs">
+        <span class="text-muted-foreground">Technique:</span>
+        <span class="rounded border border-c px-2 py-0.5 cursor-pointer hover:bg-secondary">P1</span>
+        <span class="rounded border border-c px-2 py-0.5 cursor-pointer hover:bg-secondary">P2</span>
+        <span class="rounded border border-primary bg-primary/10 px-2 py-0.5 text-primary cursor-pointer">P3</span>
+      </div>
+    </div>
+
+    <!-- Two-pane: list + detail -->
+    <div class="flex-1 flex overflow-hidden">
+
+      <!-- LEFT: proposal list -->
+      <div class="w-[360px] shrink-0 border-r border-c overflow-y-auto scroll p-3 space-y-2">
+
+        <!-- selected card -->
+        <div class="rounded-lg border border-c bg-card overflow-hidden ring-primary cursor-pointer">
+          <div class="flex items-center justify-between px-3.5 py-2.5" style="background:rgba(24,20,18,.4)">
+            <div class="flex items-center gap-1.5">
+              <span class="font-serif text-sm font-semibold">玉虛宮</span>
+              <span class="rounded bg-info/10 px-1.5 py-0.5 text-[9px] font-semibold text-info">P3 recook</span>
+            </div>
+            <span class="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">✓ verified_clean</span>
+          </div>
+          <div class="px-3.5 py-2.5">
+            <div class="flex items-center gap-2 mb-1.5">
+              <span class="rounded-full bg-warning/12 px-2 py-0.5 text-[10px] font-medium text-warning">dị bản · enrichment</span>
+              <span class="font-mono text-[10px] text-muted-foreground">conf 0.30 · proposed</span>
+            </div>
+            <p class="text-xs text-muted-foreground line-clamp-2 leading-relaxed">历史：肇基於洪荒開闢、靈氣充溢之世，乃元始天尊立闡教道統、鎮守蓬萊海眼之祖庭。商周鼎革之際…</p>
+            <p class="mt-1 font-mono text-[10px] text-muted-foreground">5 dimensions · grounded on 4 sources (史料·山海经)</p>
+          </div>
+        </div>
+
+        <!-- other cards -->
+        <div class="rounded-lg border border-c bg-card overflow-hidden cursor-pointer hover:border-muted-foreground/30">
+          <div class="flex items-center justify-between px-3.5 py-2.5" style="background:rgba(24,20,18,.3)">
+            <div class="flex items-center gap-1.5"><span class="font-serif text-sm font-semibold">昆侖山</span>
+              <span class="rounded bg-warning/12 px-1.5 py-0.5 text-[9px] font-semibold text-warning">P2 fabrication</span></div>
+            <span class="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">✓ verified_clean</span>
+          </div>
+          <div class="px-3.5 py-2.5"><div class="flex items-center gap-2 mb-1.5">
+            <span class="rounded-full bg-warning/12 px-2 py-0.5 text-[10px] font-medium text-warning">dị bản · enrichment</span>
+            <span class="font-mono text-[10px] text-muted-foreground">conf 0.30 · proposed</span></div>
+            <p class="text-xs text-muted-foreground line-clamp-2 leading-relaxed">历史：肇于鸿蒙初判、三清立教之初，乃阐教祖庭。元始天尊镇守此宫以观天机、定封神之局…</p></div>
+        </div>
+
+        <div class="rounded-lg border border-c bg-card overflow-hidden cursor-pointer hover:border-muted-foreground/30">
+          <div class="flex items-center justify-between px-3.5 py-2.5" style="background:rgba(24,20,18,.3)">
+            <div class="flex items-center gap-1.5"><span class="font-serif text-sm font-semibold">陳塘關</span>
+              <span class="rounded bg-secondary px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">P1 retrieval</span></div>
+            <span class="inline-flex items-center gap-1 rounded-full bg-warning/12 px-2 py-0.5 text-[10px] font-medium text-warning">⚠ needs_review</span>
+          </div>
+          <div class="px-3.5 py-2.5"><div class="flex items-center gap-2 mb-1.5">
+            <span class="rounded-full bg-warning/12 px-2 py-0.5 text-[10px] font-medium text-warning">dị bản · enrichment</span>
+            <span class="font-mono text-[10px] text-muted-foreground">conf 0.30 · proposed</span></div>
+            <p class="text-xs text-muted-foreground line-clamp-2 leading-relaxed">历史：所供检索片段未载陳塘關沿革史事，故阙如。地理：…</p>
+            <p class="mt-1 text-[10px] text-warning">⚠ 1 advisory flag: regurgitation (逐字重合 14 字) — cần xem</p></div>
+        </div>
+
+        <div class="rounded-lg border border-c bg-card overflow-hidden cursor-pointer opacity-70">
+          <div class="flex items-center justify-between px-3.5 py-2.5" style="background:rgba(24,20,18,.3)">
+            <div class="flex items-center gap-1.5"><span class="font-serif text-sm font-semibold">某妖宮</span>
+              <span class="rounded bg-info/10 px-1.5 py-0.5 text-[9px] font-semibold text-info">P3 recook</span></div>
+            <span class="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive">⛔ auto_rejected</span>
+          </div>
+          <div class="px-3.5 py-2.5"><p class="text-[10px] text-destructive">auto-reject: verbatim source regurgitation (输出几乎整体复制授权来源原文)</p></div>
+        </div>
+      </div>
+
+      <!-- RIGHT: proposal detail -->
+      <div class="flex-1 overflow-y-auto scroll">
+        <div class="px-6 py-5 max-w-3xl">
+          <div class="flex items-start justify-between">
+            <div>
+              <h2 class="font-serif text-2xl font-semibold">玉虛宮</h2>
+              <p class="mt-1 text-xs text-muted-foreground">location · 仙宮 (immortal palace) · book: 封神演義</p>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="rounded bg-info/10 px-2 py-0.5 text-[11px] font-semibold text-info">P3 recook</span>
+              <span class="inline-flex items-center gap-1 rounded-full bg-success/10 px-2.5 py-0.5 text-[11px] font-medium text-success">✓ verified_clean</span>
+            </div>
+          </div>
+
+          <!-- H0 banner -->
+          <div class="mt-4 rounded-lg border border-c bg-warning/12 px-4 py-3">
+            <p class="text-xs text-warning font-medium">Đây là bản bồi đắp (dị bản) — KHÔNG phải canon gốc.</p>
+            <p class="mt-0.5 text-[11px] text-muted-foreground">origin=enrichment · confidence 0.30 · review_status=proposed · giữ dấu nguồn vĩnh viễn kể cả sau promote. Bạn (tác giả) là người quyết định đưa vào canon.</p>
+          </div>
+
+          <!-- dimensions -->
+          <h3 class="mt-6 mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Nội dung bồi đắp · 5 dimensions</h3>
+          <div class="space-y-2">
+            <div class="rounded-lg border border-c bg-card overflow-hidden">
+              <div class="px-3.5 py-2 text-[11px] font-semibold" style="background:rgba(24,20,18,.4)">历史</div>
+              <p class="px-3.5 py-2.5 text-sm leading-relaxed">肇基於洪荒開闢、靈氣充溢之世，乃元始天尊立闡教道統、鎮守蓬萊海眼之祖庭。商周鼎革之際，天道更迭，宮外化爲「天關」，承封神榜務。昔日邊關戍守、耕牧祭祀之制，<span class="bg-info/10 text-info rounded px-0.5">皆轉化爲仙庭規矩</span>，歷代真武輪值鎮關。</p>
+            </div>
+            <div class="rounded-lg border border-c bg-card overflow-hidden">
+              <div class="px-3.5 py-2 text-[11px] font-semibold" style="background:rgba(24,20,18,.4)">地理</div>
+              <p class="px-3.5 py-2.5 text-sm leading-relaxed">宮峙蓬萊海域之中，浮島懸空，雲濤四合。主峰絕頂依山勢層疊，外圍九曲靈河與崑崙餘脈交鎖，地勢險峻如天然關隘。</p>
+            </div>
+            <div class="rounded-lg border border-c bg-card overflow-hidden">
+              <div class="px-3.5 py-2 text-[11px] font-semibold" style="background:rgba(24,20,18,.4)">文化</div>
+              <p class="px-3.5 py-2.5 text-sm leading-relaxed">崇清靜無爲、順應天時之闡教正統。每逢甲子，群仙朝會，以玉爲階、金爲瓦，象徵純陽至正。</p>
+            </div>
+            <div class="text-center"><button class="text-xs text-primary hover:underline">+ xem 2 dimension còn lại (features · inhabitants)</button></div>
+          </div>
+
+          <!-- verify + provenance -->
+          <div class="mt-6 grid grid-cols-2 gap-3">
+            <div class="rounded-lg border border-c bg-card px-4 py-3">
+              <p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Kiểm định (canon-verify)</p>
+              <ul class="space-y-1 text-xs">
+                <li class="flex items-center gap-2 text-success">✓ contradiction — không mâu thuẫn canon</li>
+                <li class="flex items-center gap-2 text-success">✓ anachronism — không lạc thời đại</li>
+                <li class="flex items-center gap-2 text-success">✓ injection — sạch</li>
+                <li class="flex items-center gap-2 text-success">✓ regurgitation — không sao chép nguồn (③)</li>
+              </ul>
+            </div>
+            <div class="rounded-lg border border-c bg-card px-4 py-3">
+              <p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Nguồn (provenance)</p>
+              <ul class="space-y-1 text-xs text-muted-foreground font-mono">
+                <li>史料-c17-demo-pd <span class="text-success">· public-domain</span></li>
+                <li>山海经-c16-demo <span class="text-success">· public-domain</span></li>
+                <li class="text-foreground">recook · abstracted-facts (②)</li>
+                <li>technique=recook · qwen3.6</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- ACTION BAR (the ④ gate) -->
+          <div class="sticky bottom-0 mt-6 -mx-6 px-6 py-3 border-t border-c bg-background/95 backdrop-blur flex items-center gap-2">
+            <button class="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90" onclick="document.getElementById('dlg').classList.remove('hidden')">★ Promote to canon</button>
+            <button class="rounded-md border border-c px-3 py-2 text-sm font-medium hover:bg-secondary">✓ Approve</button>
+            <button class="rounded-md border border-c px-3 py-2 text-sm font-medium hover:bg-secondary">✎ Edit</button>
+            <button class="rounded-md border border-c px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/10">✕ Reject</button>
+            <span class="ml-auto text-[11px] text-muted-foreground">Chỉ tác giả (chủ book) thấy & thao tác được.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ── Promote confirm dialog (mirrors shared/ConfirmDialog.tsx) ── -->
+<div id="dlg" class="hidden fixed inset-0 z-50 flex items-center justify-center" style="background:rgba(0,0,0,.5);backdrop-filter:blur(2px)">
+  <div class="w-full max-w-md rounded-xl border border-c bg-background shadow-2xl p-5">
+    <div class="flex items-start gap-3">
+      <div class="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary">★</div>
+      <div>
+        <h3 class="font-serif text-base font-semibold">Promote「玉虛宮」vào canon?</h3>
+        <p class="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+          Hành động này đưa bản bồi đắp (dị bản) trở thành <strong>canon</strong> của sách —
+          ghi vào glossary + KG, NHƯNG <strong>giữ dấu nguồn enrichment vĩnh viễn</strong>
+          (origin=enrichment, không ghi đè canon gốc). Bạn xác nhận là tác giả và chịu
+          trách nhiệm nội dung được đưa vào.
+        </p>
+      </div>
+    </div>
+    <div class="mt-5 flex justify-end gap-2">
+      <button class="rounded-md border border-c px-3 py-2 text-sm hover:bg-secondary" onclick="document.getElementById('dlg').classList.add('hidden')">Huỷ</button>
+      <button class="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90" onclick="document.getElementById('dlg').classList.add('hidden')">★ Promote to canon</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

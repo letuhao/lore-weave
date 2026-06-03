@@ -209,13 +209,13 @@ describe('BuildGraphDialog', () => {
       expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
     });
     fireEvent.change(screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }), {
-      target: { value: 'gpt-5' },
+      target: { value: 'm1' },
     });
     await new Promise((r) => setTimeout(r, 350));
     await waitFor(() => {
       expect(estimateMock).toHaveBeenCalledWith(
         'p1',
-        { scope: 'chapters', llm_model: 'gpt-5' },
+        { scope: 'chapters', llm_model: 'm1' },
         'tok-test',
       );
     });
@@ -229,7 +229,7 @@ describe('BuildGraphDialog', () => {
       expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
     });
     fireEvent.change(screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }), {
-      target: { value: 'gpt-5' },
+      target: { value: 'm1' },
     });
     fireEvent.change(screen.getByTestId('embedding-picker'), {
       target: { value: 'bge-m3' },
@@ -246,7 +246,7 @@ describe('BuildGraphDialog', () => {
         'p1',
         {
           scope: 'chapters',
-          llm_model: 'gpt-5',
+          llm_model: 'm1',
           embedding_model: 'bge-m3',
           max_spend_usd: '1.50',
         },
@@ -266,7 +266,7 @@ describe('BuildGraphDialog', () => {
       expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
     });
     fireEvent.change(screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }), {
-      target: { value: 'gpt-5' },
+      target: { value: 'm1' },
     });
     fireEvent.change(screen.getByTestId('embedding-picker'), {
       target: { value: 'bge-m3' },
@@ -288,7 +288,7 @@ describe('BuildGraphDialog', () => {
       expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
     });
     fireEvent.change(screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }), {
-      target: { value: 'gpt-5' },
+      target: { value: 'm1' },
     });
     fireEvent.change(screen.getByTestId('embedding-picker'), {
       target: { value: 'bge-m3' },
@@ -314,7 +314,7 @@ describe('BuildGraphDialog', () => {
       expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
     });
     fireEvent.change(screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }), {
-      target: { value: 'gpt-5' },
+      target: { value: 'm1' },
     });
     await new Promise((r) => setTimeout(r, 350));
     await waitFor(() => {
@@ -346,7 +346,7 @@ describe('BuildGraphDialog', () => {
       expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
     });
     fireEvent.change(screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }), {
-      target: { value: 'gpt-5' },
+      target: { value: 'm1' },
     });
     fireEvent.change(screen.getByTestId('embedding-picker'), {
       target: { value: 'bge-m3' },
@@ -412,7 +412,7 @@ describe('BuildGraphDialog', () => {
     );
     fireEvent.change(
       screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }),
-      { target: { value: 'gpt-5' } },
+      { target: { value: 'm1' } },
     );
     fireEvent.change(screen.getByTestId('embedding-picker'), {
       target: { value: 'bge-m3' },
@@ -460,7 +460,7 @@ describe('BuildGraphDialog', () => {
     });
     fireEvent.change(
       screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }),
-      { target: { value: 'gpt-5' } },
+      { target: { value: 'm1' } },
     );
     fireEvent.change(screen.getByTestId('embedding-picker'), {
       target: { value: 'bge-m3' },
@@ -495,7 +495,7 @@ describe('BuildGraphDialog', () => {
     });
     fireEvent.change(
       screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }),
-      { target: { value: 'gpt-5' } },
+      { target: { value: 'm1' } },
     );
     fireEvent.change(screen.getByTestId('build-graph-chapter-range-from'), {
       target: { value: '50' },
@@ -521,7 +521,7 @@ describe('BuildGraphDialog', () => {
     });
     fireEvent.change(
       screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }),
-      { target: { value: 'gpt-5' } },
+      { target: { value: 'm1' } },
     );
     fireEvent.change(screen.getByTestId('embedding-picker'), {
       target: { value: 'bge-m3' },
@@ -583,7 +583,7 @@ describe('BuildGraphDialog', () => {
       expect(screen.getByRole('option', { name: /GPT-5/ })).toBeDefined();
     });
     fireEvent.change(screen.getByRole('combobox', { name: 'projects.buildDialog.llmModel.label' }), {
-      target: { value: 'gpt-5' },
+      target: { value: 'm1' },
     });
     fireEvent.change(screen.getByTestId('embedding-picker'), {
       target: { value: 'bge-m3' },
@@ -615,7 +615,7 @@ describe('BuildGraphDialog', () => {
           onStarted={vi.fn()}
           initialValues={{
             scope: 'all',
-            llmModel: 'gpt-5',
+            llmModel: 'm1',
             embeddingModel: 'bge-m3',
             maxSpend: '7.50',
           }}
@@ -635,7 +635,7 @@ describe('BuildGraphDialog', () => {
       name: 'projects.buildDialog.llmModel.label',
     }) as HTMLSelectElement;
     await waitFor(() => {
-      expect(llmSelect.value).toBe('gpt-5');
+      expect(llmSelect.value).toBe('m1');
     });
 
     // Embedding picker stub renders a <select> with testid (see top-of-file mock).

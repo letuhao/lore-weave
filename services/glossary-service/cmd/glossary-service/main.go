@@ -133,6 +133,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	// lore-enrichment supplement layer (F-C13-1 + F-C13-2 / PO ruling B1):
+	// enrichment content lives in its own table, FK→canonical entity, so it
+	// stays structurally distinct from the original authored canon
+	// (short_description). Runs after the entity table + short-desc migrations
+	// since it references glossary_entities(entity_id).
+	if err := migrate.UpEntityEnrichments(ctx, pool); err != nil {
+		slog.Error("migrate entity-enrichments", "error", err)
+		os.Exit(1)
+	}
+
 	// Run the short-description backfill in a background goroutine so
 	// the HTTP listener + healthcheck come up immediately. For a fresh
 	// DB this completes in milliseconds; for a catalogue with many

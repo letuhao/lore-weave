@@ -278,6 +278,7 @@ paths:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/ProjectIdQuery'
       responses:
         '200':
           description: OK
@@ -306,6 +307,7 @@ paths:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/ProjectIdQuery'
       responses:
         '200':
           description: OK
@@ -336,6 +338,7 @@ paths:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/ProjectIdQuery'
       requestBody:
         required: false
         content:
@@ -373,6 +376,7 @@ paths:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/ProjectIdQuery'
       requestBody:
         required: true
         content:
@@ -417,6 +421,13 @@ paths:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/ProjectIdQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WriteBackRequest'
       responses:
         '200':
           description: OK — proposal promoted to canon; returns the promotion record
@@ -445,6 +456,215 @@ paths:
         '501':
           $ref: '#/components/responses/ErrorResponse'
 
+  /v1/lore-enrichment/proposals/{proposal_id}/write-back:
+    post:
+      tags: [proposals]
+      summary: Write an approved proposal's facts into the KG QUARANTINED (NOT canon)
+      description: >
+        H0: admits an `approved` proposal's enriched dimension facts into the
+        knowledge graph QUARANTINED — `source_type='enriched:<technique>'`,
+        `pending_validation=true`, `confidence < 1.0` — visibly distinct from the
+        glossary-authored canon entity. The entity anchor is written through the
+        glossary SSOT (Q2). This is NOT canonization: only the author `promote`
+        endpoint flips it to canon. Requires `review_status = approved` (else 409).
+      operationId: writeBackEnrichmentProposal
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/ProjectIdQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WriteBackRequest'
+      responses:
+        '200':
+          description: OK — facts admitted to the KG (quarantined, non-canon).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WriteBackResult'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/proposals/{proposal_id}/retract:
+    post:
+      tags: [proposals]
+      summary: Retract a promoted/quarantined proposal (M6 recycle-bin, reversible)
+      description: >
+        AUTHOR-ONLY. Routes the glossary entity to the recycle-bin (soft-delete,
+        reversible) and soft-retracts the KG facts (`valid_until`) so they leave
+        the active graph. Reversible — not a hard delete of canon.
+      operationId: retractEnrichmentProposal
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ProposalId'
+        - $ref: '#/components/parameters/ProjectIdQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WriteBackRequest'
+      responses:
+        '200':
+          description: OK — entity recycled + KG facts soft-retracted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetractResult'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+
+  # ────────────────────────────── gaps (D1) ─────────────────────────────
+  /v1/lore-enrichment/projects/{project_id}/detect-gaps:
+    post:
+      tags: [gaps]
+      summary: Detect + rank under-described entities (gap auto-detection, read-only)
+      description: >
+        Reads the book's per-entity enrichment coverage from the glossary SSOT,
+        runs the C7 gap-detection engine, and returns RANKED candidate gaps
+        (descending score) for the author to triage. READ-ONLY — it surfaces
+        under-described entities; it does not start enrichment (use the jobs
+        endpoint with chosen targets for that).
+      operationId: detectEnrichmentGaps
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [book_id]
+              properties:
+                book_id:
+                  type: string
+                  format: uuid
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 1000
+                  default: 200
+      responses:
+        '200':
+          description: OK — ranked candidate gaps for the project.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project_id: { type: string, format: uuid }
+                  book_id: { type: string, format: uuid }
+                  entities_scanned: { type: integer }
+                  gap_count: { type: integer }
+                  gaps:
+                    type: array
+                    items:
+                      type: object
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/projects/{project_id}/auto-enrich:
+    post:
+      tags: [gaps]
+      summary: Auto-detect under-described entities and enqueue an enrichment job
+      description: >
+        Composes detect-gaps + the job runner: detects under-described entities
+        from the glossary coverage, takes the top `max_gaps` ranked, creates an
+        enrichment job whose targets are those gaps, persists the request, and
+        ENQUEUES it to the background worker (the same consumer as resume).
+        Non-blocking — returns 202 with the job_id. H0: the job only ever produces
+        QUARANTINED proposals; spend is bounded by max_gaps + the per-job cost-cap.
+      operationId: autoEnrichProject
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [book_id, embedding_model_ref, generation_model_ref]
+              properties:
+                book_id: { type: string, format: uuid }
+                embedding_model_ref: { type: string, format: uuid }
+                generation_model_ref: { type: string, format: uuid }
+                technique: { type: string, default: retrieval }
+                max_gaps: { type: integer, minimum: 1, maximum: 100, default: 10 }
+                coverage_limit: { type: integer, minimum: 1, maximum: 1000, default: 200 }
+                max_spend_usd: { type: number, minimum: 0 }
+                eval_reserve_fraction: { type: number, minimum: 0, default: 0.15 }
+                top_k: { type: integer, minimum: 1, maximum: 20, default: 5 }
+                targets:
+                  type: array
+                  description: >
+                    LE-064 — when set, enrich exactly these gaps (the per-row
+                    "enrich →") instead of detecting + ranking. Each is a gap the
+                    client already received from detect-gaps; max_gaps/coverage_limit
+                    are ignored. Same async worker path.
+                  items:
+                    $ref: '#/components/schemas/JobGapTarget'
+      responses:
+        '202':
+          description: Detected + enqueued (or nothing to enrich).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project_id: { type: string, format: uuid }
+                  job_id: { type: string, format: uuid }
+                  entities_scanned: { type: integer }
+                  detected: { type: integer }
+                  enqueued_gaps: { type: integer }
+                  enqueued: { type: boolean }
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+
   # ────────────────────────────── sources ──────────────────────────────
   /v1/lore-enrichment/sources:
     get:
@@ -468,11 +688,13 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
     post:
       tags: [sources]
-      summary: Register a grounding corpus (metadata only — no ingest here)
+      summary: Register a grounding corpus (metadata only — ingest is a separate call)
       description: >
-        Registers corpus metadata (name, kind, license, provenance). Ingest /
-        chunking / embedding is OUT of this contract (C10). Stub (C3): returns
-        501 until corpus registration is implemented.
+        Registers corpus metadata (name, kind, license, provenance) and returns
+        the corpus. Idempotent on (user, project, name, kind). Chunking + embedding
+        is a separate call — POST /sources/{corpus_id}/ingest. License is
+        default-deny ('unknown' → not re-cookable, C17); tag a public-domain corpus
+        explicitly.
       operationId: createSourceCorpus
       security:
         - bearerAuth: []
@@ -495,7 +717,67 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
         '403':
           $ref: '#/components/responses/ErrorResponse'
-        '501':
+
+  /v1/lore-enrichment/sources/{corpus_id}/ingest:
+    post:
+      tags: [sources]
+      summary: Ingest text into a registered corpus (chunk + real embed)
+      description: >
+        Chunks the supplied text (CJK-aware) and embeds each chunk via
+        provider-registry (by embedding_model_ref — NO model name). Idempotent:
+        re-ingesting identical text is a no-op (UNIQUE(corpus_id, chunk_index) +
+        content hash). The corpus must already exist (register it first).
+      operationId: ingestSourceCorpus
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: corpus_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id, text, embedding_model_ref]
+              properties:
+                project_id:
+                  type: string
+                  format: uuid
+                text:
+                  type: string
+                  minLength: 1
+                embedding_model_ref:
+                  type: string
+                  format: uuid
+                target_chars:
+                  type: integer
+                  minimum: 40
+                  maximum: 4000
+                  default: 800
+      responses:
+        '202':
+          description: Ingested — chunk counts returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  corpus_id: { type: string, format: uuid }
+                  chunks_total: { type: integer }
+                  chunks_inserted: { type: integer }
+                  chunks_embedded: { type: integer }
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
           $ref: '#/components/responses/ErrorResponse'
 
   # ───────────────────────────── templates ─────────────────────────────
@@ -657,22 +939,93 @@ components:
 
     CreateJobRequest:
       type: object
-      required: [project_id, technique]
+      required: [project_id, embedding_model_ref, generation_model_ref, targets]
       properties:
         project_id:
           type: string
           format: uuid
           description: Per-project scope (Q3). The user is taken from the JWT.
+        book_id:
+          type: string
+          format: uuid
+          description: >
+            Optional glossary book scope for the C12 contradiction check
+            (C3/F-C12-1). When set, the runner reads each entity's AUTHORED canon
+            and AUTO-REJECTS a generated fact that negates it. Absent → the
+            contradiction check degrades honestly (no false-green).
         technique:
           $ref: '#/components/schemas/Technique'
+          description: >
+            Optional. C14 runs the P1 pipeline (template + retrieval grounding →
+            schema-gov generation); proposals carry technique `retrieval`. P2/P3
+            are gated until the C15 cost/quality gate.
         entity_kind:
           type: string
           maxLength: 64
           description: Demo target is `location`.
+        embedding_model_ref:
+          type: string
+          format: uuid
+          description: >
+            Provider-registry user_model id for the EMBEDDING model (retrieval,
+            C10). Resolved via provider-registry — NEVER a hardcoded model name.
+        generation_model_ref:
+          type: string
+          format: uuid
+          description: >
+            Provider-registry user_model id for the GENERATION model (schema-gov
+            generation, C11). Resolved via provider-registry — never a name.
+        targets:
+          type: array
+          minItems: 1
+          description: >
+            The under-described canon entities to enrich. The runner derives each
+            entity's MISSING dimensions via the C7 gap engine.
+          items:
+            $ref: '#/components/schemas/JobGapTarget'
         max_spend_usd:
           type: number
           minimum: 0
-          description: Cost guardrail (C8). Job halts if estimate/actual exceeds.
+          description: >
+            Cost guardrail (C8). The job PAUSES (resumable) on a working-cap
+            breach; a fraction (eval_reserve_fraction) is held back for the C15
+            eval pass (M5) and is never consumed by the pipeline.
+        eval_reserve_fraction:
+          type: number
+          minimum: 0
+          exclusiveMaximum: 1.0
+          default: 0.15
+          description: Fraction of max_spend_usd reserved for the C15 eval pass (M5).
+        top_k:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 5
+          description: Passages retrieved per gap (C10 grounding).
+
+    JobGapTarget:
+      type: object
+      required: [canonical_name]
+      properties:
+        canonical_name:
+          type: string
+          minLength: 1
+          description: The faithful (source-language) entity name (never makeup).
+        target_ref:
+          type: string
+          description: The canon entity ref this gap enriches (when it exists).
+        entity_kind:
+          type: string
+          default: location
+        mention_count:
+          type: integer
+          minimum: 0
+          default: 1
+        present_dimensions:
+          type: array
+          items:
+            type: string
+          description: Dimensions already present in canon (default none → all missing).
 
     EnrichmentJob:
       type: object
@@ -929,6 +1282,71 @@ components:
           description: Permanent origin marker (H0).
         original_technique:
           $ref: '#/components/schemas/Technique'
+
+    WriteBackRequest:
+      type: object
+      description: >
+        Canon-anchor coordinates for write-back / promote / retract. `book_id`
+        is the glossary/book scope; `glossary_entity_id` is optional (resolved
+        via the glossary SSOT write when absent).
+      required: [book_id]
+      properties:
+        book_id:
+          type: string
+          format: uuid
+          description: The book/glossary scope for the write-back.
+        glossary_entity_id:
+          type: [string, 'null']
+          format: uuid
+          description: Existing glossary entity anchor (optional).
+
+    WriteBackResult:
+      type: object
+      description: >
+        Result of admitting an approved proposal's facts to the KG QUARANTINED.
+        `canon` is ALWAYS false (H0 — write-back never canonizes); every fact
+        carries an `enriched` source_type, `pending_validation`, confidence < 1.0.
+      required: [proposal_id, glossary_entity_id, facts, canon]
+      properties:
+        proposal_id:
+          type: string
+          format: uuid
+        glossary_entity_id:
+          type: string
+          format: uuid
+        facts:
+          type: array
+          items:
+            type: object
+            properties:
+              fact_id: { type: string }
+              dimension: { type: string }
+              source_type:
+                type: string
+                description: Always `enriched:<technique>` on write-back (H0).
+              confidence:
+                type: number
+                exclusiveMaximum: 1.0
+              pending_validation:
+                type: boolean
+        canon:
+          type: boolean
+          description: H0 — always false; write-back is quarantined.
+
+    RetractResult:
+      type: object
+      required: [proposal_id, facts_retracted, glossary_recycled, review_status]
+      properties:
+        proposal_id:
+          type: string
+          format: uuid
+        facts_retracted:
+          type: integer
+          minimum: 0
+        glossary_recycled:
+          type: boolean
+        review_status:
+          $ref: '#/components/schemas/ReviewStatus'
 
     CreateSourceRequest:
       type: object

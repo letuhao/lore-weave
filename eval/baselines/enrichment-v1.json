@@ -1,0 +1,13 @@
+{
+  "version": "enrichment-v1",
+  "subscores": {
+    "schema": 100.0,
+    "canon": 100.0,
+    "anachronism": 100.0,
+    "provenance": 100.0,
+    "usefulness": 0.0
+  },
+  "composite": 75.0,
+  "n_proposals": 4,
+  "fleiss_kappa": null
+}

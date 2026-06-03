@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -216,7 +217,44 @@ func emitEntityUpdatedTx(
 	}, entityID, payload)
 }
 
-// Phase B: the prior best-effort `emitEntityUpdated` (+ bookIDForEntity) used by
-// the PATCH path were removed. PATCH now emits transactionally via
-// `emitEntityUpdatedTx` so it can capture a consistent before/after snapshot in
-// the SAME tx as the UPDATE (no TOCTOU — design §5 / review-impl MED-3).
+// Phase B: the prior best-effort `emitEntityUpdated` used by the PATCH path was
+// removed — PATCH now emits transactionally via `emitEntityUpdatedTx` so it can
+// capture a consistent before/after snapshot in the SAME tx as the UPDATE (no
+// TOCTOU — design §5 / review-impl MED-3).
+//
+// emitEntityUpdated is re-provided here (lore-enrichment merge, 2026-06-01) for
+// the SERVICE/pipeline write paths that have NO user tx in hand and only need to
+// drive the C4/K14 glossary_sync → Neo4j anchor: the canon-content endpoint and
+// the enrichment-supplement upsert/delete. It is BEST-EFFORT + post-commit
+// (failures are logged, never fatal — the entity write already committed), and
+// emits actor_type="pipeline" so learning-service IGNORES it (these are not user
+// corrections); only the glossary_sync consumer acts on it. USER edits must keep
+// using the transactional emitEntityUpdatedTx path (before/after capture).
+func (s *Server) emitEntityUpdated(ctx context.Context, entityID uuid.UUID, op string) {
+	name, kind, aliases, shortDesc, ok := loadEntityEventFields(ctx, s.pool, entityID)
+	if !ok {
+		slog.Warn("emitEntityUpdated: entity fields unavailable (non-fatal)",
+			"entity_id", entityID.String())
+		return
+	}
+	var bookID uuid.UUID
+	if err := s.pool.QueryRow(ctx,
+		`SELECT book_id FROM glossary_entities WHERE entity_id = $1`, entityID,
+	).Scan(&bookID); err != nil {
+		slog.Warn("emitEntityUpdated: book_id lookup failed (non-fatal)",
+			"entity_id", entityID.String(), "err", err)
+		return
+	}
+	payload := buildEntityEventPayload(
+		bookID.String(), entityID.String(), name, kind, aliases, shortDesc,
+		op, "pipeline", "", nil,
+	)
+	exec := func(ctx context.Context, sql string, args ...any) error {
+		_, e := s.pool.Exec(ctx, sql, args...)
+		return e
+	}
+	if err := insertEntityOutboxEvent(ctx, exec, entityID, payload); err != nil {
+		slog.Warn("emitEntityUpdated: outbox insert failed (non-fatal)",
+			"entity_id", entityID.String(), "err", err)
+	}
+}

@@ -3,16 +3,29 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # Build context = repo root (infra/docker-compose.yml sets `context: ..`), so
-# COPY paths are repo-relative. C0 needs only the service code; the local
-# loreweave_llm SDK (sdks/python) is added in a later cycle when LLM calls land.
+# COPY paths are repo-relative.
 COPY services/lore-enrichment-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# C18 — install the local SDKs so loreweave_obs (setup_tracing +
+# current_otel_trace_id) is importable. Mirrors knowledge-service / chat-service
+# Dockerfiles (COPY sdks/python + pip install /sdk). Additive: OTel tracing is a
+# no-op until OTEL_EXPORTER_OTLP_ENDPOINT is set in the environment.
+COPY sdks/python /sdk
+RUN pip install --no-cache-dir /sdk
 
 COPY services/lore-enrichment-service/app/ ./app/
 
 ENV PORT=8093
+# C18 — OTLP trace export endpoint. Empty by default → setup_tracing is a no-op
+# (dev without the observability stack still runs). The compose/prod env wires a
+# real endpoint to enable tracing. NEVER a hardcoded URL here.
+ENV OTEL_EXPORTER_OTLP_ENDPOINT=""
 EXPOSE 8093
 
+# Liveness probe (constant ok, no DB). DB-readiness is the separate /ready probe
+# (DEFERRED-042); an orchestrator gates traffic on /ready but uses /health for
+# liveness so a brief DB blip drains traffic without crash-looping the pod.
 HEALTHCHECK --interval=5s --timeout=3s --start-period=20s --retries=5 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8093/health')" || exit 1
 

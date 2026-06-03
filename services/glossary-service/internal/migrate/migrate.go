@@ -1193,3 +1193,87 @@ func BackfillKnowledgeMemory(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	return nil
 }
+
+// ── entity_enrichments (lore-enrichment F-C13-1 + F-C13-2) ─────────────────
+//
+// The lore-enrichment promote flow used to write enriched lore onto the
+// canonical entity's short_description COLUMN (DEFERRED-053 / canon-content).
+// The QC review (F-C13-2) found that conflates makeup with the original
+// authored canon: once enrichment resolves onto the real canonical entity,
+// short_description can no longer be told apart from author-written canon, and
+// retract had no clean per-supplement undo (F-C13-1 — it tried to recycle the
+// WHOLE entity via a user JWT the service-to-service handler never has).
+//
+// PO ruling B1 (2026-05-31): glossary is the SINGLE SSOT; enrichment is a
+// DISTINGUISHED SUPPLEMENT / `dị bản` (variant) of the original canon — never
+// merged into / overwriting it, never a parallel entity. It must stay
+// tellable-apart for life. This table is the structural guarantee of that
+// separation: enrichment content lives HERE (FK→canonical entity), original
+// canon stays in glossary_entities.short_description, untouched.
+//
+// Design (spec 2026-05-31-enrichment-supplement-canon-model.md, option c):
+//   - one row per (entity, dimension, proposal) — a proposal_id keys a variant
+//     set, so multiple `dị bản` per (entity, dimension) coexist (UNIQUE key
+//     includes proposal_id, NOT just (entity, dimension)).
+//   - H0 invariants carried into the schema: confidence < 1.0 (a supplement row
+//     can never carry canon confidence), origin <> 'glossary' (never the canon
+//     origin), review_status ∈ {proposed, promoted} (never a canon status).
+//   - retract = soft-delete (deleted_at), reversible — the canonical entity and
+//     its original canon are never touched.
+//   - the partial index serves the live read (book_id, entity_id) WHERE not
+//     soft-deleted — the wiki/entity supplement section.
+//
+// Idempotent: CREATE TABLE / INDEX IF NOT EXISTS. uuidv7() is a PG18 native.
+const entityEnrichmentsSQL = `
+CREATE TABLE IF NOT EXISTS entity_enrichments (
+  enrichment_id  UUID PRIMARY KEY DEFAULT uuidv7(),
+  entity_id      UUID NOT NULL REFERENCES glossary_entities(entity_id) ON DELETE CASCADE,
+  book_id        UUID NOT NULL,
+  dimension      TEXT NOT NULL,
+  content        TEXT NOT NULL,
+  origin         TEXT NOT NULL DEFAULT 'enrichment'
+    CHECK (origin <> '' AND origin <> 'glossary'),
+  technique      TEXT NOT NULL,
+  confidence     NUMERIC(4,3) NOT NULL CHECK (confidence > 0 AND confidence < 1.0),
+  proposal_id    UUID NOT NULL,
+  review_status  TEXT NOT NULL DEFAULT 'proposed'
+    CHECK (review_status IN ('proposed','promoted')),
+  promoted_by    UUID,
+  promoted_at    TIMESTAMPTZ,
+  deleted_at     TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (entity_id, dimension, proposal_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_entity_enrichments_live
+  ON entity_enrichments(book_id, entity_id) WHERE deleted_at IS NULL;
+
+-- Provenance backstop (review-impl LOW-6): a 'promoted' supplement row MUST
+-- carry the promoter marker. Mirrors the enrichment_proposal promote-only
+-- invariant; the handler also returns a clean 400, this is the DB guarantee.
+-- Idempotent DO-block (ADD CONSTRAINT IF NOT EXISTS isn't available pre-PG18
+-- for the project's historical pattern; kept hand-idempotent for consistency).
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'entity_enrichments_promoted_has_marker'
+  ) THEN
+    ALTER TABLE entity_enrichments
+      ADD CONSTRAINT entity_enrichments_promoted_has_marker
+      CHECK (review_status <> 'promoted' OR promoted_by IS NOT NULL);
+  END IF;
+END$$;
+`
+
+// UpEntityEnrichments creates the entity_enrichments table that holds the
+// lore-enrichment supplement layer (PO ruling B1 / F-C13-1 + F-C13-2).
+// Idempotent. Registered in cmd/glossary-service/main.go after the
+// short-description migrations (it FKs glossary_entities, which Up() creates).
+func UpEntityEnrichments(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, entityEnrichmentsSQL); err != nil {
+		return fmt.Errorf("migrate entity-enrichments: %w", err)
+	}
+	return nil
+}
