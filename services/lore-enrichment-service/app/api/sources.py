@@ -244,7 +244,9 @@ async def ground_from_book(
     try:
         ingest = await store.ingest_corpus(
             user_id=principal.user_id, project_id=body.project_id,
-            name=f"book-chapters:{book_id}", kind="other", license="public-domain",
+            # 'licensed' (review #4): the author's own chapters are their copyright,
+            # not public-domain — but author-owned ⇒ re-cook-admissible. Accurate tag.
+            name=f"book-chapters:{book_id}", kind="other", license="licensed",
             text="\n\n".join(texts), embed_fn=embed_fn,
             model_ref=str(body.embedding_model_ref), target_chars=body.target_chars,
         )

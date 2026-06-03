@@ -77,6 +77,22 @@ async def test_compose_merges_dedups_and_top_k():
 
 
 @pytest.mark.asyncio
+async def test_compose_dedup_keeps_higher_score():
+    # review #3: a knowledge passage (0.90) duplicating a low-score corpus chunk
+    # (0.20) keeps the HIGHER score, not the first/lower one.
+    base = [_ref("corpus", "dup passage", 0.20)]
+
+    async def knowledge(name, missing, ctx):
+        return [_ref("knowledge:context", "dup passage", 0.90)]
+
+    out = await compose_grounding(
+        base, [knowledge], canonical_name="X", missing_labels=[], context=_CTX, top_k=5,
+    )
+    assert len(out) == 1
+    assert out[0].score == 0.90  # higher-score duplicate won
+
+
+@pytest.mark.asyncio
 async def test_compose_provider_error_is_skipped_not_fatal():
     base = [_ref("corpus", "base", 0.5)]
 

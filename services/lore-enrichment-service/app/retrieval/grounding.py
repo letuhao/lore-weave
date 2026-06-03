@@ -10,6 +10,14 @@ This module COMPOSES grounding from multiple providers — **entity-tight first
 the existing corpus search, deduped + top-K. It does NOT re-ingest chapters; it
 reuses what extraction already produced.
 
+SCOPE (review #2): the synthetic provider ``corpus_id``\\s (``glossary:canon`` /
+``knowledge:context``) are NOT real ``source_corpus`` UUIDs — they live only in the
+P1 proposal's ``source_refs_json`` (local to lore-enrichment; never sent to the KG
+write). This composer is wired into the **P1 GapPipeline ONLY**. It MUST NOT be
+wired into the re-cook (P3) path without a real-corpus mapping: re-cook resolves a
+license per grounding source via ``UUID(corpus_id)``, which a synthetic id would
+break. P2/P3 are gate-locked, so this is a forward-looking guard, not a live bug.
+
 H0 unchanged: grounding is EVIDENCE the generator cites, never canon. A provider
 that errors / has nothing degrades to ``[]`` (Q6) — it never raises into the
 pipeline, and an entity with truly nothing known still produces no grounding (so
@@ -74,16 +82,23 @@ async def compose_grounding(
                 "grounding provider failed for %s (skipped)", canonical_name,
                 exc_info=True,
             )
-    # dedup by excerpt, first occurrence wins (base + earlier providers prioritized)
-    seen: set[str] = set()
-    deduped: list[GroundingRef] = []
+    # dedup by excerpt; among duplicates keep the HIGHER-score ref (review #3 — a
+    # knowledge passage duplicating a low-score corpus chunk should keep the higher
+    # relevance, not the first/lower one). Insertion order is preserved for ties.
+    best: dict[str, GroundingRef] = {}
+    order: list[str] = []
     for ref in merged:
         key = _excerpt_key(ref.excerpt)
-        if not key or key in seen:
+        if not key:
             continue
-        seen.add(key)
-        deduped.append(ref)
-    # stable sort by score desc; Python's sort is stable so ties keep order
+        prev = best.get(key)
+        if prev is None:
+            best[key] = ref
+            order.append(key)
+        elif ref.score > prev.score:
+            best[key] = ref
+    deduped = [best[k] for k in order]
+    # stable sort by score desc; Python's sort is stable so ties keep insertion order
     deduped.sort(key=lambda r: -r.score)
     return deduped[:top_k]
 
