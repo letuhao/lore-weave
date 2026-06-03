@@ -60,6 +60,16 @@ type Replayer interface {
 	Replay(ctx context.Context, req replayloader.ReplayRequest) (replayloader.ReplayResult, error)
 }
 
+// LagReader reports a table's projection lag = NOW() − max(applied_at) (seconds),
+// the freshness of the most-recent projection write. `ok` is false when the table
+// has no rows (no applied_at → no lag to report). OPTIONAL: the checker type-
+// asserts its sampler for this and emits lw_projection_lag_seconds when present;
+// the pgsource sampler implements it. A lag-query error is treated as "no lag"
+// (observability MUST NOT fail the integrity check).
+type LagReader interface {
+	TableLagSeconds(ctx context.Context, table string) (seconds float64, ok bool, err error)
+}
+
 // ModeReader exposes ServiceMode for L1.J degraded-mode gating (integrity
 // checking pauses at ModeEssentials+ so it never loads a stressed DB).
 type ModeReader interface {
@@ -161,9 +171,9 @@ func NewChecker(c Config) (*Checker, error) {
 // EmitReport ships the L3.J metrics for one (reality, table) check to `em`
 // (no-op when nil). SHARED by daily ([Checker.Run]) and monthly (full_check) so
 // both emit identically. On error only the run-outcome counter fires (the
-// duration/drift gauges would be from a partial report). The lag gauge is NOT
-// emitted yet — it needs an applied_at source the sampler does not carry
-// (tracked separately); PromEmitter exposes the setter for when it lands.
+// duration/drift/lag gauges would be from a partial report). The lag gauge is
+// emitted only when the report carries it (HasLag — the sampler implements
+// [LagReader] and the table is non-empty).
 func EmitReport(em metrics.Emitter, mode string, realityID uuid.UUID, rep types.DriftReport, runErr error) {
 	if em == nil {
 		return
@@ -175,6 +185,9 @@ func EmitReport(em metrics.Emitter, mode string, realityID uuid.UUID, rep types.
 	em.IncCheckRun(mode, metrics.OutcomeOK)
 	em.ObserveCheckDuration(mode, rep.TableName, rep.DurationSeconds)
 	em.SetProjectionDriftCount(realityID.String(), rep.TableName, float64(rep.DriftCount))
+	if rep.HasLag {
+		em.SetProjectionLagSeconds(realityID.String(), rep.TableName, rep.LagSeconds)
+	}
 }
 
 // Iteration is the per-Run summary across all tables for one reality.
@@ -237,6 +250,15 @@ func (c *Checker) CheckTable(ctx context.Context, realityID uuid.UUID, dsn strin
 			report.DriftCount++
 			report.LastDriftedAggregateID = driftAggregateUUID(row)
 			report.LastDriftedEventID = row.EventID
+		}
+	}
+
+	// Projection lag (optional — only when the sampler can report it). A lag
+	// query failure is swallowed: it must never fail the integrity check.
+	if lr, ok := c.sampler.(LagReader); ok {
+		if lag, has, lerr := lr.TableLagSeconds(ctx, tbl.TableName); lerr == nil && has {
+			report.LagSeconds = lag
+			report.HasLag = true
 		}
 	}
 

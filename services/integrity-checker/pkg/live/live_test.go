@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/loreweave/foundation/contracts/lifecycle"
+	"github.com/loreweave/foundation/services/integrity-checker/pkg/metrics"
 	"github.com/loreweave/foundation/services/integrity-checker/pkg/replayloader"
 	"github.com/loreweave/foundation/services/integrity-checker/pkg/state_writer"
 	"github.com/loreweave/foundation/services/integrity-checker/pkg/tablemap"
@@ -317,5 +318,83 @@ func TestCheckRow_NilOwningSkipsWithoutReplay(t *testing.T) {
 	}
 	if called {
 		t.Error("replayer must NOT be invoked for a nil-Owning row (the bin requires >=1 aggregate)")
+	}
+}
+
+// ── lag gauge (153): emitted only when the sampler implements LagReader ──────
+
+type lagSampler struct {
+	fakeSampler
+	lag float64
+	ok  bool
+}
+
+func (s *lagSampler) TableLagSeconds(_ context.Context, _ string) (float64, bool, error) {
+	return s.lag, s.ok, nil
+}
+
+func TestCheckTable_EmitsLagWhenSamplerSupportsIt(t *testing.T) {
+	s := &lagSampler{
+		fakeSampler: fakeSampler{rows: []SampledRow{pcRow("pc-1", `{"a":1}`, 0xe5)}},
+		lag:         42.0, ok: true,
+	}
+	r := &fakeReplayer{fn: func(_ replayloader.ReplayRequest) (replayloader.ReplayResult, error) {
+		return replayloader.ReplayResult{Found: true, EventsReplayed: 1, Status: "ok", Payload: []byte(`{"a":1}`)}, nil
+	}}
+	per := state_writer.NewInMemPersister()
+	w, _ := state_writer.New(state_writer.Config{Persister: per, Clock: time.Now})
+	em := metrics.NewInMemEmitter()
+	c, err := NewChecker(Config{
+		Sampler: s, Replayer: r, Writer: w,
+		Mode: staticMode{lifecycle.ModeFull}, Clock: fixedClock(), Emitter: em,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rid := uid(9)
+	it, err := c.Run(context.Background(), rid, "dsn",
+		[]types.TableConfig{{TableName: "pc_projection", SampleSize: 20}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !it.Reports[0].HasLag || it.Reports[0].LagSeconds != 42.0 {
+		t.Errorf("report lag: HasLag=%v lag=%v", it.Reports[0].HasLag, it.Reports[0].LagSeconds)
+	}
+	if got := em.Lag[rid.String()+"|pc_projection"]; got != 42.0 {
+		t.Errorf("emitted lag = %v, want 42.0 (emitter map=%v)", got, em.Lag)
+	}
+}
+
+func TestCheckTable_LagAbsentWhenSamplerLacksLagReader(t *testing.T) {
+	// The plain fakeSampler does NOT implement LagReader → no lag reported.
+	s := &fakeSampler{rows: []SampledRow{pcRow("pc-1", `{"a":1}`, 0xe6)}}
+	r := &fakeReplayer{fn: func(_ replayloader.ReplayRequest) (replayloader.ReplayResult, error) {
+		return replayloader.ReplayResult{Found: true, EventsReplayed: 1, Status: "ok", Payload: []byte(`{"a":1}`)}, nil
+	}}
+	c, _ := newChecker(t, s, r, lifecycle.ModeFull)
+	rep, err := c.CheckTable(context.Background(), uid(9), "dsn",
+		types.TableConfig{TableName: "pc_projection", SampleSize: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.HasLag {
+		t.Error("a sampler without LagReader must leave HasLag=false")
+	}
+}
+
+func TestCheckTable_LagOmittedWhenTableEmpty(t *testing.T) {
+	// LagReader reports ok=false (empty table) → no lag on the report.
+	s := &lagSampler{
+		fakeSampler: fakeSampler{rows: []SampledRow{pcRow("pc-1", `{"a":1}`, 0xe7)}},
+		lag:         0, ok: false,
+	}
+	r := &fakeReplayer{fn: func(_ replayloader.ReplayRequest) (replayloader.ReplayResult, error) {
+		return replayloader.ReplayResult{Found: true, EventsReplayed: 1, Status: "ok", Payload: []byte(`{"a":1}`)}, nil
+	}}
+	c, _ := newChecker(t, s, r, lifecycle.ModeFull)
+	rep, _ := c.CheckTable(context.Background(), uid(9), "dsn",
+		types.TableConfig{TableName: "pc_projection", SampleSize: 20})
+	if rep.HasLag {
+		t.Error("ok=false (empty table) must leave HasLag=false")
 	}
 }

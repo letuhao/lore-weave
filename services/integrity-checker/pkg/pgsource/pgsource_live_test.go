@@ -161,4 +161,14 @@ func TestScanRows_CursorWalksEveryRowOnceAndSkipsPrunedOwners(t *testing.T) {
 	if prunedSkips != 1 {
 		t.Errorf("pruned-owner skips = %d, want 1", prunedSkips)
 	}
+
+	// 153: TableLagSeconds (live.LagReader). The just-seeded pc_projection has
+	// rows (applied_at defaulted to NOW()) → ok=true + a small non-negative lag;
+	// an untouched table → ok=false (no max(applied_at)).
+	if lag, ok, err := sampler.TableLagSeconds(ctx, "pc_projection"); err != nil || !ok || lag < 0 {
+		t.Errorf("pc_projection lag: lag=%v ok=%v err=%v (want ok + non-negative)", lag, ok, err)
+	}
+	if _, ok, err := sampler.TableLagSeconds(ctx, "region_projection"); err != nil || ok {
+		t.Errorf("empty region_projection lag: ok=%v err=%v (want ok=false, no error)", ok, err)
+	}
 }

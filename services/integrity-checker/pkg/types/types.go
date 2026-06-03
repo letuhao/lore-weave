@@ -64,6 +64,11 @@ type DriftReport struct {
 	CheckMode string
 	// DurationSeconds for the metrics emitter (lw_projection_check_duration_seconds).
 	DurationSeconds float64
+	// LagSeconds = NOW() − max(applied_at) over the table (the freshness of the
+	// most-recent projection write), for lw_projection_lag_seconds. Only valid
+	// when HasLag is true (an empty table has no applied_at → no lag to report).
+	LagSeconds float64
+	HasLag     bool
 }
 
 // CheckMode is the enum for daily vs monthly. The same binary runs both;

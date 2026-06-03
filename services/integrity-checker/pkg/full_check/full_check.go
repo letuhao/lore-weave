@@ -200,6 +200,15 @@ func (l *Loop) runTable(ctx context.Context, realityID uuid.UUID, dsn string, tb
 		cursor = nextCursor
 	}
 
+	// Projection lag (optional — when the cursor source can report it). A lag
+	// query failure is swallowed: it must never fail the integrity check.
+	if lr, ok := l.src.(live.LagReader); ok {
+		if lag, has, lerr := lr.TableLagSeconds(ctx, tbl.TableName); lerr == nil && has {
+			report.LagSeconds = lag
+			report.HasLag = true
+		}
+	}
+
 	report.DurationSeconds = l.clock().Sub(start).Seconds()
 
 	// Monthly cadence next-sweep = intervalDays * 24h.

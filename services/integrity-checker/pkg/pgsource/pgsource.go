@@ -266,6 +266,29 @@ func (s *PgRowSampler) NextBatch(ctx context.Context, _ uuid.UUID, table, cursor
 	return out, "", nil
 }
 
+var _ live.LagReader = (*PgRowSampler)(nil)
+
+// TableLagSeconds implements [live.LagReader]: NOW() − max(applied_at) over the
+// table (the freshness of the most-recent projection write, in seconds). `ok` is
+// false when the table is empty (max(applied_at) IS NULL → no lag to report).
+// The table name is validated against the L3.A map before interpolation.
+func (s *PgRowSampler) TableLagSeconds(ctx context.Context, table string) (float64, bool, error) {
+	if _, err := tablemap.PKColumns(table); err != nil {
+		return 0, false, err // unknown table → not in the L3.A allowlist
+	}
+	var lag *float64 // nullable: NULL over an empty table
+	err := s.pool.QueryRow(ctx,
+		fmt.Sprintf("SELECT EXTRACT(EPOCH FROM (now() - max(applied_at)))::float8 FROM %s", table),
+	).Scan(&lag)
+	if err != nil {
+		return 0, false, fmt.Errorf("pgsource: table lag %s: %w", table, err)
+	}
+	if lag == nil {
+		return 0, false, nil
+	}
+	return *lag, true, nil
+}
+
 // lookupOwner backs live.ResolveOwning for single-aggregate tables.
 func (s *PgRowSampler) lookupOwner(ctx context.Context, eventID uuid.UUID) (string, string, error) {
 	var aggType, aggID string
