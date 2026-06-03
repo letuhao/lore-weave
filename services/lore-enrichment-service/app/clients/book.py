@@ -17,6 +17,8 @@ import httpx
 from app.clients.sanitize import neutralize_injection
 
 __all__ = [
+    "BookProjection",
+    "ChapterMeta",
     "ChapterHierarchy",
     "BookServiceError",
     "BookClient",
@@ -28,6 +30,32 @@ class BookServiceError(Exception):
         super().__init__(message)
         self.retryable = retryable
         self.status_code = status_code
+
+
+@dataclass(frozen=True)
+class BookProjection:
+    """Book metadata seed for AI-suggest (C3). The author-supplied prose
+    (title/description/summary) is injection-neutralized (M4)."""
+
+    book_id: UUID
+    owner_user_id: UUID | None = None
+    title: str = ""
+    original_language: str = ""
+    description: str = ""
+    summary_excerpt: str = ""
+    genre_tags: list[str] = field(default_factory=list)
+    chapter_count: int = 0
+
+
+@dataclass(frozen=True)
+class ChapterMeta:
+    """One chapter row for the selection picker / suggest sampling (C3)."""
+
+    chapter_id: UUID
+    title: str = ""
+    sort_order: int = 0
+    original_language: str = ""
+    word_count_estimate: int = 0
 
 
 @dataclass(frozen=True)
@@ -47,6 +75,75 @@ class BookClient:
 
     async def aclose(self) -> None:
         await self._http.aclose()
+
+    async def get_projection(self, *, book_id: UUID) -> BookProjection:
+        """Book metadata for AI-suggest (C3). Reads GET /internal/books/{id}/
+        projection (owner + title/language/description/summary/genre_tags/count).
+        Author-prose fields are injection-neutralized (M4). 404 → typed not-found."""
+        url = f"{self._base}/internal/books/{book_id}/projection"
+        try:
+            resp = await self._http.get(
+                url, headers={"X-Internal-Token": self._internal_token}
+            )
+        except httpx.TimeoutException as exc:
+            raise BookServiceError(f"timeout calling {url}: {exc}", retryable=True)
+        except httpx.HTTPError as exc:
+            raise BookServiceError(f"connection error calling {url}: {exc}", retryable=True)
+        if resp.status_code != 200:
+            retryable = resp.status_code in (502, 503, 429)
+            raise BookServiceError(
+                f"GET {url} failed ({resp.status_code})",
+                retryable=retryable, status_code=resp.status_code,
+            )
+        data = resp.json()
+        tags = data.get("genre_tags") or []
+        owner = data.get("owner_user_id")
+        return BookProjection(
+            book_id=book_id,
+            owner_user_id=UUID(str(owner)) if owner else None,
+            title=neutralize_injection(data.get("title")),
+            original_language=str(data.get("original_language") or ""),
+            description=neutralize_injection(data.get("description")),
+            summary_excerpt=neutralize_injection(data.get("summary_excerpt")),
+            genre_tags=[neutralize_injection(t) for t in tags if isinstance(t, str)],
+            chapter_count=int(data.get("chapter_count") or 0),
+        )
+
+    async def list_chapters(
+        self, *, book_id: UUID, limit: int = 200, offset: int = 0
+    ) -> tuple[list[ChapterMeta], int]:
+        """The book's chapter list for the selection picker + suggest sampling.
+        Reads GET /internal/books/{id}/chapters. Titles are injection-neutralized
+        (M4). Returns (items, total). 404 → typed not-found."""
+        url = f"{self._base}/internal/books/{book_id}/chapters"
+        try:
+            resp = await self._http.get(
+                url, headers={"X-Internal-Token": self._internal_token},
+                params={"limit": limit, "offset": offset},
+            )
+        except httpx.TimeoutException as exc:
+            raise BookServiceError(f"timeout calling {url}: {exc}", retryable=True)
+        except httpx.HTTPError as exc:
+            raise BookServiceError(f"connection error calling {url}: {exc}", retryable=True)
+        if resp.status_code != 200:
+            retryable = resp.status_code in (502, 503, 429)
+            raise BookServiceError(
+                f"GET {url} failed ({resp.status_code})",
+                retryable=retryable, status_code=resp.status_code,
+            )
+        data = resp.json()
+        items: list[ChapterMeta] = []
+        for row in data.get("items") or []:
+            if not isinstance(row, dict) or not row.get("chapter_id"):
+                continue
+            items.append(ChapterMeta(
+                chapter_id=UUID(str(row["chapter_id"])),
+                title=neutralize_injection(row.get("title")),
+                sort_order=int(row.get("sort_order") or 0),
+                original_language=str(row.get("original_language") or ""),
+                word_count_estimate=int(row.get("word_count_estimate") or 0),
+            ))
+        return items, int(data.get("total") or 0)
 
     async def get_chapter_text(self, *, book_id: UUID, chapter_id: UUID) -> str:
         """The chapter's draft text (de-bias C2 T6 — author-selected grounding).

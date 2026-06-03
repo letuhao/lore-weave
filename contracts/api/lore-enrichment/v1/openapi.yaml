@@ -848,6 +848,109 @@ paths:
         '503':
           $ref: '#/components/responses/ErrorResponse'
 
+  # ──────────────────── per-book enrichment profile (de-bias C3) ────────────────────
+  /v1/lore-enrichment/books/{book_id}/profile:
+    get:
+      tags: [profile]
+      summary: Read the book's enrichment profile (neutral default if unset)
+      description: >
+        The per-book de-bias profile (worldview / language / era_policy / voice +
+        per-kind dimension_overrides) read at runtime by the prompt builders,
+        dimension resolver, and anachronism check. An unset book returns the
+        neutral default (language=auto, anachronism OFF). Owner-only (authorized
+        against the book-service owner_user_id).
+      operationId: getBookProfile
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The book's profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookProfile' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+    put:
+      tags: [profile]
+      summary: Upsert the book's enrichment profile (author edit → profile_source='manual')
+      description: >
+        Insert-or-update the book's profile. The dimension_overrides are
+        schema-validated BEFORE persist (malformed → 400). Owner-only.
+      operationId: putBookProfile
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookProfileInput' }
+      responses:
+        '200':
+          description: The persisted profile.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BookProfile' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /v1/lore-enrichment/books/{book_id}/profile/suggest:
+    post:
+      tags: [profile]
+      summary: AI-suggest a profile DRAFT from book metadata + chapters + KG (not persisted)
+      description: >
+        One LLM call proposes worldview/language/era_policy/voice + per-kind
+        dimension_overrides from the book's metadata, sample chapters, and a
+        best-effort knowledge-graph summary. Returns a DRAFT the author edits +
+        PUTs (profile_source='ai_suggested'); it is NOT persisted here. Owner-only;
+        the model resolves via provider-registry by suggest_model_ref (NO model
+        name). KG read is best-effort (empty/down → book-only). LLM failure → 502.
+      operationId: suggestBookProfile
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id, suggest_model_ref]
+              properties:
+                project_id: { type: string, format: uuid }
+                suggest_model_ref: { type: string, format: uuid }
+                sample_chapter_ids:
+                  type: array
+                  maxItems: 8
+                  items: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The suggested profile draft (not persisted).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuggestedBookProfile' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '502': { $ref: '#/components/responses/ErrorResponse' }
+        '503': { $ref: '#/components/responses/ErrorResponse' }
+
   # ───────────────────────────── templates ─────────────────────────────
   /v1/lore-enrichment/templates:
     get:
@@ -1004,6 +1107,87 @@ components:
     CorpusKind:
       type: string
       enum: [fengshen, shanhaijing, history, other]
+
+    DimensionOverrides:
+      type: object
+      description: >
+        Per-kind dynamic-dimension layer (de-bias C3). Keyed by entity kind; each
+        value may add/remove/relabel/reweight dimensions. Server-validated before
+        persist. Free-form by kind (kinds are author/profile-extensible, KB3).
+      additionalProperties:
+        type: object
+        properties:
+          add:
+            type: array
+            items:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string }
+                label: { type: string }
+                weight: { type: number }
+                required: { type: boolean }
+                payload_shape: { type: string }
+          remove:
+            type: array
+            items: { type: string }
+          relabel:
+            type: object
+            additionalProperties: { type: string }
+          reweight:
+            type: object
+            additionalProperties: { type: number }
+
+    AnachronismMarker:
+      type: object
+      required: [term]
+      properties:
+        term: { type: string }
+        reason: { type: string }
+
+    BookProfileInput:
+      type: object
+      description: Author-editable enrichment profile (PUT body, de-bias C3).
+      properties:
+        worldview: { type: string }
+        language: { type: string, default: auto }
+        era_policy: { type: string, nullable: true }
+        voice: { type: string, nullable: true }
+        anachronism_markers:
+          type: array
+          items: { $ref: '#/components/schemas/AnachronismMarker' }
+        dimension_overrides: { $ref: '#/components/schemas/DimensionOverrides' }
+
+    BookProfile:
+      type: object
+      description: The persisted per-book enrichment profile (de-bias C3).
+      properties:
+        book_id: { type: string, format: uuid, nullable: true }
+        worldview: { type: string }
+        language: { type: string }
+        era_policy: { type: string, nullable: true }
+        voice: { type: string, nullable: true }
+        anachronism_markers:
+          type: array
+          items: { $ref: '#/components/schemas/AnachronismMarker' }
+        anachronism_enabled: { type: boolean }
+        dimension_overrides: { $ref: '#/components/schemas/DimensionOverrides' }
+        profile_source:
+          type: string
+          enum: [seed, ai_suggested, manual]
+
+    SuggestedBookProfile:
+      type: object
+      description: An AI-suggested profile draft (not persisted; the author edits + PUTs).
+      properties:
+        worldview: { type: string }
+        language: { type: string }
+        era_policy: { type: string, nullable: true }
+        voice: { type: string, nullable: true }
+        dimension_overrides: { $ref: '#/components/schemas/DimensionOverrides' }
+        profile_source:
+          type: string
+          enum: [ai_suggested]
 
     CreateJobRequest:
       type: object
