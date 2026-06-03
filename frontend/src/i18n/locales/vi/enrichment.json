@@ -121,6 +121,7 @@
     "detect": "Phát hiện",
     "detect_hint": "Bấm \"Phát hiện\" để quét độ phủ glossary của sách.",
     "none": "Không phát hiện thiếu hụt — mọi thực thể đều được mô tả tốt.",
+    "extract_first": "Chưa có thực thể — hãy trích xuất sách này trước (tab Tri thức). Bồi đắp chỉ lấp khoảng trống cho các thực thể nền tảng đã biết.",
     "technique": "Kỹ thuật",
     "gen_model": "Model sinh",
     "embed_model": "Model embedding",
@@ -154,7 +155,16 @@
     "recook_ok": "tái chế OK",
     "recook_refused": "từ chối tái chế (mặc định cấm)",
     "default_deny": "Mặc định cấm: chỉ nguồn phạm-vi-công-cộng / có-phép mới được tái chế. Bạn chịu trách nhiệm về giấy phép của nguồn mình đăng ký.",
-    "registered": "Đã đăng ký nguồn"
+    "registered": "Đã đăng ký nguồn",
+    "grounded": "Đã nền hoá — {{count}} chương được embed"
+  },
+  "ground": {
+    "title": "Nền hoá từ chương",
+    "subtitle": "Chọn các chương cụ thể để embed làm corpus nền — văn xuôi thô ngoài những gì knowledge RAG + glossary canon cung cấp. Văn bản là của chính bạn.",
+    "no_chapters": "Sách này chưa có chương nào.",
+    "showing": "Đang hiển thị {{shown}} chương đầu trên {{total}} — đường nền chính (knowledge RAG) đã bao phủ mọi chương; phần này dành cho lựa chọn bổ sung có chủ đích.",
+    "ingest": "Nền hoá {{count}} chương",
+    "ingesting": "Đang embed…"
   },
   "jobs": {
     "none": "Chưa có tác vụ bồi đắp.",

@@ -121,6 +121,7 @@
     "detect": "偵測缺口",
     "detect_hint": "點「偵測缺口」以掃描本書詞彙表的涵蓋度。",
     "none": "未偵測到缺口 — 每個實體都描述良好。",
+    "extract_first": "尚無實體 — 請先抽取本書（知識分頁）。增補只填補平台已知實體的缺口。",
     "technique": "技法",
     "gen_model": "生成模型",
     "embed_model": "嵌入模型",
@@ -154,7 +155,16 @@
     "recook_ok": "可再製",
     "recook_refused": "拒絕再製（預設拒絕）",
     "default_deny": "預設拒絕：僅公共領域／已授權的來源可再製。你需為自己登錄的來源授權負責。",
-    "registered": "已登錄來源"
+    "registered": "已登錄來源",
+    "grounded": "已建立基礎 — 已嵌入 {{count}} 個章節"
+  },
+  "ground": {
+    "title": "以章節建立基礎",
+    "subtitle": "挑選特定章節嵌入為基礎語料 — 超出知識 RAG＋詞彙表正典所提供的原始文句。文字為你自有。",
+    "no_chapters": "本書尚無章節。",
+    "showing": "顯示 {{total}} 個章節中的前 {{shown}} 個 — 主要的基礎路徑（知識 RAG）已涵蓋所有章節；此處供刻意的額外挑選。",
+    "ingest": "建立 {{count}} 個章節",
+    "ingesting": "嵌入中…"
   },
   "jobs": {
     "none": "尚無增補作業。",

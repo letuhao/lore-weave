@@ -145,6 +145,10 @@ export interface DetectGapsResponse {
   entities_scanned: number;
   gap_count: number;
   gaps: Gap[];
+  /** C2 "extract first" signal — true when the book has NO extracted entities yet
+   *  (enrichment is downstream of extraction; there is nothing to enrich). */
+  needs_extraction?: boolean;
+  message?: string;
 }
 
 /** A specific gap to enrich (LE-064 per-row "enrich →"). The backend re-derives
@@ -205,6 +209,15 @@ export interface Source {
 /** POST /sources/{id}/ingest result — chunk+embed counts. */
 export interface IngestResult {
   corpus_id: string;
+  chunks_total: number;
+  chunks_inserted: number;
+  chunks_embedded: number;
+}
+
+/** POST /books/{id}/ground result — author-selected chapters → grounding corpus (C2). */
+export interface GroundResult {
+  book_id: string;
+  chapters_ingested: number;
   chunks_total: number;
   chunks_inserted: number;
   chunks_embedded: number;

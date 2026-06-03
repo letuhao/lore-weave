@@ -9,6 +9,7 @@ import type {
   SourceListResponse,
   Source,
   IngestResult,
+  GroundResult,
   JobListResponse,
   BookProfile,
   BookProfileInput,
@@ -154,6 +155,20 @@ export const enrichmentApi = {
     token: string,
   ): Promise<IngestResult> {
     return apiJson<IngestResult>(`${BASE}/sources/${corpusId}/ingest`, {
+      method: 'POST',
+      body: JSON.stringify({ project_id: bookId, ...body }),
+      token,
+    });
+  },
+
+  /** C2 chapter-selection grounding ingest — author picks chapters (a selection
+   *  LIST) to embed as a grounding corpus. project_id := bookId. */
+  groundFromBook(
+    bookId: string,
+    body: { embedding_model_ref: string; chapter_ids: string[]; target_chars?: number },
+    token: string,
+  ): Promise<GroundResult> {
+    return apiJson<GroundResult>(`${BASE}/books/${bookId}/ground`, {
       method: 'POST',
       body: JSON.stringify({ project_id: bookId, ...body }),
       token,

@@ -25,12 +25,14 @@ const detectMock = vi.fn();
 const autoEnrichMock = vi.fn();
 const gapsState = vi.hoisted(() => ({
   gaps: null as unknown,
+  needsExtraction: false,
   detecting: false,
   enriching: false,
 }));
 vi.mock('../../hooks/useGaps', () => ({
   useGaps: () => ({
     gaps: gapsState.gaps,
+    needsExtraction: gapsState.needsExtraction,
     detect: (...a: unknown[]) => detectMock(...a),
     detecting: gapsState.detecting,
     autoEnrich: (...a: unknown[]) => autoEnrichMock(...a),
@@ -82,6 +84,7 @@ beforeEach(() => {
   autoEnrichMock.mockReset();
   listModelsMock.mockReset();
   gapsState.gaps = null;
+  gapsState.needsExtraction = false;
   gapsState.detecting = false;
   gapsState.enriching = false;
   // Both capabilities resolve to the same single model so either select can pick it.
@@ -108,7 +111,17 @@ describe('GapsPanel', () => {
     gapsState.gaps = [];
     renderPanel();
     expect(screen.getByText('gaps.none')).toBeInTheDocument();
+    expect(screen.getByTestId('enrichment-gaps-none')).toBeInTheDocument();
     expect(screen.queryByText('gaps.detect_hint')).toBeNull();
+  });
+
+  it('gaps === [] + needsExtraction shows the "extract first" message, not "no gaps" (C2/KB2)', () => {
+    gapsState.gaps = [];
+    gapsState.needsExtraction = true;
+    renderPanel();
+    expect(screen.getByTestId('enrichment-gaps-extract-first')).toBeInTheDocument();
+    expect(screen.getByText('gaps.extract_first')).toBeInTheDocument();
+    expect(screen.queryByText('gaps.none')).toBeNull();
   });
 
   it('with gaps renders a row per gap: name, kind, joined missing dims, score.toFixed(2)', () => {

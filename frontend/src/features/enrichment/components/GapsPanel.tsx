@@ -16,7 +16,7 @@ export function GapsPanel() {
   const { t } = useTranslation('enrichment');
   const { accessToken } = useAuth();
   const { bookId, setGapCount } = useEnrichmentContext();
-  const { gaps, detect, detecting, autoEnrich, enriching } = useGaps(bookId);
+  const { gaps, needsExtraction, detect, detecting, autoEnrich, enriching } = useGaps(bookId);
   const [technique, setTechnique] = useState('recook');
   const [genModel, setGenModel] = useState('');
   const [embedModel, setEmbedModel] = useState('');
@@ -85,8 +85,14 @@ export function GapsPanel() {
           {t('gaps.detect_hint')}
         </p>
       ) : gaps.length === 0 ? (
-        <p className="rounded-lg border border-dashed p-6 text-center text-xs text-muted-foreground">
-          {t('gaps.none')}
+        <p
+          data-testid={needsExtraction ? 'enrichment-gaps-extract-first' : 'enrichment-gaps-none'}
+          className={cn(
+            'rounded-lg border border-dashed p-6 text-center text-xs',
+            needsExtraction ? 'border-warning/40 text-warning' : 'text-muted-foreground',
+          )}
+        >
+          {needsExtraction ? t('gaps.extract_first') : t('gaps.none')}
         </p>
       ) : (
         <div className="overflow-hidden rounded-lg border">

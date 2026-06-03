@@ -17,10 +17,17 @@ const sourcesStub = vi.hoisted(() => ({
   isLoading: false,
   register: vi.fn(),
   ingest: vi.fn(),
+  ground: vi.fn(),
   busy: false,
 }));
 vi.mock('../../hooks/useEnrichmentSources', () => ({
   useEnrichmentSources: () => sourcesStub,
+}));
+
+// SourcesPanel now embeds ChapterSelectionPicker, which lists chapters via booksApi.
+const listChaptersMock = vi.fn();
+vi.mock('@/features/books/api', () => ({
+  booksApi: { listChapters: (...a: unknown[]) => listChaptersMock(...a) },
 }));
 
 import { SourcesPanel } from '../SourcesPanel';
@@ -59,6 +66,7 @@ beforeEach(() => {
   listModelsMock.mockResolvedValue({
     items: [{ user_model_id: 'm1', alias: 'qwen', provider_model_name: 'qwen' }],
   });
+  listChaptersMock.mockResolvedValue({ items: [], total: 0 });
 });
 
 describe('SourcesPanel', () => {

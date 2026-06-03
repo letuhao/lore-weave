@@ -8,6 +8,7 @@ import { providerApi } from '@/features/settings/api';
 import { useEnrichmentSources } from '../hooks/useEnrichmentSources';
 import { useEnrichmentContext } from '../context/EnrichmentContext';
 import { SourceCard } from './SourceCard';
+import { ChapterSelectionPicker } from './ChapterSelectionPicker';
 
 /** The corpus side: license-tagged source material for retrieval / recook.
  *  Default-deny — only public_domain / licensed corpora are recookable (① layer).
@@ -16,7 +17,7 @@ export function SourcesPanel() {
   const { t } = useTranslation('enrichment');
   const { accessToken } = useAuth();
   const { bookId } = useEnrichmentContext();
-  const { items, isLoading, register, ingest, busy } = useEnrichmentSources(bookId);
+  const { items, isLoading, register, ingest, ground, busy } = useEnrichmentSources(bookId);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [kind, setKind] = useState('history');
@@ -105,6 +106,8 @@ export function SourcesPanel() {
         </div>
       )}
       <p className="text-[11px] text-muted-foreground">{t('sources.default_deny')}</p>
+
+      <ChapterSelectionPicker bookId={bookId} embeds={embeds} onGround={ground} busy={busy} />
     </div>
   );
 }

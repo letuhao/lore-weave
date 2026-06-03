@@ -121,6 +121,7 @@
     "detect": "Detect gaps",
     "detect_hint": "Click \"Detect gaps\" to scan this book's glossary coverage.",
     "none": "No gaps detected — every entity is well described.",
+    "extract_first": "No entities yet — extract this book first (Knowledge tab). Enrichment fills gaps in entities the platform already knows about.",
     "technique": "Technique",
     "gen_model": "Generation model",
     "embed_model": "Embedding model",
@@ -154,7 +155,16 @@
     "recook_ok": "recook-OK",
     "recook_refused": "recook refused (default-deny)",
     "default_deny": "Default-deny: only public-domain / licensed sources may be recooked. You are responsible for the license of sources you register.",
-    "registered": "Source registered"
+    "registered": "Source registered",
+    "grounded": "Grounded — {{count}} chapter(s) embedded"
+  },
+  "ground": {
+    "title": "Ground from chapters",
+    "subtitle": "Pick specific chapters to embed as a grounding corpus — raw prose beyond what knowledge RAG + glossary canon surface. The text is your own.",
+    "no_chapters": "This book has no chapters yet.",
+    "showing": "Showing the first {{shown}} of {{total}} chapters — the primary grounding path (knowledge RAG) already covers all chapters; this is for deliberate extra selection.",
+    "ingest": "Ground {{count}} chapter(s)",
+    "ingesting": "Embedding…"
   },
   "jobs": {
     "none": "No enrichment jobs yet.",
