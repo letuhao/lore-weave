@@ -1,6 +1,6 @@
 # Canon Model — platform primitives (DESIGN spec)
 
-> **Date:** 2026-06-03 · **Phase:** CLARIFY→DESIGN · **Branch:** `feat/composition-service`
+> **Track:** LOOM (Cycle 0) · **Date:** 2026-06-03 · **Phase:** CLARIFY→DESIGN · **Branch:** `feat/composition-service`
 > **Status:** DESIGN — prerequisite **Cycle 0** for composition-service (and a durable foundation for enrichment, translation-assist, future agents).
 > **Task size:** **XL** — cross-service contract change (book-service + worker-infra + knowledge-service + extraction SDK) + a data migration + a backfill. `/amaw` recommended (schema/migration + cross-service contract).
 > **Why now:** the composition architecture review (composition-design §12/§13) verified two platform-level holes that no single feature can fix from its own side. Rather than bolt a workaround onto composition, we fix the **canon model** once, as a primitive every feature shares.

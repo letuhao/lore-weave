@@ -1,6 +1,6 @@
 # Canon Model — Cycle 0 Implementation Plan
 
-> **Date:** 2026-06-03 · **Phase:** PLAN · **Branch:** `feat/composition-service`
+> **Track:** LOOM (Cycle 0) · **Date:** 2026-06-03 · **Phase:** PLAN · **Branch:** `feat/composition-service`
 > **Spec SSOT:** [canon-model.md](../specs/2026-06-03-canon-model.md) (§1 primitives · §2 flow · §3 migration · §6 verified evidence)
 > **Task size:** **XL** — cross-service contract change (book-service Go · worker-infra · knowledge-service Python · extraction SDK) + a data migration + an event-consumer cutover + backfills. Plan file mandatory; **`/amaw` for CM1 (schema/migration) + CM3 (consumer cutover)**.
 > **Why:** fixes **pre-existing platform bugs** (no-op timeline filters, draft prose in the semantic index, dead `extraction_pending`, broken `chapter_range`, live-draft extraction race — spec §0 B1–B5) that already harm knowledge/chat/wiki/enrichment. **Composition surfaced them (first feature to exercise these paths) — it did not cause them.** Justified independently as debt-paydown; it also unblocks composition (OI-1 structural + spoiler-cutoff real). NOT composition scope-creep.

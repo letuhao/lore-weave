@@ -1,6 +1,6 @@
 # Composition Service — DESIGN spec
 
-> **Date:** 2026-06-02 · **Phase:** DESIGN (building on [vision](2026-06-02-composition-service-vision.md) + [requirements](2026-06-02-composition-requirements.md) + [UX](2026-06-02-composition-studio-ux.md)).
+> **Track:** LOOM · **Date:** 2026-06-02 · **Phase:** DESIGN (building on [vision](2026-06-02-composition-service-vision.md) + [requirements](2026-06-02-composition-requirements.md) + [UX](2026-06-02-composition-studio-ux.md)).
 > **Status:** living — §1 DB schema (V0) approved 2026-06-02. To come: §2 RAG packer · §3 agent loop · §4 prose-judge dims · §5 API contract · §6 sequences.
 > **Scope:** V0 = lore-grounded co-writer **+ visual planning** (Editor · Co-writer · Grounding · Critic · Canon Rules · Outline · Scene Graph · engine · co-writing/stream only). 同人 = V2.
 

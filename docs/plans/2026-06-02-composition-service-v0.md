@@ -1,6 +1,6 @@
 # Composition Service — V0 Implementation Plan
 
-> **Date:** 2026-06-02 · **Phase:** PLAN · **Branch:** `feat/composition-service`
+> **Track:** LOOM · **Date:** 2026-06-02 · **Phase:** PLAN · **Branch:** `feat/composition-service`
 > **Design SSOT:** [composition-design.md](../specs/2026-06-02-composition-design.md) (§1 schema · §2 packer · §3 loop · §4 judge · §5 API · §6 sequences · §7+§11 benchmarks)
 > **Requirements:** [composition-requirements.md](../specs/2026-06-02-composition-requirements.md) · **Vision:** [vision](../specs/2026-06-02-composition-service-vision.md)
 > **Task size:** **XL** (new service, new DB, ≥10 files, side effects: DB + gateway + compose + contract + **one knowledge-service ingest line, §4.6**). Plan file mandatory; `/amaw` recommended for M1 (schema/migrate) + M5 (authz/isolation).
