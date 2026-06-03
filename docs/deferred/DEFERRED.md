@@ -71,7 +71,7 @@
 | LE-067 | 2026-06-03 enrichment closure (S4) | **ProvenancePanel ② abstracted-facts line + gen `model_ref` display.** `model_ref` not reliably in `provenance_json`. Dossier S4. | needs model_ref in provenance | LOW |
 | LE-068 | 2026-06-03 enrichment closure (S7) | **Browser-layer Playwright e2e of the new GUI.** Shared Chrome locked (`--isolated` not configurable here). Covered by 149 FE unit tests + live API e2e (retract↔promote) + prior browser-proven promote flow. Manual recipe in E2E_RESULTS.md. Dossier S7. | when browser free | LOW |
 
-> **Out-of-scope note:** 9 pre-existing `knowledge/BuildGraphDialog.test.tsx` `waitFor` failures surfaced when the enrichment-closure session first ran `npm install` (this worktree's `frontend/` was never installed — excluded from the pnpm workspace). NOT caused by enrichment (diff is enrichment-scoped). For the knowledge owner — dossier S5. Fix: frontend lockfile or fake-timer the debounce tests.
+> **✅ RESOLVED 2026-06-03 (was out-of-scope, fixed on request):** 9 stale failures in `knowledge/BuildGraphDialog.test.tsx`. Root cause was NOT dep-drift — commit `0bf049cd` switched the LLM `<select>` to send `user_model_id` (`value={m.user_model_id}`) but didn't update these tests, which still drove it with the old `provider_model_name` (`'gpt-5'`, not a valid option) → the select stayed empty → the estimate query never enabled → mocks never called. They went unnoticed because this worktree never ran FE tests (no `node_modules`). **Fixed (test-only):** drive the select with `'m1'` (the `user_model_id`) + update the `llm_model` assertions. Full FE suite now 100 files / 813 tests green. Dossier S5.
 
 ## Recently cleared (within 5 sessions)
 
