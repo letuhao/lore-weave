@@ -100,3 +100,34 @@ replay-aggregate
 
 - **Slice 1 (this):** the `replay-aggregate` bin + testable module + unit tests (SQL shape, PK predicate, identifier safety, meta-strip, JSON output) + a PG-gated round-trip integration test (skipped without `LOREWEAVE_TEST_PG_URL`). POST-REVIEW checkpoint.
 - **Slice 2 (next):** Go live-wiring — pgx `RowSource` (`to_jsonb - meta` sample + event_id aggregate resolution), subprocess `AggregateLoader` (invokes this bin), pgx `Persister` (UPSERT `projection_drift_state`), the per-table PK/aggregate-set map, `main` per-reality ticker + `/healthz`/`/readyz`/`/metrics`, reshape the skeleton types to row-centric. Then the foundation live-smoke.
+
+## Slice 3 (147 — D-L3EF-REPLAY-LIVE-SMOKE): the round-trip proof + the bug it found
+
+The PG-gated round-trip test promised in Slice 1 (deferred because Slice 1 had no DB). Lives at `services/world-service/tests/replay_aggregate_live.rs`, gated on `LOREWEAVE_TEST_PG_URL` (mirrors `embedding_live.rs`): applies `0002`+`0006` via `sqlx::raw_sql`, seeds events, produces the "live" projection row **in-process** through the SAME `all_projections()` + `SqlxProjectionWriter` the bin reuses, runs the compiled `replay-aggregate` bin as a subprocess (`env!("CARGO_BIN_EXE_replay-aggregate")` — the exact subprocess the Go loader invokes), and byte-compares the bin's `to_jsonb − meta` payload against the live row's. Skips green when the env is unset.
+
+Cases:
+1. **pc clean** — `pc.spawned`+`pc.moved` → `pc_projection`. Replay payload **==** live row. The core single-aggregate proof.
+2. **pc drift** — tamper the live row (`UPDATE … SET name`); replay is unchanged → payload **≠** live row, and the replayed `name` is the *correct* (pre-tamper) value. Proves the checker catches drift rather than rubber-stamping.
+3. **multi-aggregate invocation** — `session.started`+`session.ended` (session agg) interleaved (by `recorded_at`) with `npc.created` (npc agg) → `npc_session_memory_projection`. Bin invoked with TWO `--aggregate` pairs; the npc event contributes no update to this target (dropped), so it exercises the 2-pair `IN`-list events query + cross-aggregate global ordering against real PG. Replay payload **==** live row (composite PK, Insert→Update sequence).
+
+### The bug the live-smoke surfaced — generic-writer Insert NULLs omitted columns
+
+The generic [`SqlxProjectionWriter`] Insert was `INSERT INTO <t> SELECT * FROM jsonb_populate_record(NULL::<t>, $1)`. `jsonb_populate_record` fills keys absent from the JSON with the base record's value (NULL, since the base is `NULL::<t>`), and `SELECT *` then writes an **explicit NULL into every unlisted column**. For a projection whose Insert omits a `NOT NULL DEFAULT` column — e.g. `npc_session_memory_projection.summary`/`.facts`, which `session.started` does not set — this is a `null value … violates not-null constraint`. **The 073 rebuild of `npc_session_memory_projection` was broken**, latent only because the rebuilder is operator-gated and had no live-smoke until now.
+
+**Fix** (`services/world-service/src/rebuild/writer.rs`): emit a column list of exactly the keys the projection set, so omitted columns fall to their schema DEFAULT:
+
+```text
+INSERT INTO <t> (<keys…>) SELECT <keys…> FROM jsonb_populate_record(NULL::<t>, $1::jsonb)
+```
+
+The keys are now interpolated into SQL, so each is `ensure_ident`-validated (the Insert.row keys were previously trusted to `jsonb_populate_record`; the column-list path mirrors the Update SET path's defense). This is the root-cause fix — it repairs the whole class for every projection, not just `session.started`. (Bonus: a typo'd/phantom Insert key now fails loud — `column … does not exist` — instead of being silently dropped by `SELECT *`, which is the right posture for a recovery tool. It also fixes the same `npc_session_memory_projection` rebuild break in the 073 `rebuilder` bin, partially clearing DEFERRED 143.)
+
+### The SECOND bug the live-smoke surfaced — the bin deadlocked on `Handle::block_on`
+
+The first live run hung indefinitely (>1100 s) right after `read_events`, with the bin's DB connection sitting idle. Root cause: the bin built its runtime with `new_current_thread`, but the reused sync `SqlxProjectionWriter::apply_batch` bridges to async sqlx via `Handle::block_on` on that runtime's handle. **On a current-thread runtime the IO driver is ticked ONLY inside `Runtime::block_on`** — so a `Handle::block_on` future awaiting socket readiness registers interest but is never polled again → deadlock. The bin had never run live (Slice 1 had no DB), so this was latent.
+
+**Fix** (`src/bin/replay-aggregate.rs`): build the runtime with `new_multi_thread().worker_threads(1)` — the IO driver then runs on its own thread, so the writer's `Handle::block_on` makes progress while the main thread blocks. The single-connection temp-table affinity is unchanged: it is a property of the `max_connections(1)` POOL, not the runtime flavor. This matches the `rebuilder` bin, whose author already noted `Handle::block_on` "is sound only across runtimes".
+
+### Cross-aggregate WRITE convergence — still gated (tracked)
+
+A *genuine* cross-aggregate case (both `session.*` AND an `npc.*` event mutating the SAME `npc_session_memory_projection` row) is NOT achievable with the current skeleton projections: `npc.said` emits an Update with a synthetic `interaction_count_increment` field that is not a real column (the generic writer has no read-modify-write/increment concept → it would error), and `npc.memory_updated` is a projection TODO. Slice 3 therefore proves the multi-aggregate *invocation/ordering* path (case 3) but documents WRITE convergence as deferred — it unblocks when those handlers + an increment-aware writer land. Pairs with DEFERRED 146 (no global sequence).

@@ -271,6 +271,27 @@ jobs:
           LOREWEAVE_TEST_PG_URL: postgres://foundation:foundation@localhost:5432/worldservice_smoke?sslmode=disable
           LOREWEAVE_TEST_META_URL: postgres://foundation:foundation@localhost:5432/worldservice_meta?sslmode=disable
         run: cargo test -p world-service --test embedding_live
+      # 147 (D-L3EF-REPLAY-LIVE-SMOKE): the L3.E/F integrity-checker round-trip —
+      # seed events, build the live projection row in-process, run the
+      # `replay-aggregate` bin as a subprocess, byte-compare its `to_jsonb-meta`
+      # payload vs the live row (clean + drift + multi-aggregate cases). The Rust
+      # test applies the per-reality migrations (0002 + 0006) itself via
+      # sqlx::raw_sql, so we only create the empty DB here. 0002 DROPs+recreates
+      # `events`, so this MUST be a dedicated DB (not shared with the embedding
+      # smoke DB above). Unblocks the 073 rebuild gate (141).
+      - name: create replay-aggregate smoke DB
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql() { PGPASSWORD=foundation command psql -h localhost -p 5432 -U foundation "$@"; }
+          exists=$(psql -d foundation -tAc "SELECT 1 FROM pg_database WHERE datname='replay_smoke'" || true)
+          if [ "$exists" != "1" ]; then
+            psql -d foundation -v ON_ERROR_STOP=1 -c "CREATE DATABASE replay_smoke;"
+          fi
+      - name: cargo test replay-aggregate live-smoke
+        env:
+          LOREWEAVE_TEST_PG_URL: postgres://foundation:foundation@localhost:5432/replay_smoke?sslmode=disable
+        run: cargo test -p world-service --test replay_aggregate_live
 
   secrets:
     name: Secret scan (gitleaks)

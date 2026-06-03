@@ -67,8 +67,17 @@ fn build_stmt(target_table: &str, update: &ProjectionUpdate) -> Result<(String, 
         ProjectionUpdate::Insert { row, meta, .. } => {
             let mut payload = as_object(row, "Insert.row")?;
             merge_meta(&mut payload, meta);
+            // INSERT only the columns the projection actually set, so columns
+            // it OMITS fall to their schema DEFAULT. A bare `SELECT *` over
+            // `jsonb_populate_record(NULL::t, …)` writes an explicit NULL into
+            // every unlisted column, which fails for `NOT NULL DEFAULT` columns
+            // the projection does not populate (e.g. npc_session_memory_projection
+            // .summary / .facts, which session.started omits) — surfaced by the
+            // L3.E/F live-smoke (147). The keys are now interpolated into SQL,
+            // so each is identifier-validated (mirrors the Update SET path).
+            let cols = build_column_list(&payload)?;
             let sql = format!(
-                "INSERT INTO {t} SELECT * FROM jsonb_populate_record(NULL::{t}, $1::jsonb)"
+                "INSERT INTO {t} ({cols}) SELECT {cols} FROM jsonb_populate_record(NULL::{t}, $1::jsonb)"
             );
             Ok((sql, Value::Object(payload)))
         }
@@ -181,6 +190,24 @@ fn merge_meta(map: &mut Map<String, Value>, meta: &VerificationMeta) {
     map.insert("applied_at".into(), Value::String(meta.applied_at.clone()));
 }
 
+/// `col1, col2, ...` for an INSERT column list, in the payload's key order.
+/// Validates every identifier (the names are interpolated into SQL) and the
+/// SAME string is reused for both the `INSERT (…)` target list and the
+/// `SELECT …` source list, so the two are positionally consistent by
+/// construction. Errors on an empty payload (an Insert with no columns is a
+/// projection bug).
+fn build_column_list(payload: &Map<String, Value>) -> Result<String, String> {
+    if payload.is_empty() {
+        return Err("rebuilder: Insert.row produced no columns".into());
+    }
+    let mut parts = Vec::with_capacity(payload.len());
+    for c in payload.keys() {
+        ensure_ident(c)?;
+        parts.push(c.as_str());
+    }
+    Ok(parts.join(", "))
+}
+
 /// `col = r.col, ...` for an UPDATE SET list. Validates every identifier.
 fn build_assignment_list(cols: &[&str], sep: &str) -> Result<String, String> {
     let mut parts = Vec::with_capacity(cols.len());
@@ -232,21 +259,55 @@ mod tests {
     }
 
     #[test]
-    fn insert_sql_uses_jsonb_populate_record() {
+    fn insert_sql_lists_columns_so_omitted_ones_take_their_default() {
         let u = ProjectionUpdate::Insert {
             table: "pc_projection".into(),
             row: json!({"pc_id": Uuid::from_u128(2).to_string(), "name": "Aria"}),
             meta: meta(),
         };
         let (sql, payload) = build_stmt("pc_projection", &u).unwrap();
-        assert_eq!(
-            sql,
-            "INSERT INTO pc_projection SELECT * FROM jsonb_populate_record(NULL::pc_projection, $1::jsonb)"
+        // Column-list INSERT (NOT `SELECT *`): unlisted columns fall to their
+        // schema DEFAULT instead of an explicit NULL. The (…) target list and
+        // the SELECT source list are the identical column string.
+        let prefix = "INSERT INTO pc_projection (";
+        assert!(sql.starts_with(prefix), "{sql}");
+        let cols = &sql[prefix.len()..sql.find(')').unwrap()];
+        assert!(
+            sql.contains(&format!(
+                ") SELECT {cols} FROM jsonb_populate_record(NULL::pc_projection, $1::jsonb)"
+            )),
+            "target + source column lists must match: {sql}"
         );
+        // Every set column (projection fields + the 3 meta cols) is present.
+        for c in [
+            "pc_id",
+            "name",
+            "event_id",
+            "aggregate_version",
+            "applied_at",
+        ] {
+            assert!(
+                cols.split(", ").any(|x| x == c),
+                "missing column {c}: {cols}"
+            );
+        }
         // meta stamped into payload
         assert_eq!(payload["event_id"], json!(Uuid::from_u128(1).to_string()));
         assert_eq!(payload["aggregate_version"], json!(7));
         assert_eq!(payload["name"], json!("Aria"));
+    }
+
+    #[test]
+    fn insert_rejects_unsafe_row_key_identifier() {
+        // Insert.row keys are now interpolated into the column list, so an
+        // unsafe key must be rejected (defense in depth — keys come from
+        // trusted projection code, but the writer validates regardless).
+        let u = ProjectionUpdate::Insert {
+            table: "pc_projection".into(),
+            row: json!({"pc_id; DROP TABLE x": "1"}),
+            meta: meta(),
+        };
+        assert!(build_stmt("pc_projection", &u).is_err());
     }
 
     #[test]

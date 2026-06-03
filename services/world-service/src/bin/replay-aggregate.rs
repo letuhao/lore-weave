@@ -170,12 +170,24 @@ impl Invocation {
 /// the row. Returns a ReplayOutput; any infra/replay failure is an `Err(String)`
 /// that the caller turns into a `status:"error"` (SKIP) output.
 fn execute(inv: &Invocation) -> Result<ReplayOutput, String> {
-    // Single-threaded, single-connection: temp tables are connection-local, so
+    // Single-CONNECTION (not single-thread): temp tables are connection-local, so
     // the CREATE TEMP, the writer's per-batch transactions, and the final SELECT
     // MUST all run on the SAME physical connection. A `max_connections(1)` pool
     // guarantees that (every acquire returns the one connection; sqlx does not
-    // reset the session on release).
-    let db_rt = tokio::runtime::Builder::new_current_thread()
+    // reset the session on release) — that affinity is a property of the POOL,
+    // independent of the runtime flavor.
+    //
+    // The runtime MUST be MULTI-thread: the reused `SqlxProjectionWriter` is a
+    // sync `ProjectionWriter`, so `apply_batch` bridges to async sqlx via
+    // `Handle::block_on` on this runtime's handle. On a `current_thread` runtime
+    // the IO driver is ticked ONLY inside `Runtime::block_on`, so a
+    // `Handle::block_on` future that awaits socket readiness never wakes →
+    // deadlock (surfaced by the 147 live-smoke; matches the rebuilder bin's
+    // "Handle::block_on is sound only across runtimes" note). A multi-thread
+    // runtime drives the IO driver on its own thread, so the writer's
+    // `Handle::block_on` makes progress while the main thread blocks.
+    let db_rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
         .enable_all()
         .build()
         .map_err(|e| format!("runtime: {e}"))?;
