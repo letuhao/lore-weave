@@ -49,6 +49,7 @@ __all__ = [
     "resolve_dimensions",
     "label_for",
     "kind_label_for",
+    "is_zh",
     "rank_score",
     "rank_gaps",
 ]
@@ -242,6 +243,13 @@ _KIND_LABELS: dict[str, dict[str, str]] = {
     "event": {"zh": "事件", "en": "event"},
     GENERIC_KIND: {"zh": "条目", "en": "entry"},
 }
+
+
+def is_zh(language: str) -> bool:
+    """Whether to render a prompt in Chinese. ``auto``/unknown → NOT zh (English is
+    the neutral default — de-bias: a profile-less book is NOT assumed Chinese).
+    Lives here (pure, leaf module) so the prompt builders share it without a cycle."""
+    return (language or "").strip().lower().startswith("zh")
 
 
 def kind_label_for(kind: str, language: str) -> str:

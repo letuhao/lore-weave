@@ -37,16 +37,10 @@ from app.generation.provenance import (
     make_enriched_fact,
 )
 from app.db.book_profile import NEUTRAL_PROFILE, BookProfile
-from app.gaps.model import kind_label_for
+from app.gaps.model import is_zh, kind_label_for
 from app.generation.repair import RepairError, repair_generation
 from app.retrieval.strategy import GroundedProposal, GroundingRef
 from app.strategies.base import StrategyContext, Technique
-
-
-def _is_zh(language: str) -> bool:
-    """Whether to render the prompt in Chinese. ``auto``/unknown → NOT zh (English
-    is the neutral default — de-bias: a profile-less book is NOT assumed Chinese)."""
-    return (language or "").strip().lower().startswith("zh")
 
 __all__ = [
     "CompleteFn",
@@ -97,7 +91,7 @@ def build_generation_prompt(
     kind_label = kind_label or kind_label_for(proposal.entity_kind, profile.language)
     worldview = (profile.worldview or "").strip()
 
-    if _is_zh(profile.language):
+    if is_zh(profile.language):
         # Chinese template (Fengshen demo path). worldview/voice interpolated.
         keys_csv = "、".join(dims)
         wv = f"忠于{worldview}的" if worldview else ""

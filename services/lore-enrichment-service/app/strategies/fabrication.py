@@ -53,7 +53,8 @@ from typing import Awaitable, Callable, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.gaps.model import Gap
+from app.db.book_profile import NEUTRAL_PROFILE, BookProfile
+from app.gaps.model import Gap, is_zh, kind_label_for
 from app.generation.provenance import (
     GENERATION_CONFIDENCE,
     EnrichedFact,
@@ -184,37 +185,67 @@ def _neighbor_block(neighbors: Sequence[NeighborFact]) -> str:
 def build_fabrication_prompt(
     proposal: GroundedProposal,
     neighbors: Sequence[NeighborFact],
+    profile: BookProfile = NEUTRAL_PROFILE,
+    kind_label: str | None = None,
 ) -> str:
-    """Build the canon-grounded FABRICATION prompt (Chinese, source-faithful).
+    """Build the canon-grounded FABRICATION prompt (BOOK-AWARE, de-bias C1).
 
     Distinct from the C11 retrieval-generation prompt: that one FORBIDS anything
-    the excerpts don't directly support; this one PERMITS plausible extrapolation
-    BUT bounds it hard — the fabrication must (1) stay consistent with the cited
-    corpus excerpts + the KG neighbourhood, (2) never CONTRADICT them, (3) respect
-    the locked 商周 / 封神演义 era (no later dynasties / modern tech / foreign
-    faiths — the C12 anachronism frame), and (4) be Chinese in the original tone.
-    The prompt contains NO model name and NO provider-specific tokens.
-    """
+    the excerpts don't support; this one PERMITS plausible extrapolation BUT bounds
+    it hard — (1) stay consistent with the cited grounding + KG neighbourhood, (2)
+    never contradict them, (3) respect the book's ``era_policy`` IF set (omitted
+    when NULL — a modern/sci-fi book has no era restriction), (4) write in the
+    book's language/voice. Worldview/language/era/voice + the kind label come from
+    the per-book ``profile`` (NOT hardcoded 封神/商周/中文/地点). NO model name."""
     dims = list(proposal.dimensions.keys())
-    keys_csv = "、".join(dims)
     json_skeleton = ", ".join(f'"{d}": "……"' for d in dims)
+    kind_label = kind_label or kind_label_for(proposal.entity_kind, profile.language)
+    worldview = (profile.worldview or "").strip()
+    era = (profile.era_policy or "").strip()
+    grounding = _grounding_block(proposal.grounding)
+    neighbor = _neighbor_block(neighbors)
+
+    if is_zh(profile.language):
+        keys_csv = "、".join(dims)
+        wv = f"深谙{worldview}的" if worldview else ""
+        voice = (profile.voice or "").strip()
+        voice_clause = f"，{voice}" if voice else "，须与既有设定语气一致"
+        rules = [
+            "必须与下列语料与知识图谱关联信息保持一致，严禁与其相矛盾",
+            "仅可在上述依据之上做合情合理的延伸想象" + (f"，须符合{era}的时代背景" if era else ""),
+            f"内容必须为中文{voice_clause}",
+            "仅输出一个 JSON 对象，键为上述维度名，值为对应中文描述，不要输出任何额外说明",
+        ]
+        rules_block = "\n".join(f"{i + 1}. {r}；" for i, r in enumerate(rules))
+        return (
+            f"你是一位{wv}世界构建师。\n"
+            f"{kind_label}「{proposal.canonical_name}」在设定中被提及却缺乏细节。"
+            f"请在忠于既有设定的前提下，为其合理地「补全·虚构」以下维度：{keys_csv}。\n"
+            f"这是『有据虚构』而非凭空臆造，须遵守：\n{rules_block}\n\n"
+            f"语料依据：\n{grounding}\n\n"
+            f"知识图谱关联（同一世界观内的既有设定）：\n{neighbor}\n\n"
+            f"请输出 JSON：{{{json_skeleton}}}"
+        )
+
+    keys_csv = ", ".join(dims)
+    lang_name = profile.language if profile.language not in ("", "auto") else "the book's language"
+    setting = f"deeply versed in this work's setting ({worldview})" if worldview else "a worldbuilder"
+    voice = (profile.voice or "").strip()
+    voice_clause = f" ({voice})" if voice else ""
+    era_clause = f" Keep it consistent with the era: {era}." if era else ""
     return (
-        f"你是一位深谙《封神演义》世界观的世界构建师。\n"
-        f"地点「{proposal.canonical_name}」在原著中被提及却缺乏细节。"
-        f"请在忠于原著与既有设定的前提下，为其合理地「补全·虚构」以下维度："
-        f"{keys_csv}。\n"
-        f"这是『有据虚构』而非凭空臆造，须遵守：\n"
-        f"1. 必须与下列原著语料与知识图谱关联信息保持一致，"
-        f"严禁与其相矛盾；\n"
-        f"2. 仅可在上述依据之上做合情合理的延伸想象，"
-        f"须符合商周·封神纪元的时代背景（不得出现后世朝代、近现代器物、外来宗教等）；\n"
-        f"3. 内容必须为中文，文言-白话皆可，须与原著语气一致；\n"
-        f"4. 仅输出一个 JSON 对象，键为上述维度名，值为对应中文描述，"
-        f"不要输出任何额外说明。\n\n"
-        f"原著与文化语料依据：\n{_grounding_block(proposal.grounding)}\n\n"
-        f"知识图谱关联（同一世界观内的既有设定）：\n"
-        f"{_neighbor_block(neighbors)}\n\n"
-        f"请输出 JSON：{{{json_skeleton}}}"
+        f"You are {setting}.\n"
+        f"The {kind_label} «{proposal.canonical_name}» is mentioned but under-described. "
+        f"Faithful to the existing setting, plausibly FABRICATE the following "
+        f"dimensions: {keys_csv}.\n"
+        f"This is GROUNDED extrapolation, not free invention. Rules:\n"
+        f"1. Stay consistent with the grounding + KG facts below; never contradict them;\n"
+        f"2. Extend only plausibly beyond that evidence.{era_clause}\n"
+        f"3. Write in {lang_name}{voice_clause};\n"
+        f"4. Output ONLY a single JSON object keyed by the dimension names, no commentary.\n\n"
+        f"Evidence:\n{grounding}\n\n"
+        f"Knowledge-graph context:\n{neighbor}\n\n"
+        f"Output JSON: {{{json_skeleton}}}"
     )
 
 
@@ -331,7 +362,7 @@ class FabricationStrategy(EnrichmentStrategy):
 
         neighbors = await self._read_neighbors(proposal.canonical_name, context)
         source_refs = _source_refs_from_grounding(proposal.grounding)
-        prompt = build_fabrication_prompt(proposal, neighbors)
+        prompt = build_fabrication_prompt(proposal, neighbors, context.profile)
         raw = await self._complete(prompt, context)
 
         try:

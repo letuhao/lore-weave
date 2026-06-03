@@ -129,8 +129,20 @@ class _FakeRetrieval:
         return list(self._proposals)
 
 
+from app.db.book_profile import BookProfile
+
+# de-bias C1: the Fengshen profile (demo seed equivalent) — re-cook prompts are now
+# book-aware, so the zh assertions need it (worldview→封神, era→商周).
+_FENGSHEN = BookProfile(
+    language="zh", worldview="《封神演义》世界观", era_policy="商周·封神纪元",
+    voice="文言-白话皆可，须与原著语气一致",
+)
+
+
 def _ctx(model_ref="gen-ref-uuid") -> StrategyContext:
-    return StrategyContext(user_id=_USER, project_id=_PROJECT, model_ref=model_ref)
+    return StrategyContext(
+        user_id=_USER, project_id=_PROJECT, model_ref=model_ref, profile=_FENGSHEN
+    )
 
 
 def _complete(text: str):
@@ -477,7 +489,7 @@ async def test_contradictory_recook_is_flagged():
 # 6. prompt: Chinese, re-contextualise (distinct from C11/C16), era-bound
 # ═══════════════════════════════════════════════════════════════════════════════
 def test_prompt_is_chinese_and_recontextualises():
-    prompt = build_recook_prompt(_proposal())
+    prompt = build_recook_prompt(_proposal(), None, _FENGSHEN)
     assert "陳塘關" in prompt
     for d in _DIMS:
         assert d in prompt

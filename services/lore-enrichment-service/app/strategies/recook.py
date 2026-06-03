@@ -57,7 +57,8 @@ from typing import Awaitable, Callable, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.gaps.model import Gap
+from app.db.book_profile import NEUTRAL_PROFILE, BookProfile
+from app.gaps.model import Gap, is_zh, kind_label_for
 from app.generation.provenance import (
     GENERATION_CONFIDENCE,
     EnrichedFact,
@@ -205,46 +206,74 @@ def build_abstract_prompt(canonical_name: str, grounding: Sequence[GroundingRef]
     )
 
 
-def build_recook_prompt(proposal: GroundedProposal, source_block: str | None = None) -> str:
-    """Build the RE-COOK prompt (Chinese, source-faithful).
+def build_recook_prompt(
+    proposal: GroundedProposal,
+    source_block: str | None = None,
+    profile: BookProfile = NEUTRAL_PROFILE,
+    kind_label: str | None = None,
+) -> str:
+    """Build the RE-COOK prompt (BOOK-AWARE, de-bias C1).
 
-    ``source_block`` is the reference material to re-contextualise. Copyright-safety
-    layer ② passes the ABSTRACTED fact bullets (from :func:`build_abstract_prompt`)
-    so the generator never sees the source prose; when ``None`` it falls back to the
-    raw (injection-neutralized) grounding excerpts (the ③ output guard backstops
-    either path).
-
-    Distinct from the C11 retrieval-generation prompt (fill only what the excerpts
-    directly support) and the C16 fabrication prompt (extrapolate within canon):
-    this one instructs the model to take the REAL reference material below
-    (history / news / encyclopedic text from a LICENSED source) and
-    RE-CONTEXTUALISE / ADAPT it into the 商周 · 封神演义 fictional setting — the
-    real event/place/custom becomes source-faithful 封神 lore. It BOUNDS the
-    re-cook hard: (1) re-cast into the 商周/封神 era, never carry over later
-    dynasties / modern tech / foreign faiths (the C12 anachronism frame); (2)
-    stay consistent with the 封神演义 worldview; (3) Chinese, original tone; (4)
-    JSON only. NO model name, NO provider-specific tokens.
-    """
+    ``source_block`` is the reference material to re-contextualise (the ② abstracted
+    fact bullets, or the raw neutralized excerpts when ``None``). The model takes the
+    REAL licensed material and RE-CONTEXTUALISES it into THIS BOOK's setting
+    (``profile.worldview``) — bounded by the book's ``era_policy`` IF set (omitted
+    when NULL — a modern setting needs no era re-cast). Worldview/era/language/voice
+    + the kind label come from the per-book ``profile`` (NOT hardcoded 商周/封神/中文).
+    NO model name, NO provider-specific tokens."""
     dims = list(proposal.dimensions.keys())
-    keys_csv = "、".join(dims)
     json_skeleton = ", ".join(f'"{d}": "……"' for d in dims)
+    kind_label = kind_label or kind_label_for(proposal.entity_kind, profile.language)
+    worldview = (profile.worldview or "").strip()
+    era = (profile.era_policy or "").strip()
+    material = source_block if source_block is not None else _grounding_block(proposal.grounding)
+
+    if is_zh(profile.language):
+        keys_csv = "、".join(dims)
+        wv = worldview or "本作"
+        voice = (profile.voice or "").strip()
+        voice_clause = f"，{voice}" if voice else "，须与既有设定语气一致"
+        rules = [
+            f"须以下列真实材料为蓝本进行改写、移植，使其成为契合{wv}的设定",
+            ("必须重置于" + era + "的时代背景，严禁保留原材料中的时代错置内容") if era
+            else "可自由移植，无特定时代限制",
+            f"须与{wv}既有世界观保持一致，不得自相矛盾",
+            f"内容必须为中文{voice_clause}",
+            "仅输出一个 JSON 对象，键为上述维度名，值为对应中文描述，不要输出任何额外说明",
+        ]
+        rules_block = "\n".join(f"{i + 1}. {r}；" for i, r in enumerate(rules))
+        return (
+            f"你是一位深谙{wv}世界观的世界构建师。\n"
+            f"下面给出关于「{proposal.canonical_name}」的一批真实参考材料"
+            f"（取自经授权或公有领域的文献）。\n"
+            f"请将这些真实材料『再创作·再语境化』，融入{wv}的虚构世界，"
+            f"为「{proposal.canonical_name}」补全以下维度：{keys_csv}。\n"
+            f"这是『据实再创作』而非凭空臆造，须遵守：\n{rules_block}\n\n"
+            f"参考要点（授权/公有领域来源提炼的事实，待再语境化）：\n{material}\n\n"
+            f"请输出 JSON：{{{json_skeleton}}}"
+        )
+
+    keys_csv = ", ".join(dims)
+    wv = worldview or "this work"
+    lang_name = profile.language if profile.language not in ("", "auto") else "the book's language"
+    voice = (profile.voice or "").strip()
+    voice_clause = f" ({voice})" if voice else ""
+    era_clause = (f"2. Re-cast it into the era: {era}; drop anachronisms from the source;\n"
+                  if era else "2. Adapt it freely; no specific era restriction;\n")
     return (
-        f"你是一位深谙《封神演义》世界观的世界构建师。\n"
-        f"下面给出关于「{proposal.canonical_name}」的一批真实参考材料"
-        f"（取自经授权或公有领域的历史·地理·文化文献）。\n"
-        f"请将这些真实材料『再创作·再语境化』，融入商周·封神演义的虚构世界，"
-        f"为「{proposal.canonical_name}」补全以下维度：{keys_csv}。\n"
-        f"这是『据实再创作』而非凭空臆造，须遵守：\n"
-        f"1. 须以下列真实材料为蓝本进行改写、移植，使其成为契合封神演义的设定；\n"
-        f"2. 必须重置于商周·封神纪元的时代背景，"
-        f"严禁保留原材料中的后世朝代、近现代器物、外来宗教等时代错置内容；\n"
-        f"3. 须与《封神演义》既有世界观保持一致，不得自相矛盾；\n"
-        f"4. 内容必须为中文，文言-白话皆可，须与原著语气一致；\n"
-        f"5. 仅输出一个 JSON 对象，键为上述维度名，值为对应中文描述，"
-        f"不要输出任何额外说明。\n\n"
-        f"参考要点（授权/公有领域来源提炼的事实，待再语境化）：\n"
-        f"{source_block if source_block is not None else _grounding_block(proposal.grounding)}\n\n"
-        f"请输出 JSON：{{{json_skeleton}}}"
+        f"You are a worldbuilder deeply versed in the setting of {wv}.\n"
+        f"Below is real reference material about «{proposal.canonical_name}» "
+        f"(from licensed / public-domain sources).\n"
+        f"RE-CONTEXTUALISE this real material into the fictional world of {wv}, "
+        f"filling the following dimensions for the {kind_label}: {keys_csv}.\n"
+        f"This is grounded re-creation, not free invention. Rules:\n"
+        f"1. Use the material below as the blueprint, adapted to fit {wv};\n"
+        f"{era_clause}"
+        f"3. Stay consistent with {wv}; do not contradict it;\n"
+        f"4. Write in {lang_name}{voice_clause};\n"
+        f"5. Output ONLY a single JSON object keyed by the dimension names, no commentary.\n\n"
+        f"Reference facts (to re-contextualise):\n{material}\n\n"
+        f"Output JSON: {{{json_skeleton}}}"
     )
 
 
@@ -406,7 +435,7 @@ class ReCookStrategy(EnrichmentStrategy):
         # excerpts on any abstraction failure — the ③ output regurgitation guard
         # backstops either path.
         source_block = await self._abstract_facts(proposal, context)
-        prompt = build_recook_prompt(proposal, source_block)
+        prompt = build_recook_prompt(proposal, source_block, context.profile)
         raw = await self._complete(prompt, context)
 
         try:
