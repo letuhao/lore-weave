@@ -1,7 +1,7 @@
 # LOOM — Track Charter & Session Handoff
 
 > **Track:** **LOOM** — the lore-grounded **co-writer** + its **Canon Model** foundation.
-> **Last updated:** 2026-06-04 · **Branch:** `feat/composition-service` · **HEAD:** `949299cf`+CM1 (see latest commit) · **Session:** LOOM-01 (CM1 built)
+> **Last updated:** 2026-06-04 · **Branch:** `feat/composition-service` · **HEAD:** CM1+CM3a (see latest commit) · **Session:** LOOM-02 (CM1+CM3a built)
 > **Workflow:** 12-phase **v2.2 human-in-loop** (PO checkpoint at CLARIFY-end + POST-REVIEW). `/amaw` **opt-in** for: CM1 (schema/migration), CM3 (cross-service contract cutover), composition M1 (schema), M5 (authz/isolation).
 > **Isolated from** the `lore-enrichment/*` track — LOOM **never touches `services/lore-enrichment-service/`** (siblings, not deps).
 
@@ -32,15 +32,18 @@ Two parts, built in order:
 ## ✅ CM1 DONE (LOOM-01, 2026-06-04) — book-service editorial lifecycle
 Shipped (book-service only, additive): `chapters.editorial_status` (draft|published) + `published_revision_id` (FK ON DELETE SET NULL) + `canon_model_migration` marker table + marker-gated one-time `backfillSQL`; `publishChapter`/`unpublishChapter` handlers + routes; `chapter.published{book_id,chapter_id,revision_id}` / `chapter.unpublished` events; import → published + pinned revision; editorial fields on `getChapterByID` + `getInternalBookChapter`. 12-phase v2.2 + `/amaw`: design adversary R1 BLOCK→R2 APPROVED_WITH_WARNINGS, code adversary R1 APPROVED_WITH_WARNINGS — all folded (down-migration gate, publish RETURNING+FOR UPDATE, import NULL-pointer + error-check, marker-gated backfill, stable tiebreak). `go build` + `go test` (migrate/api/config) green. CLARIFY PO: import=published · /unpublish ships · edit-after-publish stays published · always-snapshot · publish-empty→404 · no in_review.
 
-## ▶ NEXT SESSION (LOOM-02)
-**CM3a — book-service internal revision-text endpoint** (`/loom CM3a`; small, `/amaw` not required). CM1 already emits `chapter.published{revision_id}` + the publish handler; CM3a adds the read seam the worker needs:
-- `GET /internal/books/{book_id}/chapters/{chapter_id}/revisions/{revision_id}/text` → `text_content` (project from `chapter_revisions.body` like `getRevision` `server.go:1640-1643`), `requireInternalToken`.
-- **IDOR:** verify `revision ∈ chapter ∈ book` → 404 on mismatch.
-- Then **CM2** (relay confirm — no-op, verified generic) → **CM3b** (knowledge queue + worker-ai coalescing drainer + pinned-revision + retract-before-reextract + B7 filter) → CM3c → CM4 → CM-FE → CM5.
+## ✅ CM3a DONE (LOOM-02, 2026-06-04) — internal revision-text endpoint
+Shipped (book-service only): `GET /internal/books/{book_id}/chapters/{chapter_id}/revisions/{revision_id}/text` under `requireInternalToken`; IDOR-guarded (`rv.id+rv.chapter_id+c.book_id+lifecycle=active` → cross 404); plain-text projection (`->>'_text'`, ordered, null-safe). 12-phase v2.2 (S, self-review) + **/review-impl** (0 HIGH; folded MED-2 caller-gate contract comment, LOW-2 trim `body` from response, MED-1 tightened the live-smoke to require the IDOR-negative case; accepted LOW-1 body_format='json' / LOW-3 projection-swallow). `go build`+`go vet` green. **Contract:** serves ANY revision by id — canon=published depends on CM3b passing `chapters.published_revision_id`.
+
+## ▶ NEXT SESSION (LOOM-03)
+**CM2 — worker-infra relay confirm (no-op)** then **CM3b** (the load-bearing one). `/loom CM2` then `/loom CM3b`.
+- **CM2:** verify `chapter.published`/`chapter.unpublished` reach `loreweave:events:chapter` (relay is generic by `aggregate_type` — `outbox_relay.go:149-205`; expect zero code change, just confirm). Quick.
+- **CM3b** (⚠️ `/amaw` — the cutover): knowledge `chapter.published`→queue `extraction_pending`(+revision_id col); worker-ai **per-project coalescing drainer** (respect the one-active-job/project unique index — NO job-per-event), single-chapter scope, fetch pinned revision via **CM3a's endpoint**; **wire `remove_evidence_for_source`+`cleanup_zero_evidence` before re-extract** (canon-drift fix, closes D-CM1-UNPUBLISH-RETRACT on `chapter.unpublished`); fix B7 chat-drainer `aggregate_type` filter. See plan §8.2/§8.3 CM3b.
+- Then CM3c → CM4 → CM-FE → CM5.
 
 ## Deferred / watch
 - **D-CM1-UNPUBLISH-RETRACT** — `/unpublish` flips status but does NOT retract already-extracted KG facts; **CM3b** wires `remove_evidence_for_source` on `chapter.unpublished`. Until then: temporary canon drift on unpublish.
-- **D-CANON-CYCLE0-LIVE-SMOKE** — book-service has no DB-backed Go test harness; CM1 publish/unpublish tx + backfill one-time property + NULL-pointer scan are string-tested only → need a live-smoke (publish→revision pinned→event; re-publish; backfill double-run; unpublish) at stack-up, OR keep deferred. (Also CM3b proves publish→extraction end-to-end.)
+- **D-CANON-CYCLE0-LIVE-SMOKE** — book-service has no DB-backed Go test harness; CM1 publish/unpublish tx + backfill one-time property + NULL-pointer scan + **CM3a revision-text endpoint** are string/build-tested only → need a live-smoke at stack-up, OR keep deferred. **Required assertions:** publish→revision pinned→event; re-publish; backfill double-run; unpublish; **CM3a: revision-text returns the published revision's text AND a cross-book/cross-chapter revision_id → 404 (the IDOR-negative, review-impl MED-1 — not just happy path).** (Also CM3b proves publish→extraction end-to-end.)
 - L5 long-term-summary lens (no HTTP read endpoint) — future knowledge surface.
 - `chronological_order` quality for non-ISO in-world dates — extraction-quality follow-up; reading-order is the fallback.
 - Composition V1/V2 (branches/takes, autonomous loop, consistency sweep, 同人) — post-V0.

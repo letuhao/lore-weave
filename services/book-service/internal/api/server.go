@@ -151,6 +151,10 @@ func (s *Server) Router() http.Handler {
 		// for per-leaf orchestration. Spec D8 + scenes.go.
 		r.Get("/books/{book_id}/chapters/{chapter_id}/scenes", s.getInternalScenesByChapter)
 		r.Get("/books/{book_id}/chapters/{chapter_id}/draft-text", s.getInternalChapterDraftText)
+		// Canon Model CM3a — worker-ai (CM3b) fetches the PINNED published
+		// revision's text to extract canon at the published snapshot (not the
+		// live draft). Internal-token; IDOR-guarded (revision ∈ chapter ∈ book).
+		r.Get("/books/{book_id}/chapters/{chapter_id}/revisions/{revision_id}/text", s.getInternalChapterRevisionText)
 		// P3 D-P3-EXTRACTION-CALLER-WIRE-UP — worker-ai consumes this to
 		// build the HierarchyPathsPayload it forwards to knowledge-service's
 		// /persist-pass2 (so the receiving side can enqueue summaries).
@@ -2058,6 +2062,65 @@ FROM chapter_blocks WHERE chapter_id=$1
 		"text_content":      textContent,
 		"editorial_status":  editorialStatus,
 		"published_revision_id": publishedRevID,
+	})
+}
+
+// getInternalChapterRevisionText — Canon Model CM3a. Returns a SPECIFIC
+// revision's plain text for the canonization worker (CM3b), which extracts the
+// PINNED published revision rather than the live draft (avoids the draft-drift
+// race). Internal-token only (book-scoped; caller validates ownership per
+// SEC2). IDOR-guarded: the join revision→chapter→book means a revision_id from
+// another chapter/book 404s. text_content is projected plain-and-unquoted from
+// the revision's TipTap JSONB (`->>'_text'`), unlike getRevision's quoted
+// jsonb_path_query form — extraction wants clean text.
+func (s *Server) getInternalChapterRevisionText(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	chapterID, ok := parseUUIDParam(w, r, "chapter_id")
+	if !ok {
+		return
+	}
+	revID, ok := parseUUIDParam(w, r, "revision_id")
+	if !ok {
+		return
+	}
+	// CONTRACT (review-impl MED-2): serves ANY revision of the chapter, NOT only
+	// the published one — it does not gate on chapters.published_revision_id.
+	// canon=published depends on the CALLER (CM3b worker) passing
+	// chapters.published_revision_id, never an arbitrary/draft-era revision id.
+	// Generic-by-id is intentional; the published-gate is the caller's (SEC2).
+	var body json.RawMessage
+	var bodyFormat string
+	err := s.pool.QueryRow(r.Context(), `
+SELECT rv.body, COALESCE(rv.body_format,'json')
+FROM chapter_revisions rv
+JOIN chapters c ON c.id=rv.chapter_id
+WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3 AND c.lifecycle_state='active'
+`, revID, chapterID, bookID).Scan(&body, &bodyFormat)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "REVISION_NOT_FOUND", "revision not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "REVISION_NOT_FOUND", "failed to load revision")
+		return
+	}
+	var textContent *string
+	_ = s.pool.QueryRow(r.Context(), `
+SELECT string_agg(elem->>'_text', E'\n\n' ORDER BY ord)
+FROM jsonb_array_elements(($1)::jsonb -> 'content') WITH ORDINALITY AS x(elem, ord)
+WHERE elem->>'_text' IS NOT NULL
+`, body).Scan(&textContent)
+	// body JSONB intentionally NOT returned (review-impl LOW-2): the extraction
+	// consumer (CM3b) needs only text_content; the full doc would be dead weight.
+	writeJSON(w, http.StatusOK, map[string]any{
+		"revision_id":  revID,
+		"chapter_id":   chapterID,
+		"book_id":      bookID,
+		"body_format":  bodyFormat,
+		"text_content": textContent,
 	})
 }
 
