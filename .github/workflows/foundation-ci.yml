@@ -311,6 +311,23 @@ jobs:
         env:
           LOREWEAVE_TEST_PG_URL: postgres://foundation:foundation@localhost:5432/rebuild_smoke?sslmode=disable
         run: cargo test -p world-service --test rebuilder_live
+      # 152 (D-IC-PGSOURCE-SCAN-LIVE-SMOKE): the integrity-checker monthly cursor
+      # (pgsource.ScanRows) round-trip — keyset pagination visits every row once +
+      # the ErrOwnerPruned skip path. Build-tagged `integration`, applies 0002+0006
+      # itself + TRUNCATEs pc_projection, so it needs its OWN DB (scan_smoke).
+      - name: create pgsource scan smoke DB
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql() { PGPASSWORD=foundation command psql -h localhost -p 5432 -U foundation "$@"; }
+          exists=$(psql -d foundation -tAc "SELECT 1 FROM pg_database WHERE datname='scan_smoke'" || true)
+          if [ "$exists" != "1" ]; then
+            psql -d foundation -v ON_ERROR_STOP=1 -c "CREATE DATABASE scan_smoke;"
+          fi
+      - name: go test pgsource ScanRows live-smoke
+        env:
+          LOREWEAVE_TEST_PG_URL: postgres://foundation:foundation@localhost:5432/scan_smoke?sslmode=disable
+        run: go -C services/integrity-checker test -tags=integration -run TestScanRows ./pkg/pgsource/...
 
   secrets:
     name: Secret scan (gitleaks)
