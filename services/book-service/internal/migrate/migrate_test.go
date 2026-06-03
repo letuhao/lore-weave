@@ -97,3 +97,69 @@ func TestSchemaP1AdditionsAreIdempotent(t *testing.T) {
 		t.Fatal("P1 region must not contain DO $$ block — R-SELF-1 mandates no backfill")
 	}
 }
+
+// ── Canon Model CM1 (editorial lifecycle) - 2026-06-04 ──────────────────────
+
+func TestSchemaAddsCanonEditorialColumns(t *testing.T) {
+	for _, frag := range []string{
+		"ALTER TABLE chapters ADD COLUMN IF NOT EXISTS editorial_status TEXT NOT NULL DEFAULT 'draft'",
+		"CHECK (editorial_status IN ('draft','published'))",
+		"ALTER TABLE chapters ADD COLUMN IF NOT EXISTS published_revision_id UUID",
+		"REFERENCES chapter_revisions(id) ON DELETE SET NULL", // dangling-safe on revision purge (adversary LOW-2)
+		"CREATE INDEX IF NOT EXISTS idx_chapters_editorial",
+		"CREATE TABLE IF NOT EXISTS canon_model_migration",
+	} {
+		if !strings.Contains(schemaSQL, frag) {
+			t.Fatalf("canon CM1 schema missing: %q", frag)
+		}
+	}
+	// in_review must NOT be in the CHECK (YAGNI — dropped at sweep LOW-1).
+	if strings.Contains(schemaSQL, "in_review") {
+		t.Fatal("editorial_status must be draft|published only — in_review was dropped")
+	}
+}
+
+// The new chapters ALTERs must be idempotent (IF NOT EXISTS) so Up() re-runs
+// cleanly — book-service has NO down-migration (adversary-R1#1), so Up()
+// idempotency is the rollback story.
+func TestSchemaCanonAltersAreIdempotent(t *testing.T) {
+	for _, line := range strings.Split(schemaSQL, "\n") {
+		ln := strings.TrimSpace(line)
+		if strings.HasPrefix(ln, "ALTER TABLE chapters ADD COLUMN") && strings.Contains(ln, "editorial_status") && !strings.Contains(ln, "IF NOT EXISTS") {
+			t.Fatalf("editorial_status ALTER missing IF NOT EXISTS: %q", ln)
+		}
+	}
+	for _, frag := range []string{
+		"ADD COLUMN IF NOT EXISTS editorial_status",
+		"ADD COLUMN IF NOT EXISTS published_revision_id",
+		"CREATE INDEX IF NOT EXISTS idx_chapters_editorial",
+		"CREATE TABLE IF NOT EXISTS canon_model_migration",
+	} {
+		if !strings.Contains(schemaSQL, frag) {
+			t.Fatalf("non-idempotent or missing canon DDL: %q", frag)
+		}
+	}
+}
+
+// The data backfill MUST be marker-gated so it runs exactly once — else a
+// post-CM1 draft chapter that gains revisions gets wrongly auto-published on
+// the next restart (the BUILD-time bug the marker closes).
+func TestBackfillIsMarkerGatedOneTime(t *testing.T) {
+	if !strings.Contains(backfillSQL, "IF NOT EXISTS (SELECT 1 FROM canon_model_migration WHERE id = 'cm1_editorial_backfill')") {
+		t.Fatal("backfill must be guarded by the canon_model_migration marker (one-time)")
+	}
+	if !strings.Contains(backfillSQL, "INSERT INTO canon_model_migration (id) VALUES ('cm1_editorial_backfill')") {
+		t.Fatal("backfill must record its marker so a re-run is a no-op")
+	}
+	for _, frag := range []string{
+		"UPDATE chapters c",
+		"SET editorial_status     = 'published'",
+		"published_revision_id = (",
+		"ORDER BY r.created_at DESC",
+		"WHERE EXISTS (SELECT 1 FROM chapter_revisions r WHERE r.chapter_id = c.id)",
+	} {
+		if !strings.Contains(backfillSQL, frag) {
+			t.Fatalf("backfill missing expected clause: %q", frag)
+		}
+	}
+}

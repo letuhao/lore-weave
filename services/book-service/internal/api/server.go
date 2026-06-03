@@ -204,6 +204,8 @@ func (s *Server) Router() http.Handler {
 				r.Get("/revisions", s.listRevisions)
 				r.Get("/revisions/{revision_id}", s.getRevision)
 				r.Post("/revisions/{revision_id}/restore", s.restoreRevision)
+				r.Post("/publish", s.publishChapter)     // Canon Model CM1: draft → published (canon)
+				r.Post("/unpublish", s.unpublishChapter) // Canon Model CM1: published → draft
 				r.Post("/media", s.uploadChapterMedia)
 				r.Post("/media-generate", s.generateChapterMedia)
 				r.Get("/media-versions", s.listMediaVersions)
@@ -1144,16 +1146,17 @@ func (s *Server) getChapter(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getChapterByID(w http.ResponseWriter, ctx context.Context, bookID, chapterID, ownerID uuid.UUID, status int) {
 	var id, bid uuid.UUID
-	var title, fn, lang, ctype, state string
+	var title, fn, lang, ctype, state, editorialStatus string
 	var size int64
 	var order, revCount int
 	var draftUpdated, trashedAt, purgeAt, createdAt, updatedAt *time.Time
+	var publishedRevID *uuid.UUID
 	err := s.pool.QueryRow(ctx, `
-SELECT c.id,c.book_id,c.title,c.original_filename,c.original_language,c.content_type,c.byte_size,c.sort_order,c.draft_updated_at,c.draft_revision_count,c.lifecycle_state,c.trashed_at,c.purge_eligible_at,c.created_at,c.updated_at
+SELECT c.id,c.book_id,c.title,c.original_filename,c.original_language,c.content_type,c.byte_size,c.sort_order,c.draft_updated_at,c.draft_revision_count,c.lifecycle_state,c.trashed_at,c.purge_eligible_at,c.created_at,c.updated_at,c.editorial_status,c.published_revision_id
 FROM chapters c
 JOIN books b ON b.id=c.book_id
 WHERE c.id=$1 AND c.book_id=$2 AND b.owner_user_id=$3
-`, chapterID, bookID, ownerID).Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt)
+`, chapterID, bookID, ownerID).Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &editorialStatus, &publishedRevID)
 	if errors.Is(err, pgx.ErrNoRows) || state == "purge_pending" {
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
 		return
@@ -1178,6 +1181,8 @@ WHERE c.id=$1 AND c.book_id=$2 AND b.owner_user_id=$3
 		"purge_eligible_at":    purgeAt,
 		"created_at":           createdAt,
 		"updated_at":           updatedAt,
+		"editorial_status":     editorialStatus,
+		"published_revision_id": publishedRevID,
 	})
 }
 
@@ -1545,6 +1550,144 @@ WHERE d.chapter_id=$1 AND c.book_id=$2 AND b.owner_user_id=$3
 	s.getDraft(w, r)
 }
 
+// publishChapter — Canon Model CM1. Snapshots the current draft as an immutable
+// revision, pins it as published_revision_id, flips editorial_status to
+// 'published', and emits chapter.published{book_id,chapter_id,revision_id}. This
+// is the canonization gate: only published content is extracted into the KG
+// (CM3). Owner-only; optimistic-concurrency via expected_draft_version → 409.
+func (s *Server) publishChapter(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
+		return
+	}
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	chID, ok := parseUUIDParam(w, r, "chapter_id")
+	if !ok {
+		return
+	}
+	var in struct {
+		ExpectedDraftVersion *int64 `json:"expected_draft_version"`
+	}
+	// Body is optional; ignore decode errors (no/empty body → unconditional publish).
+	_ = json.NewDecoder(r.Body).Decode(&in)
+
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	var curr int64
+	var body json.RawMessage
+	var format string
+	err = tx.QueryRow(r.Context(), `
+SELECT d.draft_version, d.body, d.draft_format
+FROM chapter_drafts d
+JOIN chapters c ON c.id=d.chapter_id
+JOIN books b ON b.id=c.book_id
+WHERE d.chapter_id=$1 AND c.book_id=$2 AND b.owner_user_id=$3 AND c.lifecycle_state='active'
+FOR UPDATE OF d
+`, chID, bookID, ownerID).Scan(&curr, &body, &format)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// No draft (or not owner / not active) → nothing to publish.
+		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "draft not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
+		return
+	}
+	if in.ExpectedDraftVersion != nil && *in.ExpectedDraftVersion != curr {
+		writeError(w, http.StatusConflict, "CHAPTER_DRAFT_CONFLICT", "stale draft version")
+		return
+	}
+
+	// Always snapshot the current draft as an immutable revision and capture its
+	// id — the canon spine depends on a REAL revision_id (no fire-and-forget).
+	var revID uuid.UUID
+	err = tx.QueryRow(r.Context(), `
+INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id)
+VALUES($1,$2,$3,'publish',$4) RETURNING id
+`, chID, body, format, ownerID).Scan(&revID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to snapshot revision")
+		return
+	}
+	if _, err := tx.Exec(r.Context(), `
+UPDATE chapters SET editorial_status='published', published_revision_id=$2,
+       draft_revision_count=draft_revision_count+1, updated_at=now()
+WHERE id=$1`, chID, revID); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
+		return
+	}
+	if err := insertOutboxEvent(r.Context(), tx, "chapter.published", chID,
+		map[string]any{"book_id": bookID, "chapter_id": chID, "revision_id": revID}); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
+		return
+	}
+	s.getChapterByID(w, r.Context(), bookID, chID, ownerID, http.StatusOK)
+}
+
+// unpublishChapter — Canon Model CM1. Reverts a chapter to 'draft' and clears
+// published_revision_id. NOTE: KG retraction of already-extracted canon is NOT
+// wired here (deferred D-CM1-UNPUBLISH-RETRACT → CM3b wires
+// remove_evidence_for_source on chapter.unpublished); until then stale KG facts
+// linger. Owner-only.
+func (s *Server) unpublishChapter(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
+		return
+	}
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	chID, ok := parseUUIDParam(w, r, "chapter_id")
+	if !ok {
+		return
+	}
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to unpublish")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	ct, err := tx.Exec(r.Context(), `
+UPDATE chapters SET editorial_status='draft', published_revision_id=NULL, updated_at=now()
+WHERE id=$1 AND book_id=$2 AND lifecycle_state='active'
+  AND book_id IN (SELECT id FROM books WHERE id=$2 AND owner_user_id=$3)
+`, chID, bookID, ownerID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to unpublish")
+		return
+	}
+	if ct.RowsAffected() == 0 {
+		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
+		return
+	}
+	if err := insertOutboxEvent(r.Context(), tx, "chapter.unpublished", chID,
+		map[string]any{"book_id": bookID, "chapter_id": chID}); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to unpublish")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to unpublish")
+		return
+	}
+	s.getChapterByID(w, r.Context(), bookID, chID, ownerID, http.StatusOK)
+}
+
 func (s *Server) listRevisions(w http.ResponseWriter, r *http.Request) {
 	ownerID, ok := s.requireUserID(r)
 	if !ok {
@@ -1876,16 +2019,17 @@ func (s *Server) getInternalBookChapter(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return
 	}
-	var title, lang string
+	var title, lang, editorialStatus string
 	var body json.RawMessage
 	var sortOrder int
 	var draftUpdated *time.Time
+	var publishedRevID *uuid.UUID
 	err = s.pool.QueryRow(r.Context(), `
-SELECT c.title,c.sort_order,c.original_language,c.draft_updated_at,d.body
+SELECT c.title,c.sort_order,c.original_language,c.draft_updated_at,d.body,c.editorial_status,c.published_revision_id
 FROM chapters c
 JOIN chapter_drafts d ON d.chapter_id=c.id
 WHERE c.id=$1 AND c.book_id=$2 AND c.lifecycle_state='active'
-`, chapterID, bookID).Scan(&title, &sortOrder, &lang, &draftUpdated, &body)
+`, chapterID, bookID).Scan(&title, &sortOrder, &lang, &draftUpdated, &body, &editorialStatus, &publishedRevID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		ChapterFetchTotal.WithLabelValues(OutcomeNotFound).Inc()
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
@@ -1912,6 +2056,8 @@ FROM chapter_blocks WHERE chapter_id=$1
 		"body":              body,
 		"body_format":       "json",
 		"text_content":      textContent,
+		"editorial_status":  editorialStatus,
+		"published_revision_id": publishedRevID,
 	})
 }
 
