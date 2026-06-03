@@ -29,7 +29,7 @@ from app.api.principal import Principal, require_principal
 from app.config import settings
 from app.db.book_profile import get_book_profile
 from app.deps import get_db
-from app.gaps.model import Dimension, EntityKind, Gap
+from app.gaps.model import Gap, dimensions_for
 from app.jobs.assembly import build_live_runner
 from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM, make_redis_producer
 from app.jobs.job_request import save_job_request
@@ -87,19 +87,24 @@ class CreateJobBody(BaseModel):
 
 
 def _gap_from_target(t: GapTarget) -> Gap | None:
-    """Build a C7 :class:`Gap` from a target. Returns None for a fully-described
-    entity (no missing dimension) — it is not a gap."""
-    try:
-        kind = EntityKind(t.entity_kind)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"unsupported entity_kind {t.entity_kind!r}",
-        )
-    present = tuple(
-        d for d in Dimension if d.value in set(t.present_dimensions)
-    )
-    missing = tuple(d for d in Dimension if d not in set(present))
+    """Build a C7 :class:`Gap` from a target (de-bias C1, KB3 — multi-kind).
+
+    Derives present/missing from the KIND's OWN dimension table (``dimensions_for``
+    — GENERIC fallback for an unmodeled kind, NEVER a 400/skip), NOT the hardcoded
+    LOCATION ``Dimension`` enum. ``present_dimensions`` may be stable ids or
+    (default) labels — both map to the stable id, mirroring ``coverages_from_rows``.
+    Returns None for a fully-described entity (no missing dimension)."""
+    kind = (t.entity_kind or "").strip() or "location"
+    table = dimensions_for(kind)  # kind's real dims; GENERIC for unknown (no 400)
+    ids = {s.dimension for s in table}
+    label_to_id = {s.label: s.dimension for s in table}
+    present_set = {
+        d if d in ids else label_to_id[d]
+        for d in t.present_dimensions
+        if d in ids or d in label_to_id
+    }
+    present = tuple(s.dimension for s in table if s.dimension in present_set)
+    missing = tuple(s.dimension for s in table if s.dimension not in present_set)
     if not missing:
         return None
     return Gap(
