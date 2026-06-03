@@ -15,7 +15,7 @@
 
 module github.com/loreweave/foundation/tests/integration
 
-go 1.25
+go 1.25.0
 
 require (
 	github.com/lib/pq v1.10.9
@@ -26,14 +26,14 @@ require (
 
 	// Cycle 7 — degraded-mode / tiered-backup / capacity-override tests
 	github.com/loreweave/foundation/contracts/meta v0.0.0
+
+	// Cycle 15 — integrity_drift_test + full_integrity_test (L3.E + L3.F)
+	github.com/loreweave/foundation/contracts/realityreg v0.0.0
 	github.com/loreweave/foundation/services/admin-cli v0.0.0
 
 	// Cycle 11 — archive_roundtrip_test + outbox_prune_test
 	github.com/loreweave/foundation/services/archive-worker v0.0.0
 	github.com/loreweave/foundation/services/backup-scheduler v0.0.0
-
-	// Cycle 15 — integrity_drift_test + full_integrity_test (L3.E + L3.F)
-	github.com/loreweave/foundation/contracts/realityreg v0.0.0
 	github.com/loreweave/foundation/services/integrity-checker v0.0.0
 	github.com/loreweave/foundation/services/meta-worker v0.0.0
 
@@ -65,9 +65,15 @@ require (
 )
 
 require (
-	github.com/jackc/pgx/v5 v5.6.0
+	github.com/jackc/pgx/v5 v5.9.2
 	github.com/redis/go-redis/v9 v9.7.3
 )
+
+// 144 D-INTEGRATION-TEST-BUILD-RED: admin_cli_test.go → admin-cli/pkg/cliapi →
+// internal/auth pulls contracts/adminjwt transitively; it needs a local replace
+// like every other monorepo dep (was missing → the -tags=integration build
+// could not resolve adminjwt from a clean checkout).
+require github.com/loreweave/foundation/contracts/adminjwt v0.0.0 // indirect
 
 require (
 	github.com/andybalholm/brotli v1.1.0 // indirect
@@ -75,9 +81,10 @@ require (
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
+	github.com/golang-jwt/jwt/v5 v5.2.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
-	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
-	github.com/jackc/puddle/v2 v2.2.1 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.11 // indirect
 	github.com/klauspost/crc32 v1.3.0 // indirect
@@ -112,6 +119,21 @@ replace github.com/loreweave/foundation/contracts/lifecycle => ../../contracts/l
 replace github.com/loreweave/foundation/services/backup-scheduler => ../../services/backup-scheduler
 
 replace github.com/loreweave/foundation/services/admin-cli => ../../services/admin-cli
+
+// 144: admin-cli/pkg/cliapi transitively needs adminjwt (auth verify) + the
+// audit_emitter chain (metapg / pii / piikms / metaoutbox). Mirror ALL of
+// admin-cli's local foundation replaces — Go does NOT inherit a dependency's
+// replace directives, so every monorepo module admin-cli pulls needs its own
+// local replace here too (was missing → -tags=integration build unresolvable).
+replace github.com/loreweave/foundation/contracts/adminjwt => ../../contracts/adminjwt
+
+replace github.com/loreweave/foundation/sdks/go/metapg => ../../sdks/go/metapg
+
+replace github.com/loreweave/foundation/contracts/pii => ../../contracts/pii
+
+replace github.com/loreweave/foundation/sdks/go/piikms => ../../sdks/go/piikms
+
+replace github.com/loreweave/foundation/sdks/go/metaoutbox => ../../sdks/go/metaoutbox
 
 // Cycle 10 — outbox + publisher + meta-worker
 replace github.com/loreweave/foundation/contracts/events => ../../contracts/events
