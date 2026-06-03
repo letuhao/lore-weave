@@ -379,7 +379,37 @@
       "archive": "アーカイブ",
       "restore": "復元",
       "delete": "削除",
+      "tuneExtraction": "抽出を調整",
       "bookId": "book_id"
+    },
+    "extractionTuning": {
+      "title": "抽出を調整",
+      "description": "小説ごとの抽出設定。変更はこのプロジェクトの次回の抽出実行に適用されます。",
+      "filterEnabled": "精度フィルタ（根拠の乏しい抽出を除外）",
+      "category": {
+        "entity": "エンティティ",
+        "relation": "関係",
+        "event": "イベント"
+      },
+      "categoriesRequired": "少なくとも1つのカテゴリを選択するか、フィルタをオフにしてください。",
+      "partialPolicy": "部分一致:",
+      "policyKeep": "保持",
+      "policyDrop": "破棄",
+      "recoveryEnabled": "エンティティ回復（見落としたエンティティを回復）",
+      "autocreateEnabled": "ライター自動作成（関係から参照されるエンティティを生成）",
+      "promptWarning": "上級: カスタムプロンプトはその工程の既定の抽出指示を置き換え、品質を低下させる可能性があります。空欄で既定を使用します。JSON出力は常に強制されます。",
+      "promptPlaceholder": "空欄で既定のプロンプトを使用",
+      "prompt": {
+        "entity": "エンティティ抽出プロンプト",
+        "relation": "関係抽出プロンプト",
+        "event": "イベント抽出プロンプト",
+        "fact": "ファクト抽出プロンプト"
+      },
+      "save": "保存",
+      "saving": "保存中…",
+      "cancel": "キャンセル",
+      "saved": "抽出設定を保存しました。",
+      "failed": "保存に失敗しました: {{error}}"
     },
     "form": {
       "createTitle": "新しいプロジェクト",

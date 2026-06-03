@@ -60,12 +60,13 @@ def make_embed_query_fn(
     ``model_ref`` from the per-run :class:`StrategyContext` (so each run uses its
     project's configured embedding model). Returns a single vector.
 
-    ``meter`` (C1 / DEFERRED-052): ``/internal/embed`` returns no token usage, so
-    when a meter is supplied the embed leg of the per-gap cost is ESTIMATED from
-    the query text via the platform char-convention (``estimate_tokens``) and
-    recorded as input tokens. The vector return is unchanged — metering is a side
-    effect, not a contract change. (Follow-up: real embed usage requires a
-    provider-registry change — out of scope on this branch; see DEFERRED-052.)
+    ``meter`` (C1 / LE-059b): when a meter is supplied the embed leg of the per-gap
+    cost is metered on the provider's REAL ``prompt_tokens`` (surfaced by
+    provider-registry from the OpenAI/LM Studio ``usage`` block) when it is present,
+    and falls back to the platform char-estimate (``estimate_tokens``) only when the
+    provider reports nothing (e.g. Ollama, or a provider-registry too old to surface
+    it). The vector return is unchanged — metering is a side effect, not a contract
+    change.
     """
 
     async def _embed_query(query: str, context: StrategyContext) -> list[float]:
@@ -90,8 +91,11 @@ def make_embed_query_fn(
         if not result.embeddings:
             raise ValueError("embed returned no vector for the query")
         if meter is not None:
-            # Estimate-only: no provider token count for embeddings (DEFERRED-052).
-            meter.add(TokenUsage(input_tokens=estimate_tokens(query)))
+            # LE-059b: meter on the provider's REAL prompt_tokens when present;
+            # fall back to the char-estimate only when the provider reports none
+            # (so a gap is never metered as 0 — the cap stays safe).
+            tokens = result.prompt_tokens or estimate_tokens(query)
+            meter.add(TokenUsage(input_tokens=tokens))
         return result.embeddings[0]
 
     return _embed_query

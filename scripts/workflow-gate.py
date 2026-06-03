@@ -261,7 +261,21 @@ def _check_live_smoke_evidence(evidence: str) -> None:
 def load_state() -> dict:
     if not STATE_FILE.exists():
         save_state(dict(INITIAL_STATE))
-    return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    try:
+        return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, ValueError, OSError) as exc:
+        # DEFERRED-008: a corrupt / empty .workflow-state.json (manual edit, disk
+        # corruption, an interrupted non-atomic write before #003) must NOT make
+        # every gate command — including the pre-commit hook — die with a traceback
+        # that blocks the commit. Reset to a clean initial state and warn loudly so
+        # the operator knows the prior phase progress was lost (re-classify if needed).
+        print(
+            f"WARN: {STATE_FILE} is unreadable/corrupt ({exc}); resetting to initial state.",
+            file=sys.stderr,
+        )
+        fresh = dict(INITIAL_STATE)
+        save_state(fresh)
+        return fresh
 
 
 def save_state(state: dict) -> None:
