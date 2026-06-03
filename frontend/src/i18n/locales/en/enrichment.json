@@ -2,7 +2,59 @@
   "header": "Enrichment Review",
   "subtitle": "Review AI-proposed lore for under-described entities, then promote what you approve into this book's canon. Enriched drafts are private variants until you promote them.",
   "untitled": "Untitled",
-  "panel": { "proposals": "Proposals", "gaps": "Gaps", "sources": "Sources", "jobs": "Jobs", "settings": "Profile" },
+  "panel": { "compose": "Create", "proposals": "Proposals", "gaps": "Gaps", "sources": "Sources", "jobs": "Jobs", "settings": "Profile" },
+  "compose": {
+    "title": "Create enrichment",
+    "subtitle": "Start enrichment your way — expand a draft you've written, or fill detected gaps. Everything you create is an enriched variant until you promote it.",
+    "soon": "soon",
+    "mode_soon": "Coming in a later slice.",
+    "mode": {
+      "draft": "From a draft",
+      "gap": "Fill gaps",
+      "intent": "From an idea",
+      "context": "Paste context",
+      "files": "Attach files"
+    },
+    "draft": {
+      "label": "Your draft",
+      "placeholder": "Paste or write your draft for this entity. It will be expanded into the book's dimensions, in the book's voice…",
+      "expand_mode": "How to expand",
+      "rewrite": "Rewrite",
+      "rewrite_hint": "Rewrite + voice-sync to the book, preserving your meaning; fill all dimensions.",
+      "add_only": "Add only",
+      "add_only_hint": "Keep your prose verbatim; only add the missing dimensions."
+    },
+    "target": {
+      "existing": "Existing entity",
+      "new": "New entity",
+      "name": "Name",
+      "name_placeholder": "e.g. 碧遊宮",
+      "kind": "Kind",
+      "existing_hint": "Enriches the existing glossary entity with this name.",
+      "new_hint": "Creates a new entity — nothing is written to your glossary until you promote the proposal."
+    },
+    "kind": {
+      "character": "Character",
+      "location": "Location",
+      "item": "Item",
+      "faction": "Faction",
+      "event": "Event",
+      "generic": "Generic"
+    },
+    "config": {
+      "gen_model": "Generation model",
+      "embed_model": "Embedding model",
+      "select_model": "Select…",
+      "max_spend": "Max spend (USD)",
+      "no_cap": "no cap",
+      "top_k": "Top-K"
+    },
+    "safety": "① license · ② abstract · ③ regurgitation guard · ④ you promote — enriched stays a variant until you promote it.",
+    "run_hint": "Runs as a background job — the proposal appears under Proposals when ready.",
+    "run": "Create draft",
+    "composing": "Starting…",
+    "enqueued": "Enrichment started — the proposal will appear under Proposals."
+  },
   "h0": {
     "marker": "variant",
     "tooltip": "An enriched variant — never authored canon until you promote it."

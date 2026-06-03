@@ -18,6 +18,9 @@ vi.mock('../JobsPanel', () => ({
 vi.mock('../SettingsPanel', () => ({
   SettingsPanel: () => <div data-testid="stub-settings">settings-panel</div>,
 }));
+vi.mock('../compose/ComposePanel', () => ({
+  ComposePanel: () => <div data-testid="stub-compose">compose-panel</div>,
+}));
 
 // LE-065 — the shell reads list totals for the tab count badges; stub them (the
 // hooks have their own tests). proposals=7 / sources=5 / jobs=2; gaps via context.
@@ -66,14 +69,23 @@ describe('useEnrichmentContext', () => {
 });
 
 describe('EnrichmentView', () => {
-  it('renders the five tab buttons + the H0 marker', () => {
+  it('renders the six tab buttons + the H0 marker', () => {
     renderView();
+    expect(screen.getByTestId('enrichment-tab-compose')).toBeInTheDocument();
     expect(screen.getByTestId('enrichment-tab-proposals')).toBeInTheDocument();
     expect(screen.getByTestId('enrichment-tab-gaps')).toBeInTheDocument();
     expect(screen.getByTestId('enrichment-tab-sources')).toBeInTheDocument();
     expect(screen.getByTestId('enrichment-tab-jobs')).toBeInTheDocument();
     expect(screen.getByTestId('enrichment-tab-settings')).toBeInTheDocument();
     expect(screen.getByTestId('enrichment-h0-marker')).toBeInTheDocument();
+  });
+
+  it('clicking the compose tab lazy-mounts + reveals the ComposePanel (no count badge)', () => {
+    renderView();
+    expect(screen.queryByTestId('stub-compose')).toBeNull(); // not visited yet
+    fireEvent.click(screen.getByTestId('enrichment-tab-compose'));
+    expect(screen.getByTestId('stub-compose').parentElement?.className).not.toContain('hidden');
+    expect(screen.queryByTestId('enrichment-tab-count-compose')).toBeNull();
   });
 
   it('clicking the settings (profile) tab lazy-mounts + reveals the SettingsPanel', () => {

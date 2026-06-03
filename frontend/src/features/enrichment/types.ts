@@ -181,6 +181,50 @@ export interface AutoEnrichResponse {
   enqueued?: boolean;
 }
 
+// ── Compose (unified input modes — slice 1: gap | draft) ───────────────────────
+/** The input source a compose run starts from. Slice 1 ships gap | draft;
+ *  context | files | intent land in slices 2–4 (the backend 400s them for now). */
+export type ComposeInputSource = 'gap' | 'draft' | 'context' | 'files' | 'intent';
+
+/** Mode D expand strategy — keep the draft verbatim and only add missing dims
+ *  (add_only) or rewrite + voice-sync it preserving meaning (rewrite). */
+export type ExpandMode = 'add_only' | 'rewrite';
+
+/** The entity a compose run targets — an existing glossary entity OR a new one.
+ *  For mode='new' the backend mints the glossary anchor only at PROMOTE (H0-clean);
+ *  here `target_ref` stays null. */
+export interface ComposeTargetInput {
+  mode: 'existing' | 'new';
+  canonical_name: string;
+  entity_kind: string;
+  target_ref?: string | null;
+  present_dimensions?: string[];
+}
+
+/** The POST /compose body (the api layer adds book_id := bookId). */
+export interface ComposeBody {
+  input_source: ComposeInputSource;
+  embedding_model_ref: string;
+  generation_model_ref: string;
+  target?: ComposeTargetInput;
+  draft_text?: string;
+  expand_mode?: ExpandMode;
+  gap_targets?: ComposeTargetInput[];
+  technique?: string;
+  max_spend_usd?: number | null;
+  top_k?: number;
+}
+
+/** POST /compose result — async 202 + job_id. */
+export interface ComposeResult {
+  project_id: string;
+  job_id?: string;
+  input_source: string;
+  technique: string;
+  enqueued_targets?: number;
+  enqueued?: boolean;
+}
+
 // ── Sources (corpus) ──────────────────────────────────────────────────────────
 export type SourceKind = 'fengshen' | 'shanhaijing' | 'history' | 'other';
 
@@ -267,6 +311,11 @@ export interface JobListResponse {
  *  The dimension-override editor keys on these. */
 export const PROFILE_KINDS = ['character', 'location', 'item', 'faction', 'event'] as const;
 export type ProfileKind = (typeof PROFILE_KINDS)[number];
+
+/** The entity-kinds a compose target may use: the C1 modeled kinds + `generic`
+ *  (the freeform fallback). Drives the new-entity kind dropdown (Compose slice 1). */
+export const COMPOSE_KINDS = [...PROFILE_KINDS, 'generic'] as const;
+export type ComposeKind = (typeof COMPOSE_KINDS)[number];
 
 /** One author/AI-added dimension within a kind's `add` list. */
 export interface DimensionAdd {

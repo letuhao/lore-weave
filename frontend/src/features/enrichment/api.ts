@@ -14,6 +14,8 @@ import type {
   BookProfile,
   BookProfileInput,
   SuggestedProfile,
+  ComposeBody,
+  ComposeResult,
 } from './types';
 
 const BASE = '/v1/lore-enrichment';
@@ -126,6 +128,16 @@ export const enrichmentApi = {
       `${BASE}/projects/${bookId}/auto-enrich`,
       { method: 'POST', body: JSON.stringify({ book_id: bookId, ...body }), token },
     );
+  },
+
+  /** Compose — the unified async input entry (slice 1: gap | draft). project_id :=
+   *  bookId in the path; body carries book_id := bookId. Returns 202 + job_id. */
+  compose(bookId: string, body: ComposeBody, token: string): Promise<ComposeResult> {
+    return apiJson<ComposeResult>(`${BASE}/projects/${bookId}/compose`, {
+      method: 'POST',
+      body: JSON.stringify({ book_id: bookId, ...body }),
+      token,
+    });
   },
 
   // ── sources (corpus) — project_id := bookId ─────────────────────────────────

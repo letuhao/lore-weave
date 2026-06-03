@@ -1,0 +1,123 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { PropsWithChildren } from 'react';
+
+vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
+
+vi.mock('@/features/settings/api', () => ({
+  providerApi: {
+    listUserModels: (_t: string, opts?: { capability?: string }) =>
+      Promise.resolve({
+        items:
+          opts?.capability === 'embedding'
+            ? [{ user_model_id: 'e1', alias: 'Embed-1', provider_model_name: 'bge-m3' }]
+            : [{ user_model_id: 'g1', alias: 'Gen-1', provider_model_name: 'qwen' }],
+      }),
+  },
+}));
+
+const composeMock = vi.fn().mockResolvedValue({ job_id: 'j1' });
+vi.mock('../../../hooks/useCompose', () => ({
+  useCompose: () => ({ compose: composeMock, composing: false }),
+}));
+
+import { ComposePanel } from '../ComposePanel';
+import { EnrichmentProvider } from '../../../context/EnrichmentContext';
+
+function renderPanel() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const Wrapper = ({ children }: PropsWithChildren) => (
+    <QueryClientProvider client={qc}>
+      <EnrichmentProvider bookId="book-1">{children}</EnrichmentProvider>
+    </QueryClientProvider>
+  );
+  return render(<ComposePanel />, { wrapper: Wrapper });
+}
+
+async function fillModels() {
+  await waitFor(() => expect(screen.getByRole('option', { name: 'Gen-1' })).toBeInTheDocument());
+  fireEvent.change(screen.getByTestId('compose-gen-model'), { target: { value: 'g1' } });
+  fireEvent.change(screen.getByTestId('compose-embed-model'), { target: { value: 'e1' } });
+}
+
+beforeEach(() => composeMock.mockClear());
+
+describe('ComposePanel (mode D)', () => {
+  it('Run is disabled until a draft, a target name, and both models are set', async () => {
+    renderPanel();
+    expect(screen.getByTestId('compose-run')).toBeDisabled();
+    fireEvent.change(screen.getByTestId('compose-target-name'), { target: { value: '碧遊宮' } });
+    fireEvent.change(screen.getByTestId('compose-draft-text'), { target: { value: '通天教主道場。' } });
+    await fillModels();
+    expect(screen.getByTestId('compose-run')).not.toBeDisabled();
+  });
+
+  it('Run composes a draft body for an EXISTING target (target_ref = name)', async () => {
+    renderPanel();
+    fireEvent.change(screen.getByTestId('compose-target-name'), { target: { value: '碧遊宮' } });
+    fireEvent.change(screen.getByTestId('compose-draft-text'), { target: { value: '通天教主道場。' } });
+    await fillModels();
+    fireEvent.click(screen.getByTestId('compose-run'));
+
+    expect(composeMock).toHaveBeenCalledTimes(1);
+    const body = composeMock.mock.calls[0][0];
+    expect(body).toMatchObject({
+      input_source: 'draft',
+      draft_text: '通天教主道場。',
+      expand_mode: 'rewrite',
+      generation_model_ref: 'g1',
+      embedding_model_ref: 'e1',
+      max_spend_usd: null,
+      top_k: 5,
+    });
+    expect(body.target).toMatchObject({
+      mode: 'existing',
+      canonical_name: '碧遊宮',
+      target_ref: '碧遊宮',
+    });
+  });
+
+  it('a NEW target composes with target_ref=null (anchor minted at promote)', async () => {
+    renderPanel();
+    fireEvent.click(screen.getByTestId('compose-target-mode-new'));
+    fireEvent.change(screen.getByTestId('compose-target-name'), { target: { value: '新天地' } });
+    fireEvent.change(screen.getByTestId('compose-target-kind'), { target: { value: 'generic' } });
+    fireEvent.change(screen.getByTestId('compose-draft-text'), { target: { value: '星際殖民地。' } });
+    await fillModels();
+    fireEvent.click(screen.getByTestId('compose-run'));
+
+    const body = composeMock.mock.calls[0][0];
+    expect(body.target).toMatchObject({
+      mode: 'new',
+      canonical_name: '新天地',
+      entity_kind: 'generic',
+      target_ref: null,
+    });
+  });
+
+  it('clamps a cleared Top-K to a valid value and passes a real spend through', async () => {
+    renderPanel();
+    fireEvent.change(screen.getByTestId('compose-target-name'), { target: { value: '碧遊宮' } });
+    fireEvent.change(screen.getByTestId('compose-draft-text'), { target: { value: '道場。' } });
+    await fillModels();
+    // clear top-k (Number('')→0) and set a valid spend
+    fireEvent.change(screen.getByTestId('compose-top-k'), { target: { value: '' } });
+    fireEvent.change(screen.getByTestId('compose-max-spend'), { target: { value: '0.25' } });
+    fireEvent.click(screen.getByTestId('compose-run'));
+    const body = composeMock.mock.calls[0][0];
+    expect(body.top_k).toBeGreaterThanOrEqual(1);
+    expect(body.top_k).toBeLessThanOrEqual(20);
+    expect(body.max_spend_usd).toBe(0.25);
+  });
+
+  it('add_only expand mode flows into the body', async () => {
+    renderPanel();
+    fireEvent.change(screen.getByTestId('compose-target-name'), { target: { value: '碧遊宮' } });
+    fireEvent.change(screen.getByTestId('compose-draft-text'), { target: { value: '道場。' } });
+    fireEvent.click(screen.getByTestId('compose-expand-add_only'));
+    await fillModels();
+    fireEvent.click(screen.getByTestId('compose-run'));
+    expect(composeMock.mock.calls[0][0].expand_mode).toBe('add_only');
+  });
+});

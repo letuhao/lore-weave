@@ -2,7 +2,59 @@
   "header": "增補審閱",
   "subtitle": "審閱 AI 為描述不足的實體所提出的設定，再將你核可的內容晉升為本書的正典。增補草稿在晉升前皆為私人異本。",
   "untitled": "未命名",
-  "panel": { "proposals": "提案", "gaps": "缺口", "sources": "來源", "jobs": "作業", "settings": "設定檔" },
+  "panel": { "compose": "建立", "proposals": "提案", "gaps": "缺口", "sources": "來源", "jobs": "作業", "settings": "設定檔" },
+  "compose": {
+    "title": "建立增補",
+    "subtitle": "依你的方式開始 — 擴寫你寫好的草稿，或填補偵測到的缺口。你建立的一切在晉升前皆為增補異本。",
+    "soon": "即將推出",
+    "mode_soon": "將於後續階段提供。",
+    "mode": {
+      "draft": "從草稿",
+      "gap": "填補缺口",
+      "intent": "從構想",
+      "context": "貼上脈絡",
+      "files": "附加檔案"
+    },
+    "draft": {
+      "label": "你的草稿",
+      "placeholder": "貼上或撰寫此實體的草稿。它將依本書的各維度、以本書的語氣擴寫…",
+      "expand_mode": "擴寫方式",
+      "rewrite": "重寫",
+      "rewrite_hint": "依本書語氣重寫並保留原意；填滿所有維度。",
+      "add_only": "僅新增",
+      "add_only_hint": "逐字保留你的文字；僅補上缺少的維度。"
+    },
+    "target": {
+      "existing": "既有實體",
+      "new": "新實體",
+      "name": "名稱",
+      "name_placeholder": "例如 碧遊宮",
+      "kind": "類型",
+      "existing_hint": "增補詞庫中此名稱的既有實體。",
+      "new_hint": "建立新實體 — 在你晉升提案前不會寫入詞庫。"
+    },
+    "kind": {
+      "character": "角色",
+      "location": "地點",
+      "item": "物品",
+      "faction": "勢力",
+      "event": "事件",
+      "generic": "通用"
+    },
+    "config": {
+      "gen_model": "生成模型",
+      "embed_model": "嵌入模型",
+      "select_model": "選擇…",
+      "max_spend": "支出上限 (USD)",
+      "no_cap": "無上限",
+      "top_k": "Top-K"
+    },
+    "safety": "① 授權 · ② 抽象化 · ③ 防原文照搬 · ④ 由你晉升 — 增補在你晉升前仍為異本。",
+    "run_hint": "以背景作業執行 — 完成後會出現在「提案」分頁。",
+    "run": "建立草稿",
+    "composing": "開始中…",
+    "enqueued": "已開始增補 — 提案將出現在「提案」分頁。"
+  },
   "h0": {
     "marker": "異本",
     "tooltip": "增補的異本 — 晉升前絕非正典。"

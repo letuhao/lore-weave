@@ -16,6 +16,7 @@ read from app/api/compose.py:
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from uuid import uuid4
 
 import jwt as pyjwt
@@ -24,6 +25,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api import compose as compose_api
+from app.db.book_profile import NEUTRAL_PROFILE
 from app.deps import get_db
 
 OWNER = "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c"
@@ -142,8 +144,8 @@ def test_draft_rewrite_clears_present_dimensions(monkeypatch):
     assert saved["request"]["targets"][0]["target_ref"] == "loc:biyou"  # still existing
 
 
-def test_draft_add_only_keeps_present_dimensions(monkeypatch):
-    # add_only keeps present — "only add the missing dims" is the intended semantics.
+def test_draft_add_only_keeps_explicit_present_dimensions(monkeypatch):
+    # add_only with FE-supplied present is respected verbatim (no glossary derivation).
     jid = uuid4()
     created, saved, prod = {}, {}, _RecordingProducer()
     _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
@@ -155,6 +157,82 @@ def test_draft_add_only_keeps_present_dimensions(monkeypatch):
     ))
     assert resp.status_code == 202, resp.text
     assert saved["request"]["targets"][0]["present_dimensions"] == ["历史"]
+
+
+# ── /review-impl #1 — add_only derives the existing entity's present dims server-side ──
+def _patch_coverage(monkeypatch, *, rows, raises=False):
+    """Fake the glossary coverage read the add_only path uses to derive present dims."""
+    class _FakeGlossary:
+        def __init__(self, **_kw):
+            ...
+
+        async def list_enrichment_coverage(self, *, book_id, limit):
+            if raises:
+                raise RuntimeError("glossary down")
+            return rows
+
+        async def aclose(self):
+            ...
+
+    async def _neutral(_pool, _book_id):
+        return NEUTRAL_PROFILE
+
+    monkeypatch.setattr(compose_api, "GlossaryClient", _FakeGlossary)
+    monkeypatch.setattr(compose_api, "get_book_profile", _neutral)
+
+
+def _cov_row(name: str, dims: list[str]):
+    return SimpleNamespace(canonical_name=name, kind="location", mention_count=5, dimensions=dims)
+
+
+def test_draft_add_only_existing_derives_present_from_glossary(monkeypatch):
+    # The FE composer sends no present_dimensions; the BE derives the entity's covered
+    # dims so add_only ADDS only the genuinely-missing ones (not regenerate all).
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    # NEUTRAL profile → zh-default location labels; 历史/地理 map to ids history/geography.
+    _patch_coverage(monkeypatch, rows=[_cov_row("碧遊宮", ["历史", "地理"])])
+
+    resp = _post(_base(
+        expand_mode="add_only",
+        target={"mode": "existing", "canonical_name": "碧遊宮", "entity_kind": "location",
+                "target_ref": "loc:biyou"},  # NO present_dimensions from the FE
+    ))
+    assert resp.status_code == 202, resp.text
+    assert saved["request"]["targets"][0]["present_dimensions"] == ["history", "geography"]
+
+
+def test_draft_add_only_glossary_error_degrades_to_empty(monkeypatch):
+    # A glossary failure must NOT fail the compose — degrade to present=[] (generate all).
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    _patch_coverage(monkeypatch, rows=[], raises=True)
+
+    resp = _post(_base(
+        expand_mode="add_only",
+        target={"mode": "existing", "canonical_name": "碧遊宮", "entity_kind": "location",
+                "target_ref": "loc:biyou"},
+    ))
+    assert resp.status_code == 202, resp.text
+    assert saved["request"]["targets"][0]["present_dimensions"] == []
+
+
+def test_draft_rewrite_does_not_call_glossary(monkeypatch):
+    # rewrite clears present (expand all) WITHOUT a coverage call — the fake raises if hit.
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    _patch_coverage(monkeypatch, rows=[], raises=True)  # would blow up if called
+
+    resp = _post(_base(
+        expand_mode="rewrite",
+        target={"mode": "existing", "canonical_name": "碧遊宮", "entity_kind": "location",
+                "target_ref": "loc:biyou"},
+    ))
+    assert resp.status_code == 202, resp.text
+    assert saved["request"]["targets"][0]["present_dimensions"] == []
 
 
 def test_draft_bad_target_mode_422(monkeypatch):

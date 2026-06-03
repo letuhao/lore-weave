@@ -37,12 +37,15 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
+from app.api.gaps import coverages_from_rows
 from app.api.principal import Principal, require_principal
+from app.clients.glossary import GlossaryClient, GlossaryServiceError
+from app.config import settings
+from app.db.book_profile import get_book_profile
 from app.deps import get_db
 from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM, make_redis_producer
 from app.jobs.job_request import save_job_request
 from app.jobs.proposal_store import PgProposalStore
-from app.config import settings
 from app.strategies.base import Technique
 from app.strategies.draft_expand import EXPAND_ADD_ONLY, EXPAND_REWRITE
 
@@ -106,6 +109,32 @@ def _target_dict(t: ComposeTargetInput) -> dict:
         "mention_count": 1,
         "present_dimensions": [] if is_new else list(t.present_dimensions),
     }
+
+
+async def _resolve_present_dimensions(
+    pool: asyncpg.Pool, book_id: UUID, canonical_name: str
+) -> list[str] | None:
+    """Best-effort: read an EXISTING entity's already-covered dimensions from the
+    glossary so an ``add_only`` draft ADDS only the genuinely-missing dims (review #1)
+    — the FE composer has no coverage info, so without this an add_only draft on a
+    covered entity would regenerate dims the entity already has. Returns None on any
+    failure / a never-seen name → the caller degrades to ``present=[]`` (generate all),
+    never hard-failing the compose. The glossary stays the SSOT (this only READS)."""
+    client = GlossaryClient(
+        base_url=settings.glossary_service_url,
+        internal_token=settings.internal_service_token,
+    )
+    try:
+        rows = await client.list_enrichment_coverage(book_id=book_id, limit=500)
+    except (GlossaryServiceError, Exception):  # noqa: BLE001 — best-effort; degrade
+        return None
+    finally:
+        await client.aclose()
+    profile = await get_book_profile(pool, book_id)
+    for cov in coverages_from_rows(rows, profile):
+        if cov.canonical_name == canonical_name:
+            return list(cov.present_dimensions)
+    return None  # entity not found in coverage → no known present dims
 
 
 async def _create_and_enqueue(
@@ -227,9 +256,18 @@ async def compose(
             # /review-impl MED: rewrite expands ALL dimensions (the author wants a full
             # rewrite, per spec §2.5), NOT just the missing ones. Clear present_dimensions
             # so _gap_from_target never drops a well-covered entity to a SILENT no-op
-            # (it returns None when nothing is "missing"). add_only keeps present — there,
-            # "only add the missing dims" is the intended semantics (covered → nothing to add).
+            # (it returns None when nothing is "missing").
             target_dict["present_dimensions"] = []
+        elif body.target.mode == "existing" and not body.target.present_dimensions:
+            # /review-impl #1: add_only "only adds the missing dims" — but the FE composer
+            # doesn't know which the entity already covers. Derive them server-side from
+            # the glossary (best-effort; degrades to present=[] = generate all). Skipped
+            # for a new entity (nothing covered) or when the FE supplied present explicitly.
+            present = await _resolve_present_dimensions(
+                pool, body.book_id, body.target.canonical_name
+            )
+            if present is not None:
+                target_dict["present_dimensions"] = present
         return await _create_and_enqueue(
             pool=pool,
             project_id=project_id,

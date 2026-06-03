@@ -1,11 +1,9 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Sparkles, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/auth';
-import { providerApi } from '@/features/settings/api';
 import { useGaps } from '../hooks/useGaps';
+import { useUserModels } from '../hooks/useUserModels';
 import { useEnrichmentContext } from '../context/EnrichmentContext';
 import { gapToTarget, type Gap, type EnrichTarget } from '../types';
 
@@ -14,7 +12,6 @@ import { gapToTarget, type Gap, type EnrichTarget } from '../types';
  *  are gate-enforced server-side (the runner refuses them until the eval gate clears). */
 export function GapsPanel() {
   const { t } = useTranslation('enrichment');
-  const { accessToken } = useAuth();
   const { bookId, setGapCount } = useEnrichmentContext();
   const { gaps, needsExtraction, detect, detecting, autoEnrich, enriching } = useGaps(bookId);
   const [technique, setTechnique] = useState('recook');
@@ -26,18 +23,10 @@ export function GapsPanel() {
   // Retrieval breadth — defaults to the backend default (5) so untouched = no change.
   const [topK, setTopK] = useState(5);
 
-  const { data: chatModels } = useQuery({
-    queryKey: ['user-models', 'chat'],
-    queryFn: () => providerApi.listUserModels(accessToken!, { capability: 'chat' }),
-    enabled: !!accessToken,
-  });
-  const { data: embedModels } = useQuery({
-    queryKey: ['user-models', 'embedding'],
-    queryFn: () => providerApi.listUserModels(accessToken!, { capability: 'embedding' }),
-    enabled: !!accessToken,
-  });
-  const gens = chatModels?.items ?? [];
-  const embeds = embedModels?.items ?? [];
+  // Shared model-picker seam (also used by the Compose config) — one query per
+  // capability, cache shared (no double fetch). /review-impl #3 — was inline here.
+  const gens = useUserModels('chat');
+  const embeds = useUserModels('embedding');
   const canEnrich = !!genModel && !!embedModel && !enriching;
   // LE-064 — which row's per-gap enrich is in flight (for its spinner).
   const [enrichingName, setEnrichingName] = useState<string | null>(null);

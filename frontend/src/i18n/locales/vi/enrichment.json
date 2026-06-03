@@ -2,7 +2,59 @@
   "header": "Duyệt bồi đắp",
   "subtitle": "Xem xét lore do AI đề xuất cho các thực thể thiếu mô tả, rồi thăng những gì bạn duyệt vào canon của sách này. Bản nháp bồi đắp là dị bản riêng tư cho đến khi bạn thăng.",
   "untitled": "Chưa đặt tên",
-  "panel": { "proposals": "Đề xuất", "gaps": "Thiếu hụt", "sources": "Nguồn", "jobs": "Tác vụ", "settings": "Hồ sơ" },
+  "panel": { "compose": "Tạo", "proposals": "Đề xuất", "gaps": "Thiếu hụt", "sources": "Nguồn", "jobs": "Tác vụ", "settings": "Hồ sơ" },
+  "compose": {
+    "title": "Tạo nội dung làm giàu",
+    "subtitle": "Bắt đầu theo cách của bạn — mở rộng bản nháp bạn đã viết, hoặc lấp các thiếu hụt được phát hiện. Mọi nội dung bạn tạo là một dị bản cho đến khi bạn duyệt lên canon.",
+    "soon": "sắp có",
+    "mode_soon": "Sẽ có ở giai đoạn sau.",
+    "mode": {
+      "draft": "Từ bản nháp",
+      "gap": "Lấp thiếu hụt",
+      "intent": "Từ ý tưởng",
+      "context": "Dán ngữ cảnh",
+      "files": "Đính kèm tệp"
+    },
+    "draft": {
+      "label": "Bản nháp của bạn",
+      "placeholder": "Dán hoặc viết bản nháp cho thực thể này. Nó sẽ được mở rộng theo các chiều của sách, đúng giọng văn của sách…",
+      "expand_mode": "Cách mở rộng",
+      "rewrite": "Viết lại",
+      "rewrite_hint": "Viết lại + đồng bộ giọng văn của sách, giữ nguyên ý của bạn; lấp đầy mọi chiều.",
+      "add_only": "Chỉ bổ sung",
+      "add_only_hint": "Giữ nguyên văn của bạn; chỉ thêm các chiều còn thiếu."
+    },
+    "target": {
+      "existing": "Thực thể có sẵn",
+      "new": "Thực thể mới",
+      "name": "Tên",
+      "name_placeholder": "vd. 碧遊宮",
+      "kind": "Loại",
+      "existing_hint": "Làm giàu cho thực thể có sẵn trong từ điển mang tên này.",
+      "new_hint": "Tạo thực thể mới — không có gì được ghi vào từ điển cho đến khi bạn duyệt đề xuất."
+    },
+    "kind": {
+      "character": "Nhân vật",
+      "location": "Địa điểm",
+      "item": "Vật phẩm",
+      "faction": "Phe phái",
+      "event": "Sự kiện",
+      "generic": "Chung"
+    },
+    "config": {
+      "gen_model": "Mô hình sinh",
+      "embed_model": "Mô hình nhúng",
+      "select_model": "Chọn…",
+      "max_spend": "Chi tối đa (USD)",
+      "no_cap": "không giới hạn",
+      "top_k": "Top-K"
+    },
+    "safety": "① giấy phép · ② trừu tượng hóa · ③ chống sao chép · ④ bạn duyệt — nội dung làm giàu vẫn là dị bản cho đến khi bạn duyệt.",
+    "run_hint": "Chạy nền — đề xuất sẽ xuất hiện ở tab Đề xuất khi xong.",
+    "run": "Tạo bản nháp",
+    "composing": "Đang bắt đầu…",
+    "enqueued": "Đã bắt đầu làm giàu — đề xuất sẽ xuất hiện ở tab Đề xuất."
+  },
   "h0": {
     "marker": "dị bản",
     "tooltip": "Dị bản bồi đắp — không phải canon cho đến khi bạn thăng."
