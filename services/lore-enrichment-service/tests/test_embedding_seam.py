@@ -68,6 +68,19 @@ async def test_embed_query_meters_real_prompt_tokens_when_present():
 
 
 @pytest.mark.asyncio
+async def test_embed_query_ignores_negative_provider_count_falls_back_to_estimate():
+    # review #1: a hostile/buggy NEGATIVE prompt_tokens must NOT reduce metered
+    # spend — guard with > 0 so it falls back to the char-estimate (cap stays safe).
+    client = _FakeKnowledgeClient(prompt_tokens=-100)
+    meter = UsageMeter()
+    embed_query = make_embed_query_fn(client, user_id=uuid4(), meter=meter)  # type: ignore[arg-type]
+    query = "昆侖山 历史 人物"
+    await embed_query(query, _ctx())
+    assert meter.usage == TokenUsage(input_tokens=estimate_tokens(query))  # NOT -100
+    assert meter.total_tokens > 0
+
+
+@pytest.mark.asyncio
 async def test_embed_query_without_meter_is_noop():
     client = _FakeKnowledgeClient()
     embed_query = make_embed_query_fn(client, user_id=uuid4())  # type: ignore[arg-type]

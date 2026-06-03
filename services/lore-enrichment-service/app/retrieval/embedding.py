@@ -92,9 +92,11 @@ def make_embed_query_fn(
             raise ValueError("embed returned no vector for the query")
         if meter is not None:
             # LE-059b: meter on the provider's REAL prompt_tokens when present;
-            # fall back to the char-estimate only when the provider reports none
-            # (so a gap is never metered as 0 — the cap stays safe).
-            tokens = result.prompt_tokens or estimate_tokens(query)
+            # fall back to the char-estimate when the provider reports none. Guard
+            # with `> 0` (not truthiness): a hostile/buggy provider returning a
+            # NEGATIVE count must never REDUCE metered spend (mirrors the LLM
+            # seam's clamp — the cost cap is a safety control), and 0 → estimate.
+            tokens = result.prompt_tokens if result.prompt_tokens > 0 else estimate_tokens(query)
             meter.add(TokenUsage(input_tokens=tokens))
         return result.embeddings[0]
 
