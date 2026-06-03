@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	kmstypes "github.com/aws/aws-sdk-go-v2/service/kms/types"
@@ -12,6 +13,36 @@ import (
 	"github.com/loreweave/foundation/contracts/meta"
 	"github.com/loreweave/foundation/contracts/pii"
 )
+
+// TestIsAlreadyPendingDeletion covers the D-PIIKMS-DESTROY-TOCTOU predicate that
+// makes a concurrent co-tenant double-schedule benign — including against the
+// REAL aws-sdk KMSInvalidStateException type + wrapping + case, which the
+// PG-gated concurrent test (local-only, timing-dependent) does not guarantee.
+func TestIsAlreadyPendingDeletion(t *testing.T) {
+	msg := "arn:aws:kms:us-east-1:111122223333:key/abcd is pending deletion."
+	awsTyped := &kmstypes.KMSInvalidStateException{Message: &msg}
+
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"real aws KMSInvalidStateException", awsTyped, true},
+		{"wrapped aws typed error", fmt.Errorf("schedule deletion: %w", awsTyped), true},
+		{"plain string match", errors.New("KMSInvalidStateException: ... is pending deletion"), true},
+		{"case-insensitive", errors.New("Key Is Pending Deletion"), true},
+		{"unrelated KMS error", errors.New("KMSInvalidStateException: key disabled"), false},
+		{"throttling", errors.New("ThrottlingException: rate exceeded"), false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := isAlreadyPendingDeletion(c.err); got != c.want {
+				t.Errorf("isAlreadyPendingDeletion(%v) = %v, want %v", c.err, got, c.want)
+			}
+		})
+	}
+}
 
 // Compile-time: the adapters satisfy the cycle-3 contracts.
 var (
