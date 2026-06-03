@@ -265,6 +265,45 @@ def test_draft_new_entity_target_ref_none(monkeypatch):
     assert t["present_dimensions"] == []  # all dims missing → generate all
 
 
+def test_draft_without_embedding_model_ref_202(monkeypatch):
+    # D-COMPOSE-S1-EMBED-REF: mode D needs no embed model (no retrieval) → 202, and
+    # the persisted request carries embedding_model_ref=None (the worker ignores it).
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    body = _base()
+    body.pop("embedding_model_ref")
+    resp = _post(body)
+    assert resp.status_code == 202, resp.text
+    assert saved["request"]["embedding_model_ref"] is None
+
+
+def test_draft_too_large_413(monkeypatch):
+    # D-COMPOSE-S1-DRAFT-CAP: an oversized draft is refused (use a file upload).
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    resp = _post(_base(draft_text="字" * 50_001))
+    assert resp.status_code == 413
+    assert created == {} and prod.calls == []
+
+
+def test_gap_without_embedding_model_ref_400(monkeypatch):
+    # The gap path keeps the auto-enrich contract — an embed model is required.
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    resp = _post({
+        "book_id": str(uuid4()),
+        "input_source": "gap",
+        "generation_model_ref": str(uuid4()),
+        "technique": "retrieval",
+        "gap_targets": [{"mode": "existing", "canonical_name": "玉虛宮"}],
+    })
+    assert resp.status_code == 400
+    assert created == {} and prod.calls == []
+
+
 def test_draft_missing_draft_text_400(monkeypatch):
     jid = uuid4()
     created, saved, prod = {}, {}, _RecordingProducer()

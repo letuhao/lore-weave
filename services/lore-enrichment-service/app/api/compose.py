@@ -57,6 +57,9 @@ router = APIRouter(prefix="/v1/lore-enrichment/projects", tags=["compose"])
 _SUPPORTED_SOURCES = {"gap", "draft"}
 _FUTURE_SOURCES = {"context", "files", "intent"}
 _EXPAND_MODES = {EXPAND_ADD_ONLY, EXPAND_REWRITE}
+# Cap the pasted draft so it can't blow up the LLM prompt. ~50 KB ≈ the spec's
+# mode-C context cap (D-COMPOSE-S1-DRAFT-CAP; mode C/F will reuse this constant).
+_MAX_DRAFT_CHARS = 50_000
 
 
 class ComposeTargetInput(BaseModel):
@@ -80,7 +83,11 @@ class ComposeTargetInput(BaseModel):
 class ComposeBody(BaseModel):
     book_id: UUID
     input_source: str
-    embedding_model_ref: UUID
+    # Optional: mode D (draft) does NO retrieval/embed, so it needs no embedding
+    # model (D-COMPOSE-S1-EMBED-REF). The gap path still requires it (validated in
+    # the handler). build_live_runner ignores it regardless (the embed seam resolves
+    # the model from the StrategyContext), so a missing ref never breaks a draft job.
+    embedding_model_ref: UUID | None = None
     generation_model_ref: UUID
     # mode D (draft): the author's draft + how to expand it.
     target: ComposeTargetInput | None = None
@@ -163,7 +170,10 @@ async def _create_and_enqueue(
     )
     request: dict = {
         "project_id": str(project_id),
-        "embedding_model_ref": str(body.embedding_model_ref),
+        # Optional for draft (D-COMPOSE-S1-EMBED-REF) — None when the author didn't
+        # pick an embed model; the worker passes it through and build_live_runner
+        # ignores it (the embed seam resolves the model from the StrategyContext).
+        "embedding_model_ref": str(body.embedding_model_ref) if body.embedding_model_ref else None,
         "generation_model_ref": str(body.generation_model_ref),
         "technique": technique,
         "top_k": body.top_k,
@@ -241,6 +251,16 @@ async def compose(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="draft input requires a non-empty draft_text",
             )
+        if len(draft) > _MAX_DRAFT_CHARS:
+            # D-COMPOSE-S1-DRAFT-CAP: bound the prompt — a huge paste should use a
+            # file upload (mode F, async) rather than the synchronous draft path.
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=(
+                    f"draft_text is too large ({len(draft)} chars > {_MAX_DRAFT_CHARS} cap) "
+                    "— trim it or use a file upload (mode F, coming in a later slice)"
+                ),
+            )
         if body.target is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -284,6 +304,13 @@ async def compose(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="gap input requires gap_targets",
+        )
+    if body.embedding_model_ref is None:
+        # The gap path keeps the auto-enrich contract (an embed model is expected);
+        # only mode D relaxes it (D-COMPOSE-S1-EMBED-REF).
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="gap input requires embedding_model_ref",
         )
     try:
         technique = Technique(body.technique or Technique.RETRIEVAL.value)

@@ -35,7 +35,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from app.clients.writeback import WritebackPorts, WrittenFact
+from app.clients.writeback import UnplaceableEntityError, WritebackPorts, WrittenFact
 from app.services.review import (
     ProposalRow,
     ProposalsRepo,
@@ -92,15 +92,38 @@ class RetractResult:
     supplement_retracted: int
 
 
+# Enrichment entity_kind → glossary kind_code. Two known enrichment kinds glossary
+# names differently / lacks: a `faction` is glossary `organization`, and the GENERIC
+# freeform fallback maps to `terminology` (the glossary catch-all for a concept/entry).
+# These are EXPLICIT deliberate translations (clear intent + tested); any OTHER unknown
+# kind is handled REACTIVELY at write-time (see `_write_glossary_anchor`), so this is
+# NOT a copy of glossary's taxonomy — only the two intended renames live here.
+# Surfaced live by the Compose mode-D e2e (D-COMPOSE-S1-LIVE-SMOKE; unit tests mock the
+# writeback so they missed it — glossary silently SKIPS an unknown kind_code).
+_ENRICH_TO_GLOSSARY_KIND: dict[str, str] = {
+    "faction": "organization",
+    "generic": "terminology",
+}
+
+# The ONE catch-all kind for an un-placeable entity (the reactive fallback target).
+# Unavoidable as a constant — "what kind does an un-mappable entity become" is a policy
+# decision, and it is intrinsically a glossary code. `terminology` is glossary's generic
+# concept/entry kind. Everything else routes through the SSOT, not a hardcoded list.
+_DEFAULT_GLOSSARY_KIND: str = "terminology"
+
+
 def _glossary_kind_code(entity_kind: str) -> str:
     """The glossary kind_code for an enrichment entity_kind (de-bias C1 / KB8).
 
     Was hardcoded to ``"location"`` — which promoted a CHARACTER / ITEM / FACTION
-    enrichment under the WRONG glossary kind (latent today because the anchor
-    resolves by name, but wrong for a new entity / any kind-specific path). We
-    enrich the kind glossary itself returned (round-trips), so pass it through;
-    fall back to ``"location"`` only for an empty/unknown kind (legacy safety)."""
-    return (entity_kind or "").strip() or "location"
+    enrichment under the WRONG glossary kind. We pass the kind through (the C1 kinds
+    character/location/item/event + any glossary-native kind round-trip), translating
+    only the two that glossary names differently (``faction``→``organization``,
+    ``generic``→``terminology``). Empty → ``"location"`` (legacy safety)."""
+    k = (entity_kind or "").strip()
+    if not k:
+        return "location"
+    return _ENRICH_TO_GLOSSARY_KIND.get(k, k)
 
 
 def _anchor_name(proposal: ProposalRow) -> str:
@@ -145,6 +168,30 @@ class WritebackService:
         self._ports = ports
 
     # ── helpers ────────────────────────────────────────────────────────────────
+
+    async def _write_glossary_anchor(
+        self, *, book_id: UUID, kind_code: str, name: str, source_language: str
+    ) -> str:
+        """Write the glossary entity ANCHOR, with a REACTIVE catch-all fallback.
+
+        Tries the resolved ``kind_code`` first; if glossary reports it could not place
+        that kind (``UnplaceableEntityError`` — it silently skips an unknown kind_code
+        and returns no entity), retries ONCE under :data:`_DEFAULT_GLOSSARY_KIND`. This
+        keys off glossary's ACTUAL response, so lore-enrichment never hardcodes a copy
+        of glossary's taxonomy and the fallback survives a glossary kind rename. A real
+        transport failure (a different ``WritebackError``) propagates unchanged."""
+        try:
+            return await self._ports.write_entity_through_glossary(
+                book_id=book_id, kind_code=kind_code, name=name,
+                attributes={}, source_language=source_language,  # identity only (H0)
+            )
+        except UnplaceableEntityError:
+            if kind_code == _DEFAULT_GLOSSARY_KIND:
+                raise  # the catch-all itself is unknown → nothing more to try
+            return await self._ports.write_entity_through_glossary(
+                book_id=book_id, kind_code=_DEFAULT_GLOSSARY_KIND, name=name,
+                attributes={}, source_language=source_language,
+            )
 
     @staticmethod
     def _facts_from_proposal(proposal: ProposalRow) -> list[dict[str, Any]]:
@@ -273,11 +320,10 @@ class WritebackService:
         kind_code = _glossary_kind_code(proposal.entity_kind)
         anchor_name = _anchor_name(proposal)  # H0: faithful identity, never makeup
         if glossary_entity_id is None:
-            entity_id_str = await self._ports.write_entity_through_glossary(
+            entity_id_str = await self._write_glossary_anchor(
                 book_id=book_id,
                 kind_code=kind_code,
                 name=anchor_name,
-                attributes={},  # identity only — no enriched content pre-promote
                 source_language=source_language,
             )
             glossary_entity_id = UUID(entity_id_str)

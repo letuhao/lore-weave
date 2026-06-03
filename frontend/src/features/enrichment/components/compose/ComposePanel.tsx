@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Sparkles } from 'lucide-react';
 import { useEnrichmentContext } from '../../context/EnrichmentContext';
 import { useCompose } from '../../hooks/useCompose';
+import { useBookEntities } from '../../hooks/useBookEntities';
 import type { ComposeTargetInput, ExpandMode } from '../../types';
 import { ModeSelector, type ComposeMode } from './ModeSelector';
 import { ComposeDraftForm } from './ComposeDraftForm';
@@ -26,6 +27,7 @@ export function ComposePanel() {
   const { t } = useTranslation('enrichment');
   const { bookId, setActivePanel } = useEnrichmentContext();
   const { compose, composing } = useCompose(bookId);
+  const entities = useBookEntities(bookId); // existing-target autocomplete (best-effort)
 
   const [mode, setMode] = useState<ComposeMode>('draft');
   const [target, setTarget] = useState<ComposeTargetInput>(DEFAULT_TARGET);
@@ -38,7 +40,7 @@ export function ComposePanel() {
     draftText.trim() !== '' &&
     target.canonical_name.trim() !== '' &&
     !!config.genModel &&
-    !!config.embedModel &&
+    // embed model is OPTIONAL for draft — mode D does no retrieval (D-COMPOSE-S1-EMBED-REF).
     !composing;
 
   const run = () => {
@@ -59,7 +61,8 @@ export function ComposePanel() {
       draft_text: draftText.trim(),
       expand_mode: expandMode,
       generation_model_ref: config.genModel,
-      embedding_model_ref: config.embedModel,
+      // omit when unset → the BE treats embed as optional for draft.
+      embedding_model_ref: config.embedModel || undefined,
       max_spend_usd: maxSpend,
       top_k: topK,
     });
@@ -76,7 +79,7 @@ export function ComposePanel() {
 
       {mode === 'draft' && (
         <>
-          <ComposeTarget target={target} onChange={setTarget} />
+          <ComposeTarget target={target} onChange={setTarget} entities={entities} />
           <ComposeDraftForm
             draftText={draftText}
             onDraftChange={setDraftText}

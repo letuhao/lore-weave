@@ -204,7 +204,8 @@ export interface ComposeTargetInput {
 /** The POST /compose body (the api layer adds book_id := bookId). */
 export interface ComposeBody {
   input_source: ComposeInputSource;
-  embedding_model_ref: string;
+  /** Required for `gap`; OPTIONAL for `draft` (mode D does no retrieval/embed). */
+  embedding_model_ref?: string;
   generation_model_ref: string;
   target?: ComposeTargetInput;
   draft_text?: string;

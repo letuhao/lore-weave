@@ -696,21 +696,27 @@ paths:
           application/json:
             schema:
               type: object
-              required: [book_id, input_source, embedding_model_ref, generation_model_ref]
+              required: [book_id, input_source, generation_model_ref]
               properties:
                 book_id: { type: string, format: uuid }
                 input_source:
                   type: string
                   enum: [gap, draft]
                   description: Slice 1 supports gap | draft (C/F/B land in slices 2–4).
-                embedding_model_ref: { type: string, format: uuid }
+                embedding_model_ref:
+                  type: string
+                  format: uuid
+                  description: >
+                    Required for `gap`; OPTIONAL for `draft` (mode D does no
+                    retrieval/embed). Ignored by the runner regardless.
                 generation_model_ref: { type: string, format: uuid }
                 target:
                   $ref: '#/components/schemas/ComposeTarget'
                   description: The target for a draft input (existing or new).
                 draft_text:
                   type: string
-                  description: The author's draft prose (mode D — required for draft).
+                  maxLength: 50000
+                  description: The author's draft prose (mode D — required; capped at ~50 KB).
                 expand_mode:
                   type: string
                   enum: [add_only, rewrite]
@@ -746,6 +752,8 @@ paths:
         '400':
           $ref: '#/components/responses/ErrorResponse'
         '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '413':
           $ref: '#/components/responses/ErrorResponse'
 
   # ────────────────────────────── sources ──────────────────────────────

@@ -35,6 +35,7 @@ from app.verify.sanitize import neutralize_proposal_text
 
 __all__ = [
     "WritebackError",
+    "UnplaceableEntityError",
     "WrittenFact",
     "BookOwner",
     "WritebackPorts",
@@ -51,6 +52,15 @@ class WritebackError(Exception):
         super().__init__(message)
         self.retryable = retryable
         self.status_code = status_code
+
+
+class UnplaceableEntityError(WritebackError):
+    """Glossary accepted the request but created/resolved NO entity — i.e. it could
+    not place the supplied ``kind_code`` (the bulk upsert silently skips an unknown
+    kind). DISTINCT from a transport failure so the caller can react: retry under the
+    glossary catch-all kind (the reactive fallback) rather than failing the promote.
+    Keys off glossary's ACTUAL response, so it needs no hardcoded copy of glossary's
+    taxonomy and survives a glossary kind rename."""
 
 
 @dataclass(frozen=True)
@@ -167,8 +177,12 @@ class WritebackPorts:
         data = resp.json()
         ents = data.get("entities") or []
         if not ents or not ents[0].get("entity_id"):
-            raise WritebackError(
-                "glossary extract-entities returned no entity_id", status_code=502
+            # Glossary silently skipped the entity → it couldn't place this kind_code
+            # (unknown kind). Signal it distinctly so the caller can retry under the
+            # catch-all kind (reactive fallback) instead of failing the promote.
+            raise UnplaceableEntityError(
+                f"glossary could not place kind_code={kind_code!r} (returned no entity_id)",
+                status_code=502,
             )
         return str(ents[0]["entity_id"])
 

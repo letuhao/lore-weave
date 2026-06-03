@@ -22,6 +22,11 @@ vi.mock('../../../hooks/useCompose', () => ({
   useCompose: () => ({ compose: composeMock, composing: false }),
 }));
 
+// existing-target autocomplete reads the book's glossary entity names (best-effort).
+vi.mock('@/features/glossary/api', () => ({
+  glossaryApi: { listEntityNames: () => Promise.resolve([]) },
+}));
+
 import { ComposePanel } from '../ComposePanel';
 import { EnrichmentProvider } from '../../../context/EnrichmentContext';
 
@@ -35,22 +40,36 @@ function renderPanel() {
   return render(<ComposePanel />, { wrapper: Wrapper });
 }
 
-async function fillModels() {
+async function fillGen() {
   await waitFor(() => expect(screen.getByRole('option', { name: 'Gen-1' })).toBeInTheDocument());
   fireEvent.change(screen.getByTestId('compose-gen-model'), { target: { value: 'g1' } });
+}
+async function fillModels() {
+  await fillGen();
   fireEvent.change(screen.getByTestId('compose-embed-model'), { target: { value: 'e1' } });
 }
 
 beforeEach(() => composeMock.mockClear());
 
 describe('ComposePanel (mode D)', () => {
-  it('Run is disabled until a draft, a target name, and both models are set', async () => {
+  it('Run is disabled until a draft, a target name, and the GEN model are set (embed optional)', async () => {
     renderPanel();
     expect(screen.getByTestId('compose-run')).toBeDisabled();
     fireEvent.change(screen.getByTestId('compose-target-name'), { target: { value: '碧遊宮' } });
     fireEvent.change(screen.getByTestId('compose-draft-text'), { target: { value: '通天教主道場。' } });
-    await fillModels();
+    await fillGen(); // gen only — no embed model picked
     expect(screen.getByTestId('compose-run')).not.toBeDisabled();
+  });
+
+  it('draft without an embed model omits embedding_model_ref (D-COMPOSE-S1-EMBED-REF)', async () => {
+    renderPanel();
+    fireEvent.change(screen.getByTestId('compose-target-name'), { target: { value: '碧遊宮' } });
+    fireEvent.change(screen.getByTestId('compose-draft-text'), { target: { value: '道場。' } });
+    await fillGen();
+    fireEvent.click(screen.getByTestId('compose-run'));
+    const body = composeMock.mock.calls[0][0];
+    expect(body.embedding_model_ref).toBeUndefined();
+    expect(body.generation_model_ref).toBe('g1');
   });
 
   it('Run composes a draft body for an EXISTING target (target_ref = name)', async () => {

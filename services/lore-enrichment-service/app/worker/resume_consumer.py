@@ -84,7 +84,9 @@ async def redrive_one(
             job_id=job_id,
             user_id=user_id,
             project_id=project_id,
-            embedding_model_ref=str(request["embedding_model_ref"]),
+            # Optional (D-COMPOSE-S1-EMBED-REF): a compose_draft job has no embed ref;
+            # build_live_runner ignores it (the embed seam resolves from the ctx).
+            embedding_model_ref=request.get("embedding_model_ref"),
             cost_cap=request.get("max_spend_usd"),
             eval_reserve_fraction=float(request.get("eval_reserve_fraction") or 0.15),
             top_k=int(request.get("top_k") or 5),

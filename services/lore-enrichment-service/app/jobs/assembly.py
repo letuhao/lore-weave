@@ -91,7 +91,7 @@ async def build_live_runner(
     job_id: str,
     user_id: str,
     project_id: str,
-    embedding_model_ref: str,
+    embedding_model_ref: str | None,
     cost_cap: float | None,
     eval_reserve_fraction: float = 0.15,
     spent_so_far: float = 0.0,

@@ -2,19 +2,45 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { COMPOSE_KINDS, type ComposeTargetInput } from '../../types';
 
+/** Minimal shape of a glossary entity name option (from useBookEntities). */
+export interface ComposeEntityOption {
+  display_name: string;
+  kind_code?: string;
+}
+
 interface Props {
   target: ComposeTargetInput;
   onChange: (t: ComposeTargetInput) => void;
+  /** The book's existing entities, for the existing-target autocomplete
+   *  (D-COMPOSE-EXISTING-PICKER). Empty → the name field is plain free-text. */
+  entities?: ComposeEntityOption[];
 }
 
 /** The compose target — enrich an EXISTING glossary entity or create a NEW one.
  *  existing → the backend resolves it by name (target_ref = the name); new → the
  *  glossary anchor is minted only at PROMOTE (H0-clean), so target_ref stays null.
  *  View-only: state lives in ComposePanel. */
-export function ComposeTarget({ target, onChange }: Props) {
+export function ComposeTarget({ target, onChange, entities = [] }: Props) {
   const { t } = useTranslation('enrichment');
   const setMode = (mode: 'existing' | 'new') =>
     onChange({ ...target, mode, target_ref: mode === 'new' ? null : target.canonical_name });
+
+  // Existing-target autocomplete: when the typed name matches a known entity, also
+  // prefill the kind (only when its glossary kind_code is one we model — never a
+  // wrong guess). New-entity mode stays plain free-text (the entity doesn't exist yet).
+  const showPicker = target.mode === 'existing' && entities.length > 0;
+  const onNameChange = (value: string) => {
+    const next: ComposeTargetInput = {
+      ...target,
+      canonical_name: value,
+      target_ref: target.mode === 'new' ? null : value,
+    };
+    const match = entities.find((e) => e.display_name === value);
+    if (match?.kind_code && (COMPOSE_KINDS as readonly string[]).includes(match.kind_code)) {
+      next.entity_kind = match.kind_code;
+    }
+    onChange(next);
+  };
 
   return (
     <div className="space-y-3 rounded-lg border bg-card px-4 py-3">
@@ -42,18 +68,20 @@ export function ComposeTarget({ target, onChange }: Props) {
           <span className="text-muted-foreground">{t('compose.target.name')}</span>
           <input
             value={target.canonical_name}
-            onChange={(e) =>
-              onChange({
-                ...target,
-                canonical_name: e.target.value,
-                // keep target_ref in sync with the name for the existing path.
-                target_ref: target.mode === 'new' ? null : e.target.value,
-              })
-            }
+            onChange={(e) => onNameChange(e.target.value)}
             placeholder={t('compose.target.name_placeholder')}
             data-testid="compose-target-name"
+            list={showPicker ? 'compose-entity-list' : undefined}
+            autoComplete="off"
             className="min-w-0 flex-1 rounded border bg-background px-2 py-1 font-serif"
           />
+          {showPicker && (
+            <datalist id="compose-entity-list" data-testid="compose-entity-list">
+              {entities.map((e) => (
+                <option key={e.display_name} value={e.display_name} />
+              ))}
+            </datalist>
+          )}
         </label>
         <label className="flex items-center gap-2">
           <span className="text-muted-foreground">{t('compose.target.kind')}</span>
