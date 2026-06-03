@@ -92,10 +92,15 @@ class RetractResult:
     supplement_retracted: int
 
 
-def _location_kind_code(entity_kind: str) -> str:
-    """Map the enrichment entity_kind to a glossary kind_code. The demo enriches
-    LOCATIONs; glossary's location kind code is 'location'."""
-    return "location"
+def _glossary_kind_code(entity_kind: str) -> str:
+    """The glossary kind_code for an enrichment entity_kind (de-bias C1 / KB8).
+
+    Was hardcoded to ``"location"`` — which promoted a CHARACTER / ITEM / FACTION
+    enrichment under the WRONG glossary kind (latent today because the anchor
+    resolves by name, but wrong for a new entity / any kind-specific path). We
+    enrich the kind glossary itself returned (round-trips), so pass it through;
+    fall back to ``"location"`` only for an empty/unknown kind (legacy safety)."""
+    return (entity_kind or "").strip() or "location"
 
 
 def _anchor_name(proposal: ProposalRow) -> str:
@@ -160,8 +165,11 @@ class WritebackService:
                          "confidence": conf}
                     )
         if not facts:
+            # de-bias C1 (KB8): a neutral STABLE-ID fallback dimension, not the
+            # zh-hardcoded "补充" (which stamped a Chinese marker on any book).
             facts.append(
-                {"dimension": "补充", "content": proposal.content, "confidence": conf}
+                {"dimension": "description", "content": proposal.content,
+                 "confidence": conf}
             )
         return facts
 
@@ -261,7 +269,7 @@ class WritebackService:
         # flows enriched content into the glossary canonical attributes. Writing
         # the content into a glossary attribute here would put makeup text onto a
         # canon entity before promotion — an H0 leak (self-adversary A1).
-        kind_code = _location_kind_code(proposal.entity_kind)
+        kind_code = _glossary_kind_code(proposal.entity_kind)
         anchor_name = _anchor_name(proposal)  # H0: faithful identity, never makeup
         if glossary_entity_id is None:
             entity_id_str = await self._ports.write_entity_through_glossary(
