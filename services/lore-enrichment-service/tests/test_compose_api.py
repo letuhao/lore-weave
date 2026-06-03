@@ -1,0 +1,280 @@
+"""Compose HTTP handler — slice 1 (spine + mode D draft, mode A gap).
+
+Exercises POST .../compose via TestClient + dependency overrides (NOT the store
+directly). The store + save_job_request + redis producer are fakes (mirroring
+test_auto_enrich_api), so no live stack. Asserts the handler's branch behaviour
+read from app/api/compose.py:
+
+  * draft (existing) → 202 + technique='compose_draft' + the request persists
+    input_source/seed_text/expand_mode + the target;
+  * draft (NEW entity) → target_ref persisted as None (anchor minted at promote);
+  * draft without draft_text / without target / bad expand_mode → 400;
+  * gap → 202 with the chosen technique + targets; compose_draft via gap → 400;
+  * future sources (context/files/intent) → 400; unknown source → 400;
+  * no auth → 401.
+"""
+
+from __future__ import annotations
+
+from uuid import uuid4
+
+import jwt as pyjwt
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from app.api import compose as compose_api
+from app.deps import get_db
+
+OWNER = "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c"
+
+
+class _RecordingProducer:
+    def __init__(self):
+        self.calls = []
+        self.closed = False
+
+    async def xadd(self, stream, fields, maxlen=None):
+        self.calls.append((stream, fields))
+        return "1-0"
+
+    async def aclose(self):
+        self.closed = True
+
+
+def _app() -> FastAPI:
+    app = FastAPI()
+    app.include_router(compose_api.router)
+    app.dependency_overrides[get_db] = lambda: object()
+    return app
+
+
+def _bearer(sub: str = OWNER) -> str:
+    return pyjwt.encode({"sub": sub}, "x", algorithm="HS256")
+
+
+def _patch_store(monkeypatch, *, jid, created, saved, producer):
+    class _FakeStore:
+        def __init__(self, pool):
+            ...
+
+        async def create_job(self, **kw):
+            created.update(kw)
+            return str(jid)
+
+    async def _fake_save(*, pool, job_id, request):
+        saved["job_id"] = job_id
+        saved["request"] = request
+
+    monkeypatch.setattr(compose_api, "PgProposalStore", _FakeStore)
+    monkeypatch.setattr(compose_api, "save_job_request", _fake_save)
+    monkeypatch.setattr(compose_api, "make_redis_producer", lambda url: producer)
+
+
+def _post(body: dict, *, project=None, auth=True):
+    project = project or uuid4()
+    headers = {"Authorization": f"Bearer {_bearer()}"} if auth else {}
+    return TestClient(_app()).post(
+        f"/v1/lore-enrichment/projects/{project}/compose", json=body, headers=headers
+    )
+
+
+def _base(**over) -> dict:
+    body = {
+        "book_id": str(uuid4()),
+        "input_source": "draft",
+        "embedding_model_ref": str(uuid4()),
+        "generation_model_ref": str(uuid4()),
+        "draft_text": "碧遊宮乃通天教主道場。",
+        "expand_mode": "rewrite",
+        "target": {"mode": "existing", "canonical_name": "碧遊宮",
+                   "entity_kind": "location", "target_ref": "loc:biyou"},
+    }
+    body.update(over)
+    return body
+
+
+# ── mode D — draft (existing) ────────────────────────────────────────────────
+def test_draft_existing_202_persists_seed_and_mode(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+
+    resp = _post(_base(expand_mode="add_only"))
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert body["job_id"] == str(jid)
+    assert body["input_source"] == "draft"
+    assert body["technique"] == "compose_draft"
+    assert body["enqueued"] is True
+
+    # job row carries the compose_draft technique + the target's kind.
+    assert created["technique"] == "compose_draft"
+    assert created["entity_kind"] == "location"
+    # persisted request carries the compose-specific fields the worker re-drives.
+    req = saved["request"]
+    assert req["input_source"] == "draft"
+    assert req["seed_text"] == "碧遊宮乃通天教主道場。"
+    assert req["expand_mode"] == "add_only"
+    assert req["technique"] == "compose_draft"
+    assert len(req["targets"]) == 1
+    assert req["targets"][0]["canonical_name"] == "碧遊宮"
+    assert req["targets"][0]["target_ref"] == "loc:biyou"
+    assert len(prod.calls) == 1
+
+
+def test_draft_rewrite_clears_present_dimensions(monkeypatch):
+    # /review-impl MED: rewrite expands ALL dims — present_dimensions is cleared so
+    # _gap_from_target never drops a well-covered existing entity to a silent no-op.
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+
+    resp = _post(_base(
+        expand_mode="rewrite",
+        target={"mode": "existing", "canonical_name": "碧遊宮", "entity_kind": "location",
+                "target_ref": "loc:biyou",
+                "present_dimensions": ["历史", "地理", "文化", "features", "inhabitants"]},
+    ))
+    assert resp.status_code == 202, resp.text
+    # present cleared → all dims become "missing" → all get rewritten (no silent no-op)
+    assert saved["request"]["targets"][0]["present_dimensions"] == []
+    assert saved["request"]["targets"][0]["target_ref"] == "loc:biyou"  # still existing
+
+
+def test_draft_add_only_keeps_present_dimensions(monkeypatch):
+    # add_only keeps present — "only add the missing dims" is the intended semantics.
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+
+    resp = _post(_base(
+        expand_mode="add_only",
+        target={"mode": "existing", "canonical_name": "碧遊宮", "entity_kind": "location",
+                "target_ref": "loc:biyou", "present_dimensions": ["历史"]},
+    ))
+    assert resp.status_code == 202, resp.text
+    assert saved["request"]["targets"][0]["present_dimensions"] == ["历史"]
+
+
+def test_draft_bad_target_mode_422(monkeypatch):
+    # /review-impl LOW: a typo'd target.mode is rejected (422) — never silently
+    # mis-routed onto the existing path.
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    resp = _post(_base(
+        target={"mode": "New", "canonical_name": "新天地", "entity_kind": "generic"},
+    ))
+    assert resp.status_code == 422
+    assert created == {} and prod.calls == []
+
+
+def test_draft_new_entity_target_ref_none(monkeypatch):
+    # mode='new' → target_ref persisted None (anchor minted at PROMOTE, H0-clean).
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+
+    resp = _post(_base(
+        target={"mode": "new", "canonical_name": "新天地", "entity_kind": "generic"},
+    ))
+    assert resp.status_code == 202, resp.text
+    assert created["entity_kind"] == "generic"
+    t = saved["request"]["targets"][0]
+    assert t["canonical_name"] == "新天地"
+    assert t["target_ref"] is None       # NEW → no glossary write at compose time
+    assert t["present_dimensions"] == []  # all dims missing → generate all
+
+
+def test_draft_missing_draft_text_400(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    resp = _post(_base(draft_text="   "))
+    assert resp.status_code == 400
+    assert created == {} and prod.calls == []
+
+
+def test_draft_missing_target_400(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    body = _base()
+    body.pop("target")
+    resp = _post(body)
+    assert resp.status_code == 400
+
+
+def test_draft_bad_expand_mode_400(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    resp = _post(_base(expand_mode="obliterate"))
+    assert resp.status_code == 400
+
+
+# ── mode A — gap ─────────────────────────────────────────────────────────────
+def test_gap_202_with_targets(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+
+    resp = _post({
+        "book_id": str(uuid4()),
+        "input_source": "gap",
+        "embedding_model_ref": str(uuid4()),
+        "generation_model_ref": str(uuid4()),
+        "technique": "retrieval",
+        "gap_targets": [
+            {"mode": "existing", "canonical_name": "玉虛宮", "entity_kind": "location",
+             "target_ref": "loc:yuxu", "present_dimensions": ["历史"]},
+        ],
+    })
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert body["technique"] == "retrieval"
+    assert body["enqueued_targets"] == 1
+    req = saved["request"]
+    assert req["input_source"] == "gap"
+    assert req["targets"][0]["present_dimensions"] == ["历史"]
+    assert "seed_text" not in req  # gap is not a draft
+
+
+def test_gap_with_compose_draft_technique_400(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    resp = _post({
+        "book_id": str(uuid4()),
+        "input_source": "gap",
+        "embedding_model_ref": str(uuid4()),
+        "generation_model_ref": str(uuid4()),
+        "technique": "compose_draft",
+        "gap_targets": [{"mode": "existing", "canonical_name": "玉虛宮"}],
+    })
+    assert resp.status_code == 400
+
+
+# ── future / unknown sources + auth ──────────────────────────────────────────
+@pytest.mark.parametrize("src", ["context", "files", "intent"])
+def test_future_sources_400(monkeypatch, src):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    resp = _post(_base(input_source=src))
+    assert resp.status_code == 400
+    assert "slices 2" in resp.json()["detail"] or "not available" in resp.json()["detail"]
+
+
+def test_unknown_source_400(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    resp = _post(_base(input_source="telepathy"))
+    assert resp.status_code == 400
+
+
+def test_compose_requires_auth():
+    resp = _post(_base(), auth=False)
+    assert resp.status_code == 401

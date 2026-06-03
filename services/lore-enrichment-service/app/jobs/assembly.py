@@ -37,7 +37,13 @@ from app.jobs.cost import GapCostModel, JobCostBudget
 from app.jobs.events import JobEventEmitter, make_redis_producer
 from app.jobs.proposal_store import PgProposalStore
 from app.jobs.runner import JobRunner
-from app.jobs.stages import FabricationPipeline, GapPipeline, JobPipeline, ReCookPipeline
+from app.jobs.stages import (
+    DraftExpandPipeline,
+    FabricationPipeline,
+    GapPipeline,
+    JobPipeline,
+    ReCookPipeline,
+)
 from app.jobs.tokens import UsageMeter
 from app.retrieval.embedding import make_embed_query_fn
 from app.retrieval.grounding import (
@@ -47,6 +53,7 @@ from app.retrieval.grounding import (
 from app.retrieval.store import SourceCorpusStore
 from app.retrieval.strategy import RetrievalStrategy
 from app.strategies.base import EnrichmentStrategy, Technique
+from app.strategies.draft_expand import DraftExpandStrategy
 from app.strategies.fabrication import FabricationStrategy
 from app.strategies.factory import GateAwareStrategyFactory
 from app.strategies.gate_reader import make_eval_runs_gate_reader
@@ -210,9 +217,17 @@ async def build_live_runner(
         verifier=verifier,
         license_lookup=_license_lookup,
     )
+
+    # ── Compose mode D — DRAFT EXPANSION (P1, ungated). Its OWN seeded generation
+    # path (no retrieval/grounding): it expands the author's draft
+    # (context.seed_text / expand_mode) via the SAME metered complete seam and runs
+    # C12 verify. Tier P1 → the gate-aware factory never blocks it (only P2/P3 are
+    # gated). Registered here so factory.select('compose_draft') returns it.
+    draft_expand = DraftExpandStrategy(complete=complete, verifier=verifier)
+
     factory = GateAwareStrategyFactory(
         gate_reader=make_eval_runs_gate_reader(EvalRunsRepo(pool)),
-        strategies=[retrieval, fabrication, recook],
+        strategies=[retrieval, fabrication, recook, draft_expand],
         suite_version=suite_version,
     )
     # Gate enforcement happens HERE — a locked fabrication raises
@@ -255,6 +270,15 @@ async def build_live_runner(
         # The licensing gate inside the strategy refuses any unlicensed source
         # (UnlicensedSourceError propagates → job refused).
         pipeline = ReCookPipeline(strategy=selected)  # type: ignore[arg-type]
+        cost_strategy = selected
+    elif selected.technique is Technique.COMPOSE_DRAFT:
+        # Compose mode D (P1, ungated): the draft-expansion pipeline (own seeded
+        # generation → C12 verify per gap). EXPLICIT branch BEFORE the else→GapPipeline
+        # fall-through: mode D has EMPTY grounding and GapPipeline's generator REFUSES
+        # empty grounding — D must never fall into it. Its OWN estimate_cost
+        # (COMPOSE_DRAFT_GAP_COST tokens/gap, generation-only) is the pre-charge; the
+        # runner reconciles to the real metered spend (LE-059a), same as P1 retrieval.
+        pipeline = DraftExpandPipeline(strategy=selected)  # type: ignore[arg-type]
         cost_strategy = selected
     else:
         # P1 default (retrieval): the unchanged C10→C11→C12 pipeline + the

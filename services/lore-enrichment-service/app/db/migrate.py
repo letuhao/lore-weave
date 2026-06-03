@@ -217,7 +217,7 @@ CREATE TABLE IF NOT EXISTS enrichment_job (
   status          TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending','estimating','running','paused','completed','failed','cancelled')),
   technique       TEXT NOT NULL
-    CHECK (technique IN ('template','retrieval','fabrication','recook')),
+    CHECK (technique IN ('template','retrieval','fabrication','recook','compose_draft')),
   entity_kind     TEXT,                           -- demo: 'location'
   book_id         UUID,                           -- glossary/book scope. Enrichment is
                                                   --   BOOK-bound (the GUI lives in the
@@ -255,6 +255,27 @@ ALTER TABLE enrichment_job
 
 CREATE INDEX IF NOT EXISTS idx_enrichment_job_book
   ON enrichment_job(user_id, book_id, created_at DESC);
+
+-- ── Compose slice 1: widen the technique vocabulary (+compose_draft) ──────────
+-- Mode D (draft expansion) adds a 5th technique 'compose_draft' (tier P1). The
+-- inline CHECK above only takes on a FRESH table; an ALREADY-DEPLOYED enrichment_job
+-- keeps its old auto-named 4-value CHECK (CREATE TABLE IF NOT EXISTS skips it). This
+-- idempotent block migrates a deployed table in place: drop the auto-named
+-- enrichment_job_technique_check and add a named _technique_vocab carrying the
+-- 5-value vocabulary. Guarded on NOT EXISTS(vocab) so it runs exactly once (no
+-- per-startup re-validation churn). Mirrors the source_corpus_license_vocab precedent.
+DO $job_tech_vocab$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'enrichment_job_technique_vocab'
+  ) THEN
+    ALTER TABLE enrichment_job DROP CONSTRAINT IF EXISTS enrichment_job_technique_check;
+    ALTER TABLE enrichment_job
+      ADD CONSTRAINT enrichment_job_technique_vocab
+      CHECK (technique IN ('template','retrieval','fabrication','recook','compose_draft'));
+  END IF;
+END
+$job_tech_vocab$;
 
 -- ═══════════════════════════════════════════════════════════════
 -- enrichment_job_request (F-C14-1 / 051) — the request payload needed to
@@ -311,7 +332,7 @@ CREATE TABLE IF NOT EXISTS enrichment_proposal (
   origin          TEXT NOT NULL DEFAULT 'enrichment'
     CHECK (origin <> '' AND origin <> 'glossary'),   -- never authored-canon origin
   technique       TEXT NOT NULL
-    CHECK (technique IN ('template','retrieval','fabrication','recook')),
+    CHECK (technique IN ('template','retrieval','fabrication','recook','compose_draft')),
   provenance_json JSONB NOT NULL DEFAULT '{}'::jsonb,
   confidence      NUMERIC(4,3) NOT NULL
     CHECK (confidence > 0 AND confidence < 1.0),      -- H0: never canon (1.0)
@@ -370,6 +391,25 @@ CREATE INDEX IF NOT EXISTS idx_enrichment_proposal_job
 
 CREATE INDEX IF NOT EXISTS idx_enrichment_proposal_scope_status
   ON enrichment_proposal(user_id, project_id, review_status);
+
+-- ── Compose slice 1: widen the proposal technique vocabulary (+compose_draft) ─
+-- The runner persists technique=pipeline.technique_value(); a compose_draft (mode D)
+-- proposal carries 'compose_draft'. Same idempotent in-place migration as the job
+-- table above (drop the deployed auto-named _technique_check, add the 5-value
+-- _technique_vocab; guarded NOT EXISTS so it runs once). H0 is untouched — origin
+-- stays 'enrichment', confidence < 1.0; only the technique vocabulary widens.
+DO $prop_tech_vocab$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'enrichment_proposal_technique_vocab'
+  ) THEN
+    ALTER TABLE enrichment_proposal DROP CONSTRAINT IF EXISTS enrichment_proposal_technique_check;
+    ALTER TABLE enrichment_proposal
+      ADD CONSTRAINT enrichment_proposal_technique_vocab
+      CHECK (technique IN ('template','retrieval','fabrication','recook','compose_draft'));
+  END IF;
+END
+$prop_tech_vocab$;
 
 -- ═══════════════════════════════════════════════════════════════
 -- H0 enforcement trigger — lifecycle DAG + promote-only + origin immutable
