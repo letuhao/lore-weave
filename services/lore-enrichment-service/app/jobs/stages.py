@@ -34,6 +34,7 @@ from typing import Any, Protocol
 from app.gaps.model import Gap
 from app.generation.generate import GenerationError, SchemaGovernedGenerator
 from app.generation.provenance import EnrichedFact
+from app.retrieval.grounding import compose_grounding
 from app.retrieval.strategy import GroundedProposal, RetrievalStrategy
 from app.strategies.base import StrategyContext, Technique
 from app.strategies.fabrication import FabricationError, FabricationStrategy
@@ -116,17 +117,28 @@ class GapPipeline:
         retrieval: RetrievalStrategy,
         generator: SchemaGovernedGenerator,
         verifier: CanonVerifier,
+        grounding_providers: "list | None" = None,
+        top_k: int = 5,
     ) -> None:
         self._retrieval = retrieval
         self._generator = generator
         self._verifier = verifier
+        # de-bias C2: extra grounding providers (glossary canon + knowledge
+        # build_context passages) composed on top of the corpus search, so an
+        # EXTRACTED book grounds without re-ingesting chapters. Empty = legacy
+        # corpus-only behavior (no regression).
+        self._grounding_providers = grounding_providers or []
+        self._top_k = top_k
 
     async def run_gap(
         self, gap: Gap, context: StrategyContext, *, jwt: str = ""
     ) -> StageResult:
         """Execute the P1 pipeline for one gap.
 
-        1. retrieval (C10) → a grounded proposal (scaffold slots + grounding).
+        1. retrieval (C10) → a grounded proposal (scaffold slots + corpus grounding).
+        1b. de-bias C2 — COMPOSE extra grounding (glossary canon + knowledge passages)
+            on top of the corpus refs, deduped + top-K, so an extracted book grounds
+            on its existing digest (no re-ingest).
         2. generation (C11) → H0-tagged facts (raises GenerationError if the gap
            has no grounding — unprovenanced content is refused).
         3. canon-verify (C12) → annotation (never canonizes).
@@ -138,6 +150,19 @@ class GapPipeline:
                 f"retrieval produced no proposal for {gap.canonical_name!r}"
             )
         proposal: GroundedProposal = proposals[0]
+
+        # 1b. compose extra grounding (de-bias C2). The dimension dict keys are the
+        # localized missing-dim labels (the same query shape retrieval used).
+        if self._grounding_providers:
+            composed = await compose_grounding(
+                proposal.grounding,
+                self._grounding_providers,
+                canonical_name=proposal.canonical_name,
+                missing_labels=list(proposal.dimensions.keys()),
+                context=context,
+                top_k=self._top_k,
+            )
+            proposal = proposal.model_copy(update={"grounding": composed})
 
         # 2. generation (C11 H0 chokepoint). Raises if grounding is empty.
         facts = await self._generator.generate(proposal, context)

@@ -40,6 +40,10 @@ from app.jobs.runner import JobRunner
 from app.jobs.stages import FabricationPipeline, GapPipeline, JobPipeline, ReCookPipeline
 from app.jobs.tokens import UsageMeter
 from app.retrieval.embedding import make_embed_query_fn
+from app.retrieval.grounding import (
+    make_glossary_canon_provider,
+    make_knowledge_context_provider,
+)
 from app.retrieval.store import SourceCorpusStore
 from app.retrieval.strategy import RetrievalStrategy
 from app.strategies.base import EnrichmentStrategy, Technique
@@ -256,8 +260,29 @@ async def build_live_runner(
         # P1 default (retrieval): the unchanged C10→C11→C12 pipeline + the
         # truthful embed+generation GapCostModel the demo path has always used
         # (RetrievalStrategy.estimate_cost alone would under-count the generation).
+        # de-bias C2: compose grounding from the EXISTING extracted digest so an
+        # extracted book grounds without re-ingesting chapters — glossary authored
+        # canon (entity-tight) + knowledge build_context L3 passages (breadth), on
+        # top of the corpus search. Both degrade safely (no book_id / down service
+        # → no extra refs → legacy corpus-only behavior, no regression).
+        async def _build_ctx(message: str, _ctx) -> str:
+            try:
+                res = await kc.build_context(
+                    user_id=UUID(user_id), project_id=UUID(project_id), message=message
+                )
+                return res.context
+            except Exception:  # noqa: BLE001 — knowledge read is best-effort (Q6)
+                return ""
+
+        grounding_providers = [
+            make_glossary_canon_provider(
+                glossary_client, book_id=UUID(book_id) if book_id is not None else None
+            ),
+            make_knowledge_context_provider(_build_ctx),
+        ]
         pipeline = GapPipeline(
-            retrieval=retrieval, generator=generator, verifier=verifier
+            retrieval=retrieval, generator=generator, verifier=verifier,
+            grounding_providers=grounding_providers, top_k=top_k,
         )
         cost_strategy = GapCostModel()
         # runner_meter is already `meter` for every technique (LE-059a) — the
