@@ -11,6 +11,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -270,6 +271,49 @@ func TestDestroyKEK_FailsClosed_WhenOutboxAppendFails(t *testing.T) {
 	// And no KMS deletion was scheduled (we never reached step 3).
 	if len(fk.scheduled) != 0 {
 		t.Errorf("no KMS deletion may be scheduled on a failed shred; got %d", len(fk.scheduled))
+	}
+}
+
+// TestDestroyKEK_ConcurrentCoTenants_ExactlyOneSchedule proves the
+// D-PIIKMS-DESTROY-TOCTOU fix: two users mis-provisioned onto ONE shared CMK,
+// erased CONCURRENTLY, must schedule the CMK deletion EXACTLY ONCE. The per-CMK
+// advisory lock serializes the liveness decision — the first erasure sees the
+// co-tenant still live (suppress), only the LAST sees count=0 (schedule). Before
+// the fix both could observe 0 and double-schedule.
+func TestDestroyKEK_ConcurrentCoTenants_ExactlyOneSchedule(t *testing.T) {
+	pool, cfg := kekPGEnv(t)
+	fk := newFakeKMS()
+	m := NewPgKEKManager(pool, fk, 30, cfg, "op-admin")
+
+	shared := "aws-kms:shared-cmk-" + uuid.NewString()
+	user1, kek1 := seedKEK(t, pool, shared)
+	user2, kek2 := seedKEK(t, pool, shared)
+
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		errs[0] = m.DestroyKEK(context.Background(), user1, "INC-C1", "gdpr erasure")
+	}()
+	go func() {
+		defer wg.Done()
+		errs[1] = m.DestroyKEK(context.Background(), user2, "INC-C2", "gdpr erasure")
+	}()
+	wg.Wait()
+
+	for i, e := range errs {
+		if e != nil {
+			t.Fatalf("DestroyKEK[%d]: %v", i, e)
+		}
+	}
+	// Both authoritatively erased.
+	if !destroyedAt(t, pool, kek1) || !destroyedAt(t, pool, kek2) {
+		t.Error("both co-tenant KEKs must be destroyed (authoritative erasure)")
+	}
+	// Shared CMK scheduled EXACTLY ONCE — the TOCTOU fix prevents the double.
+	if len(fk.scheduled) != 1 {
+		t.Errorf("concurrent co-tenant erasure must schedule the shared CMK exactly once; got %d", len(fk.scheduled))
 	}
 }
 

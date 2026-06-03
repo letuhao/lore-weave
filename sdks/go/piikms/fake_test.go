@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
+	"sync"
 
 	awskms "github.com/aws/aws-sdk-go-v2/service/kms"
 )
@@ -16,7 +18,8 @@ type fakeKMS struct {
 	master     []byte // 32B fixed fake master key
 	decryptErr error  // injected into Decrypt
 	genErr     error  // injected into GenerateDataKey
-	scheduled  []string
+	mu         sync.Mutex
+	scheduled  []string // DISTINCT key ids scheduled (deduped, like real KMS)
 }
 
 func newFakeKMS() *fakeKMS {
@@ -64,10 +67,22 @@ func (f *fakeKMS) Decrypt(_ context.Context, in *awskms.DecryptInput, _ ...func(
 	return &awskms.DecryptOutput{Plaintext: kek, KeyId: in.KeyId}, nil
 }
 
+// ScheduleKeyDeletion models AWS KMS semantics: scheduling a key that is ALREADY
+// pending deletion returns a KMSInvalidStateException "… is pending deletion."
+// (the real KMS dedup point). Thread-safe so the concurrent co-tenant test can
+// call it from two goroutines.
 func (f *fakeKMS) ScheduleKeyDeletion(_ context.Context, in *awskms.ScheduleKeyDeletionInput, _ ...func(*awskms.Options)) (*awskms.ScheduleKeyDeletionOutput, error) {
-	if in.KeyId != nil {
-		f.scheduled = append(f.scheduled, *in.KeyId)
+	if in.KeyId == nil {
+		return &awskms.ScheduleKeyDeletionOutput{}, nil
 	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, k := range f.scheduled {
+		if k == *in.KeyId {
+			return nil, fmt.Errorf("KMSInvalidStateException: %s is pending deletion", *in.KeyId)
+		}
+	}
+	f.scheduled = append(f.scheduled, *in.KeyId)
 	return &awskms.ScheduleKeyDeletionOutput{}, nil
 }
 

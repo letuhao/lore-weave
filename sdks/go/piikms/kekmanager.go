@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	awskms "github.com/aws/aws-sdk-go-v2/service/kms"
@@ -131,12 +132,15 @@ func (m *PgKEKManager) DestroyKEK(ctx context.Context, userRefID uuid.UUID, tick
 
 	// 3. Defense-in-depth: per distinct CMK, schedule deletion ONLY if no OTHER
 	// live KEK references it (WARN-1 co-tenant + WARN-2 rotation-chain safety).
-	// NOTE (tracked, D-PIIKMS-DESTROY-TOCTOU): the count is not in the same tx
-	// as the UPDATE, so two concurrent erasures of co-tenants on a shared CMK
-	// could both observe 0 and both schedule deletion — recoverable via the
-	// 7-30d pending window + CancelKeyDeletion, and the per-user-CMK precondition
-	// makes co-tenancy a misconfiguration. Authoritative erasure (destroyed_at)
-	// is unaffected.
+	//
+	// D-PIIKMS-DESTROY-TOCTOU: the count is not serialized with the UPDATE, so two
+	// concurrent erasures of co-tenants on a shared CMK could BOTH observe 0 and
+	// both ScheduleKeyDeletion. A serializing lock held across the shred would fix
+	// the count but risks pool-exhaustion DEADLOCK on the erasure path (N blocked
+	// waiters each pin a pooled conn), which is far worse on a compliance-critical
+	// path than the benign double-schedule. Instead, maybeScheduleDeletion treats
+	// KMS "already pending deletion" as success → the redundant second schedule is
+	// a harmless no-op, so the NET effect is exactly-once without any locking.
 	seen := make(map[string]bool, len(destroyed))
 	for _, s := range destroyed {
 		if seen[s.keyRef] {
@@ -151,6 +155,13 @@ func (m *PgKEKManager) DestroyKEK(ctx context.Context, userRefID uuid.UUID, tick
 // maybeScheduleDeletion schedules CMK deletion only if no other live KEK uses
 // it. All failures are non-fatal (the destroyed_at marker is the authoritative
 // erasure) and logged for SRE follow-up.
+//
+// D-PIIKMS-DESTROY-TOCTOU: a KMS "already pending deletion" response is treated
+// as SUCCESS, not an error — under a misconfigured shared CMK, two concurrent
+// co-tenant erasures can both pass the (unserialized) liveness count and both
+// call ScheduleKeyDeletion; the second one races into an already-pending key.
+// KMS itself is the dedup point (the key is scheduled exactly once), so the net
+// effect is exactly-once without any cross-process locking.
 func (m *PgKEKManager) maybeScheduleDeletion(ctx context.Context, kekID uuid.UUID, kmsKeyRef string) {
 	var liveOnSameCMK int
 	if err := m.db.QueryRow(ctx,
@@ -175,7 +186,23 @@ func (m *PgKEKManager) maybeScheduleDeletion(ctx context.Context, kekID uuid.UUI
 		KeyId:               &keyID,
 		PendingWindowInDays: &m.pendingWindowDays,
 	}); err != nil {
+		if isAlreadyPendingDeletion(err) {
+			// A concurrent co-tenant erasure already scheduled this CMK — benign
+			// (the key is scheduled exactly once; D-PIIKMS-DESTROY-TOCTOU).
+			slog.Info("piikms: CMK already pending deletion (scheduled by a concurrent erasure); treating as success",
+				"kek_id", kekID, "kms_key_ref", kmsKeyRef)
+			return
+		}
 		slog.Error("piikms: ScheduleKeyDeletion failed (non-fatal; erasure satisfied by destroyed_at marker)",
 			"kek_id", kekID, "kms_key_ref", kmsKeyRef, "error", err)
 	}
+}
+
+// isAlreadyPendingDeletion reports whether a ScheduleKeyDeletion error means the
+// CMK is ALREADY scheduled for deletion (AWS KMS returns KMSInvalidStateException
+// "... is pending deletion."). String-matched (not type-matched) because
+// KMSInvalidStateException also covers other invalid states — only the
+// pending-deletion case is the benign concurrent-erasure race.
+func isAlreadyPendingDeletion(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "pending deletion")
 }
