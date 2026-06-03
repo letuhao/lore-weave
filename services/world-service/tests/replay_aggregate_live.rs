@@ -414,4 +414,70 @@ fn replay_aggregate_round_trip_live_smoke() {
     assert_eq!(live_sess["archive_status"], json!("faded"));
     assert_eq!(live_sess["summary"], json!(""));
     assert_eq!(live_sess["facts"], json!({}));
+
+    // ══ Case 4 — ORPHAN DRIFT verdict: replay ran (events>0) but produced NO row
+    // at the queried PK. The Go checker marks this DRIFT (a live projection row
+    // the events do not produce); here we assert the BIN's signal end-to-end
+    // against real PG: status=ok, found=false, events_replayed>0. (148)
+    let pc_c = Uuid::new_v4();
+    let spawn_c = Uuid::new_v4();
+    let pc_foreign = Uuid::new_v4(); // a PK the replay never writes
+    let orphan_events = vec![mk(
+        spawn_c,
+        "pc.spawned",
+        "pc",
+        &pc_c.to_string(),
+        1,
+        reality_id,
+        "2026-06-15T18:00:00Z",
+        json!({
+            "user_id": Uuid::new_v4().to_string(),
+            "name": "Ghost",
+            "spawn_region_id": Uuid::new_v4().to_string(),
+            "stats": {},
+        }),
+    )];
+    rt.block_on(seed_events(&pool, &orphan_events));
+    let out_orphan = run_bin(
+        &db_url,
+        reality_id,
+        "pc_projection",
+        &[format!("pc:{pc_c}")],
+        spawn_c,
+        &format!(r#"{{"pc_id":"{pc_foreign}"}}"#),
+    );
+    assert_eq!(
+        out_orphan["status"], "ok",
+        "orphan replay status: {out_orphan}"
+    );
+    assert_eq!(
+        out_orphan["found"], false,
+        "replay produced no row at the foreign PK → orphan-drift signal: {out_orphan}"
+    );
+    assert_eq!(
+        out_orphan["events_replayed"], 1,
+        "the pc aggregate's event WAS replayed (events>0 distinguishes DRIFT from SKIP): {out_orphan}"
+    );
+
+    // ══ Case 5 — SKIP verdict: the aggregate has NO in-bound events (pruned /
+    // never-existed) → events_replayed=0 → the checker SKIPs (cannot verify),
+    // never drift. Assert the bin's zero-events signal against real PG. (148)
+    let pc_empty = Uuid::new_v4();
+    let out_skip = run_bin(
+        &db_url,
+        reality_id,
+        "pc_projection",
+        &[format!("pc:{pc_empty}")],
+        Uuid::new_v4(), // a boundary event_id with no matching row → 0 in-bound events
+        &format!(r#"{{"pc_id":"{pc_empty}"}}"#),
+    );
+    assert_eq!(out_skip["status"], "ok", "skip status: {out_skip}");
+    assert_eq!(
+        out_skip["events_replayed"], 0,
+        "no in-bound events → 0 replayed (→ Skippable, not drift): {out_skip}"
+    );
+    assert_eq!(
+        out_skip["found"], false,
+        "no row produced from 0 events: {out_skip}"
+    );
 }
