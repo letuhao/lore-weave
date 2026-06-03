@@ -48,6 +48,7 @@ __all__ = [
     "dimensions_for",
     "resolve_dimensions",
     "label_for",
+    "kind_label_for",
     "rank_score",
     "rank_gaps",
 ]
@@ -228,6 +229,32 @@ _DIMENSION_LABELS: dict[str, dict[str, str]] = {
     # generic
     "description": {"en": "Description"}, "details": {"en": "Details"},
 }
+
+
+#: Localized KIND labels for the prompt ("for the {kind_label} «name»"). zh
+#: defaults match the Fengshen demo (location→地点); en seeded; a miss falls back
+#: to the kind string itself.
+_KIND_LABELS: dict[str, dict[str, str]] = {
+    "location": {"zh": "地点", "en": "location"},
+    "character": {"zh": "人物", "en": "character"},
+    "item": {"zh": "物品", "en": "item"},
+    "faction": {"zh": "势力", "en": "faction"},
+    "event": {"zh": "事件", "en": "event"},
+    GENERIC_KIND: {"zh": "条目", "en": "entry"},
+}
+
+
+def kind_label_for(kind: str, language: str) -> str:
+    """The display label for an entity-kind in ``language`` (for the prompt).
+
+    zh defaults match the demo (location→地点). ``auto``/unknown language → the zh
+    label if defined (the Fengshen-native default), else the kind string. An
+    unknown kind → the kind string itself."""
+    lang = (language or "").strip().lower()
+    by_lang = _KIND_LABELS.get(kind, {})
+    if not lang or lang == "auto":
+        return by_lang.get("zh", kind)
+    return by_lang.get(lang, by_lang.get("zh", kind))
 
 
 def label_for(dimension_id: str, language: str, *, default: str) -> str:

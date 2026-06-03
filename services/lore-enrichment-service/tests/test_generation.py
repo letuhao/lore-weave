@@ -16,11 +16,18 @@ from app.generation.generate import (
     SchemaGovernedGenerator,
     build_generation_prompt,
 )
+from app.db.book_profile import BookProfile
 from app.generation.provenance import ENRICHED_ORIGIN
 from app.retrieval.strategy import GroundedProposal, GroundingRef
 from app.strategies.base import StrategyContext
 
 KEYS = ["历史", "地理", "文化"]
+
+# de-bias C1: the prompt is now book-aware. These tests assert the Fengshen (zh)
+# behavior, so pass the Fengshen profile (the demo seed equivalent).
+_ZH_PROFILE = BookProfile(
+    language="zh", worldview="《封神演义》原著", voice="文言-白话皆可，须与原著语气一致"
+)
 
 _VALID_COMPLETION = (
     '{"历史": "蓬萊自上古为仙人所居，黄帝问道于此。", '
@@ -172,7 +179,7 @@ def test_prompt_embeds_grounding_excerpts():
 
 
 def test_prompt_is_chinese_and_requests_json():
-    prompt = build_generation_prompt(_proposal())
+    prompt = build_generation_prompt(_proposal(), _ZH_PROFILE)
     assert "JSON" in prompt
     # asserts Chinese instruction present (high CJK content)
     from app.generation.repair import cjk_ratio

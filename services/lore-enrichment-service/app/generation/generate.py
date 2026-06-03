@@ -36,9 +36,17 @@ from app.generation.provenance import (
     SourceRef,
     make_enriched_fact,
 )
+from app.db.book_profile import NEUTRAL_PROFILE, BookProfile
+from app.gaps.model import kind_label_for
 from app.generation.repair import RepairError, repair_generation
 from app.retrieval.strategy import GroundedProposal, GroundingRef
 from app.strategies.base import StrategyContext, Technique
+
+
+def _is_zh(language: str) -> bool:
+    """Whether to render the prompt in Chinese. ``auto``/unknown → NOT zh (English
+    is the neutral default — de-bias: a profile-less book is NOT assumed Chinese)."""
+    return (language or "").strip().lower().startswith("zh")
 
 __all__ = [
     "CompleteFn",
@@ -65,33 +73,66 @@ class GenerationError(RuntimeError):
     """
 
 
-def build_generation_prompt(proposal: GroundedProposal) -> str:
-    """Build the schema-governed, Chinese, grounding-citing generation prompt.
+def build_generation_prompt(
+    proposal: GroundedProposal,
+    profile: BookProfile = NEUTRAL_PROFILE,
+    kind_label: str | None = None,
+) -> str:
+    """Build the schema-governed, grounding-citing generation prompt (de-bias C1).
 
-    Deterministic (no randomness): names the place, lists EXACTLY the missing
-    dimension labels the model must fill (the JSON keys), embeds the C10 grounding
-    excerpts as the ONLY evidence the model may draw on (source-faithful, no
-    fabrication), and instructs Chinese-only output as a JSON object. The prompt
-    contains NO model name and NO provider-specific tokens.
+    BOOK-AWARE: the worldview / output language / voice come from the per-book
+    ``profile`` (NOT hardcoded to 封神演义 / 中文), and the entity-kind label is
+    localized (``kind_label``). Deterministic: names the entity, lists EXACTLY the
+    missing dimension labels the model must fill (the JSON keys), embeds the C10
+    grounding excerpts as the ONLY evidence (source-faithful, no fabrication). NO
+    model name, NO provider-specific tokens. The Fengshen profile (zh) reproduces
+    the original Chinese prompt's intent (tests are substring-based, not byte-exact).
     """
     dims = list(proposal.dimensions.keys())
     grounding_block = "\n".join(
         f"［{i + 1}］（来源 {g.corpus_id}#{g.chunk_index}，相似度 {g.score}）{g.excerpt}"
         for i, g in enumerate(proposal.grounding)
     )
-    keys_csv = "、".join(dims)
     json_skeleton = ", ".join(f'"{d}": "……"' for d in dims)
+    kind_label = kind_label or kind_label_for(proposal.entity_kind, profile.language)
+    worldview = (profile.worldview or "").strip()
+
+    if _is_zh(profile.language):
+        # Chinese template (Fengshen demo path). worldview/voice interpolated.
+        keys_csv = "、".join(dims)
+        wv = f"忠于{worldview}的" if worldview else ""
+        voice = (profile.voice or "").strip()
+        voice_clause = f"，{voice}" if voice else "，须与既有设定语气一致"
+        return (
+            f"你是一位{wv}世界观补全助手。\n"
+            f"请仅依据下列检索片段，为{kind_label}「{proposal.canonical_name}」"
+            f"补全以下维度：{keys_csv}。\n"
+            f"要求：\n"
+            f"1. 内容必须为中文{voice_clause}；\n"
+            f"2. 严禁编造检索片段未支持的事实；\n"
+            f"3. 仅输出一个 JSON 对象，键为上述维度名，值为对应中文描述，"
+            f"不要输出任何额外说明。\n\n"
+            f"检索到的依据：\n{grounding_block}\n\n"
+            f"请输出 JSON：{{{json_skeleton}}}"
+        )
+
+    # English / neutral template (any non-Chinese or profile-less book).
+    keys_csv = ", ".join(dims)
+    lang_name = profile.language if profile.language not in ("", "auto") else "the book's language"
+    setting = f"faithful to this work's setting ({worldview})" if worldview else "a worldbuilding assistant"
+    voice = (profile.voice or "").strip()
+    voice_clause = f", matching its voice ({voice})" if voice else ""
     return (
-        f"你是一位忠于《封神演义》原著的世界观补全助手。\n"
-        f"请仅依据下列原著与文化语料的检索片段，为地点「{proposal.canonical_name}」"
-        f"补全以下维度：{keys_csv}。\n"
-        f"要求：\n"
-        f"1. 内容必须为中文，文言-白话皆可，须与原著语气一致；\n"
-        f"2. 严禁编造检索片段未支持的事实；\n"
-        f"3. 仅输出一个 JSON 对象，键为上述维度名，值为对应中文描述，"
-        f"不要输出任何额外说明。\n\n"
-        f"检索到的文化依据：\n{grounding_block}\n\n"
-        f"请输出 JSON：{{{json_skeleton}}}"
+        f"You are {setting}.\n"
+        f"Using ONLY the retrieved excerpts below as evidence, fill the following "
+        f"dimensions for the {kind_label} «{proposal.canonical_name}»: {keys_csv}.\n"
+        f"Rules:\n"
+        f"1. Write in {lang_name}{voice_clause};\n"
+        f"2. Do NOT invent facts the excerpts do not support;\n"
+        f"3. Output ONLY a single JSON object, keyed by the dimension names above, "
+        f"with no extra commentary.\n\n"
+        f"Retrieved evidence:\n{grounding_block}\n\n"
+        f"Output JSON: {{{json_skeleton}}}"
     )
 
 
@@ -159,7 +200,7 @@ class SchemaGovernedGenerator:
             )
 
         source_refs = _source_refs_from_grounding(proposal.grounding)
-        prompt = build_generation_prompt(proposal)
+        prompt = build_generation_prompt(proposal, context.profile)
         raw = await self._complete(prompt, context)
 
         try:

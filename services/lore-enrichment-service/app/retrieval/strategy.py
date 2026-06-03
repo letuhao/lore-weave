@@ -32,7 +32,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.gaps.model import Gap, dimensions_for
+from app.gaps.model import Gap, resolve_dimensions
 from app.retrieval.store import ScoredChunk, SourceCorpusStore
 from app.strategies.base import (
     CostEstimate,
@@ -192,7 +192,7 @@ class RetrievalStrategy(EnrichmentStrategy):
         project_uuid = UUID(context.project_id)
         proposals: list[GroundedProposal] = []
         for gap in gap_batch:
-            query = self._gap_query(gap)
+            query = self._gap_query(gap, context)
             query_vector = await self._embed_query(query, context)
             scored: list[ScoredChunk] = await self._store.search(
                 project_id=project_uuid, query_vector=query_vector, k=self._top_k
@@ -202,25 +202,34 @@ class RetrievalStrategy(EnrichmentStrategy):
 
     # ── internals ─────────────────────────────────────────────────────────────
     @staticmethod
-    def _gap_query(gap: Gap) -> str:
-        """Compose the retrieval query for a gap: the place's canonical name plus
-        the source-faithful labels of its missing dimensions. Deterministic,
-        Chinese-first (source language), no model-specific formatting."""
+    def _gap_query(gap: Gap, context: StrategyContext) -> str:
+        """Compose the retrieval query: the entity's canonical name plus the
+        PROFILE-LOCALIZED labels of its missing dimensions (de-bias C1). Labels
+        come from ``resolve_dimensions`` keyed by the book's language + overrides,
+        so an English book queries with English dimension labels. Deterministic."""
+        missing = set(gap.missing_dimensions)
+        p = context.profile
         labels = [
             spec.label
-            for spec in dimensions_for(gap.entity_kind)
-            if spec.dimension in set(gap.missing_dimensions)
+            for spec in resolve_dimensions(
+                gap.entity_kind, language=p.language, overrides=p.dimension_overrides
+            )
+            if spec.dimension in missing
         ]
         return gap.canonical_name + " " + " ".join(labels)
 
     @staticmethod
-    def _dimension_slots(gap: Gap) -> dict[str, str]:
-        """Empty Chinese-keyed slots, one per MISSING dimension (mirrors C9 —
-        generation fills them in C11, citing the grounding attached here)."""
+    def _dimension_slots(gap: Gap, context: StrategyContext) -> dict[str, str]:
+        """Empty slots, one per MISSING dimension, keyed by the PROFILE-LOCALIZED
+        label (de-bias C1 — zh book → 历史, en book → History). Generation (C11)
+        fills them, citing the grounding attached here."""
         missing = set(gap.missing_dimensions)
+        p = context.profile
         return {
             spec.label: ""
-            for spec in dimensions_for(gap.entity_kind)
+            for spec in resolve_dimensions(
+                gap.entity_kind, language=p.language, overrides=p.dimension_overrides
+            )
             if spec.dimension in missing
         }
 
@@ -250,7 +259,7 @@ class RetrievalStrategy(EnrichmentStrategy):
             entity_kind=gap.entity_kind,
             canonical_name=gap.canonical_name,
             target_ref=gap.target_ref,
-            dimensions=self._dimension_slots(gap),
+            dimensions=self._dimension_slots(gap, context),
             grounding=grounding,
             provenance_json=provenance,
             # H0 markers come from model defaults — never set to canon.
