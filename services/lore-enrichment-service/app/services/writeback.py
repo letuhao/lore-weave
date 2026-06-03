@@ -235,6 +235,7 @@ class WritebackService:
         glossary_entity_id: UUID | None = None,
         jwt: str = "",
         canon_verify=None,
+        source_language: str = "zh",
     ) -> WritebackResult:
         """Admit an APPROVED proposal's facts to the KG QUARANTINED.
 
@@ -277,6 +278,7 @@ class WritebackService:
                 kind_code=kind_code,
                 name=anchor_name,
                 attributes={},  # identity only — no enriched content pre-promote
+                source_language=source_language,
             )
             glossary_entity_id = UUID(entity_id_str)
 
@@ -351,6 +353,7 @@ class WritebackService:
         glossary_entity_id: UUID | None = None,
         jwt: str = "",
         canon_verify=None,
+        source_language: str = "zh",
     ) -> PromoteResult:
         """Promote an approved proposal to canon. AUTHOR-ONLY.
 
@@ -423,6 +426,7 @@ class WritebackService:
             glossary_entity_id=glossary_entity_id,
             jwt=jwt,
             canon_verify=canon_verify,
+            source_language=source_language,
         )
         resolved_entity_id = UUID(wb.glossary_entity_id)
 

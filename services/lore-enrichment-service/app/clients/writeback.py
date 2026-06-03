@@ -131,6 +131,7 @@ class WritebackPorts:
         kind_code: str,
         name: str,
         attributes: dict[str, str],
+        source_language: str = "zh",
     ) -> str:
         """Upsert the entity ANCHOR through the glossary SSOT (Q2).
 
@@ -145,7 +146,9 @@ class WritebackPorts:
         """
         safe_attrs = {k: _safe(v) for k, v in attributes.items()}
         body: dict[str, Any] = {
-            "source_language": "zh",
+            # de-bias C1 (#7): the book's language, not hardcoded zh (identity-only
+            # anchor write, but the source_language should still match the book).
+            "source_language": source_language or "zh",
             "attribute_actions": {
                 kind_code: {code: "fill" for code in safe_attrs}
             },

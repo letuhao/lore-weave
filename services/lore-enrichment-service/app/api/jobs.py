@@ -27,9 +27,9 @@ from pydantic import BaseModel, Field
 
 from app.api.principal import Principal, require_principal
 from app.config import settings
-from app.db.book_profile import get_book_profile
+from app.db.book_profile import NEUTRAL_PROFILE, BookProfile, get_book_profile
 from app.deps import get_db
-from app.gaps.model import Gap, dimensions_for
+from app.gaps.model import Gap, resolve_dimensions
 from app.jobs.assembly import build_live_runner
 from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM, make_redis_producer
 from app.jobs.job_request import save_job_request
@@ -86,16 +86,20 @@ class CreateJobBody(BaseModel):
     top_k: int = Field(default=5, ge=1, le=20)
 
 
-def _gap_from_target(t: GapTarget) -> Gap | None:
+def _gap_from_target(t: GapTarget, profile: BookProfile = NEUTRAL_PROFILE) -> Gap | None:
     """Build a C7 :class:`Gap` from a target (de-bias C1, KB3 — multi-kind).
 
-    Derives present/missing from the KIND's OWN dimension table (``dimensions_for``
-    — GENERIC fallback for an unmodeled kind, NEVER a 400/skip), NOT the hardcoded
-    LOCATION ``Dimension`` enum. ``present_dimensions`` may be stable ids or
-    (default) labels — both map to the stable id, mirroring ``coverages_from_rows``.
-    Returns None for a fully-described entity (no missing dimension)."""
+    Derives present/missing from the KIND's OWN dimension table via
+    ``resolve_dimensions`` (the SAME profile-localized resolution detect/generation
+    use — review #3, so an English book's en labels match), GENERIC fallback for an
+    unmodeled kind (NEVER a 400/skip), NOT the hardcoded LOCATION ``Dimension`` enum.
+    ``present_dimensions`` may be stable ids or (localized) labels — both map to the
+    stable id, mirroring ``coverages_from_rows``. Returns None for a fully-described
+    entity (no missing dimension)."""
     kind = (t.entity_kind or "").strip() or "location"
-    table = dimensions_for(kind)  # kind's real dims; GENERIC for unknown (no 400)
+    table = resolve_dimensions(
+        kind, language=profile.language, overrides=profile.dimension_overrides
+    )  # kind's real dims, profile-localized; GENERIC for unknown (no 400)
     ids = {s.dimension for s in table}
     label_to_id = {s.label: s.dimension for s in table}
     present_set = {
@@ -147,9 +151,12 @@ async def create_job(
             detail=f"unknown technique {body.technique!r}",
         )
 
+    # de-bias C1 (#3): resolve the book profile so the gap builder localizes the
+    # dimension table the SAME way detect/generation do (per-book round-trip).
+    job_profile = await get_book_profile(pool, body.book_id)
     gaps: list[Gap] = []
     for t in body.targets:
-        gap = _gap_from_target(t)
+        gap = _gap_from_target(t, job_profile)
         if gap is not None:
             gaps.append(gap)
     if not gaps:
@@ -222,9 +229,9 @@ async def create_job(
             user_id=str(user_id),
             project_id=str(body.project_id),
             model_ref=str(body.generation_model_ref),
-            # de-bias C1: resolve the per-book worldview profile so the prompt
-            # builders + dimension resolver are book-aware (NEUTRAL when unset).
-            profile=await get_book_profile(pool, body.book_id),
+            # de-bias C1: the per-book profile (resolved once above) makes the
+            # prompt builders + dimension resolver book-aware (NEUTRAL when unset).
+            profile=job_profile,
         )
         outcome = await bundle.runner.run_job(
             job_id=db_job_id, gaps=gaps, context=context, entity_kind="location"

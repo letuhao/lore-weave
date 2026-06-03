@@ -39,6 +39,19 @@ def _row(name, kind="location", mentions=0, dims=()):
                              mention_count=mentions, dimensions=tuple(dims))
 
 
+def test_coverages_from_rows_en_profile_round_trip():
+    # de-bias C1 (#5): with an English book profile, detect localizes the dimension
+    # table to en, so an entity whose stored dim is the EN label ("Appearance")
+    # maps back to the stable id — the SAME consistency generation/storage use.
+    from app.db.book_profile import BookProfile
+
+    en = BookProfile(language="en")
+    rows = [_row("Jiang Ziya", kind="character", dims=("Appearance", "Abilities"))]
+    covs = coverages_from_rows(rows, en)
+    assert len(covs) == 1
+    assert set(covs[0].present_dimensions) == {"appearance", "abilities"}
+
+
 def test_coverages_from_rows_is_multi_kind_and_id_or_label_tolerant():
     # De-bias C1 (KB3): every kind is modeled — a CHARACTER is NOT skipped, an
     # unknown kind falls back to GENERIC. Present dims map from either the stable

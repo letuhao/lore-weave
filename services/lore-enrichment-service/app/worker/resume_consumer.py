@@ -58,10 +58,15 @@ async def redrive_one(
         logger.warning("resume %s: no persisted request — cannot re-drive (drop)", job_id)
         return "no_request"
 
+    # de-bias C1 (#3): resolve the book profile ONCE so the gap builder localizes
+    # the dimension table the SAME way detect/generation/the ctx below do.
+    profile = await get_book_profile(
+        pool, UUID(request["book_id"]) if request.get("book_id") else None
+    )
     gaps = []
     for t in request.get("targets") or []:
         try:
-            gap = _gap_from_target(GapTarget(**t))
+            gap = _gap_from_target(GapTarget(**t), profile)
         except Exception:  # noqa: BLE001 — a malformed target is skipped, not fatal
             continue
         if gap is not None:
@@ -100,11 +105,9 @@ async def redrive_one(
             user_id=user_id,
             project_id=project_id,
             model_ref=str(request["generation_model_ref"]),
-            # de-bias C1: re-resolve the per-book profile (book_id is on the saved
-            # request) so a resumed run is book-aware too (NEUTRAL when absent).
-            profile=await get_book_profile(
-                pool, UUID(request["book_id"]) if request.get("book_id") else None
-            ),
+            # de-bias C1: the per-book profile (resolved once above) makes a resumed
+            # run book-aware too (NEUTRAL when absent).
+            profile=profile,
         )
         outcome = await bundle.runner.run_job(
             job_id=job_id,

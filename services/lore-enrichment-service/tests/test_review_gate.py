@@ -153,9 +153,10 @@ class FakePorts:
     async def book_owner(self, *, book_id):
         return BookOwner(book_id=book_id, owner_user_id=self.owner)
 
-    async def write_entity_through_glossary(self, *, book_id, kind_code, name, attributes):
+    async def write_entity_through_glossary(self, *, book_id, kind_code, name, attributes, source_language="zh"):
         self.glossary_write_calls.append(
-            {"book_id": book_id, "kind_code": kind_code, "name": name, "attributes": attributes}
+            {"book_id": book_id, "kind_code": kind_code, "name": name, "attributes": attributes,
+             "source_language": source_language}
         )
         return str(GLOSS)
 

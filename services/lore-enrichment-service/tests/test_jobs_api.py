@@ -458,3 +458,65 @@ def test_create_job_anonymous_is_401():
         json=_create_body(),
     )
     assert resp.status_code == 401, resp.text
+
+
+# ── de-bias C1 (#2, #3): targeted-enrich gap builder is multi-kind ──────────────
+
+
+def test_gap_from_target_character_uses_character_dimensions():
+    # A CHARACTER target gets CHARACTER dims (NOT the location enum) — KB3/#3.
+    from app.api.jobs import GapTarget, _gap_from_target
+
+    g = _gap_from_target(GapTarget(canonical_name="姜子牙", entity_kind="character",
+                                   present_dimensions=[]))
+    assert g is not None and g.entity_kind == "character"
+    assert set(g.missing_dimensions) == {
+        "appearance", "personality", "abilities", "relationships", "background",
+    }
+
+
+def test_gap_from_target_unmodeled_kind_is_generic_no_400():
+    # An unmodeled kind (organization) → GENERIC dims, NEVER a 400/skip (the old
+    # EntityKind(...) raised; the live run hit this).
+    from app.api.jobs import GapTarget, _gap_from_target
+
+    g = _gap_from_target(GapTarget(canonical_name="截教", entity_kind="organization",
+                                   present_dimensions=[]))
+    assert g is not None and g.entity_kind == "organization"
+    assert set(g.missing_dimensions) == {"description", "details", "significance"}
+
+
+def test_build_proposal_fields_preserves_non_location_kind():
+    # #2: the persist field-builder carries the proposal's REAL kind through (KB8
+    # write-back then writes the correct glossary kind).
+    from app.generation.provenance import SourceRef, make_enriched_fact
+    from app.jobs.proposal_store import build_proposal_fields
+
+    fact = make_enriched_fact(
+        user_id="u", project_id="p", entity_kind="character", canonical_name="姜子牙",
+        target_ref="姜子牙", dimension="外貌", content="姜子牙白须道袍。",
+        technique="retrieval",
+        source_refs=[SourceRef(corpus_id="c", chunk_id="c", chunk_index=0, score=0.5)],
+        model_ref="m", confidence=0.3, qualified_origin=True,
+    )
+    fields = build_proposal_fields(
+        user_id="u", project_id="p", entity_kind="character", canonical_name="姜子牙",
+        target_ref="姜子牙", technique="retrieval", confidence=0.3, facts=[fact],
+        verify=None, source_refs=[], gap_ref="姜子牙",
+    )
+    assert fields["entity_kind"] == "character"
+    assert "外貌" in fields["provenance_json"]["dimensions"]
+
+
+def test_facts_from_proposal_neutral_fallback_dimension():
+    # de-bias C1 (#8): a dimension-less proposal falls back to the neutral stable id
+    # "description", NOT the old zh-hardcoded "补充".
+    from types import SimpleNamespace
+
+    from app.services.writeback import WritebackService
+
+    prop = SimpleNamespace(confidence=0.3, provenance_json={}, content="some lore")
+    facts = WritebackService._facts_from_proposal(prop)
+    assert len(facts) == 1
+    assert facts[0]["dimension"] == "description"
+    assert facts[0]["content"] == "some lore"

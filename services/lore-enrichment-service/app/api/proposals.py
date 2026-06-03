@@ -35,6 +35,7 @@ from pydantic import BaseModel, Field
 from app.api.principal import Principal, require_principal
 from app.clients.writeback import WritebackError, WritebackPorts
 from app.config import settings
+from app.db.book_profile import get_book_profile
 from app.deps import get_db
 from app.services.review import (
     IllegalTransitionError,
@@ -64,6 +65,16 @@ def _make_ports() -> WritebackPorts:
         book_base_url=settings.book_service_url,
         internal_token=settings.internal_service_token,
     )
+
+
+async def _book_language(pool: asyncpg.Pool, book_id: UUID) -> str:
+    """The book's output language for the glossary anchor write (de-bias C1 #7).
+
+    Maps the NEUTRAL ``auto`` (and empty) to ``zh`` — the glossary-safe default the
+    anchor write used before — so an unset book is unchanged, while a profiled book
+    writes its real language. Identity-only write, so this is a low-impact polish."""
+    prof = await get_book_profile(pool, book_id)
+    return prof.language if prof.language not in ("", "auto") else "zh"
 
 
 # ── request bodies ──────────────────────────────────────────────────────────────
@@ -243,6 +254,7 @@ async def promote_proposal(
     project_id: UUID = Query(...),
     principal: Principal = Depends(require_principal),
     repo: ProposalsRepo = Depends(get_repo),
+    pool: asyncpg.Pool = Depends(get_db),
 ) -> dict:
     # No anonymous promote — and the owner check below is the real gate.
     if principal.user_id is None:
@@ -256,6 +268,7 @@ async def promote_proposal(
             proposal_id=proposal_id,
             book_id=body.book_id,
             glossary_entity_id=body.glossary_entity_id,
+            source_language=await _book_language(pool, body.book_id),
         )
     except NotOwnerError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
@@ -294,6 +307,7 @@ async def write_back_proposal(
     project_id: UUID = Query(...),
     principal: Principal = Depends(require_principal),
     repo: ProposalsRepo = Depends(get_repo),
+    pool: asyncpg.Pool = Depends(get_db),
 ) -> dict:
     user_id = _require_scope(principal, project_id)
     ports = _make_ports()
@@ -305,6 +319,7 @@ async def write_back_proposal(
             proposal_id=proposal_id,
             book_id=body.book_id,
             glossary_entity_id=body.glossary_entity_id,
+            source_language=await _book_language(pool, body.book_id),
         )
     except LookupError:
         raise _not_found()

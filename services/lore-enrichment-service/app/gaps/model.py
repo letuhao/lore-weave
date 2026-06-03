@@ -241,6 +241,15 @@ _KIND_LABELS: dict[str, dict[str, str]] = {
     "item": {"zh": "物品", "en": "item"},
     "faction": {"zh": "势力", "en": "faction"},
     "event": {"zh": "事件", "en": "event"},
+    # common glossary kinds beyond the built-in tables (they resolve to GENERIC
+    # dimensions, but still deserve a localized kind label in the prompt, not the
+    # raw English code — review #6).
+    "organization": {"zh": "组织", "en": "organization"},
+    "concept": {"zh": "概念", "en": "concept"},
+    "deity": {"zh": "神祇", "en": "deity"},
+    "creature": {"zh": "生物", "en": "creature"},
+    "object": {"zh": "物件", "en": "object"},
+    "skill": {"zh": "功法", "en": "skill"},
     GENERIC_KIND: {"zh": "条目", "en": "entry"},
 }
 
@@ -294,11 +303,17 @@ def _apply_overrides(
     {id: weight}, "add": [{id,label,required,weight,payload_shape}...]}``.
     Deterministic + order-preserving (base order, then added). Malformed entries
     are skipped (never raise — overrides may come from an LLM suggestion)."""
-    if not override:
+    # Defensive (review #1): an override may come from an LLM suggestion (C3). A
+    # malformed shape must NEVER crash resolve_dimensions (called in detect +
+    # retrieval + generation) — coerce each field to its expected type, else ignore.
+    if not isinstance(override, dict) or not override:
         return specs
-    remove = set(override.get("remove") or ())
-    relabel = override.get("relabel") or {}
-    reweight = override.get("reweight") or {}
+    _rm = override.get("remove")
+    remove = set(_rm) if isinstance(_rm, (list, tuple, set)) else set()
+    relabel = override.get("relabel")
+    relabel = relabel if isinstance(relabel, dict) else {}
+    reweight = override.get("reweight")
+    reweight = reweight if isinstance(reweight, dict) else {}
     out: list[DimensionSpec] = []
     seen: set[str] = set()
     for s in specs:
@@ -306,9 +321,13 @@ def _apply_overrides(
             continue
         seen.add(s.dimension)
         label = relabel.get(s.dimension, s.label)
-        weight = reweight.get(s.dimension, s.weight)
-        out.append(s.model_copy(update={"label": str(label), "weight": float(weight)}))
-    for add in override.get("add") or ():
+        try:
+            weight = float(reweight.get(s.dimension, s.weight))
+        except (TypeError, ValueError):
+            weight = s.weight
+        out.append(s.model_copy(update={"label": str(label), "weight": weight}))
+    add_list = override.get("add")
+    for add in add_list if isinstance(add_list, list) else ():
         if not isinstance(add, dict):
             continue
         did = str(add.get("id") or add.get("dimension") or "").strip()
@@ -347,7 +366,7 @@ def resolve_dimensions(
         s.model_copy(update={"label": label_for(s.dimension, language, default=s.label)})
         for s in base
     )
-    per_kind = (overrides or {}).get(kind) if overrides else None
+    per_kind = overrides.get(kind) if isinstance(overrides, dict) else None
     return _apply_overrides(localized, per_kind)
 
 
