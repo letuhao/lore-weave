@@ -1,6 +1,18 @@
 # Spec — Enrichment Compose: free-form input modes (FS / XL) · 2026-06-03
 
-> **Status:** DESIGN-LOCKED, BUILD-PENDING. Branch `lore-enrichment/foundation`.
+> **⚠ STATUS: REVISE BEFORE BUILD** — a benchmark review found 3 load-bearing errors + a
+> pre-existing constraint that undercuts the "any subject" premise. See
+> [`2026-06-03-enrichment-compose-review.md`](2026-06-03-enrichment-compose-review.md):
+> **F1** `target.mode=new` has no glossary-create client seam (§2.2 false) ·
+> **F2** generation prompts HARDCODE 封神演义 → Compose on non-Fengshen books produces wrong output
+> (needs book-aware prompting — a new "Slice 0") · **F3/F7** mode D can't reuse the C11 generator/
+> chokepoint (it refuses empty grounding + requires non-empty `source_refs`) → D needs its own
+> generation path + a synthetic authored-provenance · **F4** `compose_draft` needs its own assembly
+> branch · **F5** mode B is 2-step (add `/compose/resolve-intent`) · **F6** C/F ingest needs an embed
+> seam in the handler. The async spine + FE approach are confirmed sound. **Revise §2.2/§2.5/§2.6/§3
+> + add Slice 0 before building.**
+>
+> **Status (orig):** DESIGN-LOCKED, BUILD-PENDING. Branch `lore-enrichment/foundation`.
 > **Type:** XL full-stack (BE: new endpoint + strategy + entity-kind + file pipeline; FE: new
 > composer tab). Build in slices (§7), each its own VERIFY+POST-REVIEW+COMMIT.
 > **Drafts:** [`design-drafts/enrichment-create.html`](../../design-drafts/enrichment-create.html)
