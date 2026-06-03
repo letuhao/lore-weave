@@ -61,6 +61,7 @@ pub mod errors;
 pub mod provisioner;
 pub mod reality_seeder;
 pub mod rebuild;
+pub mod replay_aggregate;
 
 pub use capacity_planner::{CapacityPlanner, CapacityThresholds, ShardCapacity, ShardId};
 pub use db_pool::{DbPoolKey, DbPoolRegistry, ShardHost};

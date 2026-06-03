@@ -40,6 +40,16 @@ path = "src/bin/embedding_worker.rs"
 name = "rebuilder"
 path = "src/bin/rebuilder.rs"
 
+# L3.E/F (integrity checker keystone) — replay-aggregate binary. The per-sampled
+# -row WORKER the Go integrity-checker invokes: replays the owning event
+# aggregate(s) up to the row's boundary event into a TEMP shadow of the target
+# projection table, then emits the row's `to_jsonb - meta_keys` payload as JSON
+# so the checker can byte-compare it against the live row. Reuses the 073
+# rebuilder writer + projections. See docs/plans/2026-06-03-l3ef-integrity-checker.md.
+[[bin]]
+name = "replay-aggregate"
+path = "src/bin/replay-aggregate.rs"
+
 # L1.C provisioner core + L1.G.3 db_pool share these. All workspace-pinned.
 [dependencies]
 thiserror = { workspace = true }
