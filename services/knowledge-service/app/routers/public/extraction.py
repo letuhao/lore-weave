@@ -137,7 +137,7 @@ def _extract_chapter_range(
 
 # ── Request / response models ───────────────────────────────────────
 
-JobScope = Literal["chapters", "chat", "glossary_sync", "all"]
+JobScope = Literal["chapters", "chat", "glossary_sync", "all", "chapters_pending"]  # CM3b: internal coalescing-drainer scope
 
 
 class EstimateRequest(BaseModel):

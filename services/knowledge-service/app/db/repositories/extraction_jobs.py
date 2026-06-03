@@ -136,7 +136,7 @@ def _decode_cursor(
 # coupling explicit so a future raise in either layer can't drift.
 LIST_ALL_MAX_LIMIT = 200
 
-JobScope = Literal["chapters", "chat", "glossary_sync", "all"]
+JobScope = Literal["chapters", "chat", "glossary_sync", "all", "chapters_pending"]  # CM3b: chapters_pending = worker-ai coalescing drainer
 JobStatus = Literal[
     "pending", "running", "paused", "complete", "failed", "cancelled"
 ]

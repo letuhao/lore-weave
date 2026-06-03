@@ -197,6 +197,42 @@ A last adversarial pass on the full-rework path found 2 CRITICAL (corrected in �
 - **HIGH — composition↔canon granularity (PO: chapter-gate):** composition reviews per-SCENE but `/publish` is per-CHAPTER → **composition publishes a chapter ONLY when ALL its scenes are `status='done'`** (chapter-level gate; the simplest fit for book-service's per-chapter publish). Intra-chapter context for the next scene comes from L3 recent-prose + L2′ planned-synopsis (no graph needed); the graph flywheel is per-chapter. Folded into composition-design §3.1/§11 + V0 plan M9.
 - **Verified PASS:** worker poll loop is serial (`runner.py:1611`); `extraction_pending` schema supports coalescing (partial index `(project_id, processed_at IS NULL)`, idempotent `ON CONFLICT`).
 
+### §8.10 CM3b design — graph-extraction cutover (DESIGN-locked 2026-06-04, grounded)
+**Scope:** graph-extraction event-driven cutover ONLY (passages + manual-rebuild-gating = CM3c). Default v2.2 self-review (PO override of /amaw). Grounded vs `extraction_pending.py`, `handlers.py:83-245`, `extraction.py:266-329` (`_create_and_start_job`, 409 on unique index), `runner.py:1120-1210` (scope loop), `provenance.py` retract fns.
+
+**knowledge-service:**
+- **migrate** (extraction_pending DDL): `ALTER TABLE extraction_pending ADD COLUMN IF NOT EXISTS revision_id UUID;` (idempotent).
+- **`extraction_pending.py`:** add `revision_id: UUID|None` to `ExtractionPending` + `ExtractionPendingQueueRequest` + `_SELECT_COLS` + INSERT; **add `aggregate_type: str|None=None` filter to `fetch_pending`** (chapter drainer passes `'chapter'`; **fixes B7** — chat path passes `'chat'`).
+- **`handlers.py`:**
+  - `handle_chapter_saved`: **DELETE the `queue_event` block (lines 127-142)**; KEEP passage-ingest (moves to published in CM3c). So `chapter.saved` no longer queues graph-extraction.
+  - **NEW `handle_chapter_published`:** resolve project via book_id (reuse `:111-125`); `queue_event(aggregate_type='chapter', revision_id=payload['revision_id'], event_id=published-event-id)`; **ensure coalesced drain job:** `_create_and_start_job(scope='chapters_pending', …)` wrapped so `asyncpg.UniqueViolationError` (active job exists) is SWALLOWED (the active drainer picks up the freshly-queued row). NO job-per-event.
+  - **NEW `handle_chapter_unpublished`:** resolve project; `neo4j_session` → `remove_evidence_for_source(chapter source_id)` + `cleanup_zero_evidence_nodes` (retract canon; **closes D-CM1-UNPUBLISH-RETRACT**).
+- **`main.py`/consumer:** register `chapter.published` + `chapter.unpublished`; `chapter.saved` STAYS registered (passages). Stream already carries them (CM2).
+- **`internal_extraction.py` `/persist-pass2` (the retract-before-reextract seam, B6):** before `write_pass2_extraction`, call `remove_evidence_for_source(source_id)`; after, `cleanup_zero_evidence_nodes`. Makes EVERY persist idempotent retract-then-write → re-publish/re-extract drops stale facts. (Cleaner than worker-side retract — provenance fns are knowledge-side; worker just calls persist as today.)
+- **JobScope Literal** (`extraction.py:140`): add `'chapters_pending'`.
+
+**worker-ai:**
+- **`runner.py` `process_job`:** new branch `job.scope == 'chapters_pending'` → enumerate from `fetch_pending(user, project, aggregate_type='chapter')` → `[(chapter_id, revision_id, pending_id)]`; **drain loop** (re-fetch after each batch until empty → coalesces chapters queued mid-run): per item → status-check + `_try_spend` (one cost cap/job) → `text = book_client.get_chapter_revision_text(book_id, chapter_id, revision_id)` (CM3a) → extract → `persist_pass2` (now retract-then-write) → `mark_processed(pending_id)` → advance cursor.
+- **`clients.py`:** `get_chapter_revision_text(book_id, chapter_id, revision_id)` → `GET /internal/books/{bid}/chapters/{cid}/revisions/{rid}/text` (CM3a), return `text_content`.
+- **`runner.py` `_enumerate_pending_chat_turns` (B7):** add `AND ep.aggregate_type='chat'` to its query so chat-scope never consumes chapter rows.
+
+**Self-review (REVIEW-design, default v2.2):**
+- Coalescing respects the one-active-job/project unique index (ensure-job swallows 409) → no 409-storm, no per-job cost-cap bypass ✅.
+- Retract-in-persist makes re-extraction idempotent (B6 closed) ✅; unpublish retracts directly ✅.
+- B7 filter on BOTH drains (chapter + chat) ✅.
+- `revision_id` survives event→queue→worker via the new column ✅.
+- **Watch (BUILD):** the drain loop must re-fetch `fetch_pending` after each item/batch (a chapter published mid-run must be drained by the SAME active job, else it's stuck until the next publish creates a new job — but the unique index means no new job can start while this one runs → MUST drain-to-empty or the late row waits for job completion + next trigger). Decision: **drain loop re-fetches until `fetch_pending` returns empty**, then the job completes. A row queued after the final empty-check + before job completion is the only gap → acceptable (next publish ensures a new job; the row isn't lost, just delayed) — document.
+- **Watch (BUILD):** `_create_and_start_job` sets project `extraction_status='building'` — for a `chapters_pending` drain that's fine, but ensure completion resets to 'ready' (reuse existing completion path).
+
+**Build status + RESOLVED worker-half design (2026-06-04):**
+- ✅ **Knowledge-half BUILT + verified** (migrate +revision_id +chapters_pending scope; `extraction_pending` revision_id + `aggregate_type` filter + **`upsert_chapter_pending`** keep-LATEST/re-arm; `handle_chapter_published`/`handle_chapter_unpublished` + `chapter_saved` drop-queue; main.py register; persist-pass2 retract-then-write; JobScope ×2). py_compile + imports + extraction_pending tests green.
+- ✅ **Worker-half BUILT (safe pieces):** B7 `_enumerate_pending_chat_turns` `+ aggregate_type='chat'`; `clients.get_chapter_revision_text` (CM3a). py_compile green.
+- ⏳ **Worker-half REMAINING (intricate — build fresh):**
+  - **GROUNDING LOCKED:** `_build_run_config:359` sets `run_snapshot.model_ref = job.llm_model` (project `extraction_config` override is `{}` normally) → **the drain job's `llm_model` IS the extraction model**. A sentinel breaks extraction. So the **ensure-drain-job MUST reuse the project's LAST job's `(llm_model, embedding_model)`** (`SELECT … FROM extraction_jobs WHERE project_id=$1 ORDER BY created_at DESC LIMIT 1`). No prior job → skip (manual `/extraction/start` whole-book run bootstraps; subsequent publishes auto-drain).
+  - **ensure-drain-jobs = WORKER-POLL (robust, not handler):** in `poll_and_run`, before `_get_running_jobs`: find projects with unprocessed `aggregate_type='chapter'` pending rows AND no active job → create a `chapters_pending` job reusing last-job models, swallow-409 on the unique index. (Poll-based handles "publish during an active job" without relying on a later publish. Worker already holds the knowledge pool — cf. `_get_project_book_id`.)
+  - **`process_job` `chapters_pending` branch:** enumerate `ExtractionPendingRepo.fetch_pending(user, project, aggregate_type='chapter')` → `[(chapter_id, revision_id, pending_id)]`; **drain loop, re-fetch after each batch until empty** (coalesces chapters published mid-run); per item: `_refresh_job_status` + `_try_spend` (one cap/job) → `text = book_client.get_chapter_revision_text(book_id, chapter_id, revision_id)` → (hierarchy as today) → `_extract_and_persist(source_type='chapter', source_id=chapter_id, text=…)` (persist now retract-then-writes, B6) → `_mark_pending_processed(pending_id)` → advance cursor. On completion reset project `extraction_status='ready'` (existing path).
+  - Then cross-service VERIFY (publish→queue→drain→extract at pinned revision; re-publish re-arms; unpublish retracts) or `LIVE-SMOKE deferred D-CANON-CYCLE0-LIVE-SMOKE`.
+
 ### §8.9 CM1 design — book-service editorial lifecycle (CLARIFY-locked 2026-06-04)
 **DDL** (`internal/migrate/migrate.go`, additive + idempotent; chapters table is `migrate.go:38-55`):
 ```sql

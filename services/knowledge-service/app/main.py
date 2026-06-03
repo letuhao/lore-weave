@@ -190,6 +190,8 @@ async def lifespan(app: FastAPI):
         from app.events.handlers import (
             handle_chat_turn,
             handle_chapter_saved,
+            handle_chapter_published,
+            handle_chapter_unpublished,
             handle_chapter_deleted,
             handle_glossary_entity_updated,
         )
@@ -197,6 +199,10 @@ async def lifespan(app: FastAPI):
         dispatcher = EventDispatcher()
         dispatcher.register("chat.turn_completed", handle_chat_turn)
         dispatcher.register("chapter.saved", handle_chapter_saved)
+        # Canon Model CM3b: canon = published. Graph extraction triggers on
+        # chapter.published (at the pinned revision), not chapter.saved.
+        dispatcher.register("chapter.published", handle_chapter_published)
+        dispatcher.register("chapter.unpublished", handle_chapter_unpublished)
         dispatcher.register("chapter.deleted", handle_chapter_deleted)
         # C4 (K14) — auto glossary→KG propagation. glossary-service emits
         # glossary.entity_updated on every entity write (single + bulk

@@ -262,6 +262,12 @@ CREATE INDEX IF NOT EXISTS idx_extraction_pending_unprocessed
   ON extraction_pending (project_id, created_at)
   WHERE processed_at IS NULL;
 
+-- Canon Model CM3b: pin the PUBLISHED revision the worker must extract (vs the
+-- live draft). Set when a chapter.published row is queued; the worker-ai
+-- coalescing drainer fetches that revision's text via book-service (CM3a).
+-- NULL for legacy/chat rows. Additive + idempotent.
+ALTER TABLE extraction_pending ADD COLUMN IF NOT EXISTS revision_id UUID;
+
 -- ═══════════════════════════════════════════════════════════════
 -- K10.2 — extraction_jobs
 -- User-triggered extraction runs with atomic cost tracking. K10.4's
@@ -275,7 +281,7 @@ CREATE TABLE IF NOT EXISTS extraction_jobs (
   project_id        UUID NOT NULL
     REFERENCES knowledge_projects(project_id) ON DELETE CASCADE,
   scope             TEXT NOT NULL
-    CHECK (scope IN ('chapters','chat','glossary_sync','all')),
+    CHECK (scope IN ('chapters','chat','glossary_sync','all','chapters_pending')),
   scope_range       JSONB,
   status            TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending','running','paused','complete','failed','cancelled')),
@@ -313,6 +319,16 @@ CREATE INDEX IF NOT EXISTS idx_extraction_jobs_active
 CREATE UNIQUE INDEX IF NOT EXISTS idx_extraction_jobs_one_active_per_project
   ON extraction_jobs (project_id)
   WHERE status IN ('pending','running','paused');
+
+-- Canon Model CM3b: add 'chapters_pending' (the worker-ai coalescing drainer
+-- scope) to the scope CHECK for ALREADY-DEPLOYED tables — the inline CHECK in
+-- the table definition only applies to a fresh table. Idempotent: drop-if-exists
+-- then re-add (Postgres names the inline column CHECK 'extraction_jobs_scope_check').
+DO $cm3b_scope$ BEGIN
+  ALTER TABLE extraction_jobs DROP CONSTRAINT IF EXISTS extraction_jobs_scope_check;
+  ALTER TABLE extraction_jobs ADD CONSTRAINT extraction_jobs_scope_check
+    CHECK (scope IN ('chapters','chat','glossary_sync','all','chapters_pending'));
+END $cm3b_scope$;
 
 -- ═══════════════════════════════════════════════════════════════
 -- K10.2b — extraction_errors

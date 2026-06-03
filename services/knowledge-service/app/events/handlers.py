@@ -83,15 +83,14 @@ async def handle_chat_turn(event: EventData, *, pool: asyncpg.Pool) -> None:
 async def handle_chapter_saved(event: EventData, *, pool: asyncpg.Pool) -> None:
     """K14.6 — chapter.saved handler.
 
-    Two side effects:
-      1. Queue the chapter in `extraction_pending` so worker-ai can
-         run Pass 2 LLM extraction later (K14.6 original).
-      2. **D-K18.3-01**: ingest passages for K18.3 L3 semantic search
-         (fetch text → chunk → embed → upsert `:Passage` nodes).
+    **D-K18.3-01**: ingest passages for K18.3 L3 semantic search
+    (fetch text → chunk → embed → upsert `:Passage` nodes).
 
-    Both are idempotent and independent — passage ingestion runs
-    even if extraction is paused/disabled on the project, because L3
-    passages are useful for Mode 3 regardless of extraction state.
+    Canon Model CM3b: graph-extraction (Pass 2) is no longer queued here —
+    it triggers on `chapter.published` (canon = published). Passage ingestion
+    still runs on save (moves to chapter.published in CM3c). It runs even if
+    extraction is paused/disabled, because L3 passages are useful for Mode 3
+    regardless of extraction state.
 
     Note: book-service outbox payload is `{"book_id": "<uuid>"}` — no
     user_id. We resolve user_id from knowledge_projects via book_id
@@ -124,24 +123,13 @@ async def handle_chapter_saved(event: EventData, *, pool: asyncpg.Pool) -> None:
     embedding_model = project_row["embedding_model"]
     embedding_dim = project_row["embedding_dimension"]
 
-    # 1. Queue for Pass 2 extraction.
-    repo = ExtractionPendingRepo(pool)
-    await repo.queue_event(
-        user_id,
-        ExtractionPendingQueueRequest(
-            project_id=project_id,
-            event_id=_uuid(chapter_id) or _uuid(event.message_id),
-            event_type=event.event_type,
-            aggregate_type="chapter",
-            aggregate_id=_uuid(chapter_id) or project_id,
-        ),
-    )
-    logger.info(
-        "K14.6: chapter.saved queued for extraction: chapter=%s project=%s",
-        chapter_id, project_id,
-    )
+    # Canon Model CM3b: graph extraction (Pass 2) is NO LONGER queued on
+    # chapter.saved — `handle_chapter_published` queues it at the pinned
+    # published revision (canon = published), so unreviewed draft prose never
+    # canonizes. Passage ingest (L3 semantic) stays here for now; it moves to
+    # chapter.published in CM3c.
 
-    # 2. D-K18.3-01: ingest passages for L3 semantic search.
+    # D-K18.3-01: ingest passages for L3 semantic search.
     if not embedding_model or not embedding_dim:
         logger.debug(
             "D-K18.3-01: skipping passage ingest — project %s has no "
@@ -241,6 +229,138 @@ async def handle_chapter_saved(event: EventData, *, pool: asyncpg.Pool) -> None:
     except Exception:
         logger.warning(
             "D-K18.3-01: passage ingest failed for chapter=%s project=%s — non-fatal",
+            chapter_id, project_id, exc_info=True,
+        )
+
+
+async def handle_chapter_published(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """Canon Model CM3b — chapter.published handler (canon = published).
+
+    Queues the chapter for Pass-2 graph extraction at its PINNED published
+    revision (NOT the live draft), so only author-published content is
+    canonized. The worker-ai coalescing drainer (scope='chapters_pending')
+    creates/runs the job that drains the queue, fetches each chapter's
+    revision text via book-service (CM3a), and extracts.
+
+    Re-publish RE-ARMS the chapter at the new revision (keep-LATEST via
+    `upsert_chapter_pending`). Payload: {book_id, chapter_id, revision_id}.
+    Resolves project via book_id; skips if the book has no knowledge project.
+
+    NOTE: job creation is worker-side (it resolves the extraction model config
+    via run_snapshot); this handler only enqueues.
+    """
+    payload = event.payload
+    book_id = _uuid(payload.get("book_id"))
+    chapter_id = event.aggregate_id
+    revision_id = _uuid(payload.get("revision_id"))
+
+    if not chapter_id or book_id is None:
+        logger.warning(
+            "chapter.published missing chapter_id or book_id: %s", event.message_id
+        )
+        return
+    if revision_id is None:
+        logger.warning(
+            "chapter.published missing revision_id: %s — cannot pin canon revision",
+            event.message_id,
+        )
+        return
+
+    chapter_uuid = _uuid(chapter_id)
+    if chapter_uuid is None:
+        logger.warning("chapter.published non-UUID chapter_id: %s", chapter_id)
+        return
+
+    project_row = await pool.fetchrow(
+        "SELECT project_id, user_id FROM knowledge_projects WHERE book_id = $1 LIMIT 1",
+        book_id,
+    )
+    if project_row is None:
+        logger.debug(
+            "No knowledge project for book %s — skipping chapter.published", book_id
+        )
+        return
+
+    project_id = project_row["project_id"]
+    user_id = project_row["user_id"]
+
+    repo = ExtractionPendingRepo(pool)
+    await repo.upsert_chapter_pending(
+        user_id, project_id, chapter_uuid, revision_id,
+    )
+    logger.info(
+        "CM3b: chapter.published queued for extraction: chapter=%s revision=%s project=%s",
+        chapter_id, revision_id, project_id,
+    )
+
+
+async def handle_chapter_unpublished(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """Canon Model CM3b — chapter.unpublished handler.
+
+    Retracts the chapter's extracted canon from the KG (closes
+    D-CM1-UNPUBLISH-RETRACT). Uses `remove_evidence_for_source` (decrements
+    the per-target evidence counter properly — unlike chapter.deleted's raw
+    DETACH DELETE), so re-publishing later cleanly re-extracts. Zero-evidence
+    orphans are swept by the periodic reconcile job, not here (user-wide
+    cleanup must not run concurrently with extraction). Best-effort.
+
+    Also drops any unprocessed pending row for the chapter so a queued-but-
+    not-yet-drained extraction doesn't re-canonize it.
+    """
+    payload = event.payload
+    book_id = _uuid(payload.get("book_id"))
+    chapter_id = event.aggregate_id
+
+    if not chapter_id or book_id is None:
+        logger.warning(
+            "chapter.unpublished missing chapter_id or book_id: %s", event.message_id
+        )
+        return
+
+    project_row = await pool.fetchrow(
+        "SELECT project_id, user_id FROM knowledge_projects WHERE book_id = $1 LIMIT 1",
+        book_id,
+    )
+    if project_row is None:
+        logger.debug(
+            "No knowledge project for book %s — skipping chapter.unpublished", book_id
+        )
+        return
+
+    project_id = project_row["project_id"]
+    user_id = project_row["user_id"]
+
+    # Drop any unprocessed pending row so a not-yet-drained publish doesn't
+    # re-canonize after unpublish (scoped by user for defense-in-depth).
+    await pool.execute(
+        """
+        DELETE FROM extraction_pending
+        WHERE project_id = $1 AND aggregate_id = $2
+          AND aggregate_type = 'chapter' AND user_id = $3
+          AND processed_at IS NULL
+        """,
+        project_id, _uuid(chapter_id), user_id,
+    )
+
+    from app.config import settings
+    if not settings.neo4j_uri:
+        return
+    try:
+        from app.db.neo4j import neo4j_session
+        from app.db.neo4j_repos.provenance import remove_evidence_for_source
+
+        async with neo4j_session() as session:
+            removed = await remove_evidence_for_source(
+                session, user_id=str(user_id), source_id=str(chapter_id),
+            )
+        logger.info(
+            "CM3b: chapter.unpublished retracted canon: chapter=%s project=%s "
+            "evidence_edges_removed=%d",
+            chapter_id, project_id, removed,
+        )
+    except Exception:
+        logger.warning(
+            "CM3b: chapter.unpublished retract failed for chapter=%s project=%s — non-fatal",
             chapter_id, project_id, exc_info=True,
         )
 

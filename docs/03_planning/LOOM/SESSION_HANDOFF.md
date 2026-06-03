@@ -1,7 +1,7 @@
 # LOOM — Track Charter & Session Handoff
 
 > **Track:** **LOOM** — the lore-grounded **co-writer** + its **Canon Model** foundation.
-> **Last updated:** 2026-06-04 · **Branch:** `feat/composition-service` · **HEAD:** CM1+CM3a (see latest commit) · **Session:** LOOM-02 (CM1+CM3a built)
+> **Last updated:** 2026-06-04 · **Branch:** `feat/composition-service` · **HEAD:** CM1+CM3a+CM2+CM3b (see latest commit) · **Session:** LOOM-03 (CM3b built)
 > **Workflow:** 12-phase **v2.2 human-in-loop** (PO checkpoint at CLARIFY-end + POST-REVIEW). `/amaw` **opt-in** for: CM1 (schema/migration), CM3 (cross-service contract cutover), composition M1 (schema), M5 (authz/isolation).
 > **Isolated from** the `lore-enrichment/*` track — LOOM **never touches `services/lore-enrichment-service/`** (siblings, not deps).
 
@@ -38,14 +38,21 @@ Shipped (book-service only): `GET /internal/books/{book_id}/chapters/{chapter_id
 ## ✅ CM2 DONE (LOOM-02, 2026-06-04) — relay confirm, ZERO code change
 Verified in-code (`worker-infra/internal/tasks/outbox_relay.go:149-205`): `processSource` SELECTs all unpublished outbox rows (no event_type filter); `streamKey = "loreweave:events:" + aggregate_type` (`:179`); event_type only carried in the values map (`:184`), never routes/filters. `insertOutboxEvent` hardcodes `aggregate_type='chapter'` and book-service is already a relay source (`chapter.saved` flows today) → `chapter.published` + `chapter.unpublished` auto-flow to `loreweave:events:chapter`. No allowlist; statistics-service (separate consumer group) ignores unknown types; knowledge consumes in CM3b. No code, no commit needed beyond this note.
 
-## ▶ NEXT SESSION (LOOM-03)
-**CM3b — the load-bearing cutover** (⚠️ `/amaw`; `/loom CM3b`). Cross-service (knowledge + worker-ai). 2 CRITICALs already caught in review for this shape — handle with care:
-- knowledge: on `chapter.published` → queue `extraction_pending` (+ new `revision_id` column); stop queuing on `chapter.saved`. Switch inline passage-ingest to `chapter.published` + pinned revision.
-- worker-ai: **per-project coalescing drainer** = ONE job draining the project's pending chapters (respect the one-active-job/project unique index `migrate.py:313` — **NO job-per-event** → 409-storm); single-chapter scope (`_enumerate_chapters` honour scope); fetch pinned revision via **CM3a's endpoint** (`GET /internal/.../revisions/{id}/text`).
-- **Wire `remove_evidence_for_source` + `cleanup_zero_evidence_nodes` BEFORE re-extract** (canon-drift fix B6; also retract on `chapter.unpublished` → closes **D-CM1-UNPUBLISH-RETRACT**).
-- Fix **B7**: chat-drainer `_enumerate_pending_chat_turns` (`runner.py:906`) add `aggregate_type='chat'` filter.
-- Gate manual `/extraction/start` whole-book rebuild to skip `editorial_status='draft'`.
-- See plan §8.2/§8.3 CM3b. Then CM3c → CM4 → CM-FE → CM5.
+## ✅ CM3b DONE (LOOM-03, 2026-06-04) — graph-extraction cutover (default v2.2 + /review-impl)
+knowledge: `extraction_pending +revision_id +aggregate_type filter +upsert_chapter_pending` (keep-LATEST/re-arm); `handle_chapter_published` (queue at pinned rev) / `handle_chapter_unpublished` (`remove_evidence_for_source` retract — **closes D-CM1-UNPUBLISH-RETRACT**) / `chapter_saved` drops graph-queue; main register; persist-pass2 **retract-then-write** (B6, all paths); `JobScope +chapters_pending`. worker-ai: `_enumerate_pending_chapters` + `process_job` chapters_pending branch (shared loop, revision-text, **mark-by-revision**) + `_ensure_chapters_pending_jobs` poll (reuse last-job models+cap, swallow-409, fail-stop guard) + `clients.get_chapter_revision_text` (CM3a) + **B7** chat-drain filter. **/review-impl: 0 HIGH, fixed MED-1 (re-publish-during-drain race → mark-by-revision) + MED-2 (stale-model recreate-fail loop → 1h fail-stop).** Verify: knowledge 2008 pass/1 pre-existing (lifecycle/budget MagicMock, not CM3b); worker-ai 101 pass; py_compile all. **Closes B6, B7, D-CM1-UNPUBLISH-RETRACT.**
+
+## ▶ NEXT SESSION (LOOM-04)
+**CM3c — passage-ingest → published+pinned + manual-rebuild draft-gating** (`/loom CM3c`).
+- Move inline passage-ingest from `chapter.saved` → `chapter.published` (fetch pinned revision; passages already delete-first so re-publish self-heals). The `chapter.saved` handler then does nothing graph/passage (or is dropped).
+- Gate manual `/extraction/start` ('chapters' scope, `_enumerate_chapters`/`list_chapters`) to **skip `editorial_status='draft'`** chapters + fetch published content (closes LOW-3: manual rebuild currently extracts drafts).
+- Then CM4 (dual-order + backfills) → CM-FE (publish UI) → CM5 (provenance).
+
+## Deferred / watch
+- ~~D-CM1-UNPUBLISH-RETRACT~~ ✅ **CLOSED by CM3b** (unpublish retracts evidence).
+- **D-CANON-CYCLE0-LIVE-SMOKE** (tightened): book-service has no DB-backed Go harness; knowledge/worker-ai DB round-trips skip. **Required smoke:** CM1 publish/unpublish/backfill + CM3a IDOR-404 + **CM3b end-to-end (publish→queue→drain→extract at pinned revision; re-publish re-arms→re-extracts at new rev [MED-1 race]; unpublish retracts; unpublish-during-drain [MED-3 race]; stale-model fail-stop [MED-2])**.
+- **CM3b accepted races/edges (review-impl):** MED-3 unpublish-during-drain re-canonize (narrow; re-unpublish fixes) · LOW-1 paused-drain-on-cap blocks until resumed (visible) · LOW-2 per-persist retract assumes per-chapter persist (commented; future per-chunk would break).
+- L5 long-term-summary lens (no HTTP read endpoint) — future knowledge surface.
+- `chronological_order` quality for non-ISO in-world dates (CM4) — reading-order fallback.
 
 ## Deferred / watch
 - **D-CM1-UNPUBLISH-RETRACT** — `/unpublish` flips status but does NOT retract already-extracted KG facts; **CM3b** wires `remove_evidence_for_source` on `chapter.unpublished`. Until then: temporary canon drift on unpublish.

@@ -906,7 +906,14 @@ async def _enumerate_glossary_entities(
 async def _enumerate_pending_chat_turns(
     pool: asyncpg.Pool, user_id: UUID, project_id: UUID,
 ) -> list[dict]:
-    """Fetch unprocessed chat turn events from extraction_pending."""
+    """Fetch unprocessed chat turn events from extraction_pending.
+
+    Canon Model CM3b (B7): filter `aggregate_type = 'chat'` — the queue now
+    also holds `chapter` rows (chapter.published), and without this filter the
+    chat-scope drain would mis-consume chapter rows as empty chat turns
+    (source_type='chat_message', text=''). The chapter drainer reads
+    `aggregate_type='chapter'`; the two never cross.
+    """
     rows = await pool.fetch(
         """
         SELECT ep.pending_id, ep.event_id, ep.event_type,
@@ -915,6 +922,7 @@ async def _enumerate_pending_chat_turns(
         JOIN knowledge_projects p
           ON p.project_id = ep.project_id AND p.user_id = $1
         WHERE ep.project_id = $2 AND ep.processed_at IS NULL
+          AND ep.aggregate_type = 'chat'
         ORDER BY ep.created_at ASC
         LIMIT 1000
         """,
@@ -925,8 +933,17 @@ async def _enumerate_pending_chat_turns(
 
 async def _mark_pending_processed(
     pool: asyncpg.Pool, user_id: UUID, pending_id: UUID,
+    *, revision_id: str | None = None,
 ) -> None:
-    """Mark a pending event as processed."""
+    """Mark a pending event as processed.
+
+    CM3b /review-impl MED-1 (re-publish-during-drain race): when `revision_id`
+    is given (chapter drain), mark ONLY if the row STILL pins that revision. If
+    a re-publish reset the row to a new revision (`upsert_chapter_pending` sets
+    revision_id=NEW, processed_at=NULL) while this drain was extracting the OLD
+    one, the match fails (0 rows) → the row stays unprocessed at NEW → re-drained
+    at the latest revision (instead of being marked done at the stale revision).
+    """
     await pool.execute(
         """
         UPDATE extraction_pending ep
@@ -934,11 +951,58 @@ async def _mark_pending_processed(
         FROM knowledge_projects p
         WHERE ep.pending_id = $2
           AND ep.processed_at IS NULL
+          AND ($3::uuid IS NULL OR ep.revision_id = $3)
           AND p.project_id = ep.project_id
           AND p.user_id = $1
         """,
-        user_id, pending_id,
+        user_id, pending_id, revision_id,
     )
+
+
+async def _enumerate_pending_chapters(
+    pool: asyncpg.Pool, user_id: UUID, project_id: UUID,
+) -> list[ChapterInfo]:
+    """Canon Model CM3b — chapters queued by chapter.published, to extract at
+    their PINNED published revision. `aggregate_type='chapter'` keeps this
+    disjoint from the chat drain (B7). Each row → ChapterInfo carrying
+    revision_id + pending_id so the loop fetches revision text (not the live
+    draft) and marks the row processed afterward.
+    """
+    rows = await pool.fetch(
+        """
+        SELECT ep.pending_id, ep.aggregate_id, ep.revision_id
+        FROM extraction_pending ep
+        JOIN knowledge_projects p
+          ON p.project_id = ep.project_id AND p.user_id = $1
+        WHERE ep.project_id = $2 AND ep.processed_at IS NULL
+          AND ep.aggregate_type = 'chapter'
+        ORDER BY ep.created_at ASC
+        LIMIT 1000
+        """,
+        user_id, project_id,
+    )
+    out: list[ChapterInfo] = []
+    for r in rows:
+        if r["revision_id"] is None:
+            # A pending chapter row without a pinned revision (legacy/malformed)
+            # — skip rather than fall back to the live draft, which would
+            # violate canon=published. Mark it processed so it doesn't re-loop.
+            logger.warning(
+                "CM3b: pending chapter %s has no revision_id — skipping + marking",
+                r["aggregate_id"],
+            )
+            await _mark_pending_processed(pool, user_id, r["pending_id"])
+            continue
+        out.append(
+            ChapterInfo(
+                chapter_id=str(r["aggregate_id"]),
+                title="",
+                sort_order=0,
+                revision_id=str(r["revision_id"]),
+                pending_id=r["pending_id"],
+            )
+        )
+    return out
 
 
 # ── Phase 4b-γ — extract+persist helper ─────────────────────────────
@@ -1128,6 +1192,13 @@ async def process_job(
             pre_chapters = await _enumerate_chapters(
                 book_client, book_id, job.current_cursor,
             )
+        # Canon Model CM3b — coalescing drainer: extract the chapters queued by
+        # chapter.published, each at its PINNED revision. Shares the per-chapter
+        # loop below (text-fetch + mark branch on ch.revision_id/pending_id).
+        if job.scope == "chapters_pending":
+            pre_chapters = await _enumerate_pending_chapters(
+                pool, job.user_id, job.project_id,
+            )
         if job.scope in ("chat", "all"):
             pre_pending = await _enumerate_pending_chat_turns(
                 pool, job.user_id, job.project_id,
@@ -1185,8 +1256,15 @@ async def process_job(
                     await _update_project_status(pool, job.user_id, job.project_id, "paused")
                     return
 
-                # Get chapter text
-                text = await book_client.get_chapter_text(book_id, ch.chapter_id)
+                # Get chapter text. CM3b: chapters_pending drains the PINNED
+                # PUBLISHED revision (canon = published); the normal path uses
+                # the live-draft text.
+                if ch.revision_id is not None:
+                    text = await book_client.get_chapter_revision_text(
+                        book_id, ch.chapter_id, ch.revision_id,
+                    )
+                else:
+                    text = await book_client.get_chapter_text(book_id, ch.chapter_id)
                 if text is None:
                     logger.warning("Skipping chapter %s — text unavailable", ch.chapter_id)
                     await _append_log(
@@ -1338,6 +1416,14 @@ async def process_job(
                             {"last_chapter_id": ch.chapter_id, "scope": "chapters"},
                             skip_payload,
                         )
+                        # CM3b: retry-exhausted is terminal — clear the queue row
+                        # so the drainer doesn't re-process it forever. Mark-by-
+                        # revision (MED-1): don't clobber a concurrent re-publish.
+                        if ch.pending_id is not None:
+                            await _mark_pending_processed(
+                                pool, job.user_id, ch.pending_id,
+                                revision_id=ch.revision_id,
+                            )
                         items_processed += 1
                         continue
                     logger.warning(
@@ -1406,6 +1492,13 @@ async def process_job(
                     job.job_id, ch.chapter_id,
                     result.entities_merged, result.relations_created,
                 )
+                # CM3b: clear the pending queue row (chapters_pending drain).
+                # Mark-by-revision (MED-1): a concurrent re-publish that re-armed
+                # the row at a new revision must NOT be marked done here.
+                if ch.pending_id is not None:
+                    await _mark_pending_processed(
+                        pool, job.user_id, ch.pending_id, revision_id=ch.revision_id,
+                    )
 
         if pre_pending:
             for turn in pre_pending:
@@ -1592,6 +1685,81 @@ async def process_job(
 # ── Poll loop ────────────────────────────────────────────────────────
 
 
+async def _ensure_chapters_pending_jobs(pool: asyncpg.Pool) -> int:
+    """Canon Model CM3b — create a 'chapters_pending' drain job for each
+    project that has unprocessed chapter pending rows AND no active job.
+
+    REUSES the project's last job's models: `_build_run_config` sets
+    `run_snapshot.model_ref = job.llm_model`, so the drain job's `llm_model`
+    IS the extraction model — a placeholder would break extraction. A project
+    with no prior job is skipped (a manual /extraction/start whole-book run
+    bootstraps it; subsequent publishes then auto-drain). Idempotent via the
+    one-active-job-per-project unique index — swallow the 409 (an active job
+    will drain the queued rows; the poll re-creates a drain job once it ends if
+    rows remain, so nothing is lost).
+    """
+    rows = await pool.fetch(
+        """
+        SELECT DISTINCT p.user_id, ep.project_id
+        FROM extraction_pending ep
+        JOIN knowledge_projects p ON p.project_id = ep.project_id
+        WHERE ep.aggregate_type = 'chapter' AND ep.processed_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM extraction_jobs j
+            WHERE j.project_id = ep.project_id
+              AND j.status IN ('pending', 'running', 'paused')
+          )
+          -- MED-2: don't recreate a drain within 1h of a FAILED drain (e.g. a
+          -- deleted/invalid model_ref) — else it loops fail→recreate every poll.
+          -- Fail-stop + eventual retry; the failed job is visible for the user
+          -- to fix the model. (A transient failure retries after the window.)
+          AND NOT EXISTS (
+            SELECT 1 FROM extraction_jobs j2
+            WHERE j2.project_id = ep.project_id
+              AND j2.scope = 'chapters_pending'
+              AND j2.status = 'failed'
+              AND j2.updated_at > now() - interval '1 hour'
+          )
+        """
+    )
+    created = 0
+    for r in rows:
+        user_id, project_id = r["user_id"], r["project_id"]
+        last = await pool.fetchrow(
+            """
+            SELECT llm_model, embedding_model, max_spend_usd FROM extraction_jobs
+            WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1
+            """,
+            project_id,
+        )
+        if last is None:
+            continue  # no prior job → manual whole-book run bootstraps it
+        try:
+            # Reuse the last job's max_spend_usd as the drain's cap. The drain is
+            # created via raw INSERT (bypasses start_extraction_job's monthly-budget
+            # pre-check), so without a cap an auto-drain would be unbounded; reusing
+            # the user's last cap bounds it (paused-on-cap is visible + resumable,
+            # vs silent unbounded spend).
+            await pool.execute(
+                """
+                INSERT INTO extraction_jobs
+                  (user_id, project_id, scope, status, llm_model, embedding_model,
+                   max_spend_usd, started_at, updated_at)
+                VALUES ($1, $2, 'chapters_pending', 'running', $3, $4, $5, now(), now())
+                """,
+                user_id, project_id,
+                last["llm_model"], last["embedding_model"], last["max_spend_usd"],
+            )
+            created += 1
+            logger.info(
+                "CM3b: created chapters_pending drain job for project=%s", project_id,
+            )
+        except asyncpg.UniqueViolationError:
+            # An active job appeared concurrently — it will drain the queue.
+            pass
+    return created
+
+
 async def poll_and_run(
     pool: asyncpg.Pool,
     knowledge_client: KnowledgeClient,
@@ -1604,6 +1772,14 @@ async def poll_and_run(
     Returns the number of jobs processed (for logging/metrics).
     Called repeatedly by the main loop with a sleep interval.
     """
+    # CM3b: create drain jobs for projects with queued published chapters
+    # BEFORE picking up running jobs, so a freshly-created one runs this cycle.
+    try:
+        await _ensure_chapters_pending_jobs(pool)
+    except Exception:
+        logger.warning(
+            "CM3b: ensure chapters_pending jobs failed — non-fatal", exc_info=True
+        )
     jobs = await _get_running_jobs(pool)
     if not jobs:
         return 0
