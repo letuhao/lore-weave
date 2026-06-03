@@ -155,6 +155,8 @@ CREATE INDEX IF NOT EXISTS idx_outbox_pending ON outbox_events(created_at) WHERE
 ### §1.4 Cross-DB anchors (app-level integrity)
 `project_id`→knowledge · `book_id`/`chapter_id`/`target_revision_id`→book · `pov_entity_id`/`present_entity_ids[]`/`canon_rule.entity_id`→glossary · `llm_job_id`→gateway. Validated in app code / cross-service calls; no DB FK (different DBs).
 
+> **Entity-id stability rule (§13 DI3, verified).** Always store the **glossary `entity_id`** (a stable uuidv7 — glossary has no destructive merge and no id-redirect; delete is a reversible soft-delete). **Never** store the knowledge-service `canonical_id` — it is content-hash-derived and **changes on entity rename**. Resolve knowledge↔glossary via the knowledge entity's stable `glossary_entity_id` anchor. A held id that stops resolving = **soft-absent** (entity trashed): the packer skips it gracefully, it is never an integrity error.
+
 ### §1.5 Forward-compat (V1/V2 — schema already leaves room)
 - **V1 non-linear:** add `branch_id UUID` to `outline_node` (NULL = canonical); new `scene_variant` (FK `outline_node`, holds alternate prose for takes); `style_profile`/`voice_profile`/`reference_source`.
 - **V2 同人:** `derivative_work(source_work_id, divergence_spec)` · `entity_override` · 2-layer COW retrieval merged in the packer (no knowledge-service change, per COMP-A6).
@@ -166,33 +168,57 @@ CREATE INDEX IF NOT EXISTS idx_outbox_pending ON outbox_events(created_at) WHERE
 Assembles **constraint-shaped** context for one target scene (`outline_node`). Runs in COMP (per COMP-A6 — self-pack); all reads reuse existing HTTP surfaces; the orchestration + budget policy is the new module.
 
 ### §2.1 Lenses
-| Lens | Content | Source |
-|---|---|---|
-| **L0 Canon** | active `canon_rule` applying at the scene position (`from_order ≤ pos ≤ until_order`) + world rules | COMP DB |
-| **L1 Present state** | each `present_entity_ids` + POV → state + 1-hop relations (`valid_until IS NULL`, ≤ cutoff) | knowledge entity/relations |
-| **L2 Structural** | beat purpose (template) + goal + POV + synopsis + `setup_payoff` threads touching the scene | COMP DB |
-| **L2′ Planned** | synopses of *unwritten* scenes ≤ position — so non-linear / out-of-order drafting has planned context, not just extracted facts | COMP DB (`outline_node.synopsis`) |
-| **L3 Recent prose** | last K paragraphs before the scene (prev-scene tail / chapter-so-far) | book chapter content (via `SceneAnchor`) |
-| **L4 Semantic refs** | relevant lore/style passages | knowledge `drawers/search` |
-| **L5 Long-term** | hierarchical chapter/part/book summaries (anti-drift) | knowledge summaries / `summarize_level` |
+> **⚠️ Contract reality-check (§12, 2026-06-03).** L1/L4/L5 were re-spec'd after verifying the ACTUAL knowledge-service handlers (the design's original assumptions were wrong — exactly the enrichment "trust-the-doc" bug class). Verified facts: **timeline** carries `chronological_order` + accepts `before_chronological`/`before_order` (true in-world cutoff ✅); **relations** carry only wall-clock `valid_until` datetime, NOT narrative order ❌; **drawers/search** hits carry NO `chronological_order` and `chapter_index` is `None` on the prod ingest path ❌ (only `source_id`=chapter UUID); **hierarchical summaries are NOT served over HTTP** ❌ (only L0/L1 free-text bios). The lens table below reflects what is actually buildable.
 
-### §2.2 Spoiler cutoff
-All time-aware lenses (L1 events · L4 · L5) filter `chronological_order ≤ scene.story_order`, via `timeline?before_order=`. **Cutoff = the scene's `story_order`** (in-world time on `outline_node`, ≠ reading order `rank`) — so a Ch.12 **flashback** with a low `story_order` correctly sees only canon up to that in-world moment (non-linear / dual-timeline safe). Aligns with knowledge's `chronological_order`. *(V2 derivative: also ≤ `branch_point`.)*
+| Lens | Content | Source | Spoiler axis |
+|---|---|---|---|
+| **L0 Canon** | active `canon_rule` applying at the scene position (`from_order ≤ pos ≤ until_order`) + world rules | COMP DB | in-world `story_order` (COMP-owned) |
+| **L1a Present state** | each `present_entity_ids` + POV → entity current state + **currently-valid** 1-hop relations (`valid_until IS NULL`) | knowledge `entities/{id}` | *not* chrono-filterable (relations are wall-clock only) — see §2.2 |
+| **L1b Timeline** ★ | in-world events touching the scene's entities, `chronological_order ≤ story_order` | knowledge `timeline?before_chronological=` | **in-world (true cutoff) ✅** — the real spoiler-safe event source |
+| **L2 Structural** | beat purpose (template) + goal + POV + synopsis + `setup_payoff` threads touching the scene | COMP DB | — |
+| **L2′ Planned** | synopses of *unwritten* scenes ≤ position — so non-linear / out-of-order drafting has planned context, not just extracted facts | COMP DB (`outline_node.synopsis`) | — |
+| **L3 Recent prose** | last K paragraphs before the scene (prev-scene tail / chapter-so-far) | book chapter content (via `SceneAnchor`) | reading-order (local) |
+| **L4 Semantic refs** | relevant lore/style passages | knowledge `drawers/search` (`project_id` REQUIRED) | **reading-order approximation** — resolve hit `source_id`→book-service chapter `sort_order`; drop hits from chapters at/after the scene's reading position. NOT in-world (flashback residual, §2.2). Requires the knowledge-ingest `chapter_index` fix (§12 / plan §4). |
+| **L5 Long-term** | hierarchical chapter/part/book summaries (anti-drift) | knowledge summaries / `summarize_level` | **DEFERRED — not exposed over HTTP.** `summarize_level` is a job-only write; no public read route exists. V0 ships without L5; revisit when a knowledge summaries read-endpoint exists (separate touch-point from the `chapter_index` fix). |
 
-> **Semantic-lens spoiler guard (OI-A2).** `drawers/search` (L4) and summaries (L5) do **not** natively accept a chronological cutoff, and COMP cannot add one (COMP-A6). So COMP **post-filters** every retrieved passage by its source position: drop any hit whose source `chronological_order > story_order`. Requires each hit to carry source position; if a hit lacks it → **conservative drop** + log. Without this, the semantic lens silently leaks future-chapter lore — defeating the headline spoiler-safety guarantee that L1/L5 enforce.
+### §2.2 Spoiler cutoff — TWO axes, both populated by the Canon Model (revised §12→Canon Model, 2026-06-03)
+
+> **Update:** the original "one cutoff via `before_order`" was found inert — verification (§12) showed `chronological_order`/`event_order` are **never written** (NULL ~100%), so `before_chronological=story_order` matched zero events (a no-op that *looked* spoiler-safe). The durable fix is the **Canon Model prerequisite (Cycle 0, Primitive 3)**: it **populates both order axes** — `event_order`/`reading_order` from chapter `sort_order`, and `chronological_order` ranked from the already-extracted `event_date_iso`. So once Cycle 0 lands, BOTH axes below are real (the earlier "reading-order approximation only / flashback residual" caveat is **lifted** — in-world flashback-safety becomes genuine, bounded by `event_date_iso` quality). Composition does NOT build the order population itself; it consumes the Canon Model primitive.
+
+The spoiler guard is **two-axis** — and honest about which lens enforces which:
+
+- **In-world axis (true cutoff) — L1b Timeline + L0 Canon.** `timeline?before_chronological=story_order` filters events to in-world chronology (verified: `chronological_order` on every Event, strict `<` predicate). A Ch.12 **flashback** with a low `story_order` correctly sees only events up to that in-world moment (non-linear / dual-timeline safe). L0 `canon_rule` uses COMP-owned `from_order/until_order` on the same axis. **This is the real spoiler-safety guarantee.**
+- **Reading-order axis (approximation) — L3 + L4.** Prose passages (recent prose L3, semantic refs L4) have NO in-world chronology in the KG — a passage only knows its **chapter** (`source_id`). So L4 filters by **reading-order**: resolve `source_id`→book-service chapter `sort_order`, drop any hit from a chapter at/after the scene's reading position. **Residual (documented, not a bug):** for a flashback scene (low `story_order`, high reading position) this is *more permissive* than in-world — it admits prose from earlier-written chapters that are in-world-future. V0 accepts this; closing it would need per-passage in-world tagging at extraction (knowledge-service work, deferred).
+- **L1a relations are NOT chrono-filtered.** Relations carry only wall-clock `valid_until` (write timestamp), not narrative order — so L1a contributes *currently-valid* state (`valid_until IS NULL`) and the in-world cutoff is delegated to L1b events. Do not pretend relations are spoiler-filtered.
+
+> **Semantic-lens spoiler guard (OI-A2, revised).** `drawers/search` (L4) returns no chronological cutoff and COMP cannot add a param (COMP-A6). The fix has **two halves**: (1) a **knowledge-service ingest fix** (thread chapter `sort_order` into `chapter_index` at `chapter.saved` ingest — currently dropped at `handlers.py:237`; reclassifies the slice as touching knowledge-service, plan §4); (2) COMP **post-filters** every L4 hit by resolving its `source_id`→chapter reading position and dropping hits at/after the scene's chapter. **Conservative-drop + LOG** on any hit missing position (so a dead filter is *visible*, not silent — the enrichment "inert check / no-silent-caps" lesson). Without (1), every hit lacks position → conservative-drop empties L4 → log surfaces it as `l4_dropped_no_position=N` rather than a silent no-op. *(V2 derivative: also ≤ `branch_point`.)*
 
 ### §2.3 Priority ladder (budget trim — drop lowest first)
-- **Never drop:** L0 canon · L1 core state · L2 beat/goal · L3 immediate-preceding prose.
-- **Drop order:** L4 refs → L5 summaries (chapter first, book last) → L2 stale threads → L1 2-hop → L3 older prose.
+- **Never drop:** L0 canon · L1a core state · L1b in-window events · L2 beat/goal · L3 immediate-preceding prose.
+- **Drop order:** L4 refs → ~~L5 summaries~~ *(L5 deferred — not exposed)* → L2 stale threads → L1a 2-hop relations → L1b older events → L3 older prose.
 - Mirrors knowledge `_enforce_budget` but with a **generation** priority (canon-first), not Q&A.
 
 ### §2.4 Assembly (structured prompt)
 `<canon>` (hard constraints) · `<present>` (who + state) · `<threads>` (open setups due) · `<beat goal POV synopsis>` · `<recent>` (last K paras) · `<lore>` · `<memory>` · `<guide>` (author steer).
 
+> **Injection guard (§13 SEC3).** `<lore>` (retrieved passages) and `<guide>` (author free-text) are **untrusted input** — extracted/imported prose can carry "ignore instructions…" payloads. Sanitize both before assembly (neutralize/tag, the enrichment `sanitize.py` tag-not-delete pattern; bound `<guide>` length). Easy to miss because the lore is "ours", but it originates from arbitrary book text.
+
 ### §2.5 Runtime
 Parallel gather of lenses with per-lens timeout + graceful degrade (mirrors `app/context/modes/full.py` `_safe_*`). Stable parts (canon, beat, voice) cacheable; volatile (recent prose) not. Budget = configured token target.
 
 **Isolation invariant (OI-A1).** EVERY lens read is scoped by `project_id` (+ `user_id`) — no global/unscoped semantic search (a cross-project `drawers/search` would leak another Work's lore). **Mode purity:** canonical-mode reads `branch_id IS NULL` strictly; sandbox `scene_variant` enters only in branch mode (V1). A canonical pack must never include sandbox prose.
+
+> **A1 sharpening (§12).** Verified: `drawers/search` *requires* `project_id` (safe), but `timeline` + `entities-browse` make `project_id` **optional** — omitting it returns rows across **every project the user owns** (cross-PROJECT, same user). So the isolation invariant is not just "don't search globally" — `assemble.py` MUST **assert `project_id` is present and non-null on every lens call** (a chokepoint assertion, the enrichment Q3-scoping lesson), not trust the endpoint default.
+
+> **Ownership chokepoint (§13 SEC2).** The glossary/knowledge **internal** read surfaces (`select-for-context`, `entities`, …) are **book-scoped ONLY — they do NOT re-check the user** (`X-Internal-Token` trust; verified). So composition MUST verify the JWT user owns the `book_id`/`project_id` **before** issuing any internal read. The internal token is a service-trust boundary, NOT a per-user authz boundary — without the upfront check, a crafted request reads another user's lore.
+
+### §2.6 Book profile / language threading (de-bias — bake in from M0)
+
+**Lesson (lore-enrichment, paid over 3 XL de-bias cycles):** a generation+verify pipeline silently inherits the *demo book's* universe (language/era/genre/entity-kind) unless worldview is an explicit per-book object threaded everywhere. The fix pattern: a `BookProfile` with a **NEUTRAL default** that a missing row resolves to (never raises), threaded through ONE context object into every prompt builder + judge + resolver. Composition is a *prose generator* — the highest-exposure surface for this bug (English illustrative phrases in a prompt bias a CJK/VN draft to English; a genre-assuming judge mis-scores voice). We build it in from day one instead of retrofitting.
+
+- **Shape (V0, lives in `composition_work.settings`):** `{ source_language (default 'auto' → resolved per-book from book-service, like enrichment `_book_language`), voice (free text, V0 default ''), structure_pref (active template kind), tone/density hints }`. NEUTRAL = `source_language='auto'` + no voice + generic template.
+- **Threaded into:** (1) the **draft prompt** (§3.1) — language + voice + structure instructions; assembly blocks (§2.4) stay structural, the *wrapper* carries language; (2) **`judge_prose`** (§4) — `voice_match` + `coherence` prompts must judge in `source_language`, never assume English; (3) any structured-output instruction.
+- **Rule:** NO English-only illustrative phrases in any multilingual prompt (memory: "English illustrative phrases bias CJK summary to English"). Use abstract phrasing or symmetric multilingual examples.
 
 ---
 
@@ -215,6 +241,8 @@ Trigger (Continue / selection tool + guide)
 - Critic is **advisory** in co-write (flags inline; never blocks) — U2 default.
 - **Canonization gate (OI-1).** The flywheel fires the authoritative graph extraction on chapter **review-state** (`outline_node.status='done'` / AI-unreviewed provenance marks cleared), **NOT** on bare accept. **Accept ≠ canon; human review = canon** — otherwise a fabricated fact in accepted-but-unread AI prose is extracted as ground truth, then the critic *enforces* it forever (defends its own hallucination). Richer fact-provenance tiers (author_declared > human_prose > ai_provisional, with provisional-fact contradictions scored soft) = **V1**.
 - Selection tools (rewrite/expand/describe, V1) reuse this loop with a different `operation` + the selection as input.
+- **Token metering (enrichment `complete.py` lesson).** The budget pre-check (§5) + cost display harvest the **real `usage` SSE frame** from `/v1/llm/stream`; treat an **absent OR zero** frame as "not measured" → fall back to an over-estimating char model + clamp counts ≥0. Never meter a stream as 0 tokens (silently weakens the cap).
+- **Best-effort cross-store on accept (memory `cross_store_best_effort_writes`).** Accept = book-chapter PUT (authoritative, If-Match per OI-2) + provenance mark + outbox emit. The **book write is authoritative**; the outbox emit + any sister-store write are best-effort `try/except` — their failure must NOT 500 an otherwise-saved accept.
 
 ### §3.2 Autonomous loop (V1 — reference)
 `Plan → for each beat: [Retrieve → Draft(job) → Critique GATE → Revise ≤N → Commit]`; critic = **hard gate** (`canon_consistency` below threshold → revise). N takes/branches = N parallel `completion` jobs; progress streamed to FE via the WS gateway.
@@ -237,6 +265,9 @@ Reuse the `loreweave_eval` harness (JudgeLLMClient via gateway · EvalResult · 
 - Output → `generation_job.critic` `{coherence, voice_match, pacing, canon_consistency, violations[]}`, anchored to `target_revision_id`.
 - Surfaced **inline** (continuity linter, NFR-8); persisted for human-correction **calibration**.
 - **Co-write:** advisory display. **Autonomous (V1):** `canon_consistency` < threshold → gate fail → revise.
+- **Judge-prompt language (§2.6):** all four dims judge in the book's `source_language`; `voice_match` reads the work profile/`voice_profile` (V1). Never English-default the rubric.
+- **Anti-self-reinforcement (§12, enrichment LE-056 lesson).** The critic must NOT be the same model that drafted — a model rubber-stamps its own `canon_consistency`. **V0:** critic uses a distinct model/config from the drafter (advisory, so single-judge is acceptable but still a different model). **V1 hard gate:** the `canon_consistency` gate requires ≥2 judges from **≥2 distinct model families** (case-normalized) + a κ floor before it may *block* — reuse `loreweave_eval`'s `JudgeSpec.family`/`family_key` + the ensemble-acceptable rule, do not invent a new mechanism.
+- **Schema tolerance (enrichment `repair.py` lesson).** `judge_prose` returns `violations[] = [{rule_id, violated, span, why}]`. Parse **tolerantly**: deterministic repair (strip fences, extract balanced JSON) + per-item Optional + **filter at postprocess** — one malformed verdict must not discard the whole critique. Never strict-reject the batch.
 
 ---
 
@@ -250,7 +281,7 @@ Gateway `/v1/composition/*` (catch-all proxy, like chat); contract-first → new
 - `GET / PATCH /works/{project_id}` (If-Match).
 
 **Prose (source proxy — decision B):**
-- `GET / PUT /works/{project_id}/chapters/{chapter_id}/prose` — canonical content proxied to book-service (+ revisions). *(V1 adds `?variant=` / `?branch=` to serve sandbox take/branch prose from `scene_variant`.)*
+- `GET / PUT /works/{project_id}/chapters/{chapter_id}/prose` — canonical content proxied to book-service (`chapter_drafts` content + `chapter_revisions`). **`PUT` MUST carry `expected_draft_version`** (read from the prior `GET`) → book-service returns 409 `CHAPTER_DRAFT_CONFLICT` on a concurrent edit (§11 OI-2 / §13 PS2); composition treats the field as mandatory even though book-service allows omitting it. *(V1 adds `?variant=` / `?branch=` to serve sandbox take/branch prose from `scene_variant`.)*
 
 **Outline / Scene Graph:**
 - `GET /works/{project_id}/outline` (tree + scene_links).
@@ -528,8 +559,8 @@ V0 + V1 + V2 compose without contradiction:
 
 | # | Class | Scenario | Verdict | Handling |
 |---|---|---|---|---|
-| **OI-1** | Flywheel | AI fabricates a fact in prose; author bulk-accepts without reading → extraction canonizes it → critic then **enforces** the hallucination on every later scene (defends its own error) | **fold V0** | Authoritative extraction gates on **review-state** (`status=done`/AI-marks cleared), not bare accept (§3.1). Accept ≠ canon. Fact-provenance tiers + soft provisional-facts = V1. |
-| **OI-2** | Concurrency | Co-write streams into Ch.X grounded on revision R; another device edits Ch.X → R′; author accepts → blind PUT clobbers the concurrent edit (violates server-SSOT/multi-device) | **fold V0** | `generation_job.base_revision_id` = grounding revision (§1.2); accept = If-Match on current chapter revision; mismatch → conflict surface (re-ground/merge), never blind overwrite. Streamed ghost tokens stay editor-local — excluded from the 5-min autosave until accepted. |
+| **OI-1** | Flywheel | AI fabricates a fact in prose; author bulk-accepts without reading → extraction canonizes it → critic then **enforces** the hallucination on every later scene (defends its own error) | **STRUCTURAL via Canon Model** | ~~gates on `status=done`~~ — review (§12/§13) verified there is no draft/published distinction and extraction fires on *every* draft save, so a feature-level gate was impossible. **Resolved by the Canon Model prerequisite (Cycle 0, [canon-model spec](2026-06-03-canon-model.md)):** accept → `draft` chapter (no canonization); review/done → **publish** → `chapter.published` → extraction. "Accept ≠ canon; publish = canon" is now a data-model invariant. Provenance tiers = Canon Model Primitive 4 (composition slice). **Publish granularity = chapter-gate (sweep §13.x):** book-service publishes per-CHAPTER but composition reviews per-SCENE → composition enables "publish chapter" **ONLY when ALL its scenes are `status='done'`** (so no unreviewed scene is canonized — OI-1 holds intra-chapter). Next-scene context within an unpublished chapter comes from **L3 recent-prose + L2′ planned-synopsis** (no graph needed); the graph flywheel is per-chapter. |
+| **OI-2** | Concurrency | Co-write streams into Ch.X grounded on revision R; another device edits Ch.X → R′; author accepts → blind PUT clobbers the concurrent edit (violates server-SSOT/multi-device) | **fold V0** | `generation_job.base_revision_id` = grounding revision (§1.2). **Mechanism (corrected §13): book-service uses a body field `expected_draft_version` (BIGINT on `chapter_drafts`) → 409 `CHAPTER_DRAFT_CONFLICT`, NOT HTTP If-Match.** The field is OPTIONAL server-side (→ blind clobber if omitted), so composition's prose-source **always reads current `draft_version` and echoes it as a MANDATORY `expected_draft_version`**; mismatch → 409 → conflict surface (re-ground/merge), never blind overwrite. Streamed ghost tokens stay editor-local — excluded from the (client-side; no server autosave exists) autosave until accepted. |
 | **OI-3** | Concurrency | Two devices reorder scenes / split a SceneAnchor / edit the same node concurrently | **PASS** | LexoRank `rank` (concurrent inserts → distinct ranks) + If-Match on node metadata + content-order-wins for anchors (§7 risk). No new mechanism. |
 | **A1** | Isolation | Work-A's packer issues an unscoped `drawers/search` → returns Work-B's lore; or a canonical pack pulls sandbox `scene_variant` | **fold V0** | Isolation invariant (§2.5): every lens read `project_id`(+`user_id`)-scoped; canonical mode reads `branch_id IS NULL` strictly. |
 | **A2** ★ | Isolation | Spoiler-cutoff holds for L1/L5 but **L4 semantic search has no chronological filter** → retrieves a future-chapter lore drawer → spoiler leak through the headline feature | **fold V0** | COMP post-filters L4/L5 hits by source `chronological_order ≤ story_order`; missing-position → conservative drop (§2.2). Can't add a param to `drawers/search` (A6) → filter COMP-side. |
@@ -539,3 +570,90 @@ V0 + V1 + V2 compose without contradiction:
 **Folded into V0:** OI-1 (review-gate the flywheel) · OI-2 (accept-staleness + ghost-not-autosaved) · A1 (isolation invariant) · A2 (semantic spoiler-filter). **Deferred guards:** A3 (V2 same-user source) · A4 (V1 re-verify sandbox isolation).
 
 **Sharpest finding = A2.** Spoiler-safety is the differentiator, and the *semantic* lens was the one place the cutoff didn't reach — exactly the kind of architectural hole that is cheap to close now and expensive after the packer ships. Benchmark goal met.
+
+---
+
+## §12 Architecture review — bug-classes ported from lore-enrichment + contract reality-check (2026-06-03)
+
+The sibling **lore-enrichment-service** reached its current design by benchmarking and fixing a set of recurring bug **classes** (not one-off bugs). This review maps each class onto composition's design and verifies the load-bearing assumptions against the **actual** knowledge-service handlers (two sub-agents read the real code; findings are file:line-grounded). Composition had already proactively folded several enrichment-class lessons (OI-1, OI-2, A1, the A2 *intent*); this pass corrects the ones that rested on unverified contracts and bakes in the de-bias lesson from day one.
+
+### §12.1 Verified knowledge-service contracts (the reality the packer must build on)
+| Capability | Design assumed | **Verified reality** | Effect |
+|---|---|---|---|
+| `drawers/search` hit position | hit carries `chronological_order` | **No chrono field; `chapter_index` is `None` on the prod ingest path** (`handlers.py:237` drops the `sort_order` it already fetched). Only `source_id`=chapter UUID. | A2 as designed = inert → re-spec'd (§2.2): reading-order via book-service + a knowledge-ingest fix |
+| `timeline` cutoff | `before_order` | **`before_chronological` + `before_order` both exist** (`timeline.py:64,80`), true in-world | L1b is the real spoiler-safe lens (§2.1) |
+| relation temporal filter | `valid_until ≤ cutoff` (narrative) | **`valid_until` is wall-clock datetime, not narrative order** | L1a = currently-valid only; cutoff delegated to L1b (§2.2) |
+| hierarchical summaries | readable (`summarize_level`) | **Not served over HTTP** (job-only write) | L5 deferred (§2.1) |
+| scoping | project-scoped | drawers requires `project_id`; **timeline/entities widen to all-projects if `project_id` omitted** | A1 must assert `project_id` at the chokepoint (§2.5) |
+
+### §12.2 Bug-class → composition exposure → fix
+| # | Class (enrichment paid for it) | Composition exposure | Folded fix |
+|---|---|---|---|
+| C1 | **Built-but-not-wired / inert check, fail-open** (contradiction check gated on a JWT read the worker ran as `jwt=""` → always degraded; `_canon_lookup=[]`) | **A2 spoiler-filter** — the headline differentiator — rested on a field that doesn't exist → would silently contribute nothing | §2.2 two-axis cutoff + **knowledge-ingest `chapter_index` fix** (plan §4) + **conservative-drop + LOG** (`l4_dropped_no_position`) so a dead filter is visible. Spoiler-safety **fails closed**. |
+| C2 | **Hardcoded universe** (封神/商周/中文/地点; 3 XL de-bias cycles) | Composition *generates prose* — highest exposure; no profile/language threading in the original design | §2.6 **`BookProfile` + `source_language` threaded from M0** into draft + judge + assembly; NEUTRAL default; no English-only illustrative phrases |
+| C3 | **Cross-service contract drift** (glossary EAV vs authored column; gateway `messages[0].content`) | L1/L4/L5 all assumed wrong shapes | §12.1 + §2.1 re-spec from real handlers; read keys with fallbacks at the client boundary |
+| C4 | **Anti-self-reinforcement / judge diversity** (LE-056: ≥2 families + κ floor) | `judge_prose` critic could be the drafting model rubber-stamping itself; V1 makes it a hard gate | §4 critic ≠ drafter (V0); V1 gate reuses `loreweave_eval` family+κ |
+| C5 | **Token metering real-not-estimate** (harvest usage frame; absent/zero → over-estimate; clamp ≥0) | §5 budget pre-check could meter 0 on a missing frame → weak cap | §3.1 reuse `complete.py` pattern |
+| C6 | **LLM schema tolerance** (repair + Optional + filter, not strict-reject-batch) | `judge_prose` `violations[]` strict-parse kills critique on one bad item | §4 tolerant parse |
+| C7 | **Isolation / IDOR scope-drift** (Q3) | timeline/entities widen cross-project if `project_id` omitted | §2.5 chokepoint assertion |
+| C8 | **Best-effort cross-store needs try/except** | accept = book PUT + provenance + outbox; emit failure could 500 a saved accept | §3.1 book-write authoritative, emit best-effort |
+| C9 | **Stale-image / multi-image deploy** (F-LIVE-1 ×3) | composition adds service **+ worker** | plan §4: build BOTH images via `scripts/build-stack.sh` + freshness guard |
+
+### §12.3 Decisions (PO, 2026-06-03) — superseded by the Canon Model (see §12.4)
+- ~~**Spoiler-scope:** fix knowledge-service ingest (thread `sort_order`→`chapter_index`).~~ → folded into the broader Canon Model prerequisite (§12.4).
+- **L5** deferred until a knowledge summaries read-endpoint exists (separate future touch-point).
+- **De-bias** baked in from M0 (do not pay enrichment's retrofit tax).
+- Boundary: composition touches only its own files + additive infra; the cross-service canon work lives in the **Canon Model** spec; **never** lore-enrichment.
+
+### §12.4 Resolution — the Canon Model prerequisite (Cycle 0)
+A deeper /review-impl pass (2026-06-03) found the two sharpest holes were **platform-level, not composition-level**, and could not be fixed soundly from composition's side:
+- **HIGH-1 (OI-1):** no draft/published distinction exists; extraction fires on every draft save → "accept ≠ canon" was unenforceable.
+- **HIGH-2 (spoiler):** `chronological_order`/`event_order` are never written → the headline spoiler cutoff was a no-op returning empty.
+
+**PO decision: solve them durably, once, as platform primitives** — the **[Canon Model spec](2026-06-03-canon-model.md)** (Cycle 0 prerequisite, built + verified before composition M0). Its four primitives — (1) editorial lifecycle, (2) **canon = published** (extraction on `chapter.published`, pinned revision), (3) **dual ordering populated** (reading_order from `sort_order`, chronological_order from `event_date_iso`), (4) **provenance** (aligned with enrichment H0, no enrichment edits) — make composition's OI-1 **structural** (§11) and the spoiler cutoff **real** (§2.2). Composition **depends on** Canon Model CM1–CM4; it does not re-implement them. The standalone `chapter_index` ingest fix (old Mk) is absorbed into Canon Model CM4.
+
+---
+
+## §13 Extended benchmark — editor · streaming · cold-start · scale · canon · critic · failure · security · integrity · prose-source (2026-06-03)
+
+§7/§11/§12 stressed chronology, integrity, and contracts. This pass exercises the **remaining operational axes**, with verdicts grounded in two more contract-verification sub-agents (book-service, sharing-service, glossary lifecycle). **Verified load-bearing facts this pass:**
+- **Concurrency is a body field, not a header.** book-service chapter content lives in `chapter_drafts` with a monotonic `draft_version BIGINT`; the update echoes `expected_draft_version` → **409 `CHAPTER_DRAFT_CONFLICT`** on mismatch — **but the field is OPTIONAL (nil-gated) → blind clobber if omitted.** No HTTP `If-Match`/`ETag` exists. (`book-service server.go:1491-1534`.) → **OI-2 mechanism corrected (§11).**
+- **`chapter_revisions` is real** (immutable UUIDv7 rows, full REST, `author_user_id` per row) → `base/target_revision_id` backable. No parent-lineage FK (COMP tracks lineage).
+- **`chapter.saved` fires on draft edit + restore only** (NOT on create/import → that emits `chapter.created`, which knowledge does **not** consume), payload = `{book_id}` only (no author). knowledge's flywheel handler **silently skips if no `knowledge_projects` row exists for the book** (`handlers.py:118`).
+- **No server-side autosave** — every client save = 1 revision row + 1 `chapter.saved` + 1 extraction enqueue.
+- **Books are single-owner; no collaboration feature** (sharing = read-only private/unlisted/public). → composition's cross-user→404 model locks out nobody.
+- **Glossary `entity_id` never dies/remaps** (no destructive merge, no redirect; delete = reversible soft-delete + non-physical purge) → held ids become **soft-absent**, never corrupting. **But knowledge `canonical_id` is rename-sensitive (content-hash)** → cache the **glossary** id, resolve knowledge via its `glossary_entity_id` anchor.
+- **Internal glossary/knowledge reads are book-scoped ONLY (no user check)** — `X-Internal-Token` trust; **user-ownership is the CALLER's responsibility.**
+
+| # | Class | Scenario | Verdict | Handling |
+|---|---|---|---|---|
+| **E1** | Editor/anchor | Author deletes a `SceneAnchor` → its `outline_node` loses its prose range | **PASS** | content-order is SoT for scene order (§1.1); orphaned node → prose folds into the previous scene; node metadata reconciled via version; node not auto-deleted (author decides) |
+| **E2** | Editor/anchor | Author splits/merges a scene while a generation streams into it | **fold V0** | ghost tokens are FE-local & anchored to the node id captured at `/generate`; on accept, re-resolve the anchor by id — if the target anchor vanished, **block accept → conflict surface** (never write to a stale range) |
+| **E3** | Editor/anchor | Two devices reorder scenes / move an anchor concurrently | **PASS** | LexoRank `rank` (distinct concurrent ranks) + content-order-wins for anchors + If-equivalent on node metadata (§11 OI-3) |
+| **S1** | Streaming | Connection drops mid-stream | **PASS** | job stays `running`; ghost is FE-local (never autosaved); V0 has no resume → re-trigger regenerates; cost reconciled from the last `usage` frame |
+| **S2** | Streaming | 2nd `/generate` fired while the 1st streams | **fold V0** | `idempotency_key` per compose action; a new generate on the same node **cancels** the in-flight job first (`cancelled`), never two ghosts on one anchor |
+| **S3** | Streaming | Budget exhausts mid-stream | **PASS** | stop + partial-save **to the job** (`§5`), partial ghost stays FE-local until the author accepts; usage-frame reconcile (§3.1) |
+| **C3a** | Cold-start | Book has chapters but **no knowledge project** | **fold V0** | knowledge flywheel silently skips (verified); packer L1/L4 return empty. **Detect "no knowledge project for book" and surface "grounding unavailable — initialise?"** rather than shipping silently-thin grounding (the enrichment no-silent-degrade lesson) |
+| **C3b** | Cold-start | Brand-new work: no prose, no KG, no canon | **PASS (thin)** | pack = L0 canon (maybe empty) + L2 beat/goal + **L2′ planned synopses**; `_safe_*` degrade; draft from outline. Honestly thin, not broken |
+| **SC1** | Scale | 200-chapter book; huge candidate context | **PASS** | priority ladder trims lowest-first (§2.3); L1b uses `before_chronological` window; L4 top-k + reading-order drop |
+| **SC4** | Scale | Autosave volume | **fold V0 + Canon Model** | **client-side debounced autosave** (no server autosave exists); NEVER autosave ghost tokens. **With the Canon Model (canon=published), draft saves no longer trigger extraction** — so autosave is no longer an extraction storm (only `publish` canonizes). Each draft save still writes a revision row (history); debounce keeps that bounded |
+| **CR1** | Canon | Two active `canon_rule`s contradict each other | **LIMIT** | packer includes both; critic surfaces the unsatisfiable pair as an advisory conflict (author resolves). V0 does not auto-arbitrate |
+| **CR2** | Canon | `canon_rule.entity_id` points at a soft-deleted glossary entity | **PASS** | soft-absent (verified); the rule still applies by its `text`; flag the dangling entity for author cleanup |
+| **CR4** | Canon | `from_order > until_order` (author typo) | **fold V0** | validate at canon-rule write → 400; normalise or reject (don't persist an empty/inverted window) |
+| **CC2** | Critic | Critic would flag a `canon_rule` the author **deleted** after the draft | **fold V0** | critique **re-resolves the ACTIVE rule set at critique time** (anchored to `target_revision_id`); a deleted/archived rule is never enforced |
+| **CC4** | Critic | Critic times out / gateway 402 | **PASS** | advisory → degrade silently (no critic panel), **never block accept**; catch permanent SDK errors (402/auth) before generic (enrichment SDK-exception lesson) |
+| **F1** | Failure | knowledge-service down | **PASS** | packer degrades to L0/L2/L2′/L3 (COMP DB + book) via `_safe_*` (return-empty-continue; imports stay OUTSIDE try/except so wiring errors surface loud — verified `full.py`) |
+| **F2** | Failure | book-service down on accept | **PASS** | accept fails (book is authoritative); ghost stays FE-local; no data loss; retry |
+| **F5** | Failure | outbox emit fails after the book PUT on accept | **PASS** | best-effort `try/except` (§3.1 C8); book write already committed → do not 500 |
+| **SEC2** | Security | composition calls glossary/knowledge **internal** reads which are **book-scoped only, no user check** | **fold V0** | **ownership chokepoint:** composition verifies the JWT user owns the `book_id`/`project_id` BEFORE any internal read (the internal token would otherwise let a crafted request read another user's lore). Mirrors A1; verified the internal endpoints will not catch this themselves |
+| **SEC3** | Security | Prompt-injection via **retrieved lore** — a malicious passage in the KG ("ignore instructions, …") flows into the draft prompt as grounding | **fold V0** | **sanitize retrieved passages + the author `guide`** before assembly (tag-not-delete / neutralize, the enrichment `sanitize.py` pattern); bound `guide` length |
+| **SEC5** | Security | `project_id` omitted on a `timeline`/`entities` lens call → widens to all the user's projects | **PASS** | A1 chokepoint asserts `project_id` non-null on every lens (§2.5/§12) |
+| **DI3** | Integrity | `present_entity_ids` references a soft-deleted/renamed glossary entity | **PASS** | cache the **stable glossary `entity_id`** (verified), treat "no longer returned" as soft-absent → packer skips it, no crash; knowledge resolved via the `glossary_entity_id` anchor (rename-safe) |
+| **DI5** | Integrity | Imported chapters (`chapter.created`) are never extracted (only `chapter.saved` is consumed) | **LIMIT** | imported prose isn't in the KG until first edit; V0 grounds on what's extracted + L2′ planned synopses; document (a backfill/extract-on-import is a knowledge-service follow-up, out of scope) |
+| **PS2** | Prose-source | Composition prose-source PUT omits `expected_draft_version` → blind clobber of a concurrent edit | **fold V0** | the prose-source proxy **always reads current `draft_version` and echoes it as a MANDATORY `expected_draft_version`** → 409 on mismatch → conflict surface (the BE makes it optional; composition makes it required — this IS the OI-2 mechanism, §11) |
+
+**Folded into V0:** E2 (anchor-id re-resolve on accept) · S2 (cancel-in-flight + idempotency) · C3a (no-knowledge-project surface) · SC4 (debounced client autosave, never ghost) · CR4 (canon-rule window validation) · CC2 (re-resolve active rules at critique) · SEC2 (ownership chokepoint before internal reads) · SEC3 (sanitize retrieved lore + guide) · PS2 (mandatory `expected_draft_version`). **Deferred:** DI5 (extract-on-import — knowledge follow-up) · CR1 auto-arbitration (V1) · L5 lens.
+
+**Sharpest findings this pass:** (1) **OI-2's concurrency primitive is `expected_draft_version`+409, not If-Match** — and the BE leaves it optional, so composition must make it mandatory or silently clobber multi-device edits (PS2). (2) **Internal glossary/knowledge reads are book-scoped only** — composition owns the user-ownership check (SEC2); the internal token is not an authz boundary. (3) **Retrieved lore is an injection vector** into the draft prompt (SEC3) — easy to miss because the lore is "ours", but imported/extracted text is untrusted.
+
+> **Two platform-level findings escalated to the Canon Model (§12.4):** a follow-up /review-impl found OI-1 (no draft/published gate → accept canonizes) and the spoiler cutoff (chronological_order never written → no-op) were unfixable from composition's side. Both are resolved by the **[Canon Model](2026-06-03-canon-model.md)** Cycle-0 prerequisite (canon=published + dual-order populated). Composition builds on it.
