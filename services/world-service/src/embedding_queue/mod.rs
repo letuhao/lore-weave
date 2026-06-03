@@ -58,6 +58,13 @@
 pub mod audit;
 pub mod live;
 
+// Shared in-memory test doubles (091). Compiled under `cfg(test)` for the
+// in-crate unit tests, and behind the `testkit` cargo feature so the external
+// `tests/` crate can use the same fakes (it enables the feature via the self
+// dev-dependency).
+#[cfg(any(test, feature = "testkit"))]
+pub mod testkit;
+
 use std::collections::VecDeque;
 use std::sync::Mutex;
 
@@ -356,123 +363,8 @@ impl<'a> Worker<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
-    use std::sync::Mutex as StdMutex;
-
-    // ─── Test doubles ──────────────────────────────────────────────────────
-
-    /// Provider that returns a deterministic 1536-dim vector. Used by the
-    /// happy-path test — production wires the BYOK provider via
-    /// provider-registry-service HTTP call.
-    struct StubProvider {
-        name: &'static str,
-        model: &'static str,
-        tokens: u32,
-    }
-
-    #[async_trait]
-    impl EmbeddingProvider for StubProvider {
-        async fn embed(&self, _text: &str) -> (String, EmbedResult) {
-            let mut v = vec![0.0f32; EMBEDDING_DIM];
-            for (i, x) in v.iter_mut().enumerate() {
-                *x = (i as f32) * 0.001;
-            }
-            (
-                self.model.to_string(),
-                EmbedResult::Ok {
-                    vector: v,
-                    tokens: self.tokens,
-                },
-            )
-        }
-
-        fn provider_name(&self) -> &str {
-            self.name
-        }
-    }
-
-    /// Provider that returns wrong-dim vector — exercises the dim-mismatch
-    /// audit path.
-    struct WrongDimProvider;
-
-    #[async_trait]
-    impl EmbeddingProvider for WrongDimProvider {
-        async fn embed(&self, _text: &str) -> (String, EmbedResult) {
-            (
-                "broken-model".to_string(),
-                EmbedResult::Ok {
-                    vector: vec![0.0; 768], // half of 1536 — the classic mistake
-                    tokens: 100,
-                },
-            )
-        }
-        fn provider_name(&self) -> &str {
-            "broken-provider"
-        }
-    }
-
-    /// Provider that always errors — exercises the provider-error audit path.
-    struct ErrorProvider;
-
-    #[async_trait]
-    impl EmbeddingProvider for ErrorProvider {
-        async fn embed(&self, _text: &str) -> (String, EmbedResult) {
-            (
-                "unreachable-model".to_string(),
-                EmbedResult::ProviderError("connection refused".to_string()),
-            )
-        }
-        fn provider_name(&self) -> &str {
-            "down-provider"
-        }
-    }
-
-    /// In-memory writer keyed by (reality, npc, session). Interior-mutable
-    /// (`&self` async trait) via `Mutex`, matching the production sqlx writer
-    /// which holds a shared `PgPool`.
-    #[derive(Default)]
-    struct MemWriter {
-        rows: StdMutex<HashMap<(Uuid, Uuid, Uuid), Vec<f32>>>,
-        fail_next: StdMutex<bool>,
-    }
-
-    impl MemWriter {
-        fn row_count(&self) -> usize {
-            self.rows.lock().unwrap().len()
-        }
-        fn vector_lens(&self) -> Vec<usize> {
-            self.rows
-                .lock()
-                .unwrap()
-                .values()
-                .map(|v| v.len())
-                .collect()
-        }
-    }
-
-    #[async_trait]
-    impl EmbeddingWriter for MemWriter {
-        async fn write_embedding(
-            &self,
-            reality_id: Uuid,
-            npc_id: Uuid,
-            session_id: Uuid,
-            vector: &[f32],
-        ) -> Result<(), String> {
-            {
-                let mut f = self.fail_next.lock().unwrap();
-                if *f {
-                    *f = false;
-                    return Err("simulated DB error".into());
-                }
-            }
-            self.rows
-                .lock()
-                .unwrap()
-                .insert((reality_id, npc_id, session_id), vector.to_vec());
-            Ok(())
-        }
-    }
+    // 091: shared in-memory test doubles (was a copy-paste of these structs).
+    use super::testkit::{ErrorProvider, MemWriter, StubProvider, WrongDimProvider};
 
     fn mr(text: &str) -> MemoryRef {
         // Derive npc_id + session_id from text so distinct test entries
@@ -592,10 +484,7 @@ mod tests {
             model: "text-embedding-ada-002",
             tokens: 50,
         };
-        let writer = MemWriter {
-            fail_next: StdMutex::new(true),
-            ..Default::default()
-        };
+        let writer = MemWriter::failing();
         let audit = CountingAuditWriter::default();
         let worker = Worker {
             queue: &q,

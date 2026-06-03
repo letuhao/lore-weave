@@ -76,7 +76,18 @@ projections-region = { path = "../../crates/projections/region" }
 projections-session = { path = "../../crates/projections/session" }
 projections-world-kv = { path = "../../crates/projections/world_kv" }
 
+[features]
+# 091 D-EMBEDDING-TESTKIT: exposes embedding_queue::testkit (shared in-memory
+# fakes) to OUT-OF-CRATE consumers (the integration tests in tests/). In-crate
+# unit tests get it under cfg(test) automatically. Off by default → no testkit
+# code in production builds (the rebuilder/embedding-worker bins, etc.).
+testkit = []
+
 [dev-dependencies]
+# Self dev-dependency to enable the `testkit` feature when building the
+# integration tests in tests/ (which compile the lib WITHOUT cfg(test), so they
+# need the feature to see embedding_queue::testkit). Standard Cargo idiom.
+world-service = { path = ".", features = ["testkit"] }
 # Embedding-queue unit tests are async (#[tokio::test]) over the async IO
 # traits; the live-smoke integration test (tests/embedding_live.rs) is gated
 # on LOREWEAVE_TEST_PG_URL + LOREWEAVE_TEST_META_URL.

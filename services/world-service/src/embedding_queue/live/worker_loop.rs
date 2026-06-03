@@ -58,23 +58,9 @@ pub async fn run(
 mod tests {
     use super::*;
     use crate::embedding_queue::live::{MetricsAuditWriter, NotWiredProvider};
+    use crate::embedding_queue::testkit::NoopWriter; // 091: shared no-op writer (was inline)
     use crate::embedding_queue::{CountingAuditWriter, MemoryRef};
     use uuid::Uuid;
-
-    // A no-op writer so the loop test doesn't need Postgres.
-    struct NoopWriter;
-    #[async_trait::async_trait]
-    impl EmbeddingWriter for NoopWriter {
-        async fn write_embedding(
-            &self,
-            _r: Uuid,
-            _n: Uuid,
-            _s: Uuid,
-            _v: &[f32],
-        ) -> Result<(), String> {
-            Ok(())
-        }
-    }
 
     #[tokio::test]
     async fn loop_drains_then_stops_on_shutdown() {

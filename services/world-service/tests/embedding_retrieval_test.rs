@@ -18,98 +18,13 @@
 //! - **Q-L1A-3** (full audit): every embed call (Ok + error) lands in the
 //!   audit writer — asserted by [`CountingAuditWriter`].
 
-use std::collections::HashMap;
-use std::sync::Mutex;
-
-use async_trait::async_trait;
 use uuid::Uuid;
+// 091: shared in-memory test doubles (were copy-pasted here).
+use world_service::embedding_queue::testkit::{DeterministicEmbedder, MemWriter};
 use world_service::{
     AuditEvent, AuditOutcome, AuditWriter, CountingAuditWriter, EMBEDDING_DIM, EmbedResult,
-    EmbeddingProvider, EmbeddingQueue, EmbeddingWorker, EmbeddingWriter, MemoryRef,
+    EmbeddingProvider, EmbeddingQueue, EmbeddingWorker, MemoryRef,
 };
-
-// ───────────────────────────────────────────────────────────────────────────
-// Stubs
-// ───────────────────────────────────────────────────────────────────────────
-
-/// Provider that maps text → deterministic 1536-dim vector. Same text →
-/// same vector, so cosine-similarity ranking is testable.
-struct DeterministicEmbedder;
-
-#[async_trait]
-impl EmbeddingProvider for DeterministicEmbedder {
-    async fn embed(&self, text: &str) -> (String, EmbedResult) {
-        let mut v = vec![0.0f32; EMBEDDING_DIM];
-        // Seed from text hash; spread across all 1536 dims.
-        let mut h: u64 = 5381;
-        for b in text.bytes() {
-            h = h.wrapping_mul(33) ^ (b as u64);
-        }
-        for (i, x) in v.iter_mut().enumerate() {
-            let scrambled = h.wrapping_mul(1099511628211).wrapping_add(i as u64);
-            *x = ((scrambled & 0xffff) as f32) / 65535.0;
-        }
-        // Normalize to unit length (matches OpenAI ada-002 output shape).
-        let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if norm > 0.0 {
-            for x in v.iter_mut() {
-                *x /= norm;
-            }
-        }
-        (
-            "text-embedding-ada-002".to_string(),
-            EmbedResult::Ok {
-                vector: v,
-                tokens: text.len() as u32,
-            },
-        )
-    }
-
-    fn provider_name(&self) -> &str {
-        "openai"
-    }
-}
-
-/// In-memory writer that records by full PK. Interior-mutable (`&self` async
-/// trait) via `Mutex`, matching the production sqlx writer's shared handle.
-#[derive(Default)]
-struct MemWriter {
-    rows: Mutex<HashMap<(Uuid, Uuid, Uuid), Vec<f32>>>,
-}
-
-impl MemWriter {
-    fn get(&self, key: &(Uuid, Uuid, Uuid)) -> Option<Vec<f32>> {
-        self.rows.lock().unwrap().get(key).cloned()
-    }
-    fn len(&self) -> usize {
-        self.rows.lock().unwrap().len()
-    }
-    fn vector_lens(&self) -> Vec<usize> {
-        self.rows
-            .lock()
-            .unwrap()
-            .values()
-            .map(|v| v.len())
-            .collect()
-    }
-}
-
-#[async_trait]
-impl EmbeddingWriter for MemWriter {
-    async fn write_embedding(
-        &self,
-        reality_id: Uuid,
-        npc_id: Uuid,
-        session_id: Uuid,
-        vector: &[f32],
-    ) -> Result<(), String> {
-        self.rows
-            .lock()
-            .unwrap()
-            .insert((reality_id, npc_id, session_id), vector.to_vec());
-        Ok(())
-    }
-}
 
 fn cosine(a: &[f32], b: &[f32]) -> f32 {
     let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
