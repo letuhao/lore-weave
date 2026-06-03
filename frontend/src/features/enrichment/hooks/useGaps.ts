@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { enrichmentApi } from '../api';
-import type { Gap } from '../types';
+import type { Gap, EnrichTarget } from '../types';
 
 /** Detect under-described entities (read-only) + enqueue auto-enrich (background
  *  job). Detect is on-demand (a button), so it owns its own state rather than a
@@ -38,6 +38,7 @@ export function useGaps(bookId: string) {
     max_gaps?: number;
     max_spend_usd?: number | null;
     top_k?: number;
+    targets?: EnrichTarget[];
   }) => {
     setEnriching(true);
     try {

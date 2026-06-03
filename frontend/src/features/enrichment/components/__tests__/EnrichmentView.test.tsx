@@ -16,6 +16,18 @@ vi.mock('../JobsPanel', () => ({
   JobsPanel: () => <div data-testid="stub-jobs">jobs-panel</div>,
 }));
 
+// LE-065 — the shell reads list totals for the tab count badges; stub them (the
+// hooks have their own tests). proposals=7 / sources=5 / jobs=2; gaps via context.
+vi.mock('../../hooks/useProposals', () => ({
+  useProposals: () => ({ total: 7, items: [], projectIds: [] }),
+}));
+vi.mock('../../hooks/useEnrichmentSources', () => ({
+  useEnrichmentSources: () => ({ total: 5, items: [] }),
+}));
+vi.mock('../../hooks/useEnrichmentJobs', () => ({
+  useEnrichmentJobs: () => ({ total: 2, items: [] }),
+}));
+
 import { EnrichmentView } from '../EnrichmentView';
 import {
   EnrichmentProvider,
@@ -58,6 +70,15 @@ describe('EnrichmentView', () => {
     expect(screen.getByTestId('enrichment-tab-sources')).toBeInTheDocument();
     expect(screen.getByTestId('enrichment-tab-jobs')).toBeInTheDocument();
     expect(screen.getByTestId('enrichment-h0-marker')).toBeInTheDocument();
+  });
+
+  // LE-065 — count badges from the list totals; gaps has no badge until Detect runs.
+  it('renders count badges for proposals/sources/jobs but not gaps (null until detect)', () => {
+    renderView();
+    expect(screen.getByTestId('enrichment-tab-count-proposals')).toHaveTextContent('7');
+    expect(screen.getByTestId('enrichment-tab-count-sources')).toHaveTextContent('5');
+    expect(screen.getByTestId('enrichment-tab-count-jobs')).toHaveTextContent('2');
+    expect(screen.queryByTestId('enrichment-tab-count-gaps')).toBeNull();
   });
 
   it('starts on the proposals panel (active tab styled, panel visible)', () => {

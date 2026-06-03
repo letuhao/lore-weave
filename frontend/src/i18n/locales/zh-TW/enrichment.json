@@ -44,6 +44,8 @@
     "confidence": "信賴度",
     "origin": "來源",
     "entity_kind": "類型",
+    "model": "模型",
+    "recook_abstracted": "自抽象事實再製 — 由中性事實要點生成，而非來源原文（②）。",
     "grounding": "依據來源",
     "skipped": "略過（未授權）來源"
   },
@@ -60,6 +62,8 @@
     "h0_note": "這是增補的異本（origin=enrichment, confidence<1.0）。唯有你晉升後才成為正典。",
     "h0_banner": "這是增補的異本 — 並非原始正典。唯有你晉升後才成為正典。",
     "dimensions": "{{count}} 個維度",
+    "show_more": "+ 再顯示 {{count}} 個",
+    "show_less": "收合",
     "content": "已生成設定",
     "verify": "驗證",
     "provenance": "來歷與來源"
@@ -127,9 +131,11 @@
     "top_k": "Top-K",
     "gate_note": "P2 虛構 / P3 再製 需通過評估閘門（多元評審）。",
     "auto_enrich": "Auto-enrich",
+    "enrich_one": "增補",
+    "enrich_one_hint": "於下方選擇生成＋嵌入模型以增補。",
     "enriching": "排入佇列中…",
     "enqueued": "已將 {{count}} 個缺口排入增補佇列",
-    "col": { "entity": "實體", "kind": "類型", "missing": "缺少的維度", "rank": "排名" }
+    "col": { "entity": "實體", "kind": "類型", "missing": "缺少的維度", "rank": "排名", "action": "操作" }
   },
   "sources": {
     "title": "來源",

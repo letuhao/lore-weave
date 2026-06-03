@@ -1,7 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
-import { ProposalDetail } from '../ProposalDetail';
 import type { Proposal } from '../../types';
+
+// ProvenancePanel now resolves the gen model via react-query + provider-registry;
+// it has its own dedicated test, so stub it here to keep this test infra-free.
+vi.mock('../ProvenancePanel', () => ({
+  ProvenancePanel: () => <div data-testid="enrichment-provenance" />,
+}));
+
+import { ProposalDetail } from '../ProposalDetail';
 
 const P = (over: Partial<Proposal> = {}): Proposal =>
   ({

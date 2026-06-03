@@ -15,6 +15,8 @@ vi.mock('../../context/EnrichmentContext', () => ({
     setSelectedProposalId: vi.fn(),
     projectFilter: null,
     setProjectFilter: vi.fn(),
+    gapCount: null,
+    setGapCount: vi.fn(),
   }),
 }));
 
@@ -184,5 +186,36 @@ describe('GapsPanel', () => {
     const button = screen.getByText('gaps.enriching').closest('button')!;
     expect(button).toBeDisabled();
     expect(screen.queryByText('gaps.auto_enrich')).toBeNull();
+  });
+
+  // LE-064 — the per-row "enrich →" enriches just that gap (targets), and is
+  // disabled until both models are selected (same guard as the batch button).
+  it('per-row enrich is disabled until models are picked, then enriches that one gap', async () => {
+    gapsState.gaps = [G({ canonical_name: '玉虛宮' }), G({ canonical_name: '哪吒' })];
+    renderPanel();
+    const rowBtn = screen.getByTestId('enrichment-enrich-gap-玉虛宮');
+    expect(rowBtn).toBeDisabled();
+
+    await selectModel('gaps.gen_model', 'm1', 'qwen');
+    await selectModel('gaps.embed_model', 'm1', 'qwen');
+    expect(rowBtn).not.toBeDisabled();
+
+    fireEvent.click(rowBtn);
+    expect(autoEnrichMock).toHaveBeenCalledTimes(1);
+    expect(autoEnrichMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        generation_model_ref: 'm1',
+        embedding_model_ref: 'm1',
+        technique: 'recook',
+        targets: [
+          expect.objectContaining({
+            canonical_name: '玉虛宮',
+            target_ref: '玉虛宮',
+            entity_kind: 'location',
+            present_dimensions: ['name'],
+          }),
+        ],
+      }),
+    );
   });
 });

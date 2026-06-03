@@ -314,6 +314,60 @@ async def test_auto_enrich_enqueue_failure_still_persists_and_returns_202(monkey
     assert prod.closed is True
 
 
+# ── LE-064 — targeted enrich (per-row "enrich →") ────────────────────────────
+
+@respx.mock
+async def test_auto_enrich_with_targets_skips_detection_and_enqueues(monkeypatch):
+    """When ``targets`` is provided, the handler enriches exactly those gaps (the
+    per-row "enrich →"), bypassing the glossary coverage read + top-N ranking. The
+    persisted job_request carries the provided targets; the worker re-drives them
+    on the same async path. ``target_ref`` defaults to ``canonical_name``."""
+    book, project, jid = uuid4(), uuid4(), uuid4()
+    # A coverage route that MUST NOT be called — detection is skipped for targets.
+    coverage_route = respx.get(
+        f"{settings.glossary_service_url}/internal/books/{book}/enrichment-coverage"
+    ).respond(200, json={"entities": [_under_described("should-not-be-read")]})
+
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+
+    resp = TestClient(_app()).post(
+        f"/v1/lore-enrichment/projects/{project}/auto-enrich",
+        json={
+            "book_id": str(book),
+            "embedding_model_ref": str(uuid4()),
+            "generation_model_ref": str(uuid4()),
+            "max_spend_usd": 1.5,
+            "targets": [
+                {"canonical_name": "玉虛宮", "entity_kind": "location",
+                 "mention_count": 42, "present_dimensions": ["历史"]},
+            ],
+        },
+        headers={"Authorization": f"Bearer {_bearer()}"},
+    )
+
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert body["enqueued"] is True
+    assert body["job_id"] == str(jid)
+    assert body["detected"] == 1
+    assert body["enqueued_gaps"] == 1
+    assert body["entities_scanned"] == 1
+    # Detection was SKIPPED — the glossary coverage route was never called.
+    assert not coverage_route.called
+    # The persisted request carries exactly the provided target; target_ref
+    # defaults to the canonical_name when omitted; the budget still round-trips.
+    req = saved["request"]
+    assert created["max_spend"] == 1.5
+    assert req["max_spend_usd"] == 1.5
+    targets = req["targets"]
+    assert len(targets) == 1
+    assert targets[0]["canonical_name"] == "玉虛宮"
+    assert targets[0]["target_ref"] == "玉虛宮"
+    assert targets[0]["present_dimensions"] == ["历史"]
+    assert len(prod.calls) == 1  # one re-drive trigger enqueued
+
+
 # ── auth: anonymous principal → 401 ──────────────────────────────────────────
 
 def test_auto_enrich_requires_auth():

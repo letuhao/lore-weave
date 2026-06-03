@@ -46,6 +46,17 @@ class DetectGapsBody(BaseModel):
     limit: int = Field(default=200, ge=1, le=1000)
 
 
+class AutoEnrichTarget(BaseModel):
+    """One specific gap to enrich (LE-064 per-row "enrich →"). Mirrors the jobs
+    router's GapTarget; the FE supplies a gap it already got from detect-gaps."""
+
+    canonical_name: str = Field(min_length=1)
+    target_ref: str | None = None
+    entity_kind: str = "location"
+    mention_count: int = Field(default=1, ge=0)
+    present_dimensions: list[str] = Field(default_factory=list)
+
+
 class AutoEnrichBody(BaseModel):
     book_id: UUID
     embedding_model_ref: UUID
@@ -56,6 +67,12 @@ class AutoEnrichBody(BaseModel):
     max_spend_usd: float | None = Field(default=None, ge=0.0)
     eval_reserve_fraction: float = Field(default=0.15, ge=0.0, lt=1.0)
     top_k: int = Field(default=5, ge=1, le=20)
+    # LE-064 — when set, enrich exactly these targets (the per-row "enrich →"),
+    # bypassing detection + top-N ranking. Each target is a gap the FE already
+    # received from detect-gaps, so it is trusted (the runner re-derives missing
+    # dimensions per the C7 engine and skips a fully-described entity). Same async
+    # worker path as a normal auto-enrich; max_gaps/coverage_limit are ignored.
+    targets: list[AutoEnrichTarget] | None = None
 
 
 def _label_to_dimension(kind: EntityKind) -> dict[str, Dimension]:
@@ -172,43 +189,62 @@ async def auto_enrich(
             detail=f"unknown technique {body.technique!r}",
         )
 
-    client = GlossaryClient(
-        base_url=settings.glossary_service_url,
-        internal_token=settings.internal_service_token,
-    )
-    try:
-        rows = await client.list_enrichment_coverage(
-            book_id=body.book_id, limit=body.coverage_limit
+    if body.targets:
+        # LE-064 — targeted enrich: the FE passes specific gaps it already got from
+        # detect-gaps. Trust them (the runner re-derives missing dimensions + skips a
+        # fully-described entity), skip glossary detection + top-N ranking entirely.
+        targets = [
+            {
+                "canonical_name": t.canonical_name,
+                "target_ref": t.target_ref or t.canonical_name,
+                "entity_kind": t.entity_kind,
+                "mention_count": t.mention_count,
+                "present_dimensions": t.present_dimensions,
+            }
+            for t in body.targets
+        ]
+        entities_scanned = len(targets)
+        detected_total = len(targets)
+    else:
+        client = GlossaryClient(
+            base_url=settings.glossary_service_url,
+            internal_token=settings.internal_service_token,
         )
-    except GlossaryServiceError as exc:
-        code = status.HTTP_503_SERVICE_UNAVAILABLE if exc.retryable else status.HTTP_502_BAD_GATEWAY
-        raise HTTPException(status_code=code, detail=str(exc))
-    finally:
-        await client.aclose()
+        try:
+            rows = await client.list_enrichment_coverage(
+                book_id=body.book_id, limit=body.coverage_limit
+            )
+        except GlossaryServiceError as exc:
+            code = status.HTTP_503_SERVICE_UNAVAILABLE if exc.retryable else status.HTTP_502_BAD_GATEWAY
+            raise HTTPException(status_code=code, detail=str(exc))
+        finally:
+            await client.aclose()
 
-    rankings = detect_ranked_gaps(coverages_from_rows(rows))
-    selected = rankings[: body.max_gaps]
-    if not selected:
-        return {
-            "project_id": str(project_id),
-            "entities_scanned": len(rows),
-            "detected": 0,
-            "enqueued": False,
-            "message": "no under-described entities to enrich",
-        }
+        rankings = detect_ranked_gaps(coverages_from_rows(rows))
+        selected = rankings[: body.max_gaps]
+        if not selected:
+            return {
+                "project_id": str(project_id),
+                "entities_scanned": len(rows),
+                "detected": 0,
+                "enqueued": False,
+                "message": "no under-described entities to enrich",
+            }
 
-    # The detected gaps become the job's targets (so the worker re-drives them,
-    # and a later resume can re-load the same request).
-    targets = [
-        {
-            "canonical_name": gr.gap.canonical_name,
-            "target_ref": gr.gap.target_ref,
-            "entity_kind": gr.gap.entity_kind.value,
-            "mention_count": gr.gap.mention_count,
-            "present_dimensions": [d.value for d in gr.gap.present_dimensions],
-        }
-        for gr in selected
-    ]
+        # The detected gaps become the job's targets (so the worker re-drives them,
+        # and a later resume can re-load the same request).
+        targets = [
+            {
+                "canonical_name": gr.gap.canonical_name,
+                "target_ref": gr.gap.target_ref,
+                "entity_kind": gr.gap.entity_kind.value,
+                "mention_count": gr.gap.mention_count,
+                "present_dimensions": [d.value for d in gr.gap.present_dimensions],
+            }
+            for gr in selected
+        ]
+        entities_scanned = len(rows)
+        detected_total = len(rankings)
 
     store = PgProposalStore(pool)
     db_job_id = await store.create_job(
@@ -257,8 +293,8 @@ async def auto_enrich(
     return {
         "project_id": str(project_id),
         "job_id": db_job_id,
-        "entities_scanned": len(rows),
-        "detected": len(rankings),
-        "enqueued_gaps": len(selected),
+        "entities_scanned": entities_scanned,
+        "detected": detected_total,
+        "enqueued_gaps": len(targets),
         "enqueued": enqueued,
     }

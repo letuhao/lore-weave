@@ -633,6 +633,15 @@ paths:
                 max_spend_usd: { type: number, minimum: 0 }
                 eval_reserve_fraction: { type: number, minimum: 0, default: 0.15 }
                 top_k: { type: integer, minimum: 1, maximum: 20, default: 5 }
+                targets:
+                  type: array
+                  description: >
+                    LE-064 — when set, enrich exactly these gaps (the per-row
+                    "enrich →") instead of detecting + ranking. Each is a gap the
+                    client already received from detect-gaps; max_gaps/coverage_limit
+                    are ignored. Same async worker path.
+                  items:
+                    $ref: '#/components/schemas/JobGapTarget'
       responses:
         '202':
           description: Detected + enqueued (or nothing to enrich).

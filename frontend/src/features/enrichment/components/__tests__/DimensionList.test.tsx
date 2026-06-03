@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { DimensionList } from '../DimensionList';
 import type { Proposal } from '../../types';
 
@@ -49,5 +49,29 @@ describe('DimensionList', () => {
     expect(screen.getByText('朝歌城外的山水')).toBeInTheDocument();
     // no raw <pre> fallback when dimensions present
     expect(document.querySelector('pre')).toBeNull();
+  });
+
+  // LE-066 — beyond 3 dimensions, the rest collapse behind a toggle.
+  it('collapses dimensions beyond 3 behind a toggle; expanding reveals the rest', () => {
+    const dimensions = { 历史: 'h', 地理: 'g', 文化: 'c', features: 'f', inhabitants: 'i' };
+    render(<DimensionList proposal={P({ provenance_json: { dimensions } })} />);
+    // first 3 shown, last 2 hidden
+    expect(screen.getByText('历史')).toBeInTheDocument();
+    expect(screen.getByText('文化')).toBeInTheDocument();
+    expect(screen.queryByText('features')).toBeNull();
+    expect(screen.queryByText('inhabitants')).toBeNull();
+    // the toggle reveals the rest
+    const toggle = screen.getByTestId('enrichment-dimensions-toggle');
+    expect(toggle).toHaveTextContent('detail.show_more');
+    fireEvent.click(toggle);
+    expect(screen.getByText('features')).toBeInTheDocument();
+    expect(screen.getByText('inhabitants')).toBeInTheDocument();
+    expect(toggle).toHaveTextContent('detail.show_less');
+  });
+
+  it('renders no toggle when there are 3 or fewer dimensions', () => {
+    const dimensions = { 历史: 'h', 地理: 'g', 文化: 'c' };
+    render(<DimensionList proposal={P({ provenance_json: { dimensions } })} />);
+    expect(screen.queryByTestId('enrichment-dimensions-toggle')).toBeNull();
   });
 });

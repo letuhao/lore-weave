@@ -6,27 +6,8 @@
 
 ## Open
 
-### S1 — Per-row "enrich →" on a single gap (GapsPanel) — DEFERRED
-- **What:** the mockup has an inline "enrich →" per gap row to enrich one entity.
-- **Why deferred:** auto-enrich is top-N-by-rank over detected gaps; enriching a single chosen entity needs a targeted `POST /jobs` with that one target (a different flow than auto-enrich). Not a blocker for "users can enrich" — the auto-enrich + Max-gaps path covers it.
-- **Resume:** add a per-row button that calls `POST /v1/lore-enrichment/jobs` with `targets=[thatGap]` (the create-job path already exists), or extend auto-enrich to accept an explicit target list.
-- **Disposition:** v2 nicety. Low priority.
-
-### S2 — Tab count badges (Proposals 7 / Gaps 5 / Sources 5) — DEFERRED
-- **What:** numeric count badges on the secondary tab strip.
-- **Why deferred:** the counts live inside each panel's own hook; surfacing them on the shell (`EnrichmentView`) needs cross-panel count plumbing (lift counts to context or prefetch in the shell). Low value vs. cost.
-- **Resume:** add a lightweight counts query in `EnrichmentView` (or push counts into `EnrichmentContext` from each panel).
-
-### S3 — DimensionList: inline recook-changed-span highlight + "+ show remaining" expander — DEFERRED
-- **What:** the mockup highlights recook-changed phrases inline and collapses extra dimensions behind an expander.
-- **Why deferred:** (a) the backend does not emit changed-span markers, so there is no data to highlight (would need a recook diff in `provenance_json`); (b) the expander is cosmetic — showing all dimensions is fine for a review surface.
-- **Resume:** (a) emit changed spans from `recook.py` into provenance; (b) trivial collapse-after-N if desired.
-
-### S4 — ProvenancePanel: explicit "recook · abstracted-facts (②)" attribution row + gen model_ref display — PARTIAL
-- **What:** the mockup shows an explicit ② abstracted-facts attribution line + the generation model id.
-- **Status:** technique/confidence/origin/entity_kind + grounding sources + skipped-unlicensed already render. The dedicated ② line and the gen `model_ref` are not shown.
-- **Why partial:** the gen `model_ref` is not reliably present in `provenance_json`; the ② story is implied by `technique=recook` + the grounding/skipped rows.
-- **Resume:** persist `model_ref` into `provenance_json` at generation time, then render it; add a small ② note when `technique==='recook'`.
+_(S1–S4 RESOLVED 2026-06-03 on request — see "Resolved" below. S7 browser e2e remains
+blocked by the shared environment; the live-generation smoke remains deferred.)_
 
 ### S5 — `BuildGraphDialog.test.tsx` (knowledge feature) — 9 stale failures — ✅ RESOLVED 2026-06-03
 - **What:** the full frontend vitest run showed 9 failures (`waitFor` timeouts; `estimateMock`/`startMock` called 0 times).
@@ -44,4 +25,8 @@
 
 ## Resolved (kept for the trail)
 
+- **S1 / LE-064 — per-row "enrich →" (RESOLVED 2026-06-03, async):** chose the async worker path over the synchronous `POST /jobs` (which would block ~30–90s on a 35B gen + risk a gateway timeout). Added an optional `targets` field to `auto-enrich` (`app/api/gaps.py`): when set, skip detection + top-N and enqueue exactly those gaps. FE `GapsPanel` per-row Enrich button (disabled until models picked) → `useGaps.autoEnrich({…, targets:[gapToTarget(g)]})`. openapi.yaml updated. +1 BE test, +1 FE test.
+- **S2 / LE-065 — tab count badges (RESOLVED):** `EnrichmentView` reads list totals via the same hooks the panels use (shared react-query cache → no double fetch) for Proposals/Sources/Jobs; Gaps via a new `gapCount` on `EnrichmentContext` that `GapsPanel` sets on Detect (no badge until detected). +1 FE test.
+- **S3 / LE-066 — DimensionList expander (RESOLVED; highlight N/A):** collapses dimensions beyond 3 behind a show-more/less toggle. The mockup's "changed-span highlight" is **not applicable to generative recook** — recook writes entirely new prose from abstracted facts, so there is no source-span diff; the transformation is conveyed by the new ② attribution (S4) + the P3 badge. +2 FE tests.
+- **S4 / LE-067 — ProvenancePanel ② line + model (RESOLVED, FE-only):** `model_ref` IS present in `provenance_json.retrieval.model_ref` (a user_model_id) — `ProvenancePanel` resolves it to the friendly alias via `providerApi.listUserModels` and shows a Model field, plus a "② re-cooked from abstracted facts" row for recook proposals. No backend change needed. +3 FE tests.
 - **FE test fan-out one-line bug:** the `ProposalList.test.tsx` agent omitted `...over` in its `P()` fixture helper (overrides ignored → 3 failures). Fixed (added the spread); the enrichment suite is green.

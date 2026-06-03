@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEnrichmentContext, type EnrichmentPanel } from '../context/EnrichmentContext';
+import { useProposals } from '../hooks/useProposals';
+import { useEnrichmentSources } from '../hooks/useEnrichmentSources';
+import { useEnrichmentJobs } from '../hooks/useEnrichmentJobs';
 import { ProposalsPanel } from './ProposalsPanel';
 import { GapsPanel } from './GapsPanel';
 import { SourcesPanel } from './SourcesPanel';
@@ -11,14 +14,27 @@ import { H0Marker } from './badges';
 
 const PANELS: EnrichmentPanel[] = ['proposals', 'gaps', 'sources', 'jobs'];
 
-/** The feature shell: H0 chip + a secondary tab strip over the four panels. Panels
- *  are lazy-mounted on first visit then kept mounted (CSS `hidden`), so switching
- *  sub-tabs never destroys a panel's state — same idiom the book tabs use. */
+/** The feature shell: H0 chip + a secondary tab strip (with live count badges) over
+ *  the four panels. Panels are lazy-mounted on first visit then kept mounted (CSS
+ *  `hidden`), so switching sub-tabs never destroys a panel's state. The count hooks
+ *  share react-query cache with the panels (same query keys) — no double fetch. */
 export function EnrichmentView() {
   const { t } = useTranslation('enrichment');
-  const { activePanel, setActivePanel } = useEnrichmentContext();
+  const { bookId, activePanel, setActivePanel, gapCount } = useEnrichmentContext();
   const [visited] = useState(() => new Set<EnrichmentPanel>([activePanel]));
   visited.add(activePanel);
+
+  // LE-065 — tab count badges. proposals uses the unfiltered ('all') total so the
+  // badge reflects the whole book, not the active status filter inside the panel.
+  const { total: proposalCount } = useProposals(bookId);
+  const { total: sourceCount } = useEnrichmentSources(bookId);
+  const { total: jobCount } = useEnrichmentJobs(bookId);
+  const counts: Record<EnrichmentPanel, number | null> = {
+    proposals: proposalCount,
+    gaps: gapCount,
+    sources: sourceCount,
+    jobs: jobCount,
+  };
 
   return (
     <div className="space-y-4 p-6">
@@ -36,13 +52,24 @@ export function EnrichmentView() {
             onClick={() => setActivePanel(p)}
             data-testid={`enrichment-tab-${p}`}
             className={cn(
-              'border-b-2 px-3 py-2 text-xs font-medium transition-colors',
+              'inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-xs font-medium transition-colors',
               activePanel === p
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
             {t(`panel.${p}`)}
+            {counts[p] != null && counts[p]! > 0 && (
+              <span
+                data-testid={`enrichment-tab-count-${p}`}
+                className={cn(
+                  'rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
+                  activePanel === p ? 'bg-primary/15 text-primary' : 'bg-secondary text-muted-foreground',
+                )}
+              >
+                {counts[p]}
+              </span>
+            )}
           </button>
         ))}
       </div>

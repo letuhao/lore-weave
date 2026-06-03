@@ -44,6 +44,8 @@
     "confidence": "Confidence",
     "origin": "Origin",
     "entity_kind": "Kind",
+    "model": "Model",
+    "recook_abstracted": "Re-cooked from abstracted facts — generated from neutral fact bullets, not source prose (②).",
     "grounding": "Grounding sources",
     "skipped": "Skipped (unlicensed) sources"
   },
@@ -60,6 +62,8 @@
     "h0_note": "This is an enriched variant (origin=enrichment, confidence<1.0). It becomes canon only when you promote it.",
     "h0_banner": "This is an enriched variant — not the original canon. It becomes canon only when you promote it.",
     "dimensions": "{{count}} dimensions",
+    "show_more": "+ show {{count}} more",
+    "show_less": "Show less",
     "content": "Generated lore",
     "verify": "Verification",
     "provenance": "Provenance & sources"
@@ -127,9 +131,11 @@
     "top_k": "Top-K",
     "gate_note": "P2 fabrication / P3 recook require the eval gate to pass (diverse judges).",
     "auto_enrich": "Auto-enrich",
+    "enrich_one": "Enrich",
+    "enrich_one_hint": "Select generation + embedding models below to enrich.",
     "enriching": "Enqueuing…",
     "enqueued": "Enqueued {{count}} gap(s) for enrichment",
-    "col": { "entity": "Entity", "kind": "Kind", "missing": "Missing dimensions", "rank": "Rank" }
+    "col": { "entity": "Entity", "kind": "Kind", "missing": "Missing dimensions", "rank": "Rank", "action": "Action" }
   },
   "sources": {
     "title": "Sources",

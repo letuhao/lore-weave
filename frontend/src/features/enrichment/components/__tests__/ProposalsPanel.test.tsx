@@ -27,6 +27,12 @@ vi.mock('../../hooks/useProposalActions', () => ({
   useProposalActions: () => actionsStub,
 }));
 
+// ProvenancePanel (rendered via ProposalDetail) now uses react-query + @/auth;
+// stub it — it has its own dedicated test.
+vi.mock('../ProvenancePanel', () => ({
+  ProvenancePanel: () => <div data-testid="enrichment-provenance" />,
+}));
+
 import { ProposalsPanel } from '../ProposalsPanel';
 import { EnrichmentProvider } from '../../context/EnrichmentContext';
 import type { Proposal } from '../../types';

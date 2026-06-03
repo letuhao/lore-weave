@@ -5,6 +5,7 @@ import type {
   PromoteResult,
   DetectGapsResponse,
   AutoEnrichResponse,
+  EnrichTarget,
   SourceListResponse,
   Source,
   IngestResult,
@@ -112,6 +113,8 @@ export const enrichmentApi = {
       max_gaps?: number;
       max_spend_usd?: number | null;
       top_k?: number;
+      /** LE-064 — when set, enrich exactly these gaps (per-row "enrich →"). */
+      targets?: EnrichTarget[];
     },
     token: string,
   ): Promise<AutoEnrichResponse> {

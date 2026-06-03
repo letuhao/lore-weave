@@ -14,6 +14,9 @@ interface EnrichmentContextValue {
   /** Client-side filter over the book's proposals by general project_id (null = all). */
   projectFilter: string | null;
   setProjectFilter: (p: string | null) => void;
+  /** Detected-gap count for the Gaps tab badge (null until the user runs Detect). */
+  gapCount: number | null;
+  setGapCount: (n: number | null) => void;
 }
 
 const EnrichmentCtx = createContext<EnrichmentContextValue | null>(null);
@@ -22,6 +25,7 @@ export function EnrichmentProvider({ bookId, children }: { bookId: string; child
   const [activePanel, setActivePanel] = useState<EnrichmentPanel>('proposals');
   const [selectedProposalId, setSelectedProposalId] = useState<string | null>(null);
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
+  const [gapCount, setGapCount] = useState<number | null>(null);
 
   return (
     <EnrichmentCtx.Provider
@@ -33,6 +37,8 @@ export function EnrichmentProvider({ bookId, children }: { bookId: string; child
         setSelectedProposalId,
         projectFilter,
         setProjectFilter,
+        gapCount,
+        setGapCount,
       }}
     >
       {children}

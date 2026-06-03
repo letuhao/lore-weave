@@ -1,14 +1,36 @@
+import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/auth';
+import { providerApi } from '@/features/settings/api';
 import { isRecookable, type Proposal, type SourceRef, type SkippedSource } from '../types';
 
 /** Surfaces grounding sources (+ license), the recook abstraction (②) attribution,
- *  and any sources the licensing gate skipped (① default-deny) — so the ©-safety
- *  story is visible to the author before they promote. */
+ *  the generation model, and any sources the licensing gate skipped (① default-deny)
+ *  — so the ©-safety story is visible to the author before they promote. */
 export function ProvenancePanel({ proposal }: { proposal: Proposal }) {
   const { t } = useTranslation('enrichment');
+  const { accessToken } = useAuth();
   const refs = proposal.source_refs_json ?? [];
-  const skipped = proposal.provenance_json?.skipped_unlicensed_sources ?? [];
+  const prov = proposal.provenance_json ?? {};
+  const skipped = prov.skipped_unlicensed_sources ?? [];
+  const isRecook = proposal.technique === 'recook' || proposal.original_technique === 'recook';
+
+  // LE-067 — the gen model_ref (a user_model_id) lives in provenance; resolve it to
+  // the user's friendly alias via provider-registry (shared 'chat' models cache).
+  const modelRef = prov.retrieval?.model_ref ?? prov.recook?.model_ref;
+  const { data: chatModels } = useQuery({
+    queryKey: ['user-models', 'chat'],
+    queryFn: () => providerApi.listUserModels(accessToken!, { capability: 'chat' }),
+    enabled: !!accessToken && !!modelRef,
+  });
+  const model = modelRef
+    ? (() => {
+        const m = chatModels?.items.find((x) => x.user_model_id === modelRef);
+        return m?.alias || m?.provider_model_name || `${modelRef.slice(0, 8)}…`;
+      })()
+    : null;
 
   return (
     <div className="space-y-3 text-xs" data-testid="enrichment-provenance">
@@ -17,7 +39,18 @@ export function ProvenancePanel({ proposal }: { proposal: Proposal }) {
         <Field label={t('prov.confidence')} value={proposal.confidence.toFixed(2)} mono />
         <Field label={t('prov.origin')} value={proposal.origin} mono />
         <Field label={t('prov.entity_kind')} value={proposal.entity_kind} mono />
+        {model && <Field label={t('prov.model')} value={model} mono />}
       </div>
+
+      {isRecook && (
+        <div
+          className="flex items-center gap-1.5 rounded-md border border-info/30 bg-info/5 px-2 py-1.5 text-[11px] text-info"
+          data-testid="enrichment-prov-recook"
+        >
+          <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+          {t('prov.recook_abstracted')}
+        </div>
+      )}
 
       {refs.length > 0 && (
         <div>

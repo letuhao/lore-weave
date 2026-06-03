@@ -64,6 +64,10 @@ export interface Provenance {
   canon_verify?: CanonVerify;
   verify_status?: VerifyStatus | string;
   skipped_unlicensed_sources?: SkippedSource[];
+  /** Per-strategy grounding meta — the generation `model_ref` (a user_model_id)
+   *  lives here for retrieval/fabrication; recook mirrors it under `recook`. */
+  retrieval?: { model_ref?: string; top_k?: number; grounding_count?: number };
+  recook?: { model_ref?: string; [k: string]: unknown };
   [k: string]: unknown;
 }
 
@@ -141,6 +145,27 @@ export interface DetectGapsResponse {
   entities_scanned: number;
   gap_count: number;
   gaps: Gap[];
+}
+
+/** A specific gap to enrich (LE-064 per-row "enrich →"). The backend re-derives
+ *  the missing dimensions, so only the anchor + present dimensions are needed. */
+export interface EnrichTarget {
+  canonical_name: string;
+  target_ref?: string;
+  entity_kind: string;
+  mention_count?: number;
+  present_dimensions?: string[];
+}
+
+/** Build an EnrichTarget from a detected Gap (for the per-row enrich action). */
+export function gapToTarget(g: Gap): EnrichTarget {
+  return {
+    canonical_name: g.canonical_name,
+    target_ref: g.canonical_name,
+    entity_kind: g.entity_kind,
+    mention_count: g.mention_count,
+    present_dimensions: g.present_dimensions,
+  };
 }
 
 export interface AutoEnrichResponse {

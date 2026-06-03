@@ -7,6 +7,7 @@ import { useAuth } from '@/auth';
 import { providerApi } from '@/features/settings/api';
 import { useGaps } from '../hooks/useGaps';
 import { useEnrichmentContext } from '../context/EnrichmentContext';
+import { gapToTarget, type Gap, type EnrichTarget } from '../types';
 
 /** The trigger side: detect under-described entities (read-only) then auto-enrich
  *  chosen gaps as a background job (technique + gen/embed model + cost-cap). P2/P3
@@ -14,7 +15,7 @@ import { useEnrichmentContext } from '../context/EnrichmentContext';
 export function GapsPanel() {
   const { t } = useTranslation('enrichment');
   const { accessToken } = useAuth();
-  const { bookId } = useEnrichmentContext();
+  const { bookId, setGapCount } = useEnrichmentContext();
   const { gaps, detect, detecting, autoEnrich, enriching } = useGaps(bookId);
   const [technique, setTechnique] = useState('recook');
   const [genModel, setGenModel] = useState('');
@@ -38,6 +39,26 @@ export function GapsPanel() {
   const gens = chatModels?.items ?? [];
   const embeds = embedModels?.items ?? [];
   const canEnrich = !!genModel && !!embedModel && !enriching;
+  // LE-064 — which row's per-gap enrich is in flight (for its spinner).
+  const [enrichingName, setEnrichingName] = useState<string | null>(null);
+
+  // One enrich call for both the batch (top-N) + per-row (targets) paths.
+  const runEnrich = (targets?: EnrichTarget[]) =>
+    autoEnrich({
+      generation_model_ref: genModel,
+      embedding_model_ref: embedModel,
+      technique,
+      max_gaps: maxGaps,
+      max_spend_usd: maxSpend.trim() === '' ? null : Number(maxSpend),
+      top_k: topK,
+      ...(targets ? { targets } : {}),
+    });
+
+  const enrichOne = async (g: Gap) => {
+    setEnrichingName(g.canonical_name);
+    await runEnrich([gapToTarget(g)]);
+    setEnrichingName(null);
+  };
 
   return (
     <div className="space-y-4">
@@ -47,7 +68,10 @@ export function GapsPanel() {
           <p className="text-xs text-muted-foreground">{t('gaps.subtitle')}</p>
         </div>
         <button
-          onClick={() => void detect()}
+          onClick={async () => {
+            const r = await detect();
+            setGapCount(r ? r.gaps.length : null);
+          }}
           disabled={detecting}
           data-testid="enrichment-detect-gaps"
           className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-secondary disabled:opacity-50"
@@ -73,6 +97,7 @@ export function GapsPanel() {
                 <th className="px-3 py-2 text-left font-medium">{t('gaps.col.kind')}</th>
                 <th className="px-3 py-2 text-left font-medium">{t('gaps.col.missing')}</th>
                 <th className="px-3 py-2 text-left font-medium">{t('gaps.col.rank')}</th>
+                <th className="px-3 py-2 text-right font-medium">{t('gaps.col.action')}</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -87,6 +112,18 @@ export function GapsPanel() {
                     <span className="rounded bg-warning/12 px-1.5 py-0.5 font-mono text-[11px] text-warning">
                       {g.score.toFixed(2)}
                     </span>
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <button
+                      onClick={() => void enrichOne(g)}
+                      disabled={!canEnrich}
+                      title={canEnrich ? undefined : t('gaps.enrich_one_hint')}
+                      data-testid={`enrichment-enrich-gap-${g.canonical_name}`}
+                      className="inline-flex items-center gap-1 rounded-md border border-primary/30 px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/10 disabled:opacity-40"
+                    >
+                      <Sparkles className={cn('h-3 w-3', enrichingName === g.canonical_name && 'animate-pulse')} />
+                      {enrichingName === g.canonical_name ? t('gaps.enriching') : t('gaps.enrich_one')}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -178,20 +215,12 @@ export function GapsPanel() {
         <div className="flex items-center justify-between gap-3">
           <p className="text-[11px] text-muted-foreground">{t('gaps.gate_note')}</p>
           <button
-            onClick={() =>
-              autoEnrich({
-                generation_model_ref: genModel,
-                embedding_model_ref: embedModel,
-                technique,
-                max_gaps: maxGaps,
-                max_spend_usd: maxSpend.trim() === '' ? null : Number(maxSpend),
-                top_k: topK,
-              })
-            }
+            onClick={() => void runEnrich()}
             disabled={!canEnrich}
             className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            <Sparkles className="h-3.5 w-3.5" /> {enriching ? t('gaps.enriching') : t('gaps.auto_enrich')}
+            <Sparkles className="h-3.5 w-3.5" />{' '}
+            {enriching && !enrichingName ? t('gaps.enriching') : t('gaps.auto_enrich')}
           </button>
         </div>
       </div>
