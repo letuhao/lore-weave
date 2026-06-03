@@ -1,10 +1,45 @@
 package meta
 
 import (
+	"bytes"
 	"reflect"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
+
+// TestScrubValue_BinaryBytesPassThrough is the D-SCRUB-BINARY-FIDELITY guard: a
+// BINARY []byte leaf (e.g. a 32-byte SHA-256 like admin_action_audit.
+// error_detail_raw_hash) must pass through the scrubber UNCHANGED — running the
+// 7 PII text regexes over raw bytes could chance-match + mutate the blob in the
+// audit copy. Valid-UTF-8 (text) []byte is still scrubbed (preserved behavior).
+func TestScrubValue_BinaryBytesPassThrough(t *testing.T) {
+	// A 32-byte binary blob with high bytes → invalid UTF-8 → must pass through.
+	hash := make([]byte, 32)
+	for i := range hash {
+		hash[i] = byte(200 + i%56)
+	}
+	if utf8.Valid(hash) {
+		t.Skip("crafted blob unexpectedly valid UTF-8")
+	}
+	out := ScrubValue(map[string]any{"error_detail_raw_hash": hash}, RegexScrubber{}).(map[string]any)
+	if got := out["error_detail_raw_hash"].([]byte); !bytes.Equal(got, hash) {
+		t.Errorf("binary blob mutated by scrubber: in=%x out=%x", hash, got)
+	}
+
+	// Discriminator: the SAME PII-looking content scrubs as TEXT (valid UTF-8),
+	// but appending ONE invalid byte flips it to a verbatim pass-through.
+	text := []byte("call 555-123-4567")
+	binary := append([]byte("call 555-123-4567"), 0xff)
+	outText := ScrubValue(map[string]any{"x": text}, RegexScrubber{}).(map[string]any)["x"].([]byte)
+	outBin := ScrubValue(map[string]any{"x": binary}, RegexScrubber{}).(map[string]any)["x"].([]byte)
+	if !strings.Contains(string(outText), "[PHONE]") {
+		t.Errorf("valid-UTF8 []byte must still be scrubbed, got %q", outText)
+	}
+	if !bytes.Equal(outBin, binary) {
+		t.Errorf("binary []byte must pass through unchanged, got %x", outBin)
+	}
+}
 
 func TestScrubValue_StringLeavesOnly(t *testing.T) {
 	in := map[string]any{

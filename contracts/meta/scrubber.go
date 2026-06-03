@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Scrubber rewrites free-text fields to remove PII before they land in any
@@ -210,6 +211,19 @@ func leafScrubber(sc Scrubber) func(string) string {
 	return func(s string) string { return sc.Scrub(s).Scrubbed }
 }
 
+// scrubBytes scrubs a byte slice ONLY when it is valid UTF-8 text; a binary blob
+// (e.g. a 32-byte SHA-256 hash like admin_action_audit.error_detail_raw_hash) is
+// passed through UNCHANGED so a chance PII-regex match cannot mutate it
+// (D-SCRUB-BINARY-FIDELITY). Correlate such binary audit columns via the row PK,
+// not by re-reading the scrubbed copy. Text bytes are scrubbed into a fresh slice
+// exactly as before.
+func scrubBytes(b []byte, scrub func(string) string) []byte {
+	if !utf8.Valid(b) {
+		return b // binary — pass through, never run text regexes over raw bytes
+	}
+	return []byte(scrub(string(b)))
+}
+
 func scrubValueDepth(v any, scrub func(string) string, depth int) any {
 	if v == nil {
 		return nil
@@ -221,7 +235,7 @@ func scrubValueDepth(v any, scrub func(string) string, depth int) any {
 	case string:
 		return scrub(t)
 	case []byte:
-		return []byte(scrub(string(t)))
+		return scrubBytes(t, scrub)
 	case map[string]any:
 		out := make(map[string]any, len(t))
 		for k, val := range t {
@@ -256,7 +270,7 @@ func scrubReflect(rv reflect.Value, scrub func(string) string, depth int) any {
 		return scrubReflect(rv.Elem(), scrub, depth+1)
 	case reflect.Slice, reflect.Array:
 		if rv.Kind() == reflect.Slice && rv.Type().Elem().Kind() == reflect.Uint8 {
-			return []byte(scrub(string(rv.Bytes())))
+			return scrubBytes(rv.Bytes(), scrub)
 		}
 		out := make([]any, rv.Len())
 		for i := 0; i < rv.Len(); i++ {

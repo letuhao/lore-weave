@@ -27,11 +27,11 @@ const commandVersion = "1.0.0"
 //
 // Forensic notes (code-review WARNs, accepted):
 //   - The admin_action_audit row is the SSOT. The same-TX meta_write_audit COPY
-//     of NewValues is run through cfg.Scrubber, whose []byte/JSON handling can
-//     lossily rewrite the binary error_detail_raw_hash + the JSON params blob in
-//     THAT copy. Correlate the two audit rows via the shared audit_id (PK), not
-//     by re-reading the meta_write_audit copy of these columns. (Tracked:
-//     D-SCRUB-BINARY-FIDELITY — utf8-aware []byte scrubbing in contracts/meta.)
+//     of NewValues is run through cfg.Scrubber. As of D-SCRUB-BINARY-FIDELITY the
+//     scrubber passes BINARY []byte (e.g. error_detail_raw_hash) through verbatim
+//     (only valid-UTF-8 text is regex-scrubbed), so the binary hash is no longer
+//     mutated in the copy; still correlate the two audit rows via the shared
+//     audit_id (PK) rather than re-reading either column's copy.
 //   - admin_action_audit.created_at_nanos and the meta_write_audit row's own
 //     created_at_nanos are stamped from independent Clock reads, so they may
 //     differ sub-millisecond. Correlate via audit_id, not timestamp.
