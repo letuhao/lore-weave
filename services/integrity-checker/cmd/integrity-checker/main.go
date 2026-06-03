@@ -37,6 +37,7 @@ import (
 	"github.com/loreweave/foundation/contracts/lifecycle"
 	"github.com/loreweave/foundation/contracts/realityreg"
 	"github.com/loreweave/foundation/services/integrity-checker/pkg/config"
+	"github.com/loreweave/foundation/services/integrity-checker/pkg/full_check"
 	"github.com/loreweave/foundation/services/integrity-checker/pkg/live"
 	"github.com/loreweave/foundation/services/integrity-checker/pkg/metrics"
 	"github.com/loreweave/foundation/services/integrity-checker/pkg/pgsource"
@@ -103,16 +104,21 @@ func main() {
 	os.Exit(run(ctx, cfg))
 }
 
-// run executes one live sweep across active realities. Returns the process exit
+// run executes one live sweep across active realities in the configured mode
+// (daily sampling = L3.E, or monthly full-scan = L3.F). Returns the process exit
 // code (0 = all realities checked; 3 = one or more errored).
 func run(ctx context.Context, cfg config.Config) int {
-	if cfg.Mode != types.CheckModeDaily {
-		fmt.Printf("[integrity-checker] mode=%s — monthly/full-scan live wiring not in this slice (DEFERRED 145); exit 0\n", cfg.Mode)
-		return 0
-	}
-	if !cfg.DailyEnabled {
-		fmt.Println("[integrity-checker] daily_enabled=false — dark mode, exit 0")
-		return 0
+	switch cfg.Mode {
+	case types.CheckModeDaily:
+		if !cfg.DailyEnabled {
+			fmt.Println("[integrity-checker] daily_enabled=false — dark mode, exit 0")
+			return 0
+		}
+	case types.CheckModeMonthly:
+		if !cfg.MonthlyEnabled {
+			fmt.Println("[integrity-checker] monthly_enabled=false — dark mode, exit 0")
+			return 0
+		}
 	}
 
 	metaPool, err := pgxpool.New(ctx, os.Getenv("META_DATABASE_URL"))
@@ -142,7 +148,7 @@ func run(ctx context.Context, cfg config.Config) int {
 		return 2
 	}
 
-	fmt.Printf("[integrity-checker] daily sweep: %d active realit(ies)\n", len(realities))
+	fmt.Printf("[integrity-checker] %s sweep: %d active realit(ies)\n", cfg.Mode, len(realities))
 	failed := 0
 	for _, r := range realities {
 		if ctx.Err() != nil {
@@ -150,8 +156,15 @@ func run(ctx context.Context, cfg config.Config) int {
 			failed++
 			break
 		}
-		if err := checkReality(ctx, r, dsnCfg, loader, cfg.Tables); err != nil {
-			fmt.Fprintf(os.Stderr, "[integrity-checker] reality %s ERROR: %v\n", r.ID, err)
+		var rerr error
+		switch cfg.Mode {
+		case types.CheckModeMonthly:
+			rerr = checkRealityMonthly(ctx, r, dsnCfg, loader, cfg.Tables, cfg.FullCheckIntervalDays)
+		default:
+			rerr = checkReality(ctx, r, dsnCfg, loader, cfg.Tables)
+		}
+		if rerr != nil {
+			fmt.Fprintf(os.Stderr, "[integrity-checker] reality %s ERROR: %v\n", r.ID, rerr)
 			failed++
 		}
 	}
@@ -222,6 +235,76 @@ func checkReality(
 	}
 	fmt.Printf("[integrity-checker] reality %s: tables=%d drift=%d skipped=%d\n",
 		r.ID, len(it.Reports), drift, skipped)
+	return nil
+}
+
+// checkRealityMonthly runs the L3.F monthly full-scan checker against one
+// reality's shard DB: the row-centric full_check.Loop walks EVERY row of each
+// configured table (cursor-batched via the pgsource scanner) and renders the
+// same per-row verdict the daily checker uses (live.CheckRow). Persists with the
+// monthly next-sweep cadence (FullCheckIntervalDays).
+func checkRealityMonthly(
+	ctx context.Context,
+	r realityreg.Reality,
+	dsnCfg realityreg.DSNConfig,
+	loader *replayloader.Loader,
+	tables []types.TableConfig,
+	intervalDays int,
+) error {
+	rid, err := uuid.Parse(r.ID)
+	if err != nil {
+		return fmt.Errorf("invalid reality_id %q: %w", r.ID, err)
+	}
+	dsn, err := dsnCfg.DSN(r.DBHost, r.DBName)
+	if err != nil {
+		return fmt.Errorf("resolve shard DSN: %w", err)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		return fmt.Errorf("shard DB connect: %w", err)
+	}
+	defer pool.Close()
+
+	// PgRowSampler is both the daily RowSampler and the monthly CursorSource
+	// (NextBatch) — monthly uses the cursor-scan half.
+	src, err := pgsource.New(pool)
+	if err != nil {
+		return err
+	}
+	writer, err := state_writer.New(state_writer.Config{
+		Persister: state_writer.NewPgPersister(pool),
+		Clock:     time.Now,
+	})
+	if err != nil {
+		return err
+	}
+	loop, err := full_check.New(full_check.Config{
+		CursorSource:          src,
+		Replayer:              loader,
+		StateWriter:           writer,
+		Mode:                  fullMode{},
+		Clock:                 time.Now,
+		FullCheckIntervalDays: intervalDays,
+	})
+	if err != nil {
+		return err
+	}
+
+	st, err := loop.Run(ctx, rid, dsn, tables)
+	if err != nil {
+		return err
+	}
+	if st.Skipped {
+		fmt.Printf("[integrity-checker] reality %s SKIPPED (%s)\n", r.ID, st.SkipReason)
+		return nil
+	}
+	var drift, skipped int
+	for _, rep := range st.Reports {
+		drift += rep.DriftCount
+		skipped += rep.Skipped
+	}
+	fmt.Printf("[integrity-checker] reality %s (monthly): tables=%d drift=%d skipped=%d\n",
+		r.ID, len(st.Reports), drift, skipped)
 	return nil
 }
 

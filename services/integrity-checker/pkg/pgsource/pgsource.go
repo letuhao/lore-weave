@@ -13,6 +13,7 @@ package pgsource
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -113,9 +114,11 @@ func (s *PgRowSampler) SampleRows(ctx context.Context, _ uuid.UUID, _ string, ta
 			pk[c] = pkVals[i]
 		}
 		owning, err := live.ResolveOwning(ctx, table, pk, eventID, s.lookupOwner)
-		if err != nil {
+		if err != nil && !errors.Is(err, live.ErrOwnerPruned) {
 			return nil, fmt.Errorf("pgsource: %s: %w", table, err)
 		}
+		// On ErrOwnerPruned, `owning` is nil → emit the row anyway so it is COUNTED
+		// (CheckRow folds a nil-Owning row into skipped, not drift).
 		out = append(out, live.SampledRow{
 			PK:               pk,
 			EventID:          eventID,
@@ -127,16 +130,154 @@ func (s *PgRowSampler) SampleRows(ctx context.Context, _ uuid.UUID, _ string, ta
 	return out, rows.Err()
 }
 
+// scanSQL builds the cursor-paginated full-scan SELECT for monthly mode: the
+// same meta-stripped canonical payload + PK columns (::text) + event_id +
+// aggregate_version as sampleSQL, but ORDERED BY the PK columns (::text) and
+// (when a cursor is supplied) filtered to rows AFTER the cursor via a row-value
+// comparison. `$1` is the LIMIT (batch size); when `hasCursor`, `$2..$N+1` are
+// the cursor's PK values in PK-column order. Ordering by `::text` of every PK
+// gives a stable, deterministic pagination key (each row appears at most once
+// across a sweep even under concurrent INSERTs).
+func scanSQL(table string, pkColumns []string, hasCursor bool) string {
+	var minusMeta strings.Builder
+	for _, k := range metaKeys {
+		minusMeta.WriteString(" - '")
+		minusMeta.WriteString(k)
+		minusMeta.WriteString("'")
+	}
+	pkSelects := make([]string, len(pkColumns))
+	orderCols := make([]string, len(pkColumns))
+	for i, c := range pkColumns {
+		pkSelects[i] = fmt.Sprintf("t.%s::text AS %s", c, c)
+		orderCols[i] = fmt.Sprintf("t.%s::text", c)
+	}
+	where := ""
+	if hasCursor {
+		binds := make([]string, len(pkColumns))
+		for i := range pkColumns {
+			binds[i] = fmt.Sprintf("$%d", i+2) // $1 is LIMIT; cursor binds start at $2
+		}
+		if len(pkColumns) == 1 {
+			where = fmt.Sprintf(" WHERE %s > %s", orderCols[0], binds[0])
+		} else {
+			where = fmt.Sprintf(" WHERE (%s) > (%s)", strings.Join(orderCols, ", "), strings.Join(binds, ", "))
+		}
+	}
+	return fmt.Sprintf(
+		"SELECT to_jsonb(t)%s AS payload, %s, t.event_id, t.aggregate_version "+
+			"FROM %s t%s ORDER BY %s LIMIT $1",
+		minusMeta.String(), strings.Join(pkSelects, ", "), table, where, strings.Join(orderCols, ", "),
+	)
+}
+
+// encodeCursor packs a row's PK text values (in PK-column order) into an opaque
+// continuation token (a JSON array — robust to any TEXT PK content).
+func encodeCursor(pkVals []string) (string, error) {
+	b, err := json.Marshal(pkVals)
+	if err != nil {
+		return "", fmt.Errorf("pgsource: encode cursor: %w", err)
+	}
+	return string(b), nil
+}
+
+// decodeCursor reverses encodeCursor, validating the arity against the table's PK.
+func decodeCursor(cursor string, pkCount int) ([]string, error) {
+	var vals []string
+	if err := json.Unmarshal([]byte(cursor), &vals); err != nil {
+		return nil, fmt.Errorf("pgsource: decode cursor %q: %w", cursor, err)
+	}
+	if len(vals) != pkCount {
+		return nil, fmt.Errorf("pgsource: cursor arity %d != table PK count %d", len(vals), pkCount)
+	}
+	return vals, nil
+}
+
+// NextBatch implements full_check.CursorSource: it walks `table` ordered by its
+// PK columns, returning up to `batchSize` rows after `cursor` (empty = start),
+// each with its owning aggregate(s) resolved. nextCursor is "" at end-of-table.
+func (s *PgRowSampler) NextBatch(ctx context.Context, _ uuid.UUID, table, cursor string, batchSize int) ([]live.SampledRow, string, error) {
+	pkColumns, err := tablemap.PKColumns(table)
+	if err != nil {
+		return nil, "", err
+	}
+	args := []any{batchSize}
+	if cursor != "" {
+		vals, derr := decodeCursor(cursor, len(pkColumns))
+		if derr != nil {
+			return nil, "", derr
+		}
+		for _, v := range vals {
+			args = append(args, v)
+		}
+	}
+	rows, err := s.pool.Query(ctx, scanSQL(table, pkColumns, cursor != ""), args...)
+	if err != nil {
+		return nil, "", fmt.Errorf("pgsource: scan %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	var out []live.SampledRow
+	var lastPK []string
+	for rows.Next() {
+		var payload []byte
+		pkVals := make([]string, len(pkColumns))
+		dest := make([]any, 0, len(pkColumns)+3)
+		dest = append(dest, &payload)
+		for i := range pkColumns {
+			dest = append(dest, &pkVals[i])
+		}
+		var eventID uuid.UUID
+		var aggVersion int64
+		dest = append(dest, &eventID, &aggVersion)
+		if err := rows.Scan(dest...); err != nil {
+			return nil, "", fmt.Errorf("pgsource: scan %s: %w", table, err)
+		}
+		pk := make(map[string]string, len(pkColumns))
+		for i, c := range pkColumns {
+			pk[c] = pkVals[i]
+		}
+		owning, oerr := live.ResolveOwning(ctx, table, pk, eventID, s.lookupOwner)
+		if oerr != nil && !errors.Is(oerr, live.ErrOwnerPruned) {
+			return nil, "", fmt.Errorf("pgsource: %s: %w", table, oerr)
+		}
+		// On ErrOwnerPruned, `owning` is nil → still emit (and still advance the
+		// cursor past it) so the full-scan does not abort on archived rows.
+		out = append(out, live.SampledRow{
+			PK:               pk,
+			EventID:          eventID,
+			AggregateVersion: uint64(aggVersion),
+			Payload:          payload,
+			Owning:           owning,
+		})
+		lastPK = pkVals
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", err
+	}
+	// A full batch ⇒ more may remain ⇒ emit a continuation cursor; a short
+	// batch ⇒ end-of-table ⇒ "".
+	if len(out) == batchSize && lastPK != nil {
+		next, eerr := encodeCursor(lastPK)
+		if eerr != nil {
+			return nil, "", eerr
+		}
+		return out, next, nil
+	}
+	return out, "", nil
+}
+
 // lookupOwner backs live.ResolveOwning for single-aggregate tables.
 func (s *PgRowSampler) lookupOwner(ctx context.Context, eventID uuid.UUID) (string, string, error) {
 	var aggType, aggID string
 	err := s.pool.QueryRow(ctx, ownerLookupSQL, eventID).Scan(&aggType, &aggID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			// The row's event_id is not in the events table — pruned/archived, or
-			// a write-without-event bug. The checker treats a resolve failure as a
-			// table-level error (the sample cannot be verified).
-			return "", "", fmt.Errorf("pgsource: no event for event_id %s (pruned/archived?)", eventID)
+			// The row's event_id is not in the events table — its owning event was
+			// archived/pruned by retention. Wrap the live.ErrOwnerPruned sentinel so
+			// the sampler SKIPS this (unverifiable) row rather than failing the whole
+			// sweep — critical for the monthly full-scan, which walks old rows whose
+			// partitions have been detached.
+			return "", "", fmt.Errorf("pgsource: no event for event_id %s: %w", eventID, live.ErrOwnerPruned)
 		}
 		return "", "", fmt.Errorf("pgsource: owner lookup event_id %s: %w", eventID, err)
 	}

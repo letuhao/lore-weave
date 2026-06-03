@@ -68,7 +68,21 @@ type ModeReader interface {
 // OwnerLookup resolves the (aggregate_type, aggregate_id) that last wrote a row,
 // from its event_id. The pgx sampler backs this with
 // `SELECT aggregate_type, aggregate_id FROM events WHERE event_id=$1`.
+//
+// When the row's event_id is no longer in `events` (the owning event was
+// archived / pruned by retention), the lookup MUST return an error that wraps
+// [ErrOwnerPruned] — such a row cannot be re-derived, so the checker SKIPS it
+// rather than failing the whole sweep. This matters acutely for the monthly
+// full-scan, which walks every row including old ones whose partitions have been
+// detached/archived.
 type OwnerLookup func(ctx context.Context, eventID uuid.UUID) (aggType, aggID string, err error)
+
+// ErrOwnerPruned signals that a sampled row's owning event is gone from `events`
+// (archived / pruned) so the row is UNVERIFIABLE. [ResolveOwning] returns it (the
+// bare sentinel) for single-aggregate tables; the samplers (pgsource) treat it as
+// "skip this row" — they emit the row with a nil Owning, and [CheckRow] folds a
+// nil-Owning row into `skipped` (it cannot be replayed).
+var ErrOwnerPruned = errors.New("live: owning event pruned/archived — row unverifiable")
 
 // ResolveOwning returns the owning aggregate(s) to replay for a sampled row.
 // CROSS-aggregate tables (npc_session_memory_projection) derive the SET from the
@@ -92,6 +106,11 @@ func ResolveOwning(
 	}
 	aggType, aggID, err := lookup(ctx, eventID)
 	if err != nil {
+		if errors.Is(err, ErrOwnerPruned) {
+			// Owning event archived/pruned → row is unverifiable. Propagate the
+			// bare sentinel so the sampler can SKIP this row (not fail the sweep).
+			return nil, ErrOwnerPruned
+		}
 		return nil, fmt.Errorf("live: resolve owner for event %s: %w", eventID, err)
 	}
 	if aggType == "" || aggID == "" {
@@ -185,40 +204,11 @@ func (c *Checker) CheckTable(ctx context.Context, realityID uuid.UUID, dsn strin
 	report.SampleSize = len(rows)
 
 	for _, row := range rows {
-		res, err := c.replayer.Replay(ctx, replayloader.ReplayRequest{
-			RealityID:       realityID,
-			DSN:             dsn,
-			Projection:      tbl.TableName,
-			Owning:          row.Owning,
-			BoundaryEventID: row.EventID,
-			PK:              row.PK,
-		})
-		if err != nil {
-			// Hard run error (bad invocation / process failure) — SKIP, not drift.
+		drifted, skipped := CheckRow(ctx, c.replayer, realityID, dsn, tbl.TableName, row)
+		if skipped {
 			report.Skipped++
 			continue
 		}
-		if skip, _ := res.Skippable(); skip {
-			report.Skipped++
-			continue
-		}
-
-		drifted := false
-		if !res.Found {
-			// Replay ran (events > 0) but produced no row at the PK → the live
-			// projection holds a row the events do not produce: an orphan DRIFT.
-			drifted = true
-		} else {
-			want, werr := comparator.Canonicalize(res.Payload)
-			got, gerr := comparator.Canonicalize(row.Payload)
-			if werr != nil || gerr != nil {
-				// Either side unparseable — cannot render a verdict → SKIP.
-				report.Skipped++
-				continue
-			}
-			drifted = !bytes.Equal(want, got)
-		}
-
 		if drifted {
 			report.DriftCount++
 			report.LastDriftedAggregateID = driftAggregateUUID(row)
@@ -231,6 +221,55 @@ func (c *Checker) CheckTable(ctx context.Context, realityID uuid.UUID, dsn strin
 		return report, fmt.Errorf("persist: %w", err)
 	}
 	return report, nil
+}
+
+// CheckRow renders the row-centric drift verdict for ONE sampled row: re-derive
+// it via the replay-aggregate bin, then byte-compare the replayed `to_jsonb -
+// meta` payload against the live row's. SHARED by daily ([Checker.CheckTable])
+// and monthly (full_check) so both produce the identical verdict. Per the design
+// (docs/plans/2026-06-03-l3ef-integrity-checker.md):
+//
+//   - replay hard-error / Skippable (replay error or 0 in-bound events) → skipped
+//   - replay produced NO row but had events (orphan projection row) → drifted
+//   - replay found a row, byte-NOT-equal → drifted
+//   - either side unparseable → skipped
+//   - byte-equal → clean
+//
+// A hard replay run error is folded into `skipped` (never drift) — a tool that
+// cannot verify a row must not report it as drifted.
+func CheckRow(ctx context.Context, replayer Replayer, realityID uuid.UUID, dsn, table string, row SampledRow) (drifted bool, skipped bool) {
+	// A row with no resolved owning aggregate(s) is UNVERIFIABLE (its owning
+	// event was archived/pruned — the sampler emitted it with nil Owning rather
+	// than failing the sweep). Skip BEFORE replay: the bin requires ≥1 aggregate.
+	if len(row.Owning) == 0 {
+		return false, true
+	}
+	res, err := replayer.Replay(ctx, replayloader.ReplayRequest{
+		RealityID:       realityID,
+		DSN:             dsn,
+		Projection:      table,
+		Owning:          row.Owning,
+		BoundaryEventID: row.EventID,
+		PK:              row.PK,
+	})
+	if err != nil {
+		return false, true // hard run error → SKIP, not drift
+	}
+	if skip, _ := res.Skippable(); skip {
+		return false, true
+	}
+	if !res.Found {
+		// Replay ran (events > 0) but produced no row at the PK → the live
+		// projection holds a row the events do not produce: an orphan DRIFT.
+		return true, false
+	}
+	want, werr := comparator.Canonicalize(res.Payload)
+	got, gerr := comparator.Canonicalize(row.Payload)
+	if werr != nil || gerr != nil {
+		// Either side unparseable — cannot render a verdict → SKIP.
+		return false, true
+	}
+	return !bytes.Equal(want, got), false
 }
 
 // driftAggregateUUID is the convenience pointer for SRE (projection_drift_state.

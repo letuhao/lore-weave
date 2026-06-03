@@ -10,19 +10,29 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/loreweave/foundation/contracts/lifecycle"
-	"github.com/loreweave/foundation/services/integrity-checker/pkg/comparator"
-	"github.com/loreweave/foundation/services/integrity-checker/pkg/sampler"
+	"github.com/loreweave/foundation/services/integrity-checker/pkg/live"
+	"github.com/loreweave/foundation/services/integrity-checker/pkg/replayloader"
 	"github.com/loreweave/foundation/services/integrity-checker/pkg/state_writer"
+	"github.com/loreweave/foundation/services/integrity-checker/pkg/tablemap"
 	"github.com/loreweave/foundation/services/integrity-checker/pkg/types"
 )
 
 func frozen(t time.Time) func() time.Time { return func() time.Time { return t } }
 
+// fakeReplayer returns a per-boundary-event ReplayResult (registered by the rig).
+// An unregistered event falls to a zero-value result (Status="" → Skippable).
+type fakeReplayer struct {
+	byEvent map[uuid.UUID]replayloader.ReplayResult
+}
+
+func (f *fakeReplayer) Replay(_ context.Context, req replayloader.ReplayRequest) (replayloader.ReplayResult, error) {
+	return f.byEvent[req.BoundaryEventID], nil
+}
+
 type rig struct {
 	loop      *Loop
 	src       *InMemCursorSource
-	loader    *comparator.InMemLoader
-	fetcher   *InMemFetcher
+	replayer  *fakeReplayer
 	persister *state_writer.InMemPersister
 }
 
@@ -30,15 +40,12 @@ func newRig(t *testing.T, m lifecycle.ServiceMode, intervalDays int) *rig {
 	t.Helper()
 	clk := frozen(time.Unix(1700000000, 0).UTC())
 	src := NewInMemCursorSource()
-	loader := comparator.NewInMemLoader()
-	cmp, _ := comparator.New(comparator.Config{Loader: loader, Clock: clk})
+	rep := &fakeReplayer{byEvent: map[uuid.UUID]replayloader.ReplayResult{}}
 	per := state_writer.NewInMemPersister()
 	sw, _ := state_writer.New(state_writer.Config{Persister: per, Clock: clk})
-	f := NewInMemFetcher()
 	loop, err := New(Config{
 		CursorSource:          src,
-		Comparator:            cmp,
-		Fetcher:               f,
+		Replayer:              rep,
 		StateWriter:           sw,
 		Mode:                  StaticMode{M: m},
 		Clock:                 clk,
@@ -47,17 +54,32 @@ func newRig(t *testing.T, m lifecycle.ServiceMode, intervalDays int) *rig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &rig{loop: loop, src: src, loader: loader, fetcher: f, persister: per}
+	return &rig{loop: loop, src: src, replayer: rep, persister: per}
+}
+
+// addRow seeds one pc row whose live payload is `live`; the replay returns
+// `replay` (Found+ok). When live==replay the row is clean; differing = drift.
+func (r *rig) addRow(rid uuid.UUID, livePayload, replayPayload string) {
+	pcID := uuid.New().String()
+	ev := uuid.New()
+	r.src.AddRow(rid, "pc_projection", live.SampledRow{
+		PK:               map[string]string{"pc_id": pcID},
+		EventID:          ev,
+		AggregateVersion: 3,
+		Payload:          []byte(livePayload),
+		Owning:           []tablemap.OwningAggregate{{Type: "pc", ID: pcID}},
+	})
+	r.replayer.byEvent[ev] = replayloader.ReplayResult{
+		Found: true, EventsReplayed: 5, Status: "ok", Payload: []byte(replayPayload),
+	}
 }
 
 func TestNew_RejectsBadIntervalDays(t *testing.T) {
 	clk := frozen(time.Unix(1700000000, 0))
-	cmp, _ := comparator.New(comparator.Config{Loader: comparator.NewInMemLoader(), Clock: clk})
 	sw, _ := state_writer.New(state_writer.Config{Persister: state_writer.NewInMemPersister(), Clock: clk})
 	_, err := New(Config{
 		CursorSource:          NewInMemCursorSource(),
-		Comparator:            cmp,
-		Fetcher:               NewInMemFetcher(),
+		Replayer:              &fakeReplayer{byEvent: map[uuid.UUID]replayloader.ReplayResult{}},
 		StateWriter:           sw,
 		Mode:                  StaticMode{M: lifecycle.ModeFull},
 		Clock:                 clk,
@@ -71,21 +93,11 @@ func TestNew_RejectsBadIntervalDays(t *testing.T) {
 func TestRun_WalksAllRowsViaCursorBatching(t *testing.T) {
 	r := newRig(t, lifecycle.ModeFull, 30)
 	rid := uuid.New()
-	// 1500 rows, batch=500 → 3 batches.
+	// 1500 rows, batch=500 → 3 batches; all clean.
 	for i := 0; i < 1500; i++ {
-		aggUUID := uuid.New()
-		aggID := aggUUID.String()
-		ver := uint64(i + 1)
-		payload := []byte(`{"v":42}`)
-		r.src.AddRow(rid, "pc_projection", sampler.ProjectionRow{
-			AggregateID: aggID, AggregateType: "pc", AggregateVersion: ver,
-			EventID: uuid.New(), PayloadJSON: payload,
-		})
-		r.fetcher.AddRow(rid, "pc_projection", aggID, ver, payload)
-		r.loader.AddState(rid, "pc", aggID, ver, payload)
+		r.addRow(rid, `{"v":42}`, `{"v":42}`)
 	}
-
-	stats, err := r.loop.Run(context.Background(), rid, []types.TableConfig{
+	stats, err := r.loop.Run(context.Background(), rid, "postgres://shard", []types.TableConfig{
 		{TableName: "pc_projection", FullScanBatchSize: 500},
 	})
 	if err != nil {
@@ -102,27 +114,16 @@ func TestRun_WalksAllRowsViaCursorBatching(t *testing.T) {
 func TestRun_DetectsDriftAcrossFullScan(t *testing.T) {
 	r := newRig(t, lifecycle.ModeFull, 30)
 	rid := uuid.New()
-	// 100 aggregates, 10 drifted.
 	driftIdx := map[int]bool{3: true, 17: true, 41: true, 50: true, 58: true,
 		60: true, 72: true, 88: true, 91: true, 99: true}
 	for i := 0; i < 100; i++ {
-		aggUUID := uuid.New()
-		aggID := aggUUID.String()
-		ver := uint64(i + 1)
-		replayPayload := []byte(`{"v":42}`)
-		projectionPayload := replayPayload
 		if driftIdx[i] {
-			projectionPayload = []byte(`{"v":99}`)
+			r.addRow(rid, `{"v":99}`, `{"v":42}`) // live != replay → drift
+		} else {
+			r.addRow(rid, `{"v":42}`, `{"v":42}`)
 		}
-		r.src.AddRow(rid, "pc_projection", sampler.ProjectionRow{
-			AggregateID: aggID, AggregateType: "pc", AggregateVersion: ver,
-			EventID: uuid.New(), PayloadJSON: projectionPayload,
-		})
-		r.fetcher.AddRow(rid, "pc_projection", aggID, ver, projectionPayload)
-		r.loader.AddState(rid, "pc", aggID, ver, replayPayload)
 	}
-
-	stats, err := r.loop.Run(context.Background(), rid, []types.TableConfig{
+	stats, err := r.loop.Run(context.Background(), rid, "postgres://shard", []types.TableConfig{
 		{TableName: "pc_projection", FullScanBatchSize: 25},
 	})
 	if err != nil {
@@ -138,7 +139,7 @@ func TestRun_DetectsDriftAcrossFullScan(t *testing.T) {
 
 func TestRun_DegradedMode_Skips(t *testing.T) {
 	r := newRig(t, lifecycle.ModeEssentials, 30)
-	stats, err := r.loop.Run(context.Background(), uuid.New(), []types.TableConfig{
+	stats, err := r.loop.Run(context.Background(), uuid.New(), "postgres://shard", []types.TableConfig{
 		{TableName: "pc_projection", FullScanBatchSize: 500},
 	})
 	if err != nil {
@@ -155,12 +156,14 @@ func TestRun_DegradedMode_Skips(t *testing.T) {
 func TestRun_MonthlyDelayWritten(t *testing.T) {
 	r := newRig(t, lifecycle.ModeFull, 30)
 	rid := uuid.New()
-	r.src.AddRow(rid, "pc_projection", sampler.ProjectionRow{
-		AggregateID: uuid.New().String(), AggregateType: "pc", AggregateVersion: 1,
-		EventID: uuid.New(),
+	pcID := uuid.New().String()
+	// Unregistered replay → zero-value result (Status="" → Skippable). Still
+	// produces a persisted report.
+	r.src.AddRow(rid, "pc_projection", live.SampledRow{
+		PK: map[string]string{"pc_id": pcID}, EventID: uuid.New(),
+		Owning: []tablemap.OwningAggregate{{Type: "pc", ID: pcID}},
 	})
-	// Replay state missing → comparator SKIPS. Still produces a persisted report.
-	_, _ = r.loop.Run(context.Background(), rid, []types.TableConfig{
+	_, _ = r.loop.Run(context.Background(), rid, "postgres://shard", []types.TableConfig{
 		{TableName: "pc_projection", FullScanBatchSize: 500},
 	})
 	if len(r.persister.Calls) != 1 {
@@ -174,21 +177,18 @@ func TestRun_MonthlyDelayWritten(t *testing.T) {
 }
 
 func TestRun_AbortsOnStuckCursor(t *testing.T) {
-	// Buggy cursor source that always returns the same cursor.
 	src := &stuckCursorSource{}
 	clk := frozen(time.Unix(1700000000, 0))
-	cmp, _ := comparator.New(comparator.Config{Loader: comparator.NewInMemLoader(), Clock: clk})
 	sw, _ := state_writer.New(state_writer.Config{Persister: state_writer.NewInMemPersister(), Clock: clk})
 	loop, _ := New(Config{
 		CursorSource:          src,
-		Comparator:            cmp,
-		Fetcher:               NewInMemFetcher(),
+		Replayer:              &fakeReplayer{byEvent: map[uuid.UUID]replayloader.ReplayResult{}},
 		StateWriter:           sw,
 		Mode:                  StaticMode{M: lifecycle.ModeFull},
 		Clock:                 clk,
 		FullCheckIntervalDays: 30,
 	})
-	_, err := loop.Run(context.Background(), uuid.New(), []types.TableConfig{
+	_, err := loop.Run(context.Background(), uuid.New(), "postgres://shard", []types.TableConfig{
 		{TableName: "pc_projection", FullScanBatchSize: 100},
 	})
 	if err == nil {
@@ -199,17 +199,12 @@ func TestRun_AbortsOnStuckCursor(t *testing.T) {
 func TestRun_RespectsContextCancellation(t *testing.T) {
 	r := newRig(t, lifecycle.ModeFull, 30)
 	rid := uuid.New()
-	// 5K rows, cancel context BEFORE Run.
 	for i := 0; i < 5000; i++ {
-		aggUUID := uuid.New()
-		r.src.AddRow(rid, "pc_projection", sampler.ProjectionRow{
-			AggregateID: aggUUID.String(), AggregateType: "pc", AggregateVersion: uint64(i + 1),
-			EventID: uuid.New(),
-		})
+		r.addRow(rid, `{"v":1}`, `{"v":1}`)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := r.loop.Run(ctx, rid, []types.TableConfig{
+	_, err := r.loop.Run(ctx, rid, "postgres://shard", []types.TableConfig{
 		{TableName: "pc_projection", FullScanBatchSize: 500},
 	})
 	if err == nil {
@@ -223,14 +218,14 @@ func TestRun_RespectsContextCancellation(t *testing.T) {
 // stuckCursorSource is a buggy cursor source for the stuck-cursor guard test.
 type stuckCursorSource struct{ calls int }
 
-func (s *stuckCursorSource) NextBatch(_ context.Context, _ uuid.UUID, _, cursor string, batchSize int) ([]sampler.ProjectionRow, string, error) {
+func (s *stuckCursorSource) NextBatch(_ context.Context, _ uuid.UUID, _, _ string, _ int) ([]live.SampledRow, string, error) {
 	s.calls++
 	if s.calls > 3 {
 		return nil, "", fmt.Errorf("test ran away")
 	}
-	rows := []sampler.ProjectionRow{{
-		AggregateID: "x", AggregateType: "pc", AggregateVersion: 1,
-		EventID: uuid.New(),
+	rows := []live.SampledRow{{
+		PK: map[string]string{"pc_id": uuid.New().String()}, EventID: uuid.New(),
+		Owning: []tablemap.OwningAggregate{{Type: "pc", ID: "x"}},
 	}}
 	// Always return "stuck-cursor" — never advances.
 	return rows, "stuck-cursor", nil

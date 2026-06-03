@@ -70,3 +70,67 @@ func TestNewRejectsNilPool(t *testing.T) {
 		t.Fatal("New(nil) must error")
 	}
 }
+
+func TestScanSQL_NoCursor_OrdersByPKNoWhere(t *testing.T) {
+	sql := scanSQL("pc_projection", []string{"pc_id"}, false)
+	if strings.Contains(sql, "WHERE") {
+		t.Errorf("first batch (no cursor) must have no WHERE: %s", sql)
+	}
+	if !strings.Contains(sql, "ORDER BY t.pc_id::text") {
+		t.Errorf("must order by pk ::text: %s", sql)
+	}
+	if !strings.HasSuffix(sql, "LIMIT $1") {
+		t.Errorf("batch LIMIT $1 tail missing: %s", sql)
+	}
+	// same meta-strip + payload + boundary shape as the sampler.
+	for _, k := range metaKeys {
+		if !strings.Contains(sql, " - '"+k+"'") {
+			t.Errorf("missing meta strip %q in: %s", k, sql)
+		}
+	}
+}
+
+func TestScanSQL_Cursor_SingleVsCompositePK(t *testing.T) {
+	// Single PK → scalar comparison, cursor bind at $2.
+	one := scanSQL("pc_projection", []string{"pc_id"}, true)
+	if !strings.Contains(one, "WHERE t.pc_id::text > $2") {
+		t.Errorf("single-pk cursor predicate: %s", one)
+	}
+	// Composite PK → row-value comparison, binds $2,$3 in PK order.
+	two := scanSQL("pc_inventory_projection", []string{"pc_id", "item_code"}, true)
+	if !strings.Contains(two, "WHERE (t.pc_id::text, t.item_code::text) > ($2, $3)") {
+		t.Errorf("composite-pk row-value cursor predicate: %s", two)
+	}
+	if !strings.Contains(two, "ORDER BY t.pc_id::text, t.item_code::text") {
+		t.Errorf("composite order-by must match the cursor key columns/order: %s", two)
+	}
+}
+
+func TestCursorCodec_RoundTripsAndValidatesArity(t *testing.T) {
+	// Round-trips arbitrary TEXT PK values (commas, quotes, unicode).
+	in := []string{"a,b", `c"d`, "日本語"}
+	enc, err := encodeCursor(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := decodeCursor(enc, len(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != len(in) {
+		t.Fatalf("round-trip arity: got %d want %d", len(out), len(in))
+	}
+	for i := range in {
+		if out[i] != in[i] {
+			t.Errorf("round-trip[%d]: got %q want %q", i, out[i], in[i])
+		}
+	}
+	// Arity mismatch (cursor from a 2-col table fed to a 1-col PK) must error.
+	if _, err := decodeCursor(enc, 1); err == nil {
+		t.Error("expected arity-mismatch error")
+	}
+	// Garbage cursor must error.
+	if _, err := decodeCursor("not-json", 1); err == nil {
+		t.Error("expected decode error on garbage cursor")
+	}
+}

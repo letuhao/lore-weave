@@ -1,130 +1,74 @@
 package comparator
 
 import (
-	"context"
-	"errors"
+	"bytes"
 	"testing"
-	"time"
-
-	"github.com/google/uuid"
-
-	"github.com/loreweave/foundation/services/integrity-checker/pkg/types"
 )
 
-func frozenClock(t time.Time) func() time.Time { return func() time.Time { return t } }
-
-func TestNew_RejectsNilDeps(t *testing.T) {
-	if _, err := New(Config{Loader: nil, Clock: time.Now}); err == nil {
-		t.Error("expected error for nil Loader")
+// canon is a test helper: canonicalize or fail.
+func canon(t *testing.T, in string) []byte {
+	t.Helper()
+	out, err := Canonicalize([]byte(in))
+	if err != nil {
+		t.Fatalf("Canonicalize(%q): %v", in, err)
 	}
-	if _, err := New(Config{Loader: NewInMemLoader(), Clock: nil}); err == nil {
-		t.Error("expected error for nil Clock")
+	return out
+}
+
+// equal reports whether two JSON docs canonicalize byte-equal (the drift test).
+func equal(t *testing.T, a, b string) bool {
+	t.Helper()
+	return bytes.Equal(canon(t, a), canon(t, b))
+}
+
+func TestCanonicalize_KeyOrderIrrelevant(t *testing.T) {
+	if !equal(t, `{"b":2,"a":1}`, `{"a":1,"b":2}`) {
+		t.Error("key order must not affect canonical form")
 	}
 }
 
-func TestCompareOne_MatchesProjection_NoDrift(t *testing.T) {
-	loader := NewInMemLoader()
-	rid := uuid.New()
-	loader.AddState(rid, "pc", "pc-1", 5, []byte(`{"b":2,"a":1}`))
-	c, _ := New(Config{Loader: loader, Clock: frozenClock(time.Unix(1700000000, 0))})
-
-	ref := types.AggregateRef{RealityID: rid, AggregateType: "pc", AggregateID: "pc-1", AggregateVersion: 5}
-	// Projection serializes keys in different order — comparator MUST
-	// canonicalize and consider them equal.
-	res := c.CompareOne(context.Background(), ref, []byte(`{"a":1,"b":2}`))
-	if res.Drifted {
-		t.Errorf("expected no drift after canonicalization; reason=%s", res.Reason)
-	}
-	if res.Skipped {
-		t.Errorf("unexpected skip: %s", res.SkipReason)
+func TestCanonicalize_BytesDiffer_NotEqual(t *testing.T) {
+	if equal(t, `{"value":42}`, `{"value":99}`) {
+		t.Error("different values must NOT canonicalize equal")
 	}
 }
 
-func TestCompareOne_BytesDiffer_Drift(t *testing.T) {
-	loader := NewInMemLoader()
-	rid := uuid.New()
-	loader.AddState(rid, "pc", "pc-1", 5, []byte(`{"value":42}`))
-	c, _ := New(Config{Loader: loader, Clock: frozenClock(time.Unix(1700000000, 0))})
-
-	ref := types.AggregateRef{RealityID: rid, AggregateType: "pc", AggregateID: "pc-1", AggregateVersion: 5}
-	res := c.CompareOne(context.Background(), ref, []byte(`{"value":99}`))
-	if !res.Drifted {
-		t.Error("expected drift")
-	}
-	if res.Reason == "" {
-		t.Error("drift reason should be populated")
+func TestCanonicalize_NestedStructures(t *testing.T) {
+	a := `{"inv":[{"id":2,"name":"b"},{"id":1,"name":"a"}],"meta":{"z":1,"a":2}}`
+	b := `{"meta":{"a":2,"z":1},"inv":[{"name":"b","id":2},{"name":"a","id":1}]}`
+	if !equal(t, a, b) {
+		t.Error("nested object key order must be canonicalized recursively")
 	}
 }
 
-func TestCompareOne_LoaderError_Skipped(t *testing.T) {
-	loader := NewInMemLoader()
-	loader.SetErr(errors.New("event store down"))
-	c, _ := New(Config{Loader: loader, Clock: frozenClock(time.Unix(1700000000, 0))})
-
-	rid := uuid.New()
-	ref := types.AggregateRef{RealityID: rid, AggregateType: "pc", AggregateID: "pc-1", AggregateVersion: 5}
-	res := c.CompareOne(context.Background(), ref, []byte(`{"value":42}`))
-	if !res.Skipped {
-		t.Error("expected SKIPPED on loader error")
-	}
-	if res.Drifted {
-		t.Error("loader error should NOT count as drift")
+func TestCanonicalize_ArrayOrderIsSignificant(t *testing.T) {
+	// Array element ORDER is meaningful (unlike object keys) — reordering is drift.
+	if equal(t, `[1,2,3]`, `[3,2,1]`) {
+		t.Error("array order must be significant")
 	}
 }
 
-func TestCompareOne_CanonicalizesNestedStructures(t *testing.T) {
-	loader := NewInMemLoader()
-	rid := uuid.New()
-	loader.AddState(rid, "pc", "pc-1", 5, []byte(`{"inv":[{"id":2,"name":"b"},{"id":1,"name":"a"}],"meta":{"z":1,"a":2}}`))
-	c, _ := New(Config{Loader: loader, Clock: frozenClock(time.Unix(1700000000, 0))})
-
-	ref := types.AggregateRef{RealityID: rid, AggregateType: "pc", AggregateID: "pc-1", AggregateVersion: 5}
-	// Same structure, different key/value order in nested objects.
-	res := c.CompareOne(context.Background(), ref,
-		[]byte(`{"meta":{"a":2,"z":1},"inv":[{"name":"b","id":2},{"name":"a","id":1}]}`))
-	if res.Drifted {
-		t.Errorf("nested canonicalization failed; reason=%s", res.Reason)
+func TestCanonicalize_DistinguishesNumericTypes(t *testing.T) {
+	// json.Number preserves int-vs-float — 1 and 1.0 are distinct (losing the
+	// integer type is itself projection drift).
+	if equal(t, `{"v":1}`, `{"v":1.0}`) {
+		t.Error("1 and 1.0 must NOT canonicalize equal (json.Number preserves the distinction)")
 	}
 }
 
-func TestCompareOne_DistinguishesNumericTypes(t *testing.T) {
-	// json.Number preserves int-vs-float — 1 and 1.0 are distinct.
-	loader := NewInMemLoader()
-	rid := uuid.New()
-	loader.AddState(rid, "pc", "pc-1", 5, []byte(`{"v":1}`))
-	c, _ := New(Config{Loader: loader, Clock: frozenClock(time.Unix(1700000000, 0))})
-
-	ref := types.AggregateRef{RealityID: rid, AggregateType: "pc", AggregateID: "pc-1", AggregateVersion: 5}
-	// Projection wrote 1.0 — this IS drift (the projector lost the integer type).
-	res := c.CompareOne(context.Background(), ref, []byte(`{"v":1.0}`))
-	if !res.Drifted {
-		t.Error("expected drift between 1 and 1.0 (json.Number preserves distinction)")
+func TestCanonicalize_EmptyIsNull(t *testing.T) {
+	out := canon(t, "")
+	if string(out) != "null" {
+		t.Errorf("empty input should canonicalize to null, got %q", out)
+	}
+	// Two empties compare equal.
+	if !equal(t, "", "") {
+		t.Error("empty == empty")
 	}
 }
 
-func TestCompareOne_EmptyPayloads_NoDrift(t *testing.T) {
-	loader := NewInMemLoader()
-	rid := uuid.New()
-	loader.AddState(rid, "pc", "pc-1", 5, []byte(``))
-	c, _ := New(Config{Loader: loader, Clock: frozenClock(time.Unix(1700000000, 0))})
-
-	ref := types.AggregateRef{RealityID: rid, AggregateType: "pc", AggregateID: "pc-1", AggregateVersion: 5}
-	res := c.CompareOne(context.Background(), ref, []byte(``))
-	if res.Drifted {
-		t.Errorf("empty == empty should not drift; reason=%s", res.Reason)
-	}
-}
-
-func TestCompareOne_RecordsCheckedAt(t *testing.T) {
-	want := time.Unix(1700000000, 0).UTC()
-	loader := NewInMemLoader()
-	rid := uuid.New()
-	loader.AddState(rid, "pc", "pc-1", 5, []byte(`{"a":1}`))
-	c, _ := New(Config{Loader: loader, Clock: frozenClock(want)})
-
-	ref := types.AggregateRef{RealityID: rid, AggregateType: "pc", AggregateID: "pc-1", AggregateVersion: 5}
-	res := c.CompareOne(context.Background(), ref, []byte(`{"a":1}`))
-	if !res.CheckedAt.Equal(want) {
-		t.Errorf("CheckedAt drift: got %v want %v", res.CheckedAt, want)
+func TestCanonicalize_RejectsInvalidJSON(t *testing.T) {
+	if _, err := Canonicalize([]byte(`{not json`)); err == nil {
+		t.Error("expected error on invalid JSON")
 	}
 }

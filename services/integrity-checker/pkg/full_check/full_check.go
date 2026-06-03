@@ -1,76 +1,52 @@
-// Package full_check is the L3.F monthly full-scan orchestrator. Same
-// binary as L3.E daily mode (`services/integrity-checker`); selected via
-// config `mode: monthly`. Different from daily_loop in two ways:
+// Package full_check is the L3.F monthly full-scan orchestrator. Same binary as
+// L3.E daily mode (`services/integrity-checker`); selected via config
+// `mode: monthly`. Differs from daily in two ways: it does NO sampling (walks
+// ALL rows of each projection table), and it cursor-batches the walk in chunks
+// of cfg.FullScanBatchSize (default 500) so no single SELECT holds a long lock
+// on the table — between batches the loop yields, letting other queries
+// interleave.
 //
-//  1. NO sampling. Walks ALL rows of each projection table.
-//  2. Cursor batching. Reads rows in batches of cfg.FullScanBatchSize
-//     (default 500) so no single SELECT holds a long lock on the
-//     projection table. Between batches the loop yields, allowing other
-//     queries to interleave.
+// It is ROW-CENTRIC, same as the daily [live.Checker]: the per-row verdict
+// (replay via the replay-aggregate bin → byte-compare `to_jsonb - meta`) is the
+// shared [live.CheckRow]; full_check only adds the full-scan cursor walk over the
+// daily sampler's random LIMIT. (The pre-row-centric (aggregate_id, version)
+// sampler/Comparator model it used to share with the deleted daily_loop is gone.)
 //
 // L1.J degraded-mode gating: at ModeEssentials+ the loop PAUSES (same as
-// daily_loop — integrity checking is background work).
+// [live.Checker] — integrity checking is background work).
 //
-// CRITICAL: full check is heavier than daily by ~N/SampleSize. With
-// N=10K aggregates per reality and SampleSize=20, monthly is ~500× the
-// daily load. Hence:
+// CRITICAL: full check is heavier than daily by ~N/SampleSize. With N=10K rows
+// per reality and SampleSize=20, monthly is ~500× the daily load. Hence:
 //   - Different cron cadence (30 days vs 1 day)
-//   - Different alert SLO (page only on >5 drifts in a monthly run; daily
-//     drift = WARN only) — wired in infra/prometheus/alerts/projection.yaml
+//   - Different alert SLO (page only on >5 drifts in a monthly run; daily drift =
+//     WARN only) — wired in infra/prometheus/alerts/projection.yaml
 //   - Configurable scan window (low-traffic only) — wired in
 //     infra/k8s/integrity-checker-cronjob.yaml
-//
-// Reuses the SAME comparator + state_writer as daily_loop. The cursor
-// abstraction is the only new piece.
 package full_check
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/loreweave/foundation/contracts/lifecycle"
-	"github.com/loreweave/foundation/services/integrity-checker/pkg/comparator"
-	"github.com/loreweave/foundation/services/integrity-checker/pkg/sampler"
+	"github.com/loreweave/foundation/services/integrity-checker/pkg/live"
 	"github.com/loreweave/foundation/services/integrity-checker/pkg/state_writer"
 	"github.com/loreweave/foundation/services/integrity-checker/pkg/types"
 )
 
-// CursorSource is the batched row reader for monthly mode. Returns rows
-// in batches of `batchSize`, advancing an opaque cursor between calls.
-// `cursor == ""` on the first call.
-//
-// Production wires:
-//
-//	SELECT aggregate_id, aggregate_type, event_id, aggregate_version,
-//	       jsonb_strip_nulls(jsonb_build_object(<non-meta cols>)) AS payload
-//	FROM <table>
-//	WHERE aggregate_id > $cursor
-//	ORDER BY aggregate_id
-//	LIMIT $batchSize;
-//
-// `aggregate_id` as the cursor key guarantees stable pagination — each
-// row appears AT MOST ONCE across a full sweep even with concurrent
-// INSERTs (new rows with a later id won't disturb the cursor).
-//
-// Returns:
-//   - rows: the batch (≤ batchSize)
-//   - nextCursor: opaque continuation token; "" means end-of-table
-//   - err: DB error
+// CursorSource is the batched row reader for monthly mode. Returns row-centric
+// [live.SampledRow]s in batches of `batchSize`, advancing an OPAQUE cursor
+// between calls (`cursor == ""` on the first call; `nextCursor == ""` means
+// end-of-table). The production pgx implementation (pgsource.ScanRows) orders by
+// the table's PK columns and encodes the last row's PK as the cursor, so each row
+// appears AT MOST ONCE across a sweep even under concurrent INSERTs.
 type CursorSource interface {
-	NextBatch(ctx context.Context, realityID uuid.UUID, table, cursor string, batchSize int) (rows []sampler.ProjectionRow, nextCursor string, err error)
-}
-
-// ProjectionFetcher fetches the projection-row payload for one aggregate
-// (same signature as daily_loop.ProjectionFetcher). Re-declared here
-// to keep the package import graph 1-deep instead of cross-importing
-// daily_loop (which would create a cycle if daily_loop later wanted to
-// share helpers).
-type ProjectionFetcher interface {
-	FetchPayload(ctx context.Context, realityID uuid.UUID, table, aggregateID string, version uint64) ([]byte, error)
+	NextBatch(ctx context.Context, realityID uuid.UUID, table, cursor string, batchSize int) (rows []live.SampledRow, nextCursor string, err error)
 }
 
 // ModeReader exposes ServiceMode for L1.J degraded-mode gating.
@@ -80,55 +56,47 @@ type ModeReader interface {
 
 // Config is the constructor input.
 type Config struct {
-	CursorSource          CursorSource
-	Comparator            *comparator.Comparator
-	Fetcher               ProjectionFetcher
-	StateWriter           *state_writer.Writer
-	Mode                  ModeReader
-	Clock                 func() time.Time
-	// FullCheckIntervalDays from contracts/integrity/config.yaml. Used to
-	// set `expected_next_sweep_at = NOW() + intervalDays * 24h`.
+	CursorSource CursorSource
+	// Replayer re-derives each row via the replay-aggregate bin
+	// (*replayloader.Loader satisfies it). Shared with the daily checker.
+	Replayer    live.Replayer
+	StateWriter *state_writer.Writer
+	Mode        ModeReader
+	Clock       func() time.Time
+	// FullCheckIntervalDays from the config. Sets the persisted
+	// `expected_next_sweep_at = NOW() + intervalDays * 24h`.
 	FullCheckIntervalDays int
 }
 
 // Loop is the monthly orchestrator.
 type Loop struct {
-	src         CursorSource
-	cmp         *comparator.Comparator
-	fetcher     ProjectionFetcher
-	stateWriter *state_writer.Writer
-	mode        ModeReader
-	clock       func() time.Time
+	src          CursorSource
+	replayer     live.Replayer
+	stateWriter  *state_writer.Writer
+	mode         ModeReader
+	clock        func() time.Time
 	intervalDays int
 }
 
 // New constructs a Loop.
 func New(c Config) (*Loop, error) {
-	if c.CursorSource == nil {
+	switch {
+	case c.CursorSource == nil:
 		return nil, errors.New("full_check: CursorSource nil")
-	}
-	if c.Comparator == nil {
-		return nil, errors.New("full_check: Comparator nil")
-	}
-	if c.Fetcher == nil {
-		return nil, errors.New("full_check: Fetcher nil")
-	}
-	if c.StateWriter == nil {
+	case c.Replayer == nil:
+		return nil, errors.New("full_check: Replayer nil")
+	case c.StateWriter == nil:
 		return nil, errors.New("full_check: StateWriter nil")
-	}
-	if c.Mode == nil {
+	case c.Mode == nil:
 		return nil, errors.New("full_check: Mode nil")
-	}
-	if c.Clock == nil {
+	case c.Clock == nil:
 		return nil, errors.New("full_check: Clock nil")
-	}
-	if c.FullCheckIntervalDays <= 0 {
+	case c.FullCheckIntervalDays <= 0:
 		return nil, errors.New("full_check: FullCheckIntervalDays must be > 0")
 	}
 	return &Loop{
 		src:          c.CursorSource,
-		cmp:          c.Comparator,
-		fetcher:      c.Fetcher,
+		replayer:     c.Replayer,
 		stateWriter:  c.StateWriter,
 		mode:         c.Mode,
 		clock:        c.Clock,
@@ -144,9 +112,10 @@ type IterationStats struct {
 	Reports    []types.DriftReport
 }
 
-// Run executes ONE monthly-mode iteration. Walks every row of every
-// configured table; aggregates drift; persists per-table report.
-func (l *Loop) Run(ctx context.Context, realityID uuid.UUID, tables []types.TableConfig) (IterationStats, error) {
+// Run executes ONE monthly-mode iteration: walks every row of every configured
+// table; aggregates drift; persists a per-table report. `dsn` is the reality's
+// shard DSN, threaded to the replay-aggregate bin.
+func (l *Loop) Run(ctx context.Context, realityID uuid.UUID, dsn string, tables []types.TableConfig) (IterationStats, error) {
 	stats := IterationStats{RealityID: realityID}
 
 	if l.mode.Mode() >= lifecycle.ModeEssentials {
@@ -156,7 +125,7 @@ func (l *Loop) Run(ctx context.Context, realityID uuid.UUID, tables []types.Tabl
 	}
 
 	for _, tbl := range tables {
-		report, err := l.runTable(ctx, realityID, tbl)
+		report, err := l.runTable(ctx, realityID, dsn, tbl)
 		if err != nil {
 			return stats, fmt.Errorf("full_check: table=%s reality=%s: %w", tbl.TableName, realityID, err)
 		}
@@ -165,8 +134,9 @@ func (l *Loop) Run(ctx context.Context, realityID uuid.UUID, tables []types.Tabl
 	return stats, nil
 }
 
-// runTable walks one table via cursor batching.
-func (l *Loop) runTable(ctx context.Context, realityID uuid.UUID, tbl types.TableConfig) (types.DriftReport, error) {
+// runTable walks one table via cursor batching, rendering the row-centric verdict
+// for each row via [live.CheckRow].
+func (l *Loop) runTable(ctx context.Context, realityID uuid.UUID, dsn string, tbl types.TableConfig) (types.DriftReport, error) {
 	start := l.clock()
 	report := types.DriftReport{
 		RealityID: realityID,
@@ -178,11 +148,11 @@ func (l *Loop) runTable(ctx context.Context, realityID uuid.UUID, tbl types.Tabl
 	cursor := ""
 	batchSize := tbl.FullScanBatchSize
 	if batchSize <= 0 {
-		batchSize = 500 // defensive default; config.Validate enforces > 0 but live safety
+		batchSize = 500 // defensive default; config.Validate enforces > 0
 	}
-	// Cap iterations so a buggy cursor source (returns same cursor)
-	// can't infinite-loop us. 10M iters × 500 batchSize = 5B rows
-	// upper bound — well above any realistic per-reality table size.
+	// Cap iterations so a buggy cursor source (returns the same cursor) can't
+	// infinite-loop us. 10M iters × 500 batchSize = 5B rows upper bound — well
+	// above any realistic per-reality table size.
 	const maxIters = 10_000_000
 	iter := 0
 	for {
@@ -199,38 +169,22 @@ func (l *Loop) runTable(ctx context.Context, realityID uuid.UUID, tbl types.Tabl
 			return report, fmt.Errorf("NextBatch cursor=%q: %w", cursor, err)
 		}
 		if len(rows) == 0 && nextCursor == "" {
-			// End-of-table.
-			break
+			break // end-of-table
 		}
-		// Guard against cursor stuckness (would have caused infinite loop in
-		// production once a bug landed) — same cursor twice = abort.
+		// Guard against cursor stuckness (same cursor twice = abort).
 		if nextCursor != "" && nextCursor == cursor {
 			return report, fmt.Errorf("full_check: cursor did not advance (%q)", cursor)
 		}
 		for _, row := range rows {
 			report.SampleSize++
-			payload, err := l.fetcher.FetchPayload(ctx, realityID, tbl.TableName, row.AggregateID, row.AggregateVersion)
-			if err != nil {
+			drifted, skipped := live.CheckRow(ctx, l.replayer, realityID, dsn, tbl.TableName, row)
+			if skipped {
 				report.Skipped++
 				continue
 			}
-			ref := types.AggregateRef{
-				RealityID:        realityID,
-				AggregateType:    row.AggregateType,
-				AggregateID:      row.AggregateID,
-				EventID:          row.EventID,
-				AggregateVersion: row.AggregateVersion,
-			}
-			res := l.cmp.CompareOne(ctx, ref, payload)
-			if res.Skipped {
-				report.Skipped++
-				continue
-			}
-			if res.Drifted {
+			if drifted {
 				report.DriftCount++
-				if aggUUID, err := uuid.Parse(row.AggregateID); err == nil {
-					report.LastDriftedAggregateID = aggUUID
-				}
+				report.LastDriftedAggregateID = driftAggregateUUID(row)
 				report.LastDriftedEventID = row.EventID
 			}
 		}
@@ -250,49 +204,63 @@ func (l *Loop) runTable(ctx context.Context, realityID uuid.UUID, tbl types.Tabl
 	return report, nil
 }
 
-// InMemCursorSource is the test fake.
+// driftAggregateUUID mirrors live's SRE convenience pointer: prefer the first
+// owning aggregate's id when it is a UUID; fall back to the row's event_id.
+func driftAggregateUUID(row live.SampledRow) uuid.UUID {
+	if len(row.Owning) > 0 {
+		if id, err := uuid.Parse(row.Owning[0].ID); err == nil {
+			return id
+		}
+	}
+	return row.EventID
+}
+
+// ─── Test fakes ─────────────────────────────────────────────────────────────
+
+// InMemCursorSource is the test fake. Rows are returned in insertion order with
+// an index-based opaque cursor (the real PK-encoded cursor is pgsource's
+// concern, tested there); this exercises the LOOP (batching, stuck-guard,
+// end-of-table) independent of cursor encoding.
 type InMemCursorSource struct {
-	rows map[string][]sampler.ProjectionRow
+	rows map[string][]live.SampledRow
 }
 
 // NewInMemCursorSource returns an empty fake.
 func NewInMemCursorSource() *InMemCursorSource {
-	return &InMemCursorSource{rows: make(map[string][]sampler.ProjectionRow)}
+	return &InMemCursorSource{rows: make(map[string][]live.SampledRow)}
 }
 
 // AddRow appends a row for (realityID, table).
-func (f *InMemCursorSource) AddRow(realityID uuid.UUID, table string, row sampler.ProjectionRow) {
+func (f *InMemCursorSource) AddRow(realityID uuid.UUID, table string, row live.SampledRow) {
 	key := realityID.String() + "|" + table
 	f.rows[key] = append(f.rows[key], row)
 }
 
-// NextBatch returns up to batchSize rows starting after `cursor`. Cursor
-// is the aggregate_id of the LAST row returned in the previous batch;
-// empty cursor on first call.
-func (f *InMemCursorSource) NextBatch(_ context.Context, realityID uuid.UUID, table, cursor string, batchSize int) ([]sampler.ProjectionRow, string, error) {
+// NextBatch returns up to batchSize rows starting after `cursor` (the index of
+// the last row returned, as a decimal string; empty on the first call).
+func (f *InMemCursorSource) NextBatch(_ context.Context, realityID uuid.UUID, table, cursor string, batchSize int) ([]live.SampledRow, string, error) {
 	key := realityID.String() + "|" + table
 	all := f.rows[key]
-	startIdx := 0
+	start := 0
 	if cursor != "" {
-		for i, r := range all {
-			if r.AggregateID == cursor {
-				startIdx = i + 1
-				break
-			}
+		n, err := strconv.Atoi(cursor)
+		if err != nil {
+			return nil, "", fmt.Errorf("InMemCursorSource: bad cursor %q: %w", cursor, err)
 		}
+		start = n
 	}
-	if startIdx >= len(all) {
+	if start >= len(all) {
 		return nil, "", nil
 	}
-	end := startIdx + batchSize
+	end := start + batchSize
 	if end > len(all) {
 		end = len(all)
 	}
-	batch := make([]sampler.ProjectionRow, end-startIdx)
-	copy(batch, all[startIdx:end])
+	batch := make([]live.SampledRow, end-start)
+	copy(batch, all[start:end])
 	nextCursor := ""
 	if end < len(all) {
-		nextCursor = all[end-1].AggregateID
+		nextCursor = strconv.Itoa(end)
 	}
 	return batch, nextCursor, nil
 }
@@ -302,29 +270,3 @@ type StaticMode struct{ M lifecycle.ServiceMode }
 
 // Mode returns the static value.
 func (s StaticMode) Mode() lifecycle.ServiceMode { return s.M }
-
-// InMemFetcher is the test fake.
-type InMemFetcher struct {
-	rows map[string][]byte
-}
-
-// NewInMemFetcher returns an empty fake.
-func NewInMemFetcher() *InMemFetcher {
-	return &InMemFetcher{rows: make(map[string][]byte)}
-}
-
-// AddRow registers a payload for one aggregate.
-func (f *InMemFetcher) AddRow(realityID uuid.UUID, table, aggID string, version uint64, payload []byte) {
-	key := fmt.Sprintf("%s|%s|%s|%d", realityID, table, aggID, version)
-	f.rows[key] = payload
-}
-
-// FetchPayload returns the payload or error.
-func (f *InMemFetcher) FetchPayload(_ context.Context, realityID uuid.UUID, table, aggID string, version uint64) ([]byte, error) {
-	key := fmt.Sprintf("%s|%s|%s|%d", realityID, table, aggID, version)
-	p, ok := f.rows[key]
-	if !ok {
-		return nil, fmt.Errorf("InMemFetcher: no row for %s", key)
-	}
-	return p, nil
-}

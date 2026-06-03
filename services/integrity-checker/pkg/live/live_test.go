@@ -3,6 +3,7 @@ package live
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -284,5 +285,37 @@ func TestDriftAggregateUUID_FallsBackToEventForNonUUIDOwner(t *testing.T) {
 	row2 := SampledRow{EventID: uid(0xf6), Owning: []tablemap.OwningAggregate{{Type: "pc", ID: owner.String()}}}
 	if driftAggregateUUID(row2) != owner {
 		t.Error("uuid owner must be used directly")
+	}
+}
+
+// ── ErrOwnerPruned skip path (MED-1: monthly full-scan over archived rows) ───
+
+func TestResolveOwning_PrunedOwnerReturnsBareSentinel(t *testing.T) {
+	lookup := func(_ context.Context, _ uuid.UUID) (string, string, error) {
+		return "", "", fmt.Errorf("pgsource: no event for event_id x: %w", ErrOwnerPruned)
+	}
+	owners, err := ResolveOwning(context.Background(), "pc_projection",
+		map[string]string{"pc_id": "pc-1"}, uid(1), lookup)
+	if !errors.Is(err, ErrOwnerPruned) {
+		t.Fatalf("pruned owner must propagate ErrOwnerPruned, got %v", err)
+	}
+	if owners != nil {
+		t.Errorf("pruned owner must yield nil owners, got %v", owners)
+	}
+}
+
+func TestCheckRow_NilOwningSkipsWithoutReplay(t *testing.T) {
+	called := false
+	rep := &fakeReplayer{fn: func(replayloader.ReplayRequest) (replayloader.ReplayResult, error) {
+		called = true
+		return replayloader.ReplayResult{}, nil
+	}}
+	drifted, skipped := CheckRow(context.Background(), rep, uid(1), "dsn", "pc_projection",
+		SampledRow{PK: map[string]string{"pc_id": "pc-1"}, EventID: uid(2), Owning: nil})
+	if drifted || !skipped {
+		t.Errorf("nil-Owning (pruned) row must SKIP, not drift: drifted=%v skipped=%v", drifted, skipped)
+	}
+	if called {
+		t.Error("replayer must NOT be invoked for a nil-Owning row (the bin requires >=1 aggregate)")
 	}
 }

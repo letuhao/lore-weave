@@ -1,5 +1,5 @@
 // Package types holds the shared value types crossed between
-// sampler / comparator / state_writer / daily_loop / full_check / metrics.
+// live / comparator / state_writer / full_check / metrics.
 //
 // Kept in its own package so sub-packages can depend on it without forming
 // import cycles (matches services/archive-worker/pkg/types and
@@ -46,56 +46,24 @@ type TableConfig struct {
 	FullScanBatchSize int
 }
 
-// AggregateRef identifies one sampled aggregate. Sampler emits these;
-// comparator consumes them.
-type AggregateRef struct {
-	RealityID       uuid.UUID
-	AggregateType   string
-	AggregateID     string
-	// EventID and AggregateVersion are the VerificationMeta columns from
-	// the projection ROW being sampled. The comparator MUST re-derive the
-	// aggregate state at exactly this version and diff against the row's
-	// payload. Picking these from the row (vs from the event store)
-	// anchors the diff to "what the projection THINKS it is" — drift is
-	// detected when the re-replay disagrees.
-	EventID          uuid.UUID
-	AggregateVersion uint64
-}
-
-// SampleResult is the comparator's output for one sampled aggregate.
-type SampleResult struct {
-	Ref       AggregateRef
-	// Drifted = true when re-replay produced a different state than the
-	// projection row's payload. Byte-equal comparison after canonical
-	// JSON normalization (key-sorted, whitespace-stripped).
-	Drifted   bool
-	// Reason is populated when Drifted == true. Free-form for SRE.
-	Reason    string
-	// Skipped is set when the sample couldn't be checked (e.g. event
-	// store missing events for this aggregate). NOT counted as drift.
-	Skipped   bool
-	SkipReason string
-	CheckedAt time.Time
-}
-
 // DriftReport is the per-table summary the state_writer turns into a
 // projection_drift_state UPDATE.
 type DriftReport struct {
-	RealityID                uuid.UUID
-	TableName                string
-	SampleSize               int
-	DriftCount               int
-	Skipped                  int
+	RealityID  uuid.UUID
+	TableName  string
+	SampleSize int
+	DriftCount int
+	Skipped    int
 	// LastDriftedAggregateID populated when DriftCount > 0; convenience
 	// pointer for SRE investigation. NULL/uuid.Nil when DriftCount = 0.
-	LastDriftedAggregateID   uuid.UUID
-	LastDriftedEventID       uuid.UUID
-	CheckedAt                time.Time
+	LastDriftedAggregateID uuid.UUID
+	LastDriftedEventID     uuid.UUID
+	CheckedAt              time.Time
 	// CheckMode = "daily" or "monthly" — written to the `notes` field of
 	// projection_drift_state so SRE can tell which sweep produced the row.
-	CheckMode                string
+	CheckMode string
 	// DurationSeconds for the metrics emitter (lw_projection_check_duration_seconds).
-	DurationSeconds          float64
+	DurationSeconds float64
 }
 
 // CheckMode is the enum for daily vs monthly. The same binary runs both;
