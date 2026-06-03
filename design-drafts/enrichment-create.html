@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="vi" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LoreWeave — Enrichment: Tạo / Compose (mockup)</title>
+<!--
+  DESIGN DRAFT — the NEW "Tạo / Create" tab: a unified Compose surface with 5 input
+  modes (A gap-fill · B intent · C paste-context · D from-draft · F attach-files).
+  Mode E (web search) was analysed and DROPPED — copyright-indefensible (modes.md §9).
+  Same dark/amber theme + shell + idioms as enrichment-review.html. Click a mode card
+  to switch the input form (tiny vanilla JS, mockup only). See enrichment-create-modes.md.
+-->
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --background:25 8% 8%; --foreground:40 30% 95%;
+    --card:25 7% 11%; --primary:35 85% 55%; --primary-foreground:25 30% 10%;
+    --secondary:25 6% 20%; --muted-foreground:25 10% 60%; --border:25 6% 18%;
+    --success:120 40% 50%; --warning:35 85% 55%; --info:200 60% 50%; --destructive:0 84% 60%;
+  }
+  body{font-family:Inter,system-ui,sans-serif;background:hsl(var(--background));color:hsl(var(--foreground));}
+  .font-serif{font-family:Lora,Georgia,serif;}.font-mono{font-family:'JetBrains Mono',monospace;}
+  .bg-background{background:hsl(var(--background));}.bg-card{background:hsl(var(--card));}.bg-secondary{background:hsl(var(--secondary));}
+  .text-foreground{color:hsl(var(--foreground));}.text-muted-foreground{color:hsl(var(--muted-foreground));}.text-primary{color:hsl(var(--primary));}
+  .bg-primary{background:hsl(var(--primary));}.text-primary-foreground{color:hsl(var(--primary-foreground));}.border-c{border-color:hsl(var(--border));}
+  .text-success{color:hsl(var(--success));}.text-warning{color:hsl(var(--warning));}.text-info{color:hsl(var(--info));}.text-destructive{color:hsl(var(--destructive));}
+  .bg-success\/10{background:hsl(var(--success)/.12);}.bg-warning\/12{background:hsl(var(--warning)/.14);}.bg-info\/10{background:hsl(var(--info)/.12);}
+  .bg-destructive\/10{background:hsl(var(--destructive)/.12);}.bg-primary\/10{background:hsl(var(--primary)/.10);}
+  .ring-primary{box-shadow:0 0 0 1px hsl(var(--primary)/.6);}
+  textarea,input,select{font-family:inherit}
+  .mode-panel{display:none}.mode-panel.active{display:block}
+  .mode-card.sel{box-shadow:0 0 0 1px hsl(var(--primary)/.6);background:hsl(var(--primary)/.06)}
+</style>
+</head>
+<body class="text-foreground">
+<div class="flex h-screen overflow-hidden text-sm">
+
+  <!-- ── Sidebar (mirrors components/layout/Sidebar.tsx) ── -->
+  <aside class="w-56 shrink-0 border-r border-c bg-card flex flex-col">
+    <div class="px-4 py-4 flex items-center gap-2 border-b border-c">
+      <div class="h-7 w-7 rounded-md bg-primary flex items-center justify-center text-primary-foreground font-serif font-bold">L</div>
+      <span class="font-serif font-semibold text-base">LoreWeave</span>
+    </div>
+    <nav class="flex-1 px-2 py-3 space-y-0.5">
+      <p class="px-3 pt-1 pb-2 text-[10px] uppercase tracking-wider text-muted-foreground">Workspace</p>
+      <a class="flex items-center gap-2.5 rounded-md px-3 py-2 text-muted-foreground hover:bg-secondary">📚 <span>Books</span></a>
+      <a class="flex items-center gap-2.5 rounded-md px-3 py-2 text-muted-foreground hover:bg-secondary">💬 <span>Chat</span></a>
+      <a class="flex items-center gap-2.5 rounded-md px-3 py-2 text-muted-foreground hover:bg-secondary">🧠 <span>Knowledge</span></a>
+      <a class="flex items-center gap-2.5 rounded-md px-3 py-2 bg-primary/10 text-primary ring-primary">✨ <span class="font-medium">Enrichment</span></a>
+      <a class="flex items-center gap-2.5 rounded-md px-3 py-2 text-muted-foreground hover:bg-secondary">🔍 <span>Browse</span></a>
+    </nav>
+    <div class="px-3 py-3 border-t border-c flex items-center gap-2 text-muted-foreground">
+      <div class="h-7 w-7 rounded-full bg-secondary"></div><span class="text-xs">claude-test</span>
+    </div>
+  </aside>
+
+  <!-- ── Main ── -->
+  <main class="flex-1 flex flex-col overflow-hidden">
+    <!-- PageHeader -->
+    <div class="px-6 pt-5 pb-3 border-b border-c space-y-4">
+      <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span>Books</span> <span>›</span> <span>封神演義 (Fengshen) — Lore Enrichment Demo</span> <span>›</span> <span class="text-foreground">Enrichment</span>
+      </div>
+      <div class="flex items-start justify-between">
+        <div>
+          <h1 class="font-serif text-xl font-semibold flex items-center gap-2">Lore Enrichment
+            <span class="rounded-full bg-warning/12 px-2 py-0.5 text-[11px] font-medium text-warning">enriched ≠ canon · H0</span>
+          </h1>
+          <p class="mt-0.5 text-xs text-muted-foreground">Bồi đắp canon "ngoài trang sách" theo cách bạn muốn — mọi kết quả là <em>dị bản</em>, chỉ thành canon khi bạn promote.</p>
+        </div>
+      </div>
+      <!-- Tabs — NEW "Tạo" leads the strip; the existing four follow -->
+      <div class="flex items-center gap-1 -mb-3">
+        <button class="border-b-2 border-primary px-3 py-2 text-sm font-medium text-primary">✨ Tạo</button>
+        <button class="border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground">Proposals <span class="ml-1 rounded-full bg-secondary px-1.5 text-[10px]">7</span></button>
+        <button class="border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground">Gaps <span class="ml-1 rounded-full bg-secondary px-1.5 text-[10px]">5</span></button>
+        <button class="border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground">Sources <span class="ml-1 rounded-full bg-secondary px-1.5 text-[10px]">5</span></button>
+        <button class="border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:text-foreground">Jobs <span class="ml-1 rounded-full bg-secondary px-1.5 text-[10px]">2</span></button>
+      </div>
+    </div>
+
+    <!-- Composer body -->
+    <div class="flex-1 overflow-y-auto px-6 py-5 max-w-4xl w-full mx-auto space-y-6">
+
+      <!-- STEP 1 — input-mode selector -->
+      <section>
+        <h2 class="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">① Nguồn đầu vào — bạn muốn bồi đắp từ đâu?</h2>
+        <div class="grid grid-cols-5 gap-2">
+          <button onclick="setMode('A')" id="card-A" class="mode-card rounded-lg border border-c bg-card px-3 py-3 text-left hover:bg-secondary/30">
+            <div class="text-lg">🧩</div><div class="mt-1 font-medium text-[13px]">Lấp gap</div>
+            <div class="text-[10px] text-muted-foreground">gap-fill (hiện có)</div>
+            <span class="mt-1.5 inline-block rounded-full bg-success/10 px-1.5 py-0.5 text-[9px] text-success">© thấp</span>
+          </button>
+          <button onclick="setMode('B')" id="card-B" class="mode-card sel rounded-lg border border-c bg-card px-3 py-3 text-left hover:bg-secondary/30">
+            <div class="text-lg">💬</div><div class="mt-1 font-medium text-[13px]">Theo ý định</div>
+            <div class="text-[10px] text-muted-foreground">free-text intent</div>
+            <span class="mt-1.5 inline-block rounded-full bg-warning/12 px-1.5 py-0.5 text-[9px] text-warning">© vừa</span>
+          </button>
+          <button onclick="setMode('C')" id="card-C" class="mode-card rounded-lg border border-c bg-card px-3 py-3 text-left hover:bg-secondary/30">
+            <div class="text-lg">📋</div><div class="mt-1 font-medium text-[13px]">Dán ngữ cảnh</div>
+            <div class="text-[10px] text-muted-foreground">paste context</div>
+            <span class="mt-1.5 inline-block rounded-full bg-warning/12 px-1.5 py-0.5 text-[9px] text-warning">© xác nhận</span>
+          </button>
+          <button onclick="setMode('D')" id="card-D" class="mode-card rounded-lg border border-c bg-card px-3 py-3 text-left hover:bg-secondary/30">
+            <div class="text-lg">✍️</div><div class="mt-1 font-medium text-[13px]">Từ bản nháp</div>
+            <div class="text-[10px] text-muted-foreground">expand your draft</div>
+            <span class="mt-1.5 inline-block rounded-full bg-success/10 px-1.5 py-0.5 text-[9px] text-success">© thấp</span>
+          </button>
+          <button onclick="setMode('F')" id="card-F" class="mode-card rounded-lg border border-c bg-card px-3 py-3 text-left hover:bg-secondary/30">
+            <div class="text-lg">📎</div><div class="mt-1 font-medium text-[13px]">Đính kèm tệp</div>
+            <div class="text-[10px] text-muted-foreground">attach files</div>
+            <span class="mt-1.5 inline-block rounded-full bg-warning/12 px-1.5 py-0.5 text-[9px] text-warning">© bạn chịu TN</span>
+          </button>
+        </div>
+        <p class="mt-2 text-[11px] text-muted-foreground">🌐 <span class="line-through">Tìm web → cook</span> — <strong class="text-destructive">đã bỏ</strong>: nội dung web mặc-định-có-bản-quyền, "user tự xác nhận license" không bảo vệ được platform (chính platform là bên fetch+biến đổi+phân phối). Muốn dùng tư liệu ngoài → tự copy-dán qua <strong class="text-foreground">Dán ngữ cảnh (C)</strong>, bạn chịu trách nhiệm nguồn.</p>
+      </section>
+
+      <!-- STEP 2 — the mode's input form -->
+      <section>
+        <h2 class="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">② Đầu vào</h2>
+
+        <!-- A — gap-fill -->
+        <div id="panel-A" class="mode-panel rounded-lg border border-c bg-card p-4 space-y-3">
+          <p class="text-xs text-muted-foreground">Chọn entity dưới-mô-tả đã phát hiện (cũng có thể bấm <span class="text-primary">enrich →</span> ngay trên tab <strong>Gaps</strong>).</p>
+          <div class="flex flex-wrap gap-2">
+            <span class="rounded-full bg-primary/10 text-primary border border-c px-2.5 py-1 text-xs font-serif">昆侖山 ✓</span>
+            <span class="rounded-full bg-primary/10 text-primary border border-c px-2.5 py-1 text-xs font-serif">陳塘關 ✓</span>
+            <span class="rounded-full bg-secondary text-muted-foreground px-2.5 py-1 text-xs font-serif">碧遊宮 +</span>
+            <span class="rounded-full bg-secondary text-muted-foreground px-2.5 py-1 text-xs">+ chọn từ Gaps…</span>
+          </div>
+        </div>
+
+        <!-- B — free-text intent -->
+        <div id="panel-B" class="mode-panel active rounded-lg border border-c bg-card p-4 space-y-3">
+          <label class="block text-xs text-muted-foreground">Mô tả điều bạn muốn bồi đắp (AI sẽ diễn giải → ánh xạ tới entity + dimension)</label>
+          <textarea rows="3" class="w-full rounded-md border border-c bg-background p-3 font-serif text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">Bổ sung lịch sử và văn hoá của Triệt Giáo tại Bích Du Cung, nhấn vào mối liên hệ với Thông Thiên giáo chủ và thế đối đầu với Xiển Giáo.</textarea>
+          <div class="rounded-md border border-c bg-info/10 px-3 py-2 text-[12px]">
+            <span class="text-info font-medium">AI diễn giải →</span>
+            <span class="font-mono">entity: 碧遊宮 (location) · dimensions: 历史 · 文化 · inhabitants · kỹ thuật gợi ý: P2 fabrication</span>
+            <span class="text-muted-foreground">· hoặc <span class="text-primary cursor-pointer">tạo entity mới</span></span>
+          </div>
+          <p class="text-[11px] text-muted-foreground">② tuỳ chọn · <span class="text-warning">③ bật</span> (chống rò rỉ dữ liệu huấn luyện của model) · ④ promote-gate. © vừa.</p>
+        </div>
+
+        <!-- C — paste context -->
+        <div id="panel-C" class="mode-panel rounded-lg border border-c bg-card p-4 space-y-3">
+          <label class="block text-xs text-muted-foreground">Dán tư liệu / ngữ cảnh tham khảo — AI sẽ <strong>trừu tượng hoá thành sự kiện (②)</strong> rồi cook, không chép nguyên văn</label>
+          <textarea rows="5" class="w-full rounded-md border border-c bg-background p-3 font-serif text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">碧遊宮乃截教之祖庭，立于东海之外的金鳌岛上。通天教主于此开坛说法，门下万仙来朝，布诛仙阵以抗阐教。宫中多奇珍异兽，重「有教无类」之旨…</textarea>
+          <div class="flex flex-wrap items-center gap-3 text-xs">
+            <span class="text-muted-foreground">License bạn xác nhận (①):</span>
+            <select class="rounded border border-c bg-background px-2 py-1"><option selected>public_domain</option><option>licensed</option><option>copyrighted (sẽ bị từ chối)</option></select>
+            <span class="text-muted-foreground">· Lưu vào corpus?</span> <input type="checkbox" class="align-middle accent-amber-500"/>
+          </div>
+          <div class="rounded-md border border-c bg-info/10 px-3 py-2 text-[12px]"><span class="text-info font-medium">② Trừu tượng →</span> <span class="font-mono">«cung điện trên đảo Đông Hải» · «giáo phái vạn tiên» · «giáo chủ lập trận chống Xiển Giáo»…</span></div>
+          <p class="text-[11px] text-muted-foreground"><span class="text-warning">① bạn chịu trách nhiệm license · ② bật · ③ bật</span> · ④ promote-gate. © cần xác nhận. <em>Không phải tư vấn pháp lý.</em></p>
+        </div>
+
+        <!-- D — from your draft -->
+        <div id="panel-D" class="mode-panel rounded-lg border border-c bg-card p-4 space-y-3">
+          <label class="block text-xs text-muted-foreground">Bản nháp mô tả của bạn — AI <strong>mở rộng + chau chuốt theo giọng 封神</strong>, giữ nguyên ý của bạn</label>
+          <textarea rows="5" class="w-full rounded-md border border-c bg-background p-3 font-serif text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">Ta muốn Bích Du Cung mang không khí u tịch, huyền bí — một tổ đình bên bờ Đông Hải, sương mù giăng quanh năm, nuôi nhiều dị thú. Triệt Giáo ở đây theo lẽ "vạn vật đều có thể tu", khác hẳn sự nghiêm cẩn của Xiển Giáo.</textarea>
+          <div class="flex items-center gap-3 text-xs">
+            <span class="text-muted-foreground">Cách mở rộng:</span>
+            <label class="flex items-center gap-1"><input type="radio" name="expand" checked class="accent-amber-500"/> Chỉ thêm dimension còn thiếu (giữ nguyên văn của bạn)</label>
+            <label class="flex items-center gap-1"><input type="radio" name="expand" class="accent-amber-500"/> Cho phép viết lại + đồng bộ giọng</label>
+          </div>
+          <p class="text-[11px] text-muted-foreground">Đây là chữ của <strong>chính bạn</strong> → © thấp. <span class="text-warning">③ bật</span> (vẫn tránh sao chép nguồn khác) · ④ promote-gate.</p>
+        </div>
+
+        <!-- F — attach files -->
+        <div id="panel-F" class="mode-panel rounded-lg border border-c bg-card p-4 space-y-3">
+          <label class="block text-xs text-muted-foreground">Đính kèm tệp của bạn — AI trích xuất văn bản → <strong>trừu tượng thành sự kiện (②)</strong> rồi cook</label>
+          <div class="rounded-md border border-dashed border-c bg-background px-4 py-6 text-center text-xs text-muted-foreground hover:bg-secondary/20 cursor-pointer">
+            📎 Kéo-thả tệp vào đây hoặc bấm để chọn — <span class="font-mono">.txt / .md / .pdf / .docx / .epub</span>
+            <div class="mt-1 text-[10px]">PDF scan → <span class="text-info">OCR tự động</span></div>
+          </div>
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between rounded-md border border-c bg-background px-3 py-1.5 text-xs">
+              <span class="font-mono">notes-trietgiao.pdf · 12 trang · trích xuất ✓</span><span class="text-muted-foreground cursor-pointer">✕</span>
+            </div>
+            <div class="flex items-center justify-between rounded-md border border-c bg-background px-3 py-1.5 text-xs">
+              <span class="font-mono">bichdu-cung.docx · trích xuất ✓</span><span class="text-muted-foreground cursor-pointer">✕</span>
+            </div>
+            <div class="flex items-center justify-between rounded-md border border-c bg-background px-3 py-1.5 text-xs">
+              <span class="font-mono">su-lieu-scan.pdf · 8 trang · <span class="text-info">OCR ✓</span></span><span class="text-muted-foreground cursor-pointer">✕</span>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center gap-3 text-xs">
+            <span class="text-muted-foreground">License bạn xác nhận (①):</span>
+            <select class="rounded border border-c bg-background px-2 py-1"><option selected>của riêng tôi</option><option>public_domain</option><option>licensed</option><option>copyrighted (sẽ bị từ chối)</option></select>
+            <span class="text-muted-foreground">· Lưu thành corpus?</span> <input type="checkbox" class="align-middle accent-amber-500"/>
+          </div>
+          <label class="flex items-center gap-2 text-[12px]"><input type="checkbox" checked class="accent-amber-500"/> <span><strong>Tôi tự chịu trách nhiệm</strong> về nội dung &amp; quyền của các tệp đính kèm.</span></label>
+          <p class="text-[11px] text-muted-foreground"><span class="text-warning">① bạn xác nhận license · ② bật · ③ bật</span> · ④ promote-gate · tái dùng pipeline ingest của tab Sources. © bạn chịu TN. <em>Không phải tư vấn pháp lý.</em></p>
+        </div>
+
+      </section>
+
+      <!-- STEP 3 — shared target + technique + models + cost -->
+      <section>
+        <h2 class="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">③ Mục tiêu &amp; cấu hình (dùng chung cho mọi nguồn)</h2>
+        <div class="rounded-lg border border-c bg-card p-4 space-y-3">
+          <div class="flex flex-wrap items-center gap-3 text-xs">
+            <span class="text-muted-foreground">Bồi đắp cho:</span>
+            <span class="rounded-md border border-primary bg-primary/10 px-2.5 py-1 text-primary font-serif">Entity hiện có ▾ 碧遊宮</span>
+            <span class="text-muted-foreground">/</span>
+            <button class="rounded-md border border-c px-2.5 py-1 text-muted-foreground hover:text-foreground">+ Tạo entity mới</button>
+            <span class="text-muted-foreground ml-2">Kind:</span>
+            <select class="rounded border border-c bg-background px-2 py-1"><option selected>location</option><option>character (beta)</option><option>item (beta)</option><option>faction (beta)</option><option>freeform</option></select>
+          </div>
+          <div class="flex flex-wrap items-center gap-1.5 text-xs">
+            <span class="text-muted-foreground mr-1">Dimensions:</span>
+            <span class="rounded-full bg-primary/10 text-primary border border-c px-2 py-0.5 cursor-pointer">历史 ✓</span>
+            <span class="rounded-full bg-primary/10 text-primary border border-c px-2 py-0.5 cursor-pointer">地理 ✓</span>
+            <span class="rounded-full bg-primary/10 text-primary border border-c px-2 py-0.5 cursor-pointer">文化 ✓</span>
+            <span class="rounded-full bg-secondary text-muted-foreground px-2 py-0.5 cursor-pointer">features</span>
+            <span class="rounded-full bg-secondary text-muted-foreground px-2 py-0.5 cursor-pointer">inhabitants</span>
+            <span class="ml-1 text-muted-foreground">· hoặc <span class="text-primary cursor-pointer">auto</span></span>
+          </div>
+          <div class="flex flex-wrap items-center gap-4 text-xs border-t border-c pt-3">
+            <div><span class="text-muted-foreground">Technique</span> <select class="ml-1 rounded border border-c bg-background px-2 py-1"><option>P1 retrieval</option><option selected>P2 fabrication</option><option>P3 recook</option></select></div>
+            <div><span class="text-muted-foreground">Gen model</span> <span class="ml-1 font-mono">qwen3.6-35b ▾</span></div>
+            <div><span class="text-muted-foreground">Embed</span> <span class="ml-1 font-mono">bge-m3 ▾</span></div>
+            <div><span class="text-muted-foreground">Cost-cap (USD)</span> <input value="0.50" class="ml-1 w-16 rounded border border-c bg-background px-2 py-1 font-mono"/></div>
+            <div><span class="text-muted-foreground">Top-K</span> <input value="5" class="ml-1 w-12 rounded border border-c bg-background px-2 py-1 font-mono"/></div>
+            <div class="ml-auto text-muted-foreground">⚠ P2/P3 cần eval-gate pass (judge đa dạng)</div>
+          </div>
+          <!-- ①②③④ safety strip -->
+          <div class="flex flex-wrap items-center gap-2 border-t border-c pt-3 text-[11px]">
+            <span class="text-muted-foreground">Bảo vệ bản quyền:</span>
+            <span class="rounded-full bg-secondary px-2 py-0.5 font-mono">① license</span>
+            <span class="rounded-full bg-secondary px-2 py-0.5 font-mono">② trừu tượng</span>
+            <span class="rounded-full bg-secondary px-2 py-0.5 font-mono">③ chống sao chép</span>
+            <span class="rounded-full bg-secondary px-2 py-0.5 font-mono">④ promote-gate</span>
+            <span class="rounded-full bg-warning/12 text-warning px-2 py-0.5">H0 — kết quả là dị bản, conf &lt; 1.0</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- footer / run -->
+      <div class="flex items-center justify-between border-t border-c pt-4">
+        <p class="text-[11px] text-muted-foreground max-w-md">Kết quả là một <strong>đề xuất bị cách ly</strong> (origin=enrichment), hiện ở tab <strong>Proposals</strong> để bạn duyệt → chỉ thành canon khi bạn <strong>promote</strong>.</p>
+        <button class="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90">✨ Bồi đắp (chạy nền)</button>
+      </div>
+
+      <p class="text-center text-[11px] text-muted-foreground pt-2">Mockup · 5 nguồn → 1 luồng Compose chung (xem enrichment-create-modes.md). Bấm thẻ ở bước ① để đổi nguồn.</p>
+    </div>
+  </main>
+</div>
+
+<script>
+  // mockup-only: switch the active input panel + highlight the chosen mode card
+  function setMode(id){
+    document.querySelectorAll('.mode-panel').forEach(p=>p.classList.remove('active'));
+    document.getElementById('panel-'+id).classList.add('active');
+    document.querySelectorAll('.mode-card').forEach(c=>c.classList.remove('sel'));
+    document.getElementById('card-'+id).classList.add('sel');
+  }
+</script>
+</body>
+</html>
