@@ -9,8 +9,9 @@ package commands
 //	freeze reality ONCE → for each projection table: TRUNCATE + rebuilder →
 //	thaw ONCE (only if every projection rebuilt cleanly; else LEAVE FROZEN).
 //
-// Same unproven-gate as rebuild-projection (registered only when
-// ADMIN_CLI_ENABLE_UNPROVEN_REBUILD=1).
+// First-class as of 147+142 (same as rebuild-projection): the projection-apply
+// path is validated, so the former ADMIN_CLI_ENABLE_UNPROVEN_REBUILD gate is
+// removed; wired whenever META_DATABASE_URL is set.
 
 import (
 	"context"

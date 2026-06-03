@@ -292,6 +292,25 @@ jobs:
         env:
           LOREWEAVE_TEST_PG_URL: postgres://foundation:foundation@localhost:5432/replay_smoke?sslmode=disable
         run: cargo test -p world-service --test replay_aggregate_live
+      # 142 (D-REBUILD-LIVE-SMOKE): the 073 `rebuilder` bin round-trip — TRUNCATE
+      # → seed events → run the bin → assert RebuildStats + the rebuilt rows (pc +
+      # npc_session_memory). The Rust test applies 0002+0006 itself (0002 DROPs
+      # `events` + the test TRUNCATEs projection tables), so it needs its OWN DB,
+      # separate from replay_smoke. Validates the projection-apply path that the
+      # 073 unproven-gate (141) protected.
+      - name: create rebuilder smoke DB
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql() { PGPASSWORD=foundation command psql -h localhost -p 5432 -U foundation "$@"; }
+          exists=$(psql -d foundation -tAc "SELECT 1 FROM pg_database WHERE datname='rebuild_smoke'" || true)
+          if [ "$exists" != "1" ]; then
+            psql -d foundation -v ON_ERROR_STOP=1 -c "CREATE DATABASE rebuild_smoke;"
+          fi
+      - name: cargo test rebuilder live-smoke
+        env:
+          LOREWEAVE_TEST_PG_URL: postgres://foundation:foundation@localhost:5432/rebuild_smoke?sslmode=disable
+        run: cargo test -p world-service --test rebuilder_live
 
   secrets:
     name: Secret scan (gitleaks)

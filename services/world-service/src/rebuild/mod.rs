@@ -13,10 +13,10 @@
 //!
 //! This is the FIRST live projection-apply path in the codebase (the rebuilder
 //! crate doc's "wired in cycle 15+ when world-service consumes this crate").
-//! Its end-to-end correctness against real events is validated by the L3.E/F
-//! integrity checker, which does not exist yet — so the admin-cli destructive
-//! commands that drive it stay fail-closed behind an explicit operator gate
-//! (`ADMIN_CLI_ENABLE_UNPROVEN_REBUILD`). See
+//! Its end-to-end correctness against real events is now validated by the L3.E/F
+//! integrity checker round-trip (147) + the rebuilder live-smoke (142), so the
+//! admin-cli destructive commands that drive it are first-class (the former
+//! `ADMIN_CLI_ENABLE_UNPROVEN_REBUILD` operator gate has been removed). See
 //! `docs/plans/2026-06-03-073-destructive-admin-commands.md`.
 
 pub mod event_source;

@@ -25,9 +25,11 @@
 //!
 //! ## Status
 //!
-//! FIRST live projection-apply path; correctness against real events is validated
-//! by the not-yet-built L3.E/F integrity checker, so the admin-cli commands that
-//! drive this stay gated behind `ADMIN_CLI_ENABLE_UNPROVEN_REBUILD`. See
+//! FIRST live projection-apply path. Its correctness against real events is now
+//! validated end-to-end — by the L3.E/F integrity-checker round-trip (147) and by
+//! this bin's own live-smoke (142, `tests/rebuilder_live.rs`) — so the admin-cli
+//! commands that drive it are first-class (the former
+//! `ADMIN_CLI_ENABLE_UNPROVEN_REBUILD` gate has been removed). See
 //! `docs/plans/2026-06-03-073-destructive-admin-commands.md`.
 
 use std::sync::Arc;

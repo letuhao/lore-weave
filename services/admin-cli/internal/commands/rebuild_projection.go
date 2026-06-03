@@ -12,10 +12,12 @@ package commands
 // on ANY rebuild failure/partial the reality is LEFT FROZEN so an operator
 // inspects the dead letter before a manual `reality thaw` (R02 §12B.2 fail-loud).
 //
-// ⚠️ UNPROVEN: the rebuilder is the first live projection-apply path and is not
-// yet validated against real events by the L3.E/F integrity checker. The command
-// is registered only when ADMIN_CLI_ENABLE_UNPROVEN_REBUILD=1; otherwise it stays
-// fail-closed NotWired. See docs/plans/2026-06-03-073-destructive-admin-commands.md.
+// VALIDATED (147+142): the rebuilder is the first live projection-apply path; it
+// is now validated end-to-end against real events by the L3.E/F integrity checker
+// round-trip (147) + the rebuilder live-smoke (142), so the former
+// ADMIN_CLI_ENABLE_UNPROVEN_REBUILD gate is removed and the command is first-class
+// (wired whenever META_DATABASE_URL is set). See
+// docs/plans/2026-06-03-073-destructive-admin-commands.md.
 
 import (
 	"context"

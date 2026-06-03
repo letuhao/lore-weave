@@ -516,15 +516,6 @@ func buildCapacityOverrideHandler() (framework.Handler, func(), error) {
 	return h, pool.Close, nil
 }
 
-// enableUnprovenRebuildEnv gates the Tier-1 destructive rebuild commands
-// (rebuild-projection + catastrophic-rebuild). Their worker (the world-service
-// `rebuilder`) is the FIRST live projection-apply path and is NOT yet validated
-// against real events by the L3.E/F integrity checker — so wiring a catastrophic
-// recovery tool to it is unproven. Until L3.E/F lands the commands stay fail-
-// closed NotWired unless an operator consciously sets this to "1".
-// See docs/plans/2026-06-03-073-destructive-admin-commands.md + DEFERRED.md.
-const enableUnprovenRebuildEnv = "ADMIN_CLI_ENABLE_UNPROVEN_REBUILD"
-
 // defaultTransitionsPath discovers contracts/meta/transitions.yaml (the reality
 // state-machine graph AttemptStateTransition needs), overridable via
 // META_TRANSITIONS_PATH.
@@ -547,16 +538,16 @@ func defaultTransitionsPath() string {
 }
 
 // buildRebuildProjectionHandler wires `reality rebuild-projection` (073, L3.G) —
-// Tier-1 destructive freeze-truncate-rebuild-thaw. GATED: registered only when
-// enableUnprovenRebuildEnv=1 (else returns a nil handler → the command stays
-// fail-closed NotWired). Owns the meta pool (lifecycle gate + DSN resolution);
-// the per-reality truncator pool + rebuilder subprocess DSN are resolved PER
-// INVOCATION inside the closure (reality_id is a runtime param).
+// Tier-1 destructive freeze-truncate-rebuild-thaw. First-class as of 147+142: the
+// projection-apply path the worker drives is now validated end-to-end against
+// real events (L3.E/F integrity checker round-trip + the rebuilder live-smoke),
+// so the prior ADMIN_CLI_ENABLE_UNPROVEN_REBUILD gate is removed. Wires whenever
+// META_DATABASE_URL is set (else stays NotWired, the normal not-configured path).
+// Owns the meta pool (lifecycle gate + DSN resolution); the per-reality truncator
+// pool + rebuilder subprocess DSN are resolved PER INVOCATION inside the closure
+// (reality_id is a runtime param).
 func buildRebuildProjectionHandler() (framework.Handler, func(), error) {
 	noop := func() {}
-	if os.Getenv(enableUnprovenRebuildEnv) != "1" {
-		return nil, noop, nil // gated off → leave NotWired (fail-closed)
-	}
 	dsn := os.Getenv("META_DATABASE_URL")
 	if dsn == "" {
 		return nil, noop, nil
@@ -687,16 +678,14 @@ func splitIDs(s string) []string {
 }
 
 // buildCatastrophicRebuildHandler wires `reality catastrophic-rebuild` (073,
-// L3.H) — Tier-1 destructive rolling rebuild across N realities. Same gate as
-// rebuild-projection (ADMIN_CLI_ENABLE_UNPROVEN_REBUILD=1 → else NotWired). Owns
-// the meta pool (lifecycle gate + reality enumeration + DSN resolution); each
-// reality's truncator pool + rebuilder DSN are resolved by the PerRealityResolver
-// inside the rolling orchestrator's worker.
+// L3.H) — Tier-1 destructive rolling rebuild across N realities. First-class as
+// of 147+142 (same as rebuild-projection: the projection-apply path is now
+// validated, so the ADMIN_CLI_ENABLE_UNPROVEN_REBUILD gate is removed); wires
+// whenever META_DATABASE_URL is set. Owns the meta pool (lifecycle gate + reality
+// enumeration + DSN resolution); each reality's truncator pool + rebuilder DSN
+// are resolved by the PerRealityResolver inside the rolling orchestrator's worker.
 func buildCatastrophicRebuildHandler() (framework.Handler, func(), error) {
 	noop := func() {}
-	if os.Getenv(enableUnprovenRebuildEnv) != "1" {
-		return nil, noop, nil
-	}
 	dsn := os.Getenv("META_DATABASE_URL")
 	if dsn == "" {
 		return nil, noop, nil
