@@ -51,6 +51,14 @@ jobs:
             echo "::endgroup::"
           done < <(find . -name go.mod -not -path '*/.git/*')
           exit $fail
+      # 110 D-BREACH-RACE-CI: the module test loop above runs WITHOUT -race
+      # (the foundation gate is portable to cgo-less dev boxes). The breach
+      # Monitor has real concurrency — HTTP Track() vs the deadline ticker
+      # tick() — that is mutex-correct by inspection but must be verified under
+      # the race detector. ubuntu-latest has gcc, so run that one package with
+      # -race here. Extend this list if other concurrent packages need it.
+      - name: race detector — incident-bot breach monitor (110)
+        run: go -C services/incident-bot test -race -count=1 ./internal/breach
 
   lints:
     name: Foundation lints (I3 language-rule + projection-coverage + validators)
