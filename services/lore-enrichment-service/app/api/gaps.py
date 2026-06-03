@@ -29,8 +29,9 @@ from app.clients.glossary import (
 )
 from app.config import settings
 from app.deps import get_db
+from app.db.book_profile import NEUTRAL_PROFILE, BookProfile, get_book_profile
 from app.gaps.engine import EntityCoverage, detect_ranked_gaps
-from app.gaps.model import GENERIC_KIND, dimensions_for
+from app.gaps.model import GENERIC_KIND, resolve_dimensions
 from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM, make_redis_producer
 from app.jobs.job_request import save_job_request
 from app.jobs.proposal_store import PgProposalStore
@@ -75,22 +76,30 @@ class AutoEnrichBody(BaseModel):
     targets: list[AutoEnrichTarget] | None = None
 
 
-def coverages_from_rows(rows: list[EntityCoverageRow]) -> list[EntityCoverage]:
-    """Map glossary coverage rows → engine EntityCoverage (de-bias C1, KB3).
+def coverages_from_rows(
+    rows: list[EntityCoverageRow], profile: BookProfile = NEUTRAL_PROFILE
+) -> list[EntityCoverage]:
+    """Map glossary coverage rows → engine EntityCoverage (de-bias C1, KB3 + KB-A).
 
     Multi-kind: ANY entity-kind is modeled — a kind with no built-in table falls
-    back to GENERIC (``dimensions_for`` never raises), so non-location entities
-    are NEVER skipped. A glossary 'present dimension' may be either a stable
-    dimension ``id`` (KB-A, written by enrichment going forward) or a legacy
-    default ``label`` (历史) — both map to the stable id; unknown dims are dropped
-    (no drift). Empty canonical_name is the only skip."""
+    back to GENERIC (never raises), so non-location entities are NEVER skipped.
+
+    KB-A round-trip: the dimension table is resolved through the book ``profile``
+    (``resolve_dimensions`` — localized labels + overrides), the SAME resolution
+    generation/storage uses, so detect's labels match the stored labels per book
+    (an English book detects "History" against stored "History", not static 历史).
+    A 'present dimension' may be a stable ``id`` or a (localized) ``label`` — both
+    map to the stable id; unknown dims drop (no drift). Empty name is the only skip.
+    (Residual: a mid-life language change re-labels → re-detect; documented.)"""
     out: list[EntityCoverage] = []
     for r in rows:
         name = (r.canonical_name or "").strip()
         if not name:
             continue
         kind = (r.kind or "").strip() or GENERIC_KIND
-        table = dimensions_for(kind)  # tolerant: GENERIC fallback, never KeyError
+        table = resolve_dimensions(
+            kind, language=profile.language, overrides=profile.dimension_overrides
+        )
         ids = {s.dimension for s in table}
         label_to_id = {s.label: s.dimension for s in table}
         present = tuple(
@@ -115,6 +124,7 @@ async def detect_gaps(
     project_id: UUID,
     body: DetectGapsBody,
     principal: Principal = Depends(require_principal),
+    pool: asyncpg.Pool = Depends(get_db),
 ) -> dict:
     """Detect + rank under-described entities in the book's glossary coverage.
 
@@ -136,7 +146,10 @@ async def detect_gaps(
     finally:
         await client.aclose()
 
-    rankings = detect_ranked_gaps(coverages_from_rows(rows))
+    # KB-A: localize the dimension tables via the book profile so detect matches
+    # what generation/storage uses (per-book round-trip consistency).
+    profile = await get_book_profile(pool, body.book_id)
+    rankings = detect_ranked_gaps(coverages_from_rows(rows, profile))
     return {
         "project_id": str(project_id),
         "book_id": str(body.book_id),
@@ -215,7 +228,8 @@ async def auto_enrich(
         finally:
             await client.aclose()
 
-        rankings = detect_ranked_gaps(coverages_from_rows(rows))
+        profile = await get_book_profile(pool, body.book_id)
+        rankings = detect_ranked_gaps(coverages_from_rows(rows, profile))
         selected = rankings[: body.max_gaps]
         if not selected:
             return {

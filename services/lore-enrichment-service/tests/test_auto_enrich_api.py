@@ -32,9 +32,20 @@ from fastapi.testclient import TestClient
 
 from app.api import gaps as gaps_api
 from app.config import settings
+from app.db.book_profile import NEUTRAL_PROFILE
 from app.deps import get_db
 
 OWNER = "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c"
+
+
+@pytest.fixture(autouse=True)
+def _stub_book_profile(monkeypatch):
+    """de-bias C1: detect now resolves the book profile via the DB pool; the stub
+    pool can't, so return NEUTRAL (these tests assert detection/ranking, which is
+    profile-agnostic — NEUTRAL's auto language yields the default labels)."""
+    async def _neutral(_pool, _book_id):
+        return NEUTRAL_PROFILE
+    monkeypatch.setattr(gaps_api, "get_book_profile", _neutral)
 
 
 # ── fakes (mirror test_gaps_api) ─────────────────────────────────────────────

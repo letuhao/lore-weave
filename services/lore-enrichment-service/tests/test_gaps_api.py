@@ -19,9 +19,19 @@ from app.api.gaps import coverages_from_rows
 from app.clients.glossary import EntityCoverageRow
 from app.config import settings
 from app.deps import get_db
+from app.db.book_profile import NEUTRAL_PROFILE
 from app.gaps.model import Dimension, EntityKind
 
 OWNER = "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c"
+
+
+@pytest.fixture(autouse=True)
+def _stub_book_profile(monkeypatch):
+    """de-bias C1: detect resolves the book profile via the DB pool; the stub pool
+    can't, so return NEUTRAL (detection/ranking is profile-agnostic here)."""
+    async def _neutral(_pool, _book_id):
+        return NEUTRAL_PROFILE
+    monkeypatch.setattr(gaps_api, "get_book_profile", _neutral)
 
 
 def _row(name, kind="location", mentions=0, dims=()):
