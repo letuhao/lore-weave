@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 
 from app.api.principal import Principal, require_principal
 from app.config import settings
+from app.db.book_profile import get_book_profile
 from app.deps import get_db
 from app.gaps.model import Dimension, EntityKind, Gap
 from app.jobs.assembly import build_live_runner
@@ -216,6 +217,9 @@ async def create_job(
             user_id=str(user_id),
             project_id=str(body.project_id),
             model_ref=str(body.generation_model_ref),
+            # de-bias C1: resolve the per-book worldview profile so the prompt
+            # builders + dimension resolver are book-aware (NEUTRAL when unset).
+            profile=await get_book_profile(pool, body.book_id),
         )
         outcome = await bundle.runner.run_job(
             job_id=db_job_id, gaps=gaps, context=context, entity_kind="location"

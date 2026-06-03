@@ -92,7 +92,7 @@ class _FakeRetrieval:
                 GroundedProposal(
                     user_id=context.user_id,
                     project_id=context.project_id,
-                    entity_kind=gap.entity_kind.value,
+                    entity_kind=gap.entity_kind,
                     canonical_name=gap.canonical_name,
                     target_ref=gap.target_ref,
                     dimensions=slots,

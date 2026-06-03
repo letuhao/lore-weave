@@ -23,6 +23,7 @@ import asyncpg
 import redis.asyncio as aioredis
 
 from app.api.jobs import GapTarget, _gap_from_target, load_spent_so_far
+from app.db.book_profile import get_book_profile
 from app.jobs.assembly import build_live_runner
 from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM
 from app.jobs.job_request import existing_gap_refs, load_job_request
@@ -99,6 +100,11 @@ async def redrive_one(
             user_id=user_id,
             project_id=project_id,
             model_ref=str(request["generation_model_ref"]),
+            # de-bias C1: re-resolve the per-book profile (book_id is on the saved
+            # request) so a resumed run is book-aware too (NEUTRAL when absent).
+            profile=await get_book_profile(
+                pool, UUID(request["book_id"]) if request.get("book_id") else None
+            ),
         )
         outcome = await bundle.runner.run_job(
             job_id=job_id,

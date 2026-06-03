@@ -30,7 +30,7 @@ from app.clients.glossary import (
 from app.config import settings
 from app.deps import get_db
 from app.gaps.engine import EntityCoverage, detect_ranked_gaps
-from app.gaps.model import Dimension, EntityKind, dimensions_for
+from app.gaps.model import GENERIC_KIND, dimensions_for
 from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM, make_redis_producer
 from app.jobs.job_request import save_job_request
 from app.jobs.proposal_store import PgProposalStore
@@ -75,33 +75,28 @@ class AutoEnrichBody(BaseModel):
     targets: list[AutoEnrichTarget] | None = None
 
 
-def _label_to_dimension(kind: EntityKind) -> dict[str, Dimension]:
-    """label (as stored by enrichment, e.g. 历史/features) → Dimension enum,
-    derived from the kind's frozen dimension table (single source of truth)."""
-    return {spec.label: spec.dimension for spec in dimensions_for(kind)}
-
-
 def coverages_from_rows(rows: list[EntityCoverageRow]) -> list[EntityCoverage]:
-    """Map glossary coverage rows → engine EntityCoverage.
+    """Map glossary coverage rows → engine EntityCoverage (de-bias C1, KB3).
 
-    Skips rows that can't be modeled: empty canonical_name, or an entity-kind
-    with no frozen dimension table (only LOCATION this cycle — the engine would
-    KeyError otherwise). Unknown dimension labels are dropped (no drift)."""
+    Multi-kind: ANY entity-kind is modeled — a kind with no built-in table falls
+    back to GENERIC (``dimensions_for`` never raises), so non-location entities
+    are NEVER skipped. A glossary 'present dimension' may be either a stable
+    dimension ``id`` (KB-A, written by enrichment going forward) or a legacy
+    default ``label`` (历史) — both map to the stable id; unknown dims are dropped
+    (no drift). Empty canonical_name is the only skip."""
     out: list[EntityCoverage] = []
     for r in rows:
         name = (r.canonical_name or "").strip()
         if not name:
             continue
-        try:
-            kind = EntityKind(r.kind)
-        except ValueError:
-            continue  # unknown kind string
-        try:
-            label_map = _label_to_dimension(kind)
-        except KeyError:
-            continue  # unmodeled kind (no dimension table) — skip, never zero-cover
+        kind = (r.kind or "").strip() or GENERIC_KIND
+        table = dimensions_for(kind)  # tolerant: GENERIC fallback, never KeyError
+        ids = {s.dimension for s in table}
+        label_to_id = {s.label: s.dimension for s in table}
         present = tuple(
-            label_map[d] for d in r.dimensions if d in label_map
+            d if d in ids else label_to_id[d]
+            for d in r.dimensions
+            if d in ids or d in label_to_id
         )
         out.append(
             EntityCoverage(
@@ -152,10 +147,10 @@ async def detect_gaps(
                 "rank": gr.rank,
                 "score": gr.score,
                 "canonical_name": gr.gap.canonical_name,
-                "entity_kind": gr.gap.entity_kind.value,
+                "entity_kind": gr.gap.entity_kind,
                 "mention_count": gr.gap.mention_count,
-                "present_dimensions": [d.value for d in gr.gap.present_dimensions],
-                "missing_dimensions": [d.value for d in gr.gap.missing_dimensions],
+                "present_dimensions": list(gr.gap.present_dimensions),
+                "missing_dimensions": list(gr.gap.missing_dimensions),
             }
             for gr in rankings
         ],
@@ -237,9 +232,9 @@ async def auto_enrich(
             {
                 "canonical_name": gr.gap.canonical_name,
                 "target_ref": gr.gap.target_ref,
-                "entity_kind": gr.gap.entity_kind.value,
+                "entity_kind": gr.gap.entity_kind,
                 "mention_count": gr.gap.mention_count,
-                "present_dimensions": [d.value for d in gr.gap.present_dimensions],
+                "present_dimensions": list(gr.gap.present_dimensions),
             }
             for gr in selected
         ]

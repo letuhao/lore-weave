@@ -72,6 +72,7 @@ __all__ = [
     "CanonLookupFn",
     "CanonVerifier",
     "ANACHRONISM_MARKERS",
+    "FENGSHEN_ANACHRONISM_MARKERS",
 ]
 
 
@@ -199,7 +200,7 @@ class VerifyResult:
 # over-reach on legitimate Classical-Chinese vocabulary. The list is data (not
 # code) so it can grow without touching the check logic.
 # ═══════════════════════════════════════════════════════════════════════════
-ANACHRONISM_MARKERS: tuple[tuple[str, str], ...] = (
+FENGSHEN_ANACHRONISM_MARKERS: tuple[tuple[str, str], ...] = (
     # ── later dynasties / post-Zhou polities (era-inappropriate) ─────────────
     ("秦始皇", "秦朝晚于商周封神纪元"),
     ("汉朝", "汉朝晚于商周封神纪元"),
@@ -277,6 +278,12 @@ ANACHRONISM_MARKERS: tuple[tuple[str, str], ...] = (
     ("股票", "股票为近现代金融产物"),
 )
 
+#: Back-compat alias — de-bias C1 demoted this from a GLOBAL default to the
+#: FENGSHEN profile's denylist (the verifier now reads markers from the per-book
+#: profile, default empty = anachronism OFF). The Fengshen demo profile is seeded
+#: with these; non-Fengshen books supply their own (or none → check off).
+ANACHRONISM_MARKERS = FENGSHEN_ANACHRONISM_MARKERS
+
 # Chinese contradiction / negation markers — when one of these co-occurs with a
 # canon term in a generated value for the same entity+dimension, the generated
 # fact is asserting the OPPOSITE of canon → contradiction.
@@ -320,9 +327,14 @@ class CanonVerifier:
         *,
         read_port: KnowledgeReadPort,
         canon_lookup: CanonLookupFn,
+        anachronism_markers: Sequence[tuple[str, str]] = (),
     ) -> None:
         self._port = read_port
         self._canon_lookup = canon_lookup
+        # de-bias C1: the anachronism denylist comes from the per-book profile —
+        # EMPTY means the check is OFF (a sci-fi / modern book is never flagged for
+        # "modern tech"). The Fengshen profile supplies FENGSHEN_ANACHRONISM_MARKERS.
+        self._anachronism_markers = tuple(anachronism_markers)
 
     async def verify(
         self,
@@ -410,7 +422,7 @@ class CanonVerifier:
         ``火‍车`` (火 + ZWJ + 车) cannot evade the denylist via a substring miss.
         """
         content = _prenormalize(fact.content)
-        for term, reason in ANACHRONISM_MARKERS:
+        for term, reason in self._anachronism_markers:
             if term in content:
                 result.flags.append(
                     VerifyFlag(

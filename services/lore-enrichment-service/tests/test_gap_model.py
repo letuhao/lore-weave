@@ -86,12 +86,18 @@ def test_required_vs_optional_split() -> None:
     assert optional == {Dimension.FEATURES, Dimension.INHABITANTS}
 
 
-def test_only_location_is_modeled_no_speculative_kinds() -> None:
-    # Extensible enum, but only LOCATION has a dimension table this cycle.
-    assert set(DIMENSIONS_BY_KIND) == {EntityKind.LOCATION}
-    assert EntityKind.CHARACTER not in DIMENSIONS_BY_KIND
-    assert EntityKind.ITEM not in DIMENSIONS_BY_KIND
-    assert EntityKind.FACTION not in DIMENSIONS_BY_KIND
+def test_all_builtin_kinds_modeled_and_unknown_falls_back_to_generic() -> None:
+    # De-bias C1 (KB3): every built-in kind has a table; an unknown kind falls
+    # back to GENERIC (never KeyError / skip).
+    from app.gaps.model import GENERIC_DIMENSIONS, dimensions_for
+
+    for kind in (EntityKind.LOCATION, EntityKind.CHARACTER, EntityKind.ITEM,
+                 EntityKind.FACTION, EntityKind.EVENT):
+        assert kind in DIMENSIONS_BY_KIND
+        assert len(dimensions_for(kind)) >= 3
+    # unknown / unmodeled kind → GENERIC, no raise
+    assert dimensions_for("deity") is GENERIC_DIMENSIONS
+    assert dimensions_for("location") is LOCATION_DIMENSIONS
 
 
 def test_dimension_spec_is_frozen_and_weights_positive() -> None:

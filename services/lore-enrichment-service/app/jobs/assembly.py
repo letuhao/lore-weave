@@ -29,6 +29,7 @@ from app.clients.glossary import GlossaryClient
 from app.clients.knowledge import KnowledgeClient
 from app.clients.port import KnowledgeReadHttp
 from app.config import settings
+from app.db.book_profile import get_book_profile
 from app.db.repositories.eval_runs import EvalRunsRepo
 from app.generation.complete import make_complete_fn
 from app.generation.generate import SchemaGovernedGenerator
@@ -158,7 +159,18 @@ async def build_live_runner(
         glossary_client, book_id=UUID(book_id) if book_id is not None else None
     )
 
-    verifier = CanonVerifier(read_port=read_port, canon_lookup=canon_lookup)
+    # de-bias C1: the anachronism check is PROFILE-DRIVEN. Resolve the per-book
+    # profile (NEUTRAL when unset → empty markers → anachronism OFF, so a non-
+    # Fengshen book is never flagged for "modern tech"). The Fengshen demo book is
+    # seeded with FENGSHEN_ANACHRONISM_MARKERS, preserving today's behavior.
+    profile = await get_book_profile(
+        pool, UUID(book_id) if book_id is not None else None
+    )
+    verifier = CanonVerifier(
+        read_port=read_port,
+        canon_lookup=canon_lookup,
+        anachronism_markers=profile.anachronism_markers,
+    )
 
     # ── technique selection via the GATE-AWARE FACTORY (DEFERRED-054 e2e) ────────
     # The factory reads the LIVE persisted eval gate (the same row the

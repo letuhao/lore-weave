@@ -26,6 +26,8 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.db.book_profile import NEUTRAL_PROFILE, BookProfile
+
 if TYPE_CHECKING:  # avoid importing the gap model at runtime (keeps base lean)
     from app.gaps.model import Gap
 
@@ -124,6 +126,11 @@ class StrategyContext(BaseModel):
     # to a concrete endpoint+model downstream. NEVER a model name. Optional here
     # because the interface predates any real generation.
     model_ref: str | None = None
+    # The per-book worldview profile (de-bias C1). Read by the prompt builders +
+    # the dimension resolver to de-bias generation away from the hardcoded 封神/商周/
+    # 中文/地点 universe. Defaults to the NEUTRAL profile (language auto, anachronism
+    # OFF) so a context built without a book behaves like a generic worldbuilder.
+    profile: BookProfile = NEUTRAL_PROFILE
 
 
 class EnrichmentStrategy(ABC):

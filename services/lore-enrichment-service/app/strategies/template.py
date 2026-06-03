@@ -151,17 +151,17 @@ class TemplateStrategy(EnrichmentStrategy):
         provenance = {
             "technique": Technique.TEMPLATE.value,
             "source_gap": {
-                "entity_kind": gap.entity_kind.value,
+                "entity_kind": gap.entity_kind,
                 "canonical_name": gap.canonical_name,
                 "target_ref": gap.target_ref,
-                "missing_dimensions": [d.value for d in gap.missing_dimensions],
+                "missing_dimensions": list(gap.missing_dimensions),
             },
             "scaffold": True,  # values are empty placeholders, not generated yet
         }
         return ScaffoldedProposal(
             user_id=context.user_id,
             project_id=context.project_id,
-            entity_kind=gap.entity_kind.value,
+            entity_kind=gap.entity_kind,
             canonical_name=gap.canonical_name,
             target_ref=gap.target_ref,
             dimensions=dimensions,

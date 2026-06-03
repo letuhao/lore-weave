@@ -231,10 +231,10 @@ class RetrievalStrategy(EnrichmentStrategy):
         provenance = {
             "technique": Technique.RETRIEVAL.value,
             "source_gap": {
-                "entity_kind": gap.entity_kind.value,
+                "entity_kind": gap.entity_kind,
                 "canonical_name": gap.canonical_name,
                 "target_ref": gap.target_ref,
-                "missing_dimensions": [d.value for d in gap.missing_dimensions],
+                "missing_dimensions": list(gap.missing_dimensions),
             },
             "retrieval": {
                 "top_k": self._top_k,
@@ -247,7 +247,7 @@ class RetrievalStrategy(EnrichmentStrategy):
         return GroundedProposal(
             user_id=context.user_id,
             project_id=context.project_id,
-            entity_kind=gap.entity_kind.value,
+            entity_kind=gap.entity_kind,
             canonical_name=gap.canonical_name,
             target_ref=gap.target_ref,
             dimensions=self._dimension_slots(gap),

@@ -220,7 +220,7 @@ def test_scope_preserved_from_context(gaps) -> None:
 def test_entity_identity_carried_from_gap(gaps, context) -> None:
     gap = gaps["玉虛宮"]
     [proposal] = _run(TemplateStrategy(), [gap], context)
-    assert proposal.entity_kind == gap.entity_kind.value == "location"
+    assert proposal.entity_kind == gap.entity_kind == "location"
     assert proposal.canonical_name == "玉虛宮"
     assert proposal.target_ref == gap.target_ref
 
@@ -235,7 +235,7 @@ def test_provenance_records_technique_and_source_gap(gaps, context) -> None:
     src = prov["source_gap"]
     assert src["canonical_name"] == "玉虛宮"
     assert src["entity_kind"] == "location"
-    assert set(src["missing_dimensions"]) == {d.value for d in gap.missing_dimensions}
+    assert set(src["missing_dimensions"]) == set(gap.missing_dimensions)
 
 
 # ── determinism + batch order ─────────────────────────────────────────────────

@@ -59,7 +59,11 @@ from app.strategies.recook import (
     build_recook_prompt,
 )
 from app.strategies.registry import InactiveStrategyError, StrategyRegistry
-from app.verify.canon_verify import CanonFact, CanonVerifier
+from app.verify.canon_verify import (
+    FENGSHEN_ANACHRONISM_MARKERS,
+    CanonFact,
+    CanonVerifier,
+)
 from app.verify.sanitize import FICTIONAL_MARKER
 
 # pytest.ini sets asyncio_mode=auto → async tests run without an explicit marker.
@@ -141,7 +145,11 @@ def _verifier(*, canon=None):
     async def _lookup(entity_name: str, dimension: str):
         return canon.get((entity_name, dimension), [])
 
-    return CanonVerifier(read_port=_NonEmptyRead(), canon_lookup=_lookup)
+    return CanonVerifier(
+        read_port=_NonEmptyRead(),
+        canon_lookup=_lookup,
+        anachronism_markers=FENGSHEN_ANACHRONISM_MARKERS,
+    )
 
 
 def _license_lookup(status: LicenseStatus = LicenseStatus.PUBLIC_DOMAIN):

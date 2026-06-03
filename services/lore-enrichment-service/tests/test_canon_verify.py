@@ -24,11 +24,21 @@ from app.clients.port import NullKnowledgeRead
 from app.generation.provenance import EnrichedFact, SourceRef, make_enriched_fact
 from app.retrieval.strategy import GroundedProposal, GroundingRef
 from app.verify.canon_verify import (
+    FENGSHEN_ANACHRONISM_MARKERS,
     CanonFact,
-    CanonVerifier,
     FlagKind,
     Severity,
 )
+from app.verify.canon_verify import CanonVerifier as _CanonVerifier
+
+
+def CanonVerifier(**kwargs):  # noqa: N802 — test shim
+    """De-bias C1: the anachronism check is now PROFILE-driven (default markers
+    empty = OFF). These C12 tests assert the Fengshen behavior, so default the
+    verifier to the FENGSHEN denylist (the old global default). Tests that pass
+    their own ``anachronism_markers`` override this."""
+    kwargs.setdefault("anachronism_markers", FENGSHEN_ANACHRONISM_MARKERS)
+    return _CanonVerifier(**kwargs)
 from app.verify.sanitize import (
     FICTIONAL_MARKER,
     neutralize_proposal_text,

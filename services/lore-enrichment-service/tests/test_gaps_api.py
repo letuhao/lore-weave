@@ -29,19 +29,28 @@ def _row(name, kind="location", mentions=0, dims=()):
                              mention_count=mentions, dimensions=tuple(dims))
 
 
-def test_coverages_from_rows_maps_labels_and_skips_unmodeled():
+def test_coverages_from_rows_is_multi_kind_and_id_or_label_tolerant():
+    # De-bias C1 (KB3): every kind is modeled — a CHARACTER is NOT skipped, an
+    # unknown kind falls back to GENERIC. Present dims map from either the stable
+    # id (KB-A) or the legacy default label; unknown dims drop (no drift). Only an
+    # empty canonical_name skips.
     rows = [
-        _row("蓬萊", mentions=3, dims=("历史", "features")),
-        _row("", mentions=0),                       # empty name → skip
-        _row("某人", kind="character"),              # unmodeled kind → skip
-        _row("某物", kind="bogus-kind"),             # unknown kind string → skip
-        _row("X", dims=("不存在的维度",)),            # unknown dim dropped (no drift)
+        _row("蓬萊", mentions=3, dims=("历史", "features")),   # location, labels
+        _row("", mentions=0),                                  # empty name → skip
+        _row("孫悟空", kind="character", dims=("appearance",)), # character, stable id
+        _row("某物", kind="bogus-kind", dims=("description",)), # unknown kind → GENERIC
+        _row("X", dims=("不存在的维度",)),                      # unknown dim dropped
     ]
     covs = coverages_from_rows(rows)
-    assert len(covs) == 2  # 蓬萊 + X
+    assert len(covs) == 4  # 蓬萊 + 孫悟空 + 某物 + X (only the empty-name row skips)
     by_name = {c.canonical_name: c for c in covs}
     assert by_name["蓬萊"].entity_kind == EntityKind.LOCATION
+    # label 历史 + id-ish 'features' both resolve to stable ids
     assert set(by_name["蓬萊"].present_dimensions) == {Dimension.HISTORY, Dimension.FEATURES}
+    assert by_name["孫悟空"].entity_kind == "character"
+    assert set(by_name["孫悟空"].present_dimensions) == {"appearance"}
+    assert by_name["某物"].entity_kind == "bogus-kind"  # kept; GENERIC dim table
+    assert set(by_name["某物"].present_dimensions) == {"description"}
     assert by_name["X"].present_dimensions == ()  # unknown label dropped
 
 

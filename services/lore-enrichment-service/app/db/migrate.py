@@ -475,6 +475,38 @@ CREATE TABLE IF NOT EXISTS enrichment_eval_runs (
 
 CREATE INDEX IF NOT EXISTS idx_enrichment_eval_runs_latest
   ON enrichment_eval_runs(project_id, suite_version, created_at DESC);
+
+-- ═══════════════════════════════════════════════════════════════
+-- enrichment_book_profile (de-bias C1 — per-book worldview)
+-- ───────────────────────────────────────────────────────────────
+-- The per-book "enrichment profile" that DE-BIASES generation + verify away
+-- from the hardcoded 封神演义 / 商周 / 中文 / 地点 universe. Read at runtime by
+-- the prompt builders, the dimension resolver, and the anachronism check; an
+-- UNSET book resolves to a NEUTRAL default (language=auto, era OFF) in app code
+-- (no row required). Per-BOOK (worldview is a book property); no FK (book_id is
+-- cross-DB, like every other id here). ADDITIVE: fresh CREATE TABLE IF NOT EXISTS.
+--   * era_policy NULL  → no era constraint → anachronism check OFF (a sci-fi book
+--     is never auto-flagged for "modern tech").
+--   * anachronism_markers NULL → derive from era_policy (advisory) / OFF; the
+--     Fengshen seed populates it with the curated 商周 denylist.
+--   * dimension_overrides → per-kind add/remove/relabel/reweight (the dynamic
+--     dimension layer); free JSONB (no kind/dimension vocab CHECK — both dynamic).
+--   * profile_source → seed | ai_suggested | manual (provenance of the values).
+-- No CHECK on language/kind/dimension: they are author/profile-extensible (KB3).
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS enrichment_book_profile (
+  book_id              UUID PRIMARY KEY,                 -- the book (cross-DB, no FK)
+  worldview            TEXT NOT NULL DEFAULT '',
+  language             TEXT NOT NULL DEFAULT 'auto',
+  era_policy           TEXT,                             -- NULL = anachronism OFF
+  voice                TEXT,
+  anachronism_markers  JSONB,                            -- NULL = none; [{term,reason}]
+  dimension_overrides  JSONB NOT NULL DEFAULT '{}'::jsonb,
+  profile_source       TEXT NOT NULL DEFAULT 'manual'
+    CHECK (profile_source IN ('seed','ai_suggested','manual')),
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 """
 
 
@@ -488,6 +520,7 @@ CREATE INDEX IF NOT EXISTS idx_enrichment_eval_runs_latest
 #   been up-migrated, breaking the down→up round-trip (and the db-test fixture's
 #   per-test reset). It was added to the UP DDL but not here.
 DOWN_DDL = """
+DROP TABLE IF EXISTS enrichment_book_profile;
 DROP TABLE IF EXISTS enrichment_eval_runs;
 DROP TRIGGER IF EXISTS trg_enrichment_proposal_h0 ON enrichment_proposal;
 DROP TABLE IF EXISTS enrichment_proposal;
