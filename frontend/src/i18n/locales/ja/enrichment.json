@@ -2,7 +2,7 @@
   "header": "拡充レビュー",
   "subtitle": "記述の不足したエンティティ向けにAIが提案した設定を確認し、承認したものをこの本の正典に昇格します。拡充された下書きは昇格するまで非公開のバリアントです。",
   "untitled": "無題",
-  "panel": { "proposals": "提案", "gaps": "不足", "sources": "出典", "jobs": "ジョブ" },
+  "panel": { "proposals": "提案", "gaps": "不足", "sources": "出典", "jobs": "ジョブ", "settings": "プロファイル" },
   "h0": {
     "marker": "異本",
     "tooltip": "拡充されたバリアント — 昇格するまで正典ではありません。"
@@ -176,5 +176,39 @@
       "failed": "失敗",
       "cancelled": "キャンセル"
     }
+  },
+  "settings": {
+    "title": "拡充プロファイル",
+    "subtitle": "生成のバイアスを除くための本ごとの世界観 — 言語・時代・語り口、拡充が埋める次元。変更は新しいジョブに適用されます。",
+    "error": "プロファイルを読み込めませんでした。再試行してください。",
+    "worldview": "世界観",
+    "language": "出力言語",
+    "voice": "語り口",
+    "era_policy": "時代ポリシー",
+    "era_hint": "時代/時代錯誤の制約（例: 「商周以降の技術は不可」）。空欄 = 時代錯誤チェックをオフ。",
+    "markers": "時代錯誤マーカー",
+    "markers_placeholder": "語 | 理由（1行に1つ）",
+    "markers_hint": "1行に「語 | 理由」。時代錯誤チェックが検出する語です。空にするとチェックがオフになります。",
+    "dimensions": "次元のオーバーライド",
+    "kind": { "character": "キャラクター", "location": "場所", "item": "アイテム", "faction": "勢力", "event": "イベント" },
+    "add_dimension": "次元を追加",
+    "no_extra_dims": "この種類の組み込み次元を使用します。",
+    "dim_id": "ID",
+    "dim_label": "ラベル",
+    "dim_weight": "重み",
+    "dim_required": "必須",
+    "remove_dimension": "次元を削除",
+    "suggest": "本から提案",
+    "suggesting": "分析中…",
+    "suggest_model": "提案モデル",
+    "select_model": "モデルを選択…",
+    "suggest_hint": "AIが本のメタデータ＋章を読んで編集可能な下書きを提案します。保存するまで何も保存されません。",
+    "suggested": "下書きを提案しました — 確認して保存してください",
+    "saving": "保存中…",
+    "saved": "プロファイルを保存しました",
+    "source": "ソース: {{source}}",
+    "source_seed": "シード",
+    "source_ai_suggested": "AI提案",
+    "source_manual": "手動"
   }
 }

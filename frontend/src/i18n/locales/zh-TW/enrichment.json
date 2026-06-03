@@ -2,7 +2,7 @@
   "header": "增補審閱",
   "subtitle": "審閱 AI 為描述不足的實體所提出的設定，再將你核可的內容晉升為本書的正典。增補草稿在晉升前皆為私人異本。",
   "untitled": "未命名",
-  "panel": { "proposals": "提案", "gaps": "缺口", "sources": "來源", "jobs": "作業" },
+  "panel": { "proposals": "提案", "gaps": "缺口", "sources": "來源", "jobs": "作業", "settings": "設定檔" },
   "h0": {
     "marker": "異本",
     "tooltip": "增補的異本 — 晉升前絕非正典。"
@@ -176,5 +176,39 @@
       "failed": "失敗",
       "cancelled": "已取消"
     }
+  },
+  "settings": {
+    "title": "增補設定檔",
+    "subtitle": "每本書的世界觀，用於消除生成偏差 — 語言、時代、語氣，以及增補要填補的維度。變更套用於新作業。",
+    "error": "無法載入設定檔，請重試。",
+    "worldview": "世界觀",
+    "language": "輸出語言",
+    "voice": "語氣",
+    "era_policy": "時代規範",
+    "era_hint": "時代／時代錯誤限制，例如「不得出現商周以後的科技」。留空 = 關閉時代錯誤檢查。",
+    "markers": "時代錯誤標記",
+    "markers_placeholder": "詞語 | 原因（每行一項）",
+    "markers_hint": "每行一項，格式為「詞語 | 原因」。這些是時代錯誤檢查會標記的詞語。清空即關閉檢查。",
+    "dimensions": "維度覆寫",
+    "kind": { "character": "角色", "location": "地點", "item": "物品", "faction": "勢力", "event": "事件" },
+    "add_dimension": "新增維度",
+    "no_extra_dims": "使用此類型的內建維度。",
+    "dim_id": "ID",
+    "dim_label": "標籤",
+    "dim_weight": "權重",
+    "dim_required": "必填",
+    "remove_dimension": "移除維度",
+    "suggest": "依書籍建議",
+    "suggesting": "分析中…",
+    "suggest_model": "建議模型",
+    "select_model": "選擇模型…",
+    "suggest_hint": "AI 讀取書籍中繼資料＋章節以提出可編輯的草稿。在你儲存前不會保存任何內容。",
+    "suggested": "已建議草稿 — 檢視後儲存",
+    "saving": "儲存中…",
+    "saved": "已儲存設定檔",
+    "source": "來源：{{source}}",
+    "source_seed": "種子",
+    "source_ai_suggested": "AI 建議",
+    "source_manual": "手動"
   }
 }

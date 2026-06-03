@@ -2,7 +2,7 @@
   "header": "Duyệt bồi đắp",
   "subtitle": "Xem xét lore do AI đề xuất cho các thực thể thiếu mô tả, rồi thăng những gì bạn duyệt vào canon của sách này. Bản nháp bồi đắp là dị bản riêng tư cho đến khi bạn thăng.",
   "untitled": "Chưa đặt tên",
-  "panel": { "proposals": "Đề xuất", "gaps": "Thiếu hụt", "sources": "Nguồn", "jobs": "Tác vụ" },
+  "panel": { "proposals": "Đề xuất", "gaps": "Thiếu hụt", "sources": "Nguồn", "jobs": "Tác vụ", "settings": "Hồ sơ" },
   "h0": {
     "marker": "dị bản",
     "tooltip": "Dị bản bồi đắp — không phải canon cho đến khi bạn thăng."
@@ -176,5 +176,39 @@
       "failed": "Lỗi",
       "cancelled": "Đã huỷ"
     }
+  },
+  "settings": {
+    "title": "Hồ sơ bồi đắp",
+    "subtitle": "Thế giới quan riêng của sách, dùng để khử thiên lệch khi sinh nội dung — ngôn ngữ, thời đại, giọng văn và các chiều mà bồi đắp sẽ lấp. Thay đổi áp dụng cho tác vụ mới.",
+    "error": "Không tải được hồ sơ. Vui lòng thử lại.",
+    "worldview": "Thế giới quan",
+    "language": "Ngôn ngữ đầu ra",
+    "voice": "Giọng văn",
+    "era_policy": "Quy ước thời đại",
+    "era_hint": "Ràng buộc thời đại/lỗi thời, ví dụ \"không có công nghệ sau Thương-Chu\". Để trống = tắt kiểm tra lỗi thời.",
+    "markers": "Dấu hiệu lỗi thời",
+    "markers_placeholder": "thuật ngữ | lý do (mỗi dòng một mục)",
+    "markers_hint": "Mỗi dòng dạng \"thuật ngữ | lý do\". Đây là các thuật ngữ mà kiểm tra lỗi thời sẽ gắn cờ. Xóa hết = tắt kiểm tra.",
+    "dimensions": "Ghi đè chiều",
+    "kind": { "character": "Nhân vật", "location": "Địa điểm", "item": "Vật phẩm", "faction": "Phe phái", "event": "Sự kiện" },
+    "add_dimension": "Thêm chiều",
+    "no_extra_dims": "Dùng các chiều mặc định cho loại này.",
+    "dim_id": "mã",
+    "dim_label": "nhãn",
+    "dim_weight": "trọng số",
+    "dim_required": "bắt buộc",
+    "remove_dimension": "Xóa chiều",
+    "suggest": "Gợi ý từ sách",
+    "suggesting": "Đang phân tích…",
+    "suggest_model": "Mô hình gợi ý",
+    "select_model": "Chọn mô hình…",
+    "suggest_hint": "AI đọc siêu dữ liệu + các chương để đề xuất bản nháp bạn có thể sửa. Không lưu cho đến khi bạn Lưu.",
+    "suggested": "Đã gợi ý bản nháp — xem lại rồi Lưu",
+    "saving": "Đang lưu…",
+    "saved": "Đã lưu hồ sơ",
+    "source": "Nguồn: {{source}}",
+    "source_seed": "khởi tạo",
+    "source_ai_suggested": "AI gợi ý",
+    "source_manual": "thủ công"
   }
 }

@@ -15,6 +15,9 @@ vi.mock('../SourcesPanel', () => ({
 vi.mock('../JobsPanel', () => ({
   JobsPanel: () => <div data-testid="stub-jobs">jobs-panel</div>,
 }));
+vi.mock('../SettingsPanel', () => ({
+  SettingsPanel: () => <div data-testid="stub-settings">settings-panel</div>,
+}));
 
 // LE-065 — the shell reads list totals for the tab count badges; stub them (the
 // hooks have their own tests). proposals=7 / sources=5 / jobs=2; gaps via context.
@@ -63,13 +66,24 @@ describe('useEnrichmentContext', () => {
 });
 
 describe('EnrichmentView', () => {
-  it('renders the four tab buttons + the H0 marker', () => {
+  it('renders the five tab buttons + the H0 marker', () => {
     renderView();
     expect(screen.getByTestId('enrichment-tab-proposals')).toBeInTheDocument();
     expect(screen.getByTestId('enrichment-tab-gaps')).toBeInTheDocument();
     expect(screen.getByTestId('enrichment-tab-sources')).toBeInTheDocument();
     expect(screen.getByTestId('enrichment-tab-jobs')).toBeInTheDocument();
+    expect(screen.getByTestId('enrichment-tab-settings')).toBeInTheDocument();
     expect(screen.getByTestId('enrichment-h0-marker')).toBeInTheDocument();
+  });
+
+  it('clicking the settings (profile) tab lazy-mounts + reveals the SettingsPanel', () => {
+    renderView();
+    expect(screen.queryByTestId('stub-settings')).toBeNull(); // not visited yet
+    fireEvent.click(screen.getByTestId('enrichment-tab-settings'));
+    const settings = screen.getByTestId('stub-settings');
+    expect(settings.parentElement?.className).not.toContain('hidden');
+    // no count badge on the settings tab
+    expect(screen.queryByTestId('enrichment-tab-count-settings')).toBeNull();
   });
 
   // LE-065 — count badges from the list totals; gaps has no badge until Detect runs.

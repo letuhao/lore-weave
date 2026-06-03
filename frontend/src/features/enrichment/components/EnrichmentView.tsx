@@ -10,9 +10,10 @@ import { ProposalsPanel } from './ProposalsPanel';
 import { GapsPanel } from './GapsPanel';
 import { SourcesPanel } from './SourcesPanel';
 import { JobsPanel } from './JobsPanel';
+import { SettingsPanel } from './SettingsPanel';
 import { H0Marker } from './badges';
 
-const PANELS: EnrichmentPanel[] = ['proposals', 'gaps', 'sources', 'jobs'];
+const PANELS: EnrichmentPanel[] = ['proposals', 'gaps', 'sources', 'jobs', 'settings'];
 
 /** The feature shell: H0 chip + a secondary tab strip (with live count badges) over
  *  the four panels. Panels are lazy-mounted on first visit then kept mounted (CSS
@@ -34,6 +35,7 @@ export function EnrichmentView() {
     gaps: gapCount,
     sources: sourceCount,
     jobs: jobCount,
+    settings: null, // no count badge for the profile-authoring tab
   };
 
   return (
@@ -92,6 +94,11 @@ export function EnrichmentView() {
       {visited.has('jobs') && (
         <div className={activePanel === 'jobs' ? '' : 'hidden'}>
           <JobsPanel />
+        </div>
+      )}
+      {visited.has('settings') && (
+        <div className={activePanel === 'settings' ? '' : 'hidden'}>
+          <SettingsPanel />
         </div>
       )}
     </div>

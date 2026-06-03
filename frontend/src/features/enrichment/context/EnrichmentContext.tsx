@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
 
-export type EnrichmentPanel = 'proposals' | 'gaps' | 'sources' | 'jobs';
+export type EnrichmentPanel = 'proposals' | 'gaps' | 'sources' | 'jobs' | 'settings';
 
 /** Stable per-book UI state shared across the enrichment panels (book scope +
  *  which panel + which proposal is selected + the client-side project filter).

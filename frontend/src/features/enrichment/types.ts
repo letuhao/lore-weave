@@ -249,6 +249,70 @@ export interface JobListResponse {
   offset: number;
 }
 
+// ── Book profile (de-bias C3) ───────────────────────────────────────────────────
+/** The built-in entity kinds with a static dimension table (others → GENERIC).
+ *  The dimension-override editor keys on these. */
+export const PROFILE_KINDS = ['character', 'location', 'item', 'faction', 'event'] as const;
+export type ProfileKind = (typeof PROFILE_KINDS)[number];
+
+/** One author/AI-added dimension within a kind's `add` list. */
+export interface DimensionAdd {
+  id: string;
+  label?: string;
+  weight?: number;
+  required?: boolean;
+  payload_shape?: string;
+}
+
+/** Per-kind override ops (the dynamic-dimension layer). The FE editor edits `add`;
+ *  `remove`/`relabel`/`reweight` are preserved untouched (round-trip safe). */
+export interface DimensionOverrideOps {
+  add?: DimensionAdd[];
+  remove?: string[];
+  relabel?: Record<string, string>;
+  reweight?: Record<string, number>;
+}
+
+export type DimensionOverrides = Record<string, DimensionOverrideOps>;
+
+export interface AnachronismMarker {
+  term: string;
+  reason: string;
+}
+
+/** GET/PUT /books/{id}/profile — the persisted de-bias profile. */
+export interface BookProfile {
+  book_id: string | null;
+  worldview: string;
+  language: string;
+  era_policy: string | null;
+  voice: string | null;
+  anachronism_markers: AnachronismMarker[];
+  anachronism_enabled: boolean;
+  dimension_overrides: DimensionOverrides;
+  profile_source: 'seed' | 'ai_suggested' | 'manual';
+}
+
+/** PUT body — the full profile to persist (FULL REPLACE: omitted fields reset). */
+export interface BookProfileInput {
+  worldview: string;
+  language: string;
+  era_policy: string | null;
+  voice: string | null;
+  anachronism_markers: AnachronismMarker[];
+  dimension_overrides: DimensionOverrides;
+}
+
+/** POST /books/{id}/profile/suggest — a non-persisted AI draft. */
+export interface SuggestedProfile {
+  worldview: string;
+  language: string;
+  era_policy: string | null;
+  voice: string | null;
+  dimension_overrides: DimensionOverrides;
+  profile_source: 'ai_suggested';
+}
+
 // ── helpers ────────────────────────────────────────────────────────────────────
 export function tierOf(technique: string): Tier {
   if (technique === 'fabrication') return 'P2';

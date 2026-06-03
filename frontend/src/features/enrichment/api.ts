@@ -10,6 +10,9 @@ import type {
   Source,
   IngestResult,
   JobListResponse,
+  BookProfile,
+  BookProfileInput,
+  SuggestedProfile,
 } from './types';
 
 const BASE = '/v1/lore-enrichment';
@@ -169,6 +172,38 @@ export const enrichmentApi = {
   ): Promise<{ job_id: string; status: string; resume?: string }> {
     return apiJson(`${BASE}/jobs/${jobId}/resume?project_id=${projectId}`, {
       method: 'POST',
+      token,
+    });
+  },
+
+  // ── book profile (de-bias C3) — book-scoped, owner-only ─────────────────────
+  getBookProfile(bookId: string, token: string): Promise<BookProfile> {
+    return apiJson<BookProfile>(`${BASE}/books/${bookId}/profile`, { token });
+  },
+
+  /** FULL REPLACE (REST PUT): the caller MUST send the whole profile — an omitted
+   *  field resets to its default (e.g. omitting markers clears them). */
+  putBookProfile(
+    bookId: string,
+    body: BookProfileInput,
+    token: string,
+  ): Promise<BookProfile> {
+    return apiJson<BookProfile>(`${BASE}/books/${bookId}/profile`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+      token,
+    });
+  },
+
+  /** AI-suggest a DRAFT (not persisted). suggest_model_ref is a BYOK chat model. */
+  suggestBookProfile(
+    bookId: string,
+    body: { project_id: string; suggest_model_ref: string; sample_chapter_ids?: string[] },
+    token: string,
+  ): Promise<SuggestedProfile> {
+    return apiJson<SuggestedProfile>(`${BASE}/books/${bookId}/profile/suggest`, {
+      method: 'POST',
+      body: JSON.stringify(body),
       token,
     });
   },

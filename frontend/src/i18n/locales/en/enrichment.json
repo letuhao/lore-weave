@@ -2,7 +2,7 @@
   "header": "Enrichment Review",
   "subtitle": "Review AI-proposed lore for under-described entities, then promote what you approve into this book's canon. Enriched drafts are private variants until you promote them.",
   "untitled": "Untitled",
-  "panel": { "proposals": "Proposals", "gaps": "Gaps", "sources": "Sources", "jobs": "Jobs" },
+  "panel": { "proposals": "Proposals", "gaps": "Gaps", "sources": "Sources", "jobs": "Jobs", "settings": "Profile" },
   "h0": {
     "marker": "variant",
     "tooltip": "An enriched variant — never authored canon until you promote it."
@@ -176,5 +176,39 @@
       "failed": "Failed",
       "cancelled": "Cancelled"
     }
+  },
+  "settings": {
+    "title": "Enrichment profile",
+    "subtitle": "The per-book worldview that de-biases generation — language, era, voice, and the dimensions enrichment fills. Edits apply to new jobs.",
+    "error": "Couldn't load the profile. Please try again.",
+    "worldview": "Worldview",
+    "language": "Output language",
+    "voice": "Voice",
+    "era_policy": "Era policy",
+    "era_hint": "An era/anachronism constraint, e.g. \"no post-Shang-Zhou tech\". Empty = anachronism check off.",
+    "markers": "Anachronism markers",
+    "markers_placeholder": "term | reason (one per line)",
+    "markers_hint": "One per line as \"term | reason\". These are the terms the anachronism check flags. Clearing them turns the check off.",
+    "dimensions": "Dimension overrides",
+    "kind": { "character": "Character", "location": "Location", "item": "Item", "faction": "Faction", "event": "Event" },
+    "add_dimension": "Add dimension",
+    "no_extra_dims": "Uses the built-in dimensions for this kind.",
+    "dim_id": "id",
+    "dim_label": "label",
+    "dim_weight": "weight",
+    "dim_required": "required",
+    "remove_dimension": "Remove dimension",
+    "suggest": "Suggest from book",
+    "suggesting": "Analyzing…",
+    "suggest_model": "Suggest model",
+    "select_model": "Select a model…",
+    "suggest_hint": "AI reads the book metadata + chapters to propose a draft you can edit. Nothing is saved until you Save.",
+    "suggested": "Draft suggested — review, then Save",
+    "saving": "Saving…",
+    "saved": "Profile saved",
+    "source": "Source: {{source}}",
+    "source_seed": "seed",
+    "source_ai_suggested": "AI-suggested",
+    "source_manual": "manual"
   }
 }
