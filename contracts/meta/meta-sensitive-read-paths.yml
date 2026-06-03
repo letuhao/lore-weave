@@ -58,6 +58,19 @@ paths:
     reviewers:
       - security-team
 
+  - id: bulk_pii_read
+    description: "Bulk / multi-user PII fetch via the contracts/pii SDK (TagBulkPIIRead)"
+    tables:
+      - pii_registry
+      - pii_kek
+    # The contracts/pii SDK (Go contracts/pii/sdk.go TagBulkPIIRead + Rust
+    # dp-kernel SensitiveReadTag::BulkPiiRead) tags bulk PII reads with this id;
+    # the row lands in meta_read_audit. Listed here so the YAML SSOT matches the
+    # actually-written id-set + the migration CHECK (D-READAUDIT-ENUM-DRIFT).
+    rationale: "Multi-user PII read — highest exfiltration surface; every bulk PII read audited (GDPR Art. 15)"
+    reviewers:
+      - security-team
+
   # ── Cycle 22 (L4.Q PII SDK) — single-user GetPII / ErasePII tags. ───
   # The cycle-22 contracts/pii SDK tags every GetPII + ErasePII call with
   # one of these ids; the row lands in meta_read_audit (migration 014).

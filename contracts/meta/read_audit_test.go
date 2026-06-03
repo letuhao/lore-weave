@@ -10,11 +10,17 @@ func TestLoadSensitivePaths_ShippedFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load shipped sensitive paths: %v", err)
 	}
+	// The full SSOT id-set — MUST match the meta_read_audit query_type CHECK
+	// (migration 031); the read-audit-query-type-drift-lint CI gate enforces
+	// CHECK == YAML, this asserts the Go loader sees every id.
 	want := []string{
 		"player_index_cross_user",
 		"audit_query",
 		"admin_bulk_export",
 		"bulk_meta_query",
+		"bulk_pii_read",
+		"pii_user_get",
+		"pii_user_erase",
 	}
 	for _, id := range want {
 		if !sp.Has(id) {

@@ -41,6 +41,7 @@ jobs:
           - service-acl-matrix-lint
           - prompt-assembly-discipline-lint
           - meta-sensitive-read-bypass-lint
+          - read-audit-query-type-drift-lint
     steps:
       - uses: actions/checkout@v4
       - name: Run ${{ matrix.lint }}

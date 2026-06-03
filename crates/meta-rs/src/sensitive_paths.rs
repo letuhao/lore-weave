@@ -125,7 +125,17 @@ mod tests {
     #[test]
     fn shipped_file_parses() {
         let sp = SensitivePaths::load(SHIPPED).expect("load shipped");
-        for id in ["player_index_cross_user", "audit_query", "admin_bulk_export", "bulk_meta_query"] {
+        // Full SSOT id-set — must match the meta_read_audit query_type CHECK
+        // (migration 031); read-audit-query-type-drift-lint enforces CHECK == YAML.
+        for id in [
+            "player_index_cross_user",
+            "audit_query",
+            "admin_bulk_export",
+            "bulk_meta_query",
+            "bulk_pii_read",
+            "pii_user_get",
+            "pii_user_erase",
+        ] {
             assert!(sp.has(id), "id {id} missing");
             let p = sp.get(id).unwrap();
             assert!(!p.reviewers.is_empty(), "id {id} has no reviewers");
