@@ -33,10 +33,10 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/loreweave/foundation/contracts/realityreg"
 	"github.com/loreweave/foundation/services/publisher/pkg/leader_election"
 	"github.com/loreweave/foundation/services/publisher/pkg/pgsource"
 	"github.com/loreweave/foundation/services/publisher/pkg/poll_loop"
-	"github.com/loreweave/foundation/services/publisher/pkg/realityreg"
 	"github.com/loreweave/foundation/services/publisher/pkg/redisemit"
 	"github.com/loreweave/foundation/services/publisher/pkg/retry"
 	"github.com/loreweave/foundation/services/publisher/pkg/xreality_fanout"

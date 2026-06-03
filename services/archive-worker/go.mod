@@ -29,7 +29,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/loreweave/foundation/contracts/lifecycle v0.0.0
-	github.com/loreweave/foundation/services/publisher v0.0.0-00010101000000-000000000000
+	github.com/loreweave/foundation/contracts/realityreg v0.0.0
 	github.com/minio/minio-go/v7 v7.0.100
 	github.com/parquet-go/parquet-go v0.23.0
 	github.com/prometheus/client_golang v1.23.2
@@ -47,6 +47,7 @@ require (
 	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.11 // indirect
 	github.com/klauspost/crc32 v1.3.0 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
 	github.com/minio/crc64nvme v1.1.1 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
@@ -73,7 +74,7 @@ require (
 
 replace github.com/loreweave/foundation/contracts/lifecycle => ../../contracts/lifecycle
 
-// P1 #20: reuse the publisher's reality_registry client + DSN resolver for the
-// per-reality pool wiring. FOLLOW-UP D-REALITYREG-SHARED (row 086): promote to
-// a shared contracts/ module.
-replace github.com/loreweave/foundation/services/publisher => ../publisher
+// P1 #20: reuse the shared reality_registry client + DSN resolver for the
+// per-reality pool wiring. Promoted to contracts/ (D-REALITYREG-SHARED, row
+// 086) — no longer a cross-import of the publisher service.
+replace github.com/loreweave/foundation/contracts/realityreg => ../../contracts/realityreg

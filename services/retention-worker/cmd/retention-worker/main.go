@@ -30,7 +30,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/loreweave/foundation/contracts/lifecycle"
-	"github.com/loreweave/foundation/services/publisher/pkg/realityreg"
+	"github.com/loreweave/foundation/contracts/realityreg"
 	"github.com/loreweave/foundation/services/retention-worker/pkg/audit_invoker"
 	"github.com/loreweave/foundation/services/retention-worker/pkg/outbox_pruner"
 	"github.com/loreweave/foundation/services/retention-worker/pkg/pgio"

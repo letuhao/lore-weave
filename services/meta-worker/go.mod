@@ -16,20 +16,20 @@ replace github.com/loreweave/foundation/contracts/events => ../../contracts/even
 
 replace github.com/loreweave/foundation/contracts/canon/timeline => ../../contracts/canon/timeline
 
-// P1 #18: reuse the publisher's reality_registry client + shard-host→DSN
-// resolver for the per-reality pool wiring (canon_projection subscriber DBs).
-// FOLLOW-UP: promote realityreg to a shared contracts/ module so both
-// services depend on one source instead of meta-worker→publisher.
 replace github.com/loreweave/foundation/contracts/lifecycle => ../../contracts/lifecycle
 
-replace github.com/loreweave/foundation/services/publisher => ../publisher
+// P1 #18: reuse the shared reality_registry client + shard-host→DSN resolver
+// for the per-reality pool wiring (canon_projection subscriber DBs). Promoted
+// to contracts/ (D-REALITYREG-SHARED, row 086) so meta-worker no longer
+// cross-imports the publisher service.
+replace github.com/loreweave/foundation/contracts/realityreg => ../../contracts/realityreg
 
 require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/loreweave/foundation/contracts/canon/timeline v0.0.0-00010101000000-000000000000
+	github.com/loreweave/foundation/contracts/realityreg v0.0.0
 	github.com/loreweave/foundation/sdks/go/metapg v0.0.0-00010101000000-000000000000
-	github.com/loreweave/foundation/services/publisher v0.0.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/redis/go-redis/v9 v9.7.3
 )

@@ -33,6 +33,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/loreweave/foundation/contracts/meta"
+	"github.com/loreweave/foundation/contracts/realityreg"
 	"github.com/loreweave/foundation/sdks/go/metapg"
 	"github.com/loreweave/foundation/services/meta-worker/pkg/canon_writer"
 	"github.com/loreweave/foundation/services/meta-worker/pkg/consumer"
@@ -41,7 +42,6 @@ import (
 	"github.com/loreweave/foundation/services/meta-worker/pkg/redisconsume"
 	"github.com/loreweave/foundation/services/meta-worker/pkg/user_erased_writer"
 	"github.com/loreweave/foundation/services/meta-worker/pkg/user_erased_writer/pglive"
-	"github.com/loreweave/foundation/services/publisher/pkg/realityreg"
 )
 
 func main() {

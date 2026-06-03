@@ -33,6 +33,7 @@ require (
 	github.com/loreweave/foundation/services/backup-scheduler v0.0.0
 
 	// Cycle 15 — integrity_drift_test + full_integrity_test (L3.E + L3.F)
+	github.com/loreweave/foundation/contracts/realityreg v0.0.0
 	github.com/loreweave/foundation/services/integrity-checker v0.0.0
 	github.com/loreweave/foundation/services/meta-worker v0.0.0
 
@@ -114,6 +115,9 @@ replace github.com/loreweave/foundation/services/admin-cli => ../../services/adm
 
 // Cycle 10 — outbox + publisher + meta-worker
 replace github.com/loreweave/foundation/contracts/events => ../../contracts/events
+
+// 086 D-REALITYREG-SHARED: realityreg promoted out of publisher to contracts/.
+replace github.com/loreweave/foundation/contracts/realityreg => ../../contracts/realityreg
 
 replace github.com/loreweave/foundation/services/publisher => ../../services/publisher
 

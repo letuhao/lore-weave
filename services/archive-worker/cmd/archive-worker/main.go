@@ -29,13 +29,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/loreweave/foundation/contracts/lifecycle"
+	"github.com/loreweave/foundation/contracts/realityreg"
 	"github.com/loreweave/foundation/services/archive-worker/pkg/archive_loop"
 	"github.com/loreweave/foundation/services/archive-worker/pkg/miniostore"
 	"github.com/loreweave/foundation/services/archive-worker/pkg/parquet_writer"
 	"github.com/loreweave/foundation/services/archive-worker/pkg/partition_picker"
 	"github.com/loreweave/foundation/services/archive-worker/pkg/pgio"
 	"github.com/loreweave/foundation/services/archive-worker/pkg/state"
-	"github.com/loreweave/foundation/services/publisher/pkg/realityreg"
 )
 
 const bucketName = "lw-event-archive"

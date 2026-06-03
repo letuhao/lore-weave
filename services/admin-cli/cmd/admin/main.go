@@ -30,6 +30,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -917,126 +918,34 @@ func run(args []string, stdout, stderr *os.File) int {
 	emitter := audit_emitter.New(sink, nil)
 
 	handlers := defaultHandlers()
-	// Wire the erasure orchestrator (076 Slice C) only for its own command, so
-	// unrelated commands never open the PII pool. Falls back to NotWired on a
-	// wiring error.
-	closeErasure := func() {}
-	if c.Name == "erasure user-erasure" {
-		erasureH, ce, eerr := buildErasureHandler()
-		closeErasure = ce
-		if eerr != nil {
-			fmt.Fprintf(stderr, "admin: erasure handler not wired: %v\n", eerr)
-		} else if erasureH != nil {
-			handlers.Register("erasure user-erasure", erasureH)
-		}
-	}
-	defer closeErasure()
 
-	// Read-only `reality stats` (073) — wired only for its own command.
-	closeReality := func() {}
-	if c.Name == "reality stats" {
-		rsH, rc, rerr := buildRealityStatsHandler()
-		closeReality = rc
-		if rerr != nil {
-			fmt.Fprintf(stderr, "admin: reality-stats handler not wired: %v\n", rerr)
-		} else if rsH != nil {
-			handlers.Register("reality stats", rsH)
+	// Per-command live-wiring: build the real handler ONLY for the invoked
+	// command, so unrelated commands never open a DB / KMS / MinIO connection.
+	// The builders are uniform: (nil handler, nil err) when the command is
+	// intentionally left NotWired (no META_DATABASE_URL, or the rebuild gate is
+	// off), a real handler on success, or a non-nil err when config is present
+	// but invalid. See each build* func for the per-command doc.
+	builders := map[string]func() (framework.Handler, func(), error){
+		"erasure user-erasure":         buildErasureHandler,
+		"reality stats":                buildRealityStatsHandler,
+		"migration status":             buildMigrationStatusHandler,
+		"archive list":                 buildArchiveListHandler,
+		"projection drift-check":       buildProjectionDriftCheckHandler,
+		"archive fetch":                buildArchiveFetchHandler,
+		"reality capacity-override":    buildCapacityOverrideHandler,
+		"reality rebuild-projection":   buildRebuildProjectionHandler,
+		"reality catastrophic-rebuild": buildCatastrophicRebuildHandler,
+	}
+	if build, ok := builders[c.Name]; ok {
+		closeHandler, fatal := wireCommandHandler(stderr, handlers, c.Name, build)
+		defer closeHandler()
+		if fatal {
+			// D-ADMIN-NOTWIRED-EXIT (121): a wiring-builder error means config is
+			// present but invalid — exit non-zero instead of falling through to the
+			// tier-3 NotWiredHandler (a calm "recognised but not wired" + exit 0).
+			return 2
 		}
 	}
-	defer closeReality()
-
-	// Read-only `migration status` (073) — wired only for its own command.
-	closeMig := func() {}
-	if c.Name == "migration status" {
-		mh, mc, merr := buildMigrationStatusHandler()
-		closeMig = mc
-		if merr != nil {
-			fmt.Fprintf(stderr, "admin: migration-status handler not wired: %v\n", merr)
-		} else if mh != nil {
-			handlers.Register("migration status", mh)
-		}
-	}
-	defer closeMig()
-
-	// Read-only `archive list` (073) — wired only for its own command. Per-reality
-	// read: needs META_DATABASE_URL (DSN resolution) + SHARD_DB_* at run time.
-	closeArchive := func() {}
-	if c.Name == "archive list" {
-		ah, ac, aerr := buildArchiveListHandler()
-		closeArchive = ac
-		if aerr != nil {
-			fmt.Fprintf(stderr, "admin: archive-list handler not wired: %v\n", aerr)
-		} else if ah != nil {
-			handlers.Register("archive list", ah)
-		}
-	}
-	defer closeArchive()
-
-	// Read-only `projection drift-check` (073) — fleet-wide drift ledger read.
-	closeDrift := func() {}
-	if c.Name == "projection drift-check" {
-		dh, dc, derr := buildProjectionDriftCheckHandler()
-		closeDrift = dc
-		if derr != nil {
-			fmt.Fprintf(stderr, "admin: projection-drift-check handler not wired: %v\n", derr)
-		} else if dh != nil {
-			handlers.Register("projection drift-check", dh)
-		}
-	}
-	defer closeDrift()
-
-	// Read-only `archive fetch` (073) — per-reality archive_state lookup + MinIO GET.
-	closeFetch := func() {}
-	if c.Name == "archive fetch" {
-		fh, fc, ferr := buildArchiveFetchHandler()
-		closeFetch = fc
-		if ferr != nil {
-			fmt.Fprintf(stderr, "admin: archive-fetch handler not wired: %v\n", ferr)
-		} else if fh != nil {
-			handlers.Register("archive fetch", fh)
-		}
-	}
-	defer closeFetch()
-
-	// `reality capacity-override` (073) — Tier-2 griefing scaling_events write.
-	closeCapOverride := func() {}
-	if c.Name == "reality capacity-override" {
-		coH, cc, coErr := buildCapacityOverrideHandler()
-		closeCapOverride = cc
-		if coErr != nil {
-			fmt.Fprintf(stderr, "admin: capacity-override handler not wired: %v\n", coErr)
-		} else if coH != nil {
-			handlers.Register("reality capacity-override", coH)
-		}
-	}
-	defer closeCapOverride()
-
-	// `reality rebuild-projection` (073, L3.G) — Tier-1 destructive; GATED behind
-	// ADMIN_CLI_ENABLE_UNPROVEN_REBUILD=1 (else stays fail-closed NotWired).
-	closeRebuild := func() {}
-	if c.Name == "reality rebuild-projection" {
-		rh, rc, rerr := buildRebuildProjectionHandler()
-		closeRebuild = rc
-		if rerr != nil {
-			fmt.Fprintf(stderr, "admin: rebuild-projection handler not wired: %v\n", rerr)
-		} else if rh != nil {
-			handlers.Register("reality rebuild-projection", rh)
-		}
-	}
-	defer closeRebuild()
-
-	// `reality catastrophic-rebuild` (073, L3.H) — Tier-1 destructive; same gate.
-	closeCatastrophic := func() {}
-	if c.Name == "reality catastrophic-rebuild" {
-		ch, cc, cerr := buildCatastrophicRebuildHandler()
-		closeCatastrophic = cc
-		if cerr != nil {
-			fmt.Fprintf(stderr, "admin: catastrophic-rebuild handler not wired: %v\n", cerr)
-		} else if ch != nil {
-			handlers.Register("reality catastrophic-rebuild", ch)
-		}
-	}
-	defer closeCatastrophic()
 
 	handler := handlers.Resolve(c)
 	inv := framework.Invocation{
@@ -1193,6 +1102,39 @@ func defaultHandlers() *framework.HandlerRegistry {
 	// (Intentionally empty — NotWiredHandler is the default. CONSOLIDATION
 	// follow-ups land wiring per carry_forward_cycle.)
 	return h
+}
+
+// wireCommandHandler invokes a per-command wiring builder and applies the
+// uniform NotWired-vs-error policy (D-ADMIN-NOTWIRED-EXIT / 121).
+//
+//   - build returns a non-nil ERROR → config is present but invalid (e.g.
+//     MINIO_* unset for `archive fetch`, SHARD_DB_* missing, allowlist load
+//     fail). This is FATAL: report it and signal a non-zero exit, so an operator
+//     who gave valid args but forgot config sees the real error — NOT the calm
+//     tier-3 NotWiredHandler "recognised but not wired" message with exit 0.
+//   - build returns (nil handler, nil err) → the command is intentionally left
+//     NotWired (no META_DATABASE_URL, or the rebuild gate is off). NOT fatal: the
+//     dispatcher's fail-closed tier policy decides (tier-3 informs; tier-1/2
+//     error). Mirrors buildAuditSink's own config errors, which already exit 2.
+//   - build returns (handler, _, nil) → register it.
+//
+// The returned closer is always non-nil (the builders return a no-op closer on
+// every error path), so the caller can unconditionally defer it.
+func wireCommandHandler(
+	stderr io.Writer,
+	handlers *framework.HandlerRegistry,
+	name string,
+	build func() (framework.Handler, func(), error),
+) (closer func(), fatal bool) {
+	h, closer, err := build()
+	if err != nil {
+		fmt.Fprintf(stderr, "admin: %s handler not wired: %v\n", name, err)
+		return closer, true
+	}
+	if h != nil {
+		handlers.Register(name, h)
+	}
+	return closer, false
 }
 
 // ─── audit sink ──────────────────────────────────────────────────────────────
