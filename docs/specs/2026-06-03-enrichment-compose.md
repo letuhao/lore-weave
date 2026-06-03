@@ -4,8 +4,9 @@
 > pre-existing constraint that undercuts the "any subject" premise. See
 > [`2026-06-03-enrichment-compose-review.md`](2026-06-03-enrichment-compose-review.md):
 > **F1** `target.mode=new` has no glossary-create client seam (§2.2 false) ·
-> **F2** generation prompts HARDCODE 封神演义 → Compose on non-Fengshen books produces wrong output
-> (needs book-aware prompting — a new "Slice 0") · **F3/F7** mode D can't reuse the C11 generator/
+> **F2 (CONFIRMED BUG)** generation prompts HARDCODE 封神演义 + 商周-era + 中文 + 地点 → enrichment is
+> already wrong for every non-Fengshen book → **foundational fix `Slice 0` first**, designed in
+> [`2026-06-03-enrichment-debias-book-profile.md`](2026-06-03-enrichment-debias-book-profile.md) · **F3/F7** mode D can't reuse the C11 generator/
 > chokepoint (it refuses empty grounding + requires non-empty `source_refs`) → D needs its own
 > generation path + a synthetic authored-provenance · **F4** `compose_draft` needs its own assembly
 > branch · **F5** mode B is 2-step (add `/compose/resolve-intent`) · **F6** C/F ingest needs an embed
@@ -147,6 +148,7 @@ B/C/D/F are **user-driven** (the user performs the sourcing act + bears responsi
 
 | Slice | Scope | Key files | Acceptance |
 |---|---|---|---|
+| **0 — de-bias (BUG FIX, prerequisite)** | per-book `enrichment_book_profile` + parameterize all prompt builders + profile-driven anachronism + Fengshen-default (no regression). See [debias spec](2026-06-03-enrichment-debias-book-profile.md). | generate.py · fabrication.py · recook.py · canon_verify.py · base.py · assembly.py · new book_profile.py + migration + profile endpoints + FE Settings panel | Fengshen profile → no output change (existing tests green); neutral/other profile → no 封神/商周/地点/中文 hardcode + anachronism off |
 | **1 — spine + D** | `POST /compose` skeleton (async) · `freeform` kind · target existing|new · `compose_draft` strategy + `seed_text`/`expand_mode` · worker thread-through · FE "Tạo" panel + ComposePanel shell + ComposeDraftForm + ComposeTarget + ComposeConfig + useCompose · i18n · tests | live: draft → 202 → worker → quarantined proposal for an existing AND a new freeform entity; both expand_modes; FE compose() wired |
 | **2 — C paste-context** | compose `context` branch (ingest_corpus + license default-deny) · ComposeContextForm | live: pasted text → corpus → recook proposal; copyrighted assertion refused |
 | **3 — F attach-files** | `POST /uploads` (multipart) + `app/files/extract.py` (pdf/docx/epub/txt/md) + OCR (Tesseract chi_sim/chi_tra) + MinIO + `enrichment_upload` · FileDropzone | live: upload .pdf+.docx+scanned-pdf → extract(+OCR) → ingest → proposal |

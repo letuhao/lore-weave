@@ -40,12 +40,14 @@ Every generator prompt is pinned to 封神/商周:
   **non-Fengshen book** (the platform is multi-book) forces the user's content into the Shang-Zhou /
   Fengshen frame → **wrong output**. Most acute for **mode D** (expanding the *author's own* draft
   for some other book in 封神 voice is clearly wrong).
-- **Fix:** prompts must be **book-aware** — derive the worldview/era/voice from the book (a per-book
-  "style/setting" hint, or pass it on the job/context), not a hardcoded constant. For `compose_draft`
-  specifically, default to **preserving the book's/author's own voice**, not imposing 封神. This is a
-  real prerequisite (call it **Slice 0**) — the service was built as a Fengshen demo; Compose
-  generalises it. If Compose is intentionally Fengshen-only for now, say so and gate the freeform/
-  any-book promise.
+- **Fix:** prompts must be **book-aware** — derive the worldview/era/voice from the book, not a
+  hardcoded constant. **CONFIRMED A BUG by the PO (2026-06-03)** — not a Compose-only limitation:
+  it's broader (4 axes hardcoded: worldview 封神演义 · era policy 商周/no-modern · language 中文 ·
+  entity-kind 地点) and already produces wrong output for **every non-Fengshen book**. Full fix
+  design → [`2026-06-03-enrichment-debias-book-profile.md`](2026-06-03-enrichment-debias-book-profile.md)
+  (per-book `enrichment_book_profile` + parameterized prompts + profile-driven anachronism +
+  Fengshen-default = no regression). **This is the foundational fix — Slice 0a/0b, do it before the
+  Compose build.**
 
 ### F3 (HIGH / BLOCK for mode D) — the H0 chokepoint REQUIRES non-empty `source_refs`; D has none
 `make_enriched_fact` raises on `empty provenance/source_refs` ("impossible to forget H0",
