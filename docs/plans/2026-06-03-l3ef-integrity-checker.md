@@ -131,3 +131,34 @@ The first live run hung indefinitely (>1100 s) right after `read_events`, with t
 ### Cross-aggregate WRITE convergence — still gated (tracked)
 
 A *genuine* cross-aggregate case (both `session.*` AND an `npc.*` event mutating the SAME `npc_session_memory_projection` row) is NOT achievable with the current skeleton projections: `npc.said` emits an Update with a synthetic `interaction_count_increment` field that is not a real column (the generic writer has no read-modify-write/increment concept → it would error), and `npc.memory_updated` is a projection TODO. Slice 3 therefore proves the multi-aggregate *invocation/ordering* path (case 3) but documents WRITE convergence as deferred — it unblocks when those handlers + an increment-aware writer land. Pairs with DEFERRED 146 (no global sequence).
+
+## Slice 4 (151 — D-IC-MONTHLY-REPLAY-BATCHING): long-lived replay server (DESIGN; build deferred)
+
+**Problem.** The row-centric checker re-derives each sampled row by exec-ing the `replay-aggregate` bin once **per row** (fork + tokio runtime init + `connect` + `CREATE TEMP` + replay + `SELECT`). Daily samples ~20 rows/table — fine. The L3.F **monthly full-scan** walks EVERY row (100k+/table); one subprocess per row is operationally impractical at scale (compounds the doc's "monthly ≈ 500× daily"). The monthly path is not deployed yet, so this is a scale-readiness item, not a live bug.
+
+**Chosen architecture (user decision, 2026-06-04): a long-lived replay SERVER.** A persistent process holds warm DB connections, eliminating the per-row fork + runtime-init + connect. The Go checker calls it per row over HTTP instead of spawning the bin.
+
+### Server (`replay-server`, new world-service bin)
+
+- axum HTTP service (mirrors the embedding-worker / tilemap axum convention). `POST /replay` with the existing `ReplayRequest` shape `{reality_id, projection, aggregates[], boundary_event_id, pk{}}` → `ReplayOutput` JSON (the SAME contract the bin emits today — Go parses it identically). Plus `/healthz`, `/readyz`.
+- Refactor the per-row core out of `src/bin/replay-aggregate.rs::execute` into a reusable `world_service::replay_aggregate::replay_one(pool, &Invocation) -> Result<ReplayOutput, String>`. Both the standalone bin (N=1) and the server call it — the bin stays as the daily path + the live-smoke target; zero contract drift.
+- **Temp-table lifecycle (the subtle part).** The temp shadow is connection-local and the reused `SqlxProjectionWriter` commits per batch, so `ON COMMIT DROP` cannot be used (it would drop the shadow before the final SELECT). On a POOLED long-lived connection a prior request's temp table lingers and a same-projection `CREATE TEMP` then fails. Per-request fix: `DROP TABLE IF EXISTS <projection>` (pg_temp resolves first) → `CREATE TEMP TABLE <projection> (LIKE public.<projection> INCLUDING ALL)` → replay → SELECT. Keeps the connection warm (connect amortized) while staying correct + isolated. Keep `max_connections` ≥ the server's concurrency; each request pins ONE connection for its temp-table affinity (acquire→DROP/CREATE→replay→select→release).
+- Auth/network: in-cluster only (same posture as the other internal services); no public exposure (the gateway invariant is unaffected — this is an internal worker-to-worker call).
+
+### Go checker wiring
+
+- `pkg/replayloader`: add an HTTP `Replayer` (POST to `REPLAY_SERVER_URL`) alongside the existing `ExecRunner` subprocess loader; both satisfy `live.Replayer`, so `live.CheckRow` / `full_check` are unchanged. Select by config/env: monthly → server; daily can stay subprocess or also use the server.
+- `main.go`: resolve `REPLAY_SERVER_URL`; build the HTTP replayer when set, else fall back to the subprocess loader (keeps the daemon runnable without the server).
+
+### Deploy / cutover
+
+- New k8s Deployment for `replay-server` (one per shard-DB reachability domain, or a single multi-reality server that takes the DSN per request — `ReplayRequest` would then carry/resolve the reality's shard DSN server-side via the reality registry, mirroring the daemon). The integrity-checker CronJob gains a dependency on the server being reachable.
+- Cutover is config-gated + reversible: with `REPLAY_SERVER_URL` unset the checker uses the subprocess loader exactly as today, so the server can be rolled out dark then switched on.
+
+### Slicing (build, deferred to a focused session)
+
+1. **Server core:** refactor `replay_one` out of the bin + the axum `replay-server` bin + per-request temp lifecycle + unit tests + a PG-gated live-smoke (server up → POST /replay → assert ReplayOutput == the bin's). Self-contained, no deploy needed.
+2. **Go HTTP replayer:** `replayloader` HTTP mode + `main.go` selection + tests. Cutover stays config-gated.
+3. **Deploy:** k8s manifest + the per-request shard-DSN resolution decision + an e2e smoke.
+
+**Why deferred now:** it is a brand-new networked service; the monthly path it optimizes is not deployed (the win is unmeasurable today); and slices 1–3 each warrant their own VERIFY + live validation. Tracked in DEFERRED 151 with this design as the implementation plan.
