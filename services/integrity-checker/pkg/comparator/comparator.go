@@ -122,6 +122,13 @@ func (c *Comparator) CompareOne(
 	return res
 }
 
+// Canonicalize is the exported form of [canonicalize] — re-serialize a JSON
+// value with sorted keys + stripped whitespace, so two semantically-equal JSON
+// documents compare byte-equal. The live L3.E checker (pkg/live) uses it to
+// compare a replayed row's `to_jsonb - meta` against the live row's; both go
+// through Postgres `to_jsonb`, so this only needs to reconcile key ordering.
+func Canonicalize(in []byte) ([]byte, error) { return canonicalize(in) }
+
 // canonicalize re-serializes a JSON value with sorted keys + stripped
 // whitespace. Returns the input unchanged on parse errors of NON-OBJECT
 // JSON (numbers, strings, arrays) — only objects need key-sort. Arrays
