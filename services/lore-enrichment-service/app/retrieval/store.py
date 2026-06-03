@@ -380,8 +380,12 @@ class SourceCorpusStore:
     ) -> list[StoredChunk]:
         """Embedded chunks for a project (optionally one corpus), for search.
 
-        Only rows WITH a vector are returned (un-embedded chunks can't be
-        scored). Scoped by project_id (Q3) — never crosses a project boundary.
+        Only rows WITH a vector are returned (un-embedded chunks can't be scored).
+        Scoped to the project (Q3) — never crosses a USER/project boundary — PLUS
+        the SHARED reference library (de-bias C2 T5): chunks whose ``project_id IS
+        NULL`` are public-domain reference material readable by any project (e.g.
+        the original work a fanfic re-cooks). The library is curated PD-only, so it
+        crosses no private data.
         """
         async with self._pool.acquire() as conn:
             if corpus_id is not None:
@@ -390,7 +394,8 @@ class SourceCorpusStore:
                     SELECT chunk_id, corpus_id, chunk_index, content,
                            embedding, embedding_model_ref
                     FROM source_corpus_chunk
-                    WHERE project_id = $1 AND corpus_id = $2 AND embedding IS NOT NULL
+                    WHERE (project_id = $1 OR project_id IS NULL)
+                      AND corpus_id = $2 AND embedding IS NOT NULL
                     ORDER BY corpus_id, chunk_index
                     """,
                     project_id, corpus_id,
@@ -401,7 +406,8 @@ class SourceCorpusStore:
                     SELECT chunk_id, corpus_id, chunk_index, content,
                            embedding, embedding_model_ref
                     FROM source_corpus_chunk
-                    WHERE project_id = $1 AND embedding IS NOT NULL
+                    WHERE (project_id = $1 OR project_id IS NULL)
+                      AND embedding IS NOT NULL
                     ORDER BY corpus_id, chunk_index
                     """,
                     project_id,

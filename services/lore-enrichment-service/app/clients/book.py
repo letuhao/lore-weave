@@ -48,6 +48,33 @@ class BookClient:
     async def aclose(self) -> None:
         await self._http.aclose()
 
+    async def get_chapter_text(self, *, book_id: UUID, chapter_id: UUID) -> str:
+        """The chapter's draft text (de-bias C2 T6 — author-selected grounding).
+
+        Reads GET /internal/books/{book_id}/chapters/{chapter_id}/draft-text. The
+        text is author-supplied source → injection-neutralized (M4). Returns '' for
+        an empty/missing chapter (the caller skips it)."""
+        url = f"{self._base}/internal/books/{book_id}/chapters/{chapter_id}/draft-text"
+        try:
+            resp = await self._http.get(
+                url, headers={"X-Internal-Token": self._internal_token}
+            )
+        except httpx.TimeoutException as exc:
+            raise BookServiceError(f"timeout calling {url}: {exc}", retryable=True)
+        except httpx.HTTPError as exc:
+            raise BookServiceError(f"connection error calling {url}: {exc}", retryable=True)
+        if resp.status_code == 404:
+            return ""
+        if resp.status_code != 200:
+            retryable = resp.status_code in (502, 503, 429)
+            raise BookServiceError(
+                f"GET {url} failed ({resp.status_code})",
+                retryable=retryable, status_code=resp.status_code,
+            )
+        data = resp.json()
+        raw = data.get("text") or data.get("content") or data.get("draft") or ""
+        return neutralize_injection(raw)
+
     async def get_chapter_hierarchy(
         self, *, book_id: UUID, chapter_id: UUID
     ) -> ChapterHierarchy:

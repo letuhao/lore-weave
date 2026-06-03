@@ -196,3 +196,25 @@ async def test_auto_enrich_requires_auth():
               "generation_model_ref": str(uuid4())},
     )
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_detect_gaps_unextracted_book_signals_needs_extraction():
+    # de-bias C2 T7: a book with NO extracted entities → needs_extraction=true (a
+    # clear "extract first" signal), not a bare empty gap list.
+    book, project = uuid4(), uuid4()
+    respx.get(
+        f"{settings.glossary_service_url}/internal/books/{book}/enrichment-coverage"
+    ).respond(200, json={"entities": []})  # unextracted → no entities
+    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    resp = TestClient(_app()).post(
+        f"/v1/lore-enrichment/projects/{project}/detect-gaps",
+        json={"book_id": str(book)},
+        headers={"Authorization": f"Bearer {bearer}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["entities_scanned"] == 0
+    assert body["gap_count"] == 0
+    assert body["needs_extraction"] is True

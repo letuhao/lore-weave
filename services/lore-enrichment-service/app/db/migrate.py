@@ -115,6 +115,15 @@ $license_chk$;
 -- tag); only the default for FUTURE un-tagged inserts changes.
 ALTER TABLE source_corpus ALTER COLUMN license SET DEFAULT 'unknown';
 
+-- ── C2 T5: SHARED reference library — project_id nullable ─────────────────────
+-- A corpus (and its chunks) with project_id = NULL is a SHARED, public-domain
+-- reference corpus readable by ANY project (e.g. the original 封神演义 a fanfic
+-- re-cooks, or a history corpus). Retrieval scopes `project_id = $proj OR
+-- project_id IS NULL`. Per-project user corpora keep their project_id (unchanged).
+-- Idempotent DROP NOT NULL (a no-op once already nullable).
+ALTER TABLE source_corpus ALTER COLUMN project_id DROP NOT NULL;
+ALTER TABLE source_corpus_chunk ALTER COLUMN project_id DROP NOT NULL;
+
 -- ═══════════════════════════════════════════════════════════════
 -- source_corpus_chunk (RAID C10 — technique-(b) retrieval)
 -- A deterministic CJK-aware chunk of a source_corpus text plus its

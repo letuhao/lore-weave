@@ -154,6 +154,10 @@ async def detect_gaps(
         "project_id": str(project_id),
         "book_id": str(body.book_id),
         "entities_scanned": len(rows),
+        # de-bias C2 T7: a book with NO extracted entities isn't enrichable yet —
+        # signal "extract first" explicitly rather than returning a bare empty list
+        # (the FE surfaces it; enrichment is downstream of knowledge extraction).
+        "needs_extraction": len(rows) == 0,
         "gap_count": len(rankings),
         "gaps": [
             {
@@ -232,12 +236,21 @@ async def auto_enrich(
         rankings = detect_ranked_gaps(coverages_from_rows(rows, profile))
         selected = rankings[: body.max_gaps]
         if not selected:
+            # de-bias C2 T7: distinguish "nothing under-described" from "book not
+            # extracted yet" (no entities at all) — the latter is the real prereq.
+            needs_extraction = len(rows) == 0
             return {
                 "project_id": str(project_id),
                 "entities_scanned": len(rows),
                 "detected": 0,
                 "enqueued": False,
-                "message": "no under-described entities to enrich",
+                "needs_extraction": needs_extraction,
+                "message": (
+                    "extract this book first — no entities found "
+                    "(enrichment is downstream of knowledge extraction)"
+                    if needs_extraction
+                    else "no under-described entities to enrich"
+                ),
             }
 
         # The detected gaps become the job's targets (so the worker re-drives them,

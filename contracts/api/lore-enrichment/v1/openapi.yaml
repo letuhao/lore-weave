@@ -780,6 +780,74 @@ paths:
         '503':
           $ref: '#/components/responses/ErrorResponse'
 
+  /v1/lore-enrichment/books/{book_id}/ground:
+    post:
+      tags: [sources]
+      summary: Ingest author-SELECTED chapters of a book as a grounding corpus (de-bias C2)
+      description: >
+        Fetches the author-selected chapters (a selection LIST, never auto-bulk)
+        via book-service, chunks + embeds them into a per-book grounding corpus
+        (license public-domain — the author's own text). Adds raw-prose grounding
+        beyond what knowledge RAG (build_context) + glossary canon surface.
+        Idempotent (re-run is a no-op). Embedding resolves via provider-registry by
+        embedding_model_ref (NO model name).
+      operationId: groundFromBook
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id, embedding_model_ref, chapter_ids]
+              properties:
+                project_id:
+                  type: string
+                  format: uuid
+                embedding_model_ref:
+                  type: string
+                  format: uuid
+                chapter_ids:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                    format: uuid
+                target_chars:
+                  type: integer
+                  minimum: 40
+                  maximum: 4000
+                  default: 800
+      responses:
+        '202':
+          description: Ingested — chapter + chunk counts returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  book_id: { type: string, format: uuid }
+                  chapters_ingested: { type: integer }
+                  chunks_total: { type: integer }
+                  chunks_inserted: { type: integer }
+                  chunks_embedded: { type: integer }
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '502':
+          $ref: '#/components/responses/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ErrorResponse'
+
   # ───────────────────────────── templates ─────────────────────────────
   /v1/lore-enrichment/templates:
     get:
