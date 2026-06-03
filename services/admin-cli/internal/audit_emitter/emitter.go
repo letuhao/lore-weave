@@ -13,6 +13,8 @@ package audit_emitter
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -34,7 +36,13 @@ type Action struct {
 	StartedAt         time.Time
 	FinishedAt        time.Time
 	Outcome           string // "started" | "succeeded" | "failed"
-	ErrorDetailHash   string // SHA-256(err); raw error scrubbed via S08 §12X.5
+	ErrorDetailHash   string // hex SHA-256(err); kept for the stdout sink + forensic correlation
+	// ErrorDetailRaw is the UNSCRUBBED handler error text (failed outcomes only).
+	// It lives in-memory only: the MetaWriteSink scrubs it through S08 §12X.5
+	// before persisting (→ error_detail_scrubbed); the stdout sink NEVER logs it
+	// raw (it logs ErrorDetailHash). 099 D-ADMINAUDIT-ERROR-TEXT — retains real
+	// scrubber-rewritten error text instead of a hash-only sentinel.
+	ErrorDetailRaw string
 }
 
 // Sink persists Actions. Prod wires to a contracts/meta MetaWrite adapter
@@ -85,11 +93,16 @@ func (e *Emitter) After(ctx context.Context, a Action) error {
 	return nil
 }
 
-// Failure records a failed completion.
-func (e *Emitter) Failure(ctx context.Context, a Action, errDetailHash string) error {
+// Failure records a failed completion. rawErr is the handler's error text — the
+// emitter stamps its hex SHA-256 (for the stdout sink + correlation) and carries
+// the raw text on the Action so the MetaWriteSink can scrub it into the audit
+// row (099). The raw text is NEVER persisted unscrubbed.
+func (e *Emitter) Failure(ctx context.Context, a Action, rawErr string) error {
 	a.FinishedAt = e.now()
 	a.Outcome = "failed"
-	a.ErrorDetailHash = errDetailHash
+	a.ErrorDetailRaw = rawErr
+	sum := sha256.Sum256([]byte(rawErr))
+	a.ErrorDetailHash = hex.EncodeToString(sum[:])
 	if err := e.writeScrubbed(ctx, a); err != nil {
 		return fmt.Errorf("%w: failure: %v", ErrAudit, err)
 	}

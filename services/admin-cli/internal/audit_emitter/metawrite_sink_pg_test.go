@@ -6,9 +6,8 @@ package audit_emitter
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -111,10 +110,10 @@ func TestSink_DryRunRow(t *testing.T) {
 func TestSink_ErrorRow_ScrubberQuad(t *testing.T) {
 	sink, pool := sinkSetup(t)
 	actor := uuid.New()
-	h := sha256.Sum256([]byte("some error"))
+	// 099: pass the RAW error (incl. PII) — the Sink scrubs it into the row.
 	if err := sink.Write(context.Background(), Action{
 		CommandName: "reality rebuild", Actor: actor.String(), Outcome: "failed",
-		ErrorDetailHash: hex.EncodeToString(h[:]),
+		ErrorDetailRaw: "rebuild failed for user test@example.com",
 	}); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
@@ -130,19 +129,48 @@ func TestSink_ErrorRow_ScrubberQuad(t *testing.T) {
 		actor).Scan(&rawHashLen, &scrubbed, &scrubVer); err != nil {
 		t.Fatalf("read quad: %v", err)
 	}
-	if rawHashLen != 32 || scrubbed == "" || scrubVer != scrubVersionHashOnly {
-		t.Errorf("scrubber-quad wrong: hashlen=%d scrubbed=%q ver=%q", rawHashLen, scrubbed, scrubVer)
+	if rawHashLen != 32 || scrubVer == "" {
+		t.Errorf("scrubber-quad wrong: hashlen=%d ver=%q", rawHashLen, scrubVer)
+	}
+	// 099: REAL scrubber-rewritten text retained (not a hash-only sentinel) +
+	// PII redacted out of it.
+	if strings.Contains(scrubbed, "test@example.com") {
+		t.Errorf("raw PII email leaked into error_detail_scrubbed: %q", scrubbed)
+	}
+	if !strings.Contains(scrubbed, "rebuild failed") {
+		t.Errorf("scrubbed text should retain the non-PII error context, got %q", scrubbed)
 	}
 }
 
-func TestSink_StartedSkipped(t *testing.T) {
+// 098: a started row for a NON-destructive command is skipped (avoids doubling
+// low-value read/informational audit volume).
+func TestSink_StartedNonDestructiveSkipped(t *testing.T) {
 	sink, pool := sinkSetup(t)
 	actor := uuid.New()
-	if err := sink.Write(context.Background(), Action{CommandName: "c", Actor: actor.String(), Outcome: "started"}); err != nil {
+	if err := sink.Write(context.Background(), Action{
+		CommandName: "reality stats", Actor: actor.String(), Outcome: "started",
+		ImpactClass: "tier-3-informational",
+	}); err != nil {
 		t.Fatalf("Write started: %v", err)
 	}
 	if n, _ := countAdmin(t, pool, actor); n != 0 {
-		t.Errorf("started must NOT persist an admin_action_audit row; got %d", n)
+		t.Errorf("non-destructive started must NOT persist a row; got %d", n)
+	}
+}
+
+// 098: a started row for a destructive command IS persisted (forensic trace for
+// a crash between Before and the terminal hook).
+func TestSink_StartedDestructivePersisted(t *testing.T) {
+	sink, pool := sinkSetup(t)
+	actor := uuid.New()
+	if err := sink.Write(context.Background(), Action{
+		CommandName: "reality rebuild-projection", Actor: actor.String(),
+		Outcome: "started", ImpactClass: impactTier1Destructive,
+	}); err != nil {
+		t.Fatalf("Write started destructive: %v", err)
+	}
+	if n, rk := countAdmin(t, pool, actor); n != 1 || rk != "started" {
+		t.Errorf("destructive started must persist as 'started'; got n=%d rk=%q", n, rk)
 	}
 }
 

@@ -2,6 +2,8 @@ package audit_emitter
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"testing"
 	"time"
@@ -71,11 +73,22 @@ func TestEmitter_Failure(t *testing.T) {
 	sink := NewMemorySink()
 	e := New(sink, nil)
 	a, _ := e.Before(context.Background(), Action{CommandName: "reality force-close"})
-	if err := e.Failure(context.Background(), a, "abc123"); err != nil {
+	// 099: Failure takes the RAW error text; the emitter carries it (ErrorDetailRaw)
+	// + stamps its hex SHA-256 (ErrorDetailHash).
+	rawErr := "boom: shard pg-shard-3 unreachable"
+	if err := e.Failure(context.Background(), a, rawErr); err != nil {
 		t.Fatalf("Failure: %v", err)
 	}
 	rows := sink.All()
-	if rows[1].Outcome != "failed" || rows[1].ErrorDetailHash != "abc123" {
-		t.Fatalf("failure row wrong: %+v", rows[1])
+	last := rows[len(rows)-1]
+	if last.Outcome != "failed" {
+		t.Fatalf("failure row outcome wrong: %+v", last)
+	}
+	if last.ErrorDetailRaw != rawErr {
+		t.Errorf("ErrorDetailRaw = %q, want %q", last.ErrorDetailRaw, rawErr)
+	}
+	wantHash := sha256.Sum256([]byte(rawErr))
+	if last.ErrorDetailHash != hex.EncodeToString(wantHash[:]) {
+		t.Errorf("ErrorDetailHash = %q, want hex sha256(raw)", last.ErrorDetailHash)
 	}
 }

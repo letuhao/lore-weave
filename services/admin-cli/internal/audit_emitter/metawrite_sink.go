@@ -2,7 +2,6 @@ package audit_emitter
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -19,19 +18,12 @@ const adminActionAuditTable = "admin_action_audit"
 // A const until a real per-command version source exists.
 const commandVersion = "1.0.0"
 
-// scrubVersionHashOnly marks the scrubber-quad as the admin-cli hash-only mode:
-// admin-cli hashes errors early and never retains the raw text, so
-// error_detail_scrubbed holds a documented sentinel, not scrubber-rewritten
-// text. Richer scrubbed-error-text retention is DEFERRED (D-ADMINAUDIT-ERROR-TEXT).
-const (
-	scrubVersionHashOnly = "admincli-hashonly-v1"
-	errorTextSentinel    = "[admin-cli: error hash retained; raw text not stored]"
-)
-
 // MetaWriteSink persists audit Actions to admin_action_audit via contracts/meta
 // MetaWrite() (so the write is itself audited in meta_write_audit, same TX). The
-// production Sink. Maps the hash-only Action onto admin_action_audit's columns,
-// satisfying every migration-015 CHECK.
+// production Sink. Maps an Action onto admin_action_audit's columns, satisfying
+// every migration-015/032 CHECK. On a failed outcome the RAW handler error
+// (Action.ErrorDetailRaw) is scrubbed here into the scrubber-quad (099); a
+// 'started' row is persisted for destructive/griefing commands (098).
 //
 // Forensic notes (code-review WARNs, accepted):
 //   - The admin_action_audit row is the SSOT. The same-TX meta_write_audit COPY
@@ -54,8 +46,9 @@ func NewMetaWriteSink(cfg *meta.Config) *MetaWriteSink { return &MetaWriteSink{c
 var _ Sink = (*MetaWriteSink)(nil)
 
 // Write maps an Action → admin_action_audit INSERT via MetaWrite. The "started"
-// (Before) Action is a transient marker with no result_kind → skipped; the
-// durable record is the final outcome row.
+// (Before) Action persists as a 'started' row for destructive/griefing commands
+// (098 forensic trace) and is skipped for read/informational tiers; the durable
+// outcome row (success/dry_run/error) is always written.
 func (s *MetaWriteSink) Write(ctx context.Context, a Action) error {
 	resultKind, persist := mapResultKind(a)
 	if !persist {
@@ -106,15 +99,19 @@ func (s *MetaWriteSink) Write(ctx context.Context, a Action) error {
 	}
 
 	// Scrubber-quad: ALL four on error, NONE otherwise (015 CHECKs).
+	// 099 D-ADMINAUDIT-ERROR-TEXT: scrub the RAW handler error → real
+	// scrubber-rewritten text + hash + ruleset version + timestamp, instead of
+	// the old hash-only sentinel. cfg.Scrubber (RegexScrubber) redacts the 7 PII
+	// pattern classes, so no raw PII reaches the audit row.
 	if resultKind == "error" {
-		rawHash, err := hex.DecodeString(a.ErrorDetailHash)
-		if err != nil || len(rawHash) != 32 {
-			return fmt.Errorf("%w: ErrorDetailHash must be 32-byte SHA-256 hex, got %q", ErrAudit, a.ErrorDetailHash)
+		sf := s.cfg.Scrubber.Scrub(a.ErrorDetailRaw)
+		if len(sf.RawHash) != 32 {
+			return fmt.Errorf("%w: scrubber RawHash must be 32-byte SHA-256, got %d bytes", ErrAudit, len(sf.RawHash))
 		}
-		newValues["error_detail_raw_hash"] = rawHash
-		newValues["error_detail_scrubbed"] = errorTextSentinel
-		newValues["scrub_version"] = scrubVersionHashOnly
-		newValues["scrubbed_at"] = now
+		newValues["error_detail_raw_hash"] = sf.RawHash
+		newValues["error_detail_scrubbed"] = sf.Scrubbed
+		newValues["scrub_version"] = sf.Version
+		newValues["scrubbed_at"] = sf.ScrubbedAt
 	}
 
 	intent := meta.MetaWriteIntent{
@@ -131,9 +128,22 @@ func (s *MetaWriteSink) Write(ctx context.Context, a Action) error {
 	return nil
 }
 
+// impactTier1Destructive / impactTier2Griefing mirror framework.ImpactClass
+// string values (kept as literals to avoid an import cycle — framework imports
+// this package).
+const (
+	impactTier1Destructive = "tier-1-destructive"
+	impactTier2Griefing    = "tier-2-griefing"
+)
+
 // mapResultKind projects Action.Outcome → admin_action_audit.result_kind.
-// started → skip (no result_kind); succeeded+DryRun → dry_run; succeeded →
-// success; failed → error. Unknown → skip (safe).
+// succeeded+DryRun → dry_run; succeeded → success; failed → error.
+//
+// started → persisted as 'started' ONLY for tier-1-destructive / tier-2-griefing
+// commands (098 D-ADMINAUDIT-INPROGRESS): a destructive command killed AFTER the
+// framework Before hook but BEFORE its terminal hook then still leaves a durable
+// forensic row. Read/informational tiers skip the started row (it would only
+// double low-value audit volume). Unknown outcome → skip (safe).
 func mapResultKind(a Action) (kind string, persist bool) {
 	switch a.Outcome {
 	case "succeeded":
@@ -143,7 +153,12 @@ func mapResultKind(a Action) (kind string, persist bool) {
 		return "success", true
 	case "failed":
 		return "error", true
-	default: // "started" or unknown
+	case "started":
+		if a.ImpactClass == impactTier1Destructive || a.ImpactClass == impactTier2Griefing {
+			return "started", true
+		}
+		return "", false
+	default: // unknown
 		return "", false
 	}
 }

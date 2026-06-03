@@ -152,9 +152,11 @@ func Run(
 	// 7. dispatch
 	out, hErr := handler(ctx, inv)
 
-	// 8. audit After / Failure
+	// 8. audit After / Failure. Pass the RAW error text — the emitter hashes it
+	// (correlation) AND carries it to the MetaWriteSink, which scrubs it into the
+	// audit row (099 D-ADMINAUDIT-ERROR-TEXT). The raw text is never persisted.
 	if hErr != nil {
-		_ = emitter.Failure(ctx, action, hashErr(hErr))
+		_ = emitter.Failure(ctx, action, hErr.Error())
 		return out, hErr
 	}
 	if err := emitter.After(ctx, action); err != nil {
@@ -184,11 +186,6 @@ func hashParams(p map[string]string) string {
 		h.Write([]byte{0})
 	}
 	return hex.EncodeToString(h.Sum(nil))
-}
-
-func hashErr(e error) string {
-	h := sha256.Sum256([]byte(e.Error()))
-	return hex.EncodeToString(h[:])
 }
 
 // Clock is exposed so tests can pin time.
