@@ -25,6 +25,7 @@ import (
 
 	"github.com/loreweave/foundation/contracts/lifecycle"
 	"github.com/loreweave/foundation/services/integrity-checker/pkg/comparator"
+	"github.com/loreweave/foundation/services/integrity-checker/pkg/metrics"
 	"github.com/loreweave/foundation/services/integrity-checker/pkg/replayloader"
 	"github.com/loreweave/foundation/services/integrity-checker/pkg/state_writer"
 	"github.com/loreweave/foundation/services/integrity-checker/pkg/tablemap"
@@ -126,6 +127,7 @@ type Checker struct {
 	writer   *state_writer.Writer
 	mode     ModeReader
 	clock    func() time.Time
+	emitter  metrics.Emitter // optional; nil → no metrics emitted
 }
 
 // Config is the Checker constructor input.
@@ -135,6 +137,8 @@ type Config struct {
 	Writer   *state_writer.Writer
 	Mode     ModeReader
 	Clock    func() time.Time
+	// Emitter is OPTIONAL — when nil, no metrics are emitted (tests, dry runs).
+	Emitter metrics.Emitter
 }
 
 // NewChecker constructs a Checker.
@@ -151,7 +155,26 @@ func NewChecker(c Config) (*Checker, error) {
 	case c.Clock == nil:
 		return nil, errors.New("live: Clock nil")
 	}
-	return &Checker{c.Sampler, c.Replayer, c.Writer, c.Mode, c.Clock}, nil
+	return &Checker{c.Sampler, c.Replayer, c.Writer, c.Mode, c.Clock, c.Emitter}, nil
+}
+
+// EmitReport ships the L3.J metrics for one (reality, table) check to `em`
+// (no-op when nil). SHARED by daily ([Checker.Run]) and monthly (full_check) so
+// both emit identically. On error only the run-outcome counter fires (the
+// duration/drift gauges would be from a partial report). The lag gauge is NOT
+// emitted yet — it needs an applied_at source the sampler does not carry
+// (tracked separately); PromEmitter exposes the setter for when it lands.
+func EmitReport(em metrics.Emitter, mode string, realityID uuid.UUID, rep types.DriftReport, runErr error) {
+	if em == nil {
+		return
+	}
+	if runErr != nil {
+		em.IncCheckRun(mode, metrics.OutcomeError)
+		return
+	}
+	em.IncCheckRun(mode, metrics.OutcomeOK)
+	em.ObserveCheckDuration(mode, rep.TableName, rep.DurationSeconds)
+	em.SetProjectionDriftCount(realityID.String(), rep.TableName, float64(rep.DriftCount))
 }
 
 // Iteration is the per-Run summary across all tables for one reality.
@@ -173,6 +196,7 @@ func (c *Checker) Run(ctx context.Context, realityID uuid.UUID, dsn string, tabl
 	}
 	for _, tbl := range tables {
 		rep, err := c.CheckTable(ctx, realityID, dsn, tbl)
+		EmitReport(c.emitter, string(types.CheckModeDaily), realityID, rep, err)
 		if err != nil {
 			return it, fmt.Errorf("live: table=%s reality=%s: %w", tbl.TableName, realityID, err)
 		}

@@ -148,6 +148,11 @@ func run(ctx context.Context, cfg config.Config) int {
 		return 2
 	}
 
+	// One process-local registry across all realities → ONE push at sweep end
+	// (the integrity-checker is a run-once CronJob, so there is no scrape
+	// endpoint). Series accumulate per (reality, table) until the final push.
+	emitter := metrics.NewPromEmitter()
+
 	fmt.Printf("[integrity-checker] %s sweep: %d active realit(ies)\n", cfg.Mode, len(realities))
 	failed := 0
 	for _, r := range realities {
@@ -159,13 +164,23 @@ func run(ctx context.Context, cfg config.Config) int {
 		var rerr error
 		switch cfg.Mode {
 		case types.CheckModeMonthly:
-			rerr = checkRealityMonthly(ctx, r, dsnCfg, loader, cfg.Tables, cfg.FullCheckIntervalDays)
+			rerr = checkRealityMonthly(ctx, r, dsnCfg, loader, cfg.Tables, cfg.FullCheckIntervalDays, emitter)
 		default:
-			rerr = checkReality(ctx, r, dsnCfg, loader, cfg.Tables)
+			rerr = checkReality(ctx, r, dsnCfg, loader, cfg.Tables, emitter)
 		}
 		if rerr != nil {
 			fmt.Fprintf(os.Stderr, "[integrity-checker] reality %s ERROR: %v\n", r.ID, rerr)
 			failed++
+		}
+	}
+
+	// Ship metrics to the Pushgateway (config-gated: skip when unset). A push
+	// failure is observability-only — it MUST NOT change the sweep's exit code.
+	if url := os.Getenv("PUSHGATEWAY_URL"); url != "" {
+		if err := emitter.Push(url); err != nil {
+			fmt.Fprintf(os.Stderr, "[integrity-checker] WARN: pushgateway push failed: %v\n", err)
+		} else {
+			fmt.Printf("[integrity-checker] metrics pushed to %s\n", url)
 		}
 	}
 	if failed > 0 {
@@ -183,6 +198,7 @@ func checkReality(
 	dsnCfg realityreg.DSNConfig,
 	loader *replayloader.Loader,
 	tables []types.TableConfig,
+	emitter metrics.Emitter,
 ) error {
 	rid, err := uuid.Parse(r.ID)
 	if err != nil {
@@ -215,6 +231,7 @@ func checkReality(
 		Writer:   writer,
 		Mode:     fullMode{},
 		Clock:    time.Now,
+		Emitter:  emitter,
 	})
 	if err != nil {
 		return err
@@ -250,6 +267,7 @@ func checkRealityMonthly(
 	loader *replayloader.Loader,
 	tables []types.TableConfig,
 	intervalDays int,
+	emitter metrics.Emitter,
 ) error {
 	rid, err := uuid.Parse(r.ID)
 	if err != nil {
@@ -285,6 +303,7 @@ func checkRealityMonthly(
 		Mode:                  fullMode{},
 		Clock:                 time.Now,
 		FullCheckIntervalDays: intervalDays,
+		Emitter:               emitter,
 	})
 	if err != nil {
 		return err

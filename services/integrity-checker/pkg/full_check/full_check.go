@@ -35,6 +35,7 @@ import (
 
 	"github.com/loreweave/foundation/contracts/lifecycle"
 	"github.com/loreweave/foundation/services/integrity-checker/pkg/live"
+	"github.com/loreweave/foundation/services/integrity-checker/pkg/metrics"
 	"github.com/loreweave/foundation/services/integrity-checker/pkg/state_writer"
 	"github.com/loreweave/foundation/services/integrity-checker/pkg/types"
 )
@@ -66,6 +67,8 @@ type Config struct {
 	// FullCheckIntervalDays from the config. Sets the persisted
 	// `expected_next_sweep_at = NOW() + intervalDays * 24h`.
 	FullCheckIntervalDays int
+	// Emitter is OPTIONAL — when nil, no metrics are emitted.
+	Emitter metrics.Emitter
 }
 
 // Loop is the monthly orchestrator.
@@ -76,6 +79,7 @@ type Loop struct {
 	mode         ModeReader
 	clock        func() time.Time
 	intervalDays int
+	emitter      metrics.Emitter
 }
 
 // New constructs a Loop.
@@ -101,6 +105,7 @@ func New(c Config) (*Loop, error) {
 		mode:         c.Mode,
 		clock:        c.Clock,
 		intervalDays: c.FullCheckIntervalDays,
+		emitter:      c.Emitter,
 	}, nil
 }
 
@@ -126,6 +131,7 @@ func (l *Loop) Run(ctx context.Context, realityID uuid.UUID, dsn string, tables 
 
 	for _, tbl := range tables {
 		report, err := l.runTable(ctx, realityID, dsn, tbl)
+		live.EmitReport(l.emitter, string(types.CheckModeMonthly), realityID, report, err)
 		if err != nil {
 			return stats, fmt.Errorf("full_check: table=%s reality=%s: %w", tbl.TableName, realityID, err)
 		}
