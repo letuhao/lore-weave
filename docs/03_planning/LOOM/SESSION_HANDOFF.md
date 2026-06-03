@@ -35,11 +35,17 @@ Shipped (book-service only, additive): `chapters.editorial_status` (draft|publis
 ## ✅ CM3a DONE (LOOM-02, 2026-06-04) — internal revision-text endpoint
 Shipped (book-service only): `GET /internal/books/{book_id}/chapters/{chapter_id}/revisions/{revision_id}/text` under `requireInternalToken`; IDOR-guarded (`rv.id+rv.chapter_id+c.book_id+lifecycle=active` → cross 404); plain-text projection (`->>'_text'`, ordered, null-safe). 12-phase v2.2 (S, self-review) + **/review-impl** (0 HIGH; folded MED-2 caller-gate contract comment, LOW-2 trim `body` from response, MED-1 tightened the live-smoke to require the IDOR-negative case; accepted LOW-1 body_format='json' / LOW-3 projection-swallow). `go build`+`go vet` green. **Contract:** serves ANY revision by id — canon=published depends on CM3b passing `chapters.published_revision_id`.
 
+## ✅ CM2 DONE (LOOM-02, 2026-06-04) — relay confirm, ZERO code change
+Verified in-code (`worker-infra/internal/tasks/outbox_relay.go:149-205`): `processSource` SELECTs all unpublished outbox rows (no event_type filter); `streamKey = "loreweave:events:" + aggregate_type` (`:179`); event_type only carried in the values map (`:184`), never routes/filters. `insertOutboxEvent` hardcodes `aggregate_type='chapter'` and book-service is already a relay source (`chapter.saved` flows today) → `chapter.published` + `chapter.unpublished` auto-flow to `loreweave:events:chapter`. No allowlist; statistics-service (separate consumer group) ignores unknown types; knowledge consumes in CM3b. No code, no commit needed beyond this note.
+
 ## ▶ NEXT SESSION (LOOM-03)
-**CM2 — worker-infra relay confirm (no-op)** then **CM3b** (the load-bearing one). `/loom CM2` then `/loom CM3b`.
-- **CM2:** verify `chapter.published`/`chapter.unpublished` reach `loreweave:events:chapter` (relay is generic by `aggregate_type` — `outbox_relay.go:149-205`; expect zero code change, just confirm). Quick.
-- **CM3b** (⚠️ `/amaw` — the cutover): knowledge `chapter.published`→queue `extraction_pending`(+revision_id col); worker-ai **per-project coalescing drainer** (respect the one-active-job/project unique index — NO job-per-event), single-chapter scope, fetch pinned revision via **CM3a's endpoint**; **wire `remove_evidence_for_source`+`cleanup_zero_evidence` before re-extract** (canon-drift fix, closes D-CM1-UNPUBLISH-RETRACT on `chapter.unpublished`); fix B7 chat-drainer `aggregate_type` filter. See plan §8.2/§8.3 CM3b.
-- Then CM3c → CM4 → CM-FE → CM5.
+**CM3b — the load-bearing cutover** (⚠️ `/amaw`; `/loom CM3b`). Cross-service (knowledge + worker-ai). 2 CRITICALs already caught in review for this shape — handle with care:
+- knowledge: on `chapter.published` → queue `extraction_pending` (+ new `revision_id` column); stop queuing on `chapter.saved`. Switch inline passage-ingest to `chapter.published` + pinned revision.
+- worker-ai: **per-project coalescing drainer** = ONE job draining the project's pending chapters (respect the one-active-job/project unique index `migrate.py:313` — **NO job-per-event** → 409-storm); single-chapter scope (`_enumerate_chapters` honour scope); fetch pinned revision via **CM3a's endpoint** (`GET /internal/.../revisions/{id}/text`).
+- **Wire `remove_evidence_for_source` + `cleanup_zero_evidence_nodes` BEFORE re-extract** (canon-drift fix B6; also retract on `chapter.unpublished` → closes **D-CM1-UNPUBLISH-RETRACT**).
+- Fix **B7**: chat-drainer `_enumerate_pending_chat_turns` (`runner.py:906`) add `aggregate_type='chat'` filter.
+- Gate manual `/extraction/start` whole-book rebuild to skip `editorial_status='draft'`.
+- See plan §8.2/§8.3 CM3b. Then CM3c → CM4 → CM-FE → CM5.
 
 ## Deferred / watch
 - **D-CM1-UNPUBLISH-RETRACT** — `/unpublish` flips status but does NOT retract already-extracted KG facts; **CM3b** wires `remove_evidence_for_source` on `chapter.unpublished`. Until then: temporary canon drift on unpublish.
