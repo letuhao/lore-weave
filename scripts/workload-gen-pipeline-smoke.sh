@@ -86,12 +86,11 @@ REBUILDER="target/debug/rebuilder.exe"
 # Tables the single-reality / multi-* profiles populate (skip embedding +
 # relationship tables — no events emitted for those yet).
 TABLES="region_projection npc_projection npc_session_memory_projection pc_projection pc_inventory_projection session_participants world_kv_projection canon_projection"
-# npc_session_memory_projection is a MULTI-AGGREGATE table (session.started
-# creates the row; the npc aggregate's npc.said fans out an update to it). The
-# full-table rebuilder replays aggregates independently, so the npc.said update
-# can't find the session-owned row → aggregates_failed > 0. The integrity-checker
-# replays multi-aggregate for this table. Tracked: D-REBUILDER-MULTI-AGG.
-SOFT_FAIL_TABLES="npc_session_memory_projection"
+# All tables now rebuild clean. npc_session_memory_projection was a MULTI-AGGREGATE
+# table that failed under the per-aggregate rebuilder (the npc.said increment
+# couldn't find the session-created row); D-REBUILDER-MULTI-AGG fixed it via the
+# global-order replay path (rebuild::global), so no table is soft-failed anymore.
+SOFT_FAIL_TABLES=""
 export REALITY_DB_URL="$REALITY_DSN" # export (Linux); on Windows Git Bash a .exe may not inherit — run on Linux CI
 TOTAL=0
 for t in $TABLES; do

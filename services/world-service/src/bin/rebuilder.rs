@@ -40,9 +40,11 @@ use rebuilder::{
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
 
-use world_service::rebuild::event_source::{SqlxEventSource, enumerate_aggregates};
+use dp_kernel::Projection;
+use world_service::rebuild::event_source::{GlobalEventSource, SqlxEventSource, enumerate_aggregates};
+use world_service::rebuild::global::rebuild_global_order;
 use world_service::rebuild::writer::SqlxProjectionWriter;
-use world_service::rebuild::{RebuildStats, all_projections};
+use world_service::rebuild::{RebuildStats, all_projections, needs_global_order};
 
 fn main() {
     std::process::exit(match run() {
@@ -97,16 +99,42 @@ fn run() -> Result<i32, String> {
         .map_err(|e| format!("reality DB connect: {e}"))?;
     let pool = Arc::new(pool);
 
-    let aggregates = db_rt
-        .block_on(enumerate_aggregates(&pool, reality_id))
-        .map_err(|e| format!("enumerate aggregates: {e}"))?;
-
     // Validate the target table up front (also done in SqlxProjectionWriter::new).
     let writer = Arc::new(SqlxProjectionWriter::new(
         pool.clone(),
         db_rt.handle().clone(),
         projection.clone(),
     )?);
+
+    // Multi-aggregate tables (npc_session_memory_projection) must be rebuilt in
+    // GLOBAL (recorded_at, event_id) order: the per-aggregate-parallel path can't
+    // guarantee a row created by one aggregate's event exists before another
+    // aggregate's event updates it. See rebuild::global. Single sequential pass.
+    if needs_global_order(&projection) {
+        let source = GlobalEventSource::new(pool.clone(), db_rt.handle().clone(), reality_id);
+        let projs: Vec<&dyn Projection> =
+            all_projections().iter().map(|p| *p as &dyn Projection).collect();
+        let g = rebuild_global_order(&source, &projs, &*writer, config.batch_size)?;
+        let stats = RebuildStats {
+            aggregates_rebuilt: 1, // the table is rebuilt as one global-order unit
+            events_replayed: g.events_replayed,
+            updates_applied: g.updates_applied,
+            ..Default::default()
+        };
+        println!(
+            "{}",
+            serde_json::to_string(&stats).map_err(|e| e.to_string())?
+        );
+        eprintln!(
+            "[rebuilder] reality={reality_id} projection={projection} GLOBAL-ORDER events={} updates={}",
+            g.events_replayed, g.updates_applied
+        );
+        return Ok(0);
+    }
+
+    let aggregates = db_rt
+        .block_on(enumerate_aggregates(&pool, reality_id))
+        .map_err(|e| format!("enumerate aggregates: {e}"))?;
     let event_source = Arc::new(SqlxEventSource::new(
         pool.clone(),
         db_rt.handle().clone(),

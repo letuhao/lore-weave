@@ -57,11 +57,30 @@ impl SqlxProjectionWriter {
     }
 }
 
-/// Build the (SQL, $1 payload) for one update targeting `target_table`. Pure —
-/// no DB access — so a malformed update aborts the batch before any statement
-/// runs, and the SQL shape is unit-testable without a pool. `target_table` is
-/// assumed already allowlisted (the caller validated it).
-fn build_stmt(target_table: &str, update: &ProjectionUpdate) -> Result<(String, Value), String> {
+/// One prepared statement: its SQL, the `$1` jsonb payload, and any positional
+/// increment values bound as `$2..`. A `<col>_increment` pseudo-field cannot
+/// ride in the jsonb record (it is not a real column), so its value is bound
+/// separately and the SET clause becomes `col = COALESCE(t.col, 0) + $N`.
+#[derive(Debug)]
+struct Stmt {
+    sql: String,
+    payload: Value,
+    increments: Vec<i64>,
+}
+
+impl Stmt {
+    /// True when this statement is an increment that MUST hit an existing row —
+    /// a 0-rows result then means a cross-aggregate ordering bug or a data gap.
+    fn expect_row(&self) -> bool {
+        !self.increments.is_empty()
+    }
+}
+
+/// Build the statement for one update targeting `target_table`. Pure — no DB
+/// access — so a malformed update aborts the batch before any statement runs,
+/// and the SQL shape is unit-testable without a pool. `target_table` is assumed
+/// already allowlisted (the caller validated it).
+fn build_stmt(target_table: &str, update: &ProjectionUpdate) -> Result<Stmt, String> {
     let t = target_table; // allowlisted ⇒ safe to interpolate
     match update {
         ProjectionUpdate::Insert { row, meta, .. } => {
@@ -79,7 +98,11 @@ fn build_stmt(target_table: &str, update: &ProjectionUpdate) -> Result<(String, 
             let sql = format!(
                 "INSERT INTO {t} ({cols}) SELECT {cols} FROM jsonb_populate_record(NULL::{t}, $1::jsonb)"
             );
-            Ok((sql, Value::Object(payload)))
+            Ok(Stmt {
+                sql,
+                payload: Value::Object(payload),
+                increments: vec![],
+            })
         }
         ProjectionUpdate::Update {
             pk, fields, meta, ..
@@ -89,21 +112,62 @@ fn build_stmt(target_table: &str, update: &ProjectionUpdate) -> Result<(String, 
             if pk_map.is_empty() {
                 return Err("rebuilder: Update.pk is empty".into());
             }
-            let mut payload = pk_map.clone();
+
+            // Split normal fields from `<col>_increment` pseudo-fields. The
+            // latter mean `SET col = col + value` (e.g. npc.said bumps
+            // npc_session_memory_projection.interaction_count) — the generic
+            // `jsonb_populate_record` path can only `SET col = value`, so the
+            // increment is applied via COALESCE + a separately-bound value.
+            let mut normal: Vec<(String, Value)> = Vec::new();
+            let mut increments: Vec<(String, i64)> = Vec::new();
             for (k, v) in &field_map {
+                if let Some(base) = k.strip_suffix("_increment") {
+                    let n = v.as_i64().ok_or_else(|| {
+                        format!(
+                            "rebuilder: increment field {k:?} must be an integer, got {}",
+                            kind_of(v)
+                        )
+                    })?;
+                    increments.push((base.to_string(), n));
+                } else {
+                    normal.push((k.clone(), v.clone()));
+                }
+            }
+
+            // jsonb payload carries pk + normal fields + meta — NOT the
+            // pseudo-fields (they are not columns; jsonb_populate_record drops
+            // them, and their value rides as a bound param instead).
+            let mut payload = pk_map.clone();
+            for (k, v) in &normal {
                 payload.insert(k.clone(), v.clone());
             }
             merge_meta(&mut payload, meta);
 
-            let mut set_cols: Vec<&str> = field_map.keys().map(String::as_str).collect();
+            let mut set_parts: Vec<String> = Vec::new();
+            let mut set_cols: Vec<&str> = normal.iter().map(|(k, _)| k.as_str()).collect();
             set_cols.extend(["event_id", "aggregate_version", "applied_at"]);
-            let set_clause = build_assignment_list(&set_cols, ", ")?;
+            for c in &set_cols {
+                ensure_ident(c)?;
+                set_parts.push(format!("{c} = r.{c}"));
+            }
+            let mut inc_values: Vec<i64> = Vec::with_capacity(increments.len());
+            for (base, val) in &increments {
+                ensure_ident(base)?;
+                let param = inc_values.len() + 2; // $1 is the jsonb payload
+                set_parts.push(format!("{base} = COALESCE(t.{base}, 0) + ${param}"));
+                inc_values.push(*val);
+            }
+            let set_clause = set_parts.join(", ");
             let where_clause = build_pk_predicate(&pk_map)?;
             let sql = format!(
                 "WITH r AS (SELECT * FROM jsonb_populate_record(NULL::{t}, $1::jsonb)) \
                      UPDATE {t} AS t SET {set_clause} FROM r WHERE {where_clause}"
             );
-            Ok((sql, Value::Object(payload)))
+            Ok(Stmt {
+                sql,
+                payload: Value::Object(payload),
+                increments: inc_values,
+            })
         }
         ProjectionUpdate::Delete { pk, .. } => {
             let pk_map = as_object(pk, "Delete.pk")?;
@@ -115,7 +179,11 @@ fn build_stmt(target_table: &str, update: &ProjectionUpdate) -> Result<(String, 
                 "WITH r AS (SELECT * FROM jsonb_populate_record(NULL::{t}, $1::jsonb)) \
                      DELETE FROM {t} AS t USING r WHERE {where_clause}"
             );
-            Ok((sql, Value::Object(pk_map)))
+            Ok(Stmt {
+                sql,
+                payload: Value::Object(pk_map),
+                increments: vec![],
+            })
         }
         ProjectionUpdate::Tombstone { .. } => Err(
             "rebuilder: Tombstone updates are not supported by the generic writer \
@@ -128,7 +196,7 @@ fn build_stmt(target_table: &str, update: &ProjectionUpdate) -> Result<(String, 
 impl ProjectionWriter for SqlxProjectionWriter {
     fn apply_batch(&self, updates: &[ProjectionUpdate]) -> Result<(), String> {
         // Build every statement first so a malformed update aborts before the TX.
-        let mut stmts: Vec<(String, Value)> = Vec::new();
+        let mut stmts: Vec<Stmt> = Vec::new();
         for u in updates {
             if u.table() != self.target_table {
                 continue; // rebuilding ONE table: drop other projections' output
@@ -144,12 +212,25 @@ impl ProjectionWriter for SqlxProjectionWriter {
                 .begin()
                 .await
                 .map_err(|e| format!("rebuilder: begin tx: {e}"))?;
-            for (sql, payload) in &stmts {
-                sqlx::query(sql)
-                    .bind(payload)
+            for stmt in &stmts {
+                let mut q = sqlx::query(&stmt.sql).bind(&stmt.payload);
+                for inc in &stmt.increments {
+                    q = q.bind(inc);
+                }
+                let res = q
                     .execute(&mut *tx)
                     .await
-                    .map_err(|e| format!("rebuilder: apply [{sql}]: {e}"))?;
+                    .map_err(|e| format!("rebuilder: apply [{}]: {e}", stmt.sql))?;
+                // An increment that hit no row means the target row was never
+                // created — a cross-aggregate ordering bug (the global-order
+                // path exists to prevent this) or a genuine data gap. Fail loud.
+                if stmt.expect_row() && res.rows_affected() == 0 {
+                    return Err(format!(
+                        "rebuilder: increment update affected 0 rows — target row absent \
+                         (cross-aggregate ordering or data gap): [{}]",
+                        stmt.sql
+                    ));
+                }
             }
             tx.commit()
                 .await
@@ -208,16 +289,6 @@ fn build_column_list(payload: &Map<String, Value>) -> Result<String, String> {
     Ok(parts.join(", "))
 }
 
-/// `col = r.col, ...` for an UPDATE SET list. Validates every identifier.
-fn build_assignment_list(cols: &[&str], sep: &str) -> Result<String, String> {
-    let mut parts = Vec::with_capacity(cols.len());
-    for c in cols {
-        ensure_ident(c)?;
-        parts.push(format!("{c} = r.{c}"));
-    }
-    Ok(parts.join(sep))
-}
-
 /// `t.pk = r.pk AND ...` for the PK match. Validates every identifier.
 fn build_pk_predicate(pk: &Map<String, Value>) -> Result<String, String> {
     let mut parts = Vec::with_capacity(pk.len());
@@ -265,7 +336,8 @@ mod tests {
             row: json!({"pc_id": Uuid::from_u128(2).to_string(), "name": "Aria"}),
             meta: meta(),
         };
-        let (sql, payload) = build_stmt("pc_projection", &u).unwrap();
+        let stmt = build_stmt("pc_projection", &u).unwrap();
+        let (sql, payload) = (&stmt.sql, &stmt.payload);
         // Column-list INSERT (NOT `SELECT *`): unlisted columns fall to their
         // schema DEFAULT instead of an explicit NULL. The (…) target list and
         // the SELECT source list are the identical column string.
@@ -318,7 +390,8 @@ mod tests {
             fields: json!({"last_event_version": 9}),
             meta: meta(),
         };
-        let (sql, payload) = build_stmt("pc_projection", &u).unwrap();
+        let stmt = build_stmt("pc_projection", &u).unwrap();
+        let (sql, payload) = (&stmt.sql, &stmt.payload);
         assert!(sql.contains("UPDATE pc_projection AS t SET"), "{sql}");
         assert!(
             sql.contains("last_event_version = r.last_event_version"),
@@ -336,13 +409,65 @@ mod tests {
             table: "session_participants".into(),
             pk: json!({"session_id": Uuid::from_u128(3).to_string(), "participant_type": "pc", "participant_id": Uuid::from_u128(4).to_string()}),
         };
-        let (sql, _) = build_stmt("session_participants", &u).unwrap();
+        let sql = build_stmt("session_participants", &u).unwrap().sql;
         assert!(sql.starts_with("WITH r AS"), "{sql}");
         assert!(
             sql.contains("DELETE FROM session_participants AS t USING r WHERE"),
             "{sql}"
         );
         assert!(sql.contains("t.session_id = r.session_id"), "{sql}");
+    }
+
+    #[test]
+    fn update_increment_field_uses_coalesce_and_bound_value() {
+        // npc.said → npc_session_memory_projection.interaction_count += 1.
+        let u = ProjectionUpdate::Update {
+            table: "npc_session_memory_projection".into(),
+            pk: json!({"npc_id": Uuid::from_u128(1).to_string(), "session_id": Uuid::from_u128(2).to_string()}),
+            fields: json!({"interaction_count_increment": 1}),
+            meta: meta(),
+        };
+        let stmt = build_stmt("npc_session_memory_projection", &u).unwrap();
+        assert!(
+            stmt.sql
+                .contains("interaction_count = COALESCE(t.interaction_count, 0) + $2"),
+            "{}",
+            stmt.sql
+        );
+        assert_eq!(stmt.increments, vec![1]);
+        assert!(
+            stmt.expect_row(),
+            "an increment update must expect an existing row"
+        );
+        // the pseudo-field must NOT be a column in the jsonb payload
+        assert!(stmt.payload.get("interaction_count_increment").is_none());
+    }
+
+    #[test]
+    fn update_multiple_increments_get_ordered_params() {
+        // Two increment fields → $2 / $3 in sorted-key order, matching the
+        // increments vec the binder walks.
+        let u = ProjectionUpdate::Update {
+            table: "npc_session_memory_projection".into(),
+            pk: json!({"npc_id": "x"}),
+            fields: json!({"a_increment": 1, "b_increment": 2}),
+            meta: meta(),
+        };
+        let stmt = build_stmt("npc_session_memory_projection", &u).unwrap();
+        assert!(stmt.sql.contains("a = COALESCE(t.a, 0) + $2"), "{}", stmt.sql);
+        assert!(stmt.sql.contains("b = COALESCE(t.b, 0) + $3"), "{}", stmt.sql);
+        assert_eq!(stmt.increments, vec![1, 2]); // same order as $2, $3
+    }
+
+    #[test]
+    fn update_increment_rejects_non_integer() {
+        let u = ProjectionUpdate::Update {
+            table: "npc_session_memory_projection".into(),
+            pk: json!({"npc_id": "x"}),
+            fields: json!({"interaction_count_increment": "notanint"}),
+            meta: meta(),
+        };
+        assert!(build_stmt("npc_session_memory_projection", &u).is_err());
     }
 
     #[test]

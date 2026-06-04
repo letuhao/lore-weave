@@ -20,6 +20,7 @@
 //! `docs/plans/2026-06-03-073-destructive-admin-commands.md`.
 
 pub mod event_source;
+pub mod global;
 pub mod writer;
 
 use rebuilder::{AggregateOutcome, AggregateStatus, SendSyncProjection};
@@ -47,6 +48,27 @@ pub const PROJECTION_TABLES: &[&str] = &[
 /// Returns true if `table` is one of the known L3.A projection tables.
 pub fn is_known_projection_table(table: &str) -> bool {
     PROJECTION_TABLES.contains(&table)
+}
+
+/// Projection tables written from MORE THAN ONE aggregate type, where a row
+/// created by one aggregate's event is updated by another aggregate's event.
+/// These MUST be rebuilt with the global-order path ([`crate::rebuild::global`])
+/// because the per-aggregate-parallel path can't guarantee the cross-aggregate
+/// ordering.
+///
+/// Today the only such table is `npc_session_memory_projection`: the *session*
+/// aggregate's `session.started` creates the row and the *npc* aggregate's
+/// `npc.said` (Q-L3B-1 fan-out) increments `interaction_count`. The other L3.A
+/// tables are each written from a single aggregate (audited 2026-06-04:
+/// session_participants ← session.*; npc_pc_relationship ← npc.relationship_*;
+/// pc_* ← pc.*; region ← region.*; world_kv ← world.kv_*; canon ← canon.*). Add
+/// a table here if a new cross-aggregate fan-out is introduced.
+pub const MULTI_AGGREGATE_TABLES: &[&str] = &["npc_session_memory_projection"];
+
+/// Returns true if `table` must be rebuilt with the global-order path rather
+/// than the per-aggregate-parallel path.
+pub fn needs_global_order(table: &str) -> bool {
+    MULTI_AGGREGATE_TABLES.contains(&table)
 }
 
 /// JSON-serializable rebuild summary — printed to stdout for the Go invoker
@@ -166,5 +188,18 @@ mod tests {
         assert!(is_known_projection_table("canon_projection"));
         assert!(!is_known_projection_table("reality_registry"));
         assert!(!is_known_projection_table("pc_projection; DROP TABLE x"));
+    }
+
+    #[test]
+    fn multi_aggregate_dispatch() {
+        // The one multi-aggregate table goes global-order; single-aggregate
+        // tables keep the per-aggregate-parallel path.
+        assert!(needs_global_order("npc_session_memory_projection"));
+        assert!(!needs_global_order("npc_projection"));
+        assert!(!needs_global_order("session_participants"));
+        // Every multi-aggregate table must also be a known projection table.
+        for t in MULTI_AGGREGATE_TABLES {
+            assert!(is_known_projection_table(t), "{t} not in PROJECTION_TABLES");
+        }
     }
 }
