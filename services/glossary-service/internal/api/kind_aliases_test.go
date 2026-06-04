@@ -159,6 +159,52 @@ func TestKindResolution_ParksUnknownAndAliases(t *testing.T) {
 	}
 }
 
+// TestKindResolution_ParkUnknownOptOutSkips proves D-GLOSSARY-UNKNOWN-BLAST-RADIUS:
+// a caller may send park_unknown_kinds=false to SKIP an unrecognised kind instead of
+// parking it under 'unknown' (the escape hatch for a pipeline that emits noise kinds).
+// Default (omitted) still parks — covered by TestKindResolution_ParksUnknownAndAliases.
+func TestKindResolution_ParkUnknownOptOutSkips(t *testing.T) {
+	pool := openTestDB(t)
+	srv := newKindAliasServer(t, pool)
+	runKindAliasMigrations(t, pool)
+	ctx := context.Background()
+	book := "00000000-0000-0000-0aaa-000000000050"
+	resetKindAliasFixture(t, pool, book)
+
+	body, _ := json.Marshal(map[string]any{
+		"source_language":    "zh",
+		"park_unknown_kinds": false,
+		"attribute_actions":  map[string]any{"mythical_smoke_kind": map[string]any{}},
+		"entities": []map[string]any{
+			{"kind_code": "mythical_smoke_kind", "name": "略過異兽", "attributes": map[string]any{}, "evidence": ""},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/internal/books/"+book+"/extract-entities", bytes.NewReader(body))
+	req.Header.Set("X-Internal-Token", kaInternalToken)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Created  int `json:"created"`
+		Entities []struct {
+			EntityID string `json:"entity_id"`
+		} `json:"entities"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp.Created != 0 || len(resp.Entities) != 0 {
+		t.Fatalf("park_unknown_kinds=false: want unknown kind SKIPPED, got created=%d entities=%d (%s)",
+			resp.Created, len(resp.Entities), w.Body.String())
+	}
+	// Nothing landed (no 'unknown' parked row for this book).
+	var n int
+	pool.QueryRow(ctx, `SELECT count(*) FROM glossary_entities WHERE book_id=$1`, book).Scan(&n)
+	if n != 0 {
+		t.Fatalf("park_unknown_kinds=false: expected no entity rows, got %d", n)
+	}
+}
+
 // TestKindMerge_ReassignsAndPreservesNameAcrossTermKind proves the merge action
 // (#6): reassigning a parked entity onto terminology (which uses a 'term' display
 // attr, not 'name') keeps its display name via the name↔term re-key mapping.

@@ -340,6 +340,14 @@ type bulkUpsertRequest struct {
 	SourceLanguage   string                       `json:"source_language"`
 	AttributeActions map[string]map[string]string  `json:"attribute_actions"` // kind_code → attr_code → "fill"|"overwrite"
 	Entities         []extractedEntity             `json:"entities"`
+	// ParkUnknownKinds gates the unknown-bucket fallback (D-GLOSSARY-UNKNOWN-BLAST-RADIUS).
+	// nil/true (default) → an entity whose kind_code matches neither a kind nor an
+	// alias is PARKED under 'unknown' for author triage (never silently dropped — the
+	// "never drop" design). A caller that emits noisy/experimental kinds (e.g. the
+	// knowledge-service extraction pipeline) can send false to opt OUT and have such
+	// entities SKIPPED instead of flooding the review queue. Pointer so an omitted
+	// field keeps the park-by-default behavior (backward-compatible).
+	ParkUnknownKinds *bool `json:"park_unknown_kinds"`
 }
 
 type extractedEntity struct {
@@ -418,6 +426,10 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 	// it arrived as in source_kind_code. uuid.Nil only if the migration hasn't seeded
 	// 'unknown' yet, in which case we preserve the legacy skip (fail-safe).
 	unknownKindID := kindMap["unknown"]
+	// D-GLOSSARY-UNKNOWN-BLAST-RADIUS: parking is the default; a caller may opt out
+	// (park_unknown_kinds=false) to SKIP unrecognised kinds instead of flooding the
+	// review queue. Omitted → park (backward-compatible).
+	parkUnknown := req.ParkUnknownKinds == nil || *req.ParkUnknownKinds
 
 	var (
 		results  []entityResult
@@ -430,8 +442,10 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		kindID, kindOK := kindMap[ent.KindCode]
 		sourceKindCode := "" // non-empty only when parked under 'unknown'
 		if !kindOK {
-			if unknownKindID == uuid.Nil {
-				continue // no unknown bucket available — legacy skip (fail-safe)
+			if !parkUnknown || unknownKindID == uuid.Nil {
+				// Caller opted out of parking, OR no unknown bucket seeded yet
+				// (legacy fail-safe) → skip the unrecognised kind.
+				continue
 			}
 			kindID = unknownKindID
 			sourceKindCode = ent.KindCode // remember the original code for review
