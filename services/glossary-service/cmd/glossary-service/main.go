@@ -74,6 +74,12 @@ func main() {
 		slog.Error("seed", "error", err)
 		os.Exit(1)
 	}
+	// Kind-alias epic E2: default aliases (faction→organization, generic→terminology).
+	// MUST run after Seed (it references the seeded kinds) — idempotent, every startup.
+	if err := migrate.SeedKindAliases(ctx, pool); err != nil {
+		slog.Error("seed kind-aliases", "error", err)
+		os.Exit(1)
+	}
 	if err := migrate.UpSnapshot(ctx, pool); err != nil {
 		slog.Error("migrate snapshot", "error", err)
 		os.Exit(1)

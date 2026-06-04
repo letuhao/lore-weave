@@ -168,6 +168,31 @@ WHERE ek.code = 'unknown'
 ON CONFLICT (kind_id, code) DO NOTHING;
 `
 
+// seedKindAliasesSQL — the DEFAULT kind aliases. Stable, unambiguous synonyms so a
+// supplement/extraction layer's vocabulary resolves without manual triage: 'faction'
+// is glossary's 'organization'; 'generic' (the freeform fallback) is 'terminology'
+// (the concept/entry kind). This is what lets lore-enrichment send its RAW kind and
+// drop its hardcoded translation map (kind-alias epic E2). MUST run AFTER Seed() —
+// it JOINs the target kinds, which Seed() creates (schemaSQL/Up runs BEFORE Seed, so
+// putting this in schemaSQL would no-op on a fresh DB). Idempotent; only inserts when
+// the target kind exists; never clobbers an author-created alias (ON CONFLICT).
+const seedKindAliasesSQL = `
+INSERT INTO entity_kind_aliases (alias_code, kind_id)
+SELECT v.alias_code, ek.kind_id
+FROM (VALUES ('faction', 'organization'), ('generic', 'terminology')) AS v(alias_code, target_code)
+JOIN entity_kinds ek ON ek.code = v.target_code
+ON CONFLICT (alias_code) DO NOTHING;
+`
+
+// SeedKindAliases inserts the default kind aliases. Idempotent; call AFTER Seed()
+// (the target kinds must exist). Safe on every startup.
+func SeedKindAliases(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, seedKindAliasesSQL); err != nil {
+		return fmt.Errorf("seed kind aliases: %w", err)
+	}
+	return nil
+}
+
 func Up(ctx context.Context, pool *pgxpool.Pool) error {
 	if _, err := pool.Exec(ctx, schemaSQL); err != nil {
 		return fmt.Errorf("migrate: %w", err)
