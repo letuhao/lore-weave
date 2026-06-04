@@ -121,8 +121,9 @@ v1 swept all 14 event types under "generate valid streams" and specified only `n
   environment-dependent and non-canonical**, and BYTEA-vs-VECTOR mode differs dev↔prod. Assert: (i) comparator
   excludes or canonicalizes the embedding column (don't byte-compare raw floats); (ii) the cycle-14 ALTER swap
   preserves data; (iii) the `octet_length(embedding) = 1536*4` (**6144-byte**) CHECK holds (0006:296). **Note:** a
-  source comment in 0006 (line ~285) misstates this as an "8192-byte" vector — that comment is itself wrong
-  (1536 fp32 × 4 = 6144) and should be corrected. **This can make B silently pass or flap — must be designed
+  source comment in 0006 (line ~285) previously misstated this as an "8192-byte" vector — that comment was
+  itself wrong (1536 fp32 × 4 = 6144) and has been corrected (0006:285, plus the propagated references in
+  0008_pgvector_setup.up/down.sql). **This can make B silently pass or flap — must be designed
   before B is trusted on the embedding table.**
 - **Projection-coverage** — every table has a registered Rust trait impl (REUSE `projection-coverage-lint.sh`).
 

@@ -282,7 +282,7 @@ BEGIN
                 npc_id                       UUID NOT NULL,
                 session_id                   UUID NOT NULL,
                 -- Cycle-14 L3.I will ALTER COLUMN to VECTOR(1536). Until
-                -- then BYTEA holds an 8192-byte raw fp32 vector
+                -- then BYTEA holds a 6144-byte raw fp32 vector
                 -- representation (1536 * 4 bytes). Q-L3I-1 dim 1536 LOCKED.
                 embedding                    BYTEA NOT NULL,
                 content_hash                 TEXT NOT NULL,

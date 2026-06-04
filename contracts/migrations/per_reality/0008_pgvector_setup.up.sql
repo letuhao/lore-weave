@@ -40,7 +40,7 @@
 --        rationale: cycle 13 ships at V1 pre-launch; no real rows exist; the
 --        BYTEA placeholder rows (if any landed in dev experiments) cannot be
 --        meaningfully converted to VECTOR (the cycle-13 comment notes they'd
---        be "8192-byte raw fp32 vector" but no test fixture writes them).
+--        be "6144-byte raw fp32 vector" but no test fixture writes them).
 --        Setting all existing rows to NULL is acceptable — the embedding
 --        queue (cycle 16 DPS 1) backfills on next memory event.
 --      - ALTER COLUMN ... DROP NOT NULL (NULL = "pending embedding compute")
