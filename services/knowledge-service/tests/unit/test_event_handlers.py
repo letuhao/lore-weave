@@ -212,6 +212,52 @@ async def test_chapter_published_ingests_passages_at_pinned_revision(monkeypatch
     assert kw["delete_stale_on_missing"] is False  # transient None mustn't wipe
 
 
+@pytest.mark.asyncio
+async def test_chapter_published_passage_failure_does_not_block_graph_queue(
+    monkeypatch,
+):
+    """Best-effort isolation invariant: the graph-queue is written BEFORE
+    passage-ingest, and a passage-ingest exception is swallowed — so a failing
+    embed must NOT lose the (already-written) graph-extraction queue, and the
+    handler must not raise. Guards the queue-first ordering against future
+    reorders."""
+    from contextlib import asynccontextmanager
+
+    pool, conn = _mock_pool()
+    pool.fetchrow = AsyncMock(return_value={
+        "project_id": _PROJECT, "user_id": _USER,
+        "embedding_model": "bge-m3", "embedding_dimension": 1024,
+    })
+    upsert = _patch_pending_repo(monkeypatch)
+
+    with patch("app.config.settings") as ms:
+        ms.neo4j_uri = "bolt://fake"
+
+        @asynccontextmanager
+        async def fake_session():
+            yield MagicMock()
+
+        # ingest blows up — must be swallowed, queue must survive.
+        ingest_mock = AsyncMock(side_effect=RuntimeError("embed 503"))
+        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        monkeypatch.setattr(
+            "app.extraction.passage_ingester.ingest_chapter_passages", ingest_mock,
+        )
+        monkeypatch.setattr(
+            "app.clients.book_client.get_book_client", lambda: MagicMock(),
+        )
+        monkeypatch.setattr(
+            "app.clients.embedding_client.get_embedding_client",
+            lambda: MagicMock(),
+        )
+
+        # Must NOT raise despite the ingest failure.
+        await handle_chapter_published(_published_event(), pool=pool)
+
+    upsert.assert_awaited_once()  # graph-queue survived the passage failure
+    ingest_mock.assert_awaited_once()
+
+
 # ── CM3b/CM3c: chapter.unpublished (graph + passage retract) ─────────
 
 

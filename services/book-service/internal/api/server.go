@@ -409,6 +409,35 @@ func buildSortRangeFilter(
 	return selWhere, countWhere, outArgs
 }
 
+// appendEditorialStatusFilter is the pure SQL-builder for CM3c's optional
+// `?editorial_status=` canon-gate. It mirrors buildSortRangeFilter so a unit
+// test can assert the placeholder arithmetic (the R2-BLOCK#2 silent-blackout
+// risk) without a real pgx pool. `es` MUST already be validated by the caller
+// (one of "draft"/"published"); an empty `es` is a no-op pass-through. For
+// "published" it also requires a non-NULL published_revision_id — the only
+// canon-pinnable published state — so the COUNT matches the worker enumeration
+// (which skips purged-pointer chapters). Appends the status value to `args`
+// and emits its placeholder from the POST-append len, so the caller's
+// limit/offset positions (computed from the returned outArgs) stay correct.
+func appendEditorialStatusFilter(
+	selWhere string,
+	countWhere string,
+	args []any,
+	es string,
+) (string, string, []any) {
+	if es == "" {
+		return selWhere, countWhere, args
+	}
+	outArgs := append(args, es)
+	selWhere += fmt.Sprintf(" AND c.editorial_status=$%d", len(outArgs))
+	countWhere += fmt.Sprintf(" AND editorial_status=$%d", len(outArgs))
+	if es == "published" {
+		selWhere += " AND c.published_revision_id IS NOT NULL"
+		countWhere += " AND published_revision_id IS NOT NULL"
+	}
+	return selWhere, countWhere, outArgs
+}
+
 func (s *Server) ensureQuotaRow(ctx context.Context, ownerID uuid.UUID) error {
 	_, err := s.pool.Exec(ctx, `
 INSERT INTO user_storage_quota(owner_user_id, used_bytes, quota_bytes)
@@ -1960,31 +1989,16 @@ func (s *Server) getInternalBookChapters(w http.ResponseWriter, r *http.Request)
 	// (worker-ai enumeration / knowledge cost-estimate) passes
 	// `?editorial_status=published`, filter BOTH the COUNT and the LIST so
 	// `total` matches the returned items (no estimate/enumeration drift).
-	// Default unset → all chapters (chapter browser etc. unaffected).
-	// ⚠️ Append the predicate AFTER buildSortRangeFilter: push the value
-	// onto countArgs and emit its placeholder from the POST-append
-	// len(countArgs); only THEN compute limitPos/offsetPos — else the
-	// LIMIT/OFFSET placeholders collide with the status arg.
-	if es := r.URL.Query().Get("editorial_status"); es != "" {
-		if es != "draft" && es != "published" {
-			ChaptersListTotal.WithLabelValues(OutcomeValidationError).Inc()
-			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid editorial_status")
-			return
-		}
-		countArgs = append(countArgs, es)
-		where += fmt.Sprintf(" AND c.editorial_status=$%d", len(countArgs))
-		countWhere += fmt.Sprintf(" AND editorial_status=$%d", len(countArgs))
-		// CM3c review WARN#1: the only canon-relevant published state is
-		// "published WITH a pinnable revision". A published chapter whose
-		// pinned revision was purged (FK ON DELETE SET NULL) is skipped by the
-		// worker enumeration — exclude it here too so the cost-estimate count
-		// matches what the gated rebuild actually extracts (no divergence on
-		// the purge edge).
-		if es == "published" {
-			where += " AND c.published_revision_id IS NOT NULL"
-			countWhere += " AND published_revision_id IS NOT NULL"
-		}
+	// Default unset → all chapters (chapter browser etc. unaffected). The
+	// placeholder-safe append lives in appendEditorialStatusFilter (unit-tested
+	// for the $N arithmetic); validation stays here (needs the ResponseWriter).
+	es := r.URL.Query().Get("editorial_status")
+	if es != "" && es != "draft" && es != "published" {
+		ChaptersListTotal.WithLabelValues(OutcomeValidationError).Inc()
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid editorial_status")
+		return
 	}
+	where, countWhere, countArgs = appendEditorialStatusFilter(where, countWhere, countArgs, es)
 	var total int
 	// CM3c review WARN#2: the published-gate rides on `total`; a swallowed
 	// COUNT error would yield total=0 (HTTP 200) — a silent published-gate

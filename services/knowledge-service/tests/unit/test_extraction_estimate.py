@@ -303,6 +303,9 @@ def test_estimate_scope_range_all_scope_also_forwards():
     assert resp.status_code == 200
     assert captured["from_sort"] == 3
     assert captured["to_sort"] == 7
+    # CM3c parity must hold on the 'all' scope too (the more complex path),
+    # not only 'chapters' — else the all-scope preview over-counts drafts.
+    assert captured["editorial_status"] == "published"
 
 
 def test_estimate_scope_range_malformed_rejected():
