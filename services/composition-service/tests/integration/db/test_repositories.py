@@ -16,7 +16,7 @@ import asyncpg
 import pytest
 
 from app.db.migrate import run_migrations
-from app.db.repositories import VersionMismatchError
+from app.db.repositories import ReferenceViolationError, VersionMismatchError
 from app.db.repositories import outbox
 from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
@@ -170,19 +170,63 @@ async def test_outline_archive_recurses_subtree(pool):
 
 
 async def test_outline_archive_terminates_on_parent_cycle(pool):
-    """FINDING-3: a parent_id cycle (reachable via update_node reparent, no
-    cycle guard) must not make archive_node's recursive CTE loop forever. UNION
-    dedups → the walk terminates. Without the fix this test hangs."""
+    """FINDING-3 backstop: archive_node's recursive CTE must not loop forever on
+    a stray parent cycle. The repo now BLOCKS reparent-cycles (see
+    test_outline_reparent_cycle_blocked), so we forge the cycle via RAW SQL to
+    still prove the UNION backstop. Without UNION this test hangs."""
     repo = OutlineRepo(pool)
     user, project, _ = _ids()
     a = await repo.create_node(user, project, kind="arc", title="a")
     b = await repo.create_node(user, project, kind="arc", parent_id=a.id, title="b")
-    # forge a cycle: a → b → a
-    await repo.update_node(user, a.id, {"parent_id": b.id})
+    # forge a cycle a → b → a bypassing the repo guard
+    async with pool.acquire() as c:
+        await c.execute("UPDATE outline_node SET parent_id = $1 WHERE id = $2", b.id, a.id)
     archived = await repo.archive_node(user, a.id)
     assert archived is not None and archived.is_archived
     # both nodes in the cycle archived; query returned (did not hang)
     assert {n.id for n in await repo.list_tree(user, project)} == set()
+
+
+async def test_outline_reparent_guards(pool):
+    """D-COMP-M2-XREF-OWNERSHIP: update_node blocks self-parent, cross-user
+    parent, and descendant (cycle) reparents; a valid reparent succeeds."""
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    a = await repo.create_node(user, project, kind="arc", title="a")
+    b = await repo.create_node(user, project, kind="arc", parent_id=a.id, title="b")
+    c_node = await repo.create_node(user, project, kind="arc", title="c")
+
+    # self-parent
+    with pytest.raises(ReferenceViolationError):
+        await repo.update_node(user, a.id, {"parent_id": a.id})
+    # cycle: parent a under its descendant b
+    with pytest.raises(ReferenceViolationError):
+        await repo.update_node(user, a.id, {"parent_id": b.id})
+    # cross-user parent (another user's node)
+    other_user, other_proj, _ = _ids()
+    foreign = await repo.create_node(other_user, other_proj, kind="arc")
+    with pytest.raises(ReferenceViolationError):
+        await repo.update_node(user, c_node.id, {"parent_id": foreign.id})
+    # valid reparent: move c under a (not a descendant of c)
+    moved = await repo.update_node(user, c_node.id, {"parent_id": a.id})
+    assert moved is not None and moved.parent_id == a.id
+    # clearing the parent (→ top-level) is always allowed
+    cleared = await repo.update_node(user, c_node.id, {"parent_id": None})
+    assert cleared is not None and cleared.parent_id is None
+
+
+async def test_outline_create_rejects_cross_scope_parent(pool):
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    other_user, other_proj, _ = _ids()
+    foreign = await repo.create_node(other_user, other_proj, kind="arc")
+    # parent owned by another user → rejected
+    with pytest.raises(ReferenceViolationError):
+        await repo.create_node(user, project, kind="arc", parent_id=foreign.id)
+    # parent owned by us but in a DIFFERENT project → rejected
+    mine_other_proj = await repo.create_node(user, uuid.uuid4(), kind="arc")
+    with pytest.raises(ReferenceViolationError):
+        await repo.create_node(user, project, kind="arc", parent_id=mine_other_proj.id)
 
 
 async def test_outline_rank_orders_under_db_collation(pool):
@@ -225,6 +269,34 @@ async def test_scene_links_crud_and_isolation(pool):
     assert await slr.delete(uuid.uuid4(), link.id) is False
     assert await slr.delete(user, link.id) is True
     assert await slr.list_by_project(user, project) == []
+
+
+async def test_scene_link_rejects_foreign_endpoint(pool):
+    """D-COMP-M2-XREF-OWNERSHIP: a link endpoint that isn't the caller's node in
+    this project is rejected (FK proves existence, not ownership)."""
+    olr = OutlineRepo(pool)
+    slr = SceneLinksRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    mine = await olr.create_node(user, project, kind="scene", chapter_id=chapter)
+    other_user, other_proj, _ = _ids()
+    foreign = await olr.create_node(other_user, other_proj, kind="scene", chapter_id=chapter)
+    with pytest.raises(ReferenceViolationError):
+        await slr.create(user, project, mine.id, foreign.id)
+    # a node of ours but in another project is also rejected
+    mine_other = await olr.create_node(user, uuid.uuid4(), kind="scene", chapter_id=chapter)
+    with pytest.raises(ReferenceViolationError):
+        await slr.create(user, project, mine.id, mine_other.id)
+
+
+async def test_generation_job_rejects_foreign_node(pool):
+    olr = OutlineRepo(pool)
+    gjr = GenerationJobsRepo(pool)
+    user, project, _ = _ids()
+    other_user, other_proj, _ = _ids()
+    foreign = await olr.create_node(other_user, other_proj, kind="scene", chapter_id=uuid.uuid4())
+    with pytest.raises(ReferenceViolationError):
+        await gjr.create(user, project, operation="draft_scene", outline_node_id=foreign.id)
 
 
 # ───────────────────────── canon_rules ─────────────────────────

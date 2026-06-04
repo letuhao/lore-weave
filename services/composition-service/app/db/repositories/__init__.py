@@ -24,6 +24,22 @@ class VersionMismatchError(Exception):
         self.current = current
 
 
+class ReferenceViolationError(Exception):
+    """Raised when a write references an in-DB node that the caller does not own,
+    that lives in a different project, or that would form a parent cycle.
+
+    Repo-layer defense-in-depth (D-COMP-M2-XREF-OWNERSHIP): the in-DB FK only
+    checks a node EXISTS, not that it belongs to the caller — so without this a
+    scene_link / generation_job / reparent could reference another user's node
+    (no data leak, but a broken/cross-user edge) or forge a parent cycle. The
+    future M3/M7 router can catch this and map it to 400/404/409.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
 def rows_changed(status: str) -> int:
     """Parse an asyncpg command tag like 'UPDATE 1' / 'DELETE 0' safely."""
     try:
@@ -32,4 +48,4 @@ def rows_changed(status: str) -> int:
         return 0
 
 
-__all__ = ["VersionMismatchError", "rows_changed"]
+__all__ = ["VersionMismatchError", "ReferenceViolationError", "rows_changed"]

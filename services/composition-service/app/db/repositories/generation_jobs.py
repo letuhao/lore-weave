@@ -17,6 +17,7 @@ from uuid import UUID
 import asyncpg
 
 from app.db.models import GenerationJob
+from app.db.repositories import ReferenceViolationError
 
 _SELECT_COLS = """
   id, user_id, project_id, outline_node_id, operation, mode, status, llm_job_id,
@@ -68,6 +69,18 @@ class GenerationJobsRepo:
         index's partial predicate so it matches idx_generation_job_idem.
         """
         async def _do(c: asyncpg.Connection) -> tuple[GenerationJob, bool]:
+            if outline_node_id is not None:
+                # Defense-in-depth (D-COMP-M2-XREF-OWNERSHIP): the job's node must
+                # be the caller's in THIS project (the FK only proves existence).
+                owned = await c.fetchval(
+                    "SELECT 1 FROM outline_node "
+                    "WHERE user_id = $1 AND project_id = $2 AND id = $3",
+                    user_id, project_id, outline_node_id,
+                )
+                if owned is None:
+                    raise ReferenceViolationError(
+                        f"outline_node {outline_node_id} is not the caller's node in this project"
+                    )
             row = await c.fetchrow(
                 f"""
                 INSERT INTO generation_job

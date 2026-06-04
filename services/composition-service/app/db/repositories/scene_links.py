@@ -14,7 +14,7 @@ from uuid import UUID
 import asyncpg
 
 from app.db.models import SceneLink
-from app.db.repositories import rows_changed
+from app.db.repositories import ReferenceViolationError, rows_changed
 
 _SELECT_COLS = """
   id, user_id, project_id, from_node_id, to_node_id, kind, label, created_at
@@ -45,6 +45,19 @@ class SceneLinksRepo:
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as c:
+            # Defense-in-depth (D-COMP-M2-XREF-OWNERSHIP): both endpoints must be
+            # the caller's nodes in THIS project — the in-DB FK only proves they
+            # exist, not that they're ours. Distinct from/to is enforced by the
+            # table CHECK; here we guard ownership + project scope.
+            owned = await c.fetchval(
+                "SELECT count(*) FROM outline_node "
+                "WHERE user_id = $1 AND project_id = $2 AND id = ANY($3::uuid[])",
+                user_id, project_id, [from_node_id, to_node_id],
+            )
+            if owned != 2:
+                raise ReferenceViolationError(
+                    "scene_link endpoints must both be the caller's nodes in this project"
+                )
             row = await c.fetchrow(
                 query, user_id, project_id, from_node_id, to_node_id, kind, label
             )

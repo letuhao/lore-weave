@@ -42,7 +42,7 @@ class RedactFilter(logging.Filter):
 class ContextFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         record.trace_id = trace_id_var.get() or ""
-        record.service = "knowledge-service"
+        record.service = "composition-service"
         return True
 
 

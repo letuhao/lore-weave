@@ -15,7 +15,7 @@ from uuid import UUID
 import asyncpg
 
 from app.db.models import OutlineNode
-from app.db.repositories import VersionMismatchError
+from app.db.repositories import ReferenceViolationError, VersionMismatchError
 from app.db.repositories.rank import rank_after
 
 _SELECT_COLS = """
@@ -66,6 +66,69 @@ class OutlineRepo:
         )
         return rank_after(last)
 
+    async def _validate_parent(
+        self, conn: asyncpg.Connection, user_id: UUID, project_id: UUID,
+        parent_id: UUID,
+    ) -> None:
+        """Ensure `parent_id` is one of the caller's nodes in the SAME project.
+
+        Defense-in-depth (D-COMP-M2-XREF-OWNERSHIP): the in-DB FK only proves the
+        parent EXISTS — not that it is the caller's, nor in this project. Without
+        this a node could be parented under another user's / another project's
+        node (a broken cross-scope edge)."""
+        row = await conn.fetchrow(
+            "SELECT project_id FROM outline_node WHERE user_id = $1 AND id = $2",
+            user_id, parent_id,
+        )
+        if row is None:
+            raise ReferenceViolationError(f"parent node {parent_id} not found for user")
+        if row["project_id"] != project_id:
+            raise ReferenceViolationError(
+                f"parent node {parent_id} is in a different project"
+            )
+
+    async def _descendant_ids(
+        self, conn: asyncpg.Connection, user_id: UUID, node_id: UUID,
+    ) -> set[UUID]:
+        """The caller's descendants of `node_id` (NOT including node_id). UNION
+        dedups so a pre-existing malformed cycle can't loop the walk."""
+        rows = await conn.fetch(
+            """
+            WITH RECURSIVE descendants AS (
+              SELECT id FROM outline_node WHERE user_id = $1 AND parent_id = $2
+              UNION
+              SELECT n.id FROM outline_node n
+              JOIN descendants d ON n.parent_id = d.id
+              WHERE n.user_id = $1
+            )
+            SELECT id FROM descendants
+            """,
+            user_id, node_id,
+        )
+        return {r["id"] for r in rows}
+
+    async def _validate_reparent(
+        self, conn: asyncpg.Connection, user_id: UUID, node_id: UUID,
+        new_parent_id: UUID,
+    ) -> None:
+        """Guard a reparent: not self, parent owned + same project, and not a
+        descendant (cycle). Prevents the malformed cycle at the source — the
+        archive_node UNION is the backstop for any cycle that still slips in."""
+        if new_parent_id == node_id:
+            raise ReferenceViolationError("a node cannot be its own parent")
+        node = await conn.fetchrow(
+            "SELECT project_id FROM outline_node WHERE user_id = $1 AND id = $2",
+            user_id, node_id,
+        )
+        if node is None:
+            # Node missing / not ours: let the UPDATE 0-row path report 404/412.
+            return
+        await self._validate_parent(conn, user_id, node["project_id"], new_parent_id)
+        if new_parent_id in await self._descendant_ids(conn, user_id, node_id):
+            raise ReferenceViolationError(
+                f"reparenting under descendant {new_parent_id} would create a cycle"
+            )
+
     async def create_node(
         self,
         user_id: UUID,
@@ -89,6 +152,8 @@ class OutlineRepo:
         """Insert an outline node. When `rank` is omitted it is auto-computed to
         append after the last sibling under `parent_id` (single-row touch)."""
         async def _do(c: asyncpg.Connection) -> asyncpg.Record:
+            if parent_id is not None:
+                await self._validate_parent(c, user_id, project_id, parent_id)
             node_rank = rank if rank is not None else await self._next_rank(
                 c, user_id, project_id, parent_id
             )
@@ -178,7 +243,12 @@ class OutlineRepo:
         WHERE user_id = $1 AND id = $2{version_clause}
         RETURNING {_SELECT_COLS}
         """
+        new_parent = updates.get("parent_id")
         async with self._pool.acquire() as c:
+            # Validate a reparent BEFORE the write (cycle / cross-scope guard).
+            # Clearing the parent (None → top-level) needs no check.
+            if "parent_id" in updates and new_parent is not None:
+                await self._validate_reparent(c, user_id, node_id, new_parent)
             row = await c.fetchrow(query, *params)
         if row is not None:
             return _row_to_node(row)
