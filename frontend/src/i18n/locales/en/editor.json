@@ -329,6 +329,8 @@
     "diffing": "Computing diff…",
     "error": "Could not load the comparison.",
     "truncated": "These revisions are very large — showing a full replace instead of a fine-grained diff.",
-    "same": "Both sides are the same revision — no differences."
+    "same": "Both sides are the same revision — no differences.",
+    "load_more": "Load more ({{loaded}}/{{total}})",
+    "load_more_hint": "Load older revisions into the picker"
   }
 }

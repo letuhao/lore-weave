@@ -329,6 +329,8 @@
     "diffing": "Đang tính khác biệt…",
     "error": "Không tải được phần so sánh.",
     "truncated": "Hai phiên bản quá lớn — hiển thị thay thế toàn bộ thay vì khác biệt chi tiết.",
-    "same": "Hai bên là cùng một phiên bản — không có khác biệt."
+    "same": "Hai bên là cùng một phiên bản — không có khác biệt.",
+    "load_more": "Tải thêm ({{loaded}}/{{total}})",
+    "load_more_hint": "Tải các phiên bản cũ hơn vào danh sách chọn"
   }
 }

@@ -66,6 +66,18 @@ export function RevisionCompareView({ token, bookId, chapterId }: Props) {
           <Picker label={t('compare.left', { defaultValue: 'Left revision' })} items={c.items} value={c.leftId} onChange={c.setLeftId} emptyLabel={emptyLabel} />
           <span className="text-xs text-muted-foreground">vs</span>
           <Picker label={t('compare.right', { defaultValue: 'Right revision' })} items={c.items} value={c.rightId} onChange={c.setRightId} emptyLabel={emptyLabel} />
+          {c.hasMore && (
+            <button
+              onClick={() => void c.loadMore()}
+              disabled={c.loadingMore}
+              title={t('compare.load_more_hint', { defaultValue: 'Load older revisions into the picker' })}
+              className="shrink-0 whitespace-nowrap rounded-md border px-2 py-1 text-xs hover:text-primary disabled:opacity-50"
+            >
+              {c.loadingMore
+                ? t('compare.loading', { defaultValue: 'Loading…' })
+                : t('compare.load_more', { defaultValue: 'Load more ({{loaded}}/{{total}})', loaded: c.items.length, total: c.total })}
+            </button>
+          )}
         </div>
 
         <div className="inline-flex overflow-hidden rounded-md border">

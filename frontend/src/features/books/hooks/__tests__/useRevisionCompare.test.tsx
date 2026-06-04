@@ -52,6 +52,32 @@ describe('useRevisionCompare', () => {
     expect(compareMock).not.toHaveBeenCalled();
   });
 
+  it('paginates: hasMore when loaded < total, loadMore accumulates pages', async () => {
+    // page of 2 with total 3 → one more page (the older revision).
+    listRevisionsMock.mockImplementation((_t: string, _b: string, _c: string, params: { offset?: number }) => {
+      const all = [
+        { revision_id: 'r3', created_at: '2026-01-03' },
+        { revision_id: 'r2', created_at: '2026-01-02' },
+        { revision_id: 'r1', created_at: '2026-01-01' },
+      ];
+      const offset = params?.offset ?? 0;
+      return Promise.resolve({ items: all.slice(offset, offset + 2), total: 3 });
+    });
+    const { result } = render();
+    await waitFor(() => expect(result.current.items.length).toBe(2));
+    expect(result.current.hasMore).toBe(true);
+    expect(result.current.total).toBe(3);
+    // r1 (the oldest) is NOT yet selectable
+    expect(result.current.items.map((i) => i.revision_id)).not.toContain('r1');
+
+    await act(async () => {
+      await result.current.loadMore();
+    });
+    await waitFor(() => expect(result.current.items.length).toBe(3));
+    expect(result.current.hasMore).toBe(false);
+    expect(result.current.items.map((i) => i.revision_id)).toContain('r1');
+  });
+
   it('an explicit pick overrides the default side', async () => {
     listRevisionsMock.mockResolvedValue({
       items: [
