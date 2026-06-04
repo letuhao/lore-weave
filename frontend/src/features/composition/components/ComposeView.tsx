@@ -10,20 +10,25 @@ import { useCompositionStream } from '../hooks/useCompositionStream';
 import { useCritique } from '../hooks/useCritique';
 import type { Critic } from '../types';
 
+type ReasoningPref = 'off' | 'auto' | 'low' | 'medium' | 'high';
+
 type Props = {
   projectId: string;
   sceneId: string;
   modelRef: string;
+  modelKind?: string;
+  modelName?: string;
   token: string | null;
   onAccept: (text: string) => void;
 };
 
-export function ComposeView({ projectId, sceneId, modelRef, token, onAccept }: Props) {
+export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName, token, onAccept }: Props) {
   const { t } = useTranslation('composition');
   const [guide, setGuide] = useState('');
-  // Reasoning knob — "auto" = model default; "none" disables hidden thinking so
-  // a reasoning-model drafter spends its budget on prose, not reasoning tokens.
-  const [reasoning, setReasoning] = useState<'auto' | 'none'>('auto');
+  // Reasoning preference. "auto" lets the server decide per the selected model
+  // (adaptive pass-through vs our rule-based scorer); off/low/medium/high are
+  // explicit overrides.
+  const [reasoning, setReasoning] = useState<ReasoningPref>('auto');
   const stream = useCompositionStream(token);
   const { critique, dismiss } = useCritique(token);
 
@@ -31,7 +36,7 @@ export function ComposeView({ projectId, sceneId, modelRef, token, onAccept }: P
   const generate = () =>
     stream.start({
       projectId, outlineNodeId: sceneId, modelSource: 'user_model', modelRef, guide,
-      reasoningEffort: reasoning === 'none' ? 'none' : undefined,
+      reasoning, modelKind, modelName,
     });
 
   const accept = () => {
@@ -57,13 +62,25 @@ export function ComposeView({ projectId, sceneId, modelRef, token, onAccept }: P
           data-testid="compose-reasoning"
           className="rounded border border-neutral-300 bg-transparent px-2 py-1 text-xs dark:border-neutral-600"
           value={reasoning}
-          onChange={(e) => setReasoning(e.target.value as 'auto' | 'none')}
+          onChange={(e) => setReasoning(e.target.value as ReasoningPref)}
           aria-label={t('reasoning', { defaultValue: 'Reasoning' })}
-          title={t('reasoningHint', { defaultValue: 'Off = disable hidden thinking (faster, needed for reasoning models)' })}
+          title={t('reasoningHint', { defaultValue: 'Auto = the server decides per model. Off disables thinking; Low/Med/High force it.' })}
         >
           <option value="auto">{t('reasoningAuto', { defaultValue: 'Thinking: auto' })}</option>
-          <option value="none">{t('reasoningOff', { defaultValue: 'Thinking: off' })}</option>
+          <option value="off">{t('reasoningOff', { defaultValue: 'Thinking: off' })}</option>
+          <option value="low">{t('reasoningLow', { defaultValue: 'Thinking: low' })}</option>
+          <option value="medium">{t('reasoningMedium', { defaultValue: 'Thinking: med' })}</option>
+          <option value="high">{t('reasoningHigh', { defaultValue: 'Thinking: high' })}</option>
         </select>
+        {stream.reasoning && (
+          <span data-testid="compose-reasoning-badge" className="self-center rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] text-neutral-500 dark:bg-neutral-800">
+            {stream.reasoning.source === 'adaptive'
+              ? t('reasoningResolvedAdaptive', { defaultValue: 'model decides' })
+              : stream.reasoning.source === 'non_reasoning'
+                ? t('reasoningResolvedNone', { defaultValue: 'no thinking' })
+                : t('reasoningResolved', { defaultValue: '{{source}} → {{effort}}', source: stream.reasoning.source, effort: stream.reasoning.effort ?? '—' })}
+          </span>
+        )}
         {!stream.streaming ? (
           <button
             data-testid="compose-generate"

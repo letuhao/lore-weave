@@ -90,7 +90,7 @@ export type GenerationJob = {
 
 // One decoded SSE frame from POST /generate.
 export type StreamEvent =
-  | { type: 'job'; job_id: string; created: boolean; grounding_available: boolean }
+  | { type: 'job'; job_id: string; created: boolean; grounding_available: boolean; reasoning_source?: string; reasoning_effort?: string | null }
   | { type: 'token'; delta: string }
   | { type: 'reasoning'; delta: string }
   | { type: 'capped' }

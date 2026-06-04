@@ -17,9 +17,13 @@ export type GenerateArgs = {
   operation?: string;
   guide?: string;
   maxOutputTokens?: number;
-  /** "none" disables hidden thinking on reasoning-model drafters so reasoning
-   * tokens don't eat the budget (empty ghost). Omit for the model default. */
-  reasoningEffort?: 'none' | 'low' | 'medium' | 'high';
+  /** Author reasoning preference; the server resolves "auto" per the selected
+   * model's capability. off/low/medium/high are explicit overrides. */
+  reasoning?: 'off' | 'auto' | 'low' | 'medium' | 'high';
+  /** Selected model metadata — lets the server pick the auto strategy per the
+   * registered model (adaptive pass-through vs our rule-based scorer). */
+  modelKind?: string;
+  modelName?: string;
 };
 
 export function useCompositionStream(token: string | null) {
@@ -27,6 +31,8 @@ export function useCompositionStream(token: string | null) {
   const [streaming, setStreaming] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // How the server resolved reasoning for this run (for the UI badge).
+  const [reasoning, setReasoning] = useState<{ source: string; effort: string | null } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const stop = useCallback(() => {
@@ -44,6 +50,7 @@ export function useCompositionStream(token: string | null) {
       setGhost('');
       setError(null);
       setJobId(null);
+      setReasoning(null);
       setStreaming(true);
       const controller = new AbortController();
       abortRef.current = controller;
@@ -58,8 +65,9 @@ export function useCompositionStream(token: string | null) {
             operation: args.operation ?? 'draft_scene',
             guide: args.guide ?? '',
             max_output_tokens: args.maxOutputTokens ?? 800,
-            // Omit when unset → server uses the model default.
-            ...(args.reasoningEffort ? { reasoning_effort: args.reasoningEffort } : {}),
+            reasoning: args.reasoning ?? 'auto',
+            ...(args.modelKind ? { model_kind: args.modelKind } : {}),
+            ...(args.modelName ? { model_name: args.modelName } : {}),
           }),
           signal: controller.signal,
         });
@@ -93,8 +101,10 @@ export function useCompositionStream(token: string | null) {
             } catch {
               continue; // partial/garbled frame — skip
             }
-            if (ev.type === 'job') setJobId(ev.job_id);
-            else if (ev.type === 'token') setGhost((g) => g + ev.delta);
+            if (ev.type === 'job') {
+              setJobId(ev.job_id);
+              if (ev.reasoning_source) setReasoning({ source: ev.reasoning_source, effort: ev.reasoning_effort ?? null });
+            } else if (ev.type === 'token') setGhost((g) => g + ev.delta);
             else if (ev.type === 'error') setError(ev.error);
           }
         }
@@ -114,5 +124,5 @@ export function useCompositionStream(token: string | null) {
   );
 
   const clearGhost = useCallback(() => setGhost(''), []);
-  return { ghost, streaming, jobId, error, start, stop, clearGhost };
+  return { ghost, streaming, jobId, error, reasoning, start, stop, clearGhost };
 }

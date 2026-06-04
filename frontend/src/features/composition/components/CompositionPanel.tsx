@@ -71,6 +71,9 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
   const effectiveScene = sceneId || scenes.data?.[0]?.id || '';
   const selectedScene = scenes.data?.find((s) => s.id === effectiveScene);
   const sceneDone = selectedScene?.status === 'done';
+  // The selected model's metadata — hints for the server's auto-reasoning
+  // strategy (adaptive pass-through vs our rule-based scorer).
+  const selectedModel = models.data?.find((m) => m.user_model_id === modelRef);
 
   return (
     <div className="flex h-full flex-col">
@@ -155,6 +158,8 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
             projectId={work.project_id}
             sceneId={effectiveScene}
             modelRef={modelRef}
+            modelKind={selectedModel?.provider_kind}
+            modelName={selectedModel?.provider_model_name}
             token={token}
             onAccept={onAccept}
           />

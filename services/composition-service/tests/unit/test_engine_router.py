@@ -131,6 +131,36 @@ def test_generate_streams_and_completes_job(ctx):
     assert any(s == "completed" for _, s, _ in jobs.updates)
 
 
+def test_generate_reasoning_off_is_user_none(ctx):
+    # explicit author override → reasoning_effort="none", source="user".
+    c, _, _, _, _, _ = ctx
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "reasoning": "off"})
+    assert r.status_code == 200
+    assert '"reasoning_source": "user"' in r.text
+    assert '"reasoning_effort": "none"' in r.text
+
+
+def test_generate_reasoning_auto_on_effort_model_uses_scorer(ctx):
+    # auto + a reasoning model hint (qwen3) → the rule-based scorer decides.
+    c, _, _, _, _, _ = ctx
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={
+        **_gen_body(), "reasoning": "auto",
+        "model_kind": "lm_studio", "model_name": "qwen/qwen3.6-35b-a3b"})
+    assert r.status_code == 200
+    assert '"reasoning_source": "rule_based"' in r.text
+
+
+def test_generate_reasoning_auto_on_adaptive_model_passes_through(ctx):
+    # auto + an adaptive model (Anthropic) → pass through, omit effort.
+    c, _, _, _, _, _ = ctx
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={
+        **_gen_body(), "reasoning": "auto",
+        "model_kind": "anthropic", "model_name": "claude-opus-4-8"})
+    assert r.status_code == 200
+    assert '"reasoning_source": "adaptive"' in r.text
+    assert '"reasoning_effort": null' in r.text
+
+
 def test_generate_cancels_in_flight_job_s2(ctx):
     c, _, _, _, jobs, _ = ctx
     prior = uuid.uuid4()

@@ -35,6 +35,8 @@ from app.deps import (
 )
 from app.engine.cowrite import build_messages, estimate_prompt_tokens, stream_draft
 from app.engine.critic import judge_prose
+from app.reasoning import ReasoningSignals, score_effort
+from loreweave_llm import infer_reasoning_control, resolve_reasoning
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.packer import budget as B
 from app.packer.pack import OwnershipError, PackRequest, pack
@@ -61,10 +63,14 @@ class GenerateBody(BaseModel):
     mode: Literal["cowrite", "auto"] = "cowrite"
     guide: str = ""
     max_output_tokens: int = Field(default=_MAX_OUTPUT_DEFAULT, ge=1, le=8192)
-    # Optional reasoning knob — "none" disables hidden thinking on a reasoning
-    # drafter (else reasoning_tokens eat max_output_tokens → empty ghost). Literal
-    # → bad value is a 422 before the stream opens. Omit for the model default.
-    reasoning_effort: Literal["none", "low", "medium", "high"] | None = None
+    # Author reasoning preference. "auto" → the capability-aware resolver decides
+    # (adaptive model → pass through; effort model → rule-based scorer; non-
+    # reasoning → no-op). off/low/medium/high are explicit overrides. The
+    # model_* hints (from the FE's selected user-model) let the resolver pick the
+    # strategy per registered model — a UX policy, not an authz boundary.
+    reasoning: Literal["off", "auto", "low", "medium", "high"] = "auto"
+    model_kind: str | None = None
+    model_name: str | None = None
     idempotency_key: str | None = None
 
 
@@ -136,11 +142,31 @@ async def generate(
         raise HTTPException(status_code=413, detail={
             "code": "PROMPT_TOO_LARGE", "estimate": prompt_estimate, "ceiling": prompt_ceiling})
 
+    # Resolve the reasoning ("thinking") directive (auto-reasoning, §integration).
+    # Signals are cheap things we already have: the operation, the scene's tension
+    # + present entities, and the active canon load (count + any reveal_gate).
+    active_rules = await canon.list_active(user_id, project_id)
+    signals = ReasoningSignals(
+        operation=body.operation,
+        n_canon_rules=len(active_rules),
+        n_present_entities=len(node.present_entity_ids or []),
+        has_reveal_gate=any(r.scope == "reveal_gate" for r in active_rules),
+        tension=node.tension,
+        guide=body.guide,
+    )
+    control = infer_reasoning_control(body.model_kind, body.model_name)
+    reasoning = resolve_reasoning(
+        user_pref=body.reasoning, model_control=control,
+        auto_effort=score_effort(signals),
+        auto_source=str(work.settings.get("reasoning_engine", "rule_based")),
+    )
+
     job, created = await jobs.create(
         user_id, project_id, operation=body.operation, outline_node_id=node.id,
         mode=body.mode, status="running",
         input={"model_source": body.model_source, "model_ref": str(body.model_ref),
-               "operation": body.operation, "prompt_estimate": prompt_estimate},
+               "operation": body.operation, "prompt_estimate": prompt_estimate,
+               "reasoning": reasoning.source, "reasoning_effort": reasoning.effort},
         idempotency_key=body.idempotency_key,
     )
     # S2: cancel OTHER in-flight jobs for this node — only when we actually
@@ -153,7 +179,9 @@ async def generate(
 
     async def event_gen():
         yield _sse({"type": "job", "job_id": str(job.id), "created": created,
-                    "grounding_available": pc.grounding_available})
+                    "grounding_available": pc.grounding_available,
+                    "reasoning_source": reasoning.source,
+                    "reasoning_effort": reasoning.effort})
         if not created:
             # Idempotent replay — don't re-stream; report the existing job.
             yield _sse({"type": "done", "job_id": str(job.id), "status": job.status, "replay": True})
@@ -164,7 +192,8 @@ async def generate(
             model_ref=str(body.model_ref), messages=messages,
             prompt_token_estimate=prompt_estimate, max_output_tokens=body.max_output_tokens,
             hard_cap_output=body.max_output_tokens * 2,
-            reasoning_effort=body.reasoning_effort,
+            # passthrough (adaptive model) → omit, let the model self-decide.
+            reasoning_effort=None if reasoning.passthrough else reasoning.effort,
         ):
             if ev["type"] == "usage":
                 final = ev
