@@ -122,6 +122,27 @@ export type GenreGroup = {
   created_at: string;
 };
 
+// ── Kind-resolution review (unknown bucket + aliases) ────────────────────────
+// When extract-entities can't resolve an incoming kind_code, the entity is parked
+// under the 'unknown' system kind (never dropped) and remembers the code it arrived
+// as in source_kind_code. These types back the author's triage GUI.
+
+export type UnknownEntity = {
+  entity_id: string;
+  name: string;
+  source_kind_code: string | null;
+  status: string;
+  created_at: string;
+};
+
+export type KindAlias = {
+  alias_id: string;
+  alias_code: string;
+  kind_id: string;
+  kind_code: string;
+  created_at: string;
+};
+
 export type EntityNameEntry = {
   entity_id: string;
   display_name: string;

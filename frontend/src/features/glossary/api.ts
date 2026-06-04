@@ -78,6 +78,53 @@ export const glossaryApi = {
     });
   },
 
+  // ── Kind-resolution review (unknown bucket + aliases) ──────────────────────
+
+  /** Review queue: entities parked under the 'unknown' kind for this book. */
+  listUnknownEntities(
+    bookId: string,
+    token: string,
+  ): Promise<{ items: import('./types').UnknownEntity[]; total: number }> {
+    return apiJson(`${BASE}/books/${bookId}/unknown-entities`, { token });
+  },
+
+  /** Existing alias table (source kind code → real kind). */
+  listKindAliases(
+    token: string,
+  ): Promise<{ items: import('./types').KindAlias[]; total: number }> {
+    return apiJson(`${BASE}/kind-aliases`, { token });
+  },
+
+  /**
+   * Create an alias `alias_code → kind_id`. When `reassign` is true, also moves every
+   * unknown entity whose source_kind_code == alias_code (scoped to book_id if given)
+   * onto that kind — the "merge" action.
+   */
+  createKindAlias(
+    token: string,
+    payload: { alias_code: string; kind_id: string; reassign?: boolean; book_id?: string },
+  ): Promise<{ alias_id: string; alias_code: string; kind_id: string; reassigned: number }> {
+    return apiJson(`${BASE}/kind-aliases`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      token,
+    });
+  },
+
+  /** Move ONE entity onto a kind (ad-hoc triage; re-keys attributes by code). */
+  reassignEntityKind(
+    bookId: string,
+    entityId: string,
+    kindId: string,
+    token: string,
+  ): Promise<{ entity_id: string; kind_id: string }> {
+    return apiJson(`${BASE}/books/${bookId}/entities/${entityId}/reassign-kind`, {
+      method: 'POST',
+      body: JSON.stringify({ kind_id: kindId }),
+      token,
+    });
+  },
+
   // ── Kind CRUD ──────────────────────────────────────────────────────────────
 
   createKind(token: string, payload: { code: string; name: string; icon?: string; color?: string; genre_tags?: string[] }) {

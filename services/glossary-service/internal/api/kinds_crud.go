@@ -40,17 +40,44 @@ func (s *Server) createKind(w http.ResponseWriter, r *http.Request) {
 		in.GenreTags = []string{"universal"}
 	}
 
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx begin failed")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
 	var kindID string
-	err := s.pool.QueryRow(r.Context(), `
+	if err := tx.QueryRow(r.Context(), `
 		INSERT INTO entity_kinds(code, name, description, icon, color, is_default, is_hidden, sort_order, genre_tags)
 		VALUES ($1,$2,$3,$4,$5,false,false,
 			COALESCE((SELECT MAX(sort_order)+1 FROM entity_kinds),1),
 			$6)
 		RETURNING kind_id`,
 		in.Code, in.Name, in.Description, in.Icon, in.Color, in.GenreTags,
-	).Scan(&kindID)
-	if err != nil {
+	).Scan(&kindID); err != nil {
 		writeError(w, http.StatusConflict, "GLOSS_CONFLICT", "kind code already exists")
+		return
+	}
+
+	// Seed a system 'name' display attribute so the kind is name-capable from creation.
+	// display_name resolves from a 'name'/'term' attribute (entity_handler.go); a kind
+	// with neither — the prior behaviour for every API/UI-created kind — leaves its
+	// entities with no display name, including entities reassigned here out of the
+	// unknown bucket (their name would be dropped in the kind re-key).
+	nameAttr := domain.AttrDef{Code: "name", Name: "Name", FieldType: "text", IsRequired: true, IsActive: true, SortOrder: 0, GenreTags: []string{}}
+	if err := tx.QueryRow(r.Context(), `
+		INSERT INTO attribute_definitions(kind_id, code, name, field_type, is_required, is_system, is_active, sort_order, genre_tags)
+		VALUES ($1,'name','Name','text',true,true,true,0,'{}')
+		RETURNING attr_def_id`,
+		kindID,
+	).Scan(&nameAttr.AttrDefID); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to seed name attribute")
+		return
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx commit failed")
 		return
 	}
 
@@ -64,7 +91,7 @@ func (s *Server) createKind(w http.ResponseWriter, r *http.Request) {
 		IsDefault:   false,
 		IsHidden:    false,
 		GenreTags:   in.GenreTags,
-		Attributes:  []domain.AttrDef{},
+		Attributes:  []domain.AttrDef{nameAttr},
 	})
 }
 

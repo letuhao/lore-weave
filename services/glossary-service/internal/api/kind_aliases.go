@@ -40,6 +40,22 @@ func (s *Server) listUnknownEntities(w http.ResponseWriter, r *http.Request) {
 	}
 	bookID := chi.URLParam(r, "book_id")
 
+	// True count first — the items query is LIMIT-capped, so returning len(items)
+	// as total would silently under-report when the queue exceeds the cap (the GUI
+	// then reads "all reviewed" when entities are hidden). Report the real count and
+	// let the client flag "showing first N of total".
+	var total int
+	if err := s.pool.QueryRow(r.Context(), `
+		SELECT COUNT(*)
+		FROM glossary_entities e
+		JOIN entity_kinds k ON k.kind_id = e.kind_id AND k.code = 'unknown'
+		WHERE e.book_id = $1 AND e.deleted_at IS NULL`,
+		bookID,
+	).Scan(&total); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to count unknown entities")
+		return
+	}
+
 	rows, err := s.pool.Query(r.Context(), `
 		SELECT e.entity_id, COALESCE(nv.original_value, ''), e.source_kind_code, e.status, e.created_at
 		FROM glossary_entities e
@@ -71,7 +87,7 @@ func (s *Server) listUnknownEntities(w http.ResponseWriter, r *http.Request) {
 		e.CreatedAt = ts.Format(time.RFC3339)
 		out = append(out, e)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": out, "total": len(out)})
+	writeJSON(w, http.StatusOK, map[string]any{"items": out, "total": total})
 }
 
 type kindAliasOut struct {
@@ -131,18 +147,27 @@ func (s *Server) createKindAlias(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "alias_code and kind_id are required")
 		return
 	}
-	// Refuse aliasing a code that is itself a real kind.code (the resolver checks
-	// kinds first, so such an alias would be dead — fail loud instead).
-	var clash bool
-	if err := s.pool.QueryRow(r.Context(),
-		`SELECT EXISTS(SELECT 1 FROM entity_kinds WHERE code = $1)`, in.AliasCode,
-	).Scan(&clash); err != nil {
+	// A code that is itself a real kind.code is normally a dead alias (the resolver
+	// checks kinds first), so we refuse it — UNLESS that kind IS the reassign target.
+	// That happens when the author creates a new kind whose code equals the parked
+	// source code, then merges: the alias would be redundant but the reassign intent
+	// is valid. In that case skip the alias row and still reassign (unbounded).
+	skipAlias := false
+	var clashKindID string
+	err := s.pool.QueryRow(r.Context(),
+		`SELECT kind_id::text FROM entity_kinds WHERE code = $1`, in.AliasCode,
+	).Scan(&clashKindID)
+	switch {
+	case err == pgx.ErrNoRows:
+		// no clash — proceed to insert the alias normally
+	case err != nil:
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "alias check failed")
 		return
-	}
-	if clash {
+	case clashKindID != in.KindID:
 		writeError(w, http.StatusConflict, "GLOSS_CONFLICT", "alias_code is already a kind code")
 		return
+	default:
+		skipAlias = true
 	}
 
 	tx, err := s.pool.Begin(r.Context())
@@ -153,14 +178,15 @@ func (s *Server) createKindAlias(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(r.Context())
 
 	var aliasID string
-	err = tx.QueryRow(r.Context(), `
-		INSERT INTO entity_kind_aliases (alias_code, kind_id, created_by)
-		VALUES ($1, $2, $3) RETURNING alias_id`,
-		in.AliasCode, in.KindID, uid,
-	).Scan(&aliasID)
-	if err != nil {
-		writeError(w, http.StatusConflict, "GLOSS_CONFLICT", "alias already exists or kind not found")
-		return
+	if !skipAlias {
+		if err := tx.QueryRow(r.Context(), `
+			INSERT INTO entity_kind_aliases (alias_code, kind_id, created_by)
+			VALUES ($1, $2, $3) RETURNING alias_id`,
+			in.AliasCode, in.KindID, uid,
+		).Scan(&aliasID); err != nil {
+			writeError(w, http.StatusConflict, "GLOSS_CONFLICT", "alias already exists or kind not found")
+			return
+		}
 	}
 
 	reassigned := 0
@@ -294,6 +320,36 @@ func (s *Server) rekeyEntityToKind(ctx context.Context, tx pgx.Tx, entityID, new
 		  AND eav.attr_def_id = od.attr_def_id
 		  AND nd.kind_id = $2 AND nd.code = od.code
 		  AND od.kind_id <> $2`,
+		entityID, newKindID,
+	); err != nil {
+		return err
+	}
+	// 1b. Preserve the DISPLAY value across kinds that use different display codes.
+	//     display_name resolves from a 'name' OR 'term' attribute (entity_handler.go),
+	//     so an entity whose name lives under 'name' (e.g. the unknown bucket) would
+	//     lose it when moved onto a kind that uses 'term' (e.g. terminology). Map the
+	//     leftover display value (still on a foreign kind) onto the target's display
+	//     attr — preferring 'name' — but only when the exact re-key above didn't already
+	//     place one there.
+	if _, err := tx.Exec(ctx, `
+		UPDATE entity_attribute_values eav
+		SET attr_def_id = (
+			SELECT attr_def_id FROM attribute_definitions
+			WHERE kind_id = $2 AND code IN ('name','term')
+			ORDER BY CASE code WHEN 'name' THEN 0 ELSE 1 END
+			LIMIT 1
+		)
+		FROM attribute_definitions od
+		WHERE eav.entity_id = $1
+		  AND eav.attr_def_id = od.attr_def_id
+		  AND od.kind_id <> $2
+		  AND od.code IN ('name','term')
+		  AND EXISTS (SELECT 1 FROM attribute_definitions WHERE kind_id = $2 AND code IN ('name','term'))
+		  AND NOT EXISTS (
+			SELECT 1 FROM entity_attribute_values x
+			JOIN attribute_definitions xd ON xd.attr_def_id = x.attr_def_id
+			WHERE x.entity_id = $1 AND xd.kind_id = $2 AND xd.code IN ('name','term')
+		  )`,
 		entityID, newKindID,
 	); err != nil {
 		return err
