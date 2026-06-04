@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { aiModelsApi } from '../../ai-models/api';
-import { useChapterScenes, useCreateScene, useCreateWork, useWorkResolution } from '../hooks/useWork';
+import { useChapterScenes, useCreateScene, useCreateWork, useSetSceneStatus, useWorkResolution } from '../hooks/useWork';
 import type { Work } from '../types';
 import { ComposeView } from './ComposeView';
 import { GroundingPanel } from './GroundingPanel';
@@ -39,6 +39,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
 
   const scenes = useChapterScenes(projectId, chapterId, token);
   const createScene = useCreateScene(projectId, token);
+  const setSceneStatus = useSetSceneStatus(projectId, token);
   const models = useQuery({
     queryKey: ['composition', 'chat-models'],
     queryFn: () => aiModelsApi.listUserModels(token!, { capability: 'chat' }),
@@ -67,6 +68,8 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
   }
 
   const effectiveScene = sceneId || scenes.data?.[0]?.id || '';
+  const selectedScene = scenes.data?.find((s) => s.id === effectiveScene);
+  const sceneDone = selectedScene?.status === 'done';
 
   return (
     <div className="flex h-full flex-col">
@@ -79,7 +82,9 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
           aria-label={t('scene', { defaultValue: 'Scene' })}
         >
           {(scenes.data ?? []).map((s) => (
-            <option key={s.id} value={s.id}>{s.title || t('untitledScene', { defaultValue: 'Untitled scene' })}</option>
+            <option key={s.id} value={s.id}>
+              {s.status === 'done' ? '✓ ' : ''}{s.title || t('untitledScene', { defaultValue: 'Untitled scene' })}
+            </option>
           ))}
           {!scenes.data?.length && <option value="">{t('noScenes', { defaultValue: 'No scenes' })}</option>}
         </select>
@@ -89,6 +94,30 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
         >
           + {t('addScene', { defaultValue: 'Scene' })}
         </button>
+        {/* M9: commit/reopen the selected scene — marking 'done' satisfies the
+            chapter-gate (and emits scene_committed). Without this the gate could
+            never be satisfied from the UI. */}
+        {selectedScene && (
+          <button
+            className={
+              'rounded px-2 py-1 text-xs disabled:opacity-50 ' +
+              (sceneDone
+                ? 'border border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-400'
+                : 'bg-emerald-600 text-white')
+            }
+            disabled={setSceneStatus.isPending}
+            title={sceneDone
+              ? t('reopenSceneHint', { defaultValue: 'Reopen this scene (back to drafting)' })
+              : t('markDoneHint', { defaultValue: 'Mark this scene done — required before the chapter can be published' })}
+            onClick={() =>
+              setSceneStatus.mutate({ nodeId: effectiveScene, status: sceneDone ? 'drafting' : 'done' })
+            }
+          >
+            {sceneDone
+              ? t('reopenScene', { defaultValue: '✓ Done — Reopen' })
+              : t('markDone', { defaultValue: 'Mark done' })}
+          </button>
+        )}
         <select
           className="rounded border border-neutral-300 bg-transparent px-2 py-1 dark:border-neutral-600"
           value={modelRef}

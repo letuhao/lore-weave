@@ -31,6 +31,15 @@ export type OutlineNode = {
   version: number;
 };
 
+// M9 chapter-gate (OI-1): can this chapter be published? can_publish is true
+// only when every composition scene of the chapter is 'done'.
+export type PublishGate = {
+  chapter_id: string;
+  scenes_total: number;
+  scenes_done: number;
+  can_publish: boolean;
+};
+
 export type Grounding = {
   blocks: Record<string, string>;
   prompt: string;

@@ -3,7 +3,7 @@
 // uses a raw fetch+ReadableStream in useCompositionStream (apiJson can't stream).
 import { apiBase, apiJson } from '../../api';
 import type {
-  CanonRule, GenerationJob, Grounding, OutlineNode, Work, WorkResolution,
+  CanonRule, GenerationJob, Grounding, OutlineNode, PublishGate, Work, WorkResolution,
 } from './types';
 
 const BASE = '/v1/composition';
@@ -20,6 +20,15 @@ export const compositionApi = {
   },
   createNode(projectId: string, payload: Partial<OutlineNode> & { kind: string }, token: string): Promise<OutlineNode> {
     return apiJson(`${BASE}/works/${projectId}/outline/nodes`, { method: 'POST', body: JSON.stringify(payload), token });
+  },
+  // Patch an outline node (M9: set a scene's status — 'done' commits it for the
+  // chapter-gate + emits composition.scene_committed server-side).
+  patchNode(nodeId: string, patch: Partial<OutlineNode>, token: string): Promise<OutlineNode> {
+    return apiJson(`${BASE}/outline/nodes/${nodeId}`, { method: 'PATCH', body: JSON.stringify(patch), token });
+  },
+  // M9 chapter-gate — is the chapter publishable (all scenes done)?
+  publishGate(projectId: string, chapterId: string, token: string): Promise<PublishGate> {
+    return apiJson(`${BASE}/works/${projectId}/chapters/${chapterId}/publish-gate`, { token });
   },
   getGrounding(projectId: string, nodeId: string, guide: string, token: string): Promise<Grounding> {
     const qs = guide ? `?guide=${encodeURIComponent(guide)}` : '';

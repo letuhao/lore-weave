@@ -32,6 +32,7 @@ import { Chat } from '@/features/chat/Chat';
 import { fireSendToChat } from '@/features/chat/context/sendToChat';
 import { registerEditorTarget } from '@/features/chat/context/editorBridge';
 import { CompositionPanel } from '@/features/composition/components/CompositionPanel';
+import { useChapterPublishGate } from '@/features/composition/hooks/usePublishGate';
 
 function wordCount(text: string): number {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
@@ -193,6 +194,18 @@ export function ChapterEditorPage() {
   const bodyChanged = tiptapJson ? JSON.stringify(tiptapJson) !== JSON.stringify(savedBody) : false;
   const titleChanged = title !== savedTitle;
   const isDirty = bodyChanged || titleChanged;
+
+  // M9 chapter-gate (OI-1): if this book has a composition Work, block Publish
+  // until every composition scene of the chapter is 'done'. No Work → ungated.
+  const publishGate = useChapterPublishGate(bookId, chapterId, accessToken);
+  const publishBlockedReason = publishGate.blocked
+    ? publishGate.scenesTotal === 0
+      ? t('publish.gate_no_scenes')
+      : t('publish.gate_pending', {
+          pending: publishGate.scenesTotal - publishGate.scenesDone,
+          total: publishGate.scenesTotal,
+        })
+    : undefined;
 
   // Sync isDirty into context so EditorLayout sidebar can read it
   useEffect(() => {
@@ -622,6 +635,7 @@ export function ChapterEditorPage() {
             draftVersion={version}
             editorialStatus={editorialStatus}
             dirty={isDirty}
+            blockedReason={publishBlockedReason}
             onChanged={refreshEditorialStatus}
           />
         </div>

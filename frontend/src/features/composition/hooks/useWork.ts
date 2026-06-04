@@ -41,6 +41,24 @@ export function useCreateScene(projectId: string | undefined, token: string | nu
   });
 }
 
+/**
+ * Set a scene's status (M9). Marking a scene 'done' commits it for the
+ * chapter-gate. Invalidates BOTH the outline (status badge) AND the publish-gate
+ * (so the chapter editor's Publish affordance re-evaluates) — without the
+ * publish-gate invalidation the gate would stay stale until a remount.
+ */
+export function useSetSceneStatus(projectId: string | undefined, token: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { nodeId: string; status: OutlineNode['status'] }) =>
+      compositionApi.patchNode(vars.nodeId, { status: vars.status }, token!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['composition', 'outline', projectId] });
+      qc.invalidateQueries({ queryKey: ['composition', 'publish-gate', projectId] });
+    },
+  });
+}
+
 export function useGrounding(
   projectId: string | undefined, nodeId: string | undefined, guide: string,
   token: string | null, enabled: boolean,

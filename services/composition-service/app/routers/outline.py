@@ -96,6 +96,22 @@ async def get_outline(
     }
 
 
+@router.get("/works/{project_id}/chapters/{chapter_id}/publish-gate")
+async def get_publish_gate(
+    project_id: UUID,
+    chapter_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+) -> dict[str, Any]:
+    """M9 chapter-gate: is the chapter publishable? `can_publish` is True only
+    when ALL the chapter's composition scenes are status='done' (OI-1 — no
+    unreviewed scene canonized). The FE gates the (CM-FE) Publish affordance on
+    this. Verifies the Work exists (user-scoped 404) first."""
+    await _require_work(works, user_id, project_id)
+    return await outline.chapter_scene_gate(user_id, project_id, chapter_id)
+
+
 @router.post("/works/{project_id}/outline/nodes", status_code=201)
 async def create_node(
     project_id: UUID,
@@ -129,8 +145,19 @@ async def patch_node(
     if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> dict[str, Any]:
     patch = body.model_dump(exclude_unset=True)
+    expected_version = _parse_if_match(if_match)
+    # A scene committing (status → 'done') routes through the commit-aware path,
+    # which emits composition.scene_committed atomically with the status write
+    # (M9 / §3.1). Every other patch keeps the plain self-acquiring update.
     try:
-        node = await outline.update_node(user_id, node_id, patch, expected_version=_parse_if_match(if_match))
+        if patch.get("status") == "done":
+            node = await outline.update_node_commit_aware(
+                user_id, node_id, patch, expected_version=expected_version,
+            )
+        else:
+            node = await outline.update_node(
+                user_id, node_id, patch, expected_version=expected_version,
+            )
     except VersionMismatchError as exc:
         raise HTTPException(status_code=412, detail={"code": "NODE_VERSION_CONFLICT",
                                                      "current": exc.current.model_dump(mode="json")})

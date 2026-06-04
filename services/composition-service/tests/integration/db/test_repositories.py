@@ -420,3 +420,99 @@ async def test_outbox_emit_is_transactional(pool):
         gone = await c.fetchval("SELECT count(*) FROM outbox_events WHERE event_type=$1", "composition.rolled_back")
         no_work = await c.fetchval("SELECT count(*) FROM composition_work WHERE project_id=$1", p2)
     assert gone == 0 and no_work == 0  # atomic: both rolled back
+
+
+# ───────────────────────── M9 chapter-gate + scene_committed ─────────────────────────
+
+async def _scene_committed_count(pool, project) -> int:
+    async with pool.acquire() as c:
+        return await c.fetchval(
+            "SELECT count(*) FROM outbox_events WHERE event_type=$1 AND aggregate_id=$2",
+            outbox.SCENE_COMMITTED, project,
+        )
+
+
+async def test_scene_commit_emits_scene_committed_event(pool):
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    scene = await repo.create_node(user, project, kind="scene", chapter_id=chapter, title="S1")
+
+    # drafting → done: exactly one scene_committed event, with the right payload
+    done = await repo.update_node_commit_aware(user, scene.id, {"status": "done"})
+    assert done is not None and done.status == "done"
+    async with pool.acquire() as c:
+        rows = await c.fetch(
+            "SELECT aggregate_id, payload FROM outbox_events WHERE event_type=$1",
+            outbox.SCENE_COMMITTED,
+        )
+    assert len(rows) == 1
+    assert rows[0]["aggregate_id"] == project
+    import json as _json
+    payload = _json.loads(rows[0]["payload"])
+    assert payload["scene_id"] == str(scene.id)
+    assert payload["chapter_id"] == str(chapter)
+    assert payload["project_id"] == str(project)
+
+    # done → done: a no-op transition emits NO further event
+    await repo.update_node_commit_aware(user, scene.id, {"status": "done"})
+    assert await _scene_committed_count(pool, project) == 1
+
+
+async def test_non_scene_done_emits_no_event(pool):
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    chapter = await repo.create_node(user, project, kind="chapter", chapter_id=uuid.uuid4())
+    await repo.update_node_commit_aware(user, chapter.id, {"status": "done"})
+    assert await _scene_committed_count(pool, project) == 0
+
+
+async def test_scene_commit_rolls_back_event_on_version_conflict(pool):
+    # a stale If-Match raises VersionMismatchError from inside the txn → the
+    # status write AND any event roll back together (no orphan telemetry).
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    scene = await repo.create_node(user, project, kind="scene", chapter_id=uuid.uuid4())
+    with pytest.raises(VersionMismatchError):
+        await repo.update_node_commit_aware(user, scene.id, {"status": "done"}, expected_version=99)
+    assert await _scene_committed_count(pool, project) == 0
+    # the scene status was NOT advanced
+    still = await repo.get_node(user, scene.id)
+    assert still is not None and still.status != "done"
+
+
+async def test_chapter_scene_gate_counts_and_can_publish(pool):
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    other_chapter = uuid.uuid4()
+    s1 = await repo.create_node(user, project, kind="scene", chapter_id=chapter)
+    s2 = await repo.create_node(user, project, kind="scene", chapter_id=chapter)
+    # a scene in a DIFFERENT chapter must not count
+    await repo.create_node(user, project, kind="scene", chapter_id=other_chapter, status="done")
+
+    # zero done → blocked
+    gate = await repo.chapter_scene_gate(user, project, chapter)
+    assert gate == {"chapter_id": str(chapter), "scenes_total": 2, "scenes_done": 0, "can_publish": False}
+
+    # one done → still blocked
+    await repo.update_node_commit_aware(user, s1.id, {"status": "done"})
+    gate = await repo.chapter_scene_gate(user, project, chapter)
+    assert gate["scenes_done"] == 1 and gate["can_publish"] is False
+
+    # all done → publishable
+    await repo.update_node_commit_aware(user, s2.id, {"status": "done"})
+    gate = await repo.chapter_scene_gate(user, project, chapter)
+    assert gate["scenes_total"] == 2 and gate["scenes_done"] == 2 and gate["can_publish"] is True
+
+    # an archived scene drops out of the count
+    await repo.archive_node(user, s2.id)
+    gate = await repo.chapter_scene_gate(user, project, chapter)
+    assert gate["scenes_total"] == 1 and gate["can_publish"] is True
+
+
+async def test_chapter_scene_gate_zero_scenes_blocks(pool):
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    gate = await repo.chapter_scene_gate(user, project, uuid.uuid4())
+    assert gate["scenes_total"] == 0 and gate["can_publish"] is False

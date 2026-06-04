@@ -15,7 +15,7 @@ from uuid import UUID
 import asyncpg
 
 from app.db.models import OutlineNode
-from app.db.repositories import ReferenceViolationError, VersionMismatchError
+from app.db.repositories import ReferenceViolationError, VersionMismatchError, outbox
 from app.db.repositories.rank import rank_after
 
 _SELECT_COLS = """
@@ -37,6 +37,20 @@ _NULLABLE_UPDATE_COLUMNS: frozenset[str] = frozenset(
 
 def _row_to_node(row: asyncpg.Record) -> OutlineNode:
     return OutlineNode.model_validate(dict(row))
+
+
+def _is_scene_commit(old: OutlineNode | None, new: OutlineNode | None) -> bool:
+    """M9 telemetry predicate: a SCENE transitioning into status='done' is the
+    'committed for review' signal (§3.1). True only when a real transition
+    happened — the node is a scene, existed before, was NOT already done, and is
+    now done. A done→done no-op or a non-scene node returns False (no emit)."""
+    return (
+        new is not None
+        and new.kind == "scene"
+        and old is not None
+        and old.status != "done"
+        and new.status == "done"
+    )
 
 
 class OutlineRepo:
@@ -196,10 +210,15 @@ class OutlineRepo:
             rows = await c.fetch(query, user_id, project_id)
         return [_row_to_node(r) for r in rows]
 
-    async def get_node(self, user_id: UUID, node_id: UUID) -> OutlineNode | None:
+    async def get_node(
+        self, user_id: UUID, node_id: UUID, *, conn: asyncpg.Connection | None = None,
+    ) -> OutlineNode | None:
         query = f"SELECT {_SELECT_COLS} FROM outline_node WHERE user_id = $1 AND id = $2"
-        async with self._pool.acquire() as c:
-            row = await c.fetchrow(query, user_id, node_id)
+        if conn is not None:
+            row = await conn.fetchrow(query, user_id, node_id)
+        else:
+            async with self._pool.acquire() as c:
+                row = await c.fetchrow(query, user_id, node_id)
         return _row_to_node(row) if row else None
 
     async def update_node(
@@ -209,6 +228,7 @@ class OutlineRepo:
         patch: dict[str, Any],
         *,
         expected_version: int | None = None,
+        conn: asyncpg.Connection | None = None,
     ) -> OutlineNode | None:
         """Partial update with optional If-Match (same discipline as WorksRepo).
         A 0-row result with `expected_version` set raises VersionMismatchError
@@ -222,7 +242,7 @@ class OutlineRepo:
             updates[field] = value
 
         if not updates:
-            return await self.get_node(user_id, node_id)
+            return await self.get_node(user_id, node_id, conn=conn)
 
         set_clauses: list[str] = []
         params: list[Any] = [user_id, node_id]
@@ -244,20 +264,97 @@ class OutlineRepo:
         RETURNING {_SELECT_COLS}
         """
         new_parent = updates.get("parent_id")
-        async with self._pool.acquire() as c:
+
+        async def _do(c: asyncpg.Connection) -> asyncpg.Record | None:
             # Validate a reparent BEFORE the write (cycle / cross-scope guard).
             # Clearing the parent (None → top-level) needs no check.
             if "parent_id" in updates and new_parent is not None:
                 await self._validate_reparent(c, user_id, node_id, new_parent)
-            row = await c.fetchrow(query, *params)
+            return await c.fetchrow(query, *params)
+
+        if conn is not None:
+            row = await _do(conn)
+        else:
+            async with self._pool.acquire() as c:
+                row = await _do(c)
         if row is not None:
             return _row_to_node(row)
         if expected_version is None:
             return None
-        current = await self.get_node(user_id, node_id)
+        current = await self.get_node(user_id, node_id, conn=conn)
         if current is None:
             return None
         raise VersionMismatchError(current)
+
+    async def update_node_commit_aware(
+        self,
+        user_id: UUID,
+        node_id: UUID,
+        patch: dict[str, Any],
+        *,
+        expected_version: int | None = None,
+    ) -> OutlineNode | None:
+        """update_node + emit `composition.scene_committed` ATOMICALLY when a
+        scene transitions into status='done' (M9 / §3.1 commit telemetry).
+
+        The prior-status read, the UPDATE, and the outbox emit run in ONE
+        transaction so the telemetry can never desync from the status write
+        (the outbox is txn-local). On a VersionMismatch / ReferenceViolation the
+        transaction rolls back and the exception propagates to the router (→ 412
+        / 400) — no half-written state, no orphan event. The emit is gated by
+        `_is_scene_commit`, so a non-scene node or a done→done no-op writes no
+        event."""
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                old = await self.get_node(user_id, node_id, conn=conn)
+                node = await self.update_node(
+                    user_id, node_id, patch,
+                    expected_version=expected_version, conn=conn,
+                )
+                if _is_scene_commit(old, node):
+                    assert node is not None  # _is_scene_commit guarantees it
+                    await outbox.emit(
+                        conn,
+                        aggregate_id=node.project_id,
+                        event_type=outbox.SCENE_COMMITTED,
+                        payload={
+                            "scene_id": str(node.id),
+                            "chapter_id": str(node.chapter_id) if node.chapter_id else None,
+                            "project_id": str(node.project_id),
+                        },
+                    )
+                return node
+
+    async def chapter_scene_gate(
+        self, user_id: UUID, project_id: UUID, chapter_id: UUID,
+    ) -> dict[str, Any]:
+        """M9 chapter-gate (OI-1 sweep): can this chapter be published?
+
+        Counts the caller's live scene nodes for `chapter_id`. `can_publish` is
+        True only when there is at least one scene AND every scene is 'done' (PO
+        decision: block publish until ≥1 done scene — no unreviewed scene gets
+        canonized). A chapter with zero composition scenes is NOT publishable
+        through the gated affordance (total=0 → can_publish=False); the caller
+        scopes the gate to books that actually have a composition Work."""
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(
+                """
+                SELECT
+                  count(*) AS total,
+                  count(*) FILTER (WHERE status = 'done') AS done
+                FROM outline_node
+                WHERE user_id = $1 AND project_id = $2 AND chapter_id = $3
+                  AND kind = 'scene' AND NOT is_archived
+                """,
+                user_id, project_id, chapter_id,
+            )
+        total, done = int(row["total"]), int(row["done"])
+        return {
+            "chapter_id": str(chapter_id),
+            "scenes_total": total,
+            "scenes_done": done,
+            "can_publish": total > 0 and done == total,
+        }
 
     async def archive_node(self, user_id: UUID, node_id: UUID) -> OutlineNode | None:
         """Soft-archive a node AND its descendants (PO decision — no orphaned-

@@ -311,6 +311,8 @@
     "published_toast": "Đã xuất bản chương",
     "unpublished_toast": "Đã hủy xuất bản chương",
     "conflict_toast": "Bản nháp đã thay đổi kể từ khi bạn mở — tải lại trước khi xuất bản.",
-    "save_first": "Lưu trước khi xuất bản"
+    "save_first": "Lưu trước khi xuất bản",
+    "gate_pending": "{{pending}} trên {{total}} cảnh chưa hoàn thành",
+    "gate_no_scenes": "Tạo và hoàn thành ít nhất một cảnh để xuất bản"
   }
 }

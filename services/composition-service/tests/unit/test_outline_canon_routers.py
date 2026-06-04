@@ -46,6 +46,8 @@ class StubOutline:
         self.update_raises = None
         self.update_result = _node(version=2)
         self.archive_result = _node(is_archived=True)
+        self.gate = {"chapter_id": "c", "scenes_total": 2, "scenes_done": 2, "can_publish": True}
+        self.commit_aware_called = False
     async def list_tree(self, u, p, **kw): return self.tree
     async def create_node(self, u, p, **kw):
         if self.create_raises: raise self.create_raises
@@ -53,6 +55,11 @@ class StubOutline:
     async def update_node(self, u, n, patch, **kw):
         if self.update_raises: raise self.update_raises
         return self.update_result
+    async def update_node_commit_aware(self, u, n, patch, **kw):
+        self.commit_aware_called = True
+        if self.update_raises: raise self.update_raises
+        return self.update_result
+    async def chapter_scene_gate(self, u, p, ch): return self.gate
     async def archive_node(self, u, n): return self.archive_result
 
 
@@ -151,6 +158,58 @@ def test_delete_node_archives(ctx):
     c, _, _, _, _ = ctx
     r = c.delete(f"/v1/composition/outline/nodes/{NODE}")
     assert r.status_code == 200 and r.json()["is_archived"] is True
+
+
+# ── M9 chapter-gate + scene_committed routing ──
+
+def test_publish_gate_returns_counts(ctx):
+    c, _, outline, _, _ = ctx
+    chapter = uuid.uuid4()
+    outline.gate = {"chapter_id": str(chapter), "scenes_total": 3, "scenes_done": 3, "can_publish": True}
+    r = c.get(f"/v1/composition/works/{PROJECT}/chapters/{chapter}/publish-gate")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["scenes_total"] == 3 and body["scenes_done"] == 3 and body["can_publish"] is True
+
+
+def test_publish_gate_404_when_work_missing(ctx):
+    c, works, _, _, _ = ctx
+    works.work = None
+    assert c.get(f"/v1/composition/works/{PROJECT}/chapters/{uuid.uuid4()}/publish-gate").status_code == 404
+
+
+def test_patch_status_done_routes_through_commit_aware(ctx):
+    # status → done must go through the commit-aware path (which emits the
+    # composition.scene_committed telemetry atomically).
+    c, _, outline, _, _ = ctx
+    r = c.patch(f"/v1/composition/outline/nodes/{NODE}", json={"status": "done"})
+    assert r.status_code == 200 and outline.commit_aware_called is True
+
+
+def test_patch_non_done_uses_plain_update(ctx):
+    # a title-only patch must NOT take the transactional commit-aware path.
+    c, _, outline, _, _ = ctx
+    r = c.patch(f"/v1/composition/outline/nodes/{NODE}", json={"title": "x"})
+    assert r.status_code == 200 and outline.commit_aware_called is False
+
+
+def test_is_scene_commit_truth_table():
+    from app.db.repositories.outline import _is_scene_commit
+    scene_draft = _node(kind="scene")  # status defaults to 'empty'
+    scene_done = _node(kind="scene")
+    scene_done.status = "done"
+    chapter_done = _node(kind="chapter")
+    chapter_done.status = "done"
+    # real transition: scene was-not-done → now done
+    assert _is_scene_commit(scene_draft, scene_done) is True
+    # no-op: already done → done
+    assert _is_scene_commit(scene_done, scene_done) is False
+    # non-scene node never emits
+    assert _is_scene_commit(_node(kind="chapter"), chapter_done) is False
+    # missing prior state (None) → no emit (can't prove a transition)
+    assert _is_scene_commit(None, scene_done) is False
+    # update returned None (404/412) → no emit
+    assert _is_scene_commit(scene_draft, None) is False
 
 
 def test_scene_link_create_400_on_foreign_endpoint(ctx):

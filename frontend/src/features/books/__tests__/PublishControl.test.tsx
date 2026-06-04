@@ -62,6 +62,20 @@ describe('PublishControl (CM-FE)', () => {
     expect((screen.getByText('publish.publish').closest('button') as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('M9 gate: blockedReason disables Publish + sets it as the tooltip', () => {
+    renderControl({ editorialStatus: 'draft', blockedReason: '2 of 3 scenes not yet done' });
+    const btn = screen.getByText('publish.publish').closest('button') as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.title).toBe('2 of 3 scenes not yet done');
+  });
+
+  it('M9 gate: a blocked re-publish is disabled, but Unpublish stays available', () => {
+    renderControl({ editorialStatus: 'published', blockedReason: 'gate' });
+    expect((screen.getByText('publish.republish').closest('button') as HTMLButtonElement).disabled).toBe(true);
+    // unpublish must remain enabled — you can always retract canon.
+    expect((screen.getByText('publish.unpublish').closest('button') as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('publishes with expected_draft_version and refetches on success', async () => {
     h.publishChapter.mockResolvedValue({});
     const { onChanged } = renderControl({ editorialStatus: 'draft' });
@@ -98,7 +112,7 @@ describe('PublishControl (CM-FE)', () => {
     const keys = [
       'publish', 'republish', 'unpublish', 'draft_badge', 'published_badge',
       'confirm_title', 'confirm_body', 'published_toast', 'unpublished_toast',
-      'conflict_toast', 'save_first',
+      'conflict_toast', 'save_first', 'gate_pending', 'gate_no_scenes',
     ];
     const block = (editorEn as Record<string, Record<string, string>>).publish;
     keys.forEach((k) => expect(block?.[k], `missing editor.publish.${k}`).toBeTruthy());

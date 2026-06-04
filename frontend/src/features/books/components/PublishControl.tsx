@@ -13,6 +13,10 @@ interface PublishControlProps {
   /** Editor has unsaved changes → publishing would snapshot the STALE server
    * draft, so the action is disabled until the user saves. */
   dirty?: boolean;
+  /** Composition chapter-gate (M9 / OI-1): when set, the chapter has composition
+   * scenes that aren't all 'done' yet → Publish is disabled with this as the
+   * tooltip, so no unreviewed scene is canonized. Unpublish is unaffected. */
+  blockedReason?: string;
   onChanged: () => void | Promise<void>;
 }
 
@@ -28,6 +32,7 @@ export function PublishControl({
   draftVersion,
   editorialStatus,
   dirty,
+  blockedReason,
   onChanged,
 }: PublishControlProps) {
   const { t } = useTranslation('editor');
@@ -58,8 +63,8 @@ export function PublishControl({
 
       <button
         onClick={() => void publish()}
-        disabled={busy || dirty}
-        title={dirty ? t('publish.save_first') : undefined}
+        disabled={busy || dirty || !!blockedReason}
+        title={blockedReason ?? (dirty ? t('publish.save_first') : undefined)}
         className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors hover:border-primary/50 hover:text-primary disabled:opacity-50"
       >
         {isPublished ? t('publish.republish') : t('publish.publish')}

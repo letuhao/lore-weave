@@ -311,6 +311,8 @@
     "published_toast": "Chapter published",
     "unpublished_toast": "Chapter unpublished",
     "conflict_toast": "Draft changed since you opened it — reload before publishing.",
-    "save_first": "Save before publishing"
+    "save_first": "Save before publishing",
+    "gate_pending": "{{pending}} of {{total}} scenes not yet done",
+    "gate_no_scenes": "Create and complete at least one scene to publish"
   }
 }
