@@ -299,5 +299,18 @@
   },
   "media_guard": {
     "protected": "媒體區塊在經典模式下受保護。切換至 AI 模式以編輯或刪除。"
+  },
+  "publish": {
+    "publish": "發佈",
+    "republish": "重新發佈",
+    "unpublish": "取消發佈",
+    "draft_badge": "草稿",
+    "published_badge": "已發佈",
+    "confirm_title": "取消發佈此章節？",
+    "confirm_body": "這會將章節從正典中移除——其擷取的知識與段落將被撤回，直到您重新發佈。",
+    "published_toast": "章節已發佈",
+    "unpublished_toast": "章節已取消發佈",
+    "conflict_toast": "自您開啟後草稿已變更——請先重新載入再發佈。",
+    "save_first": "發佈前請先儲存"
   }
 }

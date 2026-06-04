@@ -16,6 +16,7 @@ import { TiptapEditor, type TiptapEditorHandle } from '@/components/editor/Tipta
 import { Skeleton } from '@/components/shared/Skeleton';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { UnsavedChangesDialog } from '@/components/shared/UnsavedChangesDialog';
+import { PublishControl } from '@/features/books/components/PublishControl';
 import { cn } from '@/lib/utils';
 import { useGrammarEnabled } from '@/hooks/useGrammarCheck';
 import { useEditorMode } from '@/hooks/useEditorMode';
@@ -46,6 +47,7 @@ export function ChapterEditorPage() {
   // Chapter metadata
   const [title, setTitle] = useState('');
   const [savedTitle, setSavedTitle] = useState('');
+  const [editorialStatus, setEditorialStatus] = useState<'draft' | 'published' | undefined>();
 
   // Editor content
   const [savedBody, setSavedBody] = useState<any>(null);
@@ -149,7 +151,18 @@ export function ChapterEditorPage() {
       const chTitle = chapter.title ?? '';
       setTitle(chTitle);
       setSavedTitle(chTitle);
+      setEditorialStatus(chapter.editorial_status);
     } catch (e) { toast.error((e as Error).message); }
+  }, [accessToken, bookId, chapterId]);
+
+  // CM-FE: light refetch of just the editorial_status after publish/unpublish
+  // — must NOT touch body/title (would clobber the editor).
+  const refreshEditorialStatus = useCallback(async () => {
+    if (!accessToken) return;
+    try {
+      const chapter = await booksApi.getChapter(accessToken, bookId, chapterId);
+      setEditorialStatus(chapter.editorial_status);
+    } catch { /* non-fatal — badge stays until next load */ }
   }, [accessToken, bookId, chapterId]);
 
   useEffect(() => { void load(); }, [load]);
@@ -492,6 +505,19 @@ export function ChapterEditorPage() {
             {t('save')}
             <kbd className="ml-1 rounded border border-primary-foreground/20 bg-primary-foreground/10 px-1 py-px font-mono text-[9px]">Ctrl+S</kbd>
           </button>
+
+          <div className="mx-1 h-4 w-px bg-border" />
+
+          {/* CM-FE: canon publish affordance (canon = published) */}
+          <PublishControl
+            token={accessToken ?? ''}
+            bookId={bookId}
+            chapterId={chapterId}
+            draftVersion={version}
+            editorialStatus={editorialStatus}
+            dirty={isDirty}
+            onChanged={refreshEditorialStatus}
+          />
         </div>
       </div>
 

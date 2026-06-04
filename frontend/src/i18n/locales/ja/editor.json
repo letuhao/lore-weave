@@ -299,5 +299,18 @@
   },
   "media_guard": {
     "protected": "メディアブロックはクラシックモードで保護されています。編集または削除するにはAIモードに切り替えてください。"
+  },
+  "publish": {
+    "publish": "公開",
+    "republish": "再公開",
+    "unpublish": "非公開",
+    "draft_badge": "下書き",
+    "published_badge": "公開済み",
+    "confirm_title": "この章を非公開にしますか？",
+    "confirm_body": "この章を正典から削除します。抽出された知識とパッセージは、再公開するまで取り消されます。",
+    "published_toast": "章を公開しました",
+    "unpublished_toast": "章を非公開にしました",
+    "conflict_toast": "開いてから下書きが変更されました。公開する前に再読み込みしてください。",
+    "save_first": "公開する前に保存してください"
   }
 }

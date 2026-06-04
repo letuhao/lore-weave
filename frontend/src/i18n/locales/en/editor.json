@@ -299,5 +299,18 @@
   },
   "media_guard": {
     "protected": "Media blocks are protected in Classic mode. Switch to AI mode to edit or delete."
+  },
+  "publish": {
+    "publish": "Publish",
+    "republish": "Re-publish",
+    "unpublish": "Unpublish",
+    "draft_badge": "Draft",
+    "published_badge": "Published",
+    "confirm_title": "Unpublish chapter?",
+    "confirm_body": "This removes the chapter from canon — its extracted knowledge and passages will be retracted until you re-publish.",
+    "published_toast": "Chapter published",
+    "unpublished_toast": "Chapter unpublished",
+    "conflict_toast": "Draft changed since you opened it — reload before publishing.",
+    "save_first": "Save before publishing"
   }
 }

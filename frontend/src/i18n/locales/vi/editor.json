@@ -299,5 +299,18 @@
   },
   "media_guard": {
     "protected": "Khối media được bảo vệ ở chế độ Cổ điển. Chuyển sang chế độ AI để sửa hoặc xóa."
+  },
+  "publish": {
+    "publish": "Xuất bản",
+    "republish": "Xuất bản lại",
+    "unpublish": "Hủy xuất bản",
+    "draft_badge": "Bản nháp",
+    "published_badge": "Đã xuất bản",
+    "confirm_title": "Hủy xuất bản chương này?",
+    "confirm_body": "Thao tác này gỡ chương khỏi canon — kiến thức và đoạn văn đã trích xuất sẽ bị thu hồi cho đến khi bạn xuất bản lại.",
+    "published_toast": "Đã xuất bản chương",
+    "unpublished_toast": "Đã hủy xuất bản chương",
+    "conflict_toast": "Bản nháp đã thay đổi kể từ khi bạn mở — tải lại trước khi xuất bản.",
+    "save_first": "Lưu trước khi xuất bản"
   }
 }
