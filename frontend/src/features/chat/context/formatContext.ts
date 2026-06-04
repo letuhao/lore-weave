@@ -11,15 +11,36 @@ function formatBook(book: Book): string {
   return parts.join('\n');
 }
 
-/** Format a Chapter draft as context text */
-function formatChapter(title: string, body: string): string {
+/** Recursively extract plain text from a Tiptap/ProseMirror doc JSON.
+ *  Returns '' for anything that isn't a doc. Top-level blocks are joined with
+ *  blank lines so paragraphs stay separated. Defensive fallback for when the
+ *  server's pre-extracted `text_content` is missing. */
+export function tiptapDocToText(doc: unknown): string {
+  function nodeText(node: unknown): string {
+    if (!node || typeof node !== 'object') return '';
+    const n = node as { text?: unknown; content?: unknown };
+    if (typeof n.text === 'string') return n.text;
+    if (Array.isArray(n.content)) return n.content.map(nodeText).join('');
+    return '';
+  }
+  if (!doc || typeof doc !== 'object') return '';
+  const content = (doc as { content?: unknown }).content;
+  if (!Array.isArray(content)) return '';
+  return content.map(nodeText).join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/** Format a Chapter draft as context text. `body` should be plain text; an
+ *  object (raw Tiptap JSON) is coerced via tiptapDocToText so it can never
+ *  stringify to "[object Object]" (the C5-era bug). */
+function formatChapter(title: string, body: unknown): string {
+  const text = typeof body === 'string' ? body : tiptapDocToText(body);
   const header = `Chapter: "${title}"`;
   // Truncate very large chapters to ~8000 chars (~2000 tokens)
   const MAX_CHARS = 8000;
-  if (body.length > MAX_CHARS) {
-    return `${header}\n${body.slice(0, MAX_CHARS)}\n[... truncated, ${body.length - MAX_CHARS} chars omitted]`;
+  if (text.length > MAX_CHARS) {
+    return `${header}\n${text.slice(0, MAX_CHARS)}\n[... truncated, ${text.length - MAX_CHARS} chars omitted]`;
   }
-  return `${header}\n${body}`;
+  return `${header}\n${text}`;
 }
 
 /** Format a Glossary entity as context text */

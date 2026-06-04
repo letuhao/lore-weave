@@ -166,4 +166,10 @@ export const chatApi = {
   messagesUrl(sessionId: string) {
     return `${base()}/v1/chat/sessions/${sessionId}/messages`;
   },
+
+  // ARCH-1 C6: resume endpoint — the FE POSTs a frontend-tool result here
+  // (the user's apply/dismiss of a proposed edit) to continue the agent's run.
+  toolResultsUrl(sessionId: string) {
+    return `${base()}/v1/chat/sessions/${sessionId}/tool-results`;
+  },
 };

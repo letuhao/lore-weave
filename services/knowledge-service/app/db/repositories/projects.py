@@ -112,6 +112,7 @@ class ProjectsRepo:
         limit: int = 50,
         cursor_created_at: datetime | None = None,
         cursor_project_id: UUID | None = None,
+        book_id: UUID | None = None,
     ) -> list[Project]:
         """K7.2 (D-K1-03 cleanup): cursor-paginated listing.
 
@@ -142,12 +143,19 @@ class ProjectsRepo:
             cursor_pred = (
                 " AND (created_at, project_id) < ($2, $3)"
             )
+        # C5 (ARCH-1): optional book filter — the editor AI panel resolves a
+        # book's knowledge project by book_id. Placeholder is numbered
+        # dynamically so it composes with the optional cursor params above.
+        book_pred = ""
+        if book_id is not None:
+            params.append(book_id)
+            book_pred = f" AND book_id = ${len(params)}"
         params.append(fetch_limit)
 
         query = f"""
         SELECT {_SELECT_COLS}
         FROM knowledge_projects
-        WHERE user_id = $1{archived_pred}{cursor_pred}
+        WHERE user_id = $1{archived_pred}{cursor_pred}{book_pred}
         ORDER BY created_at DESC, project_id DESC
         LIMIT ${len(params)}
         """

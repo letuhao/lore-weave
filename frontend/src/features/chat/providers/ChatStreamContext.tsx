@@ -27,9 +27,20 @@ export function useChatStream() {
 
 // ── Provider ───────────────────────────────────────────────────────────────────
 
-export function ChatStreamProvider({ children }: { children: React.ReactNode }) {
+export function ChatStreamProvider({
+  children,
+  editorContext,
+  composeMode,
+}: {
+  children: React.ReactNode;
+  // ARCH-1 C6: editor panel context — enables the write-back frontend tool +
+  // carries the chapter the assistant is editing. Undefined for the chat page.
+  editorContext?: { book_id: string; chapter_id: string };
+  // Editor "Compose" mode — when true, turns advertise no tools (prose-only).
+  composeMode?: boolean;
+}) {
   const { activeSession, refreshSessions, updateActiveSession } = useChatSession();
-  const chat = useChatMessages(activeSession?.session_id ?? null);
+  const chat = useChatMessages(activeSession?.session_id ?? null, editorContext, composeMode);
   // K21-C (D8): pending-facts review for the active session. A turn
   // may have queued a fact (knowledge-service design D6); the FE
   // discovers it by polling, so we refetch on stream-end below.

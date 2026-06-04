@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,6 +45,10 @@ from app.routers.public import summaries as public_summaries
 from app.routers.public.summaries import close_cooldown_client
 from app.routers.public import timeline as public_timeline
 from app.routers.public import user_data as public_user_data
+# ARCH-1 C1 — MCP server facade. build_mcp_app() returns the ASGI app
+# mounted at /mcp; mcp_server's StreamableHTTP session manager is run
+# inside the lifespan below.
+from app.mcp.server import build_mcp_app, mcp_server
 
 logger = logging.getLogger(__name__)
 
@@ -402,10 +406,48 @@ async def lifespan(app: FastAPI):
                 exc_info=True,
             )
 
+    # ARCH-1 C1 — run the MCP StreamableHTTP session manager. The /mcp
+    # sub-app is mounted at module level (after app construction), but a
+    # mounted Starlette sub-app's lifespan is NOT auto-run under FastAPI,
+    # so we enter its session manager here. stateless_http=True means no
+    # per-session state survives between calls; scope arrives in headers.
+    # Failure to start affects only the MCP path — the bespoke
+    # /internal/tools/* routes stay up regardless (dual-run).
+    mcp_exit_stack: AsyncExitStack | None = None
+    try:
+        mcp_exit_stack = AsyncExitStack()
+        await mcp_exit_stack.enter_async_context(mcp_server.session_manager.run())
+        logger.info("ARCH-1 C1: MCP session manager started; /mcp facade live")
+    except Exception:
+        logger.warning(
+            "ARCH-1 C1: MCP session manager failed to start (non-fatal) — "
+            "/mcp facade unavailable, bespoke /internal/tools/* still serve",
+            exc_info=True,
+        )
+        if mcp_exit_stack is not None:
+            await mcp_exit_stack.aclose()
+            mcp_exit_stack = None
+
     logger.info("knowledge-service started on port %d", settings.port)
     try:
         yield
     finally:
+        # ARCH-1 C1 — stop the MCP session manager first so in-flight
+        # tool calls are cancelled before the repos/pools they touch are
+        # closed. The SDK's session-manager shutdown cancels its anyio
+        # task group (streamable_http_manager.run() -> tg.cancel_scope
+        # .cancel()); it does NOT drain — there is no grace period for a
+        # mid-query handler. The ORDERING still matters: cancelling here,
+        # ahead of close_pools() below, lets a cancelled handler unwind
+        # against a still-open pool instead of hitting a closed one.
+        if mcp_exit_stack is not None:
+            try:
+                await mcp_exit_stack.aclose()
+            except Exception:
+                logger.warning(
+                    "ARCH-1 C1: error stopping MCP session manager",
+                    exc_info=True,
+                )
         # Stop cache invalidator first so in-flight publishes drain
         # before we close the Redis client.
         if cache_invalidator is not None:
@@ -607,3 +649,11 @@ app.include_router(public_projects.router)
 app.include_router(public_summaries.router)
 app.include_router(public_timeline.timeline_router)
 app.include_router(public_user_data.router)
+
+# ARCH-1 C1 — MCP server facade. Dual-run: /internal/tools/* retained.
+# Streamable HTTP transport; auth via X-Internal-Token is checked inside
+# each tool handler's _build_tool_context(). build_mcp_app() returns the
+# Starlette ASGI app synchronously; mounted AFTER all routers so FastAPI
+# routes take precedence over the Starlette sub-app. The StreamableHTTP
+# session manager is run by the lifespan above.
+app.mount("/mcp", build_mcp_app())

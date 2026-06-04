@@ -45,6 +45,37 @@ async def test_list_excludes_archived_by_default(pool):
 
 
 @pytest.mark.asyncio
+async def test_list_filters_by_book_id(pool):
+    """C5 (ARCH-1): the editor AI panel resolves a book's project via the
+    book_id filter. Returns only the project linked to that book, scoped to
+    the user; empty when the book has no project."""
+    repo = ProjectsRepo(pool)
+    user = uuid4()
+    book = uuid4()
+    other_book = uuid4()
+    linked = await repo.create(user, _mk("linked", book_id=book))
+    await repo.create(user, _mk("other", book_id=other_book))
+    await repo.create(user, _mk("unlinked"))  # no book
+
+    matched = await repo.list(user, book_id=book)
+    assert [p.project_id for p in matched] == [linked.project_id]
+
+    # a book with no project → empty
+    assert await repo.list(user, book_id=uuid4()) == []
+
+
+@pytest.mark.asyncio
+async def test_list_by_book_id_is_user_scoped(pool):
+    """The book filter must not leak another user's project for the same book."""
+    repo = ProjectsRepo(pool)
+    user_a, user_b = uuid4(), uuid4()
+    book = uuid4()
+    await repo.create(user_a, _mk("theirs", book_id=book))
+    # user_b asking for the same book sees nothing
+    assert await repo.list(user_b, book_id=book) == []
+
+
+@pytest.mark.asyncio
 async def test_update_patches_fields(pool):
     repo = ProjectsRepo(pool)
     user = uuid4()

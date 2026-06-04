@@ -13,7 +13,7 @@ describe('useEditorPanels', () => {
     expect(result.current.left).toBe(false);
     expect(result.current.right).toBe(true);
     expect(result.current.leftWidth).toBe(300);
-    expect(result.current.rightWidth).toBe(320);
+    expect(result.current.rightWidth).toBe(400);
   });
 
   it('reads initial state from localStorage', () => {
@@ -48,5 +48,22 @@ describe('useEditorPanels', () => {
     expect(result.current.right).toBe(false);
     const saved = JSON.parse(localStorage.getItem('lw_editor_panels')!);
     expect(saved.right).toBe(false);
+  });
+
+  it('setRightWidth persists a rounded width (resizable panel)', () => {
+    const { result } = renderHook(() => useEditorPanels());
+    act(() => result.current.setRightWidth(437.6));
+    expect(result.current.rightWidth).toBe(438);
+    const saved = JSON.parse(localStorage.getItem('lw_editor_panels')!);
+    expect(saved.rightWidth).toBe(438);
+    // other fields preserved
+    expect(saved.right).toBe(true);
+  });
+
+  it('setLeftWidth persists a rounded width', () => {
+    const { result } = renderHook(() => useEditorPanels());
+    act(() => result.current.setLeftWidth(259.2));
+    expect(result.current.leftWidth).toBe(259);
+    expect(JSON.parse(localStorage.getItem('lw_editor_panels')!).leftWidth).toBe(259);
   });
 });

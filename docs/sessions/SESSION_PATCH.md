@@ -7,6 +7,18 @@
 
 ## Document Metadata
 
+- Last Updated: 2026-06-03 **(session 104 cont.8 — A2A phase-3 analysis + design benchmark [arch-unify-chat-rag, Track-2 design]) ** [on `arch-unify-chat-rag`] — deep analysis of "real A2A protocol" ([docs/specs/2026-06-03-a2a-phase3-protocol-analysis.md](../specs/2026-06-03-a2a-phase3-protocol-analysis.md)), grounded in the actual A2A spec (a2a-protocol.org) + a2a-sdk. Key conclusions: (1) **don't A2A-ify compose_prose** (in-process is correct until the writer is a separate deployable); (2) the real A2A driver is the **game multi-agent vertical** + external interop (Track-2); (3) **LoreWeave is already A2A-shaped** — chat turn↔Task, session↔contextId, AG-UI deltas↔TaskStatus/Artifact events, **C6 suspend↔input-required**, `chat_suspended_runs`↔TaskStore → phase-3 is an *adapter*, not a rewrite; (4) cheap **3a static Agent Card** seam honors the locked C7. **Benchmarked the design empirically** ([poc/a2a_phase3_bench.py](../specs/poc/a2a_phase3_bench.py)): implemented the A2A wire spec as the proposed adapter (composer/approver/director agents, in-process ASGITransport) → **7/7 scenarios PASS** (discovery, send→task+artifact, stream SSE, **input-required→resume**, **multi-agent A2A→A2A delegation**, auth 401/403, tasks/get). Also: **a2a-sdk coexists cleanly** with mcp+pydantic 2.13.4 (risk #9 cleared), but a2a-sdk **1.1.0 is protobuf-based + churned API** (heavier than FastMCP). **Verdict: design is sound + buildable; the question is WHEN (game vertical), not whether.** No production code — Track-2 design + PoC only. **NEXT (owed)**: open the ARCH-1 PR; (later) 3a Agent Card seam, 3d game mesh.
+- Last Updated: 2026-06-03 **(session 104 cont.7 — flipped USE_MCP_TOOLS default → true [arch-unify-chat-rag, XS])** [on `arch-unify-chat-rag`] — ARCH-2 unification chosen: chat-service now routes tool execution through knowledge-service `/mcp` by default (was the bespoke `/internal/tools` path). Flipped BOTH `chat-service/app/config.py` (`use_mcp_tools=True`) AND the compose default (`USE_MCP_TOOLS:-true`) — pydantic env precedence means the config flip alone wouldn't take effect in docker. **DEPLOY PREREQUISITE**: knowledge-service must ship the `/mcp` build (app/mcp/) or every tool call 404s; `USE_MCP_TOOLS=false` falls back to bespoke. Verified: container picks up `true` from the compose default (no host override); MCP gate tests 20/20; full /mcp chain proven in cont.6. Bespoke path stays in code as the fallback. Also documented the **compose_prose writer-model setup** (cloud BYOK / LM-Studio co-resident / Compose-mode fallback + verify steps) in the A2A spec §10 — closes optional #7 (purely operational; the code already supports any BYOK composer). **NEXT (owed)**: open the ARCH-1 PR.
+- Last Updated: 2026-06-03 **(session 104 cont.6 — D-ARCH2-MCP-LIVE-SMOKE cleared (real /mcp round-trip) [arch-unify-chat-rag, M])** [on `arch-unify-chat-rag`] — validated the ARCH-2 unification path end-to-end: `chat-service → knowledge-service /mcp` over real Streamable HTTP. Enabled `USE_MCP_TOOLS` and smoked it → surfaced **2 bugs unit tests couldn't catch** (loopback-only): **(1)** the running knowledge-service image was **stale** (no `app/mcp/`, never rebuilt after ARCH-2 C1) → `/mcp` 404; **(2)** MCP SDK **DNS-rebinding protection** 421'd the docker Host `knowledge-service:8092` (localhost-only by default). Fixes: rebuild + `TransportSecuritySettings(enable_dns_rebinding_protection=False)` on the FastMCP server (internal s2s; trust = private net + `X-Internal-Token`). **Proven**: direct `call_tool("memory_search")` → real hits; full LLM chain → `ok=true`, **8 `/mcp` POSTs**; MCP tests **18/18**. Added a `USE_MCP_TOOLS` compose knob (default false — dual-run gate intact). **Default left False** — flipping it to route ALL tool calls via /mcp is now a deploy decision (prod knowledge-service must ship the /mcp build first). Files: `knowledge-service/app/mcp/server.py`, `infra/docker-compose.yml`. **NEXT (owed)**: decide the `USE_MCP_TOOLS` flip; open the ARCH-1 PR.
+- Last Updated: 2026-06-03 **(session 104 cont.5 — compose_prose "✍️ Drafting…" indicator [arch-unify-chat-rag, S])** [on `arch-unify-chat-rag`] — A2A phase-2 polish: while the in-turn composer model streams (often slow / model-swap), the editor AI panel showed nothing. Added a `composing` AG-UI **CUSTOM** event (`stream_events.composing(active)`; legacy no-op) emitted on/off around `_run_composer` (via a `{"composing":{active}}` chunk through `_emit_chat_turn`); FE `useChatMessages` consumes it → `isComposing` → MessageList renders a "✍️ Drafting" pill. **Verify**: BE 66 passed (+ emitter CUSTOM test, legacy no-op, loop yields on/off); `tsc` clean; live SSE carries `composing active=True/False` paired around each compose_prose call, `status=success`. Clears optional item #6. (cont.4 = D-C6-EDITOR-STATS-REFRESH counter fix, `c254e920`.)
+- Last Updated: 2026-06-02 **(session 104 cont.3 — editor UX + Compose mode + A2A phase-2 + context bugfix [arch-unify-chat-rag, human-in-loop v2.2, L])** [on `arch-unify-chat-rag`] — five follow-on commits after the C6 smoke. **(1) `ab24905c` editor layout + resizable panels**: the embedded `<Chat>` reused full-page components that overflowed at the hardcoded 300px panel (h-scrollbar from `overflow-y-auto` auto-promoting `overflow-x`; clipped header). Fixed with `overflow-x-hidden`/`min-w-0`/`break-words`/`flex-wrap` + reduced padding; ChatHeader self-measures via ResizeObserver → memory chip goes icon-only <380px so buttons stay visible. **Both left+right editor panels now drag-resizable** (handle on inner edge, clamp, per-device localStorage via `useEditorPanels` setters; default right 320→400). **(2) `fd58fabd` Compose mode**: per-turn `disable_tools` flag (BE `stream_response` skips ALL tools; FE Agent/Compose toggle in editor AI panel, persisted) — lets a reasoning model draft prose without stumbling on tool-calling; tool-calling stays the Agent default. **(3) `64e5d871` A2A seam design doc** ([docs/specs/2026-06-02-a2a-model-routing-seam.md](../specs/2026-06-02-a2a-model-routing-seam.md)). **(4) `6528534d` A2A phase-2 — in-turn `compose_prose`**: orchestrator (tool model) calls `compose_prose`; chat-service streams a 2nd "composer" model inline (`composer_model_ref` on `chat_sessions` + Session Settings dropdown), returns prose as the tool result, usage summed. Live-proven same-model (21.8s); cross-model thrashes on single-VRAM LM Studio (documented — needs cloud/co-resident writer). **(5) context bugfix** (this commit): the `[object Object]` chapter-context bug — `resolveAndSend` passed raw Tiptap JSON (`draft.body`) as the chapter body; now uses the server's `draft.text_content` + a `tiptapDocToText` fallback, and `formatChapter` coerces objects so it can never re-`[object Object]`. **Investigated + ruled out a model bug**: Qwen 3.5 tool-calling works at all 3 levels (raw / streamed / e2e through chat-service, 1.8s) — the "tool use broken with Qwen" impression traces to qwen3.6-35b stalling in `<think>`, not our pipeline. **Verify**: chat-service full suite **328 passed** (compose mode +1, composer +6); FE `tsc` clean + new tests (`useEditorPanels` 7/7, `formatContext` 5/5). **NEXT (still owed)**: flip `USE_MCP_TOOLS`/D-ARCH2-MCP-LIVE-SMOKE; D-C6-EDITOR-STATS-REFRESH (cosmetic); open the ARCH-1 PR; optional AG-UI "✍️ Drafting…" event for compose_prose.
+- Last Updated: 2026-06-02 **(session 104 cont.2 — ARCH-1 C6 BROWSER-DOM SMOKE PASSED [arch-unify-chat-rag, human-in-loop v2.2, S])** [on `arch-unify-chat-rag`] — drove the **full editor write-back round-trip in a real browser** (Playwright, Vite :5174 → gateway). Logged in as the test account, opened 第3回 in the chapter editor, switched the session model to **Qwen3 Coder 30B (C6 tools)** via Session Settings, placed the cursor, and asked the AI panel to `propose_edit insert_at_cursor`. Observed: model called a **backend memory tool AND the frontend propose_edit in ONE turn** ("📚 Recalled an entity" indicator + the proposal card) — the **mixed backend+frontend tool path, live** (more than the API smoke covered). The `ProposeEditCard` rendered ("Suggested insertion" + proposed text + Apply/Dismiss). **Clicked Apply** → text inserted into the Tiptap doc at the cursor, doc dirtied ("Unsaved" + "Discard" appeared), card flipped to **"Applied ✓"** (no double-apply); the **resume 2nd pass ran and RE-PROPOSED** (a 2nd card) — live proof of the C6 bug-2 fix (frontend tool re-advertised on resume). Ctrl+S → "Saved"; the insert **persisted server-side** (chapter `draft_revision_count` 2→3) and **survived a full page reload** (ProseMirror text = original + inserted). **Minor finding (LOW/cosmetic, data-safe):** the editor's char/word/paragraph stat readout doesn't recompute after a programmatic insert (showed "52 chars" right after Apply; corrected to "57 chars" on reload — the saved content was always correct). Tracked as D-C6-EDITOR-STATS-REFRESH. Demo chapter reverted to pristine afterward. **C6 is now proven across BOTH the API two-run round-trip AND the browser DOM. ARCH-1 fully verified end-to-end.** **NEXT**: flip `USE_MCP_TOOLS`/D-ARCH2-MCP-LIVE-SMOKE; fix the `[object Object]` context bug; open the ARCH-1 PR.
+- Last Updated: 2026-06-02 **(session 104 cont. — ARCH-1 C6 LIVE SMOKE PASSED + 2 fixes [arch-unify-chat-rag, human-in-loop v2.2, M])** [on `arch-unify-chat-rag`] — **cleared D-C6-LIVE-SMOKE**: registered `qwen/qwen3-coder-30b` (LM Studio) for the test account — unlike the reasoning Qwen3-35B that stalled in `<think>`, it emits clean OpenAI tool calls — and drove the **full two-run editor-write-back round-trip** through the gateway (real auth + provider-registry + LM Studio). REQ1: model emits `propose_edit` w/ correct args → suspend (`chat_suspended_runs`=1, **0 assistant rows**, seed 1382/80 saved). REQ2 `POST /tool-results {applied}`: resume 2nd pass → `success`, **ONE** assistant message, suspended run deleted, **usage summed** (2889/99 = 1382/80 + 1507/19 — the 99 completion = 80 args + 19 closing-sentence tokens proves the sum). **2 bugs found+fixed by the smoke** (the value of cross-service live-smoke per CLAUDE.md): **(1) HIGH/live-crash** — `stream_events.tool_call_pending` read `tc["tool"]` but the suspend chunk's `pending_tool_call` uses key `name` → `KeyError: 'tool'` → RUN_ERROR on every suspend; the two isolated unit tests each used their own key shape so the boundary mismatch slipped through (mock-fidelity gap). Fixed (read `name`, tolerate `tool`) + a producer↔consumer contract test. **(2) latent/degraded-path** — `resume_stream_response` gated the frontend-tool re-advertise on `if tool_defs` (memory tools present); with no project / KS-degraded → `[]` → tool dropped AND run fell to the no-tools gateway path which ignores `seed_usage` → resume usage NOT summed + tool not re-advertised. Didn't fire live (KS returns memory tools) but fixed defensively to mirror the fresh path (`if stream_format=="agui"`) + a regression test that fails without it. **Verify**: chat-service **321** (was 319, +2 regression tests) full suite green; live round-trip evidence above. Files: `stream_events.py`, `stream_service.py`, `tests/test_frontend_tools.py`. **NEXT**: optional browser-DOM Apply click; flip `USE_MCP_TOOLS`/D-ARCH2-MCP-LIVE-SMOKE; fix the `[object Object]` context bug; open the ARCH-1 PR.
+- Last Updated: 2026-06-02 **(session 104 — ARCH-1 C6 SHIPPED → ARCH-1 TRACK COMPLETE [arch-unify-chat-rag, human-in-loop v2.2, XL])** [on `arch-unify-chat-rag`] — **AG-UI frontend-tool-calls + run resumption (editor write-back / WA-4)** — the last & most novel ARCH item: the agent acts on the open document via a frontend tool it advertises but the **FE executes**, gated on the human's Apply. **The hard part:** the tool loop was single-request/server-side/synchronous; a frontend tool must **pause across two HTTP requests**. BE: new `frontend_tools.py` (`propose_edit` standard OpenAI fn schema; `operation: insert_at_cursor|replace_selection`; FE-exec marker lives only in server-side `FRONTEND_TOOL_NAMES`, wire schema clean); `_stream_with_tools` SUSPENDS at the first frontend tool (backend `memory_*` in the same pass still execute inline first) → yields a `suspend` chunk; **extracted `_emit_chat_turn`** shared by fresh + resume paths (DRY, no ~150-line dup); new `chat_suspended_runs` table (working JSONB + pending tool_call + summed usage + shared msg_id, TTL 6h sweep) since `working` can't be rebuilt from `chat_messages` (assistant row isn't written until end-of-turn); `resume_stream_response` + `POST /v1/chat/sessions/{id}/tool-results` re-enter the loop with the tool result → ONE assistant message + summed usage across both requests; `stream_events.py` `tool_call_pending()` (START/ARGS/END, NO RESULT) + `finish(status="suspended", pending=...)`. FE: Tiptap `getSelection`/`insertAtCursor`/`replaceSelection` (NOT `isExternalUpdate` → flows through `onUpdate`→dirty/autosave); `editorBridge.ts` module-singleton (stores the ref, read live at Apply); `useChatMessages` accumulates TOOL_CALL_ARGS + handles `RUN_FINISHED{status:suspended}` → pending propose_edit record + `submitToolResult`; `ProposeEditCard` (Apply/Dismiss + chapter-match guard + empty-selection guard, no double-apply). **Verify**: chat-service **319** (+10) / FE **680** (+8); tsc + build clean; `_emit_chat_turn` extraction regression-proven by full 319-suite. **Live smoke** (rebuilt chat-service, migration ran): proved AI tab + `<Chat>` embedded + session bound + chapter attached + **`propose_edit` advertised to the LLM** (model's own reasoning planned the call w/ correct args) — but suspend→Apply→resume round-trip blocked by local Qwen3-35B never emitting tool-call tokens (model limit, not C6). `/review-impl`: load-bearing surface reviewed; POST-REVIEW human-approved. **Deferred**: D-C6-LIVE-SMOKE (full round-trip needs a reliably tool-emitting model). **Flagged (NOT C6)**: pre-existing `[object Object]` chapter-context stringification (C5-era `resolveAndSend`) — separate fix. **ARCH-1 (C1→C6) COMPLETE.** **NEXT**: D-C6-LIVE-SMOKE w/ tool-capable model; flip `USE_MCP_TOOLS`/D-ARCH2-MCP-LIVE-SMOKE; fix the `[object Object]` context bug.
+- Last Updated: 2026-06-01 **(session 103 — ARCH-1 C5 SHIPPED [arch-unify-chat-rag, human-in-loop v2.2, XL])** [on `arch-unify-chat-rag`] — **reusable `<Chat>` + editor AI panel** (the visible half of ARCH-1). KS `?book_id=` project filter (book↔project link owned by KS); `<Chat>` wraps providers (additive `embedded` mode) + `useEmbeddedChatBinding` (resolve book→project, bind session); editor AI tab enabled, renders `<Chat key={bookId}>`, auto-attaches the chapter. **Live smoke** (rebuilt KS+chat): filter (2→1), session bound, model called memory_search+memory_recall_entity over real wire ({ok,result} envelope) — clears C5 + the C4 tool-call live gap. `/review-impl`: HIGH cross-book bleed fixed (`key={bookId}` remount) + no-DB SQL coverage + patch-fail toast + dead-payload cleanup. **Verify**: FE **672** + KS **70**. **NEXT**: C6 (editor write-back / WA-4).
+- Last Updated: 2026-06-01 **(session 103 — ARCH-1 C4 SHIPPED + first live AG-UI round-trip [arch-unify-chat-rag, human-in-loop v2.2, L])** [on `arch-unify-chat-rag`] — **FE consumes AG-UI end-to-end**. `useChatMessages` parser swapped to an AG-UI `EventType` switch; sends `x-loreweave-stream-format: agui`; 17-field hook contract byte-identical (9 consumers untouched). Dep guard → local `agUiEvents.ts` (avoided `@ag-ui/core`'s zod v3 vs FE zod v4 conflict). **Live round-trip verified** (rebuilt chat-service, real turn via gateway: 3346 events, 100% AG-UI, 0 legacy leak) — clears the C3 stream-seam smoke deferral. `/review-impl`: fixed tool ok/failed at the C3 source (explicit `{ok,...}` TOOL_CALL_RESULT envelope; C4 reads `parsed.ok`) + combined-shape/fallback/abort tests. **Verify**: FE **661** vitest + tsc + build clean; chat-service **309** passed. **NEXT**: C5 (`<Chat>` component + editor AI panel).
+- Last Updated: 2026-06-01 **(session 103 — ARCH-1 C3 SHIPPED [arch-unify-chat-rag, human-in-loop v2.2, L])** [on `arch-unify-chat-rag`] — **AG-UI event emission, per-request header negotiation**. New `app/services/stream_events.py` (`StreamEmitter` + `LegacyEmitter` byte-for-byte + stateful `AgUiEmitter`); `stream_response` 8 emit sites → emitter + `open_run`/`close_message`; `messages.py` reads `x-loreweave-stream-format` (default legacy until C4); tool-call dict gains provider `id`. Full AG-UI lifecycle (RUN_/TEXT_MESSAGE_/REASONING_/TOOL_CALL_/CUSTOM/RUN_FINISHED). `/review-impl`: 3 fixed (post-finish-outside-try kills RUN_FINISHED→RUN_ERROR window; byte-level legacy golden guard; uuid fallback for empty toolCallId) + latent `pool.fetchval` fixture gap. **Verify**: chat **308 passed** (was 269, +39). Default stays legacy → zero visible change on merge. **NEXT**: C4 (FE AG-UI client).
+- Last Updated: 2026-06-01 **(session 103 — ARCH-1/2 C1+C2 SHIPPED [arch-unify-chat-rag, human-in-loop v2.2, XL])** [on `arch-unify-chat-rag`] — **MCP transport dual-run** (adopt LF 3-layer standard per design `618bedd3`). **C1 knowledge-service MCP server facade**: `app/mcp/server.py` (FastMCP `knowledge-memory`, 5 memory tools each a thin shim → existing `executor.execute_tool()`, NO logic dup; `_build_tool_context` derives scope from headers only per D3; constant-time `secrets.compare_digest` token check), mounted `/mcp` in `main.py` (lifespan runs `session_manager.run()`, stopped before pools; non-fatal startup → bespoke `/internal/tools/*` stays up = dual-run). **C2 chat-service MCP client**: `knowledge_client.mcp_execute_tool()` (identical `{success,result,error}` envelope; 30s timeout parity via explicit `sse_read_timeout`; X-Trace-Id forwarding; empty-success→`{}` on BOTH client methods), `USE_MCP_TOOLS` dual-run gate in `stream_service` (**default false** — bespoke path stays live, zero runtime exposure). **Reviews**: Phase-7 (5 LOW fixed + caught dup-deps) + `/review-impl` (21 raised → 18 confirmed, 0 HIGH; all fixed): MCP timeout/trace parity, `mcp ...,<2` boot-safety ceiling, lifespan start/teardown coverage (`test_lifespan_mcp.py`), schema enums/bounds restored (`Literal`/`Field`/`FactType`), infra-error propagation pin, real-handler success-key pins. **Verify**: KS **1952** / chat **269** (independent reruns). **Deferred**: D-ARCH2-MCP-LIVE-SMOKE (real cross-process `/mcp` round-trip before flipping `USE_MCP_TOOLS` true). **NEXT**: C3 (AG-UI events) → C4 (FE AG-UI client) → C5 (`<Chat>` + editor panel) → C6 (editor write-back/WA-4).
 - Last Updated: 2026-06-01 **(session 102 — Phase E2 mining scaffold SHIPPED [lore/eval track, human-in-loop v2.2, L])** [on `main`] — **(1) env knob fix** (`a27afd6c`): worker-ai now reads `KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED` as global default (was hardcoded False; per-project still supersedes). 91→93 tests. **(2) Phase E2 mining scaffold** (6 commits `2a374ecb`–`89069c5a`): design+plan docs / KS `genre TEXT` on `knowledge_projects` (ADD COLUMN IF NOT EXISTS; models + repo) / worker-ai emits `genre` in `extraction_run_completed` payload (JobRow + SELECT + `_run_payload`) / learning-service `genre TEXT` on `extraction_runs` + handler reads payload / `app/db/mining.py` 4 query functions (config_quality explore/exploit + power-user segmentation; model_matrix weighted outcome; default_drift convergent/divergent; outcome_recompute correction-join recipe scaffold — returns empty at cold-start, establishes the join recipe) / `app/routers/mining.py` 4 GET endpoints at `/v1/learning/mining/*` + response models. Gateway: NO change (proxies all `/v1/learning/*`). Guardrails baked in: `success_rate = succeeded/total` (never raw count); `exploration` array from tail (explore/exploit); `segment_power_users`/`power_user_threshold` params. **Verify**: KS 1932 / worker-ai 93 / learning 50 tests pass. Live-smoke deferred (D-E2-LIVE-SMOKE). **NEXT**: D-E2-LIVE-SMOKE OR resume eval R&D arc (cycle-70s independent judges).
 - Last Updated: 2026-05-31 **(session 101 — Phase B2 config-telemetry: DESIGN+PLAN checkpoint + B2-A run-plumbing SHIPPED [lore/eval track, human-in-loop v2.2, XL+→A is L])** [on `main`] — **(1) Design-checkpoint commit `a1adef1a`** (docs only): full-B2 DESIGN ([docs/specs/2026-05-31-phase-b2-config-telemetry-design.md](../specs/2026-05-31-phase-b2-config-telemetry-design.md)) + PLAN ([docs/plans/2026-05-31-phase-b2-config-telemetry-plan.md](../plans/2026-05-31-phase-b2-config-telemetry-plan.md)) locking interfaces for sub-cycles A/B(b1+b2)/C. PO decisions: outbox-for-both transport; transactional run-emit; **raw-prompt editing IN** (fixed-order output-contract injection defense §2.5 + redact-by-default); 16kB/field cap; outcome adds `failed` (crash-configs visible); `prompt_pack_id` dropped; `embedding_model` excluded from `config_hash`; config snapshot pinned at job start; `base_default_version`=content-hash. **(2) B2-A run plumbing** (commit pending): SDK `resolve_config` (`ResolvedConfig`/`resolve_effective_config`/`config_hash` sha256-of-canonical/`base_default_version` content-hash) + `_version.get_extractor_version(override_text=)`; learning-service 3 tables (`config_registry`/`extraction_runs`/`config_adjustment_events`) + `handle_run_completed` (registry upsert + run insert, one txn, dedup on outbox_id, loud-fail→DLQ); worker-ai `outbox_emit` + `runner` snapshot-pin + `_advance_cursor_and_emit_run` (transactional, telemetry-never-load-bearing fallback) at success/retry-skip/text-unavail + best-effort `failed` emit; `extraction_config` threaded onto JobRow. **No extraction behaviour change** (extract_pass2 still reads globals; B2-B wires the snapshot into the pipeline). **Verify:** unit SDK 255 (3 pre-existing summarize_level fails unrelated) / learning 29 / worker-ai 86; **live-smoke**: real outbox_events→worker-infra relay→learning-collector→config_registry+extraction_runs rows (succeeded, entities=7, origin_event_id=outbox PK); worker-ai rebuilt boots clean. **`/review-impl`**: 2 MED fixed (telemetry-load-bearing→fallback; producer-contract pin test), MED-3+LOW-2 hardened (resolve fallback + []-fall-through), LOW-1 accepted. **(3) B2-B-b1 SHIPPED** (commit pending): per-project STRUCTURAL overrides (model/filter/recovery) now drive `extract_pass2` via sentinel-guarded args (omitted→global, explicit None→disabled); `PUT /v1/knowledge/projects/{id}/extraction-config` (If-Match, `extra=forbid` structural-subset model, PUT-replace, per-target diff→best-effort `config_adjusted` emit); learning `handle_config_adjusted`→`config_adjustment_events`. Verify: unit KS 58/learning 33/worker-ai 88; live-smoke `config_adjusted`→relay→learning row (~2s). `writer_autocreate` override resolved+hashed but **NOT applied** (lives KS-persist-side `pass2_orchestrator._load_writer_autocreate_config` — deferred cross-service wiring). **(4) B2-B-b2 SHIPPED** (commit pending): per-novel RAW system-prompt overrides. SDK `apply_prompt_override` + `OUTPUT_CONTRACT_REMINDER` (custom system used verbatim + SDK contract appended LAST = injection defense §2.5); `prompt_override_system` threaded through 4 extractors + `extract_pass2 prompt_overrides`; runner passes `snapshot.prompts`. KS `PromptOverride{system}` (16kB cap, extra=forbid) + `prompts` on update model + endpoint per-op content-hash diff (raw text NEVER to learning — `_prompt_hash`). **Design narrowed `{system,user}`→system-only** (user message is raw chapter text). `/review-impl` (security): no HIGH (hostile-prompt blast-radius = user's own job/BYOK); MED-1 (summarize_level inert→dropped from PromptOpLit) + LOW-1 (hash-align) fixed. Verify: SDK 260/KS 63/worker-ai 89/learning 33; live-smoke prompts.entity→learning content-hash row (raw text absent). **(5) B2-C SHIPPED → PHASE B2 COMPLETE** (commit pending): FE tuning panel (pure [FE] — gateway blanket-proxies /v1/knowledge/*). `useExtractionConfig` hook (READ-MODIFY-WRITE off existing config → PUT-replace never drops unmanaged keys); `ExtractionTuningPanel` (filter enabled/categories/policy + recovery) + `RawPromptEditor` (per-op textarea, 16kB counter, advanced warning); mounted in `ProjectRow` "Tune extraction"; en i18n. Only fully-wired levers surfaced (writer_autocreate + model-ref excluded — not-applied/no-picker). Verify: typecheck + 274 knowledge component tests (6 new); **full real-endpoint live-smoke** via gateway (authed PUT → 200, v1→2, config persisted, config_adjusted→learning prompts.entity content-hash [raw text absent], stale If-Match→412); KS rebuilt boots clean. **PHASE B2 (A run-plumbing + B per-novel tuning BE + C FE) DONE.** Commits: a1adef1a (design ckpt) / 360231a3 (A) / b4a14c97 (b1) / e28f6f50 (b2) / +B2-C. **(6) writer_autocreate WIRED** (commit pending — closes B2's deferred item): CLARIFY finding — `/persist-pass2` never passed autocreate kwargs to `write_pass2_extraction`, so the env knob was DORMANT on the production worker path. Fix: worker-ai forwards `snapshot.writer_autocreate` → `PersistPass2Request` → handler resolves `eff = body ?? env` into the writer; FE re-exposed the toggle. Default (env off, no override)=False=unchanged; config_hash accurate (worker sends resolved bool). DELIBERATE: per-project supersedes the global env knob on the worker path (env still applies for callers that omit the field) — flagged; env-as-global-default would be a small follow-up (worker reads the autocreate env). Verify: worker-ai 89/KS 64/FE panel 7; live-smoke PUT writer_autocreate→persisted+adjustment event; KS+worker rebuilt boot clean. **B2 per-novel tuning now has NO inert levers.** **(7) B2 VALIDATED END-TO-END on a REAL extraction** (no-code smoke): seeded a running job on 6c-gamma-smoke (1 chapter) with a per-project custom entity prompt + disabled precision_filter → worker resolved the project's `extraction_config`, ran a real **qwen3.6-35b** extraction (LM Studio) → persist → transactional emit → relay → learning. Result: `extraction_runs` row `outcome=succeeded` (real metrics, model_ref=qwen) + `config_registry` with `prompt_versions.entity=custom-a306a3ff` (= sha256 of the stored prompt, hash VERIFIED correct, no bug) while other ops stayed `v1-*` defaults, and `resolved_config.precision_filter=null` (disabled). Proves the full B2 chain drives extraction from per-project config + emits accurate telemetry. Seed data cleaned up (job/run deleted, config+status reset). **NEXT: Phase E2 mining** (config-vs-outcome — depends on run/correction VOLUME; guardrails popularity≠quality + explore/exploit per plan §2.4) OR resume the eval R&D arc. _Previously: session 100 (GEO climate arc):_ — Last Updated: 2026-05-31 **(session 100 cont. — moisture-transport model #046 SHIPPED; CLIMATE ARC COMPLETE [GEO track, BE L])** [on `world-gen-sdk-refactor`; PR #13 already merged, climate arc landing via a new PR] — Rewrote `climate.rs::moisture_field` from AVG-of-upwind to **MAX best-path** downwind-directed multi-source transport (wettest upwind route from any upwind sea; wind-aware → offshore coasts dry, range rain-shadows persist). Result (seed-7 mega): interiors greener, C-group ~doubled (equatorial spread=1: 2.2→3.9 %, Plain 55→98), Desert preserved 30.7 % (spread=0); bonus maritime Tundra/Polar 126→375. Full lib **399 green**, clippy-clean, `/review-impl` no HIGH/MED. #046 cleared; optional residual → #047 (8-zone mapping). **CLIMATE ARC DONE** — 5 commits this session (Köppen desert fix → placement → v2 seasonality → moisture). content_hash rebases (intended). **NEXT = review/merge PR #13.** Record: GEO_GENERATOR_PLAN.md handoff.
 - Last Updated: 2026-05-31 **(session 100 cont. — Köppen v2 seasonality #045 SHIPPED [GEO track, BE L])** [on `world-gen-sdk-refactor`; PR #13 already merged, climate arc landing via a new PR] — Fixed the C-group/polar-band climate squeeze: cosine insolation (`insolation_temp`, warms mid-lat ~6.5→15 °C) + continentality-gated `seasonal_amp` (`AMP_EQ+(AMP_MARITIME=4+AMP_CONT_GAIN=24·cont)·lat_dist`) so maritime coasts stay low-amplitude at all latitudes. **Tundra opened 0→126** (seed-7 mega spread=1) + Polar/Boreal gradient; Desert preserved **33.5 %** at spread=0 (Köppen win intact); Temperate C-band reachable (`Plain` 0→55 equatorial). Full lib **398 green**, clippy-clean, `/review-impl` no HIGH/MED. content_hash rebases (climate model change, intended). #045 cleared; residual (Temperate stays minor — maritime climate the single-wind moisture march under-produces) split to **#046 moisture-transport model = NEXT**. Record: GEO_GENERATOR_PLAN.md handoff.
@@ -285,6 +297,9 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 
 | ID | Origin | Description | Target phase |
 |---|---|---|---|
+| ~~D-ARCH2-MCP-LIVE-SMOKE~~ | ~~ARCH-1/2 C1+C2 (session 103)~~ | **CLEARED session 104 cont.6** — real cross-process `chat-service → knowledge-service /mcp` validated on the docker stack. **2 bugs the loopback unit tests structurally couldn't catch:** (1) the running knowledge-service image was STALE (`app/mcp/` absent → `/mcp` 404) — it had never been rebuilt after ARCH-2 C1; (2) the MCP SDK's DNS-rebinding protection rejected the docker Host `knowledge-service:8092` with **421 Misdirected Request** (only localhost allowed by default). Fixes: rebuild + `FastMCP(transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False))` (internal service-to-service; trust = private net + X-Internal-Token, not Host). Proven: direct `call_tool("memory_search")` → `isError=False` w/ real hits, AND full LLM chain (chat tool loop → mcp_execute_tool → /mcp → result ok=true, 8 `/mcp` POSTs). `USE_MCP_TOOLS` compose knob added (default false — gate preserved). MCP tests 18/18. **Default NOT yet flipped — it's now a deploy decision** (prod knowledge-service must ship the MCP build first). | flip USE_MCP_TOOLS=true once knowledge-service redeploys with /mcp |
+| ~~D-C6-EDITOR-STATS-REFRESH~~ | ~~ARCH-1 C6 browser-DOM smoke (session 104 cont.2)~~ | **CLEARED session 104 cont.4.** Root cause: `TiptapEditor.onUpdate` only passed `json` → ChapterEditorPage updated `tiptapJson` (dirty) but `textContent` (which the char/word/para counter reads) was set ONLY on load → counter stale after ANY edit (typing too), most visible on programmatic insert. Fix: `onUpdate(json, editor.getText())` → page `setTextContent(text)` on every mutation. Live-verified: counter tracked 52 → 3 → 52 while typing. (WikiEditorPage's `(json)=>` callback is unaffected — fewer params is assignable.) | — (cleared) |
+| ~~D-C6-LIVE-SMOKE~~ | ~~ARCH-1 C6 (session 104, arch-unify-chat-rag)~~ | **CLEARED in session 104 cont.** Switched the test account's chat model to `qwen/qwen3-coder-30b` (LM Studio; emits clean OpenAI tool calls, no `<think>` stall) and drove the real two-run round-trip through the gateway: REQ1 → model emits `propose_edit` (correct args) → suspend (`chat_suspended_runs`=1, 0 assistant rows, seed 1382/80 persisted); REQ2 `POST /tool-results {applied}` → resume 2nd pass → status `success`, ONE assistant message, suspended run deleted, **usage summed across both runs** (2889/99 = 1382/80 + 1507/19; the 99 completion = 80 tool-args + 19 closing sentence proves the sum). Surfaced + fixed 2 real bugs (see session entry). FE editor-write (Tiptap `insertAtCursor`) + Apply→`submitToolResult` remain unit-covered; the browser-DOM click is the only unexercised layer. | — (cleared) |
 | ~~D-P2-STEP-D~~ | ~~session 63 partial-build~~ | **Cleared in session 63 cont.** Step D MVP shipped: book_client extended (list_scenes_by_chapter + get_chapter_draft_text), Project.save_raw_extraction field added, pass2_orchestrator refactored with `_p2_cache_wrap` around all 4 extractor calls, extract_pass2_chapter extended with book_id/chapter_id/save_raw_extraction kwargs (back-compat preserved). 4 P2 tests in test_pass2_orchestrator.py (no-cache passthrough, all-4-cache-hit, cache-miss-claims+persists, extractor-failure-marks-failed). Unit suite **1691/1691**. MVP gaps filed as D-P2-PER-SCENE-FANOUT + D-P2-PARENT-JOB-ID-PLUMBING + D-P2-STALE-CLAIM-LIFESPAN-HOOK. | — (cleared MVP) |
 | D-P2-STEP-D-LIVE-SMOKE | session 63 VERIFY | **Partially cleared in session 63 cont.** Invalidate endpoint live-smoked (insert 1 row → POST invalidate-cache returns deleted_leaves:1 → second POST returns 0 idempotent). Full extraction-job live smoke (orchestrator → _p2_cache_wrap → repo.persist with real LLM call) deferred to D-P2-FULL-EXTRACTION-LIVE-SMOKE — needs a registered LLM user_model + provider-registry job lifecycle which is out of scope for VERIFY pass. | First user-triggered extraction after deploy |
 | D-P2-PER-SCENE-FANOUT | session 63 cont. Step D MVP gap | **Per-scene per-op fanout NOT in MVP** — spec D3 promised asyncio.Semaphore fanout across scenes; Step D MVP caches at chapter granularity (joined text, one LLM call per op per chapter). Full fanout requires rewriting extractor signatures (currently `extract_entities(text, ...)` takes ONE text + internally chunks; per-scene fanout means calling once per scene with anchor merged across). ~6-8h refactor + new LeafProcessor integration (LeafProcessor exists from Step C but unwired). | When per-leaf parallelism becomes a perf concern (likely with first 1MB+ novel extraction) |
@@ -576,6 +591,236 @@ See [TRACK_2_ACCEPTANCE_PACK.md](TRACK_2_ACCEPTANCE_PACK.md) for the single-page
 ---
 
 ## Current Active Work
+
+### ARCH-1 C5 — Reusable `<Chat>` + editor AI panel (session 103, arch-unify-chat-rag, FS [XL]) ✅
+
+The **visible half of ARCH-1**: packaged `features/chat` as a reusable `<Chat>`
+component and wired it into the editor's previously-disabled "AI Chat" side panel,
+bound to the book's knowledge project with the current chapter auto-attached as
+context. Assisted creation now lives in the writing workspace.
+
+**Part A — knowledge-service `?book_id=` filter (BE).** The book↔project link is
+owned by knowledge-service (`knowledge_projects.book_id`), so the by-book lookup
+went there (not book-service): optional `book_id` query param on
+`GET /v1/knowledge/projects` → `ProjectsRepo.list(book_id=…)` extra WHERE predicate
+(dynamic `$N`, ANDed with the existing `user_id` scope). Repo + router tests + a
+**no-DB SQL-coverage test** asserting the generated query/params for all 4
+cursor/book combos (the integration repo tests skip without `KNOWLEDGE_DB_URL`).
+
+**Part B — reusable `<Chat>` (FE).** `frontend/src/features/chat/Chat.tsx` wraps the
+providers + ChatView. New additive `embedded` flag on `ChatSessionProvider` gates
+URL-reading/navigation (page mode unchanged — regression-tested). Binding logic
+extracted to `useEmbeddedChatBinding.ts` (CLAUDE.md MVC): resolve book→project →
+select existing book-scoped session or prompt-create → patch-bind the session's
+`project_id`. Degrades to no-project memory if the book has no project.
+
+**Part C — editor AI panel (FE).** `ChapterEditorPage` AI tab enabled, renders
+`<Chat key={bookId} bookId={bookId}>`; on tab-open it fires the existing
+`send-to-chat` event so `ChatSessionContext`'s listener auto-attaches the chapter.
+
+**Live smoke (rebuilt KS + chat images) — clears C5 deferral AND the C4 tool-call
+live gap.** `?book_id=` filter live via gateway (2 projects → 1). Session bound to
+the book's project. Model called **`memory_search` + `memory_recall_entity` over the
+real wire** (full `TOOL_CALL_*` ×2) — the C4 `{ok: true, result}` envelope read
+correctly. First live exercise of the whole MCP→AG-UI→tool→envelope chain on a real
+socket (the C4 reasoning-only smoke never hit a tool call).
+
+**`/review-impl` (deep pass; both verifiers read real code): 1 HIGH fixed + 3
+extras.** **HIGH — cross-book session bleed:** `<Chat>` had no `key`, the editor
+route doesn't remount on book change, and `boundRef` latched forever → book B's
+panel kept book A's session AND effect #3 **re-patched book A's session to book B's
+project** (data corruption). Fixed with `key={bookId}` (full per-book remount;
+also resolves a dialog-dismiss dead-end) + a cross-book regression test. **Extras:**
+no-DB SQL `$N` coverage test (MED — the cursor+book combo was untested anywhere);
+patch-failure now toasts instead of silent swallow (+ test); removed the dead `text`
+field from the send-to-chat payload (body is re-fetched at send time — it was never
+consumed). Verifier corrected two of my POST-REVIEW worries (no patch retry-loop;
+empty-text fire was harmless).
+
+**Files.** KS: `app/db/repositories/projects.py`, `app/routers/public/projects.py`,
+`tests/integration/db/test_projects_repo.py`, `tests/unit/test_public_projects.py`,
+`tests/unit/test_projects_repo_sql.py` (new). FE new:
+`features/chat/Chat.tsx`, `features/chat/useEmbeddedChatBinding.ts`,
+`features/chat/__tests__/{useEmbeddedChatBinding,ChatSessionProvider.embedded}.test.tsx`.
+FE modified: `features/chat/providers/ChatSessionContext.tsx`,
+`features/chat/context/sendToChat.ts`, `features/knowledge/{api,types}.ts`,
+`pages/ChapterEditorPage.tsx`.
+
+**VERIFY** (independent reruns): FE **672** vitest + tsc + vite build clean;
+knowledge-service **70** project tests (incl. SQL coverage). Live cross-service smoke
+GREEN.
+
+**NEXT**: C6 (editor write-back / frontend tool-calls / WA-4 — the agent editing the
+document). The backend legacy emitter stays (dual-run) until voice migrates.
+
+### ARCH-1 C4 — Frontend AG-UI client + first live round-trip (session 103, arch-unify-chat-rag, FE [L]) ✅
+
+The chat frontend now consumes the **AG-UI protocol** end-to-end. Replaced the
+hand-rolled SSE parser inside `useChatMessages` with an AG-UI `EventType` switch;
+the request sends `x-loreweave-stream-format: agui`. The hook's **17-field public
+return is byte-identical** — all 9 consumers (MessageList, ThinkingBlock,
+ToolCallIndicator, MemoryIndicator, voice pipeline, ChatInputBar, …) untouched.
+
+**Dependency guard fired → local types.** `@ag-ui/core` depends on `zod@^3` but the
+FE runs `zod@4` (breaking major), so importing it would install a second nested zod
+to deliver ~7 symbols. Per the "don't import what we won't use" rule, pinned the
+canonical AG-UI wire strings + consumed event shapes in a local
+`frontend/src/features/chat/hooks/agUiEvents.ts` instead — zero dep cost, zero
+spec-drift on our subset. **Conscious deviation** from the locked doc's "implement via
+AI-SDK useChat" wording: C3 emits raw AG-UI events, not the AI-SDK data-stream
+`useChat` parses, so `useChat` would need an uncertain bridge.
+
+**Event mapping** (AG-UI → existing hook state, all downstream effects unchanged):
+`REASONING_MESSAGE_CONTENT`→reasoning accum + thinking phase; `TEXT_MESSAGE_CONTENT`→
+text accum + responding phase; `TOOL_CALL_START`+`TOOL_CALL_RESULT`→`{tool,ok}` chip;
+`CUSTOM(memoryMode)`→`onMemoryModeRef`; `CUSTOM(persisted)`→message id; `RUN_FINISHED`
+→usage/timing; `RUN_ERROR`→throw→existing catch. Framing-only events (START/END) are
+no-ops; no `[DONE]` in agui.
+
+**🎯 First live cross-process AG-UI round-trip — clears the C3 stream-seam smoke
+deferral.** Rebuilt the chat-service image (running container was a 4h-old pre-C3
+image), sent a real turn through the gateway with the agui header: **3346 events,
+100% AG-UI, zero legacy leak** — `RUN_STARTED → CUSTOM(memoryMode) → REASONING_*
+fully framed → CUSTOM(persisted) → RUN_FINISHED{usage,timing,messageId}`. Happened
+to be a reasoning-only turn (50s think, no final text) → exercised C3's
+close-before-finish path on a real socket; it held.
+
+**`/review-impl` (deep pass; verified the live emission order + all 5 memory-handler
+success shapes): 1 fixed at source, 1 dismissed, coverage added.** **Fixed (#1, was
+MED→LOW):** C4 inferred tool ok/failed by sniffing for an `error` key in the result
+payload — a cross-service implicit invariant (not exploitable today: no handler
+success dict has a top-level `error`, but a future one could). **Fixed at the C3
+source**: `TOOL_CALL_RESULT.content` now carries an explicit `{ok, result}`/`{ok,
+error}` envelope (spec-legal JSON string); C4 reads `parsed.ok` directly. **Dismissed:**
+memory-mode badge timing (CUSTOM still precedes the first content event — preserved).
+**Coverage added:** full combined reasoning+tool+text turn, message-id fallback,
+abort-mid-stream, ok-not-misread-from-result-error-key.
+
+**Files.** FE new: `hooks/agUiEvents.ts`, `hooks/__tests__/useChatMessages.agui.test.tsx`.
+FE modified: `hooks/useChatMessages.ts`, `hooks/__tests__/useChatMessages.toolCalls.test.tsx`.
+chat-service (C3 envelope follow-up): `app/services/stream_events.py`,
+`tests/test_stream_events.py`.
+
+**VERIFY** (independent reruns): FE **661** vitest passed + tsc + vite build clean;
+chat-service **309** passed. NOTE: the `{ok,...}` envelope change postdates the live
+smoke (which was reasoning-only, no tool call) — covered by unit tests on both sides;
+a tool-call live turn would re-confirm it.
+
+**NEXT**: C5 (`<Chat>` reusable component + wire the editor AI panel) → C6 (editor
+write-back / frontend tool-calls / WA-4). The backend legacy emitter stays (dual-run)
+until other clients (voice) are confirmed migrated.
+
+### ARCH-1 C3 — AG-UI event emission from chat stream (session 103, arch-unify-chat-rag, BE [L]) ✅
+
+Made the chat streaming endpoint speak the **AG-UI protocol** on the agent↔UI
+seam, selectable **per request** so the legacy FE and the future AG-UI FE (C4)
+share one deployed backend. Only the event *serialization* changed — DB
+persistence, billing, auto-title untouched; same SSE transport.
+
+**New `app/services/stream_events.py`** — `_sse()` + `StreamEmitter` Protocol +
+two impls behind it: `LegacyEmitter` (today's 8 events, byte-for-byte) and
+`AgUiEmitter` (stateful framing — tracks the open run + open message kind, lazily
+emits START before first CONTENT, closes on transition/end, generates the run id).
+`make_emitter(stream_format, …)` selects; unknown ⇒ legacy.
+
+**AG-UI mapping (full lifecycle, verified wire format — SCREAMING_SNAKE type,
+camelCase fields):** `RUN_STARTED` → `CUSTOM(memoryMode)` → `REASONING_*` framed
+→ `TEXT_MESSAGE_*` framed → `TOOL_CALL_START/ARGS/END/RESULT` (one per executed
+memory tool, keyed on the propagated provider id) → `CUSTOM(persisted)` →
+`RUN_FINISHED{result:{finishReason,usage,timing,messageId}}`. Errors → `RUN_ERROR`;
+no `[DONE]` in agui (kept in legacy). `messageId` = the persisted assistant msg id
+throughout, so live stream + later refetch correlate on one id.
+
+**Wiring:** `stream_service.stream_response(stream_format="legacy")` — 8 emit sites
+→ emitter calls + `open_run()`/`close_message()`; tool-call dict gains `id`.
+`messages.py` reads `x-loreweave-stream-format` header (`_resolve_stream_format`,
+absent/unknown ⇒ default), echoes it on the response, forwards `stream_format`.
+`config.default_stream_format="legacy"`. **Default stays legacy until C4** — zero
+visible change on merge.
+
+**Reviews.** Phase-7 (spec + quality clean; the `close_message()` end-of-stream
+refinement frames `TEXT_MESSAGE_END` before run-level events — improves on the
+plan). `/review-impl` (deep pass; verified the AG-UI spec on every guess —
+CUSTOM/RUN_FINISHED.result/TOOL_CALL_RESULT-as-JSON-string/REASONING-dual-layer all
+correct): **3 fixed, 3 confirmed not-a-bug.** Fixed: (1) MED — a post-finish DB
+read could route a raise into the error path → `RUN_ERROR` after `RUN_FINISHED`
+(also latent in legacy as finish→error); moved post-turn best-effort work
+(auto-title + billing) OUTSIDE the try so finish is structurally the last
+run-level event. (2) MED — legacy golden test asserted `type` only; added
+byte/key-order assertions on the `finish`/`data` events. (3) LOW→MED — empty
+`toolCallId` if a provider omits the id; added `uuid4()` fallback so the 4 events
+correlate and can't collide. Confirmed clean: empty-delta (structurally filtered),
+multi-tool framing, reasoning-only, tool-before-text (spec-legal). Also fixed a
+**latent test-fixture gap** — `_make_pool_with_conn` never stubbed `pool.fetchval`,
+so the post-finish auto-title read returned a bare AsyncMock and the resulting
+`TypeError` was silently swallowed into an error event (loose tests never noticed);
+defaulted it to an int. New e2e tests: no-double-terminator, reasoning-only,
+multi-tool.
+
+**Files.** New: `app/services/stream_events.py`, `tests/test_stream_events.py`.
+Modified: `app/services/stream_service.py`, `app/routers/messages.py`,
+`app/config.py`, `tests/test_stream_service.py`, `tests/test_stream_tools.py`,
+`tests/test_messages_router.py`.
+
+**VERIFY** (independent rerun): chat-service **308 passed**, 0 failed (was 269 →
++39 C3 tests). No cross-format live smoke (unit-only) — the real AG-UI client
+round-trip lands in **C4**.
+
+**NEXT**: C4 (FE AG-UI/AI-SDK client replacing `useChatMessages`; flips the header
+to `agui`) → C5 (`<Chat>` component + editor AI panel) → C6 (editor write-back/WA-4).
+
+### ARCH-1/2 C1+C2 — MCP transport dual-run (session 103, arch-unify-chat-rag, FS [XL]) ✅
+
+Adopted the LF-governed standard stack (MCP tool transport) per the locked design
+`618bedd3` — re-skinned the existing tool layer as MCP instead of a custom design,
+because the in-repo shapes already matched (`tools/definitions` + `executor` ≙ MCP
+`tools/list`+`tools/call`; chat already a list+call client). **Built on Opus 4.8**
+(switched mid-task — two-service contract work warranted the stronger model).
+
+**C1 — knowledge-service MCP server facade.** `app/mcp/server.py` (new): FastMCP
+`knowledge-memory`, all 5 memory tools (`memory_search/recall_entity/timeline/
+remember/forget`) each a thin shim that builds a `ToolContext` from request headers
+and delegates to the **existing** `app.tools.executor.execute_tool()` — no logic
+duplication. `_build_tool_context` derives scope (`user_id/project_id/session_id`) +
+auth from headers ONLY (design D3); constant-time `secrets.compare_digest` token
+check (mirrors `internal_auth.py`). Mounted `/mcp` in `main.py`; the StreamableHTTP
+`session_manager.run()` runs in the lifespan (stopped BEFORE pools so in-flight calls
+unwind against a still-open pool), non-fatal on startup failure → bespoke
+`/internal/tools/*` keep serving = **dual-run**. `_dispatch` returns the bare success
+payload (`result.result if not None else {}`) / `{"success":False,"error":...}` on
+failure. Tool inputSchemas carry the same enums (`Literal` source_type/`FactType`
+fact_type) + limit bounds (`Field(ge,le)`) as the bespoke OpenAI schema.
+
+**C2 — chat-service MCP client.** `knowledge_client.mcp_execute_tool()` returns the
+**identical** `{success,result,error}` envelope as bespoke `execute_tool()`; binds
+both `timeout` and `sse_read_timeout` to the 30s tool budget (SDK default is 300s —
+would 10× the hang ceiling); forwards `X-Trace-Id`; coerces empty-success→`{}` on
+both client methods (canonical sentinel). `USE_MCP_TOOLS` gate in `stream_service`
+`_stream_with_tools` (`config.use_mcp_tools=False` default) — bespoke path stays the
+live one, **zero runtime exposure** until the flag flips.
+
+**Reviews.** Phase-7 self-review (5 LOW fixed; caught a duplicate `mcp[cli]` deps
+block) → `/review-impl` deep pass (21 raised → **18 confirmed, 0 HIGH**, all fixed):
+the two MED behavior bugs (timeout + trace-id drift, invisible to mock tests), the
+MED boot-safety gap (`mcp>=1.9` had no ceiling + module-scope mount outside try/except
+→ pinned `,<2`), MED lifespan coverage (`test_lifespan_mcp.py` — start/teardown
+ordering + non-fatal), MED infra-error propagation pin, + LOW schema-fidelity /
+real-handler success-key pins / doc notes. 3 ACCEPT_DOCUMENT (error-string wording,
+transcribed-literal coupling, module-global `run()` footgun), 3 dismissed correctly.
+
+**Files.** KS new: `app/mcp/{__init__,server}.py`, `tests/{test_mcp_server,
+test_mcp_contract}.py`, `tests/unit/test_lifespan_mcp.py`; KS modified: `app/main.py`,
+`requirements.txt`, `tests/unit/test_tool_executor.py`. chat new:
+`tests/{test_mcp_execute_tool,test_mcp_envelope_parity}.py`; chat modified:
+`app/client/knowledge_client.py`, `app/services/stream_service.py`, `app/config.py`,
+`requirements.txt`. Docs: build plan, DEFERRED #056 + this entry.
+
+**VERIFY** (independent reruns): knowledge-service **1952 passed**, chat-service
+**269 passed**, 0 failed. Live cross-service smoke deferred → **D-ARCH2-MCP-LIVE-SMOKE**
+(keep `USE_MCP_TOOLS` false until it runs).
+
+**NEXT**: C3 (AG-UI events) → C4 (FE AG-UI client) → C5 (`<Chat>` component + editor
+AI panel) → C6 (editor write-back / WA-4).
 
 ### Köppen-on-sphere spec + circulation experiment (reverted) (session 99, BE [DESIGN]) ✅
 

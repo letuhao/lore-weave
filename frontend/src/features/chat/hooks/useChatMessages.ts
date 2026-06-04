@@ -2,6 +2,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/auth';
 import { chatApi } from '../api';
 import type { ChatMessage, ToolCallRecord } from '../types';
+import { AgUiEventType } from './agUiEvents';
+import type {
+  CustomEvent as AgUiCustomEvent,
+  ReasoningMessageContentEvent,
+  RunErrorEvent,
+  RunFinishedEvent,
+  TextMessageContentEvent,
+  ToolCallResultEvent,
+  ToolCallStartEvent,
+} from './agUiEvents';
 
 type StreamStatus = 'idle' | 'streaming' | 'error';
 type StreamPhase = 'idle' | 'thinking' | 'responding';
@@ -20,7 +30,14 @@ export type OnMemoryMode = (mode: 'no_project' | 'static' | 'degraded') => void;
  * Unified hook: owns message list + SSE streaming for send/edit/regenerate.
  * Supports reasoning-delta (thinking) and text-delta (content) events.
  */
-export function useChatMessages(sessionId: string | null) {
+export function useChatMessages(
+  sessionId: string | null,
+  editorContext?: { book_id: string; chapter_id: string },
+  /** Editor "Compose" mode: send `disable_tools` so the server advertises no
+   *  tools this turn — the model writes prose to Apply manually (best for a
+   *  reasoning model). Tools stay off until the user flips back to Agent. */
+  composeMode?: boolean,
+) {
   const { accessToken } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -29,6 +46,9 @@ export function useChatMessages(sessionId: string | null) {
   const [streamPhase, setStreamPhase] = useState<StreamPhase>('idle');
   const [thinkingElapsed, setThinkingElapsed] = useState(0);
   const [streamStatus, setStreamStatus] = useState<StreamStatus>('idle');
+  // A2A phase-2: true while the in-turn composer model is drafting prose
+  // (compose_prose). Drives a transient "✍️ Drafting…" indicator.
+  const [isComposing, setIsComposing] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const thinkingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const thinkingStartRef = useRef<number>(0);
@@ -65,7 +85,15 @@ export function useChatMessages(sessionId: string | null) {
   // ── SSE streaming ─────────────────────────────────────────────────────────────
 
   const streamPost = useCallback(
-    async (content: string, editFromSequence?: number, thinking?: boolean): Promise<string> => {
+    async (
+      content: string,
+      editFromSequence?: number,
+      thinking?: boolean,
+      // ARCH-1 C6: when set, POST this descriptor instead of the messages
+      // endpoint (used by the resume / tool-result path). The consume loop is
+      // identical, so send + resume share all stream handling.
+      override?: { url: string; body: Record<string, unknown> },
+    ): Promise<string> => {
       if (!accessToken || !sessionId) throw new Error('Not ready');
 
       // Abort any in-progress stream
@@ -86,6 +114,14 @@ export function useChatMessages(sessionId: string | null) {
       // to the locally-appended assistantMessage so the indicator works
       // from the live stream without a refetch.
       const accumulatedToolCalls: ToolCallRecord[] = [];
+      // ARCH-1 C4: AG-UI frames a tool call across TOOL_CALL_START (carries the
+      // name) and TOOL_CALL_RESULT (carries ok). Hold the name by toolCallId
+      // between the two so the resolved record is {tool, ok} like the legacy
+      // `tool-call` event produced in one shot.
+      const openToolCalls = new Map<string, string>();
+      // ARCH-1 C6: accumulate TOOL_CALL_ARGS per id so a frontend tool's
+      // proposal payload (operation/text) reaches the chip.
+      const openToolArgs = new Map<string, string>();
       let streamMessageId: string | null = null;
       let streamUsage: { promptTokens?: number; completionTokens?: number } = {};
       let streamTiming: { responseTimeMs?: number; timeToFirstTokenMs?: number } = {};
@@ -112,14 +148,27 @@ export function useChatMessages(sessionId: string | null) {
         if (thinking != null) {
           body.thinking = thinking;
         }
+        // ARCH-1 C6: editor panel → advertise the write-back frontend tool +
+        // carry which chapter the assistant is editing.
+        if (editorContext) {
+          body.editor_context = editorContext;
+        }
+        // Compose mode: prose-only turn, no tool advertising (server-side gate).
+        if (composeMode) {
+          body.disable_tools = true;
+        }
 
-        const res = await fetch(chatApi.messagesUrl(sessionId), {
+        const res = await fetch(override?.url ?? chatApi.messagesUrl(sessionId), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${accessToken}`,
+            // ARCH-1 C4: request the AG-UI event protocol (chat-service C3).
+            // The backend defaults to the legacy vocabulary for any client
+            // that doesn't send this, so other consumers are unaffected.
+            'x-loreweave-stream-format': 'agui',
           },
-          body: JSON.stringify(body),
+          body: JSON.stringify(override?.body ?? body),
           signal: controller.signal,
         });
 
@@ -148,49 +197,134 @@ export function useChatMessages(sessionId: string | null) {
             if (payload === '[DONE]') continue;
 
             try {
-              const event = JSON.parse(payload);
-              if (event.type === 'reasoning-delta' && event.delta) {
-                if (accumulatedReasoning === '') {
-                  setStreamPhase('thinking');
-                  startThinkingTimer();
+              // ARCH-1 C4: the stream now speaks the AG-UI protocol (chat
+              // service C3). Map each AG-UI event onto the same internal
+              // accumulators/phases the legacy parser drove, so every
+              // consumer of this hook is unaffected. Framing-only events
+              // (TEXT_MESSAGE_START/END, REASONING_* boundaries,
+              // TOOL_CALL_ARGS/END) need no handling — the hook lazily
+              // transitions phase on the first content delta.
+              const event = JSON.parse(payload) as { type?: string };
+              switch (event.type) {
+                case AgUiEventType.REASONING_MESSAGE_CONTENT: {
+                  const delta = (event as ReasoningMessageContentEvent).delta;
+                  if (!delta) break;
+                  if (accumulatedReasoning === '') {
+                    setStreamPhase('thinking');
+                    startThinkingTimer();
+                  }
+                  accumulatedReasoning += delta;
+                  setStreamingReasoning(accumulatedReasoning);
+                  onStreamDeltaRef.current?.(delta, 'reasoning');
+                  break;
                 }
-                accumulatedReasoning += event.delta;
-                setStreamingReasoning(accumulatedReasoning);
-                onStreamDeltaRef.current?.(event.delta, 'reasoning');
-              } else if (event.type === 'text-delta' && event.delta) {
-                if (accumulatedContent === '' && accumulatedReasoning !== '') {
-                  // Transition from thinking → responding
-                  stopThinkingTimer();
-                  setStreamPhase('responding');
-                } else if (accumulatedContent === '') {
-                  setStreamPhase('responding');
+                case AgUiEventType.TEXT_MESSAGE_CONTENT: {
+                  const delta = (event as TextMessageContentEvent).delta;
+                  if (!delta) break;
+                  if (accumulatedContent === '' && accumulatedReasoning !== '') {
+                    // Transition from thinking → responding
+                    stopThinkingTimer();
+                    setStreamPhase('responding');
+                  } else if (accumulatedContent === '') {
+                    setStreamPhase('responding');
+                  }
+                  accumulatedContent += delta;
+                  setStreamingText(accumulatedContent);
+                  onStreamDeltaRef.current?.(delta, 'content');
+                  break;
                 }
-                accumulatedContent += event.delta;
-                setStreamingText(accumulatedContent);
-                onStreamDeltaRef.current?.(event.delta, 'content');
-              } else if (event.type === 'memory-mode' && event.mode) {
-                // K-CLEAN-5 (D-K8-04): chat-service emits this as the
-                // first SSE event of every turn so the FE can flip the
-                // header indicator before any tokens render. Mode is
-                // one of 'no_project' | 'static' | 'degraded'.
-                onMemoryModeRef.current?.(event.mode);
-              } else if (event.type === 'tool-call' && event.tool) {
-                // K21-C (D2): chat-service emits a `tool-call` event
-                // per memory tool invocation in the turn's tool loop.
-                // Accumulate {tool, ok} for the indicator. `ok`
-                // defaults to false so a malformed event degrades to a
-                // failed-call chip rather than a misleading success.
-                accumulatedToolCalls.push({
-                  tool: String(event.tool),
-                  ok: event.ok === true,
-                });
-              } else if (event.type === 'data' && event.data?.[0]) {
-                streamMessageId = event.data[0].message_id || null;
-              } else if (event.type === 'finish-message') {
-                streamUsage = event.usage || {};
-                streamTiming = event.timing || {};
-              } else if (event.type === 'error') {
-                throw new Error(event.errorText || 'Stream error');
+                case AgUiEventType.TOOL_CALL_START: {
+                  // Hold the tool name until its RESULT resolves (AG-UI frames
+                  // a tool call across START → … → RESULT).
+                  const e = event as ToolCallStartEvent;
+                  if (e.toolCallId) openToolCalls.set(e.toolCallId, e.toolCallName);
+                  break;
+                }
+                case AgUiEventType.TOOL_CALL_ARGS: {
+                  // ARCH-1 C6: accumulate args (one or more deltas) per id.
+                  const e = event as { toolCallId?: string; delta?: string };
+                  if (e.toolCallId) {
+                    openToolArgs.set(e.toolCallId, (openToolArgs.get(e.toolCallId) ?? '') + (e.delta ?? ''));
+                  }
+                  break;
+                }
+                case AgUiEventType.TOOL_CALL_RESULT: {
+                  // K21-C (D2): one chip per executed memory tool. The server
+                  // encodes the authoritative outcome as {ok, result|error}
+                  // inside content (chat-service C3) — we read `ok` directly
+                  // rather than inferring it from payload shape, so a tool
+                  // result that legitimately contains an "error" field can't be
+                  // misread as a failure.
+                  const e = event as ToolCallResultEvent;
+                  const tool = openToolCalls.get(e.toolCallId);
+                  if (tool === undefined) break; // RESULT without a START — skip
+                  openToolCalls.delete(e.toolCallId);
+                  let ok = true;
+                  try {
+                    const parsed = JSON.parse(e.content);
+                    if (parsed && typeof parsed === 'object' && parsed.ok === false) {
+                      ok = false;
+                    }
+                  } catch {
+                    // non-JSON content → treat as a successful opaque result
+                  }
+                  accumulatedToolCalls.push({ tool, ok });
+                  break;
+                }
+                case AgUiEventType.CUSTOM: {
+                  const e = event as AgUiCustomEvent;
+                  if (e.name === 'memoryMode') {
+                    // K-CLEAN-5 (D-K8-04): flip the header memory indicator.
+                    // Mode is 'no_project' | 'static' | 'degraded'.
+                    const mode = e.value?.mode;
+                    if (mode) onMemoryModeRef.current?.(mode as 'no_project' | 'static' | 'degraded');
+                  } else if (e.name === 'persisted') {
+                    // The saved message id (+ output id / has_reasoning).
+                    streamMessageId = (e.value?.messageId as string) || null;
+                  } else if (e.name === 'composing') {
+                    // A2A phase-2: the composer model is drafting (on/off).
+                    setIsComposing(!!e.value?.active);
+                  }
+                  break;
+                }
+                case AgUiEventType.RUN_FINISHED: {
+                  const result = (event as RunFinishedEvent).result as
+                    | (RunFinishedEvent['result'] & {
+                        status?: string;
+                        pendingToolCall?: { runId: string; toolCallId: string; toolName: string };
+                      })
+                    | undefined;
+                  streamUsage = result?.usage || {};
+                  streamTiming = result?.timing || {};
+                  // ARCH-1 C6: a suspended run — a frontend tool (propose_edit)
+                  // is awaiting the user's apply/dismiss. Record the pending
+                  // call + push a frontend-tool chip carrying the proposal args
+                  // so the UI can render Apply/Dismiss.
+                  if (result?.status === 'suspended' && result.pendingToolCall) {
+                    const p = result.pendingToolCall;
+                    let parsedArgs: Record<string, unknown> = {};
+                    try {
+                      parsedArgs = JSON.parse(openToolArgs.get(p.toolCallId) ?? '{}');
+                    } catch {
+                      parsedArgs = {};
+                    }
+                    accumulatedToolCalls.push({
+                      tool: p.toolName,
+                      ok: true,
+                      pending: true,
+                      runId: p.runId,
+                      toolCallId: p.toolCallId,
+                      args: parsedArgs,
+                    });
+                  }
+                  break;
+                }
+                case AgUiEventType.RUN_ERROR: {
+                  throw new Error((event as RunErrorEvent).message || 'Stream error');
+                }
+                // RUN_STARTED + all framing-only events: no-op.
+                default:
+                  break;
               }
             } catch (parseErr) {
               if (parseErr instanceof SyntaxError) continue;
@@ -254,9 +388,25 @@ export function useChatMessages(sessionId: string | null) {
         abortRef.current = null;
         setStreamingText('');
         setStreamingReasoning('');
+        setIsComposing(false);  // never leave the drafting indicator stuck on
       }
     },
-    [accessToken, sessionId, fetchMessages],
+    [accessToken, sessionId, fetchMessages, editorContext, composeMode],
+  );
+
+  // ── ARCH-1 C6: resume a suspended run after a frontend-tool decision ──────────
+  /** POST the outcome of a frontend tool (the user applied/dismissed a proposed
+   *  edit) to the resume endpoint and consume the agent's 2nd pass. Reuses the
+   *  full stream consumer via streamPost's override. */
+  const submitToolResult = useCallback(
+    (runId: string, toolCallId: string, outcome: 'applied' | 'dismissed', appliedText?: string) => {
+      if (!sessionId) return Promise.resolve('');
+      return streamPost('', undefined, undefined, {
+        url: chatApi.toolResultsUrl(sessionId),
+        body: { run_id: runId, tool_call_id: toolCallId, outcome, applied_text: appliedText },
+      });
+    },
+    [sessionId, streamPost],
   );
 
   // ── Public API ────────────────────────────────────────────────────────────────
@@ -346,12 +496,16 @@ export function useChatMessages(sessionId: string | null) {
     thinkingElapsed,
     streamStatus,
     isStreaming: streamStatus === 'streaming',
+    /** A2A phase-2: composer model is drafting prose this turn. */
+    isComposing,
     send,
     edit,
     regenerate,
     stop,
     refresh: fetchMessages,
     refreshBranch,
+    /** ARCH-1 C6: resume a suspended run with a frontend-tool outcome. */
+    submitToolResult,
     /** Set a callback to receive per-token deltas during streaming */
     onStreamDeltaRef,
     /** Set a callback for when streaming ends (success or abort) */

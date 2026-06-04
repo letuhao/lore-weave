@@ -30,6 +30,21 @@ class Settings(BaseSettings):
     # per-call timeout so a slow write doesn't ReadTimeout (D-K21B-06).
     knowledge_tool_timeout_s: float = 30.0
 
+    # ARCH-2 — MCP tool execution gate. When true, chat-service routes
+    # execute_tool() calls through the MCP client (mcp.client.streamable_http);
+    # false = legacy bespoke path (/internal/tools/execute). Default flipped to
+    # true (session 104 cont.7) after D-ARCH2-MCP-LIVE-SMOKE validated the real
+    # cross-process /mcp round-trip. DEPLOY PREREQUISITE: knowledge-service must
+    # ship the /mcp build (app/mcp/) or every tool call 404s — set
+    # USE_MCP_TOOLS=false to fall back to the bespoke path if needed.
+    use_mcp_tools: bool = True
+
+    # ARCH-1 C3 — default stream event format when a request sends no
+    # x-loreweave-stream-format header. "legacy" (LoreWeave SSE vocabulary) or
+    # "agui" (AG-UI protocol). Per-request header overrides this; the default
+    # stays "legacy" until the AG-UI frontend (C4) ships.
+    default_stream_format: str = "legacy"
+
     # D-T2-03 — degraded-mode fallback when knowledge-service is unreachable
     # or returns an error. Must agree with knowledge-service's Mode 1 + Mode 2
     # `recent_message_count` (which also defaults to 50). Both services read

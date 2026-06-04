@@ -42,6 +42,8 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
   const [userModels, setUserModels] = useState<UserModel[]>([]);
   const [selectedModelRef, setSelectedModelRef] = useState(session.model_ref);
   const [modelsLoading, setModelsLoading] = useState(false);
+  // A2A phase-2: optional composer model (in-turn prose delegation). '' = none.
+  const [selectedComposerRef, setSelectedComposerRef] = useState(session.composer_model_ref ?? '');
 
   // K9.1: project picker — drives knowledge-service memory mode for
   // this session. Only non-archived projects show in the dropdown so
@@ -204,6 +206,16 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
     patchSession({ model_source: 'user_model', model_ref: modelId });
   }
 
+  function handleComposerChange(modelId: string) {
+    // '' clears the composer (send explicit null so model_fields_set sees it).
+    const next = modelId || null;
+    setSelectedComposerRef(modelId);
+    patchSession({
+      composer_model_source: next ? 'user_model' : null,
+      composer_model_ref: next,
+    });
+  }
+
   function handleProjectChange(value: string) {
     // Empty string from the "No project" option clears the link.
     // Send explicit null so chat-service's model_fields_set sees it.
@@ -265,6 +277,36 @@ export function SessionSettingsPanel({ session, onSessionUpdate, onClose }: Sess
               ))}
             </select>
           )}
+        </div>
+
+        {/* ── Composer model (A2A phase-2: in-turn prose delegation) ───── */}
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+            {t('settings.composer_model', { defaultValue: 'Composer model (optional)' })}
+          </label>
+          {modelsLoading ? (
+            <div className="h-9 animate-pulse rounded-md bg-muted" />
+          ) : (
+            <select
+              value={selectedComposerRef}
+              onChange={(e) => handleComposerChange(e.target.value)}
+              className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground outline-none focus:border-ring focus:shadow-[0_0_0_3px_rgba(212,149,42,0.2)]"
+            >
+              <option value="">{t('settings.composer_none', { defaultValue: 'None — single model' })}</option>
+              {Object.entries(groupedModels).map(([provider, models]) => (
+                <optgroup key={provider} label={provider}>
+                  {models.map((m) => (
+                    <option key={m.user_model_id} value={m.user_model_id}>
+                      {m.alias ?? m.provider_model_name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          )}
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            {t('settings.composer_hint', { defaultValue: 'When set, the AI can delegate prose-writing to this model via compose_prose (best: a reasoning model for writing + a tool-capable main model).' })}
+          </p>
         </div>
 
         {/* ── Project (memory link) ──────────────────────────────────── */}
