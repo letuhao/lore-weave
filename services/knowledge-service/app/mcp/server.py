@@ -43,6 +43,7 @@ from uuid import UUID
 
 from mcp.server.fastmcp import Context as MCPContext
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 
 from app.clients.embedding_client import get_embedding_client
@@ -70,6 +71,14 @@ mcp_server = FastMCP(
     "knowledge-memory",
     stateless_http=True,
     streamable_http_path="/",
+    # ARCH-2 D-ARCH2-MCP-LIVE-SMOKE: this is an INTERNAL service-to-service MCP
+    # endpoint (chat-service → knowledge-service over the docker/private network,
+    # authed by X-Internal-Token). The MCP SDK's DNS-rebinding protection only
+    # allows localhost Host headers by default, so a cross-process call with
+    # Host "knowledge-service:8092" gets 421 Misdirected Request. Disable it —
+    # the trust boundary here is the private network + internal token, not the
+    # Host header (which matters for browser-facing servers, not this one).
+    transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
 )
 
 
