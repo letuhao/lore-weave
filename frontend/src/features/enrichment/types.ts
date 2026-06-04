@@ -447,6 +447,11 @@ export function classifyJobError(raw: string | null | undefined): {
 } {
   const text = (raw ?? '').trim();
   if (!text) return { key: null, raw: '' };
+  // slice B: a completed job that produced no proposals for lack of usable corpus
+  // grounding carries this prefixed NOTE (not an error) — map it to actionable copy.
+  if (/^insufficient_grounding:/i.test(text)) {
+    return { key: 'jobs.error.insufficientGrounding', raw: text };
+  }
   if (/gate-locked|gate has not cleared/i.test(text)) {
     return { key: 'jobs.error.gateLocked', raw: text };
   }

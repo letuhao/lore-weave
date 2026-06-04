@@ -38,16 +38,29 @@ from app.generation.provenance import (
 )
 from app.db.book_profile import NEUTRAL_PROFILE, BookProfile
 from app.gaps.model import is_zh, kind_label_for
-from app.generation.repair import RepairError, repair_generation
+from app.generation.repair import (
+    RepairError,
+    RepairReport,
+    _extract_json_object,
+    _load_json,
+    _strip_fence,
+    cjk_ratio,
+)
 from app.retrieval.strategy import GroundedProposal, GroundingRef
 from app.strategies.base import StrategyContext, Technique
 
 __all__ = [
     "CompleteFn",
     "GenerationError",
+    "InsufficientGroundingError",
     "SchemaGovernedGenerator",
     "build_generation_prompt",
 ]
+
+#: A dimension value must be at least this fraction CJK to count as grounded
+#: Chinese content (mirrors repair.py's gate — an English/garbage value for a
+#: Chinese dimension is treated as UNGROUNDED, never minted as a fact).
+_MIN_CJK_RATIO: float = 0.30
 
 
 #: The injected LLM-completion seam: (prompt, context) → raw model text. Bound to
@@ -65,6 +78,17 @@ class GenerationError(RuntimeError):
     error. A generation that cannot be repaired is REJECTED — never emitted as a
     partial / untagged fact.
     """
+
+
+class InsufficientGroundingError(GenerationError):
+    """Raised when the retrieved grounding supports NONE of the gap's dimensions
+    (LE-PROD slice B). Distinct from a generic :class:`GenerationError`: the model
+    DID respond, but — per the grounded-flag protocol — marked every dimension
+    ``grounded=false`` (the excerpts don't cover this entity). This is the
+    "未提及" case that previously produced a useless proposal full of refusal prose;
+    now the runner SKIPS the gap and surfaces an ACTIONABLE reason (paste context /
+    use fabrication). A subclass of GenerationError so existing skip handlers still
+    catch it; the runner checks the type to record the specific reason."""
 
 
 def build_generation_prompt(
@@ -87,7 +111,14 @@ def build_generation_prompt(
         f"［{i + 1}］（来源 {g.corpus_id}#{g.chunk_index}，相似度 {g.score}）{g.excerpt}"
         for i, g in enumerate(proposal.grounding)
     )
-    json_skeleton = ", ".join(f'"{d}": "……"' for d in dims)
+    # Grounded-flag shape (LE-PROD slice B): each dimension is an OBJECT carrying an
+    # explicit ``grounded`` boolean + ``content``. This lets the model SIGNAL that the
+    # excerpts don't cover a dimension (grounded=false, content="") instead of writing
+    # apologetic "未提及" prose that then surfaces as a useless proposal. Robust across
+    # languages/models (a structural flag, not a refusal-phrase string match).
+    json_skeleton = ", ".join(
+        f'"{d}": {{"grounded": true, "content": "……"}}' for d in dims
+    )
     kind_label = kind_label or kind_label_for(proposal.entity_kind, profile.language)
     worldview = (profile.worldview or "").strip()
 
@@ -104,8 +135,11 @@ def build_generation_prompt(
             f"要求：\n"
             f"1. 内容必须为中文{voice_clause}；\n"
             f"2. 严禁编造检索片段未支持的事实；\n"
-            f"3. 仅输出一个 JSON 对象，键为上述维度名，值为对应中文描述，"
-            f"不要输出任何额外说明。\n\n"
+            f"3. 逐维度判断：若检索片段确有依据，则该维度 grounded 设为 true 并在 "
+            f"content 填写中文描述；若片段未提供依据，则 grounded 设为 false 且 content "
+            f"留空字符串。切勿臆造、致歉或写「未提及」之类的说明文字；\n"
+            f"4. 仅输出一个 JSON 对象，键为上述维度名，值为形如 "
+            f'{{"grounded": true/false, "content": "中文描述"}} 的对象，不要输出任何额外说明。\n\n'
             f"检索到的依据：\n{grounding_block}\n\n"
             f"请输出 JSON：{{{json_skeleton}}}"
         )
@@ -123,11 +157,85 @@ def build_generation_prompt(
         f"Rules:\n"
         f"1. Write in {lang_name}{voice_clause};\n"
         f"2. Do NOT invent facts the excerpts do not support;\n"
-        f"3. Output ONLY a single JSON object, keyed by the dimension names above, "
-        f"with no extra commentary.\n\n"
+        f"3. For EACH dimension decide: if the excerpts support it, set grounded=true "
+        f"and fill content; if they do NOT, set grounded=false and content=\"\". Do not "
+        f"apologize, explain, or write 'not mentioned' — just set the flag;\n"
+        f"4. Output ONLY a single JSON object keyed by the dimension names, each value "
+        f'an object {{"grounded": true/false, "content": "…"}}, with no extra commentary.\n\n'
         f"Retrieved evidence:\n{grounding_block}\n\n"
         f"Output JSON: {{{json_skeleton}}}"
     )
+
+
+def parse_grounded_output(
+    raw: str, expected_keys: list[str]
+) -> tuple[dict[str, str], list[str]]:
+    """Parse generation output into ``(grounded, ungrounded)`` (LE-PROD slice B).
+
+    Returns ``grounded`` = {dimension: content} for dimensions the model GROUNDED
+    (flag true + non-empty + sufficiently-CJK content), and ``ungrounded`` = the
+    dimensions it could not support. TOLERANT of two shapes so a non-compliant model
+    never crashes the pipeline:
+
+      * grounded-flag (preferred): ``{"dim": {"grounded": bool, "content": str}}``,
+      * legacy flat: ``{"dim": "content"}`` (a non-empty CJK string ⇒ grounded).
+
+    A dimension is UNGROUNDED when: ``grounded=false``, the key is missing, content
+    is empty, or content is non-Chinese (low-CJK — English-leakage / garbage; never
+    minted as a fact). Reuses the deterministic JSON recovery from ``repair`` (fence
+    / surrounding-prose / trailing-comma tolerant). Raises :class:`GenerationError`
+    only when NO JSON object can be recovered at all (truly unusable output)."""
+    report = RepairReport()
+    try:
+        text = _strip_fence(raw, report)
+        obj_text = _extract_json_object(text, report)
+        data = _load_json(obj_text, report)
+    except RepairError as exc:
+        raise GenerationError(f"generation output is unusable: {exc}") from exc
+
+    grounded: dict[str, str] = {}
+    ungrounded: list[str] = []
+    for key in expected_keys:  # C6 declaration order
+        content, claimed = _dimension_value(data.get(key))
+        if claimed and content and cjk_ratio(content) >= _MIN_CJK_RATIO:
+            grounded[key] = content
+        else:
+            ungrounded.append(key)
+    return grounded, ungrounded
+
+
+def _truthy_grounded(flag: object) -> bool:
+    """Interpret the ``grounded`` flag robustly (review-impl #3). A real JSON bool
+    passes through; a STRING flag (`"false"`/`"no"`/`"0"` — a model that quoted the
+    bool) is honored as false rather than being truthy-by-accident. Anything else
+    falls back to the value's own truthiness."""
+    if isinstance(flag, str):
+        return flag.strip().lower() not in ("false", "no", "0", "")
+    return bool(flag)
+
+
+def _dimension_value(v: object) -> tuple[str, bool]:
+    """Normalize one dimension's raw value to ``(content, claimed_grounded)``.
+
+    ``{"grounded","content"}`` → the explicit flag + content; a bare string →
+    grounded iff non-empty (legacy tolerance); a scalar → coerced + grounded; a
+    list → ``、``-joined; anything else / None → ungrounded. The CJK gate is applied
+    by the caller, so a low-CJK 'grounded' value still ends up ungrounded."""
+    if isinstance(v, dict):
+        content = v.get("content")
+        text = str(content).strip() if isinstance(content, (str, int, float)) else ""
+        return text, _truthy_grounded(v.get("grounded", True))
+    if isinstance(v, str):
+        t = v.strip()
+        return t, bool(t)
+    if isinstance(v, bool):  # bool before int (bool is an int subclass)
+        return "", False
+    if isinstance(v, (int, float)):
+        return str(v).strip(), True
+    if isinstance(v, list):
+        joined = "、".join(str(x).strip() for x in v if str(x).strip())
+        return joined, bool(joined)
+    return "", False
 
 
 def _source_refs_from_grounding(grounding: list[GroundingRef]) -> list[SourceRef]:
@@ -197,17 +305,24 @@ class SchemaGovernedGenerator:
         prompt = build_generation_prompt(proposal, context.profile)
         raw = await self._complete(prompt, context)
 
-        try:
-            repaired, _report = repair_generation(raw, expected_keys=expected_keys)
-        except RepairError as exc:
-            raise GenerationError(
-                f"generation for {proposal.canonical_name!r} unrepairable: {exc}"
-            ) from exc
+        # Grounded-flag parse (slice B): keep ONLY dimensions the model grounded;
+        # a dimension it could not support from the excerpts is dropped (never
+        # minted as a "未提及" fact). If NONE are grounded the gap has no usable
+        # corpus grounding → InsufficientGroundingError (the runner skips it with an
+        # actionable reason, rather than surfacing an empty proposal).
+        grounded, ungrounded = parse_grounded_output(raw, expected_keys)
+        if not grounded:
+            raise InsufficientGroundingError(
+                f"retrieval grounding did not support any dimension of "
+                f"{proposal.canonical_name!r} (excerpts do not cover it) — "
+                "paste reference context or use fabrication"
+            )
 
         technique = proposal.technique or Technique.RETRIEVAL.value
         facts: list[EnrichedFact] = []
         for dimension in expected_keys:  # C6 declaration order, deterministic
-            content = repaired[dimension]
+            if dimension not in grounded:
+                continue  # ungrounded → not enough evidence; dropped (slice B)
             facts.append(
                 make_enriched_fact(
                     user_id=proposal.user_id,
@@ -216,7 +331,7 @@ class SchemaGovernedGenerator:
                     canonical_name=proposal.canonical_name,
                     target_ref=proposal.target_ref,
                     dimension=dimension,
-                    content=content,
+                    content=grounded[dimension],
                     technique=technique,
                     source_refs=source_refs,
                     model_ref=context.model_ref,
@@ -225,6 +340,13 @@ class SchemaGovernedGenerator:
                     extra_provenance={
                         "source_proposal_technique": proposal.technique,
                         "grounding_count": len(proposal.grounding),
+                        # slice B: which dims the excerpts could NOT support + the
+                        # fraction grounded — surfaced so a reviewer sees the gap
+                        # was only partially fillable from the corpus.
+                        "ungrounded_dimensions": ungrounded,
+                        "grounding_strength": round(
+                            len(grounded) / len(expected_keys), 4
+                        ),
                     },
                 )
             )

@@ -277,7 +277,8 @@
     },
     "error": {
       "gateLocked": "已被評估閘門鎖定 — 請先執行 enrichment 評估。",
-      "internal": "增益失敗（內部錯誤）。停留滑鼠以檢視細節。"
+      "internal": "增益失敗（內部錯誤）。停留滑鼠以檢視細節。",
+      "insufficientGrounding": "這些實體沒有可用的語料佐證 — 請貼上參考文本或使用 Fabrication。"
     }
   },
   "settings": {

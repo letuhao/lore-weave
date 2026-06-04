@@ -126,10 +126,22 @@ describe('JobsPanel', () => {
     expect(screen.getByTestId('job-error-job-1')).toHaveTextContent(raw);
   });
 
-  it('does NOT show an error line for a non-failed job', () => {
+  it('does NOT show an error line for a completed job with no message', () => {
     jobsStub.items = [J({ status: 'completed', error_message: null })];
     renderPanel();
     expect(screen.queryByTestId('job-error-job-1')).toBeNull();
+  });
+
+  it('shows the slice-B insufficient-grounding note on a COMPLETED job as muted info (not error)', () => {
+    jobsStub.items = [
+      J({ status: 'completed', error_message: 'insufficient_grounding: 2 gap(s) — paste context or use fabrication' }),
+    ];
+    renderPanel();
+    const el = screen.getByTestId('job-error-job-1');
+    expect(el).toHaveTextContent('jobs.error.insufficientGrounding');
+    // a note on a non-failed job is muted, NOT destructive-red
+    expect(el.className).toContain('text-muted-foreground');
+    expect(el.className).not.toContain('text-destructive');
   });
 
   it('shows spent-vs-cap when a cost cap is set (#5)', () => {

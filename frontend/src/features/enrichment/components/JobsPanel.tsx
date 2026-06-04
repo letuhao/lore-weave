@@ -55,14 +55,18 @@ export function JobsPanel() {
                   variant={VARIANT[j.status] ?? 'pending'}
                   label={t(`jobs.status.${j.status}`, { defaultValue: j.status })}
                 />
-                {/* #4 + LE-PROD: surface WHY a job failed, but a raw exception repr
-                    (KeyError: <EntityKind…>) is mapped to a friendly line — the raw
-                    text stays in the hover title for debugging/audit. */}
-                {j.status === 'failed' && j.error_message && (() => {
+                {/* #4 + LE-PROD: surface WHY a job failed (red) OR an actionable
+                    note on a non-failed job (muted info — e.g. slice-B insufficient
+                    grounding on a completed run). A raw exception repr is mapped to a
+                    friendly line; the raw text stays in the hover title for audit. */}
+                {j.error_message && (() => {
                   const e = classifyJobError(j.error_message);
+                  const isError = j.status === 'failed';
                   return (
                     <p
-                      className="mt-1 max-w-[16rem] text-[10px] text-destructive"
+                      className={`mt-1 max-w-[16rem] text-[10px] ${
+                        isError ? 'text-destructive' : 'text-muted-foreground'
+                      }`}
                       data-testid={`job-error-${j.job_id}`}
                       title={e.raw}
                     >

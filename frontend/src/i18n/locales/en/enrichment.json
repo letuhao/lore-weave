@@ -277,7 +277,8 @@
     },
     "error": {
       "gateLocked": "Locked by the eval gate — run the enrichment eval first.",
-      "internal": "Enrichment failed (internal error). Hover for details."
+      "internal": "Enrichment failed (internal error). Hover for details.",
+      "insufficientGrounding": "No usable corpus grounding for these entities — paste reference context or use Fabrication."
     }
   },
   "settings": {

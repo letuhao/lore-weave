@@ -19,7 +19,11 @@ from __future__ import annotations
 import pytest
 
 from app.gaps.model import Dimension, EntityKind, Gap, dimensions_for
-from app.generation.generate import GenerationError, SchemaGovernedGenerator
+from app.generation.generate import (
+    GenerationError,
+    InsufficientGroundingError,
+    SchemaGovernedGenerator,
+)
 from app.jobs.cost import GapCostModel, JobCostBudget
 from app.jobs.events import JobEventEmitter, JobEventType
 from app.jobs.proposal_store import InMemoryProposalStore
@@ -524,6 +528,38 @@ async def test_generation_error_surfaces_as_skip():
     assert outcome.final_state == "completed"
     assert outcome.proposals == []
     assert outcome.skipped_gaps == ["loc:蓬萊"]
+
+
+# ── slice B: a grounding-starved gap is skipped with an ACTIONABLE completion note
+
+
+async def test_insufficient_grounding_skips_with_actionable_note():
+    store = InMemoryProposalStore()
+
+    class _AlwaysInsufficient(SchemaGovernedGenerator):
+        async def generate(self, proposal, context):
+            raise InsufficientGroundingError("excerpts do not cover it")
+
+    pipeline = GapPipeline(
+        retrieval=_FakeRetrieval(),
+        generator=_AlwaysInsufficient(complete=_const_complete("{}")),
+        verifier=_verifier(),
+    )
+    runner = JobRunner(
+        store=store, pipeline=pipeline, cost_strategy=TemplateStrategy(),
+        emitter=_emitter(), budget=JobCostBudget(None),
+    )
+    outcome = await runner.run_job(
+        job_id="job-1", gaps=[_gap("蓬萊")], context=_ctx()
+    )
+    assert outcome.final_state == "completed"
+    assert outcome.proposals == []
+    # tracked both as a generic skip AND as the specific grounding-starved reason
+    assert outcome.skipped_gaps == ["loc:蓬萊"]
+    assert outcome.insufficient_grounding_gaps == ["loc:蓬萊"]
+    # the job carries an actionable note the FE maps to guidance (prefix is stable)
+    assert store.jobs["job-1"]["status"] == "completed"
+    assert store.jobs["job-1"]["error_message"].startswith("insufficient_grounding:")
 
 
 # ── C3: an EGREGIOUS proposal is AUTO-REJECTED (persisted rejected, not surfaced)

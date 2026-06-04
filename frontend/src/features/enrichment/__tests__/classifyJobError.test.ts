@@ -33,6 +33,14 @@ describe('classifyJobError', () => {
     expect(classifyJobError(raw)).toEqual({ key: 'jobs.error.internal', raw });
   });
 
+  it('maps the slice-B insufficient_grounding note to actionable copy', () => {
+    const raw = 'insufficient_grounding: 2 gap(s) had no usable corpus grounding — paste reference context or use fabrication';
+    expect(classifyJobError(raw)).toEqual({
+      key: 'jobs.error.insufficientGrounding',
+      raw,
+    });
+  });
+
   it('shows an already-human message verbatim (key=null)', () => {
     for (const raw of [
       'no gaps to enrich (all targets fully described)',

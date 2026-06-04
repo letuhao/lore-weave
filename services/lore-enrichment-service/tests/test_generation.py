@@ -13,6 +13,7 @@ import pytest
 
 from app.generation.generate import (
     GenerationError,
+    InsufficientGroundingError,
     SchemaGovernedGenerator,
     build_generation_prompt,
 )
@@ -128,23 +129,78 @@ async def test_unrepairable_completion_raises_generation_error():
 
 
 @pytest.mark.asyncio
-async def test_missing_dimension_in_completion_raises():
-    raw = '{"历史": "上古仙居。", "地理": "东海之中。"}'  # 文化 missing
+async def test_missing_dimension_is_ungrounded_not_fatal():
+    # slice B: a dimension absent from the output is now treated as UNGROUNDED
+    # (the excerpts didn't cover it) — the grounded dims still produce facts; the
+    # whole gap is no longer failed. (Old behavior raised on any missing key.)
+    raw = '{"历史": "上古仙居。", "地理": "东海之中。"}'  # 文化 absent → ungrounded
     gen = SchemaGovernedGenerator(complete=_const_complete(raw))
-    with pytest.raises(GenerationError):
-        await gen.generate(_proposal(), _ctx())
+    facts = await gen.generate(_proposal(), _ctx())
+    assert [f.dimension for f in facts] == ["历史", "地理"]  # 文化 dropped, not fatal
+    assert facts[0].provenance["ungrounded_dimensions"] == ["文化"]
+    assert facts[0].provenance["grounding_strength"] == round(2 / 3, 4)
 
 
 @pytest.mark.asyncio
-async def test_english_leakage_completion_raises():
+async def test_english_leakage_dimension_is_dropped_not_minted():
+    # slice B: an English-leakage (low-CJK) value is UNGROUNDED — dropped, never
+    # minted as a fact (H0-safe: no non-Chinese fact emitted) — the Chinese dims
+    # still produce facts. (Old behavior failed the whole gap.)
     raw = (
         '{"历史": "Penglai is a legendary immortal isle since ancient times in '
         'the eastern sea, home to many sages.", '
         '"地理": "东海之中。", "文化": "重道法。"}'
     )
     gen = SchemaGovernedGenerator(complete=_const_complete(raw))
-    with pytest.raises(GenerationError):
+    facts = await gen.generate(_proposal(), _ctx())
+    assert [f.dimension for f in facts] == ["地理", "文化"]  # English 历史 dropped
+    assert all(f.content for f in facts)
+
+
+@pytest.mark.asyncio
+async def test_all_ungrounded_raises_insufficient_grounding():
+    # slice B: the model marks EVERY dimension grounded=false (the "未提及" case) →
+    # no usable grounding → InsufficientGroundingError (the runner skips with an
+    # actionable reason instead of surfacing an empty proposal).
+    raw = (
+        '{"历史": {"grounded": false, "content": ""}, '
+        '"地理": {"grounded": false, "content": ""}, '
+        '"文化": {"grounded": false, "content": ""}}'
+    )
+    gen = SchemaGovernedGenerator(complete=_const_complete(raw))
+    with pytest.raises(InsufficientGroundingError):
         await gen.generate(_proposal(), _ctx())
+
+
+@pytest.mark.asyncio
+async def test_grounded_flag_as_string_false_is_honored():
+    # review-impl #3: a model that quotes the bool ("grounded": "false") must be
+    # read as UNGROUNDED, not truthy-by-accident. Here 历史 is string-"false" → drop;
+    # 地理/文化 string-"true" → kept.
+    raw = (
+        '{"历史": {"grounded": "false", "content": "蓬萊上古仙居。"}, '
+        '"地理": {"grounded": "true", "content": "东海之中。"}, '
+        '"文化": {"grounded": "true", "content": "重道法。"}}'
+    )
+    gen = SchemaGovernedGenerator(complete=_const_complete(raw))
+    facts = await gen.generate(_proposal(), _ctx())
+    assert [f.dimension for f in facts] == ["地理", "文化"]  # string-"false" 历史 dropped
+
+
+@pytest.mark.asyncio
+async def test_grounded_flag_partial_keeps_only_grounded_dims():
+    # slice B: the grounded-flag shape — 历史 grounded, 地理/文化 not → 1 fact, and
+    # the provenance records the ungrounded dims + the grounding-strength fraction.
+    raw = (
+        '{"历史": {"grounded": true, "content": "蓬萊自上古为仙人所居。"}, '
+        '"地理": {"grounded": false, "content": ""}, '
+        '"文化": {"grounded": false, "content": ""}}'
+    )
+    gen = SchemaGovernedGenerator(complete=_const_complete(raw))
+    facts = await gen.generate(_proposal(), _ctx())
+    assert [f.dimension for f in facts] == ["历史"]
+    assert facts[0].provenance["ungrounded_dimensions"] == ["地理", "文化"]
+    assert facts[0].provenance["grounding_strength"] == round(1 / 3, 4)
 
 
 @pytest.mark.asyncio

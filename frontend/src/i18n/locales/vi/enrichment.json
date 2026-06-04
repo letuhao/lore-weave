@@ -277,7 +277,8 @@
     },
     "error": {
       "gateLocked": "Bị khoá bởi eval gate — chạy eval enrichment trước.",
-      "internal": "Enrichment lỗi (lỗi nội bộ). Di chuột để xem chi tiết."
+      "internal": "Enrichment lỗi (lỗi nội bộ). Di chuột để xem chi tiết.",
+      "insufficientGrounding": "Chưa có nguồn corpus phù hợp cho các thực thể này — hãy paste context hoặc dùng Fabrication."
     }
   },
   "settings": {
