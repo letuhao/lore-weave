@@ -274,6 +274,10 @@
       "completed": "Completed",
       "failed": "Failed",
       "cancelled": "Cancelled"
+    },
+    "error": {
+      "gateLocked": "Locked by the eval gate — run the enrichment eval first.",
+      "internal": "Enrichment failed (internal error). Hover for details."
     }
   },
   "settings": {

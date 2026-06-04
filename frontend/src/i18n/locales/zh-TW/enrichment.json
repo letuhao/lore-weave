@@ -274,6 +274,10 @@
       "completed": "已完成",
       "failed": "失敗",
       "cancelled": "已取消"
+    },
+    "error": {
+      "gateLocked": "已被評估閘門鎖定 — 請先執行 enrichment 評估。",
+      "internal": "增益失敗（內部錯誤）。停留滑鼠以檢視細節。"
     }
   },
   "settings": {

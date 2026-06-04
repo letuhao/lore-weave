@@ -274,6 +274,10 @@
       "completed": "Hoàn tất",
       "failed": "Lỗi",
       "cancelled": "Đã huỷ"
+    },
+    "error": {
+      "gateLocked": "Bị khoá bởi eval gate — chạy eval enrichment trước.",
+      "internal": "Enrichment lỗi (lỗi nội bộ). Di chuột để xem chi tiết."
     }
   },
   "settings": {

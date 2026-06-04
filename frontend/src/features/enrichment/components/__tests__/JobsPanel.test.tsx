@@ -100,10 +100,30 @@ describe('JobsPanel', () => {
     expect(screen.getByText('P1 · template')).toBeInTheDocument();
   });
 
-  it('surfaces a failed job error_message (#4)', () => {
-    jobsStub.items = [J({ status: 'failed', error_message: 'refused: technique gate-locked' })];
+  it('maps a gate-locked failure to the friendly i18n key, keeping the raw in the title (#4, LE-PROD)', () => {
+    const raw = "refused: technique 'fabrication' gate-locked (eval not cleared)";
+    jobsStub.items = [J({ status: 'failed', error_message: raw })];
     renderPanel();
-    expect(screen.getByTestId('job-error-job-1')).toHaveTextContent('refused: technique gate-locked');
+    const el = screen.getByTestId('job-error-job-1');
+    expect(el).toHaveTextContent('jobs.error.gateLocked');
+    expect(el).toHaveAttribute('title', raw); // raw preserved for debugging/audit
+  });
+
+  it('maps a raw exception repr to a generic internal-error line (no scary traceback shown)', () => {
+    const raw = "KeyError: <EntityKind.CHARACTER: 'character'>";
+    jobsStub.items = [J({ status: 'failed', error_message: raw })];
+    renderPanel();
+    const el = screen.getByTestId('job-error-job-1');
+    expect(el).toHaveTextContent('jobs.error.internal');
+    expect(el).not.toHaveTextContent('EntityKind'); // the raw repr is NOT the primary text
+    expect(el).toHaveAttribute('title', raw); // but still inspectable on hover
+  });
+
+  it('shows an already-human error message verbatim (no over-mapping)', () => {
+    const raw = 'no gaps to enrich (all targets fully described)';
+    jobsStub.items = [J({ status: 'failed', error_message: raw })];
+    renderPanel();
+    expect(screen.getByTestId('job-error-job-1')).toHaveTextContent(raw);
   });
 
   it('does NOT show an error line for a non-failed job', () => {

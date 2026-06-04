@@ -432,6 +432,32 @@ export function tierOf(technique: string): Tier {
   return 'P1';
 }
 
+/** Classify a job's raw `error_message` for display (LE-PROD slice A).
+ *
+ * The backend persists a raw, audit-grade message — for a gate refusal it is
+ * human ("refused: technique 'fabrication' gate-locked (…)"), but an unexpected
+ * exception is a raw Python repr ("KeyError: <EntityKind.CHARACTER: 'character'>")
+ * that must NEVER be a user's primary text. This pure classifier returns an i18n
+ * key for known/internal causes (the component translates it) plus the raw string
+ * (kept for the hover title / audit), so the view stays render-only. `key === null`
+ * means the message is already human-friendly — show it verbatim. */
+export function classifyJobError(raw: string | null | undefined): {
+  key: string | null;
+  raw: string;
+} {
+  const text = (raw ?? '').trim();
+  if (!text) return { key: null, raw: '' };
+  if (/gate-locked|gate has not cleared/i.test(text)) {
+    return { key: 'jobs.error.gateLocked', raw: text };
+  }
+  // A raw exception repr (TypeName: … / Traceback / an enum repr) is an INTERNAL
+  // error — surface a generic, non-alarming line; the raw text stays in the title.
+  if (/^[A-Z]\w*(Error|Exception):/.test(text) || /Traceback|<\w+\.\w+:/.test(text)) {
+    return { key: 'jobs.error.internal', raw: text };
+  }
+  return { key: null, raw: text }; // already a human message → show as-is
+}
+
 /** The default-deny admissible licenses for recook (everything else is refused). */
 export function isRecookable(license: string): boolean {
   return (

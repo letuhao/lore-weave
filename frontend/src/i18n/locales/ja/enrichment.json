@@ -274,6 +274,10 @@
       "completed": "完了",
       "failed": "失敗",
       "cancelled": "キャンセル"
+    },
+    "error": {
+      "gateLocked": "評価ゲートによりロックされています — まず enrichment 評価を実行してください。",
+      "internal": "エンリッチメントが失敗しました（内部エラー）。詳細はホバーで表示。"
     }
   },
   "settings": {

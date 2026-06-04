@@ -3,7 +3,7 @@ import { RotateCw } from 'lucide-react';
 import { Skeleton, StatusBadge } from '@/components/shared';
 import { useEnrichmentJobs } from '../hooks/useEnrichmentJobs';
 import { useEnrichmentContext } from '../context/EnrichmentContext';
-import { tierOf } from '../types';
+import { tierOf, classifyJobError } from '../types';
 
 /** Job list + status + resume (the cost-cap-paused jobs the background worker
  *  re-drives). Polls while a job is active. */
@@ -55,16 +55,21 @@ export function JobsPanel() {
                   variant={VARIANT[j.status] ?? 'pending'}
                   label={t(`jobs.status.${j.status}`, { defaultValue: j.status })}
                 />
-                {/* #4: a failed job carries WHY it failed (e.g. gate-locked) — surface it. */}
-                {j.status === 'failed' && j.error_message && (
-                  <p
-                    className="mt-1 max-w-[16rem] text-[10px] text-destructive"
-                    data-testid={`job-error-${j.job_id}`}
-                    title={j.error_message}
-                  >
-                    {j.error_message}
-                  </p>
-                )}
+                {/* #4 + LE-PROD: surface WHY a job failed, but a raw exception repr
+                    (KeyError: <EntityKind…>) is mapped to a friendly line — the raw
+                    text stays in the hover title for debugging/audit. */}
+                {j.status === 'failed' && j.error_message && (() => {
+                  const e = classifyJobError(j.error_message);
+                  return (
+                    <p
+                      className="mt-1 max-w-[16rem] text-[10px] text-destructive"
+                      data-testid={`job-error-${j.job_id}`}
+                      title={e.raw}
+                    >
+                      {e.key ? t(e.key) : e.raw}
+                    </p>
+                  );
+                })()}
               </td>
               <td className="px-3 py-2 font-mono text-xs">{j.proposals_total}</td>
               {/* #5: spent vs cap — the cost-cap-pause is the panel's whole point. */}
