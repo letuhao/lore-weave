@@ -76,6 +76,7 @@ async def stream_draft(
     messages: list[dict[str, Any]], prompt_token_estimate: int,
     max_output_tokens: int, hard_cap_output: int | None = None,
     temperature: float = 0.7, trace_id: str | None = None,
+    reasoning_effort: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Async generator of stream events for the router to relay as SSE:
       {"type":"token","delta":...} · {"type":"reasoning","delta":...}
@@ -86,6 +87,10 @@ async def stream_draft(
         model_source=model_source, model_ref=model_ref, messages=messages,
         temperature=temperature, max_tokens=max_output_tokens or None,
         trace_id=trace_id,
+        # Expose the reasoning knob (model-default when None). reasoning_effort
+        # ="none" disables hidden thinking on reasoning-model drafters so the
+        # whole budget doesn't get spent on reasoning_tokens (empty ghost).
+        reasoning_effort=reasoning_effort,
     )
     parts: list[str] = []
     measured = False

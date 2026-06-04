@@ -17,6 +17,7 @@ class FakeSDK:
 
     async def stream(self, req, *, user_id):
         self.last_user = user_id
+        self.last_req = req
         for i, ev in enumerate(self._events):
             if self._raise_after is not None and i == self._raise_after:
                 raise LLMError("gateway dropped")
@@ -32,6 +33,21 @@ async def _collect(sdk, **kw):
                   max_output_tokens=256)
     params.update(kw)
     return [e async for e in cowrite.stream_draft(sdk, **params)]
+
+
+# ── reasoning knob ──
+
+async def test_reasoning_effort_threaded_into_stream_request():
+    sdk = FakeSDK([TokenEvent(delta="x"), UsageEvent(input_tokens=1, output_tokens=1), DoneEvent()])
+    await _collect(sdk, reasoning_effort="none")
+    assert sdk.last_req.reasoning_effort == "none"
+
+
+async def test_reasoning_effort_defaults_to_model_default():
+    sdk = FakeSDK([TokenEvent(delta="x"), UsageEvent(input_tokens=1, output_tokens=1), DoneEvent()])
+    await _collect(sdk)  # not passed → None (model default), absent from the wire
+    assert sdk.last_req.reasoning_effort is None
+    assert "reasoning_effort" not in sdk.last_req.to_request_body()
 
 
 # ── metering ──

@@ -502,6 +502,25 @@ components:
             qwen3.x): this caps `output + reasoning` combined; set high
             (≥16k) when prompting a thinking model with substantial input.
           nullable: true
+        reasoning_effort:
+          type: string
+          enum: [none, low, medium, high]
+          description: |
+            Optional reasoning-budget knob, forwarded to the provider as-is.
+            Use `"none"` to DISABLE hidden thinking on reasoning models
+            (Qwen3.x, DeepSeek-R1, abliterated variants) so `reasoning_tokens`
+            don't burn the output budget and return empty prose/JSON — the
+            cross-provider thinking-off switch (verified LM Studio + Qwen3.6;
+            OpenAI o1/o3 accept low/medium/high). Omit to use the model default.
+          nullable: true
+        chat_template_kwargs:
+          type: object
+          additionalProperties: true
+          description: |
+            Optional llama.cpp/vLLM chat-template kwargs forwarded as-is, e.g.
+            `{"enable_thinking": false}`. A no-op for models that only honor
+            `reasoning_effort`; kept for those that read the template flag.
+          nullable: true
         stream_format:
           $ref: '#/components/schemas/StreamFormat'
         trace_id:

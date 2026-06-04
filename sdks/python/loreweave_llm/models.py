@@ -111,6 +111,14 @@ StreamEvent = Annotated[
 
 ModelSource = Literal["user_model", "platform_model"]
 StreamFormat = Literal["openai", "anthropic", "vercel-ai-ui-v1"]
+# Reasoning-budget knob, forwarded as-is to the provider. The cross-provider way
+# to DISABLE hidden thinking on reasoning models (Qwen3.x, DeepSeek-R1, abliterated
+# variants) is `reasoning_effort="none"` — verified for LM Studio + Qwen3.6; OpenAI
+# o1/o3 accept low/medium/high. Without it, reasoning_tokens silently burn the
+# output budget and the prose/JSON comes back empty (the streaming co-write +
+# extraction footgun). Companion: `chat_template_kwargs={"enable_thinking": False}`
+# (llama.cpp/vLLM toggle; a no-op for models that only honor reasoning_effort).
+ReasoningEffort = Literal["none", "low", "medium", "high"]
 
 
 class StreamRequest(BaseModel):
@@ -128,6 +136,12 @@ class StreamRequest(BaseModel):
     tool_choice: dict[str, Any] | str | None = None
     temperature: float = 0.0
     max_tokens: int | None = None
+    # Reasoning controls — forwarded to the provider unchanged (the gateway's
+    # forwardOptionalChatFields allowlist). Set `reasoning_effort="none"` to turn
+    # OFF hidden thinking on reasoning models so reasoning_tokens don't eat the
+    # output budget (empty prose otherwise). Omitted from the wire when None.
+    reasoning_effort: ReasoningEffort | None = None
+    chat_template_kwargs: dict[str, Any] | None = None
     stream_format: StreamFormat = "openai"
     trace_id: str | None = None
 

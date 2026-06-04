@@ -60,6 +60,7 @@ from loreweave_llm.models import (
     ErrorEvent,
     ImageGenDataItem,
     ImageGenResult,
+    ReasoningEffort,
     ReasoningEvent,
     SttInput,
     SttResult,
@@ -78,6 +79,7 @@ __all__ = [
     "Client",
     # Models
     "StreamRequest",
+    "ReasoningEffort",
     "StreamEvent",
     "TokenEvent",
     "ReasoningEvent",

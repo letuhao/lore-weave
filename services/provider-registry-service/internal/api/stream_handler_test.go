@@ -23,6 +23,42 @@ import (
 	"github.com/loreweave/provider-registry-service/internal/provider"
 )
 
+// TestBuildChatStreamInput_ForwardsReasoningControls — regression-lock for the
+// reasoning-control standardization: when a StreamRequest carries reasoning_effort
+// / chat_template_kwargs, buildChatStreamInput MUST thread them into the adapter
+// input (forwardOptionalChatFields then forwards them upstream). Without this the
+// streaming co-write drafter can't disable thinking and reasoning_tokens burn the
+// whole budget → empty prose.
+func TestBuildChatStreamInput_ForwardsReasoningControls(t *testing.T) {
+	effort := "none"
+	in := streamRequest{
+		Messages:           []map[string]any{{"role": "user", "content": "hi"}},
+		ReasoningEffort:    &effort,
+		ChatTemplateKwargs: map[string]any{"enable_thinking": false},
+	}
+	got := buildChatStreamInput(in)
+	if got["reasoning_effort"] != "none" {
+		t.Fatalf("reasoning_effort not threaded: %v", got["reasoning_effort"])
+	}
+	ctk, ok := got["chat_template_kwargs"].(map[string]any)
+	if !ok || ctk["enable_thinking"] != false {
+		t.Fatalf("chat_template_kwargs not threaded: %v", got["chat_template_kwargs"])
+	}
+}
+
+// TestBuildChatStreamInput_OmitsUnsetReasoning — the controls must stay ABSENT
+// when unset (so OpenAI, which 400s on unknown/empty fields, isn't sent them).
+func TestBuildChatStreamInput_OmitsUnsetReasoning(t *testing.T) {
+	in := streamRequest{Messages: []map[string]any{{"role": "user", "content": "hi"}}}
+	got := buildChatStreamInput(in)
+	if _, ok := got["reasoning_effort"]; ok {
+		t.Fatal("reasoning_effort must be absent when unset")
+	}
+	if _, ok := got["chat_template_kwargs"]; ok {
+		t.Fatal("chat_template_kwargs must be absent when unset")
+	}
+}
+
 // TestDoLlmStream_OperationDefaultIsChat — Phase 5a backward-compat
 // regression-lock. Existing chat callers omit `operation`; the gateway
 // MUST treat missing-or-"chat" identically. We assert this by sending a

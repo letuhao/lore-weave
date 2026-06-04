@@ -87,6 +87,9 @@ async def test_judge_prose_happy_returns_four_dims_and_violations():
     assert out["violations"][0]["rule_id"] == "r1"
     # the critic ran with the distinct critic ref
     assert judge.calls[0]["model_ref"] == "m" and judge.calls[0]["operation"] == "chat"
+    # disables hidden thinking via the WORKING knob (reasoning_effort), not just
+    # the no-op chat_template_kwargs — else reasoning_tokens burn the JSON budget.
+    assert judge.calls[0]["input"]["reasoning_effort"] == "none"
 
 
 async def test_judge_prose_cc4_degrades_on_llm_error():

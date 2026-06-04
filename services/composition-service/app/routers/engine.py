@@ -61,6 +61,10 @@ class GenerateBody(BaseModel):
     mode: Literal["cowrite", "auto"] = "cowrite"
     guide: str = ""
     max_output_tokens: int = Field(default=_MAX_OUTPUT_DEFAULT, ge=1, le=8192)
+    # Optional reasoning knob — "none" disables hidden thinking on a reasoning
+    # drafter (else reasoning_tokens eat max_output_tokens → empty ghost). Literal
+    # → bad value is a 422 before the stream opens. Omit for the model default.
+    reasoning_effort: Literal["none", "low", "medium", "high"] | None = None
     idempotency_key: str | None = None
 
 
@@ -160,6 +164,7 @@ async def generate(
             model_ref=str(body.model_ref), messages=messages,
             prompt_token_estimate=prompt_estimate, max_output_tokens=body.max_output_tokens,
             hard_cap_output=body.max_output_tokens * 2,
+            reasoning_effort=body.reasoning_effort,
         ):
             if ev["type"] == "usage":
                 final = ev

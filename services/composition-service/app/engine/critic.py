@@ -150,6 +150,12 @@ async def judge_prose(
                              {"role": "user", "content": user}],
                 "response_format": {"type": "text"}, "temperature": 0.0,
                 "max_tokens": max_tokens,
+                # Disable hidden thinking: reasoning_effort="none" is the knob
+                # that actually works for LM Studio + Qwen3.6 (chat_template_kwargs
+                # alone is a no-op there). The critic emits JSON, so reasoning
+                # tokens are pure budget-burn. Kept chat_template_kwargs for models
+                # that honor the template flag instead.
+                "reasoning_effort": "none",
                 "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
             },
             job_meta={"extractor": "judge_prose"}, trace_id=trace_id,
