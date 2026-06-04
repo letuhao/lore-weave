@@ -122,6 +122,21 @@ def test_suite_path_resolves_in_repo():
     assert p.is_file() and p.name == "enrichment-eval-suite.toml"
 
 
+def test_suite_candidates_depth_safe_for_in_container_path():
+    # REGRESSION (P3c live-found): in-container /app/app/api/eval.py has only 4
+    # parents — parents[4] must NOT be indexed eagerly (it IndexError'd before the
+    # /app/eval candidate could be checked). A shallow path → just the /app/eval
+    # candidate, no raise.
+    from pathlib import Path
+    shallow = Path("/app/app/api/eval.py")  # parents: /app/app/api, /app/app, /app, /
+    cands = eval_api._suite_candidates(shallow)
+    assert cands[0] == Path("/app/eval/enrichment-eval-suite.toml")
+    assert all("enrichment-eval-suite.toml" in str(c) for c in cands)
+    # a deep (repo) path DOES add the repo-root candidate.
+    deep = Path("/r/services/svc/app/api/eval.py")
+    assert any("/r/eval/" in str(c).replace("\\", "/") for c in eval_api._suite_candidates(deep))
+
+
 # ── judge binding (provider-registry /internal/llm/stream) ───────────────────────
 
 @pytest.mark.asyncio

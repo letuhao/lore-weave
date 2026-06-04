@@ -41,14 +41,22 @@ __all__ = ["router", "GateStatusResponse", "RunEvalBody", "RunEvalResponse"]
 logger = logging.getLogger("lore_enrichment.eval")
 
 
+def _suite_candidates(here: Path) -> list[Path]:
+    """Candidate suite-TOML paths for a given module location. Depth-safe:
+    ``parents[4]`` exists in the repo (services/<svc>/app/api/eval.py) but NOT
+    in-container (/app/app/api/eval.py has only 4 parents) — index it ONLY when
+    deep enough, else the /app/eval candidate would be unreachable behind an
+    IndexError (the live-found P3c bug)."""
+    candidates = [Path("/app/eval/enrichment-eval-suite.toml")]  # in-container
+    parents = here.parents
+    if len(parents) > 4:
+        candidates.append(parents[4] / "eval" / "enrichment-eval-suite.toml")  # repo root
+    return candidates
+
+
 def _suite_path() -> Path:
-    """Resolve the eval-suite TOML both in-container (shipped at /app/eval/ by the
-    Dockerfile) and in the repo (repo-root eval/). First existing wins."""
-    here = Path(__file__).resolve()
-    candidates = [
-        Path("/app/eval/enrichment-eval-suite.toml"),  # in-container (Dockerfile COPY)
-        here.parents[4] / "eval" / "enrichment-eval-suite.toml",  # repo root
-    ]
+    """Resolve the eval-suite TOML both in-container and in the repo (first existing)."""
+    candidates = _suite_candidates(Path(__file__).resolve())
     for c in candidates:
         if c.is_file():
             return c
