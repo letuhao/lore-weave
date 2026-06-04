@@ -63,6 +63,58 @@ export async function trashBook(request: APIRequestContext, token: string, bookI
   await request.delete(`/v1/books/${bookId}`, auth(token));
 }
 
+// ── composition (co-write) seeding ──
+
+export type ChatModel = { user_model_id: string; provider_model_name: string; is_active: boolean };
+
+// Chat-tagged models — the set the UI model picker shows (drafter source).
+export async function listChatModels(request: APIRequestContext, token: string): Promise<ChatModel[]> {
+  const d = await ok<{ items: ChatModel[] }>(
+    request.get('/v1/model-registry/user-models?capability=chat', auth(token)),
+  );
+  return (d.items ?? []).filter((m) => m.is_active);
+}
+
+// All active models — the critic is set via API (not the UI picker), so it only
+// needs to be a valid active model, distinct from the drafter.
+export async function listActiveModels(request: APIRequestContext, token: string): Promise<ChatModel[]> {
+  const d = await ok<{ items: ChatModel[] }>(
+    request.get('/v1/model-registry/user-models?include_inactive=true', auth(token)),
+  );
+  return (d.items ?? []).filter((m) => m.is_active);
+}
+
+export async function createCompositionWork(request: APIRequestContext, token: string, bookId: string): Promise<string> {
+  const w = await ok<{ project_id: string }>(
+    request.post(`/v1/composition/books/${bookId}/work`, auth(token)),
+  );
+  return w.project_id;
+}
+
+export async function createCompositionScene(
+  request: APIRequestContext, token: string, projectId: string, chapterId: string, title: string,
+): Promise<string> {
+  const n = await ok<{ id: string }>(
+    request.post(`/v1/composition/works/${projectId}/outline/nodes`, {
+      ...auth(token), data: { kind: 'scene', chapter_id: chapterId, title },
+    }),
+  );
+  return n.id;
+}
+
+/** Point the Work's critic at a DISTINCT model (anti-self-reinforcement §4) so
+ * the advisory critique actually runs after accept. */
+export async function setWorkCriticModel(
+  request: APIRequestContext, token: string, projectId: string, criticModelRef: string,
+): Promise<void> {
+  await ok(
+    request.patch(`/v1/composition/works/${projectId}`, {
+      ...auth(token),
+      data: { settings: { critic_model_source: 'user_model', critic_model_ref: criticModelRef } },
+    }),
+  );
+}
+
 /** Seed a fresh book+chapter with `texts.length` saved revisions (newest last).
  * Returns ids for navigation + cleanup. */
 export async function seedChapterWithRevisions(

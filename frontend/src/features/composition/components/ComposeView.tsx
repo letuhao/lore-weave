@@ -21,12 +21,18 @@ type Props = {
 export function ComposeView({ projectId, sceneId, modelRef, token, onAccept }: Props) {
   const { t } = useTranslation('composition');
   const [guide, setGuide] = useState('');
+  // Reasoning knob — "auto" = model default; "none" disables hidden thinking so
+  // a reasoning-model drafter spends its budget on prose, not reasoning tokens.
+  const [reasoning, setReasoning] = useState<'auto' | 'none'>('auto');
   const stream = useCompositionStream(token);
   const { critique, dismiss } = useCritique(token);
 
   const canGenerate = !!sceneId && !!modelRef && !stream.streaming;
   const generate = () =>
-    stream.start({ projectId, outlineNodeId: sceneId, modelSource: 'user_model', modelRef, guide });
+    stream.start({
+      projectId, outlineNodeId: sceneId, modelSource: 'user_model', modelRef, guide,
+      reasoningEffort: reasoning === 'none' ? 'none' : undefined,
+    });
 
   const accept = () => {
     if (!stream.ghost) return;
@@ -46,9 +52,21 @@ export function ComposeView({ projectId, sceneId, modelRef, token, onAccept }: P
         value={guide}
         onChange={(e) => setGuide(e.target.value)}
       />
-      <div className="flex gap-2">
+      <div className="flex items-center gap-2">
+        <select
+          data-testid="compose-reasoning"
+          className="rounded border border-neutral-300 bg-transparent px-2 py-1 text-xs dark:border-neutral-600"
+          value={reasoning}
+          onChange={(e) => setReasoning(e.target.value as 'auto' | 'none')}
+          aria-label={t('reasoning', { defaultValue: 'Reasoning' })}
+          title={t('reasoningHint', { defaultValue: 'Off = disable hidden thinking (faster, needed for reasoning models)' })}
+        >
+          <option value="auto">{t('reasoningAuto', { defaultValue: 'Thinking: auto' })}</option>
+          <option value="none">{t('reasoningOff', { defaultValue: 'Thinking: off' })}</option>
+        </select>
         {!stream.streaming ? (
           <button
+            data-testid="compose-generate"
             className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white disabled:opacity-50"
             disabled={!canGenerate}
             onClick={generate}
@@ -72,10 +90,10 @@ export function ComposeView({ projectId, sceneId, modelRef, token, onAccept }: P
           <div className="mb-1 text-xs uppercase tracking-wide text-indigo-500">
             {t('ghost', { defaultValue: 'Ghost draft' })}{stream.streaming ? '…' : ''}
           </div>
-          <p className="whitespace-pre-wrap text-neutral-800 dark:text-neutral-200">{stream.ghost}</p>
+          <p data-testid="compose-ghost" className="whitespace-pre-wrap text-neutral-800 dark:text-neutral-200">{stream.ghost}</p>
           {!stream.streaming && stream.ghost && (
             <div className="mt-2 flex gap-2">
-              <button className="rounded bg-emerald-600 px-2.5 py-1 text-xs text-white" onClick={accept}>
+              <button data-testid="compose-accept" className="rounded bg-emerald-600 px-2.5 py-1 text-xs text-white" onClick={accept}>
                 {t('accept', { defaultValue: 'Accept' })}
               </button>
               <button className="rounded border border-neutral-300 px-2.5 py-1 text-xs dark:border-neutral-600" onClick={generate}>
@@ -101,7 +119,7 @@ function CriticFlags({ critic, onDismiss }: { critic: NonNullable<Critic>; jobId
     ['pacing', critic.pacing], ['canon_consistency', critic.canon_consistency],
   ];
   return (
-    <div className="rounded border border-neutral-200 p-2 text-xs dark:border-neutral-700">
+    <div data-testid="compose-critic" className="rounded border border-neutral-200 p-2 text-xs dark:border-neutral-700">
       <div className="mb-1 font-medium">{t('critic', { defaultValue: 'Critic (advisory)' })}</div>
       {critic.error ? (
         <div className="text-neutral-500">{t('criticUnavailable', { defaultValue: 'Critic unavailable.' })}</div>

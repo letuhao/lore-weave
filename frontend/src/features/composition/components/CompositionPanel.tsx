@@ -123,6 +123,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
           </button>
         )}
         <select
+          data-testid="composition-model-select"
           className="rounded border border-neutral-300 bg-transparent px-2 py-1 dark:border-neutral-600"
           value={modelRef}
           onChange={(e) => setModelRef(e.target.value)}

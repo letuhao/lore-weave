@@ -17,6 +17,9 @@ export type GenerateArgs = {
   operation?: string;
   guide?: string;
   maxOutputTokens?: number;
+  /** "none" disables hidden thinking on reasoning-model drafters so reasoning
+   * tokens don't eat the budget (empty ghost). Omit for the model default. */
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high';
 };
 
 export function useCompositionStream(token: string | null) {
@@ -55,6 +58,8 @@ export function useCompositionStream(token: string | null) {
             operation: args.operation ?? 'draft_scene',
             guide: args.guide ?? '',
             max_output_tokens: args.maxOutputTokens ?? 800,
+            // Omit when unset → server uses the model default.
+            ...(args.reasoningEffort ? { reasoning_effort: args.reasoningEffort } : {}),
           }),
           signal: controller.signal,
         });

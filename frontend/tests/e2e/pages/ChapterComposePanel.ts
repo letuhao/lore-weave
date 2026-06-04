@@ -10,6 +10,12 @@ export class ChapterComposePanel {
   readonly addScene: Locator;
   readonly markDone: Locator;
   readonly publishButton: Locator;
+  readonly modelSelect: Locator;
+  readonly reasoningSelect: Locator;
+  readonly generate: Locator;
+  readonly ghost: Locator;
+  readonly accept: Locator;
+  readonly critic: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -19,6 +25,12 @@ export class ChapterComposePanel {
     this.addScene = page.getByTestId('composition-add-scene');
     this.markDone = page.getByTestId('composition-mark-done');
     this.publishButton = page.getByTestId('publish-button');
+    this.modelSelect = page.getByTestId('composition-model-select');
+    this.reasoningSelect = page.getByTestId('compose-reasoning');
+    this.generate = page.getByTestId('compose-generate');
+    this.ghost = page.getByTestId('compose-ghost');
+    this.accept = page.getByTestId('compose-accept');
+    this.critic = page.getByTestId('compose-critic');
   }
 
   async gotoEditor(bookId: string, chapterId: string): Promise<void> {
