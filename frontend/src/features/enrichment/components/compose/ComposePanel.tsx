@@ -10,6 +10,7 @@ import { ModeSelector, type ComposeMode } from './ModeSelector';
 import { ComposeDraftForm } from './ComposeDraftForm';
 import { ComposeContextForm } from './ComposeContextForm';
 import { ComposeFilesForm } from './ComposeFilesForm';
+import { ComposeIntentForm } from './ComposeIntentForm';
 import { ComposeTarget } from './ComposeTarget';
 import { ComposeConfig, type ComposeConfigValue } from './ComposeConfig';
 
@@ -25,13 +26,13 @@ const DEFAULT_CONFIG: ComposeConfigValue = { genModel: '', embedModel: '', maxSp
  *  mode D (draft expansion) and mode C (paste-context): pick a target (existing | new)
  *  + provide the input (a draft, or pasted reference text + license) + models, then run
  *  an async compose job (202 → worker → quarantined proposal). Mode F (files) uploads
- *  files (extract+OCR), then grounds on them like context. Mode A routes to the Gaps
- *  tab; B (intent) is disabled until slice 4. Owns the form state; the API call +
- *  invalidation live in useCompose / useUploads. */
+ *  files (extract+OCR), then grounds on them like context. Mode B (intent) resolves a
+ *  free-text intent into a target (2-step: resolve→confirm→run). Mode A routes to the
+ *  Gaps tab. Owns the form state; the API calls live in useCompose / useUploads. */
 export function ComposePanel() {
   const { t } = useTranslation('enrichment');
   const { bookId, setActivePanel } = useEnrichmentContext();
-  const { compose, composing } = useCompose(bookId);
+  const { compose, composing, resolveIntent, resolving } = useCompose(bookId);
   const entities = useBookEntities(bookId); // existing-target autocomplete (best-effort)
 
   const [mode, setMode] = useState<ComposeMode>('draft');
@@ -43,9 +44,13 @@ export function ComposePanel() {
   const [filesLicense, setFilesLicense] = useState<ContextLicense>('public_domain');
   const [filesResponsibility, setFilesResponsibility] = useState(false);
   const uploads = useUploads(bookId);
+  const [intentText, setIntentText] = useState('');
+  const [intentTechnique, setIntentTechnique] = useState('fabrication');
+  const [intentRationale, setIntentRationale] = useState('');
+  const [intentDimensions, setIntentDimensions] = useState<string[]>([]);
   const [config, setConfig] = useState<ComposeConfigValue>(DEFAULT_CONFIG);
 
-  const showComposer = mode === 'draft' || mode === 'context' || mode === 'files';
+  const showComposer = mode === 'draft' || mode === 'context' || mode === 'files' || mode === 'intent';
   const targetOk = target.canonical_name.trim() !== '';
   const canRun =
     !composing &&
@@ -62,7 +67,26 @@ export function ComposePanel() {
         uploads.readyIds.length > 0 &&
         !!config.embedModel &&
         filesLicense !== 'copyrighted' &&
-        filesResponsibility));
+        filesResponsibility) ||
+      // mode B: a confirmed target (resolved or edited); embed only if the resolved
+      // technique is retrieval (fabrication needs none).
+      (mode === 'intent' && (intentTechnique !== 'retrieval' || !!config.embedModel)));
+
+  const canResolveIntent = intentText.trim() !== '' && !!config.genModel && !resolving;
+
+  const handleResolveIntent = async () => {
+    const r = await resolveIntent(intentText.trim(), config.genModel);
+    if (!r) return;
+    setTarget({
+      mode: r.target.mode,
+      canonical_name: r.target.canonical_name,
+      entity_kind: r.target.entity_kind,
+      target_ref: r.target.mode === 'new' ? null : r.target.canonical_name,
+    });
+    setIntentTechnique(r.technique);
+    setIntentRationale(r.rationale);
+    setIntentDimensions(r.dimensions ?? []);
+  };
 
   const run = () => {
     // /review-impl #2: clamp the numeric inputs at the boundary so a cleared field
@@ -100,6 +124,18 @@ export function ComposePanel() {
         top_k: topK,
       });
     }
+    if (mode === 'intent') {
+      return compose({
+        input_source: 'intent',
+        target: targetInput,
+        intent_text: intentText.trim() || undefined,
+        technique: intentTechnique,
+        generation_model_ref: config.genModel,
+        embedding_model_ref: config.embedModel || undefined,
+        max_spend_usd: maxSpend,
+        top_k: topK,
+      });
+    }
     return compose({
       input_source: 'draft',
       target: targetInput,
@@ -124,6 +160,18 @@ export function ComposePanel() {
 
       {showComposer && (
         <>
+          {mode === 'intent' && (
+            <ComposeIntentForm
+              intentText={intentText}
+              onIntentChange={setIntentText}
+              onResolve={() => void handleResolveIntent()}
+              resolving={resolving}
+              canResolve={canResolveIntent}
+              rationale={intentRationale}
+              resolvedTechnique={intentRationale ? intentTechnique : null}
+              dimensions={intentDimensions}
+            />
+          )}
           <ComposeTarget target={target} onChange={setTarget} entities={entities} />
           {mode === 'draft' && (
             <ComposeDraftForm

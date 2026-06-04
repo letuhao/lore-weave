@@ -658,15 +658,150 @@ def test_files_all_empty_text_422(monkeypatch):
     assert rec == {} and created == {}  # nothing ingested, no job
 
 
-# ── future / unknown sources + auth ──────────────────────────────────────────
-@pytest.mark.parametrize("src", ["intent"])
-def test_future_sources_400(monkeypatch, src):
+# ── mode B — intent (the compose branch: a CONFIRMED target → fabrication/retrieval) ──
+def _intent_base(**over) -> dict:
+    body = {
+        "book_id": str(uuid4()),
+        "input_source": "intent",
+        "generation_model_ref": str(uuid4()),
+        "target": {"mode": "new", "canonical_name": "姜子牙", "entity_kind": "character"},
+    }
+    body.update(over)
+    return body
+
+
+def test_intent_202_fabrication_default(monkeypatch):
     jid = uuid4()
     created, saved, prod = {}, {}, _RecordingProducer()
     _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
-    resp = _post(_base(input_source=src))
-    assert resp.status_code == 400
-    assert "slices 3" in resp.json()["detail"] or "not available" in resp.json()["detail"]
+    resp = _post(_intent_base(intent_text="the kings advisor"))  # no technique → fabrication
+    assert resp.status_code == 202, resp.text
+    assert resp.json()["technique"] == "fabrication"
+    req = saved["request"]
+    assert req["input_source"] == "intent" and req["intent_resolved"] is True
+    # review-impl #1: the original intent is persisted for the audit trail.
+    assert req["intent_text"] == "the kings advisor"
+
+
+def test_intent_missing_target_400(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    body = _intent_base()
+    body.pop("target")
+    assert _post(body).status_code == 400
+
+
+def test_intent_retrieval_without_embed_400(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    # retrieval grounds on a corpus → embed required; fabrication wouldn't be.
+    assert _post(_intent_base(technique="retrieval")).status_code == 400
+
+
+def test_intent_compose_draft_technique_400(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    assert _post(_intent_base(technique="compose_draft")).status_code == 400
+
+
+# ── mode B — resolve-intent endpoint (step 1: LLM → proposed target, NO job) ──
+def _patch_resolver(monkeypatch, *, complete_text=None, complete_raises=None, entities=None):
+    class _FakeGlossary:
+        def __init__(self, **_kw):
+            ...
+        async def list_entities(self, *, book_id, limit):
+            return entities or []
+        async def aclose(self):
+            ...
+
+    async def _neutral(_pool, _book_id):
+        return NEUTRAL_PROFILE
+
+    def _make(**_kw):
+        async def _complete(prompt, ctx):
+            if complete_raises is not None:
+                raise complete_raises
+            return complete_text
+        return _complete
+
+    monkeypatch.setattr(compose_api, "GlossaryClient", _FakeGlossary)
+    monkeypatch.setattr(compose_api, "get_book_profile", _neutral)
+    monkeypatch.setattr(compose_api, "make_complete_fn", _make)
+
+
+def _post_resolve(body: dict, *, project=None, auth=True):
+    project = project or uuid4()
+    headers = {"Authorization": f"Bearer {_bearer()}"} if auth else {}
+    return TestClient(_app()).post(
+        f"/v1/lore-enrichment/projects/{project}/compose/resolve-intent", json=body, headers=headers
+    )
+
+
+def test_resolve_intent_200(monkeypatch):
+    _patch_resolver(
+        monkeypatch,
+        complete_text='{"target":{"mode":"existing","canonical_name":"姜子牙","entity_kind":"character"},'
+                      '"dimensions":["历史"],"technique":"retrieval","rationale":"in list"}',
+        entities=[SimpleNamespace(name="姜子牙", kind="character")],
+    )
+    r = _post_resolve({"book_id": str(uuid4()), "intent_text": "the king's advisor",
+                       "generation_model_ref": str(uuid4())})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["target"] == {"mode": "existing", "canonical_name": "姜子牙", "entity_kind": "character"}
+    assert body["dimensions"] == ["历史"] and body["technique"] == "retrieval"
+
+
+def test_resolve_intent_llm_error_502(monkeypatch):
+    from app.generation.complete import CompletionSeamError
+    _patch_resolver(monkeypatch, complete_raises=CompletionSeamError("llm down", retryable=False))
+    r = _post_resolve({"book_id": str(uuid4()), "intent_text": "x", "generation_model_ref": str(uuid4())})
+    assert r.status_code == 502
+
+
+def test_resolve_intent_unusable_output_502(monkeypatch):
+    _patch_resolver(monkeypatch, complete_text="only prose, no json object")
+    r = _post_resolve({"book_id": str(uuid4()), "intent_text": "x", "generation_model_ref": str(uuid4())})
+    assert r.status_code == 502
+
+
+def test_resolve_intent_requires_auth():
+    assert _post_resolve({"book_id": str(uuid4()), "intent_text": "x",
+                          "generation_model_ref": str(uuid4())}, auth=False).status_code == 401
+
+
+def test_resolve_intent_degrades_when_glossary_down(monkeypatch):
+    # review-impl #5: a glossary outage must NOT fail resolve-intent — the entity
+    # list degrades to [] and the resolver still proposes (here, a new entity).
+    class _BadGlossary:
+        def __init__(self, **_kw):
+            ...
+        async def list_entities(self, *, book_id, limit):
+            raise RuntimeError("glossary down")
+        async def aclose(self):
+            ...
+
+    async def _neutral(_pool, _book_id):
+        return NEUTRAL_PROFILE
+
+    def _make(**_kw):
+        async def _complete(prompt, ctx):
+            return '{"target":{"mode":"new","canonical_name":"新仙","entity_kind":"character"},"technique":"fabrication"}'
+        return _complete
+
+    monkeypatch.setattr(compose_api, "GlossaryClient", _BadGlossary)
+    monkeypatch.setattr(compose_api, "get_book_profile", _neutral)
+    monkeypatch.setattr(compose_api, "make_complete_fn", _make)
+    r = _post_resolve({"book_id": str(uuid4()), "intent_text": "a new immortal",
+                       "generation_model_ref": str(uuid4())})
+    assert r.status_code == 200, r.text
+    assert r.json()["target"]["canonical_name"] == "新仙"
+
+
+# ── unknown source + auth ─────────────────────────────────────────────────────
 
 
 def test_unknown_source_400(monkeypatch):

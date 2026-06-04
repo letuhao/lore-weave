@@ -21,15 +21,10 @@ describe('ModeSelector', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it.each(['context', 'files'])('selecting %s calls onSelect (active mode)', (m) => {
+  it.each(['context', 'files', 'intent'])('selecting %s calls onSelect (active mode)', (m) => {
     const onSelect = vi.fn();
     render(<ModeSelector mode="draft" onSelect={onSelect} onUseGaps={vi.fn()} />);
     fireEvent.click(screen.getByTestId(`compose-mode-${m}`));
     expect(onSelect).toHaveBeenCalledWith(m);
-  });
-
-  it('intent is disabled (slice 4)', () => {
-    render(<ModeSelector mode="draft" onSelect={vi.fn()} onUseGaps={vi.fn()} />);
-    expect(screen.getByTestId('compose-mode-intent')).toBeDisabled();
   });
 });

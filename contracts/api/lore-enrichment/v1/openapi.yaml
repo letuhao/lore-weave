@@ -703,8 +703,8 @@ paths:
                 book_id: { type: string, format: uuid }
                 input_source:
                   type: string
-                  enum: [gap, draft, context, files]
-                  description: Supports gap | draft | context | files (intent lands in slice 4).
+                  enum: [gap, draft, context, files, intent]
+                  description: gap | draft | context | files | intent (all five modes).
                 embedding_model_ref:
                   type: string
                   format: uuid
@@ -743,6 +743,11 @@ paths:
                     Uploaded file ids from POST /uploads (mode F — required for files).
                     Each file's extracted text is ingested as a grounding corpus.
                   items: { type: string, format: uuid }
+                intent_text:
+                  type: string
+                  description: >
+                    Mode B audit only — the original free-text intent. The run uses the
+                    confirmed `target` (resolved via /compose/resolve-intent first).
                 gap_targets:
                   type: array
                   description: The specific gap targets to enrich (mode A — required for gap).
@@ -776,6 +781,55 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
         '413':
           $ref: '#/components/responses/ErrorResponse'
+
+  /v1/lore-enrichment/projects/{project_id}/compose/resolve-intent:
+    post:
+      tags: [compose]
+      summary: Mode B step 1 — resolve a free-text intent into a proposed target (no job)
+      description: >
+        Compose slice 4 (mode B). ONE LLM call: given the intent + the book's entity
+        list + profile, propose `{target, dimensions, technique, rationale}`.
+        Synchronous, NO job is created (F5). The FE confirms/edits, then POSTs a normal
+        /compose with input_source=intent + the confirmed target.
+      operationId: composeResolveIntent
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [book_id, intent_text, generation_model_ref]
+              properties:
+                book_id: { type: string, format: uuid }
+                intent_text: { type: string }
+                generation_model_ref: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Resolved intent (proposed — not yet enriched).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  target:
+                    type: object
+                    properties:
+                      mode: { type: string, enum: [existing, new] }
+                      canonical_name: { type: string }
+                      entity_kind: { type: string }
+                  dimensions: { type: array, items: { type: string } }
+                  technique: { type: string, enum: [retrieval, fabrication] }
+                  rationale: { type: string }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '502': { $ref: '#/components/responses/ErrorResponse' }
+        '503': { $ref: '#/components/responses/ErrorResponse' }
 
   # ────────────────────────────── uploads (mode F) ──────────────────────────────
   /v1/lore-enrichment/uploads:

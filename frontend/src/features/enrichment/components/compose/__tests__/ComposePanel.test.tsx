@@ -18,8 +18,9 @@ vi.mock('@/features/settings/api', () => ({
 }));
 
 const composeMock = vi.fn().mockResolvedValue({ job_id: 'j1' });
+const resolveIntentMock = vi.fn();
 vi.mock('../../../hooks/useCompose', () => ({
-  useCompose: () => ({ compose: composeMock, composing: false }),
+  useCompose: () => ({ compose: composeMock, composing: false, resolveIntent: resolveIntentMock, resolving: false }),
 }));
 
 const uploadsMock = vi.hoisted(() => ({
@@ -59,6 +60,7 @@ async function fillModels() {
 
 beforeEach(() => {
   composeMock.mockClear();
+  resolveIntentMock.mockReset();
   uploadsMock.items = [];
   uploadsMock.readyIds = [];
   uploadsMock.upload.mockClear();
@@ -250,5 +252,49 @@ describe('ComposePanel (mode F — files)', () => {
     await fillModels();
     fireEvent.click(screen.getByTestId('compose-files-responsibility'));
     expect(screen.getByTestId('compose-run')).toBeDisabled();
+  });
+});
+
+describe('ComposePanel (mode B — intent)', () => {
+  const toIntent = () => fireEvent.click(screen.getByTestId('compose-mode-intent'));
+
+  it('Resolve calls the resolver and fills the target from the proposal', async () => {
+    resolveIntentMock.mockResolvedValue({
+      target: { mode: 'existing', canonical_name: '姜子牙', entity_kind: 'character' },
+      dimensions: ['历史'], technique: 'retrieval', rationale: 'matches an existing entity',
+    });
+    renderPanel();
+    toIntent();
+    fireEvent.change(screen.getByTestId('compose-intent-text'), { target: { value: 'the kings advisor' } });
+    await fillGen(); // resolve needs the gen model
+    fireEvent.click(screen.getByTestId('compose-intent-resolve'));
+    await waitFor(() => expect(resolveIntentMock).toHaveBeenCalledWith('the kings advisor', 'g1'));
+    // the resolved target landed in the editable target field + the rationale shows.
+    await waitFor(() => expect(screen.getByTestId('compose-target-name')).toHaveValue('姜子牙'));
+    expect(screen.getByTestId('compose-intent-rationale')).toHaveTextContent('matches an existing entity');
+  });
+
+  it('composes an intent body with the confirmed target + resolved technique', async () => {
+    resolveIntentMock.mockResolvedValue({
+      target: { mode: 'new', canonical_name: '玉鼎真人', entity_kind: 'character' },
+      dimensions: [], technique: 'fabrication', rationale: 'new entity',
+    });
+    renderPanel();
+    toIntent();
+    fireEvent.change(screen.getByTestId('compose-intent-text'), { target: { value: 'a daoist master' } });
+    await fillGen();
+    fireEvent.click(screen.getByTestId('compose-intent-resolve'));
+    await waitFor(() => expect(screen.getByTestId('compose-target-name')).toHaveValue('玉鼎真人'));
+    // fabrication needs no embed model → Run is enabled
+    fireEvent.click(screen.getByTestId('compose-run'));
+
+    const body = composeMock.mock.calls[0][0];
+    expect(body).toMatchObject({
+      input_source: 'intent',
+      technique: 'fabrication',
+      intent_text: 'a daoist master',
+      generation_model_ref: 'g1',
+    });
+    expect(body.target).toMatchObject({ mode: 'new', canonical_name: '玉鼎真人', target_ref: null });
   });
 });

@@ -219,6 +219,8 @@ export interface ComposeBody {
   context_license?: ContextLicense;
   /** Mode F (files): uploaded file ids (from POST /uploads) to ingest as grounding. */
   upload_ids?: string[];
+  /** Mode B (intent): the original free-text intent (audit; the run uses `target`). */
+  intent_text?: string;
   gap_targets?: ComposeTargetInput[];
   technique?: string;
   max_spend_usd?: number | null;
@@ -237,6 +239,14 @@ export interface UploadResult {
   license_asserted?: string;
   status: UploadStatus;
   error?: string | null;
+}
+
+/** Mode B (intent) — the resolver's proposal (step 1; no job yet). */
+export interface ResolvedIntent {
+  target: { mode: 'existing' | 'new'; canonical_name: string; entity_kind: string };
+  dimensions: string[];
+  technique: string;
+  rationale: string;
 }
 
 /** POST /compose result — async 202 + job_id. */

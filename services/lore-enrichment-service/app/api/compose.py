@@ -18,8 +18,10 @@ Slice 2 adds **mode C (paste-context)**:
     retrieval/recook job then grounds on it (the C2 grounding composer picks the
     corpus up by project_id — so NO worker/strategy change). H0-quarantined.
 
-Modes F (files), B (intent) arrive in slices 3–4 — this handler refuses them with
-a clear 400 so a premature FE call fails loudly.
+Slice 3 adds **mode F (files)** (`input_source='files'` — upload+extract+OCR via
+/uploads, then ingest like context) and slice 4 adds **mode B (intent)**
+(`input_source='intent'` — runs a confirmed target from /compose/resolve-intent).
+All five input sources (gap/draft/context/files/intent) are now live.
 
 Async like auto-enrich: create the job + persist the request (additive JSONB
 fields: ``input_source`` / ``seed_text`` / ``expand_mode``) + enqueue the resume
@@ -57,6 +59,8 @@ from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM, make_redis_producer
 from app.jobs.job_request import save_job_request
 from app.api.license_assert import resolve_asserted_license
 from app.api.uploads import fetch_upload
+from app.compose.intent import IntentResolutionError, resolve_intent
+from app.generation.complete import CompletionSeamError, make_complete_fn
 from app.jobs.proposal_store import PgProposalStore
 from app.retrieval.store import SourceCorpusStore
 from app.strategies.base import Technique
@@ -66,9 +70,9 @@ logger = logging.getLogger("lore_enrichment.compose")
 
 router = APIRouter(prefix="/v1/lore-enrichment/projects", tags=["compose"])
 
-# Supported input sources (slices 1–3). Intent lands in slice 4.
-_SUPPORTED_SOURCES = {"gap", "draft", "context", "files"}
-_FUTURE_SOURCES = {"intent"}
+# All compose input sources (slices 1–4).
+_SUPPORTED_SOURCES = {"gap", "draft", "context", "files", "intent"}
+_FUTURE_SOURCES: set[str] = set()
 _EXPAND_MODES = {EXPAND_ADD_ONLY, EXPAND_REWRITE}
 # Cap the pasted text (draft AND context) so a huge paste can't blow up the LLM
 # prompt / fan out into an unbounded synchronous embed in the request path. ~50 KB;
@@ -118,6 +122,9 @@ class ComposeBody(BaseModel):
     # Each upload carries its own validated license; the file's extracted text is
     # ingested as a corpus, then identical to mode C.
     upload_ids: list[UUID] | None = None
+    # mode B (intent): present only for an audit trail when a confirmed target arrives
+    # from /compose/resolve-intent; the run uses `target` (the FE confirms it first).
+    intent_text: str | None = None
     # mode A (gap): the specific gap targets to enrich (LE-064 per-row shape).
     gap_targets: list[ComposeTargetInput] | None = None
     # output config (shared with auto-enrich). draft FORCES compose_draft; gap may
@@ -546,6 +553,49 @@ async def compose(
             },
         )
 
+    # ── mode B — intent (the body arrives with a CONFIRMED target from resolve-intent) ──
+    if source == "intent":
+        if body.target is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="intent input requires a confirmed target — call /compose/resolve-intent first",
+            )
+        try:
+            technique = Technique(body.technique or Technique.FABRICATION.value)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"unknown technique {body.technique!r}",
+            )
+        if technique is Technique.COMPOSE_DRAFT:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="compose_draft is the draft input's technique — use input_source='draft'",
+            )
+        # retrieval grounds on a corpus → needs an embed model; fabrication doesn't.
+        if technique is Technique.RETRIEVAL and body.embedding_model_ref is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="intent input with technique=retrieval requires embedding_model_ref",
+            )
+        target_dict = _target_dict(body.target)
+        if body.target.mode == "existing" and not body.target.present_dimensions:
+            present = await _resolve_present_dimensions(pool, body.book_id, body.target.canonical_name)
+            if present is not None:
+                target_dict["present_dimensions"] = present
+        return await _create_and_enqueue(
+            pool=pool,
+            project_id=project_id,
+            user_id=user_id,
+            body=body,
+            technique=technique.value,
+            entity_kind=body.target.entity_kind,
+            targets=[target_dict],
+            # Persist the original intent for the audit trail (review-impl #1 — the
+            # FE sends it as audit; the run uses the confirmed target, not this).
+            extra_request={"intent_resolved": True, "intent_text": body.intent_text},
+        )
+
     # ── mode A — gap-fill (targeted) ─────────────────────────────────────────────
     if not body.gap_targets:
         raise HTTPException(
@@ -581,3 +631,63 @@ async def compose(
         entity_kind=body.gap_targets[0].entity_kind,
         targets=targets,
     )
+
+
+class ResolveIntentBody(BaseModel):
+    book_id: UUID
+    intent_text: str = Field(min_length=1)
+    generation_model_ref: UUID
+
+
+@router.post("/{project_id}/compose/resolve-intent")
+async def compose_resolve_intent(
+    project_id: UUID,
+    body: ResolveIntentBody,
+    principal: Principal = Depends(require_principal),
+    pool: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """Mode B step 1 (F5): resolve a free-text intent → a PROPOSED target + dimensions
+    + technique + rationale via ONE LLM call. Synchronous, NO job created. The FE shows
+    the result, lets the author edit/confirm, then POSTs a normal /compose with
+    input_source='intent' + the confirmed target — so a mis-resolved target is never
+    silently enriched."""
+    if principal.user_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="auth required")
+
+    profile = await get_book_profile(pool, body.book_id)
+    client = GlossaryClient(
+        base_url=settings.glossary_service_url,
+        internal_token=settings.internal_service_token,
+    )
+    try:
+        # Cap at 200 (review-impl #4, accepted): an advisory hint to the resolver, not
+        # a correctness boundary — the author confirms/edits the target before any run.
+        ents = await client.list_entities(book_id=body.book_id, limit=200)
+    except (GlossaryServiceError, Exception):  # noqa: BLE001 — best-effort; resolver can still propose new
+        ents = []
+    finally:
+        await client.aclose()
+    entities = [{"name": e.name, "kind": e.kind} for e in ents]
+
+    # Unmetered (review-impl #3, accepted): one resolver LLM call, no cost cap —
+    # consistent with the profile-suggest precedent (BYOK self-limiting, owner-gated).
+    complete = make_complete_fn(
+        provider_registry_base_url=settings.provider_registry_internal_url,
+        internal_token=settings.internal_service_token,
+    )
+    try:
+        resolved = await resolve_intent(
+            complete=complete,
+            intent_text=body.intent_text,
+            entities=entities,
+            profile=profile,
+            user_id=str(principal.user_id),
+            project_id=str(project_id),
+            model_ref=str(body.generation_model_ref),
+        )
+    except CompletionSeamError as exc:
+        code = status.HTTP_503_SERVICE_UNAVAILABLE if exc.retryable else status.HTTP_502_BAD_GATEWAY
+        raise HTTPException(status_code=code, detail=f"intent resolver LLM failed: {exc}")
+    except IntentResolutionError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"intent resolver produced unusable output: {exc}")
+    return resolved.as_dict()

@@ -47,6 +47,13 @@
       "failed": "failed",
       "responsibility": "I have the rights to these files (own / licensed / public-domain). Not legal advice."
     },
+    "intent": {
+      "label": "What do you want to create?",
+      "placeholder": "Describe it in your own words — e.g. \"the wise advisor who helps the king found the dynasty\".",
+      "resolve": "Resolve",
+      "resolving": "Resolving…",
+      "resolve_hint": "Proposes a target below — review & edit it, then Run."
+    },
     "target": {
       "existing": "Existing entity",
       "new": "New entity",

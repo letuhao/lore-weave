@@ -47,6 +47,13 @@
       "failed": "thất bại",
       "responsibility": "Tôi có quyền đối với các tệp này (sở hữu / được cấp phép / phạm vi công cộng). Không phải tư vấn pháp lý."
     },
+    "intent": {
+      "label": "Bạn muốn tạo gì?",
+      "placeholder": "Mô tả bằng lời của bạn — vd: \"vị quân sư tài trí giúp vua dựng triều đại\".",
+      "resolve": "Phân giải",
+      "resolving": "Đang phân giải…",
+      "resolve_hint": "Đề xuất một đối tượng bên dưới — xem lại & chỉnh sửa, rồi Chạy."
+    },
     "target": {
       "existing": "Thực thể có sẵn",
       "new": "Thực thể mới",

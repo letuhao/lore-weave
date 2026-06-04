@@ -18,6 +18,7 @@ import type {
   ComposeResult,
   ContextLicense,
   UploadResult,
+  ResolvedIntent,
 } from './types';
 
 const BASE = '/v1/lore-enrichment';
@@ -170,6 +171,15 @@ export const enrichmentApi = {
   /** Poll an upload's extraction status. */
   getUpload(uploadId: string, token: string): Promise<UploadResult> {
     return apiJson<UploadResult>(`${BASE}/uploads/${uploadId}`, { token });
+  },
+
+  /** Mode B step 1 — resolve a free-text intent into a proposed target (no job). */
+  resolveIntent(bookId: string, intentText: string, genModel: string, token: string): Promise<ResolvedIntent> {
+    return apiJson<ResolvedIntent>(`${BASE}/projects/${bookId}/compose/resolve-intent`, {
+      method: 'POST',
+      body: JSON.stringify({ book_id: bookId, intent_text: intentText, generation_model_ref: genModel }),
+      token,
+    });
   },
 
   // ── sources (corpus) — project_id := bookId ─────────────────────────────────

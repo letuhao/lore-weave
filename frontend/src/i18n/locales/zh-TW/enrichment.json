@@ -47,6 +47,13 @@
       "failed": "失敗",
       "responsibility": "我擁有這些檔案的權利（自有／已授權／公有領域）。本訊息非法律建議。"
     },
+    "intent": {
+      "label": "你想創作什麼？",
+      "placeholder": "用你自己的話描述 — 例如「協助君王開創王朝的賢明軍師」。",
+      "resolve": "解析",
+      "resolving": "解析中…",
+      "resolve_hint": "在下方提出一個對象 — 檢視並編輯後再執行。"
+    },
     "target": {
       "existing": "既有實體",
       "new": "新實體",
