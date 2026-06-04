@@ -104,6 +104,36 @@ def test_rubric_non_zh_profile_is_english():
     assert "reviewer" in r.lower() and "Camelot" in r and "封神" not in r
 
 
+# ── P3a: vendored Fleiss-κ fallback matches the SDK (in-container eval) ──────────
+
+def test_vendored_kappa_matches_sdk_and_landis_koch():
+    from app.eval import _ensemble_shim as shim
+
+    samples = [
+        [{"a": 2, "b": 1}, {"a": 3}, {"a": 1, "b": 2}],   # mixed
+        [{"x": 3}, {"x": 3}, {"x": 3}],                     # unanimous single label
+        [{"a": 2, "b": 1}, {"b": 2, "a": 1}],              # split
+    ]
+    try:
+        from loreweave_eval.judge_ensemble import _fleiss_kappa as sdk_fk
+    except Exception:  # pragma: no cover — SDK absent (in-container): vendored is the source
+        sdk_fk = None
+    for iv in samples:
+        v = shim._vendored_fleiss_kappa(iv, 3)
+        if sdk_fk is not None:
+            assert round(v, 9) == round(sdk_fk(iv, 3), 9)
+    # Landis–Koch cutoffs
+    assert shim._vendored_kappa_interpretation(-0.1) == "below-chance"
+    assert shim._vendored_kappa_interpretation(0.5) == "moderate"
+    assert shim._vendored_kappa_interpretation(0.95) == "almost-perfect"
+
+
+def test_shim_always_resolves_callables():
+    from app.eval import _ensemble_shim as shim
+
+    assert callable(shim.fleiss_kappa) and callable(shim.kappa_interpretation)
+
+
 # ── run_eval threads the profile end-to-end ─────────────────────────────────────
 
 @pytest.mark.asyncio
