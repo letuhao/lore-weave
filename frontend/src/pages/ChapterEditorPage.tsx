@@ -31,6 +31,7 @@ import type { EntityNameEntry } from '@/features/glossary/types';
 import { Chat } from '@/features/chat/Chat';
 import { fireSendToChat } from '@/features/chat/context/sendToChat';
 import { registerEditorTarget } from '@/features/chat/context/editorBridge';
+import { CompositionPanel } from '@/features/composition/components/CompositionPanel';
 
 function wordCount(text: string): number {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
@@ -135,7 +136,7 @@ export function ChapterEditorPage() {
   const [grammarEnabled, setGrammarEnabled] = useGrammarEnabled();
 
   // Panels
-  const [rightTab, setRightTab] = useState<'history' | 'ai'>('history');
+  const [rightTab, setRightTab] = useState<'history' | 'ai' | 'compose'>('history');
   const [revKey, setRevKey] = useState(0);
 
   // ARCH-1 C5: when the AI panel opens (or the chapter changes while it's
@@ -855,6 +856,12 @@ export function ChapterEditorPage() {
               >
                 <Sparkles className="mr-1.5 inline h-3 w-3" />{t('ai_chat')}
               </button>
+              <button
+                onClick={() => setRightTab('compose')}
+                className={cn('flex-1 px-3 py-2 text-xs font-medium', rightTab === 'compose' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground')}
+              >
+                <Pen className="mr-1.5 inline h-3 w-3" />{t('composition:compose', { defaultValue: 'Co-write' })}
+              </button>
             </div>
             <div className="flex-1 overflow-hidden">
               {rightTab === 'history' && (
@@ -902,6 +909,18 @@ export function ChapterEditorPage() {
                     className="min-h-0 flex-1"
                   />
                 </div>
+              )}
+              {/* LOOM M8 — the lore-grounded co-writer Power panel. Accepted prose
+                  inserts at the cursor via insertAtCursor (which dirties + autosaves
+                  the EDITOR doc); the streaming ghost stays FE-local until then. */}
+              {rightTab === 'compose' && (
+                <CompositionPanel
+                  key={bookId}
+                  bookId={bookId}
+                  chapterId={chapterId}
+                  token={accessToken}
+                  onAccept={(text) => tiptapEditorRef.current?.insertAtCursor(text)}
+                />
               )}
             </div>
           </div>

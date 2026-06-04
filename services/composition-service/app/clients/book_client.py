@@ -99,6 +99,15 @@ class BookClient:
         self._raise_for_status(resp)
         return True
 
+    async def get_book(self, book_id: UUID, bearer: str) -> dict[str, Any] | None:
+        """The book object (title etc.) for the JWT user, or None if not owned /
+        missing (404). Used by POST /work to name the knowledge project + as the
+        ownership gate. Raises BookClientError on 5xx / transport."""
+        resp = await self._request("GET", f"/v1/books/{book_id}", bearer)
+        if resp.status_code == 404:
+            return None
+        return self._raise_for_status(resp)
+
     async def get_draft(
         self, book_id: UUID, chapter_id: UUID, bearer: str
     ) -> dict[str, Any]:

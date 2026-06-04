@@ -65,7 +65,10 @@ class GenerateBody(BaseModel):
 
 
 class CritiqueBody(BaseModel):
-    target_revision_id: UUID
+    # Optional: an advisory critique may run before a revision exists (the FE
+    # critiques the just-generated passage). When present it anchors the
+    # critique for calibration.
+    target_revision_id: UUID | None = None
     passage: str | None = None  # FE sends the accepted prose; falls back to job result
 
 

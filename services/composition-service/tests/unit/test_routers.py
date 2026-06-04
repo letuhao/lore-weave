@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 
+import asyncpg
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock
@@ -35,8 +36,12 @@ class StubWorks:
         self.marked = []
         self.update_result = None
         self.update_raises = None
+        self.create_raises = None
+        self.get_results = None  # if a list, pop per call (for the conflict test)
 
     async def get(self, user_id, project_id):
+        if self.get_results is not None:
+            return self.get_results.pop(0) if self.get_results else None
         return self.work
 
     async def resolve_by_book(self, user_id, book_id):
@@ -47,13 +52,24 @@ class StubWorks:
             raise self.update_raises
         return self.update_result
 
+    async def create(self, user_id, project_id, book_id, **kw):
+        if self.create_raises:
+            raise self.create_raises
+        self.created_with = (project_id, book_id)
+        return _work(project_id=project_id)
+
 
 class StubKnowledge:
     def __init__(self, projects=None):
         self.projects = projects
+        self.created_project = None  # set to a dict to simulate create_project
 
     async def list_projects_for_book(self, book_id, bearer):
         return self.projects
+
+    async def create_project(self, book_id, name, bearer):
+        self.create_project_name = name
+        return self.created_project
 
 
 class StubBook:
@@ -64,6 +80,13 @@ class StubBook:
         self.get_raises = None
         self.patch_raises = None
         self.patched_with = None
+        self.book = {"title": "Demo Book"}  # get_book result (None → 404)
+        self.get_book_raises = None
+
+    async def get_book(self, book_id, bearer):
+        if self.get_book_raises:
+            raise self.get_book_raises
+        return self.book
 
     async def get_draft(self, book_id, chapter_id, bearer):
         if self.get_raises:
@@ -111,6 +134,55 @@ def test_resolve_found(ctx):
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "found" and body["work"]["project_id"] == str(PROJECT)
+
+
+def test_post_work_book_not_found_404(ctx):
+    c, _, _, book = ctx
+    book.book = None
+    assert c.post(f"/v1/composition/books/{BOOK}/work").status_code == 404
+
+
+def test_post_work_idempotent_when_already_marked(ctx):
+    c, works, _, _ = ctx
+    works.marked = [_work()]  # resolve → found
+    r = c.post(f"/v1/composition/books/{BOOK}/work")
+    assert r.status_code == 201 and r.json()["project_id"] == str(PROJECT)
+
+
+def test_post_work_creates_project_when_none(ctx):
+    c, works, knowledge, _ = ctx
+    works.marked = []
+    knowledge.projects = []  # resolve → none
+    new_pid = uuid.uuid4()
+    knowledge.created_project = {"project_id": str(new_pid)}
+    works.work = None  # no existing composition_work for the new project
+    r = c.post(f"/v1/composition/books/{BOOK}/work")
+    assert r.status_code == 201
+    assert knowledge.create_project_name == "Demo Book"  # named from the book title
+    assert works.created_with == (new_pid, BOOK)  # work created on the new project
+
+
+def test_post_work_unique_violation_reresolves(ctx):
+    # /review-impl M8 #2: a concurrent same-project POST loses the PK race →
+    # catch UniqueViolation, re-get, return the racey Work (not a 500).
+    c, works, knowledge, _ = ctx
+    works.marked = []
+    pid = uuid.uuid4()
+    knowledge.projects = [{"project_id": str(pid), "project_type": "book", "book_id": str(BOOK), "is_archived": False}]
+    works.get_results = [None, _work(project_id=pid)]  # first get None → create; re-get → the winner's row
+    works.create_raises = asyncpg.UniqueViolationError("dup")
+    r = c.post(f"/v1/composition/books/{BOOK}/work")
+    assert r.status_code == 201 and r.json()["project_id"] == str(pid)
+
+
+def test_post_work_binds_existing_unmarked_book_project(ctx):
+    c, works, knowledge, _ = ctx
+    works.marked = []
+    pid = uuid.uuid4()
+    knowledge.projects = [{"project_id": str(pid), "project_type": "general", "book_id": str(BOOK), "is_archived": False}]
+    works.work = None
+    r = c.post(f"/v1/composition/books/{BOOK}/work")
+    assert r.status_code == 201 and works.created_with[0] == pid  # bound to the existing project, no create_project
 
 
 def test_resolve_unmarked_single_from_knowledge(ctx):

@@ -88,6 +88,26 @@ class KnowledgeClient:
             logger.warning("knowledge bad JSON: %s", exc)
             return None
 
+    async def create_project(
+        self, book_id: UUID, name: str, bearer: str,
+    ) -> dict[str, Any] | None:
+        """Create a BOOK-typed knowledge project for this book (M8 POST /work).
+        JWT-forward → knowledge scopes it to the user. Returns the created
+        project dict (carries `project_id`) or None on failure."""
+        if not bearer:
+            return None
+        url = f"{self._base_url}/v1/knowledge/projects"
+        payload = {"name": name, "project_type": "book", "book_id": str(book_id)}
+        try:
+            resp = await self._http.post(url, json=payload, headers=self._bearer_headers(bearer))
+            if resp.status_code not in (200, 201):
+                logger.warning("knowledge create_project → %d", resp.status_code)
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("knowledge create_project unavailable: %s", exc)
+            return None
+
     # ── M4 packer lenses ────────────────────────────────────────────────
     # All return None/[] on any failure (the packer `_safe_*` degrade, F1) so a
     # knowledge outage thins the pack rather than 500-ing a generate.

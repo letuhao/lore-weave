@@ -5,8 +5,9 @@ endpoint — forwarding the caller's JWT to knowledge-service (user-scoped, so
 ownership is enforced server-side). GET/PATCH /works/{project_id} expose the
 WorksRepo with If-Match optimistic concurrency (412 on a stale version).
 
-POST /work (confirm-create: ProjectCreate + composition_work) stays M7 — it
-needs the knowledge ProjectCreate surface.
+POST /books/{book_id}/work (M8) confirm-creates a Work: ensure a book-typed
+knowledge project exists (resolve, else ProjectCreate), then get-or-create the
+composition_work row (idempotent).
 """
 
 from __future__ import annotations
@@ -14,14 +15,16 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
+import asyncpg
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
+from app.clients.book_client import BookClient, BookClientError
 from app.clients.knowledge_client import KnowledgeClient
 from app.db.models import WorkStatus
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.works import WorksRepo
-from app.deps import get_knowledge_client_dep, get_works_repo
+from app.deps import get_book_client_dep, get_knowledge_client_dep, get_works_repo
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.work_resolution import WorkResolution, resolve_work
 
@@ -73,6 +76,66 @@ async def get_work_for_book(
         user_id, book_id, bearer=bearer, works_repo=works, knowledge_client=knowledge,
     )
     return _serialize_resolution(res)
+
+
+@router.post("/books/{book_id}/work", status_code=201)
+async def create_work_for_book(
+    book_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
+    book: BookClient = Depends(get_book_client_dep),
+) -> dict[str, Any]:
+    """Confirm-create a Work (idempotent). Ensures a book-typed knowledge
+    project exists (resolve, else ProjectCreate), then get-or-creates the
+    composition_work row. Returns the Work."""
+    # Ownership gate + the project name (book title) in one call.
+    try:
+        book_obj = await book.get_book(book_id, bearer)
+    except BookClientError:
+        raise HTTPException(status_code=502, detail={"code": "BOOK_SERVICE_UNAVAILABLE"})
+    if book_obj is None:
+        raise HTTPException(status_code=404, detail="book not found")
+
+    res = await resolve_work(
+        user_id, book_id, bearer=bearer, works_repo=works, knowledge_client=knowledge,
+    )
+    if res.status == "unavailable":
+        raise HTTPException(status_code=502, detail={"code": "KNOWLEDGE_UNAVAILABLE"})
+    # Already a Work → idempotent return (pick the first if several marked).
+    if res.status == "found":
+        return res.work.model_dump(mode="json")  # type: ignore[union-attr]
+    if res.status == "candidates":
+        return res.works[0].model_dump(mode="json")
+
+    # Determine the knowledge project to bind to.
+    if res.status == "unmarked_single":
+        project_id = res.book_project_id
+    elif res.status == "unmarked_candidates":
+        project_id = res.book_project_ids[0]
+    else:  # none → create a book-typed knowledge project
+        name = book_obj.get("title") or f"Book {book_id}"
+        created = await knowledge.create_project(book_id, name, bearer)
+        if created is None or not created.get("project_id"):
+            raise HTTPException(status_code=502, detail={"code": "PROJECT_CREATE_FAILED"})
+        project_id = UUID(str(created["project_id"]))
+
+    # Get-or-create the composition_work row. The get-then-create is not atomic,
+    # so a concurrent same-project POST can lose the PK race — catch the unique
+    # violation and re-get (atomic get-or-create). (The rarer duplicate-knowledge-
+    # project race is tracked as D-COMP-POST-WORK-RACE.)
+    existing = await works.get(user_id, project_id)  # type: ignore[arg-type]
+    if existing is not None:
+        return existing.model_dump(mode="json")
+    try:
+        work = await works.create(user_id, project_id, book_id)  # type: ignore[arg-type]
+    except asyncpg.UniqueViolationError:
+        racey = await works.get(user_id, project_id)  # type: ignore[arg-type]
+        if racey is None:
+            raise HTTPException(status_code=409, detail={"code": "WORK_CREATE_CONFLICT"})
+        return racey.model_dump(mode="json")
+    return work.model_dump(mode="json")
 
 
 @router.get("/works/{project_id}")
