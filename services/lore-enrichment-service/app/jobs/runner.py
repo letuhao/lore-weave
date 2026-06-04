@@ -301,6 +301,9 @@ class JobRunner:
                     gap_ref=gap_ref,  # per-gap idempotency key (WARN-1)
                     review_status="rejected" if reject else "proposed",
                     rejected_reason=reject.reason if reject else None,
+                    # de-bias (LE-PROD-2 P2): the proposal-body header/separators are
+                    # localized to the book language (zh demo unchanged).
+                    language=context.profile.language,
                 )
                 persisted = await self._store.persist_proposal(
                     job_id=job_id, fields=fields

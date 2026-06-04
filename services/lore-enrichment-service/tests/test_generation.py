@@ -62,8 +62,14 @@ def _proposal(*, dims=None, grounding=None) -> GroundedProposal:
     )
 
 
-def _ctx(model_ref="emb-or-gen-ref") -> StrategyContext:
-    return StrategyContext(user_id="u1", project_id="p1", model_ref=model_ref)
+_EN_PROFILE = BookProfile(language="en", worldview="A windswept coast of storm-mages")
+
+
+def _ctx(model_ref="emb-or-gen-ref", profile=None) -> StrategyContext:
+    kw = {"user_id": "u1", "project_id": "p1", "model_ref": model_ref}
+    if profile is not None:
+        kw["profile"] = profile
+    return StrategyContext(**kw)
 
 
 def _const_complete(text: str):
@@ -142,18 +148,34 @@ async def test_missing_dimension_is_ungrounded_not_fatal():
 
 
 @pytest.mark.asyncio
-async def test_english_leakage_dimension_is_dropped_not_minted():
-    # slice B: an English-leakage (low-CJK) value is UNGROUNDED — dropped, never
-    # minted as a fact (H0-safe: no non-Chinese fact emitted) — the Chinese dims
-    # still produce facts. (Old behavior failed the whole gap.)
+async def test_english_leakage_dimension_is_dropped_for_a_zh_book():
+    # slice B: in a ZH book, an English-leakage (low-CJK) value is UNGROUNDED —
+    # dropped, never minted (H0-safe) — the Chinese dims still produce facts.
     raw = (
         '{"历史": "Penglai is a legendary immortal isle since ancient times in '
         'the eastern sea, home to many sages.", '
         '"地理": "东海之中。", "文化": "重道法。"}'
     )
     gen = SchemaGovernedGenerator(complete=_const_complete(raw))
-    facts = await gen.generate(_proposal(), _ctx())
+    facts = await gen.generate(_proposal(), _ctx(profile=_ZH_PROFILE))
     assert [f.dimension for f in facts] == ["地理", "文化"]  # English 历史 dropped
+    assert all(f.content for f in facts)
+
+
+@pytest.mark.asyncio
+async def test_en_book_keeps_english_content():
+    # de-bias (LE-PROD-2 P2, live-found): for a NON-zh book the CJK gate must be
+    # OFF — English content is faithful and MUST be kept. Otherwise every English
+    # book's retrieval marks all dims ungrounded → 0 proposals (the live bug).
+    raw = (
+        '{"历史": "An ancient storm-mage isle, home to sea-wardens since the old pacts.", '
+        '"地理": "A salt-bitten coast of black cliffs and perpetual gales.", '
+        '"文化": "The fisher-folk keep the weather-pacts and revere the Tempest Court."}'
+    )
+    gen = SchemaGovernedGenerator(complete=_const_complete(raw))
+    facts = await gen.generate(_proposal(), _ctx(profile=_EN_PROFILE))
+    # all three English dims KEPT (none dropped by a CJK gate).
+    assert [f.dimension for f in facts] == KEYS
     assert all(f.content for f in facts)
 
 

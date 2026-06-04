@@ -486,6 +486,21 @@ def test_gap_from_target_unmodeled_kind_is_generic_no_400():
     assert set(g.missing_dimensions) == {"description", "details", "significance"}
 
 
+def test_content_from_facts_localizes_header_by_language():
+    # de-bias (LE-PROD-2 P2): zh book → "「name」补全：" + fullwidth colons (demo
+    # unchanged); a non-zh book → English header + ASCII separators (no zh artifact).
+    from types import SimpleNamespace
+
+    from app.jobs.proposal_store import _content_from_facts
+
+    facts = [SimpleNamespace(dimension="Appearance", content="A tall storm-mage.")]
+    zh = _content_from_facts("X", facts, language="zh")
+    en = _content_from_facts("Alaric", facts, language="en")
+    assert "补全" in zh and "：" in zh
+    assert "补全" not in en
+    assert en.startswith("Alaric — enrichment:") and "Appearance: A tall storm-mage." in en
+
+
 def test_build_proposal_fields_preserves_non_location_kind():
     # #2: the persist field-builder carries the proposal's REAL kind through (KB8
     # write-back then writes the correct glossary kind).

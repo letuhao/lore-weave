@@ -168,22 +168,25 @@ def build_generation_prompt(
 
 
 def parse_grounded_output(
-    raw: str, expected_keys: list[str]
+    raw: str, expected_keys: list[str], *, require_cjk: bool = True
 ) -> tuple[dict[str, str], list[str]]:
     """Parse generation output into ``(grounded, ungrounded)`` (LE-PROD slice B).
 
     Returns ``grounded`` = {dimension: content} for dimensions the model GROUNDED
-    (flag true + non-empty + sufficiently-CJK content), and ``ungrounded`` = the
+    (flag true + non-empty + language-faithful content), and ``ungrounded`` = the
     dimensions it could not support. TOLERANT of two shapes so a non-compliant model
     never crashes the pipeline:
 
       * grounded-flag (preferred): ``{"dim": {"grounded": bool, "content": str}}``,
-      * legacy flat: ``{"dim": "content"}`` (a non-empty CJK string ⇒ grounded).
+      * legacy flat: ``{"dim": "content"}`` (a non-empty content string ⇒ grounded).
 
-    A dimension is UNGROUNDED when: ``grounded=false``, the key is missing, content
-    is empty, or content is non-Chinese (low-CJK — English-leakage / garbage; never
-    minted as a fact). Reuses the deterministic JSON recovery from ``repair`` (fence
-    / surrounding-prose / trailing-comma tolerant). Raises :class:`GenerationError`
+    A dimension is UNGROUNDED when: ``grounded=false``, the key is missing, or content
+    is empty. DE-BIAS (LE-PROD-2 P2): ``require_cjk`` (the book is zh) ALSO drops a
+    low-CJK value (English-leakage in a Chinese dimension). For a NON-zh book
+    ``require_cjk=False`` — English content is faithful and MUST be kept, else every
+    English book's retrieval would mark all dims ungrounded → 0 proposals (the live
+    P2-found bug). Reuses the deterministic JSON recovery from ``repair`` (fence /
+    surrounding-prose / trailing-comma tolerant). Raises :class:`GenerationError`
     only when NO JSON object can be recovered at all (truly unusable output)."""
     report = RepairReport()
     try:
@@ -197,7 +200,8 @@ def parse_grounded_output(
     ungrounded: list[str] = []
     for key in expected_keys:  # C6 declaration order
         content, claimed = _dimension_value(data.get(key))
-        if claimed and content and cjk_ratio(content) >= _MIN_CJK_RATIO:
+        faithful = (cjk_ratio(content) >= _MIN_CJK_RATIO) if require_cjk else True
+        if claimed and content and faithful:
             grounded[key] = content
         else:
             ungrounded.append(key)
@@ -310,7 +314,9 @@ class SchemaGovernedGenerator:
         # minted as a "未提及" fact). If NONE are grounded the gap has no usable
         # corpus grounding → InsufficientGroundingError (the runner skips it with an
         # actionable reason, rather than surfacing an empty proposal).
-        grounded, ungrounded = parse_grounded_output(raw, expected_keys)
+        grounded, ungrounded = parse_grounded_output(
+            raw, expected_keys, require_cjk=is_zh(context.profile.language)
+        )
         if not grounded:
             raise InsufficientGroundingError(
                 f"retrieval grounding did not support any dimension of "

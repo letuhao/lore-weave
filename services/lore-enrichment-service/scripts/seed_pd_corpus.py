@@ -98,7 +98,7 @@ async def _run(args: argparse.Namespace) -> int:
         try:
             ingest = await store.ingest_corpus(
                 user_id=user_id, project_id=project_id,
-                name=corpus_name, kind="fengshen", license="public_domain",
+                name=corpus_name, kind=args.kind, license=args.license,
                 text=text, embed_fn=embed_fn, model_ref=str(embed_ref),
                 # Curated, NOT a compose paste → the reaper must never GC it.
                 provenance_json={"compose_ephemeral": False, "source": "seed_pd_corpus"},
@@ -128,6 +128,10 @@ def main() -> int:
     ap.add_argument("--project", default=None, help="project_id (UUID); defaults to --book")
     ap.add_argument("--dir", default=str(_DEFAULT_DIR), help="fixture dir of *.txt")
     ap.add_argument("--name", default="fengshen-pd", help="corpus name prefix")
+    ap.add_argument("--kind", default="fengshen",
+                    help="source_corpus.kind (fengshen|shanhaijing|history|other)")
+    ap.add_argument("--license", default="public_domain",
+                    help="corpus license (public_domain|licensed|owned|…)")
     ap.add_argument(
         "--no-replace", dest="replace", action="store_false",
         help="append to the existing corpus instead of a clean rebuild (default: replace)",
