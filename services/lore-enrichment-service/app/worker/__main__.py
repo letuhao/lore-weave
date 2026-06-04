@@ -14,6 +14,7 @@ import os
 from app.config import settings
 from app.db.pool import close_pool, create_pool
 from app.worker.heartbeat import heartbeat_loop
+from app.worker.reaper import reaper_loop
 from app.worker.resume_consumer import consume_resume_stream
 
 logging.basicConfig(
@@ -40,10 +41,20 @@ async def _main() -> None:
 
     pool = await create_pool(settings.database_url)
     logger.info("resume worker: pool up, starting consumer")
+    # Reaper (D-COMPOSE-S3-UPLOAD-REAPER / D-COMPOSE-CONTEXT-CORPUS-SCOPE): a
+    # periodic best-effort cleanup of stale uploads / orphan objects / ephemeral
+    # corpora. Runs concurrently with the resume consumer; cancelled on shutdown.
+    reaper = (
+        asyncio.create_task(reaper_loop(pool))
+        if settings.reaper_enabled
+        else None
+    )
     try:
         await consume_resume_stream(pool=pool, redis_url=settings.redis_url)
     finally:
         heartbeat.cancel()
+        if reaper is not None:
+            reaper.cancel()
         await close_pool()
 
 

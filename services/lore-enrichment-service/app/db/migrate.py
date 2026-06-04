@@ -115,14 +115,16 @@ $license_chk$;
 -- tag); only the default for FUTURE un-tagged inserts changes.
 ALTER TABLE source_corpus ALTER COLUMN license SET DEFAULT 'unknown';
 
--- ── C2 T5: SHARED reference library — project_id nullable ─────────────────────
+-- ── C2 T5: SHARED reference library — project_id nullable (source_corpus) ─────
 -- A corpus (and its chunks) with project_id = NULL is a SHARED, public-domain
 -- reference corpus readable by ANY project (e.g. the original 封神演义 a fanfic
 -- re-cooks, or a history corpus). Retrieval scopes `project_id = $proj OR
 -- project_id IS NULL`. Per-project user corpora keep their project_id (unchanged).
--- Idempotent DROP NOT NULL (a no-op once already nullable).
+-- Idempotent DROP NOT NULL (a no-op once already nullable). The CHUNK table's
+-- matching ALTER lives AFTER its CREATE below (it must exist first — a from-scratch
+-- migration ran the whole DDL top-to-bottom and a chunk ALTER here would reference a
+-- not-yet-created table).
 ALTER TABLE source_corpus ALTER COLUMN project_id DROP NOT NULL;
-ALTER TABLE source_corpus_chunk ALTER COLUMN project_id DROP NOT NULL;
 
 -- ═══════════════════════════════════════════════════════════════
 -- source_corpus_chunk (RAID C10 — technique-(b) retrieval)
@@ -163,6 +165,11 @@ CREATE INDEX IF NOT EXISTS idx_source_corpus_chunk_corpus
 
 CREATE INDEX IF NOT EXISTS idx_source_corpus_chunk_scope
   ON source_corpus_chunk(project_id);
+
+-- ── C2 T5 (cont.): chunk project_id nullable — runs AFTER the CREATE above so a
+-- from-scratch migration (full DDL top-to-bottom) doesn't ALTER a missing table.
+-- Idempotent (no-op once already nullable); brings a deployed chunk table to schema.
+ALTER TABLE source_corpus_chunk ALTER COLUMN project_id DROP NOT NULL;
 
 -- ═══════════════════════════════════════════════════════════════
 -- cultural_grounding_ref

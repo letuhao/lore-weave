@@ -16,6 +16,7 @@ from app.files.extract import (
     UnsupportedFileError,
     extract_text,
     file_extension,
+    tesseract_lang_for,
 )
 
 
@@ -78,7 +79,52 @@ def test_pdf_ocr_used_flag_when_ocr_returns_text(monkeypatch):
     writer.write(buf)
 
     import app.files.extract as ex
-    monkeypatch.setattr(ex, "_ocr_pdf_pages", lambda data, indices, *, max_pages: {0: "OCR文字"})
+    monkeypatch.setattr(ex, "_ocr_pdf_pages", lambda data, indices, *, max_pages, lang=None: {0: "OCR文字"})
     r = extract_text("scan.pdf", buf.getvalue())
     assert r.ocr_used is True
     assert "OCR文字" in r.text
+
+
+def test_pdf_ocr_lang_threaded_from_caller(monkeypatch):
+    # extract_text(lang=...) reaches _ocr_pdf_pages so a book-aware lang is honored.
+    pypdf = pytest.importorskip("pypdf")
+    writer = pypdf.PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    buf = io.BytesIO()
+    writer.write(buf)
+
+    import app.files.extract as ex
+    seen: dict[str, str | None] = {}
+
+    def _spy(data, indices, *, max_pages, lang=None):
+        seen["lang"] = lang
+        return {0: "x"}
+
+    monkeypatch.setattr(ex, "_ocr_pdf_pages", _spy)
+    extract_text("scan.pdf", buf.getvalue(), lang="eng")
+    assert seen["lang"] == "eng"
+
+
+# ── tesseract_lang_for (D-COMPOSE-S3-OCR-LANG) — book-aware OCR language ──────
+def test_tesseract_lang_for_chinese_variants():
+    assert tesseract_lang_for("zh") == "chi_sim+chi_tra+eng"
+    assert tesseract_lang_for("zh-TW") == "chi_tra+eng"   # Traditional → traditional pack
+    assert tesseract_lang_for("zh-Hans") == "chi_sim+eng"
+
+
+def test_tesseract_lang_for_installed_non_cjk():
+    assert tesseract_lang_for("en") == "eng"
+    assert tesseract_lang_for("ja") == "jpn+eng"
+    assert tesseract_lang_for("vi") == "vie+eng"
+    assert tesseract_lang_for("Japanese") == "jpn+eng"  # full name + base fallback
+
+
+def test_tesseract_lang_for_auto_and_unknown_default():
+    default = "chi_sim+chi_tra+eng"
+    assert tesseract_lang_for("auto") == default
+    assert tesseract_lang_for("") == default
+    assert tesseract_lang_for(None) == default
+    # A real language whose pack is NOT installed (e.g. Korean) → safe superset,
+    # never a request for a missing 'kor' pack (which would fail OCR entirely).
+    assert tesseract_lang_for("ko") == default
+    assert tesseract_lang_for("xx-unknown") == default

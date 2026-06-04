@@ -194,13 +194,16 @@ async def _ingest_context(
     grounding composer picks the corpus up by project_id when the job runs — so no
     worker change is needed (spec §1).
 
-    SCOPE (review-impl #1, D-COMPOSE-CONTEXT-CORPUS-SCOPE): the corpus is PROJECT-
-    scoped (same as every C2 corpus), not run/target-scoped — so a paste also grounds
-    later enrichments in the project (similarity-ranking keeps off-target context
-    low) and corpora accumulate (no expiry). Acceptable for v1; per-run scoping +
-    cleanup is a tracked follow-up. The ingest is idempotent (content-hashed name),
-    and the query is re-embedded with the SAME model_ref the request persists, so the
-    corpus vectors are comparable at search time (the grounding-alignment invariant)."""
+    SCOPE (D-COMPOSE-CONTEXT-CORPUS-SCOPE): the corpus is PROJECT-scoped (same as
+    every C2 corpus), not run/target-scoped — so a paste also grounds later
+    enrichments in the project (similarity-ranking keeps off-target context low).
+    That cross-run bleed is by design (a re-paste re-grounds idempotently). To stop
+    the corpora ACCUMULATING forever, each compose paste/file ingest is tagged
+    ``provenance_json.compose_ephemeral`` so the worker reaper garbage-collects it by
+    TTL (``context_corpus_ttl_s``); the curated ``/sources`` library is untagged and
+    never reaped. The ingest is idempotent (content-hashed name), and the query is
+    re-embedded with the SAME model_ref the request persists, so the corpus vectors
+    are comparable at search time (the grounding-alignment invariant)."""
     store = SourceCorpusStore(pool)
     client = KnowledgeClient(
         knowledge_base_url=settings.knowledge_service_url,
@@ -222,6 +225,8 @@ async def _ingest_context(
             name=f"compose-context:{book_id}:{digest}", kind="other",
             license=store_license, text=text, embed_fn=embed_fn,
             model_ref=str(embedding_model_ref),
+            # Tag ephemeral so the reaper GCs it by TTL (D-COMPOSE-CONTEXT-CORPUS-SCOPE).
+            provenance_json={"compose_ephemeral": True, "source": "compose", "book_id": str(book_id)},
         )
     finally:
         await client.aclose()

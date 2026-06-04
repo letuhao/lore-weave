@@ -209,6 +209,29 @@ class SourceCorpusStore:
             )
         return [dict(r) for r in rows], int(total or 0)
 
+    async def reap_ephemeral_corpora(self, *, ttl_seconds: float) -> list[UUID]:
+        """Delete compose-ephemeral corpora older than ``ttl_seconds`` and return
+        the deleted ids (D-COMPOSE-CONTEXT-CORPUS-SCOPE). Targets ONLY corpora
+        tagged ``provenance_json->>'compose_ephemeral' = 'true'`` (the mode-C paste
+        / mode-F file pastes) — NEVER the curated /sources reference library. Chunks
+        + grounding refs cascade (FK ON DELETE CASCADE); a promoted proposal that
+        cited one survives (its ``cultural_grounding_ref_id`` FK is ON DELETE SET
+        NULL and its ``source_refs_json`` is a value snapshot, not an FK). ``ttl <=
+        0`` is a no-op (disables reaping) so an accidental 0 never purges live data."""
+        if ttl_seconds <= 0:
+            return []
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                DELETE FROM source_corpus
+                WHERE provenance_json->>'compose_ephemeral' = 'true'
+                  AND created_at < now() - ($1 * interval '1 second')
+                RETURNING corpus_id
+                """,
+                ttl_seconds,
+            )
+        return [r["corpus_id"] for r in rows]
+
     async def upsert_corpus(
         self,
         *,
@@ -326,6 +349,7 @@ class SourceCorpusStore:
         embed_fn: EmbedFn,
         model_ref: str,
         license: str = "unknown",
+        provenance_json: dict | None = None,
         target_chars: int = DEFAULT_TARGET_CHARS,
         overlap_sentences: int = DEFAULT_OVERLAP_SENTENCES,
     ) -> IngestResult:
@@ -341,9 +365,15 @@ class SourceCorpusStore:
         ``license`` defaults to ``"unknown"`` (fail-closed, C17 WARN-1): an ingest
         that omits it produces a corpus the re-cook licensing gate REFUSES. Tag a
         genuinely public-domain / licensed source EXPLICITLY to make it re-cookable.
+
+        ``provenance_json`` is recorded on the corpus row (only when the corpus is
+        first created — a re-ingest keeps the original). Compose tags its ephemeral
+        paste/file corpora here (``{"compose_ephemeral": true}``) so the reaper can
+        garbage-collect them by TTL (D-COMPOSE-CONTEXT-CORPUS-SCOPE).
         """
         corpus_id = await self.upsert_corpus(
             user_id=user_id, project_id=project_id, name=name, kind=kind, license=license,
+            provenance_json=provenance_json,
         )
         chunks = chunk_text(
             text, target_chars=target_chars, overlap_sentences=overlap_sentences

@@ -175,3 +175,33 @@ def test_extract_and_store_failed(monkeypatch):
     failed = [(s, a) for s, a in pool.sink if "status='failed'" in s]
     assert len(failed) == 1
     assert "parse boom" in failed[0][1][1]
+
+
+def test_extract_and_store_pdf_resolves_book_ocr_lang(monkeypatch):
+    # For a PDF + book_id, the OCR language is resolved from the book profile and
+    # threaded to extract_text (D-COMPOSE-S3-OCR-LANG). The fake pool has no profile
+    # row → NEUTRAL (language 'auto') → the CJK+English default superset.
+    captured: dict[str, object] = {}
+
+    def _capture(filename, data, *, max_pages, lang=None):
+        captured["lang"] = lang
+        from app.files.extract import ExtractResult
+        return ExtractResult(text="x", pages=1, ocr_used=False)
+
+    monkeypatch.setattr(uploads_api, "extract_text", _capture)
+    asyncio.run(real_extract_and_store(_FakePool(), uuid4(), "scan.pdf", b"%PDF-1.4", uuid4()))
+    assert captured["lang"] == "chi_sim+chi_tra+eng"
+
+
+def test_extract_and_store_txt_skips_profile_lookup(monkeypatch):
+    # A non-PDF never reads the profile (no OCR) — lang stays None.
+    captured: dict[str, object] = {"lang": "SENTINEL"}
+
+    def _capture(filename, data, *, max_pages, lang=None):
+        captured["lang"] = lang
+        from app.files.extract import ExtractResult
+        return ExtractResult(text="x", pages=1, ocr_used=False)
+
+    monkeypatch.setattr(uploads_api, "extract_text", _capture)
+    asyncio.run(real_extract_and_store(_FakePool(), uuid4(), "a.txt", b"hi", uuid4()))
+    assert captured["lang"] is None

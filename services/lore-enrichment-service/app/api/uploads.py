@@ -35,8 +35,14 @@ from fastapi import (
 from app.api.license_assert import resolve_asserted_license
 from app.api.principal import Principal, require_principal
 from app.config import settings
+from app.db.book_profile import get_book_profile
 from app.deps import get_db
-from app.files.extract import SUPPORTED_EXTENSIONS, extract_text, file_extension
+from app.files.extract import (
+    SUPPORTED_EXTENSIONS,
+    extract_text,
+    file_extension,
+    tesseract_lang_for,
+)
 from app.storage.minio_client import ensure_bucket, upload_file
 
 logger = logging.getLogger("lore_enrichment.uploads")
@@ -68,13 +74,30 @@ async def fetch_upload(pool: asyncpg.Pool, user_id, upload_id: UUID) -> asyncpg.
         )
 
 
-async def _extract_and_store(pool: asyncpg.Pool, upload_id: UUID, filename: str, data: bytes) -> None:
+async def _extract_and_store(
+    pool: asyncpg.Pool, upload_id: UUID, filename: str, data: bytes, book_id: UUID | None = None
+) -> None:
     """Background: extract text (+OCR) off the event loop, then flip status. A
-    failure is recorded as status='failed' + error_message (never crashes the loop)."""
+    failure is recorded as status='failed' + error_message (never crashes the loop).
+
+    For a scanned PDF the OCR language is resolved from the book's enrichment
+    profile (D-COMPOSE-S3-OCR-LANG) — a non-CJK book OCRs with its own pack instead
+    of the CJK default. Only PDFs reach OCR, so the profile is read only for PDFs
+    (txt/docx/epub need no language)."""
     loop = asyncio.get_running_loop()
     try:
+        lang: str | None = None
+        if file_extension(filename) == ".pdf" and book_id is not None:
+            # Best-effort: the OCR language is a nicety, NOT a correctness gate — a
+            # profile-read failure must degrade to the default lang, never FAIL the
+            # whole extraction (review-impl #3). A missing row already returns NEUTRAL.
+            try:
+                profile = await get_book_profile(pool, book_id)
+                lang = tesseract_lang_for(profile.language)
+            except Exception:  # noqa: BLE001 — degrade to default OCR lang
+                logger.warning("upload %s: book-profile read failed; default OCR lang", upload_id, exc_info=True)
         result = await loop.run_in_executor(
-            None, lambda: extract_text(filename, data, max_pages=settings.upload_max_pages)
+            None, lambda: extract_text(filename, data, max_pages=settings.upload_max_pages, lang=lang)
         )
         async with pool.acquire() as conn:
             await conn.execute(
@@ -130,10 +153,11 @@ async def create_upload(
             detail=f"file too large ({len(data)} bytes > {settings.upload_max_bytes} cap)",
         )
 
-    # NOTE (accepted, D-COMPOSE-S3-UPLOAD-REAPER): MinIO write precedes the row
-    # INSERT, so an INSERT failure orphans the object; a service restart mid-extract
-    # strands a row in 'processing' (→ the files branch 409s on it forever). No data
-    # corruption; a reaper (sweep stale 'processing' + orphan objects) is a follow-up.
+    # NOTE: MinIO write precedes the row INSERT, so an INSERT failure orphans the
+    # object; a service restart mid-extract strands a row in 'processing' (→ the
+    # files branch 409s on it forever). Both are now garbage-collected by the worker
+    # reaper (app/worker/reaper.py — sweep stale 'processing' rows → failed + delete
+    # orphan objects past a grace window). No data corruption either way.
     upload_id = uuid4()
     key = f"{principal.user_id}/{book_id}/{upload_id}{ext}"
     try:
@@ -153,7 +177,7 @@ async def create_upload(
             file.content_type or "", len(data), store_license, key,
         )
 
-    background.add_task(_extract_and_store, pool, upload_id, file.filename or "", data)
+    background.add_task(_extract_and_store, pool, upload_id, file.filename or "", data, book_id)
     return {"upload_id": str(upload_id), "filename": file.filename, "status": "processing"}
 
 
