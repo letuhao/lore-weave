@@ -65,10 +65,13 @@ func (s *Server) createKind(w http.ResponseWriter, r *http.Request) {
 	// with neither — the prior behaviour for every API/UI-created kind — leaves its
 	// entities with no display name, including entities reassigned here out of the
 	// unknown bucket (their name would be dropped in the kind re-key).
+	// Insert only base attribute_definitions columns (present since the initial
+	// schema); is_active / genre_tags / auto_fill_prompt are added by later
+	// migrations with defaults, so omitting them is migration-order-independent.
 	nameAttr := domain.AttrDef{Code: "name", Name: "Name", FieldType: "text", IsRequired: true, IsActive: true, SortOrder: 0, GenreTags: []string{}}
 	if err := tx.QueryRow(r.Context(), `
-		INSERT INTO attribute_definitions(kind_id, code, name, field_type, is_required, is_system, is_active, sort_order, genre_tags)
-		VALUES ($1,'name','Name','text',true,true,true,0,'{}')
+		INSERT INTO attribute_definitions(kind_id, code, name, field_type, is_required, is_system, sort_order)
+		VALUES ($1,'name','Name','text',true,true,0)
 		RETURNING attr_def_id`,
 		kindID,
 	).Scan(&nameAttr.AttrDefID); err != nil {
@@ -195,15 +198,47 @@ func (s *Server) deleteKind(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check: must not have entities using this kind
-	var entityCount int
-	s.pool.QueryRow(r.Context(), `SELECT count(*) FROM glossary_entities WHERE kind_id=$1`, kindID).Scan(&entityCount)
-	if entityCount > 0 {
+	// Check: must not have ACTIVE entities using this kind. Soft-deleted entities
+	// (recycle bin) must NOT block — but the glossary_entities.kind_id FK has no
+	// ON DELETE CASCADE, so leftover soft-deleted rows would otherwise FK-block the
+	// kind delete with a confusing "has entities" 409 on a kind the UI shows as
+	// empty (listKinds counts only deleted_at IS NULL). Purge them in the delete tx
+	// (their attr values / evidences / enrichments cascade via ON DELETE CASCADE).
+	var activeCount int
+	if err := s.pool.QueryRow(r.Context(),
+		`SELECT count(*) FROM glossary_entities WHERE kind_id=$1 AND deleted_at IS NULL`, kindID,
+	).Scan(&activeCount); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "entity count failed")
+		return
+	}
+	if activeCount > 0 {
 		writeError(w, http.StatusConflict, "GLOSS_CONFLICT", "kind has entities — delete or reassign them first")
 		return
 	}
 
-	s.pool.Exec(r.Context(), `DELETE FROM entity_kinds WHERE kind_id=$1`, kindID)
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx begin failed")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	if _, err := tx.Exec(r.Context(),
+		`DELETE FROM glossary_entities WHERE kind_id=$1 AND deleted_at IS NOT NULL`, kindID,
+	); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "purge soft-deleted entities failed")
+		return
+	}
+	// entity_kinds → attribute_definitions + entity_kind_aliases both cascade.
+	if _, err := tx.Exec(r.Context(),
+		`DELETE FROM entity_kinds WHERE kind_id=$1`, kindID,
+	); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "delete kind failed")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx commit failed")
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

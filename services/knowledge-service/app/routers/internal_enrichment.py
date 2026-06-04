@@ -159,12 +159,33 @@ async def enriched_writeback(
     written: list[EnrichedFactRef] = []
     async with neo4j_session() as session:
         # Ensure the entity anchor exists in the graph so the enriched edge has an
-        # endpoint. Two cases, kept strictly distinct (H0 / FIX-2):
+        # endpoint. The anchor is keyed on `id` (the canonical id = hash of
+        # user/project/canonical_name/kind), MATCHING the canonical glossary→KG sync
+        # (neo4j_repos/entities.py MERGEs (:Entity {id})). Keying on the canonical id
+        # (not the glossary_entity_id) makes write-back idempotent across glossary
+        # entity churn — re-promote, delete+recreate of the same name, or rename all
+        # resolve to one node instead of tripping the UNIQUE on :Entity(id).
+        #
+        # First free this glossary anchor from any OTHER node that still claims it
+        # (a renamed / deleted-recreated entity), mirroring the canonical sync's
+        # null-before-claim discipline (entities.py), so setting it below cannot trip
+        # the UNIQUE on :Entity(glossary_entity_id).
+        await session.run(
+            """
+            MATCH (stale:Entity {user_id: $user_id, glossary_entity_id: $glossary_entity_id})
+            WHERE stale.id <> $canon_id
+            SET stale.glossary_entity_id = NULL, stale.updated_at = datetime()
+            """,
+            user_id=str(req.user_id),
+            glossary_entity_id=str(req.glossary_entity_id),
+            canon_id=canon_id,
+        )
+        # Two cases, kept strictly distinct (H0 / FIX-2):
         #   * ON MATCH — a pre-existing canon anchor (synced by the glossary→KG
-        #     pipeline) stays EXACTLY as it is. We do not touch its source_type /
-        #     confidence / origin; enrichment never makes a canon node look more
-        #     or less canon. (Only updated_at bumps, and id is back-filled if a
-        #     legacy node lacks one.)
+        #     pipeline, or a prior write-back) stays EXACTLY as it is. We do not
+        #     touch its source_type / confidence / origin; enrichment never makes a
+        #     canon node look more or less canon. (Only updated_at bumps, and the
+        #     glossary anchor is back-filled if the node lacks one.)
         #   * ON CREATE — enrichment is the entity's CREATOR (anchor didn't
         #     pre-exist). The node is born MARKED-AS-ENRICHMENT: origin=
         #     'enrichment', pending_validation=true, confidence<1.0,
@@ -173,9 +194,10 @@ async def enriched_writeback(
         #     write) clears these markers ON MATCH when the owner authors/promotes.
         await session.run(
             """
-            MERGE (e:Entity {user_id: $user_id, glossary_entity_id: $glossary_entity_id})
+            MERGE (e:Entity {id: $canon_id})
             ON CREATE SET
-              e.id = $canon_id,
+              e.user_id = $user_id,
+              e.glossary_entity_id = $glossary_entity_id,
               e.name = $name,
               e.canonical_name = $canon_name,
               e.kind = $kind,
@@ -190,7 +212,7 @@ async def enriched_writeback(
               e.created_at = datetime(),
               e.updated_at = datetime()
             ON MATCH SET
-              e.id = coalesce(e.id, $canon_id),
+              e.glossary_entity_id = coalesce(e.glossary_entity_id, $glossary_entity_id),
               e.updated_at = datetime()
             """,
             user_id=str(req.user_id),
@@ -213,7 +235,7 @@ async def enriched_writeback(
             confidence = min(fact.confidence, 0.99)  # H0: never canon on write-back
             await session.run(
                 """
-                MATCH (e:Entity {user_id: $user_id, glossary_entity_id: $glossary_entity_id})
+                MATCH (e:Entity {id: $canon_id})
                 MERGE (f:Fact {id: $node_id})
                 ON CREATE SET
                   f.user_id = $user_id,
@@ -255,7 +277,7 @@ async def enriched_writeback(
                     r.updated_at = datetime()
                 """,
                 user_id=str(req.user_id),
-                glossary_entity_id=str(req.glossary_entity_id),
+                canon_id=canon_id,
                 node_id=node_id,
                 edge_id=edge_id,
                 project_id=project_id or "global",
