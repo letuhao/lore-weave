@@ -483,9 +483,9 @@ services:
       # the build_context budget above (D-K21B-06 live-smoke finding).
       KNOWLEDGE_TOOL_TIMEOUT_S: "30"
       # ARCH-2: route memory-tool execution through knowledge-service /mcp
-      # (vs the bespoke /internal/tools path) when true. Default false keeps the
-      # dual-run gate; D-ARCH2-MCP-LIVE-SMOKE validates before flipping.
-      USE_MCP_TOOLS: ${USE_MCP_TOOLS:-false}
+      # (vs the bespoke /internal/tools path). Flipped to true after
+      # D-ARCH2-MCP-LIVE-SMOKE; set USE_MCP_TOOLS=false to fall back.
+      USE_MCP_TOOLS: ${USE_MCP_TOOLS:-true}
     depends_on:
       postgres:
         condition: service_healthy
