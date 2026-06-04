@@ -942,6 +942,8 @@ services:
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
       LORE_ENRICHMENT_SERVICE_URL: http://lore-enrichment-service:8093
       LEARNING_SERVICE_URL: http://learning-service:8094
+      # LOOM M7 — composition-service (co-writer). Same in-cluster pattern.
+      COMPOSITION_SERVICE_URL: http://composition-service:8093
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
@@ -982,6 +984,11 @@ services:
         # Phase B — start-ordering only (not a hard gate): the correction read
         # API is non-critical, so a learning-service hiccup must not wedge the
         # gateway/whole stack. Mirrors the lore-enrichment posture.
+        condition: service_started
+      composition-service:
+        # LOOM M7 — start-ordering only (not a hard gate): a composition hiccup
+        # must not wedge the gateway; the compositionProxy 503-on-down handler
+        # degrades gracefully. Mirrors the learning/lore-enrichment posture.
         condition: service_started
       rabbitmq:
         condition: service_healthy

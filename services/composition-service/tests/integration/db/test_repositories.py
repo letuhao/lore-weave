@@ -22,6 +22,7 @@ from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
+from app.db.repositories.structure_templates import StructureTemplatesRepo
 from app.db.repositories.works import WorksRepo
 
 _DSN = os.environ.get("TEST_COMPOSITION_DB_URL")
@@ -373,6 +374,24 @@ async def test_generation_job_status_update_coalesces(pool):
 
 
 # ───────────────────────── outbox (txn-local) ─────────────────────────
+
+async def test_structure_templates_lists_builtins(pool):
+    """M7: list_for_user returns the 6 seeded built-ins (owner NULL) + the user's
+    own; another user's custom template is excluded."""
+    repo = StructureTemplatesRepo(pool)
+    user = uuid.uuid4()
+    async with pool.acquire() as c:
+        await c.execute(
+            "INSERT INTO structure_template (owner_user_id, name, kind) VALUES ($1,'Mine','generic')", user)
+        await c.execute(
+            "INSERT INTO structure_template (owner_user_id, name, kind) VALUES ($1,'Theirs','generic')", uuid.uuid4())
+    mine = await repo.list_for_user(user)
+    names = {t.name for t in mine}
+    assert "Mine" in names and "Theirs" not in names
+    builtins = [t for t in mine if t.owner_user_id is None]
+    assert len(builtins) == 6  # the 6 seeded structures
+    assert builtins[0].beats  # beats jsonb round-trips
+
 
 async def test_outbox_emit_is_transactional(pool):
     works = WorksRepo(pool)
