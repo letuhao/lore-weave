@@ -62,6 +62,26 @@ __all__ = [
 #: Chinese dimension is treated as UNGROUNDED, never minted as a fact).
 _MIN_CJK_RATIO: float = 0.30
 
+#: SAFETY NET (LE-PROD-2 P4a): the grounded-FLAG is the primary signal, but a model
+#: that ignores the protocol and writes a refusal as the CONTENT (with grounded=true)
+#: would otherwise mint a junk "未提及" fact. These STRONG refusal phrases (unlikely to
+#: appear in genuine grounded prose) force a dim UNGROUNDED even if the flag claims
+#: otherwise. Conservative + multilingual; matched case-insensitively on the content.
+_REFUSAL_MARKERS: tuple[str, ...] = (
+    "未提及", "无可补全", "無可補全", "未载", "未載", "未涉", "未提供",
+    "无法补全", "無法補全", "暂无相关", "暫無相關", "检索片段未", "檢索片段未",
+    "not mentioned", "no information", "cannot be determined", "not found in",
+    "no relevant", "not provided", "n/a",
+)
+
+
+def _is_refusal(content: str) -> bool:
+    """True iff the content is a model REFUSAL written as prose (it ignored the
+    grounded=false protocol). A genuine grounded fact does not contain these strong
+    markers; matching one means 'the excerpts don't cover this' → treat ungrounded."""
+    low = content.lower()
+    return any(m in content or m in low for m in _REFUSAL_MARKERS)
+
 
 #: The injected LLM-completion seam: (prompt, context) → raw model text. Bound to
 #: the provider-registry generation endpoint by ``model_ref`` on the context
@@ -201,7 +221,9 @@ def parse_grounded_output(
     for key in expected_keys:  # C6 declaration order
         content, claimed = _dimension_value(data.get(key))
         faithful = (cjk_ratio(content) >= _MIN_CJK_RATIO) if require_cjk else True
-        if claimed and content and faithful:
+        # P4a safety net: a refusal written as content (model ignored the flag) is
+        # ungrounded regardless of the claimed flag — never mint a "未提及" fact.
+        if claimed and content and faithful and not _is_refusal(content):
             grounded[key] = content
         else:
             ungrounded.append(key)

@@ -180,6 +180,22 @@ async def test_en_book_keeps_english_content():
 
 
 @pytest.mark.asyncio
+async def test_refusal_prose_with_grounded_true_is_treated_ungrounded():
+    # P4a safety net: a non-compliant model marks grounded=true but writes a refusal
+    # as the content — it must NOT mint a junk "未提及" fact. Here 历史 is a refusal
+    # (dropped); the genuine 地理/文化 stay.
+    raw = (
+        '{"历史": {"grounded": true, "content": "检索片段未提及此地历史，无可补全。"}, '
+        '"地理": {"grounded": true, "content": "东海之中，云雾缭绕。"}, '
+        '"文化": {"grounded": true, "content": "岛上仙家崇尚清修。"}}'
+    )
+    gen = SchemaGovernedGenerator(complete=_const_complete(raw))
+    facts = await gen.generate(_proposal(), _ctx(profile=_ZH_PROFILE))
+    assert [f.dimension for f in facts] == ["地理", "文化"]  # refusal 历史 dropped
+    assert facts[0].provenance["ungrounded_dimensions"] == ["历史"]
+
+
+@pytest.mark.asyncio
 async def test_all_ungrounded_raises_insufficient_grounding():
     # slice B: the model marks EVERY dimension grounded=false (the "未提及" case) →
     # no usable grounding → InsufficientGroundingError (the runner skips with an
