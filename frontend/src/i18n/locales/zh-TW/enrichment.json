@@ -237,6 +237,8 @@
     "ingested": "已匯入 — 已嵌入 {{count}} 個區塊",
     "ingest_placeholder": "貼上公共領域／已授權的來源文字以分塊＋嵌入…",
     "chunks": "{{count}} 個區塊",
+    "embedded": "已嵌入 ✓",
+    "partial": "{{done}}/{{total}} 已嵌入",
     "none": "尚未登錄任何來源。",
     "recook_ok": "可再製",
     "recook_refused": "拒絕再製（預設拒絕）",

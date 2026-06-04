@@ -75,6 +75,8 @@ def _corpus_view(row: dict) -> dict:
     }
     if "chunk_count" in row:
         view["chunk_count"] = int(row["chunk_count"])
+    if "chunks_embedded" in row:
+        view["chunks_embedded"] = int(row["chunks_embedded"])
     return view
 
 

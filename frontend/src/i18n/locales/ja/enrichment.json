@@ -237,6 +237,8 @@
     "ingested": "取り込み完了 — {{count}} チャンクを埋め込みました",
     "ingest_placeholder": "パブリックドメイン／許諾ありの出典テキストを貼り付けてチャンク化＋埋め込み…",
     "chunks": "{{count}} チャンク",
+    "embedded": "埋め込み済み ✓",
+    "partial": "{{done}}/{{total}} 埋め込み済み",
     "none": "登録された出典はまだありません。",
     "recook_ok": "再構成OK",
     "recook_refused": "再構成を拒否（既定で拒否）",

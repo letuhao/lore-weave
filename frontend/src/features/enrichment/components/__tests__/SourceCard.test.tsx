@@ -56,6 +56,22 @@ describe('SourceCard', () => {
     expect(screen.queryByText(/sources\.chunks/)).toBeNull();
   });
 
+  // #9 embed-status pill
+  it('shows an "embedded ✓" pill when every chunk is embedded', () => {
+    render(<SourceCard source={S({ chunk_count: 2, chunks_embedded: 2 })} embeds={EMBEDS} onIngest={vi.fn()} />);
+    expect(screen.getByTestId('enrichment-source-embed')).toHaveTextContent('sources.embedded');
+  });
+
+  it('shows a partial pill when only some chunks are embedded', () => {
+    render(<SourceCard source={S({ chunk_count: 3, chunks_embedded: 1 })} embeds={EMBEDS} onIngest={vi.fn()} />);
+    expect(screen.getByTestId('enrichment-source-embed')).toHaveTextContent('sources.partial');
+  });
+
+  it('shows no embed pill for a registered shell with zero chunks', () => {
+    render(<SourceCard source={S({ chunk_count: 0 })} embeds={EMBEDS} onIngest={vi.fn()} />);
+    expect(screen.queryByTestId('enrichment-source-embed')).toBeNull();
+  });
+
   it('the ingest form is hidden until the ingest toggle is clicked', () => {
     render(<SourceCard source={S()} embeds={EMBEDS} onIngest={vi.fn()} />);
     expect(screen.queryByTestId('enrichment-ingest-text')).toBeNull();

@@ -55,9 +55,25 @@ export function JobsPanel() {
                   variant={VARIANT[j.status] ?? 'pending'}
                   label={t(`jobs.status.${j.status}`, { defaultValue: j.status })}
                 />
+                {/* #4: a failed job carries WHY it failed (e.g. gate-locked) — surface it. */}
+                {j.status === 'failed' && j.error_message && (
+                  <p
+                    className="mt-1 max-w-[16rem] text-[10px] text-destructive"
+                    data-testid={`job-error-${j.job_id}`}
+                    title={j.error_message}
+                  >
+                    {j.error_message}
+                  </p>
+                )}
               </td>
               <td className="px-3 py-2 font-mono text-xs">{j.proposals_total}</td>
-              <td className="px-3 py-2 font-mono text-xs">${j.actual_cost.toFixed(4)}</td>
+              {/* #5: spent vs cap — the cost-cap-pause is the panel's whole point. */}
+              <td className="px-3 py-2 font-mono text-xs" data-testid={`job-cost-${j.job_id}`}>
+                ${j.actual_cost.toFixed(4)}
+                {j.max_spend != null && (
+                  <span className="text-muted-foreground"> / ${j.max_spend.toFixed(2)}</span>
+                )}
+              </td>
               <td className="px-3 py-2 text-xs text-muted-foreground">
                 {new Date(j.created_at).toLocaleString()}
               </td>

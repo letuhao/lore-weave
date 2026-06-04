@@ -289,8 +289,10 @@ export interface Source {
   name: string;
   kind: SourceKind | string;
   license: License | string;
-  /** # of ingested+embedded chunks (GET /sources echoes it; absent before ingest). */
+  /** # of ingested chunks (GET /sources echoes it; absent before ingest). */
   chunk_count?: number;
+  /** # of those chunks that carry an embedding vector (the embed-status pill #9). */
+  chunks_embedded?: number;
   provenance_json: Record<string, unknown>;
   created_at: string;
   updated_at: string;

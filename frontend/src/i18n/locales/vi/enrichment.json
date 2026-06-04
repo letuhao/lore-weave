@@ -237,6 +237,8 @@
     "ingested": "Đã nạp — {{count}} đoạn được embed",
     "ingest_placeholder": "Dán văn bản nguồn phạm-vi-công-cộng / có-phép để chia đoạn + embed…",
     "chunks": "{{count}} đoạn",
+    "embedded": "đã nhúng ✓",
+    "partial": "{{done}}/{{total}} đã nhúng",
     "none": "Chưa đăng ký nguồn nào.",
     "recook_ok": "tái chế OK",
     "recook_refused": "từ chối tái chế (mặc định cấm)",

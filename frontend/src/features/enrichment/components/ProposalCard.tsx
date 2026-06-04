@@ -61,9 +61,21 @@ export function ProposalCard({
         </span>
       </div>
       {!autoRejected && flagCount > 0 && (
-        <p className="text-[11px] text-warning" data-testid="enrichment-card-advisory">
-          {t('card.advisory', { count: flagCount })}
-        </p>
+        <div className="space-y-0.5" data-testid="enrichment-card-advisory">
+          {/* #8: show the flag KIND + evidence inline (e.g. "REGURGITATION · 逐字重合 14 字"),
+              not just a count — the kind is a technical token shown raw (like the tier). */}
+          {(verify?.flags ?? []).slice(0, 2).map((f, i) => (
+            <p key={i} className="flex items-start gap-1 text-[11px] text-warning">
+              <span className="shrink-0 rounded bg-warning/15 px-1 font-mono text-[10px] uppercase">
+                {f.kind}
+              </span>
+              {f.evidence && <span className="line-clamp-1">{f.evidence}</span>}
+            </p>
+          ))}
+          {flagCount > 2 && (
+            <p className="text-[10px] text-muted-foreground">{t('card.advisory', { count: flagCount })}</p>
+          )}
+        </div>
       )}
     </button>
   );

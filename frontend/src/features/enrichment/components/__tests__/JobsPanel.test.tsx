@@ -100,6 +100,26 @@ describe('JobsPanel', () => {
     expect(screen.getByText('P1 · template')).toBeInTheDocument();
   });
 
+  it('surfaces a failed job error_message (#4)', () => {
+    jobsStub.items = [J({ status: 'failed', error_message: 'refused: technique gate-locked' })];
+    renderPanel();
+    expect(screen.getByTestId('job-error-job-1')).toHaveTextContent('refused: technique gate-locked');
+  });
+
+  it('does NOT show an error line for a non-failed job', () => {
+    jobsStub.items = [J({ status: 'completed', error_message: null })];
+    renderPanel();
+    expect(screen.queryByTestId('job-error-job-1')).toBeNull();
+  });
+
+  it('shows spent-vs-cap when a cost cap is set (#5)', () => {
+    jobsStub.items = [J({ actual_cost: 0.1234, max_spend: 2 })];
+    renderPanel();
+    const cost = screen.getByTestId('job-cost-job-1');
+    expect(cost).toHaveTextContent('$0.1234');
+    expect(cost).toHaveTextContent('/ $2.00');
+  });
+
   it('shows the Resume button only for a paused job', () => {
     jobsStub.items = [J({ status: 'paused' })];
     renderPanel();

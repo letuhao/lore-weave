@@ -200,7 +200,10 @@ class SourceCorpusStore:
                 """SELECT c.corpus_id, c.name, c.kind, c.license, c.provenance_json,
                           c.created_at,
                           (SELECT COUNT(*) FROM source_corpus_chunk ch
-                             WHERE ch.corpus_id = c.corpus_id) AS chunk_count
+                             WHERE ch.corpus_id = c.corpus_id) AS chunk_count,
+                          (SELECT COUNT(*) FROM source_corpus_chunk ch
+                             WHERE ch.corpus_id = c.corpus_id
+                               AND ch.embedding IS NOT NULL) AS chunks_embedded
                    FROM source_corpus c
                    WHERE c.user_id=$1 AND c.project_id=$2
                    ORDER BY c.created_at DESC, c.corpus_id

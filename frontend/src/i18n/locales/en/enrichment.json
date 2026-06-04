@@ -237,6 +237,8 @@
     "ingested": "Ingested — {{count}} chunk(s) embedded",
     "ingest_placeholder": "Paste public-domain / licensed source text to chunk + embed…",
     "chunks": "{{count}} chunks",
+    "embedded": "embedded ✓",
+    "partial": "{{done}}/{{total}} embedded",
     "none": "No sources registered yet.",
     "recook_ok": "recook-OK",
     "recook_refused": "recook refused (default-deny)",

@@ -55,9 +55,26 @@ export function SourceCard({
           {t(`license.${source.license}`, { defaultValue: source.license })}
         </span>
       </div>
-      <p className="mt-1 font-mono text-[11px] text-muted-foreground">
-        kind={source.kind} · {ok ? t('sources.recook_ok') : t('sources.recook_refused')}
-        {source.chunk_count != null && <> · {t('sources.chunks', { count: source.chunk_count })}</>}
+      <p className="mt-1 flex flex-wrap items-center gap-x-1.5 font-mono text-[11px] text-muted-foreground">
+        <span>kind={source.kind} · {ok ? t('sources.recook_ok') : t('sources.recook_refused')}</span>
+        {source.chunk_count != null && <span>· {t('sources.chunks', { count: source.chunk_count })}</span>}
+        {/* #9: embed-status pill — a registered shell (0 chunks) shows nothing; an
+            ingested corpus shows fully-embedded ✓ or a partial done/total. */}
+        {source.chunk_count != null && source.chunk_count > 0 && (
+          <span
+            data-testid="enrichment-source-embed"
+            className={cn(
+              'rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+              (source.chunks_embedded ?? 0) >= source.chunk_count
+                ? 'bg-success/10 text-success'
+                : 'bg-warning/15 text-warning',
+            )}
+          >
+            {(source.chunks_embedded ?? 0) >= source.chunk_count
+              ? t('sources.embedded')
+              : t('sources.partial', { done: source.chunks_embedded ?? 0, total: source.chunk_count })}
+          </span>
+        )}
       </p>
 
       <div className="mt-2">
