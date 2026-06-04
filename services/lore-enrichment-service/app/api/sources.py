@@ -25,11 +25,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.api.principal import Principal, require_principal
-from app.clients.book import BookClient, BookServiceError
+from app.clients.book import BookServiceError
 from app.clients.knowledge import KnowledgeClient, KnowledgeServiceError
 from app.config import settings
 from app.deps import get_db
 from app.retrieval.store import SourceCorpusStore
+from app.services.book_grounding import NoChapterTextError, ingest_book_chapters
 
 router = APIRouter(prefix="/v1/lore-enrichment/sources", tags=["sources"])
 #: de-bias C2 T6 — book-scoped grounding ingest (chapter SELECTION → corpus).
@@ -203,65 +204,37 @@ async def ground_from_book(
     """Ingest AUTHOR-SELECTED chapters of the book as a grounding corpus (de-bias
     C2 T6). The author picks specific chapters (a selection LIST, never auto-bulk /
     "top-N") to add raw-prose grounding beyond what knowledge RAG surfaces. The text
-    is the author's OWN → license 'public-domain' (no copyright liability). Chunk +
-    embed via the existing ingest_corpus; idempotent (re-run = no-op)."""
+    is the author's OWN → license 'licensed' (re-cook-admissible). Chunk + embed via
+    the shared ``ingest_book_chapters`` seam; idempotent (re-run = no-op). The seed
+    path (LE-PROD slice C) reuses the SAME seam for ALL chapters."""
     if principal.user_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="auth required")
-
-    book = BookClient(
-        base_url=settings.book_service_url,
-        internal_token=settings.internal_service_token,
-    )
-    texts: list[str] = []
     try:
-        for chapter_id in body.chapter_ids:
-            t = await book.get_chapter_text(book_id=book_id, chapter_id=chapter_id)
-            if t.strip():
-                texts.append(t)
-    except BookServiceError as exc:
-        code = status.HTTP_503_SERVICE_UNAVAILABLE if exc.retryable else status.HTTP_502_BAD_GATEWAY
-        raise HTTPException(status_code=code, detail=f"book read failed: {exc}")
-    finally:
-        await book.aclose()
-    if not texts:
+        res = await ingest_book_chapters(
+            pool,
+            user_id=principal.user_id,
+            project_id=body.project_id,
+            book_id=book_id,
+            embedding_model_ref=body.embedding_model_ref,
+            chapter_ids=body.chapter_ids,  # the author's explicit selection
+            target_chars=body.target_chars,
+        )
+    except NoChapterTextError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="no chapter text for the selected chapter_ids",
         )
-
-    kc = KnowledgeClient(
-        knowledge_base_url=settings.knowledge_service_url,
-        provider_registry_base_url=settings.provider_registry_internal_url,
-        internal_token=settings.internal_service_token,
-    )
-
-    async def embed_fn(chunk_texts):
-        result = await kc.embed(
-            user_id=principal.user_id, model_source="user_model",
-            model_ref=str(body.embedding_model_ref), texts=list(chunk_texts),
-        )
-        return result.embeddings
-
-    store = SourceCorpusStore(pool)
-    try:
-        ingest = await store.ingest_corpus(
-            user_id=principal.user_id, project_id=body.project_id,
-            # 'licensed' (review #4): the author's own chapters are their copyright,
-            # not public-domain — but author-owned ⇒ re-cook-admissible. Accurate tag.
-            name=f"book-chapters:{book_id}", kind="other", license="licensed",
-            text="\n\n".join(texts), embed_fn=embed_fn,
-            model_ref=str(body.embedding_model_ref), target_chars=body.target_chars,
-        )
+    except BookServiceError as exc:
+        code = status.HTTP_503_SERVICE_UNAVAILABLE if exc.retryable else status.HTTP_502_BAD_GATEWAY
+        raise HTTPException(status_code=code, detail=f"book read failed: {exc}")
     except KnowledgeServiceError as exc:
         code = status.HTTP_503_SERVICE_UNAVAILABLE if exc.retryable else status.HTTP_502_BAD_GATEWAY
         raise HTTPException(status_code=code, detail=f"embedding failed: {exc}")
-    finally:
-        await kc.aclose()
 
     return {
         "book_id": str(book_id),
-        "chapters_ingested": len(texts),
-        "chunks_total": ingest.chunks_total,
-        "chunks_inserted": ingest.chunks_inserted,
-        "chunks_embedded": ingest.chunks_embedded,
+        "chapters_ingested": res.chapters_ingested,
+        "chunks_total": res.chunks_total,
+        "chunks_inserted": res.chunks_inserted,
+        "chunks_embedded": res.chunks_embedded,
     }
