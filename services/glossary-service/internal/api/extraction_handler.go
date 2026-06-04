@@ -412,6 +412,13 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The 'unknown' review bucket: a kind_code that resolves to neither a kind nor
+	// an alias is PARKED here (never silently dropped) so the author can triage it
+	// (alias it to a kind, or create a kind from it) — the entity remembers the code
+	// it arrived as in source_kind_code. uuid.Nil only if the migration hasn't seeded
+	// 'unknown' yet, in which case we preserve the legacy skip (fail-safe).
+	unknownKindID := kindMap["unknown"]
+
 	var (
 		results  []entityResult
 		created  int
@@ -421,8 +428,13 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 
 	for _, ent := range req.Entities {
 		kindID, kindOK := kindMap[ent.KindCode]
+		sourceKindCode := "" // non-empty only when parked under 'unknown'
 		if !kindOK {
-			continue // unknown kind, skip
+			if unknownKindID == uuid.Nil {
+				continue // no unknown bucket available — legacy skip (fail-safe)
+			}
+			kindID = unknownKindID
+			sourceKindCode = ent.KindCode // remember the original code for review
 		}
 		if ent.Name == "" {
 			continue
@@ -455,6 +467,18 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			}
 			result.EntityID = entityID.String()
 			result.Status = "created"
+			// Parked under 'unknown' → remember the code it arrived as, so the review
+			// GUI can offer "alias <code> → <kind>" / "create kind from <code>".
+			if sourceKindCode != "" {
+				if _, uerr := s.pool.Exec(ctx,
+					`UPDATE glossary_entities SET source_kind_code = $1 WHERE entity_id = $2`,
+					sourceKindCode, entityID,
+				); uerr != nil {
+					BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+					writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to record source kind: "+uerr.Error())
+					return
+				}
+			}
 			// All provided attributes are written on create
 			result.AttributesWritten = make([]string, 0, len(ent.Attributes)+1)
 			result.AttributesWritten = append(result.AttributesWritten, "name")
@@ -587,7 +611,28 @@ func (s *Server) loadKindMap(ctx context.Context) (map[string]uuid.UUID, error) 
 		}
 		m[code] = id
 	}
-	return m, nil
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Fold in kind ALIASES so an alias_code resolves to its kind exactly like a
+	// real code. A real kind.code ALWAYS wins (never overridden by an alias), so a
+	// code that later becomes a kind takes precedence over a stale alias.
+	arows, err := s.pool.Query(ctx, `SELECT alias_code, kind_id FROM entity_kind_aliases`)
+	if err != nil {
+		return nil, err
+	}
+	defer arows.Close()
+	for arows.Next() {
+		var id uuid.UUID
+		var alias string
+		if err := arows.Scan(&alias, &id); err != nil {
+			return nil, err
+		}
+		if _, isKind := m[alias]; !isKind {
+			m[alias] = id
+		}
+	}
+	return m, arows.Err()
 }
 
 // loadAttrDefMap returns a map of "kind_id:code" → attr_def_id.

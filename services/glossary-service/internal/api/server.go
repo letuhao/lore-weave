@@ -107,6 +107,9 @@ func (s *Server) Router() http.Handler {
 		r.Get("/kinds", s.listKinds)
 		r.Post("/kinds", s.createKind)
 		r.Patch("/kinds/reorder", s.reorderKinds)
+		// Kind-resolution epic: alias table (alias_code → kind) for the unknown-kind review.
+		r.Get("/kind-aliases", s.listKindAliases)
+		r.Post("/kind-aliases", s.createKindAlias)
 		r.Route("/kinds/{kind_id}", func(r chi.Router) {
 			r.Patch("/", s.patchKind)
 			r.Delete("/", s.deleteKind)
@@ -163,6 +166,8 @@ func (s *Server) Router() http.Handler {
 				})
 			})
 			r.Get("/entity-names", s.listEntityNames)
+			// Kind-resolution epic: the per-book unknown-kind review queue.
+			r.Get("/unknown-entities", s.listUnknownEntities)
 			r.Route("/entities", func(r chi.Router) {
 				r.Get("/", s.listEntities)
 				r.Post("/", s.createEntity)
@@ -172,6 +177,8 @@ func (s *Server) Router() http.Handler {
 					r.Delete("/", s.deleteEntity)
 					r.Post("/pin", s.pinEntity)
 					r.Delete("/pin", s.unpinEntity)
+					// Kind-resolution epic: move a parked entity onto a real kind.
+					r.Post("/reassign-kind", s.reassignEntityKind)
 					r.Route("/chapter-links", func(r chi.Router) {
 						r.Get("/", s.listChapterLinks)
 						r.Post("/", s.createChapterLink)
