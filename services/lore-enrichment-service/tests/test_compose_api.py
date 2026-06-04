@@ -429,6 +429,27 @@ def test_context_202_ingests_and_persists(monkeypatch):
     assert len(prod.calls) == 1
 
 
+def test_context_requested_dimensions_enriches_only_chosen(monkeypatch):
+    # #1 dimension picker: requested_dimensions → present = the kind's full set MINUS
+    # the requested ids, so the worker's derived missing = exactly the chosen dims.
+    # Overrides the coverage-derivation entirely (coverage fake raises if hit).
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    _patch_coverage(monkeypatch, rows=[], raises=True)  # NEUTRAL profile; coverage must NOT be hit
+    rec: dict = {}
+    _patch_ingest(monkeypatch, recorder=rec)
+
+    resp = _post(_ctx_base(
+        target={"mode": "existing", "canonical_name": "蓬萊", "entity_kind": "location",
+                "target_ref": "loc:penglai", "requested_dimensions": ["history"]},
+    ))
+    assert resp.status_code == 202, resp.text
+    present = saved["request"]["targets"][0]["present_dimensions"]
+    assert "history" not in present                      # the chosen dim is enriched (missing)
+    assert "geography" in present and "features" in present  # the rest marked present (skipped)
+
+
 def test_context_owned_maps_to_licensed(monkeypatch):
     jid = uuid4()
     created, saved, prod = {}, {}, _RecordingProducer()

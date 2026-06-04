@@ -203,6 +203,16 @@ export interface ComposeTargetInput {
   entity_kind: string;
   target_ref?: string | null;
   present_dimensions?: string[];
+  /** Dimension picker (#1): the exact dimensions to enrich (ids/labels). undefined =
+   *  auto (server derives from coverage / enriches all); when set, exactly these. */
+  requested_dimensions?: string[] | null;
+}
+
+/** One choosable dimension for a kind (GET .../dimensions) — the picker's chips. */
+export interface ComposeDimension {
+  id: string;
+  label: string;
+  required: boolean;
 }
 
 /** The POST /compose body (the api layer adds book_id := bookId). */

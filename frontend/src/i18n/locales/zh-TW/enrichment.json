@@ -77,7 +77,11 @@
       "select_model": "選擇…",
       "max_spend": "支出上限 (USD)",
       "no_cap": "無上限",
-      "top_k": "Top-K"
+      "top_k": "Top-K",
+      "technique": "技法",
+      "technique_opt": { "retrieval": "檢索 (P1)", "fabrication": "虛構 (P2)", "recook": "再製 (P3)" },
+      "eval_gate_warning": "P2/P3 需通過 eval-gate — 未通過前工作會被拒絕。",
+      "dimensions": { "auto": "自動 — 補全所有缺少的維度" }
     },
     "safety": "① 授權 · ② 抽象化 · ③ 防原文照搬 · ④ 由你晉升 — 增補在你晉升前仍為異本。",
     "run_hint": "以背景作業執行 — 完成後會出現在「提案」分頁。",

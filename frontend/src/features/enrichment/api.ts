@@ -16,6 +16,7 @@ import type {
   SuggestedProfile,
   ComposeBody,
   ComposeResult,
+  ComposeDimension,
   ContextLicense,
   UploadResult,
   ResolvedIntent,
@@ -171,6 +172,20 @@ export const enrichmentApi = {
   /** Poll an upload's extraction status. */
   getUpload(uploadId: string, token: string): Promise<UploadResult> {
     return apiJson<UploadResult>(`${BASE}/uploads/${uploadId}`, { token });
+  },
+
+  /** #1 dimension picker — list a kind's dimensions (id+label+required) for the
+   *  compose chips. project_id := bookId in the path. */
+  listComposeDimensions(
+    bookId: string,
+    kind: string,
+    token: string,
+  ): Promise<{ kind: string; dimensions: ComposeDimension[] }> {
+    const qs = new URLSearchParams({ book_id: bookId, kind });
+    return apiJson<{ kind: string; dimensions: ComposeDimension[] }>(
+      `${BASE}/projects/${bookId}/dimensions?${qs.toString()}`,
+      { token },
+    );
   },
 
   /** Mode B step 1 — resolve a free-text intent into a proposed target (no job). */

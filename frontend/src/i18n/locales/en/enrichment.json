@@ -77,7 +77,11 @@
       "select_model": "Select…",
       "max_spend": "Max spend (USD)",
       "no_cap": "no cap",
-      "top_k": "Top-K"
+      "top_k": "Top-K",
+      "technique": "Technique",
+      "technique_opt": { "retrieval": "Retrieval (P1)", "fabrication": "Fabrication (P2)", "recook": "Re-cook (P3)" },
+      "eval_gate_warning": "P2/P3 needs a passed eval-gate — the job is refused until it passes.",
+      "dimensions": { "auto": "Auto — enrich all missing dimensions" }
     },
     "safety": "① license · ② abstract · ③ regurgitation guard · ④ you promote — enriched stays a variant until you promote it.",
     "run_hint": "Runs as a background job — the proposal appears under Proposals when ready.",

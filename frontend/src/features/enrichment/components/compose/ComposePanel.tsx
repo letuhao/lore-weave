@@ -4,6 +4,7 @@ import { Sparkles } from 'lucide-react';
 import { useEnrichmentContext } from '../../context/EnrichmentContext';
 import { useCompose } from '../../hooks/useCompose';
 import { useBookEntities } from '../../hooks/useBookEntities';
+import { useComposeDimensions } from '../../hooks/useComposeDimensions';
 import { useUploads } from '../../hooks/useUploads';
 import type { ComposeTargetInput, ContextLicense, ExpandMode } from '../../types';
 import { ModeSelector, type ComposeMode } from './ModeSelector';
@@ -20,7 +21,14 @@ const DEFAULT_TARGET: ComposeTargetInput = {
   entity_kind: 'location',
   target_ref: '',
 };
-const DEFAULT_CONFIG: ComposeConfigValue = { genModel: '', embedModel: '', maxSpend: '', topK: 5 };
+const DEFAULT_CONFIG: ComposeConfigValue = {
+  genModel: '',
+  embedModel: '',
+  maxSpend: '',
+  topK: 5,
+  technique: 'retrieval',
+  requestedDimensions: null, // null = auto (server derives the dimensions)
+};
 
 /** The "Tạo / Compose" panel — the controller for the unified input modes. Drives
  *  mode D (draft expansion) and mode C (paste-context): pick a target (existing | new)
@@ -50,6 +58,12 @@ export function ComposePanel() {
   const [intentDimensions, setIntentDimensions] = useState<string[]>([]);
   const [config, setConfig] = useState<ComposeConfigValue>(DEFAULT_CONFIG);
 
+  // #1/#2: grounded modes (context/files/intent) offer the dimension picker; the
+  // technique selector is for the corpus-grounded modes (context/files). Draft uses
+  // expand_mode + compose_draft; intent uses its resolved technique.
+  const grounded = mode === 'context' || mode === 'files' || mode === 'intent';
+  const dimensions = useComposeDimensions(bookId, target.entity_kind);
+
   const showComposer = mode === 'draft' || mode === 'context' || mode === 'files' || mode === 'intent';
   const targetOk = target.canonical_name.trim() !== '';
   const canRun =
@@ -74,10 +88,22 @@ export function ComposePanel() {
 
   const canResolveIntent = intentText.trim() !== '' && !!config.genModel && !resolving;
 
+  // review-impl #1: dimension ids are per-kind, so a pick made for one kind is stale
+  // after switching kinds (it would silently match nothing → a no-op run). Reset the
+  // picker to auto whenever the target kind changes. Explicit handler (no useEffect).
+  const handleTargetChange = (next: ComposeTargetInput) => {
+    if (next.entity_kind !== target.entity_kind && config.requestedDimensions !== null) {
+      setConfig((c) => ({ ...c, requestedDimensions: null }));
+    }
+    setTarget(next);
+  };
+
   const handleResolveIntent = async () => {
     const r = await resolveIntent(intentText.trim(), config.genModel);
     if (!r) return;
-    setTarget({
+    // Route through handleTargetChange so a resolved kind that differs from the
+    // current one resets a stale dimension pick (review-impl #1).
+    handleTargetChange({
       mode: r.target.mode,
       canonical_name: r.target.canonical_name,
       entity_kind: r.target.entity_kind,
@@ -100,6 +126,14 @@ export function ComposePanel() {
       ...target,
       canonical_name: target.canonical_name.trim(),
       target_ref: target.mode === 'new' ? null : target.canonical_name.trim(),
+      // #1: send the dimension pick only for grounded modes, and only when the
+      // author actually narrowed to ≥1 dim. null (auto) OR an empty manual list →
+      // omit, so the server derives the dimensions (prior behavior) — "deselect all"
+      // means "no narrowing", never "enrich nothing" (review-impl #2).
+      requested_dimensions:
+        grounded && config.requestedDimensions && config.requestedDimensions.length > 0
+          ? config.requestedDimensions
+          : undefined,
     };
     if (mode === 'context') {
       return compose({
@@ -107,6 +141,7 @@ export function ComposePanel() {
         target: targetInput,
         context_text: contextText.trim(),
         context_license: contextLicense,
+        technique: config.technique, // #2: author-chosen technique (retrieval|fabrication|recook)
         generation_model_ref: config.genModel,
         embedding_model_ref: config.embedModel || undefined,
         max_spend_usd: maxSpend,
@@ -118,6 +153,7 @@ export function ComposePanel() {
         input_source: 'files',
         target: targetInput,
         upload_ids: uploads.readyIds,
+        technique: config.technique, // #2
         generation_model_ref: config.genModel,
         embedding_model_ref: config.embedModel || undefined,
         max_spend_usd: maxSpend,
@@ -172,7 +208,7 @@ export function ComposePanel() {
               dimensions={intentDimensions}
             />
           )}
-          <ComposeTarget target={target} onChange={setTarget} entities={entities} />
+          <ComposeTarget target={target} onChange={handleTargetChange} entities={entities} />
           {mode === 'draft' && (
             <ComposeDraftForm
               draftText={draftText}
@@ -200,7 +236,12 @@ export function ComposePanel() {
               onResponsibilityChange={setFilesResponsibility}
             />
           )}
-          <ComposeConfig value={config} onChange={setConfig} />
+          <ComposeConfig
+            value={config}
+            onChange={setConfig}
+            showTechnique={mode === 'context' || mode === 'files'}
+            dimensions={grounded ? dimensions : []}
+          />
           <div className="flex items-center justify-between gap-3">
             <p className="text-[11px] text-muted-foreground">{t('compose.run_hint')}</p>
             <button

@@ -36,6 +36,14 @@ vi.mock('@/features/glossary/api', () => ({
   glossaryApi: { listEntityNames: () => Promise.resolve([]) },
 }));
 
+// #1 dimension picker — the kind's dimensions (mocked deterministically).
+vi.mock('../../../hooks/useComposeDimensions', () => ({
+  useComposeDimensions: () => [
+    { id: 'history', label: 'History', required: true },
+    { id: 'geography', label: 'Geography', required: false },
+  ],
+}));
+
 import { ComposePanel } from '../ComposePanel';
 import { EnrichmentProvider } from '../../../context/EnrichmentContext';
 
@@ -190,6 +198,70 @@ describe('ComposePanel (mode C — context)', () => {
     });
     expect(body.draft_text).toBeUndefined();
     expect(body.target).toMatchObject({ mode: 'existing', canonical_name: '蓬萊', target_ref: '蓬萊' });
+  });
+
+  it('sends the author-chosen technique for context (#2)', async () => {
+    renderPanel();
+    toContext();
+    fireEvent.change(screen.getByTestId('compose-target-name'), { target: { value: '蓬萊' } });
+    fireEvent.change(screen.getByTestId('compose-context-text'), { target: { value: '東海仙山。' } });
+    await fillModels();
+    fireEvent.change(screen.getByTestId('compose-technique'), { target: { value: 'recook' } });
+    fireEvent.click(screen.getByTestId('compose-run'));
+    expect(composeMock.mock.calls[0][0].technique).toBe('recook');
+  });
+
+  it('sends requested_dimensions when the author picks a dimension subset (#1)', async () => {
+    renderPanel();
+    toContext();
+    fireEvent.change(screen.getByTestId('compose-target-name'), { target: { value: '蓬萊' } });
+    fireEvent.change(screen.getByTestId('compose-context-text'), { target: { value: '東海仙山。' } });
+    await fillModels();
+    // auto is ON by default → no requested_dimensions sent (server derives)
+    fireEvent.click(screen.getByTestId('compose-dims-auto')); // uncheck → all selected
+    fireEvent.click(screen.getByRole('button', { name: 'Geography' })); // deselect one
+    fireEvent.click(screen.getByTestId('compose-run'));
+    expect(composeMock.mock.calls[0][0].target.requested_dimensions).toEqual(['history']);
+  });
+
+  it('omits requested_dimensions while auto (server derives the dimensions)', async () => {
+    renderPanel();
+    toContext();
+    fireEvent.change(screen.getByTestId('compose-target-name'), { target: { value: '蓬萊' } });
+    fireEvent.change(screen.getByTestId('compose-context-text'), { target: { value: '東海仙山。' } });
+    await fillModels();
+    fireEvent.click(screen.getByTestId('compose-run'));
+    expect(composeMock.mock.calls[0][0].target.requested_dimensions).toBeUndefined();
+  });
+
+  it('deselecting every dimension = auto, never "enrich nothing" (review-impl #2)', async () => {
+    renderPanel();
+    toContext();
+    fireEvent.change(screen.getByTestId('compose-target-name'), { target: { value: '蓬萊' } });
+    fireEvent.change(screen.getByTestId('compose-context-text'), { target: { value: '東海仙山。' } });
+    await fillModels();
+    fireEvent.click(screen.getByTestId('compose-dims-auto')); // off → ['history','geography']
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Geography' })); // → []
+    fireEvent.click(screen.getByTestId('compose-run'));
+    expect(composeMock.mock.calls[0][0].target.requested_dimensions).toBeUndefined();
+  });
+
+  it('resets a stale dimension pick to auto when the target kind changes (review-impl #1)', async () => {
+    renderPanel();
+    toContext();
+    fireEvent.click(screen.getByTestId('compose-target-mode-new'));
+    fireEvent.change(screen.getByTestId('compose-target-name'), { target: { value: '新島' } });
+    fireEvent.change(screen.getByTestId('compose-target-kind'), { target: { value: 'location' } });
+    fireEvent.change(screen.getByTestId('compose-context-text'), { target: { value: '東海仙山。' } });
+    await fillModels();
+    fireEvent.click(screen.getByTestId('compose-dims-auto')); // manual pick for 'location'
+    fireEvent.click(screen.getByRole('button', { name: 'Geography' }));
+    // switch kind → the location pick is stale → reset to auto (picker hidden again)
+    fireEvent.change(screen.getByTestId('compose-target-kind'), { target: { value: 'character' } });
+    expect(screen.getByTestId('compose-dims-auto')).toBeChecked();
+    fireEvent.click(screen.getByTestId('compose-run'));
+    expect(composeMock.mock.calls[0][0].target.requested_dimensions).toBeUndefined();
   });
 
   it('a copyrighted license disables Run (default-deny in the UI)', async () => {

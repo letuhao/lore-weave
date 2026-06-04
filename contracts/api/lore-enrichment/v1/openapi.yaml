@@ -536,6 +536,51 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
 
   # ────────────────────────────── gaps (D1) ─────────────────────────────
+  /v1/lore-enrichment/projects/{project_id}/dimensions:
+    get:
+      tags: [gaps]
+      summary: List an entity kind's dimensions (compose dimension picker, read-only)
+      description: >
+        Returns the profile-localized dimension set for an entity KIND so the
+        compose UI can render choosable dimension chips (the author may enrich a
+        SUBSET via the target's requested_dimensions). GENERIC fallback for an
+        unmodeled kind (never 400). READ-ONLY.
+      operationId: listEnrichmentDimensions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: book_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: kind
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK — the kind's dimensions.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kind: { type: string }
+                  dimensions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        label: { type: string }
+                        required: { type: boolean }
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
   /v1/lore-enrichment/projects/{project_id}/detect-gaps:
     post:
       tags: [gaps]
@@ -1552,6 +1597,16 @@ components:
           items:
             type: string
           description: Dimensions already present (existing only; new → all missing).
+        requested_dimensions:
+          type: array
+          nullable: true
+          items:
+            type: string
+          description: >
+            Dimension picker (#1): the exact dimensions to enrich (ids or localized
+            labels). null = auto (server derives from coverage / enriches all). When
+            set, the server enriches exactly these (present = the kind's full set
+            minus requested).
 
     EnrichmentJob:
       type: object

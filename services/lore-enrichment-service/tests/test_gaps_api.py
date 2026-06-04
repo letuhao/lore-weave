@@ -86,6 +86,46 @@ def _app() -> FastAPI:
     return app
 
 
+def test_dimensions_endpoint_lists_kind_dimensions():
+    # #1 dimension picker: the read endpoint lists a kind's profile-localized dims
+    # (id+label+required) so the composer can render choosable chips.
+    book, project = uuid4(), uuid4()
+    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    resp = TestClient(_app()).get(
+        f"/v1/lore-enrichment/projects/{project}/dimensions",
+        params={"book_id": str(book), "kind": "character"},
+        headers={"Authorization": f"Bearer {bearer}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["kind"] == "character"
+    ids = {d["id"] for d in body["dimensions"]}
+    assert "appearance" in ids and "abilities" in ids  # character's modeled dims
+    assert all({"id", "label", "required"} <= d.keys() for d in body["dimensions"])
+
+
+def test_dimensions_endpoint_generic_fallback_for_unknown_kind():
+    # KB3: an unmodeled kind falls back to GENERIC — never 400, never empty.
+    book, project = uuid4(), uuid4()
+    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    resp = TestClient(_app()).get(
+        f"/v1/lore-enrichment/projects/{project}/dimensions",
+        params={"book_id": str(book), "kind": "bogus-kind"},
+        headers={"Authorization": f"Bearer {bearer}"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert len(resp.json()["dimensions"]) > 0
+
+
+def test_dimensions_endpoint_requires_auth():
+    book, project = uuid4(), uuid4()
+    resp = TestClient(_app()).get(
+        f"/v1/lore-enrichment/projects/{project}/dimensions",
+        params={"book_id": str(book), "kind": "character"},
+    )
+    assert resp.status_code == 401
+
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_detect_gaps_endpoint_returns_ranked_gaps():

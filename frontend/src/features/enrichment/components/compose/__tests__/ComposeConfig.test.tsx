@@ -17,7 +17,19 @@ vi.mock('@/features/settings/api', () => ({ providerApi: { listUserModels: (...a
 
 import { ComposeConfig, type ComposeConfigValue } from '../ComposeConfig';
 
-const V: ComposeConfigValue = { genModel: '', embedModel: '', maxSpend: '', topK: 5 };
+const V: ComposeConfigValue = {
+  genModel: '',
+  embedModel: '',
+  maxSpend: '',
+  topK: 5,
+  technique: 'retrieval',
+  requestedDimensions: null,
+};
+
+const DIMS = [
+  { id: 'history', label: 'History', required: true },
+  { id: 'geography', label: 'Geography', required: false },
+];
 
 function wrap(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -51,5 +63,59 @@ describe('ComposeConfig', () => {
   it('shows the H0 marker (enriched-stays-a-variant cue)', () => {
     wrap(<ComposeConfig value={V} onChange={vi.fn()} />);
     expect(screen.getByTestId('enrichment-h0-marker')).toBeInTheDocument();
+  });
+
+  // #2 technique selector + #6 eval-gate warning
+  it('hides the technique selector unless showTechnique', () => {
+    wrap(<ComposeConfig value={V} onChange={vi.fn()} />);
+    expect(screen.queryByTestId('compose-technique')).not.toBeInTheDocument();
+  });
+
+  it('shows the technique selector and reports a change when showTechnique', () => {
+    const onChange = vi.fn();
+    wrap(<ComposeConfig value={V} onChange={onChange} showTechnique />);
+    fireEvent.change(screen.getByTestId('compose-technique'), { target: { value: 'recook' } });
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ technique: 'recook' }));
+  });
+
+  it('warns about the eval-gate only for P2/P3 techniques', () => {
+    const { rerender } = wrap(<ComposeConfig value={V} onChange={vi.fn()} showTechnique />);
+    expect(screen.queryByTestId('compose-eval-gate-warning')).not.toBeInTheDocument(); // retrieval=P1
+    rerender(<ComposeConfig value={{ ...V, technique: 'fabrication' }} onChange={vi.fn()} showTechnique />);
+    expect(screen.getByTestId('compose-eval-gate-warning')).toBeInTheDocument();
+  });
+
+  // #1 dimension picker
+  it('defaults to auto (no chips) and only shows chips when auto is unchecked', () => {
+    const onChange = vi.fn();
+    wrap(<ComposeConfig value={V} onChange={onChange} dimensions={DIMS} />);
+    expect(screen.getByTestId('compose-dims-auto')).toBeChecked();
+    expect(screen.queryByTestId('compose-dims-picker')).not.toBeInTheDocument();
+    // unchecking auto → selects all dim ids (enrich all, explicit)
+    fireEvent.click(screen.getByTestId('compose-dims-auto'));
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ requestedDimensions: ['history', 'geography'] }),
+    );
+  });
+
+  it('toggles a single dimension chip off → requestedDimensions excludes it', () => {
+    const onChange = vi.fn();
+    // start in manual mode with both selected
+    wrap(
+      <ComposeConfig
+        value={{ ...V, requestedDimensions: ['history', 'geography'] }}
+        onChange={onChange}
+        dimensions={DIMS}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ requestedDimensions: ['geography'] }),
+    );
+  });
+
+  it('hides the dimension picker when no dimensions are provided', () => {
+    wrap(<ComposeConfig value={V} onChange={vi.fn()} />);
+    expect(screen.queryByTestId('compose-dims-auto')).not.toBeInTheDocument();
   });
 });

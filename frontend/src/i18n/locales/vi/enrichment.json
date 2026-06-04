@@ -77,7 +77,11 @@
       "select_model": "Chọn…",
       "max_spend": "Chi tối đa (USD)",
       "no_cap": "không giới hạn",
-      "top_k": "Top-K"
+      "top_k": "Top-K",
+      "technique": "Kỹ thuật",
+      "technique_opt": { "retrieval": "Truy hồi (P1)", "fabrication": "Bịa tạo (P2)", "recook": "Nấu lại (P3)" },
+      "eval_gate_warning": "P2/P3 cần eval-gate đã pass — job bị từ chối cho tới khi pass.",
+      "dimensions": { "auto": "Tự động — bổ sung mọi dimension còn thiếu" }
     },
     "safety": "① giấy phép · ② trừu tượng hóa · ③ chống sao chép · ④ bạn duyệt — nội dung làm giàu vẫn là dị bản cho đến khi bạn duyệt.",
     "run_hint": "Chạy nền — đề xuất sẽ xuất hiện ở tab Đề xuất khi xong.",

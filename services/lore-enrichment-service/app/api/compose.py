@@ -55,6 +55,7 @@ from app.clients.knowledge import KnowledgeClient, KnowledgeServiceError
 from app.config import settings
 from app.db.book_profile import get_book_profile
 from app.deps import get_db
+from app.gaps.model import resolve_dimensions
 from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM, make_redis_producer
 from app.jobs.job_request import save_job_request
 from app.api.license_assert import resolve_asserted_license
@@ -98,6 +99,12 @@ class ComposeTargetInput(BaseModel):
     entity_kind: str = "location"
     target_ref: str | None = None
     present_dimensions: list[str] = Field(default_factory=list)
+    # Dimension picker (#1): when the author explicitly chooses WHICH dimensions to
+    # enrich, the FE sends them here (ids or localized labels). None = "auto" — the
+    # server derives present from coverage (existing) or enriches all (new), the prior
+    # behavior. When set, present = the kind's full set MINUS requested, so the gap
+    # builder's missing = exactly the requested dimensions.
+    requested_dimensions: list[str] | None = None
 
 
 class ComposeBody(BaseModel):
@@ -174,6 +181,33 @@ async def _resolve_present_dimensions(
         if cov.canonical_name == canonical_name:
             return list(cov.present_dimensions)
     return None  # entity not found in coverage → no known present dims
+
+
+async def _resolve_target_present(
+    pool: asyncpg.Pool, book_id: UUID, target: ComposeTargetInput
+) -> list[str] | None:
+    """Decide the ``present_dimensions`` override for a target (#1 dimension picker).
+
+    * Author picked specific dims (``requested_dimensions``) → present = the kind's
+      full (profile-localized) set MINUS the requested ids, so the gap builder's
+      derived ``missing`` is exactly what the author chose. Accepts ids OR localized
+      labels (maps both to the stable id), mirroring ``coverages_from_rows``.
+    * Else an existing target with no present supplied → derive from glossary coverage
+      (the prior best-effort behavior).
+    * Else None → leave the target_dict default (new target enriches all).
+    """
+    if target.requested_dimensions is not None:
+        profile = await get_book_profile(pool, book_id)
+        table = resolve_dimensions(
+            target.entity_kind, language=profile.language, overrides=profile.dimension_overrides
+        )
+        ids = {s.dimension for s in table}
+        label_to_id = {s.label: s.dimension for s in table}
+        requested = {d if d in ids else label_to_id.get(d, d) for d in target.requested_dimensions}
+        return [s.dimension for s in table if s.dimension not in requested]
+    if target.mode == "existing" and not target.present_dimensions:
+        return await _resolve_present_dimensions(pool, book_id, target.canonical_name)
+    return None
 
 
 async def _ingest_context(
@@ -459,14 +493,11 @@ async def compose(
             )
             raise HTTPException(status_code=code, detail=f"context embedding failed: {exc}")
         target_dict = _target_dict(body.target)
-        if body.target.mode == "existing" and not body.target.present_dimensions:
-            # Fill only the genuinely-missing dims (spec §2.2: present from coverage),
-            # now grounded on the freshly-ingested corpus. Best-effort; degrades to [].
-            present = await _resolve_present_dimensions(
-                pool, body.book_id, body.target.canonical_name
-            )
-            if present is not None:
-                target_dict["present_dimensions"] = present
+        # Present dims: an explicit dimension pick (#1) → enrich exactly those; else
+        # (existing, no pick) derive from coverage so we fill only the missing ones.
+        present = await _resolve_target_present(pool, body.book_id, body.target)
+        if present is not None:
+            target_dict["present_dimensions"] = present
         return await _create_and_enqueue(
             pool=pool,
             project_id=project_id,
@@ -540,10 +571,9 @@ async def compose(
                 detail="the uploaded files had no extractable text to ground on",
             )
         target_dict = _target_dict(body.target)
-        if body.target.mode == "existing" and not body.target.present_dimensions:
-            present = await _resolve_present_dimensions(pool, body.book_id, body.target.canonical_name)
-            if present is not None:
-                target_dict["present_dimensions"] = present
+        present = await _resolve_target_present(pool, body.book_id, body.target)
+        if present is not None:
+            target_dict["present_dimensions"] = present
         return await _create_and_enqueue(
             pool=pool,
             project_id=project_id,
@@ -584,10 +614,9 @@ async def compose(
                 detail="intent input with technique=retrieval requires embedding_model_ref",
             )
         target_dict = _target_dict(body.target)
-        if body.target.mode == "existing" and not body.target.present_dimensions:
-            present = await _resolve_present_dimensions(pool, body.book_id, body.target.canonical_name)
-            if present is not None:
-                target_dict["present_dimensions"] = present
+        present = await _resolve_target_present(pool, body.book_id, body.target)
+        if present is not None:
+            target_dict["present_dimensions"] = present
         return await _create_and_enqueue(
             pool=pool,
             project_id=project_id,

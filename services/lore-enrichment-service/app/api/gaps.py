@@ -174,6 +174,38 @@ async def detect_gaps(
     }
 
 
+@router.get("/{project_id}/dimensions")
+async def list_dimensions(
+    project_id: UUID,
+    book_id: UUID,
+    kind: str,
+    principal: Principal = Depends(require_principal),
+    pool: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """List an entity KIND's dimensions, profile-localized (#1 — compose dimension
+    picker). Read-only: the FE renders these as choosable chips so the author can
+    enrich a SUBSET. GENERIC fallback for an unmodeled kind (never 400).
+
+    AUTH (review-impl #3): authenticated + book-scoped, NOT owner-gated — consistent
+    with the gaps read family (detect-gaps / auto-enrich), which is also book-scoped.
+    It surfaces a kind's dimension LABELS (incl. profile overrides), not content; the
+    owner-gated surface is the profile authoring endpoints (book_profile.py)."""
+    if principal.user_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="auth required")
+    profile = await get_book_profile(pool, book_id)
+    table = resolve_dimensions(
+        (kind or "").strip() or GENERIC_KIND,
+        language=profile.language,
+        overrides=profile.dimension_overrides,
+    )
+    return {
+        "kind": kind,
+        "dimensions": [
+            {"id": s.dimension, "label": s.label, "required": s.required} for s in table
+        ],
+    }
+
+
 @router.post("/{project_id}/auto-enrich", status_code=status.HTTP_202_ACCEPTED)
 async def auto_enrich(
     project_id: UUID,

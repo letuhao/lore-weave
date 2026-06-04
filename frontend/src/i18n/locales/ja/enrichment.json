@@ -77,7 +77,11 @@
       "select_model": "選択…",
       "max_spend": "上限額 (USD)",
       "no_cap": "上限なし",
-      "top_k": "Top-K"
+      "top_k": "Top-K",
+      "technique": "手法",
+      "technique_opt": { "retrieval": "検索 (P1)", "fabrication": "創作 (P2)", "recook": "再構成 (P3)" },
+      "eval_gate_warning": "P2/P3 は評価ゲート合格が必要 — 合格するまでジョブは拒否されます。",
+      "dimensions": { "auto": "自動 — 不足している全ディメンションを補完" }
     },
     "safety": "① ライセンス · ② 抽象化 · ③ 再生成ガード · ④ あなたが昇格 — 拡充は昇格するまでバリアントのままです。",
     "run_hint": "バックグラウンドジョブとして実行 — 完了すると提案タブに表示されます。",
