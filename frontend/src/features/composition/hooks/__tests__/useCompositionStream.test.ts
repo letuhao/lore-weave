@@ -81,7 +81,31 @@ describe('useCompositionStream', () => {
     // #2 produced 'second'; #1's late abort must not have nulled state.
     await waitFor(() => expect(result.current.ghost).toBe('second'));
     expect(result.current.streaming).toBe(false);
-    void firstController; // referenced for the hanging-stream setup
+    // No leak: the hook cancels start#1's reader on abort (controller-signal →
+    // reader.cancel()), so its pending read() resolves {done:true} and the async
+    // loop terminates even though this mock stream never closes on its own.
+    void firstController;
+  });
+
+  it('cancels the in-flight reader on stop — no leaked read on a hanging stream', async () => {
+    // Regression: useCompositionStream must explicitly cancel the reader when
+    // aborted, not rely on fetch propagating the signal to the stream. Here the
+    // stream NEVER enqueues or closes; stop() must still terminate the read
+    // (its `cancel` hook fires) so the async loop doesn't leak forever (hang).
+    let cancelled = false;
+    const hanging = {
+      ok: true, status: 200,
+      body: new ReadableStream<Uint8Array>({ start() { /* never closes */ }, cancel() { cancelled = true; } }),
+    } as unknown as Response;
+    vi.spyOn(global, 'fetch').mockResolvedValue(hanging);
+
+    const { result } = renderHook(() => useCompositionStream('tok'));
+    act(() => { void result.current.start({ projectId: 'p', outlineNodeId: 'n', modelSource: 'user_model', modelRef: 'm' }); });
+    await waitFor(() => expect(result.current.streaming).toBe(true));
+
+    act(() => result.current.stop());
+    await waitFor(() => expect(cancelled).toBe(true)); // reader.cancel() reached the stream
+    expect(result.current.streaming).toBe(false);
   });
 
   it('does not stream when the response is not ok', async () => {

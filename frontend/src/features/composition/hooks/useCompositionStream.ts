@@ -68,6 +68,15 @@ export function useCompositionStream(token: string | null) {
           return;
         }
         const reader = res.body.getReader();
+        // Explicitly cancel the reader when this stream is superseded (a newer
+        // start), stopped, or unmounted — all of which abort `controller`. We
+        // must NOT rely solely on the abort propagating through fetch to the
+        // stream: if the runtime (or a mocked fetch) doesn't propagate it, the
+        // pending `reader.read()` below never resolves and the async iteration
+        // leaks forever (a hang). Cancelling resolves read() with {done:true}.
+        const cancelReader = () => void reader.cancel().catch(() => {});
+        if (controller.signal.aborted) cancelReader();
+        else controller.signal.addEventListener('abort', cancelReader, { once: true });
         const decoder = new TextDecoder();
         let buffer = '';
         while (true) {
