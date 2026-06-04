@@ -57,6 +57,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
       <div className="flex flex-col gap-3 p-4">
         <Hint>{t('noWork', { defaultValue: 'No co-writer Work for this book yet.' })}</Hint>
         <button
+          data-testid="composition-setup-button"
           className="self-start rounded bg-indigo-600 px-3 py-1.5 text-sm text-white disabled:opacity-50"
           disabled={createWork.isPending}
           onClick={() => createWork.mutate()}
@@ -76,6 +77,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
       {/* scene + model selectors */}
       <div className="flex flex-wrap items-center gap-2 border-b border-neutral-200 p-2 text-sm dark:border-neutral-700">
         <select
+          data-testid="composition-scene-select"
           className="rounded border border-neutral-300 bg-transparent px-2 py-1 dark:border-neutral-600"
           value={effectiveScene}
           onChange={(e) => setSceneId(e.target.value)}
@@ -89,6 +91,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
           {!scenes.data?.length && <option value="">{t('noScenes', { defaultValue: 'No scenes' })}</option>}
         </select>
         <button
+          data-testid="composition-add-scene"
           className="rounded border border-neutral-300 px-2 py-1 text-xs dark:border-neutral-600"
           onClick={() => createScene.mutate({ chapter_id: chapterId, title: t('newScene', { defaultValue: 'New scene' }) })}
         >
@@ -99,6 +102,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
             never be satisfied from the UI. */}
         {selectedScene && (
           <button
+            data-testid="composition-mark-done"
             className={
               'rounded px-2 py-1 text-xs disabled:opacity-50 ' +
               (sceneDone

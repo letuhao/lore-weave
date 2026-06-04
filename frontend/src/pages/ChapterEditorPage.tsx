@@ -871,6 +871,7 @@ export function ChapterEditorPage() {
                 <Sparkles className="mr-1.5 inline h-3 w-3" />{t('ai_chat')}
               </button>
               <button
+                data-testid="chapter-righttab-compose"
                 onClick={() => setRightTab('compose')}
                 className={cn('flex-1 px-3 py-2 text-xs font-medium', rightTab === 'compose' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground')}
               >

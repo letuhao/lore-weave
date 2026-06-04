@@ -22,14 +22,15 @@ function revLabel(r: RevisionSummary): string {
 // Module-level so it isn't re-created each render (which would remount the
 // <select> and drop its focus/open state when the compare query resolves).
 function Picker({
-  label, items, value, onChange, emptyLabel,
+  label, items, value, onChange, emptyLabel, testid,
 }: {
   label: string; items: RevisionSummary[]; value: string;
-  onChange: (v: string) => void; emptyLabel: string;
+  onChange: (v: string) => void; emptyLabel: string; testid: string;
 }) {
   return (
     <select
       aria-label={label}
+      data-testid={testid}
       className="min-w-0 flex-1 rounded-md border bg-background px-2 py-1 text-xs"
       value={value}
       onChange={(e) => onChange(e.target.value)}
@@ -55,6 +56,7 @@ export function RevisionCompareView({ token, bookId, chapterId }: Props) {
       {/* toolbar */}
       <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
         <button
+          data-testid="compare-back"
           onClick={() => navigate(`/books/${bookId}/chapters/${chapterId}/edit`)}
           className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs hover:text-primary"
         >
@@ -63,11 +65,12 @@ export function RevisionCompareView({ token, bookId, chapterId }: Props) {
         <h1 className="mr-2 text-sm font-semibold">{t('compare.title', { defaultValue: 'Compare revisions' })}</h1>
 
         <div className="flex min-w-[420px] flex-1 items-center gap-2">
-          <Picker label={t('compare.left', { defaultValue: 'Left revision' })} items={c.items} value={c.leftId} onChange={c.setLeftId} emptyLabel={emptyLabel} />
+          <Picker testid="compare-left-select" label={t('compare.left', { defaultValue: 'Left revision' })} items={c.items} value={c.leftId} onChange={c.setLeftId} emptyLabel={emptyLabel} />
           <span className="text-xs text-muted-foreground">vs</span>
-          <Picker label={t('compare.right', { defaultValue: 'Right revision' })} items={c.items} value={c.rightId} onChange={c.setRightId} emptyLabel={emptyLabel} />
+          <Picker testid="compare-right-select" label={t('compare.right', { defaultValue: 'Right revision' })} items={c.items} value={c.rightId} onChange={c.setRightId} emptyLabel={emptyLabel} />
           {c.hasMore && (
             <button
+              data-testid="compare-load-more"
               onClick={() => void c.loadMore()}
               disabled={c.loadingMore}
               title={t('compare.load_more_hint', { defaultValue: 'Load older revisions into the picker' })}
@@ -82,6 +85,7 @@ export function RevisionCompareView({ token, bookId, chapterId }: Props) {
 
         <div className="inline-flex overflow-hidden rounded-md border">
           <button
+            data-testid="compare-mode-sxs"
             aria-label={t('compare.side_by_side', { defaultValue: 'Side by side' })}
             onClick={() => c.setViewMode('side-by-side')}
             className={`inline-flex items-center gap-1 px-2 py-1 text-xs ${c.viewMode === 'side-by-side' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
@@ -89,6 +93,7 @@ export function RevisionCompareView({ token, bookId, chapterId }: Props) {
             <Columns2 className="h-3 w-3" /> {t('compare.side_by_side', { defaultValue: 'Side by side' })}
           </button>
           <button
+            data-testid="compare-mode-inline"
             aria-label={t('compare.inline', { defaultValue: 'Inline' })}
             onClick={() => c.setViewMode('inline')}
             className={`inline-flex items-center gap-1 px-2 py-1 text-xs ${c.viewMode === 'inline' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
@@ -102,7 +107,7 @@ export function RevisionCompareView({ token, bookId, chapterId }: Props) {
       <div className="min-h-0 flex-1 overflow-auto p-3">
         {c.revisions.isLoading && <p className="text-xs text-muted-foreground">{t('compare.loading', { defaultValue: 'Loading…' })}</p>}
         {c.items.length < 2 && !c.revisions.isLoading && (
-          <p className="text-xs text-muted-foreground">{t('compare.need_two', { defaultValue: 'This chapter needs at least two saved revisions to compare.' })}</p>
+          <p data-testid="compare-need-two" className="text-xs text-muted-foreground">{t('compare.need_two', { defaultValue: 'This chapter needs at least two saved revisions to compare.' })}</p>
         )}
         {c.compare.isError && <p className="text-xs text-destructive">{t('compare.error', { defaultValue: 'Could not load the comparison.' })}</p>}
         {c.compare.isLoading && c.items.length >= 2 && (
@@ -116,7 +121,7 @@ export function RevisionCompareView({ token, bookId, chapterId }: Props) {
               </p>
             )}
             {c.leftId === c.rightId && (
-              <p className="text-[11px] text-muted-foreground">{t('compare.same', { defaultValue: 'Both sides are the same revision — no differences.' })}</p>
+              <p data-testid="compare-same" className="text-[11px] text-muted-foreground">{t('compare.same', { defaultValue: 'Both sides are the same revision — no differences.' })}</p>
             )}
             <RevisionDiff diff={c.compare.data.diff} mode={c.viewMode} />
           </div>

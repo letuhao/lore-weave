@@ -85,6 +85,7 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
         <span>{t('revision.header', { count: revisions.length })}</span>
         {revisions.length >= 2 && (
           <button
+            data-testid="revision-compare-open"
             onClick={() => navigate(`/books/${bookId}/chapters/${chapterId}/compare`)}
             className="inline-flex items-center gap-1 rounded-md border px-2 py-1 font-normal hover:text-primary"
           >

@@ -62,6 +62,7 @@ export function PublishControl({
       </span>
 
       <button
+        data-testid="publish-button"
         onClick={() => void publish()}
         disabled={busy || dirty || !!blockedReason}
         title={blockedReason ?? (dirty ? t('publish.save_first') : undefined)}
