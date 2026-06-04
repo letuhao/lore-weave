@@ -16,13 +16,16 @@ from fastapi.responses import JSONResponse
 
 from loreweave_obs import current_otel_trace_id, setup_tracing
 
+from app.clients.book_client import close_book_client
+from app.clients.glossary_client import close_glossary_client
 from app.clients.knowledge_client import close_knowledge_client
+from app.clients.llm_client import close_llm_client
 from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool, get_pool
 from app.logging_config import setup_logging, trace_id_var
 from app.middleware.trace_id import TraceIdMiddleware
-from app.routers import health, metrics, ping
+from app.routers import health, metrics, ping, prose, works
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +45,9 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await close_knowledge_client()
+        await close_book_client()
+        await close_glossary_client()
+        await close_llm_client()
         await close_pool()
 
 
@@ -80,3 +86,5 @@ app.include_router(health.router)
 app.include_router(ping.public_router)
 app.include_router(ping.internal_router)
 app.include_router(metrics.router)
+app.include_router(works.router)
+app.include_router(prose.router)

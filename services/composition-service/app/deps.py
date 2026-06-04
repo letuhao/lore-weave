@@ -10,7 +10,10 @@ the active connection.
 
 from __future__ import annotations
 
+from app.clients.book_client import BookClient, get_book_client
+from app.clients.glossary_client import GlossaryClient, get_glossary_client
 from app.clients.knowledge_client import KnowledgeClient, get_knowledge_client
+from app.clients.llm_client import LLMClient, get_llm_client
 from app.db.pool import get_pool
 from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
@@ -41,3 +44,17 @@ async def get_generation_jobs_repo() -> GenerationJobsRepo:
 
 async def get_knowledge_client_dep() -> KnowledgeClient:
     return get_knowledge_client()
+
+
+async def get_book_client_dep() -> BookClient:
+    return get_book_client()
+
+
+async def get_glossary_client_dep() -> GlossaryClient:
+    """Wired for the M4 packer L0 lens (built in M3)."""
+    return get_glossary_client()
+
+
+async def get_llm_client_dep() -> LLMClient:
+    """Wired for the M6 engine + critic (built in M3)."""
+    return get_llm_client()

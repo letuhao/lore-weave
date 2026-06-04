@@ -30,7 +30,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import settings
 
-__all__ = ["get_current_user", "bearer_scheme"]
+__all__ = ["get_current_user", "get_bearer_token", "bearer_scheme"]
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -72,3 +72,17 @@ def get_current_user(
         return UUID(sub)
     except (ValueError, TypeError):
         raise _unauthorized("invalid sub claim")
+
+
+def get_bearer_token(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> str:
+    """Return the raw JWT string for FORWARDING to book/knowledge public routes.
+
+    The clients re-add the `Bearer ` scheme. Use this alongside
+    `get_current_user` when an endpoint both authorizes locally (user_id) AND
+    proxies to a downstream service that does its own JWT ownership check
+    (prose → book-service; resolve → knowledge-service)."""
+    if credentials is None:
+        raise _unauthorized("missing bearer token")
+    return credentials.credentials

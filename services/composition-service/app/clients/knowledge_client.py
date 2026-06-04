@@ -36,12 +36,29 @@ _client: "KnowledgeClient | None" = None
 
 
 class KnowledgeClient:
-    def __init__(self, base_url: str, timeout_s: float = 5.0) -> None:
+    def __init__(
+        self, base_url: str, internal_token: str = "", timeout_s: float = 5.0,
+    ) -> None:
         self._base_url = base_url.rstrip("/")
+        self._internal_token = internal_token
         self._http = httpx.AsyncClient(timeout=httpx.Timeout(timeout_s))
 
     async def aclose(self) -> None:
         await self._http.aclose()
+
+    def _bearer_headers(self, bearer: str) -> dict[str, str]:
+        headers = {"Authorization": f"Bearer {bearer}"}
+        tid = trace_id_var.get()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        return headers
+
+    def _internal_headers(self) -> dict[str, str]:
+        headers = {"X-Internal-Token": self._internal_token}
+        tid = trace_id_var.get()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        return headers
 
     async def list_projects_for_book(
         self, book_id: UUID, bearer: str
@@ -54,33 +71,124 @@ class KnowledgeClient:
             logger.warning("knowledge resolve called without a bearer token")
             return None
         url = f"{self._base_url}/v1/knowledge/projects"
-        tid = trace_id_var.get()
-        headers = {"Authorization": f"Bearer {bearer}"}
-        if tid:
-            headers["X-Trace-Id"] = tid
         try:
             resp = await self._http.get(
-                url, params={"book_id": str(book_id), "limit": "100"}, headers=headers,
+                url, params={"book_id": str(book_id), "limit": "100"},
+                headers=self._bearer_headers(bearer),
             )
         except httpx.HTTPError as exc:
-            logger.warning("knowledge unreachable: %s trace_id=%s", exc, tid)
+            logger.warning("knowledge unreachable: %s", exc)
             return None
         if resp.status_code != 200:
-            logger.warning(
-                "knowledge %s → %d trace_id=%s", url, resp.status_code, tid
-            )
+            logger.warning("knowledge %s → %d", url, resp.status_code)
             return None
         try:
             return resp.json().get("items", [])
         except (ValueError, AttributeError) as exc:
-            logger.warning("knowledge bad JSON: %s trace_id=%s", exc, tid)
+            logger.warning("knowledge bad JSON: %s", exc)
             return None
+
+    # ── M4 packer lenses ────────────────────────────────────────────────
+    # All return None/[] on any failure (the packer `_safe_*` degrade, F1) so a
+    # knowledge outage thins the pack rather than 500-ing a generate.
+
+    async def build_context(
+        self, user_id: UUID, *, project_id: UUID | None, message: str = "",
+        session_id: UUID | None = None,
+    ) -> dict[str, Any] | None:
+        """POST /internal/context/build (X-Internal-Token). The caller MUST have
+        verified book/project ownership first (SEC2) — the internal endpoint
+        trusts the token, not the user. Returns the context envelope
+        (`context`/`stable_context`/`volatile_context`/`token_count`) or None."""
+        url = f"{self._base_url}/internal/context/build"
+        payload: dict[str, Any] = {"user_id": str(user_id), "message": message}
+        if project_id is not None:
+            payload["project_id"] = str(project_id)
+        if session_id is not None:
+            payload["session_id"] = str(session_id)
+        try:
+            resp = await self._http.post(url, json=payload, headers=self._internal_headers())
+            if resp.status_code != 200:
+                logger.warning("knowledge context/build → %d", resp.status_code)
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("knowledge context/build unavailable: %s", exc)
+            return None
+
+    async def timeline(
+        self, bearer: str, *, project_id: UUID, before_chronological: int | None = None,
+        before_order: int | None = None, entity_id: str | None = None, limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """L1b — in-world events for a project (JWT-forward). `project_id` is
+        ALWAYS sent (A1/§12: omitting it widens to ALL the user's projects).
+        `before_chronological` is the true in-world spoiler cutoff. Returns the
+        events list (each carries `chronological_order`/`event_order`/`title`/
+        `summary`/`participants`) or [] on failure."""
+        params: dict[str, Any] = {"project_id": str(project_id), "limit": limit}
+        if before_chronological is not None:
+            params["before_chronological"] = before_chronological
+        if before_order is not None:
+            params["before_order"] = before_order
+        if entity_id is not None:
+            params["entity_id"] = entity_id
+        return await self._jwt_get_list(
+            "/v1/knowledge/timeline", params, bearer, key="events", label="timeline",
+        )
+
+    async def get_entity(self, bearer: str, entity_id: str) -> dict[str, Any] | None:
+        """L1a — a single entity's current state + currently-valid relations
+        (the detail endpoint filters `valid_until IS NULL` server-side).
+        JWT-forward. Returns `{entity, relations, ...}` or None."""
+        url = f"{self._base_url}/v1/knowledge/entities/{entity_id}"
+        try:
+            resp = await self._http.get(url, headers=self._bearer_headers(bearer))
+            if resp.status_code != 200:
+                logger.warning("knowledge entity %s → %d", entity_id, resp.status_code)
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("knowledge entity unavailable: %s", exc)
+            return None
+
+    async def search_drawers(
+        self, bearer: str, *, project_id: UUID, query: str, limit: int = 40,
+        source_type: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """L4 — semantic search (JWT-forward). `project_id` is REQUIRED by the
+        endpoint (cross-project unsupported). Each hit carries `source_id` +
+        `chapter_index` (int|None — the packer's reading-order spoiler axis) +
+        `raw_score` (NOT `score`). Returns hits or [] on failure."""
+        params: dict[str, Any] = {
+            "project_id": str(project_id), "query": query, "limit": limit,
+        }
+        if source_type is not None:
+            params["source_type"] = source_type
+        return await self._jwt_get_list(
+            "/v1/knowledge/drawers/search", params, bearer, key="hits", label="drawers",
+        )
+
+    async def _jwt_get_list(
+        self, path: str, params: dict[str, Any], bearer: str, *, key: str, label: str,
+    ) -> list[dict[str, Any]]:
+        url = f"{self._base_url}{path}"
+        try:
+            resp = await self._http.get(url, params=params, headers=self._bearer_headers(bearer))
+            if resp.status_code != 200:
+                logger.warning("knowledge %s → %d", label, resp.status_code)
+                return []
+            return resp.json().get(key, [])
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("knowledge %s unavailable: %s", label, exc)
+            return []
 
 
 def init_knowledge_client() -> KnowledgeClient:
     global _client
     if _client is None:
-        _client = KnowledgeClient(settings.knowledge_internal_url)
+        _client = KnowledgeClient(
+            settings.knowledge_internal_url, settings.internal_service_token,
+        )
     return _client
 
 
