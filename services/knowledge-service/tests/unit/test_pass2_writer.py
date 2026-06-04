@@ -1017,3 +1017,66 @@ async def test_chrono_rerank_skipped_when_no_dated_event(
         hierarchy_paths=_hierarchy_paths(chapter_index=3),
     )
     mock_rerank.assert_not_awaited()
+
+
+# ── CM5: provenance threaded to every node merge ─────────────────────
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.rerank_chronological_order", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_fact", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_provenance_threaded_to_entity_event_fact_merges(
+    mock_src, mock_entity, mock_event, mock_fact, mock_evid, mock_rerank,
+):
+    """CM5: the provenance hint reaches every node-creating merge
+    (entity/event/fact) so the node's `provenances` set is stamped."""
+    mock_src.return_value = _make_source_result()
+    mock_entity.return_value = _make_entity_result("e-1")
+    mock_event.return_value = _make_event_result("ev-1")
+    mock_fact.return_value = _make_fact_result("f-1")
+    mock_evid.return_value = _make_evidence_result(True)
+
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=JOB_ID,
+        entities=[_entity("Kai")],
+        events=[_event("Duel", ["Kai"])],  # undated → no rerank
+        facts=[_fact("Kai trains daily")],
+        provenance="ai_assisted",
+    )
+
+    assert mock_entity.call_args.kwargs["provenance"] == "ai_assisted"
+    assert mock_event.call_args.kwargs["provenance"] == "ai_assisted"
+    assert mock_fact.call_args.kwargs["provenance"] == "ai_assisted"
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_fact", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_provenance_defaults_to_human_authored(
+    mock_src, mock_entity, mock_fact, mock_evid,
+):
+    """Default path (no provenance passed) stamps human_authored — every
+    existing caller (chapters, orchestrator) is unchanged."""
+    mock_src.return_value = _make_source_result()
+    mock_entity.return_value = _make_entity_result("e-1")
+    mock_fact.return_value = _make_fact_result("f-1")
+    mock_evid.return_value = _make_evidence_result(True)
+
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=JOB_ID,
+        entities=[_entity("Kai")],
+        facts=[_fact("Kai trains daily")],
+    )
+
+    assert mock_entity.call_args.kwargs["provenance"] == "human_authored"
+    assert mock_fact.call_args.kwargs["provenance"] == "human_authored"

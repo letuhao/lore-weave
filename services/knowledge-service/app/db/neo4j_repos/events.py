@@ -192,6 +192,7 @@ ON CREATE SET
   e.participants = $participants,
   e.confidence = $confidence,
   e.source_types = [$source_type],
+  e.provenances = [$provenance],
   e.evidence_count = 0,
   e.mention_count = 0,
   e.archived_at = NULL,
@@ -244,6 +245,11 @@ ON MATCH SET
     WHEN $source_type IN e.source_types THEN e.source_types
     ELSE e.source_types + $source_type
   END,
+  // CM5 provenance — accumulate deduped origins (mirrors source_types).
+  e.provenances = CASE
+    WHEN $provenance IN coalesce(e.provenances, []) THEN e.provenances
+    ELSE coalesce(e.provenances, []) + $provenance
+  END,
   e.confidence = CASE
     WHEN $confidence > e.confidence THEN $confidence
     ELSE e.confidence
@@ -270,6 +276,7 @@ async def merge_event(
     participants: list[str] | None = None,
     source_type: str = "book_content",
     confidence: float = 0.0,
+    provenance: str = "human_authored",
 ) -> Event:
     """Idempotent upsert. Same (user, project, chapter, title)
     returns the same node.
@@ -340,6 +347,7 @@ async def merge_event(
         participants=deduped_participants,
         source_type=source_type,
         confidence=confidence,
+        provenance=provenance,
     )
     record = await result.single()
     if record is None:

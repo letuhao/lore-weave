@@ -214,6 +214,12 @@ async def write_pass2_extraction(
     #   bounds per-chapter autocreate count (``None`` = unlimited).
     autocreate_enabled: bool = False,
     autocreate_max: int | None = None,
+    # CM5 — provenance (authorship origin) stamped on every node this call
+    # writes. Default 'human_authored' (chapters are author-written); the
+    # caller passes 'ai_assisted' for composition-generated prose. Accumulates
+    # into each node's `provenances` set (a node mentioned by both origins
+    # carries both).
+    provenance: str = "human_authored",
 ) -> Pass2WriteResult:
     """Persist Pass 2 LLM extraction candidates to Neo4j.
 
@@ -295,6 +301,7 @@ async def write_pass2_extraction(
             source_type=source_type,
             confidence=ent.confidence,
             alias_map_repo=alias_map_repo,
+            provenance=provenance,
         )
         merged_entity_ids.add(entity.id)
         entities_merged += 1
@@ -437,6 +444,7 @@ async def write_pass2_extraction(
                     confidence=min(rel.confidence or 0.0, 0.3),
                     alias_map_repo=alias_map_repo,
                     auto_created=True,
+                    provenance=provenance,
                 )
             except Exception:
                 logger.warning(
@@ -545,6 +553,7 @@ async def write_pass2_extraction(
             ],
             source_type=source_type,
             confidence=evt.confidence,
+            provenance=provenance,
         )
         events_merged += 1
         if evt.event_date:
@@ -602,6 +611,7 @@ async def write_pass2_extraction(
             confidence=fact.confidence,
             pending_validation=False,
             source_type=source_type,
+            provenance=provenance,
         )
         facts_merged += 1
 
