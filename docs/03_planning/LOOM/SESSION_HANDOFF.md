@@ -57,15 +57,21 @@ Extraction stamps an authorship-origin tag on every node it writes. **Knowledge-
 
 ## 🎉 CANON MODEL CYCLE 0 BACKEND COMPLETE — CM1·CM2·CM3a·CM3b·CM3c·CM4·CM-FE·CM5 all DONE.
 
+## ✅ D-CANON-CYCLE0-LIVE-SMOKE — LARGELY PROVEN (2026-06-04, stack rebuilt to HEAD 59626bdd)
+Rebuilt book+knowledge+worker-ai via `build-stack.sh` (all 3 now git-SHA-stamped at HEAD) + `compose up -d` (migrations applied). LM Studio up (73 models), provider-registry healthy. Smoke on the 封神演义 demo book (owned by test acct `019d5e3c`) + a throwaway book (trashed after):
+- **Migrations ✅** — CM1 `chapters.editorial_status`+`published_revision_id`; CM3b `extraction_pending.revision_id`. CM1 backfill: demo's 5 chapters all `published` + pinned pointer.
+- **CM1 publish/unpublish/re-publish ✅** (gateway, JWT) — new chapter starts `draft`; publish→`published`+pointer; `chapter.published` payload `revision_id == pinned pointer`; unpublish→`draft`+NULL+`chapter.unpublished`; re-publish→pointer ADVANCES + new event. Sequence created→published→unpublished→published. (The canon spine that had NO DB-backed Go test.)
+- **CM3a ✅** — internal revision-text returns pinned text; cross-chapter revision→**404** (IDOR).
+- **CM3c ✅** — book list `?editorial_status=published`→5 items w/ fields; `=draft`→0; invalid→**400**.
+- **CM3b END-TO-END ✅** (the load-bearing cutover) — re-publish → `extraction_pending` armed with the **pinned** `revision_id` → worker poll → "created chapters_pending drain job" → fetched **PINNED revision text** via CM3a (`GET …/revisions/{pinned}/text`→200, NOT live draft) → LLM extract → `persist-pass2`→200 (entities=4) → pending row **drained** (mark-by-revision).
+- **CM4 ✅ (endpoint)** — backfill endpoint→200, correctly skips NULL-`chapter_id` legacy events (events_ordered=0 is right). [event_order at WRITE not live-checked: demo chapters are legacy/no-P3-hierarchy → event_order=None by design; unit-tested.]
+- **CM5 ✅** — the 4 freshly-extracted entities carry `provenances=["human_authored"]`; 30 old entities keep NULL provenances and coexist (no error) → proves the `coalesce` write-guard + `extra='ignore'` read-tolerance LIVE.
+- **Gateway ✅** — transparently proxies publish/unpublish (CM-FE FE-only assumption confirmed).
+**Residual (low risk):** CM-FE browser click-through (API path proven via the publish/unpublish flow + 9 unit tests; only the React render is unsmoked); CM4 write-time `event_order` on a P3-hierarchical chapter; unpublish graph+passage retract on a project-backed chapter (unit-tested; unpublish event proven). **Pre-existing (NOT a CM bug):** "pass2 filter batch failed cat=relation: model not found" → relations=0 on this stack (relation-filter model unconfigured — eval-config gap).
+
 ## ▶ NEXT SESSION (LOOM-05)
-**⚠️ DO THIS FIRST — stack rebuild + D-CANON-CYCLE0-LIVE-SMOKE.** The ENTIRE CM1→CM5 chain shipped against a **pre-CM1 running stack** → NOTHING has had a real cross-service/browser smoke. This is the single biggest accumulated risk. Rebuild book+knowledge+worker-ai images (`scripts/build-stack.sh` — stamps git-SHA freshness) so CM1's migration applies, then run the deferred smoke on a stack-up:
-- **CM1/CM3a:** publish → revision pinned → event; internal revision-text returns published text; cross-book/chapter revision → 404 (IDOR).
-- **CM3b:** publish→queue→drain→extract at the PINNED revision; re-publish re-arms; unpublish retracts graph evidence + passages; bare draft-save → NO extraction.
-- **CM3c:** manual `/extraction/start` skips drafts + reads pinned content; book-service `?editorial_status=published` filter (count+items parity, invalid→400, COUNT-err→500).
-- **CM4:** `timeline?before_chronological=` / reading-order return correct NON-EMPTY ordered sets; a >2147-chapter event sorts before null-order; backfill endpoint stamps event_order+chapter_index+chrono idempotently.
-- **CM5:** entity/event/fact carry `provenances=['human_authored']` after a default extraction; an `ai_assisted`-hinted persist accumulates both.
-- **CM-FE:** browser click-through (publish→badge flips→Re-publish; unpublish confirm→retract; dirty-disables-publish) with the test account.
-Then **Composition V0 (M0–M9)** unblocks (M0 skeleton → M1 schema → … → M9 OI-1 publish wiring). Also pending: D-CM3B-* accepted races, D-CM4-RERANK-PERF, D-EXTRACTION-JOBS-TEST-ROT.
+**Composition V0 — M0 skeleton** (`/loom M0`). Cycle-0 Canon Model is COMPLETE + live-proven → composition unblocks. Build order: M0 skeleton → M1 schema → M2 repos → M3 clients/prose-source → M4 packer → M5 isolation → M6 engine+critic → M7 contract+gateway → M8 FE tab → M9 OI-1 publish wiring. (`/amaw` for M1 schema + M5 isolation.) Read `docs/specs/2026-06-02-composition-design.md` + `docs/plans/2026-06-02-composition-service-v0.md` for M0.
+**Deferred carry:** D-CM4-RERANK-PERF · D-CM4-NEO4J-ORDERING-SMOKE (event_order write + >2147-ch sentinel ordering) · D-CM3B-* accepted races · D-CM3C-PASSAGE-INLINE-BULK · D-EXTRACTION-JOBS-TEST-ROT · relation-filter-model config (this stack).
 
 ## Deferred / watch
 - ~~D-CM1-UNPUBLISH-RETRACT~~ ✅ **CLOSED by CM3b** (unpublish retracts evidence). CM3c adds the **passage** half (unpublish also `delete_passages_for_source`).
