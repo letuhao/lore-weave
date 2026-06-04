@@ -314,5 +314,21 @@
     "save_first": "Save before publishing",
     "gate_pending": "{{pending}} of {{total}} scenes not yet done",
     "gate_no_scenes": "Create and complete at least one scene to publish"
+  },
+  "compare": {
+    "open": "Compare",
+    "title": "Compare revisions",
+    "back": "Back to editor",
+    "left": "Left revision",
+    "right": "Right revision",
+    "side_by_side": "Side by side",
+    "inline": "Inline",
+    "no_revisions": "No revisions",
+    "need_two": "This chapter needs at least two saved revisions to compare.",
+    "loading": "Loading…",
+    "diffing": "Computing diff…",
+    "error": "Could not load the comparison.",
+    "truncated": "These revisions are very large — showing a full replace instead of a fine-grained diff.",
+    "same": "Both sides are the same revision — no differences."
   }
 }

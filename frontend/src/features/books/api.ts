@@ -1,4 +1,5 @@
 import { apiJson, apiBase } from '@/api';
+import type { RevisionCompare } from './types';
 
 export type Visibility = 'private' | 'unlisted' | 'public';
 
@@ -256,6 +257,14 @@ export const booksApi = {
       method: 'POST',
       token,
     });
+  },
+  // Compare two revisions of the same chapter (server-computed line diff).
+  compareRevisions(token: string, bookId: string, chapterId: string, left: string, right: string) {
+    const qs = new URLSearchParams({ left, right }).toString();
+    return apiJson<RevisionCompare>(
+      `/v1/books/${bookId}/chapters/${chapterId}/revisions/compare?${qs}`,
+      { token },
+    );
   },
   getCover(token: string, bookId: string): Promise<Blob> {
     return fetch(`${base()}/v1/books/${bookId}/cover`, {

@@ -24,6 +24,7 @@ import (
 	"github.com/loreweave/observability"
 
 	"github.com/loreweave/book-service/internal/config"
+	"github.com/loreweave/book-service/internal/textdiff"
 	"github.com/loreweave/llmgw"
 )
 
@@ -206,6 +207,7 @@ func (s *Server) Router() http.Handler {
 				r.Get("/draft", s.getDraft)
 				r.Patch("/draft", s.patchDraft)
 				r.Get("/revisions", s.listRevisions)
+				r.Get("/revisions/compare", s.compareRevisions) // static; chi matches before /{revision_id}
 				r.Get("/revisions/{revision_id}", s.getRevision)
 				r.Post("/revisions/{revision_id}/restore", s.restoreRevision)
 				r.Post("/publish", s.publishChapter)     // Canon Model CM1: draft → published (canon)
@@ -1827,6 +1829,112 @@ FROM jsonb_path_query(($1)::jsonb, '$.content[*]._text') WITH ORDINALITY AS x(t,
 		"body_format":    bodyFormat,
 		"text_content":   textContent,
 	})
+}
+
+// revisionForCompare fetches one revision (ownership-checked) plus its text
+// projection, shaped for the compare response. ok=false means not found / not
+// the caller's (→ 404). A DB error returns dbErr set (→ 500).
+type compareSide struct {
+	RevisionID   uuid.UUID       `json:"revision_id"`
+	ChapterID    uuid.UUID       `json:"chapter_id"`
+	CreatedAt    time.Time       `json:"created_at"`
+	AuthorUserID *uuid.UUID      `json:"author_user_id"`
+	Message      *string         `json:"message"`
+	Body         json.RawMessage `json:"body"`
+	BodyFormat   string          `json:"body_format"`
+	TextContent  *string         `json:"text_content"`
+}
+
+func (s *Server) revisionForCompare(
+	r *http.Request, revID, chID, bookID, ownerID uuid.UUID,
+) (side compareSide, ok bool, dbErr error) {
+	err := s.pool.QueryRow(r.Context(), `
+SELECT rv.id,rv.chapter_id,rv.created_at,rv.author_user_id,rv.message,rv.body,COALESCE(rv.body_format,'plain')
+FROM chapter_revisions rv
+JOIN chapters c ON c.id=rv.chapter_id
+JOIN books b ON b.id=c.book_id
+WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3 AND b.owner_user_id=$4
+`, revID, chID, bookID, ownerID).Scan(
+		&side.RevisionID, &side.ChapterID, &side.CreatedAt, &side.AuthorUserID,
+		&side.Message, &side.Body, &side.BodyFormat,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return compareSide{}, false, nil
+	}
+	if err != nil {
+		return compareSide{}, false, err
+	}
+	// text_content projection. Unlike getRevision (which uses t::text and so
+	// keeps the JSON quotes around each _text string), the compare diffs this
+	// text, so we extract the raw string via `#>> '{}'` — no surrounding quotes
+	// to show up as noise in the diff.
+	_ = s.pool.QueryRow(r.Context(), `
+SELECT string_agg(t #>> '{}', E'\n\n' ORDER BY ordinality)
+FROM jsonb_path_query(($1)::jsonb, '$.content[*]._text') WITH ORDINALITY AS x(t, ordinality)
+`, side.Body).Scan(&side.TextContent)
+	return side, true, nil
+}
+
+// compareRevisions diffs two revisions of the same chapter (1-vs-1). It returns
+// both revisions' bodies + a server-computed line diff of their text_content.
+// JWT + ownership enforced; the diff lives server-side so the algorithm is
+// tested once and the FE only renders (word-level highlight is an FE concern).
+func (s *Server) compareRevisions(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
+		return
+	}
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	chID, ok := parseUUIDParam(w, r, "chapter_id")
+	if !ok {
+		return
+	}
+	leftID, err := uuid.Parse(r.URL.Query().Get("left"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "COMPARE_BAD_PARAM", "left must be a revision id")
+		return
+	}
+	rightID, err := uuid.Parse(r.URL.Query().Get("right"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "COMPARE_BAD_PARAM", "right must be a revision id")
+		return
+	}
+	left, ok, dbErr := s.revisionForCompare(r, leftID, chID, bookID, ownerID)
+	if dbErr != nil {
+		writeError(w, http.StatusInternalServerError, "REVISION_NOT_FOUND", "failed to load left revision")
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusNotFound, "REVISION_NOT_FOUND", "left revision not found")
+		return
+	}
+	right, ok, dbErr := s.revisionForCompare(r, rightID, chID, bookID, ownerID)
+	if dbErr != nil {
+		writeError(w, http.StatusInternalServerError, "REVISION_NOT_FOUND", "failed to load right revision")
+		return
+	}
+	if !ok {
+		writeError(w, http.StatusNotFound, "REVISION_NOT_FOUND", "right revision not found")
+		return
+	}
+	diff, truncated := textdiff.Lines(deref(left.TextContent), deref(right.TextContent))
+	writeJSON(w, http.StatusOK, map[string]any{
+		"left":      left,
+		"right":     right,
+		"diff":      diff,
+		"truncated": truncated,
+	})
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func (s *Server) restoreRevision(w http.ResponseWriter, r *http.Request) {

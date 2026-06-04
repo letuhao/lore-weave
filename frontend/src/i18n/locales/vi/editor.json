@@ -314,5 +314,21 @@
     "save_first": "Lưu trước khi xuất bản",
     "gate_pending": "{{pending}} trên {{total}} cảnh chưa hoàn thành",
     "gate_no_scenes": "Tạo và hoàn thành ít nhất một cảnh để xuất bản"
+  },
+  "compare": {
+    "open": "So sánh",
+    "title": "So sánh phiên bản",
+    "back": "Về trình soạn thảo",
+    "left": "Phiên bản trái",
+    "right": "Phiên bản phải",
+    "side_by_side": "Cạnh nhau",
+    "inline": "Hợp nhất",
+    "no_revisions": "Chưa có phiên bản",
+    "need_two": "Chương này cần ít nhất hai phiên bản đã lưu để so sánh.",
+    "loading": "Đang tải…",
+    "diffing": "Đang tính khác biệt…",
+    "error": "Không tải được phần so sánh.",
+    "truncated": "Hai phiên bản quá lớn — hiển thị thay thế toàn bộ thay vì khác biệt chi tiết.",
+    "same": "Hai bên là cùng một phiên bản — không có khác biệt."
   }
 }
