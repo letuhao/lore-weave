@@ -1,0 +1,10 @@
+id: ledger-integrity
+description: "S2b/C3 — emit a seeded stream via the real outbox path, then run the event-store integrity ledger (-verify) and assert 0 violations: per-aggregate version completeness + events↔outbox count reconciliation + against-ledger payload-hash byte-rot detection."
+invariant: I-event-store-integrity
+kind: live-probe
+command: ["bash", "scripts/ledger-verify-smoke.sh"]
+# foundation-stack = PG + Redis up. C3 only needs PG (events + outbox), but the
+# foundation-stack predicate gates on both; on a stackless runner → notrun.
+requires: ["foundation-stack"]
+skip_when: []
+fail_closed_on_setup_error: false
