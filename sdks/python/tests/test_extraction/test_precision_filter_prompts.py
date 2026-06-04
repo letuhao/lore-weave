@@ -104,32 +104,19 @@ def test_llm_judge_precision_system_imports_from_sdk() -> None:
     purpose of the SOT migration).
     """
     try:
-        # The eval module isn't importable from the SDK test suite
-        # without the knowledge-service runtime — instead, parse the
-        # source and grep for the import line.
+        # The judge module was lifted into the `loreweave_eval` SDK (track
+        # phase Q0), so it is now importable directly — locate its source via
+        # `__file__` exactly like the extractor SOT checks above, rather than
+        # a brittle repo-relative path. (The old `tests/quality/llm_judge.py`
+        # is now a back-compat shim and no longer carries the literal.)
+        import importlib
         from pathlib import Path
-        # Walk up from this test file to the repo root.
-        here = Path(__file__).resolve()
-        repo_root = here.parents[4]  # sdks/python/tests/test_extraction → up 4
-        judge_path = (
-            repo_root
-            / "services"
-            / "knowledge-service"
-            / "tests"
-            / "quality"
-            / "llm_judge.py"
-        )
-        if not judge_path.is_file():
-            # Defensive: if the repo layout shifted, fall back to skip.
-            import pytest
-            pytest.skip(
-                f"llm_judge.py not at expected path {judge_path}; SOT "
-                "migration check requires manual verification"
-            )
+        module = importlib.import_module("loreweave_eval.llm_judge")
+        judge_path = Path(module.__file__).resolve()
         text = judge_path.read_text(encoding="utf-8")
     except Exception as exc:  # noqa: BLE001
         import pytest
-        pytest.skip(f"llm_judge.py inspection failed: {exc}")
+        pytest.skip(f"loreweave_eval.llm_judge inspection failed: {exc}")
 
     # Both signals must be present.
     assert (

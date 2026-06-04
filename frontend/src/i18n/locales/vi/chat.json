@@ -128,7 +128,11 @@
     "regenerate": "Tạo lại",
     "more_actions": "Thêm thao tác",
     "copy_markdown": "Sao chép Markdown",
-    "send_to_editor": "Gửi tới trình soạn thảo"
+    "send_to_editor": "Gửi tới trình soạn thảo",
+    "feedback_up": "Phản hồi tốt",
+    "feedback_down": "Phản hồi kém",
+    "feedback_thanks": "Cảm ơn phản hồi của bạn",
+    "feedback_error": "Không thể lưu phản hồi"
   },
   "tools": {
     "title": "Công cụ dùng trong câu trả lời này",

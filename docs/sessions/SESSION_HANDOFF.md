@@ -1,39 +1,64 @@
-# Session Handoff — Session 103 (E2 live-smoke PASSED; FE genre field SHIPPED)
+# Session Handoff — Session 105 (eval R&D closed + Production Eval Flywheel track planned)
 
-> **Purpose:** orient the next agent in one read. **Source of truth for detailed state remains [SESSION_PATCH.md](SESSION_PATCH.md).** This file is the single, unversioned handoff — updated in place at the end of each session.
-> **Date:** 2026-06-01 (session 103 — FE genre field + D-E2-LIVE-SMOKE; human-in-loop v2.2).
-> **HEAD:** `693473b0` (FE genre field). Branch: `main` (local — push pending).
+> **Purpose:** orient the next agent in one read. This file is the single, unversioned handoff — updated in place at the end of each session. (Older `SESSION_PATCH.md` is deprecated → archive later.)
+> **Date:** 2026-06-01 (session 105 — closed knowledge R&D arc; designed the production eval+feedback track; human-in-loop v2.2).
+> **HEAD:** TBD (post-commit). Branch: `main`.
 
 ## ▶ NEXT SESSION — start here
 
-**State:** **D-E2-LIVE-SMOKE PASSED.** Three items completed this session:
+**State:** **Knowledge-extraction R&D arc CLOSED.** Independent-judge baseline measured + locked: **F1 = 0.869**, 95% CI [0.842, 0.895] (disjoint median, gemma + phi4 over 9 golden chapters; `tests/quality/eval_runs/c74c-clean-rejudge` via `compute_ensemble_macros.py`). Confirms the ~4-5pp self-reinforcement (0.913 self-graded → 0.869 clean). 0.869 is now the honest baseline of record.
 
-1. **FE genre field** (`693473b0`) — `ProjectFormModal` now exposes genre input (create + edit), types updated, storybook fixture updated. 476 knowledge tests pass.
-2. **E2 stack rebuild** — gateway image was stale (2026-05-17, missing learning proxy). Rebuilt: gateway + KS + worker-ai + learning-service. All 4 services healthy.
-3. **`correction_ts` bug fixed** (`mining.py` `get_outcome_recompute`) — query used non-existent `c.correction_ts`; actual column is `c.created_at`. Caught during live smoke. Fixed, rebuilt, verified.
+**NEW TRACK DESIGNED (this session):** **Production Eval + Feedback Flywheel** — design-checkpoint artifact written + committed (NO code yet): [`docs/plans/2026-06-01-production-eval-feedback-flywheel-track.md`](../plans/2026-06-01-production-eval-feedback-flywheel-track.md). Grounded in a 6-dimension industry research workflow (OpenAI / Anthropic / Google Vertex / LLM-observability platforms / vendor-neutral ML patterns / codebase audit) + an adversarial critique pass (all 6 fixes folded). 12 phases Q0→Q9 (Q10 LoRA spun out to Track-2).
 
-**Live smoke evidence:**
-- `knowledge_projects.genre TEXT` ✓ (PATCH `"Tien hiep / Cultivation"` → version 1→2)
-- `extraction_runs.genre TEXT` ✓ (synthetic row inserted, genre visible)
-- All 4 mining endpoints respond via gateway (`/v1/learning/mining/*`):
-  - `config-quality` → `{items:[], exploration:[]}` (cold-start; `HAVING count(*) >= 2` — needs real run volume)
-  - `model-matrix` → `{items:[]}` (same)
-  - `default-drift` → `{items:[]}` (no adjustment events yet)
-  - `outcome-recompute` → `items=1 total=1` ✓ (reads synthetic row)
+**PO decisions locked (doc §11):** (1) Q2 = time-window attribution first (no node→run link unless noise hurts); (2) Q4 = structural-only online eval first, `save_raw_extraction` LLM-judge opt-in is fast-follow; (3) baseline of record = **0.869** (retire 0.913 from gate use); (4) stays in `docs/plans/`, promote to numbered track if BUILD >5 sessions.
 
-**FIRST: push main** — `693473b0` is local only. Confirm clean working tree, then `git push origin main`.
+**Q0 DONE (this session)** — `loreweave_eval` SDK package created (`sdks/python/loreweave_eval/`): the cycle-72–74 scorer lifted out of `tests/quality/` so learning-service (Q4) + knowledge-service (R&D) import the SAME code. **0a** = byte-identical lift (4 modules copied; `canonicalize_entity_name`→SDK direct; `LLMClient`→injected `JudgeLLMClient` Protocol; old `tests/quality/*` are re-export shims; 2 file-path lock tests + the SDK ensemble test repointed). **0b** = `JudgePanel` (parameterized the hardcoded extractor/filter UUIDs `019e6a20`/`019e5650`) + `score_dump`→`EvalResult` facade + `EvalSink` Protocol + `FileSink` (DbSink deferred to Q1, NOT in SDK). **Verified:** byte-identical new≡shim≡0.869 on c74c; SDK suite 398 passed (6 pre-existing fails, net-zero new); KS unit 1929 passed; 5 new 0b tests. Single commit (files mix 0a/0b in `__init__`/`compute_ensemble_macros`).
 
-**NEXT — pick one:**
-1. **Resume eval R&D arc** — cycle-70s extraction-quality F1 work: independent judges, host-orchestrated ensembles. Disjoint-median metric locked; next = prod-readiness eval with independent judges.
-2. **Run a real extraction** to populate `extraction_runs` with real data and see mining queries return non-empty results (needs a project with passing benchmark + enabled LLM).
-3. **FE mining insights panel** — expose the 4 mining endpoints in a UI panel (deferred from E2 scope).
+**Q1 DONE (this session)** — quality DB schema in learning-service: `score_config`/`eval_runs`/`eval_results`/`quality_scores` (idempotent DDL, mirrors `project_embedding_benchmark_runs` house style). `app/db/eval_repo.py` (`persist_eval_result` with fail-fast write-time score_config validation + idempotent re-score; `ensure_score_configs` seed; `list_eval_runs`/`get_eval_run`); `app/db/eval_sink.py` `DbSink` (impl `loreweave_eval.EvalSink`, now async — sinks.py made async in SDK); `routers/eval.py` `GET /v1/learning/eval-runs` (+ `/{id}`), per-owner. Dual dedup on `quality_scores` (partial unique: consumed `origin_event_id` + self-produced `source_eval_run_id+target+metric+judge`). `judge_panel` table DEFERRED (panel inline in `eval_runs.judges` JSONB). learning-service Dockerfile now installs the SDK. **Live-smoke PASSED** (host→Postgres :5555): DDL idempotent ×2, persist idempotent (same key→same row, children replaced), **0.869 baseline materialized** (`source='baseline'`, eval_run `6bd195f7…`), owner-isolation (other user→0 rows), read path OK. 60 lrn unit + 5 SDK eval tests green.
 
-**Deferred items (E2):**
-- D-E2-FULL-EXTRACTION-SMOKE: full pipeline smoke (worker-ai emits genre via join → event → extraction_runs.genre); needs a project with passing benchmark + LLM configured
-- Outcome refinement batch job (correction-join recompute UPDATE on extraction_runs; needs correction volume)
-- FE mining insights panel
+Baseline tool: `services/learning-service/scripts/materialize_eval_baseline.py <dump> <owner_uuid> [label]`.
 
-**Known:** `config-quality` / `model-matrix` / `default-drift` return empty until `extraction_runs` accumulates ≥2 runs per config_hash. This is expected cold-start behavior.
+**Q2 DONE (this session)** — corrections-as-gold projection. `app/db/gold.py` `get_gold_labels` projects the corrections log into preference triples (`preferred`=after / `non_preferred`=before + `change_magnitude` = # differing structural keys), redact-by-default (structural + hash only), per-owner, both routes via `origin_service`. `GET /v1/learning/gold-labels` (corrections router). Fixed the stale `get_outcome_recompute` docstring (it uses **time-window attribution** via the `source_extraction_run_id IS NULL` branch — PO-locked; returns one row PER RUN, not empty). **Live-verified**: gold_labels SQL runs (0 corrections→empty), outcome_recompute returns all 14 runs for owner `019d5e3c` (NOT empty). 7 gold tests + 67 lrn suite green. Node→run provenance link deferred (time-window suffices until noise hurts).
+
+**Q3a DONE (backend, this session)** — chat-turn feedback capture. chat-service: `message_feedback` table + `POST /v1/chat/messages/{id}/feedback` (owner-scoped, txn INSERT + outbox emit `chat.message_feedback`) + `MessageFeedbackRequest/Response` models. Gateway needs NO change (`/v1/chat` catch-all proxy). learning-service: added `loreweave:events:chat` to consumer STREAMS + `handle_chat_feedback` (registered `chat.message_feedback`) → `persist_consumed_score` (new in eval_repo: validate vs score_config + ON CONFLICT origin dedup) → `quality_scores`(target_kind=chat_message, metric=`chat_user_rating`, source=human); seeded `chat_user_rating` numeric[-1,1]. Regenerate-as-negative = rating −1 + `regenerated_from_message_id`. **Verified:** chat 253 suite + 4 feedback tests; learning 74 suite + 7 handler tests. **Live (both DB halves, host→Postgres :5555):** chat `message_feedback` DDL idempotent ×2 (8 cols); learning persist writes a `chat_message` score + **consumed-event dedup held** (insert#1 True, #2 False, 1 row). **Full E2E POST→outbox→relay→learning deferred to D-Q3-CHAT-FEEDBACK-E2E** (needs chat+learning container rebuild — contract covered by unit + both live DB halves).
+
+**Q3b DONE (FE, this session)** — chat feedback UI. `api.ts` `submitMessageFeedback` → `POST /v1/chat/messages/{id}/feedback`; `hooks/useMessageFeedback.ts` (controller: rating state + optimistic/rollback + toast, server source of truth, no localStorage); `AssistantMessage.tsx` thumbs up/down (aria-pressed highlight) + wrapped regenerate to post implicit `rating=-1 reason=regenerated`; i18n `message.feedback_{up,down,thanks,error}` ×4 locales. **Verified:** 5 feedback vitest + 29 chat-feature tests green; tsc clean. **Q3 COMPLETE (a+b).**
+
+**Q3.5 DONE (this session)** — judge calibration + panel safety, in `loreweave_eval/calibration.py` (pure, data-independent): `cohen_kappa` / `balanced_accuracy` / `confusion` / `raw_agreement` over paired `(human_correct, judge_correct)` labels; `calibrate_judge → JudgeCalibration` with the trust gate (`passed` = balanced_acc ≥ 0.75 AND κ ≥ 0.4, both tunable; degenerate single-class set → not passed). **Anti-self-reinforcement enforced + visible:** `panel_safety(excluded_refs, judge_uuids) → PanelSafety`; `score_dump` now sets `EvalResult.panel_safe` + `panel_safety_reason` on EVERY run (False when <2 disjoint judges or a generator self-grades). **Verified:** 18 calibration + 5 scorer tests; full SDK suite net-zero new; learning 74. c74c baseline `panel_safe=True`.
+- **Data note:** the live judge-vs-human agreement (pair construction from corrections + per-item judge verdicts) is NOT wired — live DB has 0 corrections AND per-item judge verdicts aren't persisted yet (Q1 stores per-judge macro). Q4 builds the pairs (it produces per-item verdicts) and calls `calibrate_judge`; Q4 also calls `panel_safety` in-process to gate before trusting scores. panel_safe DB persistence (eval_runs column) deferred to Q4.
+
+**Q4a DONE (online-eval consumer, this session)** — the flywheel now samples production runs automatically. Online eval of a production chapter has NO gold/source (golden-set P/R/F1 N/A), so per the PO-locked structural-first decision the signal is `structural_completeness` = fraction of core categories (entity/relation/event) with output (`app/db/online_eval.py`). New **`eval-runner`** second Redis consumer group on `loreweave:events:knowledge` (`app/events/eval_runner.py`) — best-effort (droppable, no DLQ), **every msg XACKed** (sampled-out immediately, no PEL churn), group at `$` (forward-looking). `should_sample` = deterministic `sha256(run_id) mod` (idempotent re-delivery). `online_eval_rule` table (rate+enabled, seeded global default 0.1). `persist_online_eval` → `eval_runs`(source=online, idempotent `online:<run_id>`) + `quality_scores`(online_structural_completeness, validated). **Cleared Q3.5 defer:** `panel_safe`/`panel_safety_reason` columns on `eval_runs`; `persist_eval_result` writes them. Wired into `main.py` lifespan (gated `online_eval_enabled`). **Verified:** 15 Q4 + 89 learning suite. **Live (Postgres :5555):** migration idempotent ×2, rule seeded, 14 runs eval'd + idempotent, `panel_safe=True`; **real completeness dist 0.0×3 / 0.33×3 / 0.67×8** (3 degenerate runs surfaced; none reached 1.0 — a genuine pipeline-health finding). Smoke rows cleaned up.
+
+**★ FULL LIVE E2E Q0→Q4 PASSED (this session)** — rebuilt + restarted learning-service + chat-service containers, ran the whole flywheel through the gateway (:3123):
+- **Q1**: `GET /v1/learning/eval-runs` → test-acct baseline (0.869, 2 judges); `/{id}` detail → 2 per-judge results. Owner-isolation confirmed (the 019d4966 baseline is invisible to other users).
+- **Q2**: `GET /v1/learning/gold-labels` → 200 (empty, 0 corrections).
+- **Q3a** (FULL cross-service): gateway `POST /v1/chat/messages/{id}/feedback` → chat `message_feedback` → outbox → relay → `loreweave:events:chat` → learning → `quality_scores`(chat_user_rating=1.0, source=human, origin=chat). ✓
+- **Q3.5**: `panel_safe=True` ("2 disjoint judges, no generator in panel") persisted on the baseline.
+- **Q4**: injected a synthetic `extraction_run_completed` onto the knowledge stream → **eval-runner consumed it in the live container** → `eval_runs`(source=online, completeness=1.0). ✓
+- **D-Q3-CHAT-FEEDBACK-E2E + D-Q4-EVAL-RUNNER-E2E → CLEARED.** Synthetic E2E data cleaned up; rule rate reset to 0.1.
+
+**⚠ Regression fixed during E2E (`fa10b35d`)**: the rebuild pulled **redis-py 8.0** (`redis>=5.0` unpinned). In redis-py 8 a blocking `XREADGROUP(block=N)` with no data raises `TimeoutError` (5.x returned empty) → BOTH learning consumers hot-looped. Fixed: catch `aioredis.TimeoutError` → `continue` (normal idle) in `consumer.py` + `eval_runner.py`. **Platform risk (D-REDIS8-CONSUMERS):** knowledge-service `consumer.py` + any other blocking Redis consumer have the same unpinned dep + pattern — they'll hot-loop on their next rebuild until they get the same catch OR redis is pinned `<8`.
+
+**Q4b DONE (LLM-as-judge online eval, this session)** — the real semantic judge. `app/clients/llm_client.py` `JudgeClient` (thin `submit_and_wait` over the loreweave_llm SDK Client → satisfies the Q0 `JudgeLLMClient` Protocol). `app/db/online_judge.py`: `run_online_judge` reuses the lifted `loreweave_eval.llm_judge.judge_precision` (the same judge that made the locked F1) → per-item verdicts + PRECISION (no gold needed — judges items vs source text); `persist_online_judge` → `eval_runs`(source=online, idempotent `online-judge:<run>:<judge>`) + per-category `eval_results` + `quality_scores`(online_judge_precision), `panel_safe=False` (single judge, honest). eval-runner `_maybe_judge` runs it only when the rule has a `judge_panel_id` + `online_judge_enabled` + the payload carries `items`+`source_text` (opted-in). config: `provider_registry_internal_url` + `online_judge_model/user`. Seeded `online_judge_precision`. **Verified:** 15 Q4b + 99 learning suite. **★ LIVE (real LM Studio judge via provider-registry :8208):** judged c74c alice_ch01 (26 items) → entity 0.864 / relation 0.688 / event 1.0 / **overall precision 0.846**; persisted eval_run + 3 eval_results + score; `panel_safe=False`. The LLM-online-judge engine works end-to-end.
+- **Remaining = Q4b-feed (the only missing piece):** how `items`+`source_text` reach the consumer for REAL production runs. The event carries only counts today. Options: worker-ai includes an items+source projection in `extraction_run_completed` for `save_raw_extraction`-opted projects (cleanest), OR the consumer fetches items from knowledge-service `extraction_leaves` + source from book-service. Until then the judge path is config+data-gated (off by default; structural-only runs for all events). Also: `sorted-set paced queue` cost governor (matters once many runs judge via LLM).
+
+**NEXT:**
+- **Q4b-feed** (above) — wire worker-ai (or service fetches) so opted-in production runs carry items+source → the online judge runs automatically.
+- **Q5 (L) eval-case dataset from failures** (depends Q2) — versioned `eval_cases` from corrections + judge-disagreement; filtered-view not annotation-queue (critique). Unblocked.
+- **Q6a/b (shadow runs)** (depends Q4) — replay challenger config, log projection, paired compare. Unblocked.
+- Small: add `panel_safe` + the online scores to the `eval-runs` read model + queries (columns written + live-confirmed, not yet surfaced by the API).
+- **D-REDIS8-CONSUMERS** — port the TimeoutError catch to knowledge-service consumer / pin redis (will hot-loop on their next rebuild).
+- Deployed learning-service container is at Q4a; rebuild to deploy Q4b code (online judge is off by default + feed-gated, so inert until wired).
+
+(Critical path: Q0✓→Q1✓→Q2✓→Q3✓→Q3.5✓→Q4✓→Q6a→Q6b→Q8; Q9 privacy gate before any cross-tenant Q7 surface. See track doc §5.)
+
+**Q1 note:** 0.913 historical NOT materialized (it's the retired self-graded number from a different 3-judge dump; PO retired it from gate use, so it's not needed as a row). For c74c's 2 independent judges, full-panel == disjoint == 0.869.
+
+**Deferred / flagged:**
+- **3 pre-existing `test_pass2_writer.py` failures** (`test_facts_merged_with_evidence`, `test_k17_9_fact_content_injection_sanitized`, `test_full_pipeline_all_candidate_types`) — from last session's FACT_TYPES filter (`0bf049cd`); the tests assert pre-filter behavior (type='description' facts merged) but they're now skipped. **Small fix: update the 3 tests** (or reconsider filter). Outside Q0 scope; do next.
+- Outcome refinement batch job (correction-join recompute on `extraction_runs`) — subsumed by track Q2.
+- Archive job: `SESSION_PATCH.md` (974KB) + trim this file — separate session.
+- Track-2 (doc §10): LoRA distillation, weighted-canary rollout state machine, CUPED/sequential testing.
 
 <details><summary>(historical) Phase B complete — push options (all done/superseded)</summary>
 

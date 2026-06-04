@@ -1,6 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Brain, Copy, MoreHorizontal, RefreshCw, Send, Zap } from 'lucide-react';
+import {
+  Brain,
+  Copy,
+  MoreHorizontal,
+  RefreshCw,
+  Send,
+  ThumbsDown,
+  ThumbsUp,
+  Zap,
+} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import { toast } from 'sonner';
@@ -8,6 +17,7 @@ import { ThinkingBlock } from './ThinkingBlock';
 import { AudioReplayPlayer } from './AudioReplayPlayer';
 import { ToolCallIndicator } from './ToolCallIndicator';
 import { ProposeEditCard } from './ProposeEditCard';
+import { useMessageFeedback } from '../hooks/useMessageFeedback';
 import { firePasteToEditor } from '../utils/pasteToEditor';
 import type { ToolCallRecord } from '../types';
 
@@ -56,6 +66,14 @@ export function AssistantMessage({
   const { t } = useTranslation('chat');
   const [showMore, setShowMore] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
+  const feedback = useMessageFeedback(messageId);
+
+  // Regenerate is an implicit negative signal on this turn (the user wasn't
+  // satisfied) — post it silently, then run the parent's regenerate.
+  function handleRegenerate() {
+    if (messageId) void feedback.submit(-1, { reason: 'regenerated' });
+    onRegenerate?.();
+  }
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -161,6 +179,38 @@ export function AssistantMessage({
           {/* Action buttons */}
           {!disabled && (
             <div className="flex items-center gap-1">
+              {messageId && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void feedback.submit(1)}
+                    disabled={feedback.submitting}
+                    aria-pressed={feedback.rating === 1}
+                    title={t('message.feedback_up')}
+                    className={`rounded p-1 transition-colors hover:bg-secondary ${
+                      feedback.rating === 1
+                        ? 'text-emerald-400'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <ThumbsUp className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void feedback.submit(-1)}
+                    disabled={feedback.submitting}
+                    aria-pressed={feedback.rating === -1}
+                    title={t('message.feedback_down')}
+                    className={`rounded p-1 transition-colors hover:bg-secondary ${
+                      feedback.rating === -1
+                        ? 'text-red-400'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <ThumbsDown className="h-3.5 w-3.5" />
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 onClick={handleCopy}
@@ -172,7 +222,7 @@ export function AssistantMessage({
               {onRegenerate && (
                 <button
                   type="button"
-                  onClick={onRegenerate}
+                  onClick={handleRegenerate}
                   title={t('message.regenerate')}
                   className="rounded p-1 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
                 >

@@ -16,6 +16,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.config import settings
 from app.db.suspended_runs import SuspendedRun
 from app.models import ProviderCredentials
 from app.services.frontend_tools import (
@@ -39,6 +40,14 @@ from tests.test_stream_tools import (
     tool_frag,
     usage,
 )
+
+
+@pytest.fixture(autouse=True)
+def _bespoke_tool_path(monkeypatch):
+    """Loop tests here assert on the bespoke knowledge_client.execute_tool path;
+    pin USE_MCP_TOOLS False (default flipped to True) so the transport choice —
+    covered by test_mcp_execute_tool — doesn't reroute them to mcp_execute_tool."""
+    monkeypatch.setattr(settings, "use_mcp_tools", False)
 
 
 # ── schema / name set ────────────────────────────────────────────────────────

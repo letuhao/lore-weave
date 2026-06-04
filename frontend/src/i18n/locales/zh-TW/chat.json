@@ -128,7 +128,11 @@
     "regenerate": "重新生成",
     "more_actions": "更多操作",
     "copy_markdown": "複製 Markdown",
-    "send_to_editor": "傳送至編輯器"
+    "send_to_editor": "傳送至編輯器",
+    "feedback_up": "回應良好",
+    "feedback_down": "回應不佳",
+    "feedback_thanks": "感謝您的回饋",
+    "feedback_error": "無法儲存回饋"
   },
   "tools": {
     "title": "此回覆使用的工具",

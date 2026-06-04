@@ -731,6 +731,59 @@ async def invalidate_cache(
     )
 
 
+# ── Q4b-feed: run-sample fetch for the online LLM judge ──────────────
+
+
+class RunSampleResponse(BaseModel):
+    """Wire shape of one `extraction_run_samples` row.
+
+    `items` is the minimal judge-shape projection keyed by category
+    ({entity:[{name,kind}], relation:[{subject,predicate,object,polarity}],
+    event:[{summary,participants}]}). learning-service's eval-runner feeds
+    `items` + `source_text` straight into `run_online_judge`.
+    """
+    run_id: str
+    project_id: str | None = None
+    book_id: str | None = None
+    config_hash: str | None = None
+    items: dict[str, list[dict]]
+    source_text: str
+
+
+@router.get(
+    "/runs/{run_id}/sample",
+    response_model=RunSampleResponse,
+    summary="Q4b-feed — fetch the items+source sample for one extraction run",
+    description=(
+        "Returns the run-attributable extracted items + chapter source for "
+        "an opted-in run (save_raw_extraction). 404 when no sample exists — "
+        "the run's project didn't opt in, the run wasn't a SUCCEEDED chapter, "
+        "or the 7-day TTL pruned it. Behind X-Internal-Token; called by "
+        "learning-service's eval-runner for sampled runs."
+    ),
+)
+async def get_run_sample(run_id: UUID) -> RunSampleResponse:
+    from app.db.repositories.extraction_run_samples import (
+        ExtractionRunSamplesRepo,
+    )
+
+    repo = ExtractionRunSamplesRepo(get_knowledge_pool())
+    sample = await repo.fetch_sample(run_id)
+    if sample is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="no sample for this run (non-opted, not succeeded, or pruned)",
+        )
+    return RunSampleResponse(
+        run_id=str(sample.run_id),
+        project_id=str(sample.project_id) if sample.project_id else None,
+        book_id=str(sample.book_id) if sample.book_id else None,
+        config_hash=sample.config_hash,
+        items=sample.items,
+        source_text=sample.source_text,
+    )
+
+
 # ── P3 D-P3-WORKER-AI-CONSUMER-WIRING — summarize-message dispatch ────
 
 

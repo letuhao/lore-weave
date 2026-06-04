@@ -49,6 +49,7 @@ from app.clients import (
 )
 from app.llm_client import LLMClient
 from app.outbox_emit import emit_extraction_run, emit_extraction_run_best_effort
+from app.sample_emit import persist_run_sample_best_effort
 
 __all__ = ["process_job", "poll_and_run"]
 
@@ -422,12 +423,18 @@ def _run_payload(
     base_version: str,
     outcome: str,
     result: ExtractionResult | None,
+    run_id: str | None = None,
 ) -> dict:
     """Build a `knowledge.extraction_run_completed` payload for one chapter.
 
     `resolved_config` carries prompt IDENTITY (prompt_versions), never raw
     prompt text (DESIGN Q5). metrics come from the per-chapter ExtractionResult
     (None on skip/fail → zero counts) + the flat per-item cost estimate.
+
+    Q4b-feed: pass `run_id` so the caller can key an extraction_run_sample by
+    the SAME id that lands in the event (parity is load-bearing — the online
+    judge fetches the sample by the event's run_id). Defaults to a fresh uuid4
+    for the skip/fail callers that don't sample.
     """
     metrics: dict[str, Any] = {
         "entities_merged": result.entities_merged if result else 0,
@@ -437,7 +444,7 @@ def _run_payload(
         "cost_usd": str(_DEFAULT_COST_PER_ITEM),
     }
     return {
-        "run_id": str(uuid4()),
+        "run_id": run_id or str(uuid4()),
         "user_id": str(job.user_id),
         "project_id": str(job.project_id),
         "book_id": str(book_id) if book_id else None,
@@ -467,6 +474,10 @@ def _run_payload(
         "outcome": outcome,
         "outcome_source": "pipeline",
         "genre": job.genre,
+        # Q4b-feed — structural metadata (NOT content): tells the eval-runner
+        # whether a run-sample exists to fetch, so it skips the knowledge call
+        # for non-opted projects. Redact-safe (a bool, no novel text).
+        "save_raw_extraction": job.save_raw_extraction,
         "emitted_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -503,6 +514,11 @@ class JobRow:
     # job-fetch time and forwarded into the run-completed payload so
     # extraction_runs.genre is populated for genre-segment mining.
     genre: str | None = None
+    # Q4b-feed — the project's raw-retention opt-in (knowledge_projects.
+    # save_raw_extraction, default OFF). When True, the chapter loop persists
+    # an extraction_run_sample {run_id, items, source} for the online LLM
+    # judge; when False, nothing is stored (redact-by-default).
+    save_raw_extraction: bool = False
 
 
 # ── DB helpers ───────────────────────────────────────────────────────
@@ -521,7 +537,7 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
                j.status, j.llm_model, j.embedding_model, j.max_spend_usd,
                j.items_total, j.items_processed, j.current_cursor,
                j.cost_spent_usd, p.embedding_dimension, p.extraction_config,
-               p.genre
+               p.genre, p.save_raw_extraction
         FROM extraction_jobs j
         LEFT JOIN knowledge_projects p
           ON p.user_id = j.user_id AND p.project_id = j.project_id
@@ -557,6 +573,7 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
             embedding_dimension=r["embedding_dimension"],
             extraction_config=ec if isinstance(ec, dict) else None,
             genre=r["genre"],
+            save_raw_extraction=bool(r["save_raw_extraction"]),
         ))
     return result
 
@@ -959,7 +976,7 @@ async def _extract_and_persist(
     is_last_chapter_of_book: bool = False,
     embedding_model_uuid: str | None = None,
     embedding_dimension: int | None = None,
-) -> ExtractionResult:
+) -> tuple[ExtractionResult, "Pass2Candidates | None"]:
     """Phase 4b-γ — replaces the legacy `knowledge_client.extract_item`.
 
     Two-step flow:
@@ -974,6 +991,11 @@ async def _extract_and_persist(
     non-retryable contract the legacy `extract_item` exposed:
       - stage='provider_exhausted' → retryable=True (worker retries)
       - all other stages → retryable=False (skip / fail per caller)
+
+    Q4b-feed: also returns the in-memory `Pass2Candidates` (or None on the
+    LLM-error path) so the chapter loop can persist a run-sample for the
+    online judge — the ONLY place run_id + items + source coexist. The
+    returned `ExtractionResult` stays counts-only (the event/telemetry shape).
 
     Empty / whitespace `text` → empty Pass2Candidates (library
     short-circuits without calling LLM); persist-pass2 still writes
@@ -1026,9 +1048,9 @@ async def _extract_and_persist(
             facts_merged=0,
             retryable=retryable,
             error=f"extraction failed (stage={exc.stage}): {exc}",
-        )
+        ), None
 
-    return await knowledge_client.persist_pass2(
+    persist_result = await knowledge_client.persist_pass2(
         user_id=user_id,
         project_id=project_id,
         source_type=source_type,
@@ -1048,6 +1070,7 @@ async def _extract_and_persist(
         embedding_dimension=embedding_dimension,
         writer_autocreate=writer_autocreate,
     )
+    return persist_result, candidates
 
 
 # ── Core job processing ─────────────────────────────────────────────
@@ -1235,7 +1258,8 @@ async def process_job(
                 # Extract: Phase 4b-γ — worker-ai now runs the LLM
                 # stage in-process via loreweave_extraction.extract_pass2,
                 # then POSTs candidates to /persist-pass2.
-                result = await _extract_and_persist(
+                # Q4b-feed: candidates captured for the run-sample write below.
+                result, candidates = await _extract_and_persist(
                     knowledge_client=knowledge_client,
                     llm_client=llm_client,
                     user_id=job.user_id,
@@ -1330,10 +1354,30 @@ async def process_job(
 
                 # Advance cursor + emit the extraction_run in ONE transaction
                 # (B2-A): the run row is guaranteed iff the cursor advanced.
+                # Q4b-feed: generate run_id ONCE here and pass it to both the
+                # payload and the run-sample below — parity is load-bearing
+                # (the online judge fetches the sample by the event's run_id).
+                run_id = str(uuid4())
+                # Q4b-feed: persist the items+source run-sample for the online
+                # LLM judge — ONLY for opted-in projects (save_raw_extraction),
+                # keyed by the SAME run_id as the event. Written BEFORE the event
+                # is emitted (/review-impl MED#1): the eval-runner fetches the
+                # sample by the event's run_id, so the sample must be committed
+                # before the event is consumable — else a fast consumer 404s and
+                # silently falls back to structural-only. Best-effort: a lost
+                # sample only drops a (droppable) judging opportunity; it must
+                # never fail the extraction. Non-opted → write nothing.
+                if job.save_raw_extraction and candidates is not None:
+                    await persist_run_sample_best_effort(
+                        pool, run_id=run_id, job=job, book_id=book_id,
+                        config_hash=run_cfg_hash, candidates=candidates,
+                        source_text=text,
+                    )
                 run_payload = _run_payload(
                     job=job, book_id=book_id, chapter_ref=ch.chapter_id,
                     snapshot=run_snapshot, cfg_hash=run_cfg_hash,
                     base_version=run_base_version, outcome="succeeded", result=result,
+                    run_id=run_id,
                 )
                 await _advance_cursor_and_emit_run(
                     pool, job.user_id, job.job_id,
@@ -1386,12 +1430,14 @@ async def process_job(
                 # the LLM, then persist-pass2 writes the source row for
                 # idempotency. Will be fleshed out when chat-service
                 # exposes a message-text endpoint.
-                result = await _extract_and_persist(
+                # Q4b-feed: chat turns aren't sampled (no source text yet);
+                # candidates ignored.
+                result, _ = await _extract_and_persist(
                     knowledge_client=knowledge_client,
                     llm_client=llm_client,
                     user_id=job.user_id,
                     project_id=job.project_id,
-                    source_type="chat_turn",
+                    source_type="chat_message",
                     source_id=str(turn["aggregate_id"]),
                     job_id=job.job_id,
                     model_ref=job.llm_model,

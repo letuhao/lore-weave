@@ -58,7 +58,7 @@ from pydantic import BaseModel
 from app.db.neo4j_helpers import CypherSession
 from app.db.neo4j_repos.canonical import canonicalize_entity_name
 from app.db.neo4j_repos.events import merge_event
-from app.db.neo4j_repos.facts import merge_fact
+from app.db.neo4j_repos.facts import FACT_TYPES, merge_fact
 from app.db.repositories.entity_alias_map import EntityAliasMapRepo
 from app.db.neo4j_repos.provenance import add_evidence, upsert_extraction_source
 from app.db.neo4j_repos.relations import create_relation
@@ -539,6 +539,12 @@ async def write_pass2_extraction(
     # Step 5 — merge facts.
     facts_merged = 0
     for fact in fact_list:
+        if fact.type not in FACT_TYPES:
+            logger.warning(
+                "pass2_writer: skipping fact with unknown type %r (content=%.40r)",
+                fact.type, fact.content,
+            )
+            continue
         content_clean = _sanitize(fact.content, project_id)
         if not content_clean.strip():
             continue

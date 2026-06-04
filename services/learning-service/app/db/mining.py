@@ -164,11 +164,17 @@ async def get_outcome_recompute(
     limit: int = 100,
     offset: int = 0,
 ) -> dict[str, Any]:
-    """Correction-join outcome recompute recipe (§2.4 Q2).
+    """Correction-join outcome recompute recipe (§2.4 / track Q2).
 
     Joins extraction_runs to corrections arriving AFTER the run within
-    `window_days`. Returns empty today (source_extraction_run_id is NULL
-    until Phase E populates it); establishes the join recipe.
+    `window_days`. Attribution is by **time-window** (PO-locked Q2 decision):
+    the `c.source_extraction_run_id = er.run_id OR c.source_extraction_run_id
+    IS NULL` join means corrections without a run back-pointer (all of them
+    today) are attributed to runs of the same owner+project inside the window.
+    So this returns one row PER RUN (not empty) — runs with 0 post-window
+    corrections keep their pipeline outcome; runs with corrections get
+    minor/major_corrected. A precise node->run provenance link is a deferred
+    refinement (only needed if time-window attribution proves too coarse).
 
     recomputed_outcome:
       original pipeline outcome when 0 corrections

@@ -10,7 +10,8 @@
       "entities": "Entities",
       "timeline": "Timeline",
       "raw": "Raw",
-      "privacy": "Privacy"
+      "privacy": "Privacy",
+      "insights": "Insights"
     }
   },
   "mobile": {
@@ -828,5 +829,54 @@
       "success": "Event deleted.",
       "failed": "Couldn't delete the event: {{error}}"
     }
+  },
+  "mining": {
+    "sections": {
+      "configQuality": {
+        "title": "Config Quality",
+        "description": "Success rate by genre and configuration. Populated after 2+ extraction runs sharing the same config hash.",
+        "empty": "No data yet — needs 2+ extraction runs with the same config hash per genre.",
+        "exploration": "Exploration sample (random tail)"
+      },
+      "modelMatrix": {
+        "title": "Model Matrix",
+        "description": "Weighted outcome score by model and task scope. succeeded=1.0 · skipped=0.3 · failed=0.0.",
+        "empty": "No data yet — needs 2+ extraction runs with the same model and scope."
+      },
+      "defaultDrift": {
+        "title": "Config Drift",
+        "description": "Which extraction parameters deviate from defaults, and whether projects converge on the same value.",
+        "empty": "No parameter adjustments recorded yet."
+      },
+      "outcomeRecompute": {
+        "title": "Outcome Recompute",
+        "description": "Extraction runs re-evaluated after applying post-run user corrections.",
+        "empty": "No correction data yet. Outcome recompute activates once corrections link back to an extraction run."
+      }
+    },
+    "columns": {
+      "genre": "Genre",
+      "configHash": "Config",
+      "runs": "Runs",
+      "successRate": "Success rate",
+      "avgEntities": "Avg entities",
+      "model": "Model",
+      "scope": "Scope",
+      "filter": "Filter",
+      "weightedOutcome": "Score",
+      "target": "Parameter",
+      "affectedProjects": "Projects",
+      "driftPattern": "Pattern",
+      "runsWithOutcome": "Runs w/ outcome",
+      "runId": "Run",
+      "outcome": "Outcome",
+      "recomputed": "Recomputed",
+      "corrections": "Corrections"
+    },
+    "driftPattern": {
+      "convergent": "Convergent",
+      "divergent": "Divergent"
+    },
+    "totalRuns": "{{count}} runs total"
   }
 }

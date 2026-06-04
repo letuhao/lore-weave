@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Correction(BaseModel):
@@ -46,6 +46,34 @@ class CorrectionStats(BaseModel):
     total: int
     by_diff_class: dict[str, int]
     by_target_type: dict[str, int]
+
+
+# ── Q2 — gold-label projection (corrections as preference triples) ───
+
+
+class GoldLabelRow(BaseModel):
+    """One correction projected as a gold-label triple: the user's ``preferred``
+    output over the extractor's ``non_preferred`` original (structural + hash
+    only — redact-by-default)."""
+
+    target_type: str
+    target_id: str
+    op: str
+    diff_class: str | None = None
+    non_preferred: dict[str, Any] | None = None  # extractor's original output
+    preferred: dict[str, Any] | None = None       # the user's correction (gold)
+    before_content_hash: str | None = None
+    after_content_hash: str | None = None
+    change_magnitude: int
+    source_chapter: str | None = None
+    source_extraction_run_id: str | None = None
+    origin_service: str
+    created_at: datetime
+
+
+class GoldLabelsResponse(BaseModel):
+    items: list[GoldLabelRow]
+    total: int
 
 
 # ── Phase E2 — mining response models ────────────────────────────────
@@ -103,3 +131,46 @@ class OutcomeRecomputeRow(BaseModel):
 class OutcomeRecomputeResponse(BaseModel):
     items: list[OutcomeRecomputeRow]
     total: int
+
+
+# ── Q1 — quality-plane eval-run read models ──────────────────────────
+
+
+class EvalRunRow(BaseModel):
+    """One scored eval run (the metric-of-record + panel composition)."""
+
+    eval_run_id: str
+    user_id: str
+    project_id: str | None = None
+    book_id: str | None = None
+    source_extraction_run_id: str | None = None
+    config_hash: str | None = None
+    dataset_version: str | None = None
+    source: str
+    judges: list[dict[str, Any]] = Field(default_factory=list)
+    disjoint_median_f1: float | None = None
+    full_panel_median_f1: float | None = None
+    fleiss_kappa: float | None = None
+    bootstrap_ci: dict[str, Any] | None = None
+    bias_metrics: dict[str, Any] | None = None
+    n_chapters: int | None = None
+    n_disjoint_judges: int | None = None
+    created_at: datetime
+
+
+class EvalRunList(BaseModel):
+    items: list[EvalRunRow]
+
+
+class EvalResultRow(BaseModel):
+    category: str
+    judge_label: str | None = None
+    judge_uuid: str | None = None
+    precision: float | None = None
+    recall: float | None = None
+    f1: float | None = None
+    chapter_ref: str | None = None
+
+
+class EvalRunDetail(EvalRunRow):
+    results: list[EvalResultRow] = Field(default_factory=list)

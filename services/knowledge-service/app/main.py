@@ -134,6 +134,27 @@ async def lifespan(app: FastAPI):
                 "D-P2-STALE-CLAIM-LIFESPAN-HOOK: stale-claim recovery failed (non-fatal)",
                 exc_info=True,
             )
+        # Q4b-feed — prune extraction_run_samples older than the judging
+        # window. The sample is a transient buffer feeding the online judge;
+        # rows past the window are dead novel-text weight. Best-effort: a
+        # Postgres hiccup here MUST NOT block service startup.
+        try:
+            from app.db.repositories.extraction_run_samples import (
+                ExtractionRunSamplesRepo,
+            )
+            pruned_n = await ExtractionRunSamplesRepo(
+                get_knowledge_pool()
+            ).prune_older_than(settings.extraction_run_sample_ttl_days)
+            if pruned_n > 0:
+                logger.info(
+                    "Q4b-feed: pruned %d extraction_run_samples older than %d days",
+                    pruned_n, settings.extraction_run_sample_ttl_days,
+                )
+        except Exception:
+            logger.warning(
+                "Q4b-feed: extraction_run_samples prune failed (non-fatal)",
+                exc_info=True,
+            )
     except Exception:
         logger.exception(
             "lifespan startup failed before yield — running partial cleanup"

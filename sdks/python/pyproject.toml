@@ -14,6 +14,10 @@ dependencies = [
   # P1 (hierarchical extraction T1) — loreweave_parse structural decomposer.
   # html.parser backend is stdlib; we use bs4 for navigation + decompose.
   "beautifulsoup4>=4.12,<5",
+  # Q0 (eval lift) — loreweave_eval.eval_harness loads golden-fixture YAML.
+  # Pure-python, tiny; rides in with the distribution so the online-eval
+  # consumer (learning-service) gets it without a separate pin.
+  "PyYAML>=6.0",
   # Phase 6c-γ — loreweave_obs tracing helper. These ride in with the
   # distribution, so every service that `pip install /sdk`s gets tracing.
   "opentelemetry-sdk>=1.27",
@@ -43,6 +47,11 @@ include = [
   "loreweave_extraction*",
   "loreweave_obs*",
   "loreweave_parse*",
+  # Q0 (2026-06-01) — `loreweave_eval` added (extraction-quality scorer lifted
+  # from knowledge-service/tests/quality). Depends on loreweave_extraction
+  # (canonical + prompts) + loreweave_llm (errors) + PyYAML; the LLM client is
+  # injected as a Protocol so the package stays transport-agnostic.
+  "loreweave_eval*",
 ]
 exclude = ["tests*"]
 

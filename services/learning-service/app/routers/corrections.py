@@ -15,8 +15,14 @@ from datetime import datetime
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.db.gold import get_gold_labels
 from app.deps import get_current_user, get_db
-from app.models import Correction, CorrectionPage, CorrectionStats
+from app.models import (
+    Correction,
+    CorrectionPage,
+    CorrectionStats,
+    GoldLabelsResponse,
+)
 
 router = APIRouter(prefix="/v1/learning", tags=["learning"])
 
@@ -144,3 +150,30 @@ async def correction_stats(
         by_diff_class={r["k"]: r["n"] for r in by_diff},
         by_target_type={r["k"]: r["n"] for r in by_target},
     )
+
+
+@router.get("/gold-labels", response_model=GoldLabelsResponse)
+async def list_gold_labels(
+    user_id: str = Depends(get_current_user),
+    pool: asyncpg.Pool = Depends(get_db),
+    project_id: str | None = Query(default=None),
+    target_type: str | None = Query(default=None),
+    diff_class: str | None = Query(default=None),
+    exclude_noop: bool = Query(default=True),
+    limit: int = Query(default=100, ge=1, le=_MAX_LIMIT),
+    offset: int = Query(default=0, ge=0),
+) -> GoldLabelsResponse:
+    """The caller's corrections projected as gold-label triples (preferred over
+    non_preferred + edit magnitude) — feeds judge calibration (Q3.5) and the
+    eval-case dataset (Q5). Redact-by-default (structural + content-hash only)."""
+    result = await get_gold_labels(
+        pool,
+        user_id=uuid.UUID(user_id),
+        project_id=uuid.UUID(project_id) if project_id else None,
+        target_type=target_type,
+        diff_class=diff_class,
+        exclude_noop=exclude_noop,
+        limit=limit,
+        offset=offset,
+    )
+    return GoldLabelsResponse(**result)

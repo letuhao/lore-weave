@@ -13,7 +13,7 @@ from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool, get_pool
 from app.middleware.trace_id import TraceIdMiddleware, current_trace_id
-from app.routers import messages, outputs, sessions, voice
+from app.routers import feedback, messages, outputs, sessions, voice
 from app.storage.minio_client import delete_object, ensure_bucket
 
 logger = logging.getLogger(__name__)
@@ -110,6 +110,7 @@ app.include_router(messages.router)
 app.include_router(outputs.router)
 app.include_router(voice.router)
 app.include_router(voice.voice_mgmt_router)
+app.include_router(feedback.router)
 
 
 @app.get("/health", response_class=PlainTextResponse)

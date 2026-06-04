@@ -41,6 +41,10 @@ func Embed(ctx context.Context, adapter Adapter, client *http.Client, endpointBa
 // embedOpenAI calls POST /v1/embeddings (OpenAI-compatible).
 func embedOpenAI(ctx context.Context, client *http.Client, endpointBaseURL, secret, model string, texts []string) (*EmbedResult, error) {
 	base := strings.TrimRight(endpointBaseURL, "/")
+	// Strip trailing /v1 so credentials stored as "http://host:port/v1"
+	// (the standard form used by LM Studio / local providers) don't
+	// produce a double /v1/v1/embeddings path.
+	base = strings.TrimSuffix(base, "/v1")
 	if base == "" {
 		base = openaiBaseURL
 	}

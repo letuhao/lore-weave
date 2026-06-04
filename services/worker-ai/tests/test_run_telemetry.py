@@ -200,7 +200,7 @@ def test_run_payload_key_set_is_pinned_to_consumer_contract():
         "run_id", "user_id", "project_id", "book_id", "job_id", "scope",
         "chapter_ref", "config_hash", "resolved_config", "prompt_versions",
         "base_default_version", "model_ref", "metrics", "outcome",
-        "outcome_source", "genre", "emitted_at",
+        "outcome_source", "genre", "save_raw_extraction", "emitted_at",
     }
 
 
