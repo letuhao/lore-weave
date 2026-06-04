@@ -174,36 +174,51 @@ def _cjk_ratio(text: str) -> float:
 
 # ── 1. schema ───────────────────────────────────────────────────────────────────
 
-def score_schema(p: ScorableProposal) -> tuple[float, list[str]]:
-    """Game-ready normalization: required dims present + non-empty Chinese,
-    valid lifecycle vocab.
+def score_schema(
+    p: ScorableProposal,
+    *,
+    required_dims: tuple[str, ...] = REQUIRED_DIMENSIONS,
+    optional_dims: tuple[str, ...] = OPTIONAL_DIMENSIONS,
+    require_cjk: bool = True,
+) -> tuple[float, list[str]]:
+    """Game-ready normalization: required dims present + non-empty, valid
+    lifecycle vocab.
+
+    De-bias (LE-PROD slice D): the dimension set + the language-faithfulness check
+    are PARAMETERS, not hardcoded. ``required_dims``/``optional_dims`` default to the
+    Fengshen LOCATION set (no regression); the runner passes the proposal's KIND dims
+    (profile-localized). ``require_cjk`` defaults True (zh demo); the runner sets it
+    from the book language (a non-Chinese book is NOT penalized for non-CJK content).
 
     Scoring (0..100):
-      * required dimensions present + non-empty + CJK-faithful: 60 pts
-        (20 each — missing or empty/English-leaked required dim loses its slice).
-      * optional dimensions present + non-empty: 25 pts (12.5 each).
+      * required dimensions present + non-empty (+ language-faithful when required):
+        60 pts split evenly.
+      * optional dimensions present + non-empty: 25 pts split evenly.
       * lifecycle vocab valid: 15 pts.
     """
     issues: list[str] = []
     pts = 0.0
 
-    for dim in REQUIRED_DIMENSIONS:
+    req_slice = 60.0 / len(required_dims) if required_dims else 0.0
+    for dim in required_dims:
         content = (p.dimensions.get(dim) or "").strip()
         if not content:
             issues.append(f"schema: required dimension {dim!r} missing/empty")
             continue
-        # An English-leaked Chinese dimension is a normalization failure (C11
-        # repair guards this; the eval double-checks).
-        if _LATIN_RUN_RE.search(content) and _cjk_ratio(content) < 0.5:
+        # A non-language-faithful value (e.g. English where Chinese was required) is
+        # a normalization failure — but ONLY checked when the book language demands a
+        # script (require_cjk). A non-Chinese book skips this check entirely.
+        if require_cjk and _LATIN_RUN_RE.search(content) and _cjk_ratio(content) < 0.5:
             issues.append(f"schema: required dimension {dim!r} not Chinese-faithful")
-            pts += 10.0  # partial credit — present but malformed
+            pts += req_slice * 0.5  # partial credit — present but malformed
         else:
-            pts += 20.0
+            pts += req_slice
 
-    for dim in OPTIONAL_DIMENSIONS:
+    opt_slice = 25.0 / len(optional_dims) if optional_dims else 0.0
+    for dim in optional_dims:
         content = (p.dimensions.get(dim) or "").strip()
         if content:
-            pts += 12.5
+            pts += opt_slice
         else:
             issues.append(f"schema: optional dimension {dim!r} missing")
 
@@ -262,19 +277,22 @@ def score_canon(p: ScorableProposal) -> tuple[float, list[str]]:
 
 # ── 3. anachronism (商周/封神 frame, operates on Chinese) ────────────────────────
 
-def score_anachronism(p: ScorableProposal) -> tuple[float, list[str]]:
-    """No post-Shang/Zhou intrusions in the Chinese content. Scans every
-    dimension value for the curated out-of-era CONCEPT markers (C12 table).
+def score_anachronism(
+    p: ScorableProposal, *, markers: tuple[str, ...] = ANACHRONISM_MARKERS
+) -> tuple[float, list[str]]:
+    """No out-of-era intrusions in the content. Scans every dimension value for the
+    book's out-of-era CONCEPT markers.
 
-    Scoring (0..100): 100 minus 25 per distinct marker hit (floored at 0). A
-    single anachronism is a meaningful quality defect (the demo target is
-    source-faithful 封神 lore), so the penalty is steep but not instant-zero on
-    a single hit (one slip in five dimensions ≠ total failure).
-    """
+    De-bias (LE-PROD slice D): ``markers`` is a PARAMETER, defaulting to the Fengshen
+    商周/封神 table (no regression). The runner passes the per-book ``profile``
+    markers — so an EMPTY marker set (a sci-fi / modern / non-Fengshen book) means the
+    anachronism check is OFF (score 100), never penalizing era-appropriate content.
+
+    Scoring (0..100): 100 minus 25 per distinct marker hit (floored at 0)."""
     issues: list[str] = []
     hits: set[str] = set()
     for dim, content in p.dimensions.items():
-        for marker in ANACHRONISM_MARKERS:
+        for marker in markers:
             if marker in (content or ""):
                 hits.add(marker)
                 issues.append(f"anachronism: {marker!r} in dimension {dim!r}")

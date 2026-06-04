@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Sequence
 
 from app.config import settings
+from app.db.book_profile import BookProfile
 from app.eval import scorers
 from app.eval.gate import GateDecision, gate_decision
 from app.eval.judge_usefulness import (
@@ -27,8 +28,10 @@ from app.eval.judge_usefulness import (
     JudgeSpec,
     JudgeUsefulnessResult,
     ProposalForJudging,
+    build_usefulness_rubric,
     score_usefulness_ensemble,
 )
+from app.gaps.model import is_zh, kind_label_for, resolve_dimensions
 from app.eval.scorers import ScorableProposal
 from app.eval.suite import (
     SUBSCORE_KEYS,
@@ -64,6 +67,7 @@ async def run_eval(
     baseline: dict[str, Any] | None = None,
     judges: Sequence[JudgeSpec] = (),
     judge_fn_for: Callable[[JudgeSpec], JudgeFn] | None = None,
+    profile: BookProfile | None = None,
 ) -> EvalRunOutcome:
     """Score ``proposals`` under ``suite``; diff against ``baseline`` if given;
     run the judge ensemble for usefulness if judges + judge_fn_for are supplied;
@@ -72,7 +76,13 @@ async def run_eval(
     Deterministic sub-scores (schema/canon/anachronism/provenance) are computed
     per-proposal and averaged. The subjective usefulness sub-score is the judge
     ensemble's mean credit (0 with ``acceptable=False`` when no live judges).
-    """
+
+    De-bias (LE-PROD slice D): ``profile=None`` keeps the LEGACY Fengshen-tuned
+    behavior (the scorers/judge use their 封神 defaults — no regression, all
+    existing callers unchanged). When a per-book ``profile`` is passed, the schema
+    dims (per the proposal's KIND), the language-faithfulness check, the anachronism
+    markers, and the judge rubric/kind-label are all DERIVED from it — so the gate
+    that unlocks P2/P3 can pass for a NON-Fengshen book judged on its own terms."""
     per_proposal: list[dict[str, Any]] = []
     schema_vals: list[float] = []
     canon_vals: list[float] = []
@@ -80,10 +90,30 @@ async def run_eval(
     prov_vals: list[float] = []
     all_issues: list[str] = []
 
+    # Profile-derived knobs (slice D). markers: the profile's per-book denylist
+    # (EMPTY ⇒ anachronism check OFF for a non-Fengshen book). require_cjk: only a
+    # zh book demands CJK-faithful content.
+    _markers = (
+        tuple(t for t, _ in (profile.anachronism_markers or ())) if profile else None
+    )
+    _require_cjk = is_zh(profile.language) if profile else True
+
     for p in proposals:
-        s, s_iss = scorers.score_schema(p)
+        if profile is not None:
+            specs = resolve_dimensions(
+                p.entity_kind, language=profile.language,
+                overrides=profile.dimension_overrides,
+            )
+            req = tuple(s.label for s in specs if s.required)
+            opt = tuple(s.label for s in specs if not s.required)
+            s, s_iss = scorers.score_schema(
+                p, required_dims=req, optional_dims=opt, require_cjk=_require_cjk
+            )
+            a, a_iss = scorers.score_anachronism(p, markers=_markers or ())
+        else:
+            s, s_iss = scorers.score_schema(p)
+            a, a_iss = scorers.score_anachronism(p)
         c, c_iss = scorers.score_canon(p)
-        a, a_iss = scorers.score_anachronism(p)
         pr, pr_iss = scorers.score_provenance(p)
         schema_vals.append(s)
         canon_vals.append(c)
@@ -103,9 +133,24 @@ async def run_eval(
             ProposalForJudging(name=p.name, dimensions=p.dimensions)
             for p in proposals
         ]
-        usefulness_res = await score_usefulness_ensemble(
-            forjudge, judges, judge_fn_for, kappa_floor=settings.judge_kappa_floor
-        )
+        if profile is not None:
+            # One rubric/label per batch (profile-driven). Mixed-kind batches use
+            # the first proposal's kind for the label — the rubric itself is
+            # kind-agnostic ("this {kind} enrichment").
+            klabel = (
+                kind_label_for(proposals[0].entity_kind, profile.language)
+                if proposals else "条目"
+            )
+            usefulness_res = await score_usefulness_ensemble(
+                forjudge, judges, judge_fn_for,
+                kappa_floor=settings.judge_kappa_floor,
+                rubric=build_usefulness_rubric(profile, kind_label=klabel),
+                kind_label=klabel,
+            )
+        else:
+            usefulness_res = await score_usefulness_ensemble(
+                forjudge, judges, judge_fn_for, kappa_floor=settings.judge_kappa_floor
+            )
     else:
         usefulness_res = JudgeUsefulnessResult(
             usefulness=0.0, fleiss_kappa=None, kappa_interpretation="n/a",
