@@ -106,6 +106,14 @@ def _published_event(revision_id=str(_REVISION), book_id=str(_BOOK)):
     )
 
 
+def _book_client_with_sort(sort_order=7):
+    """A book_client mock whose get_chapter_sort_orders (CM4 chapter_index
+    source) returns the chapter's sort_order awaitably."""
+    bc = MagicMock()
+    bc.get_chapter_sort_orders = AsyncMock(return_value={_CHAPTER: sort_order})
+    return bc
+
+
 def _patch_pending_repo(monkeypatch):
     """Patch ExtractionPendingRepo so the graph-queue write is a no-op
     spy. Returns the upsert AsyncMock for assertions."""
@@ -194,7 +202,8 @@ async def test_chapter_published_ingests_passages_at_pinned_revision(monkeypatch
             "app.extraction.passage_ingester.ingest_chapter_passages", ingest_mock,
         )
         monkeypatch.setattr(
-            "app.clients.book_client.get_book_client", lambda: MagicMock(),
+            "app.clients.book_client.get_book_client",
+            lambda: _book_client_with_sort(7),
         )
         monkeypatch.setattr(
             "app.clients.embedding_client.get_embedding_client",
@@ -210,6 +219,7 @@ async def test_chapter_published_ingests_passages_at_pinned_revision(monkeypatch
     assert kw["embedding_dim"] == 1024
     assert kw["revision_id"] == _REVISION  # pinned, not the live draft
     assert kw["delete_stale_on_missing"] is False  # transient None mustn't wipe
+    assert kw["chapter_index"] == 7  # CM4: stamped from book-service sort_order
 
 
 @pytest.mark.asyncio
@@ -244,7 +254,8 @@ async def test_chapter_published_passage_failure_does_not_block_graph_queue(
             "app.extraction.passage_ingester.ingest_chapter_passages", ingest_mock,
         )
         monkeypatch.setattr(
-            "app.clients.book_client.get_book_client", lambda: MagicMock(),
+            "app.clients.book_client.get_book_client",
+            lambda: _book_client_with_sort(7),
         )
         monkeypatch.setattr(
             "app.clients.embedding_client.get_embedding_client",

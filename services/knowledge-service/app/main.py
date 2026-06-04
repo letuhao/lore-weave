@@ -23,6 +23,7 @@ from app.routers import (
     context,
     health,
     internal_admin,
+    internal_backfill,
     internal_benchmark,
     internal_enrichment,
     internal_extraction,
@@ -594,6 +595,7 @@ app.include_router(ping.public_router)
 app.include_router(ping.internal_router)
 app.include_router(context.router)
 app.include_router(internal_admin.router)
+app.include_router(internal_backfill.router)
 app.include_router(internal_benchmark.router)
 app.include_router(internal_enrichment.router)
 app.include_router(internal_extraction.router)

@@ -317,15 +317,17 @@ async def test_events_merged_with_evidence(
 
 
 @pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.rerank_chronological_order", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
 async def test_event_date_threaded_to_merge_event(
-    mock_upsert_source, mock_merge_event, mock_evidence,
+    mock_upsert_source, mock_merge_event, mock_evidence, mock_rerank,
 ):
     """C18: when LLMEventCandidate.event_date is non-null, the value
     is threaded as event_date_iso to merge_event() so the structured
-    date lands on the :Event node."""
+    date lands on the :Event node. (CM4: a dated event also triggers the
+    project chronological rerank — mocked here.)"""
     mock_upsert_source.return_value = _make_source_result()
     mock_merge_event.return_value = _make_event_result("evid-dated")
     mock_evidence.return_value = _make_evidence_result(True)
@@ -900,3 +902,118 @@ async def test_anchor_miss_still_mints_new_entity(
     merge_kwargs = mock_merge_entity.await_args.kwargs
     assert merge_kwargs["name"] == "Lancelot"
     assert result.entities_merged == 1
+
+
+# ── CM4: event_order assignment + debounced chronological rerank ──────
+
+
+def _hierarchy_paths(chapter_index: int, chapter_id: str = "ch-1"):
+    from app.extraction.hierarchy_writer import HierarchyPaths
+    return HierarchyPaths(
+        book_id="b", book_path="book", book_title=None,
+        part_id="p", part_path="book/part-1", part_index=1, part_title=None,
+        chapter_id=chapter_id, chapter_path="book/part-1/chapter-x",
+        chapter_index=chapter_index, chapter_title=None, scenes=[],
+    )
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.rerank_chronological_order", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_for_chapter", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_event_order_from_hierarchy_chapter_index(
+    mock_src, mock_merge, mock_evid, mock_hier, mock_rerank,
+):
+    """CM4: event_order = chapter_index×1e6 + within-chapter index, advancing
+    per written event (the chapter ordinal comes from hierarchy_paths)."""
+    mock_src.return_value = _make_source_result()
+    mock_merge.return_value = _make_event_result("e")
+    mock_evid.return_value = _make_evidence_result(True)
+
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=JOB_ID,
+        events=[_event("First", ["x"]), _event("Second", ["y"])],
+        hierarchy_paths=_hierarchy_paths(chapter_index=3),
+    )
+
+    orders = [c.kwargs["event_order"] for c in mock_merge.call_args_list]
+    assert orders == [3_000_000 + 0, 3_000_000 + 1]
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.rerank_chronological_order", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_event_order_none_without_hierarchy(
+    mock_src, mock_merge, mock_evid, mock_rerank,
+):
+    """Legacy/chat path (no hierarchy_paths) → event_order None → the timeline
+    null-sinks the event (coalesce(event_order, 2147483647))."""
+    mock_src.return_value = _make_source_result()
+    mock_merge.return_value = _make_event_result("e")
+    mock_evid.return_value = _make_evidence_result(True)
+
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=JOB_ID,
+        events=[_event("Untethered", ["x"])],
+    )
+    assert mock_merge.call_args.kwargs["event_order"] is None
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.rerank_chronological_order", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_for_chapter", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_chrono_rerank_runs_when_dated_event_written(
+    mock_src, mock_merge, mock_evid, mock_hier, mock_rerank,
+):
+    """Debounce: a chapter that writes ≥1 dated event triggers the project
+    chronological rerank."""
+    mock_src.return_value = _make_source_result()
+    mock_merge.return_value = _make_event_result("e")
+    mock_evid.return_value = _make_evidence_result(True)
+
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=JOB_ID,
+        events=[_event("Dated", ["x"], event_date="1880-06")],
+        hierarchy_paths=_hierarchy_paths(chapter_index=3),
+    )
+    mock_rerank.assert_awaited_once()
+    kw = mock_rerank.await_args.kwargs
+    assert kw["user_id"] == USER_ID and kw["project_id"] == PROJECT_ID
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.rerank_chronological_order", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_for_chapter", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_chrono_rerank_skipped_when_no_dated_event(
+    mock_src, mock_merge, mock_evid, mock_hier, mock_rerank,
+):
+    """Debounce: an all-undated chapter (or chat turn) must NOT trigger the
+    O(project-events) rerank."""
+    mock_src.return_value = _make_source_result()
+    mock_merge.return_value = _make_event_result("e")
+    mock_evid.return_value = _make_evidence_result(True)
+
+    await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-1", job_id=JOB_ID,
+        events=[_event("Undated", ["x"])],
+        hierarchy_paths=_hierarchy_paths(chapter_index=3),
+    )
+    mock_rerank.assert_not_awaited()

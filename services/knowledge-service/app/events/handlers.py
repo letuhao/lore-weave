@@ -210,17 +210,25 @@ async def _ingest_published_passages(
     from app.db.neo4j import neo4j_session
     from app.extraction.passage_ingester import ingest_chapter_passages
 
+    book_client = get_book_client()
+    # CM4: stamp the passage chapter_index from book-service sort_order so the
+    # L3 reading-order axis matches the graph's event_order. Best-effort — a
+    # missing sort_order falls back to None (passages still ingest, just
+    # un-ordered until the next publish/backfill).
+    sort_orders = await book_client.get_chapter_sort_orders([chapter_uuid])
+    chapter_index = sort_orders.get(chapter_uuid)
+
     try:
         async with neo4j_session() as session:
             await ingest_chapter_passages(
                 session,
-                get_book_client(),
+                book_client,
                 get_embedding_client(),
                 user_id=user_id,
                 project_id=project_id,
                 book_id=book_id,
                 chapter_id=chapter_uuid,
-                chapter_index=None,  # CM4 backfills chapter_index from sort_order
+                chapter_index=chapter_index,  # CM4: from book-service sort_order
                 embedding_model=embedding_model,
                 embedding_dim=embedding_dim,
                 revision_id=revision_id,
