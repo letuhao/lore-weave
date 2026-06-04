@@ -164,3 +164,56 @@ a co-resident or cloud writer model available — otherwise model-swap thrashing
 makes it a net loss. Full A2A is a Track-2 item, unblocked by the same hardware
 condition. The seam is designed so each phase is additive and reuses the existing
 tool loop, model resolution, AG-UI events, and usage summation.
+
+**Status update (session 104):** phase-1 `compose_prose` is SHIPPED (the seam,
+the per-session `composer_model_ref`, the Session-Settings dropdown, and the
+"✍️ Drafting…" indicator). What remains is purely operational — pointing the
+composer at a model that won't thrash. See §10.
+
+---
+
+## 10. Operational setup — configuring the composer writer (no code, infra)
+
+`compose_prose` works with ANY model the user registers in provider-registry
+(BYOK). The ONLY operational concern is the model-swap thrash on a single-GPU
+local stack (§7). Pick the option matching the hardware:
+
+### Option A — Cloud writer (recommended for production)
+1. **Register a cloud chat model** (BYOK) in provider-registry: Settings →
+   Providers → add an Anthropic / OpenAI / etc. credential, then a user-model
+   (e.g. `claude-sonnet-4-x`, a strong prose model).
+2. **Set it as the session's composer**: editor AI panel → Session Settings →
+   *Composer model (optional)* → pick the cloud model. (Orchestrator stays the
+   local/tool-capable model.)
+3. No thrash — the writer runs remotely; the local orchestrator stays resident.
+   Cost = two billed calls per delegated turn (orchestrator + writer); usage is
+   summed and shown.
+
+### Option B — Local co-resident (enough VRAM for two models)
+1. In **LM Studio → Settings**: set **Max loaded models ≥ 2** (or enable JIT
+   loading) and a generous model-idle TTL so both stay resident.
+2. Load a small **orchestrator** (e.g. `qwen3-coder-30b` / a 7–8B instruct) +
+   the **writer** (a reasoning model). Confirm both fit in VRAM simultaneously.
+3. Register both as user-models; set the writer as the session composer.
+4. Verify no thrash: a delegated turn should complete in seconds (the
+   "✍️ Drafting…" pill flicks on/off quickly), not the ~minutes a cold model
+   load takes. The composer pass streams a `composing` CUSTOM event so latency
+   is visible.
+
+### Option C — Single-GPU, one model only (default; no extra setup)
+Leave **Composer model = None**. `compose_prose` is then NOT advertised, and the
+editor's **Compose mode** toggle is the routing tool: switch a session to a
+reasoning model for prose (no tools) vs. the tool-capable model for agentic
+edits. This is the resource-appropriate path until cloud/VRAM is available.
+
+> **Anti-pattern:** setting a *different local* composer on a single-GPU stack.
+> Every delegated turn unloads the orchestrator, loads the writer, then reloads
+> the orchestrator — tens of seconds each way. Use Compose mode (Option C) or a
+> cloud writer (Option A) instead.
+
+### Verify (any option)
+A delegated turn's SSE should show: `TOOL_CALL_START compose_prose` →
+`composing active=true` → (writer streams) → `composing active=false` →
+`TOOL_CALL_RESULT {ok:true, result:{prose}}` → closing assistant text. If the
+gap between the two `composing` events is tens of seconds on a local stack, the
+writer is cold-loading (thrash) — revisit the option above.
