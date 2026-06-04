@@ -1956,8 +1956,44 @@ func (s *Server) getInternalBookChapters(w http.ResponseWriter, r *http.Request)
 		[]any{bookID},
 		fromSort, toSort,
 	)
+	// CM3c — optional canon=published gate. When the extraction caller
+	// (worker-ai enumeration / knowledge cost-estimate) passes
+	// `?editorial_status=published`, filter BOTH the COUNT and the LIST so
+	// `total` matches the returned items (no estimate/enumeration drift).
+	// Default unset → all chapters (chapter browser etc. unaffected).
+	// ⚠️ Append the predicate AFTER buildSortRangeFilter: push the value
+	// onto countArgs and emit its placeholder from the POST-append
+	// len(countArgs); only THEN compute limitPos/offsetPos — else the
+	// LIMIT/OFFSET placeholders collide with the status arg.
+	if es := r.URL.Query().Get("editorial_status"); es != "" {
+		if es != "draft" && es != "published" {
+			ChaptersListTotal.WithLabelValues(OutcomeValidationError).Inc()
+			writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid editorial_status")
+			return
+		}
+		countArgs = append(countArgs, es)
+		where += fmt.Sprintf(" AND c.editorial_status=$%d", len(countArgs))
+		countWhere += fmt.Sprintf(" AND editorial_status=$%d", len(countArgs))
+		// CM3c review WARN#1: the only canon-relevant published state is
+		// "published WITH a pinnable revision". A published chapter whose
+		// pinned revision was purged (FK ON DELETE SET NULL) is skipped by the
+		// worker enumeration — exclude it here too so the cost-estimate count
+		// matches what the gated rebuild actually extracts (no divergence on
+		// the purge edge).
+		if es == "published" {
+			where += " AND c.published_revision_id IS NOT NULL"
+			countWhere += " AND published_revision_id IS NOT NULL"
+		}
+	}
 	var total int
-	_ = s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM chapters WHERE `+countWhere, countArgs...).Scan(&total)
+	// CM3c review WARN#2: the published-gate rides on `total`; a swallowed
+	// COUNT error would yield total=0 (HTTP 200) — a silent published-gate
+	// blackout. Surface it as 500 instead, mirroring the LIST branch below.
+	if err := s.pool.QueryRow(r.Context(), `SELECT COUNT(*) FROM chapters WHERE `+countWhere, countArgs...).Scan(&total); err != nil {
+		ChaptersListTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to count chapters")
+		return
+	}
 
 	listArgs := append([]any{}, countArgs...)
 	listArgs = append(listArgs, limit, offset)
@@ -1965,6 +2001,7 @@ func (s *Server) getInternalBookChapters(w http.ResponseWriter, r *http.Request)
 	offsetPos := len(countArgs) + 2
 	rows, err := s.pool.Query(r.Context(), fmt.Sprintf(`
 SELECT c.id, c.title, c.sort_order, c.original_language, c.draft_updated_at,
+  c.editorial_status, c.published_revision_id,
   COALESCE((SELECT octet_length(d.body::text) / 5 FROM chapter_drafts d WHERE d.chapter_id = c.id LIMIT 1), 0) AS word_count_estimate
 FROM chapters c
 WHERE %s
@@ -1980,18 +2017,21 @@ LIMIT $%d OFFSET $%d
 	items := make([]map[string]any, 0)
 	for rows.Next() {
 		var chapterID uuid.UUID
-		var title, lang string
+		var title, lang, editorialStatus string
 		var sortOrder int
 		var draftUpdated *time.Time
+		var publishedRevID *uuid.UUID
 		var wordCount int
-		if err := rows.Scan(&chapterID, &title, &sortOrder, &lang, &draftUpdated, &wordCount); err == nil {
+		if err := rows.Scan(&chapterID, &title, &sortOrder, &lang, &draftUpdated, &editorialStatus, &publishedRevID, &wordCount); err == nil {
 			items = append(items, map[string]any{
-				"chapter_id":          chapterID,
-				"title":               nullableString(title),
-				"sort_order":          sortOrder,
-				"original_language":   lang,
-				"draft_updated_at":    draftUpdated,
-				"word_count_estimate": wordCount,
+				"chapter_id":            chapterID,
+				"title":                 nullableString(title),
+				"sort_order":            sortOrder,
+				"original_language":     lang,
+				"draft_updated_at":      draftUpdated,
+				"editorial_status":      editorialStatus,
+				"published_revision_id": publishedRevID,
+				"word_count_estimate":   wordCount,
 			})
 		}
 	}

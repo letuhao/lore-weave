@@ -249,10 +249,15 @@ def _install_capturing_book_client(chapter_count: int = 10) -> dict:
 
     captured: dict = {}
 
-    async def _count_chapters(book_id, *, from_sort=None, to_sort=None):
+    async def _count_chapters(
+        book_id, *, from_sort=None, to_sort=None, editorial_status=None,
+    ):
         captured["book_id"] = book_id
         captured["from_sort"] = from_sort
         captured["to_sort"] = to_sort
+        # CM3c: the estimate gates to published so the preview matches
+        # the gated rebuild (R1-BLOCK#1 / R3-WARN#3 parity).
+        captured["editorial_status"] = editorial_status
         return chapter_count
 
     class _Stub:
@@ -277,6 +282,10 @@ def test_estimate_scope_range_forwards_chapter_range_to_book_client():
     assert data["items"]["chapters"] == 11
     assert captured["from_sort"] == 10
     assert captured["to_sort"] == 20
+    # CM3c (R3-WARN#3) parity regression-lock: the estimate MUST gate to
+    # published, matching the server-side filter the gated rebuild uses —
+    # else the preview over-counts drafts the rebuild will skip.
+    assert captured["editorial_status"] == "published"
 
 
 def test_estimate_scope_range_all_scope_also_forwards():

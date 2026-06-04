@@ -791,12 +791,33 @@ async def _update_project_status(
 async def _enumerate_chapters(
     book_client: BookClient, book_id: UUID | None, cursor: dict | None,
 ) -> list[ChapterInfo]:
-    """Get chapters to process, respecting cursor for resume."""
+    """Get chapters to process, respecting cursor for resume.
+
+    CM3c — canon=published gate: the manual whole-book rebuild only extracts
+    PUBLISHED chapters (drafts are not canon), reading each at its PINNED
+    revision (`ChapterInfo.revision_id` ← `published_revision_id`). Drafts are
+    filtered server-side via `editorial_status='published'`. A chapter that is
+    published but has NO pinned revision (the FK `ON DELETE SET NULL` purge edge
+    — §8.9 adversary-R2-NEW-2) is skipped with a WARNING (not silently), since
+    it represents a published chapter we cannot pin canon for.
+    """
     if book_id is None:
         return []
-    chapters = await book_client.list_chapters(book_id)
+    chapters = await book_client.list_chapters(book_id, editorial_status="published")
     if chapters is None:
         return []
+
+    gated: list[ChapterInfo] = []
+    for ch in chapters:
+        if ch.revision_id is None:
+            logger.warning(
+                "CM3c: published chapter %s has no pinned revision "
+                "(published_revision_id NULL) — skipping; re-publish to pin canon",
+                ch.chapter_id,
+            )
+            continue
+        gated.append(ch)
+    chapters = gated
 
     # Resume: skip chapters already processed (cursor has last_chapter_id)
     if cursor and cursor.get("last_chapter_id"):
@@ -1331,7 +1352,16 @@ async def process_job(
                     # pre-enumerated chapter list AND no retry — runner
                     # already filters cursor-resumed chapters, so the
                     # tail of pre_chapters is the natural last.
-                    p3_is_last = ch.chapter_id == pre_chapters[-1].chapter_id
+                    # CM3c (R2-BLOCK#1): only a genuine whole-book pass
+                    # ('chapters'/'all') may assert is_last. The
+                    # 'chapters_pending' drain processes a COALESCED SUBSET of
+                    # re-published chapters, so its tail is NOT the book tail —
+                    # asserting is_last there would spuriously re-roll the
+                    # whole-book L0 summary on every incremental re-publish.
+                    p3_is_last = (
+                        job.scope in ("chapters", "all")
+                        and ch.chapter_id == pre_chapters[-1].chapter_id
+                    )
 
                 # Extract: Phase 4b-γ — worker-ai now runs the LLM
                 # stage in-process via loreweave_extraction.extract_pass2,

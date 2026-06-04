@@ -190,12 +190,21 @@ async def ingest_chapter_passages(
     embedding_model: str,
     embedding_dim: int,
     model_source: str = "user_model",
+    revision_id: UUID | None = None,
+    delete_stale_on_missing: bool = True,
 ) -> IngestResult:
     """Fetch, chunk, embed, and upsert passages for one chapter.
 
     Idempotent: existing passages for this chapter are deleted first,
     then fresh chunks are written. Designed to be called from the
-    K14 `chapter.saved` handler.
+    K14 `chapter.published` handler (CM3c — canon = published).
+
+    CM3c: when ``revision_id`` is set, fetch the PINNED published revision
+    text (vs the live draft) so the semantic index canonizes only
+    author-published content. ``delete_stale_on_missing`` controls the
+    text-is-None branch: the published path passes ``False`` so a transient
+    pinned-revision-fetch failure KEEPS the existing passages (otherwise L3
+    passages would vanish while the graph half still holds canon — drift).
 
     Returns `IngestResult` with per-chunk counts. Does NOT raise on
     any single-chunk failure — the caller treats failures as "fewer
@@ -210,9 +219,23 @@ async def ingest_chapter_passages(
         )
         return result
 
-    # 1. Fetch chapter text.
-    text = await book_client.get_chapter_text(book_id, chapter_id)
+    # 1. Fetch chapter text — pinned published revision (CM3c) or live draft.
+    if revision_id is not None:
+        text = await book_client.get_chapter_revision_text(
+            book_id, chapter_id, str(revision_id),
+        )
+    else:
+        text = await book_client.get_chapter_text(book_id, chapter_id)
     if text is None:
+        if not delete_stale_on_missing:
+            # CM3c (R3-WARN#1): a transient pinned-revision-fetch failure must
+            # NOT wipe canon passages — keep what we have, log visibly.
+            logger.warning(
+                "CM3c: pinned revision text unavailable for chapter=%s "
+                "revision=%s — keeping existing passages",
+                chapter_id, revision_id,
+            )
+            return result
         logger.info(
             "D-K18.3-01: no chapter text for chapter=%s (book-service returned None)",
             chapter_id,

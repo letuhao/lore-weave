@@ -189,7 +189,6 @@ async def lifespan(app: FastAPI):
         from app.events.dispatcher import EventDispatcher
         from app.events.handlers import (
             handle_chat_turn,
-            handle_chapter_saved,
             handle_chapter_published,
             handle_chapter_unpublished,
             handle_chapter_deleted,
@@ -198,9 +197,11 @@ async def lifespan(app: FastAPI):
 
         dispatcher = EventDispatcher()
         dispatcher.register("chat.turn_completed", handle_chat_turn)
-        dispatcher.register("chapter.saved", handle_chapter_saved)
-        # Canon Model CM3b: canon = published. Graph extraction triggers on
-        # chapter.published (at the pinned revision), not chapter.saved.
+        # Canon Model CM3c: canon = published. BOTH graph extraction AND L3
+        # passage-ingest now trigger on chapter.published (at the pinned
+        # revision), never chapter.saved — so unreviewed draft prose never
+        # canonizes. chapter.saved is no longer consumed by knowledge (the
+        # handler was dropped); statistics-service still consumes it separately.
         dispatcher.register("chapter.published", handle_chapter_published)
         dispatcher.register("chapter.unpublished", handle_chapter_unpublished)
         dispatcher.register("chapter.deleted", handle_chapter_deleted)

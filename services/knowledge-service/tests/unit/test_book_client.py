@@ -36,6 +36,13 @@ def _chapter_url(book_id, chapter_id) -> str:
     return f"http://book-service:8082/internal/books/{book_id}/chapters/{chapter_id}"
 
 
+def _revision_url(book_id, chapter_id, revision_id) -> str:
+    return (
+        f"http://book-service:8082/internal/books/{book_id}"
+        f"/chapters/{chapter_id}/revisions/{revision_id}/text"
+    )
+
+
 # ── count_chapters ──────────────────────────────────────────────────
 
 
@@ -135,6 +142,65 @@ async def test_count_chapters_from_sort_zero_sent_not_dropped(bc: BookClient):
 
     assert captured["query"]["from_sort"] == "0"
     assert captured["query"]["to_sort"] == "0"
+
+
+@pytest.mark.asyncio
+async def test_count_chapters_forwards_editorial_status(bc: BookClient):
+    """CM3c — ``editorial_status='published'`` must reach book-service as a
+    query param so the preview count gates to canon=published (matching the
+    gated rebuild). Unset → param omitted."""
+    book_id = uuid4()
+    captured: dict = {}
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        captured["query"] = dict(request.url.params)
+        return httpx.Response(200, json={"total": 4})
+
+    with respx.mock() as mock:
+        mock.get(_count_url(book_id)).mock(side_effect=capture)
+        await bc.count_chapters(book_id, editorial_status="published")
+    assert captured["query"]["editorial_status"] == "published"
+
+    captured.clear()
+    with respx.mock() as mock:
+        mock.get(_count_url(book_id)).mock(side_effect=capture)
+        await bc.count_chapters(book_id)
+    assert "editorial_status" not in captured["query"]
+
+
+# ── get_chapter_revision_text (CM3c) ─────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_get_chapter_revision_text_success(bc: BookClient):
+    book_id, chapter_id, rev_id = uuid4(), uuid4(), str(uuid4())
+    with respx.mock() as mock:
+        mock.get(_revision_url(book_id, chapter_id, rev_id)).mock(
+            return_value=httpx.Response(200, json={"text_content": "pinned canon"}),
+        )
+        assert await bc.get_chapter_revision_text(book_id, chapter_id, rev_id) == "pinned canon"
+
+
+@pytest.mark.asyncio
+async def test_get_chapter_revision_text_404_returns_none(bc: BookClient):
+    """Cross-book/chapter revision id (IDOR-guarded → 404) → None, so the
+    caller keeps existing passages rather than wiping canon."""
+    book_id, chapter_id, rev_id = uuid4(), uuid4(), str(uuid4())
+    with respx.mock() as mock:
+        mock.get(_revision_url(book_id, chapter_id, rev_id)).mock(
+            return_value=httpx.Response(404),
+        )
+        assert await bc.get_chapter_revision_text(book_id, chapter_id, rev_id) is None
+
+
+@pytest.mark.asyncio
+async def test_get_chapter_revision_text_empty_returns_none(bc: BookClient):
+    book_id, chapter_id, rev_id = uuid4(), uuid4(), str(uuid4())
+    with respx.mock() as mock:
+        mock.get(_revision_url(book_id, chapter_id, rev_id)).mock(
+            return_value=httpx.Response(200, json={"text_content": "   "}),
+        )
+        assert await bc.get_chapter_revision_text(book_id, chapter_id, rev_id) is None
 
 
 # ── get_chapter_text (D-K18.3-01) ───────────────────────────────────
