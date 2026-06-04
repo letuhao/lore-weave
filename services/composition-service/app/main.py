@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 
 from loreweave_obs import current_otel_trace_id, setup_tracing
 
+from app.clients.knowledge_client import close_knowledge_client
 from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool, get_pool
@@ -40,6 +41,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        await close_knowledge_client()
         await close_pool()
 
 
