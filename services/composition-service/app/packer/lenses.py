@@ -1,0 +1,196 @@
+"""Lens gatherers (§2.1) — fetch each context source, degrade gracefully.
+
+Each gatherer mirrors knowledge-service's `_safe_*` pattern: the network/repo
+call is wrapped so a failure returns empty (the pack thins, never 500s), but the
+IMPORTS stay at module top so a wiring error surfaces loud (verified `full.py`
+lesson). Every knowledge/glossary gatherer takes `project_id`/`book_id` as a
+REQUIRED arg (not Optional) so a None can't silently widen the read (A1).
+
+Lens map: L0 canon (COMP DB) · L1a present = glossary bios + knowledge relations
+· L1b timeline (in-world cutoff) · L2/L2′ structural (COMP DB) · L3 recent prose
+(book draft tail — chapter-tail approximation until M8 SceneAnchor) · L4 lore
+(knowledge drawers/search; spoiler-filtered in pack.py). L5 deferred.
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+from typing import Any
+from uuid import UUID
+
+from app.clients.book_client import BookClient, BookClientError
+from app.clients.glossary_client import GlossaryClient
+from app.clients.knowledge_client import KnowledgeClient
+from app.db.models import CanonRule
+from app.db.repositories.canon_rules import CanonRulesRepo
+from app.db.repositories.outline import OutlineRepo
+from app.db.repositories.scene_links import SceneLinksRepo
+
+logger = logging.getLogger(__name__)
+
+_RECENT_PARAGRAPHS = 6  # L3 chapter-tail size
+
+
+@dataclass
+class LensBundle:
+    canon: list[CanonRule] = field(default_factory=list)
+    present: list[dict[str, Any]] = field(default_factory=list)   # {entity_id, name, summary, relations}
+    timeline: list[dict[str, Any]] = field(default_factory=list)  # raw events (cutoff at query)
+    beat: dict[str, Any] = field(default_factory=dict)
+    threads: list[dict[str, Any]] = field(default_factory=list)
+    planned: list[dict[str, Any]] = field(default_factory=list)
+    recent: list[str] = field(default_factory=list)
+    lore: list[dict[str, Any]] = field(default_factory=list)      # raw hits (spoiler-filtered in pack)
+    knowledge_seen: bool = False  # True if any knowledge call returned data (C3a signal)
+
+
+def _applies_at(rule: CanonRule, story_order: int | None) -> bool:
+    """A canon rule applies at the scene position if the position is within
+    [from_order, until_order] (None bound = open).
+
+    FAIL-CLOSED on unknown position (/review-impl M4 MED#1): when `story_order`
+    is None we CANNOT place the scene, so we include ONLY ungated world rules
+    (`from_order is None`). A `from_order`d rule is a reveal-gate — its text is a
+    spoiler until that in-world moment — and must NOT leak into the canon block
+    of a scene whose position we can't verify. (Consistent with gather_timeline,
+    which returns [] for a None story_order.)"""
+    if story_order is None:
+        return rule.from_order is None
+    if rule.from_order is not None and story_order < rule.from_order:
+        return False
+    if rule.until_order is not None and story_order > rule.until_order:
+        return False
+    return True
+
+
+async def gather_canon(
+    canon_repo: CanonRulesRepo, user_id: UUID, project_id: UUID, story_order: int | None,
+) -> list[CanonRule]:
+    """L0 — active canon rules applying at the scene's in-world position."""
+    try:
+        rules = await canon_repo.list_active(user_id, project_id)
+    except Exception:  # noqa: BLE001 — repo failure degrades the lens
+        logger.warning("gather_canon failed", exc_info=True)
+        return []
+    return [r for r in rules if _applies_at(r, story_order)]
+
+
+async def gather_present(
+    glossary: GlossaryClient, knowledge: KnowledgeClient, *,
+    book_id: UUID, user_id: UUID, project_id: UUID, bearer: str, query: str,
+    present_entity_ids: list[UUID],
+) -> tuple[list[dict[str, Any]], bool]:
+    """L1a — who is present + their state. Bios from glossary select-for-context
+    (rich short_description); currently-valid relations from knowledge for the
+    explicitly-cast entities. DI3: a soft-absent (renamed/trashed) id is SKIPPED,
+    never crashes; we cache the STABLE glossary entity_id, not knowledge's
+    rename-sensitive canonical_id. Returns (present, knowledge_seen)."""
+    present: list[dict[str, Any]] = []
+    seen = False
+    # Glossary bios (graceful [] on failure).
+    bios = await glossary.select_for_context(book_id, user_id, query)
+    for b in bios:
+        eid = b.get("entity_id")
+        if not eid:  # soft-absent / malformed → skip (DI3)
+            continue
+        present.append({
+            "entity_id": eid,
+            "name": b.get("cached_name") or "",
+            "summary": b.get("short_description") or "",
+            "relations": [],
+        })
+    # Knowledge relations for the explicitly-cast entities (best-effort).
+    by_id = {p["entity_id"]: p for p in present}
+    for ent_id in present_entity_ids:
+        detail = await knowledge.get_entity(bearer, str(ent_id))
+        if detail is None:  # soft-absent / unavailable → skip (DI3)
+            continue
+        seen = True
+        rels = [
+            f'{r.get("predicate", "")} {r.get("object_name", r.get("object_id", ""))}'.strip()
+            for r in (detail.get("relations") or [])
+        ]
+        key = str(ent_id)
+        if key in by_id:
+            by_id[key]["relations"] = rels
+        else:
+            ent = detail.get("entity") or {}
+            # Cache the glossary anchor id (stable), not the knowledge id.
+            anchor = ent.get("glossary_entity_id") or key
+            present.append({"entity_id": anchor, "name": ent.get("name", ""), "summary": "", "relations": rels})
+    return present, seen
+
+
+async def gather_timeline(
+    knowledge: KnowledgeClient, bearer: str, project_id: UUID, story_order: int | None,
+) -> tuple[list[dict[str, Any]], bool]:
+    """L1b — in-world events strictly before the scene moment. NEVER queried
+    without a cutoff: `story_order=None` → [] (a no-cutoff timeline call would
+    leak future events). Returns (events, knowledge_seen)."""
+    if story_order is None:
+        return [], False
+    events = await knowledge.timeline(bearer, project_id=project_id, before_chronological=story_order)
+    return events, bool(events)
+
+
+async def gather_structural(
+    outline_repo: OutlineRepo, scene_links_repo: SceneLinksRepo, *,
+    user_id: UUID, project_id: UUID, node: dict[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    """L2 beat/goal/POV/synopsis + setup_payoff threads, and L2′ planned
+    synopses of unwritten scenes at/before this position."""
+    beat = {
+        "beat_role": node.get("beat_role"), "goal": node.get("goal", ""),
+        "pov_entity_id": node.get("pov_entity_id"), "synopsis": node.get("synopsis", ""),
+        "title": node.get("title", ""),
+    }
+    threads: list[dict[str, Any]] = []
+    planned: list[dict[str, Any]] = []
+    node_id = node.get("id")
+    try:
+        links = await scene_links_repo.list_by_project(user_id, project_id)
+        threads = [
+            {"kind": l.kind, "label": l.label, "to": str(l.to_node_id)}
+            for l in links if str(l.from_node_id) == str(node_id) or str(l.to_node_id) == str(node_id)
+        ]
+    except Exception:  # noqa: BLE001
+        logger.warning("gather threads failed", exc_info=True)
+    try:
+        tree = await outline_repo.list_tree(user_id, project_id)
+        my_order = node.get("story_order")
+        for n in tree:
+            if n.kind != "scene" or n.status == "done" or str(n.id) == str(node_id):
+                continue
+            if my_order is not None and n.story_order is not None and n.story_order > my_order:
+                continue
+            if n.synopsis:
+                planned.append({"title": n.title, "synopsis": n.synopsis})
+    except Exception:  # noqa: BLE001
+        logger.warning("gather planned failed", exc_info=True)
+    return beat, threads, planned
+
+
+async def gather_recent(
+    book: BookClient, book_id: UUID, chapter_id: UUID, bearer: str, *, k: int = _RECENT_PARAGRAPHS,
+) -> list[str]:
+    """L3 — last K paragraphs of the scene's chapter draft (chapter-tail
+    approximation; M8 upgrades to precise SceneAnchor ranges)."""
+    try:
+        draft = await book.get_draft(book_id, chapter_id, bearer)
+    except BookClientError:
+        return []
+    text = draft.get("text_content") or ""
+    paras = [p.strip() for p in text.split("\n") if p.strip()]
+    return paras[-k:]
+
+
+async def gather_lore(
+    knowledge: KnowledgeClient, bearer: str, project_id: UUID, query: str,
+) -> tuple[list[dict[str, Any]], bool]:
+    """L4 — semantic lore hits (RAW; pack.py applies the reading-order spoiler
+    filter). `project_id` is required by the endpoint. Returns (hits, seen)."""
+    if not query.strip():
+        return [], False
+    hits = await knowledge.search_drawers(bearer, project_id=project_id, query=query)
+    return hits, bool(hits)

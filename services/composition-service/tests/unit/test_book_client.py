@@ -85,6 +85,43 @@ async def test_list_revisions_for_base_revision_id():
 
 
 @respx.mock
+async def test_get_chapter_sort_orders_uses_internal_token():
+    ch1, ch2 = uuid.uuid4(), uuid.uuid4()
+    route = respx.post(f"{BASE}/internal/chapters/sort-orders").mock(
+        return_value=httpx.Response(200, json={"sort_orders": {str(ch1): 3, str(ch2): 7}})
+    )
+    c = BookClient(BASE, "intok")
+    try:
+        out = await c.get_chapter_sort_orders([ch1, ch2])
+    finally:
+        await c.aclose()
+    assert out == {str(ch1): 3, str(ch2): 7}
+    req = route.calls.last.request
+    assert req.headers["X-Internal-Token"] == "intok"
+    assert "Authorization" not in req.headers
+    import json as _json
+    assert set(_json.loads(req.content)["chapter_ids"]) == {str(ch1), str(ch2)}
+
+
+async def test_get_chapter_sort_orders_empty_input_skips_call():
+    c = BookClient(BASE, "intok")
+    try:
+        assert await c.get_chapter_sort_orders([]) == {}  # no route registered → no call
+    finally:
+        await c.aclose()
+
+
+@respx.mock
+async def test_get_chapter_sort_orders_degrades_to_empty():
+    respx.post(f"{BASE}/internal/chapters/sort-orders").mock(side_effect=httpx.ConnectError("down"))
+    c = BookClient(BASE, "intok")
+    try:
+        assert await c.get_chapter_sort_orders([uuid.uuid4()]) == {}
+    finally:
+        await c.aclose()
+
+
+@respx.mock
 async def test_transport_error_becomes_502():
     respx.get(f"{BASE}/v1/books/{BOOK}/chapters/{CH}/draft").mock(side_effect=httpx.ConnectError("down"))
     c = await _client()

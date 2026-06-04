@@ -54,8 +54,9 @@ def _auth_headers(bearer: str) -> dict[str, str]:
 
 
 class BookClient:
-    def __init__(self, base_url: str, timeout_s: float = 10.0) -> None:
+    def __init__(self, base_url: str, internal_token: str = "", timeout_s: float = 10.0) -> None:
         self._base_url = base_url.rstrip("/")
+        self._internal_token = internal_token
         self._http = httpx.AsyncClient(timeout=httpx.Timeout(timeout_s))
 
     async def aclose(self) -> None:
@@ -129,6 +130,34 @@ class BookClient:
         )
         return self._raise_for_status(resp)
 
+    async def get_chapter_sort_orders(
+        self, chapter_ids: list[UUID],
+    ) -> dict[str, int]:
+        """Map chapter_id → reading-order `sort_order` (the M4 packer's L4
+        reading-position spoiler axis + the scene's cutoff). Uses the INTERNAL
+        token (book-scoped, no user check) — the caller MUST have verified book
+        ownership first (SEC2 owns_book chokepoint). Batched ≤200 per call;
+        missing/inactive ids are silently absent from the map. Returns {} on any
+        failure (the packer treats an absent position as conservative-drop)."""
+        if not chapter_ids:
+            return {}
+        url = f"{self._base_url}/internal/chapters/sort-orders"
+        headers = {"X-Internal-Token": self._internal_token}
+        tid = trace_id_var.get()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        try:
+            resp = await self._http.post(
+                url, json={"chapter_ids": [str(c) for c in chapter_ids]}, headers=headers,
+            )
+            if resp.status_code != 200:
+                logger.warning("book sort-orders → %d", resp.status_code)
+                return {}
+            return resp.json().get("sort_orders", {})
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("book sort-orders unavailable: %s", exc)
+            return {}
+
     async def list_revisions(
         self, book_id: UUID, chapter_id: UUID, bearer: str, *, limit: int = 1,
     ) -> dict[str, Any]:
@@ -144,7 +173,7 @@ class BookClient:
 def init_book_client() -> BookClient:
     global _client
     if _client is None:
-        _client = BookClient(settings.book_internal_url)
+        _client = BookClient(settings.book_internal_url, settings.internal_service_token)
     return _client
 
 
