@@ -16,8 +16,13 @@ widen coverage). Pass `--no-replace` to append instead.
 stubs, so P1 retrieval had nothing to ground on ("检索片段未提及" / regurgitation).
 This gives it real prose to retrieve.
 
-**Coverage:** currently a single representative entity-rich chapter (卷012 — 陳塘關
-哪吒出世: 哪吒 / 李靖 / 太乙真人 / 乾元山金光洞 / 玉虛宮 / 混天綾 / 乾坤圈 / 東海敖光).
-ADDITIVE — drop more verbatim `卷NNN_*.txt` files here and re-run the seed to widen
-coverage. (Wikisource fetch was done by hand because automated fetch could not be
-trusted to return verbatim text for every chapter.)
+**Coverage:** chapters 卷001–卷020 — the founding arc (紂王/妲己/女媧, 蘇護, 姬昌/西伯侯,
+雲中子, 哪吒/李靖/太乙真人/乾元山, 姜子牙下山/磻溪, 伯邑考). ~115k chars total.
+
+**How fetched (LE-PROD-2 P1):** `scripts/_fetch_fengshen.ps1` pulls each chapter's
+VERBATIM wikitext via a **direct raw HTTP GET** to zh.wikisource (`?action=raw`, with a
+descriptive User-Agent — Wikimedia's bot policy requires one) and strips the wiki
+markup. **No LLM in the path** (the earlier WebFetch route summarized/refused — a small
+model mediated it; a plain HTTP fetch is verbatim + reliable). The platform itself does
+NOT web-crawl (Mode E was dropped for copyright reasons); this is a one-off, license-safe
+PD data-seeding step. ADDITIVE — re-run the fetcher for more chapters + re-seed to widen.
