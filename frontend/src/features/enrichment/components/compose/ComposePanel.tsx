@@ -4,9 +4,10 @@ import { Sparkles } from 'lucide-react';
 import { useEnrichmentContext } from '../../context/EnrichmentContext';
 import { useCompose } from '../../hooks/useCompose';
 import { useBookEntities } from '../../hooks/useBookEntities';
-import type { ComposeTargetInput, ExpandMode } from '../../types';
+import type { ComposeTargetInput, ContextLicense, ExpandMode } from '../../types';
 import { ModeSelector, type ComposeMode } from './ModeSelector';
 import { ComposeDraftForm } from './ComposeDraftForm';
+import { ComposeContextForm } from './ComposeContextForm';
 import { ComposeTarget } from './ComposeTarget';
 import { ComposeConfig, type ComposeConfigValue } from './ComposeConfig';
 
@@ -18,11 +19,12 @@ const DEFAULT_TARGET: ComposeTargetInput = {
 };
 const DEFAULT_CONFIG: ComposeConfigValue = { genModel: '', embedModel: '', maxSpend: '', topK: 5 };
 
-/** The "Tạo / Compose" panel — the controller for the unified input modes. Slice 1
- *  drives mode D (draft expansion): pick a target (existing | new) + paste a draft +
- *  expand mode + models, then run an async compose job (202 → worker → quarantined
- *  proposal). Mode A routes to the Gaps tab; B/C/F are disabled until slices 2–4.
- *  Owns the form state; the API call + invalidation live in useCompose. */
+/** The "Tạo / Compose" panel — the controller for the unified input modes. Drives
+ *  mode D (draft expansion) and mode C (paste-context): pick a target (existing | new)
+ *  + provide the input (a draft, or pasted reference text + license) + models, then run
+ *  an async compose job (202 → worker → quarantined proposal). Mode A routes to the Gaps
+ *  tab; B/F are disabled until slices 3–4. Owns the form state; the API call +
+ *  invalidation live in useCompose. */
 export function ComposePanel() {
   const { t } = useTranslation('enrichment');
   const { bookId, setActivePanel } = useEnrichmentContext();
@@ -33,15 +35,22 @@ export function ComposePanel() {
   const [target, setTarget] = useState<ComposeTargetInput>(DEFAULT_TARGET);
   const [draftText, setDraftText] = useState('');
   const [expandMode, setExpandMode] = useState<ExpandMode>('rewrite');
+  const [contextText, setContextText] = useState('');
+  const [contextLicense, setContextLicense] = useState<ContextLicense>('public_domain');
   const [config, setConfig] = useState<ComposeConfigValue>(DEFAULT_CONFIG);
 
+  const showComposer = mode === 'draft' || mode === 'context';
+  const targetOk = target.canonical_name.trim() !== '';
   const canRun =
-    mode === 'draft' &&
-    draftText.trim() !== '' &&
-    target.canonical_name.trim() !== '' &&
+    !composing &&
+    targetOk &&
     !!config.genModel &&
-    // embed model is OPTIONAL for draft — mode D does no retrieval (D-COMPOSE-S1-EMBED-REF).
-    !composing;
+    ((mode === 'draft' && draftText.trim() !== '') ||
+      // mode C embeds the paste → embed model REQUIRED + copyrighted is refused.
+      (mode === 'context' &&
+        contextText.trim() !== '' &&
+        !!config.embedModel &&
+        contextLicense !== 'copyrighted'));
 
   const run = () => {
     // /review-impl #2: clamp the numeric inputs at the boundary so a cleared field
@@ -51,13 +60,26 @@ export function ComposePanel() {
     const maxSpend =
       config.maxSpend.trim() !== '' && Number.isFinite(spend) && spend >= 0 ? spend : null;
     const topK = Math.min(20, Math.max(1, Math.trunc(Number(config.topK)) || 5));
+    const targetInput: ComposeTargetInput = {
+      ...target,
+      canonical_name: target.canonical_name.trim(),
+      target_ref: target.mode === 'new' ? null : target.canonical_name.trim(),
+    };
+    if (mode === 'context') {
+      return compose({
+        input_source: 'context',
+        target: targetInput,
+        context_text: contextText.trim(),
+        context_license: contextLicense,
+        generation_model_ref: config.genModel,
+        embedding_model_ref: config.embedModel || undefined,
+        max_spend_usd: maxSpend,
+        top_k: topK,
+      });
+    }
     return compose({
       input_source: 'draft',
-      target: {
-        ...target,
-        canonical_name: target.canonical_name.trim(),
-        target_ref: target.mode === 'new' ? null : target.canonical_name.trim(),
-      },
+      target: targetInput,
       draft_text: draftText.trim(),
       expand_mode: expandMode,
       generation_model_ref: config.genModel,
@@ -77,15 +99,25 @@ export function ComposePanel() {
 
       <ModeSelector mode={mode} onSelect={setMode} onUseGaps={() => setActivePanel('gaps')} />
 
-      {mode === 'draft' && (
+      {showComposer && (
         <>
           <ComposeTarget target={target} onChange={setTarget} entities={entities} />
-          <ComposeDraftForm
-            draftText={draftText}
-            onDraftChange={setDraftText}
-            expandMode={expandMode}
-            onExpandModeChange={setExpandMode}
-          />
+          {mode === 'draft' && (
+            <ComposeDraftForm
+              draftText={draftText}
+              onDraftChange={setDraftText}
+              expandMode={expandMode}
+              onExpandModeChange={setExpandMode}
+            />
+          )}
+          {mode === 'context' && (
+            <ComposeContextForm
+              contextText={contextText}
+              onContextTextChange={setContextText}
+              license={contextLicense}
+              onLicenseChange={setContextLicense}
+            />
+          )}
           <ComposeConfig value={config} onChange={setConfig} />
           <div className="flex items-center justify-between gap-3">
             <p className="text-[11px] text-muted-foreground">{t('compose.run_hint')}</p>

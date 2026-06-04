@@ -671,15 +671,17 @@ paths:
       summary: Compose — start an enrichment job from a chosen input mode (async)
       description: >
         The unified async entry for the enrichment input modes (spec
-        2026-06-03-enrichment-compose). Slice 1 ships `input_source` = `draft`
+        2026-06-03-enrichment-compose). Supports `input_source` = `draft`
         (mode D — expand the author's own draft for an existing OR new entity via
-        the `compose_draft` technique) and `gap` (mode A reuse — enrich specific
-        gap targets). Creates the job + persists the request (additive JSONB:
-        input_source/seed_text/expand_mode) + enqueues the resume trigger →
-        202 + job_id. Modes `context`/`files`/`intent` are reserved for slices 2–4
-        and return 400. H0: only QUARANTINED proposals are produced; a NEW target
-        writes NOTHING to glossary at compose time — its anchor is minted only at
-        the author's promote (writeback resolve-or-create).
+        the `compose_draft` technique), `gap` (mode A reuse — enrich specific
+        gap targets), and `context` (mode C — paste reference text, ingested as a
+        grounding corpus, then a retrieval/recook job grounds on it; license
+        default-deny). Creates the job + persists the request (additive JSONB:
+        input_source/seed_text/expand_mode/context_corpus_ids) + enqueues the
+        resume trigger → 202 + job_id. Modes `files`/`intent` are reserved for
+        slices 3–4 and return 400. H0: only QUARANTINED proposals are produced; a
+        NEW target writes NOTHING to glossary at compose time — its anchor is minted
+        only at the author's promote (writeback resolve-or-create).
       operationId: composeEnrichment
       security:
         - bearerAuth: []
@@ -701,8 +703,8 @@ paths:
                 book_id: { type: string, format: uuid }
                 input_source:
                   type: string
-                  enum: [gap, draft]
-                  description: Slice 1 supports gap | draft (C/F/B land in slices 2–4).
+                  enum: [gap, draft, context]
+                  description: Supports gap | draft | context (files/intent land in slices 3–4).
                 embedding_model_ref:
                   type: string
                   format: uuid
@@ -722,6 +724,19 @@ paths:
                   enum: [add_only, rewrite]
                   default: rewrite
                   description: add_only keeps the draft verbatim; rewrite voice-syncs it.
+                context_text:
+                  type: string
+                  maxLength: 50000
+                  description: >
+                    The author's pasted reference text (mode C — required; capped at
+                    ~50 KB). Ingested as a grounding corpus; larger material → mode F.
+                context_license:
+                  type: string
+                  enum: [public_domain, licensed, owned, copyrighted]
+                  description: >
+                    Author's license assertion (mode C — required). Default-deny:
+                    `copyrighted` (and anything unrecognised) is refused (403);
+                    `owned` is stored as `licensed` (re-cook-admissible).
                 gap_targets:
                   type: array
                   description: The specific gap targets to enrich (mode A — required for gap).

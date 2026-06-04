@@ -190,6 +190,10 @@ export type ComposeInputSource = 'gap' | 'draft' | 'context' | 'files' | 'intent
  *  (add_only) or rewrite + voice-sync it preserving meaning (rewrite). */
 export type ExpandMode = 'add_only' | 'rewrite';
 
+/** Mode C license assertion (contract enum). `copyrighted` is default-denied by the
+ *  backend (403); `owned` is stored as `licensed` (re-cook-admissible). */
+export type ContextLicense = 'public_domain' | 'licensed' | 'owned' | 'copyrighted';
+
 /** The entity a compose run targets — an existing glossary entity OR a new one.
  *  For mode='new' the backend mints the glossary anchor only at PROMOTE (H0-clean);
  *  here `target_ref` stays null. */
@@ -210,6 +214,9 @@ export interface ComposeBody {
   target?: ComposeTargetInput;
   draft_text?: string;
   expand_mode?: ExpandMode;
+  /** Mode C (context): pasted reference text + the author's license assertion. */
+  context_text?: string;
+  context_license?: ContextLicense;
   gap_targets?: ComposeTargetInput[];
   technique?: string;
   max_spend_usd?: number | null;

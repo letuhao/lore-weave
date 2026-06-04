@@ -373,15 +373,203 @@ def test_gap_with_compose_draft_technique_400(monkeypatch):
     assert resp.status_code == 400
 
 
+# ── mode C — paste-context ───────────────────────────────────────────────────
+def _patch_ingest(monkeypatch, *, recorder, raises=None):
+    """Fake the synchronous corpus ingest the context branch performs so the handler
+    branch (validation + request shape) is tested without a live embed/store."""
+    async def _fake_ingest(*, pool, principal, project_id, book_id, text,
+                           embedding_model_ref, store_license):
+        recorder["called"] = True
+        recorder["text"] = text
+        recorder["store_license"] = store_license
+        if raises is not None:
+            raise raises
+        return ["corpus-ctx-1"]
+
+    monkeypatch.setattr(compose_api, "_ingest_context", _fake_ingest)
+
+
+def _ctx_base(**over) -> dict:
+    body = {
+        "book_id": str(uuid4()),
+        "input_source": "context",
+        "embedding_model_ref": str(uuid4()),
+        "generation_model_ref": str(uuid4()),
+        "context_text": "蓬萊乃東海仙山，仙人所居。",
+        "context_license": "public_domain",
+        # present supplied → skips the glossary coverage derivation (tested separately).
+        "target": {"mode": "existing", "canonical_name": "蓬萊", "entity_kind": "location",
+                   "target_ref": "loc:penglai", "present_dimensions": ["历史"]},
+    }
+    body.update(over)
+    return body
+
+
+def test_context_202_ingests_and_persists(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    rec: dict = {}
+    _patch_ingest(monkeypatch, recorder=rec)
+
+    resp = _post(_ctx_base())
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert body["input_source"] == "context"
+    assert body["technique"] == "retrieval"  # default for context
+    assert rec["called"] is True
+    assert rec["text"] == "蓬萊乃東海仙山，仙人所居。"
+    assert rec["store_license"] == "public_domain"
+    req = saved["request"]
+    assert req["input_source"] == "context"
+    assert req["context_corpus_ids"] == ["corpus-ctx-1"]
+    assert req["context_license"] == "public_domain"
+    assert req["targets"][0]["present_dimensions"] == ["历史"]  # supplied present preserved
+    assert "seed_text" not in req  # context is not a draft
+    assert len(prod.calls) == 1
+
+
+def test_context_owned_maps_to_licensed(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    rec: dict = {}
+    _patch_ingest(monkeypatch, recorder=rec)
+    resp = _post(_ctx_base(context_license="owned"))
+    assert resp.status_code == 202, resp.text
+    # 'owned' is stored as 'licensed' (author-owned ⇒ re-cook-admissible).
+    assert rec["store_license"] == "licensed"
+    assert saved["request"]["context_license"] == "licensed"
+
+
+def test_context_public_domain_hyphen_accepted(monkeypatch):
+    # /review-impl #3: parity with licensing.py — the hyphen spelling is admissible.
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    rec: dict = {}
+    _patch_ingest(monkeypatch, recorder=rec)
+    resp = _post(_ctx_base(context_license="public-domain"))
+    assert resp.status_code == 202, resp.text
+    assert rec["store_license"] == "public_domain"
+
+
+def test_context_persists_embedding_model_ref(monkeypatch):
+    # /review-impl #4 (grounding-alignment invariant): the retrieval query is
+    # re-embedded with this model_ref, so it MUST round-trip into the request — else
+    # the query vectors wouldn't match the ingested corpus vectors and grounding
+    # would silently fail.
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    _patch_ingest(monkeypatch, recorder={})
+    embed = str(uuid4())
+    resp = _post(_ctx_base(embedding_model_ref=embed))
+    assert resp.status_code == 202, resp.text
+    assert saved["request"]["embedding_model_ref"] == embed
+
+
+def test_context_recook_technique_202(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    _patch_ingest(monkeypatch, recorder={})
+    resp = _post(_ctx_base(technique="recook"))
+    assert resp.status_code == 202, resp.text
+    assert resp.json()["technique"] == "recook"
+
+
+def test_context_new_entity_target_ref_none(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    _patch_ingest(monkeypatch, recorder={})
+    resp = _post(_ctx_base(
+        target={"mode": "new", "canonical_name": "新仙山", "entity_kind": "generic"},
+    ))
+    assert resp.status_code == 202, resp.text
+    t = saved["request"]["targets"][0]
+    assert t["target_ref"] is None and t["present_dimensions"] == []
+
+
+@pytest.mark.parametrize("lic", ["copyrighted", "banana", ""])
+def test_context_inadmissible_license_403(monkeypatch, lic):
+    # default-deny: copyrighted / unrecognised / blank → 403, no ingest, no job.
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    rec: dict = {}
+    _patch_ingest(monkeypatch, recorder=rec)
+    resp = _post(_ctx_base(context_license=lic))
+    assert resp.status_code == 403, resp.text
+    assert rec == {} and created == {} and prod.calls == []
+
+
+def test_context_too_large_413(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    rec: dict = {}
+    _patch_ingest(monkeypatch, recorder=rec)
+    resp = _post(_ctx_base(context_text="字" * 50_001))
+    assert resp.status_code == 413
+    assert rec == {} and created == {} and prod.calls == []
+
+
+def test_context_missing_embed_400(monkeypatch):
+    # context embeds the paste → embedding_model_ref required (unlike draft).
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    rec: dict = {}
+    _patch_ingest(monkeypatch, recorder=rec)
+    body = _ctx_base()
+    body.pop("embedding_model_ref")
+    resp = _post(body)
+    assert resp.status_code == 400
+    assert rec == {} and created == {}
+
+
+def test_context_missing_text_400(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    _patch_ingest(monkeypatch, recorder={})
+    resp = _post(_ctx_base(context_text="   "))
+    assert resp.status_code == 400
+
+
+def test_context_missing_target_400(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    _patch_ingest(monkeypatch, recorder={})
+    body = _ctx_base()
+    body.pop("target")
+    resp = _post(body)
+    assert resp.status_code == 400
+
+
+def test_context_compose_draft_technique_400(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    rec: dict = {}
+    _patch_ingest(monkeypatch, recorder=rec)
+    resp = _post(_ctx_base(technique="compose_draft"))
+    assert resp.status_code == 400
+    assert rec == {}  # rejected before ingest
+
+
 # ── future / unknown sources + auth ──────────────────────────────────────────
-@pytest.mark.parametrize("src", ["context", "files", "intent"])
+@pytest.mark.parametrize("src", ["files", "intent"])
 def test_future_sources_400(monkeypatch, src):
     jid = uuid4()
     created, saved, prod = {}, {}, _RecordingProducer()
     _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
     resp = _post(_base(input_source=src))
     assert resp.status_code == 400
-    assert "slices 2" in resp.json()["detail"] or "not available" in resp.json()["detail"]
+    assert "slices 3" in resp.json()["detail"] or "not available" in resp.json()["detail"]
 
 
 def test_unknown_source_400(monkeypatch):

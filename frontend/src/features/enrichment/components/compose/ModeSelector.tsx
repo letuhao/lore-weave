@@ -2,17 +2,17 @@ import { useTranslation } from 'react-i18next';
 import { FileText, PencilLine, ClipboardPaste, Upload, Wand2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-/** The compose input modes. Slice 1: D (draft) is the active compose path; A
- *  (gap-fill) routes to the Gaps tab (it already lives there); B/C/F are reserved
- *  for slices 2–4 and shown disabled ("coming soon"). E (web search) was dropped
+/** The compose input modes. Active: D (draft) + C (context); A (gap-fill) routes to
+ *  the Gaps tab (it already lives there); B (intent) / F (files) are reserved for
+ *  slices 3–4 and shown disabled ("coming soon"). E (web search) was dropped
  *  (copyright-indefensible). */
 export type ComposeMode = 'draft' | 'gap' | 'intent' | 'context' | 'files';
 
 const MODES: { key: ComposeMode; icon: typeof Wand2; status: 'active' | 'gaps' | 'soon' }[] = [
   { key: 'draft', icon: PencilLine, status: 'active' },
   { key: 'gap', icon: Wand2, status: 'gaps' },
+  { key: 'context', icon: ClipboardPaste, status: 'active' },
   { key: 'intent', icon: FileText, status: 'soon' },
-  { key: 'context', icon: ClipboardPaste, status: 'soon' },
   { key: 'files', icon: Upload, status: 'soon' },
 ];
 

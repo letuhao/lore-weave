@@ -21,9 +21,16 @@ describe('ModeSelector', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it('intent/context/files are disabled (slices 2–4)', () => {
+  it('selecting context calls onSelect (mode C is active)', () => {
+    const onSelect = vi.fn();
+    render(<ModeSelector mode="draft" onSelect={onSelect} onUseGaps={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('compose-mode-context'));
+    expect(onSelect).toHaveBeenCalledWith('context');
+  });
+
+  it('intent/files are disabled (slices 3–4)', () => {
     render(<ModeSelector mode="draft" onSelect={vi.fn()} onUseGaps={vi.fn()} />);
-    for (const m of ['intent', 'context', 'files']) {
+    for (const m of ['intent', 'files']) {
       expect(screen.getByTestId(`compose-mode-${m}`)).toBeDisabled();
     }
   });

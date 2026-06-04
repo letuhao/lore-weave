@@ -140,3 +140,51 @@ describe('ComposePanel (mode D)', () => {
     expect(composeMock.mock.calls[0][0].expand_mode).toBe('add_only');
   });
 });
+
+describe('ComposePanel (mode C — context)', () => {
+  const toContext = () => fireEvent.click(screen.getByTestId('compose-mode-context'));
+
+  it('Run requires text + target + gen + EMBED model (embed required for context)', async () => {
+    renderPanel();
+    toContext();
+    fireEvent.change(screen.getByTestId('compose-target-name'), { target: { value: '蓬萊' } });
+    fireEvent.change(screen.getByTestId('compose-context-text'), { target: { value: '東海仙山。' } });
+    await fillGen(); // gen only — embed still missing → blocked
+    expect(screen.getByTestId('compose-run')).toBeDisabled();
+    fireEvent.change(screen.getByTestId('compose-embed-model'), { target: { value: 'e1' } });
+    expect(screen.getByTestId('compose-run')).not.toBeDisabled();
+  });
+
+  it('composes a context body (input_source context + license + embed + existing target)', async () => {
+    renderPanel();
+    toContext();
+    fireEvent.change(screen.getByTestId('compose-target-name'), { target: { value: '蓬萊' } });
+    fireEvent.change(screen.getByTestId('compose-context-text'), { target: { value: '東海仙山。' } });
+    await fillModels();
+    fireEvent.click(screen.getByTestId('compose-run'));
+
+    expect(composeMock).toHaveBeenCalledTimes(1);
+    const body = composeMock.mock.calls[0][0];
+    expect(body).toMatchObject({
+      input_source: 'context',
+      context_text: '東海仙山。',
+      context_license: 'public_domain',
+      generation_model_ref: 'g1',
+      embedding_model_ref: 'e1',
+    });
+    expect(body.draft_text).toBeUndefined();
+    expect(body.target).toMatchObject({ mode: 'existing', canonical_name: '蓬萊', target_ref: '蓬萊' });
+  });
+
+  it('a copyrighted license disables Run (default-deny in the UI)', async () => {
+    renderPanel();
+    toContext();
+    fireEvent.change(screen.getByTestId('compose-target-name'), { target: { value: '蓬萊' } });
+    fireEvent.change(screen.getByTestId('compose-context-text'), { target: { value: '東海仙山。' } });
+    await fillModels();
+    expect(screen.getByTestId('compose-run')).not.toBeDisabled();
+    fireEvent.change(screen.getByTestId('compose-context-license'), { target: { value: 'copyrighted' } });
+    expect(screen.getByTestId('compose-run')).toBeDisabled();
+    expect(screen.getByTestId('compose-context-copyright-warning')).toBeInTheDocument();
+  });
+});

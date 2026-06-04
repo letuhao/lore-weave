@@ -24,6 +24,19 @@
       "add_only": "Chỉ bổ sung",
       "add_only_hint": "Giữ nguyên văn của bạn; chỉ thêm các chiều còn thiếu."
     },
+    "context": {
+      "label": "Văn bản tham khảo",
+      "placeholder": "Dán văn bản tham khảo về thực thể này. Nó được nạp làm nền tảng và phần làm giàu được tạo từ đó (theo giọng văn của truyện).",
+      "license_label": "Giấy phép nguồn",
+      "license": {
+        "public_domain": "Phạm vi công cộng",
+        "licensed": "Được cấp phép cho mục đích này",
+        "owned": "Tôi sở hữu / tự viết",
+        "copyrighted": "Có bản quyền (không dùng được)"
+      },
+      "copyrighted_warning": "Không thể nạp tài liệu có bản quyền. Hãy dùng văn bản thuộc phạm vi công cộng, được cấp phép, hoặc của chính bạn.",
+      "responsibility": "Bạn chịu trách nhiệm về quyền đối với văn bản này. Đây không phải tư vấn pháp lý."
+    },
     "target": {
       "existing": "Thực thể có sẵn",
       "new": "Thực thể mới",

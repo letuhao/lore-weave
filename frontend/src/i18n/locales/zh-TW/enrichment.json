@@ -24,6 +24,19 @@
       "add_only": "僅新增",
       "add_only_hint": "逐字保留你的文字；僅補上缺少的維度。"
     },
+    "context": {
+      "label": "參考文字",
+      "placeholder": "貼上關於此實體的參考文字。系統會將其作為依據納入，並據此（以作品的語氣）生成補充內容。",
+      "license_label": "來源授權",
+      "license": {
+        "public_domain": "公有領域",
+        "licensed": "已授權用於此用途",
+        "owned": "我擁有／自行撰寫",
+        "copyrighted": "受著作權保護（無法使用）"
+      },
+      "copyrighted_warning": "受著作權保護的素材無法納入。請使用公有領域、已授權或你自己的文字。",
+      "responsibility": "你需對此文字的權利負責。本訊息非法律建議。"
+    },
     "target": {
       "existing": "既有實體",
       "new": "新實體",

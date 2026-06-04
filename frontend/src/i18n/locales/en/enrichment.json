@@ -24,6 +24,19 @@
       "add_only": "Add only",
       "add_only_hint": "Keep your prose verbatim; only add the missing dimensions."
     },
+    "context": {
+      "label": "Reference text",
+      "placeholder": "Paste reference text about this entity. It's ingested as grounding and the enrichment is generated from it (in the book's voice).",
+      "license_label": "Source license",
+      "license": {
+        "public_domain": "Public domain",
+        "licensed": "Licensed for this use",
+        "owned": "I own / wrote this",
+        "copyrighted": "Copyrighted (can't use)"
+      },
+      "copyrighted_warning": "Copyrighted material can't be ingested. Use public-domain, licensed, or your own text.",
+      "responsibility": "You are responsible for the rights to this text. Not legal advice."
+    },
     "target": {
       "existing": "Existing entity",
       "new": "New entity",

@@ -10,8 +10,16 @@ gap. Slice 1 ships the **spine** + **mode D (draft expansion)**:
   * ``input_source='gap'`` — mode A reuse: enrich specific gap targets (the same
     targeted path ``auto-enrich`` already exposes), unified under one endpoint.
 
-Modes C (paste-context), F (files), B (intent) arrive in slices 2–4 — this
-handler refuses them with a clear 400 so a premature FE call fails loudly.
+Slice 2 adds **mode C (paste-context)**:
+
+  * ``input_source='context'`` — the author pastes reference text + a license
+    assertion (default-deny: copyrighted/unknown refused). The text is ingested as
+    a grounding corpus (the C2 ``ingest_corpus`` seam, synchronous) and a normal
+    retrieval/recook job then grounds on it (the C2 grounding composer picks the
+    corpus up by project_id — so NO worker/strategy change). H0-quarantined.
+
+Modes F (files), B (intent) arrive in slices 3–4 — this handler refuses them with
+a clear 400 so a premature FE call fails loudly.
 
 Async like auto-enrich: create the job + persist the request (additive JSONB
 fields: ``input_source`` / ``seed_text`` / ``expand_mode``) + enqueue the resume
@@ -29,6 +37,7 @@ new-target proposal leaves glossary untouched. No model NAMES (model_ref only).
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from typing import Literal
 from uuid import UUID
@@ -40,12 +49,14 @@ from pydantic import BaseModel, Field
 from app.api.gaps import coverages_from_rows
 from app.api.principal import Principal, require_principal
 from app.clients.glossary import GlossaryClient, GlossaryServiceError
+from app.clients.knowledge import KnowledgeClient, KnowledgeServiceError
 from app.config import settings
 from app.db.book_profile import get_book_profile
 from app.deps import get_db
 from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM, make_redis_producer
 from app.jobs.job_request import save_job_request
 from app.jobs.proposal_store import PgProposalStore
+from app.retrieval.store import SourceCorpusStore
 from app.strategies.base import Technique
 from app.strategies.draft_expand import EXPAND_ADD_ONLY, EXPAND_REWRITE
 
@@ -53,13 +64,26 @@ logger = logging.getLogger("lore_enrichment.compose")
 
 router = APIRouter(prefix="/v1/lore-enrichment/projects", tags=["compose"])
 
-# Slice 1 supports these input sources; the rest land in slices 2–4.
-_SUPPORTED_SOURCES = {"gap", "draft"}
-_FUTURE_SOURCES = {"context", "files", "intent"}
+# Supported input sources (slices 1–2). Files/intent land in slices 3–4.
+_SUPPORTED_SOURCES = {"gap", "draft", "context"}
+_FUTURE_SOURCES = {"files", "intent"}
 _EXPAND_MODES = {EXPAND_ADD_ONLY, EXPAND_REWRITE}
-# Cap the pasted draft so it can't blow up the LLM prompt. ~50 KB ≈ the spec's
-# mode-C context cap (D-COMPOSE-S1-DRAFT-CAP; mode C/F will reuse this constant).
+# Cap the pasted text (draft AND context) so a huge paste can't blow up the LLM
+# prompt / fan out into an unbounded synchronous embed in the request path. ~50 KB;
+# larger material → mode F upload (async/poll). (D-COMPOSE-S1-DRAFT-CAP, spec §2.3.)
 _MAX_DRAFT_CHARS = 50_000
+
+# Mode C: map the FE-asserted license to the stored corpus license (default-deny).
+# 'owned' = the author owns the text ⇒ re-cook-admissible, stored as 'licensed'
+# (mirrors the /ground handler's author-chapters tag). 'copyrighted' — and anything
+# unrecognised — is REFUSED: the platform never ingests material the user can't
+# ground a license claim on (spec §4; the user performs the sourcing act).
+_CONTEXT_LICENSE_MAP = {
+    "public_domain": "public_domain",
+    "public-domain": "public_domain",  # parity with licensing.py's PD aliases
+    "licensed": "licensed",
+    "owned": "licensed",
+}
 
 
 class ComposeTargetInput(BaseModel):
@@ -93,6 +117,11 @@ class ComposeBody(BaseModel):
     target: ComposeTargetInput | None = None
     draft_text: str | None = None
     expand_mode: str = EXPAND_REWRITE
+    # mode C (context): the author's pasted reference text + their license assertion.
+    # The text is ingested as a grounding corpus; a normal retrieval/recook job then
+    # grounds on it. context_license is default-deny (copyrighted/unknown → refused).
+    context_text: str | None = None
+    context_license: str | None = None
     # mode A (gap): the specific gap targets to enrich (LE-064 per-row shape).
     gap_targets: list[ComposeTargetInput] | None = None
     # output config (shared with auto-enrich). draft FORCES compose_draft; gap may
@@ -142,6 +171,58 @@ async def _resolve_present_dimensions(
         if cov.canonical_name == canonical_name:
             return list(cov.present_dimensions)
     return None  # entity not found in coverage → no known present dims
+
+
+async def _ingest_context(
+    *,
+    pool: asyncpg.Pool,
+    principal: Principal,
+    project_id: UUID,
+    book_id: UUID,
+    text: str,
+    embedding_model_ref: UUID,
+    store_license: str,
+) -> list[str]:
+    """Ingest the pasted context as a grounding corpus SYNCHRONOUSLY, reusing the C2
+    ingest seam (the ``/ground`` handler shape, F6): build the embed seam from a
+    KnowledgeClient (BYOK, model_ref — NO model name) and call ``ingest_corpus``. The
+    corpus name is content-hashed, so re-pasting identical text is idempotent (no
+    duplicate chunks). Returns the corpus_id(s) for the request audit trail. The C2
+    grounding composer picks the corpus up by project_id when the job runs — so no
+    worker change is needed (spec §1).
+
+    SCOPE (review-impl #1, D-COMPOSE-CONTEXT-CORPUS-SCOPE): the corpus is PROJECT-
+    scoped (same as every C2 corpus), not run/target-scoped — so a paste also grounds
+    later enrichments in the project (similarity-ranking keeps off-target context
+    low) and corpora accumulate (no expiry). Acceptable for v1; per-run scoping +
+    cleanup is a tracked follow-up. The ingest is idempotent (content-hashed name),
+    and the query is re-embedded with the SAME model_ref the request persists, so the
+    corpus vectors are comparable at search time (the grounding-alignment invariant)."""
+    store = SourceCorpusStore(pool)
+    client = KnowledgeClient(
+        knowledge_base_url=settings.knowledge_service_url,
+        provider_registry_base_url=settings.provider_registry_internal_url,
+        internal_token=settings.internal_service_token,
+    )
+
+    async def embed_fn(chunk_texts):
+        result = await client.embed(
+            user_id=principal.user_id, model_source="user_model",
+            model_ref=str(embedding_model_ref), texts=list(chunk_texts),
+        )
+        return result.embeddings
+
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+    try:
+        ingest = await store.ingest_corpus(
+            user_id=principal.user_id, project_id=project_id,
+            name=f"compose-context:{book_id}:{digest}", kind="other",
+            license=store_license, text=text, embed_fn=embed_fn,
+            model_ref=str(embedding_model_ref),
+        )
+    finally:
+        await client.aclose()
+    return [str(ingest.corpus_id)]
 
 
 async def _create_and_enqueue(
@@ -234,7 +315,7 @@ async def compose(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 f"input_source {source!r} is not available yet "
-                "(modes C/F/B land in compose slices 2–4)"
+                "(modes F/B land in compose slices 3–4)"
             ),
         )
     if source not in _SUPPORTED_SOURCES:
@@ -297,6 +378,96 @@ async def compose(
             entity_kind=body.target.entity_kind,
             targets=[target_dict],
             extra_request={"seed_text": draft, "expand_mode": body.expand_mode},
+        )
+
+    # ── mode C — paste-context ───────────────────────────────────────────────────
+    if source == "context":
+        ctx_text = (body.context_text or "").strip()
+        if not ctx_text:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="context input requires a non-empty context_text",
+            )
+        if len(ctx_text) > _MAX_DRAFT_CHARS:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=(
+                    f"context_text is too large ({len(ctx_text)} chars > {_MAX_DRAFT_CHARS} cap) "
+                    "— trim it or use a file upload (mode F, coming in a later slice)"
+                ),
+            )
+        if body.target is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="context input requires a target (existing or new)",
+            )
+        if body.embedding_model_ref is None:
+            # The pasted text is chunked + embedded into a grounding corpus, so an
+            # embedding model is required (unlike mode D, which does no retrieval).
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="context input requires embedding_model_ref (the text is embedded as grounding)",
+            )
+        # License default-deny: refuse copyrighted / unrecognised before any ingest.
+        store_license = _CONTEXT_LICENSE_MAP.get((body.context_license or "").strip().lower())
+        if store_license is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "context_license must be one of public_domain | licensed | owned — "
+                    "copyrighted material cannot be ingested (you must own, license, or "
+                    "use public-domain text)"
+                ),
+            )
+        try:
+            technique = Technique(body.technique or Technique.RETRIEVAL.value)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"unknown technique {body.technique!r}",
+            )
+        if technique is Technique.COMPOSE_DRAFT:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="compose_draft is the draft input's technique — use input_source='draft'",
+            )
+        # Ingest the pasted text as a grounding corpus (synchronous). 502/503 mirror
+        # the /ground handler so an embed outage is a clear upstream error, not a 500.
+        try:
+            corpus_ids = await _ingest_context(
+                pool=pool,
+                principal=principal,
+                project_id=project_id,
+                book_id=body.book_id,
+                text=ctx_text,
+                embedding_model_ref=body.embedding_model_ref,
+                store_license=store_license,
+            )
+        except KnowledgeServiceError as exc:
+            code = (
+                status.HTTP_503_SERVICE_UNAVAILABLE
+                if exc.retryable
+                else status.HTTP_502_BAD_GATEWAY
+            )
+            raise HTTPException(status_code=code, detail=f"context embedding failed: {exc}")
+        target_dict = _target_dict(body.target)
+        if body.target.mode == "existing" and not body.target.present_dimensions:
+            # Fill only the genuinely-missing dims (spec §2.2: present from coverage),
+            # now grounded on the freshly-ingested corpus. Best-effort; degrades to [].
+            present = await _resolve_present_dimensions(
+                pool, body.book_id, body.target.canonical_name
+            )
+            if present is not None:
+                target_dict["present_dimensions"] = present
+        return await _create_and_enqueue(
+            pool=pool,
+            project_id=project_id,
+            user_id=user_id,
+            body=body,
+            technique=technique.value,
+            entity_kind=body.target.entity_kind,
+            targets=[target_dict],
+            extra_request={"context_corpus_ids": corpus_ids, "context_license": store_license},
         )
 
     # ── mode A — gap-fill (targeted) ─────────────────────────────────────────────
