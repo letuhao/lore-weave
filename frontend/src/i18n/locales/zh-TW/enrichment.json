@@ -294,6 +294,7 @@
     "dim_weight": "權重",
     "dim_required": "必填",
     "remove_dimension": "移除維度",
+    "hide": "隱藏",
     "suggest": "依書籍建議",
     "suggesting": "分析中…",
     "suggest_model": "建議模型",

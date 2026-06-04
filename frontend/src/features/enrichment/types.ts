@@ -208,11 +208,13 @@ export interface ComposeTargetInput {
   requested_dimensions?: string[] | null;
 }
 
-/** One choosable dimension for a kind (GET .../dimensions) — the picker's chips. */
+/** One choosable dimension for a kind (GET .../dimensions) — the picker's chips +
+ *  the profile override editor's base rows. */
 export interface ComposeDimension {
   id: string;
   label: string;
   required: boolean;
+  weight?: number;
 }
 
 /** The POST /compose body (the api layer adds book_id := bookId). */

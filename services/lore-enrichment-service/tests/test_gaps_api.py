@@ -104,6 +104,22 @@ def test_dimensions_endpoint_lists_kind_dimensions():
     assert all({"id", "label", "required"} <= d.keys() for d in body["dimensions"])
 
 
+def test_dimensions_endpoint_base_param_and_weight():
+    # #3 override editor: base=true returns the un-overridden set; each dim carries a
+    # weight (the editor's reweight default). With a NEUTRAL profile base==effective.
+    book, project = uuid4(), uuid4()
+    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    resp = TestClient(_app()).get(
+        f"/v1/lore-enrichment/projects/{project}/dimensions",
+        params={"book_id": str(book), "kind": "character", "base": "true"},
+        headers={"Authorization": f"Bearer {bearer}"},
+    )
+    assert resp.status_code == 200, resp.text
+    dims = resp.json()["dimensions"]
+    assert dims and all("weight" in d for d in dims)
+    assert all(isinstance(d["weight"], (int, float)) for d in dims)
+
+
 def test_dimensions_endpoint_generic_fallback_for_unknown_kind():
     # KB3: an unmodeled kind falls back to GENERIC — never 400, never empty.
     book, project = uuid4(), uuid4()

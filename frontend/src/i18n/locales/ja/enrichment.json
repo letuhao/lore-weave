@@ -294,6 +294,7 @@
     "dim_weight": "重み",
     "dim_required": "必須",
     "remove_dimension": "次元を削除",
+    "hide": "非表示",
     "suggest": "本から提案",
     "suggesting": "分析中…",
     "suggest_model": "提案モデル",

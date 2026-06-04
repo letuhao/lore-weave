@@ -7,11 +7,16 @@ import type { ComposeDimension } from '../types';
  *  Best-effort — returns [] until loaded / on no auth / on error, so the picker
  *  degrades to "auto" (the server derives dimensions) rather than blocking the run.
  *  Keyed by (book, kind) so switching the target kind refetches its dimensions. */
-export function useComposeDimensions(bookId: string, kind: string): ComposeDimension[] {
+export function useComposeDimensions(
+  bookId: string,
+  kind: string,
+  opts: { base?: boolean } = {},
+): ComposeDimension[] {
+  const base = opts.base ?? false;
   const { accessToken } = useAuth();
   const { data } = useQuery({
-    queryKey: ['compose-dimensions', bookId, kind],
-    queryFn: () => enrichmentApi.listComposeDimensions(bookId, kind, accessToken!),
+    queryKey: ['compose-dimensions', bookId, kind, base],
+    queryFn: () => enrichmentApi.listComposeDimensions(bookId, kind, accessToken!, base),
     enabled: !!accessToken && !!bookId && !!kind,
   });
   return data?.dimensions ?? [];

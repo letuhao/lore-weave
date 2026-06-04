@@ -180,8 +180,10 @@ export const enrichmentApi = {
     bookId: string,
     kind: string,
     token: string,
+    base = false,
   ): Promise<{ kind: string; dimensions: ComposeDimension[] }> {
     const qs = new URLSearchParams({ book_id: bookId, kind });
+    if (base) qs.set('base', 'true'); // base set (override editor) vs effective (picker)
     return apiJson<{ kind: string; dimensions: ComposeDimension[] }>(
       `${BASE}/projects/${bookId}/dimensions?${qs.toString()}`,
       { token },

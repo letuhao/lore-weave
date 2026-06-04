@@ -253,6 +253,8 @@ def test_validate_overrides_defaults_label_to_id():
     {"character": {"remove": [123]}},                      # remove non-str id
     {"character": {"reweight": {"x": "heavy"}}},           # non-numeric reweight
     {"character": {"reweight": {"x": -2}}},                # negative reweight
+    {"character": {"add": [{"id": "x", "weight": 0}]}},    # weight 0 (DimensionSpec gt=0 → drop; remove instead)
+    {"character": {"reweight": {"x": 0}}},                 # reweight 0 (zero-salience dim; remove instead)
 ])
 def test_validate_overrides_rejects_malformed(bad):
     with pytest.raises(ValueError):

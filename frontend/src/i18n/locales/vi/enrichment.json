@@ -294,6 +294,7 @@
     "dim_weight": "trọng số",
     "dim_required": "bắt buộc",
     "remove_dimension": "Xóa chiều",
+    "hide": "Ẩn",
     "suggest": "Gợi ý từ sách",
     "suggesting": "Đang phân tích…",
     "suggest_model": "Mô hình gợi ý",

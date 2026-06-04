@@ -294,6 +294,7 @@
     "dim_weight": "weight",
     "dim_required": "required",
     "remove_dimension": "Remove dimension",
+    "hide": "Hide",
     "suggest": "Suggest from book",
     "suggesting": "Analyzing…",
     "suggest_model": "Suggest model",

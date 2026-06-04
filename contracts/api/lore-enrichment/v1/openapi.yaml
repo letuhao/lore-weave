@@ -561,6 +561,13 @@ paths:
           in: query
           required: true
           schema: { type: string }
+        - name: base
+          in: query
+          required: false
+          description: >
+            false (default) → the effective set with profile overrides applied
+            (compose picker); true → the base un-overridden set (override editor).
+          schema: { type: boolean, default: false }
       responses:
         '200':
           description: OK — the kind's dimensions.
@@ -578,6 +585,7 @@ paths:
                         id: { type: string }
                         label: { type: string }
                         required: { type: boolean }
+                        weight: { type: number }
         '401':
           $ref: '#/components/responses/ErrorResponse'
 

@@ -187,14 +187,19 @@ _OVERRIDE_OPS = frozenset({"add", "remove", "relabel", "reweight"})
 
 
 def _as_weight(value: Any, what: str) -> float:
-    """Coerce a JSON number to a non-negative weight, rejecting bools, non-numerics,
-    and negatives (the LLM / author may send garbage; the structural gate must catch
-    it before persist — a negative weight would invert C1's rank_score)."""
+    """Coerce a JSON number to a POSITIVE weight, rejecting bools, non-numerics,
+    zero, and negatives (the LLM / author may send garbage; the structural gate must
+    catch it before persist). A weight <= 0 is invalid: a negative inverts C1's
+    rank_score, and ``DimensionSpec.weight`` is ``gt=0`` — so an ``add`` with weight 0
+    would be silently DROPPED at resolve (constructor ValidationError) and a
+    ``reweight`` to 0 would set a zero-salience dim via model_copy (which skips
+    validation). Reject it loudly here (400) instead — to disable a dimension the
+    author REMOVES it, never weights it 0."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{what} must be a number")
     out = float(value)
-    if out < 0:
-        raise ValueError(f"{what} must be >= 0")
+    if out <= 0:
+        raise ValueError(f"{what} must be > 0 (remove a dimension to disable it)")
     return out
 
 

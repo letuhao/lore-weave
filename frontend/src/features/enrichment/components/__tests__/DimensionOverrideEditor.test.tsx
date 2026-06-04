@@ -1,11 +1,24 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { DimensionOverrideEditor } from '../DimensionOverrideEditor';
 import type { DimensionOverrides } from '../../types';
+
+// Base dims per kind (mocked — the editor fetches base=true to render relabel/
+// reweight/remove rows for the built-in dimensions). Only 'character' has base dims.
+vi.mock('../../hooks/useComposeDimensions', () => ({
+  useComposeDimensions: (_bookId: string, kind: string) =>
+    kind === 'character'
+      ? [
+          { id: 'history', label: 'History', required: true, weight: 3 },
+          { id: 'abilities', label: 'Abilities', required: false, weight: 2 },
+        ]
+      : [],
+}));
+
+import { DimensionOverrideEditor } from '../DimensionOverrideEditor';
 
 function renderEditor(value: DimensionOverrides) {
   const onChange = vi.fn();
-  render(<DimensionOverrideEditor value={value} onChange={onChange} />);
+  render(<DimensionOverrideEditor bookId="book-1" value={value} onChange={onChange} />);
   return { onChange };
 }
 
@@ -17,6 +30,7 @@ describe('DimensionOverrideEditor', () => {
     );
   });
 
+  // ── custom add rows (existing behavior) ──
   it('adding a dimension to a kind emits an add row with defaults', () => {
     const { onChange } = renderEditor({});
     fireEvent.click(screen.getByTestId('override-add-character'));
@@ -41,8 +55,6 @@ describe('DimensionOverrideEditor', () => {
   });
 
   it('PRESERVES sibling ops (remove/relabel/reweight) when editing add', () => {
-    // review-driven: the editor only touches `add`; remove/relabel/reweight must
-    // survive round-trip untouched.
     const value: DimensionOverrides = {
       character: { add: [{ id: 'x', label: 'X' }], remove: ['history'], reweight: { abilities: 3 } },
     };
@@ -51,5 +63,48 @@ describe('DimensionOverrideEditor', () => {
     expect(onChange).toHaveBeenCalledWith({
       character: { remove: ['history'], reweight: { abilities: 3 } },
     });
+  });
+
+  // ── built-in dimension ops (#3) ──
+  it('relabeling a built-in dimension emits a relabel delta', () => {
+    const { onChange } = renderEditor({});
+    fireEvent.change(screen.getByLabelText('settings.dim_label history'), { target: { value: 'Lore' } });
+    expect(onChange).toHaveBeenCalledWith({ character: { relabel: { history: 'Lore' } } });
+  });
+
+  it('relabeling back to the base label drops the delta (and the kind)', () => {
+    const { onChange } = renderEditor({ character: { relabel: { history: 'Lore' } } });
+    fireEvent.change(screen.getByLabelText('settings.dim_label history'), { target: { value: 'History' } });
+    expect(onChange).toHaveBeenCalledWith({});
+  });
+
+  it('reweighting a built-in dimension emits a reweight delta', () => {
+    const { onChange } = renderEditor({});
+    fireEvent.change(screen.getByLabelText('settings.dim_weight history'), { target: { value: '5' } });
+    expect(onChange).toHaveBeenCalledWith({ character: { reweight: { history: 5 } } });
+  });
+
+  it('reweighting to 0 stores no delta (>0 only — hide to disable; review-impl #1)', () => {
+    const { onChange } = renderEditor({});
+    fireEvent.change(screen.getByLabelText('settings.dim_weight history'), { target: { value: '0' } });
+    expect(onChange).toHaveBeenCalledWith({}); // 0 → no reweight delta → kind dropped
+  });
+
+  it('marks a required built-in dimension (review-impl #2)', () => {
+    renderEditor({});
+    expect(screen.getByTestId('override-required-character-history')).toBeInTheDocument(); // required
+    expect(screen.queryByTestId('override-required-character-abilities')).not.toBeInTheDocument();
+  });
+
+  it('hiding a built-in dimension adds it to the remove list', () => {
+    const { onChange } = renderEditor({});
+    fireEvent.click(screen.getByTestId('override-hide-character-history'));
+    expect(onChange).toHaveBeenCalledWith({ character: { remove: ['history'] } });
+  });
+
+  it('un-hiding a built-in dimension clears it from the remove list (and the kind)', () => {
+    const { onChange } = renderEditor({ character: { remove: ['history'] } });
+    fireEvent.click(screen.getByTestId('override-hide-character-history'));
+    expect(onChange).toHaveBeenCalledWith({});
   });
 });

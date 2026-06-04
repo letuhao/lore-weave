@@ -161,7 +161,7 @@ export function ProfileForm({
 
       <div className="space-y-1">
         <span className="text-xs font-medium">{t('settings.dimensions')}</span>
-        <DimensionOverrideEditor value={overrides} onChange={setOverrides} />
+        <DimensionOverrideEditor bookId={profile.book_id ?? ''} value={overrides} onChange={setOverrides} />
       </div>
 
       <div className="flex items-center gap-2">

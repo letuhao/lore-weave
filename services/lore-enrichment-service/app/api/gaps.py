@@ -179,12 +179,17 @@ async def list_dimensions(
     project_id: UUID,
     book_id: UUID,
     kind: str,
+    base: bool = False,
     principal: Principal = Depends(require_principal),
     pool: asyncpg.Pool = Depends(get_db),
 ) -> dict:
-    """List an entity KIND's dimensions, profile-localized (#1 — compose dimension
-    picker). Read-only: the FE renders these as choosable chips so the author can
-    enrich a SUBSET. GENERIC fallback for an unmodeled kind (never 400).
+    """List an entity KIND's dimensions, profile-localized. GENERIC fallback for an
+    unmodeled kind (never 400). Read-only.
+
+      * default (``base=false``) → the EFFECTIVE set with the book's profile overrides
+        applied — the compose dimension picker (#1) so a removed dim isn't enrichable.
+      * ``base=true`` → the BASE (un-overridden) set — the profile override editor (#3)
+        so the author sees the canonical dims to relabel/reweight/remove.
 
     AUTH (review-impl #3): authenticated + book-scoped, NOT owner-gated — consistent
     with the gaps read family (detect-gaps / auto-enrich), which is also book-scoped.
@@ -196,12 +201,13 @@ async def list_dimensions(
     table = resolve_dimensions(
         (kind or "").strip() or GENERIC_KIND,
         language=profile.language,
-        overrides=profile.dimension_overrides,
+        overrides=None if base else profile.dimension_overrides,
     )
     return {
         "kind": kind,
         "dimensions": [
-            {"id": s.dimension, "label": s.label, "required": s.required} for s in table
+            {"id": s.dimension, "label": s.label, "required": s.required, "weight": s.weight}
+            for s in table
         ],
     }
 
