@@ -16,8 +16,17 @@
 ## Principle (PO, 2026-06-05)
 Build all 3 engines; the system **auto-selects the engine from the registered model's capability**, with user override. **Don't out-think a model that already self-orchestrates** — Anthropic/Gemini get **pass-through**; only models without native adaptive (Qwen3 local) get our classifier.
 
-## Architecture — capability-aware reasoning resolver (composition-service)
-Three pure modules + wiring. We already shipped the `reasoning_effort` knob (SDK→gateway→LM Studio) and the FE Off/Auto control — this adds the **auto decision** + **per-model strategy**.
+## Where it lives — SDK-first (reusable), domain-thin (revised 2026-06-05)
+The **generic** reasoning machinery lives in the **`loreweave_llm` SDK** so EVERY service that calls the gateway (translation, extraction, chat, composition…) reuses one auto-thinking policy — the SDK already owns `reasoning_effort` / `ReasoningEffort`, so it is the natural home. Only the **domain scorer** (which signals matter, and their weights) stays in the consuming service.
+
+- **SDK `loreweave_llm.reasoning`** (generic, reusable):
+  - `ReasoningControl` + `infer_reasoning_control(provider_kind, name, flags)` — fully provider/model-driven, no domain knowledge.
+  - `bucket_effort(score, *, high, medium, low)` — monotone score→effort bucketer for any rule-based "when to think" scorer.
+  - `ReasoningDirective` + `resolve_reasoning(user_pref, model_control, auto_effort, *, auto_source)` — user-override > auto-dispatch (adaptive→passthrough / effort→use the caller's `auto_effort` / none→noop). The SDK does NOT know domain signals; the caller passes a precomputed `auto_effort`.
+- **Composition `app/reasoning/policy.py`** (domain): the creative-writing `ReasoningSignals` + `score_effort` (uses the SDK `bucket_effort`), then calls the SDK `infer_reasoning_control` + `resolve_reasoning`. A future translation/extraction auto-think reuses the SDK + supplies its own signals.
+
+## Architecture — capability-aware reasoning resolver
+We already shipped the `reasoning_effort` knob (SDK→gateway→LM Studio) and the FE Off/Auto control — this adds the **auto decision** + **per-model strategy**, with the generic core in the SDK per above.
 
 ### 1. Model capability inference — `app/reasoning/capability.py`
 `ReasoningControl = Literal["adaptive","effort","none"]`

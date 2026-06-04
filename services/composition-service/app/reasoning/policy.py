@@ -15,9 +15,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Literal
 
-Effort = Literal["none", "low", "medium", "high"]
+from loreweave_llm import ReasoningEffort, bucket_effort
+
+Effort = ReasoningEffort
 
 # Operations that are inherently structural/architectural (think) vs mechanical.
 _HEAVY_OPS = {"plan_beat", "weave_canon", "draft_scene", "outline_scene"}
@@ -79,10 +80,5 @@ def score_effort(signals: ReasoningSignals) -> Effort:
     if s.guide and _REASONING_MARKERS.search(s.guide):
         score += 2
 
-    if score >= 4:
-        return "high"
-    if score >= 2:
-        return "medium"
-    if score >= 1:
-        return "low"
-    return "none"
+    # Generic monotone bucketer lives in the SDK (reusable by other services).
+    return bucket_effort(score)
