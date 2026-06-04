@@ -447,6 +447,25 @@ components:
         mode: { type: string, enum: [cowrite, auto] }
         guide: { type: string }
         max_output_tokens: { type: integer }
+        reasoning:
+          type: string
+          enum: [off, auto, low, medium, high]
+          default: auto
+          description: >
+            Author reasoning ("thinking") preference. "auto" → the server resolves
+            it per the selected model (adaptive → pass through; reasoning model →
+            rule-based scorer over the scene's canon/entity/tension signals;
+            non-reasoning → no-op). off/low/medium/high are explicit overrides. The
+            resolved {reasoning_source, reasoning_effort} are echoed in the SSE
+            `job` frame.
+        model_kind:
+          type: string
+          nullable: true
+          description: Selected model's provider_kind hint (anthropic, lm_studio, …) — lets the resolver pick the auto strategy per the registered model.
+        model_name:
+          type: string
+          nullable: true
+          description: Selected model's provider_model_name hint.
         idempotency_key: { type: string, nullable: true }
     GenerationJob:
       type: object

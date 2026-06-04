@@ -145,6 +145,9 @@ async def generate(
     # Resolve the reasoning ("thinking") directive (auto-reasoning, §integration).
     # Signals are cheap things we already have: the operation, the scene's tension
     # + present entities, and the active canon load (count + any reveal_gate).
+    # NOTE: canon counts are PROJECT-LEVEL (all active rules), not scene-windowed —
+    # a deliberate conservative approximation that biases early scenes toward more
+    # thinking; precise per-scene scoping is a tuning follow-up (D-AUTO-REASONING-SCENE-SIGNALS).
     active_rules = await canon.list_active(user_id, project_id)
     signals = ReasoningSignals(
         operation=body.operation,
