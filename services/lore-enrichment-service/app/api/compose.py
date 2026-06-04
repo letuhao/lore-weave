@@ -125,6 +125,10 @@ class ComposeBody(BaseModel):
     # grounds on it. context_license is default-deny (copyrighted/unknown → refused).
     context_text: str | None = None
     context_license: str | None = None
+    # mode C/F: keep the ingested corpus as a CURATED source (#7) instead of an
+    # ephemeral paste the reaper GCs by TTL. Default false → ephemeral (prior behavior);
+    # true → the corpus is untagged and surfaces under /sources for reuse.
+    persist_corpus: bool = False
     # mode F (files): the uploaded files (from POST /uploads) to ingest as grounding.
     # Each upload carries its own validated license; the file's extracted text is
     # ingested as a corpus, then identical to mode C.
@@ -219,6 +223,7 @@ async def _ingest_context(
     text: str,
     embedding_model_ref: UUID,
     store_license: str,
+    persist: bool = False,
 ) -> list[str]:
     """Ingest the pasted context as a grounding corpus SYNCHRONOUSLY, reusing the C2
     ingest seam (the ``/ground`` handler shape, F6): build the embed seam from a
@@ -259,9 +264,14 @@ async def _ingest_context(
             name=f"compose-context:{book_id}:{digest}", kind="other",
             license=store_license, text=text, embed_fn=embed_fn,
             model_ref=str(embedding_model_ref),
-            # Tag ephemeral so the reaper GCs it by TTL (D-COMPOSE-CONTEXT-CORPUS-SCOPE).
-            provenance_json={"compose_ephemeral": True, "source": "compose", "book_id": str(book_id)},
+            # Tag ephemeral (reaper GCs it by TTL, D-COMPOSE-CONTEXT-CORPUS-SCOPE)
+            # UNLESS the author chose to keep it as a curated source (#7, persist).
+            provenance_json={"compose_ephemeral": not persist, "source": "compose", "book_id": str(book_id)},
         )
+        # Persist is honest even on an idempotent re-ingest: upsert returns an existing
+        # (possibly ephemeral) corpus untouched, so explicitly clear the flag (#7).
+        if persist:
+            await store.mark_corpus_persistent(corpus_id=ingest.corpus_id)
     finally:
         await client.aclose()
     return [str(ingest.corpus_id)]
@@ -484,6 +494,7 @@ async def compose(
                 text=ctx_text,
                 embedding_model_ref=body.embedding_model_ref,
                 store_license=store_license,
+                persist=body.persist_corpus,
             )
         except KnowledgeServiceError as exc:
             code = (
@@ -557,7 +568,7 @@ async def compose(
                 ids = await _ingest_context(
                     pool=pool, principal=principal, project_id=project_id, book_id=body.book_id,
                     text=text, embedding_model_ref=body.embedding_model_ref,
-                    store_license=up["license_asserted"],
+                    store_license=up["license_asserted"], persist=body.persist_corpus,
                 )
             except KnowledgeServiceError as exc:
                 code = (

@@ -790,6 +790,12 @@ paths:
                     Author's license assertion (mode C — required). Default-deny:
                     `copyrighted` (and anything unrecognised) is refused (403);
                     `owned` is stored as `licensed` (re-cook-admissible).
+                persist_corpus:
+                  type: boolean
+                  default: false
+                  description: >
+                    Mode C/F: keep the ingested corpus as a CURATED source (surfaces
+                    under /sources) instead of an ephemeral paste the reaper GCs by TTL.
                 upload_ids:
                   type: array
                   description: >

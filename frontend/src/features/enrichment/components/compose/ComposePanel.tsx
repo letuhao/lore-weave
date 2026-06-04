@@ -51,6 +51,7 @@ export function ComposePanel() {
   const [contextLicense, setContextLicense] = useState<ContextLicense>('public_domain');
   const [filesLicense, setFilesLicense] = useState<ContextLicense>('public_domain');
   const [filesResponsibility, setFilesResponsibility] = useState(false);
+  const [persistCorpus, setPersistCorpus] = useState(false); // #7: keep paste/files as a curated source
   const uploads = useUploads(bookId);
   const [intentText, setIntentText] = useState('');
   const [intentTechnique, setIntentTechnique] = useState('fabrication');
@@ -141,6 +142,7 @@ export function ComposePanel() {
         target: targetInput,
         context_text: contextText.trim(),
         context_license: contextLicense,
+        persist_corpus: persistCorpus, // #7: keep as a curated source vs ephemeral
         technique: config.technique, // #2: author-chosen technique (retrieval|fabrication|recook)
         generation_model_ref: config.genModel,
         embedding_model_ref: config.embedModel || undefined,
@@ -153,6 +155,7 @@ export function ComposePanel() {
         input_source: 'files',
         target: targetInput,
         upload_ids: uploads.readyIds,
+        persist_corpus: persistCorpus, // #7
         technique: config.technique, // #2
         generation_model_ref: config.genModel,
         embedding_model_ref: config.embedModel || undefined,
@@ -235,6 +238,17 @@ export function ComposePanel() {
               responsibilityChecked={filesResponsibility}
               onResponsibilityChange={setFilesResponsibility}
             />
+          )}
+          {(mode === 'context' || mode === 'files') && (
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={persistCorpus}
+                onChange={(e) => setPersistCorpus(e.target.checked)}
+                data-testid="compose-persist-corpus"
+              />
+              {t('compose.save_corpus')}
+            </label>
           )}
           <ComposeConfig
             value={config}

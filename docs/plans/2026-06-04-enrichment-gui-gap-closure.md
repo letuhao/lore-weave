@@ -1,6 +1,6 @@
 # Plan — Enrichment GUI gap-closure (draft ↔ impl)
 
-> **Created:** 2026-06-04 · **Branch:** `lore-enrichment/foundation` · **Status:** READY TO BUILD
+> **Created:** 2026-06-04 · **Branch:** `lore-enrichment/foundation` · **Status:** ✅ COMPLETE (Slices 1, 2, 3+5, 4+6 all shipped 2026-06-04; cosmetic #10–17 consciously closed as accepted). Next = Step 2 rebuild + deep e2e.
 > **Origin:** 8-agent draft-vs-impl audit (workflow `wf_48eeef8c-006`). Matrix: **80 implemented / 8 partial / 7 missing / 17 diverged (mostly accepted) / 5 na.**
 > **Decision (PO, 2026-06-04):** plan + close ALL real gaps FIRST; **do NOT run deep e2e yet** — e2e against an incomplete GUI is wasted effort. Deep e2e (Step 2) runs only AFTER the slices below land.
 

@@ -70,6 +70,10 @@ export function ProfileForm({
   const [markersText, setMarkersText] = useState(() => markersToText(profile.anachronism_markers));
   const [overrides, setOverrides] = useState<DimensionOverrides>(profile.dimension_overrides);
   const [modelRef, setModelRef] = useState('');
+  // #18: the source chip must track the EDITING state, not the stale persisted value —
+  // Suggest makes it ai_suggested, Save persists as manual. (The form is long-lived,
+  // keyed by bookId, so a local state reflects what's about to be / was just saved.)
+  const [source, setSource] = useState(profile.profile_source);
 
   const { data: chatModels } = useQuery({
     queryKey: ['user-models', 'chat'],
@@ -84,9 +88,11 @@ export function ProfileForm({
     setEraPolicy(d.era_policy ?? '');
     setVoice(d.voice ?? '');
     setOverrides(d.dimension_overrides);
+    setSource('ai_suggested'); // #18: reflect the applied AI draft in the source chip
   };
 
-  const save = () =>
+  const save = () => {
+    setSource('manual'); // #18: an author save persists as manual (BE C3 default)
     onSave({
       worldview: worldview.trim(),
       language: language.trim() || 'auto',
@@ -95,6 +101,7 @@ export function ProfileForm({
       anachronism_markers: textToMarkers(markersText),
       dimension_overrides: cleanOverrides(overrides),
     });
+  };
 
   const field = 'w-full rounded border bg-background px-2 py-1 text-xs';
 
@@ -174,8 +181,8 @@ export function ProfileForm({
         >
           {saving ? t('settings.saving') : t('actions.save')}
         </button>
-        <span className="text-[11px] text-muted-foreground">
-          {t('settings.source', { source: t(`settings.source_${profile.profile_source}`) })}
+        <span className="text-[11px] text-muted-foreground" data-testid="profile-source-chip" data-source={source}>
+          {t('settings.source', { source: t(`settings.source_${source}`) })}
         </span>
       </div>
     </div>

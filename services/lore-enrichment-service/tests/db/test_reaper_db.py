@@ -68,6 +68,36 @@ async def test_reap_ephemeral_corpora_roundtrip(pool):
     assert cur_rows == 1, "curated corpus was wrongly deleted"
 
 
+async def test_mark_corpus_persistent_unsticks_from_the_reaper(pool):
+    # #7: an ephemeral compose corpus the author later chooses to KEEP is promoted via
+    # mark_corpus_persistent → the reaper no longer GCs it (even past the TTL). This is
+    # the idempotent-re-paste honesty fix (upsert returns the existing ephemeral row).
+    store = SourceCorpusStore(pool)
+    uid, pid = uuid.uuid4(), uuid.uuid4()
+    eph = await store.ingest_corpus(
+        user_id=uid, project_id=pid, name="keep-me", kind="other",
+        license="public_domain", text="保留此語料。" * 3, embed_fn=_embed, model_ref="m",
+        provenance_json={"compose_ephemeral": True, "source": "compose"},
+    )
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE source_corpus SET created_at = now() - interval '40 days' WHERE corpus_id=$1",
+            eph.corpus_id,
+        )
+    # promote → clears the ephemeral tag
+    await store.mark_corpus_persistent(corpus_id=eph.corpus_id)
+
+    deleted = await store.reap_ephemeral_corpora(ttl_seconds=30 * 24 * 3600)
+    assert eph.corpus_id not in deleted  # promoted → survives the reaper
+    async with pool.acquire() as conn:
+        still = await conn.fetchval("SELECT count(*) FROM source_corpus WHERE corpus_id=$1", eph.corpus_id)
+        flag = await conn.fetchval(
+            "SELECT provenance_json->>'compose_ephemeral' FROM source_corpus WHERE corpus_id=$1",
+            eph.corpus_id,
+        )
+    assert still == 1 and flag == "false"
+
+
 async def test_reap_ephemeral_corpora_respects_ttl_and_noop(pool):
     store = SourceCorpusStore(pool)
     uid = uuid.uuid4()

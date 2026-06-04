@@ -135,14 +135,6 @@ export type UnknownEntity = {
   created_at: string;
 };
 
-export type KindAlias = {
-  alias_id: string;
-  alias_code: string;
-  kind_id: string;
-  kind_code: string;
-  created_at: string;
-};
-
 export type EntityNameEntry = {
   entity_id: string;
   display_name: string;

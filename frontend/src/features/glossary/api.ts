@@ -88,13 +88,6 @@ export const glossaryApi = {
     return apiJson(`${BASE}/books/${bookId}/unknown-entities`, { token });
   },
 
-  /** Existing alias table (source kind code → real kind). */
-  listKindAliases(
-    token: string,
-  ): Promise<{ items: import('./types').KindAlias[]; total: number }> {
-    return apiJson(`${BASE}/kind-aliases`, { token });
-  },
-
   /**
    * Create an alias `alias_code → kind_id`. When `reassign` is true, also moves every
    * unknown entity whose source_kind_code == alias_code (scoped to book_id if given)

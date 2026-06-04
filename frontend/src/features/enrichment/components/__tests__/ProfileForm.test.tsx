@@ -137,5 +137,18 @@ describe('ProfileForm', () => {
       expect((screen.getByTestId('profile-worldview') as HTMLTextAreaElement).value).toBe('cyberpunk Saigon'),
     );
     expect((screen.getByTestId('profile-language') as HTMLInputElement).value).toBe('vi');
+    // #18: the source chip reflects the applied AI draft (was 'seed' → now ai_suggested).
+    await waitFor(() =>
+      expect(screen.getByTestId('profile-source-chip')).toHaveAttribute('data-source', 'ai_suggested'),
+    );
+  });
+
+  it('the source chip starts from the persisted source and flips to manual on save (#18)', () => {
+    const onSave = vi.fn();
+    renderForm(P({ profile_source: 'seed' }), onSave);
+    expect(screen.getByTestId('profile-source-chip')).toHaveAttribute('data-source', 'seed');
+    fireEvent.click(screen.getByTestId('profile-save'));
+    expect(onSave).toHaveBeenCalled();
+    expect(screen.getByTestId('profile-source-chip')).toHaveAttribute('data-source', 'manual');
   });
 });

@@ -212,6 +212,25 @@ class SourceCorpusStore:
             )
         return [dict(r) for r in rows], int(total or 0)
 
+    async def mark_corpus_persistent(self, *, corpus_id: UUID) -> None:
+        """Clear the ``compose_ephemeral`` tag so the reaper won't GC this corpus
+        (#7 — the author chose to KEEP a compose paste/file as a curated source). Run
+        AFTER an ingest when persist is requested: on a brand-new corpus the create
+        already wrote ``compose_ephemeral=false``, but on an idempotent RE-ingest of
+        identical text ``upsert_corpus`` returns the existing (possibly ephemeral) row
+        untouched — this promotes it so "Save to sources" is honest either way.
+        Idempotent."""
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """UPDATE source_corpus
+                   SET provenance_json =
+                         jsonb_set(coalesce(provenance_json, '{}'::jsonb),
+                                   '{compose_ephemeral}', 'false'),
+                       updated_at = now()
+                   WHERE corpus_id = $1""",
+                corpus_id,
+            )
+
     async def reap_ephemeral_corpora(self, *, ttl_seconds: float) -> list[UUID]:
         """Delete compose-ephemeral corpora older than ``ttl_seconds`` and return
         the deleted ids (D-COMPOSE-CONTEXT-CORPUS-SCOPE). Targets ONLY corpora

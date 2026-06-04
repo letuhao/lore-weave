@@ -378,10 +378,11 @@ def _patch_ingest(monkeypatch, *, recorder, raises=None):
     """Fake the synchronous corpus ingest the context branch performs so the handler
     branch (validation + request shape) is tested without a live embed/store."""
     async def _fake_ingest(*, pool, principal, project_id, book_id, text,
-                           embedding_model_ref, store_license):
+                           embedding_model_ref, store_license, persist=False):
         recorder["called"] = True
         recorder["text"] = text
         recorder["store_license"] = store_license
+        recorder["persist"] = persist
         if raises is not None:
             raise raises
         return ["corpus-ctx-1"]
@@ -427,6 +428,24 @@ def test_context_202_ingests_and_persists(monkeypatch):
     assert req["targets"][0]["present_dimensions"] == ["历史"]  # supplied present preserved
     assert "seed_text" not in req  # context is not a draft
     assert len(prod.calls) == 1
+
+
+def test_context_persist_corpus_threads_persist_flag(monkeypatch):
+    # #7 save-to-corpus: persist_corpus=true → _ingest_context(persist=True) so the
+    # corpus is kept (untagged) instead of ephemeral; default is ephemeral (persist=False).
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    rec: dict = {}
+    _patch_ingest(monkeypatch, recorder=rec)
+
+    assert _post(_ctx_base(persist_corpus=True)).status_code == 202
+    assert rec["persist"] is True
+
+    rec2: dict = {}
+    _patch_ingest(monkeypatch, recorder=rec2)
+    assert _post(_ctx_base()).status_code == 202  # omitted → default ephemeral
+    assert rec2["persist"] is False
 
 
 def test_context_requested_dimensions_enriches_only_chosen(monkeypatch):
@@ -605,6 +624,19 @@ def _files_base(upload_ids, **over) -> dict:
     }
     body.update(over)
     return body
+
+
+def test_files_persist_corpus_threads_persist_flag(monkeypatch):
+    # #7: files mode threads persist_corpus through to _ingest_context like context.
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    rec: dict = {}
+    _patch_ingest(monkeypatch, recorder=rec)
+    u1 = str(uuid4())
+    _patch_fetch_upload(monkeypatch, rows={u1: _up()})
+    assert _post(_files_base([u1], persist_corpus=True)).status_code == 202
+    assert rec["persist"] is True
 
 
 def test_files_202_ingests_ready_uploads(monkeypatch):

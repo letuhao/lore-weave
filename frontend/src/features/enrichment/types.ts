@@ -229,6 +229,8 @@ export interface ComposeBody {
   /** Mode C (context): pasted reference text + the author's license assertion. */
   context_text?: string;
   context_license?: ContextLicense;
+  /** Mode C/F: keep the ingested corpus as a curated source (#7) instead of ephemeral. */
+  persist_corpus?: boolean;
   /** Mode F (files): uploaded file ids (from POST /uploads) to ingest as grounding. */
   upload_ids?: string[];
   /** Mode B (intent): the original free-text intent (audit; the run uses `target`). */

@@ -264,6 +264,18 @@ describe('ComposePanel (mode C — context)', () => {
     expect(composeMock.mock.calls[0][0].target.requested_dimensions).toBeUndefined();
   });
 
+  it('sends persist_corpus when "save to sources" is checked (#7)', async () => {
+    renderPanel();
+    toContext();
+    fireEvent.change(screen.getByTestId('compose-target-name'), { target: { value: '蓬萊' } });
+    fireEvent.change(screen.getByTestId('compose-context-text'), { target: { value: '東海仙山。' } });
+    await fillModels();
+    // default: not persisted (ephemeral)
+    fireEvent.click(screen.getByTestId('compose-persist-corpus'));
+    fireEvent.click(screen.getByTestId('compose-run'));
+    expect(composeMock.mock.calls[0][0].persist_corpus).toBe(true);
+  });
+
   it('a copyrighted license disables Run (default-deny in the UI)', async () => {
     renderPanel();
     toContext();
