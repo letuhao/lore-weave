@@ -25,9 +25,13 @@ import { knowledgeApi } from '../api';
 interface Props {
   projectId: string | null;
   memoryMode?: 'no_project' | 'static' | 'degraded';
+  /** Narrow host (e.g. the editor AI panel): render icon-only so the chip
+   *  doesn't crowd out the header action buttons. Full label stays in the
+   *  popover. */
+  compact?: boolean;
 }
 
-export function MemoryIndicator({ projectId, memoryMode }: Props) {
+export function MemoryIndicator({ projectId, memoryMode, compact }: Props) {
   const { t } = useTranslation('knowledge');
   const [open, setOpen] = useState(false);
   const { accessToken } = useAuth();
@@ -58,7 +62,7 @@ export function MemoryIndicator({ projectId, memoryMode }: Props) {
     : t('indicator.modes.global');
 
   return (
-    <div className="relative">
+    <div className="relative min-w-0">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -66,7 +70,7 @@ export function MemoryIndicator({ projectId, memoryMode }: Props) {
         aria-label={t('indicator.label')}
         aria-expanded={open ? 'true' : 'false'}
         className={cn(
-          'flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors',
+          'flex min-w-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors',
           isDegraded
             ? 'border-warning/40 bg-warning/10 text-warning hover:bg-warning/15'
             : isProject
@@ -74,11 +78,11 @@ export function MemoryIndicator({ projectId, memoryMode }: Props) {
               : 'border-border bg-secondary/40 text-muted-foreground hover:bg-secondary',
         )}
       >
-        <Brain className="h-3 w-3" />
-        <span className="max-w-[120px] truncate">{label}</span>
+        <Brain className="h-3 w-3 shrink-0" />
+        {!compact && <span className="max-w-[120px] truncate">{label}</span>}
         {isDegraded && (
-          <span className="ml-1 rounded-sm bg-warning/20 px-1 py-0.5 text-[9px] font-semibold uppercase">
-            {t('indicator.modes.degraded')}
+          <span className={cn('rounded-sm bg-warning/20 px-1 py-0.5 text-[9px] font-semibold uppercase', !compact && 'ml-1')}>
+            {compact ? '!' : t('indicator.modes.degraded')}
           </span>
         )}
       </button>

@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { ThinkingBlock } from './ThinkingBlock';
 import { AudioReplayPlayer } from './AudioReplayPlayer';
 import { ToolCallIndicator } from './ToolCallIndicator';
+import { ProposeEditCard } from './ProposeEditCard';
 import { useMessageFeedback } from '../hooks/useMessageFeedback';
 import { firePasteToEditor } from '../utils/pasteToEditor';
 import type { ToolCallRecord } from '../types';
@@ -126,8 +127,21 @@ export function AssistantMessage({
       </div>
 
       {/* K21-C (D2): memory tool calls used in this reply. Renders
-          nothing when toolCalls is empty/null. */}
-      {toolCalls && toolCalls.length > 0 && <ToolCallIndicator toolCalls={toolCalls} />}
+          nothing when toolCalls is empty/null. ARCH-1 C6: a pending
+          propose_edit (frontend write-back tool) renders as an interactive
+          Apply/Dismiss card instead of a passive chip. */}
+      {toolCalls && toolCalls.length > 0 && (() => {
+        const proposals = toolCalls.filter((tc) => tc.pending && tc.tool === 'propose_edit');
+        const rest = toolCalls.filter((tc) => !(tc.pending && tc.tool === 'propose_edit'));
+        return (
+          <>
+            {rest.length > 0 && <ToolCallIndicator toolCalls={rest} />}
+            {proposals.map((tc) => (
+              <ProposeEditCard key={tc.toolCallId ?? tc.tool} record={tc} />
+            ))}
+          </>
+        );
+      })()}
 
       {/* Audio replay (voice pipeline V2) */}
       {!isStreaming && sessionId && messageId && voiceTtsSentences && voiceTtsSentences > 0 && (
@@ -136,10 +150,10 @@ export function AssistantMessage({
 
       {/* Token footer + action buttons */}
       {!isStreaming && (
-        <div className="mt-1.5 flex items-center justify-between opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
+        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-y-1 opacity-0 transition-opacity group-hover:opacity-100 max-md:opacity-100">
           {/* Token counts + timing */}
           {hasMetrics && (
-            <div className="flex items-center gap-2 font-mono text-[10px] text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px] text-muted-foreground">
               {hasReasoning ? (
                 <span className="flex items-center gap-0.5 text-[#a78bfa]">
                   <Brain className="h-2.5 w-2.5" />

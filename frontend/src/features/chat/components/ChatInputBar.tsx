@@ -109,8 +109,8 @@ export function ChatInputBar({
   const hasContext = contextItems.length > 0;
 
   return (
-    <div className="shrink-0 border-t border-border bg-card px-8 py-4">
-      <div className="mx-auto max-w-full px-4 md:max-w-[720px] 2xl:max-w-[900px]">
+    <div className="shrink-0 border-t border-border bg-card px-4 py-3">
+      <div className="mx-auto min-w-0 max-w-full md:max-w-[720px] 2xl:max-w-[900px]">
         {/* Format pills */}
         <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
           <span className="text-[10px] text-muted-foreground">{t('input.format')}</span>
@@ -177,8 +177,8 @@ export function ChatInputBar({
           />
 
           {/* Bottom row: attach + mode toggle + send */}
-          <div className="flex items-center justify-between px-2 pb-2">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-y-1.5 px-2 pb-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
               {/* Attach context button */}
               <button
                 type="button"
