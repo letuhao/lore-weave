@@ -78,6 +78,7 @@ def _resolve() -> tuple[Callable[..., float], Callable[[float], str]]:
         try:
             spec.loader.exec_module(mod)
         except Exception:  # noqa: BLE001 — e.g. the path module re-exports the SDK
+            sys.modules.pop(mod_name, None)  # don't leave a poisoned partial module
             continue        # which isn't installed here → use the vendored fallback
         return mod._fleiss_kappa, mod._kappa_interpretation
 
