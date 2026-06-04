@@ -60,3 +60,7 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_lore_enrich
 -- Learning (Axis-1 correction capture; tables created by learning-service migrate.py)
 SELECT 'CREATE DATABASE loreweave_learning'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_learning')\gexec
+
+-- Composition (LOOM co-writer; tables created by composition-service migrate.py M1)
+SELECT 'CREATE DATABASE loreweave_composition'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_composition')\gexec
