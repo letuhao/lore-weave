@@ -1,0 +1,11 @@
+id: publisher-smoke
+description: "L2 event-sourcing spine — outbox row → pgsource (FOR UPDATE SKIP LOCKED) → redis XADD → published=TRUE, end-to-end against the live foundation stack (DEFERRED 054)."
+invariant: I-event-spine
+kind: live-probe
+command: ["bash", "scripts/publisher-live-smoke.sh"]
+# foundation-stack = the foundation-dev Postgres is reachable. On a bare CI
+# runner (S1 does not boot the live stack — open item O1) this is unmet, so the
+# probe degrades to notrun rather than running compose-up.
+requires: ["foundation-stack"]
+skip_when: []
+fail_closed_on_setup_error: false

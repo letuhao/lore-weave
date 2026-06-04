@@ -1,0 +1,45 @@
+name: conformance-ci
+
+# S1 of the foundation runtime test plan (docs/specs/2026-06-04-foundation-runtime-test-plan.md).
+#
+# Runs the conformance runner — the uniform verdict contract {pass|fail|notrun|skip}
+# that every later slice (C/C2/C3 oracles, fault matrix, perf gate) reports into.
+# Kept separate from foundation-ci.yml so the conformance results history (JSONL)
+# is its own concern (plan §2.5, §10).
+#
+# The gate fails ONLY on a `fail` verdict. Live-probes that need the foundation
+# stack degrade to `notrun` on this bare runner (S1 does not boot the live stack
+# — open item O1), so a green run here means "nothing failed", not "everything ran".
+
+on:
+  push:
+    branches: [main, "mmo-rpg/**"]
+  pull_request:
+    branches: [main, "mmo-rpg/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    name: Conformance runner
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tests/conformance
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: runner unit tests
+        run: go test ./...
+      - name: run conformance suite
+        run: go run ./cmd/conformance -catalog ./catalog
+      - name: upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-results
+          path: tests/conformance/results/
+          if-no-files-found: warn
