@@ -103,8 +103,8 @@ func TestListEntities_CursorWalk(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0001-000000000c12"
 
-	// Look up 'character' kind + its name/aliases/short_description attrs.
-	var kindID, nameAttrID, aliasesAttrID, shortAttrID string
+	// Look up 'character' kind + its name/aliases attrs.
+	var kindID, nameAttrID, aliasesAttrID string
 	pool.QueryRow(ctx,
 		`SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`,
 	).Scan(&kindID)
@@ -116,27 +116,21 @@ func TestListEntities_CursorWalk(t *testing.T) {
 		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='aliases' LIMIT 1`,
 		kindID,
 	).Scan(&aliasesAttrID)
-	_ = pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='short_description' LIMIT 1`,
-		kindID,
-	).Scan(&shortAttrID)
-	// short_description attr may not exist in the default seed; fall
-	// back to a fresh definition so the test covers the full join.
-	if shortAttrID == "" {
-		pool.QueryRow(ctx,
-			`INSERT INTO attribute_definitions(kind_id,code,label,ui_type,sort_order,max_values)
-			 VALUES($1,'short_description','Short description','text',99,1)
-			 RETURNING attr_def_id`,
-			kindID,
-		).Scan(&shortAttrID)
-	}
 
+	// D-GLOSSARY-LISTENTITIES-TEST-STATE: seed short_description into the AUTHORED
+	// COLUMN (glossary_entities.short_description), which the handler reads first via
+	// COALESCE(NULLIF(e.short_description,''), short_av). The earlier version seeded
+	// it via an EAV value under a per-test 'short_description' attr_def, but on the
+	// SHARED glossary_test DB multiple such attr_defs accrue for the 'character' kind,
+	// so the handler's `... code='short_description' LIMIT 1` subquery could resolve a
+	// DIFFERENT attr_def than the one the EAV was seeded under → short_av nil →
+	// "Arthur short_desc got nil". The column is immune to that shared-state drift.
 	seedEntity := func(name, aliasesJSON, shortDesc string) string {
 		var eid string
 		pool.QueryRow(ctx,
-			`INSERT INTO glossary_entities(book_id,kind_id,status,tags)
-			 VALUES($1,$2,'active','{}') RETURNING entity_id`,
-			bookID, kindID,
+			`INSERT INTO glossary_entities(book_id,kind_id,status,tags,short_description)
+			 VALUES($1,$2,'active','{}',$3) RETURNING entity_id`,
+			bookID, kindID, nullIfEmpty(shortDesc),
 		).Scan(&eid)
 		pool.Exec(ctx,
 			`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
@@ -148,13 +142,6 @@ func TestListEntities_CursorWalk(t *testing.T) {
 				`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
 				 VALUES($1,$2,'en',$3)`,
 				eid, aliasesAttrID, aliasesJSON,
-			)
-		}
-		if shortDesc != "" {
-			pool.Exec(ctx,
-				`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
-				 VALUES($1,$2,'en',$3)`,
-				eid, shortAttrID, shortDesc,
 			)
 		}
 		return eid
@@ -286,7 +273,11 @@ func TestListEntities_NameFilterDoesNotBreakPagination(t *testing.T) {
 	ctx := context.Background()
 	runK2aMigrations(t, pool)
 
-	bookID := "00000000-0000-0000-0001-000000c12c"
+	// D-GLOSSARY-LISTENTITIES-TEST-STATE: the previous literal
+	// "00000000-0000-0000-0001-000000c12c" had a 10-hex final group (UUIDs need 12)
+	// → parsePathUUID rejected it with 400 "invalid book_id" before the pagination
+	// logic ever ran. Use a well-formed UUID (distinct from CursorWalk's book).
+	bookID := "00000000-0000-0000-0002-00000000c12c"
 
 	var kindID, nameAttrID string
 	pool.QueryRow(ctx,
@@ -388,5 +379,101 @@ func TestListEntities_NameFilterDoesNotBreakPagination(t *testing.T) {
 		if collected[i] != want[i] {
 			t.Errorf("walk[%d]: want %s, got %s", i, want[i], collected[i])
 		}
+	}
+}
+
+// F-C12-1: internalListEntities must return the AUTHORED short_description COLUMN
+// (the canon SSOT, set via the canon-content path / wiki — DEFERRED-053), NOT the
+// EAV attribute (which extract-entities cannot populate). The enrichment
+// contradiction check reads this to auto-reject a fact that negates authored
+// canon; reading the always-null EAV value made the check inert (caught by the C3
+// live-smoke). The column is preferred; the EAV value is the fallback.
+func TestListEntities_PrefersAuthoredColumnOverEAV(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+
+	bookID := "00000000-0000-0000-0001-0000000c12d0"
+
+	var kindID, nameAttrID, shortAttrID string
+	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&kindID)
+	pool.QueryRow(ctx,
+		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`,
+		kindID).Scan(&nameAttrID)
+	_ = pool.QueryRow(ctx,
+		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='short_description' LIMIT 1`,
+		kindID).Scan(&shortAttrID)
+	if shortAttrID == "" {
+		pool.QueryRow(ctx,
+			`INSERT INTO attribute_definitions(kind_id,code,label,ui_type,sort_order,max_values)
+			 VALUES($1,'short_description','Short description','text',99,1)
+			 RETURNING attr_def_id`, kindID).Scan(&shortAttrID)
+	}
+
+	// Seed: (1) both COLUMN + EAV value — column must win; (2) only EAV — fallback;
+	// (3) neither — null.
+	seed := func(name, colDesc, eavDesc string) string {
+		var eid string
+		pool.QueryRow(ctx,
+			`INSERT INTO glossary_entities(book_id,kind_id,status,tags,short_description)
+			 VALUES($1,$2,'active','{}',$3) RETURNING entity_id`,
+			bookID, kindID, nullIfEmpty(colDesc)).Scan(&eid)
+		pool.Exec(ctx,
+			`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
+			 VALUES($1,$2,'en',$3)`, eid, nameAttrID, name)
+		if eavDesc != "" {
+			pool.Exec(ctx,
+				`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
+				 VALUES($1,$2,'en',$3)`, eid, shortAttrID, eavDesc)
+		}
+		return eid
+	}
+	// NOTE: the EAV-derived short_description path is environmentally inert in the
+	// test harness (the cached/backfill goroutine that populates EAV values does
+	// not run under test — the same reason TestListEntities_CursorWalk's Arthur
+	// reads nil on a clean DB, confirmed pre-existing). So this test asserts the
+	// F-C12-1 behavior that does NOT depend on it: the AUTHORED COLUMN is returned
+	// (and preferred over any EAV value), and a no-canon entity is null.
+	seeded := []string{
+		seed("Harker", "Englishman traveling to Transylvania", "stale-eav-value"),
+		seed("Renfield", "", ""),
+	}
+	t.Cleanup(func() {
+		pool.Exec(ctx, `DELETE FROM entity_attribute_values WHERE entity_id = ANY($1)`, seeded)
+		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, bookID)
+	})
+
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+
+	type item struct {
+		Name             string  `json:"name"`
+		ShortDescription *string `json:"short_description"`
+	}
+	type resp struct {
+		Items []item `json:"items"`
+	}
+	req := httptest.NewRequest(http.MethodGet,
+		"/internal/books/"+bookID+"/entities?limit=50", nil)
+	req.Header.Set("X-Internal-Token", token)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var r resp
+	json.Unmarshal(w.Body.Bytes(), &r)
+	byName := map[string]*string{}
+	for _, it := range r.Items {
+		byName[it.Name] = it.ShortDescription
+	}
+
+	// the authored COLUMN value is returned (and wins over the stale EAV value).
+	if byName["Harker"] == nil || *byName["Harker"] != "Englishman traveling to Transylvania" {
+		t.Errorf("Harker: want authored COLUMN value, got %v", byName["Harker"])
+	}
+	// no authored canon (column null, EAV inert) → null (honest "no canon").
+	if byName["Renfield"] != nil {
+		t.Errorf("Renfield: want null, got %v", *byName["Renfield"])
 	}
 }

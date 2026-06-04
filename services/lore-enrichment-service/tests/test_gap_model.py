@@ -86,12 +86,43 @@ def test_required_vs_optional_split() -> None:
     assert optional == {Dimension.FEATURES, Dimension.INHABITANTS}
 
 
-def test_only_location_is_modeled_no_speculative_kinds() -> None:
-    # Extensible enum, but only LOCATION has a dimension table this cycle.
-    assert set(DIMENSIONS_BY_KIND) == {EntityKind.LOCATION}
-    assert EntityKind.CHARACTER not in DIMENSIONS_BY_KIND
-    assert EntityKind.ITEM not in DIMENSIONS_BY_KIND
-    assert EntityKind.FACTION not in DIMENSIONS_BY_KIND
+def test_all_builtin_kinds_modeled_and_unknown_falls_back_to_generic() -> None:
+    # De-bias C1 (KB3): every built-in kind has a table; an unknown kind falls
+    # back to GENERIC (never KeyError / skip).
+    from app.gaps.model import GENERIC_DIMENSIONS, dimensions_for
+
+    for kind in (EntityKind.LOCATION, EntityKind.CHARACTER, EntityKind.ITEM,
+                 EntityKind.FACTION, EntityKind.EVENT):
+        assert kind in DIMENSIONS_BY_KIND
+        assert len(dimensions_for(kind)) >= 3
+    # unknown / unmodeled kind → GENERIC, no raise
+    assert dimensions_for("deity") is GENERIC_DIMENSIONS
+    assert dimensions_for("location") is LOCATION_DIMENSIONS
+
+
+def test_gap_ranking_path_never_keyerrors_for_any_kind() -> None:
+    # REGRESSION (LE-PROD slice A): the original bug — 3 live jobs failed with
+    # `KeyError: <EntityKind.CHARACTER: 'character'>` — was a Gap built for a kind
+    # the (then LOCATION-only) DIMENSIONS_BY_KIND had no entry for, hit via the
+    # ranking/method path (rank_score → _dimension_table → DIMENSIONS_BY_KIND[kind]).
+    # De-bias C1 switched that to `.get(kind, GENERIC)`; this pins the WHOLE
+    # transitive path (the actual failure site, not just dimensions_for) for every
+    # built-in kind AND an unmodeled one, so the bracket-index can never creep back.
+    kinds = ["location", "character", "item", "faction", "event", "deity", "概念"]
+    for kind in kinds:
+        g = Gap(
+            entity_kind=kind,
+            canonical_name="测试实体",
+            mention_count=7,
+            present_dimensions=(),  # nothing present → every dim missing
+            missing_dimensions=tuple(s.dimension for s in DIMENSIONS_BY_KIND.get(kind, ()))
+            or ("description",),  # unknown kind: a GENERIC dim id (table is GENERIC)
+        )
+        # none of these may raise KeyError for any kind (the historical failure)
+        assert rank_score(g) > 0.0
+        assert g.missing_required_count() >= 0
+        assert 0.0 <= g.completeness() <= 1.0
+        assert rank_gaps([g])[0].gap is g
 
 
 def test_dimension_spec_is_frozen_and_weights_positive() -> None:
@@ -330,3 +361,68 @@ def test_salience_factor_monotonic_and_bounded_below() -> None:
     assert _salience_factor(55) > _salience_factor(28) > _salience_factor(1)
     # pure log function — no surprises.
     assert _salience_factor(55) == 1.0 + math.log1p(55.0) / math.log1p(55.0)
+
+
+# ── de-bias C1: resolve_dimensions (localization + overrides) ───────────────────
+
+
+def test_resolve_dimensions_localizes_labels_by_language() -> None:
+    from app.gaps.model import resolve_dimensions
+
+    zh = {s.dimension: s.label for s in resolve_dimensions("character", language="zh")}
+    en = {s.dimension: s.label for s in resolve_dimensions("character", language="en")}
+    assert zh["appearance"] == "外貌"          # zh default unchanged
+    assert en["appearance"] == "Appearance"     # localized
+    # ids (the stable identity) are language-invariant
+    assert set(zh) == set(en)
+    # auto / unknown language → the zh default labels (Fengshen-native, no regression)
+    auto = {s.dimension: s.label for s in resolve_dimensions("character", language="auto")}
+    assert auto["appearance"] == "外貌"
+
+
+def test_resolve_dimensions_unknown_kind_is_generic() -> None:
+    from app.gaps.model import GENERIC_DIMENSIONS, resolve_dimensions
+
+    specs = resolve_dimensions("organization", language="zh")
+    assert {s.dimension for s in specs} == {s.dimension for s in GENERIC_DIMENSIONS}
+
+
+def test_resolve_dimensions_applies_overrides() -> None:
+    from app.gaps.model import resolve_dimensions
+
+    ov = {
+        "character": {
+            "remove": ["background"],
+            "relabel": {"appearance": "外观"},
+            "reweight": {"abilities": 5.0},
+            "add": [{"id": "implants", "label": "义体", "required": True, "weight": 3.0,
+                     "payload_shape": "prose: cybernetic loadout"}],
+        }
+    }
+    specs = resolve_dimensions("character", language="zh", overrides=ov)
+    by_id = {s.dimension: s for s in specs}
+    assert "background" not in by_id            # removed
+    assert by_id["appearance"].label == "外观"   # relabeled
+    assert by_id["abilities"].weight == 5.0      # reweighted
+    assert by_id["implants"].label == "义体"      # added
+    assert by_id["implants"].required is True
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"character": {"remove": "background"}},        # str, not list
+        {"character": {"relabel": ["x"]}},              # list, not dict
+        {"character": {"reweight": {"abilities": "x"}}},# non-numeric weight
+        {"character": {"add": "implants"}},             # str, not list
+        {"character": "garbage"},                       # not a dict
+        "not-a-dict",                                   # whole override malformed
+    ],
+)
+def test_resolve_dimensions_malformed_override_never_crashes(bad) -> None:
+    # de-bias C1 (#1): a malformed override (e.g. from an LLM suggestion) must NEVER
+    # crash resolve_dimensions — it falls back to the base table.
+    from app.gaps.model import resolve_dimensions
+
+    specs = resolve_dimensions("character", language="zh", overrides=bad)
+    assert len(specs) >= 3  # base table preserved, no exception

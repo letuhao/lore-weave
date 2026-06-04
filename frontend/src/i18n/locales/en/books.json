@@ -36,6 +36,7 @@
       "chapters": "Chapters",
       "translation": "Translation",
       "glossary": "Glossary",
+      "enrichment": "Enrichment",
       "wiki": "Wiki",
       "sharing": "Sharing",
       "settings": "Settings"
@@ -137,6 +138,7 @@
     "kind_count_other": "{{count}} kinds",
     "extract": "Extract",
     "genres": "Genres",
+    "unknown": "Unknown kinds",
     "kinds": "Kinds",
     "new_entity": "New Entity",
     "no_kinds": "No kinds available",

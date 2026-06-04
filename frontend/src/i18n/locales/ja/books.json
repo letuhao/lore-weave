@@ -36,6 +36,7 @@
       "chapters": "章",
       "translation": "翻訳",
       "glossary": "用語集",
+      "enrichment": "拡充",
       "wiki": "Wiki",
       "sharing": "共有",
       "settings": "設定"
@@ -137,6 +138,7 @@
     "kind_count_other": "{{count}}種類",
     "extract": "抽出",
     "genres": "ジャンル",
+    "unknown": "未分類の種別",
     "kinds": "種類",
     "new_entity": "新しいエンティティ",
     "no_kinds": "利用可能な種類がありません",

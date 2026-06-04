@@ -113,6 +113,39 @@ async def test_charge_or_pause_uncapped_never_pauses() -> None:
     assert g.spent == pytest.approx(5000.0)
 
 
+# ── record_actual: unconditional post-call reconcile (C1, DEFERRED-052) ───────
+def test_record_actual_trues_up_unconditionally_even_past_cap() -> None:
+    """The work already ran; the real spend is recorded even if it dips past the
+    cap (one-gap overshoot). The NEXT would_exceed/charge then guards the cap."""
+    g = CostGuardrail(cap=10.0)
+    assert g.charge(8.0) is True  # pre-charged estimate
+    g.record_actual(5.0)  # actual was 13 → overshoots the cap by 3
+    assert g.spent == pytest.approx(13.0)
+    assert g.would_exceed(0.01) is True  # the next gap is now correctly blocked
+
+
+def test_record_actual_negative_refunds_headroom() -> None:
+    g = CostGuardrail(cap=10.0)
+    g.charge(8.0)  # pre-charged estimate of 8
+    g.record_actual(-3.0)  # actual was only 5 → refund 3
+    assert g.spent == pytest.approx(5.0)
+    assert g.remaining == pytest.approx(5.0)
+
+
+def test_record_actual_floors_at_zero() -> None:
+    g = CostGuardrail(cap=10.0)
+    g.charge(2.0)
+    g.record_actual(-100.0)  # a refund larger than spent floors at 0, never negative
+    assert g.spent == pytest.approx(0.0)
+
+
+def test_record_actual_uncapped_still_tracks_spend() -> None:
+    g = CostGuardrail(cap=None)
+    g.charge(50.0)
+    g.record_actual(25.0)
+    assert g.spent == pytest.approx(75.0)
+
+
 @pytest.mark.asyncio
 async def test_pause_persists_through_state_machine() -> None:
     # integration: the pause uses the real state machine + a persistence sink,

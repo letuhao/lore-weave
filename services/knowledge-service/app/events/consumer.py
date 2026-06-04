@@ -72,8 +72,21 @@ class EventConsumer:
 
     async def _ensure_redis(self) -> aioredis.Redis:
         if self._redis is None:
+            # socket_timeout=None is REQUIRED for the blocking XREADGROUP
+            # loop below. redis-py 8.0 defaults AbstractConnection's
+            # socket_timeout to 5s; with our BLOCK_MS=5000 the per-read
+            # socket timeout races the server-side BLOCK and wins on every
+            # cycle, raising redis.exceptions.TimeoutError ("Timeout reading
+            # from redis:6379") and wedging the consumer so it processes
+            # ZERO events on all streams. A blocking consumer must use a
+            # connection whose read timeout never pre-empts the BLOCK.
+            # Invariant: socket_timeout is None (unbounded) OR strictly
+            # greater than BLOCK_MS/1000. We choose None — the least
+            # surprising option for a long-poll consumer. Real connection
+            # failures still surface as ConnectionError (separate path);
+            # socket_connect_timeout is unaffected.
             self._redis = aioredis.from_url(
-                self._redis_url, decode_responses=True,
+                self._redis_url, decode_responses=True, socket_timeout=None,
             )
         return self._redis
 

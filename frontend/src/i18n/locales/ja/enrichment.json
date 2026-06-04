@@ -1,0 +1,319 @@
+{
+  "header": "拡充レビュー",
+  "subtitle": "記述の不足したエンティティ向けにAIが提案した設定を確認し、承認したものをこの本の正典に昇格します。拡充された下書きは昇格するまで非公開のバリアントです。",
+  "untitled": "無題",
+  "panel": { "compose": "作成", "proposals": "提案", "gaps": "不足", "sources": "出典", "jobs": "ジョブ", "settings": "プロファイル" },
+  "compose": {
+    "title": "拡充を作成",
+    "subtitle": "あなたのやり方で開始 — 書いた下書きを拡張するか、検出された不足を埋めます。作成したものは昇格するまで拡充バリアントです。",
+    "soon": "近日",
+    "mode_soon": "後のスライスで対応予定。",
+    "mode": {
+      "draft": "下書きから",
+      "gap": "不足を埋める",
+      "intent": "アイデアから",
+      "context": "コンテキストを貼付",
+      "files": "ファイルを添付"
+    },
+    "draft": {
+      "label": "あなたの下書き",
+      "placeholder": "このエンティティの下書きを貼付・記入してください。本の各次元へ、本の語り口で拡張されます…",
+      "expand_mode": "拡張方法",
+      "rewrite": "書き直す",
+      "rewrite_hint": "本の語り口に合わせて書き直し、意味を保持しつつ全次元を埋めます。",
+      "add_only": "追加のみ",
+      "add_only_hint": "あなたの文章を逐語的に保持し、不足する次元のみ追加します。"
+    },
+    "context": {
+      "label": "参考テキスト",
+      "placeholder": "このエンティティに関する参考テキストを貼り付けてください。グラウンディングとして取り込まれ、そこから（作品の声で）補強が生成されます。",
+      "license_label": "ソースのライセンス",
+      "license": {
+        "public_domain": "パブリックドメイン",
+        "licensed": "この用途に許諾済み",
+        "owned": "自分が所有/執筆",
+        "copyrighted": "著作権あり（使用不可）"
+      },
+      "copyrighted_warning": "著作権で保護された素材は取り込めません。パブリックドメイン・許諾済み・自作のテキストを使用してください。",
+      "responsibility": "このテキストの権利についてはあなたの責任です。法的助言ではありません。"
+    },
+    "files": {
+      "license_label": "ファイルのライセンス",
+      "dropzone": "ここにファイルをドロップ、またはクリックして選択",
+      "accept": ".txt .md .pdf .docx .epub — スキャンPDFはOCRされます",
+      "ready": "{{chars}} 文字{{ocr}}",
+      "ocr": "OCR",
+      "processing": "抽出中…",
+      "failed": "失敗",
+      "responsibility": "これらのファイルの権利を有しています（自己所有／許諾済み／パブリックドメイン）。法的助言ではありません。"
+    },
+    "intent": {
+      "label": "何を作成しますか？",
+      "placeholder": "あなたの言葉で記述してください — 例：「王の建国を助ける賢い軍師」。",
+      "resolve": "解決",
+      "resolving": "解決中…",
+      "resolve_hint": "下に対象を提案します — 確認・編集してから実行してください。"
+    },
+    "target": {
+      "existing": "既存エンティティ",
+      "new": "新規エンティティ",
+      "name": "名前",
+      "name_placeholder": "例: 碧遊宮",
+      "kind": "種類",
+      "existing_hint": "この名前の既存の用語集エンティティを拡充します。",
+      "new_hint": "新規エンティティを作成 — 提案を昇格するまで用語集には何も書き込まれません。"
+    },
+    "kind": {
+      "character": "キャラクター",
+      "location": "場所",
+      "item": "アイテム",
+      "faction": "勢力",
+      "event": "イベント",
+      "generic": "汎用"
+    },
+    "config": {
+      "gen_model": "生成モデル",
+      "embed_model": "埋め込みモデル",
+      "select_model": "選択…",
+      "max_spend": "上限額 (USD)",
+      "no_cap": "上限なし",
+      "top_k": "Top-K",
+      "technique": "手法",
+      "technique_opt": { "retrieval": "検索 (P1)", "fabrication": "創作 (P2)", "recook": "再構成 (P3)" },
+      "eval_gate_warning": "P2/P3 は評価ゲート合格が必要 — 合格するまでジョブは拒否されます。",
+      "dimensions": { "auto": "自動 — 不足している全ディメンションを補完" }
+    },
+    "safety": "① ライセンス · ② 抽象化 · ③ 再生成ガード · ④ あなたが昇格 — 拡充は昇格するまでバリアントのままです。",
+    "run_hint": "バックグラウンドジョブとして実行 — 完了すると提案タブに表示されます。",
+    "save_corpus": "ソースに保存（保持 — 自動削除しない）",
+    "run": "下書きを作成",
+    "composing": "開始中…",
+    "enqueued": "拡充を開始しました — 提案タブに表示されます。"
+  },
+  "h0": {
+    "marker": "異本",
+    "tooltip": "拡充されたバリアント — 昇格するまで正典ではありません。"
+  },
+  "technique": {
+    "template": "テンプレート",
+    "retrieval": "検索",
+    "fabrication": "創作",
+    "recook": "再構成"
+  },
+  "review": {
+    "proposed": "提案済み",
+    "author_reviewing": "レビュー中",
+    "approved": "承認済み",
+    "promoted": "昇格済み",
+    "rejected": "却下"
+  },
+  "verify": {
+    "none": "検証注記なし。",
+    "clean": "検証クリーン — 矛盾・時代錯誤・インジェクション・出典の再生はありません。",
+    "degraded": "検証が低下 — 正典が利用できず矛盾を完全に確認できませんでした。",
+    "status": {
+      "verified_clean": "検証済み",
+      "needs_review": "要確認",
+      "quarantined": "隔離",
+      "degraded": "低下",
+      "auto_rejected": "自動却下"
+    },
+    "flag": {
+      "contradiction": "正典と矛盾",
+      "anachronism": "時代錯誤",
+      "injection": "プロンプトインジェクション",
+      "regurgitation": "出典の再生"
+    },
+    "severity": { "low": "低", "medium": "中", "high": "高" }
+  },
+  "prov": {
+    "technique": "技法",
+    "confidence": "信頼度",
+    "origin": "由来",
+    "entity_kind": "種別",
+    "model": "モデル",
+    "recook_abstracted": "抽象化された事実から再構成 — 出典の文章ではなく中立的な事実の箇条書きから生成（②）。",
+    "grounding": "根拠出典",
+    "skipped": "除外（無許諾）出典"
+  },
+  "license": {
+    "public_domain": "パブリックドメイン",
+    "public-domain": "パブリックドメイン",
+    "licensed": "許諾あり",
+    "unlicensed": "無許諾",
+    "copyrighted": "著作権あり",
+    "restricted": "制限あり",
+    "unknown": "不明"
+  },
+  "detail": {
+    "h0_note": "これは拡充されたバリアントです（origin=enrichment, confidence<1.0）。昇格して初めて正典になります。",
+    "h0_banner": "これは拡充されたバリアントです — 元の正典ではありません。昇格して初めて正典になります。",
+    "dimensions": "{{count}} 次元",
+    "show_more": "+ さらに {{count}} 件表示",
+    "show_less": "折りたたむ",
+    "content": "生成された設定",
+    "verify": "検証",
+    "provenance": "由来と出典"
+  },
+  "card": {
+    "confidence": "信頼 {{value}}",
+    "summary": "{{dims}} 次元 · {{sources}} 出典に基づく",
+    "advisory": "⚠ {{count}} 件の注意フラグ",
+    "auto_rejected": "自動却下"
+  },
+  "proposals": {
+    "search": "提案を検索…",
+    "status_all": "すべて",
+    "technique": "技法",
+    "project": "プロジェクト",
+    "all_projects": "すべて",
+    "none": "一致する提案がありません。",
+    "error": "提案を読み込めませんでした。もう一度お試しください。",
+    "empty": {
+      "title": "まだ提案がありません",
+      "description": "不足を検出し、auto-enrichでこの本の提案を生成します。"
+    }
+  },
+  "actions": {
+    "promote": "正典へ昇格",
+    "approve": "承認",
+    "edit": "編集",
+    "reject": "却下",
+    "reject_reason": "却下の理由（任意）",
+    "reject_confirm": "却下を確定",
+    "retract": "正典から取り消す",
+    "retract_confirm_title": "正典から取り消しますか？",
+    "retract_confirm_desc": "この本の正典から拡充の補足を取り除きます。元のエンティティは保持されます — 後で再昇格できます。",
+    "author_only": "この本の著者のみが拡充をレビューし昇格できます。",
+    "save": "保存",
+    "cancel": "キャンセル",
+    "already_promoted": "正典へ昇格済み。",
+    "rejected_note": "この提案は却下されました。",
+    "approved": "提案を承認しました",
+    "rejected": "提案を却下しました",
+    "edited": "提案を更新しました",
+    "promoted": "正典へ昇格しました",
+    "retracted": "取り消しました"
+  },
+  "promote": {
+    "title": "正典へ昇格",
+    "h0": "この拡充バリアントはこの本の正典になります。恒久的な由来マーカーは保持されるため、元は拡充であったことが追跡可能なままです。",
+    "responsibility": "昇格すると、あなたは著者としてこの内容を採用し、その元となった出典の権利を保有していることを確認します。法的助言ではありません。",
+    "confirm": "昇格",
+    "promoting": "昇格中…"
+  },
+  "gaps": {
+    "title": "不足",
+    "subtitle": "この本の用語集で記述が不足したエンティティを重要度順に表示。検出後、選択した不足を背景ジョブとしてauto-enrichします。",
+    "detect": "不足を検出",
+    "detect_hint": "「不足を検出」を押して本の用語集カバレッジをスキャンします。",
+    "none": "不足は検出されませんでした — すべてのエンティティが十分に記述されています。",
+    "extract_first": "エンティティがまだありません — まずこの本を抽出してください（ナレッジタブ）。拡充はプラットフォームが既に把握しているエンティティの不足を埋めます。",
+    "technique": "技法",
+    "gen_model": "生成モデル",
+    "embed_model": "埋め込みモデル",
+    "select_model": "選択…",
+    "max_gaps": "最大件数",
+    "max_spend": "上限支出（USD）",
+    "no_cap": "上限なし",
+    "top_k": "Top-K",
+    "gate_note": "P2 創作 / P3 再構成 は評価ゲートの通過が必要（多様な審査）。",
+    "auto_enrich": "Auto-enrich",
+    "enrich_one": "拡充",
+    "enrich_one_hint": "下で生成＋埋め込みモデルを選択して拡充します。",
+    "enriching": "キュー登録中…",
+    "enqueued": "{{count}} 件の不足を拡充のためにキュー登録しました",
+    "col": { "entity": "エンティティ", "kind": "種別", "missing": "不足の次元", "rank": "順位", "action": "操作" }
+  },
+  "sources": {
+    "title": "出典",
+    "subtitle": "検索／再構成用のライセンスタグ付きコーパス。",
+    "register": "出典を登録",
+    "name": "名前",
+    "kind": "種別",
+    "license": "ライセンス",
+    "embed_model": "埋め込みモデル",
+    "ingest": "テキストを取り込み",
+    "ingesting": "取り込み中…",
+    "ingested": "取り込み完了 — {{count}} チャンクを埋め込みました",
+    "ingest_placeholder": "パブリックドメイン／許諾ありの出典テキストを貼り付けてチャンク化＋埋め込み…",
+    "chunks": "{{count}} チャンク",
+    "embedded": "埋め込み済み ✓",
+    "partial": "{{done}}/{{total}} 埋め込み済み",
+    "none": "登録された出典はまだありません。",
+    "recook_ok": "再構成OK",
+    "recook_refused": "再構成を拒否（既定で拒否）",
+    "default_deny": "既定で拒否：パブリックドメイン／許諾ありの出典のみ再構成できます。登録する出典のライセンスはあなたの責任です。",
+    "registered": "出典を登録しました",
+    "grounded": "グラウンディング完了 — {{count}} 章を埋め込みました"
+  },
+  "ground": {
+    "title": "章からグラウンディング",
+    "subtitle": "特定の章を選んでグラウンディング用コーパスとして埋め込みます — ナレッジRAG＋用語集正典が示す以上の生の文章。テキストはあなた自身のものです。",
+    "no_chapters": "この本にはまだ章がありません。",
+    "showing": "{{total}} 章のうち最初の {{shown}} 章を表示中 — 主要なグラウンディング経路（ナレッジRAG）は全章を既にカバーしています。これは意図的な追加選択用です。",
+    "ingest": "{{count}} 章をグラウンディング",
+    "ingesting": "埋め込み中…"
+  },
+  "jobs": {
+    "none": "拡充ジョブはまだありません。",
+    "resume": "再開",
+    "resumed": "ジョブの再開をキュー登録しました",
+    "col": {
+      "technique": "技法",
+      "status": "状態",
+      "proposals": "提案",
+      "cost": "コスト",
+      "created": "作成"
+    },
+    "status": {
+      "pending": "保留",
+      "estimating": "見積中",
+      "running": "実行中",
+      "paused": "一時停止",
+      "completed": "完了",
+      "failed": "失敗",
+      "cancelled": "キャンセル"
+    },
+    "error": {
+      "gateLocked": "評価ゲートによりロックされています — まず enrichment 評価を実行してください。",
+      "internal": "エンリッチメントが失敗しました（内部エラー）。詳細はホバーで表示。",
+      "insufficientGrounding": "これらのエンティティを裏付けるコーパスがありません — 参考テキストを貼り付けるか Fabrication を使ってください。"
+    }
+  },
+  "settings": {
+    "title": "拡充プロファイル",
+    "subtitle": "生成のバイアスを除くための本ごとの世界観 — 言語・時代・語り口、拡充が埋める次元。変更は新しいジョブに適用されます。",
+    "error": "プロファイルを読み込めませんでした。再試行してください。",
+    "worldview": "世界観",
+    "language": "出力言語",
+    "voice": "語り口",
+    "era_policy": "時代ポリシー",
+    "era_hint": "時代/時代錯誤の制約（例: 「商周以降の技術は不可」）。空欄 = 時代錯誤チェックをオフ。",
+    "markers": "時代錯誤マーカー",
+    "markers_placeholder": "語 | 理由（1行に1つ）",
+    "markers_hint": "1行に「語 | 理由」。時代錯誤チェックが検出する語です。空にするとチェックがオフになります。",
+    "dimensions": "次元のオーバーライド",
+    "kind": { "character": "キャラクター", "location": "場所", "item": "アイテム", "faction": "勢力", "event": "イベント" },
+    "add_dimension": "次元を追加",
+    "no_extra_dims": "この種類の組み込み次元を使用します。",
+    "dim_id": "ID",
+    "dim_label": "ラベル",
+    "dim_weight": "重み",
+    "dim_required": "必須",
+    "remove_dimension": "次元を削除",
+    "hide": "非表示",
+    "suggest": "本から提案",
+    "suggesting": "分析中…",
+    "suggest_model": "提案モデル",
+    "select_model": "モデルを選択…",
+    "suggest_hint": "AIが本のメタデータ＋章を読んで編集可能な下書きを提案します。保存するまで何も保存されません。",
+    "suggested": "下書きを提案しました — 確認して保存してください",
+    "saving": "保存中…",
+    "saved": "プロファイルを保存しました",
+    "source": "ソース: {{source}}",
+    "source_seed": "シード",
+    "source_ai_suggested": "AI提案",
+    "source_manual": "手動"
+  }
+}

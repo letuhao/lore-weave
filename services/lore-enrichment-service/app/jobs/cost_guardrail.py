@@ -99,6 +99,18 @@ class CostGuardrail:
         self._spent += next_cost
         return True
 
+    def record_actual(self, delta: float) -> None:
+        """True up accumulated spend by ``delta`` UNCONDITIONALLY (C1 reconcile).
+
+        Unlike :meth:`charge`, this never refuses: the work already ran, so the
+        REAL spend is recorded even if it dips past the cap (a single-gap
+        overshoot the eval-reserve absorbs) — the NEXT :meth:`would_exceed` /
+        :meth:`charge` then guards the cap. ``delta`` may be negative (the gap
+        under-ran its pre-charged estimate → refund headroom); spend is floored
+        at 0 so a large refund can never drive it negative.
+        """
+        self._spent = max(0.0, self._spent + delta)
+
     async def charge_or_pause(
         self,
         next_cost: float,

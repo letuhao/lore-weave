@@ -261,7 +261,21 @@ def _check_live_smoke_evidence(evidence: str) -> None:
 def load_state() -> dict:
     if not STATE_FILE.exists():
         save_state(dict(INITIAL_STATE))
-    return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    try:
+        return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, ValueError, OSError) as exc:
+        # DEFERRED-008: a corrupt / empty .workflow-state.json (manual edit, disk
+        # corruption, an interrupted non-atomic write before #003) must NOT make
+        # every gate command — including the pre-commit hook — die with a traceback
+        # that blocks the commit. Reset to a clean initial state and warn loudly so
+        # the operator knows the prior phase progress was lost (re-classify if needed).
+        print(
+            f"WARN: {STATE_FILE} is unreadable/corrupt ({exc}); resetting to initial state.",
+            file=sys.stderr,
+        )
+        fresh = dict(INITIAL_STATE)
+        save_state(fresh)
+        return fresh
 
 
 def save_state(state: dict) -> None:
@@ -752,6 +766,25 @@ def cmd_reset(_args: list[str]) -> None:
     print(msg)
 
 
+def cmd_check_stack(args: list[str]) -> None:
+    """ADVISORY stale-image guard (F-LIVE-1). Runs scripts/check_stack_freshness.py
+    and surfaces drift / missing H0 routes — but NEVER blocks (always exits 0),
+    mirroring the cross-service live-smoke soft-warning. Pass-through args (e.g.
+    --probe-only, --drift-only, --services) are forwarded."""
+    script = Path(__file__).resolve().parent / "check_stack_freshness.py"
+    if not script.exists():
+        print("WARN: check_stack_freshness.py not found — skipping stack-freshness check")
+        return
+    result = subprocess.run([sys.executable, str(script), *args])
+    if result.returncode == 1:
+        print("⚠️  WARN (advisory): a running image is STALE or an H0 route is "
+              "missing — rebuild with scripts/build-stack.sh before a live run. "
+              "(not blocking)")
+    elif result.returncode == 3:
+        print("note: docker/git unavailable — stack-freshness check skipped")
+    # Advisory: never propagate a non-zero exit.
+
+
 # ── Main ─────────────────────────────────────────────────────────────
 
 
@@ -760,6 +793,7 @@ COMMANDS = {
     "phase": cmd_phase,
     "complete": cmd_complete,
     "check": cmd_check,
+    "check-stack": cmd_check_stack,
     "skip": cmd_skip,
     "pre-commit": cmd_pre_commit,
     "status": cmd_status,
@@ -782,6 +816,7 @@ def main() -> None:
         print("  check <name>                                   Check if phase done")
         print("  skip <name> <reason>                           Skip with reason")
         print("  pre-commit                                     Gate check for commits")
+        print("  check-stack [--probe-only|--drift-only]        ADVISORY: warn if a running image is stale (F-LIVE-1)")
         print("  status                                         Show current state")
         print("  reset                                          Reset for new task")
         print()

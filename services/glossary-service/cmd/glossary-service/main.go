@@ -74,6 +74,12 @@ func main() {
 		slog.Error("seed", "error", err)
 		os.Exit(1)
 	}
+	// Kind-alias epic E2: default aliases (faction→organization, generic→terminology).
+	// MUST run after Seed (it references the seeded kinds) — idempotent, every startup.
+	if err := migrate.SeedKindAliases(ctx, pool); err != nil {
+		slog.Error("seed kind-aliases", "error", err)
+		os.Exit(1)
+	}
 	if err := migrate.UpSnapshot(ctx, pool); err != nil {
 		slog.Error("migrate snapshot", "error", err)
 		os.Exit(1)
@@ -130,6 +136,16 @@ func main() {
 	// idempotent DO-block pattern is cheap if re-run.
 	if err := migrate.UpShortDescConstraints(ctx, pool); err != nil {
 		slog.Error("migrate short-desc-constraints", "error", err)
+		os.Exit(1)
+	}
+
+	// lore-enrichment supplement layer (F-C13-1 + F-C13-2 / PO ruling B1):
+	// enrichment content lives in its own table, FK→canonical entity, so it
+	// stays structurally distinct from the original authored canon
+	// (short_description). Runs after the entity table + short-desc migrations
+	// since it references glossary_entities(entity_id).
+	if err := migrate.UpEntityEnrichments(ctx, pool); err != nil {
+		slog.Error("migrate entity-enrichments", "error", err)
 		os.Exit(1)
 	}
 

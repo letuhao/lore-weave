@@ -261,3 +261,8 @@ frontend-game/test-results/
 
 # Local extraction-quality eval run artifacts (dumps, judge verdicts, logs)
 .eval_dumps/
+
+# C15 enrichment-eval LIVE run artifact (the committed baseline is the
+# deterministic enrichment-v1.json; this live-judge variant is local-only —
+# the authoritative longitudinal record is the enrichment_eval_runs DB table).
+eval/baselines/enrichment-v1-live.json

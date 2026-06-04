@@ -89,6 +89,10 @@ class EmbedResult:
     embeddings: list[list[float]] = field(default_factory=list)
     dimension: int = 0
     model: str = ""
+    #: LE-059b — the provider's reported input-token usage (OpenAI/LM Studio
+    #: `usage.prompt_tokens`), surfaced by provider-registry. 0 when the provider
+    #: omits it (the caller then falls back to a char-estimate for metering).
+    prompt_tokens: int = 0
 
 
 def _bearer(jwt: str) -> dict[str, str]:
@@ -190,6 +194,7 @@ class KnowledgeClient:
             embeddings=data.get("embeddings", []),
             dimension=int(data.get("dimension", 0) or 0),
             model=str(data.get("model", "")),
+            prompt_tokens=int(data.get("prompt_tokens", 0) or 0),
         )
 
     # ── transport helpers (typed errors only) ───────────────────────────────

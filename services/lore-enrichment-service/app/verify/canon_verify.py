@@ -1,0 +1,585 @@
+"""Canon-verify (RAID C12, M2) — consistency check at proposal creation.
+
+When the C11 generator mints enriched facts for a proposal, this module runs a
+THREE-CHECK consistency pass over them and ANNOTATES the proposal with the
+result. It does NOT judge correctness (that rests on the human PROMOTE gate, H0)
+and it NEVER lifts quarantine — a "passed" verify is a note, not an admission.
+
+Three checks (each emits typed :class:`VerifyFlag` evidence, never an opaque
+boolean):
+
+  1. **Contradiction** — does a generated fact assert something INCOMPATIBLE with
+     existing canon (a ``source_type='glossary'`` entity/fact) read through the C1
+     :class:`~app.clients.port.KnowledgeReadPort` + an injected canon-fact lookup?
+     Detected via canon-term presence + a negation/contradiction marker in the
+     generated content for the SAME entity+dimension. When the KG-read port is
+     unavailable / empty (Q6), the check records ``verify_degraded=True`` and does
+     NOT auto-pass — a down KG can never produce a false-green.
+  2. **Anachronism** — does the generated CHINESE content reference concepts/eras
+     outside the locked 商周 / 封神演义 cosmology frame (e.g. modern tech, post-Han
+     dynasties, foreign religions)? Operates on Chinese text via a curated
+     out-of-era marker table (NOT an English wordlist); each flag carries the
+     matched span as evidence.
+  3. **Injection-defense** — neutralize prompt-injection / canon-spoofing /
+     control sequences embedded in the entity name, dimension label, generated
+     content, AND retrieved grounding excerpts (mirror knowledge-service
+     ``pending_facts``, Q1). A hit raises an ``injection`` flag AND the verifier
+     surfaces the neutralized text so downstream consumers never see the live
+     directive.
+
+H0 / scope boundary (LOCKED): this module ONLY annotates. It sets no
+``source_type``, never raises ``confidence`` to 1.0, never clears
+``pending_validation``, never writes back to glossary / Neo4j / KG (that is C13),
+and resolves no model name. A flagged proposal is MARKED (quarantined harder, not
+silently dropped); the human gate decides.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import TYPE_CHECKING, Awaitable, Callable, Sequence
+from uuid import UUID
+
+from app.clients.knowledge import GraphStats
+from app.clients.port import KnowledgeReadPort
+from app.verify.regurgitation import detect_regurgitation
+from app.verify.sanitize import (
+    _prenormalize,
+    neutralize_proposal_text,
+    scan_injection,
+)
+
+if TYPE_CHECKING:
+    # Annotation-only (PEP 563 — `from __future__ import annotations` is active above,
+    # so these names are never evaluated at runtime). Importing them at module load
+    # makes canon_verify's OWN initialization descend into the generation/retrieval/
+    # strategies package tree, which imports back into the still-partially-initialized
+    # canon_verify (fabrication/recook/wiring all import CanonVerifier) → ImportError.
+    # Production startup (app.main) dodges it via import ordering, but any entry point
+    # that imports app.clients.writeback first crashes. Deferring these two imports
+    # breaks the cycle at its source with no behaviour change. See QC F-LIVE-2.
+    from app.generation.provenance import EnrichedFact
+    from app.retrieval.strategy import GroundedProposal
+
+__all__ = [
+    "FlagKind",
+    "Severity",
+    "VerifyFlag",
+    "VerifyResult",
+    "CanonFact",
+    "CanonLookupFn",
+    "CanonVerifier",
+    "ANACHRONISM_MARKERS",
+    "FENGSHEN_ANACHRONISM_MARKERS",
+]
+
+
+class FlagKind(str, Enum):
+    """The consistency dimensions C12 checks (the ``kind`` of a flag)."""
+
+    CONTRADICTION = "contradiction"
+    ANACHRONISM = "anachronism"
+    INJECTION = "injection"
+    #: Copyright-safety layer ③ — generated content reproduces substantial verbatim
+    #: / near-verbatim EXPRESSION from the grounding source (derivative-work risk).
+    REGURGITATION = "regurgitation"
+
+
+class Severity(str, Enum):
+    """How hard a flag should weigh on the human review. Advisory only — even a
+    ``high`` flag never auto-rejects; it raises the proposal's review priority."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+@dataclass(frozen=True)
+class VerifyFlag:
+    """One consistency concern found in a proposal — evidence, not a boolean.
+
+    ``kind``      — contradiction | anachronism | injection.
+    ``dimension`` — the dimension (or field name) the concern is in.
+    ``evidence``  — a human-readable string (matched span / canon term / pattern
+                    name) so a reviewer can SEE why it fired, never an opaque bit.
+    ``severity``  — advisory weight for review prioritisation.
+    """
+
+    kind: FlagKind
+    dimension: str
+    evidence: str
+    severity: Severity = Severity.MEDIUM
+
+
+@dataclass(frozen=True)
+class CanonFact:
+    """An existing authored-canon assertion for an entity+dimension (read-only).
+
+    The contradiction check compares a generated fact against these. They are
+    ``source_type='glossary'`` canon (confidence 1.0) — the verifier reads them,
+    never writes them (Q2). ``assertion`` is the canon text; ``terms`` are the
+    salient canon tokens (names/values) a contradicting generated fact would have
+    to negate.
+    """
+
+    entity_name: str
+    dimension: str
+    assertion: str
+    terms: tuple[str, ...] = ()
+
+
+#: Injected canon-fact lookup: (entity_name, dimension) → the canon assertions for
+#: that pair, read through the glossary/KG SSOT. Returns ``[]`` when nothing is
+#: known. Async so a real impl can hit the C1 glossary client; tests inject a
+#: deterministic stub. The verifier NEVER writes through this seam.
+CanonLookupFn = Callable[[str, str], Awaitable[Sequence[CanonFact]]]
+
+
+@dataclass
+class VerifyResult:
+    """The outcome of verifying one proposal's generated facts.
+
+    ``passed``          — True iff NO flags fired AND the contradiction check ran
+                          against real canon (not degraded). A degraded run is
+                          NOT a pass (no false-green).
+    ``flags``           — every concern found, with evidence.
+    ``verify_degraded`` — True when the KG/canon read was unavailable/empty, so
+                          the contradiction check could not be performed. Recorded
+                          explicitly — a degraded verify is conservative, never a
+                          silent green.
+    ``neutralized``     — per-field neutralized text for any field that carried
+                          injection (so the caller persists the SAFE form).
+    """
+
+    flags: list[VerifyFlag] = field(default_factory=list)
+    verify_degraded: bool = False
+    neutralized: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def passed(self) -> bool:
+        """A proposal PASSES only if it is flag-free AND was verified against real
+        canon. Degradation never counts as a pass (H0 / no-false-green)."""
+        return not self.flags and not self.verify_degraded
+
+    def as_provenance(self) -> dict[str, object]:
+        """Serialize for persistence into ``provenance_json`` / a verify field.
+
+        Annotation only — carries NO ``source_type`` / ``confidence`` / canon
+        marker. A later cycle merges this into the proposal's provenance; it can
+        never move the proposal toward canon.
+        """
+        return {
+            "canon_verify": {
+                "passed": self.passed,
+                "verify_degraded": self.verify_degraded,
+                "flags": [
+                    {
+                        "kind": f.kind.value,
+                        "dimension": f.dimension,
+                        "evidence": f.evidence,
+                        "severity": f.severity.value,
+                    }
+                    for f in self.flags
+                ],
+            }
+        }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Anachronism frame — locked 商周 / 封神演义 cosmology.
+#
+# Out-of-era CONCEPT markers in CHINESE (the locked output language). These are
+# eras / technologies / institutions / faiths that postdate or sit outside the
+# Shang–Zhou + 封神 mythological frame, so their appearance in generated lore is
+# an anachronism worth flagging for the human reviewer. NOT an English wordlist;
+# each entry is the Chinese term plus a short reason used as flag evidence.
+#
+# Deliberately CONSERVATIVE: only unambiguous out-of-era tokens, to avoid
+# over-reach on legitimate Classical-Chinese vocabulary. The list is data (not
+# code) so it can grow without touching the check logic.
+# ═══════════════════════════════════════════════════════════════════════════
+FENGSHEN_ANACHRONISM_MARKERS: tuple[tuple[str, str], ...] = (
+    # ── later dynasties / post-Zhou polities (era-inappropriate) ─────────────
+    ("秦始皇", "秦朝晚于商周封神纪元"),
+    ("汉朝", "汉朝晚于商周封神纪元"),
+    ("唐朝", "唐朝晚于商周封神纪元"),
+    ("宋朝", "宋朝晚于商周封神纪元"),
+    ("明朝", "明朝晚于商周封神纪元"),
+    ("清朝", "清朝晚于商周封神纪元"),
+    ("科举", "科举制始于隋唐，非商周"),
+    # ── modern technology / industry ─────────────────────────────────────────
+    ("火车", "火车为近代工业产物"),
+    ("飞机", "飞机为近现代产物"),
+    ("电话", "电话为近现代产物"),
+    ("电脑", "电脑为现代产物"),
+    ("手机", "手机为现代产物"),
+    ("电视", "电视为现代产物"),
+    ("汽车", "汽车为近现代产物"),
+    ("枪炮", "火器枪炮非商周冷兵器时代"),
+    ("火药", "火药发明远晚于商周"),
+    ("互联网", "互联网为现代产物"),
+    # ── modern military / science (NIT-3: a few unambiguous out-of-era tokens
+    #    added as re-cook source domains widen toward news/modern history) ───────
+    ("雷达", "雷达为现代科技产物"),
+    ("坦克", "坦克为近现代军事产物"),
+    ("卫星", "人造卫星为现代科技产物"),
+    ("无人机", "无人机为现代科技产物"),
+    ("疫苗", "疫苗为近现代医学产物"),
+    # NOTE: deliberately NOT a bare "电" marker — it false-positives on
+    # era-appropriate Classical words like 雷电 (thunder & lightning). The
+    # compound modern-tech markers above (电话/电脑/电视) cover the real cases.
+    ("电灯", "电灯为近现代产物"),
+    ("电力", "电力应用为近现代，非商周"),
+    # ── foreign / later faiths + currency anachronisms ───────────────────────
+    ("佛祖", "佛教东传远晚于商周封神纪元"),
+    ("和尚", "佛教僧侣晚于商周"),
+    ("寺庙", "佛寺晚于商周"),
+    ("基督", "基督教非东方上古封神体系"),
+    ("耶稣", "基督教非东方上古封神体系"),
+    ("银两", "白银货币流通远晚于商周"),
+    ("纸币", "纸币远晚于商周"),
+    # ── LE-058: broadened batch. RUTHLESSLY CONSERVATIVE (review-impl MED-1): a
+    #    bare substring match means a marker built from high-frequency classical
+    #    morphemes false-positives on PLAUSIBLE 封神 prose — e.g. 总统六师 (command
+    #    of the six armies), 安民国家 (民国), 共和 (the 841 BCE Zhou regency!),
+    #    警察奸宄, 摄政 (摄氏), 里/米/斤 (classical units). Those were DROPPED. Only
+    #    tokens whose characters cannot plausibly sit adjacent in 商周 lore remain
+    #    (modern-tech compounds, foreign/late faiths, 隋朝). Classical homographs
+    #    民主 (民之主) / 选举 (荐举) likewise excluded.
+    ("隋朝", "隋朝晚于商周封神纪元"),  # 隋 essentially only names the Sui dynasty
+    # modern technology (compounds — no bare 电, mirrors the existing 电话/电脑)
+    ("电报", "电报为近代产物"),
+    ("电影", "电影为近现代产物"),
+    ("电梯", "电梯为近现代产物"),
+    ("收音机", "收音机为现代产物"),
+    ("冰箱", "冰箱为现代产物"),
+    ("空调", "空调为现代产物"),
+    ("照相机", "照相机为近现代产物"),
+    ("高铁", "高铁为现代产物"),
+    ("地铁", "地铁为现代产物"),
+    ("导弹", "导弹为现代军事产物"),
+    ("核弹", "核武器为现代军事产物"),
+    ("原子弹", "原子弹为现代军事产物"),
+    ("机器人", "机器人为现代产物"),
+    # modern science / medicine
+    ("抗生素", "抗生素为现代医学产物"),
+    ("显微镜", "显微镜为近现代科学仪器"),
+    ("望远镜", "望远镜为近现代科学仪器"),
+    # foreign / later faiths (not in the 封神 cosmology frame)
+    ("伊斯兰", "伊斯兰教非东方上古封神体系"),
+    ("教堂", "基督教堂非商周封神体系"),
+    ("牧师", "基督教牧师非商周封神体系"),
+    ("圣经", "基督教圣经非东方上古封神体系"),
+    ("喇嘛", "藏传佛教喇嘛远晚于商周"),
+    # modern finance — 股票 only (股+票 don't form a classical adjacency; the
+    # silver-currency anachronism is already covered by the existing 银两).
+    ("股票", "股票为近现代金融产物"),
+)
+
+#: Back-compat alias — de-bias C1 demoted this from a GLOBAL default to the
+#: FENGSHEN profile's denylist (the verifier now reads markers from the per-book
+#: profile, default empty = anachronism OFF). The Fengshen demo profile is seeded
+#: with these; non-Fengshen books supply their own (or none → check off).
+ANACHRONISM_MARKERS = FENGSHEN_ANACHRONISM_MARKERS
+
+# Chinese contradiction / negation markers — when one of these co-occurs with a
+# canon term in a generated value for the same entity+dimension, the generated
+# fact is asserting the OPPOSITE of canon → contradiction.
+# Contradiction-NEGATION markers — phrases that NEGATE a following canon term
+# ("不是东海" / "并非东海" / "而非东海"). FIX-5: the positive copulas 实为/实则/其实是
+# ("actually IS …") were REMOVED — they AFFIRM their object ("实为东海" = "truly is
+# the East Sea"), so as a bare marker they over-fired (a fact that merely said
+# "实为…" elsewhere flagged an UNRELATED canon term as contradicted). A real
+# "actually Y not X" contradiction is still caught by the negation half (而非).
+_NEGATION_MARKERS: tuple[str, ...] = (
+    "不是", "并非", "并不是", "绝非", "从未", "从来不", "没有", "毫无",
+    "而非", "并无",
+)
+#: FIX-5 proximity bound: a negation marker only counts as contradicting a canon
+#: term when it appears within this many characters IMMEDIATELY BEFORE the term
+#: ("并非<term>"), not merely somewhere in the passage. Long generated prose almost
+#: always contains an unrelated negation, so a co-occurrence test over-fired
+#: (auto-rejecting good content that AFFIRMED canon). Tight enough to require the
+#: negation to govern the term, loose enough for "并非"/"是 not " + a particle.
+_NEGATION_WINDOW: int = 10
+# Latin-script negation (in case grounding/excerpt leaked English).
+_EN_NEGATION_RE = re.compile(
+    r"\b(?:is\s+not|was\s+not|never|no\s+longer|not\s+a|isn't|wasn't|"
+    r"contrary\s+to|rather\s+than)\b",
+    re.IGNORECASE,
+)
+
+
+class CanonVerifier:
+    """Run the three C12 consistency checks over a proposal's generated facts.
+
+    Construct with the C1 :class:`KnowledgeReadPort` (graph reachability /
+    degradation) and an injected :data:`CanonLookupFn` (canon assertions for an
+    entity+dimension, read through glossary/KG SSOT). :meth:`verify` returns a
+    :class:`VerifyResult`. It ANNOTATES only — H0: no write-back, no canon, no
+    quarantine lift, no model name.
+    """
+
+    def __init__(
+        self,
+        *,
+        read_port: KnowledgeReadPort,
+        canon_lookup: CanonLookupFn,
+        anachronism_markers: Sequence[tuple[str, str]] = (),
+    ) -> None:
+        self._port = read_port
+        self._canon_lookup = canon_lookup
+        # de-bias C1: the anachronism denylist comes from the per-book profile —
+        # EMPTY means the check is OFF (a sci-fi / modern book is never flagged for
+        # "modern tech"). The Fengshen profile supplies FENGSHEN_ANACHRONISM_MARKERS.
+        self._anachronism_markers = tuple(anachronism_markers)
+
+    async def verify(
+        self,
+        proposal: GroundedProposal,
+        facts: Sequence[EnrichedFact],
+        *,
+        jwt: str = "",
+    ) -> VerifyResult:
+        """Verify a proposal + its generated facts; return an annotation result.
+
+        Runs injection-defense (multi-field), anachronism (Chinese content), and
+        contradiction (vs canon read through the C1 port). NEVER mutates the
+        proposal or the facts; NEVER lifts quarantine; degrades safely when the KG
+        is down (records ``verify_degraded``, no false-green).
+        """
+        result = VerifyResult()
+
+        # ── (c) injection-defense — entity name + grounding excerpts + per-fact
+        #        dimension label + content. Run FIRST so neutralized text is what
+        #        the other checks (and downstream persistence) see. ────────────
+        self._check_injection_field(
+            "canonical_name", proposal.canonical_name, result
+        )
+        for g in proposal.grounding:
+            self._check_injection_field(
+                f"grounding:{g.corpus_id}#{g.chunk_index}", g.excerpt, result
+            )
+        for fact in facts:
+            self._check_injection_field(
+                f"dimension_label:{fact.dimension}", fact.dimension, result
+            )
+            self._check_injection_field(
+                f"content:{fact.dimension}", fact.content, result
+            )
+
+        # ── (b) anachronism — Chinese generated content, locked 商周/封神 frame ──
+        for fact in facts:
+            self._check_anachronism(fact, result)
+
+        # ── (d) regurgitation — copyright-safety layer ③: the generated content
+        #        must NOT reproduce substantial verbatim/near-verbatim EXPRESSION
+        #        from the grounding source (derivative-work risk). Uses the
+        #        NEUTRALIZED content (post-injection-defense) vs the source excerpts.
+        self._check_regurgitation(proposal, facts, result)
+
+        # ── (a) contradiction — vs authored glossary canon (FIX-1) ──────────────
+        await self._check_contradiction(proposal, facts, result, jwt=jwt)
+
+        return result
+
+    # ── (c) injection ─────────────────────────────────────────────────────────
+    def _check_injection_field(
+        self, field_name: str, text: str, result: VerifyResult
+    ) -> None:
+        """Neutralize one untrusted field; on a hit, flag + record the safe text.
+
+        Multi-field by design — called for the entity name, every dimension
+        label, every content value, and every grounding excerpt, so a payload in
+        ANY of them is caught (not just the obvious content field).
+        """
+        safe, hits = neutralize_proposal_text(text)
+        if hits > 0:
+            result.neutralized[field_name] = safe
+            spans = scan_injection(text)
+            patterns = ", ".join(sorted({name for name, _s, _e in spans})) or "control"
+            result.flags.append(
+                VerifyFlag(
+                    kind=FlagKind.INJECTION,
+                    dimension=field_name,
+                    evidence=f"neutralized {hits} injection span(s) [{patterns}]",
+                    severity=Severity.HIGH,
+                )
+            )
+
+    # ── (b) anachronism ───────────────────────────────────────────────────────
+    def _check_anachronism(self, fact: EnrichedFact, result: VerifyResult) -> None:
+        """Flag out-of-era CONCEPT markers in the generated Chinese content.
+
+        Operates on the Chinese text (locked: anachronism on Chinese). Each marker
+        is an unambiguous post-商周 / non-封神 concept; a hit carries the matched
+        term + the reason as evidence (never an opaque boolean).
+
+        Scans the PRE-NORMALIZED content (strip zero-width / bidi + NFKC) exactly
+        like the injection scanner, so a zero-width-smuggled marker such as
+        ``火‍车`` (火 + ZWJ + 车) cannot evade the denylist via a substring miss.
+        """
+        content = _prenormalize(fact.content)
+        for term, reason in self._anachronism_markers:
+            if term in content:
+                result.flags.append(
+                    VerifyFlag(
+                        kind=FlagKind.ANACHRONISM,
+                        dimension=fact.dimension,
+                        evidence=f"出现「{term}」：{reason}",
+                        severity=Severity.MEDIUM,
+                    )
+                )
+
+    # ── (d) regurgitation — copyright-safety layer ③ ───────────────────────────
+    def _check_regurgitation(
+        self,
+        proposal: GroundedProposal,
+        facts: Sequence[EnrichedFact],
+        result: VerifyResult,
+    ) -> None:
+        """Flag generated content that reproduces substantial verbatim/near-verbatim
+        EXPRESSION from the grounding source (copyright-safety layer ③).
+
+        Copyright protects expression, not facts — so a re-cooked fact may reuse the
+        IDEAS of its licensed/PD source but must be FRESH prose, never a copy of the
+        source's wording. :func:`detect_regurgitation` compares each generated fact
+        against the grounding excerpts: an EGREGIOUS verbatim run → HIGH (the C3
+        gate auto-rejects it, like injection), softer overlap → MEDIUM advisory for
+        the human gate. Conservative — shared proper nouns / short idioms never trip
+        it (see the LCS/overlap thresholds). No grounding → nothing to copy → skip."""
+        excerpts = [g.excerpt for g in proposal.grounding if getattr(g, "excerpt", "")]
+        if not excerpts:
+            return
+        for fact in facts:
+            res = detect_regurgitation(fact.content, excerpts)
+            if not res.flagged:
+                continue
+            result.flags.append(
+                VerifyFlag(
+                    kind=FlagKind.REGURGITATION,
+                    dimension=fact.dimension,
+                    evidence=res.evidence,
+                    severity=Severity.HIGH if res.severity == "high" else Severity.MEDIUM,
+                )
+            )
+
+    # ── (a) contradiction ─────────────────────────────────────────────────────
+    async def _check_contradiction(
+        self,
+        proposal: GroundedProposal,
+        facts: Sequence[EnrichedFact],
+        result: VerifyResult,
+        *,
+        jwt: str,
+    ) -> None:
+        """Flag a generated fact that NEGATES an existing canon assertion.
+
+        Canon is read through the injected :data:`CanonLookupFn` — the glossary
+        AUTHORED canon SSOT (F-C12-1), NOT the KG graph. So the availability signal
+        is the CANON LOOKUP itself, not KG graph-stats: ``_lookup_canon`` records
+        ``verify_degraded=True`` if the canon read ERRORS (e.g. glossary
+        unreachable) — a down canon source never yields a false-green. A
+        successful-but-EMPTY lookup means "no authored canon for this entity" =
+        nothing to contradict = legitimately clean (NOT a degrade). When canon IS
+        found, a generated value that mentions a canon term together with a negation
+        marker (Chinese or English) for the same entity+dimension is flagged.
+
+        FIX-1 (2026-06-03): this previously GATED on a KG graph-stats read
+        (``_read_stats``) requiring the caller's user JWT. The background
+        job/worker path runs with ``jwt=""`` (no user token; the graph-stats route
+        is JWT-only, no internal path), so that read always returned empty → the
+        contradiction check (and its jieba canon-terms + the C3 HIGH-contradiction
+        auto-reject) DEGRADED on EVERY live job — inert in production. Canon moved
+        to the glossary SSOT in F-C12-1 but the KG-stats gate was left behind;
+        removing it completes that move. The KG read port is still accepted by the
+        constructor (unused here) for compatibility.
+        """
+        for fact in facts:
+            canon_facts = await self._lookup_canon(
+                proposal.canonical_name, fact.dimension, result
+            )
+            for canon in canon_facts:
+                term = self._contradicted_term(fact.content, canon)
+                if term is not None:
+                    result.flags.append(
+                        VerifyFlag(
+                            kind=FlagKind.CONTRADICTION,
+                            dimension=fact.dimension,
+                            evidence=(
+                                f"与既有正典「{canon.entity_name}·{canon.dimension}」"
+                                f"相抵触（正典断言：{canon.assertion}；冲突词：{term}）"
+                            ),
+                            severity=Severity.HIGH,
+                        )
+                    )
+                    break  # one contradiction per (fact, canon) is enough evidence
+
+    async def _read_stats(
+        self, proposal: GroundedProposal, *, jwt: str
+    ) -> GraphStats | None:
+        """Read graph-stats through the C1 port; None on a degraded read.
+
+        The port itself degrades typed-errors to empties (Q6), so a None here only
+        happens on a project_id that is not a UUID (a malformed proposal) — also a
+        degradation signal, not a hard crash.
+        """
+        try:
+            project_uuid = UUID(proposal.project_id)
+        except (ValueError, AttributeError):
+            return None
+        return await self._port.get_graph_stats(jwt=jwt, project_id=project_uuid)
+
+    async def _lookup_canon(
+        self, entity_name: str, dimension: str, result: VerifyResult
+    ) -> Sequence[CanonFact]:
+        """Look up canon assertions for an entity+dimension through the seam.
+
+        Never raises into the verifier, but a lookup ERROR is NOT the same as an
+        empty result: a swallowed exception means the canon read could not run for
+        this dimension, so we MUST mark the verify degraded (``verify_degraded``
+        forces ``passed=False``). Returning ``()`` silently on an error would make
+        a "couldn't check" run indistinguishable from "no canon known" and let the
+        contradiction loop find nothing → a false-green ``verified_clean``. A
+        genuinely-empty lookup (no exception) returns ``()`` without degrading."""
+        try:
+            return await self._canon_lookup(entity_name, dimension)
+        except Exception:
+            result.verify_degraded = True
+            return ()
+
+    @staticmethod
+    def _contradicted_term(content: str, canon: CanonFact) -> str | None:
+        """Return the canon term the content NEGATES, or None.
+
+        Heuristic (consistency, not correctness): a contradiction is a canon term
+        the content places DIRECTLY AFTER a negation/contradiction marker — the
+        content asserts ``<negation><canon-term>`` (并非东海 / 不是东海 / 而非东海 /
+        ``rather than Dracula``). FIX-5: the negation must IMMEDIATELY GOVERN the
+        term — appear within :data:`_NEGATION_WINDOW` chars before an occurrence of
+        it — not merely co-occur ANYWHERE in the passage. The old co-occurrence test
+        over-fired: long generated prose almost always contains some unrelated
+        negation (``历劫不磨`` / a ``没有…`` clause elsewhere), so a fact that AFFIRMED
+        a canon entity (e.g. ``元始天尊镇守此宫``) was wrongly flagged as contradicting
+        it and AUTO-REJECTED. Returns the first directly-negated canon term as
+        evidence, else None (conservative — under-fires rather than over-fires, the
+        safe direction for a check that can feed an auto-reject)."""
+        if not canon.terms:
+            return None
+        for term in canon.terms:
+            if not term:
+                continue
+            start = 0
+            while True:
+                i = content.find(term, start)
+                if i < 0:
+                    break
+                window = content[max(0, i - _NEGATION_WINDOW):i]
+                if any(neg in window for neg in _NEGATION_MARKERS) or (
+                    _EN_NEGATION_RE.search(window)
+                ):
+                    return term
+                start = i + len(term)
+        return None

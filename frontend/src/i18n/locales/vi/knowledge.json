@@ -379,7 +379,37 @@
       "archive": "Lưu trữ",
       "restore": "Khôi phục",
       "delete": "Xóa",
+      "tuneExtraction": "Tinh chỉnh trích xuất",
       "bookId": "book_id"
+    },
+    "extractionTuning": {
+      "title": "Tinh chỉnh trích xuất",
+      "description": "Cài đặt trích xuất theo từng tiểu thuyết. Thay đổi áp dụng cho lần trích xuất tiếp theo của dự án này.",
+      "filterEnabled": "Bộ lọc độ chính xác (loại bỏ trích xuất ít dẫn chứng)",
+      "category": {
+        "entity": "Thực thể",
+        "relation": "Quan hệ",
+        "event": "Sự kiện"
+      },
+      "categoriesRequired": "Chọn ít nhất một loại, hoặc tắt bộ lọc.",
+      "partialPolicy": "Khớp một phần:",
+      "policyKeep": "Giữ",
+      "policyDrop": "Bỏ",
+      "recoveryEnabled": "Khôi phục thực thể (phục hồi thực thể bị bỏ sót)",
+      "autocreateEnabled": "Tự tạo khi viết (tạo thực thể được tham chiếu bởi quan hệ)",
+      "promptWarning": "Nâng cao: prompt tùy chỉnh thay thế hướng dẫn trích xuất mặc định cho bước đó và có thể làm giảm chất lượng. Để trống để dùng mặc định. Đầu ra JSON luôn được ép buộc.",
+      "promptPlaceholder": "Để trống để dùng prompt mặc định",
+      "prompt": {
+        "entity": "Prompt trích xuất thực thể",
+        "relation": "Prompt trích xuất quan hệ",
+        "event": "Prompt trích xuất sự kiện",
+        "fact": "Prompt trích xuất dữ kiện"
+      },
+      "save": "Lưu",
+      "saving": "Đang lưu…",
+      "cancel": "Hủy",
+      "saved": "Đã lưu cài đặt trích xuất.",
+      "failed": "Lưu thất bại: {{error}}"
     },
     "form": {
       "createTitle": "Dự án mới",

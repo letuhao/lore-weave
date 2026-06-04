@@ -16,11 +16,13 @@ import { GlossaryTab } from '@/pages/book-tabs/GlossaryTab';
 import { SettingsTab } from '@/pages/book-tabs/SettingsTab';
 import { WikiTab } from '@/pages/book-tabs/WikiTab';
 import { SharingTab } from '@/pages/book-tabs/SharingTab';
+import { EnrichmentTab } from '@/pages/book-tabs/EnrichmentTab';
 
 const tabs = [
   { key: '', labelKey: 'detail.tabs.chapters' },
   { key: '/translation', labelKey: 'detail.tabs.translation' },
   { key: '/glossary', labelKey: 'detail.tabs.glossary' },
+  { key: '/enrichment', labelKey: 'detail.tabs.enrichment' },
   { key: '/wiki', labelKey: 'detail.tabs.wiki' },
   { key: '/sharing', labelKey: 'detail.tabs.sharing' },
   { key: '/settings', labelKey: 'detail.tabs.settings' },
@@ -181,6 +183,11 @@ function BookTabContent({ bookId, book, activeTab, onReload }: {
       {visited.has('/glossary') && (
         <div style={{ display: activeTab === '/glossary' ? undefined : 'none' }}>
           <GlossaryTab bookId={bookId} bookGenreTags={book.genre_tags ?? []} bookOriginalLanguage={book.original_language ?? undefined} />
+        </div>
+      )}
+      {visited.has('/enrichment') && (
+        <div style={{ display: activeTab === '/enrichment' ? undefined : 'none' }}>
+          <EnrichmentTab bookId={bookId} />
         </div>
       )}
       {visited.has('/wiki') && (
