@@ -30,6 +30,11 @@ RUN pip install --no-cache-dir /sdk
 
 COPY services/lore-enrichment-service/app/ ./app/
 
+# LE-PROD-2 P3b — ship the eval-suite TOML so the in-container eval-run route
+# (POST /internal/eval/{project}/run) can load it (it lives at repo-root eval/,
+# not under app/). The route resolves /app/eval/ first, repo-root in dev.
+COPY eval/enrichment-eval-suite.toml ./eval/enrichment-eval-suite.toml
+
 ENV PORT=8093
 # C18 — OTLP trace export endpoint. Empty by default → setup_tracing is a no-op
 # (dev without the observability stack still runs). The compose/prod env wires a
