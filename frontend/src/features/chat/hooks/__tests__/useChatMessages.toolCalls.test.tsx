@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 
-// K21-C (D2): useChatMessages must accumulate `tool-call` SSE events
-// and attach them to the locally-appended assistant message.
+// K21-C (D2) + ARCH-1 C4: useChatMessages must accumulate executed memory tool
+// calls and attach them to the locally-appended assistant message. The stream
+// now speaks the AG-UI protocol — a tool call is framed across TOOL_CALL_START
+// (name) and TOOL_CALL_RESULT (ok, inferred from the content payload).
 
 vi.mock('@/auth', () => ({
   useAuth: () => ({ accessToken: 'tok-test' }),
@@ -37,7 +39,21 @@ function sseResponse(lines: string[]): Response {
   } as unknown as Response;
 }
 
-describe('useChatMessages — tool-call accumulation', () => {
+/** The 4-event AG-UI sequence chat-service emits per executed tool call.
+ *  content is the {ok, result|error} envelope the server encodes. */
+function toolCallEvents(id: string, name: string, ok: boolean): string[] {
+  const content = ok
+    ? JSON.stringify({ ok: true, result: { hits: [] } })
+    : JSON.stringify({ ok: false, error: 'nope' });
+  return [
+    JSON.stringify({ type: 'TOOL_CALL_START', toolCallId: id, toolCallName: name }),
+    JSON.stringify({ type: 'TOOL_CALL_ARGS', toolCallId: id, delta: '{}' }),
+    JSON.stringify({ type: 'TOOL_CALL_END', toolCallId: id }),
+    JSON.stringify({ type: 'TOOL_CALL_RESULT', toolCallId: id, messageId: 'm', content }),
+  ];
+}
+
+describe('useChatMessages — tool-call accumulation (AG-UI)', () => {
   beforeEach(() => {
     listMessagesMock.mockReset();
     listMessagesMock.mockResolvedValue({ items: [] });
@@ -52,11 +68,11 @@ describe('useChatMessages — tool-call accumulation', () => {
       'fetch',
       vi.fn().mockResolvedValue(
         sseResponse([
-          JSON.stringify({ type: 'tool-call', tool: 'memory_search', ok: true }),
-          JSON.stringify({ type: 'text-delta', delta: 'Hi there' }),
-          JSON.stringify({ type: 'tool-call', tool: 'memory_remember', ok: false }),
-          JSON.stringify({ type: 'data', data: [{ message_id: 'm-1' }] }),
-          '[DONE]',
+          ...toolCallEvents('c1', 'memory_search', true),
+          JSON.stringify({ type: 'TEXT_MESSAGE_CONTENT', messageId: 'm-1', delta: 'Hi there' }),
+          ...toolCallEvents('c2', 'memory_remember', false),
+          JSON.stringify({ type: 'CUSTOM', name: 'persisted', value: { messageId: 'm-1' } }),
+          JSON.stringify({ type: 'RUN_FINISHED', result: {} }),
         ]),
       ),
     );
@@ -68,7 +84,6 @@ describe('useChatMessages — tool-call accumulation', () => {
       await result.current.send('hello');
     });
 
-    // user (optimistic) + assistant (appended)
     const assistant = result.current.messages.find((m) => m.role === 'assistant');
     expect(assistant).toBeDefined();
     expect(assistant!.message_id).toBe('m-1');
@@ -83,8 +98,8 @@ describe('useChatMessages — tool-call accumulation', () => {
       'fetch',
       vi.fn().mockResolvedValue(
         sseResponse([
-          JSON.stringify({ type: 'text-delta', delta: 'No tools used' }),
-          '[DONE]',
+          JSON.stringify({ type: 'TEXT_MESSAGE_CONTENT', messageId: 'm', delta: 'No tools used' }),
+          JSON.stringify({ type: 'RUN_FINISHED', result: {} }),
         ]),
       ),
     );
@@ -99,16 +114,17 @@ describe('useChatMessages — tool-call accumulation', () => {
     expect(assistant!.tool_calls).toBeNull();
   });
 
-  it('ignores an unknown SSE type and a tool-call event missing `tool`', async () => {
+  it('ignores an unknown event and a RESULT without a matching START', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
         sseResponse([
-          JSON.stringify({ type: 'some-future-event', foo: 1 }),
-          JSON.stringify({ type: 'tool-call', ok: true }), // no `tool` — skipped
-          JSON.stringify({ type: 'tool-call', tool: 'memory_timeline', ok: true }),
-          JSON.stringify({ type: 'text-delta', delta: 'done' }),
-          '[DONE]',
+          JSON.stringify({ type: 'SOME_FUTURE_EVENT', foo: 1 }),
+          // RESULT with no preceding START — must be skipped, not crash.
+          JSON.stringify({ type: 'TOOL_CALL_RESULT', toolCallId: 'orphan', messageId: 'm', content: '{}' }),
+          ...toolCallEvents('c1', 'memory_timeline', true),
+          JSON.stringify({ type: 'TEXT_MESSAGE_CONTENT', messageId: 'm', delta: 'done' }),
+          JSON.stringify({ type: 'RUN_FINISHED', result: {} }),
         ]),
       ),
     );
@@ -120,18 +136,19 @@ describe('useChatMessages — tool-call accumulation', () => {
     });
 
     const assistant = result.current.messages.find((m) => m.role === 'assistant');
-    // Only the well-formed tool-call event accumulates.
+    // Only the well-framed tool call accumulates.
     expect(assistant!.tool_calls).toEqual([{ tool: 'memory_timeline', ok: true }]);
   });
 
-  it('defaults ok to false when the event omits it', async () => {
+  it('treats a non-JSON tool result as a successful opaque result', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
         sseResponse([
-          JSON.stringify({ type: 'tool-call', tool: 'memory_forget' }),
-          JSON.stringify({ type: 'text-delta', delta: 'x' }),
-          '[DONE]',
+          JSON.stringify({ type: 'TOOL_CALL_START', toolCallId: 'c1', toolCallName: 'memory_forget' }),
+          JSON.stringify({ type: 'TOOL_CALL_RESULT', toolCallId: 'c1', messageId: 'm', content: 'plain text' }),
+          JSON.stringify({ type: 'TEXT_MESSAGE_CONTENT', messageId: 'm', delta: 'x' }),
+          JSON.stringify({ type: 'RUN_FINISHED', result: {} }),
         ]),
       ),
     );
@@ -143,6 +160,36 @@ describe('useChatMessages — tool-call accumulation', () => {
     });
 
     const assistant = result.current.messages.find((m) => m.role === 'assistant');
-    expect(assistant!.tool_calls).toEqual([{ tool: 'memory_forget', ok: false }]);
+    expect(assistant!.tool_calls).toEqual([{ tool: 'memory_forget', ok: true }]);
+  });
+
+  it('reads ok from the envelope, not from an "error" key inside a success result', async () => {
+    // review-impl C4 #1: a successful result whose own payload contains an
+    // "error" field must still be ok=true (the server's ok flag is authoritative).
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        sseResponse([
+          JSON.stringify({ type: 'TOOL_CALL_START', toolCallId: 'c1', toolCallName: 'memory_search' }),
+          JSON.stringify({
+            type: 'TOOL_CALL_RESULT',
+            toolCallId: 'c1',
+            messageId: 'm',
+            content: JSON.stringify({ ok: true, result: { hits: [], error: null } }),
+          }),
+          JSON.stringify({ type: 'TEXT_MESSAGE_CONTENT', messageId: 'm', delta: 'x' }),
+          JSON.stringify({ type: 'RUN_FINISHED', result: {} }),
+        ]),
+      ),
+    );
+
+    const { result } = renderHook(() => useChatMessages('s-1'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await act(async () => {
+      await result.current.send('hello');
+    });
+
+    const assistant = result.current.messages.find((m) => m.role === 'assistant');
+    expect(assistant!.tool_calls).toEqual([{ tool: 'memory_search', ok: true }]);
   });
 });

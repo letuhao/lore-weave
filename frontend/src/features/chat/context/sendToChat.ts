@@ -8,12 +8,15 @@ export const SEND_TO_CHAT_EVENT = 'loreweave:send-to-chat';
 export interface SendToChatDetail {
   /** Chapter title */
   chapterTitle: string;
-  /** Text content (selected text or full draft) */
-  text: string;
   /** Book ID for context */
   bookId: string;
   /** Chapter ID */
   chapterId: string;
+  /** Optional text snippet. NOTE: the chat listener does NOT use this — the
+   *  chapter body is re-fetched fresh at send time (resolveAndSend). Kept
+   *  optional for callers that want to pass a selection, but it is not
+   *  consumed for the message body. */
+  text?: string;
 }
 
 export function fireSendToChat(detail: SendToChatDetail) {

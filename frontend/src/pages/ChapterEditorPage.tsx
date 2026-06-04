@@ -27,6 +27,9 @@ import { GlossaryAutocomplete } from '@/components/editor/GlossaryAutocomplete';
 import { GlossaryPanel } from '@/components/editor/GlossaryPanel';
 import { glossaryApi } from '@/features/glossary/api';
 import type { EntityNameEntry } from '@/features/glossary/types';
+import { Chat } from '@/features/chat/Chat';
+import { fireSendToChat } from '@/features/chat/context/sendToChat';
+import { registerEditorTarget } from '@/features/chat/context/editorBridge';
 
 function wordCount(text: string): number {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
@@ -37,6 +40,78 @@ export function ChapterEditorPage() {
   const { bookId = '', chapterId = '' } = useParams();
   const { accessToken } = useAuth();
   const panels = useEditorPanels();
+
+  // Resizable right panel — drag the left edge. Width is per-device UI state
+  // (persisted in useEditorPanels → localStorage per CLAUDE.md). During the
+  // drag we update a transient `liveRightWidth` for instant feedback and only
+  // persist on mouse-up (avoids a localStorage write every frame).
+  const [liveRightWidth, setLiveRightWidth] = useState<number | null>(null);
+  const rightDragRef = useRef(0);
+  const startRightResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = panels.rightWidth ?? 320;
+    const clamp = (w: number) => Math.min(Math.max(w, 280), Math.min(window.innerWidth * 0.7, 900));
+    rightDragRef.current = startW;
+    const onMove = (ev: MouseEvent) => {
+      // dragging left → panel grows (right panel is anchored to the right edge)
+      rightDragRef.current = clamp(startW + (startX - ev.clientX));
+      setLiveRightWidth(rightDragRef.current);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      panels.setRightWidth(rightDragRef.current);
+      setLiveRightWidth(null);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [panels.rightWidth, panels.setRightWidth]);
+  const rightWidth = liveRightWidth ?? panels.rightWidth ?? 320;
+
+  // Resizable left panel — drag its RIGHT edge (left panel is anchored to the
+  // left, so dragging right grows it). Same persist-on-mouse-up pattern.
+  const [liveLeftWidth, setLiveLeftWidth] = useState<number | null>(null);
+  const leftDragRef = useRef(0);
+  const startLeftResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = panels.leftWidth ?? 300;
+    const clamp = (w: number) => Math.min(Math.max(w, 240), Math.min(window.innerWidth * 0.5, 720));
+    leftDragRef.current = startW;
+    const onMove = (ev: MouseEvent) => {
+      leftDragRef.current = clamp(startW + (ev.clientX - startX));
+      setLiveLeftWidth(leftDragRef.current);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      panels.setLeftWidth(leftDragRef.current);
+      setLiveLeftWidth(null);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [panels.leftWidth, panels.setLeftWidth]);
+  const leftWidth = liveLeftWidth ?? panels.leftWidth ?? 300;
+
+  // Editor AI "Compose" mode (per-device UI pref). Agent = tools on
+  // (propose_edit edits the doc). Compose = prose-only, no tools — for
+  // reasoning models that write well but stumble on tool-calling.
+  const [composeMode, setComposeModeState] = useState<boolean>(() => {
+    try { return localStorage.getItem('lw_editor_compose_mode') === '1'; } catch { return false; }
+  });
+  const setComposeMode = useCallback((v: boolean) => {
+    setComposeModeState(v);
+    try { localStorage.setItem('lw_editor_compose_mode', v ? '1' : '0'); } catch { /* ignore */ }
+  }, []);
 
   // Draft state
   const [version, setVersion] = useState<number | undefined>();
@@ -60,6 +135,36 @@ export function ChapterEditorPage() {
   // Panels
   const [rightTab, setRightTab] = useState<'history' | 'ai'>('history');
   const [revKey, setRevKey] = useState(0);
+
+  // ARCH-1 C5: when the AI panel opens (or the chapter changes while it's
+  // open), auto-attach the current chapter as chat context via the existing
+  // send-to-chat event. The chat listener re-fetches the chapter body fresh at
+  // send time, so we only pass identity (book/chapter/title) — the title is
+  // read through a ref so editing it doesn't re-fire on every keystroke; only
+  // tab-open / chapter change triggers it. A microtask defer lets <Chat>'s
+  // listener mount first (the defer is belt-and-suspenders for toggle-open).
+  const chapterTitleRef = useRef('');
+  chapterTitleRef.current = title;
+  useEffect(() => {
+    if (rightTab !== 'ai' || !bookId || !chapterId) return;
+    const id = setTimeout(() => {
+      fireSendToChat({
+        bookId,
+        chapterId,
+        chapterTitle: chapterTitleRef.current || 'Untitled chapter',
+      });
+    }, 0);
+    return () => clearTimeout(id);
+  }, [rightTab, bookId, chapterId]);
+
+  // ARCH-1 C6 — register this chapter's Tiptap handle so the AI panel's
+  // Apply-edit handler can write back to the open document (and verify the
+  // proposal targets THIS chapter). Cleared on unmount / chapter change.
+  useEffect(() => {
+    if (!bookId || !chapterId) return;
+    registerEditorTarget({ bookId, chapterId, handleRef: tiptapEditorRef });
+    return () => registerEditorTarget(null);
+  }, [bookId, chapterId]);
 
   // Glossary integration
   const [glossaryEntities, setGlossaryEntities] = useState<EntityNameEntry[]>([]);
@@ -501,7 +606,17 @@ export function ChapterEditorPage() {
 
         {/* Left panel */}
         {panels.left && (
-          <div className="flex w-[300px] flex-shrink-0 flex-col border-r bg-card">
+          <div className="relative flex flex-shrink-0 flex-col border-r bg-card" style={{ width: leftWidth }}>
+            {/* Drag handle — resize by dragging the right edge. */}
+            <div
+              onMouseDown={startLeftResize}
+              role="separator"
+              aria-orientation="vertical"
+              title={t('resize_panel', { defaultValue: 'Drag to resize' })}
+              className="group absolute right-0 top-0 z-20 h-full w-1.5 translate-x-1/2 cursor-col-resize"
+            >
+              <div className="mx-auto h-full w-px bg-transparent transition-colors group-hover:bg-primary/50" />
+            </div>
             {/* Tab bar */}
             <div className="flex border-b">
               <button
@@ -670,7 +785,7 @@ export function ChapterEditorPage() {
             <TiptapEditor
               ref={tiptapEditorRef}
               content={savedBody}
-              onUpdate={(json) => setTiptapJson(json)}
+              onUpdate={(json, text) => { setTiptapJson(json); setTextContent(text); }}
               grammarEnabled={grammarEnabled}
               editorMode={editorMode}
               className="flex-1 overflow-y-auto"
@@ -690,7 +805,17 @@ export function ChapterEditorPage() {
 
         {/* Right panel */}
         {panels.right && (
-          <div className="flex w-[300px] flex-shrink-0 flex-col border-l bg-card">
+          <div className="relative flex flex-shrink-0 flex-col border-l bg-card" style={{ width: rightWidth }}>
+            {/* Drag handle — resize the panel by dragging its left edge. */}
+            <div
+              onMouseDown={startRightResize}
+              role="separator"
+              aria-orientation="vertical"
+              title={t('resize_panel', { defaultValue: 'Drag to resize' })}
+              className="group absolute left-0 top-0 z-20 h-full w-1.5 -translate-x-1/2 cursor-col-resize"
+            >
+              <div className="mx-auto h-full w-px bg-transparent transition-colors group-hover:bg-primary/50" />
+            </div>
             <div className="flex border-b">
               <button
                 onClick={() => setRightTab('history')}
@@ -700,16 +825,57 @@ export function ChapterEditorPage() {
               </button>
               <button
                 onClick={() => setRightTab('ai')}
-                className={cn('flex-1 cursor-not-allowed px-3 py-2 text-xs text-muted-foreground/40')}
-                title={t('coming_soon')}
-                disabled
+                className={cn('flex-1 px-3 py-2 text-xs font-medium', rightTab === 'ai' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground')}
               >
-                {t('ai_chat')}
+                <Sparkles className="mr-1.5 inline h-3 w-3" />{t('ai_chat')}
               </button>
             </div>
             <div className="flex-1 overflow-hidden">
               {rightTab === 'history' && (
                 <RevisionHistory key={revKey} bookId={bookId} chapterId={chapterId} onRestore={() => void load()} />
+              )}
+              {/* ARCH-1 C5: the editor AI panel — the reusable <Chat> bound to
+                  the book's knowledge project, with the current chapter
+                  auto-attached as context (fired below when the tab opens).
+                  key={bookId} forces a full remount when the user navigates to
+                  a different book, so the per-book binding (session, project,
+                  dialog state) resets instead of bleeding the previous book's
+                  session into the new book (review-impl C5 #1). */}
+              {rightTab === 'ai' && (
+                <div className="flex h-full flex-col">
+                  {/* Agent vs Compose mode. Agent = AI may call tools + edit the
+                      doc (propose_edit). Compose = prose-only (no tools) so a
+                      reasoning model drafts and you Apply via "Send to editor" —
+                      reasoning models write better but stumble on tool-calling. */}
+                  <div className="flex items-center gap-1.5 border-b px-2 py-1.5">
+                    <span className="text-[10px] text-muted-foreground">{t('chat_mode', { defaultValue: 'Mode' })}</span>
+                    <div className="ml-auto inline-flex rounded-md bg-secondary p-0.5 text-[10px] font-medium">
+                      <button
+                        type="button"
+                        onClick={() => setComposeMode(false)}
+                        title={t('mode_agent_hint', { defaultValue: 'AI can use tools and edit your document' })}
+                        className={cn('flex items-center gap-1 rounded px-2 py-0.5 transition-colors', !composeMode ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground')}
+                      >
+                        <Sparkles className="h-2.5 w-2.5" />{t('mode_agent', { defaultValue: 'Agent' })}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setComposeMode(true)}
+                        title={t('mode_compose_hint', { defaultValue: 'Prose only — AI writes, you Apply. Best for reasoning models.' })}
+                        className={cn('flex items-center gap-1 rounded px-2 py-0.5 transition-colors', composeMode ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground')}
+                      >
+                        <Pen className="h-2.5 w-2.5" />{t('mode_compose', { defaultValue: 'Compose' })}
+                      </button>
+                    </div>
+                  </div>
+                  <Chat
+                    key={bookId}
+                    bookId={bookId}
+                    editorContext={{ book_id: bookId, chapter_id: chapterId }}
+                    composeMode={composeMode}
+                    className="min-h-0 flex-1"
+                  />
+                </div>
               )}
             </div>
           </div>

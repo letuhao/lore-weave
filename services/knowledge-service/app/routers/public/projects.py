@@ -162,6 +162,14 @@ async def list_projects(
     limit: int = Query(default=50, ge=1, le=100),
     cursor: str | None = Query(default=None),
     include_archived: bool = Query(default=False),
+    book_id: UUID | None = Query(
+        default=None,
+        description=(
+            "C5 (ARCH-1): filter to projects linked to this book. The editor "
+            "AI panel uses it to resolve a book's knowledge project (0 or 1 "
+            "result in practice)."
+        ),
+    ),
     repo: ProjectsRepo = Depends(get_projects_repo),
 ) -> ProjectListResponse:
     cursor_ts: datetime | None = None
@@ -175,6 +183,7 @@ async def list_projects(
         limit=limit,
         cursor_created_at=cursor_ts,
         cursor_project_id=cursor_id,
+        book_id=book_id,
     )
 
     has_more = len(rows) > limit

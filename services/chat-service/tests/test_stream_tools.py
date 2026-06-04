@@ -35,6 +35,7 @@ from loreweave_llm import (
     UsageEvent,
 )
 
+from app.config import settings
 from app.services.stream_service import (
     MAX_TOOL_ITERATIONS,
     _Usage,
@@ -43,6 +44,16 @@ from app.services.stream_service import (
     _stream_with_tools,
 )
 from tests.conftest import TEST_MODEL_REF, TEST_SESSION_ID, TEST_USER_ID
+
+
+@pytest.fixture(autouse=True)
+def _bespoke_tool_path(monkeypatch):
+    """These tests exercise the tool-LOOP mechanics via the bespoke
+    knowledge_client.execute_tool path they assert on (assert_awaited_once, etc.).
+    The transport choice (USE_MCP_TOOLS, default flipped to True) is orthogonal
+    and covered by test_mcp_execute_tool — pin it False here so the loop tests
+    stay deterministic regardless of the default."""
+    monkeypatch.setattr(settings, "use_mcp_tools", False)
 
 
 # ── event-builder shorthands ────────────────────────────────────────────────
@@ -359,6 +370,9 @@ class TestStreamWithToolsOneToolCall:
         assert tc["args"] == {"query": "Kai"}
         assert tc["result"] == {"entities": ["Kai"]}
         assert tc["error"] is None
+        # ARCH-1 C3: the provider tool-call id is propagated so the AG-UI
+        # TOOL_CALL_* events key on the same id persisted in the message.
+        assert tc["id"] == "call_1"
 
         # Text from BOTH passes was streamed.
         text = "".join(c["content"] for c in chunks if c.get("content"))

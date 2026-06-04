@@ -46,6 +46,8 @@ def _row_to_session(r: asyncpg.Record) -> ChatSession:
         # by stream_service.py for test dict-mock compatibility.
         project_id=project_id,
         memory_mode=memory_mode,
+        composer_model_source=r.get("composer_model_source"),
+        composer_model_ref=r.get("composer_model_ref"),
     )
 
 
@@ -58,12 +60,14 @@ async def create_session(
     gp = json.dumps(body.generation_params.model_dump(exclude_unset=True)) if body.generation_params else "{}"
     row = await pool.fetchrow(
         """
-        INSERT INTO chat_sessions (owner_user_id, title, model_source, model_ref, system_prompt, generation_params, project_id)
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+        INSERT INTO chat_sessions (owner_user_id, title, model_source, model_ref, system_prompt, generation_params, project_id, composer_model_source, composer_model_ref)
+        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
         RETURNING *
         """,
         user_id, body.title, body.model_source, str(body.model_ref), body.system_prompt, gp,
         str(body.project_id) if body.project_id else None,
+        body.composer_model_source,
+        str(body.composer_model_ref) if body.composer_model_ref else None,
     )
     return _row_to_session(row)
 
@@ -181,18 +185,26 @@ async def patch_session(
     set_project = "project_id" in body.model_fields_set
     project_id_value = str(body.project_id) if body.project_id else None
 
+    # A2A phase-2: composer model — same set/clear-via-fields_set semantics.
+    # Presence of composer_model_ref in the body drives both columns.
+    set_composer = "composer_model_ref" in body.model_fields_set
+    composer_source_value = body.composer_model_source
+    composer_ref_value = str(body.composer_model_ref) if body.composer_model_ref else None
+
     row = await pool.fetchrow(
         """
         UPDATE chat_sessions SET
-          title             = COALESCE($3, title),
-          system_prompt     = COALESCE($4, system_prompt),
-          model_source      = COALESCE($5, model_source),
-          model_ref         = COALESCE($6, model_ref),
-          status            = COALESCE($7, status),
-          generation_params = CASE WHEN $8::jsonb IS NOT NULL THEN generation_params || $8::jsonb ELSE generation_params END,
-          is_pinned         = COALESCE($9, is_pinned),
-          project_id        = CASE WHEN $10::boolean THEN $11::uuid ELSE project_id END,
-          updated_at        = now()
+          title                 = COALESCE($3, title),
+          system_prompt         = COALESCE($4, system_prompt),
+          model_source          = COALESCE($5, model_source),
+          model_ref             = COALESCE($6, model_ref),
+          status                = COALESCE($7, status),
+          generation_params     = CASE WHEN $8::jsonb IS NOT NULL THEN generation_params || $8::jsonb ELSE generation_params END,
+          is_pinned             = COALESCE($9, is_pinned),
+          project_id            = CASE WHEN $10::boolean THEN $11::uuid ELSE project_id END,
+          composer_model_source = CASE WHEN $12::boolean THEN $13 ELSE composer_model_source END,
+          composer_model_ref    = CASE WHEN $12::boolean THEN $14::uuid ELSE composer_model_ref END,
+          updated_at            = now()
         WHERE session_id=$1 AND owner_user_id=$2
         RETURNING *
         """,
@@ -201,6 +213,7 @@ async def patch_session(
         body.model_source, str(body.model_ref) if body.model_ref else None,
         body.status, gp_patch, body.is_pinned,
         set_project, project_id_value,
+        set_composer, composer_source_value, composer_ref_value,
     )
     return _row_to_session(row)
 

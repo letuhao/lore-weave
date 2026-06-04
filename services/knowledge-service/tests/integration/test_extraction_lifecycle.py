@@ -164,6 +164,22 @@ def _setup(state: _MockState) -> TestClient:
     return TestClient(app, raise_server_exceptions=False)
 
 
+class _BudgetRow(dict):
+    """Row stub for the budget pre-checks (can_start_job /
+    check_user_monthly_budget). Those helpers read several different
+    column names off the pool's ``fetchrow`` result depending on the
+    query — budget caps (``*_budget_usd``) must be ``None`` (unlimited →
+    allowed) while spend counters / aggregate totals must be a Decimal.
+    Returning ``None`` for any unknown budget-cap key and a zero Decimal
+    for spend keys keeps every budget path "allowed" without the test
+    having to know which query is firing."""
+
+    def __missing__(self, key):
+        if "budget" in key:
+            return None  # no cap set → unlimited
+        return Decimal("0")  # spend / aggregate totals
+
+
 def _mock_pool():
     mock_conn = AsyncMock()
     mock_conn.fetchrow = AsyncMock(return_value={"job_id": _JOB_ID})
@@ -181,7 +197,21 @@ def _mock_pool():
 
     pool = MagicMock()
     pool.acquire = mock_acquire
+    # K16.11/K16.12 — the budget pre-checks call fetchrow/execute directly
+    # on the pool (not via acquire()), so the pool object itself must be
+    # async-aware for those reads. current_month_key matches "now" so the
+    # rollover-UPDATE branch is skipped; every budget cap reads as None
+    # (unlimited) → both checks return allowed=True.
+    pool.fetchrow = AsyncMock(
+        return_value=_BudgetRow(current_month_key=_current_month_key()),
+    )
+    pool.execute = AsyncMock()
     return pool
+
+
+def _current_month_key() -> str:
+    from datetime import datetime as _dt, timezone as _tz
+    return _dt.now(_tz.utc).strftime("%Y-%m")
 
 
 def _mock_neo4j():

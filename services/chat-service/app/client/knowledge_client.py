@@ -30,6 +30,19 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.config import settings
 from app.middleware.trace_id import current_trace_id
 
+# ARCH-2 C2 — MCP client transport for the USE_MCP_TOOLS dual-run path.
+# Imported at module level (not lazily) so tests can patch these symbols at
+# their point of use (`app.client.knowledge_client.streamablehttp_client` /
+# `.ClientSession`). Guarded so a missing `mcp` package doesn't break module
+# import for environments that never enable USE_MCP_TOOLS — mcp_execute_tool
+# raises a clear error if the package is absent and the gate is on.
+try:
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamablehttp_client
+except ImportError:  # pragma: no cover - mcp is a hard requirement in prod
+    ClientSession = None  # type: ignore[assignment,misc]
+    streamablehttp_client = None  # type: ignore[assignment]
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -333,13 +346,132 @@ class KnowledgeClient:
                 "error": f"tool backend error (HTTP {resp.status_code})",
             }
         try:
-            return resp.json()
+            body = resp.json()
         except Exception as exc:
             logger.warning("knowledge execute_tool decode failed: %s", exc)
             return {
                 "success": False, "result": None,
                 "error": "tool backend returned an invalid response",
             }
+        # Canonical {} empty-success contract: an empty/None success result
+        # is represented as {} on BOTH transports (the MCP server's _dispatch
+        # already does `result.result or {}`). Coerce only the success+None
+        # case so this envelope is byte-identical to the MCP path; leave every
+        # failure/non-success body untouched.
+        if body.get("success") is True and body.get("result") is None:
+            body["result"] = {}
+        return body
+
+    async def mcp_execute_tool(
+        self,
+        *,
+        user_id: str,
+        session_id: str,
+        tool_name: str,
+        tool_args: dict,
+        project_id: str | None = None,
+    ) -> dict:
+        """ARCH-2 C2 — execute a memory tool via MCP streamable HTTP transport.
+
+        Returns the same dict shape as execute_tool() for drop-in compatibility:
+          {"success": True, "result": dict, "error": None}      on success
+          {"success": False, "result": None, "error": str}      on tool or transport failure
+
+        Context headers carry user_id / project_id / session_id — they never
+        appear in tool_args (design D3). A transport or protocol failure returns
+        success=False (graceful degradation, same contract as execute_tool()).
+        """
+        if streamablehttp_client is None or ClientSession is None:
+            logger.warning("mcp_execute_tool called but the 'mcp' package is not installed")
+            return {
+                "success": False,
+                "result": None,
+                "error": "mcp tool backend unavailable: mcp package not installed",
+            }
+
+        mcp_url = f"{self._base_url}/mcp"
+        headers = {
+            "X-Internal-Token": self._http.headers["X-Internal-Token"],
+            "X-User-Id": user_id,
+            "X-Session-Id": session_id,
+        }
+        if project_id:
+            headers["X-Project-Id"] = project_id
+        # K7e — mirror execute_tool: forward the caller's trace_id so
+        # knowledge-service stitches its logs to the originating chat turn.
+        # Omit when empty so knowledge-service mints its own.
+        tid = current_trace_id()
+        if tid:
+            headers["X-Trace-Id"] = tid
+
+        try:
+            # Bind BOTH the connect timeout and sse_read_timeout to the same
+            # tool budget execute_tool uses. sse_read_timeout MUST be set
+            # explicitly: the tool RESULT rides the SSE read channel, so the
+            # SDK default (300s) would let a stalled backend hang ~10x the
+            # bespoke 30s ceiling. If this ever migrates to the new
+            # 'streamable_http_client' (which ignores these kwargs), the budget
+            # must move to an httpx.Timeout(read=budget) on a supplied client.
+            async with streamablehttp_client(
+                mcp_url,
+                headers=headers,
+                timeout=self._tool_timeout_s,
+                sse_read_timeout=self._tool_timeout_s,
+            ) as (read, write, _):
+                async with ClientSession(read, write) as mcp_session:
+                    await mcp_session.initialize()
+                    result = await mcp_session.call_tool(tool_name, tool_args)
+        except Exception as exc:
+            logger.warning("mcp_execute_tool transport error: %s", exc)
+            return {
+                "success": False,
+                "result": None,
+                "error": f"mcp tool backend unavailable: {type(exc).__name__}",
+            }
+
+        # An MCP-level tool error (e.g. an auth ValueError raised inside the
+        # server handler) surfaces as isError=True with the message in the
+        # first text content item — map it to a success=False envelope.
+        if getattr(result, "isError", False):
+            err_text = ""
+            if result.content:
+                err_text = getattr(result.content[0], "text", "") or ""
+            return {
+                "success": False,
+                "result": None,
+                "error": err_text or "mcp tool error",
+            }
+
+        # FastMCP returns content as a list of TextContent/ImageContent items.
+        # The knowledge-service handlers return JSON dicts serialised as the
+        # text content of the first item.
+        if not result.content:
+            return {"success": False, "result": None, "error": "mcp tool returned empty content"}
+
+        first = result.content[0]
+        try:
+            import json as _json  # noqa: PLC0415
+            payload = _json.loads(first.text)
+        except Exception as exc:
+            logger.warning(
+                "mcp_execute_tool decode error: %s — raw: %s",
+                exc, getattr(first, "text", "?")[:200],
+            )
+            return {"success": False, "result": None, "error": "mcp tool returned unparseable content"}
+
+        if isinstance(payload, dict) and payload.get("success") is False:
+            # Server-side tool error propagated as a structured dict.
+            return {
+                "success": False,
+                "result": None,
+                "error": payload.get("error", "tool error"),
+            }
+
+        # Canonical {} empty-success contract: keep this byte-identical to
+        # execute_tool's success path. A wire "null" yields payload=None after
+        # json.loads — coerce it to {} so an empty success is {} on BOTH
+        # transports (the MCP server's _dispatch already does the same).
+        return {"success": True, "result": payload if payload is not None else {}, "error": None}
 
 
 # ── module-level singleton managed by lifespan ─────────────────────────────
