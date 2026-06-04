@@ -1,6 +1,6 @@
 import type { Page, Locator } from '@playwright/test';
 
-export type EnrichmentPanel = 'proposals' | 'gaps' | 'sources' | 'jobs' | 'settings';
+export type EnrichmentPanel = 'compose' | 'proposals' | 'gaps' | 'sources' | 'jobs' | 'settings';
 
 /** Page object for the book's Enrichment tab (de-bias C3 GUI). */
 export class EnrichmentTab {
@@ -40,5 +40,42 @@ export class EnrichmentTab {
   }
   get extractFirstNotice(): Locator {
     return this.page.getByTestId('enrichment-gaps-extract-first');
+  }
+
+  // ── Compose sub-panel (Slice 1 + 4 author controls) ──────────────────────
+  composeMode(name: string): Locator {
+    return this.page.getByTestId(`compose-mode-${name}`);
+  }
+  get targetNewToggle(): Locator {
+    return this.page.getByTestId('compose-target-mode-new');
+  }
+  get targetName(): Locator {
+    return this.page.getByTestId('compose-target-name');
+  }
+  get targetKind(): Locator {
+    return this.page.getByTestId('compose-target-kind');
+  }
+  get contextText(): Locator {
+    return this.page.getByTestId('compose-context-text');
+  }
+  get techniqueSelect(): Locator {
+    return this.page.getByTestId('compose-technique');
+  }
+  get persistCorpus(): Locator {
+    return this.page.getByTestId('compose-persist-corpus');
+  }
+  get dimsAuto(): Locator {
+    return this.page.getByTestId('compose-dims-auto');
+  }
+  get dimsPicker(): Locator {
+    return this.page.getByTestId('compose-dims-picker');
+  }
+
+  // ── Profile override editor (Slice 2 base rows) ──────────────────────────
+  overrideKind(kind: string): Locator {
+    return this.page.getByTestId(`override-kind-${kind}`);
+  }
+  overrideBase(kind: string): Locator {
+    return this.page.getByTestId(`override-base-${kind}`);
   }
 }
