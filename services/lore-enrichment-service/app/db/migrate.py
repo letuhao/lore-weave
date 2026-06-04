@@ -556,6 +556,42 @@ CREATE TABLE IF NOT EXISTS enrichment_book_profile (
   created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ═══════════════════════════════════════════════════════════════
+-- enrichment_upload (Compose slice 3 — mode F attach-files)
+-- ───────────────────────────────────────────────────────────────
+-- One uploaded file (.txt/.md/.pdf/.docx/.epub) the author attaches as a
+-- grounding source. The raw bytes live in MinIO (storage_key); the EXTRACTED
+-- text (+OCR for scanned PDFs) is persisted here so /compose can ingest it as a
+-- grounding corpus. Async (F10): the row is created status='processing' on upload
+-- and flipped to 'ready'/'failed' when background extraction finishes; GET
+-- /uploads/{id} polls. Per-user/book scope (Q3); no FK (cross-DB ids).
+-- license_asserted is default-deny — the handler refuses copyrighted/unknown
+-- BEFORE storing, so a stored row always carries an admissible license. ADDITIVE.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS enrichment_upload (
+  upload_id        UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id          UUID NOT NULL,                   -- scope (Q3); no FK (cross-DB)
+  book_id          UUID NOT NULL,                   -- scope (Q3); no FK (cross-DB)
+  project_id       UUID NOT NULL,                   -- scope (Q3); no FK (cross-DB)
+  filename         TEXT NOT NULL,
+  mime             TEXT NOT NULL DEFAULT '',
+  size_bytes       BIGINT NOT NULL DEFAULT 0,
+  pages            INT NOT NULL DEFAULT 0,
+  extracted_text   TEXT NOT NULL DEFAULT '',
+  extracted_chars  INT NOT NULL DEFAULT 0,
+  ocr_used         BOOLEAN NOT NULL DEFAULT false,
+  license_asserted TEXT NOT NULL DEFAULT 'unknown',
+  storage_key      TEXT NOT NULL DEFAULT '',
+  status           TEXT NOT NULL DEFAULT 'processing'
+    CHECK (status IN ('processing','ready','failed')),
+  error_message    TEXT,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_enrichment_upload_scope
+  ON enrichment_upload(user_id, book_id, created_at DESC);
 """
 
 
@@ -569,6 +605,7 @@ CREATE TABLE IF NOT EXISTS enrichment_book_profile (
 #   been up-migrated, breaking the down→up round-trip (and the db-test fixture's
 #   per-test reset). It was added to the UP DDL but not here.
 DOWN_DDL = """
+DROP TABLE IF EXISTS enrichment_upload;
 DROP TABLE IF EXISTS enrichment_book_profile;
 DROP TABLE IF EXISTS enrichment_eval_runs;
 DROP TRIGGER IF EXISTS trg_enrichment_proposal_h0 ON enrichment_proposal;

@@ -37,6 +37,16 @@
       "copyrighted_warning": "Không thể nạp tài liệu có bản quyền. Hãy dùng văn bản thuộc phạm vi công cộng, được cấp phép, hoặc của chính bạn.",
       "responsibility": "Bạn chịu trách nhiệm về quyền đối với văn bản này. Đây không phải tư vấn pháp lý."
     },
+    "files": {
+      "license_label": "Giấy phép tệp",
+      "dropzone": "Thả tệp vào đây hoặc bấm để chọn",
+      "accept": ".txt .md .pdf .docx .epub — PDF scan sẽ được OCR",
+      "ready": "{{chars}} ký tự{{ocr}}",
+      "ocr": "OCR",
+      "processing": "đang trích xuất…",
+      "failed": "thất bại",
+      "responsibility": "Tôi có quyền đối với các tệp này (sở hữu / được cấp phép / phạm vi công cộng). Không phải tư vấn pháp lý."
+    },
     "target": {
       "existing": "Thực thể có sẵn",
       "new": "Thực thể mới",

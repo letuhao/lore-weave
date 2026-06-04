@@ -179,7 +179,7 @@ def test_stub_families_return_200_or_501(client):
         if (
             "/proposals" in spec_path or "/jobs" in spec_path
             or "/detect-gaps" in spec_path or "/auto-enrich" in spec_path
-            or "/compose" in spec_path
+            or "/compose" in spec_path or "/uploads" in spec_path
             or "/sources" in spec_path or "/ground" in spec_path
             or "/profile" in spec_path
         ):

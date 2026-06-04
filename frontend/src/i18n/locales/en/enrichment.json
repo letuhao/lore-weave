@@ -37,6 +37,16 @@
       "copyrighted_warning": "Copyrighted material can't be ingested. Use public-domain, licensed, or your own text.",
       "responsibility": "You are responsible for the rights to this text. Not legal advice."
     },
+    "files": {
+      "license_label": "File license",
+      "dropzone": "Drop files here or click to browse",
+      "accept": ".txt .md .pdf .docx .epub — scanned PDFs are OCR'd",
+      "ready": "{{chars}} chars{{ocr}}",
+      "ocr": "OCR",
+      "processing": "extracting…",
+      "failed": "failed",
+      "responsibility": "I have the rights to these files (own / licensed / public-domain). Not legal advice."
+    },
     "target": {
       "existing": "Existing entity",
       "new": "New entity",

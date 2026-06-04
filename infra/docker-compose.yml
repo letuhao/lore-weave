@@ -629,9 +629,17 @@ services:
       # FastAPI services). Empty default → setup_tracing is a no-op (dev). Set to
       # the collector endpoint to enable tracing.
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      # Compose slice 3 (mode F) — MinIO object storage for uploaded files.
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: loreweave
+      MINIO_SECRET_KEY: loreweave_dev_minio_secret
+      MINIO_BUCKET: lore-enrichment-uploads
+      MINIO_USE_SSL: "false"
     depends_on:
       postgres:
         condition: service_healthy
+      minio:
+        condition: service_started
     ports:
       - "8221:8093"
     # Liveness probe — /health is constant-ok (no DB). C18 added /ready (DB-

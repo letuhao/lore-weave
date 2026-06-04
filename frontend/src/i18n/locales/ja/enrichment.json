@@ -37,6 +37,16 @@
       "copyrighted_warning": "著作権で保護された素材は取り込めません。パブリックドメイン・許諾済み・自作のテキストを使用してください。",
       "responsibility": "このテキストの権利についてはあなたの責任です。法的助言ではありません。"
     },
+    "files": {
+      "license_label": "ファイルのライセンス",
+      "dropzone": "ここにファイルをドロップ、またはクリックして選択",
+      "accept": ".txt .md .pdf .docx .epub — スキャンPDFはOCRされます",
+      "ready": "{{chars}} 文字{{ocr}}",
+      "ocr": "OCR",
+      "processing": "抽出中…",
+      "failed": "失敗",
+      "responsibility": "これらのファイルの権利を有しています（自己所有／許諾済み／パブリックドメイン）。法的助言ではありません。"
+    },
     "target": {
       "existing": "既存エンティティ",
       "new": "新規エンティティ",

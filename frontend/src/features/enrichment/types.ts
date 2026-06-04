@@ -217,10 +217,26 @@ export interface ComposeBody {
   /** Mode C (context): pasted reference text + the author's license assertion. */
   context_text?: string;
   context_license?: ContextLicense;
+  /** Mode F (files): uploaded file ids (from POST /uploads) to ingest as grounding. */
+  upload_ids?: string[];
   gap_targets?: ComposeTargetInput[];
   technique?: string;
   max_spend_usd?: number | null;
   top_k?: number;
+}
+
+/** Mode F upload lifecycle (async extract+OCR; poll until ready/failed). */
+export type UploadStatus = 'processing' | 'ready' | 'failed';
+export interface UploadResult {
+  upload_id: string;
+  filename: string;
+  mime?: string;
+  pages?: number;
+  extracted_chars?: number;
+  ocr_used?: boolean;
+  license_asserted?: string;
+  status: UploadStatus;
+  error?: string | null;
 }
 
 /** POST /compose result — async 202 + job_id. */

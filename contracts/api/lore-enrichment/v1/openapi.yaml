@@ -703,8 +703,8 @@ paths:
                 book_id: { type: string, format: uuid }
                 input_source:
                   type: string
-                  enum: [gap, draft, context]
-                  description: Supports gap | draft | context (files/intent land in slices 3–4).
+                  enum: [gap, draft, context, files]
+                  description: Supports gap | draft | context | files (intent lands in slice 4).
                 embedding_model_ref:
                   type: string
                   format: uuid
@@ -737,6 +737,12 @@ paths:
                     Author's license assertion (mode C — required). Default-deny:
                     `copyrighted` (and anything unrecognised) is refused (403);
                     `owned` is stored as `licensed` (re-cook-admissible).
+                upload_ids:
+                  type: array
+                  description: >
+                    Uploaded file ids from POST /uploads (mode F — required for files).
+                    Each file's extracted text is ingested as a grounding corpus.
+                  items: { type: string, format: uuid }
                 gap_targets:
                   type: array
                   description: The specific gap targets to enrich (mode A — required for gap).
@@ -770,6 +776,84 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
         '413':
           $ref: '#/components/responses/ErrorResponse'
+
+  # ────────────────────────────── uploads (mode F) ──────────────────────────────
+  /v1/lore-enrichment/uploads:
+    post:
+      tags: [uploads]
+      summary: Upload a file for mode-F enrichment (async extract + OCR)
+      description: >
+        Compose slice 3 (mode F). Accept a `.txt/.md/.pdf/.docx/.epub` file +
+        book/project scope + an author license assertion (default-deny:
+        copyrighted/unknown → 403). The raw bytes go to MinIO; the row is created
+        `status=processing` and text extraction (+OCR for scanned PDFs) runs in the
+        background (F10). Poll GET /uploads/{upload_id} until `ready`/`failed`, then
+        pass the upload_id to POST /compose with input_source=files.
+      operationId: createUpload
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, book_id, project_id, license_asserted]
+              properties:
+                file: { type: string, format: binary }
+                book_id: { type: string, format: uuid }
+                project_id: { type: string, format: uuid }
+                license_asserted:
+                  type: string
+                  enum: [public_domain, licensed, owned, copyrighted]
+      responses:
+        '202':
+          description: Accepted — extraction runs in the background.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upload_id: { type: string, format: uuid }
+                  filename: { type: string }
+                  status: { type: string }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '413': { $ref: '#/components/responses/ErrorResponse' }
+        '415': { $ref: '#/components/responses/ErrorResponse' }
+
+  /v1/lore-enrichment/uploads/{upload_id}:
+    get:
+      tags: [uploads]
+      summary: Poll an upload's extraction status
+      operationId: getUpload
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: upload_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upload_id: { type: string, format: uuid }
+                  filename: { type: string }
+                  mime: { type: string }
+                  pages: { type: integer }
+                  extracted_chars: { type: integer }
+                  ocr_used: { type: boolean }
+                  license_asserted: { type: string }
+                  status: { type: string, enum: [processing, ready, failed] }
+                  error: { type: string, nullable: true }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
 
   # ────────────────────────────── sources ──────────────────────────────
   /v1/lore-enrichment/sources:

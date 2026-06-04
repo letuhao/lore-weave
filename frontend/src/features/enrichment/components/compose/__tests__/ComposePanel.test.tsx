@@ -22,6 +22,14 @@ vi.mock('../../../hooks/useCompose', () => ({
   useCompose: () => ({ compose: composeMock, composing: false }),
 }));
 
+const uploadsMock = vi.hoisted(() => ({
+  items: [] as Array<{ id: string; filename: string; status: string }>,
+  upload: vi.fn(),
+  remove: vi.fn(),
+  readyIds: [] as string[],
+}));
+vi.mock('../../../hooks/useUploads', () => ({ useUploads: () => uploadsMock }));
+
 // existing-target autocomplete reads the book's glossary entity names (best-effort).
 vi.mock('@/features/glossary/api', () => ({
   glossaryApi: { listEntityNames: () => Promise.resolve([]) },
@@ -49,7 +57,13 @@ async function fillModels() {
   fireEvent.change(screen.getByTestId('compose-embed-model'), { target: { value: 'e1' } });
 }
 
-beforeEach(() => composeMock.mockClear());
+beforeEach(() => {
+  composeMock.mockClear();
+  uploadsMock.items = [];
+  uploadsMock.readyIds = [];
+  uploadsMock.upload.mockClear();
+  uploadsMock.remove.mockClear();
+});
 
 describe('ComposePanel (mode D)', () => {
   it('Run is disabled until a draft, a target name, and the GEN model are set (embed optional)', async () => {
@@ -186,5 +200,55 @@ describe('ComposePanel (mode C — context)', () => {
     fireEvent.change(screen.getByTestId('compose-context-license'), { target: { value: 'copyrighted' } });
     expect(screen.getByTestId('compose-run')).toBeDisabled();
     expect(screen.getByTestId('compose-context-copyright-warning')).toBeInTheDocument();
+  });
+});
+
+describe('ComposePanel (mode F — files)', () => {
+  const toFiles = () => fireEvent.click(screen.getByTestId('compose-mode-files'));
+
+  it('Run needs ≥1 ready upload + target + gen + embed + responsibility checked', async () => {
+    uploadsMock.readyIds = ['up-1'];
+    uploadsMock.items = [{ id: 'up-1', filename: 'a.pdf', status: 'ready' }];
+    renderPanel();
+    toFiles();
+    fireEvent.change(screen.getByTestId('compose-target-name'), { target: { value: '蓬萊' } });
+    await fillModels(); // gen + embed
+    // still blocked until the responsibility box is ticked
+    expect(screen.getByTestId('compose-run')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('compose-files-responsibility'));
+    expect(screen.getByTestId('compose-run')).not.toBeDisabled();
+  });
+
+  it('composes a files body (input_source files + upload_ids from the ready uploads)', async () => {
+    uploadsMock.readyIds = ['up-1', 'up-2'];
+    uploadsMock.items = [
+      { id: 'up-1', filename: 'a.pdf', status: 'ready' },
+      { id: 'up-2', filename: 'b.docx', status: 'ready' },
+    ];
+    renderPanel();
+    toFiles();
+    fireEvent.change(screen.getByTestId('compose-target-name'), { target: { value: '蓬萊' } });
+    await fillModels();
+    fireEvent.click(screen.getByTestId('compose-files-responsibility'));
+    fireEvent.click(screen.getByTestId('compose-run'));
+
+    const body = composeMock.mock.calls[0][0];
+    expect(body).toMatchObject({
+      input_source: 'files',
+      upload_ids: ['up-1', 'up-2'],
+      generation_model_ref: 'g1',
+      embedding_model_ref: 'e1',
+    });
+    expect(body.target).toMatchObject({ canonical_name: '蓬萊' });
+  });
+
+  it('Run stays disabled with no ready uploads', async () => {
+    uploadsMock.readyIds = [];
+    renderPanel();
+    toFiles();
+    fireEvent.change(screen.getByTestId('compose-target-name'), { target: { value: '蓬萊' } });
+    await fillModels();
+    fireEvent.click(screen.getByTestId('compose-files-responsibility'));
+    expect(screen.getByTestId('compose-run')).toBeDisabled();
   });
 });

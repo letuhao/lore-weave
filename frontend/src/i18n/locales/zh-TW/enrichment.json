@@ -37,6 +37,16 @@
       "copyrighted_warning": "受著作權保護的素材無法納入。請使用公有領域、已授權或你自己的文字。",
       "responsibility": "你需對此文字的權利負責。本訊息非法律建議。"
     },
+    "files": {
+      "license_label": "檔案授權",
+      "dropzone": "將檔案拖放到此處，或點擊瀏覽",
+      "accept": ".txt .md .pdf .docx .epub — 掃描 PDF 會進行 OCR",
+      "ready": "{{chars}} 字元{{ocr}}",
+      "ocr": "OCR",
+      "processing": "擷取中…",
+      "failed": "失敗",
+      "responsibility": "我擁有這些檔案的權利（自有／已授權／公有領域）。本訊息非法律建議。"
+    },
     "target": {
       "existing": "既有實體",
       "new": "新實體",

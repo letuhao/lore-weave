@@ -561,8 +561,105 @@ def test_context_compose_draft_technique_400(monkeypatch):
     assert rec == {}  # rejected before ingest
 
 
+# ── mode F — attach files ────────────────────────────────────────────────────
+def _patch_fetch_upload(monkeypatch, *, rows: dict):
+    """Fake compose_api.fetch_upload: upload_id str → record dict (or None)."""
+    async def _fake(pool, user_id, uid):
+        return rows.get(str(uid))
+    monkeypatch.setattr(compose_api, "fetch_upload", _fake)
+
+
+def _up(status="ready", text="蓬萊乃東海仙山。", lic="public_domain"):
+    return {"status": status, "extracted_text": text, "license_asserted": lic}
+
+
+def _files_base(upload_ids, **over) -> dict:
+    body = {
+        "book_id": str(uuid4()),
+        "input_source": "files",
+        "embedding_model_ref": str(uuid4()),
+        "generation_model_ref": str(uuid4()),
+        "upload_ids": upload_ids,
+        "target": {"mode": "new", "canonical_name": "新仙山", "entity_kind": "location"},
+    }
+    body.update(over)
+    return body
+
+
+def test_files_202_ingests_ready_uploads(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    rec: dict = {}
+    _patch_ingest(monkeypatch, recorder=rec)
+    u1, u2 = str(uuid4()), str(uuid4())
+    _patch_fetch_upload(monkeypatch, rows={u1: _up(), u2: _up(lic="licensed")})
+
+    resp = _post(_files_base([u1, u2]))
+    assert resp.status_code == 202, resp.text
+    assert resp.json()["technique"] == "retrieval"
+    assert rec["called"] is True
+    req = saved["request"]
+    assert req["input_source"] == "files"
+    assert req["context_corpus_ids"] == ["corpus-ctx-1", "corpus-ctx-1"]  # one per upload
+    assert req["upload_ids"] == [u1, u2]
+
+
+def test_files_not_ready_409(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    _patch_ingest(monkeypatch, recorder={})
+    u1 = str(uuid4())
+    _patch_fetch_upload(monkeypatch, rows={u1: _up(status="processing")})
+    resp = _post(_files_base([u1]))
+    assert resp.status_code == 409
+    assert created == {}
+
+
+def test_files_not_found_404(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    _patch_ingest(monkeypatch, recorder={})
+    _patch_fetch_upload(monkeypatch, rows={})  # nothing → 404
+    resp = _post(_files_base([str(uuid4())]))
+    assert resp.status_code == 404
+
+
+def test_files_missing_upload_ids_400(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    resp = _post(_files_base([]))  # empty list
+    assert resp.status_code == 400
+
+
+def test_files_missing_embed_400(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    body = _files_base([str(uuid4())])
+    body.pop("embedding_model_ref")
+    resp = _post(body)
+    assert resp.status_code == 400
+
+
+def test_files_all_empty_text_422(monkeypatch):
+    jid = uuid4()
+    created, saved, prod = {}, {}, _RecordingProducer()
+    _patch_store(monkeypatch, jid=jid, created=created, saved=saved, producer=prod)
+    rec: dict = {}
+    _patch_ingest(monkeypatch, recorder=rec)
+    u1 = str(uuid4())
+    _patch_fetch_upload(monkeypatch, rows={u1: _up(text="   ")})  # ready but no text
+    resp = _post(_files_base([u1]))
+    assert resp.status_code == 422
+    assert rec == {} and created == {}  # nothing ingested, no job
+
+
 # ── future / unknown sources + auth ──────────────────────────────────────────
-@pytest.mark.parametrize("src", ["files", "intent"])
+@pytest.mark.parametrize("src", ["intent"])
 def test_future_sources_400(monkeypatch, src):
     jid = uuid4()
     created, saved, prod = {}, {}, _RecordingProducer()

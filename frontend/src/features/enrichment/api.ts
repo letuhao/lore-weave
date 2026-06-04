@@ -1,4 +1,4 @@
-import { apiJson } from '@/api';
+import { apiJson, apiBase } from '@/api';
 import type {
   ProposalListResponse,
   Proposal,
@@ -16,6 +16,8 @@ import type {
   SuggestedProfile,
   ComposeBody,
   ComposeResult,
+  ContextLicense,
+  UploadResult,
 } from './types';
 
 const BASE = '/v1/lore-enrichment';
@@ -138,6 +140,36 @@ export const enrichmentApi = {
       body: JSON.stringify({ book_id: bookId, ...body }),
       token,
     });
+  },
+
+  // ── uploads (mode F) — multipart upload + poll. project_id := bookId. ─────────
+  /** Upload a file (multipart). Returns 202 + {upload_id, status:'processing'};
+   *  poll getUpload until ready/failed. Uses a raw fetch (apiJson is JSON-only). */
+  async uploadFile(
+    bookId: string,
+    file: File,
+    license: ContextLicense,
+    token: string,
+  ): Promise<UploadResult> {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('book_id', bookId);
+    fd.append('project_id', bookId);
+    fd.append('license_asserted', license);
+    const res = await fetch(`${apiBase()}${BASE}/uploads`, {
+      method: 'POST',
+      body: fd, // no Content-Type → the browser sets the multipart boundary
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    const text = await res.text();
+    const body = text ? JSON.parse(text) : null;
+    if (!res.ok) throw new Error(body?.message || res.statusText);
+    return body as UploadResult;
+  },
+
+  /** Poll an upload's extraction status. */
+  getUpload(uploadId: string, token: string): Promise<UploadResult> {
+    return apiJson<UploadResult>(`${BASE}/uploads/${uploadId}`, { token });
   },
 
   // ── sources (corpus) — project_id := bookId ─────────────────────────────────

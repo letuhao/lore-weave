@@ -2,6 +2,17 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Compose slice 3 (mode F) — OCR + PDF rasterisation system deps. Tesseract +
+# Simplified/Traditional Chinese language packs for scanned-PDF OCR, and poppler
+# (pdf2image) to rasterise pages. Service-only: extraction runs in this service's
+# /uploads background task; the worker only re-drives the already-ingested corpus,
+# so it needs none of this. Absence degrades to text-layer-only (extract.py is
+# import/binary-guarded), but the deployed image ships OCR.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
+
 # Build context = repo root (infra/docker-compose.yml sets `context: ..`), so
 # COPY paths are repo-relative.
 COPY services/lore-enrichment-service/requirements.txt .

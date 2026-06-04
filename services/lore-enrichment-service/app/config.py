@@ -41,6 +41,17 @@ class Settings(BaseSettings):
         default=0.0, validation_alias="LORE_ENRICHMENT_JUDGE_KAPPA_FLOOR"
     )
 
+    # Compose slice 3 (mode F) — MinIO object storage for uploaded files. The
+    # compose stack provides MINIO_* for the python services; bucket is per-service.
+    minio_endpoint: str = Field(default="minio:9000", validation_alias="MINIO_ENDPOINT")
+    minio_access_key: str = Field(default="loreweave", validation_alias="MINIO_ACCESS_KEY")
+    minio_secret_key: str = Field(default="loreweave_dev_minio_secret", validation_alias="MINIO_SECRET_KEY")
+    minio_bucket: str = Field(default="lore-enrichment-uploads", validation_alias="MINIO_BUCKET")
+    minio_use_ssl: bool = Field(default=False, validation_alias="MINIO_USE_SSL")
+    # Per-file upload caps (mode F). Bound the synchronous read + the OCR fan-out.
+    upload_max_bytes: int = Field(default=25 * 1024 * 1024, validation_alias="LORE_ENRICHMENT_UPLOAD_MAX_BYTES")
+    upload_max_pages: int = Field(default=300, validation_alias="LORE_ENRICHMENT_UPLOAD_MAX_PAGES")
+
     port: int = 8093
 
     # C18 — structured-logging level. INFO in prod; DEBUG locally via env.

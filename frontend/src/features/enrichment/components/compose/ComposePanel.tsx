@@ -4,10 +4,12 @@ import { Sparkles } from 'lucide-react';
 import { useEnrichmentContext } from '../../context/EnrichmentContext';
 import { useCompose } from '../../hooks/useCompose';
 import { useBookEntities } from '../../hooks/useBookEntities';
+import { useUploads } from '../../hooks/useUploads';
 import type { ComposeTargetInput, ContextLicense, ExpandMode } from '../../types';
 import { ModeSelector, type ComposeMode } from './ModeSelector';
 import { ComposeDraftForm } from './ComposeDraftForm';
 import { ComposeContextForm } from './ComposeContextForm';
+import { ComposeFilesForm } from './ComposeFilesForm';
 import { ComposeTarget } from './ComposeTarget';
 import { ComposeConfig, type ComposeConfigValue } from './ComposeConfig';
 
@@ -22,9 +24,10 @@ const DEFAULT_CONFIG: ComposeConfigValue = { genModel: '', embedModel: '', maxSp
 /** The "Tạo / Compose" panel — the controller for the unified input modes. Drives
  *  mode D (draft expansion) and mode C (paste-context): pick a target (existing | new)
  *  + provide the input (a draft, or pasted reference text + license) + models, then run
- *  an async compose job (202 → worker → quarantined proposal). Mode A routes to the Gaps
- *  tab; B/F are disabled until slices 3–4. Owns the form state; the API call +
- *  invalidation live in useCompose. */
+ *  an async compose job (202 → worker → quarantined proposal). Mode F (files) uploads
+ *  files (extract+OCR), then grounds on them like context. Mode A routes to the Gaps
+ *  tab; B (intent) is disabled until slice 4. Owns the form state; the API call +
+ *  invalidation live in useCompose / useUploads. */
 export function ComposePanel() {
   const { t } = useTranslation('enrichment');
   const { bookId, setActivePanel } = useEnrichmentContext();
@@ -37,9 +40,12 @@ export function ComposePanel() {
   const [expandMode, setExpandMode] = useState<ExpandMode>('rewrite');
   const [contextText, setContextText] = useState('');
   const [contextLicense, setContextLicense] = useState<ContextLicense>('public_domain');
+  const [filesLicense, setFilesLicense] = useState<ContextLicense>('public_domain');
+  const [filesResponsibility, setFilesResponsibility] = useState(false);
+  const uploads = useUploads(bookId);
   const [config, setConfig] = useState<ComposeConfigValue>(DEFAULT_CONFIG);
 
-  const showComposer = mode === 'draft' || mode === 'context';
+  const showComposer = mode === 'draft' || mode === 'context' || mode === 'files';
   const targetOk = target.canonical_name.trim() !== '';
   const canRun =
     !composing &&
@@ -50,7 +56,13 @@ export function ComposePanel() {
       (mode === 'context' &&
         contextText.trim() !== '' &&
         !!config.embedModel &&
-        contextLicense !== 'copyrighted'));
+        contextLicense !== 'copyrighted') ||
+      // mode F: ≥1 ready upload + embed model + license OK + responsibility acknowledged.
+      (mode === 'files' &&
+        uploads.readyIds.length > 0 &&
+        !!config.embedModel &&
+        filesLicense !== 'copyrighted' &&
+        filesResponsibility));
 
   const run = () => {
     // /review-impl #2: clamp the numeric inputs at the boundary so a cleared field
@@ -71,6 +83,17 @@ export function ComposePanel() {
         target: targetInput,
         context_text: contextText.trim(),
         context_license: contextLicense,
+        generation_model_ref: config.genModel,
+        embedding_model_ref: config.embedModel || undefined,
+        max_spend_usd: maxSpend,
+        top_k: topK,
+      });
+    }
+    if (mode === 'files') {
+      return compose({
+        input_source: 'files',
+        target: targetInput,
+        upload_ids: uploads.readyIds,
         generation_model_ref: config.genModel,
         embedding_model_ref: config.embedModel || undefined,
         max_spend_usd: maxSpend,
@@ -116,6 +139,17 @@ export function ComposePanel() {
               onContextTextChange={setContextText}
               license={contextLicense}
               onLicenseChange={setContextLicense}
+            />
+          )}
+          {mode === 'files' && (
+            <ComposeFilesForm
+              items={uploads.items}
+              onAddFiles={(files) => files.forEach((f) => void uploads.upload(f, filesLicense))}
+              onRemove={uploads.remove}
+              license={filesLicense}
+              onLicenseChange={setFilesLicense}
+              responsibilityChecked={filesResponsibility}
+              onResponsibilityChange={setFilesResponsibility}
             />
           )}
           <ComposeConfig value={config} onChange={setConfig} />

@@ -55,6 +55,8 @@ from app.db.book_profile import get_book_profile
 from app.deps import get_db
 from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM, make_redis_producer
 from app.jobs.job_request import save_job_request
+from app.api.license_assert import resolve_asserted_license
+from app.api.uploads import fetch_upload
 from app.jobs.proposal_store import PgProposalStore
 from app.retrieval.store import SourceCorpusStore
 from app.strategies.base import Technique
@@ -64,26 +66,16 @@ logger = logging.getLogger("lore_enrichment.compose")
 
 router = APIRouter(prefix="/v1/lore-enrichment/projects", tags=["compose"])
 
-# Supported input sources (slices 1–2). Files/intent land in slices 3–4.
-_SUPPORTED_SOURCES = {"gap", "draft", "context"}
-_FUTURE_SOURCES = {"files", "intent"}
+# Supported input sources (slices 1–3). Intent lands in slice 4.
+_SUPPORTED_SOURCES = {"gap", "draft", "context", "files"}
+_FUTURE_SOURCES = {"intent"}
 _EXPAND_MODES = {EXPAND_ADD_ONLY, EXPAND_REWRITE}
 # Cap the pasted text (draft AND context) so a huge paste can't blow up the LLM
 # prompt / fan out into an unbounded synchronous embed in the request path. ~50 KB;
 # larger material → mode F upload (async/poll). (D-COMPOSE-S1-DRAFT-CAP, spec §2.3.)
 _MAX_DRAFT_CHARS = 50_000
 
-# Mode C: map the FE-asserted license to the stored corpus license (default-deny).
-# 'owned' = the author owns the text ⇒ re-cook-admissible, stored as 'licensed'
-# (mirrors the /ground handler's author-chapters tag). 'copyrighted' — and anything
-# unrecognised — is REFUSED: the platform never ingests material the user can't
-# ground a license claim on (spec §4; the user performs the sourcing act).
-_CONTEXT_LICENSE_MAP = {
-    "public_domain": "public_domain",
-    "public-domain": "public_domain",  # parity with licensing.py's PD aliases
-    "licensed": "licensed",
-    "owned": "licensed",
-}
+# Mode C/F license default-deny → see app/api/license_assert.resolve_asserted_license.
 
 
 class ComposeTargetInput(BaseModel):
@@ -122,6 +114,10 @@ class ComposeBody(BaseModel):
     # grounds on it. context_license is default-deny (copyrighted/unknown → refused).
     context_text: str | None = None
     context_license: str | None = None
+    # mode F (files): the uploaded files (from POST /uploads) to ingest as grounding.
+    # Each upload carries its own validated license; the file's extracted text is
+    # ingested as a corpus, then identical to mode C.
+    upload_ids: list[UUID] | None = None
     # mode A (gap): the specific gap targets to enrich (LE-064 per-row shape).
     gap_targets: list[ComposeTargetInput] | None = None
     # output config (shared with auto-enrich). draft FORCES compose_draft; gap may
@@ -315,7 +311,7 @@ async def compose(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 f"input_source {source!r} is not available yet "
-                "(modes F/B land in compose slices 3–4)"
+                "(mode B / intent lands in compose slice 4)"
             ),
         )
     if source not in _SUPPORTED_SOURCES:
@@ -409,7 +405,7 @@ async def compose(
                 detail="context input requires embedding_model_ref (the text is embedded as grounding)",
             )
         # License default-deny: refuse copyrighted / unrecognised before any ingest.
-        store_license = _CONTEXT_LICENSE_MAP.get((body.context_license or "").strip().lower())
+        store_license = resolve_asserted_license(body.context_license)
         if store_license is None:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -468,6 +464,86 @@ async def compose(
             entity_kind=body.target.entity_kind,
             targets=[target_dict],
             extra_request={"context_corpus_ids": corpus_ids, "context_license": store_license},
+        )
+
+    # ── mode F — attach files ────────────────────────────────────────────────────
+    if source == "files":
+        if not body.upload_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="files input requires upload_ids (from POST /uploads)",
+            )
+        if body.target is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="files input requires a target (existing or new)",
+            )
+        if body.embedding_model_ref is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="files input requires embedding_model_ref (extracted text is embedded as grounding)",
+            )
+        try:
+            technique = Technique(body.technique or Technique.RETRIEVAL.value)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"unknown technique {body.technique!r}",
+            )
+        if technique is Technique.COMPOSE_DRAFT:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="compose_draft is the draft input's technique — use input_source='draft'",
+            )
+        # Ingest each ready upload's extracted text as a grounding corpus (each file
+        # carries its own license, validated + stored admissible at upload time).
+        corpus_ids: list[str] = []
+        for uid in body.upload_ids:
+            up = await fetch_upload(pool, principal.user_id, uid)
+            if up is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"upload {uid} not found")
+            if up["status"] != "ready":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"upload {uid} is not ready (status={up['status']}) — poll until ready",
+                )
+            text = (up["extracted_text"] or "").strip()
+            if not text:
+                continue  # an empty extraction (e.g. a blank scan) grounds nothing — skip
+            try:
+                ids = await _ingest_context(
+                    pool=pool, principal=principal, project_id=project_id, book_id=body.book_id,
+                    text=text, embedding_model_ref=body.embedding_model_ref,
+                    store_license=up["license_asserted"],
+                )
+            except KnowledgeServiceError as exc:
+                code = (
+                    status.HTTP_503_SERVICE_UNAVAILABLE if exc.retryable else status.HTTP_502_BAD_GATEWAY
+                )
+                raise HTTPException(status_code=code, detail=f"file embedding failed: {exc}")
+            corpus_ids.extend(ids)
+        if not corpus_ids:
+            raise HTTPException(
+                status_code=422,
+                detail="the uploaded files had no extractable text to ground on",
+            )
+        target_dict = _target_dict(body.target)
+        if body.target.mode == "existing" and not body.target.present_dimensions:
+            present = await _resolve_present_dimensions(pool, body.book_id, body.target.canonical_name)
+            if present is not None:
+                target_dict["present_dimensions"] = present
+        return await _create_and_enqueue(
+            pool=pool,
+            project_id=project_id,
+            user_id=user_id,
+            body=body,
+            technique=technique.value,
+            entity_kind=body.target.entity_kind,
+            targets=[target_dict],
+            extra_request={
+                "context_corpus_ids": corpus_ids,
+                "upload_ids": [str(u) for u in body.upload_ids],
+            },
         )
 
     # ── mode A — gap-fill (targeted) ─────────────────────────────────────────────
