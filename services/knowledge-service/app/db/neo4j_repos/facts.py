@@ -137,6 +137,7 @@ ON CREATE SET
   f.valid_from = coalesce($valid_from, datetime()),
   f.valid_until = NULL,
   f.source_types = [$source_type],
+  f.provenances = [$provenance],
   f.source_chapter = $source_chapter,
   f.evidence_count = 0,
   f.archived_at = NULL,
@@ -146,6 +147,11 @@ ON MATCH SET
   f.source_types = CASE
     WHEN $source_type IN f.source_types THEN f.source_types
     ELSE f.source_types + $source_type
+  END,
+  // CM5 provenance — accumulate deduped origins (mirrors source_types).
+  f.provenances = CASE
+    WHEN $provenance IN coalesce(f.provenances, []) THEN f.provenances
+    ELSE coalesce(f.provenances, []) + $provenance
   END,
   f.confidence = CASE
     WHEN $confidence > f.confidence THEN $confidence
@@ -174,6 +180,7 @@ async def merge_fact(
     valid_from: datetime | None = None,
     source_type: str = "book_content",
     source_chapter: str | None = None,
+    provenance: str = "human_authored",
 ) -> Fact:
     """Idempotent upsert. Same (user, project, type, normalized
     content) returns the same node. K17 Pass 2 promotion
@@ -209,6 +216,7 @@ async def merge_fact(
         valid_from=valid_from,
         source_type=source_type,
         source_chapter=normalized_source_chapter,
+        provenance=provenance,
     )
     record = await result.single()
     if record is None:

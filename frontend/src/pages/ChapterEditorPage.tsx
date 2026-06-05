@@ -16,6 +16,7 @@ import { TiptapEditor, type TiptapEditorHandle } from '@/components/editor/Tipta
 import { Skeleton } from '@/components/shared/Skeleton';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { UnsavedChangesDialog } from '@/components/shared/UnsavedChangesDialog';
+import { PublishControl } from '@/features/books/components/PublishControl';
 import { cn } from '@/lib/utils';
 import { useGrammarEnabled } from '@/hooks/useGrammarCheck';
 import { useEditorMode } from '@/hooks/useEditorMode';
@@ -30,6 +31,8 @@ import type { EntityNameEntry } from '@/features/glossary/types';
 import { Chat } from '@/features/chat/Chat';
 import { fireSendToChat } from '@/features/chat/context/sendToChat';
 import { registerEditorTarget } from '@/features/chat/context/editorBridge';
+import { CompositionPanel } from '@/features/composition/components/CompositionPanel';
+import { useChapterPublishGate } from '@/features/composition/hooks/usePublishGate';
 
 function wordCount(text: string): number {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
@@ -121,6 +124,7 @@ export function ChapterEditorPage() {
   // Chapter metadata
   const [title, setTitle] = useState('');
   const [savedTitle, setSavedTitle] = useState('');
+  const [editorialStatus, setEditorialStatus] = useState<'draft' | 'published' | undefined>();
 
   // Editor content
   const [savedBody, setSavedBody] = useState<any>(null);
@@ -133,7 +137,7 @@ export function ChapterEditorPage() {
   const [grammarEnabled, setGrammarEnabled] = useGrammarEnabled();
 
   // Panels
-  const [rightTab, setRightTab] = useState<'history' | 'ai'>('history');
+  const [rightTab, setRightTab] = useState<'history' | 'ai' | 'compose'>('history');
   const [revKey, setRevKey] = useState(0);
 
   // ARCH-1 C5: when the AI panel opens (or the chapter changes while it's
@@ -190,6 +194,18 @@ export function ChapterEditorPage() {
   const bodyChanged = tiptapJson ? JSON.stringify(tiptapJson) !== JSON.stringify(savedBody) : false;
   const titleChanged = title !== savedTitle;
   const isDirty = bodyChanged || titleChanged;
+
+  // M9 chapter-gate (OI-1): if this book has a composition Work, block Publish
+  // until every composition scene of the chapter is 'done'. No Work → ungated.
+  const publishGate = useChapterPublishGate(bookId, chapterId, accessToken);
+  const publishBlockedReason = publishGate.blocked
+    ? publishGate.scenesTotal === 0
+      ? t('publish.gate_no_scenes')
+      : t('publish.gate_pending', {
+          pending: publishGate.scenesTotal - publishGate.scenesDone,
+          total: publishGate.scenesTotal,
+        })
+    : undefined;
 
   // Sync isDirty into context so EditorLayout sidebar can read it
   useEffect(() => {
@@ -254,7 +270,18 @@ export function ChapterEditorPage() {
       const chTitle = chapter.title ?? '';
       setTitle(chTitle);
       setSavedTitle(chTitle);
+      setEditorialStatus(chapter.editorial_status);
     } catch (e) { toast.error((e as Error).message); }
+  }, [accessToken, bookId, chapterId]);
+
+  // CM-FE: light refetch of just the editorial_status after publish/unpublish
+  // — must NOT touch body/title (would clobber the editor).
+  const refreshEditorialStatus = useCallback(async () => {
+    if (!accessToken) return;
+    try {
+      const chapter = await booksApi.getChapter(accessToken, bookId, chapterId);
+      setEditorialStatus(chapter.editorial_status);
+    } catch { /* non-fatal — badge stays until next load */ }
   }, [accessToken, bookId, chapterId]);
 
   useEffect(() => { void load(); }, [load]);
@@ -338,8 +365,11 @@ export function ChapterEditorPage() {
           expected_draft_version: version,
         });
       } catch (e) {
-        // On version conflict, retry without version check (single-user, last-write-wins)
-        if ((e as Error).message?.includes('stale draft version')) {
+        // On version conflict, retry without version check (single-user, last-write-wins).
+        // Match the structured error (book-service: 409 CHAPTER_DRAFT_CONFLICT) like the
+        // publish path does — not a substring of the message, which is brittle to wording.
+        const err = e as { code?: string; status?: number };
+        if (err.code === 'CHAPTER_DRAFT_CONFLICT' || err.status === 409) {
           await booksApi.patchDraft(accessToken, bookId, chapterId, {
             body: bodyToSave,
             body_format: 'json',
@@ -589,6 +619,7 @@ export function ChapterEditorPage() {
           )}
 
           <button
+            data-testid="chapter-save-button"
             onClick={() => void save()}
             disabled={saving}
             className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
@@ -597,6 +628,20 @@ export function ChapterEditorPage() {
             {t('save')}
             <kbd className="ml-1 rounded border border-primary-foreground/20 bg-primary-foreground/10 px-1 py-px font-mono text-[9px]">Ctrl+S</kbd>
           </button>
+
+          <div className="mx-1 h-4 w-px bg-border" />
+
+          {/* CM-FE: canon publish affordance (canon = published) */}
+          <PublishControl
+            token={accessToken ?? ''}
+            bookId={bookId}
+            chapterId={chapterId}
+            draftVersion={version}
+            editorialStatus={editorialStatus}
+            dirty={isDirty}
+            blockedReason={publishBlockedReason}
+            onChanged={refreshEditorialStatus}
+          />
         </div>
       </div>
 
@@ -742,6 +787,7 @@ export function ChapterEditorPage() {
           <div className="flex-shrink-0 border-b px-6 pt-4 pb-3">
             <input
               type="text"
+              data-testid="chapter-title-input"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="w-full bg-transparent font-serif text-xl font-semibold outline-none placeholder:text-muted-foreground/30"
@@ -829,6 +875,13 @@ export function ChapterEditorPage() {
               >
                 <Sparkles className="mr-1.5 inline h-3 w-3" />{t('ai_chat')}
               </button>
+              <button
+                data-testid="chapter-righttab-compose"
+                onClick={() => setRightTab('compose')}
+                className={cn('flex-1 px-3 py-2 text-xs font-medium', rightTab === 'compose' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground')}
+              >
+                <Pen className="mr-1.5 inline h-3 w-3" />{t('composition:compose', { defaultValue: 'Co-write' })}
+              </button>
             </div>
             <div className="flex-1 overflow-hidden">
               {rightTab === 'history' && (
@@ -876,6 +929,18 @@ export function ChapterEditorPage() {
                     className="min-h-0 flex-1"
                   />
                 </div>
+              )}
+              {/* LOOM M8 — the lore-grounded co-writer Power panel. Accepted prose
+                  inserts at the cursor via insertAtCursor (which dirties + autosaves
+                  the EDITOR doc); the streaming ghost stays FE-local until then. */}
+              {rightTab === 'compose' && (
+                <CompositionPanel
+                  key={bookId}
+                  bookId={bookId}
+                  chapterId={chapterId}
+                  token={accessToken}
+                  onAccept={(text) => tiptapEditorRef.current?.insertAtCursor(text)}
+                />
               )}
             </div>
           </div>

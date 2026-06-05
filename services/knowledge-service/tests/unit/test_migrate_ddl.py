@@ -30,7 +30,11 @@ def test_extraction_jobs_table_present():
 
 
 def test_extraction_jobs_scope_check_constraint():
-    assert "scope IN ('chapters','chat','glossary_sync','all')" in DDL
+    # CM3b: 'chapters_pending' = the worker-ai coalescing drainer scope.
+    assert (
+        "scope IN ('chapters','chat','glossary_sync','all','chapters_pending')"
+        in DDL
+    )
 
 
 def test_extraction_jobs_status_check_constraint():

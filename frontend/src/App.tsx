@@ -23,6 +23,7 @@ import { TrashPage } from '@/pages/TrashPage';
 import { ChatPage } from '@/pages/ChatPage';
 import { BookDetailPage } from '@/pages/BookDetailPage';
 import { ChapterEditorPage } from '@/pages/ChapterEditorPage';
+import { ChapterComparePage } from '@/pages/ChapterComparePage';
 import { WikiEditorPage } from '@/pages/WikiEditorPage';
 import { ReaderPage } from '@/pages/ReaderPage';
 import { ThemeProvider } from '@/providers/ThemeProvider';
@@ -98,6 +99,7 @@ export function App() {
           {/* Editor (collapsed sidebar) */}
           <Route element={<RequireAuth><EditorLayout /></RequireAuth>}>
             <Route path="/books/:bookId/chapters/:chapterId/edit" element={<ChapterEditorPage />} />
+            <Route path="/books/:bookId/chapters/:chapterId/compare" element={<ChapterComparePage />} />
             <Route path="/books/:bookId/chapters/:chapterId/translations" element={<ChapterTranslationsPage />} />
             <Route path="/books/:bookId/wiki/:articleId/edit" element={<WikiEditorPage />} />
           </Route>

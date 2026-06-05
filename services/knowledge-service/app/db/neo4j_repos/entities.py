@@ -213,6 +213,7 @@ ON CREATE SET
   e.aliases = [$name],
   e.canonical_version = $canonical_version,
   e.source_types = [$source_type],
+  e.provenances = [$provenance],
   e.confidence = $confidence,
   e.glossary_entity_id = NULL,
   e.anchor_score = 0.0,
@@ -233,6 +234,13 @@ ON MATCH SET
   e.source_types = CASE
     WHEN $source_type IN e.source_types THEN e.source_types
     ELSE e.source_types + $source_type
+  END,
+  // CM5 provenance — accumulate the deduped set of authorship origins
+  // (PO: accumulate). Mirrors source_types. coalesce guards pre-CM5 nodes
+  // that have no provenances property yet.
+  e.provenances = CASE
+    WHEN $provenance IN coalesce(e.provenances, []) THEN e.provenances
+    ELSE coalesce(e.provenances, []) + $provenance
   END,
   e.confidence = CASE
     WHEN $confidence > e.confidence THEN $confidence
@@ -261,6 +269,7 @@ async def merge_entity(
     confidence: float = 0.0,
     canonical_version: int = 1,
     auto_created: bool = False,
+    provenance: str = "human_authored",
 ) -> Entity:
     """Idempotent upsert. Re-running with the same (user_id, project_id,
     name, kind) tuple returns the same node — no duplicates.
@@ -305,6 +314,7 @@ async def merge_entity(
         source_type=source_type,
         confidence=confidence,
         auto_created=auto_created,
+        provenance=provenance,
     )
     record = await result.single()
     if record is None:
@@ -328,6 +338,7 @@ async def merge_entity_at_id(
     kind: str,
     source_type: str,
     confidence: float = 0.0,
+    provenance: str = "human_authored",
 ) -> "Entity | None":
     """C17 — upsert at a caller-supplied entity id (no SHA derivation).
 
@@ -370,6 +381,10 @@ async def merge_entity_at_id(
               WHEN $source_type IN e.source_types THEN e.source_types
               ELSE e.source_types + $source_type
             END,
+            e.provenances = CASE
+              WHEN $provenance IN coalesce(e.provenances, []) THEN e.provenances
+              ELSE coalesce(e.provenances, []) + $provenance
+            END,
             e.confidence = CASE
               WHEN $confidence > e.confidence THEN $confidence
               ELSE e.confidence
@@ -385,6 +400,7 @@ async def merge_entity_at_id(
         kind=kind,
         source_type=source_type,
         confidence=confidence,
+        provenance=provenance,
     )
     record = await result.single()
     if record is None:

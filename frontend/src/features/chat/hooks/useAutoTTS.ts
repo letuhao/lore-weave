@@ -123,6 +123,12 @@ export function useAutoTTS(
 
         // Parse SSE stream — same format as Voice Mode
         const reader = resp.body.getReader();
+        // Explicitly cancel the reader on abort — don't rely on fetch
+        // propagating the abort to the stream (a pending read() would otherwise
+        // leak forever if it doesn't; see feedback_sse_reader_must_cancel_on_abort).
+        const cancelReader = () => void reader.cancel().catch(() => {});
+        if (abort.signal.aborted) cancelReader();
+        else abort.signal.addEventListener('abort', cancelReader, { once: true });
         const decoder = new TextDecoder();
         let buffer = '';
 

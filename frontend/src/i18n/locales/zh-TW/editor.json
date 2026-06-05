@@ -299,5 +299,39 @@
   },
   "media_guard": {
     "protected": "媒體區塊在經典模式下受保護。切換至 AI 模式以編輯或刪除。"
+  },
+  "publish": {
+    "publish": "發佈",
+    "republish": "重新發佈",
+    "unpublish": "取消發佈",
+    "draft_badge": "草稿",
+    "published_badge": "已發佈",
+    "confirm_title": "取消發佈此章節？",
+    "confirm_body": "這會將章節從正典中移除——其擷取的知識與段落將被撤回，直到您重新發佈。",
+    "published_toast": "章節已發佈",
+    "unpublished_toast": "章節已取消發佈",
+    "conflict_toast": "自您開啟後草稿已變更——請先重新載入再發佈。",
+    "empty_toast": "本章沒有可發佈的內容——請先寫點東西。",
+    "save_first": "發佈前請先儲存",
+    "gate_pending": "{{total}} 個場景中有 {{pending}} 個尚未完成",
+    "gate_no_scenes": "建立並完成至少一個場景才能發佈"
+  },
+  "compare": {
+    "open": "比較",
+    "title": "比較修訂版本",
+    "back": "返回編輯器",
+    "left": "左側版本",
+    "right": "右側版本",
+    "side_by_side": "並排",
+    "inline": "行內",
+    "no_revisions": "沒有版本",
+    "need_two": "此章節需要至少兩個已儲存的版本才能比較。",
+    "loading": "載入中…",
+    "diffing": "正在計算差異…",
+    "error": "無法載入比較。",
+    "truncated": "這些版本太大——顯示整體替換而非細粒度差異。",
+    "same": "兩側為同一版本——沒有差異。",
+    "load_more": "載入更多 ({{loaded}}/{{total}})",
+    "load_more_hint": "將較舊的版本載入選單"
   }
 }

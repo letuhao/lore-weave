@@ -1,0 +1,20 @@
+fastapi>=0.111
+uvicorn[standard]>=0.29
+asyncpg>=0.29
+pydantic>=2.6
+pydantic-settings>=2.2
+python-json-logger>=2.0
+httpx>=0.27
+PyJWT>=2.8
+prometheus-client>=0.20
+# D-T2-01 — tiktoken for accurate token counting (CJK packer budget, M4).
+tiktoken>=0.7
+# Redis Streams (outbox relay consumer / ephemeral state) — used from M6.
+redis[hiredis]>=5.0
+
+# Local SDKs installed via the Dockerfile COPY of sdks/python (build context
+# is repo root):
+#   loreweave_obs   — OTel tracing helpers (main.py)
+#   loreweave_llm   — gateway LLM client (M3 clients / M6 engine)
+#   loreweave_eval  — JudgeLLMClient for judge_prose (M6 critic)
+# For host-side pytest: pip install -e ../../sdks/python

@@ -57,7 +57,11 @@ from pydantic import BaseModel
 
 from app.db.neo4j_helpers import CypherSession
 from app.db.neo4j_repos.canonical import canonicalize_entity_name
-from app.db.neo4j_repos.events import merge_event
+from app.db.neo4j_repos.events import (
+    EVENT_ORDER_CHAPTER_STRIDE,
+    merge_event,
+    rerank_chronological_order,
+)
 from app.db.neo4j_repos.facts import FACT_TYPES, merge_fact
 from app.db.repositories.entity_alias_map import EntityAliasMapRepo
 from app.db.neo4j_repos.provenance import add_evidence, upsert_extraction_source
@@ -210,6 +214,12 @@ async def write_pass2_extraction(
     #   bounds per-chapter autocreate count (``None`` = unlimited).
     autocreate_enabled: bool = False,
     autocreate_max: int | None = None,
+    # CM5 — provenance (authorship origin) stamped on every node this call
+    # writes. Default 'human_authored' (chapters are author-written); the
+    # caller passes 'ai_assisted' for composition-generated prose. Accumulates
+    # into each node's `provenances` set (a node mentioned by both origins
+    # carries both).
+    provenance: str = "human_authored",
 ) -> Pass2WriteResult:
     """Persist Pass 2 LLM extraction candidates to Neo4j.
 
@@ -291,6 +301,7 @@ async def write_pass2_extraction(
             source_type=source_type,
             confidence=ent.confidence,
             alias_map_repo=alias_map_repo,
+            provenance=provenance,
         )
         merged_entity_ids.add(entity.id)
         entities_merged += 1
@@ -433,6 +444,7 @@ async def write_pass2_extraction(
                     confidence=min(rel.confidence or 0.0, 0.3),
                     alias_map_repo=alias_map_repo,
                     auto_created=True,
+                    provenance=provenance,
                 )
             except Exception:
                 logger.warning(
@@ -491,12 +503,32 @@ async def write_pass2_extraction(
             skipped += 1
 
     # Step 4 — merge events.
+    # CM4: assign event_order = chapter sort_order × 1e6 + within-chapter
+    # index, so the reading-order (spoiler) axis is dense at chapter
+    # granularity. The chapter ordinal is `hierarchy_paths.chapter_index`
+    # (= book-service sort_order, already threaded for P3). Legacy/chat
+    # callers pass no hierarchy → event_order stays None → the timeline
+    # null-sinks them via coalesce(event_order, INT64_MAX). `idx` advances
+    # only for events actually written (skipped empties leave gaps — fine for
+    # the strict range filter, and keeps the order non-decreasing). The stride
+    # is the SHARED EVENT_ORDER_CHAPTER_STRIDE (events.py) — backfill imports
+    # the same constant so both write on one scale.
+    chapter_base = (
+        hierarchy_paths.chapter_index * EVENT_ORDER_CHAPTER_STRIDE
+        if hierarchy_paths is not None
+        else None
+    )
     events_merged = 0
+    dated_written = 0  # CM4 debounce: rerank chrono only if a dated event changed
+    idx = 0
     for evt in event_list:
         name_clean = _sanitize(evt.name, project_id)
         summary_clean = _sanitize(evt.summary, project_id)
         if not name_clean.strip():
             continue
+
+        event_order = chapter_base + idx if chapter_base is not None else None
+        idx += 1
 
         # NOTE: ``evt.location`` is still intentionally dropped here —
         # merge_event does not yet accept location (Location is likely
@@ -513,6 +545,7 @@ async def write_pass2_extraction(
             project_id=project_id,
             title=name_clean,
             summary=summary_clean or None,
+            event_order=event_order,
             event_date_iso=evt.event_date,
             time_cue=evt.time_cue,
             participants=[
@@ -520,8 +553,11 @@ async def write_pass2_extraction(
             ],
             source_type=source_type,
             confidence=evt.confidence,
+            provenance=provenance,
         )
         events_merged += 1
+        if evt.event_date:
+            dated_written += 1
 
         ev = await add_evidence(
             session,
@@ -535,6 +571,17 @@ async def write_pass2_extraction(
         )
         if ev is not None and ev.created:
             evidence_edges += 1
+
+    # CM4 — recompute chronological_order for the project, but ONLY when this
+    # chapter wrote at least one DATED event (debounce: a chat turn or an
+    # all-undated chapter must not trigger an O(project-events) rerank). Same
+    # session/Tx as the writes above. project_id is required for the rerank
+    # scope; chat_turn callers pass it too, but their events are usually
+    # undated so the debounce skips them anyway.
+    if dated_written > 0 and project_id:
+        await rerank_chronological_order(
+            session, user_id=user_id, project_id=project_id,
+        )
 
     # Step 5 — merge facts.
     facts_merged = 0
@@ -564,6 +611,7 @@ async def write_pass2_extraction(
             confidence=fact.confidence,
             pending_validation=False,
             source_type=source_type,
+            provenance=provenance,
         )
         facts_merged += 1
 

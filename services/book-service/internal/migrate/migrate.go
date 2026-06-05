@@ -254,6 +254,26 @@ CREATE INDEX IF NOT EXISTS idx_scenes_chapter_sort_active
 CREATE INDEX IF NOT EXISTS idx_scenes_content_hash ON scenes(content_hash);
 CREATE INDEX IF NOT EXISTS idx_chapters_part ON chapters(part_id)
   WHERE part_id IS NOT NULL;
+
+-- ── Canon Model CM1 (editorial lifecycle) - 2026-06-04 ──────────────────────
+-- A chapter is canon only once PUBLISHED. editorial_status gates canonization;
+-- published_revision_id pins the immutable chapter_revisions snapshot that IS
+-- the canon (decoupled from the live draft). New chapters default 'draft';
+-- the one-time backfill (backfillSQL, marker-gated) flips pre-existing
+-- chapters with revisions to 'published'. No review-pending state (YAGNI).
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS editorial_status TEXT NOT NULL DEFAULT 'draft'
+  CHECK (editorial_status IN ('draft','published'));
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS published_revision_id UUID
+  REFERENCES chapter_revisions(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_chapters_editorial ON chapters(book_id, editorial_status);
+-- One-row-per-step marker so the data backfill (backfillSQL) runs EXACTLY once,
+-- not every startup (book-service has no migration ledger). Without this guard
+-- a post-CM1 draft chapter that gains revisions while being written would be
+-- wrongly flipped to 'published' on the next restart.
+CREATE TABLE IF NOT EXISTS canon_model_migration (
+  id         TEXT PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {
@@ -270,6 +290,11 @@ func Up(ctx context.Context, pool *pgxpool.Pool) error {
 		END $$;
 	`)
 
+	// Canon Model CM1: one-time editorial backfill (marker-gated; idempotent).
+	if _, err := pool.Exec(ctx, backfillSQL); err != nil {
+		return fmt.Errorf("migrate canon backfill: %w", err)
+	}
+
 	// D1-03: trigger function to extract chapter_blocks from Tiptap JSONB
 	if _, err := pool.Exec(ctx, triggerSQL); err != nil {
 		return fmt.Errorf("migrate trigger: %w", err)
@@ -277,6 +302,28 @@ func Up(ctx context.Context, pool *pgxpool.Pool) error {
 
 	return nil
 }
+
+// backfillSQL — Canon Model CM1 one-time data backfill. Pre-existing chapters
+// with >=1 revision are already canon, so flip them to 'published' and pin the
+// latest revision; revision-less chapters stay 'draft'. Marker-gated via
+// canon_model_migration so it runs EXACTLY ONCE — a post-CM1 draft chapter that
+// gains revisions while being written must NEVER be auto-published on restart.
+const backfillSQL = `
+DO $cm1$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM canon_model_migration WHERE id = 'cm1_editorial_backfill') THEN
+    UPDATE chapters c
+       SET editorial_status     = 'published',
+           published_revision_id = (
+             SELECT r.id FROM chapter_revisions r
+             WHERE r.chapter_id = c.id
+             ORDER BY r.created_at DESC, r.id DESC
+             LIMIT 1
+           )
+     WHERE EXISTS (SELECT 1 FROM chapter_revisions r WHERE r.chapter_id = c.id);
+    INSERT INTO canon_model_migration (id) VALUES ('cm1_editorial_backfill');
+  END IF;
+END $cm1$;
+`
 
 const triggerSQL = `
 -- ── fn_extract_chapter_blocks: UPSERT blocks from Tiptap JSON ────────────

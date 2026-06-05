@@ -137,7 +137,7 @@ def _extract_chapter_range(
 
 # ── Request / response models ───────────────────────────────────────
 
-JobScope = Literal["chapters", "chat", "glossary_sync", "all"]
+JobScope = Literal["chapters", "chat", "glossary_sync", "all", "chapters_pending"]  # CM3b: internal coalescing-drainer scope
 
 
 class EstimateRequest(BaseModel):
@@ -215,12 +215,16 @@ async def estimate_extraction_cost(
 
     chapter_from, chapter_to = _extract_chapter_range(body.scope_range)
 
-    # Chapter count — via book-service internal API
+    # Chapter count — via book-service internal API. CM3c: gate to
+    # editorial_status='published' so the estimate matches what the gated
+    # whole-book rebuild actually extracts (drafts are skipped) — same
+    # server-side filter the worker enumeration uses (no count divergence).
     if scope in ("chapters", "all") and project.book_id is not None:
         count = await book_client.count_chapters(
             project.book_id,
             from_sort=chapter_from,
             to_sort=chapter_to,
+            editorial_status="published",
         )
         chapters = count if count is not None else 0
 

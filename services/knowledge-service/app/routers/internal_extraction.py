@@ -165,6 +165,12 @@ class PersistPass2Request(BaseModel):
     # stays accurate). The env knob still applies for callers that omit this.
     writer_autocreate: bool | None = None
 
+    # CM5 — authorship provenance stamped on every node this persist writes.
+    # Closed vocab aligned with enrichment H0. Default 'human_authored' (chapter
+    # extraction); composition sends 'ai_assisted' for AI-generated prose. The
+    # node accumulates the deduped set of origins (`provenances`).
+    provenance: Literal["human_authored", "ai_assisted", "enrichment"] = "human_authored"
+
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -472,6 +478,16 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
     )
 
     async with neo4j_session() as session:
+        # Canon Model CM3b (B6): retract THIS source's prior evidence BEFORE
+        # re-writing. Re-extracting a chapter (e.g. re-publish) must drop facts
+        # that disappeared from the new revision instead of leaving stale canon;
+        # the writer below re-adds evidence for facts still present. First-time
+        # extraction → 0 edges removed (no-op). Safe because the worker persists
+        # ONCE per chapter (one source_id per call), not per-chunk.
+        from app.db.neo4j_repos.provenance import remove_evidence_for_source
+        await remove_evidence_for_source(
+            session, user_id=str(body.user_id), source_id=body.source_id,
+        )
         result = await write_pass2_extraction(
             session,
             user_id=str(body.user_id),
@@ -488,6 +504,7 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             hierarchy_paths=hierarchy_paths,  # P3 D2a — Tx-bound hierarchy MERGE
             autocreate_enabled=autocreate_enabled,
             autocreate_max=_WRITER_AUTOCREATE_CONFIG["autocreate_max"],
+            provenance=body.provenance,  # CM5
         )
 
     elapsed = time.perf_counter() - started

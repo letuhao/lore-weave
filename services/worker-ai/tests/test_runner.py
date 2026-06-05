@@ -17,11 +17,14 @@ from uuid import uuid4
 import pytest
 
 from app.clients import (
-    BookClient, ChapterInfo, ExtractionResult,
+    BookClient, ChapterHierarchy, ChapterInfo, ExtractionResult,
     GlossaryClient, GlossaryEntity, GlossaryPage, GlossarySyncResult,
-    KnowledgeClient,
+    HierarchyPart, HierarchyScene, KnowledgeClient,
 )
-from app.runner import JobRow, process_job, poll_and_run, _get_running_jobs
+from app.runner import (
+    JobRow, process_job, poll_and_run, _get_running_jobs,
+    _enumerate_chapters,
+)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -145,9 +148,17 @@ def _mock_llm_client():
 def _mock_book_client(chapters=None, text="Chapter text here."):
     client = AsyncMock(spec=BookClient)
     if chapters is None:
-        chapters = [ChapterInfo(chapter_id="ch-1", title="Ch 1", sort_order=1)]
+        # CM3c: a published chapter carries its pinned published_revision_id
+        # (→ ChapterInfo.revision_id), so the manual rebuild reads the pinned
+        # revision text via get_chapter_revision_text.
+        chapters = [ChapterInfo(
+            chapter_id="ch-1", title="Ch 1", sort_order=1, revision_id="rev-1",
+        )]
     client.list_chapters = AsyncMock(return_value=chapters)
     client.get_chapter_text = AsyncMock(return_value=text)
+    # CM3c: published chapters fetch the pinned revision; mirror `text` so
+    # text-unavailable (text=None) still exercises the skip path.
+    client.get_chapter_revision_text = AsyncMock(return_value=text)
     return client
 
 
@@ -271,7 +282,7 @@ async def test_process_job_chapters_records_spending_on_success(mock_extract_per
     the CostSummary card sees real production figures."""
     mock_extract_persist.return_value = _ok_result()
     chapters = [
-        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i)
+        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i, revision_id=f"rev-{i}")
         for i in range(3)
     ]
     job = _job(scope="chapters")
@@ -303,7 +314,7 @@ async def test_process_job_appends_log_on_chapter_success(mock_extract_persist):
     level=info and an event=chapter_processed context tag."""
     mock_extract_persist.return_value = _ok_result()
     chapters = [
-        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i)
+        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i, revision_id=f"rev-{i}")
         for i in range(2)
     ]
     job = _job(scope="chapters")
@@ -387,7 +398,7 @@ async def test_process_job_multiple_chapters(mock_extract_persist):
     """Multiple chapters processed in order."""
     mock_extract_persist.return_value = _ok_result()
     chapters = [
-        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i)
+        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i, revision_id=f"rev-{i}")
         for i in range(3)
     ]
     job = _job(scope="chapters")
@@ -408,7 +419,7 @@ async def test_process_job_pause_detected(mock_extract_persist):
     """Job paused mid-run — runner stops processing."""
     mock_extract_persist.return_value = _ok_result()
     chapters = [
-        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i)
+        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i, revision_id=f"rev-{i}")
         for i in range(5)
     ]
     job = _job(scope="chapters")
@@ -572,7 +583,7 @@ async def test_backfill_sets_items_total_when_none(mock_extract_persist):
     """When items_total is None, runner counts items and sets it."""
     mock_extract_persist.return_value = _ok_result()
     chapters = [
-        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i)
+        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i, revision_id=f"rev-{i}")
         for i in range(5)
     ]
     job = _job(scope="chapters", items_total=None)
@@ -622,7 +633,7 @@ async def test_backfill_scope_all_counts_chapters_and_chat(mock_extract_persist)
     """scope=all counts both chapters and pending chat turns."""
     mock_extract_persist.return_value = _ok_result()
     chapters = [
-        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i)
+        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i, revision_id=f"rev-{i}")
         for i in range(3)
     ]
     pending_rows = [
@@ -689,7 +700,7 @@ async def test_process_job_all_scope_includes_glossary(mock_extract_persist):
     after chapters+chat. The TODO at line 621 is removed; a user
     who runs `all` gets chapters + chat + glossary end-to-end."""
     mock_extract_persist.return_value = _ok_result()
-    chapters = [ChapterInfo(chapter_id="ch-1", title="Ch 1", sort_order=1)]
+    chapters = [ChapterInfo(chapter_id="ch-1", title="Ch 1", sort_order=1, revision_id="rev-1")]
     job = _job(scope="all")
     pool = _mock_pool()
     # Return one pending chat turn to exercise the chat branch too.
@@ -724,7 +735,7 @@ async def test_process_job_items_total_includes_glossary(mock_extract_persist):
     """C12c-a: when items_total is None (backfill), the pre-count
     covers chapters + chat + glossary pages."""
     mock_extract_persist.return_value = _ok_result()
-    chapters = [ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i) for i in range(2)]
+    chapters = [ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i, revision_id=f"rev-{i}") for i in range(2)]
     job = _job(scope="all", items_total=None)
     pool = _mock_pool()
     kc = _mock_knowledge_client()
@@ -2168,3 +2179,93 @@ def test_start_metrics_server_no_op_when_port_zero(caplog):
     assert any(
         "metrics server disabled" in r.getMessage() for r in caplog.records
     )
+
+
+# ── CM3c: _enumerate_chapters canon=published gate + is_last scope-guard ──
+
+
+def _full_hierarchy(chapter_id: str) -> ChapterHierarchy:
+    """A complete hierarchy (part + chapter_path set) so the P3 is_last
+    branch in process_job is reached."""
+    return ChapterHierarchy(
+        book_id=str(uuid4()),
+        book_path="book",
+        book_title="The Book",
+        part=HierarchyPart(id=str(uuid4()), path="book/part-1", index=1, title="P1"),
+        chapter_id=chapter_id,
+        chapter_path=f"book/part-1/{chapter_id}",
+        chapter_index=1,
+        chapter_title="C1",
+        scenes=(HierarchyScene(id=str(uuid4()), path="s", index=1),),
+        book_parts=(HierarchyPart(id=str(uuid4()), path="book/part-1", index=1, title="P1"),),
+    )
+
+
+@pytest.mark.asyncio
+async def test_enumerate_chapters_requests_published_and_skips_null_revision():
+    """CM3c: _enumerate_chapters asks book-service for editorial_status=
+    'published' (server-side draft gate) and skips any published chapter
+    whose published_revision_id is NULL (can't pin canon — R2-NEW-2 edge)."""
+    book_id = uuid4()
+    bc = AsyncMock(spec=BookClient)
+    bc.list_chapters = AsyncMock(return_value=[
+        ChapterInfo(chapter_id="ch-1", title="C1", sort_order=1,
+                    revision_id="rev-1", editorial_status="published"),
+        # published but no pinned revision → must be skipped (with a WARNING)
+        ChapterInfo(chapter_id="ch-2", title="C2", sort_order=2,
+                    revision_id=None, editorial_status="published"),
+    ])
+
+    result = await _enumerate_chapters(bc, book_id, None)
+
+    bc.list_chapters.assert_awaited_once_with(book_id, editorial_status="published")
+    assert [c.chapter_id for c in result] == ["ch-1"]  # null-revision dropped
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_chapters_pending_drain_never_asserts_is_last(mock_extract_persist):
+    """R2-BLOCK#1: the coalescing chapters_pending drain processes a SUBSET of
+    re-published chapters → its tail is NOT the book tail → is_last_chapter_of_book
+    must be False (else every incremental re-publish re-rolls the whole-book L0
+    summary)."""
+    mock_extract_persist.return_value = _ok_result()
+    job = _job(scope="chapters_pending", embedding_dimension=1024)
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    llm = _mock_llm_client()
+    bc = _mock_book_client()
+    bc.get_chapter_hierarchy = AsyncMock(return_value=_full_hierarchy("ch-1"))
+    gc = _mock_glossary_client()
+
+    with patch(
+        "app.runner._enumerate_pending_chapters",
+        AsyncMock(return_value=[ChapterInfo(
+            chapter_id="ch-1", title="C1", sort_order=1,
+            revision_id="rev-1", pending_id=uuid4(),
+        )]),
+    ):
+        await process_job(pool, kc, llm, bc, gc, job)
+
+    mock_extract_persist.assert_awaited_once()
+    assert mock_extract_persist.await_args.kwargs["is_last_chapter_of_book"] is False
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_chapters_whole_book_asserts_is_last_on_tail(mock_extract_persist):
+    """Counterpart: a genuine whole-book ('chapters') pass DOES assert is_last
+    on the tail chapter — the guard must not over-suppress."""
+    mock_extract_persist.return_value = _ok_result()
+    job = _job(scope="chapters", embedding_dimension=1024)
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    llm = _mock_llm_client()
+    bc = _mock_book_client()  # single published chapter ch-1 (the tail)
+    bc.get_chapter_hierarchy = AsyncMock(return_value=_full_hierarchy("ch-1"))
+    gc = _mock_glossary_client()
+
+    await process_job(pool, kc, llm, bc, gc, job)
+
+    mock_extract_persist.assert_awaited_once()
+    assert mock_extract_persist.await_args.kwargs["is_last_chapter_of_book"] is True
