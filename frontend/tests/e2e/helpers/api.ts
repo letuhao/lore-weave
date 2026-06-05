@@ -1,16 +1,27 @@
 import type { APIRequestContext } from '@playwright/test';
-import { TEST_USER } from './auth';
+import { TEST_USER, TEST_USER_B } from './auth';
 
 /** Login via API and return the access token. */
 export async function getAccessToken(request: APIRequestContext): Promise<string> {
-  const resp = await request.post('/v1/auth/login', {
-    data: { email: TEST_USER.email, password: TEST_USER.password },
+  return loginAs(request, TEST_USER.email, TEST_USER.password);
+}
+
+async function loginAs(request: APIRequestContext, email: string, password: string): Promise<string> {
+  const resp = await request.post('/v1/auth/login', { data: { email, password } });
+  if (!resp.ok()) throw new Error(`API login ${email} failed: ${resp.status()} ${await resp.text()}`);
+  return ((await resp.json()) as { access_token: string }).access_token;
+}
+
+/** Ensure the 2nd isolation account exists (register is idempotent — 409 = already
+ * there) and return its access token. Dev login has no email-verification gate. */
+export async function ensureUserB(request: APIRequestContext): Promise<string> {
+  const reg = await request.post('/v1/auth/register', {
+    data: { email: TEST_USER_B.email, password: TEST_USER_B.password, display_name: 'Claude Test 2' },
   });
-  if (!resp.ok()) {
-    throw new Error(`API login failed: ${resp.status()} ${await resp.text()}`);
+  if (!reg.ok() && reg.status() !== 409) {
+    throw new Error(`register user B failed: ${reg.status()} ${await reg.text()}`);
   }
-  const body = (await resp.json()) as { access_token: string };
-  return body.access_token;
+  return loginAs(request, TEST_USER_B.email, TEST_USER_B.password);
 }
 
 const auth = (token: string) => ({ headers: { Authorization: `Bearer ${token}` } });
@@ -63,6 +74,16 @@ export async function trashBook(request: APIRequestContext, token: string, bookI
   await request.delete(`/v1/books/${bookId}`, auth(token));
 }
 
+/** A chapter's revision ids (newest first) — used to drive the compare endpoint. */
+export async function listRevisionIds(
+  request: APIRequestContext, token: string, bookId: string, chapterId: string,
+): Promise<string[]> {
+  const d = await ok<{ items: Array<{ revision_id: string }> }>(
+    request.get(`/v1/books/${bookId}/chapters/${chapterId}/revisions`, auth(token)),
+  );
+  return (d.items ?? []).map((r) => r.revision_id);
+}
+
 /** Read a chapter's canon-side editorial fields (server source of truth). Used to
  * assert publish lifecycle outcomes without trusting the UI badge alone. */
 export async function getChapterEditorial(
@@ -78,6 +99,27 @@ export async function bumpServerDraft(
 ): Promise<number> {
   const dv = await draftVersion(request, token, bookId, chapterId);
   return saveDraft(request, token, bookId, chapterId, text, dv, 'external bump');
+}
+
+/** Publish a chapter via the API (canon = published; triggers CM3b extraction). */
+export async function publishChapterApi(
+  request: APIRequestContext, token: string, bookId: string, chapterId: string,
+): Promise<void> {
+  await ok(request.post(`/v1/books/${bookId}/chapters/${chapterId}/publish`, { ...auth(token), data: {} }));
+}
+
+export type Grounding = {
+  blocks: Record<string, string>;
+  token_count: number;
+  grounding_available: boolean;
+  warnings: string[];
+};
+
+/** Fetch a scene's packed grounding (the same preview the Grounding tab shows). */
+export async function getGrounding(
+  request: APIRequestContext, token: string, projectId: string, sceneId: string,
+): Promise<Grounding> {
+  return ok(request.get(`/v1/composition/works/${projectId}/scenes/${sceneId}/grounding`, auth(token)));
 }
 
 // ── composition (co-write) seeding ──
