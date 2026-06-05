@@ -16,6 +16,7 @@ from app.clients.knowledge_client import KnowledgeClient, get_knowledge_client
 from app.clients.llm_client import LLMClient, get_llm_client
 from app.db.pool import get_pool
 from app.db.repositories.canon_rules import CanonRulesRepo
+from app.db.repositories.generation_corrections import GenerationCorrectionsRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
@@ -41,6 +42,10 @@ async def get_canon_rules_repo() -> CanonRulesRepo:
 
 async def get_generation_jobs_repo() -> GenerationJobsRepo:
     return GenerationJobsRepo(get_pool())
+
+
+async def get_generation_corrections_repo() -> GenerationCorrectionsRepo:
+    return GenerationCorrectionsRepo(get_pool())
 
 
 async def get_structure_templates_repo() -> StructureTemplatesRepo:

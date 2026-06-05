@@ -19,6 +19,7 @@ from app.db.migrate import run_migrations
 from app.db.repositories import ReferenceViolationError, VersionMismatchError
 from app.db.repositories import outbox
 from app.db.repositories.canon_rules import CanonRulesRepo
+from app.db.repositories.generation_corrections import GenerationCorrectionsRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
@@ -32,8 +33,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 _TABLES = [
-    "outbox_events", "generation_job", "canon_rule", "scene_link",
-    "outline_node", "structure_template", "composition_work",
+    "outbox_events", "generation_correction", "generation_job", "canon_rule",
+    "scene_link", "outline_node", "structure_template", "composition_work",
 ]
 
 
@@ -516,3 +517,140 @@ async def test_chapter_scene_gate_zero_scenes_blocks(pool):
     user, project, _ = _ids()
     gate = await repo.chapter_scene_gate(user, project, uuid.uuid4())
     assert gate["scenes_total"] == 0 and gate["can_publish"] is False
+
+
+# ──────────────────── generation_correction (V1 flywheel slice 1) ────────────────────
+
+import json as _json  # noqa: E402
+
+
+async def _make_job(pool, user, project):
+    gjr = GenerationJobsRepo(pool)
+    job, _ = await gjr.create(user, project, operation="draft_scene",
+                              status="completed", input={"model_ref": str(uuid.uuid4())})
+    return job
+
+
+async def test_correction_create_emits_relayable_event_atomically(pool):
+    user, project, _ = _ids()
+    job = await _make_job(pool, user, project)
+    repo = GenerationCorrectionsRepo(pool)
+    corr = await repo.create(
+        user, project, job.id, kind="edit", changed_blocks=3, guidance="tighten",
+    )
+    assert corr.kind == "edit" and corr.changed_blocks == 3
+    async with pool.acquire() as c:
+        n_rows = await c.fetchval("SELECT count(*) FROM generation_correction WHERE id=$1", corr.id)
+        ev = await c.fetchrow(
+            "SELECT aggregate_id, payload FROM outbox_events WHERE event_type=$1",
+            outbox.GENERATION_CORRECTED)
+    assert n_rows == 1
+    # the relayable event exists (the H1 fix means this row now actually ships)
+    assert ev is not None and ev["aggregate_id"] == project
+    payload = _json.loads(ev["payload"])
+    assert payload["kind"] == "edit" and payload["changed_blocks"] == 3
+    assert payload["job_id"] == str(job.id)
+    # redact-by-default: no verbatim prose / guidance text on the wire (§5)
+    assert "guidance" not in payload and "raw_before" not in payload and "raw_after" not in payload
+    assert payload["has_guidance"] is True and payload["has_raw_prose"] is False
+
+
+async def test_correction_payload_carries_winner_and_k_for_reconstruction(pool):
+    """LOW#4: a pick_different event must carry winner_index (i) + chosen (j) + k
+    so slice-2 learning can reconstruct `j ≻ i` without reading composition's DB."""
+    user, project, _ = _ids()
+    job = await _make_job(pool, user, project)
+    repo = GenerationCorrectionsRepo(pool)
+    await repo.create(user, project, job.id, kind="pick_different",
+                      chosen_candidate_index=1, winner_index=2, candidate_count=3)
+    async with pool.acquire() as c:
+        ev = await c.fetchval(
+            "SELECT payload FROM outbox_events WHERE event_type=$1 ORDER BY created_at DESC LIMIT 1",
+            outbox.GENERATION_CORRECTED)
+    payload = _json.loads(ev)
+    assert payload["winner_index"] == 2
+    assert payload["chosen_candidate_index"] == 1
+    assert payload["candidate_count"] == 3
+
+
+async def test_correction_emit_failure_rolls_back_row(pool, monkeypatch):
+    """The insert + outbox emit share ONE transaction: if the emit raises, the
+    correction row must NOT persist (no capture without a relayable event)."""
+    user, project, _ = _ids()
+    job = await _make_job(pool, user, project)
+    repo = GenerationCorrectionsRepo(pool)
+
+    async def boom(*a, **k):
+        raise RuntimeError("relay emit failed")
+
+    monkeypatch.setattr("app.db.repositories.outbox.emit", boom)
+    with pytest.raises(RuntimeError):
+        await repo.create(user, project, job.id, kind="reject")
+    async with pool.acquire() as c:
+        n = await c.fetchval("SELECT count(*) FROM generation_correction WHERE job_id=$1", job.id)
+    assert n == 0  # atomic: the row rolled back with the failed emit
+
+
+async def test_correction_rejects_foreign_job(pool):
+    user, project, _ = _ids()
+    job = await _make_job(pool, user, project)
+    repo = GenerationCorrectionsRepo(pool)
+    # another user correcting our job → rejected, no row, no event
+    other, _, _ = _ids()
+    with pytest.raises(ReferenceViolationError):
+        await repo.create(other, project, job.id, kind="reject")
+    # wrong project for the right user → also rejected
+    with pytest.raises(ReferenceViolationError):
+        await repo.create(user, uuid.uuid4(), job.id, kind="reject")
+    async with pool.acquire() as c:
+        n = await c.fetchval("SELECT count(*) FROM generation_correction")
+        ev = await c.fetchval("SELECT count(*) FROM outbox_events WHERE event_type=$1",
+                              outbox.GENERATION_CORRECTED)
+    assert n == 0 and ev == 0
+
+
+async def test_correction_rejects_foreign_regenerated_to_job(pool):
+    """/review-impl MED#2: the §8.3 chain target must also be the caller's job in
+    this project — a foreign regenerated_to_job_id is rejected, nothing written."""
+    user, project, _ = _ids()
+    job = await _make_job(pool, user, project)
+    # a job owned by another user (FK would pass — it exists — but ownership must not)
+    other, other_proj, _ = _ids()
+    foreign_job = await _make_job(pool, other, other_proj)
+    repo = GenerationCorrectionsRepo(pool)
+    with pytest.raises(ReferenceViolationError):
+        await repo.create(user, project, job.id, kind="regenerate",
+                          regenerated_to_job_id=foreign_job.id)
+    async with pool.acquire() as c:
+        n = await c.fetchval("SELECT count(*) FROM generation_correction")
+        ev = await c.fetchval("SELECT count(*) FROM outbox_events WHERE event_type=$1",
+                              outbox.GENERATION_CORRECTED)
+    assert n == 0 and ev == 0
+    # a chain target that IS the caller's own job in-project is accepted
+    own2 = await _make_job(pool, user, project)
+    ok = await repo.create(user, project, job.id, kind="regenerate",
+                           regenerated_to_job_id=own2.id)
+    assert ok.regenerated_to_job_id == own2.id
+
+
+async def test_correction_pick_different_check_constraint(pool):
+    """The DB CHECK forbids a pick_different without the candidate it points at."""
+    user, project, _ = _ids()
+    job = await _make_job(pool, user, project)
+    repo = GenerationCorrectionsRepo(pool)
+    with pytest.raises(asyncpg.CheckViolationError):
+        await repo.create(user, project, job.id, kind="pick_different",
+                          chosen_candidate_index=None)
+
+
+async def test_correction_stores_raw_prose_and_lists(pool):
+    user, project, _ = _ids()
+    job = await _make_job(pool, user, project)
+    repo = GenerationCorrectionsRepo(pool)
+    await repo.create(user, project, job.id, kind="edit", changed_blocks=1,
+                      raw_before="winner text", raw_after="edited text")
+    listed = await repo.list_for_job(user, job.id)
+    assert len(listed) == 1
+    assert listed[0].raw_before == "winner text" and listed[0].raw_after == "edited text"
+    # cross-user list is empty
+    assert await repo.list_for_job(uuid.uuid4(), job.id) == []

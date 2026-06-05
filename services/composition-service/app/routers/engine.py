@@ -11,28 +11,33 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 from app.clients.book_client import BookClient, BookClientError
 from app.clients.glossary_client import GlossaryClient
 from app.clients.knowledge_client import KnowledgeClient
 from app.clients.llm_client import LLMClient
 from app.config import settings
+from app.db.repositories import ReferenceViolationError
 from app.db.repositories.canon_rules import CanonRulesRepo
+from app.db.repositories.generation_corrections import (
+    GenerationCorrectionsRepo, count_changed_blocks,
+)
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.works import WorksRepo
 from app.deps import (
-    get_book_client_dep, get_canon_rules_repo, get_generation_jobs_repo,
-    get_glossary_client_dep, get_knowledge_client_dep, get_llm_client_dep,
-    get_outline_repo, get_scene_links_repo, get_works_repo,
+    get_book_client_dep, get_canon_rules_repo, get_generation_corrections_repo,
+    get_generation_jobs_repo, get_glossary_client_dep, get_knowledge_client_dep,
+    get_llm_client_dep, get_outline_repo, get_scene_links_repo, get_works_repo,
 )
+from app.db.models import CorrectionKind
 from app.engine.cowrite import build_messages, estimate_prompt_tokens, stream_draft
 from app.engine.critic import judge_prose
 from app.engine.select import select_draft
@@ -89,6 +94,23 @@ class DismissBody(BaseModel):
 
 class SuggestCastBody(BaseModel):
     guide: str = ""
+
+
+class CorrectionBody(BaseModel):
+    # The human-gate action (§2). accept-as-is is intentionally NOT a kind — it
+    # is the reranker's own pick, mining it is self-reinforcement (H2).
+    kind: CorrectionKind
+    # pick_different → which candidate the author chose instead of the winner.
+    chosen_candidate_index: int | None = Field(default=None, ge=0)
+    # regenerate → the author's steering text. Stored, never on the wire (§5).
+    # Capped to the row model's _Long bound so an oversized value 422s here
+    # rather than committing the row+event and then 500ing on read-back validation
+    # (/review-impl MED#1).
+    guidance: Annotated[str, StringConstraints(max_length=20000)] | None = None
+    # edit → the author's edited prose (drives the change-magnitude + opt-in raw).
+    edited_text: str | None = None
+    # §8.3 optional chain: the regenerated job that superseded this one (if known).
+    regenerated_to_job_id: UUID | None = None
 
 
 async def _load_work_node(works, outline, user_id, project_id, node_id):
@@ -352,3 +374,83 @@ async def dismiss_violation(
     critic["violations"] = violations
     await jobs.update_status(user_id, job_id, job.status, critic=critic)
     return {"critic": critic}
+
+
+@router.post("/jobs/{job_id}/correction", status_code=201)
+async def correction(
+    job_id: UUID, body: CorrectionBody,
+    user_id: UUID = Depends(get_current_user),
+    jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
+    works: WorksRepo = Depends(get_works_repo),
+    corrections: GenerationCorrectionsRepo = Depends(get_generation_corrections_repo),
+) -> dict[str, Any]:
+    """Capture a human-gate correction on a generation (V1 flywheel slice 1, §3).
+
+    Records one of the genuine-author-choice actions (edit / pick_different /
+    regenerate / reject) + emits `composition.generation_corrected` for the
+    learning-service preference store. Verbatim prose is stored only when the
+    work opted into `capture_correction_prose` (§5); the change magnitude +
+    structural shape are always captured. `accept` is deliberately not an action
+    here (H2 — it trains the reranker on its own pick)."""
+    job = await jobs.get(user_id, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    work = await works.get(user_id, job.project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail="work not found")
+
+    result = job.result or {}
+    winner_text: str = result.get("text", "") or ""
+    candidates: list[Any] = result.get("candidates") or []
+
+    chosen_index = body.chosen_candidate_index
+    changed_blocks: int | None = None
+    raw_before: str | None = None
+    raw_after: str | None = None
+
+    if body.kind == "edit":
+        if body.edited_text is None:
+            raise HTTPException(status_code=422, detail="edit requires edited_text")
+        changed_blocks = count_changed_blocks(winner_text, body.edited_text)
+        # A zero-change "edit" is an accept-as-is wearing an edit costume: mining
+        # `edited ≻ winner` when edited==winner trains the reranker on its own pick
+        # = the self-reinforcement §2/H2 forbids. Reject it at the source so the
+        # circular signal never enters the store (/review-impl MED#3).
+        if changed_blocks == 0:
+            raise HTTPException(status_code=422, detail={
+                "code": "EDIT_NO_CHANGE",
+                "reason": "edited_text is identical to the generation (no correction signal)"})
+    elif body.kind == "pick_different":
+        if chosen_index is None:
+            raise HTTPException(status_code=422, detail="pick_different requires chosen_candidate_index")
+        if chosen_index >= len(candidates):
+            # cowrite jobs have no candidate set; an out-of-range index is a bad request.
+            raise HTTPException(status_code=422, detail={
+                "code": "CANDIDATE_INDEX_OUT_OF_RANGE", "k": len(candidates)})
+
+    # Raw-prose capture is OPT-IN per work (§5). Default: structural only.
+    if bool(work.settings.get("capture_correction_prose", False)):
+        if body.kind == "edit":
+            raw_before, raw_after = winner_text, body.edited_text
+        elif body.kind == "pick_different":
+            raw_before = winner_text
+            raw_after = str(candidates[chosen_index])
+        elif body.kind in ("regenerate", "reject"):
+            raw_before = winner_text  # the rejected/regenerated-from prose
+
+    try:
+        corr = await corrections.create(
+            user_id, job.project_id, job_id,
+            kind=body.kind, chosen_candidate_index=chosen_index,
+            guidance=body.guidance, changed_blocks=changed_blocks,
+            raw_before=raw_before, raw_after=raw_after,
+            regenerated_to_job_id=body.regenerated_to_job_id,
+            # event-only (not stored): the job's reranked winner + candidate count,
+            # so slice-2 learning can reconstruct `j ≻ i` from the wire (LOW#4).
+            winner_index=result.get("winner_index"),
+            candidate_count=len(candidates) if candidates else None,
+        )
+    except ReferenceViolationError:
+        # job/project mismatch slipped past the get() (cross-user / cross-project).
+        raise HTTPException(status_code=404, detail="job not found")
+    return corr.model_dump(mode="json")

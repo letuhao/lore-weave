@@ -133,6 +133,31 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_generation_job_idem ON generation_job(idem
 CREATE INDEX IF NOT EXISTS idx_generation_job_project ON generation_job(project_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_generation_job_node    ON generation_job(outline_node_id);
 
+-- ── generation_correction: the human-gate signal (V1 correction flywheel, §3).
+-- ONE row per author correction on a generation. Only GENUINE-AUTHOR-CHOICE kinds
+-- are captured (accept-as-is is NOT a correction — §2 H2 self-reinforcement guard).
+-- raw_before/raw_after are NULL unless the work opted into capture_correction_prose
+-- (§5 — structural + change-magnitude is always captured; verbatim prose is gated).
+-- job_id FK is in-DB (same database, §1.4 OK); project_id is cross-DB (no FK).
+CREATE TABLE IF NOT EXISTS generation_correction (
+  id                     UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id                UUID NOT NULL,
+  project_id             UUID NOT NULL,
+  job_id                 UUID NOT NULL REFERENCES generation_job(id) ON DELETE CASCADE,
+  kind                   TEXT NOT NULL CHECK (kind IN ('edit','pick_different','regenerate','reject')),
+  chosen_candidate_index INT,
+  guidance               TEXT,
+  changed_blocks         INT,
+  raw_before             TEXT,
+  raw_after              TEXT,
+  regenerated_to_job_id  UUID REFERENCES generation_job(id) ON DELETE SET NULL,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- pick_different is meaningless without the candidate it points at.
+  CONSTRAINT correction_pick_needs_index CHECK (kind <> 'pick_different' OR chosen_candidate_index IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS idx_generation_correction_job  ON generation_correction(job_id);
+CREATE INDEX IF NOT EXISTS idx_generation_correction_user ON generation_correction(user_id, created_at DESC);
+
 -- ── outbox_events: standard (matches knowledge-service); relayed → loreweave:events:composition
 CREATE TABLE IF NOT EXISTS outbox_events (
   id             UUID PRIMARY KEY DEFAULT uuidv7(),

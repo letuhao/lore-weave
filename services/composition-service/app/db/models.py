@@ -27,6 +27,9 @@ LinkKind = Literal["setup_payoff", "custom"]
 RuleScope = Literal["world", "entity", "reveal_gate"]
 JobMode = Literal["cowrite", "auto"]
 JobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
+# Only genuine-author-choice actions are corrections (§2). accept-as-is is NOT
+# here — mining the reranker's own winner = self-reinforcement (review H2).
+CorrectionKind = Literal["edit", "pick_different", "regenerate", "reject"]
 
 
 class CompositionWork(BaseModel):
@@ -120,6 +123,22 @@ class GenerationJob(BaseModel):
     idempotency_key: Annotated[str, StringConstraints(max_length=200)] | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+class GenerationCorrection(BaseModel):
+    id: UUID
+    user_id: UUID
+    project_id: UUID
+    job_id: UUID
+    kind: CorrectionKind
+    chosen_candidate_index: int | None = None  # required for pick_different
+    guidance: _Long | None = None
+    changed_blocks: int | None = None  # edit-magnitude (# differing blocks)
+    # OPT-IN only (§5 `capture_correction_prose`): verbatim prose, NULL by default.
+    raw_before: str | None = None
+    raw_after: str | None = None
+    regenerated_to_job_id: UUID | None = None  # §8.3 chain (new ≻ old)
+    created_at: datetime | None = None
 
 
 class OutboxEvent(BaseModel):
