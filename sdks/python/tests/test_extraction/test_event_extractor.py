@@ -763,3 +763,25 @@ async def test_status_effects_absent_defaults_empty():
     )
     assert len(out) == 1
     assert out[0].status_effects == []
+
+
+# -- A2-S1b-2: the Pass-2 event prompt now teaches status_effects ----
+
+
+def test_event_prompt_includes_status_effects_schema_and_rule():
+    """A2-S1b-2 prompt-shape lock: the live event_system prompt must carry the
+    status_effects output field, the coarse active/gone rule, and the extended
+    example — and still render (no stray unescaped braces)."""
+    from loreweave_extraction.prompts import load_prompt
+
+    p = load_prompt("event_system", known_entities='["Kai"]')
+    # schema field
+    assert "status_effects" in p
+    assert '"status": "active | gone"' in p
+    # rule 10 — coarse vocab + the anti-bias guard (do not change other fields' language)
+    assert "Status effects" in p
+    assert "gone" in p and "active" in p
+    assert "do NOT let\n    this rule change the language of any other field" in p
+    # example shows both the empty case and a death
+    assert '"status_effects": []' in p
+    assert '"entity_ref": "Zhao", "status": "gone"' in p
