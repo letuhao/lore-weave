@@ -216,6 +216,8 @@ def test_generate_auto_returns_reranked_winner_as_json(ctx, monkeypatch):
     body = r.json()  # JSON, NOT an SSE stream
     assert body["mode"] == "auto" and body["text"] == "draft B"
     assert body["winner_index"] == 1 and body["k"] == 2 and body["rerank_measured"] is True
+    # slice 3: the K candidate texts are in the response so the FE shows all cards
+    assert body["candidates"] == ["draft A", "draft B"]
     # the job completed with the winner persisted (incl. the candidates for transparency)
     completed = [k for _, s, k in jobs.updates if s == "completed"]
     assert completed and completed[0]["result"]["text"] == "draft B"

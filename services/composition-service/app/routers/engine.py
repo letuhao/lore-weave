@@ -208,8 +208,11 @@ async def generate(
     # critic model (anti-self-reinforcement §4); falls back to the drafter.
     if body.mode == "auto":
         if not created:  # idempotent replay → return the existing job, don't re-run
+            r = job.result or {}
             return JSONResponse({"job_id": str(job.id), "mode": "auto", "replay": True,
-                                 "text": (job.result or {}).get("text", ""), "status": job.status})
+                                 "text": r.get("text", ""), "status": job.status,
+                                 "winner_index": r.get("winner_index"),
+                                 "k": r.get("k"), "candidates": r.get("candidates", [])})
         sdict = work.settings or {}
         c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
         distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
@@ -240,6 +243,10 @@ async def generate(
         return JSONResponse({
             "job_id": str(job.id), "mode": "auto", "status": "completed", "text": w.text,
             "winner_index": sel.winner_index, "k": len(sel.candidates),
+            # The K candidate texts so the FE can show ALL options as cards (the
+            # controlled-auto human gate, slice 3). They're already computed +
+            # persisted in the job result; returning them here saves a GET /jobs.
+            "candidates": [c.text for c in sel.candidates],
             "rerank_reason": sel.rerank_reason, "rerank_measured": sel.rerank_measured,
             "grounding_available": pc.grounding_available,
             "reasoning_source": reasoning.source, "reasoning_effort": reasoning.effort,

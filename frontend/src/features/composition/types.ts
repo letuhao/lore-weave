@@ -88,6 +88,36 @@ export type GenerationJob = {
   critic: Critic;
 };
 
+// V1 slice 3 — controlled-auto (diverge→converge) result. NON-streaming: the
+// auto /generate returns the winner + ALL K candidate texts so the FE shows
+// every option as a card (the human gate).
+export type AutoGeneration = {
+  job_id: string;
+  mode: 'auto';
+  status: string;
+  text: string; // the reranked winner
+  winner_index: number;
+  k: number;
+  candidates: string[]; // the K drafts, winner included
+  rerank_reason?: string;
+  rerank_measured?: boolean;
+  grounding_available?: boolean;
+  reasoning_source?: string;
+  reasoning_effort?: string | null;
+  replay?: boolean;
+};
+
+// The genuine-author-choice actions on the gate (H2: NO 'accept' — accepting the
+// winner as-is is not a correction). Maps 1:1 to the composition correction API.
+export type CorrectionKind = 'edit' | 'pick_different' | 'regenerate' | 'reject';
+
+export type CorrectionBody = {
+  kind: CorrectionKind;
+  chosen_candidate_index?: number; // pick_different
+  guidance?: string; // regenerate
+  edited_text?: string; // edit
+};
+
 // One decoded SSE frame from POST /generate.
 export type StreamEvent =
   | { type: 'job'; job_id: string; created: boolean; grounding_available: boolean; reasoning_source?: string; reasoning_effort?: string | null }

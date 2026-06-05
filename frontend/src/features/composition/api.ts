@@ -3,8 +3,22 @@
 // uses a raw fetch+ReadableStream in useCompositionStream (apiJson can't stream).
 import { apiBase, apiJson } from '../../api';
 import type {
-  CanonRule, GenerationJob, Grounding, OutlineNode, PublishGate, Work, WorkResolution,
+  AutoGeneration, CanonRule, CorrectionBody, GenerationJob, Grounding, OutlineNode,
+  PublishGate, Work, WorkResolution,
 } from './types';
+
+// Params for an auto (diverge→converge) generation — mirrors the SSE generate
+// body minus the streaming bits; `mode: 'auto'` is added by the api method.
+export type AutoGenerateParams = {
+  outlineNodeId: string;
+  modelRef: string;
+  modelSource?: 'user_model' | 'platform_model';
+  operation?: string;
+  guide?: string;
+  reasoning?: 'off' | 'auto' | 'low' | 'medium' | 'high';
+  modelKind?: string;
+  modelName?: string;
+};
 
 const BASE = '/v1/composition';
 
@@ -40,6 +54,31 @@ export const compositionApi = {
   },
   getJob(jobId: string, token: string): Promise<GenerationJob> {
     return apiJson(`${BASE}/jobs/${jobId}`, { token });
+  },
+  // V1 slice 3 — auto (diverge→converge): NON-streaming POST that returns the
+  // winner + all K candidate texts (the human-gate cards).
+  generateAuto(projectId: string, params: AutoGenerateParams, token: string): Promise<AutoGeneration> {
+    return apiJson(`${BASE}/works/${projectId}/generate`, {
+      method: 'POST', token,
+      body: JSON.stringify({
+        mode: 'auto',
+        outline_node_id: params.outlineNodeId,
+        model_source: params.modelSource ?? 'user_model',
+        model_ref: params.modelRef,
+        operation: params.operation ?? 'draft_scene',
+        guide: params.guide ?? '',
+        reasoning: params.reasoning ?? 'auto',
+        model_kind: params.modelKind,
+        model_name: params.modelName,
+      }),
+    });
+  },
+  // V1 slice 3 — capture a human-gate correction (edit/pick_different/regenerate/
+  // reject). 'accept' is intentionally NOT a kind (H2 self-reinforcement guard).
+  submitCorrection(jobId: string, body: CorrectionBody, token: string): Promise<{ id: string }> {
+    return apiJson(`${BASE}/jobs/${jobId}/correction`, {
+      method: 'POST', body: JSON.stringify(body), token,
+    });
   },
   critique(jobId: string, passage: string, token: string): Promise<{ critic: GenerationJob['critic']; warning?: string }> {
     return apiJson(`${BASE}/jobs/${jobId}/critique`, {
