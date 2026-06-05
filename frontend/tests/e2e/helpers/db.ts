@@ -20,17 +20,26 @@ export function queryComposition(sql: string): string {
   return queryDb('loreweave_composition', sql);
 }
 
-/** Seed a passing embedding-benchmark row for a project so a manual knowledge
- * extraction is allowed (the `benchmark_missing` gate is orthogonal to the
- * flywheel — it validates embedding quality, not extraction wiring; for a test we
- * bypass it rather than run a real golden-set benchmark). */
-export function seedEmbeddingBenchmark(projectId: string, embeddingModelId: string): void {
+/** Seed a COMPLETED prior extraction job for a project — puts it in the "has been
+ * extracted before" state so worker-ai's auto-drain (_ensure_chapters_pending_jobs)
+ * will create a chapters_pending drain for it instead of skipping (`last is None`).
+ * Dummy model refs are fine: the auto-drain only COPIES them; we assert that the
+ * drain job is CREATED, not that a real extraction runs. user_id is pulled from
+ * the project row. */
+export function seedPriorExtractionJob(projectId: string): void {
   queryDb(
     'loreweave_knowledge',
-    `INSERT INTO project_embedding_benchmark_runs(project_id, embedding_model, run_id, passed)
-     VALUES ('${projectId}', '${embeddingModelId}', 'e2e-seed', true)
-     ON CONFLICT (project_id, embedding_model, run_id) DO NOTHING`,
+    `INSERT INTO extraction_jobs(user_id, project_id, scope, status, llm_model, embedding_model, completed_at)
+     SELECT user_id, project_id, 'all', 'complete', 'seed-llm', 'seed-emb', now()
+     FROM knowledge_projects WHERE project_id='${projectId}'`,
   );
+}
+
+/** Count this project's chapters_pending drain jobs — the signal that the auto-drain
+ * engaged (vs the fresh-project skip). */
+export function countChaptersPendingJobs(projectId: string): number {
+  return Number(queryDb('loreweave_knowledge',
+    `SELECT count(*) FROM extraction_jobs WHERE project_id='${projectId}' AND scope='chapters_pending'`));
 }
 
 /** True when the dev Postgres container is reachable — gate DB-assert specs on
