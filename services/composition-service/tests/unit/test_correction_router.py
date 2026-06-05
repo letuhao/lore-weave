@@ -57,6 +57,15 @@ class StubCorrections:
             raw_before=kw.get("raw_before"), raw_after=kw.get("raw_after"),
             regenerated_to_job_id=kw.get("regenerated_to_job_id"),
         )
+    async def correction_stats(self, user_id, project_id):
+        from app.db.models import CorrectionStats, ModeCorrectionStats
+        return CorrectionStats(project_id=project_id, by_mode=[
+            ModeCorrectionStats(mode="auto", generations=4, corrected_jobs=2, accept_rate=0.5,
+                                edit_rate=0.25, pick_different_rate=0.25, regenerate_rate=0.0,
+                                reject_rate=0.0, avg_edit_magnitude=3.0),
+            ModeCorrectionStats(mode="cowrite", generations=2, corrected_jobs=1, accept_rate=0.5,
+                                regenerate_rate=0.5),
+        ])
 
 
 @pytest.fixture
@@ -211,6 +220,26 @@ def test_reference_violation_maps_to_404(ctx):
     c, _, _, corr = ctx
     corr.raise_ref = True
     assert c.post(_url(), json={"kind": "reject"}).status_code == 404
+
+
+# ── correction-stats endpoint (slice 5) ──
+
+def test_correction_stats_happy(ctx):
+    c, *_ = ctx
+    r = c.get(f"/v1/composition/works/{PROJECT}/correction-stats")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["project_id"] == str(PROJECT)
+    modes = {m["mode"]: m for m in body["by_mode"]}
+    assert modes["auto"]["accept_rate"] == 0.5
+    assert modes["auto"]["avg_edit_magnitude"] == 3.0
+    assert "cowrite" in modes  # both modes always present for the A/B
+
+
+def test_correction_stats_404_when_no_work(ctx):
+    c, works, _, _ = ctx
+    works.get = AsyncMock(return_value=None)
+    assert c.get(f"/v1/composition/works/{PROJECT}/correction-stats").status_code == 404
 
 
 # ── pure: count_changed_blocks ──

@@ -72,6 +72,17 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
   const rejectAll = () => { correct({ kind: 'reject' }); auto.reset(); };
   const toggleDiverge = (on: boolean) => { setDiverge(on); auto.reset(); stream.clearGhost(); };
 
+  // ── V0 cowrite-stream gate capture (slice 5) ──
+  // Accepting the single stream ghost as-is is NOT a correction (H2; the inline
+  // ghost is not editable, so a post-accept editor edit isn't cleanly captured).
+  // Regenerate + Discard ARE genuine dissatisfaction signals → capture them so
+  // the eval-gate dashboard has a real cowrite baseline to compare auto against.
+  const cowriteCorrect = (body: CorrectionBody) => {
+    if (stream.jobId) correction.mutate({ jobId: stream.jobId, body });
+  };
+  const cowriteRegenerate = () => { cowriteCorrect({ kind: 'regenerate', guidance: guide }); generate(); };
+  const cowriteDiscard = () => { cowriteCorrect({ kind: 'reject' }); stream.clearGhost(); };
+
   const critic: Critic = critique.data?.critic ?? null;
 
   return (
@@ -160,10 +171,10 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
               <button data-testid="compose-accept" className="rounded bg-emerald-600 px-2.5 py-1 text-xs text-white" onClick={accept}>
                 {t('accept', { defaultValue: 'Accept' })}
               </button>
-              <button data-testid="compose-regenerate" className="rounded border border-neutral-300 px-2.5 py-1 text-xs dark:border-neutral-600" onClick={generate}>
+              <button data-testid="compose-regenerate" className="rounded border border-neutral-300 px-2.5 py-1 text-xs dark:border-neutral-600" onClick={cowriteRegenerate}>
                 {t('regenerate', { defaultValue: 'Regenerate' })}
               </button>
-              <button data-testid="compose-discard" className="rounded border border-neutral-300 px-2.5 py-1 text-xs dark:border-neutral-600" onClick={stream.clearGhost}>
+              <button data-testid="compose-discard" className="rounded border border-neutral-300 px-2.5 py-1 text-xs dark:border-neutral-600" onClick={cowriteDiscard}>
                 {t('discard', { defaultValue: 'Discard' })}
               </button>
             </div>

@@ -1,10 +1,20 @@
-"""A1 eval-gate (validate-first): does diverge->converge (auto K) beat the V0
-single-draft (cowrite) on COHERENCE on our local models?
+"""A1 eval-gate — the COLD-START PROXY (auto-judge coherence).
+
+⚠️ This auto-judge coherence median SATURATES at 5/5 on short passages — it can
+not discriminate auto from cowrite (the honest validate-first finding). The REAL
+V1 eval-gate is **correction-rate** (slice 5): `GET /v1/composition/works/{id}/
+correction-stats` reports the per-mode rates from the author's actual corrections
+(accept-as-is ↑, edit/pick_different/regenerate/reject ↓), which is the
+discriminating, human-grounded signal the coherence ceiling lacked. Within one
+Work the author is fixed, so the auto-vs-cowrite columns are a within-author A/B.
+
+This script remains useful ONLY as the cold-start bridge: before real corrections
+accumulate there are no rates to compare, so the cheap auto-judge proxy stands in.
+Humans (corrections) are the gate; this is the placeholder.
 
 For N scenes: generate `mode=auto` (winner) and `mode=cowrite` (single draft),
 critique BOTH with the Work's DISTINCT critic model, compare the coherence dim.
-Directional (small N) — the rigorous median is the KS harness; this is the gate
-signal. Run from the host against the gateway.
+Run from the host against the gateway.
 
 Usage: python eval_a1_diverge.py [n_scenes]
 """

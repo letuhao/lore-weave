@@ -462,3 +462,23 @@ async def correction(
         # job/project mismatch slipped past the get() (cross-user / cross-project).
         raise HTTPException(status_code=404, detail="job not found")
     return corr.model_dump(mode="json")
+
+
+@router.get("/works/{project_id}/correction-stats")
+async def correction_stats(
+    project_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    corrections: GenerationCorrectionsRepo = Depends(get_generation_corrections_repo),
+) -> dict[str, Any]:
+    """The V1 eval-gate dashboard (§6): per-mode correction rates for this Work.
+
+    Replaces the saturating auto-judge coherence-median with human-grounded
+    correction rates (accept-as-is ↑, edit/pick/regenerate/reject ↓). Both modes
+    are always present (zero-filled) for the auto-vs-cowrite A/B; the auto-judge
+    script stays as the cold-start proxy until real corrections accumulate."""
+    work = await works.get(user_id, project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail="work not found")
+    stats = await corrections.correction_stats(user_id, project_id)
+    return stats.model_dump(mode="json")

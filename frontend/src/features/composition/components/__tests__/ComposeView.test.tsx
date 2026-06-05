@@ -54,6 +54,34 @@ describe('ComposeView (ghost / accept — §13 SC4)', () => {
     expect(mockStream.clearGhost).toHaveBeenCalled();
   });
 
+  it('cowrite Regenerate captures a regenerate correction, then re-streams (slice 5)', () => {
+    mockStream.ghost = 'a single draft';
+    mockStream.jobId = 'cw-1';
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('compose-regenerate'));
+    expect(mockCorrection.mutate).toHaveBeenCalledWith({ jobId: 'cw-1', body: { kind: 'regenerate', guidance: '' } });
+    expect(mockStream.start).toHaveBeenCalled();
+  });
+
+  it('cowrite Discard captures a reject correction, then clears the ghost (slice 5)', () => {
+    mockStream.ghost = 'a single draft';
+    mockStream.jobId = 'cw-1';
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('compose-discard'));
+    expect(mockCorrection.mutate).toHaveBeenCalledWith({ jobId: 'cw-1', body: { kind: 'reject' } });
+    expect(mockStream.clearGhost).toHaveBeenCalled();
+  });
+
+  it('cowrite Accept as-is inserts WITHOUT a correction (H2)', () => {
+    mockStream.ghost = 'a single draft';
+    mockStream.jobId = 'cw-1';
+    const onAccept = vi.fn();
+    render(<ComposeView {...baseProps} onAccept={onAccept} />);
+    fireEvent.click(screen.getByText('accept'));
+    expect(onAccept).toHaveBeenCalledWith('a single draft');
+    expect(mockCorrection.mutate).not.toHaveBeenCalled();
+  });
+
   it('Generate is disabled until a scene AND a model are chosen', () => {
     const onAccept = vi.fn();
     const { rerender } = render(<ComposeView {...baseProps} modelRef="" onAccept={onAccept} />);

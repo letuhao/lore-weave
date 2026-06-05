@@ -141,6 +141,33 @@ class GenerationCorrection(BaseModel):
     created_at: datetime | None = None
 
 
+class ModeCorrectionStats(BaseModel):
+    """Correction-rate signal for one generation mode (auto | cowrite), §6.
+
+    `accept_rate` is the H2-safe positive signal — accept-as-is leaves no
+    correction row, so it is derived (generations − corrected_jobs) / generations,
+    NOT mined as a preference. `avg_edit_magnitude` reads `changed_blocks` (the
+    real edit size), not a generic key-diff (D-LEARN-GEN-CHANGE-MAGNITUDE). Rates
+    are None when there are no generations (cold-start)."""
+    mode: str
+    generations: int
+    corrected_jobs: int
+    accept_rate: float | None = None
+    edit_rate: float | None = None
+    pick_different_rate: float | None = None
+    regenerate_rate: float | None = None
+    reject_rate: float | None = None
+    avg_edit_magnitude: float | None = None
+
+
+class CorrectionStats(BaseModel):
+    """Per-Work correction-rate dashboard (the V1 eval-gate, §6). Always carries
+    BOTH modes (zero-filled) so the FE can show the auto-vs-cowrite A/B — within
+    one Work the author is fixed, so the comparison cancels author style."""
+    project_id: UUID
+    by_mode: list[ModeCorrectionStats]
+
+
 class OutboxEvent(BaseModel):
     id: UUID
     aggregate_type: str = "composition"

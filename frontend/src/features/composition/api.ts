@@ -3,8 +3,8 @@
 // uses a raw fetch+ReadableStream in useCompositionStream (apiJson can't stream).
 import { apiBase, apiJson } from '../../api';
 import type {
-  AutoGeneration, CanonRule, CorrectionBody, GenerationJob, Grounding, OutlineNode,
-  PublishGate, Work, WorkResolution,
+  AutoGeneration, CanonRule, CorrectionBody, CorrectionStats, GenerationJob, Grounding,
+  OutlineNode, PublishGate, Work, WorkResolution,
 } from './types';
 
 // Params for an auto (diverge→converge) generation — mirrors the SSE generate
@@ -79,6 +79,10 @@ export const compositionApi = {
     return apiJson(`${BASE}/jobs/${jobId}/correction`, {
       method: 'POST', body: JSON.stringify(body), token,
     });
+  },
+  // V1 slice 5 — the eval-gate dashboard: per-mode correction rates for this Work.
+  getCorrectionStats(projectId: string, token: string): Promise<CorrectionStats> {
+    return apiJson(`${BASE}/works/${projectId}/correction-stats`, { token });
   },
   critique(jobId: string, passage: string, token: string): Promise<{ critic: GenerationJob['critic']; warning?: string }> {
     return apiJson(`${BASE}/jobs/${jobId}/critique`, {

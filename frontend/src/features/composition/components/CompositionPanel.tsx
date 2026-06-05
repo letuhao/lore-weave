@@ -12,6 +12,7 @@ import type { Work } from '../types';
 import { ComposeView } from './ComposeView';
 import { GroundingPanel } from './GroundingPanel';
 import { CanonRulesPanel } from './CanonRulesPanel';
+import { QualityPanel } from './QualityPanel';
 
 type Props = {
   bookId: string;
@@ -20,7 +21,7 @@ type Props = {
   onAccept: (text: string) => void; // insert accepted prose into the editor
 };
 
-type SubTab = 'compose' | 'grounding' | 'canon';
+type SubTab = 'compose' | 'grounding' | 'canon' | 'quality';
 
 export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) {
   const { t } = useTranslation('composition');
@@ -141,7 +142,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
 
       {/* sub-tabs */}
       <div className="flex gap-1 border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700">
-        {(['compose', 'grounding', 'canon'] as SubTab[]).map((tb) => (
+        {(['compose', 'grounding', 'canon', 'quality'] as SubTab[]).map((tb) => (
           <button
             key={tb}
             data-testid={`composition-subtab-${tb}`}
@@ -169,6 +170,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
           <GroundingPanel projectId={work.project_id} sceneId={effectiveScene} token={token} />
         )}
         {tab === 'canon' && <CanonRulesPanel projectId={work.project_id} token={token} />}
+        {tab === 'quality' && <QualityPanel projectId={work.project_id} token={token} />}
       </div>
     </div>
   );

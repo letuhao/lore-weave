@@ -20,8 +20,14 @@ from uuid import UUID
 
 import asyncpg
 
-from app.db.models import CorrectionKind, GenerationCorrection
+from app.db.models import (
+    CorrectionKind, CorrectionStats, GenerationCorrection, ModeCorrectionStats,
+)
 from app.db.repositories import ReferenceViolationError, outbox
+
+# The modes always surfaced by the dashboard (zero-filled if absent) so the FE
+# can render the auto-vs-cowrite A/B even before a mode has any generations.
+_DASHBOARD_MODES = ("auto", "cowrite")
 
 _SELECT_COLS = """
   id, user_id, project_id, job_id, kind, chosen_candidate_index, guidance,
@@ -147,6 +153,66 @@ class GenerationCorrectionsRepo:
                     },
                 )
                 return corr
+
+    async def correction_stats(
+        self, user_id: UUID, project_id: UUID
+    ) -> CorrectionStats:
+        """Per-Work, per-mode correction-rate signal (the V1 eval-gate, §6).
+
+        Denominator = COMPLETED generations of that mode; numerators = the
+        author's corrections on them. accept_rate is derived (not mined) so it
+        stays H2-safe. Both modes are always returned (zero-filled) for the
+        auto-vs-cowrite A/B; within a Work the author is fixed, so the comparison
+        cancels per-author edit-happiness (§6 M6)."""
+        rows = await self._pool.fetch(
+            """
+            SELECT
+              j.mode,
+              count(DISTINCT j.id) FILTER (WHERE j.status = 'completed') AS generations,
+              -- DISTINCT job (a job with multiple corrections counts ONCE, so a
+              -- rate can't exceed 1.0) and gated to COMPLETED generations (so the
+              -- numerator is always a subset of the denominator — accept_rate can
+              -- never go negative). /review-impl slice-5 MED#1+#2.
+              count(DISTINCT c.job_id) FILTER (WHERE j.status = 'completed')                          AS corrected_jobs,
+              count(DISTINCT c.job_id) FILTER (WHERE j.status = 'completed' AND c.kind = 'edit')           AS edit_n,
+              count(DISTINCT c.job_id) FILTER (WHERE j.status = 'completed' AND c.kind = 'pick_different')  AS pick_n,
+              count(DISTINCT c.job_id) FILTER (WHERE j.status = 'completed' AND c.kind = 'regenerate')      AS regen_n,
+              count(DISTINCT c.job_id) FILTER (WHERE j.status = 'completed' AND c.kind = 'reject')          AS reject_n,
+              avg(c.changed_blocks) FILTER (WHERE j.status = 'completed' AND c.kind = 'edit')              AS avg_edit_mag
+            FROM generation_job j
+            LEFT JOIN generation_correction c
+              ON c.job_id = j.id AND c.user_id = j.user_id
+            WHERE j.user_id = $1 AND j.project_id = $2
+            GROUP BY j.mode
+            """,
+            user_id, project_id,
+        )
+        by_mode_raw = {r["mode"]: r for r in rows}
+
+        def _rate(n: int, gens: int) -> float | None:
+            return (n / gens) if gens else None
+
+        stats: list[ModeCorrectionStats] = []
+        for mode in _DASHBOARD_MODES:
+            r = by_mode_raw.get(mode)
+            gens = int(r["generations"]) if r else 0
+            if r is None:
+                stats.append(ModeCorrectionStats(mode=mode, generations=0, corrected_jobs=0))
+                continue
+            stats.append(ModeCorrectionStats(
+                mode=mode,
+                generations=gens,
+                corrected_jobs=int(r["corrected_jobs"]),
+                # accept-as-is leaves NO correction row (H2): a completed generation
+                # with no correction was accepted as-is (or abandoned — conflated).
+                accept_rate=_rate(gens - int(r["corrected_jobs"]), gens),
+                edit_rate=_rate(int(r["edit_n"]), gens),
+                pick_different_rate=_rate(int(r["pick_n"]), gens),
+                regenerate_rate=_rate(int(r["regen_n"]), gens),
+                reject_rate=_rate(int(r["reject_n"]), gens),
+                avg_edit_magnitude=float(r["avg_edit_mag"]) if r["avg_edit_mag"] is not None else None,
+            ))
+        return CorrectionStats(project_id=project_id, by_mode=stats)
 
     async def list_for_job(
         self, user_id: UUID, job_id: UUID

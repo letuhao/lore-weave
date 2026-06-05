@@ -111,6 +111,25 @@ export type AutoGeneration = {
 // winner as-is is not a correction). Maps 1:1 to the composition correction API.
 export type CorrectionKind = 'edit' | 'pick_different' | 'regenerate' | 'reject';
 
+// V1 slice 5 — the eval-gate dashboard. Per-mode correction rates (auto vs
+// cowrite). Rates are null at cold-start (no generations of that mode).
+export type ModeCorrectionStats = {
+  mode: string;
+  generations: number;
+  corrected_jobs: number;
+  accept_rate: number | null;
+  edit_rate: number | null;
+  pick_different_rate: number | null;
+  regenerate_rate: number | null;
+  reject_rate: number | null;
+  avg_edit_magnitude: number | null;
+};
+
+export type CorrectionStats = {
+  project_id: string;
+  by_mode: ModeCorrectionStats[];
+};
+
 export type CorrectionBody = {
   kind: CorrectionKind;
   chosen_candidate_index?: number; // pick_different

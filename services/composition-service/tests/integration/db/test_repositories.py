@@ -656,3 +656,74 @@ async def test_correction_stores_raw_prose_and_lists(pool):
     assert listed[0].raw_before == "winner text" and listed[0].raw_after == "edited text"
     # cross-user list is empty
     assert await repo.list_for_job(uuid.uuid4(), job.id) == []
+
+
+async def test_correction_stats_rates_by_mode(pool):
+    """slice 5 eval-gate: per-mode correction rates over real jobs + corrections.
+    Denominator = COMPLETED generations; accept_rate is derived (H2-safe);
+    avg_edit_magnitude reads changed_blocks; both modes always present."""
+    gjr = GenerationJobsRepo(pool)
+    cr = GenerationCorrectionsRepo(pool)
+    user, project, _ = _ids()
+    auto = []
+    for _ in range(4):
+        j, _ = await gjr.create(user, project, operation="draft_scene", mode="auto", status="completed")
+        auto.append(j)
+    cow = []
+    for _ in range(2):
+        j, _ = await gjr.create(user, project, operation="draft_scene", mode="cowrite", status="completed")
+        cow.append(j)
+    # a 'running' auto job must NOT count toward generations (denominator)
+    await gjr.create(user, project, operation="draft_scene", mode="auto", status="running")
+    # auto: one edit (magnitude 3) + one pick_different → 2 corrected of 4
+    await cr.create(user, project, auto[0].id, kind="edit", changed_blocks=3)
+    await cr.create(user, project, auto[1].id, kind="pick_different", chosen_candidate_index=1)
+    # cowrite: one reject → 1 corrected of 2
+    await cr.create(user, project, cow[0].id, kind="reject")
+
+    stats = await cr.correction_stats(user, project)
+    by = {m.mode: m for m in stats.by_mode}
+    assert set(by) == {"auto", "cowrite"}  # both always present
+    a = by["auto"]
+    assert a.generations == 4 and a.corrected_jobs == 2  # the running job excluded
+    assert a.edit_rate == 0.25 and a.pick_different_rate == 0.25
+    assert a.regenerate_rate == 0.0 and a.reject_rate == 0.0
+    assert a.accept_rate == 0.5 and a.avg_edit_magnitude == 3.0
+    cw = by["cowrite"]
+    assert cw.generations == 2 and cw.corrected_jobs == 1 and cw.reject_rate == 0.5
+    assert cw.edit_rate == 0.0 and cw.avg_edit_magnitude is None
+    # cross-user isolation → all zero
+    other = await cr.correction_stats(uuid.uuid4(), project)
+    assert all(m.generations == 0 and m.corrected_jobs == 0 for m in other.by_mode)
+
+
+async def test_correction_stats_distinct_job_and_completed_only(pool):
+    """/review-impl slice-5 MED#1+#2: multiple corrections on ONE job count it
+    ONCE (a rate can't exceed 1.0), and a correction on a NON-completed job is
+    excluded so corrected_jobs ⊆ generations and accept_rate can't go negative."""
+    gjr = GenerationJobsRepo(pool)
+    cr = GenerationCorrectionsRepo(pool)
+    user, project, _ = _ids()
+    # one completed auto generation that gets TWO corrections (regenerate + edit)
+    j, _ = await gjr.create(user, project, operation="draft_scene", mode="auto", status="completed")
+    await cr.create(user, project, j.id, kind="regenerate", guidance="darker")
+    await cr.create(user, project, j.id, kind="edit", changed_blocks=2)
+    # a RUNNING auto job with a reject correction (creatable via the API) must NOT count
+    run, _ = await gjr.create(user, project, operation="draft_scene", mode="auto", status="running")
+    await cr.create(user, project, run.id, kind="reject")
+
+    a = next(m for m in (await cr.correction_stats(user, project)).by_mode if m.mode == "auto")
+    assert a.generations == 1          # only the completed job
+    assert a.corrected_jobs == 1       # the one job, counted ONCE despite 2 corrections
+    assert a.edit_rate == 1.0 and a.regenerate_rate == 1.0   # ≤ 1.0
+    assert a.reject_rate == 0.0        # the running-job reject is excluded
+    assert a.accept_rate == 0.0        # (1−1)/1 — never negative
+
+
+async def test_correction_stats_cold_start_null_rates(pool):
+    """No generations → rates are None (cold-start), not div-by-zero."""
+    cr = GenerationCorrectionsRepo(pool)
+    user, project, _ = _ids()
+    stats = await cr.correction_stats(user, project)
+    for m in stats.by_mode:
+        assert m.generations == 0 and m.accept_rate is None and m.edit_rate is None
