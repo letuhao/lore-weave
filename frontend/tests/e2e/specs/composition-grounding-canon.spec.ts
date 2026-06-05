@@ -27,7 +27,9 @@ test.describe('Composition grounding + canon UI (U5/U6/B6.1)', () => {
       await panel.subtabGrounding.click();
       await expect(panel.groundingSignal).toBeVisible({ timeout: 15_000 });
       await expect(panel.groundingSignal).toHaveAttribute('data-available', 'false');
-      await expect(panel.groundingWarning).toBeVisible();
+      // actionable hint (not raw C3a warning-ese) tells the author how to bootstrap
+      await expect(panel.groundingEmptyHint).toBeVisible();
+      await expect(panel.groundingEmptyHint).toContainText(/knowledge extraction/i);
       // token count is reported (the packer still assembled the structural blocks)
       await expect(panel.groundingSignal).toContainText(/tokens/i);
     } finally {

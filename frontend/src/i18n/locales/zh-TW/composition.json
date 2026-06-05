@@ -47,6 +47,7 @@
   "noGrounding": "沒有依據。",
   "grounded": "已建立依據",
   "groundingThin": "依據稀疏／無法使用",
+  "groundingEmptyHint": "尚無知識圖譜——請先對本書執行一次知識擷取，讓共筆 AI 有依據。之後每次發佈章節都會自動更新正典。",
   "tokens": "詞元",
   "rulePlaceholder": "共筆 AI 必須遵守的正典規則…",
   "scope": "範圍",

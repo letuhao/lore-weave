@@ -29,12 +29,30 @@ export function GroundingPanel({ projectId, sceneId, token }: { projectId: strin
           {` · ${g.token_count} ${t('tokens', { defaultValue: 'tokens' })}`}
         </span>
       </div>
-      {g.warnings.length > 0 && (
+      {/* When the project has no knowledge graph, the raw C3a warning is
+          developer-ese — show the author an ACTIONABLE hint instead: run a
+          knowledge extraction once to bootstrap canon, after which publishing
+          auto-updates it. (The auto-drain reuses the project's extraction model,
+          so a never-extracted project can't auto-ground — surface that, don't
+          silently ship thin.) */}
+      {!g.grounding_available && (
+        <div
+          data-testid="composition-grounding-empty-hint"
+          className="rounded bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+        >
+          {t('groundingEmptyHint', {
+            defaultValue:
+              'No knowledge graph yet — run a knowledge extraction on this book once to ground the co-writer. After that, publishing chapters keeps the canon up to date automatically.',
+          })}
+        </div>
+      )}
+      {/* Remaining (non-C3a) warnings — over-budget, dropped L4, etc. */}
+      {g.warnings.filter((w) => !w.startsWith('grounding_unavailable')).length > 0 && (
         <div
           data-testid="composition-grounding-warning"
           className="rounded bg-amber-50 p-1.5 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300"
         >
-          {g.warnings.join(' · ')}
+          {g.warnings.filter((w) => !w.startsWith('grounding_unavailable')).join(' · ')}
         </div>
       )}
       {BLOCK_ORDER.filter((b) => g.blocks[b]).map((b) => (

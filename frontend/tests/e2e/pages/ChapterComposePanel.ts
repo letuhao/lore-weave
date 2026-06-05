@@ -31,6 +31,7 @@ export class ChapterComposePanel {
   // grounding
   readonly groundingSignal: Locator;
   readonly groundingWarning: Locator;
+  readonly groundingEmptyHint: Locator;
   // canon
   readonly canonInput: Locator;
   readonly canonScope: Locator;
@@ -65,6 +66,7 @@ export class ChapterComposePanel {
     this.subtabCanon = page.getByTestId('composition-subtab-canon');
     this.groundingSignal = page.getByTestId('composition-grounding-signal');
     this.groundingWarning = page.getByTestId('composition-grounding-warning');
+    this.groundingEmptyHint = page.getByTestId('composition-grounding-empty-hint');
     this.canonInput = page.getByTestId('composition-canon-input');
     this.canonScope = page.getByTestId('composition-canon-scope');
     this.canonAdd = page.getByTestId('composition-canon-add');

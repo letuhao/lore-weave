@@ -47,6 +47,7 @@
   "noGrounding": "Không có căn cứ.",
   "grounded": "Đã căn cứ",
   "groundingThin": "Căn cứ mỏng / không khả dụng",
+  "groundingEmptyHint": "Chưa có tri thức đồ thị — hãy chạy knowledge-extraction cho sách này một lần để trợ lý có căn cứ. Sau đó, mỗi lần xuất bản chương sẽ tự cập nhật canon.",
   "tokens": "token",
   "rulePlaceholder": "Một quy tắc canon mà trợ lý phải tuân theo…",
   "scope": "Phạm vi",

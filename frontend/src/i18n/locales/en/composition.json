@@ -47,6 +47,7 @@
   "noGrounding": "No grounding.",
   "grounded": "Grounded",
   "groundingThin": "Grounding thin / unavailable",
+  "groundingEmptyHint": "No knowledge graph yet — run a knowledge extraction on this book once to ground the co-writer. After that, publishing chapters keeps the canon up to date automatically.",
   "tokens": "tokens",
   "rulePlaceholder": "A canon rule the co-writer must respect…",
   "scope": "Scope",
