@@ -65,6 +65,7 @@ class GenerationCorrectionsRepo:
         regenerated_to_job_id: UUID | None = None,
         winner_index: int | None = None,
         candidate_count: int | None = None,
+        book_id: UUID | None = None,
     ) -> GenerationCorrection:
         """Insert a correction + emit the relayable event, atomically.
 
@@ -124,6 +125,10 @@ class GenerationCorrectionsRepo:
                         "correction_id": str(corr.id),
                         "job_id": str(job_id),
                         "project_id": str(project_id),
+                        # owner identity for the learning corrections store (it is
+                        # user_id-scoped, NOT NULL); the author IS the work owner.
+                        "user_id": str(user_id),
+                        "book_id": str(book_id) if book_id else None,
                         "kind": kind,
                         # winner_index (i) + chosen_candidate_index (j) + k let the
                         # learning consumer reconstruct the structural preference

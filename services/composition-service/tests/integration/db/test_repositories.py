@@ -550,6 +550,8 @@ async def test_correction_create_emits_relayable_event_atomically(pool):
     payload = _json.loads(ev["payload"])
     assert payload["kind"] == "edit" and payload["changed_blocks"] == 3
     assert payload["job_id"] == str(job.id)
+    # owner identity is on the wire (slice 2: the corrections store is user-scoped)
+    assert payload["user_id"] == str(user)
     # redact-by-default: no verbatim prose / guidance text on the wire (§5)
     assert "guidance" not in payload and "raw_before" not in payload and "raw_after" not in payload
     assert payload["has_guidance"] is True and payload["has_raw_prose"] is False

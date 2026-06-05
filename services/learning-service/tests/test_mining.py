@@ -188,6 +188,19 @@ async def test_get_outcome_recompute_cold_start_empty():
     assert result["total"] == 0
 
 
+@pytest.mark.asyncio
+async def test_outcome_recompute_excludes_generation_corrections():
+    """/review-impl slice-2 HIGH#1: the outcome-recompute corrections join MUST
+    restrict to extraction target_types. Composition co-write corrections
+    (target_type='generation') share the book's knowledge project_id + carry
+    source_extraction_run_id IS NULL, so without this filter they'd be miscounted
+    as extraction corrections and falsely degrade an extraction run's outcome."""
+    pool = FakeMiningPool(rows=[], total=0)
+    await get_outcome_recompute(pool, user_id=USER_ID)
+    data_sql = pool.fetch_calls[0][0]
+    assert "c.target_type IN ('entity', 'relation', 'event')" in data_sql
+
+
 # ── Mining API endpoint tests ─────────────────────────────────────────
 
 

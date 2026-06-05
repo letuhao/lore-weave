@@ -38,6 +38,7 @@ STREAMS = [
     "loreweave:events:glossary",
     "loreweave:events:knowledge",
     "loreweave:events:chat",  # Q3 — chat.message_feedback (user thumbs/regenerate)
+    "loreweave:events:composition",  # V1 slice 2 — composition.generation_corrected (co-write human gate)
 ]
 GROUP_NAME = "learning-collector"
 MAX_RETRIES = 3

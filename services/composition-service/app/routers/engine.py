@@ -449,6 +449,7 @@ async def correction(
             # so slice-2 learning can reconstruct `j ≻ i` from the wire (LOW#4).
             winner_index=result.get("winner_index"),
             candidate_count=len(candidates) if candidates else None,
+            book_id=work.book_id,  # owner-scope context for the corrections store
         )
     except ReferenceViolationError:
         # job/project mismatch slipped past the get() (cross-user / cross-project).

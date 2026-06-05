@@ -386,3 +386,94 @@ async def handle_chat_feedback(event: EventData, *, pool: asyncpg.Pool) -> None:
         "chat feedback persisted: message=%s rating=%s origin=chat:%s",
         message_id, rating, event.outbox_id,
     )
+
+
+# Only genuine-author-choice kinds become gold (design §2 / spec H2). accept-as-is
+# is NOT here: composition never emits it (its CorrectionKind Literal excludes it),
+# and mining the reranker's own winner would be self-reinforcement.
+_COMPOSITION_GOLD_KINDS = {"edit", "pick_different", "regenerate", "reject"}
+
+
+def _composition_snapshots(
+    kind: str, payload: dict[str, Any],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Encode the H2-safe preference shape into (before, after) STRUCTURAL dicts.
+
+    Indices / magnitude / booleans only — there is no novel prose on the wire
+    (raw is gated behind composition's per-work opt-in, §5). `reject` returns a
+    None `after` (the whole generation was dropped → derive_diff_class →
+    spurious-drop). `pick_different` is the one direct, non-circular correction on
+    the A1 reranker: before=winner(i), after=chosen(j)."""
+    winner_index = payload.get("winner_index")
+    before: dict[str, Any] = {"role": "winner"}
+    if winner_index is not None:
+        before["index"] = winner_index
+
+    if kind == "pick_different":
+        after: dict[str, Any] | None = {
+            "role": "chosen",
+            "index": payload.get("chosen_candidate_index"),
+            "candidate_count": payload.get("candidate_count"),
+        }
+    elif kind == "edit":
+        after = {
+            "changed_blocks": payload.get("changed_blocks"),
+            "has_guidance": bool(payload.get("has_guidance")),
+            "has_raw_prose": bool(payload.get("has_raw_prose")),
+        }
+    elif kind == "regenerate":
+        after = {
+            "regenerated_to_job_id": payload.get("regenerated_to_job_id"),
+            "has_guidance": bool(payload.get("has_guidance")),
+        }
+    else:  # reject — the generation was discarded wholesale
+        after = None
+    return before, after
+
+
+async def handle_generation_corrected(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`composition.generation_corrected` → a `generation` correction (V1 slice 2).
+
+    The author's human-gate action on a co-write becomes a `corrections` row
+    (target_type=`generation`, op=the kind, origin_service=`composition`). Only
+    edit/pick_different/regenerate/reject persist — `accept`/unknown kinds are
+    ACKed without a row (H2 self-reinforcement guard). The event is structural-
+    only (no prose on the wire); `_persist_correction` requires a non-empty
+    `outbox_id` (dedup) + `user_id` (owner) and raises → DLQ otherwise."""
+    payload = event.payload
+    kind = payload.get("kind")
+    if kind not in _COMPOSITION_GOLD_KINDS:
+        logger.debug(
+            "composition.generation_corrected kind=%r not gold — skipping (id=%s)",
+            kind, event.message_id,
+        )
+        return  # ack, no row — not an error, just not a preference signal
+
+    job_id = payload.get("job_id") or event.aggregate_id
+    user_id = _uuid_or_none(payload.get("user_id"))
+    before_structural, after_structural = _composition_snapshots(kind, payload)
+
+    await _persist_correction(
+        pool,
+        user_id=user_id,  # the author == the work owner
+        project_id=_uuid_or_none(payload.get("project_id")),
+        book_id=_uuid_or_none(payload.get("book_id")),
+        target_type="generation",
+        target_id=str(job_id),
+        op=kind,
+        before_snapshot=before_structural,
+        after_snapshot=after_structural,
+        source_chapter=None,
+        source_span=None,
+        source_extraction_run_id=None,
+        actor_type="user",
+        actor_id=user_id,
+        origin_service="composition",
+        origin_event_id=event.outbox_id,
+        origin_event_type=event.event_type,
+        emitted_at=None,  # composition event carries no emitted_at; created_at suffices
+    )
+    logger.debug(
+        "composition correction persisted: job=%s kind=%s origin=composition:%s",
+        job_id, kind, event.outbox_id,
+    )
