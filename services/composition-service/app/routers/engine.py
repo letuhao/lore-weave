@@ -15,7 +15,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.clients.book_client import BookClient, BookClientError
@@ -35,6 +35,7 @@ from app.deps import (
 )
 from app.engine.cowrite import build_messages, estimate_prompt_tokens, stream_draft
 from app.engine.critic import judge_prose
+from app.engine.select import select_draft
 from app.reasoning import ReasoningSignals, score_effort
 from loreweave_llm import infer_reasoning_control, resolve_reasoning
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
@@ -115,7 +116,7 @@ async def generate(
     glossary: GlossaryClient = Depends(get_glossary_client_dep),
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     llm: LLMClient = Depends(get_llm_client_dep),
-) -> StreamingResponse:
+) -> Any:  # StreamingResponse (cowrite) | JSONResponse (auto)
     work, node = await _load_work_node(works, outline, user_id, project_id, body.outline_node_id)
 
     # Retrieve (M4 packer) — raises OwnershipError (404) / BookClientError (502).
@@ -179,6 +180,48 @@ async def generate(
         for active in await jobs.list_active_for_node(user_id, project_id, node.id):
             if str(active.id) != str(job.id):
                 await jobs.update_status(user_id, active.id, "cancelled")
+
+    # ── AUTO path (V1 A1): diverge→converge, NON-stream, returns the winner. The
+    # co-write STREAM path is below. The rerank judge prefers the work's DISTINCT
+    # critic model (anti-self-reinforcement §4); falls back to the drafter.
+    if body.mode == "auto":
+        if not created:  # idempotent replay → return the existing job, don't re-run
+            return JSONResponse({"job_id": str(job.id), "mode": "auto", "replay": True,
+                                 "text": (job.result or {}).get("text", ""), "status": job.status})
+        sdict = work.settings or {}
+        c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
+        distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+        try:
+            sel = await select_draft(
+                llm, llm, user_id=str(user_id),
+                drafter_source=body.model_source, drafter_ref=str(body.model_ref),
+                judge_source=str(c_src) if distinct else body.model_source,
+                judge_ref=str(c_ref) if distinct else str(body.model_ref),
+                packed_prompt=pc.prompt, profile=pc.profile, operation=body.operation,
+                guide=body.guide, k=settings.compose_diverge_k, prompt_est=prompt_estimate,
+                max_tokens=body.max_output_tokens, temperature=settings.compose_diverge_temperature,
+                reasoning_effort=None if reasoning.passthrough else reasoning.effort,
+            )
+        except Exception as exc:  # diverge produced nothing / transport — fail the job, 502
+            logger.warning("auto select failed: %s", exc)
+            await jobs.update_status(user_id, job.id, "failed")
+            raise HTTPException(status_code=502, detail={"code": "GENERATE_FAILED"})
+        w = sel.winner
+        await jobs.update_status(
+            user_id, job.id, "completed",
+            result={"text": w.text, "input_tokens": w.metering.input_tokens,
+                    "output_tokens": w.metering.output_tokens, "measured": w.metering.measured,
+                    "k": len(sel.candidates), "winner_index": sel.winner_index,
+                    "rerank_reason": sel.rerank_reason, "rerank_measured": sel.rerank_measured,
+                    "candidates": [c.text for c in sel.candidates]},
+        )
+        return JSONResponse({
+            "job_id": str(job.id), "mode": "auto", "status": "completed", "text": w.text,
+            "winner_index": sel.winner_index, "k": len(sel.candidates),
+            "rerank_reason": sel.rerank_reason, "rerank_measured": sel.rerank_measured,
+            "grounding_available": pc.grounding_available,
+            "reasoning_source": reasoning.source, "reasoning_effort": reasoning.effort,
+        })
 
     async def event_gen():
         yield _sse({"type": "job", "job_id": str(job.id), "created": created,

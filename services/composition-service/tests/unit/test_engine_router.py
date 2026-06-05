@@ -197,6 +197,59 @@ def test_generate_rejects_invalid_model_source(ctx):
     assert r.status_code == 422
 
 
+# ── generate mode=auto (V1 A1 diverge→converge) ──
+
+def test_generate_auto_returns_reranked_winner_as_json(ctx, monkeypatch):
+    c, _, _, _, jobs, _, _ = ctx
+    from app.engine.select import Candidate, Selection
+
+    async def fake_select(llm, judge, **kw):
+        cands = [Candidate("draft A", DraftMetering(10, 5, False)),
+                 Candidate("draft B", DraftMetering(10, 6, False))]
+        assert kw["k"] == 3  # config default reached select
+        return Selection(winner=cands[1], winner_index=1, candidates=cands,
+                         rerank_reason="B tightest", rerank_measured=True)
+
+    monkeypatch.setattr("app.routers.engine.select_draft", fake_select)
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "auto"})
+    assert r.status_code == 200
+    body = r.json()  # JSON, NOT an SSE stream
+    assert body["mode"] == "auto" and body["text"] == "draft B"
+    assert body["winner_index"] == 1 and body["k"] == 2 and body["rerank_measured"] is True
+    # the job completed with the winner persisted (incl. the candidates for transparency)
+    completed = [k for _, s, k in jobs.updates if s == "completed"]
+    assert completed and completed[0]["result"]["text"] == "draft B"
+    assert completed[0]["result"]["candidates"] == ["draft A", "draft B"]
+
+
+def test_generate_auto_select_failure_fails_job_502(ctx, monkeypatch):
+    c, _, _, _, jobs, _, _ = ctx
+
+    async def boom(llm, judge, **kw):
+        raise RuntimeError("diverge produced no candidates")
+
+    monkeypatch.setattr("app.routers.engine.select_draft", boom)
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "auto"})
+    assert r.status_code == 502
+    assert any(s == "failed" for _, s, _ in jobs.updates)
+
+
+def test_generate_auto_idempotent_replay_returns_existing(ctx, monkeypatch):
+    c, _, _, _, jobs, _, _ = ctx
+    jobs.created = False
+    called = {"n": 0}
+
+    async def fake_select(llm, judge, **kw):
+        called["n"] += 1
+        raise AssertionError("must not run on replay")
+
+    monkeypatch.setattr("app.routers.engine.select_draft", fake_select)
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate",
+               json={**_gen_body(), "mode": "auto", "idempotency_key": "k1"})
+    assert r.status_code == 200 and r.json()["replay"] is True
+    assert called["n"] == 0  # short-circuited before select
+
+
 # ── critique ──
 
 def test_critique_runs_with_distinct_critic_and_fresh_canon(ctx):

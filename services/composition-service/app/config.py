@@ -29,5 +29,11 @@ class Settings(BaseSettings):
     # milestones; unused until the packer lands.
     pack_token_budget: int = 6000
 
+    # V1 Phase A1 — diverge→converge. Number of candidate drafts per auto generate
+    # (the only K-multiplied call; cost ~K drafts). A3 makes this adaptive per
+    # scene; until then it's the fixed default. K=1 degenerates to the V0 loop.
+    compose_diverge_k: int = 3
+    compose_diverge_temperature: float = 0.8
+
 
 settings = Settings()  # type: ignore[call-arg]
