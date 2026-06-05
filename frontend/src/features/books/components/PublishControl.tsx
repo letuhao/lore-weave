@@ -56,6 +56,7 @@ export function PublishControl({
           (isPublished ? 'bg-success/12 text-success' : 'bg-muted text-muted-foreground')
         }
         data-testid="editorial-badge"
+        data-status={editorialStatus}
       >
         {isPublished ? <BookCheck className="h-3 w-3" /> : <BookOpen className="h-3 w-3" />}
         {isPublished ? t('publish.published_badge') : t('publish.draft_badge')}

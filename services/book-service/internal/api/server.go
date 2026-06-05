@@ -1642,6 +1642,23 @@ FOR UPDATE OF d
 		return
 	}
 
+	// Empty-prose guard (B1.1) — canon must carry real text. Publishing a chapter
+	// with no extractable prose would canonize nothing and run KG extraction on an
+	// empty body. Reuse the same `_text` projection getRevision/compare read; a
+	// chapter with no text blocks (or whitespace-only) → 422, not a silent no-op
+	// publish. (Image/media-only chapters carry no `_text` and are blocked too —
+	// V0 is a prose co-writer; tracked as a known edge if media-only canon is
+	// ever needed.)
+	var prose string
+	_ = tx.QueryRow(r.Context(), `
+SELECT COALESCE(string_agg(t #>> '{}', '' ORDER BY ordinality), '')
+FROM jsonb_path_query(($1)::jsonb, '$.content[*]._text') WITH ORDINALITY AS x(t, ordinality)
+`, body).Scan(&prose)
+	if strings.TrimSpace(prose) == "" {
+		writeError(w, http.StatusUnprocessableEntity, "CHAPTER_EMPTY_PUBLISH", "cannot publish a chapter with no content")
+		return
+	}
+
 	// Always snapshot the current draft as an immutable revision and capture its
 	// id — the canon spine depends on a REAL revision_id (no fire-and-forget).
 	var revID uuid.UUID

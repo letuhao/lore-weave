@@ -311,6 +311,7 @@
     "published_toast": "章を公開しました",
     "unpublished_toast": "章を非公開にしました",
     "conflict_toast": "開いてから下書きが変更されました。公開する前に再読み込みしてください。",
+    "empty_toast": "この章には公開する内容がありません。先に何か書いてください。",
     "save_first": "公開する前に保存してください",
     "gate_pending": "{{total}}個中{{pending}}個のシーンが未完了です",
     "gate_no_scenes": "公開するには、少なくとも1つのシーンを作成して完了してください"

@@ -10,6 +10,9 @@ export class ChapterComposePanel {
   readonly addScene: Locator;
   readonly markDone: Locator;
   readonly publishButton: Locator;
+  readonly editorialBadge: Locator;
+  readonly titleInput: Locator;
+  readonly saveButton: Locator;
   readonly modelSelect: Locator;
   readonly reasoningSelect: Locator;
   readonly generate: Locator;
@@ -25,6 +28,9 @@ export class ChapterComposePanel {
     this.addScene = page.getByTestId('composition-add-scene');
     this.markDone = page.getByTestId('composition-mark-done');
     this.publishButton = page.getByTestId('publish-button');
+    this.editorialBadge = page.getByTestId('editorial-badge');
+    this.titleInput = page.getByTestId('chapter-title-input');
+    this.saveButton = page.getByTestId('chapter-save-button');
     this.modelSelect = page.getByTestId('composition-model-select');
     this.reasoningSelect = page.getByTestId('compose-reasoning');
     this.generate = page.getByTestId('compose-generate');
@@ -39,5 +45,20 @@ export class ChapterComposePanel {
 
   async openComposeTab(): Promise<void> {
     await this.composeTab.click();
+  }
+
+  /** The canon-side editorial status as the badge sees it ('draft' | 'published'),
+   * language-agnostic via the data-status attribute. */
+  async badgeStatus(): Promise<string | null> {
+    return this.editorialBadge.getAttribute('data-status');
+  }
+
+  /** Make the chapter dirty by appending to the title, then save and wait for the
+   * clean state (Publish re-enables once not dirty). */
+  async editTitleAndSave(suffix: string): Promise<void> {
+    await this.titleInput.click();
+    await this.titleInput.press('End');
+    await this.titleInput.pressSequentially(suffix);
+    await this.saveButton.click();
   }
 }

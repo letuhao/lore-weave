@@ -365,8 +365,11 @@ export function ChapterEditorPage() {
           expected_draft_version: version,
         });
       } catch (e) {
-        // On version conflict, retry without version check (single-user, last-write-wins)
-        if ((e as Error).message?.includes('stale draft version')) {
+        // On version conflict, retry without version check (single-user, last-write-wins).
+        // Match the structured error (book-service: 409 CHAPTER_DRAFT_CONFLICT) like the
+        // publish path does — not a substring of the message, which is brittle to wording.
+        const err = e as { code?: string; status?: number };
+        if (err.code === 'CHAPTER_DRAFT_CONFLICT' || err.status === 409) {
           await booksApi.patchDraft(accessToken, bookId, chapterId, {
             body: bodyToSave,
             body_format: 'json',
@@ -616,6 +619,7 @@ export function ChapterEditorPage() {
           )}
 
           <button
+            data-testid="chapter-save-button"
             onClick={() => void save()}
             disabled={saving}
             className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
@@ -783,6 +787,7 @@ export function ChapterEditorPage() {
           <div className="flex-shrink-0 border-b px-6 pt-4 pb-3">
             <input
               type="text"
+              data-testid="chapter-title-input"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="w-full bg-transparent font-serif text-xl font-semibold outline-none placeholder:text-muted-foreground/30"

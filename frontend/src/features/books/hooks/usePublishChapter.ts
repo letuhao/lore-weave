@@ -46,6 +46,9 @@ export function usePublishChapter({
       // CM1 concurrency: the server draft advanced since this editor loaded.
       if (err.code === 'CHAPTER_DRAFT_CONFLICT' || err.status === 409) {
         toast.error(t('publish.conflict_toast'));
+      } else if (err.code === 'CHAPTER_EMPTY_PUBLISH') {
+        // Empty-prose guard (book-service 422): canon must carry real text.
+        toast.error(t('publish.empty_toast'));
       } else {
         toast.error(err.message || t('publish.published_toast'));
       }

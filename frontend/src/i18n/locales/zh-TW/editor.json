@@ -311,6 +311,7 @@
     "published_toast": "章節已發佈",
     "unpublished_toast": "章節已取消發佈",
     "conflict_toast": "自您開啟後草稿已變更——請先重新載入再發佈。",
+    "empty_toast": "本章沒有可發佈的內容——請先寫點東西。",
     "save_first": "發佈前請先儲存",
     "gate_pending": "{{total}} 個場景中有 {{pending}} 個尚未完成",
     "gate_no_scenes": "建立並完成至少一個場景才能發佈"

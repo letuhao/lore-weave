@@ -135,7 +135,9 @@ Standalone diff page comparing two chapter revisions. **BE (book-service, additi
 
 **Approach:** extend `frontend/tests/e2e/` (testid-driven PoM per `tests/e2e/CONVENTIONS.md`). The `request` fixture (Playwright APIRequestContext, JWT via `getAccessToken`) seeds data + asserts backend state for the DB-assert scenarios — e2e-with-backend, not pure clicks. Reuse helpers added this session: `seedChapterWithRevisions`, `createCompositionWork/Scene`, `setWorkCriticModel`, `listChatModels/listActiveModels`, page objects `ChapterComposePanel`/`RevisionComparePage`.
 
-**DONE (6 specs, live-green):** `composition-gate` (U1/U2/B3.1/B7) · `composition-generate` (U3/U4 — drafter qwen3.6-35b reasoning-off + distinct critic qwen3.5-9b) · `revision-compare` ×4 (B8.1/B8.4-CJK/B8.2/B8.8).
+**DONE (live-green):** `composition-gate` (U1/U2/B3.1/B7) · `composition-generate` (U3/U4 — drafter qwen3.6-35b reasoning-off + distinct critic qwen3.5-9b) · `revision-compare` ×4 (B8.1/B8.4-CJK/B8.2/B8.8) · **`composition-publish-lifecycle` ×6 (B1.1-B1.5, B7.2) — Batch 1, 2026-06-05.**
+
+**E2E sweep — Batch 1 DONE (2026-06-05):** publish-lifecycle spec (6/6 live) + **2 PO-approved fixes surfaced by the e2e**: (1) `save()` now matches the structured `CHAPTER_DRAFT_CONFLICT`/409 like the publish path (was brittle message-substring); (2) **empty-publish guard** — book-service rejects publishing a chapter with no `_text` prose → **422 `CHAPTER_EMPTY_PUBLISH`** (canon never includes empty prose / extraction never runs on nothing); FE maps it to a localized `empty_toast` ×4. Added testids `chapter-title-input`/`chapter-save-button` + `data-status` on `editorial-badge`. book-service image rebuilt; live-smoke empty→422 / content→200. Known edge: alt-less image-only chapter blocked too (V0 prose-first; commented).
 
 **TODO (group + how to assert):**
 - **Happy-path journey end-to-end** U1→U8 (one spec: setup→scene→generate→accept→**mark-done→publish**→assert extraction/flywheel). Publish via CM-FE `PublishControl`; assert `chapter.published` + KG extraction (query knowledge-service or DB).

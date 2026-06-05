@@ -63,6 +63,23 @@ export async function trashBook(request: APIRequestContext, token: string, bookI
   await request.delete(`/v1/books/${bookId}`, auth(token));
 }
 
+/** Read a chapter's canon-side editorial fields (server source of truth). Used to
+ * assert publish lifecycle outcomes without trusting the UI badge alone. */
+export async function getChapterEditorial(
+  request: APIRequestContext, token: string, bookId: string, chapterId: string,
+): Promise<{ editorial_status?: 'draft' | 'published'; published_revision_id?: string | null }> {
+  return ok(request.get(`/v1/books/${bookId}/chapters/${chapterId}`, auth(token)));
+}
+
+/** Save the draft once to advance the server `draft_version` — simulates "another
+ * tab/device saved" so the editor's loaded version goes stale (OI-2 / B1.4). */
+export async function bumpServerDraft(
+  request: APIRequestContext, token: string, bookId: string, chapterId: string, text: string,
+): Promise<number> {
+  const dv = await draftVersion(request, token, bookId, chapterId);
+  return saveDraft(request, token, bookId, chapterId, text, dv, 'external bump');
+}
+
 // ── composition (co-write) seeding ──
 
 export type ChatModel = { user_model_id: string; provider_model_name: string; is_active: boolean };
