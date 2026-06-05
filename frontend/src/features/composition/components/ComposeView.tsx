@@ -91,12 +91,12 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
             {t('generate', { defaultValue: 'Generate' })}
           </button>
         ) : (
-          <button className="rounded bg-red-600 px-3 py-1.5 text-sm text-white" onClick={stream.stop}>
+          <button data-testid="compose-stop" className="rounded bg-red-600 px-3 py-1.5 text-sm text-white" onClick={stream.stop}>
             {t('stop', { defaultValue: 'Stop' })}
           </button>
         )}
-        {!sceneId && <span className="self-center text-xs text-amber-600">{t('needScene', { defaultValue: 'Pick a scene' })}</span>}
-        {sceneId && !modelRef && <span className="self-center text-xs text-amber-600">{t('needModel', { defaultValue: 'Pick a model' })}</span>}
+        {!sceneId && <span data-testid="compose-need-scene" className="self-center text-xs text-amber-600">{t('needScene', { defaultValue: 'Pick a scene' })}</span>}
+        {sceneId && !modelRef && <span data-testid="compose-need-model" className="self-center text-xs text-amber-600">{t('needModel', { defaultValue: 'Pick a model' })}</span>}
       </div>
 
       {stream.error && <div className="rounded bg-red-50 p-2 text-xs text-red-700 dark:bg-red-950">{stream.error}</div>}
@@ -113,10 +113,10 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
               <button data-testid="compose-accept" className="rounded bg-emerald-600 px-2.5 py-1 text-xs text-white" onClick={accept}>
                 {t('accept', { defaultValue: 'Accept' })}
               </button>
-              <button className="rounded border border-neutral-300 px-2.5 py-1 text-xs dark:border-neutral-600" onClick={generate}>
+              <button data-testid="compose-regenerate" className="rounded border border-neutral-300 px-2.5 py-1 text-xs dark:border-neutral-600" onClick={generate}>
                 {t('regenerate', { defaultValue: 'Regenerate' })}
               </button>
-              <button className="rounded border border-neutral-300 px-2.5 py-1 text-xs dark:border-neutral-600" onClick={stream.clearGhost}>
+              <button data-testid="compose-discard" className="rounded border border-neutral-300 px-2.5 py-1 text-xs dark:border-neutral-600" onClick={stream.clearGhost}>
                 {t('discard', { defaultValue: 'Discard' })}
               </button>
             </div>

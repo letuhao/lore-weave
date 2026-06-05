@@ -16,6 +16,12 @@ export class ChapterComposePanel {
   readonly modelSelect: Locator;
   readonly reasoningSelect: Locator;
   readonly generate: Locator;
+  readonly stop: Locator;
+  readonly regenerate: Locator;
+  readonly discard: Locator;
+  readonly needScene: Locator;
+  readonly needModel: Locator;
+  readonly reasoningBadge: Locator;
   readonly ghost: Locator;
   readonly accept: Locator;
   readonly critic: Locator;
@@ -46,6 +52,12 @@ export class ChapterComposePanel {
     this.modelSelect = page.getByTestId('composition-model-select');
     this.reasoningSelect = page.getByTestId('compose-reasoning');
     this.generate = page.getByTestId('compose-generate');
+    this.stop = page.getByTestId('compose-stop');
+    this.regenerate = page.getByTestId('compose-regenerate');
+    this.discard = page.getByTestId('compose-discard');
+    this.needScene = page.getByTestId('compose-need-scene');
+    this.needModel = page.getByTestId('compose-need-model');
+    this.reasoningBadge = page.getByTestId('compose-reasoning-badge');
     this.ghost = page.getByTestId('compose-ghost');
     this.accept = page.getByTestId('compose-accept');
     this.critic = page.getByTestId('compose-critic');
