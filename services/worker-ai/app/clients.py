@@ -583,25 +583,30 @@ class BookClient:
 
         Returns the PINNED published revision's plain text (vs the live draft),
         so canon=published graph extraction reads exactly what the author
-        published. Returns None on failure (worker → text-unavailable → skip).
+        published.
+
+        Returns None ONLY when the revision is PERMANENTLY GONE — a 404 (deleted
+        chapter/revision, or IDOR-guarded miss). On a TRANSIENT failure (network
+        error / 5xx) it RAISES so the caller fails+retries the job instead of
+        treating a blip as 'gone'. This distinction is load-bearing: the
+        chapters_pending drain marks the pending row processed on a None (so a
+        dead revision stops re-arming the drain every poll — D-CM3B-DEAD-REVISION-
+        LOOP); marking on a transient blip would silently drop canon.
         """
         url = (
             f"{self._base_url}/internal/books/{book_id}/chapters/{chapter_id}"
             f"/revisions/{revision_id}/text"
         )
-        try:
-            resp = await self._http.get(url)
-            if resp.status_code != 200:
-                logger.warning(
-                    "book-service revision %s/%s: %d",
-                    chapter_id, revision_id, resp.status_code,
-                )
-                return None
-            data = resp.json()
-            return data.get("text_content") or None
-        except (httpx.HTTPError, ValueError, KeyError) as exc:
-            logger.warning("book-service revision text failed: %s", exc)
+        resp = await self._http.get(url)  # network errors propagate → job retries
+        if resp.status_code == 404:
+            logger.warning(
+                "book-service revision %s/%s: 404 (revision gone)",
+                chapter_id, revision_id,
+            )
             return None
+        resp.raise_for_status()  # 5xx / other non-2xx → raise → job fails + retries
+        data = resp.json()
+        return data.get("text_content") or None
 
 
 # ── GlossaryClient ───────────────────────────────────────────────────

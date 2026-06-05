@@ -2252,6 +2252,39 @@ async def test_chapters_pending_drain_never_asserts_is_last(mock_extract_persist
 
 
 @pytest.mark.asyncio
+@patch("app.runner._mark_pending_processed", new_callable=AsyncMock)
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_chapters_pending_dead_revision_marks_processed(mock_extract, mock_mark):
+    """D-CM3B-DEAD-REVISION-LOOP: when a chapters_pending chapter's PINNED
+    revision is permanently gone (get_chapter_revision_text → None), the drain
+    MUST mark the pending row processed (revision-guarded) so it stops re-arming
+    a fresh drain job every poll. Without this an orphaned pending row loops
+    forever emitting skipped extraction_runs."""
+    pending = uuid4()
+    job = _job(scope="chapters_pending", embedding_dimension=1024)
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    llm = _mock_llm_client()
+    bc = _mock_book_client(text=None)  # pinned revision 404 → None (gone)
+    gc = _mock_glossary_client()
+
+    with patch(
+        "app.runner._enumerate_pending_chapters",
+        AsyncMock(return_value=[ChapterInfo(
+            chapter_id="ch-dead", title="C", sort_order=1,
+            revision_id="rev-gone", pending_id=pending,
+        )]),
+    ):
+        await process_job(pool, kc, llm, bc, gc, job)
+
+    # the dead chapter was NOT extracted, but its pending row was drained
+    mock_extract.assert_not_awaited()
+    mock_mark.assert_awaited_once()
+    assert mock_mark.await_args.args[2] == pending          # pending_id
+    assert mock_mark.await_args.kwargs["revision_id"] == "rev-gone"  # revision-guarded
+
+
+@pytest.mark.asyncio
 @patch("app.runner._extract_and_persist", new_callable=AsyncMock)
 async def test_chapters_whole_book_asserts_is_last_on_tail(mock_extract_persist):
     """Counterpart: a genuine whole-book ('chapters') pass DOES assert is_last

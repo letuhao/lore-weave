@@ -1297,6 +1297,18 @@ async def process_job(
                             "reason": "text_unavailable",
                         },
                     )
+                    # D-CM3B-DEAD-REVISION-LOOP: for a chapters_pending drain, a
+                    # None text means the PINNED revision is permanently gone (404 —
+                    # the client RAISES on transient errors, so this isn't a blip).
+                    # Mark the pending row processed (revision-guarded) so it stops
+                    # re-arming a fresh drain job on every poll. Without this, an
+                    # orphaned pending row (deleted chapter/revision) loops forever,
+                    # emitting a skipped extraction_run each ~poll. A future
+                    # re-publish re-arms the row at a NEW revision_id.
+                    if ch.pending_id is not None:
+                        await _mark_pending_processed(
+                            pool, job.user_id, ch.pending_id, revision_id=ch.revision_id,
+                        )
                     unavail_payload = _run_payload(
                         job=job, book_id=book_id, chapter_ref=ch.chapter_id,
                         snapshot=run_snapshot, cfg_hash=run_cfg_hash,
