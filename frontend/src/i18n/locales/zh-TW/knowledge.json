@@ -379,7 +379,37 @@
       "archive": "封存",
       "restore": "還原",
       "delete": "刪除",
+      "tuneExtraction": "調整抽取",
       "bookId": "book_id"
+    },
+    "extractionTuning": {
+      "title": "調整抽取",
+      "description": "各小說的抽取設定。變更套用於本專案的下一次抽取執行。",
+      "filterEnabled": "精確度過濾（捨棄低支持度的抽取）",
+      "category": {
+        "entity": "實體",
+        "relation": "關係",
+        "event": "事件"
+      },
+      "categoriesRequired": "至少選擇一個類別，或關閉過濾器。",
+      "partialPolicy": "部分匹配：",
+      "policyKeep": "保留",
+      "policyDrop": "捨棄",
+      "recoveryEnabled": "實體復原（找回遺漏的實體）",
+      "autocreateEnabled": "撰寫自動建立（建立關係所參照的實體）",
+      "promptWarning": "進階：自訂提示會取代該步驟的預設抽取指示，可能降低品質。留空以使用預設。一律強制 JSON 輸出。",
+      "promptPlaceholder": "留空以使用預設提示",
+      "prompt": {
+        "entity": "實體抽取提示",
+        "relation": "關係抽取提示",
+        "event": "事件抽取提示",
+        "fact": "事實抽取提示"
+      },
+      "save": "儲存",
+      "saving": "儲存中…",
+      "cancel": "取消",
+      "saved": "已儲存抽取設定。",
+      "failed": "儲存失敗：{{error}}"
     },
     "form": {
       "createTitle": "新增專案",

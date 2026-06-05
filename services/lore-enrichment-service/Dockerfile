@@ -2,6 +2,20 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Compose slice 3 (mode F) — OCR + PDF rasterisation system deps. Tesseract + the
+# platform's target-locale language packs (Simplified/Traditional Chinese, Japanese,
+# Vietnamese; English ships with tesseract-ocr) for book-aware scanned-PDF OCR
+# (D-COMPOSE-S3-OCR-LANG), and poppler (pdf2image) to rasterise pages. Keep this set
+# == app/files/extract._INSTALLED_OCR_LANGS. Service-only: extraction runs in this
+# service's /uploads background task; the worker only re-drives the already-ingested
+# corpus, so it needs none of this. Absence degrades to text-layer-only (extract.py
+# is import/binary-guarded), but the deployed image ships OCR.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-chi-tra \
+       tesseract-ocr-jpn tesseract-ocr-vie poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
+
 # Build context = repo root (infra/docker-compose.yml sets `context: ..`), so
 # COPY paths are repo-relative.
 COPY services/lore-enrichment-service/requirements.txt .
@@ -15,6 +29,11 @@ COPY sdks/python /sdk
 RUN pip install --no-cache-dir /sdk
 
 COPY services/lore-enrichment-service/app/ ./app/
+
+# LE-PROD-2 P3b — ship the eval-suite TOML so the in-container eval-run route
+# (POST /internal/eval/{project}/run) can load it (it lives at repo-root eval/,
+# not under app/). The route resolves /app/eval/ first, repo-root in dev.
+COPY eval/enrichment-eval-suite.toml ./eval/enrichment-eval-suite.toml
 
 ENV PORT=8093
 # C18 — OTLP trace export endpoint. Empty by default → setup_tracing is a no-op

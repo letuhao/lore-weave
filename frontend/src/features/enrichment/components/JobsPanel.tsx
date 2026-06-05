@@ -3,7 +3,7 @@ import { RotateCw } from 'lucide-react';
 import { Skeleton, StatusBadge } from '@/components/shared';
 import { useEnrichmentJobs } from '../hooks/useEnrichmentJobs';
 import { useEnrichmentContext } from '../context/EnrichmentContext';
-import { tierOf } from '../types';
+import { tierOf, classifyJobError } from '../types';
 
 /** Job list + status + resume (the cost-cap-paused jobs the background worker
  *  re-drives). Polls while a job is active. */
@@ -55,9 +55,34 @@ export function JobsPanel() {
                   variant={VARIANT[j.status] ?? 'pending'}
                   label={t(`jobs.status.${j.status}`, { defaultValue: j.status })}
                 />
+                {/* #4 + LE-PROD: surface WHY a job failed (red) OR an actionable
+                    note on a non-failed job (muted info — e.g. slice-B insufficient
+                    grounding on a completed run). A raw exception repr is mapped to a
+                    friendly line; the raw text stays in the hover title for audit. */}
+                {j.error_message && (() => {
+                  const e = classifyJobError(j.error_message);
+                  const isError = j.status === 'failed';
+                  return (
+                    <p
+                      className={`mt-1 max-w-[16rem] text-[10px] ${
+                        isError ? 'text-destructive' : 'text-muted-foreground'
+                      }`}
+                      data-testid={`job-error-${j.job_id}`}
+                      title={e.raw}
+                    >
+                      {e.key ? t(e.key) : e.raw}
+                    </p>
+                  );
+                })()}
               </td>
               <td className="px-3 py-2 font-mono text-xs">{j.proposals_total}</td>
-              <td className="px-3 py-2 font-mono text-xs">${j.actual_cost.toFixed(4)}</td>
+              {/* #5: spent vs cap — the cost-cap-pause is the panel's whole point. */}
+              <td className="px-3 py-2 font-mono text-xs" data-testid={`job-cost-${j.job_id}`}>
+                ${j.actual_cost.toFixed(4)}
+                {j.max_spend != null && (
+                  <span className="text-muted-foreground"> / ${j.max_spend.toFixed(2)}</span>
+                )}
+              </td>
               <td className="px-3 py-2 text-xs text-muted-foreground">
                 {new Date(j.created_at).toLocaleString()}
               </td>

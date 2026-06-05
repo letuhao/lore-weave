@@ -92,7 +92,7 @@ describe('ProposalCard', () => {
     expect(summary).toHaveTextContent('card.summary');
   });
 
-  it('shows the advisory preview when not auto_rejected AND canon_verify.flags is non-empty', () => {
+  it('shows the flag KIND + evidence inline (#8) when not auto_rejected AND flags is non-empty', () => {
     render(
       <ProposalCard
         proposal={P({
@@ -101,7 +101,7 @@ describe('ProposalCard', () => {
             canon_verify: {
               passed: false,
               verify_degraded: false,
-              flags: [{ kind: 'contradiction', dimension: null, evidence: 'x', severity: 'high' }],
+              flags: [{ kind: 'regurgitation', dimension: null, evidence: '逐字重合 14 字', severity: 'high' }],
             },
           },
         })}
@@ -110,8 +110,36 @@ describe('ProposalCard', () => {
       />,
     );
     const advisory = screen.getByTestId('enrichment-card-advisory');
-    expect(advisory).toBeInTheDocument();
-    expect(advisory).toHaveTextContent('card.advisory');
+    expect(advisory).toHaveTextContent('regurgitation'); // the kind (raw technical token)
+    expect(advisory).toHaveTextContent('逐字重合 14 字'); // the evidence (not just a count)
+  });
+
+  it('shows only the first 2 flags inline + a card.advisory overflow count for the rest (#8)', () => {
+    render(
+      <ProposalCard
+        proposal={P({
+          provenance_json: {
+            verify_status: 'needs_review',
+            canon_verify: {
+              passed: false,
+              verify_degraded: false,
+              flags: [
+                { kind: 'contradiction', dimension: null, evidence: 'a', severity: 'high' },
+                { kind: 'anachronism', dimension: null, evidence: 'b', severity: 'medium' },
+                { kind: 'injection', dimension: null, evidence: 'c', severity: 'high' },
+              ],
+            },
+          },
+        })}
+        selected={false}
+        onSelect={vi.fn()}
+      />,
+    );
+    const advisory = screen.getByTestId('enrichment-card-advisory');
+    expect(advisory).toHaveTextContent('contradiction');
+    expect(advisory).toHaveTextContent('anachronism');
+    expect(advisory).not.toHaveTextContent('injection'); // 3rd flag not shown inline
+    expect(advisory).toHaveTextContent('card.advisory'); // overflow count line
   });
 
   it('hides the advisory preview when canon_verify.flags is empty', () => {

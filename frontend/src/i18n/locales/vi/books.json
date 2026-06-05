@@ -138,6 +138,7 @@
     "kind_count_other": "{{count}} loại",
     "extract": "Trích xuất",
     "genres": "Thể loại",
+    "unknown": "Loại chưa rõ",
     "kinds": "Loại",
     "new_entity": "Thực thể mới",
     "no_kinds": "Không có loại nào",

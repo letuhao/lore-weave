@@ -37,12 +37,23 @@ from app.jobs.cost import GapCostModel, JobCostBudget
 from app.jobs.events import JobEventEmitter, make_redis_producer
 from app.jobs.proposal_store import PgProposalStore
 from app.jobs.runner import JobRunner
-from app.jobs.stages import FabricationPipeline, GapPipeline, JobPipeline, ReCookPipeline
+from app.jobs.stages import (
+    DraftExpandPipeline,
+    FabricationPipeline,
+    GapPipeline,
+    JobPipeline,
+    ReCookPipeline,
+)
 from app.jobs.tokens import UsageMeter
 from app.retrieval.embedding import make_embed_query_fn
+from app.retrieval.grounding import (
+    make_glossary_canon_provider,
+    make_knowledge_context_provider,
+)
 from app.retrieval.store import SourceCorpusStore
 from app.retrieval.strategy import RetrievalStrategy
 from app.strategies.base import EnrichmentStrategy, Technique
+from app.strategies.draft_expand import DraftExpandStrategy
 from app.strategies.fabrication import FabricationStrategy
 from app.strategies.factory import GateAwareStrategyFactory
 from app.strategies.gate_reader import make_eval_runs_gate_reader
@@ -80,7 +91,7 @@ async def build_live_runner(
     job_id: str,
     user_id: str,
     project_id: str,
-    embedding_model_ref: str,
+    embedding_model_ref: str | None,
     cost_cap: float | None,
     eval_reserve_fraction: float = 0.15,
     spent_so_far: float = 0.0,
@@ -206,9 +217,17 @@ async def build_live_runner(
         verifier=verifier,
         license_lookup=_license_lookup,
     )
+
+    # ── Compose mode D — DRAFT EXPANSION (P1, ungated). Its OWN seeded generation
+    # path (no retrieval/grounding): it expands the author's draft
+    # (context.seed_text / expand_mode) via the SAME metered complete seam and runs
+    # C12 verify. Tier P1 → the gate-aware factory never blocks it (only P2/P3 are
+    # gated). Registered here so factory.select('compose_draft') returns it.
+    draft_expand = DraftExpandStrategy(complete=complete, verifier=verifier)
+
     factory = GateAwareStrategyFactory(
         gate_reader=make_eval_runs_gate_reader(EvalRunsRepo(pool)),
-        strategies=[retrieval, fabrication, recook],
+        strategies=[retrieval, fabrication, recook, draft_expand],
         suite_version=suite_version,
     )
     # Gate enforcement happens HERE — a locked fabrication raises
@@ -252,12 +271,42 @@ async def build_live_runner(
         # (UnlicensedSourceError propagates → job refused).
         pipeline = ReCookPipeline(strategy=selected)  # type: ignore[arg-type]
         cost_strategy = selected
+    elif selected.technique is Technique.COMPOSE_DRAFT:
+        # Compose mode D (P1, ungated): the draft-expansion pipeline (own seeded
+        # generation → C12 verify per gap). EXPLICIT branch BEFORE the else→GapPipeline
+        # fall-through: mode D has EMPTY grounding and GapPipeline's generator REFUSES
+        # empty grounding — D must never fall into it. Its OWN estimate_cost
+        # (COMPOSE_DRAFT_GAP_COST tokens/gap, generation-only) is the pre-charge; the
+        # runner reconciles to the real metered spend (LE-059a), same as P1 retrieval.
+        pipeline = DraftExpandPipeline(strategy=selected)  # type: ignore[arg-type]
+        cost_strategy = selected
     else:
         # P1 default (retrieval): the unchanged C10→C11→C12 pipeline + the
         # truthful embed+generation GapCostModel the demo path has always used
         # (RetrievalStrategy.estimate_cost alone would under-count the generation).
+        # de-bias C2: compose grounding from the EXISTING extracted digest so an
+        # extracted book grounds without re-ingesting chapters — glossary authored
+        # canon (entity-tight) + knowledge build_context L3 passages (breadth), on
+        # top of the corpus search. Both degrade safely (no book_id / down service
+        # → no extra refs → legacy corpus-only behavior, no regression).
+        async def _build_ctx(message: str, _ctx) -> str:
+            try:
+                res = await kc.build_context(
+                    user_id=UUID(user_id), project_id=UUID(project_id), message=message
+                )
+                return res.context
+            except Exception:  # noqa: BLE001 — knowledge read is best-effort (Q6)
+                return ""
+
+        grounding_providers = [
+            make_glossary_canon_provider(
+                glossary_client, book_id=UUID(book_id) if book_id is not None else None
+            ),
+            make_knowledge_context_provider(_build_ctx),
+        ]
         pipeline = GapPipeline(
-            retrieval=retrieval, generator=generator, verifier=verifier
+            retrieval=retrieval, generator=generator, verifier=verifier,
+            grounding_providers=grounding_providers, top_k=top_k,
         )
         cost_strategy = GapCostModel()
         # runner_meter is already `meter` for every technique (LE-059a) — the

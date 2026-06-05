@@ -179,9 +179,12 @@ def test_stub_families_return_200_or_501(client):
         if (
             "/proposals" in spec_path or "/jobs" in spec_path
             or "/detect-gaps" in spec_path or "/auto-enrich" in spec_path
-            or "/sources" in spec_path
+            or "/dimensions" in spec_path
+            or "/compose" in spec_path or "/uploads" in spec_path
+            or "/sources" in spec_path or "/ground" in spec_path
+            or "/profile" in spec_path
         ):
-            continue  # real C13/C14/D1/D2 routes — covered by their own suites
+            continue  # real C13/C14/D1/D2/C2/C3/Compose routes — covered by their own suites
         url = _spec_to_concrete(spec_path)
         params = {}
         for op in methods.values():

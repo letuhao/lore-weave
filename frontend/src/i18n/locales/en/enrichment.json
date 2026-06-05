@@ -2,7 +2,94 @@
   "header": "Enrichment Review",
   "subtitle": "Review AI-proposed lore for under-described entities, then promote what you approve into this book's canon. Enriched drafts are private variants until you promote them.",
   "untitled": "Untitled",
-  "panel": { "proposals": "Proposals", "gaps": "Gaps", "sources": "Sources", "jobs": "Jobs" },
+  "panel": { "compose": "Create", "proposals": "Proposals", "gaps": "Gaps", "sources": "Sources", "jobs": "Jobs", "settings": "Profile" },
+  "compose": {
+    "title": "Create enrichment",
+    "subtitle": "Start enrichment your way — expand a draft you've written, or fill detected gaps. Everything you create is an enriched variant until you promote it.",
+    "soon": "soon",
+    "mode_soon": "Coming in a later slice.",
+    "mode": {
+      "draft": "From a draft",
+      "gap": "Fill gaps",
+      "intent": "From an idea",
+      "context": "Paste context",
+      "files": "Attach files"
+    },
+    "draft": {
+      "label": "Your draft",
+      "placeholder": "Paste or write your draft for this entity. It will be expanded into the book's dimensions, in the book's voice…",
+      "expand_mode": "How to expand",
+      "rewrite": "Rewrite",
+      "rewrite_hint": "Rewrite + voice-sync to the book, preserving your meaning; fill all dimensions.",
+      "add_only": "Add only",
+      "add_only_hint": "Keep your prose verbatim; only add the missing dimensions."
+    },
+    "context": {
+      "label": "Reference text",
+      "placeholder": "Paste reference text about this entity. It's ingested as grounding and the enrichment is generated from it (in the book's voice).",
+      "license_label": "Source license",
+      "license": {
+        "public_domain": "Public domain",
+        "licensed": "Licensed for this use",
+        "owned": "I own / wrote this",
+        "copyrighted": "Copyrighted (can't use)"
+      },
+      "copyrighted_warning": "Copyrighted material can't be ingested. Use public-domain, licensed, or your own text.",
+      "responsibility": "You are responsible for the rights to this text. Not legal advice."
+    },
+    "files": {
+      "license_label": "File license",
+      "dropzone": "Drop files here or click to browse",
+      "accept": ".txt .md .pdf .docx .epub — scanned PDFs are OCR'd",
+      "ready": "{{chars}} chars{{ocr}}",
+      "ocr": "OCR",
+      "processing": "extracting…",
+      "failed": "failed",
+      "responsibility": "I have the rights to these files (own / licensed / public-domain). Not legal advice."
+    },
+    "intent": {
+      "label": "What do you want to create?",
+      "placeholder": "Describe it in your own words — e.g. \"the wise advisor who helps the king found the dynasty\".",
+      "resolve": "Resolve",
+      "resolving": "Resolving…",
+      "resolve_hint": "Proposes a target below — review & edit it, then Run."
+    },
+    "target": {
+      "existing": "Existing entity",
+      "new": "New entity",
+      "name": "Name",
+      "name_placeholder": "e.g. 碧遊宮",
+      "kind": "Kind",
+      "existing_hint": "Enriches the existing glossary entity with this name.",
+      "new_hint": "Creates a new entity — nothing is written to your glossary until you promote the proposal."
+    },
+    "kind": {
+      "character": "Character",
+      "location": "Location",
+      "item": "Item",
+      "faction": "Faction",
+      "event": "Event",
+      "generic": "Generic"
+    },
+    "config": {
+      "gen_model": "Generation model",
+      "embed_model": "Embedding model",
+      "select_model": "Select…",
+      "max_spend": "Max spend (USD)",
+      "no_cap": "no cap",
+      "top_k": "Top-K",
+      "technique": "Technique",
+      "technique_opt": { "retrieval": "Retrieval (P1)", "fabrication": "Fabrication (P2)", "recook": "Re-cook (P3)" },
+      "eval_gate_warning": "P2/P3 needs a passed eval-gate — the job is refused until it passes.",
+      "dimensions": { "auto": "Auto — enrich all missing dimensions" }
+    },
+    "safety": "① license · ② abstract · ③ regurgitation guard · ④ you promote — enriched stays a variant until you promote it.",
+    "run_hint": "Runs as a background job — the proposal appears under Proposals when ready.",
+    "save_corpus": "Save to sources (keep — don't auto-delete)",
+    "run": "Create draft",
+    "composing": "Starting…",
+    "enqueued": "Enrichment started — the proposal will appear under Proposals."
+  },
   "h0": {
     "marker": "variant",
     "tooltip": "An enriched variant — never authored canon until you promote it."
@@ -121,6 +208,7 @@
     "detect": "Detect gaps",
     "detect_hint": "Click \"Detect gaps\" to scan this book's glossary coverage.",
     "none": "No gaps detected — every entity is well described.",
+    "extract_first": "No entities yet — extract this book first (Knowledge tab). Enrichment fills gaps in entities the platform already knows about.",
     "technique": "Technique",
     "gen_model": "Generation model",
     "embed_model": "Embedding model",
@@ -150,11 +238,22 @@
     "ingested": "Ingested — {{count}} chunk(s) embedded",
     "ingest_placeholder": "Paste public-domain / licensed source text to chunk + embed…",
     "chunks": "{{count}} chunks",
+    "embedded": "embedded ✓",
+    "partial": "{{done}}/{{total}} embedded",
     "none": "No sources registered yet.",
     "recook_ok": "recook-OK",
     "recook_refused": "recook refused (default-deny)",
     "default_deny": "Default-deny: only public-domain / licensed sources may be recooked. You are responsible for the license of sources you register.",
-    "registered": "Source registered"
+    "registered": "Source registered",
+    "grounded": "Grounded — {{count}} chapter(s) embedded"
+  },
+  "ground": {
+    "title": "Ground from chapters",
+    "subtitle": "Pick specific chapters to embed as a grounding corpus — raw prose beyond what knowledge RAG + glossary canon surface. The text is your own.",
+    "no_chapters": "This book has no chapters yet.",
+    "showing": "Showing the first {{shown}} of {{total}} chapters — the primary grounding path (knowledge RAG) already covers all chapters; this is for deliberate extra selection.",
+    "ingest": "Ground {{count}} chapter(s)",
+    "ingesting": "Embedding…"
   },
   "jobs": {
     "none": "No enrichment jobs yet.",
@@ -175,6 +274,46 @@
       "completed": "Completed",
       "failed": "Failed",
       "cancelled": "Cancelled"
+    },
+    "error": {
+      "gateLocked": "Locked by the eval gate — run the enrichment eval first.",
+      "internal": "Enrichment failed (internal error). Hover for details.",
+      "insufficientGrounding": "No usable corpus grounding for these entities — paste reference context or use Fabrication."
     }
+  },
+  "settings": {
+    "title": "Enrichment profile",
+    "subtitle": "The per-book worldview that de-biases generation — language, era, voice, and the dimensions enrichment fills. Edits apply to new jobs.",
+    "error": "Couldn't load the profile. Please try again.",
+    "worldview": "Worldview",
+    "language": "Output language",
+    "voice": "Voice",
+    "era_policy": "Era policy",
+    "era_hint": "An era/anachronism constraint, e.g. \"no post-Shang-Zhou tech\". Empty = anachronism check off.",
+    "markers": "Anachronism markers",
+    "markers_placeholder": "term | reason (one per line)",
+    "markers_hint": "One per line as \"term | reason\". These are the terms the anachronism check flags. Clearing them turns the check off.",
+    "dimensions": "Dimension overrides",
+    "kind": { "character": "Character", "location": "Location", "item": "Item", "faction": "Faction", "event": "Event" },
+    "add_dimension": "Add dimension",
+    "no_extra_dims": "Uses the built-in dimensions for this kind.",
+    "dim_id": "id",
+    "dim_label": "label",
+    "dim_weight": "weight",
+    "dim_required": "required",
+    "remove_dimension": "Remove dimension",
+    "hide": "Hide",
+    "suggest": "Suggest from book",
+    "suggesting": "Analyzing…",
+    "suggest_model": "Suggest model",
+    "select_model": "Select a model…",
+    "suggest_hint": "AI reads the book metadata + chapters to propose a draft you can edit. Nothing is saved until you Save.",
+    "suggested": "Draft suggested — review, then Save",
+    "saving": "Saving…",
+    "saved": "Profile saved",
+    "source": "Source: {{source}}",
+    "source_seed": "seed",
+    "source_ai_suggested": "AI-suggested",
+    "source_manual": "manual"
   }
 }

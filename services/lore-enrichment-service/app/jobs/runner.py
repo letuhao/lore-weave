@@ -46,7 +46,7 @@ import time
 from dataclasses import dataclass, field
 
 from app.gaps.model import Gap
-from app.generation.generate import GenerationError
+from app.generation.generate import GenerationError, InsufficientGroundingError
 from app.jobs.cost import CostCapExceeded, JobCostBudget
 from app.jobs.events import JobEventEmitter, JobEventType
 from app.jobs.proposal_store import (
@@ -59,7 +59,7 @@ from app.jobs.state_machine import JobRecord, JobStateMachine, PersistFn
 from app.jobs.tokens import UsageMeter
 from app.strategies.base import EnrichmentStrategy, StrategyContext
 from app.strategies.fabrication import FabricationError
-from app.verify.wiring import VerifyStatus, decide_auto_reject
+from app.verify.wiring import decide_auto_reject
 
 __all__ = [
     "JobOutcome",
@@ -97,6 +97,11 @@ class JobOutcome:
     #: terminal `rejected` row (audited), NOT surfaced to the review queue/wiki,
     #: and NOT counted as a created proposal. Still never canon (H0).
     auto_rejected_gaps: list[str] = field(default_factory=list)
+    #: gaps SKIPPED because the retrieved grounding supported NO dimension (slice B
+    #: — the "未提及" case). A subset of ``skipped_gaps`` tracked separately so the
+    #: job can surface an ACTIONABLE reason (paste context / use fabrication) when a
+    #: run produces zero proposals purely for lack of usable grounding.
+    insufficient_grounding_gaps: list[str] = field(default_factory=list)
 
 
 class JobRunner:
@@ -250,6 +255,11 @@ class JobRunner:
                     self._reconcile_gap(unit_cost, before_tokens)
                     logger.info("skipping gap %s: %s", gap_ref, exc)
                     outcome.skipped_gaps.append(gap_ref)
+                    # slice B: the grounding-starved case ("未提及") is tracked
+                    # separately so the job can tell the author WHY (vs an opaque
+                    # unrepairable skip) — actionable: paste context / fabricate.
+                    if isinstance(exc, InsufficientGroundingError):
+                        outcome.insufficient_grounding_gaps.append(gap_ref)
                     continue
 
                 # The gap produced content: reconcile its pre-charged estimate to
@@ -291,6 +301,9 @@ class JobRunner:
                     gap_ref=gap_ref,  # per-gap idempotency key (WARN-1)
                     review_status="rejected" if reject else "proposed",
                     rejected_reason=reject.reason if reject else None,
+                    # de-bias (LE-PROD-2 P2): the proposal-body header/separators are
+                    # localized to the book language (zh demo unchanged).
+                    language=context.profile.language,
                 )
                 persisted = await self._store.persist_proposal(
                     job_id=job_id, fields=fields
@@ -353,11 +366,23 @@ class JobRunner:
             # ── complete (running → completed) ──────────────────────────────────
             await machine.complete()
             outcome.spent = self._budget.spent
+            # slice B: a job that produced NO proposals purely because the corpus
+            # didn't cover the targets carries an ACTIONABLE note (not an error —
+            # the job ran fine). Surfaced via error_message (FE renders it as an
+            # info hint on a completed job); prefix lets the FE map it to guidance.
+            completion_note: str | None = None
+            if not outcome.proposals and outcome.insufficient_grounding_gaps:
+                completion_note = (
+                    f"insufficient_grounding: {len(outcome.insufficient_grounding_gaps)} "
+                    "gap(s) had no usable corpus grounding — paste reference context "
+                    "or use fabrication"
+                )
             await self._store.mark_job_status(
                 job_id=job_id,
                 status="completed",
                 actual_cost=self._budget.spent,
                 proposals_total=len(outcome.proposals),
+                error_message=completion_note,
             )
             await self._emitter.emit(
                 JobEventType.COMPLETED,

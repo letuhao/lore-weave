@@ -200,7 +200,10 @@ class SourceCorpusStore:
                 """SELECT c.corpus_id, c.name, c.kind, c.license, c.provenance_json,
                           c.created_at,
                           (SELECT COUNT(*) FROM source_corpus_chunk ch
-                             WHERE ch.corpus_id = c.corpus_id) AS chunk_count
+                             WHERE ch.corpus_id = c.corpus_id) AS chunk_count,
+                          (SELECT COUNT(*) FROM source_corpus_chunk ch
+                             WHERE ch.corpus_id = c.corpus_id
+                               AND ch.embedding IS NOT NULL) AS chunks_embedded
                    FROM source_corpus c
                    WHERE c.user_id=$1 AND c.project_id=$2
                    ORDER BY c.created_at DESC, c.corpus_id
@@ -208,6 +211,48 @@ class SourceCorpusStore:
                 user_id, project_id, limit, offset,
             )
         return [dict(r) for r in rows], int(total or 0)
+
+    async def mark_corpus_persistent(self, *, corpus_id: UUID) -> None:
+        """Clear the ``compose_ephemeral`` tag so the reaper won't GC this corpus
+        (#7 — the author chose to KEEP a compose paste/file as a curated source). Run
+        AFTER an ingest when persist is requested: on a brand-new corpus the create
+        already wrote ``compose_ephemeral=false``, but on an idempotent RE-ingest of
+        identical text ``upsert_corpus`` returns the existing (possibly ephemeral) row
+        untouched — this promotes it so "Save to sources" is honest either way.
+        Idempotent."""
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """UPDATE source_corpus
+                   SET provenance_json =
+                         jsonb_set(coalesce(provenance_json, '{}'::jsonb),
+                                   '{compose_ephemeral}', 'false'),
+                       updated_at = now()
+                   WHERE corpus_id = $1""",
+                corpus_id,
+            )
+
+    async def reap_ephemeral_corpora(self, *, ttl_seconds: float) -> list[UUID]:
+        """Delete compose-ephemeral corpora older than ``ttl_seconds`` and return
+        the deleted ids (D-COMPOSE-CONTEXT-CORPUS-SCOPE). Targets ONLY corpora
+        tagged ``provenance_json->>'compose_ephemeral' = 'true'`` (the mode-C paste
+        / mode-F file pastes) — NEVER the curated /sources reference library. Chunks
+        + grounding refs cascade (FK ON DELETE CASCADE); a promoted proposal that
+        cited one survives (its ``cultural_grounding_ref_id`` FK is ON DELETE SET
+        NULL and its ``source_refs_json`` is a value snapshot, not an FK). ``ttl <=
+        0`` is a no-op (disables reaping) so an accidental 0 never purges live data."""
+        if ttl_seconds <= 0:
+            return []
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                DELETE FROM source_corpus
+                WHERE provenance_json->>'compose_ephemeral' = 'true'
+                  AND created_at < now() - ($1 * interval '1 second')
+                RETURNING corpus_id
+                """,
+                ttl_seconds,
+            )
+        return [r["corpus_id"] for r in rows]
 
     async def upsert_corpus(
         self,
@@ -326,6 +371,7 @@ class SourceCorpusStore:
         embed_fn: EmbedFn,
         model_ref: str,
         license: str = "unknown",
+        provenance_json: dict | None = None,
         target_chars: int = DEFAULT_TARGET_CHARS,
         overlap_sentences: int = DEFAULT_OVERLAP_SENTENCES,
     ) -> IngestResult:
@@ -341,9 +387,15 @@ class SourceCorpusStore:
         ``license`` defaults to ``"unknown"`` (fail-closed, C17 WARN-1): an ingest
         that omits it produces a corpus the re-cook licensing gate REFUSES. Tag a
         genuinely public-domain / licensed source EXPLICITLY to make it re-cookable.
+
+        ``provenance_json`` is recorded on the corpus row (only when the corpus is
+        first created — a re-ingest keeps the original). Compose tags its ephemeral
+        paste/file corpora here (``{"compose_ephemeral": true}``) so the reaper can
+        garbage-collect them by TTL (D-COMPOSE-CONTEXT-CORPUS-SCOPE).
         """
         corpus_id = await self.upsert_corpus(
             user_id=user_id, project_id=project_id, name=name, kind=kind, license=license,
+            provenance_json=provenance_json,
         )
         chunks = chunk_text(
             text, target_chars=target_chars, overlap_sentences=overlap_sentences
@@ -380,8 +432,12 @@ class SourceCorpusStore:
     ) -> list[StoredChunk]:
         """Embedded chunks for a project (optionally one corpus), for search.
 
-        Only rows WITH a vector are returned (un-embedded chunks can't be
-        scored). Scoped by project_id (Q3) — never crosses a project boundary.
+        Only rows WITH a vector are returned (un-embedded chunks can't be scored).
+        Scoped to the project (Q3) — never crosses a USER/project boundary — PLUS
+        the SHARED reference library (de-bias C2 T5): chunks whose ``project_id IS
+        NULL`` are public-domain reference material readable by any project (e.g.
+        the original work a fanfic re-cooks). The library is curated PD-only, so it
+        crosses no private data.
         """
         async with self._pool.acquire() as conn:
             if corpus_id is not None:
@@ -390,7 +446,8 @@ class SourceCorpusStore:
                     SELECT chunk_id, corpus_id, chunk_index, content,
                            embedding, embedding_model_ref
                     FROM source_corpus_chunk
-                    WHERE project_id = $1 AND corpus_id = $2 AND embedding IS NOT NULL
+                    WHERE (project_id = $1 OR project_id IS NULL)
+                      AND corpus_id = $2 AND embedding IS NOT NULL
                     ORDER BY corpus_id, chunk_index
                     """,
                     project_id, corpus_id,
@@ -401,7 +458,8 @@ class SourceCorpusStore:
                     SELECT chunk_id, corpus_id, chunk_index, content,
                            embedding, embedding_model_ref
                     FROM source_corpus_chunk
-                    WHERE project_id = $1 AND embedding IS NOT NULL
+                    WHERE (project_id = $1 OR project_id IS NULL)
+                      AND embedding IS NOT NULL
                     ORDER BY corpus_id, chunk_index
                     """,
                     project_id,

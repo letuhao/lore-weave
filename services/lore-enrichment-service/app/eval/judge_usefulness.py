@@ -62,6 +62,7 @@ __all__ = [
     "USEFULNESS_RUBRIC_ZH",
     "score_usefulness_ensemble",
     "build_judge_prompt",
+    "build_usefulness_rubric",
     "parse_judge_verdict",
     "verdict_to_credit",
 ]
@@ -195,17 +196,59 @@ def _neutralize(text: str) -> str:
         return text
 
 
-def build_judge_prompt(p: ProposalForJudging) -> tuple[str, str]:
+def build_usefulness_rubric(profile=None, *, kind_label: str = "地点") -> str:
+    """Build the judge rubric for a book (LE-PROD slice D de-bias).
+
+    ``profile=None`` → the Fengshen zh rubric (no regression). A zh profile → the
+    same shape but with the book's OWN worldview interpolated (not hardcoded
+    封神/商周). A non-zh profile → a neutral ENGLISH rubric judging language-
+    consistency + setting-fit + dimension-coverage, so a non-Fengshen book's good
+    output is judged on ITS terms (the Fengshen-tuned rubric never gating it)."""
+    from app.gaps.model import is_zh  # leaf import (avoid the ensemble-shim cycle)
+
+    if profile is None:
+        return USEFULNESS_RUBRIC_ZH
+    worldview = (getattr(profile, "worldview", "") or "").strip()
+    language = getattr(profile, "language", "auto") or "auto"
+    if is_zh(language):
+        frame = worldview or "本作品设定"
+        return (
+            f"你是《{frame}》的文化考据评审。请仅依据【数据】区块内的增补内容，"
+            f"评估其作为游戏世界观补全的「有用性／文化贴合度」："
+            f"（1）语言是否与源文一致；（2）是否贴合「{frame}」的设定与语境，无出戏；"
+            f"（3）是否覆盖各维度并具体可用，而非空泛套话。"
+        )
+    setting = f"the setting of «{worldview}»" if worldview else "this work's setting"
+    lang_name = language if language not in ("", "auto") else "the book's language"
+    return (
+        f"You are a lore-fidelity reviewer for {setting}. Using ONLY the content in "
+        f"the DATA block, rate this {kind_label} enrichment's usefulness / fidelity: "
+        f"(1) is it written in {lang_name}, consistent with the source; (2) does it fit "
+        f"{setting} without breaking immersion; (3) does it cover the dimensions "
+        f"concretely and usefully, not generic filler."
+    )
+
+
+def build_judge_prompt(
+    p: ProposalForJudging,
+    *,
+    rubric: str = USEFULNESS_RUBRIC_ZH,
+    kind_label: str = "地点名称",
+) -> tuple[str, str]:
     """Build (system, user) prompts for ONE proposal. The proposal content is
     neutralized + data-fenced (050). The system prompt carries the rubric +
     injection guard + strict output spec; the user prompt carries ONLY the
-    fenced, neutralized data."""
-    system = f"{USEFULNESS_RUBRIC_ZH}\n\n{_INJECTION_GUARD}\n\n{_OUTPUT_SPEC}"
-    lines = [f"地点名称：{p.name}"]
+    fenced, neutralized data.
+
+    De-bias (slice D): ``rubric`` + ``kind_label`` are parameters (Fengshen zh
+    defaults — no regression); the runner passes a profile-driven rubric + the
+    book-localized kind label so a non-Fengshen book is judged on its own terms."""
+    system = f"{rubric}\n\n{_INJECTION_GUARD}\n\n{_OUTPUT_SPEC}"
+    lines = [f"{kind_label}：{p.name}"]
     for dim, content in p.dimensions.items():
         lines.append(f"{dim}：{_neutralize(str(content))}")
     body = "\n".join(lines)
-    user = f"{_FENCE_OPEN}\n{body}\n{_FENCE_CLOSE}\n\n请按评分细则给出 JSON 评分。"
+    user = f"{_FENCE_OPEN}\n{body}\n{_FENCE_CLOSE}\n\n请按评分细则给出 JSON 评分 / output the JSON verdict."
     return system, user
 
 
@@ -252,6 +295,9 @@ async def _run_one_judge(
     judge: JudgeSpec,
     judge_fn: JudgeFn,
     proposals: Sequence[ProposalForJudging],
+    *,
+    rubric: str = USEFULNESS_RUBRIC_ZH,
+    kind_label: str = "地点名称",
 ) -> dict[int, str]:
     """Run ONE judge over all proposals. Returns {proposal_index -> verdict}
     for the proposals it scored. A failed/unparseable call → that proposal is
@@ -259,7 +305,7 @@ async def _run_one_judge(
     ensemble; mirrors llm_judge per-batch unjudged policy)."""
     verdicts: dict[int, str] = {}
     for i, p in enumerate(proposals):
-        system, user = build_judge_prompt(p)
+        system, user = build_judge_prompt(p, rubric=rubric, kind_label=kind_label)
         try:
             raw = await judge_fn(system, user)
         except Exception as exc:  # noqa: BLE001 — D11 broad-catch policy
@@ -277,6 +323,8 @@ async def score_usefulness_ensemble(
     judge_fn_for: Callable[[JudgeSpec], JudgeFn],
     *,
     kappa_floor: float = 0.0,
+    rubric: str = USEFULNESS_RUBRIC_ZH,
+    kind_label: str = "地点名称",
 ) -> JudgeUsefulnessResult:
     """Score the subjective ``usefulness`` sub-score via the judge ENSEMBLE.
 
@@ -307,7 +355,9 @@ async def score_usefulness_ensemble(
     per_judge: list[tuple[JudgeSpec, dict[int, str]]] = []
     for judge in judges:
         fn = judge_fn_for(judge)
-        verdicts = await _run_one_judge(judge, fn, proposals)
+        verdicts = await _run_one_judge(
+            judge, fn, proposals, rubric=rubric, kind_label=kind_label
+        )
         per_judge.append((judge, verdicts))
 
     voting_judges = [j for j, v in per_judge if v]

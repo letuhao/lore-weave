@@ -2,7 +2,94 @@
   "header": "Duyệt bồi đắp",
   "subtitle": "Xem xét lore do AI đề xuất cho các thực thể thiếu mô tả, rồi thăng những gì bạn duyệt vào canon của sách này. Bản nháp bồi đắp là dị bản riêng tư cho đến khi bạn thăng.",
   "untitled": "Chưa đặt tên",
-  "panel": { "proposals": "Đề xuất", "gaps": "Thiếu hụt", "sources": "Nguồn", "jobs": "Tác vụ" },
+  "panel": { "compose": "Tạo", "proposals": "Đề xuất", "gaps": "Thiếu hụt", "sources": "Nguồn", "jobs": "Tác vụ", "settings": "Hồ sơ" },
+  "compose": {
+    "title": "Tạo nội dung làm giàu",
+    "subtitle": "Bắt đầu theo cách của bạn — mở rộng bản nháp bạn đã viết, hoặc lấp các thiếu hụt được phát hiện. Mọi nội dung bạn tạo là một dị bản cho đến khi bạn duyệt lên canon.",
+    "soon": "sắp có",
+    "mode_soon": "Sẽ có ở giai đoạn sau.",
+    "mode": {
+      "draft": "Từ bản nháp",
+      "gap": "Lấp thiếu hụt",
+      "intent": "Từ ý tưởng",
+      "context": "Dán ngữ cảnh",
+      "files": "Đính kèm tệp"
+    },
+    "draft": {
+      "label": "Bản nháp của bạn",
+      "placeholder": "Dán hoặc viết bản nháp cho thực thể này. Nó sẽ được mở rộng theo các chiều của sách, đúng giọng văn của sách…",
+      "expand_mode": "Cách mở rộng",
+      "rewrite": "Viết lại",
+      "rewrite_hint": "Viết lại + đồng bộ giọng văn của sách, giữ nguyên ý của bạn; lấp đầy mọi chiều.",
+      "add_only": "Chỉ bổ sung",
+      "add_only_hint": "Giữ nguyên văn của bạn; chỉ thêm các chiều còn thiếu."
+    },
+    "context": {
+      "label": "Văn bản tham khảo",
+      "placeholder": "Dán văn bản tham khảo về thực thể này. Nó được nạp làm nền tảng và phần làm giàu được tạo từ đó (theo giọng văn của truyện).",
+      "license_label": "Giấy phép nguồn",
+      "license": {
+        "public_domain": "Phạm vi công cộng",
+        "licensed": "Được cấp phép cho mục đích này",
+        "owned": "Tôi sở hữu / tự viết",
+        "copyrighted": "Có bản quyền (không dùng được)"
+      },
+      "copyrighted_warning": "Không thể nạp tài liệu có bản quyền. Hãy dùng văn bản thuộc phạm vi công cộng, được cấp phép, hoặc của chính bạn.",
+      "responsibility": "Bạn chịu trách nhiệm về quyền đối với văn bản này. Đây không phải tư vấn pháp lý."
+    },
+    "files": {
+      "license_label": "Giấy phép tệp",
+      "dropzone": "Thả tệp vào đây hoặc bấm để chọn",
+      "accept": ".txt .md .pdf .docx .epub — PDF scan sẽ được OCR",
+      "ready": "{{chars}} ký tự{{ocr}}",
+      "ocr": "OCR",
+      "processing": "đang trích xuất…",
+      "failed": "thất bại",
+      "responsibility": "Tôi có quyền đối với các tệp này (sở hữu / được cấp phép / phạm vi công cộng). Không phải tư vấn pháp lý."
+    },
+    "intent": {
+      "label": "Bạn muốn tạo gì?",
+      "placeholder": "Mô tả bằng lời của bạn — vd: \"vị quân sư tài trí giúp vua dựng triều đại\".",
+      "resolve": "Phân giải",
+      "resolving": "Đang phân giải…",
+      "resolve_hint": "Đề xuất một đối tượng bên dưới — xem lại & chỉnh sửa, rồi Chạy."
+    },
+    "target": {
+      "existing": "Thực thể có sẵn",
+      "new": "Thực thể mới",
+      "name": "Tên",
+      "name_placeholder": "vd. 碧遊宮",
+      "kind": "Loại",
+      "existing_hint": "Làm giàu cho thực thể có sẵn trong từ điển mang tên này.",
+      "new_hint": "Tạo thực thể mới — không có gì được ghi vào từ điển cho đến khi bạn duyệt đề xuất."
+    },
+    "kind": {
+      "character": "Nhân vật",
+      "location": "Địa điểm",
+      "item": "Vật phẩm",
+      "faction": "Phe phái",
+      "event": "Sự kiện",
+      "generic": "Chung"
+    },
+    "config": {
+      "gen_model": "Mô hình sinh",
+      "embed_model": "Mô hình nhúng",
+      "select_model": "Chọn…",
+      "max_spend": "Chi tối đa (USD)",
+      "no_cap": "không giới hạn",
+      "top_k": "Top-K",
+      "technique": "Kỹ thuật",
+      "technique_opt": { "retrieval": "Truy hồi (P1)", "fabrication": "Bịa tạo (P2)", "recook": "Nấu lại (P3)" },
+      "eval_gate_warning": "P2/P3 cần eval-gate đã pass — job bị từ chối cho tới khi pass.",
+      "dimensions": { "auto": "Tự động — bổ sung mọi dimension còn thiếu" }
+    },
+    "safety": "① giấy phép · ② trừu tượng hóa · ③ chống sao chép · ④ bạn duyệt — nội dung làm giàu vẫn là dị bản cho đến khi bạn duyệt.",
+    "run_hint": "Chạy nền — đề xuất sẽ xuất hiện ở tab Đề xuất khi xong.",
+    "save_corpus": "Lưu vào nguồn (giữ — không tự xóa)",
+    "run": "Tạo bản nháp",
+    "composing": "Đang bắt đầu…",
+    "enqueued": "Đã bắt đầu làm giàu — đề xuất sẽ xuất hiện ở tab Đề xuất."
+  },
   "h0": {
     "marker": "dị bản",
     "tooltip": "Dị bản bồi đắp — không phải canon cho đến khi bạn thăng."
@@ -121,6 +208,7 @@
     "detect": "Phát hiện",
     "detect_hint": "Bấm \"Phát hiện\" để quét độ phủ glossary của sách.",
     "none": "Không phát hiện thiếu hụt — mọi thực thể đều được mô tả tốt.",
+    "extract_first": "Chưa có thực thể — hãy trích xuất sách này trước (tab Tri thức). Bồi đắp chỉ lấp khoảng trống cho các thực thể nền tảng đã biết.",
     "technique": "Kỹ thuật",
     "gen_model": "Model sinh",
     "embed_model": "Model embedding",
@@ -150,11 +238,22 @@
     "ingested": "Đã nạp — {{count}} đoạn được embed",
     "ingest_placeholder": "Dán văn bản nguồn phạm-vi-công-cộng / có-phép để chia đoạn + embed…",
     "chunks": "{{count}} đoạn",
+    "embedded": "đã nhúng ✓",
+    "partial": "{{done}}/{{total}} đã nhúng",
     "none": "Chưa đăng ký nguồn nào.",
     "recook_ok": "tái chế OK",
     "recook_refused": "từ chối tái chế (mặc định cấm)",
     "default_deny": "Mặc định cấm: chỉ nguồn phạm-vi-công-cộng / có-phép mới được tái chế. Bạn chịu trách nhiệm về giấy phép của nguồn mình đăng ký.",
-    "registered": "Đã đăng ký nguồn"
+    "registered": "Đã đăng ký nguồn",
+    "grounded": "Đã nền hoá — {{count}} chương được embed"
+  },
+  "ground": {
+    "title": "Nền hoá từ chương",
+    "subtitle": "Chọn các chương cụ thể để embed làm corpus nền — văn xuôi thô ngoài những gì knowledge RAG + glossary canon cung cấp. Văn bản là của chính bạn.",
+    "no_chapters": "Sách này chưa có chương nào.",
+    "showing": "Đang hiển thị {{shown}} chương đầu trên {{total}} — đường nền chính (knowledge RAG) đã bao phủ mọi chương; phần này dành cho lựa chọn bổ sung có chủ đích.",
+    "ingest": "Nền hoá {{count}} chương",
+    "ingesting": "Đang embed…"
   },
   "jobs": {
     "none": "Chưa có tác vụ bồi đắp.",
@@ -175,6 +274,46 @@
       "completed": "Hoàn tất",
       "failed": "Lỗi",
       "cancelled": "Đã huỷ"
+    },
+    "error": {
+      "gateLocked": "Bị khoá bởi eval gate — chạy eval enrichment trước.",
+      "internal": "Enrichment lỗi (lỗi nội bộ). Di chuột để xem chi tiết.",
+      "insufficientGrounding": "Chưa có nguồn corpus phù hợp cho các thực thể này — hãy paste context hoặc dùng Fabrication."
     }
+  },
+  "settings": {
+    "title": "Hồ sơ bồi đắp",
+    "subtitle": "Thế giới quan riêng của sách, dùng để khử thiên lệch khi sinh nội dung — ngôn ngữ, thời đại, giọng văn và các chiều mà bồi đắp sẽ lấp. Thay đổi áp dụng cho tác vụ mới.",
+    "error": "Không tải được hồ sơ. Vui lòng thử lại.",
+    "worldview": "Thế giới quan",
+    "language": "Ngôn ngữ đầu ra",
+    "voice": "Giọng văn",
+    "era_policy": "Quy ước thời đại",
+    "era_hint": "Ràng buộc thời đại/lỗi thời, ví dụ \"không có công nghệ sau Thương-Chu\". Để trống = tắt kiểm tra lỗi thời.",
+    "markers": "Dấu hiệu lỗi thời",
+    "markers_placeholder": "thuật ngữ | lý do (mỗi dòng một mục)",
+    "markers_hint": "Mỗi dòng dạng \"thuật ngữ | lý do\". Đây là các thuật ngữ mà kiểm tra lỗi thời sẽ gắn cờ. Xóa hết = tắt kiểm tra.",
+    "dimensions": "Ghi đè chiều",
+    "kind": { "character": "Nhân vật", "location": "Địa điểm", "item": "Vật phẩm", "faction": "Phe phái", "event": "Sự kiện" },
+    "add_dimension": "Thêm chiều",
+    "no_extra_dims": "Dùng các chiều mặc định cho loại này.",
+    "dim_id": "mã",
+    "dim_label": "nhãn",
+    "dim_weight": "trọng số",
+    "dim_required": "bắt buộc",
+    "remove_dimension": "Xóa chiều",
+    "hide": "Ẩn",
+    "suggest": "Gợi ý từ sách",
+    "suggesting": "Đang phân tích…",
+    "suggest_model": "Mô hình gợi ý",
+    "select_model": "Chọn mô hình…",
+    "suggest_hint": "AI đọc siêu dữ liệu + các chương để đề xuất bản nháp bạn có thể sửa. Không lưu cho đến khi bạn Lưu.",
+    "suggested": "Đã gợi ý bản nháp — xem lại rồi Lưu",
+    "saving": "Đang lưu…",
+    "saved": "Đã lưu hồ sơ",
+    "source": "Nguồn: {{source}}",
+    "source_seed": "khởi tạo",
+    "source_ai_suggested": "AI gợi ý",
+    "source_manual": "thủ công"
   }
 }

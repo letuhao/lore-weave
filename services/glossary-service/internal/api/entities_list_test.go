@@ -103,8 +103,8 @@ func TestListEntities_CursorWalk(t *testing.T) {
 
 	bookID := "00000000-0000-0000-0001-000000000c12"
 
-	// Look up 'character' kind + its name/aliases/short_description attrs.
-	var kindID, nameAttrID, aliasesAttrID, shortAttrID string
+	// Look up 'character' kind + its name/aliases attrs.
+	var kindID, nameAttrID, aliasesAttrID string
 	pool.QueryRow(ctx,
 		`SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`,
 	).Scan(&kindID)
@@ -116,27 +116,21 @@ func TestListEntities_CursorWalk(t *testing.T) {
 		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='aliases' LIMIT 1`,
 		kindID,
 	).Scan(&aliasesAttrID)
-	_ = pool.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='short_description' LIMIT 1`,
-		kindID,
-	).Scan(&shortAttrID)
-	// short_description attr may not exist in the default seed; fall
-	// back to a fresh definition so the test covers the full join.
-	if shortAttrID == "" {
-		pool.QueryRow(ctx,
-			`INSERT INTO attribute_definitions(kind_id,code,label,ui_type,sort_order,max_values)
-			 VALUES($1,'short_description','Short description','text',99,1)
-			 RETURNING attr_def_id`,
-			kindID,
-		).Scan(&shortAttrID)
-	}
 
+	// D-GLOSSARY-LISTENTITIES-TEST-STATE: seed short_description into the AUTHORED
+	// COLUMN (glossary_entities.short_description), which the handler reads first via
+	// COALESCE(NULLIF(e.short_description,''), short_av). The earlier version seeded
+	// it via an EAV value under a per-test 'short_description' attr_def, but on the
+	// SHARED glossary_test DB multiple such attr_defs accrue for the 'character' kind,
+	// so the handler's `... code='short_description' LIMIT 1` subquery could resolve a
+	// DIFFERENT attr_def than the one the EAV was seeded under → short_av nil →
+	// "Arthur short_desc got nil". The column is immune to that shared-state drift.
 	seedEntity := func(name, aliasesJSON, shortDesc string) string {
 		var eid string
 		pool.QueryRow(ctx,
-			`INSERT INTO glossary_entities(book_id,kind_id,status,tags)
-			 VALUES($1,$2,'active','{}') RETURNING entity_id`,
-			bookID, kindID,
+			`INSERT INTO glossary_entities(book_id,kind_id,status,tags,short_description)
+			 VALUES($1,$2,'active','{}',$3) RETURNING entity_id`,
+			bookID, kindID, nullIfEmpty(shortDesc),
 		).Scan(&eid)
 		pool.Exec(ctx,
 			`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
@@ -148,13 +142,6 @@ func TestListEntities_CursorWalk(t *testing.T) {
 				`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
 				 VALUES($1,$2,'en',$3)`,
 				eid, aliasesAttrID, aliasesJSON,
-			)
-		}
-		if shortDesc != "" {
-			pool.Exec(ctx,
-				`INSERT INTO entity_attribute_values(entity_id,attr_def_id,original_language,original_value)
-				 VALUES($1,$2,'en',$3)`,
-				eid, shortAttrID, shortDesc,
 			)
 		}
 		return eid
@@ -286,7 +273,11 @@ func TestListEntities_NameFilterDoesNotBreakPagination(t *testing.T) {
 	ctx := context.Background()
 	runK2aMigrations(t, pool)
 
-	bookID := "00000000-0000-0000-0001-000000c12c"
+	// D-GLOSSARY-LISTENTITIES-TEST-STATE: the previous literal
+	// "00000000-0000-0000-0001-000000c12c" had a 10-hex final group (UUIDs need 12)
+	// → parsePathUUID rejected it with 400 "invalid book_id" before the pagination
+	// logic ever ran. Use a well-formed UUID (distinct from CursorWalk's book).
+	bookID := "00000000-0000-0000-0002-00000000c12c"
 
 	var kindID, nameAttrID string
 	pool.QueryRow(ctx,

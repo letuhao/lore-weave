@@ -92,15 +92,13 @@ class RetractResult:
     supplement_retracted: int
 
 
-def _glossary_kind_code(entity_kind: str) -> str:
-    """The glossary kind_code for an enrichment entity_kind (de-bias C1 / KB8).
-
-    Was hardcoded to ``"location"`` — which promoted a CHARACTER / ITEM / FACTION
-    enrichment under the WRONG glossary kind (latent today because the anchor
-    resolves by name, but wrong for a new entity / any kind-specific path). We
-    enrich the kind glossary itself returned (round-trips), so pass it through;
-    fall back to ``"location"`` only for an empty/unknown kind (legacy safety)."""
-    return (entity_kind or "").strip() or "location"
+# NOTE (kind-alias epic E2): lore-enrichment no longer translates entity_kind →
+# glossary kind_code. Glossary OWNS its taxonomy: it resolves the raw kind via its
+# kind codes, then its `entity_kind_aliases` (faction→organization, generic→terminology
+# are SEEDED there), and parks anything unresolved under the reviewable `unknown` kind
+# (never dropped). So write-back/promote just send `proposal.entity_kind` as-is — the
+# old `_ENRICH_TO_GLOSSARY_KIND` map + reactive `_write_glossary_anchor` fallback are
+# gone (D-COMPOSE-KIND-HARDCODE-INTERIM resolved).
 
 
 def _anchor_name(proposal: ProposalRow) -> str:
@@ -270,12 +268,14 @@ class WritebackService:
         # flows enriched content into the glossary canonical attributes. Writing
         # the content into a glossary attribute here would put makeup text onto a
         # canon entity before promotion — an H0 leak (self-adversary A1).
-        kind_code = _glossary_kind_code(proposal.entity_kind)
         anchor_name = _anchor_name(proposal)  # H0: faithful identity, never makeup
         if glossary_entity_id is None:
+            # Send the RAW entity_kind: glossary resolves it (kind code → alias →
+            # `unknown` bucket), so faction/generic/custom kinds all land somewhere
+            # reviewable — no lore-enrichment-side translation (kind-alias epic E2).
             entity_id_str = await self._ports.write_entity_through_glossary(
                 book_id=book_id,
-                kind_code=kind_code,
+                kind_code=proposal.entity_kind,
                 name=anchor_name,
                 attributes={},  # identity only — no enriched content pre-promote
                 source_language=source_language,

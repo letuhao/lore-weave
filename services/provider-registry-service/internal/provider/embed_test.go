@@ -36,6 +36,38 @@ func TestParseOpenAIEmbeddingResponse(t *testing.T) {
 	}
 }
 
+func TestParseOpenAIEmbeddingResponse_SurfacesUsagePromptTokens(t *testing.T) {
+	// LE-059b: an OpenAI/LM Studio `usage.prompt_tokens` is surfaced so the caller
+	// can meter the embed leg on a real count.
+	out := map[string]any{
+		"data":  []any{map[string]any{"embedding": []any{0.1, 0.2}, "index": 0}},
+		"model": "bge-m3",
+		"usage": map[string]any{"prompt_tokens": float64(42), "total_tokens": float64(42)},
+	}
+	result, err := parseOpenAIEmbeddingResponse(out, "fallback")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.PromptTokens != 42 {
+		t.Fatalf("expected PromptTokens 42, got %d", result.PromptTokens)
+	}
+}
+
+func TestParseOpenAIEmbeddingResponse_NoUsageIsZero(t *testing.T) {
+	// no usage block → 0 (caller falls back to a char-estimate; wire stays clean).
+	out := map[string]any{
+		"data":  []any{map[string]any{"embedding": []any{0.1, 0.2}, "index": 0}},
+		"model": "bge-m3",
+	}
+	result, err := parseOpenAIEmbeddingResponse(out, "fallback")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.PromptTokens != 0 {
+		t.Fatalf("expected PromptTokens 0 when usage absent, got %d", result.PromptTokens)
+	}
+}
+
 func TestParseOpenAIEmbeddingResponseEmpty(t *testing.T) {
 	out := map[string]any{
 		"data": []any{},

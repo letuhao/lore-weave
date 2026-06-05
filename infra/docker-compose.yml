@@ -668,9 +668,17 @@ services:
       # FastAPI services). Empty default → setup_tracing is a no-op (dev). Set to
       # the collector endpoint to enable tracing.
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      # Compose slice 3 (mode F) — MinIO object storage for uploaded files.
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: loreweave
+      MINIO_SECRET_KEY: loreweave_dev_minio_secret
+      MINIO_BUCKET: lore-enrichment-uploads
+      MINIO_USE_SSL: "false"
     depends_on:
       postgres:
         condition: service_healthy
+      minio:
+        condition: service_started
     ports:
       - "8221:8093"
     # Liveness probe — /health is constant-ok (no DB). C18 added /ready (DB-
@@ -705,6 +713,13 @@ services:
       REDIS_URL: redis://redis:6379
       RESUME_CONSUMER_ENABLED: ${RESUME_CONSUMER_ENABLED:-true}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      # The reaper's orphan-object sweep (D-COMPOSE-S3-UPLOAD-REAPER) deletes row-less
+      # MinIO objects, so the worker needs the SAME bucket config as the service.
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: loreweave
+      MINIO_SECRET_KEY: loreweave_dev_minio_secret
+      MINIO_BUCKET: lore-enrichment-uploads
+      MINIO_USE_SSL: "false"
     # LE-062: the worker is a headless consumer (no HTTP server), so override the
     # image's HTTP /health probe with a heartbeat-file freshness check. The worker
     # touches the heartbeat from a background task while its event loop is alive

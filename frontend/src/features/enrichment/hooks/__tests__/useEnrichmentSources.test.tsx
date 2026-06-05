@@ -11,6 +11,7 @@ vi.mock('sonner', () => ({ toast: toastMocks }));
 const listSourcesMock = vi.fn();
 const registerSourceMock = vi.fn();
 const ingestSourceMock = vi.fn();
+const groundFromBookMock = vi.fn();
 vi.mock('../../api', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../api');
   return {
@@ -19,6 +20,7 @@ vi.mock('../../api', async () => {
       listSources: (...a: unknown[]) => listSourcesMock(...a),
       registerSource: (...a: unknown[]) => registerSourceMock(...a),
       ingestSource: (...a: unknown[]) => ingestSourceMock(...a),
+      groundFromBook: (...a: unknown[]) => groundFromBookMock(...a),
     },
   };
 });
@@ -61,7 +63,7 @@ function makeWrapper() {
 }
 
 beforeEach(() => {
-  [listSourcesMock, registerSourceMock, ingestSourceMock].forEach((m) => m.mockReset());
+  [listSourcesMock, registerSourceMock, ingestSourceMock, groundFromBookMock].forEach((m) => m.mockReset());
   Object.values(toastMocks).forEach((m) => m.mockReset());
   // Default: the list query resolves to an empty page so the hook mounts cleanly.
   listSourcesMock.mockResolvedValue({ items: [], total: 0, limit: 100, offset: 0 });
@@ -145,6 +147,36 @@ describe('useEnrichmentSources', () => {
       'enrichment-sources',
       BOOK,
     ]);
+  });
+
+  it('ground calls groundFromBook(bookId, body, token), toasts, invalidates the source list', async () => {
+    groundFromBookMock.mockResolvedValue({
+      book_id: BOOK, chapters_ingested: 2, chunks_total: 9, chunks_inserted: 9, chunks_embedded: 9,
+    });
+    const { Wrapper, invalidateSpy } = makeWrapper();
+    const { result } = renderHook(() => useEnrichmentSources(BOOK), { wrapper: Wrapper });
+    const body = { embedding_model_ref: 'm1', chapter_ids: ['ch-1', 'ch-2'] };
+    let out: unknown;
+    await act(async () => {
+      out = await result.current.ground(body);
+    });
+    expect(groundFromBookMock).toHaveBeenCalledWith(BOOK, body, 'tok');
+    expect(toastMocks.success).toHaveBeenCalledWith('sources.grounded');
+    expect(invalidateSpy.mock.calls.map((c) => c[0]?.queryKey)).toContainEqual(['enrichment-sources', BOOK]);
+    expect((out as { chapters_ingested: number }).chapters_ingested).toBe(2);
+  });
+
+  it('ground on API error toasts + returns null + does NOT invalidate', async () => {
+    groundFromBookMock.mockRejectedValue(new Error('ground boom'));
+    const { Wrapper, invalidateSpy } = makeWrapper();
+    const { result } = renderHook(() => useEnrichmentSources(BOOK), { wrapper: Wrapper });
+    let out: unknown;
+    await act(async () => {
+      out = await result.current.ground({ embedding_model_ref: 'm1', chapter_ids: ['ch-1'] });
+    });
+    expect(out).toBeNull();
+    expect(toastMocks.error).toHaveBeenCalledWith('ground boom');
+    expect(invalidateSpy.mock.calls.map((c) => c[0]?.queryKey)).not.toContainEqual(['enrichment-sources', BOOK]);
   });
 
   it('items defaults to [] and total to 0 before the list query resolves (data undefined)', () => {

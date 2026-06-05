@@ -138,6 +138,7 @@
     "kind_count_other": "{{count}} 種類",
     "extract": "擷取",
     "genres": "類型",
+    "unknown": "未知種類",
     "kinds": "種類",
     "new_entity": "新實體",
     "no_kinds": "沒有可用的種類",

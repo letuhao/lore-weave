@@ -31,6 +31,7 @@ from uuid import UUID, uuid4
 
 import asyncpg
 
+from app.gaps.model import is_zh
 from app.generation.provenance import EnrichedFact
 from app.verify.wiring import AnnotatedVerify
 
@@ -71,13 +72,23 @@ def _dimensions_from_facts(facts: list[EnrichedFact]) -> dict[str, str]:
     return {f.dimension: f.content for f in facts}
 
 
-def _content_from_facts(canonical_name: str, facts: list[EnrichedFact]) -> str:
+def _content_from_facts(
+    canonical_name: str, facts: list[EnrichedFact], *, language: str = "zh"
+) -> str:
     """Render the proposal ``content`` text from the generated facts — a
-    human-readable Chinese summary, one line per dimension. The structured map
-    lives in provenance; this is the display/edit surface (what C13 edit/write-back
-    treats as the proposal body)."""
-    lines = [f"{f.dimension}：{f.content}" for f in facts]
-    return f"「{canonical_name}」补全：\n" + "\n".join(lines)
+    human-readable summary, one line per dimension. The structured map lives in
+    provenance; this is the display/edit surface (what C13 edit/write-back treats as
+    the proposal body).
+
+    De-bias (LE-PROD-2 P2): the header + the label separator are LANGUAGE-AWARE so a
+    non-Chinese book's proposal body isn't a zh-flavored '「name」补全：' with fullwidth
+    colons. ``language`` defaults to ``zh`` (the Fengshen demo — no regression); the
+    runner passes the per-book profile language."""
+    if is_zh(language):
+        lines = [f"{f.dimension}：{f.content}" for f in facts]
+        return f"「{canonical_name}」补全：\n" + "\n".join(lines)
+    lines = [f"{f.dimension}: {f.content}" for f in facts]
+    return f"{canonical_name} — enrichment:\n" + "\n".join(lines)
 
 
 def build_proposal_fields(
@@ -96,6 +107,7 @@ def build_proposal_fields(
     gap_ref: str | None = None,
     review_status: str = "proposed",
     rejected_reason: str | None = None,
+    language: str = "zh",
 ) -> dict[str, Any]:
     """Assemble the H0-safe column values for one ``enrichment_proposal`` insert.
 
@@ -137,7 +149,7 @@ def build_proposal_fields(
         # makeup content).
         "gap_ref": gap_ref or target_ref or canonical_name,
         "canonical_name": canonical_name,
-        "content": _content_from_facts(canonical_name, facts),
+        "content": _content_from_facts(canonical_name, facts, language=language),
         "origin": "enrichment",  # H0: never 'glossary'
         "technique": technique,
         "provenance_json": provenance,

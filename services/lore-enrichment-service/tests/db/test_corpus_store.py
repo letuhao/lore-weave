@@ -88,6 +88,41 @@ async def test_ingest_is_idempotent_and_tags_model_ref(pool):
     assert all(r["embedding_dim"] == len(vocab) for r in rows)
 
 
+async def test_list_corpora_reports_chunk_and_embedded_counts(pool):
+    # #9 embed-status pill: list_corpora must echo BOTH chunk_count and the new
+    # chunks_embedded (COUNT embedding IS NOT NULL). The /sources read + SourceCard
+    # pill depend on it; no other test exercised the subquery. After a full ingest
+    # the two are equal (every chunk embedded); a freshly-registered shell is 0/0.
+    store = SourceCorpusStore(pool)
+    user_id, project_id = uuid.uuid4(), uuid.uuid4()
+    vocab = sorted(set(_TEXT))
+    embed_fn, _ = _make_embed_fn(vocab)
+
+    ingested = await store.ingest_corpus(
+        user_id=user_id, project_id=project_id, name="列国志-test",
+        kind="history", text=_TEXT, embed_fn=embed_fn, model_ref="mref-bbb",
+        target_chars=40, license="public-domain",
+    )
+    # a registered-but-uningested shell (no chunks) for the 0/0 case.
+    shell_id = await store.upsert_corpus(
+        user_id=user_id, project_id=project_id, name="空壳-test", kind="other",
+        license="public-domain",
+    )
+
+    page, total = await store.list_corpora(user_id=user_id, project_id=project_id)
+    assert total == 2
+    by_id = {str(r["corpus_id"]): r for r in page}
+
+    full = by_id[str(ingested.corpus_id)]
+    assert full["chunk_count"] == ingested.chunks_total
+    assert full["chunks_embedded"] == ingested.chunks_total  # all embedded after ingest
+    assert full["chunks_embedded"] > 0
+
+    shell = by_id[str(shell_id)]
+    assert shell["chunk_count"] == 0
+    assert shell["chunks_embedded"] == 0
+
+
 async def test_similarity_search_returns_seeded_chunk_top1(pool):
     store = SourceCorpusStore(pool)
     user_id, project_id = uuid.uuid4(), uuid.uuid4()

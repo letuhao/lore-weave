@@ -100,6 +100,31 @@ def test_all_builtin_kinds_modeled_and_unknown_falls_back_to_generic() -> None:
     assert dimensions_for("location") is LOCATION_DIMENSIONS
 
 
+def test_gap_ranking_path_never_keyerrors_for_any_kind() -> None:
+    # REGRESSION (LE-PROD slice A): the original bug — 3 live jobs failed with
+    # `KeyError: <EntityKind.CHARACTER: 'character'>` — was a Gap built for a kind
+    # the (then LOCATION-only) DIMENSIONS_BY_KIND had no entry for, hit via the
+    # ranking/method path (rank_score → _dimension_table → DIMENSIONS_BY_KIND[kind]).
+    # De-bias C1 switched that to `.get(kind, GENERIC)`; this pins the WHOLE
+    # transitive path (the actual failure site, not just dimensions_for) for every
+    # built-in kind AND an unmodeled one, so the bracket-index can never creep back.
+    kinds = ["location", "character", "item", "faction", "event", "deity", "概念"]
+    for kind in kinds:
+        g = Gap(
+            entity_kind=kind,
+            canonical_name="测试实体",
+            mention_count=7,
+            present_dimensions=(),  # nothing present → every dim missing
+            missing_dimensions=tuple(s.dimension for s in DIMENSIONS_BY_KIND.get(kind, ()))
+            or ("description",),  # unknown kind: a GENERIC dim id (table is GENERIC)
+        )
+        # none of these may raise KeyError for any kind (the historical failure)
+        assert rank_score(g) > 0.0
+        assert g.missing_required_count() >= 0
+        assert 0.0 <= g.completeness() <= 1.0
+        assert rank_gaps([g])[0].gap is g
+
+
 def test_dimension_spec_is_frozen_and_weights_positive() -> None:
     spec = LOCATION_DIMENSIONS[0]
     with pytest.raises(ValidationError):

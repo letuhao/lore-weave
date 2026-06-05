@@ -100,6 +100,58 @@ describe('JobsPanel', () => {
     expect(screen.getByText('P1 · template')).toBeInTheDocument();
   });
 
+  it('maps a gate-locked failure to the friendly i18n key, keeping the raw in the title (#4, LE-PROD)', () => {
+    const raw = "refused: technique 'fabrication' gate-locked (eval not cleared)";
+    jobsStub.items = [J({ status: 'failed', error_message: raw })];
+    renderPanel();
+    const el = screen.getByTestId('job-error-job-1');
+    expect(el).toHaveTextContent('jobs.error.gateLocked');
+    expect(el).toHaveAttribute('title', raw); // raw preserved for debugging/audit
+  });
+
+  it('maps a raw exception repr to a generic internal-error line (no scary traceback shown)', () => {
+    const raw = "KeyError: <EntityKind.CHARACTER: 'character'>";
+    jobsStub.items = [J({ status: 'failed', error_message: raw })];
+    renderPanel();
+    const el = screen.getByTestId('job-error-job-1');
+    expect(el).toHaveTextContent('jobs.error.internal');
+    expect(el).not.toHaveTextContent('EntityKind'); // the raw repr is NOT the primary text
+    expect(el).toHaveAttribute('title', raw); // but still inspectable on hover
+  });
+
+  it('shows an already-human error message verbatim (no over-mapping)', () => {
+    const raw = 'no gaps to enrich (all targets fully described)';
+    jobsStub.items = [J({ status: 'failed', error_message: raw })];
+    renderPanel();
+    expect(screen.getByTestId('job-error-job-1')).toHaveTextContent(raw);
+  });
+
+  it('does NOT show an error line for a completed job with no message', () => {
+    jobsStub.items = [J({ status: 'completed', error_message: null })];
+    renderPanel();
+    expect(screen.queryByTestId('job-error-job-1')).toBeNull();
+  });
+
+  it('shows the slice-B insufficient-grounding note on a COMPLETED job as muted info (not error)', () => {
+    jobsStub.items = [
+      J({ status: 'completed', error_message: 'insufficient_grounding: 2 gap(s) — paste context or use fabrication' }),
+    ];
+    renderPanel();
+    const el = screen.getByTestId('job-error-job-1');
+    expect(el).toHaveTextContent('jobs.error.insufficientGrounding');
+    // a note on a non-failed job is muted, NOT destructive-red
+    expect(el.className).toContain('text-muted-foreground');
+    expect(el.className).not.toContain('text-destructive');
+  });
+
+  it('shows spent-vs-cap when a cost cap is set (#5)', () => {
+    jobsStub.items = [J({ actual_cost: 0.1234, max_spend: 2 })];
+    renderPanel();
+    const cost = screen.getByTestId('job-cost-job-1');
+    expect(cost).toHaveTextContent('$0.1234');
+    expect(cost).toHaveTextContent('/ $2.00');
+  });
+
   it('shows the Resume button only for a paused job', () => {
     jobsStub.items = [J({ status: 'paused' })];
     renderPanel();

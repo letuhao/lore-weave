@@ -55,12 +55,34 @@ export function useEnrichmentSources(bookId: string) {
     }
   };
 
+  /** C2 chapter-selection grounding: ingest author-selected chapters as a grounding
+   *  corpus (book-service text → real embed). Idempotent server-side. */
+  const ground = async (body: {
+    embedding_model_ref: string;
+    chapter_ids: string[];
+    target_chars?: number;
+  }) => {
+    setBusy(true);
+    try {
+      const r = await enrichmentApi.groundFromBook(bookId, body, accessToken!);
+      toast.success(t('sources.grounded', { count: r.chapters_ingested }));
+      qc.invalidateQueries({ queryKey: ['enrichment-sources', bookId] });
+      return r;
+    } catch (e) {
+      toast.error((e as Error).message);
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return {
     ...query,
     items: query.data?.items ?? [],
     total: query.data?.total ?? 0,
     register,
     ingest,
+    ground,
     busy,
   };
 }

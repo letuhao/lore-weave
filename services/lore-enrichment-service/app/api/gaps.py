@@ -154,6 +154,10 @@ async def detect_gaps(
         "project_id": str(project_id),
         "book_id": str(body.book_id),
         "entities_scanned": len(rows),
+        # de-bias C2 T7: a book with NO extracted entities isn't enrichable yet —
+        # signal "extract first" explicitly rather than returning a bare empty list
+        # (the FE surfaces it; enrichment is downstream of knowledge extraction).
+        "needs_extraction": len(rows) == 0,
         "gap_count": len(rankings),
         "gaps": [
             {
@@ -166,6 +170,44 @@ async def detect_gaps(
                 "missing_dimensions": list(gr.gap.missing_dimensions),
             }
             for gr in rankings
+        ],
+    }
+
+
+@router.get("/{project_id}/dimensions")
+async def list_dimensions(
+    project_id: UUID,
+    book_id: UUID,
+    kind: str,
+    base: bool = False,
+    principal: Principal = Depends(require_principal),
+    pool: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """List an entity KIND's dimensions, profile-localized. GENERIC fallback for an
+    unmodeled kind (never 400). Read-only.
+
+      * default (``base=false``) → the EFFECTIVE set with the book's profile overrides
+        applied — the compose dimension picker (#1) so a removed dim isn't enrichable.
+      * ``base=true`` → the BASE (un-overridden) set — the profile override editor (#3)
+        so the author sees the canonical dims to relabel/reweight/remove.
+
+    AUTH (review-impl #3): authenticated + book-scoped, NOT owner-gated — consistent
+    with the gaps read family (detect-gaps / auto-enrich), which is also book-scoped.
+    It surfaces a kind's dimension LABELS (incl. profile overrides), not content; the
+    owner-gated surface is the profile authoring endpoints (book_profile.py)."""
+    if principal.user_id is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="auth required")
+    profile = await get_book_profile(pool, book_id)
+    table = resolve_dimensions(
+        (kind or "").strip() or GENERIC_KIND,
+        language=profile.language,
+        overrides=None if base else profile.dimension_overrides,
+    )
+    return {
+        "kind": kind,
+        "dimensions": [
+            {"id": s.dimension, "label": s.label, "required": s.required, "weight": s.weight}
+            for s in table
         ],
     }
 
@@ -232,12 +274,21 @@ async def auto_enrich(
         rankings = detect_ranked_gaps(coverages_from_rows(rows, profile))
         selected = rankings[: body.max_gaps]
         if not selected:
+            # de-bias C2 T7: distinguish "nothing under-described" from "book not
+            # extracted yet" (no entities at all) — the latter is the real prereq.
+            needs_extraction = len(rows) == 0
             return {
                 "project_id": str(project_id),
                 "entities_scanned": len(rows),
                 "detected": 0,
                 "enqueued": False,
-                "message": "no under-described entities to enrich",
+                "needs_extraction": needs_extraction,
+                "message": (
+                    "extract this book first — no entities found "
+                    "(enrichment is downstream of knowledge extraction)"
+                    if needs_extraction
+                    else "no under-described entities to enrich"
+                ),
             }
 
         # The detected gaps become the job's targets (so the worker re-drives them,

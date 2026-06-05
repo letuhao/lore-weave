@@ -145,6 +145,10 @@ export interface DetectGapsResponse {
   entities_scanned: number;
   gap_count: number;
   gaps: Gap[];
+  /** C2 "extract first" signal — true when the book has NO extracted entities yet
+   *  (enrichment is downstream of extraction; there is nothing to enrich). */
+  needs_extraction?: boolean;
+  message?: string;
 }
 
 /** A specific gap to enrich (LE-064 per-row "enrich →"). The backend re-derives
@@ -177,6 +181,98 @@ export interface AutoEnrichResponse {
   enqueued?: boolean;
 }
 
+// ── Compose (unified input modes — slice 1: gap | draft) ───────────────────────
+/** The input source a compose run starts from. Slice 1 ships gap | draft;
+ *  context | files | intent land in slices 2–4 (the backend 400s them for now). */
+export type ComposeInputSource = 'gap' | 'draft' | 'context' | 'files' | 'intent';
+
+/** Mode D expand strategy — keep the draft verbatim and only add missing dims
+ *  (add_only) or rewrite + voice-sync it preserving meaning (rewrite). */
+export type ExpandMode = 'add_only' | 'rewrite';
+
+/** Mode C license assertion (contract enum). `copyrighted` is default-denied by the
+ *  backend (403); `owned` is stored as `licensed` (re-cook-admissible). */
+export type ContextLicense = 'public_domain' | 'licensed' | 'owned' | 'copyrighted';
+
+/** The entity a compose run targets — an existing glossary entity OR a new one.
+ *  For mode='new' the backend mints the glossary anchor only at PROMOTE (H0-clean);
+ *  here `target_ref` stays null. */
+export interface ComposeTargetInput {
+  mode: 'existing' | 'new';
+  canonical_name: string;
+  entity_kind: string;
+  target_ref?: string | null;
+  present_dimensions?: string[];
+  /** Dimension picker (#1): the exact dimensions to enrich (ids/labels). undefined =
+   *  auto (server derives from coverage / enriches all); when set, exactly these. */
+  requested_dimensions?: string[] | null;
+}
+
+/** One choosable dimension for a kind (GET .../dimensions) — the picker's chips +
+ *  the profile override editor's base rows. */
+export interface ComposeDimension {
+  id: string;
+  label: string;
+  required: boolean;
+  weight?: number;
+}
+
+/** The POST /compose body (the api layer adds book_id := bookId). */
+export interface ComposeBody {
+  input_source: ComposeInputSource;
+  /** Required for `gap`; OPTIONAL for `draft` (mode D does no retrieval/embed). */
+  embedding_model_ref?: string;
+  generation_model_ref: string;
+  target?: ComposeTargetInput;
+  draft_text?: string;
+  expand_mode?: ExpandMode;
+  /** Mode C (context): pasted reference text + the author's license assertion. */
+  context_text?: string;
+  context_license?: ContextLicense;
+  /** Mode C/F: keep the ingested corpus as a curated source (#7) instead of ephemeral. */
+  persist_corpus?: boolean;
+  /** Mode F (files): uploaded file ids (from POST /uploads) to ingest as grounding. */
+  upload_ids?: string[];
+  /** Mode B (intent): the original free-text intent (audit; the run uses `target`). */
+  intent_text?: string;
+  gap_targets?: ComposeTargetInput[];
+  technique?: string;
+  max_spend_usd?: number | null;
+  top_k?: number;
+}
+
+/** Mode F upload lifecycle (async extract+OCR; poll until ready/failed). */
+export type UploadStatus = 'processing' | 'ready' | 'failed';
+export interface UploadResult {
+  upload_id: string;
+  filename: string;
+  mime?: string;
+  pages?: number;
+  extracted_chars?: number;
+  ocr_used?: boolean;
+  license_asserted?: string;
+  status: UploadStatus;
+  error?: string | null;
+}
+
+/** Mode B (intent) — the resolver's proposal (step 1; no job yet). */
+export interface ResolvedIntent {
+  target: { mode: 'existing' | 'new'; canonical_name: string; entity_kind: string };
+  dimensions: string[];
+  technique: string;
+  rationale: string;
+}
+
+/** POST /compose result — async 202 + job_id. */
+export interface ComposeResult {
+  project_id: string;
+  job_id?: string;
+  input_source: string;
+  technique: string;
+  enqueued_targets?: number;
+  enqueued?: boolean;
+}
+
 // ── Sources (corpus) ──────────────────────────────────────────────────────────
 export type SourceKind = 'fengshen' | 'shanhaijing' | 'history' | 'other';
 
@@ -195,8 +291,10 @@ export interface Source {
   name: string;
   kind: SourceKind | string;
   license: License | string;
-  /** # of ingested+embedded chunks (GET /sources echoes it; absent before ingest). */
+  /** # of ingested chunks (GET /sources echoes it; absent before ingest). */
   chunk_count?: number;
+  /** # of those chunks that carry an embedding vector (the embed-status pill #9). */
+  chunks_embedded?: number;
   provenance_json: Record<string, unknown>;
   created_at: string;
   updated_at: string;
@@ -205,6 +303,15 @@ export interface Source {
 /** POST /sources/{id}/ingest result — chunk+embed counts. */
 export interface IngestResult {
   corpus_id: string;
+  chunks_total: number;
+  chunks_inserted: number;
+  chunks_embedded: number;
+}
+
+/** POST /books/{id}/ground result — author-selected chapters → grounding corpus (C2). */
+export interface GroundResult {
+  book_id: string;
+  chapters_ingested: number;
   chunks_total: number;
   chunks_inserted: number;
   chunks_embedded: number;
@@ -249,11 +356,111 @@ export interface JobListResponse {
   offset: number;
 }
 
+// ── Book profile (de-bias C3) ───────────────────────────────────────────────────
+/** The built-in entity kinds with a static dimension table (others → GENERIC).
+ *  The dimension-override editor keys on these. */
+export const PROFILE_KINDS = ['character', 'location', 'item', 'faction', 'event'] as const;
+export type ProfileKind = (typeof PROFILE_KINDS)[number];
+
+/** The entity-kinds a compose target may use: the C1 modeled kinds + `generic`
+ *  (the freeform fallback). Drives the new-entity kind dropdown (Compose slice 1). */
+export const COMPOSE_KINDS = [...PROFILE_KINDS, 'generic'] as const;
+export type ComposeKind = (typeof COMPOSE_KINDS)[number];
+
+/** One author/AI-added dimension within a kind's `add` list. */
+export interface DimensionAdd {
+  id: string;
+  label?: string;
+  weight?: number;
+  required?: boolean;
+  payload_shape?: string;
+}
+
+/** Per-kind override ops (the dynamic-dimension layer). The FE editor edits `add`;
+ *  `remove`/`relabel`/`reweight` are preserved untouched (round-trip safe). */
+export interface DimensionOverrideOps {
+  add?: DimensionAdd[];
+  remove?: string[];
+  relabel?: Record<string, string>;
+  reweight?: Record<string, number>;
+}
+
+export type DimensionOverrides = Record<string, DimensionOverrideOps>;
+
+export interface AnachronismMarker {
+  term: string;
+  reason: string;
+}
+
+/** GET/PUT /books/{id}/profile — the persisted de-bias profile. */
+export interface BookProfile {
+  book_id: string | null;
+  worldview: string;
+  language: string;
+  era_policy: string | null;
+  voice: string | null;
+  anachronism_markers: AnachronismMarker[];
+  anachronism_enabled: boolean;
+  dimension_overrides: DimensionOverrides;
+  profile_source: 'seed' | 'ai_suggested' | 'manual';
+}
+
+/** PUT body — the full profile to persist (FULL REPLACE: omitted fields reset). */
+export interface BookProfileInput {
+  worldview: string;
+  language: string;
+  era_policy: string | null;
+  voice: string | null;
+  anachronism_markers: AnachronismMarker[];
+  dimension_overrides: DimensionOverrides;
+}
+
+/** POST /books/{id}/profile/suggest — a non-persisted AI draft. */
+export interface SuggestedProfile {
+  worldview: string;
+  language: string;
+  era_policy: string | null;
+  voice: string | null;
+  dimension_overrides: DimensionOverrides;
+  profile_source: 'ai_suggested';
+}
+
 // ── helpers ────────────────────────────────────────────────────────────────────
 export function tierOf(technique: string): Tier {
   if (technique === 'fabrication') return 'P2';
   if (technique === 'recook') return 'P3';
   return 'P1';
+}
+
+/** Classify a job's raw `error_message` for display (LE-PROD slice A).
+ *
+ * The backend persists a raw, audit-grade message — for a gate refusal it is
+ * human ("refused: technique 'fabrication' gate-locked (…)"), but an unexpected
+ * exception is a raw Python repr ("KeyError: <EntityKind.CHARACTER: 'character'>")
+ * that must NEVER be a user's primary text. This pure classifier returns an i18n
+ * key for known/internal causes (the component translates it) plus the raw string
+ * (kept for the hover title / audit), so the view stays render-only. `key === null`
+ * means the message is already human-friendly — show it verbatim. */
+export function classifyJobError(raw: string | null | undefined): {
+  key: string | null;
+  raw: string;
+} {
+  const text = (raw ?? '').trim();
+  if (!text) return { key: null, raw: '' };
+  // slice B: a completed job that produced no proposals for lack of usable corpus
+  // grounding carries this prefixed NOTE (not an error) — map it to actionable copy.
+  if (/^insufficient_grounding:/i.test(text)) {
+    return { key: 'jobs.error.insufficientGrounding', raw: text };
+  }
+  if (/gate-locked|gate has not cleared/i.test(text)) {
+    return { key: 'jobs.error.gateLocked', raw: text };
+  }
+  // A raw exception repr (TypeName: … / Traceback / an enum repr) is an INTERNAL
+  // error — surface a generic, non-alarming line; the raw text stays in the title.
+  if (/^[A-Z]\w*(Error|Exception):/.test(text) || /Traceback|<\w+\.\w+:/.test(text)) {
+    return { key: 'jobs.error.internal', raw: text };
+  }
+  return { key: null, raw: text }; // already a human message → show as-is
 }
 
 /** The default-deny admissible licenses for recook (everything else is refused). */

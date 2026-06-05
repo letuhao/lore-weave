@@ -115,6 +115,17 @@ $license_chk$;
 -- tag); only the default for FUTURE un-tagged inserts changes.
 ALTER TABLE source_corpus ALTER COLUMN license SET DEFAULT 'unknown';
 
+-- ── C2 T5: SHARED reference library — project_id nullable (source_corpus) ─────
+-- A corpus (and its chunks) with project_id = NULL is a SHARED, public-domain
+-- reference corpus readable by ANY project (e.g. the original 封神演义 a fanfic
+-- re-cooks, or a history corpus). Retrieval scopes `project_id = $proj OR
+-- project_id IS NULL`. Per-project user corpora keep their project_id (unchanged).
+-- Idempotent DROP NOT NULL (a no-op once already nullable). The CHUNK table's
+-- matching ALTER lives AFTER its CREATE below (it must exist first — a from-scratch
+-- migration ran the whole DDL top-to-bottom and a chunk ALTER here would reference a
+-- not-yet-created table).
+ALTER TABLE source_corpus ALTER COLUMN project_id DROP NOT NULL;
+
 -- ═══════════════════════════════════════════════════════════════
 -- source_corpus_chunk (RAID C10 — technique-(b) retrieval)
 -- A deterministic CJK-aware chunk of a source_corpus text plus its
@@ -154,6 +165,11 @@ CREATE INDEX IF NOT EXISTS idx_source_corpus_chunk_corpus
 
 CREATE INDEX IF NOT EXISTS idx_source_corpus_chunk_scope
   ON source_corpus_chunk(project_id);
+
+-- ── C2 T5 (cont.): chunk project_id nullable — runs AFTER the CREATE above so a
+-- from-scratch migration (full DDL top-to-bottom) doesn't ALTER a missing table.
+-- Idempotent (no-op once already nullable); brings a deployed chunk table to schema.
+ALTER TABLE source_corpus_chunk ALTER COLUMN project_id DROP NOT NULL;
 
 -- ═══════════════════════════════════════════════════════════════
 -- cultural_grounding_ref
@@ -208,7 +224,7 @@ CREATE TABLE IF NOT EXISTS enrichment_job (
   status          TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending','estimating','running','paused','completed','failed','cancelled')),
   technique       TEXT NOT NULL
-    CHECK (technique IN ('template','retrieval','fabrication','recook')),
+    CHECK (technique IN ('template','retrieval','fabrication','recook','compose_draft')),
   entity_kind     TEXT,                           -- demo: 'location'
   book_id         UUID,                           -- glossary/book scope. Enrichment is
                                                   --   BOOK-bound (the GUI lives in the
@@ -246,6 +262,27 @@ ALTER TABLE enrichment_job
 
 CREATE INDEX IF NOT EXISTS idx_enrichment_job_book
   ON enrichment_job(user_id, book_id, created_at DESC);
+
+-- ── Compose slice 1: widen the technique vocabulary (+compose_draft) ──────────
+-- Mode D (draft expansion) adds a 5th technique 'compose_draft' (tier P1). The
+-- inline CHECK above only takes on a FRESH table; an ALREADY-DEPLOYED enrichment_job
+-- keeps its old auto-named 4-value CHECK (CREATE TABLE IF NOT EXISTS skips it). This
+-- idempotent block migrates a deployed table in place: drop the auto-named
+-- enrichment_job_technique_check and add a named _technique_vocab carrying the
+-- 5-value vocabulary. Guarded on NOT EXISTS(vocab) so it runs exactly once (no
+-- per-startup re-validation churn). Mirrors the source_corpus_license_vocab precedent.
+DO $job_tech_vocab$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'enrichment_job_technique_vocab'
+  ) THEN
+    ALTER TABLE enrichment_job DROP CONSTRAINT IF EXISTS enrichment_job_technique_check;
+    ALTER TABLE enrichment_job
+      ADD CONSTRAINT enrichment_job_technique_vocab
+      CHECK (technique IN ('template','retrieval','fabrication','recook','compose_draft'));
+  END IF;
+END
+$job_tech_vocab$;
 
 -- ═══════════════════════════════════════════════════════════════
 -- enrichment_job_request (F-C14-1 / 051) — the request payload needed to
@@ -302,7 +339,7 @@ CREATE TABLE IF NOT EXISTS enrichment_proposal (
   origin          TEXT NOT NULL DEFAULT 'enrichment'
     CHECK (origin <> '' AND origin <> 'glossary'),   -- never authored-canon origin
   technique       TEXT NOT NULL
-    CHECK (technique IN ('template','retrieval','fabrication','recook')),
+    CHECK (technique IN ('template','retrieval','fabrication','recook','compose_draft')),
   provenance_json JSONB NOT NULL DEFAULT '{}'::jsonb,
   confidence      NUMERIC(4,3) NOT NULL
     CHECK (confidence > 0 AND confidence < 1.0),      -- H0: never canon (1.0)
@@ -361,6 +398,25 @@ CREATE INDEX IF NOT EXISTS idx_enrichment_proposal_job
 
 CREATE INDEX IF NOT EXISTS idx_enrichment_proposal_scope_status
   ON enrichment_proposal(user_id, project_id, review_status);
+
+-- ── Compose slice 1: widen the proposal technique vocabulary (+compose_draft) ─
+-- The runner persists technique=pipeline.technique_value(); a compose_draft (mode D)
+-- proposal carries 'compose_draft'. Same idempotent in-place migration as the job
+-- table above (drop the deployed auto-named _technique_check, add the 5-value
+-- _technique_vocab; guarded NOT EXISTS so it runs once). H0 is untouched — origin
+-- stays 'enrichment', confidence < 1.0; only the technique vocabulary widens.
+DO $prop_tech_vocab$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'enrichment_proposal_technique_vocab'
+  ) THEN
+    ALTER TABLE enrichment_proposal DROP CONSTRAINT IF EXISTS enrichment_proposal_technique_check;
+    ALTER TABLE enrichment_proposal
+      ADD CONSTRAINT enrichment_proposal_technique_vocab
+      CHECK (technique IN ('template','retrieval','fabrication','recook','compose_draft'));
+  END IF;
+END
+$prop_tech_vocab$;
 
 -- ═══════════════════════════════════════════════════════════════
 -- H0 enforcement trigger — lifecycle DAG + promote-only + origin immutable
@@ -507,6 +563,42 @@ CREATE TABLE IF NOT EXISTS enrichment_book_profile (
   created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ═══════════════════════════════════════════════════════════════
+-- enrichment_upload (Compose slice 3 — mode F attach-files)
+-- ───────────────────────────────────────────────────────────────
+-- One uploaded file (.txt/.md/.pdf/.docx/.epub) the author attaches as a
+-- grounding source. The raw bytes live in MinIO (storage_key); the EXTRACTED
+-- text (+OCR for scanned PDFs) is persisted here so /compose can ingest it as a
+-- grounding corpus. Async (F10): the row is created status='processing' on upload
+-- and flipped to 'ready'/'failed' when background extraction finishes; GET
+-- /uploads/{id} polls. Per-user/book scope (Q3); no FK (cross-DB ids).
+-- license_asserted is default-deny — the handler refuses copyrighted/unknown
+-- BEFORE storing, so a stored row always carries an admissible license. ADDITIVE.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS enrichment_upload (
+  upload_id        UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id          UUID NOT NULL,                   -- scope (Q3); no FK (cross-DB)
+  book_id          UUID NOT NULL,                   -- scope (Q3); no FK (cross-DB)
+  project_id       UUID NOT NULL,                   -- scope (Q3); no FK (cross-DB)
+  filename         TEXT NOT NULL,
+  mime             TEXT NOT NULL DEFAULT '',
+  size_bytes       BIGINT NOT NULL DEFAULT 0,
+  pages            INT NOT NULL DEFAULT 0,
+  extracted_text   TEXT NOT NULL DEFAULT '',
+  extracted_chars  INT NOT NULL DEFAULT 0,
+  ocr_used         BOOLEAN NOT NULL DEFAULT false,
+  license_asserted TEXT NOT NULL DEFAULT 'unknown',
+  storage_key      TEXT NOT NULL DEFAULT '',
+  status           TEXT NOT NULL DEFAULT 'processing'
+    CHECK (status IN ('processing','ready','failed')),
+  error_message    TEXT,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_enrichment_upload_scope
+  ON enrichment_upload(user_id, book_id, created_at DESC);
 """
 
 
@@ -520,6 +612,7 @@ CREATE TABLE IF NOT EXISTS enrichment_book_profile (
 #   been up-migrated, breaking the down→up round-trip (and the db-test fixture's
 #   per-test reset). It was added to the UP DDL but not here.
 DOWN_DDL = """
+DROP TABLE IF EXISTS enrichment_upload;
 DROP TABLE IF EXISTS enrichment_book_profile;
 DROP TABLE IF EXISTS enrichment_eval_runs;
 DROP TRIGGER IF EXISTS trg_enrichment_proposal_h0 ON enrichment_proposal;

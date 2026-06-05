@@ -86,6 +86,62 @@ def _app() -> FastAPI:
     return app
 
 
+def test_dimensions_endpoint_lists_kind_dimensions():
+    # #1 dimension picker: the read endpoint lists a kind's profile-localized dims
+    # (id+label+required) so the composer can render choosable chips.
+    book, project = uuid4(), uuid4()
+    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    resp = TestClient(_app()).get(
+        f"/v1/lore-enrichment/projects/{project}/dimensions",
+        params={"book_id": str(book), "kind": "character"},
+        headers={"Authorization": f"Bearer {bearer}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["kind"] == "character"
+    ids = {d["id"] for d in body["dimensions"]}
+    assert "appearance" in ids and "abilities" in ids  # character's modeled dims
+    assert all({"id", "label", "required"} <= d.keys() for d in body["dimensions"])
+
+
+def test_dimensions_endpoint_base_param_and_weight():
+    # #3 override editor: base=true returns the un-overridden set; each dim carries a
+    # weight (the editor's reweight default). With a NEUTRAL profile base==effective.
+    book, project = uuid4(), uuid4()
+    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    resp = TestClient(_app()).get(
+        f"/v1/lore-enrichment/projects/{project}/dimensions",
+        params={"book_id": str(book), "kind": "character", "base": "true"},
+        headers={"Authorization": f"Bearer {bearer}"},
+    )
+    assert resp.status_code == 200, resp.text
+    dims = resp.json()["dimensions"]
+    assert dims and all("weight" in d for d in dims)
+    assert all(isinstance(d["weight"], (int, float)) for d in dims)
+
+
+def test_dimensions_endpoint_generic_fallback_for_unknown_kind():
+    # KB3: an unmodeled kind falls back to GENERIC — never 400, never empty.
+    book, project = uuid4(), uuid4()
+    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    resp = TestClient(_app()).get(
+        f"/v1/lore-enrichment/projects/{project}/dimensions",
+        params={"book_id": str(book), "kind": "bogus-kind"},
+        headers={"Authorization": f"Bearer {bearer}"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert len(resp.json()["dimensions"]) > 0
+
+
+def test_dimensions_endpoint_requires_auth():
+    book, project = uuid4(), uuid4()
+    resp = TestClient(_app()).get(
+        f"/v1/lore-enrichment/projects/{project}/dimensions",
+        params={"book_id": str(book), "kind": "character"},
+    )
+    assert resp.status_code == 401
+
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_detect_gaps_endpoint_returns_ranked_gaps():
@@ -196,3 +252,25 @@ async def test_auto_enrich_requires_auth():
               "generation_model_ref": str(uuid4())},
     )
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_detect_gaps_unextracted_book_signals_needs_extraction():
+    # de-bias C2 T7: a book with NO extracted entities → needs_extraction=true (a
+    # clear "extract first" signal), not a bare empty gap list.
+    book, project = uuid4(), uuid4()
+    respx.get(
+        f"{settings.glossary_service_url}/internal/books/{book}/enrichment-coverage"
+    ).respond(200, json={"entities": []})  # unextracted → no entities
+    bearer = pyjwt.encode({"sub": OWNER}, "x", algorithm="HS256")
+    resp = TestClient(_app()).post(
+        f"/v1/lore-enrichment/projects/{project}/detect-gaps",
+        json={"book_id": str(book)},
+        headers={"Authorization": f"Bearer {bearer}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["entities_scanned"] == 0
+    assert body["gap_count"] == 0
+    assert body["needs_extraction"] is True

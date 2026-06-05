@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Plus, Search, Filter, Trash2, Settings2, Layers, Sparkles } from 'lucide-react';
+import { BookOpen, Plus, Search, Filter, Trash2, Settings2, Layers, Sparkles, HelpCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
@@ -11,10 +11,11 @@ import { EmptyState, ConfirmDialog } from '@/components/shared';
 import { cn } from '@/lib/utils';
 import { KindEditor } from './KindEditor';
 import { GenreGroupsPanel } from '@/features/glossary/components/GenreGroupsPanel';
+import { UnknownEntitiesPanel } from '@/features/glossary/components/UnknownEntitiesPanel';
 import { EntityEditorModal } from '@/components/entity-editor';
 import { ExtractionWizard } from '@/features/extraction/ExtractionWizard';
 
-type GlossaryView = 'entities' | 'kinds' | 'genres';
+type GlossaryView = 'entities' | 'kinds' | 'genres' | 'unknown';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-amber-400/15 text-amber-400',
@@ -58,6 +59,16 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
     enabled: !!accessToken,
     staleTime: 10 * 60 * 1000, // kinds rarely change
   });
+
+  // Unknown-kind review queue count — drives the conditional triage button + badge.
+  // Shares the ['glossary-unknown', bookId] key with UnknownEntitiesPanel (deduped).
+  const { data: unknownData } = useQuery({
+    queryKey: ['glossary-unknown', bookId],
+    queryFn: () => glossaryApi.listUnknownEntities(bookId, accessToken!),
+    enabled: !!accessToken,
+    staleTime: 60 * 1000, // badge-only read; resolve actions invalidate explicitly
+  });
+  const unknownCount = unknownData?.total ?? 0;
 
   const entities = entityData?.items ?? [];
   const total = entityData?.total ?? 0;
@@ -122,6 +133,9 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
   if (view === 'genres') {
     return <GenreGroupsPanel bookId={bookId} kinds={kinds} onClose={() => setView('entities')} />;
   }
+  if (view === 'unknown') {
+    return <UnknownEntitiesPanel bookId={bookId} kinds={kinds} onClose={() => setView('entities')} />;
+  }
 
   if (loading && entities.length === 0) {
     return (
@@ -156,6 +170,17 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
             <Sparkles className="h-3.5 w-3.5" />
             {t('glossary.extract')}
           </button>
+          {unknownCount > 0 && (
+            <button
+              onClick={() => setView('unknown')}
+              data-testid="glossary-unknown-trigger"
+              className="inline-flex items-center gap-1.5 rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-500 hover:bg-amber-400/20 transition-colors"
+            >
+              <HelpCircle className="h-3.5 w-3.5" />
+              {t('glossary.unknown')}
+              <span className="rounded-full bg-amber-400/20 px-1.5 py-0.5 text-[10px] font-semibold">{unknownCount}</span>
+            </button>
+          )}
           <button
             onClick={() => setView('genres')}
             className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"

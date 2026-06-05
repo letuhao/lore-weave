@@ -125,7 +125,73 @@ CREATE TABLE IF NOT EXISTS evidence_translations (
   UNIQUE(evidence_id, language_code)
 );
 CREATE INDEX IF NOT EXISTS idx_evtr_evidence ON evidence_translations(evidence_id);
+
+-- ── Kind aliases + unknown bucket (kind-resolution epic) ─────────────────────
+-- entity_kind_aliases lets a code that ISN'T a kind resolve to one (e.g. a
+-- supplement layer's "faction" → "organization"), as DATA not hardcode. The
+-- "merge alias" review action inserts a row here. alias_code is globally UNIQUE
+-- (a code can't alias two kinds); a code that is also a real kind.code is never
+-- inserted (the resolver checks kinds first).
+CREATE TABLE IF NOT EXISTS entity_kind_aliases (
+  alias_id    UUID PRIMARY KEY DEFAULT uuidv7(),
+  alias_code  TEXT NOT NULL UNIQUE,
+  kind_id     UUID NOT NULL REFERENCES entity_kinds(kind_id) ON DELETE CASCADE,
+  created_by  UUID,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_kind_aliases_kind ON entity_kind_aliases(kind_id);
+
+-- An entity whose incoming kind_code resolved to nothing is parked under the
+-- 'unknown' kind (never dropped) and remembers the code it arrived as, so the
+-- review GUI can offer "alias <code> → <kind>" or "create kind from <code>".
+ALTER TABLE glossary_entities ADD COLUMN IF NOT EXISTS source_kind_code TEXT;
+
+-- The 'unknown' system kind (the review bucket). Hidden from the normal kind
+-- picker; an entity here is awaiting kind triage. Idempotent (ON CONFLICT) so it
+-- exists on already-seeded DBs too (Seed() only runs on an empty catalogue).
+INSERT INTO entity_kinds (code, name, icon, color, is_default, is_hidden, sort_order, genre_tags)
+VALUES ('unknown', 'Unknown', '❓', '#94a3b8', true, true, 9999, '{universal}')
+ON CONFLICT (code) DO NOTHING;
+
+-- The 'unknown' kind needs at least a name attribute so a parked entity is nameable
+-- (createExtractedEntity only writes the name when the kind has a 'name' attr_def),
+-- + aliases/description so dedup + the review GUI work. Idempotent.
+INSERT INTO attribute_definitions (kind_id, code, name, field_type, is_required, is_system, sort_order)
+SELECT ek.kind_id, v.code, v.name, v.field_type, v.is_required, true, v.sort_order
+FROM entity_kinds ek
+CROSS JOIN (VALUES
+  ('name', 'Name', 'text', true, 1),
+  ('aliases', 'Aliases', 'tags', false, 2),
+  ('description', 'Description', 'textarea', false, 3)
+) AS v(code, name, field_type, is_required, sort_order)
+WHERE ek.code = 'unknown'
+ON CONFLICT (kind_id, code) DO NOTHING;
 `
+
+// seedKindAliasesSQL — the DEFAULT kind aliases. Stable, unambiguous synonyms so a
+// supplement/extraction layer's vocabulary resolves without manual triage: 'faction'
+// is glossary's 'organization'; 'generic' (the freeform fallback) is 'terminology'
+// (the concept/entry kind). This is what lets lore-enrichment send its RAW kind and
+// drop its hardcoded translation map (kind-alias epic E2). MUST run AFTER Seed() —
+// it JOINs the target kinds, which Seed() creates (schemaSQL/Up runs BEFORE Seed, so
+// putting this in schemaSQL would no-op on a fresh DB). Idempotent; only inserts when
+// the target kind exists; never clobbers an author-created alias (ON CONFLICT).
+const seedKindAliasesSQL = `
+INSERT INTO entity_kind_aliases (alias_code, kind_id)
+SELECT v.alias_code, ek.kind_id
+FROM (VALUES ('faction', 'organization'), ('generic', 'terminology')) AS v(alias_code, target_code)
+JOIN entity_kinds ek ON ek.code = v.target_code
+ON CONFLICT (alias_code) DO NOTHING;
+`
+
+// SeedKindAliases inserts the default kind aliases. Idempotent; call AFTER Seed()
+// (the target kinds must exist). Safe on every startup.
+func SeedKindAliases(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, seedKindAliasesSQL); err != nil {
+		return fmt.Errorf("seed kind aliases: %w", err)
+	}
+	return nil
+}
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {
 	if _, err := pool.Exec(ctx, schemaSQL); err != nil {

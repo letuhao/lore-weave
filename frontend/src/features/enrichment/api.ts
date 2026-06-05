@@ -1,4 +1,4 @@
-import { apiJson } from '@/api';
+import { apiJson, apiBase } from '@/api';
 import type {
   ProposalListResponse,
   Proposal,
@@ -9,7 +9,17 @@ import type {
   SourceListResponse,
   Source,
   IngestResult,
+  GroundResult,
   JobListResponse,
+  BookProfile,
+  BookProfileInput,
+  SuggestedProfile,
+  ComposeBody,
+  ComposeResult,
+  ComposeDimension,
+  ContextLicense,
+  UploadResult,
+  ResolvedIntent,
 } from './types';
 
 const BASE = '/v1/lore-enrichment';
@@ -124,6 +134,71 @@ export const enrichmentApi = {
     );
   },
 
+  /** Compose — the unified async input entry (slice 1: gap | draft). project_id :=
+   *  bookId in the path; body carries book_id := bookId. Returns 202 + job_id. */
+  compose(bookId: string, body: ComposeBody, token: string): Promise<ComposeResult> {
+    return apiJson<ComposeResult>(`${BASE}/projects/${bookId}/compose`, {
+      method: 'POST',
+      body: JSON.stringify({ book_id: bookId, ...body }),
+      token,
+    });
+  },
+
+  // ── uploads (mode F) — multipart upload + poll. project_id := bookId. ─────────
+  /** Upload a file (multipart). Returns 202 + {upload_id, status:'processing'};
+   *  poll getUpload until ready/failed. Uses a raw fetch (apiJson is JSON-only). */
+  async uploadFile(
+    bookId: string,
+    file: File,
+    license: ContextLicense,
+    token: string,
+  ): Promise<UploadResult> {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('book_id', bookId);
+    fd.append('project_id', bookId);
+    fd.append('license_asserted', license);
+    const res = await fetch(`${apiBase()}${BASE}/uploads`, {
+      method: 'POST',
+      body: fd, // no Content-Type → the browser sets the multipart boundary
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    const text = await res.text();
+    const body = text ? JSON.parse(text) : null;
+    if (!res.ok) throw new Error(body?.message || res.statusText);
+    return body as UploadResult;
+  },
+
+  /** Poll an upload's extraction status. */
+  getUpload(uploadId: string, token: string): Promise<UploadResult> {
+    return apiJson<UploadResult>(`${BASE}/uploads/${uploadId}`, { token });
+  },
+
+  /** #1 dimension picker — list a kind's dimensions (id+label+required) for the
+   *  compose chips. project_id := bookId in the path. */
+  listComposeDimensions(
+    bookId: string,
+    kind: string,
+    token: string,
+    base = false,
+  ): Promise<{ kind: string; dimensions: ComposeDimension[] }> {
+    const qs = new URLSearchParams({ book_id: bookId, kind });
+    if (base) qs.set('base', 'true'); // base set (override editor) vs effective (picker)
+    return apiJson<{ kind: string; dimensions: ComposeDimension[] }>(
+      `${BASE}/projects/${bookId}/dimensions?${qs.toString()}`,
+      { token },
+    );
+  },
+
+  /** Mode B step 1 — resolve a free-text intent into a proposed target (no job). */
+  resolveIntent(bookId: string, intentText: string, genModel: string, token: string): Promise<ResolvedIntent> {
+    return apiJson<ResolvedIntent>(`${BASE}/projects/${bookId}/compose/resolve-intent`, {
+      method: 'POST',
+      body: JSON.stringify({ book_id: bookId, intent_text: intentText, generation_model_ref: genModel }),
+      token,
+    });
+  },
+
   // ── sources (corpus) — project_id := bookId ─────────────────────────────────
   listSources(bookId: string, token: string): Promise<SourceListResponse> {
     return apiJson<SourceListResponse>(
@@ -157,6 +232,20 @@ export const enrichmentApi = {
     });
   },
 
+  /** C2 chapter-selection grounding ingest — author picks chapters (a selection
+   *  LIST) to embed as a grounding corpus. project_id := bookId. */
+  groundFromBook(
+    bookId: string,
+    body: { embedding_model_ref: string; chapter_ids: string[]; target_chars?: number },
+    token: string,
+  ): Promise<GroundResult> {
+    return apiJson<GroundResult>(`${BASE}/books/${bookId}/ground`, {
+      method: 'POST',
+      body: JSON.stringify({ project_id: bookId, ...body }),
+      token,
+    });
+  },
+
   // ── jobs — list by book; resume by the job's project_id ─────────────────────
   listJobs(bookId: string, token: string): Promise<JobListResponse> {
     return apiJson<JobListResponse>(`${BASE}/jobs?book_id=${bookId}&limit=50`, { token });
@@ -169,6 +258,38 @@ export const enrichmentApi = {
   ): Promise<{ job_id: string; status: string; resume?: string }> {
     return apiJson(`${BASE}/jobs/${jobId}/resume?project_id=${projectId}`, {
       method: 'POST',
+      token,
+    });
+  },
+
+  // ── book profile (de-bias C3) — book-scoped, owner-only ─────────────────────
+  getBookProfile(bookId: string, token: string): Promise<BookProfile> {
+    return apiJson<BookProfile>(`${BASE}/books/${bookId}/profile`, { token });
+  },
+
+  /** FULL REPLACE (REST PUT): the caller MUST send the whole profile — an omitted
+   *  field resets to its default (e.g. omitting markers clears them). */
+  putBookProfile(
+    bookId: string,
+    body: BookProfileInput,
+    token: string,
+  ): Promise<BookProfile> {
+    return apiJson<BookProfile>(`${BASE}/books/${bookId}/profile`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+      token,
+    });
+  },
+
+  /** AI-suggest a DRAFT (not persisted). suggest_model_ref is a BYOK chat model. */
+  suggestBookProfile(
+    bookId: string,
+    body: { project_id: string; suggest_model_ref: string; sample_chapter_ids?: string[] },
+    token: string,
+  ): Promise<SuggestedProfile> {
+    return apiJson<SuggestedProfile>(`${BASE}/books/${bookId}/profile/suggest`, {
+      method: 'POST',
+      body: JSON.stringify(body),
       token,
     });
   },

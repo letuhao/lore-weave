@@ -14,6 +14,7 @@ export function useGaps(bookId: string) {
   const qc = useQueryClient();
   const { t } = useTranslation('enrichment');
   const [gaps, setGaps] = useState<Gap[] | null>(null);
+  const [needsExtraction, setNeedsExtraction] = useState(false);
   const [detecting, setDetecting] = useState(false);
   const [enriching, setEnriching] = useState(false);
 
@@ -22,6 +23,9 @@ export function useGaps(bookId: string) {
     try {
       const r = await enrichmentApi.detectGaps(bookId, accessToken!);
       setGaps(r.gaps);
+      // C2 "extract first" signal — an unextracted book has 0 entities → 0 gaps,
+      // which is NOT "all well-described" but "nothing to enrich yet" (KB2).
+      setNeedsExtraction(!!r.needs_extraction);
       return r;
     } catch (e) {
       toast.error((e as Error).message);
@@ -55,5 +59,5 @@ export function useGaps(bookId: string) {
     }
   };
 
-  return { gaps, detect, detecting, autoEnrich, enriching };
+  return { gaps, needsExtraction, detect, detecting, autoEnrich, enriching };
 }

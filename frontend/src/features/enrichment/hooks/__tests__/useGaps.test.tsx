@@ -88,6 +88,34 @@ describe('useGaps', () => {
     expect(result.current.gaps).toEqual([G()]);
   });
 
+  it('detect sets needsExtraction from r.needs_extraction (C2 extract-first signal)', async () => {
+    detectGapsMock.mockResolvedValue({
+      project_id: 'proj-9', book_id: BOOK, entities_scanned: 0, gap_count: 0,
+      gaps: [], needs_extraction: true,
+    } as DetectGapsResponse);
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useGaps(BOOK), { wrapper: Wrapper });
+    expect(result.current.needsExtraction).toBe(false);
+    await act(async () => {
+      await result.current.detect();
+    });
+    expect(result.current.needsExtraction).toBe(true);
+    expect(result.current.gaps).toEqual([]);
+  });
+
+  it('detect leaves needsExtraction false when the book IS extracted (gaps present)', async () => {
+    detectGapsMock.mockResolvedValue({
+      project_id: 'proj-9', book_id: BOOK, entities_scanned: 5, gap_count: 1,
+      gaps: [G()], needs_extraction: false,
+    } as DetectGapsResponse);
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useGaps(BOOK), { wrapper: Wrapper });
+    await act(async () => {
+      await result.current.detect();
+    });
+    expect(result.current.needsExtraction).toBe(false);
+  });
+
   it('detect toggles detecting back to false after success', async () => {
     detectGapsMock.mockResolvedValue({
       project_id: 'proj-9',

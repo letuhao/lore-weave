@@ -84,7 +84,9 @@ async def redrive_one(
             job_id=job_id,
             user_id=user_id,
             project_id=project_id,
-            embedding_model_ref=str(request["embedding_model_ref"]),
+            # Optional (D-COMPOSE-S1-EMBED-REF): a compose_draft job has no embed ref;
+            # build_live_runner ignores it (the embed seam resolves from the ctx).
+            embedding_model_ref=request.get("embedding_model_ref"),
             cost_cap=request.get("max_spend_usd"),
             eval_reserve_fraction=float(request.get("eval_reserve_fraction") or 0.15),
             top_k=int(request.get("top_k") or 5),
@@ -108,6 +110,12 @@ async def redrive_one(
             # de-bias C1: the per-book profile (resolved once above) makes a resumed
             # run book-aware too (NEUTRAL when absent).
             profile=profile,
+            # Compose mode D (slice 1): the author's draft + expand mode ride on the
+            # persisted request; thread them into the ctx so the DraftExpandStrategy
+            # (selected when technique='compose_draft') can seed its generation.
+            # None for every other technique (the strategies ignore them).
+            seed_text=request.get("seed_text"),
+            expand_mode=request.get("expand_mode"),
         )
         outcome = await bundle.runner.run_job(
             job_id=job_id,
