@@ -60,6 +60,25 @@ test.describe('Revision Compare remainder (B8.5/B8.7/B8.9)', () => {
     }
   });
 
+  test('B8.6: two huge fully-distinct revisions trip the perf guard → truncated full-replace', async ({ page, request }) => {
+    test.setTimeout(60_000);
+    const token = await getAccessToken(request);
+    // ~2100 distinct lines each, no common prefix/suffix → aMid*bMid (≈4.41M) >
+    // the 4M-cell LCS cap → the diff degrades to a whole-document replace + warns.
+    const revA = Array.from({ length: 2100 }, (_, i) => `alpha line ${i}`).join('\n');
+    const revB = Array.from({ length: 2100 }, (_, i) => `beta line ${i}`).join('\n');
+    const { bookId, chapterId } = await seedChapterWithRevisions(request, token, [revA, revB]);
+    try {
+      await loginViaUI(page);
+      const cmp = new RevisionComparePage(page);
+      await cmp.goto(bookId, chapterId);
+      // the truncated warning shows (perf guard tripped) — no hang, no fine diff
+      await expect(cmp.truncated).toBeVisible({ timeout: 20_000 });
+    } finally {
+      await trashBook(request, token, bookId);
+    }
+  });
+
   test('B8.9: a bogus or cross-book revision id errors cleanly (no leak)', async ({ request }) => {
     const token = await getAccessToken(request);
     const a = await seedChapterWithRevisions(request, token, ['a one', 'a two']);

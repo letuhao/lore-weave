@@ -20,6 +20,19 @@ export function queryComposition(sql: string): string {
   return queryDb('loreweave_composition', sql);
 }
 
+/** Seed a passing embedding-benchmark row for a project so a manual knowledge
+ * extraction is allowed (the `benchmark_missing` gate is orthogonal to the
+ * flywheel — it validates embedding quality, not extraction wiring; for a test we
+ * bypass it rather than run a real golden-set benchmark). */
+export function seedEmbeddingBenchmark(projectId: string, embeddingModelId: string): void {
+  queryDb(
+    'loreweave_knowledge',
+    `INSERT INTO project_embedding_benchmark_runs(project_id, embedding_model, run_id, passed)
+     VALUES ('${projectId}', '${embeddingModelId}', 'e2e-seed', true)
+     ON CONFLICT (project_id, embedding_model, run_id) DO NOTHING`,
+  );
+}
+
 /** True when the dev Postgres container is reachable — gate DB-assert specs on
  * this so they skip (not fail) when the stack isn't up. */
 export function dbAvailable(): boolean {

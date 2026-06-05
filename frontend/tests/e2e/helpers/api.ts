@@ -74,6 +74,17 @@ export async function trashBook(request: APIRequestContext, token: string, bookI
   await request.delete(`/v1/books/${bookId}`, auth(token));
 }
 
+/** Create a chapter and save `text` as its draft body (one revision) — a content-
+ * rich chapter the extractor can pull entities from. Returns the chapter id. */
+export async function seedRichChapter(
+  request: APIRequestContext, token: string, bookId: string, title: string, text: string,
+): Promise<string> {
+  const chapterId = await createChapter(request, token, bookId, title);
+  const dv = await draftVersion(request, token, bookId, chapterId);
+  await saveDraft(request, token, bookId, chapterId, text, dv, `seed ${title}`);
+  return chapterId;
+}
+
 /** A chapter's revision ids (newest first) — used to drive the compare endpoint. */
 export async function listRevisionIds(
   request: APIRequestContext, token: string, bookId: string, chapterId: string,
@@ -141,6 +152,46 @@ export async function listActiveModels(request: APIRequestContext, token: string
     request.get('/v1/model-registry/user-models?include_inactive=true', auth(token)),
   );
   return (d.items ?? []).filter((m) => m.is_active);
+}
+
+/** The user's embedding model (user_model_id) — needed to start a knowledge
+ * extraction. Filters the active models by an embedding-ish name. */
+export async function findEmbeddingModelId(request: APIRequestContext, token: string): Promise<string | null> {
+  const d = await ok<{ items: Array<{ user_model_id: string; provider_model_name: string; is_active: boolean }> }>(
+    request.get('/v1/model-registry/user-models?include_inactive=true', auth(token)),
+  );
+  const m = (d.items ?? []).find((x) => x.is_active && /embed|bge/i.test(x.provider_model_name));
+  return m?.user_model_id ?? null;
+}
+
+/** Bootstrap a manual whole-book knowledge extraction — registers the project's
+ * extraction model (so subsequent publishes auto-drain) AND extracts the already-
+ * published chapters into the KG. Returns the job id. */
+export async function startKnowledgeExtraction(
+  request: APIRequestContext, token: string, projectId: string, llmModelId: string, embeddingModelId: string,
+): Promise<string> {
+  const j = await ok<{ job_id?: string; id?: string }>(
+    request.post(`/v1/knowledge/projects/${projectId}/extraction/start`, {
+      ...auth(token),
+      data: { scope: 'all', llm_model: llmModelId, embedding_model: embeddingModelId },
+    }),
+  );
+  return (j.job_id ?? j.id)!;
+}
+
+/** Poll a scene's grounding until the knowledge lens returns data (the KG was
+ * populated by extraction) or the timeout elapses. Returns true if it flipped. */
+export async function pollGroundingAvailable(
+  request: APIRequestContext, token: string, projectId: string, sceneId: string,
+  timeoutMs = 240_000, intervalMs = 8000,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const g = await getGrounding(request, token, projectId, sceneId);
+    if (g.grounding_available) return true;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  return false;
 }
 
 export async function createCompositionWork(request: APIRequestContext, token: string, bookId: string): Promise<string> {
