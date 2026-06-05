@@ -119,6 +119,29 @@ export async function createCompositionScene(
   return n.id;
 }
 
+/** Create a non-scene outline node (e.g. a structural 'beat') — used to prove the
+ * scene_committed telemetry fires ONLY for scenes (B3.3). */
+export async function createOutlineNode(
+  request: APIRequestContext, token: string, projectId: string, kind: string, title: string,
+): Promise<string> {
+  const n = await ok<{ id: string }>(
+    request.post(`/v1/composition/works/${projectId}/outline/nodes`, {
+      ...auth(token), data: { kind, title },
+    }),
+  );
+  return n.id;
+}
+
+/** Patch an outline node's status (M9 mark-done path → emits scene_committed for
+ * scenes). Mirrors the FE patchNode (PATCH /v1/composition/outline/nodes/{id}). */
+export async function setSceneStatus(
+  request: APIRequestContext, token: string, nodeId: string, status: string,
+): Promise<void> {
+  await ok(
+    request.patch(`/v1/composition/outline/nodes/${nodeId}`, { ...auth(token), data: { status } }),
+  );
+}
+
 /** Point the Work's critic at a DISTINCT model (anti-self-reinforcement §4) so
  * the advisory critique actually runs after accept. */
 export async function setWorkCriticModel(
