@@ -71,6 +71,7 @@ EXPECTED_CONSTRAINTS = {
     "project_id_unique",
     "session_id_unique",
     "entity_glossary_id_unique",
+    "entity_status_id_unique",  # A2-S1
 }
 
 EXPECTED_REGULAR_INDEXES = {
@@ -85,6 +86,9 @@ EXPECTED_REGULAR_INDEXES = {
     "fact_user_evidence",
     "extraction_source_user_project",
     "extraction_source_user_source",
+    "entity_status_user_entity_order",  # A2-S1
+    "entity_status_user_evidence",      # A2-S1
+    "entity_status_user_project",       # A2-S1
 }
 
 EXPECTED_VECTOR_INDEXES = {
