@@ -1,6 +1,7 @@
 # Composition V1 — Controlled-Auto + Correction Flywheel (design)
 
-> **Status:** DESIGN draft (LOOM, 2026-06-05). Extends [`2026-06-05-composition-v1-reasoning-engine.md`](2026-06-05-composition-v1-reasoning-engine.md) (the reasoning core) + reuses the **learning-service** correction/preference flywheel (the eval-track Q2/Q3 infra) + the composition outbox (M9 `scene_committed`). A1 `diverge→converge` is built.
+> **Status:** DESIGN draft (LOOM, 2026-06-05) — **/review-impl-hardened** (2 HIGH: H1 composition not a relay source → §3/§7; H2 accept-as-is = self-reinforcement → §2 dropped; + 4 MED/2 LOW folded). Extends [`2026-06-05-composition-v1-reasoning-engine.md`](2026-06-05-composition-v1-reasoning-engine.md) (the reasoning core) + reuses the **learning-service** `corrections` flywheel (eval-track Q2) + the composition outbox (M9). A1 `diverge→converge` is built.
+> **★ Spin-out finding (review H1):** M9 `composition.scene_committed` telemetry is **emitted but never relayed** (composition absent from `OUTBOX_SOURCES`) — tracked **D-COMP-OUTBOX-NOT-RELAYED**; this build fixes it as a side effect.
 > **Thesis (PO):** early-stage V1 should be **controlled auto, not autonomous** — generate (diverge→converge) → **human gate** (the author corrects/accepts) → **capture the correction** → feed learning-service. The human gate guarantees quality (nothing bad ships) AND collects the preference signal to improve the drafter + reranker. This **also solves the A1 eval-gate problem**: the auto-judge coherence metric saturates (5/5); **human corrections are the discriminating quality ground-truth** (which scenes get edited / regenerated / re-picked = where the AI is weak).
 
 ---
@@ -9,17 +10,17 @@
 The reasoning-engine spec §8.3 sketches an *autonomous* loop with the critic as a hard gate. But (a) the critic can't yet be trusted as a gate (the eval saturates — §A1 finding), and (b) we have no preference data to tune the drafter/reranker. So **sequence it:** controlled-auto (human gate + capture) FIRST → accumulate corrections → use them to train the reranker/drafter + validate the critic → THEN graduate to autonomous where the now-trusted critic gates. Corrections are the bridge.
 
 ## §2 Correction taxonomy — the human gate IS the signal
-Five post-generate actions, each a **preference signal** mapping to learning-service's existing gold-label triple shape (`preferred` / `non_preferred`, Q2 `get_gold_labels`):
+Post-generate actions. **Only GENUINE-AUTHOR-CHOICE actions are preference gold** (review H2): `accept-as-is` is NOT a correction — the author didn't choose the winner, the *reranker* did, so mining "winner ≻ rejected" trains the reranker on its own output = **self-reinforcement** (the exact failure the eval-track eliminated with disjoint judges, ~4-5pp inflation). So:
 
-| Action | Preference signal | Trains | Notes |
-|---|---|---|---|
-| **accept** (as-is) | winner ≻ {rejected K−1 candidates} | reranker (confirms) | implicit: the rerank was right |
-| **accept-with-edit** | `edited` ≻ `winner` | **drafter** (prose-level) | the (winner→edited) diff = the richest signal |
-| **pick-different** (candidate j) | `cand_j` ≻ `winner_i` | **reranker** (directly — the judge was wrong) | only possible because all K are shown (§4) |
-| **regenerate-with-guidance** | `−winner` + the guidance | **drafter** (what was missing) | the next accept chains as `new ≻ old` |
-| **reject / discard** | `−whole generation` (scene+grounding) | negative example | no `preferred` |
+| Action | Is it gold? | Preference signal | Trains | Store (M3) |
+|---|---|---|---|---|
+| **accept** (as-is) | **NO** (review H2) | weak positive only; do NOT mine "winner ≻ rejected" (circular) | — | accept-rate metric (§6), not a correction row |
+| **accept-with-edit** | YES | `edited` ≻ `winner` | **drafter** (prose-level, richest) | `corrections` (before/after) |
+| **pick-different** (cand j) | YES | `cand_j` ≻ `winner_i` | **reranker** (the judge was wrong) | `corrections` (before=winner, after=j) |
+| **regenerate-with-guidance** | CONDITIONAL | `−winner` + guidance **only if the old was not accepted** (review M5 — regen may be exploration, not dissatisfaction) | drafter | `corrections` w/ `parent_job_id` chain |
+| **reject / discard** | YES | `−whole generation` (no `preferred`) | negative example | `corrections` (op=reject) |
 
-**Key:** `pick-different` is a direct correction on the **reranker I built in A1** — closing the loop on the exact component whose quality the auto-eval couldn't measure.
+**Key:** `pick-different` is the one DIRECT, non-circular correction on the **A1 reranker**. Caveat (review M4): a single author's picks are *personal taste* — aggregate across users before training a GLOBAL reranker, or scope to per-user personalization.
 
 ## §3 Data model + flow (reuse, don't rebuild)
 
@@ -40,8 +41,9 @@ learning-service  (NEW consumer handler — the only learning-side code)
          work_id, job_id, origin_event_id (dedup)}  ← mirrors Q2 corrections-as-gold
 ```
 
-- **Composition** owns the capture + outbox (reuses M1 `outbox_events` + the M9 `scene_committed` txn-local emit). **One new table + one endpoint + one event type.**
-- **learning-service** adds `loreweave:events:composition` to its consumer STREAMS + one `handle_generation_corrected` handler → its existing corrections/quality store (redact/hash schema, dual-dedup on `origin_event_id`). **No new store** — extends the eval-track corrections model.
+- **Composition** owns the capture + outbox (reuses M1 `outbox_events` + the M9 `scene_committed` txn-local emit; `aggregate_type='composition'` → stream key `loreweave:events:composition`).
+- **⚠ H1 (review, load-bearing) — composition is NOT a relay source yet.** `OUTBOX_SOURCES` (compose) = `book, translation, chat, glossary, knowledge` — **no `composition`**. M9's `scene_committed` is currently **emitted-but-unrelayed** (the B3.3 e2e only checked the outbox ROW). The build MUST add `composition:postgres://…loreweave_composition` to the worker-infra `OUTBOX_SOURCES` env, and the live-smoke MUST assert the event reaches the stream AND is consumed — not just that the row was written.
+- **learning-service** adds `loreweave:events:composition` to its consumer STREAMS + one `handle_generation_corrected` handler. **Store = `corrections`** (review M3) — its `target_type`/`op`/`before_structural`/`after_structural` are generic enough; **the opt-in raw prose maps onto the EXISTING `before_content`/`after_content` RESERVED columns** (review L7 — Phase-E opt-in, not a new mechanism). `accept`/`reject` RATES → `quality_scores` or derived from the job, not a correction row.
 - **`generation_job`** already retains `candidates` + `winner_index` (A1) → the preference pairs are reconstructable from the job + the correction.
 
 ## §4 FE — correction surface (always show all K candidates)
@@ -60,10 +62,11 @@ Default = **structural + content-hash only** (the no-raw-text / multi-device pri
 Replace the saturating auto-judge median with **correction-derived quality metrics** (the ground-truth the auto-judge lacked):
 - **accept-as-is rate** (↑ = drafter+reranker good) · **edit rate + edit magnitude** (↓ = good) · **pick-different rate** (↓ = reranker good) · **regenerate rate** (↓ = drafter good) · **reject rate** (↓).
 - A-slice gate: does `diverge→converge` (A1) lower edit/regenerate/reject rate vs V0 single-draft, on real author corrections? **This is a discriminating, human-grounded metric** — not a ceiling-5 auto-judge. (Auto-judge stays as a cheap proxy; humans are the gate.)
+- **Caveats (review M6):** (a) **cold-start** — these rates need real usage before they exist; the auto-judge proxy bridges until then. (b) **edit-rate confounds "AI bad" with "this author tweaks everything"** → normalize per-author (compare a user's V0-mode vs auto-mode edit rate, not absolute), and pair with a within-author A/B so author-style cancels out.
 
 ## §7 Build plan (full loop) — proposed slices
-1. **BE capture** — `generation_correction` table + migration · `POST /jobs/{id}/correction` · `composition.generation_corrected` outbox emit (reuse M9 txn-local pattern) · the opt-in flag. Tests + live-smoke (composition outbox row).
-2. **learning consume** — add `loreweave:events:composition` to STREAMS + `handle_generation_corrected` → preference store (reuse Q2/Q3 persist + dedup). Tests + live-smoke (both DB halves, like Q3a).
+1. **BE capture + RELAY WIRING (H1)** — `generation_correction` table + migration · `POST /jobs/{id}/correction` · `composition.generation_corrected` outbox emit (reuse M9 txn-local pattern) · the opt-in flag · **add `composition` to worker-infra `OUTBOX_SOURCES`** (the missing relay source — also un-breaks M9 telemetry). Live-smoke MUST assert the event reaches `loreweave:events:composition` (relayed), not just the outbox row.
+2. **learning consume** — add `loreweave:events:composition` to STREAMS + `handle_generation_corrected` → **`corrections` store** (reuse Q2 gold-label path + dedup; only edit/pick/regenerate/reject; NOT accept-as-preference — H2). Tests + live-smoke (both DB halves, like Q3a — assert the correction row + dedup).
 3. **FE correction surface** — K-candidate cards + accept/edit/pick/regenerate/reject + capture calls + i18n. Tests + tsc.
 4. **gateway** — `/v1/composition/*` catch-all already proxies (no gateway change); learning already proxied.
 5. **eval** — swap the A1 eval-gate to correction-rate metrics (§6); becomes the standing quality dashboard.
