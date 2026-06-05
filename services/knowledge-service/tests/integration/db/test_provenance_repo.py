@@ -19,6 +19,7 @@ import pytest
 import pytest_asyncio
 
 from app.db.neo4j_repos.entities import get_entity, merge_entity
+from app.db.neo4j_repos.entity_status import merge_entity_status, status_at_order
 from app.db.neo4j_repos.events import get_event, merge_event
 from app.db.neo4j_repos.facts import get_fact, merge_fact
 from app.db.neo4j_repos.provenance import (
@@ -1050,3 +1051,126 @@ async def test_cm3b_raw_source_id_removes_nothing_natural_key_fixes_it(
     assert still.evidence_count == 1  # evidence stranded
     assert removed_fixed == 1  # the fix: hashed lookup found it
     assert after.evidence_count == 0
+
+
+# ── A2-S1b: :EntityStatus is a first-class evidence-backed label ───────
+
+
+@pytest.mark.asyncio
+async def test_a2_s1b_entity_status_is_a_target_label():
+    """A2-S1b — EntityStatus joined the closed TARGET_LABELS enum so
+    add_evidence accepts it."""
+    assert "EntityStatus" in TARGET_LABELS
+
+
+@pytest.mark.asyncio
+async def test_a2_s1b_add_evidence_to_entity_status(neo4j_driver, test_user):
+    """A2-S1b — add_evidence(target_label='EntityStatus') creates the
+    EVIDENCED_BY edge and increments evidence_count, exactly like the
+    other three labels."""
+    async with neo4j_driver.session() as session:
+        status = await merge_entity_status(
+            session, user_id=test_user, project_id="p-1",
+            entity_id="eid-kai", status="gone", from_order=2_000_000,
+        )
+        src = await upsert_extraction_source(
+            session, user_id=test_user, project_id="p-1",
+            source_type="chapter", source_id="ch-12",
+        )
+        ev = await add_evidence(
+            session, user_id=test_user, target_label="EntityStatus",
+            target_id=status.id, source_id=src.id,
+            extraction_model="qwen", confidence=0.9, job_id="j-1",
+        )
+    assert ev is not None and ev.created is True
+    assert ev.evidence_count == 1
+    # Re-running the same job is a no-op (idempotent on (target,source,job)).
+    async with neo4j_driver.session() as session:
+        ev2 = await add_evidence(
+            session, user_id=test_user, target_label="EntityStatus",
+            target_id=status.id, source_id=src.id,
+            extraction_model="qwen", confidence=0.9, job_id="j-1",
+        )
+    assert ev2 is not None and ev2.created is False
+    assert ev2.evidence_count == 1
+
+
+@pytest.mark.asyncio
+async def test_a2_s1b_cleanup_sweeps_zero_evidence_status(neo4j_driver, test_user):
+    """A2-S1b — cleanup_zero_evidence_nodes sweeps an unevidenced
+    :EntityStatus and reports it in CleanupResult.entity_statuses."""
+    async with neo4j_driver.session() as session:
+        # merged but never evidenced (evidence_count=0).
+        await merge_entity_status(
+            session, user_id=test_user, project_id="p-1",
+            entity_id="eid-orphan", status="gone", from_order=3_000_000,
+        )
+        result = await cleanup_zero_evidence_nodes(
+            session, user_id=test_user, project_id="p-1",
+        )
+    assert result.entity_statuses == 1
+    assert result.total == 1  # only the status orphan
+
+
+@pytest.mark.asyncio
+async def test_a2_s1b_status_retract_then_reextract_idempotent(neo4j_driver, test_user):
+    """A2-S1b CANON-SAFETY — the retract-before-reextract cycle on a status:
+    add_evidence (count 1) → remove_evidence_for_source (count 0, edge gone,
+    invisible to status_at_order) → re-merge + re-add_evidence (count back to
+    1, SAME node id, visible again). No dup node, no drift."""
+    async with neo4j_driver.session() as session:
+        status = await merge_entity_status(
+            session, user_id=test_user, project_id="p-1",
+            entity_id="eid-kai", status="gone", from_order=2_000_005,
+        )
+        src = await upsert_extraction_source(
+            session, user_id=test_user, project_id="p-1",
+            source_type="chapter", source_id="ch-12",
+        )
+        await add_evidence(
+            session, user_id=test_user, target_label="EntityStatus",
+            target_id=status.id, source_id=src.id,
+            extraction_model="qwen", confidence=0.9, job_id="initial",
+        )
+        # Evidenced → status_at_order sees the gone transition.
+        before = await status_at_order(
+            session, user_id=test_user, project_id="p-1",
+            entity_ids=["eid-kai"], at_order=2_000_999,
+        )
+        assert before == {"eid-kai": "gone"}
+
+        # Retract (re-publish) → evidence drops to 0, edge deleted.
+        removed = await remove_evidence_for_source(
+            session, user_id=test_user, source_id=src.id,
+        )
+        assert removed == 1
+        mid = await status_at_order(
+            session, user_id=test_user, project_id="p-1",
+            entity_ids=["eid-kai"], at_order=2_000_999,
+        )
+        # Zero-evidence transition is invisible → defaults to active.
+        assert mid == {"eid-kai": "active"}
+
+        # Re-extract same revision → re-merge (same id) + re-add evidence.
+        status2 = await merge_entity_status(
+            session, user_id=test_user, project_id="p-1",
+            entity_id="eid-kai", status="gone", from_order=2_000_005,
+        )
+        assert status2.id == status.id  # deterministic id → same node
+        ev = await add_evidence(
+            session, user_id=test_user, target_label="EntityStatus",
+            target_id=status2.id, source_id=src.id,
+            extraction_model="qwen", confidence=0.9, job_id="reextract",
+        )
+        assert ev is not None and ev.created is True
+        assert ev.evidence_count == 1  # back to 1, not 2
+        after = await status_at_order(
+            session, user_id=test_user, project_id="p-1",
+            entity_ids=["eid-kai"], at_order=2_000_999,
+        )
+        assert after == {"eid-kai": "gone"}  # visible again
+        # Exactly one :EntityStatus node for this transition (no dup).
+        count = await session.run(
+            "MATCH (s:EntityStatus {id: $id}) RETURN count(s) AS n", id=status.id,
+        )
+        assert (await count.single())["n"] == 1

@@ -581,10 +581,11 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             )
     logger.info(
         "Phase 4b-β: persist-pass2 done source_id=%s "
-        "entities=%d relations=%d events=%d facts=%d in %.1fs",
+        "entities=%d relations=%d events=%d facts=%d statuses=%d in %.1fs",
         body.source_id,
         result.entities_merged, result.relations_created,
-        result.events_merged, result.facts_merged, elapsed,
+        result.events_merged, result.facts_merged,
+        result.statuses_merged, elapsed,
     )
 
     # /review-impl MED#1 — emit pass2_write job_logs event so the
@@ -611,6 +612,7 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
                 "relations_created": result.relations_created,
                 "events_merged": result.events_merged,
                 "facts_merged": result.facts_merged,
+                "statuses_merged": result.statuses_merged,  # A2-S1b
                 "evidence_edges": result.evidence_edges,
                 "duration_ms": int(elapsed * 1000),
             },

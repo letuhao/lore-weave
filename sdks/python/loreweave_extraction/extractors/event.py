@@ -49,6 +49,7 @@ from loreweave_extraction.prompts import apply_prompt_override, load_prompt
 __all__ = [
     "LLMEventCandidate",
     "EventExtractionResponse",
+    "StatusEffect",
     "extract_events",
 ]
 
@@ -70,6 +71,25 @@ _EVENT_DATE_RE = re.compile(
 )
 
 
+class StatusEffect(BaseModel):
+    """A2-S1b — a coarse entity-status transition asserted by an event.
+
+    ``entity_ref`` is a participant display-name or known-entity name; the
+    knowledge-service persist layer resolves it to a canonical entity id
+    (chapter-local entity map → glossary anchor → skip-and-log). ``status``
+    is the coarse V1 vocabulary (``active``/``gone``); the LLM-judge (A2-S3)
+    covers the semantic residue.
+
+    **Dormant until A2-S1b-2.** No prompt asks the model to emit this yet, so
+    in production the list is always empty (eval-safe). The field + wire
+    contract exist now so the persist plumbing is in place and b2 is a pure
+    prompt edit.
+    """
+
+    entity_ref: str
+    status: Literal["active", "gone"]
+
+
 class _LLMEvent(BaseModel):
     """Single event from the LLM response — raw, pre-resolution."""
 
@@ -87,6 +107,10 @@ class _LLMEvent(BaseModel):
     event_date: str | None = None
     summary: str
     confidence: float = Field(ge=0.0, le=1.0)
+    # A2-S1b — coarse status transitions this event asserts (dormant until
+    # b2's prompt). The validator TOLERATES + FILTERS malformed entries
+    # (drop, don't reject the event) per feedback_llm_schema_tolerate_filter.
+    status_effects: list[StatusEffect] = []
 
     @field_validator("event_date", mode="before")
     @classmethod
@@ -98,6 +122,23 @@ class _LLMEvent(BaseModel):
         if not _EVENT_DATE_RE.match(v):
             return None
         return v
+
+    @field_validator("status_effects", mode="before")
+    @classmethod
+    def _filter_status_effects(cls, v: object) -> list:
+        """Tolerant filter: keep only well-formed {entity_ref, status}
+        dicts; drop anything else without rejecting the whole event."""
+        if not isinstance(v, list):
+            return []
+        out: list[dict] = []
+        for item in v:
+            if not isinstance(item, dict):
+                continue
+            ref = item.get("entity_ref")
+            st = item.get("status")
+            if isinstance(ref, str) and ref.strip() and st in ("active", "gone"):
+                out.append({"entity_ref": ref.strip(), "status": st})
+        return out
 
 
 class EventExtractionResponse(BaseModel):
@@ -132,6 +173,11 @@ class LLMEventCandidate(BaseModel):
     summary: str
     confidence: float = Field(ge=0.0, le=1.0)
     event_id: str | None
+    # A2-S1b — coarse status transitions threaded from _LLMEvent. Empty in
+    # production until b2's prompt populates it; the knowledge persist layer
+    # resolves each entity_ref and writes an :EntityStatus at this event's
+    # event_order.
+    status_effects: list[StatusEffect] = Field(default_factory=list)
 
 
 # ── event_id derivation ──────────────────────────────────────────
@@ -323,6 +369,7 @@ def _postprocess(
             summary=summary,
             confidence=evt.confidence,
             event_id=eid,
+            status_effects=evt.status_effects,  # A2-S1b (empty until b2 prompt)
         )
 
         # Dedup by event_id (higher confidence wins)
@@ -467,6 +514,9 @@ def _tolerant_parse_events(
                 event_date=item.get("event_date"),  # _coerce_malformed_date validator
                 summary=summary,
                 confidence=confidence,
+                # A2-S1b — _filter_status_effects validator tolerates/drops
+                # malformed entries; absent → []. Dormant until b2 prompt.
+                status_effects=item.get("status_effects"),
             ))
         except ValidationError:
             if on_dropped:
