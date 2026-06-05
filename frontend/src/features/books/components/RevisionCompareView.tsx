@@ -116,7 +116,7 @@ export function RevisionCompareView({ token, bookId, chapterId }: Props) {
         {c.compare.data && (
           <div className="flex flex-col gap-2">
             {c.compare.data.truncated && (
-              <p className="rounded-md bg-amber-50 px-2 py-1 text-[11px] text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+              <p data-testid="compare-truncated" className="rounded-md bg-amber-50 px-2 py-1 text-[11px] text-amber-800 dark:bg-amber-950 dark:text-amber-300">
                 {t('compare.truncated', { defaultValue: 'These revisions are very large — showing a full replace instead of a fine-grained diff.' })}
               </p>
             )}

@@ -12,6 +12,7 @@ export class RevisionComparePage {
   readonly back: Locator;
   readonly needTwo: Locator;
   readonly same: Locator;
+  readonly truncated: Locator;
   readonly diffSxs: Locator;
   readonly diffInline: Locator;
 
@@ -25,6 +26,7 @@ export class RevisionComparePage {
     this.back = page.getByTestId('compare-back');
     this.needTwo = page.getByTestId('compare-need-two');
     this.same = page.getByTestId('compare-same');
+    this.truncated = page.getByTestId('compare-truncated');
     this.diffSxs = page.getByTestId('diff-sxs');
     this.diffInline = page.getByTestId('diff-inline');
   }
