@@ -477,6 +477,7 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
         else _WRITER_AUTOCREATE_CONFIG["autocreate_enabled"]
     )
 
+    project_id_str = str(body.project_id) if body.project_id else None
     async with neo4j_session() as session:
         # Canon Model CM3b (B6): retract THIS source's prior evidence BEFORE
         # re-writing. Re-extracting a chapter (e.g. re-publish) must drop facts
@@ -484,14 +485,28 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
         # the writer below re-adds evidence for facts still present. First-time
         # extraction → 0 edges removed (no-op). Safe because the worker persists
         # ONCE per chapter (one source_id per call), not per-chunk.
-        from app.db.neo4j_repos.provenance import remove_evidence_for_source
-        await remove_evidence_for_source(
-            session, user_id=str(body.user_id), source_id=body.source_id,
+        #
+        # CM3b-RETRACT-FIX: use the NATURAL-KEY retract. The prior call passed
+        # the raw `source_id` to `remove_evidence_for_source`, which matches the
+        # HASHED ExtractionSource id — so it removed ZERO edges and the retract
+        # was a silent no-op (canon drifted on every re-publish). The natural-key
+        # helper hashes (user, project, source_type, source_id) the same way
+        # `upsert_extraction_source` did at write time.
+        from app.db.neo4j_repos.provenance import (
+            cleanup_zero_evidence_nodes,
+            remove_evidence_for_natural_key,
+        )
+        removed = await remove_evidence_for_natural_key(
+            session,
+            user_id=str(body.user_id),
+            project_id=project_id_str,
+            source_type=body.source_type,
+            source_id=body.source_id,
         )
         result = await write_pass2_extraction(
             session,
             user_id=str(body.user_id),
-            project_id=str(body.project_id) if body.project_id else None,
+            project_id=project_id_str,
             source_type=body.source_type,
             source_id=body.source_id,
             job_id=str(body.job_id),
@@ -506,6 +521,24 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             autocreate_max=_WRITER_AUTOCREATE_CONFIG["autocreate_max"],
             provenance=body.provenance,  # CM5
         )
+        # CM3b-RETRACT-FIX: after re-writing, sweep nodes whose evidence the
+        # retract dropped to zero (disappeared from the new revision) — this
+        # completes retract-before-reextract. Gated on `removed > 0` so a
+        # first-time extraction (nothing retracted) skips the O(project) sweep,
+        # and so the cleanup only runs on genuine re-extractions. Safe per the
+        # one-active-job-per-project invariant (K17.9): the write above already
+        # re-added evidence for every surviving node, so only truly-orphaned
+        # nodes are at zero here.
+        if removed > 0:
+            swept = await cleanup_zero_evidence_nodes(
+                session, user_id=str(body.user_id), project_id=project_id_str,
+            )
+            if swept.total:
+                logger.info(
+                    "CM3b-RETRACT-FIX: persist-pass2 swept zero-evidence orphans "
+                    "source_id=%s entities=%d events=%d facts=%d",
+                    body.source_id, swept.entities, swept.events, swept.facts,
+                )
 
     elapsed = time.perf_counter() - started
 

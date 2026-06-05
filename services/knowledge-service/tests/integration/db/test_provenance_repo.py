@@ -29,6 +29,7 @@ from app.db.neo4j_repos.provenance import (
     delete_source_cascade,
     extraction_source_id,
     get_extraction_source,
+    remove_evidence_for_natural_key,
     remove_evidence_for_source,
     upsert_extraction_source,
 )
@@ -970,3 +971,82 @@ async def test_k11_8_r1_delete_source_cascade_project_id_filter(
     assert kept_p2 is not None
     assert kai_p1_after.evidence_count == 0
     assert kai_p2_after.evidence_count == 1
+
+
+# ── CM3b-RETRACT-FIX: natural-key retract ─────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_cm3b_remove_evidence_for_natural_key_removes_edges(
+    neo4j_driver, test_user
+):
+    """CM3b-RETRACT-FIX: `remove_evidence_for_natural_key` hashes the
+    (user, project, source_type, source_id) tuple to the ExtractionSource
+    node id and removes its evidence — what the re-publish persist + the
+    unpublish handler need. Proves the retract actually drops evidence when
+    called with the NATURAL key (the raw chapter id), as production does."""
+    async with neo4j_driver.session() as session:
+        kai = await merge_entity(
+            session, user_id=test_user, project_id="p-1",
+            name="Kai", kind="character", source_type="book_content",
+        )
+        src = await upsert_extraction_source(
+            session, user_id=test_user, project_id="p-1",
+            source_type="chapter", source_id="ch-42",
+        )
+        await add_evidence(
+            session, user_id=test_user, target_label="Entity",
+            target_id=kai.id, source_id=src.id,
+            extraction_model="gpt-4", confidence=0.9, job_id="j-1",
+        )
+        before = await get_entity(session, user_id=test_user, canonical_id=kai.id)
+        assert before.evidence_count == 1
+
+        # Retract by NATURAL KEY (raw "ch-42") — the helper hashes it.
+        removed = await remove_evidence_for_natural_key(
+            session, user_id=test_user, project_id="p-1",
+            source_type="chapter", source_id="ch-42",
+        )
+        after = await get_entity(session, user_id=test_user, canonical_id=kai.id)
+    assert removed == 1
+    assert after.evidence_count == 0
+
+
+@pytest.mark.asyncio
+async def test_cm3b_raw_source_id_removes_nothing_natural_key_fixes_it(
+    neo4j_driver, test_user
+):
+    """CM3b-RETRACT-FIX root-cause pin: calling `remove_evidence_for_source`
+    with the RAW source_id (the pre-fix bug) matches NOTHING because the
+    ExtractionSource node is keyed by the HASHED id — so it removed zero
+    edges (silent retract no-op). `remove_evidence_for_natural_key` on the
+    same raw key DOES remove it. This documents why the helper exists."""
+    async with neo4j_driver.session() as session:
+        kai = await merge_entity(
+            session, user_id=test_user, project_id="p-1",
+            name="Kai", kind="character", source_type="book_content",
+        )
+        src = await upsert_extraction_source(
+            session, user_id=test_user, project_id="p-1",
+            source_type="chapter", source_id="ch-bug",
+        )
+        await add_evidence(
+            session, user_id=test_user, target_label="Entity",
+            target_id=kai.id, source_id=src.id,
+            extraction_model="gpt-4", confidence=0.9, job_id="j-1",
+        )
+        # Pre-fix call: raw source_id straight into the hashed-id MATCH → 0.
+        removed_buggy = await remove_evidence_for_source(
+            session, user_id=test_user, source_id="ch-bug",
+        )
+        still = await get_entity(session, user_id=test_user, canonical_id=kai.id)
+        # Fixed call: natural-key helper hashes it → removes the edge.
+        removed_fixed = await remove_evidence_for_natural_key(
+            session, user_id=test_user, project_id="p-1",
+            source_type="chapter", source_id="ch-bug",
+        )
+        after = await get_entity(session, user_id=test_user, canonical_id=kai.id)
+    assert removed_buggy == 0  # the bug: raw id matched nothing
+    assert still.evidence_count == 1  # evidence stranded
+    assert removed_fixed == 1  # the fix: hashed lookup found it
+    assert after.evidence_count == 0

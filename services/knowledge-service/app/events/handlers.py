@@ -302,11 +302,31 @@ async def handle_chapter_unpublished(event: EventData, *, pool: asyncpg.Pool) ->
     # Graph retract (independent best-effort).
     try:
         from app.db.neo4j import neo4j_session
-        from app.db.neo4j_repos.provenance import remove_evidence_for_source
+        from app.db.neo4j_repos.provenance import remove_evidence_for_natural_key
 
         async with neo4j_session() as session:
-            removed = await remove_evidence_for_source(
-                session, user_id=str(user_id), source_id=str(chapter_id),
+            # CM3b-RETRACT-FIX: retract by NATURAL KEY. The prior call passed the
+            # raw chapter_id to `remove_evidence_for_source`, which matches the
+            # HASHED ExtractionSource id — so it removed ZERO edges and unpublish
+            # never actually retracted the chapter's canon. The natural-key helper
+            # hashes (user, project, "chapter", chapter_id) the same way the
+            # publish-time extraction wrote the source.
+            #
+            # Dropping evidence to 0 is the correctness fix: the chapter's
+            # nodes become invisible to the `evidence_count >= 1` reads, so the
+            # canon is effectively retracted. We deliberately DO NOT sweep the
+            # zero-evidence orphans here (/review-impl MED): this handler runs in
+            # the events consumer, OUTSIDE the one-active-job-per-project
+            # extraction lock, so a `cleanup_zero_evidence_nodes` call could race
+            # a concurrent same-project extraction and delete an in-flight node
+            # in its merge→add_evidence window. The offline K11.9 reconciler GCs
+            # the now-orphaned nodes safely.
+            removed = await remove_evidence_for_natural_key(
+                session,
+                user_id=str(user_id),
+                project_id=str(project_id),
+                source_type="chapter",
+                source_id=str(chapter_id),
             )
         logger.info(
             "CM3b: chapter.unpublished retracted canon: chapter=%s project=%s "

@@ -58,6 +58,7 @@ __all__ = [
     "get_extraction_source",
     "add_evidence",
     "remove_evidence_for_source",
+    "remove_evidence_for_natural_key",
     "delete_source_cascade",
     "cleanup_zero_evidence_nodes",
 ]
@@ -453,6 +454,47 @@ async def remove_evidence_for_source(
     if record is None:
         return 0
     return int(record["removed"])
+
+
+# ── remove_evidence_for_natural_key ───────────────────────────────────
+
+
+async def remove_evidence_for_natural_key(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    source_type: str,
+    source_id: str,
+) -> int:
+    """Retract evidence for a source identified by its **natural key**.
+
+    `remove_evidence_for_source` matches the `:ExtractionSource` node on its
+    **hashed** `id`, NOT the raw `source_id` (which is stored as a property).
+    Callers that hold only the natural key (a chapter UUID, etc.) — the
+    re-publish persist path and the chapter.unpublished handler — were passing
+    the raw `source_id` straight through, so the MATCH found nothing and ZERO
+    edges were removed: the CM3b retract-before-reextract was a silent no-op,
+    leaving stale canon on every re-publish and a non-retracting unpublish.
+
+    This helper computes the same hashed id `upsert_extraction_source` used at
+    write time (`extraction_source_id(user, project, source_type, source_id)`)
+    and delegates, so the retract actually targets the right source. Callers
+    MUST pass the same `(user_id, project_id, source_type, source_id)` tuple
+    the extraction wrote with (e.g. `project_id` stringified the same way).
+
+    Returns the number of EVIDENCED_BY edges removed (0 when the source has
+    never been extracted — first-time extraction).
+    """
+    src_id = extraction_source_id(
+        user_id=user_id,
+        project_id=project_id,
+        source_type=source_type,
+        source_id=source_id,
+    )
+    return await remove_evidence_for_source(
+        session, user_id=user_id, source_id=src_id,
+    )
 
 
 # ── delete_source_cascade ─────────────────────────────────────────────
