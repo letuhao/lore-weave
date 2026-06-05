@@ -23,6 +23,7 @@ export function CanonRulesPanel({ projectId, token }: { projectId: string; token
     <div className="flex flex-col gap-2 p-3 text-sm">
       <div className="flex flex-col gap-1">
         <textarea
+          data-testid="composition-canon-input"
           className="w-full resize-none rounded border border-neutral-300 bg-transparent p-2 dark:border-neutral-600"
           rows={2}
           placeholder={t('rulePlaceholder', { defaultValue: 'A canon rule the co-writer must respect…' })}
@@ -31,6 +32,7 @@ export function CanonRulesPanel({ projectId, token }: { projectId: string; token
         />
         <div className="flex gap-2">
           <select
+            data-testid="composition-canon-scope"
             className="rounded border border-neutral-300 bg-transparent px-2 py-1 text-xs dark:border-neutral-600"
             value={scope}
             onChange={(e) => setScope(e.target.value as CanonRule['scope'])}
@@ -41,6 +43,7 @@ export function CanonRulesPanel({ projectId, token }: { projectId: string; token
             <option value="reveal_gate">{t('reveal_gate', { defaultValue: 'reveal gate' })}</option>
           </select>
           <button
+            data-testid="composition-canon-add"
             className="rounded bg-indigo-600 px-3 py-1 text-xs text-white disabled:opacity-50"
             disabled={create.isPending || !text.trim()}
             onClick={add}
@@ -53,12 +56,13 @@ export function CanonRulesPanel({ projectId, token }: { projectId: string; token
       {list.isLoading && <div className="text-neutral-500">{t('loading', { defaultValue: 'Loading…' })}</div>}
       <ul className="flex flex-col gap-1">
         {(list.data ?? []).map((r) => (
-          <li key={r.id} className="flex items-start justify-between gap-2 rounded border border-neutral-200 p-2 dark:border-neutral-700">
+          <li key={r.id} data-testid="composition-canon-rule" className="flex items-start justify-between gap-2 rounded border border-neutral-200 p-2 dark:border-neutral-700">
             <div>
               <span className="mr-1 rounded bg-neutral-100 px-1 py-0.5 text-[10px] uppercase text-neutral-500 dark:bg-neutral-800">{r.scope}</span>
               <span>{r.text}</span>
             </div>
             <button
+              data-testid="composition-canon-archive"
               className="shrink-0 text-xs text-neutral-400 hover:text-red-600"
               onClick={() => remove.mutate(r.id)}
               aria-label={t('archive', { defaultValue: 'Archive' })}

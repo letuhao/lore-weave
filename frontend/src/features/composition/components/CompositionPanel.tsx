@@ -144,6 +144,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
         {(['compose', 'grounding', 'canon'] as SubTab[]).map((tb) => (
           <button
             key={tb}
+            data-testid={`composition-subtab-${tb}`}
             className={`rounded-t px-2 py-1 ${tab === tb ? 'bg-neutral-100 font-medium dark:bg-neutral-800' : 'text-neutral-500'}`}
             onClick={() => setTab(tb)}
           >

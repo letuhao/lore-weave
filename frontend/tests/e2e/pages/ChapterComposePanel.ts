@@ -19,6 +19,18 @@ export class ChapterComposePanel {
   readonly ghost: Locator;
   readonly accept: Locator;
   readonly critic: Locator;
+  // sub-tabs
+  readonly subtabGrounding: Locator;
+  readonly subtabCanon: Locator;
+  // grounding
+  readonly groundingSignal: Locator;
+  readonly groundingWarning: Locator;
+  // canon
+  readonly canonInput: Locator;
+  readonly canonScope: Locator;
+  readonly canonAdd: Locator;
+  readonly canonRules: Locator;
+  readonly canonArchive: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -37,6 +49,15 @@ export class ChapterComposePanel {
     this.ghost = page.getByTestId('compose-ghost');
     this.accept = page.getByTestId('compose-accept');
     this.critic = page.getByTestId('compose-critic');
+    this.subtabGrounding = page.getByTestId('composition-subtab-grounding');
+    this.subtabCanon = page.getByTestId('composition-subtab-canon');
+    this.groundingSignal = page.getByTestId('composition-grounding-signal');
+    this.groundingWarning = page.getByTestId('composition-grounding-warning');
+    this.canonInput = page.getByTestId('composition-canon-input');
+    this.canonScope = page.getByTestId('composition-canon-scope');
+    this.canonAdd = page.getByTestId('composition-canon-add');
+    this.canonRules = page.getByTestId('composition-canon-rule');
+    this.canonArchive = page.getByTestId('composition-canon-archive');
   }
 
   async gotoEditor(bookId: string, chapterId: string): Promise<void> {
