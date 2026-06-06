@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
   Save, PanelLeft, PanelRight, Clock, ChevronRight, ChevronLeft, ChevronRight as ChevronRightNav, SpellCheck,
-  BookOpen, FileText, BookMarked, Pen, Sparkles, Languages,
+  BookOpen, FileText, BookMarked, Pen, Sparkles, Languages, AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { apiBase } from '@/api';
@@ -32,7 +32,7 @@ import { Chat } from '@/features/chat/Chat';
 import { fireSendToChat } from '@/features/chat/context/sendToChat';
 import { registerEditorTarget } from '@/features/chat/context/editorBridge';
 import { CompositionPanel } from '@/features/composition/components/CompositionPanel';
-import { useChapterPublishGate } from '@/features/composition/hooks/usePublishGate';
+import { useChapterPublishGate, publishGateMessages } from '@/features/composition/hooks/usePublishGate';
 
 function wordCount(text: string): number {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
@@ -195,17 +195,14 @@ export function ChapterEditorPage() {
   const titleChanged = title !== savedTitle;
   const isDirty = bodyChanged || titleChanged;
 
-  // M9 chapter-gate (OI-1): if this book has a composition Work, block Publish
-  // until every composition scene of the chapter is 'done'. No Work → ungated.
+  // M9 chapter-gate (OI-1) + A2-S4b: if this book has a composition Work, block
+  // Publish until every scene is 'done' AND no scene's latest auto-generation
+  // left a CONFIRMED canon contradiction; separately warn (non-blocking) when
+  // canon couldn't be verified. No Work → ungated. Reason-building is the pure
+  // publishGateMessages helper (unit-tested), kept here so i18n stays in the view.
   const publishGate = useChapterPublishGate(bookId, chapterId, accessToken);
-  const publishBlockedReason = publishGate.blocked
-    ? publishGate.scenesTotal === 0
-      ? t('publish.gate_no_scenes')
-      : t('publish.gate_pending', {
-          pending: publishGate.scenesTotal - publishGate.scenesDone,
-          total: publishGate.scenesTotal,
-        })
-    : undefined;
+  const { blockedReason: publishBlockedReason, uncheckedWarning: publishUncheckedWarning } =
+    publishGateMessages(publishGate, t);
 
   // Sync isDirty into context so EditorLayout sidebar can read it
   useEffect(() => {
@@ -630,6 +627,20 @@ export function ChapterEditorPage() {
           </button>
 
           <div className="mx-1 h-4 w-px bg-border" />
+
+          {/* A2-S4b: canon could not be verified in some scenes (dirty data —
+              cast present but no resolved reading position). NON-blocking: publish
+              stays enabled; the author is warned so they can act. */}
+          {publishUncheckedWarning && (
+            <span
+              data-testid="publish-canon-unchecked"
+              className="inline-flex items-center gap-1 rounded-full bg-amber-500/12 px-2 py-0.5 text-[10px] font-medium text-amber-600"
+              title={t('publish.gate_unchecked_hint')}
+            >
+              <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+              {publishUncheckedWarning}
+            </span>
+          )}
 
           {/* CM-FE: canon publish affordance (canon = published) */}
           <PublishControl

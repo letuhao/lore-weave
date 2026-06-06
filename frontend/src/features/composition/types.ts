@@ -32,11 +32,18 @@ export type OutlineNode = {
 };
 
 // M9 chapter-gate (OI-1): can this chapter be published? can_publish is true
-// only when every composition scene of the chapter is 'done'.
+// only when every composition scene of the chapter is 'done' AND no scene's
+// latest auto-generation left a CONFIRMED canon contradiction (A2-S3b / D4).
 export type PublishGate = {
   chapter_id: string;
   scenes_total: number;
   scenes_done: number;
+  // A2-S3b/A2-S4b — `canon_blocked` (an unresolved contradiction) is part of
+  // can_publish (a HARD block); `canon_unchecked_scenes` is a NON-blocking
+  // warning (dirty data — cast present but no resolved reading position).
+  canon_blocked: boolean;
+  canon_unresolved_scenes: number;
+  canon_unchecked_scenes: number;
   can_publish: boolean;
 };
 

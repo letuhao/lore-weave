@@ -314,7 +314,10 @@
     "empty_toast": "This chapter has no content to publish — write something first.",
     "save_first": "Save before publishing",
     "gate_pending": "{{pending}} of {{total}} scenes not yet done",
-    "gate_no_scenes": "Create and complete at least one scene to publish"
+    "gate_no_scenes": "Create and complete at least one scene to publish",
+    "gate_canon_blocked": "an unresolved canon contradiction in {{count}} scene(s)",
+    "gate_unchecked": "Canon unverified in {{count}} scene(s)",
+    "gate_unchecked_hint": "These scenes have characters to check but no resolved reading-order position, so canon was not verified. Publishing is allowed — review them if you can."
   },
   "compare": {
     "open": "Compare",

@@ -314,7 +314,10 @@
     "empty_toast": "Chương này chưa có nội dung để xuất bản — hãy viết gì đó trước.",
     "save_first": "Lưu trước khi xuất bản",
     "gate_pending": "{{pending}} trên {{total}} cảnh chưa hoàn thành",
-    "gate_no_scenes": "Tạo và hoàn thành ít nhất một cảnh để xuất bản"
+    "gate_no_scenes": "Tạo và hoàn thành ít nhất một cảnh để xuất bản",
+    "gate_canon_blocked": "một mâu thuẫn canon chưa giải quyết trong {{count}} cảnh",
+    "gate_unchecked": "Canon chưa được kiểm tra trong {{count}} cảnh",
+    "gate_unchecked_hint": "Các cảnh này có nhân vật cần kiểm tra nhưng chưa xác định được vị trí theo thứ tự đọc, nên canon chưa được kiểm tra. Vẫn có thể xuất bản — hãy xem lại nếu có thể."
   },
   "compare": {
     "open": "So sánh",
