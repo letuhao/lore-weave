@@ -133,6 +133,14 @@ All open questions resolved → see §5 LOCKED table. Summary: auto end-of-job �
 
 ---
 
+## review-impl findings (2026-06-07)
+
+- **HIGH-1 — FIXED (commit e564e2f7):** writeback fired per-chapter; now gated to end-of-book via `should_writeback(is_last_chapter_of_book)` + unit coverage.
+- **MED-2 — accepted/documented:** confidence floor is applied in Python *after* `find_gap_candidates`' mention-ordered `LIMIT`, so high-confidence/low-mention entities outside the top-N are not proposed. Fine at `limit=100`; push the floor into the Cypher if it bites (shared infra — defer).
+- **LOW-1 — accepted/documented:** writeback doesn't pass `source_language`, so `propose_entities` defaults `"en"` and zh entities' name/alias attrs are tagged `en`. Cosmetic metadata; ideally resolve from BookProfile later.
+- **LOW-3 — accepted/documented:** discovered entities whose kind isn't a glossary kind are silently dropped by glossary (`park_unknown_kinds=false`, intentional) — no skip count is logged.
+- **LOW-2 — addressed:** the gate predicate now has unit coverage; the broader router-hook path (book_id resolution, best-effort swallow) is covered by the live smoke (DEFERRED 061).
+
 ## Appendix — files of record
 
 - knowledge writeback client: `services/knowledge-service/app/clients/glossary_client.py:403-435`
