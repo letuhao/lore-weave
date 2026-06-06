@@ -148,6 +148,10 @@ func main() {
 		slog.Error("migrate entity-enrichments", "error", err)
 		os.Exit(1)
 	}
+	if err := migrate.UpEntityMerge(ctx, pool); err != nil {
+		slog.Error("migrate entity-merge", "error", err)
+		os.Exit(1)
+	}
 
 	// Run the short-description backfill in a background goroutine so
 	// the HTTP listener + healthcheck come up immediately. For a fresh

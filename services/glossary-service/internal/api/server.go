@@ -170,6 +170,8 @@ func (s *Server) Router() http.Handler {
 			r.Get("/entity-names", s.listEntityNames)
 			// Kind-resolution epic: the per-book unknown-kind review queue.
 			r.Get("/unknown-entities", s.listUnknownEntities)
+			// mui #1c: revert a recorded entity merge.
+			r.Post("/merge-journal/{journal_id}/revert", s.revertMerge)
 			r.Route("/entities", func(r chi.Router) {
 				r.Get("/", s.listEntities)
 				r.Post("/", s.createEntity)
@@ -181,6 +183,8 @@ func (s *Server) Router() http.Handler {
 					r.Delete("/pin", s.unpinEntity)
 					// Kind-resolution epic: move a parked entity onto a real kind.
 					r.Post("/reassign-kind", s.reassignEntityKind)
+					// mui #1c: merge loser entities into this (winner) entity.
+					r.Post("/merge", s.mergeEntities)
 					r.Route("/chapter-links", func(r chi.Router) {
 						r.Get("/", s.listChapterLinks)
 						r.Post("/", s.createChapterLink)

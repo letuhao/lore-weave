@@ -1343,3 +1343,44 @@ func UpEntityEnrichments(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	return nil
 }
+
+// entityMergeSQL backs mui #1c — entity-resolution/merge. Adds the
+// `merged_into_entity_id` audit pointer on glossary_entities and the
+// `merge_journal` table. Reversibility model (spec §3.3): the merge
+// SOFT-deletes the loser and repoints only NON-conflicting child rows to the
+// winner; conflicting rows stay with the (now hidden) loser. The journal
+// records exactly which child-row PKs were repointed + the winner's aliases
+// value before folding, so un-merge replays them back without row snapshots.
+const entityMergeSQL = `
+ALTER TABLE glossary_entities
+  ADD COLUMN IF NOT EXISTS merged_into_entity_id UUID DEFAULT NULL;
+
+CREATE TABLE IF NOT EXISTS merge_journal (
+  journal_id                 UUID PRIMARY KEY DEFAULT uuidv7(),
+  book_id                    UUID NOT NULL,
+  winner_entity_id           UUID NOT NULL,
+  loser_entity_id            UUID NOT NULL,
+  repointed_chapter_link_ids UUID[] NOT NULL DEFAULT '{}',
+  repointed_eav_ids          UUID[] NOT NULL DEFAULT '{}',
+  repointed_enrichment_ids   UUID[] NOT NULL DEFAULT '{}',
+  repointed_audit_ids        UUID[] NOT NULL DEFAULT '{}',
+  repointed_wiki_article_id  UUID,
+  winner_aliases_before      TEXT,
+  status                     TEXT NOT NULL DEFAULT 'merged'
+    CHECK (status IN ('merged','reverted')),
+  merged_by                  UUID,
+  merged_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  reverted_at                TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_merge_journal_book  ON merge_journal(book_id);
+CREATE INDEX IF NOT EXISTS idx_merge_journal_loser ON merge_journal(loser_entity_id);
+`
+
+// UpEntityMerge creates the merge_journal table + merged_into_entity_id column
+// (mui #1c). Idempotent. Register in main.go after UpEntityEnrichments.
+func UpEntityMerge(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, entityMergeSQL); err != nil {
+		return fmt.Errorf("migrate entity-merge: %w", err)
+	}
+	return nil
+}
