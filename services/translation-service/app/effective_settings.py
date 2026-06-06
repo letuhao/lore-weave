@@ -49,6 +49,7 @@ def _normalize(row: dict) -> dict:
         "compact_user_prompt_tpl": row.get("compact_user_prompt_tpl", DEFAULT_COMPACT_USER_PROMPT_TPL),
         "chunk_size_tokens":       row.get("chunk_size_tokens", 2000),
         "invoke_timeout_secs":     row.get("invoke_timeout_secs", 300),
+        "pipeline_version":        row.get("pipeline_version", "v2"),
     }
 
 

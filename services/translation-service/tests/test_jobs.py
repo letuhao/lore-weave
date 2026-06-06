@@ -144,6 +144,63 @@ def test_create_job_returns_201_and_creates_rows(client, fake_pool):
     assert data["book_id"] == BOOK_ID
 
 
+def test_create_job_is_transactional_and_no_publish_on_failure(client, fake_pool):
+    """W7: job + chapter inserts run inside one transaction and the broker publish
+    happens only AFTER commit. A mid-loop chapter-insert failure must NOT publish a
+    job message (else a worker would pick up a half-created job)."""
+    fake_pool.fetchrow.side_effect = [_BOOK_SETTINGS_ROW, _JOB_ROW]
+    fake_pool.execute.side_effect = RuntimeError("chapter insert boom")
+
+    with patch("app.routers.jobs.httpx.AsyncClient") as mock_client_cls, \
+         patch("app.routers.jobs.publish", new_callable=AsyncMock) as mock_publish, \
+         patch("app.routers.jobs.publish_event", new_callable=AsyncMock):
+        mock_http = AsyncMock()
+        mock_client_cls.return_value.__aenter__.return_value = mock_http
+        mock_http.get.return_value = _mock_book_service_response()
+
+        with pytest.raises(RuntimeError):
+            client.post(
+                f"/v1/translation/books/{BOOK_ID}/jobs",
+                json={"chapter_ids": [CHAPTER_ID]},
+            )
+
+    # The inserts ran inside a transaction, and no job message was published.
+    fake_pool.transaction.assert_called_once()
+    mock_publish.assert_not_called()
+
+
+def test_create_job_pipeline_version_override_flows_to_broker(client, fake_pool):
+    """T0.6: a per-job pipeline_version override is snapshotted and carried in the
+    broker message so the coordinator/worker route to the right pipeline."""
+    job_row = FakeRecord({**_JOB_ROW})
+    fake_pool.fetchrow.side_effect = [_BOOK_SETTINGS_ROW, job_row]
+
+    with patch("app.routers.jobs.httpx.AsyncClient") as mock_client_cls, \
+         patch("app.routers.jobs.publish", new_callable=AsyncMock) as mock_publish, \
+         patch("app.routers.jobs.publish_event", new_callable=AsyncMock):
+        mock_http = AsyncMock()
+        mock_client_cls.return_value.__aenter__.return_value = mock_http
+        mock_http.get.return_value = _mock_book_service_response()
+
+        resp = client.post(
+            f"/v1/translation/books/{BOOK_ID}/jobs",
+            json={"chapter_ids": [CHAPTER_ID], "pipeline_version": "v3"},
+        )
+
+    assert resp.status_code == 201
+    published = mock_publish.call_args.args[1]
+    assert published["pipeline_version"] == "v3"
+
+
+def test_create_job_rejects_invalid_pipeline_version(client, fake_pool):
+    """T0.6: pipeline_version must be 'v2' or 'v3'."""
+    resp = client.post(
+        f"/v1/translation/books/{BOOK_ID}/jobs",
+        json={"chapter_ids": [CHAPTER_ID], "pipeline_version": "v9"},
+    )
+    assert resp.status_code == 422
+
+
 def test_create_job_uses_per_job_override_without_settings(client, fake_pool):
     """Fix-C: a job carrying its own model_ref/target_language succeeds even when NO
     book settings and NO user prefs exist (resolver returns defaults with model_ref=None)."""

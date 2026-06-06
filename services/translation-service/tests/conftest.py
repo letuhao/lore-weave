@@ -28,6 +28,22 @@ def fake_pool():
     pool.fetch = AsyncMock(return_value=[])
     pool.fetchval = AsyncMock(return_value=None)
     pool.execute = AsyncMock(return_value=None)
+
+    # Support `async with pool.acquire() as conn:` + `async with conn.transaction():`.
+    # The acquired connection IS the pool mock, so conn.fetchrow/execute are the same
+    # mocks each test configures — transactional code (e.g. create_job, W7) stays
+    # testable without rewriting per-test assertions.
+    class _AcquireCM:
+        async def __aenter__(self):
+            return pool
+        async def __aexit__(self, *exc):
+            return False
+
+    _tx = MagicMock()
+    _tx.__aenter__ = AsyncMock(return_value=pool)
+    _tx.__aexit__ = AsyncMock(return_value=False)
+    pool.acquire = MagicMock(return_value=_AcquireCM())
+    pool.transaction = MagicMock(return_value=_tx)
     return pool
 
 

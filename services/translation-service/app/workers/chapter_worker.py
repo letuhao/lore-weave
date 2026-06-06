@@ -6,6 +6,7 @@ import httpx
 
 from ..config import settings
 from ..llm_client import LLMClient
+from ..metrics import record_stage
 from .session_translator import translate_chapter
 
 log = logging.getLogger(__name__)
@@ -43,12 +44,16 @@ async def handle_chapter_message(
         await _fail_chapter_idempotent(pool, job_id, chapter_id, f"transient: {exc}")
         await _emit_chapter_done(publish_event, user_id, msg, "failed", f"transient: {exc}")
         await _check_job_completion(pool, job_id, user_id, msg, publish_event)
+        record_stage("translation.chapter", pipeline=msg.get("pipeline_version", "v2"),
+                     status="failed", chapter_id=str(chapter_id), reason=str(exc)[:80])
         raise
     except Exception as exc:
         log.exception("chapter %s: unhandled error — %s", chapter_id, exc)
         await _fail_chapter_idempotent(pool, job_id, chapter_id, f"permanent: {exc}")
         await _emit_chapter_done(publish_event, user_id, msg, "failed", f"permanent: {exc}")
         await _check_job_completion(pool, job_id, user_id, msg, publish_event)
+        record_stage("translation.chapter", pipeline=msg.get("pipeline_version", "v2"),
+                     status="failed", chapter_id=str(chapter_id), reason=str(exc)[:80])
         raise
 
 
@@ -120,6 +125,18 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
     if prev_memo:
         log.info("chapter %s: loaded memo from chapter %d", chapter_id, chapter_index - 1)
 
+    # M0: select pipeline implementation by snapshotted flag. Default 'v2'. The v3
+    # orchestrator currently delegates to v2 (parity) — M1+ adds the multi-agent loop.
+    pipeline_version = msg.get("pipeline_version", "v2")
+    if pipeline_version == "v3":
+        from .v3.orchestrator import (
+            translate_chapter_blocks_v3 as _translate_blocks,
+            translate_chapter_v3 as _translate_text,
+        )
+    else:
+        from .session_translator import translate_chapter_blocks as _translate_blocks
+        _translate_text = translate_chapter
+
     # Detect JSON body → use block pipeline, otherwise fall back to text pipeline
     use_block_pipeline = (
         isinstance(chapter_body, dict)
@@ -128,14 +145,13 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
     )
 
     if use_block_pipeline:
-        from .session_translator import translate_chapter_blocks
         blocks = chapter_body["content"]
         log.info(
             "chapter %s: using BLOCK pipeline (%d blocks, model=%s/%s)",
             chapter_id, len(blocks), msg.get("model_source"), msg.get("model_ref"),
         )
         translated_blocks, input_tokens, output_tokens, translated_count, translatable_count = (
-            await translate_chapter_blocks(
+            await _translate_blocks(
                 blocks=blocks,
                 source_lang=source_lang,
                 msg=msg,
@@ -161,6 +177,14 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
         translated_body_json = json.dumps(translated_blocks)
         translated_body_text = None  # not used for block translations
         translated_body_format = "json"
+        # TD1 fix: the block pipeline has no flat translated_body_text, so derive
+        # plain text from the translated blocks for the cross-chapter memo (it was
+        # silently empty before). No effect on translation output — prev_memo
+        # injection into the prompt lands in M4 (context).
+        from .block_classifier import extract_translatable_text
+        memo_text = "\n".join(
+            t for b in translated_blocks if (t := extract_translatable_text(b))
+        )
         log.info(
             "chapter %s: block pipeline done — %d blocks, %d/%d translated, in=%s out=%s",
             chapter_id, len(translated_blocks), translated_count, translatable_count,
@@ -171,7 +195,7 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             "chapter %s: using TEXT pipeline (model=%s/%s)",
             chapter_id, msg.get("model_source"), msg.get("model_ref"),
         )
-        translated_body_text, input_tokens, output_tokens = await translate_chapter(
+        translated_body_text, input_tokens, output_tokens = await _translate_text(
             chapter_text=chapter_text,
             source_lang=source_lang,
             msg=msg,
@@ -182,6 +206,7 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
         )
         translated_body_json = None
         translated_body_format = "text"
+        memo_text = translated_body_text or ""
         log.info(
             "chapter %s: text pipeline done — %d output chars, in=%s out=%s",
             chapter_id, len(translated_body_text or ""), input_tokens, output_tokens,
@@ -236,10 +261,15 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             })
     log.info("chapter %s: DB persist complete", chapter_id)
 
-    # V2: Save chapter memo for next chapter's context
+    # V2: Save chapter memo for next chapter's context (TD1: now also populated
+    # for the block pipeline via memo_text derived above).
     await _save_chapter_memo(
-        pool, msg["book_id"], chapter_index, target_language,
-        translated_body_text or "",
+        pool, msg["book_id"], chapter_index, target_language, memo_text,
+    )
+
+    record_stage(
+        "translation.chapter", pipeline=pipeline_version, status="completed",
+        chapter_id=str(chapter_id), in_tokens=input_tokens or 0, out_tokens=output_tokens or 0,
     )
 
     await _emit_chapter_done(publish_event, user_id, msg, "completed", None)

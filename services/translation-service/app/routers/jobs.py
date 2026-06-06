@@ -66,6 +66,8 @@ async def create_job(
         eff["model_source"] = payload.model_source
     if payload.model_ref:
         eff["model_ref"] = payload.model_ref
+    if payload.pipeline_version:
+        eff["pipeline_version"] = payload.pipeline_version
     if not eff.get("model_ref"):
         raise HTTPException(
             status_code=422,
@@ -74,42 +76,47 @@ async def create_job(
 
     chapter_ids = payload.chapter_ids
 
-    # Insert job + chapter rows
-    job_row = await db.fetchrow(
-        """
-        INSERT INTO translation_jobs
-          (book_id, owner_user_id, status, target_language, model_source, model_ref,
-           system_prompt, user_prompt_tpl,
-           compact_model_source, compact_model_ref,
-           compact_system_prompt, compact_user_prompt_tpl,
-           chunk_size_tokens, invoke_timeout_secs,
-           chapter_ids, total_chapters)
-        VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-        RETURNING *
-        """,
-        book_id, uid,
-        eff["target_language"], eff["model_source"], eff["model_ref"],
-        eff["system_prompt"], eff["user_prompt_tpl"],
-        eff.get("compact_model_source"), eff.get("compact_model_ref"),
-        eff.get("compact_system_prompt", DEFAULT_COMPACT_SYSTEM_PROMPT),
-        eff.get("compact_user_prompt_tpl", DEFAULT_COMPACT_USER_PROMPT_TPL),
-        eff.get("chunk_size_tokens", 2000), eff.get("invoke_timeout_secs", 300),
-        chapter_ids, len(chapter_ids),
-    )
+    # Insert job + chapter rows in ONE transaction (W7): a mid-loop failure must not
+    # leave a job with a partial chapter set + mismatched total_chapters (which would
+    # then never finalize). Publish only AFTER the commit so a worker never picks up a
+    # half-created job.
+    async with db.acquire() as conn:
+        async with conn.transaction():
+            job_row = await conn.fetchrow(
+                """
+                INSERT INTO translation_jobs
+                  (book_id, owner_user_id, status, target_language, model_source, model_ref,
+                   system_prompt, user_prompt_tpl,
+                   compact_model_source, compact_model_ref,
+                   compact_system_prompt, compact_user_prompt_tpl,
+                   chunk_size_tokens, invoke_timeout_secs,
+                   chapter_ids, total_chapters, pipeline_version)
+                VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+                RETURNING *
+                """,
+                book_id, uid,
+                eff["target_language"], eff["model_source"], eff["model_ref"],
+                eff["system_prompt"], eff["user_prompt_tpl"],
+                eff.get("compact_model_source"), eff.get("compact_model_ref"),
+                eff.get("compact_system_prompt", DEFAULT_COMPACT_SYSTEM_PROMPT),
+                eff.get("compact_user_prompt_tpl", DEFAULT_COMPACT_USER_PROMPT_TPL),
+                eff.get("chunk_size_tokens", 2000), eff.get("invoke_timeout_secs", 300),
+                chapter_ids, len(chapter_ids), eff.get("pipeline_version", "v2"),
+            )
 
-    job_id = job_row["job_id"]
+            job_id = job_row["job_id"]
 
-    for chapter_id in chapter_ids:
-        await db.execute(
-            """
-            INSERT INTO chapter_translations
-              (job_id, chapter_id, book_id, owner_user_id, status, target_language, version_num)
-            VALUES ($1, $2, $3, $4, 'pending', $5,
-                    COALESCE((SELECT MAX(version_num) FROM chapter_translations
-                              WHERE chapter_id=$2 AND target_language=$5), 0) + 1)
-            """,
-            job_id, chapter_id, book_id, uid, eff["target_language"],
-        )
+            for chapter_id in chapter_ids:
+                await conn.execute(
+                    """
+                    INSERT INTO chapter_translations
+                      (job_id, chapter_id, book_id, owner_user_id, status, target_language, version_num)
+                    VALUES ($1, $2, $3, $4, 'pending', $5,
+                            COALESCE((SELECT MAX(version_num) FROM chapter_translations
+                                      WHERE chapter_id=$2 AND target_language=$5), 0) + 1)
+                    """,
+                    job_id, chapter_id, book_id, uid, eff["target_language"],
+                )
 
     # Publish job to RabbitMQ — worker fans out chapter messages
     await publish("translation.job", {
@@ -128,6 +135,7 @@ async def create_job(
         "compact_user_prompt_tpl": eff.get("compact_user_prompt_tpl", DEFAULT_COMPACT_USER_PROMPT_TPL),
         "chunk_size_tokens":       eff.get("chunk_size_tokens", 2000),
         "invoke_timeout_secs":     eff.get("invoke_timeout_secs", 300),
+        "pipeline_version":        eff.get("pipeline_version", "v2"),
     })
     await publish_event(user_id, {
         "event":    "job.created",

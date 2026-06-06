@@ -6,6 +6,25 @@
 
 ## ▶ NEXT SESSION — start here
 
+### ▶ TRANSLATION PIPELINE V3 (branch `feat/translation-pipeline-v3`)
+
+**State: M0 DONE** — readiness gate + V3 scaffold behind the `pipeline_version` flag. Design across 3 specs + 1 plan, PO-approved; `/review-impl` ran (0 HIGH, 2 MED fixed, 4 LOW deferred). Full translation suite **323 passed** (307 baseline → +16); **behavioral parity** preserved (default `pipeline_version='v2'`).
+
+**Docs:** design [`2026-06-06-translation-pipeline-v3-multi-agent.md`](../specs/2026-06-06-translation-pipeline-v3-multi-agent.md) (**§12 = plan-of-record M0–M6**) · [research](../specs/2026-06-06-translation-llm-market-research.md) · [arch-review](../specs/2026-06-06-translation-v3-architecture-review-benchmark.md) · [M0 plan](../plans/2026-06-06-translation-v3-m0.md).
+
+**M0 shipped:** V8 schema (flag + `verifier_model_*` + `qa_depth`/`max_qa_rounds` + `translation_quality_issues` + chapter rollup); memo-wiring fix (TD1 — block pipeline now persists memo); block pipeline writes `chapter_translation_chunks` rows (TD3/W11); `app/metrics.py` structured stage events (W10, fail-safe); transactional job+chapters insert (W7); `pipeline_version` plumbed job→broker→coordinator→worker; `app/workers/v3/` orchestrator (delegates to V2 = parity).
+
+**NEXT — M1 (Deterministic quality + data upgrade):** Verifier **rule-tier** (glossary-name compliance · source-script/CJK leak · number preservation · sentence-count omission · repetition/looping — GalTransl checklist); **romanization policy** (zh→vi Sino-Vietnamese); **chapter-level name-consistency pass**; swap glossary scorer → `select-for-context` + **trust ladder** + write-back missing names; **regression gold-set**. (design §12.4 / §11)
+
+**Deferred (M0 /review-impl):**
+- **D-TRANSL-RESUME** — chunk rows are resume *substrate*; skip-completed-batch logic NOT built (re-run re-translates all). M1+/M5.
+- **D-TRANSL-MEMO-M4** — memo derives from `result_blocks` (incl. original text for failed blocks); filter to translated-only when memo injection lands. M4.
+- **D-TRANSL-FLAG-BOOKSETTINGS** — `pipeline_version` is per-job / DB-default only; not in `CONFIG_KEYS`/`BookSettingsPayload` (no per-book persistence / UI yet). Add when v3 productionizes.
+- **D-TRANSL-TXN-ROLLBACK-TEST** — job-insert rollback relies on asyncpg contract; mock test proves only "uses txn" + "no publish on fail". Accept.
+- **DOC-FIX** — CLAUDE.md services table calls `translation-service` Go/Chi; it is **Python/FastAPI**.
+
+---
+
 **State:** **Knowledge-extraction R&D arc CLOSED.** Independent-judge baseline measured + locked: **F1 = 0.869**, 95% CI [0.842, 0.895] (disjoint median, gemma + phi4 over 9 golden chapters; `tests/quality/eval_runs/c74c-clean-rejudge` via `compute_ensemble_macros.py`). Confirms the ~4-5pp self-reinforcement (0.913 self-graded → 0.869 clean). 0.869 is now the honest baseline of record.
 
 **NEW TRACK DESIGNED (this session):** **Production Eval + Feedback Flywheel** — design-checkpoint artifact written + committed (NO code yet): [`docs/plans/2026-06-01-production-eval-feedback-flywheel-track.md`](../plans/2026-06-01-production-eval-feedback-flywheel-track.md). Grounded in a 6-dimension industry research workflow (OpenAI / Anthropic / Google Vertex / LLM-observability platforms / vendor-neutral ML patterns / codebase audit) + an adversarial critique pass (all 6 fixes folded). 12 phases Q0→Q9 (Q10 LoRA spun out to Track-2).

@@ -101,6 +101,14 @@ class CreateJobPayload(BaseModel):
     target_language: Optional[str] = None
     model_source: Optional[str] = None
     model_ref: Optional[UUID] = None
+    pipeline_version: Optional[str] = None  # 'v2' (default) | 'v3' — per-job override
+
+    @field_validator("pipeline_version")
+    @classmethod
+    def _valid_pipeline_version(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in ("v2", "v3"):
+            raise ValueError("pipeline_version must be 'v2' or 'v3'")
+        return v
 
     @field_validator("chapter_ids")
     @classmethod
@@ -163,6 +171,7 @@ class TranslationJob(BaseModel):
     compact_user_prompt_tpl: str = ''
     chunk_size_tokens: int = 2000
     invoke_timeout_secs: int = 300
+    pipeline_version: str = "v2"
     chapter_ids: list[UUID]
     total_chapters: int
     completed_chapters: int

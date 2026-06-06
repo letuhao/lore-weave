@@ -32,6 +32,7 @@ from loreweave_llm.models import Job
 
 from ..config import settings, DEFAULT_COMPACT_SYSTEM_PROMPT, DEFAULT_COMPACT_USER_PROMPT_TPL
 from ..llm_client import LLMClient
+from ..metrics import record_stage
 from .chunk_splitter import estimate_tokens, split_chapter
 
 log = logging.getLogger(__name__)
@@ -675,6 +676,33 @@ async def _update_chunk_row(
     )
 
 
+async def _update_block_chunk_row(
+    pool, chunk_row_id: UUID, translated_text: str | None, in_tok: int, out_tok: int,
+    status: str, validation_errors: list[str], validation_warnings: list[str],
+    glossary_corrections: int, retry_count: int,
+) -> None:
+    """Block-pipeline chunk-row finalizer — also records the V6 quality columns
+    (validation errors/warnings, glossary corrections, retry count). The text
+    pipeline uses the simpler _update_chunk_row above (TD3/W11)."""
+    await pool.execute(
+        """
+        UPDATE chapter_translation_chunks
+        SET translated_text      = $1,
+            input_tokens         = $2,
+            output_tokens        = $3,
+            status               = $4,
+            validation_errors    = $5,
+            validation_warnings  = $6,
+            glossary_corrections = $7,
+            retry_count          = $8
+        WHERE id = $9
+        """,
+        translated_text, in_tok or None, out_tok or None, status,
+        validation_errors, validation_warnings, glossary_corrections, retry_count,
+        chunk_row_id,
+    )
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Phase 8F → V2: Block-level translation pipeline
 # ══════════════════════════════════════════════════════════════════════════════
@@ -901,6 +929,16 @@ async def translate_chapter_blocks(
         # Build input_texts map for validation
         input_texts = {e.index: e.text for e in batch.entries}
 
+        # TD3/W11: persist a per-batch chunk row (observability + resume + the V6
+        # quality columns the block pipeline never populated before).
+        chunk_row_id = await _insert_chunk_row(
+            pool, chapter_translation_id, batch_idx, combined, rolling_summary or None,
+        )
+        batch_in = 0
+        batch_out = 0
+        attempts_used = 0
+        last_validation = None
+
         log.info(
             "block_translator_v2: batch %d/%d — %d blocks, ~%d tokens (ct=%s)",
             batch_idx + 1, len(plan.batches), len(batch.entries),
@@ -1005,6 +1043,9 @@ async def translate_chapter_blocks(
                 response_text, in_tok, out_tok = _parse_sdk_response(sdk_job)
                 total_input += in_tok
                 total_output += out_tok
+                batch_in += in_tok
+                batch_out += out_tok
+                attempts_used = attempt + 1
 
                 # Parse [BLOCK N] markers
                 parsed = parse_translated_blocks(response_text, batch.block_indices)
@@ -1013,6 +1054,7 @@ async def translate_chapter_blocks(
                 validation = validate_translation_output(
                     parsed, batch.block_indices, input_texts,
                 )
+                last_validation = validation
 
                 if validation.warnings:
                     log.warning(
@@ -1068,6 +1110,7 @@ async def translate_chapter_blocks(
                 continue
 
         # Merge successfully parsed blocks + auto-correct glossary
+        batch_glossary_corrections = 0
         if parsed:
             # V2 P6: Auto-correct untranslated source terms
             if glossary_ctx.correction_map:
@@ -1078,6 +1121,7 @@ async def translate_chapter_blocks(
                     if count > 0:
                         parsed[idx] = corrected
                         total_glossary_corrections += count
+                        batch_glossary_corrections += count
 
             translated_texts.update(parsed)
 
@@ -1087,6 +1131,24 @@ async def translate_chapter_blocks(
             )
             sentences = [s.strip() for s in last_translated.replace("\n", ". ").split(".") if s.strip()]
             rolling_summary = ". ".join(sentences[-5:]) + "." if sentences else ""
+
+        # TD3/W11: finalize this batch's chunk row with text + quality metrics.
+        _batch_translated = (
+            "\n".join(parsed[i] for i in sorted(parsed)) if parsed else None
+        )
+        await _update_block_chunk_row(
+            pool, chunk_row_id, _batch_translated, batch_in, batch_out,
+            "completed" if parsed else "failed",
+            last_validation.errors if last_validation else [],
+            last_validation.warnings if last_validation else [],
+            batch_glossary_corrections, max(0, attempts_used - 1),
+        )
+        record_stage(
+            "translation.batch", pipeline="block", batch_idx=batch_idx,
+            blocks=len(batch.entries), in_tokens=batch_in, out_tokens=batch_out,
+            retries=max(0, attempts_used - 1),
+            status="completed" if parsed else "failed", ct=str(chapter_translation_id),
+        )
 
     if total_glossary_corrections > 0:
         log.info(

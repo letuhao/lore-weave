@@ -430,6 +430,82 @@ async def test_block_pipeline_partial_success_still_completes():
     assert "completed" in all_sql
 
 
+# ── TD1: cross-chapter memo wiring (M0) ───────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_block_pipeline_saves_nonempty_memo():
+    """TD1 regression: the block pipeline must persist a NON-EMPTY cross-chapter
+    memo. Before the fix the memo was derived from the always-None
+    translated_body_text, so block-pipeline chapters silently saved no memo at all
+    (the INSERT INTO translation_chapter_memos never ran)."""
+    from app.workers.chapter_worker import handle_chapter_message
+
+    pool, db = _make_pool()
+    msg = _chapter_msg(target_language="ja")
+    block_body = {
+        "original_language": "en",
+        "body": {"content": [
+            {"type": "paragraph", "content": [{"type": "text", "text": "Hello."}]},
+        ]},
+        "text_content": "Hello.",
+    }
+    book_resp = MagicMock(spec=httpx.Response)
+    book_resp.status_code = 200
+    book_resp.is_success = True
+    book_resp.raise_for_status = MagicMock()
+    book_resp.json.return_value = block_body
+    translated_blocks = [
+        {"type": "paragraph",
+         "content": [{"type": "text", "text": "こんにちは。今日はいい天気です。"}]},
+    ]
+
+    with patch("app.workers.chapter_worker.httpx.AsyncClient") as mock_cls, \
+         patch("app.workers.chapter_worker._get_model_context_window",
+               new_callable=AsyncMock, return_value=8192), \
+         patch("app.workers.session_translator.translate_chapter_blocks",
+               new_callable=AsyncMock,
+               return_value=(translated_blocks, 10, 8, 1, 1)):  # 1/1 translated
+        mock_cls.return_value.__aenter__ = AsyncMock(
+            return_value=_patched_book_http(book_resp=book_resp))
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        await handle_chapter_message(msg, pool, AsyncMock(), MagicMock(), retry_count=0)
+
+    memo_calls = [
+        c for c in db.execute.call_args_list
+        if "translation_chapter_memos" in c.args[0]
+    ]
+    assert memo_calls, "block pipeline must save a chapter memo (TD1)"
+    # _save_chapter_memo args: (sql, book_id, chapter_index, target_language, story_summary)
+    story_summary = memo_calls[0].args[4]
+    assert story_summary and story_summary.strip(), \
+        "memo story_summary must be non-empty for the block pipeline"
+
+
+@pytest.mark.asyncio
+async def test_text_pipeline_still_saves_memo():
+    """Parity: the text pipeline keeps saving its memo from translated_body_text."""
+    from app.workers.chapter_worker import handle_chapter_message
+
+    pool, db = _make_pool()
+    msg = _chapter_msg()
+
+    with patch("app.workers.chapter_worker.httpx.AsyncClient") as mock_cls, \
+         patch("app.workers.chapter_worker.translate_chapter",
+               new_callable=AsyncMock, return_value=("Translated body. Second sentence.", 10, 8)):
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=_patched_book_http())
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        await handle_chapter_message(msg, pool, AsyncMock(), MagicMock(), retry_count=0)
+
+    memo_calls = [
+        c for c in db.execute.call_args_list
+        if "translation_chapter_memos" in c.args[0]
+    ]
+    assert memo_calls, "text pipeline must save a chapter memo"
+    assert memo_calls[0].args[4].strip(), "memo story_summary must be non-empty"
+
+
 # ── _fail_chapter_idempotent ──────────────────────────────────────────────────
 
 @pytest.mark.asyncio

@@ -40,6 +40,7 @@ async def handle_job_message(msg: dict, pool, publish, publish_event) -> None:
             "compact_model_ref":    msg.get("compact_model_ref"),
             "chunk_size_tokens":    msg.get("chunk_size_tokens", 2000),
             "invoke_timeout_secs":  msg.get("invoke_timeout_secs", 300),
+            "pipeline_version":     msg.get("pipeline_version", "v2"),
         })
 
     log.info("coordinator: job %s — all %d chapter messages published", job_id, n)

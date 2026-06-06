@@ -118,8 +118,34 @@ async def test_coordinator_chapter_message_contains_required_fields():
         "job_id", "chapter_id", "chapter_index", "total_chapters",
         "book_id", "user_id", "model_source", "model_ref",
         "system_prompt", "user_prompt_tpl", "target_language",
+        "pipeline_version",
     }
     assert required.issubset(body.keys())
+
+
+@pytest.mark.asyncio
+async def test_coordinator_forwards_pipeline_version():
+    """T0.6 regression (review-impl MED-1): the flag must survive the job→chapter
+    fan-out. If it doesn't, a 'v3' job silently downgrades to 'v2' at the worker
+    (which defaults an absent field to 'v2'), and no other test would catch it."""
+    pool, _ = _make_pool()
+    publish = AsyncMock()
+    msg = {**_job_msg([str(uuid4())]), "pipeline_version": "v3"}
+    from app.workers.coordinator import handle_job_message
+    await handle_job_message(msg, pool, publish, AsyncMock())
+
+    assert publish.call_args.args[1]["pipeline_version"] == "v3"
+
+
+@pytest.mark.asyncio
+async def test_coordinator_defaults_pipeline_version_when_absent():
+    """A legacy job message without the flag fans out as 'v2' (back-compat)."""
+    pool, _ = _make_pool()
+    publish = AsyncMock()
+    from app.workers.coordinator import handle_job_message
+    await handle_job_message(_job_msg([str(uuid4())]), pool, publish, AsyncMock())
+
+    assert publish.call_args.args[1]["pipeline_version"] == "v2"
 
 
 @pytest.mark.asyncio

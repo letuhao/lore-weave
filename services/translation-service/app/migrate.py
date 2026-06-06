@@ -230,6 +230,53 @@ CREATE TABLE IF NOT EXISTS extraction_chapter_results (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_ecr_job ON extraction_chapter_results(job_id);
+
+-- ── V8: Translation Pipeline V3 — selection flag, per-role models, QA config ──
+-- Additive + idempotent. Default pipeline_version='v2' ⇒ zero behavior change
+-- until a book/job opts into 'v3'. verifier_model_* nullable ⇒ falls back to the
+-- translator model. qa_depth ∈ {rule_only, standard, thorough}.
+ALTER TABLE user_translation_preferences
+  ADD COLUMN IF NOT EXISTS pipeline_version      TEXT NOT NULL DEFAULT 'v2',
+  ADD COLUMN IF NOT EXISTS verifier_model_source TEXT,
+  ADD COLUMN IF NOT EXISTS verifier_model_ref    UUID,
+  ADD COLUMN IF NOT EXISTS max_qa_rounds         INT  NOT NULL DEFAULT 2,
+  ADD COLUMN IF NOT EXISTS qa_depth              TEXT NOT NULL DEFAULT 'standard';
+
+ALTER TABLE book_translation_settings
+  ADD COLUMN IF NOT EXISTS pipeline_version      TEXT NOT NULL DEFAULT 'v2',
+  ADD COLUMN IF NOT EXISTS verifier_model_source TEXT,
+  ADD COLUMN IF NOT EXISTS verifier_model_ref    UUID,
+  ADD COLUMN IF NOT EXISTS max_qa_rounds         INT  NOT NULL DEFAULT 2,
+  ADD COLUMN IF NOT EXISTS qa_depth              TEXT NOT NULL DEFAULT 'standard';
+
+ALTER TABLE translation_jobs
+  ADD COLUMN IF NOT EXISTS pipeline_version      TEXT NOT NULL DEFAULT 'v2',
+  ADD COLUMN IF NOT EXISTS verifier_model_source TEXT,
+  ADD COLUMN IF NOT EXISTS verifier_model_ref    UUID,
+  ADD COLUMN IF NOT EXISTS max_qa_rounds         INT  NOT NULL DEFAULT 2,
+  ADD COLUMN IF NOT EXISTS qa_depth              TEXT NOT NULL DEFAULT 'standard';
+
+-- Per-block QA issues — drives targeted re-translate + the future "needs review" UI.
+CREATE TABLE IF NOT EXISTS translation_quality_issues (
+  id                     UUID PRIMARY KEY DEFAULT uuidv7(),
+  chapter_translation_id UUID NOT NULL REFERENCES chapter_translations(id) ON DELETE CASCADE,
+  block_index            INT  NOT NULL,
+  round                  INT  NOT NULL DEFAULT 0,
+  issue_type             TEXT NOT NULL,   -- omission|wrong_name|added|number_mismatch|format|untranslated
+  severity               TEXT NOT NULL,   -- high|med|low
+  detail                 TEXT,
+  expected               TEXT,
+  resolved               BOOLEAN NOT NULL DEFAULT false,
+  detected_by            TEXT NOT NULL DEFAULT 'rule',  -- rule|llm
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_tqi_ct ON translation_quality_issues(chapter_translation_id);
+
+-- Per-chapter quality rollup (cheap badge source; no status-enum churn).
+ALTER TABLE chapter_translations
+  ADD COLUMN IF NOT EXISTS quality_score         INT,
+  ADD COLUMN IF NOT EXISTS unresolved_high_count INT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS qa_rounds_used        INT NOT NULL DEFAULT 0;
 """
 
 
