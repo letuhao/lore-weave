@@ -6,7 +6,7 @@ from uuid import UUID
 
 import pytest
 
-import app.context.selectors.passages as passages_mod
+import app.context.query_embedding as qe_mod
 from app.clients.embedding_client import EmbeddingError, EmbeddingResult
 from app.context.intent.classifier import Intent, IntentResult
 from app.context.selectors.passages import select_l3_passages
@@ -33,9 +33,11 @@ def _embed_result(dim: int = 1024) -> EmbeddingResult:
 
 @pytest.fixture(autouse=True)
 def _clear_cache():
-    passages_mod._query_embedding_cache.clear()
+    # mui #4 MED-2 — the cache moved to app.context.query_embedding (shared
+    # across L3 / summary-blend / glossary-semantic).
+    qe_mod._query_embedding_cache.clear()
     yield
-    passages_mod._query_embedding_cache.clear()
+    qe_mod._query_embedding_cache.clear()
 
 
 @pytest.mark.asyncio

@@ -400,6 +400,39 @@ class GlossaryClient:
             return False
 
 
+    async def fetch_entities_by_ids(
+        self,
+        *,
+        book_id: UUID,
+        entity_ids: list[str],
+    ) -> list[GlossaryEntityForContext]:
+        """POST /internal/books/{book_id}/entities/by-ids (mui #4).
+
+        Batch-fetch glossary entities by id so the semantic selector can
+        enrich vector hits with canon detail. Best-effort: returns [] on any
+        failure — the caller degrades to FTS.
+        """
+        if not entity_ids:
+            return []
+        url = f"{self._base_url}/internal/books/{book_id}/entities/by-ids"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.post(
+                url, json={"entity_ids": entity_ids},
+                headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                logger.warning("glossary entities/by-ids %d", resp.status_code)
+                return []
+            data = resp.json()
+            return [
+                GlossaryEntityForContext.model_validate(it)
+                for it in data.get("items", [])
+            ]
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("glossary entities/by-ids failed: %s", exc)
+            return []
+
     async def propose_entities(
         self,
         book_id: UUID,
@@ -407,20 +440,33 @@ class GlossaryClient:
         entities: list[dict],
         source_language: str = "en",
         attribute_actions: dict | None = None,
+        default_tags: list[str] | None = None,
+        park_unknown_kinds: bool | None = None,
     ) -> dict | None:
         """POST /internal/books/{book_id}/extract-entities.
 
         Bulk propose extraction candidates to glossary-service.
         Returns the response or None on failure. Non-blocking — caller
         should queue in extraction_pending on prolonged outage.
+
+        ``default_tags`` (e.g. ``["ai-suggested"]``) marks the created
+        entities so the FE can surface them as a reviewable AI-suggestions
+        inbox; it also arms glossary's tombstone gate (an ``ai-rejected``
+        name is skipped). ``park_unknown_kinds=False`` opts out of the
+        glossary 'unknown' review bucket so experimental KG kinds don't
+        flood triage (mui #1).
         """
         url = f"{self._base_url}/internal/books/{book_id}/extract-entities"
         tid = trace_id_var.get()
-        body = {
+        body: dict = {
             "source_language": source_language,
             "attribute_actions": attribute_actions or {},
             "entities": entities,
         }
+        if default_tags is not None:
+            body["default_tags"] = default_tags
+        if park_unknown_kinds is not None:
+            body["park_unknown_kinds"] = park_unknown_kinds
         try:
             resp = await self._http.post(
                 url, json=body,
@@ -432,6 +478,40 @@ class GlossaryClient:
             return resp.json()
         except (httpx.HTTPError, ValueError) as exc:
             logger.warning("glossary propose-entities failed: %s", exc)
+            return None
+
+    async def propose_merge_candidates(
+        self,
+        book_id: UUID,
+        *,
+        candidates: list[dict],
+    ) -> dict | None:
+        """POST /internal/books/{book_id}/merge-candidates (mui #1c G-cand).
+
+        Propose coreference merge clusters discovered by the coref detector
+        (K-detect) to glossary, where the human reviews + confirms. Each
+        candidate dict: ``{"member_entity_ids": [...],
+        "suggested_winner_entity_id"?, "score"?, "evidence"?, "rationale"?}``
+        where member ids are glossary entity ids (the KG nodes' anchors).
+
+        Best-effort: returns the response dict, or None on any failure — a
+        detection pass must never crash because glossary is briefly down.
+        """
+        if not candidates:
+            return None
+        url = f"{self._base_url}/internal/books/{book_id}/merge-candidates"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.post(
+                url, json={"candidates": candidates},
+                headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code not in (200, 201):
+                logger.warning("glossary propose-merge-candidates %d", resp.status_code)
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("glossary propose-merge-candidates failed: %s", exc)
             return None
 
     async def generate_wiki_stubs(

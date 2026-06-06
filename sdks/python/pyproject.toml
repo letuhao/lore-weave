@@ -52,6 +52,12 @@ include = [
   # (canonical + prompts) + loreweave_llm (errors) + PyYAML; the LLM client is
   # injected as a Protocol so the package stays transport-agnostic.
   "loreweave_eval*",
+  # mui #3 (2026-06-07) — `loreweave_grounding` added (shared grounding port:
+  # GroundingCite + compose_cites + CanonVerifier, lifted from lore-enrichment).
+  # Pure-Python (pydantic + stdlib); any LLM call is injected by the caller, so
+  # no HTTP/LLM hard dep. Consumed by lore-enrichment (migrate), knowledge, and
+  # composition in later adoption phases.
+  "loreweave_grounding*",
 ]
 exclude = ["tests*"]
 

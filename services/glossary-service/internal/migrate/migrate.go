@@ -1343,3 +1343,83 @@ func UpEntityEnrichments(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	return nil
 }
+
+// entityMergeSQL backs mui #1c — entity-resolution/merge. Adds the
+// `merged_into_entity_id` audit pointer on glossary_entities and the
+// `merge_journal` table. Reversibility model (spec §3.3): the merge
+// SOFT-deletes the loser and repoints only NON-conflicting child rows to the
+// winner; conflicting rows stay with the (now hidden) loser. The journal
+// records exactly which child-row PKs were repointed + the winner's aliases
+// value before folding, so un-merge replays them back without row snapshots.
+const entityMergeSQL = `
+ALTER TABLE glossary_entities
+  ADD COLUMN IF NOT EXISTS merged_into_entity_id UUID DEFAULT NULL;
+
+CREATE TABLE IF NOT EXISTS merge_journal (
+  journal_id                 UUID PRIMARY KEY DEFAULT uuidv7(),
+  book_id                    UUID NOT NULL,
+  winner_entity_id           UUID NOT NULL,
+  loser_entity_id            UUID NOT NULL,
+  repointed_chapter_link_ids UUID[] NOT NULL DEFAULT '{}',
+  repointed_eav_ids          UUID[] NOT NULL DEFAULT '{}',
+  repointed_enrichment_ids   UUID[] NOT NULL DEFAULT '{}',
+  repointed_audit_ids        UUID[] NOT NULL DEFAULT '{}',
+  repointed_wiki_article_id  UUID,
+  winner_aliases_before      TEXT,
+  status                     TEXT NOT NULL DEFAULT 'merged'
+    CHECK (status IN ('merged','reverted')),
+  merged_by                  UUID,
+  merged_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  reverted_at                TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_merge_journal_book  ON merge_journal(book_id);
+CREATE INDEX IF NOT EXISTS idx_merge_journal_loser ON merge_journal(loser_entity_id);
+`
+
+// UpEntityMerge creates the merge_journal table + merged_into_entity_id column
+// (mui #1c). Idempotent. Register in main.go after UpEntityEnrichments.
+func UpEntityMerge(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, entityMergeSQL); err != nil {
+		return fmt.Errorf("migrate entity-merge: %w", err)
+	}
+	return nil
+}
+
+// mergeCandidatesSQL backs mui #1c G-cand — the merge-candidate review surface.
+// knowledge's coref detector (K-detect) proposes clusters of likely-same
+// entities INTO glossary (knowledge=AI compute, glossary=SSOT/curation); the
+// human reviews here and confirms via the existing R5 merge endpoint.
+// `member_set_key` is the sorted-distinct member-id set joined by ',' — the
+// UNIQUE(book_id, member_set_key) makes re-proposing the same cluster
+// idempotent, and the conditional upsert (WHERE status='proposed') means a
+// dismissed/merged cluster is never resurrected by a later detection pass.
+const mergeCandidatesSQL = `
+CREATE TABLE IF NOT EXISTS merge_candidates (
+  candidate_id               UUID PRIMARY KEY DEFAULT uuidv7(),
+  book_id                    UUID NOT NULL,
+  kind_id                    UUID NOT NULL REFERENCES entity_kinds(kind_id),
+  member_entity_ids          UUID[] NOT NULL,
+  member_set_key             TEXT NOT NULL,
+  suggested_winner_entity_id UUID,
+  score                      DOUBLE PRECISION NOT NULL DEFAULT 0,
+  evidence_json              JSONB NOT NULL DEFAULT '[]',
+  rationale                  TEXT NOT NULL DEFAULT '',
+  status                     TEXT NOT NULL DEFAULT 'proposed'
+    CHECK (status IN ('proposed','dismissed','merged')),
+  created_at                 TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at                 TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_merge_candidates_setkey
+  ON merge_candidates(book_id, member_set_key);
+CREATE INDEX IF NOT EXISTS idx_merge_candidates_book_status
+  ON merge_candidates(book_id, status);
+`
+
+// UpMergeCandidates creates the merge_candidates table (mui #1c G-cand).
+// Idempotent. Register in main.go after UpEntityMerge.
+func UpMergeCandidates(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, mergeCandidatesSQL); err != nil {
+		return fmt.Errorf("migrate merge-candidates: %w", err)
+	}
+	return nil
+}

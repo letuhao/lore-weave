@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -348,6 +349,15 @@ type bulkUpsertRequest struct {
 	// entities SKIPPED instead of flooding the review queue. Pointer so an omitted
 	// field keeps the park-by-default behavior (backward-compatible).
 	ParkUnknownKinds *bool `json:"park_unknown_kinds"`
+	// DefaultTags are applied (on CREATE only) to every entity this batch
+	// creates. The knowledge-service writeback loop sends `["ai-suggested"]`
+	// so the FE can surface AI-discovered drafts as a reviewable inbox
+	// (GET /entities?status=draft&tags=ai-suggested). When the batch is an
+	// AI writeback (DefaultTags contains "ai-suggested"), a proposed name
+	// that resolves to an existing entity carrying the `ai-rejected`
+	// tombstone is SKIPPED — a user-rejected suggestion is not re-proposed.
+	// nil/empty → no tags applied, no tombstone gate (backward-compatible).
+	DefaultTags []string `json:"default_tags"`
 }
 
 type extractedEntity struct {
@@ -372,7 +382,17 @@ type entityResult struct {
 	Status            string   `json:"status"` // "created" | "updated" | "skipped"
 	AttributesWritten []string `json:"attributes_written"`
 	AttributesSkipped []string `json:"attributes_skipped"`
+	SkipReason        string   `json:"skip_reason,omitempty"` // e.g. "tombstoned" when an ai-rejected name is re-proposed
 }
+
+const (
+	// tagAISuggested marks an entity created by the knowledge-service
+	// writeback loop, so the FE can list it as a reviewable AI suggestion.
+	tagAISuggested = "ai-suggested"
+	// tagAIRejected is the tombstone a user sets when rejecting an AI
+	// suggestion; an AI writeback batch skips names that carry it.
+	tagAIRejected = "ai-rejected"
+)
 
 // bulkExtractEntities receives extracted entities from translation-service and upserts them.
 //
@@ -430,6 +450,9 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 	// (park_unknown_kinds=false) to SKIP unrecognised kinds instead of flooding the
 	// review queue. Omitted → park (backward-compatible).
 	parkUnknown := req.ParkUnknownKinds == nil || *req.ParkUnknownKinds
+	// isAIWriteback gates the tombstone skip: only an AI writeback batch
+	// (marked by the ai-suggested default tag) suppresses ai-rejected names.
+	isAIWriteback := slices.Contains(req.DefaultTags, tagAISuggested)
 
 	var (
 		results  []entityResult
@@ -471,9 +494,34 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		result.Name = ent.Name
 		result.KindCode = ent.KindCode
 
+		// Tombstone gate (P5): when this batch is an AI writeback, a name
+		// that resolves to an entity the user previously rejected
+		// (tag 'ai-rejected') is skipped without touching the row — a
+		// rejected suggestion must not be re-proposed every extraction.
+		if existingID != uuid.Nil && isAIWriteback {
+			rejected, terr := s.entityHasTag(ctx, existingID, tagAIRejected)
+			if terr != nil {
+				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tombstone check failed")
+				return
+			}
+			if rejected {
+				result.EntityID = existingID.String()
+				result.Status = "skipped"
+				result.SkipReason = "tombstoned"
+				result.AttributesWritten = []string{}
+				result.AttributesSkipped = []string{}
+				skipped++
+				results = append(results, result)
+				continue
+			}
+		}
+
 		if existingID == uuid.Nil {
-			// 2. CREATE new entity
-			entityID, err := s.createExtractedEntity(ctx, bookID, kindID, ent, actions, attrDefMap, req.SourceLanguage)
+			// 2. CREATE new entity — default tags (e.g. ai-suggested) are
+			// applied on create only, so an AI writeback never re-tags a
+			// user's existing/active entity into the suggestion inbox.
+			entityID, err := s.createExtractedEntity(ctx, bookID, kindID, ent, actions, attrDefMap, req.SourceLanguage, req.DefaultTags)
 			if err != nil {
 				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to create entity: "+err.Error())
@@ -740,6 +788,24 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uui
 	return uuid.Nil, nil
 }
 
+// entityHasTag reports whether the entity's tags array contains tag.
+// Used by the AI-writeback tombstone gate (ai-rejected). Returns false
+// if the entity is gone (no row) — a deleted target can't be tombstoned.
+func (s *Server) entityHasTag(ctx context.Context, entityID uuid.UUID, tag string) (bool, error) {
+	var has bool
+	err := s.pool.QueryRow(ctx,
+		`SELECT $2 = ANY(tags) FROM glossary_entities WHERE entity_id = $1`,
+		entityID, tag,
+	).Scan(&has)
+	if err == pgx.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return has, nil
+}
+
 // createExtractedEntity creates a new entity with all provided attributes.
 func (s *Server) createExtractedEntity(
 	ctx context.Context,
@@ -748,13 +814,17 @@ func (s *Server) createExtractedEntity(
 	actions map[string]string,
 	attrDefMap map[string]uuid.UUID,
 	sourceLang string,
+	tags []string,
 ) (uuid.UUID, error) {
+	if tags == nil {
+		tags = []string{} // tags column is NOT NULL DEFAULT '{}'
+	}
 	var entityID uuid.UUID
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO glossary_entities (book_id, kind_id, status)
-		VALUES ($1, $2, 'draft')
+		INSERT INTO glossary_entities (book_id, kind_id, status, tags)
+		VALUES ($1, $2, 'draft', $3)
 		RETURNING entity_id
-	`, bookID, kindID).Scan(&entityID)
+	`, bookID, kindID, tags).Scan(&entityID)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("insert entity: %w", err)
 	}
