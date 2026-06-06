@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — Composition Studio · Component Catalog</title>
+<style>
+  :root{
+    --background:40 20% 97%; --foreground:25 15% 15%;
+    --card:0 0% 100%; --card2:40 16% 95%;
+    --primary:35 85% 48%; --accent:170 45% 38%; --accent-soft:170 40% 92%;
+    --muted:35 10% 90%; --muted-fg:25 8% 45%; --border:35 12% 84%; --border2:35 12% 89%;
+    --destructive:0 72% 50%; --success:150 60% 40%; --warning:38 90% 48%; --info:215 75% 50%;
+    --primary-soft:38 80% 94%; --danger-soft:0 72% 96%;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --serif:"Iowan Old Style",Georgia,serif;
+    --shadow:0 1px 2px hsl(25 15% 15% /.05),0 4px 14px hsl(25 15% 15% /.06);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--sans);background:hsl(var(--background));color:hsl(var(--foreground));font-size:13px;line-height:1.45}
+  .top{padding:20px 28px 14px;border-bottom:1px solid hsl(var(--border));background:hsl(var(--card));position:sticky;top:0;z-index:5}
+  .top h1{margin:0;font-size:19px;font-weight:700;display:flex;align-items:center;gap:10px}
+  .top h1 .logo{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,hsl(var(--primary)),hsl(38 90% 58%));display:grid;place-items:center;color:#fff;font-size:13px}
+  .top .sub{color:hsl(var(--muted-fg));font-size:13px;margin-top:5px}
+  .tally{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .tpill{font-size:12px;font-weight:600;border:1px solid hsl(var(--border));border-radius:999px;padding:4px 11px;background:hsl(var(--card2))}
+  .tpill b{color:hsl(35 85% 38%)}
+  .keys{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:11.5px;color:hsl(var(--muted-fg));align-items:center}
+  .bdg{font-size:9.5px;font-weight:800;border-radius:5px;padding:2px 6px;letter-spacing:.03em}
+  .bdg.v1{background:hsl(var(--primary-soft));color:hsl(35 85% 34%)}
+  .bdg.later{background:hsl(var(--muted));color:hsl(var(--muted-fg))}
+  .wnchip{display:inline-flex;gap:3px;color:hsl(var(--muted-fg))}
+
+  .wrap{padding:18px 28px 60px}
+  .group{margin-top:22px}
+  .ghead{display:flex;align-items:baseline;gap:10px;margin:0 0 10px}
+  .ghead h2{font-size:14px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;margin:0;color:hsl(var(--foreground))}
+  .ghead .gc{font-size:11px;color:hsl(var(--muted-fg))}
+  .ghead .gd{font-size:12px;color:hsl(var(--muted-fg));font-weight:400}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(316px,1fr));gap:14px}
+
+  .comp{background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:11px;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column}
+  .ch{display:flex;align-items:center;gap:8px;padding:9px 11px;border-bottom:1px solid hsl(var(--border2));background:hsl(var(--card2))}
+  .ch .ico{font-size:15px}
+  .ch .nm{font-weight:700;font-size:13.5px}
+  .ch .bdg{margin-left:2px}
+  .ch .win{margin-left:auto;display:flex;gap:2px;color:hsl(var(--muted-fg));font-size:11px}
+  .ch .win span{width:19px;height:19px;border:1px solid hsl(var(--border));border-radius:5px;display:grid;place-items:center;background:hsl(var(--card))}
+  .what{padding:8px 11px 4px;color:hsl(var(--muted-fg));font-size:12px;min-height:38px}
+  .prev{margin:2px 11px 8px;border:1px dashed hsl(var(--border));border-radius:9px;padding:9px;background:hsl(40 24% 98%);min-height:84px}
+  .be{padding:7px 11px;border-top:1px solid hsl(var(--border2));font-size:10.5px;color:hsl(var(--muted-fg));display:flex;align-items:center;gap:6px}
+  .be code{font-family:ui-monospace,monospace;color:hsl(35 80% 38%);font-size:10px}
+
+  /* mini-preview primitives */
+  .mrow{display:flex;align-items:center;gap:6px;font-size:11px;padding:2px 0;color:hsl(25 12% 30%)}
+  .dot{width:6px;height:6px;border-radius:50%}.dot.ok{background:hsl(var(--success))}.dot.cur{background:hsl(var(--primary))}.dot.empty{background:hsl(var(--border))}.dot.warn{background:hsl(var(--warning))}
+  .tg{font-size:8.5px;font-weight:800;text-transform:uppercase;padding:2px 5px;border-radius:4px}
+  .tg.ch{background:hsl(var(--primary-soft));color:hsl(35 85% 36%)}.tg.lo{background:hsl(var(--accent-soft));color:hsl(var(--accent))}.tg.ru{background:hsl(var(--danger-soft));color:hsl(var(--destructive))}.tg.fac{background:hsl(38 90% 92%);color:hsl(38 80% 35%)}
+  .chips{display:flex;flex-wrap:wrap;gap:4px}
+  .pchip{font-size:10px;border:1px solid hsl(var(--border));background:hsl(var(--card));border-radius:99px;padding:2px 7px;color:hsl(25 12% 35%)}
+  .pchip.amb{background:hsl(var(--primary-soft));color:hsl(35 85% 36%);border-color:transparent;font-weight:700}
+  .pchip.tel{background:hsl(var(--accent-soft));color:hsl(var(--accent));border-color:transparent;font-weight:700}
+  .bar{height:6px;border-radius:99px;background:hsl(var(--muted));overflow:hidden}
+  .bar i{display:block;height:100%;border-radius:99px}
+  .mininode{font-size:9px;font-weight:700;border:1.4px solid hsl(var(--primary));background:hsl(var(--primary-soft));color:hsl(35 85% 34%);border-radius:6px;padding:3px 6px;text-align:center}
+  .serif{font-family:var(--serif);font-size:12px;color:hsl(25 14% 28%);line-height:1.5}
+  .ghost{color:hsl(35 60% 44%)}
+  .ix{display:flex;gap:5px;align-items:center}
+  .ixcard{flex:1;border:1px solid hsl(var(--border));border-radius:6px;padding:5px;background:hsl(var(--card));font-size:9.5px}
+  .ixcard .t{font-weight:700;font-size:10px;margin-bottom:2px}
+  .bub{font-size:10.5px;border-radius:9px;padding:5px 8px;margin:3px 0;max-width:88%}
+  .bub.u{background:hsl(var(--primary-soft));margin-left:auto;color:hsl(35 80% 30%)}
+  .bub.a{background:hsl(var(--card2));border:1px solid hsl(var(--border2))}
+  .thread{display:flex;align-items:center;gap:7px;font-size:10.5px;padding:3px 0}
+  .track{flex:1;height:4px;border-radius:99px;background:hsl(var(--muted));position:relative}
+  .track i{position:absolute;height:4px;border-radius:99px}
+  .cut{font-size:9.5px;font-weight:800;color:hsl(var(--destructive));border-top:1.5px dashed hsl(var(--destructive));padding-top:3px;margin:3px 0}
+</style>
+</head>
+<body>
+  <div class="top">
+    <h1><span class="logo">✦</span> Composition Studio — Component Catalog</h1>
+    <div class="sub">Every panel the studio can show. Each <b>docks</b> into the workspace, <b>floats</b>, or <b>pops out</b> to its own screen.</div>
+    <div class="tally">
+      <span class="tpill"><b>20</b> components</span>
+      <span class="tpill"><b>4</b> groups</span>
+      <span class="tpill"><b>15</b> tagged V1</span>
+      <span class="tpill"><b>5</b> Later/optional</span>
+    </div>
+    <div class="keys">
+      <span><span class="bdg v1">V1</span> ships first</span>
+      <span><span class="bdg later">LATER</span> V2 / optional</span>
+      <span class="wnchip">window controls on each: <span style="border:1px solid hsl(var(--border));border-radius:4px;padding:0 4px">⮜ dock</span> <span style="border:1px solid hsl(var(--border));border-radius:4px;padding:0 4px">▢ float</span> <span style="border:1px solid hsl(var(--border));border-radius:4px;padding:0 4px">⧉ pop-out</span></span>
+    </div>
+  </div>
+
+  <div class="wrap">
+
+  <!-- ════ GROUP A · STRUCTURE ════ -->
+  <div class="group">
+    <div class="ghead"><h2>A · Structure</h2><span class="gc">5 components</span><span class="gd">— plan the shape (the "dàn bài" surfaces)</span></div>
+    <div class="grid">
+
+      <div class="comp">
+        <div class="ch"><span class="ico">🎬</span><span class="nm">Scene Graph</span><span class="bdg v1">V1</span><span class="win"><span>⮜</span><span>▢</span><span>⧉</span></span></div>
+        <div class="what">Scenes as nodes on a canvas, joined by typed links: sequence, character thread, setup→payoff.</div>
+        <div class="prev">
+          <div style="display:flex;align-items:center;gap:6px">
+            <div class="mininode">S1</div><span style="color:hsl(35 85% 48%)">→</span>
+            <div class="mininode">S2</div><span style="color:hsl(35 85% 48%)">→</span>
+            <div class="mininode" style="border-color:hsl(var(--accent));background:hsl(var(--accent-soft));color:hsl(var(--accent))">S3</div>
+          </div>
+          <div style="border-top:1.4px dashed hsl(var(--accent));margin-top:14px"></div>
+          <div style="font-size:9.5px;color:hsl(var(--accent));margin-top:2px">— Mira's thread crosses S1·S2·S3</div>
+        </div>
+        <div class="be">⛁ <code>scene_node</code> + <code>scene_link</code></div>
+      </div>
+
+      <div class="comp">
+        <div class="ch"><span class="ico">☰</span><span class="nm">Outline Tree</span><span class="bdg v1">V1</span><span class="win"><span>⮜</span><span>▢</span><span>⧉</span></span></div>
+        <div class="what">The same scenes as a collapsible Act → Chapter → Scene → Beat hierarchy.</div>
+        <div class="prev" style="font-size:11px">
+          <div class="mrow"><span class="dot ok"></span><b>Act II — Descent</b></div>
+          <div class="mrow" style="padding-left:14px"><span class="dot warn"></span> Ch.12 — Ashfall</div>
+          <div class="mrow" style="padding-left:28px"><span class="dot ok"></span> S1 · Arrival</div>
+          <div class="mrow" style="padding-left:28px"><span class="dot cur"></span> S3 · Confrontation</div>
+          <div class="mrow" style="padding-left:28px"><span class="dot empty"></span> S4 · Aftermath</div>
+        </div>
+        <div class="be">⛁ <code>scene_node</code> (tree view)</div>
+      </div>
+
+      <div class="comp">
+        <div class="ch"><span class="ico">⌗</span><span class="nm">Beat Sheet</span><span class="bdg v1">V1</span><span class="win"><span>⮜</span><span>▢</span><span>⧉</span></span></div>
+        <div class="what">Your chosen structure template; each beat shows which scene fills it (or is empty).</div>
+        <div class="prev" style="font-size:11px">
+          <div class="mrow"><span class="dot ok"></span> Opening Image <span style="margin-left:auto;color:hsl(var(--muted-fg))">S1</span></div>
+          <div class="mrow"><span class="dot ok"></span> Catalyst <span style="margin-left:auto;color:hsl(var(--muted-fg))">S2</span></div>
+          <div class="mrow"><span class="dot cur"></span> Confrontation <span style="margin-left:auto;color:hsl(var(--muted-fg))">S3</span></div>
+          <div class="mrow"><span class="dot empty"></span> Break into 3 <span style="margin-left:auto;color:hsl(var(--muted-fg))">— empty</span></div>
+        </div>
+        <div class="be">⛁ <code>structure_template</code></div>
+      </div>
+
+      <div class="comp">
+        <div class="ch"><span class="ico">🗂</span><span class="nm">Corkboard</span><span class="bdg later">LATER</span><span class="win"><span>⮜</span><span>▢</span><span>⧉</span></span></div>
+        <div class="what">Index-card view of scenes — synopsis only, drag to reorder. For card-thinkers.</div>
+        <div class="prev">
+          <div class="ix">
+            <div class="ixcard"><div class="t">S1 Arrival</div>reach the arch at dusk</div>
+            <div class="ixcard"><div class="t">S2 Warning</div>the toll is named</div>
+            <div class="ixcard" style="border-color:hsl(var(--primary))"><div class="t">S3 Gate</div>nothing to draw</div>
+          </div>
+        </div>
+        <div class="be">⛁ <code>scene_node</code> (card view)</div>
+      </div>
+
+      <div class="comp">
+        <div class="ch"><span class="ico">🧵</span><span class="nm">Plot Threads</span><span class="bdg v1">V1</span><span class="win"><span>⮜</span><span>▢</span><span>⧉</span></span></div>
+        <div class="what">Open vs paid threads & subplots. Flags setups that were never paid off.</div>
+        <div class="prev">
+          <div class="thread"><span style="color:hsl(var(--warning))">🔓</span> The missing letter<div class="track"><i style="left:6%;width:30%;background:hsl(var(--warning))"></i></div></div>
+          <div class="thread"><span style="color:hsl(var(--warning))">🔓</span> Mira's allegiance<div class="track"><i style="left:30%;width:40%;background:hsl(var(--warning))"></i></div></div>
+          <div class="thread"><span style="color:hsl(var(--success))">🔒</span> Kael's lost sword<div class="track"><i style="left:10%;width:80%;background:hsl(var(--success))"></i></div></div>
+        </div>
+        <div class="be">⛁ <code>scene_link</code> + graph relations</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ GROUP B · WORLD & CANON ════ -->
+  <div class="group">
+    <div class="ghead"><h2>B · World &amp; Canon</h2><span class="gc">6 components</span><span class="gd">— the living story-bible (auto-built from the book, not a manual wiki)</span></div>
+    <div class="grid">
+
+      <div class="comp">
+        <div class="ch"><span class="ico">👥</span><span class="nm">Cast &amp; Codex</span><span class="bdg v1">V1</span><span class="win"><span>⮜</span><span>▢</span><span>⧉</span></span></div>
+        <div class="what">Characters, places, items, factions — pulled from glossary + knowledge graph, with current state.</div>
+        <div class="prev">
+          <div class="mrow"><span class="tg ch">char</span> Kael — swordless, wounded</div>
+          <div class="mrow"><span class="tg ch">char</span> Mira — hidden allegiance</div>
+          <div class="mrow"><span class="tg lo">place</span> Gate of Ash</div>
+          <div class="mrow"><span class="tg fac">faction</span> The Ashen Pact</div>
+        </div>
+        <div class="be">⛁ glossary entities + knowledge graph</div>
+      </div>
+
+      <div class="comp">
+        <div class="ch"><span class="ico">🕸</span><span class="nm">Relationship Map</span><span class="bdg v1">V1</span><span class="win"><span>⮜</span><span>▢</span><span>⧉</span></span></div>
+        <div class="what">Who connects to whom and how — live from the graph; edits write back.</div>
+        <div class="prev" style="padding:4px">
+          <svg viewBox="0 0 220 86" style="width:100%;height:76px">
+            <line x1="40" y1="30" x2="130" y2="24" stroke="hsl(35 14% 80%)" stroke-width="1.4"/>
+            <line x1="40" y1="30" x2="100" y2="70" stroke="hsl(35 14% 80%)" stroke-width="1.4"/>
+            <line x1="130" y1="24" x2="100" y2="70" stroke="hsl(170 45% 38%)" stroke-width="1.4" stroke-dasharray="4 3"/>
+            <text x="86" y="22" fill="hsl(25 8% 55%)" font-size="7" text-anchor="middle">distrusts</text>
+            <circle cx="40" cy="30" r="16" fill="hsl(38 80% 94%)" stroke="hsl(35 85% 48%)" stroke-width="1.4"/><text x="40" y="33" fill="hsl(35 85% 36%)" font-size="8" font-weight="700" text-anchor="middle">Kael</text>
+            <circle cx="130" cy="24" r="16" fill="#fff" stroke="hsl(25 8% 60%)" stroke-width="1.4"/><text x="130" y="27" fill="hsl(25 12% 35%)" font-size="8" font-weight="700" text-anchor="middle">Mira</text>
+            <circle cx="100" cy="70" r="17" fill="hsl(170 40% 92%)" stroke="hsl(170 45% 38%)" stroke-width="1.4"/><text x="100" y="73" fill="hsl(170 45% 30%)" font-size="7" font-weight="700" text-anchor="middle">Gate</text>
+          </svg>
+        </div>
+        <div class="be">⛁ <code>/entities</code> <code>/relations</code></div>
+      </div>
+
+      <div class="comp">
+        <div class="ch"><span class="ico">🕑</span><span class="nm">Timeline</span><span class="bdg v1">V1</span><span class="win"><span>⮜</span><span>▢</span><span>⧉</span></span></div>
+        <div class="what">Chronology of events with a spoiler-safe cutoff; multi-thread lanes.</div>
+        <div class="prev" style="font-size:11px">
+          <div class="mrow"><b>Ch.9</b> — sword shatters</div>
+          <div class="mrow"><b>Ch.11</b> — oath broken</div>
+          <div class="mrow"><b>Ch.12·S2</b> — the warning</div>
+          <div class="cut">▲ AI sees up to here</div>
+          <div class="mrow" style="opacity:.4"><b>Ch.13</b> — (hidden)</div>
+        </div>
+        <div class="be">⛁ <code>timeline?before_order=</code></div>
+      </div>
+
+      <div class="comp">
+        <div class="ch"><span class="ico">📈</span><span class="nm">Character Arc</span><span class="bdg later">LATER</span><span class="win"><span>⮜</span><span>▢</span><span>⧉</span></span></div>
+        <div class="what">A character's emotional/state change plotted across chapters.</div>
+        <div class="prev" style="padding:4px">
+          <svg viewBox="0 0 220 76" style="width:100%;height:68px">
+            <polyline points="10,55 50,50 90,58 130,30 170,40 210,12" fill="none" stroke="hsl(var(--primary))" stroke-width="2"/>
+            <circle cx="130" cy="30" r="3" fill="hsl(var(--accent))"/>
+            <text x="135" y="26" font-size="7" fill="hsl(var(--muted-fg))">turn</text>
+            <text x="6" y="70" font-size="7" fill="hsl(var(--muted-fg))">Ch.1</text>
+            <text x="195" y="70" font-size="7" fill="hsl(var(--muted-fg))">Ch.20</text>
+          </svg>
+          <div style="font-size:9.5px;color:hsl(var(--muted-fg))">Kael — hope ▸ despair ▸ resolve</div>
+        </div>
+        <div class="be">⛁ events + entity state over time</div>
+      </div>
+
+      <div class="comp">
+        <div class="ch"><span class="ico">⚖</span><span class="nm">Canon Rules</span><span class="bdg v1">V1</span><span class="win"><span>⮜</span><span>▢</span><span>⧉</span></span></div>
+        <div class="what">Declarative invariants the AI and the critic must obey. Author-owned.</div>
+        <div class="prev" style="font-size:11px">
+          <div class="mrow" style="color:hsl(var(--destructive))"><b>!</b> Kael's sword is lost (Ch.9)</div>
+          <div class="mrow" style="color:hsl(var(--success))"><b>✓</b> The dead cannot be revived</div>
+          <div class="mrow" style="color:hsl(var(--success))"><b>✓</b> Mira's betrayal hidden → Ch.14</div>
+          <div class="mrow" style="color:hsl(var(--muted-fg))">＋ declare a rule…</div>
+        </div>
+        <div class="be">⛁ <code>canon_rule</code> → critic + packer head</div>
+      </div>
+
+      <div class="comp">
+        <div class="ch"><span class="ico">🗺</span><span class="nm">World Map</span><span class="bdg later">LATER</span><span class="win"><span>⮜</span><span>▢</span><span>⧉</span></span></div>
+        <div class="what">Spatial map of places with pins (genre-dependent; author-uploaded or generated).</div>
+        <div class="prev" style="padding:4px">
+          <svg viewBox="0 0 220 76" style="width:100%;height:68px">
+            <path d="M20,60 Q60,20 110,40 T200,30 L200,70 L20,70 Z" fill="hsl(170 40% 92%)" stroke="hsl(var(--accent))" stroke-width="1"/>
+            <circle cx="70" cy="44" r="3" fill="hsl(var(--destructive))"/><text x="76" y="46" font-size="7">Ford</text>
+            <circle cx="150" cy="36" r="3" fill="hsl(var(--destructive))"/><text x="156" y="38" font-size="7">Gate</text>
+          </svg>
+        </div>
+        <div class="be">⛁ places + author upload (MinIO)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ GROUP C · WRITE & AI ════ -->
+  <div class="group">
+    <div class="ghead"><h2>C · Write &amp; AI</h2><span class="gc">6 components</span><span class="gd">— compose, ground, and check</span></div>
+    <div class="grid">
+
+      <div class="comp">
+        <div class="ch"><span class="ico">✍</span><span class="nm">Manuscript Editor</span><span class="bdg v1">V1</span><span class="win"><span>⮜</span><span>▢</span><span>⧉</span></span></div>
+        <div class="what">The prose surface. Inline AI continuation (streaming) + selection tools (rewrite/expand/describe).</div>
+        <div class="prev serif">
+          The Gate of Ash rose out of the fog like a wound that never closed.
+          <span class="ghost">He let his empty fingers fall open…</span>
+        </div>
+        <div class="be">⛁ LLM <code>/v1/llm/stream</code> → <code>draft</code></div>
+      </div>
+
+      <div class="comp">
+        <div class="ch"><span class="ico">🔎</span><span class="nm">Grounding</span><span class="bdg v1">V1</span><span class="win"><span>⮜</span><span>▢</span><span>⧉</span></span></div>
+        <div class="what">The live RAG context for the current scene — present cast, lore, active rules. Pin / exclude.</div>
+        <div class="prev" style="font-size:11px">
+          <div class="cut" style="border-top:none;color:hsl(var(--destructive))">⏳ canon ≤ Ch.12·S3</div>
+          <div class="mrow"><span class="tg ch">char</span> Kael — swordless 📌</div>
+          <div class="mrow"><span class="tg lo">place</span> Gate of Ash 📌</div>
+          <div class="mrow"><span class="tg ru">rule</span> sword is lost — 1 conflict</div>
+        </div>
+        <div class="be">⛁ RAG packer · <code>drawers/search</code></div>
+      </div>
+
+      <div class="comp">
+        <div class="ch"><span class="ico">🛡</span><span class="nm">Continuity Critic</span><span class="bdg v1">V1</span><span class="win"><span>⮜</span><span>▢</span><span>⧉</span></span></div>
+        <div class="what">Calibrated LLM-judge scores the draft: coherence, voice, pacing, canon-consistency.</div>
+        <div class="prev" style="font-size:11px">
+          <div class="mrow">Coherence<div class="bar" style="flex:1;margin-left:6px"><i style="width:91%;background:hsl(var(--success))"></i></div><b>.91</b></div>
+          <div class="mrow">Voice<div class="bar" style="flex:1;margin-left:6px"><i style="width:86%;background:hsl(var(--success))"></i></div><b>.86</b></div>
+          <div class="mrow">Pacing<div class="bar" style="flex:1;margin-left:6px"><i style="width:79%;background:hsl(var(--warning))"></i></div><b>.79</b></div>
+          <div class="mrow" style="color:hsl(var(--destructive))"><b>✗</b> canon conflict: drew a lost sword</div>
+        </div>
+        <div class="be">⛁ <code>loreweave_eval</code> (new prose dims)</div>
+      </div>
+
+      <div class="comp">
+        <div class="ch"><span class="ico">🎚</span><span class="nm">Style &amp; Voice</span><span class="bdg v1">V1</span><span class="win"><span>⮜</span><span>▢</span><span>⧉</span></span></div>
+        <div class="what">Prose-shape sliders + per-character voice profiles. Prepended to the drafter prompt.</div>
+        <div class="prev">
+          <div style="font-size:10px;color:hsl(var(--muted-fg))">Density · lean ◂▸ lush</div>
+          <div class="bar" style="margin:3px 0 7px"><i style="width:38%;background:hsl(var(--primary))"></i></div>
+          <div style="font-size:10px;color:hsl(var(--muted-fg));margin-bottom:3px">Kael's voice</div>
+          <div class="chips"><span class="pchip">terse</span><span class="pchip">understatement</span><span class="pchip">no purple prose</span></div>
+        </div>
+        <div class="be">⛁ <code>style_profile</code> / <code>voice_profile</code></div>
+      </div>
+
+      <div class="comp">
+        <div class="ch"><span class="ico">💬</span><span class="nm">AI Co-writer</span><span class="bdg v1">V1</span><span class="win"><span>⮜</span><span>▢</span><span>⧉</span></span></div>
+        <div class="what">Scene-aware brainstorm & ask — one tool among many, not the whole product.</div>
+        <div class="prev">
+          <div class="bub u">How would Mira hide her tell here?</div>
+          <div class="bub a">Have her over-explain — the rehearsed line you already planted…</div>
+        </div>
+        <div class="be">⛁ LLM <code>/stream</code> + scene grounding</div>
+      </div>
+
+      <div class="comp">
+        <div class="ch"><span class="ico">📚</span><span class="nm">References</span><span class="bdg later">LATER</span><span class="win"><span>⮜</span><span>▢</span><span>⧉</span></span></div>
+        <div class="what">Comps, influences, sample passages — retrieved semantically when relevant, never copied.</div>
+        <div class="prev">
+          <div class="chips" style="margin-bottom:6px"><span class="pchip tel">The Broken Earth</span><span class="pchip tel">wuxia duel pacing</span></div>
+          <div class="serif" style="font-style:italic;font-size:11px">"the most dangerous men had already lost everything they feared losing."</div>
+        </div>
+        <div class="be">⛁ <code>reference_source</code> + embeddings</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ GROUP D · TRACK ════ -->
+  <div class="group">
+    <div class="ghead"><h2>D · Track</h2><span class="gc">3 components</span><span class="gd">— history, progress, and the feedback loop</span></div>
+    <div class="grid">
+
+      <div class="comp">
+        <div class="ch"><span class="ico">🕰</span><span class="nm">Versions &amp; History</span><span class="bdg v1">V1</span><span class="win"><span>⮜</span><span>▢</span><span>⧉</span></span></div>
+        <div class="what">Every draft & revision of a scene. Diff two versions, restore an older one.</div>
+        <div class="prev" style="font-size:11px">
+          <div class="mrow"><span class="dot cur"></span> now · AI continue + your edits</div>
+          <div class="mrow"><span class="dot ok"></span> 14:02 · regenerated ending</div>
+          <div class="mrow"><span class="dot ok"></span> 13:40 · first AI draft</div>
+        </div>
+        <div class="be">⛁ <code>draft</code> / <code>revision</code> (append-only)</div>
+      </div>
+
+      <div class="comp">
+        <div class="ch"><span class="ico">📊</span><span class="nm">Progress &amp; Stats</span><span class="bdg later">LATER</span><span class="win"><span>⮜</span><span>▢</span><span>⧉</span></span></div>
+        <div class="what">Word count, pace, session goals, a writing-streak heatmap.</div>
+        <div class="prev">
+          <div style="font-size:18px;font-weight:800;color:hsl(35 85% 38%)">1,840 <span style="font-size:11px;color:hsl(var(--muted-fg));font-weight:600">/ 2,000 today</span></div>
+          <div class="bar" style="margin-top:6px"><i style="width:92%;background:hsl(var(--primary))"></i></div>
+        </div>
+        <div class="be">⛁ <code>draft</code> stats</div>
+      </div>
+
+      <div class="comp">
+        <div class="ch"><span class="ico">♻</span><span class="nm">Flywheel</span><span class="bdg v1">V1</span><span class="win"><span>⮜</span><span>▢</span><span>⧉</span></span></div>
+        <div class="what">What new canon your latest writing taught the graph — the loop that keeps the bible current.</div>
+        <div class="prev" style="font-size:11px">
+          <div style="font-weight:800;color:hsl(var(--success));margin-bottom:4px">+3 new facts</div>
+          <div class="mrow">• Kael now distrusts Mira openly</div>
+          <div class="mrow">• The gate takes a memory as toll</div>
+          <div class="mrow">• Mira knows the Hollow King's name</div>
+        </div>
+        <div class="be">⛁ approved chapter → extraction → graph</div>
+      </div>
+    </div>
+  </div>
+
+  </div>
+</body>
+</html>

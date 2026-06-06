@@ -299,5 +299,39 @@
   },
   "media_guard": {
     "protected": "Khối media được bảo vệ ở chế độ Cổ điển. Chuyển sang chế độ AI để sửa hoặc xóa."
+  },
+  "publish": {
+    "publish": "Xuất bản",
+    "republish": "Xuất bản lại",
+    "unpublish": "Hủy xuất bản",
+    "draft_badge": "Bản nháp",
+    "published_badge": "Đã xuất bản",
+    "confirm_title": "Hủy xuất bản chương này?",
+    "confirm_body": "Thao tác này gỡ chương khỏi canon — kiến thức và đoạn văn đã trích xuất sẽ bị thu hồi cho đến khi bạn xuất bản lại.",
+    "published_toast": "Đã xuất bản chương",
+    "unpublished_toast": "Đã hủy xuất bản chương",
+    "conflict_toast": "Bản nháp đã thay đổi kể từ khi bạn mở — tải lại trước khi xuất bản.",
+    "empty_toast": "Chương này chưa có nội dung để xuất bản — hãy viết gì đó trước.",
+    "save_first": "Lưu trước khi xuất bản",
+    "gate_pending": "{{pending}} trên {{total}} cảnh chưa hoàn thành",
+    "gate_no_scenes": "Tạo và hoàn thành ít nhất một cảnh để xuất bản"
+  },
+  "compare": {
+    "open": "So sánh",
+    "title": "So sánh phiên bản",
+    "back": "Về trình soạn thảo",
+    "left": "Phiên bản trái",
+    "right": "Phiên bản phải",
+    "side_by_side": "Cạnh nhau",
+    "inline": "Hợp nhất",
+    "no_revisions": "Chưa có phiên bản",
+    "need_two": "Chương này cần ít nhất hai phiên bản đã lưu để so sánh.",
+    "loading": "Đang tải…",
+    "diffing": "Đang tính khác biệt…",
+    "error": "Không tải được phần so sánh.",
+    "truncated": "Hai phiên bản quá lớn — hiển thị thay thế toàn bộ thay vì khác biệt chi tiết.",
+    "same": "Hai bên là cùng một phiên bản — không có khác biệt.",
+    "load_more": "Tải thêm ({{loaded}}/{{total}})",
+    "load_more_hint": "Tải các phiên bản cũ hơn vào danh sách chọn"
   }
 }

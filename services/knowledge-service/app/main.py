@@ -23,6 +23,7 @@ from app.routers import (
     context,
     health,
     internal_admin,
+    internal_backfill,
     internal_benchmark,
     internal_enrichment,
     internal_extraction,
@@ -193,14 +194,21 @@ async def lifespan(app: FastAPI):
         from app.events.dispatcher import EventDispatcher
         from app.events.handlers import (
             handle_chat_turn,
-            handle_chapter_saved,
+            handle_chapter_published,
+            handle_chapter_unpublished,
             handle_chapter_deleted,
             handle_glossary_entity_updated,
         )
 
         dispatcher = EventDispatcher()
         dispatcher.register("chat.turn_completed", handle_chat_turn)
-        dispatcher.register("chapter.saved", handle_chapter_saved)
+        # Canon Model CM3c: canon = published. BOTH graph extraction AND L3
+        # passage-ingest now trigger on chapter.published (at the pinned
+        # revision), never chapter.saved — so unreviewed draft prose never
+        # canonizes. chapter.saved is no longer consumed by knowledge (the
+        # handler was dropped); statistics-service still consumes it separately.
+        dispatcher.register("chapter.published", handle_chapter_published)
+        dispatcher.register("chapter.unpublished", handle_chapter_unpublished)
         dispatcher.register("chapter.deleted", handle_chapter_deleted)
         # C4 (K14) — auto glossary→KG propagation. glossary-service emits
         # glossary.entity_updated on every entity write (single + bulk
@@ -629,6 +637,7 @@ app.include_router(ping.public_router)
 app.include_router(ping.internal_router)
 app.include_router(context.router)
 app.include_router(internal_admin.router)
+app.include_router(internal_backfill.router)
 app.include_router(internal_benchmark.router)
 app.include_router(internal_enrichment.router)
 app.include_router(internal_extraction.router)

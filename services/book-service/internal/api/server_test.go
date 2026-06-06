@@ -138,6 +138,65 @@ func TestBuildSortRangeFilter(t *testing.T) {
 	}
 }
 
+func TestAppendEditorialStatusFilter(t *testing.T) {
+	t.Parallel()
+
+	bookID := uuid.New()
+	baseSel := "c.book_id=$1 AND c.lifecycle_state='active'"
+	baseCnt := "book_id=$1 AND lifecycle_state='active'"
+
+	// Empty es → no-op pass-through (default: all chapters).
+	sel, cnt, args := appendEditorialStatusFilter(baseSel, baseCnt, []any{bookID}, "")
+	if sel != baseSel || cnt != baseCnt || len(args) != 1 {
+		t.Fatalf("empty es: got sel=%q cnt=%q args=%d", sel, cnt, len(args))
+	}
+
+	// es=draft → editorial_status filter at $2, NO published_revision_id check.
+	sel, cnt, args = appendEditorialStatusFilter(baseSel, baseCnt, []any{bookID}, "draft")
+	if sel != baseSel+" AND c.editorial_status=$2" {
+		t.Fatalf("draft sel: %q", sel)
+	}
+	if cnt != baseCnt+" AND editorial_status=$2" {
+		t.Fatalf("draft cnt: %q", cnt)
+	}
+	if len(args) != 2 || args[1] != "draft" {
+		t.Fatalf("draft args: %v", args)
+	}
+
+	// es=published → editorial_status filter AND published_revision_id IS NOT NULL
+	// (the canon-pinnable gate, matching the worker enumeration).
+	sel, cnt, args = appendEditorialStatusFilter(baseSel, baseCnt, []any{bookID}, "published")
+	wantSel := baseSel + " AND c.editorial_status=$2 AND c.published_revision_id IS NOT NULL"
+	wantCnt := baseCnt + " AND editorial_status=$2 AND published_revision_id IS NOT NULL"
+	if sel != wantSel {
+		t.Fatalf("published sel: %q", sel)
+	}
+	if cnt != wantCnt {
+		t.Fatalf("published cnt: %q", cnt)
+	}
+	if len(args) != 2 || args[1] != "published" {
+		t.Fatalf("published args: %v", args)
+	}
+
+	// R2-BLOCK#2 regression: when sort-range args precede it, the status
+	// placeholder must be $4 (post-append len), NOT collide with $2/$3 — this
+	// is exactly the arithmetic that, if wrong, silently blackouts the gate.
+	from, to := 3, 7
+	selR, cntR, argsR := buildSortRangeFilter(baseSel, baseCnt, []any{bookID}, &from, &to)
+	selR, cntR, argsR = appendEditorialStatusFilter(selR, cntR, argsR, "published")
+	if selR != baseSel+" AND c.sort_order >= $2 AND c.sort_order <= $3"+
+		" AND c.editorial_status=$4 AND c.published_revision_id IS NOT NULL" {
+		t.Fatalf("composed sel: %q", selR)
+	}
+	if cntR != baseCnt+" AND sort_order >= $2 AND sort_order <= $3"+
+		" AND editorial_status=$4 AND published_revision_id IS NOT NULL" {
+		t.Fatalf("composed cnt: %q", cntR)
+	}
+	if len(argsR) != 4 || argsR[3] != "published" {
+		t.Fatalf("composed args: %v", argsR)
+	}
+}
+
 func TestHelpers(t *testing.T) {
 	t.Parallel()
 

@@ -180,6 +180,15 @@ export function useChatMessages(
         const reader = res.body?.getReader();
         if (!reader) throw new Error('No response body');
 
+        // Explicitly cancel the reader on abort — do NOT rely on fetch
+        // propagating the abort to the stream. If it doesn't (mocked fetch in
+        // tests, or some runtimes), the pending read() below never resolves and
+        // the loop leaks forever (process-exit hang). cancel() ends read() with
+        // {done:true}. See feedback_sse_reader_must_cancel_on_abort.
+        const cancelReader = () => void reader.cancel().catch(() => {});
+        if (controller.signal.aborted) cancelReader();
+        else controller.signal.addEventListener('abort', cancelReader, { once: true });
+
         const decoder = new TextDecoder();
         let buffer = '';
 

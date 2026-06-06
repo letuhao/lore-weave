@@ -299,5 +299,39 @@
   },
   "media_guard": {
     "protected": "メディアブロックはクラシックモードで保護されています。編集または削除するにはAIモードに切り替えてください。"
+  },
+  "publish": {
+    "publish": "公開",
+    "republish": "再公開",
+    "unpublish": "非公開",
+    "draft_badge": "下書き",
+    "published_badge": "公開済み",
+    "confirm_title": "この章を非公開にしますか？",
+    "confirm_body": "この章を正典から削除します。抽出された知識とパッセージは、再公開するまで取り消されます。",
+    "published_toast": "章を公開しました",
+    "unpublished_toast": "章を非公開にしました",
+    "conflict_toast": "開いてから下書きが変更されました。公開する前に再読み込みしてください。",
+    "empty_toast": "この章には公開する内容がありません。先に何か書いてください。",
+    "save_first": "公開する前に保存してください",
+    "gate_pending": "{{total}}個中{{pending}}個のシーンが未完了です",
+    "gate_no_scenes": "公開するには、少なくとも1つのシーンを作成して完了してください"
+  },
+  "compare": {
+    "open": "比較",
+    "title": "リビジョンを比較",
+    "back": "エディターに戻る",
+    "left": "左のリビジョン",
+    "right": "右のリビジョン",
+    "side_by_side": "左右に並べる",
+    "inline": "インライン",
+    "no_revisions": "リビジョンなし",
+    "need_two": "比較するには、保存されたリビジョンが2つ以上必要です。",
+    "loading": "読み込み中…",
+    "diffing": "差分を計算中…",
+    "error": "比較を読み込めませんでした。",
+    "truncated": "リビジョンが大きすぎるため、詳細な差分ではなく全置換を表示します。",
+    "same": "両側が同じリビジョンです — 差分はありません。",
+    "load_more": "さらに読み込む ({{loaded}}/{{total}})",
+    "load_more_hint": "古いリビジョンを選択肢に読み込む"
   }
 }

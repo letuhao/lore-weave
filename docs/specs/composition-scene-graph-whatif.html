@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — Scene Graph · What-if / Branch</title>
+<style>
+  :root{
+    --bg:25 8% 8%; --fg:40 30% 95%; --card:25 7% 11%; --pop:25 7% 13%;
+    --primary:35 85% 55%; --primary-fg:25 10% 6%;
+    --secondary:25 6% 16%; --muted:25 5% 16%; --muted-fg:30 8% 62%;
+    --accent:170 45% 50%; --accent-fg:170 45% 88%;
+    --destructive:0 72% 58%; --success:150 65% 48%; --warning:38 92% 55%;
+    --border:25 6% 18%;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --serif:"Iowan Old Style",Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:var(--sans);background:hsl(var(--bg));color:hsl(var(--fg));font-size:13px;-webkit-font-smoothing:antialiased}
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  .app{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+
+  /* header */
+  .ovh{display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid hsl(var(--border));background:hsl(var(--card));flex-shrink:0}
+  .ovh .t{font-weight:700;font-size:13px}
+  .ovh .tag{font-size:9.5px;font-weight:700;background:hsl(var(--primary)/.16);color:hsl(var(--primary));border-radius:99px;padding:2px 8px}
+  .ovh .chip{font-size:12px;color:hsl(var(--muted-fg));background:hsl(var(--secondary));border:1px solid hsl(var(--border));border-radius:99px;padding:3px 10px}
+  .ovh .x{margin-left:auto;border:1px solid hsl(var(--border));border-radius:6px;padding:5px 10px;font-size:11.5px;font-weight:600;color:hsl(var(--muted-fg))}
+  .ovh .x:hover{color:hsl(var(--fg));background:hsl(var(--secondary))}
+
+  .body{flex:1;display:flex;min-height:0}
+
+  /* canvas */
+  .canvas{flex:1;position:relative;overflow:auto;background-color:hsl(25 9% 9%);background-image:radial-gradient(hsl(25 6% 15%) 1px,transparent 1px);background-size:24px 24px}
+  .legend{position:absolute;top:12px;left:14px;z-index:5;display:flex;gap:14px;font-size:11px;color:hsl(var(--muted-fg));background:hsl(var(--card)/.85);backdrop-filter:blur(4px);border:1px solid hsl(var(--border));border-radius:8px;padding:7px 11px}
+  .legend .k{display:flex;align-items:center;gap:6px}
+  .legend .ln{width:20px;border-top:2px solid}
+  .cv{position:relative;width:920px;height:340px;margin:52px 24px 24px}
+  .links{position:absolute;inset:0;pointer-events:none}
+  .nd{position:absolute;width:180px;background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:10px;padding:9px 11px;z-index:2}
+  .nd .sn{font-size:9.5px;font-weight:800;border-radius:5px;padding:2px 6px;display:inline-block;color:hsl(var(--primary-fg));background:hsl(var(--primary))}
+  .nd .tt{font-family:var(--serif);font-weight:600;font-size:13.5px;margin:6px 0 3px}
+  .nd .sy{font-size:11px;color:hsl(var(--muted-fg));line-height:1.35}
+  .nd.canon{border-left:3px solid hsl(var(--primary))}
+  .nd.cur{box-shadow:0 0 0 2px hsl(var(--primary)/.3)}
+  /* what-if branch node */
+  .nd.wif{border:1.5px dashed hsl(var(--accent));background:hsl(170 30% 12%)}
+  .nd.wif .sn{background:hsl(var(--accent));color:#06201b}
+  .nd.wif .wbadge{position:absolute;top:-9px;right:8px;font-size:9px;font-weight:800;background:hsl(var(--accent));color:#06201b;border-radius:99px;padding:1px 7px}
+  /* node hover toolbar */
+  .ndtools{position:absolute;bottom:-13px;left:50%;transform:translateX(-50%);display:flex;gap:4px;opacity:0;transition:opacity .12s;z-index:4}
+  .nd:hover .ndtools{opacity:1}
+  .ndtools button{font-size:10px;font-weight:700;background:hsl(var(--pop));border:1px solid hsl(var(--border));border-radius:99px;padding:3px 9px;color:hsl(var(--fg));white-space:nowrap;box-shadow:0 2px 8px #0007}
+  .ndtools button:hover{border-color:hsl(var(--accent));color:hsl(var(--accent))}
+  /* judge badge floating on the branch */
+  .jbadge{position:absolute;z-index:3;background:hsl(var(--pop));border:1px solid hsl(var(--border));border-radius:9px;padding:7px 10px;font-size:11px;box-shadow:0 6px 18px #0008;max-width:230px}
+  .jbadge .jh{font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:hsl(var(--accent-fg));margin-bottom:4px}
+  .jbadge .jl{display:flex;align-items:center;gap:6px;padding:2px 0}
+  .jbadge .bad{color:hsl(var(--destructive));font-weight:600}
+  .jbadge .good{color:hsl(var(--success))}
+  .jbadge .up{color:hsl(var(--warning))}
+
+  /* what-if prompt bubble */
+  .wbubble{position:absolute;z-index:8;width:280px;background:hsl(var(--pop));border:1px solid hsl(var(--accent)/.5);border-radius:11px;box-shadow:0 14px 40px #000b;padding:11px;display:none}
+  .wbubble.on{display:block}
+  .wbubble .wt{font-weight:700;font-size:12.5px;margin-bottom:7px}
+  .wbubble input{width:100%;background:hsl(var(--bg));border:1px solid hsl(var(--border));border-radius:7px;padding:8px 10px;font-size:12px;color:hsl(var(--fg))}
+  .wbubble input::placeholder{color:hsl(var(--muted-fg)/.6)}
+  .wsug{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}
+  .wsug button{font-size:10.5px;border:1px solid hsl(var(--border));background:hsl(var(--bg));border-radius:99px;padding:3px 8px;color:hsl(var(--muted-fg))}
+  .wsug button:hover{border-color:hsl(var(--accent));color:hsl(var(--accent))}
+  .wgo{width:100%;background:hsl(var(--accent));color:#06201b;border-radius:7px;padding:8px;font-weight:700;font-size:12px;margin-top:4px}
+
+  /* inspector */
+  .insp{width:330px;flex-shrink:0;border-left:1px solid hsl(var(--border));background:hsl(var(--card));display:flex;flex-direction:column;overflow-y:auto}
+  .ihead{padding:11px 13px;border-bottom:1px solid hsl(var(--border));display:flex;align-items:center;gap:8px}
+  .ihead .it{font-weight:700;font-size:13px}
+  .ihead .pill{margin-left:auto;font-size:9px;font-weight:800;background:hsl(var(--accent)/.18);color:hsl(var(--accent-fg));border-radius:99px;padding:2px 8px}
+  .ibody{padding:13px}
+  .sand{font-size:11.5px;color:hsl(var(--muted-fg));background:hsl(var(--accent)/.08);border:1px solid hsl(var(--accent)/.25);border-radius:8px;padding:8px 10px;margin-bottom:12px}
+  .prm{font-family:var(--serif);font-size:14px;color:hsl(var(--fg));border-left:3px solid hsl(var(--accent));padding-left:10px;margin-bottom:14px;line-height:1.4}
+  .secttl{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:hsl(var(--muted-fg));margin:6px 0 7px}
+  .vrow{display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 0}
+  .vrow .vn{width:92px;color:hsl(var(--muted-fg))}
+  .vrow .vv{font-weight:700;margin-left:auto}
+  .vrow .vv.bad{color:hsl(var(--destructive))}.vrow .vv.good{color:hsl(var(--success))}.vrow .vv.up{color:hsl(var(--warning))}
+  .conflict{font-size:11.5px;color:hsl(var(--destructive));background:hsl(var(--destructive)/.1);border:1px solid hsl(var(--destructive)/.25);border-radius:8px;padding:7px 9px;margin:8px 0}
+  .acts{display:flex;flex-direction:column;gap:7px;margin-top:14px}
+  .acts button{display:flex;align-items:center;justify-content:center;gap:7px;border-radius:8px;padding:9px;font-size:12.5px;font-weight:700;border:1px solid hsl(var(--border));color:hsl(var(--fg))}
+  .acts .promote{background:hsl(var(--primary));color:hsl(var(--primary-fg));border-color:hsl(var(--primary))}
+  .acts .promote:hover{background:hsl(35 85% 50%)}
+  .acts .ghost:hover{border-color:hsl(var(--accent));color:hsl(var(--accent))}
+  .acts .disc:hover{border-color:hsl(var(--destructive));color:hsl(var(--destructive))}
+  .hr{height:1px;background:hsl(var(--border));margin:16px 0}
+  .take{border:1px solid hsl(var(--border));border-radius:8px;padding:9px;margin:7px 0;background:hsl(var(--bg));cursor:pointer}
+  .take:hover{border-color:hsl(var(--primary)/.5)}
+  .take.sel{border-color:hsl(var(--primary));box-shadow:0 0 0 2px hsl(var(--primary)/.2)}
+  .take .th{display:flex;align-items:center;gap:7px;font-size:10px;font-weight:800;text-transform:uppercase;color:hsl(var(--muted-fg));margin-bottom:5px}
+  .take .tp{font-family:var(--serif);font-size:12px;color:hsl(40 22% 84%);line-height:1.45}
+  .empty{padding:40px 16px;text-align:center;color:hsl(var(--muted-fg));font-size:12.5px;display:none}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="ovh">
+    <span class="t">🎬 Scene Graph</span><span class="tag">opt-in · power</span>
+    <span class="chip">📖 Ch.12 — Ashfall</span>
+    <span class="chip" style="color:hsl(var(--accent-fg));border-color:hsl(var(--accent)/.4)">⑂ What-if exploration</span>
+    <button class="x">✕ Back to editor</button>
+  </div>
+
+  <div class="body">
+    <!-- CANVAS -->
+    <div class="canvas">
+      <div class="legend">
+        <div class="k"><span class="ln" style="border-color:hsl(var(--primary))"></span> canonical path (your manuscript)</div>
+        <div class="k"><span class="ln" style="border-color:hsl(var(--accent));border-top-style:dashed"></span> what-if branch (sandbox)</div>
+        <div class="k">⚖ judge scores each branch</div>
+      </div>
+
+      <div class="cv">
+        <svg class="links" viewBox="0 0 920 340" preserveAspectRatio="none">
+          <defs>
+            <marker id="aa" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="hsl(35 85% 55%)"/></marker>
+            <marker id="at" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="hsl(170 45% 50%)"/></marker>
+          </defs>
+          <!-- canonical -->
+          <path d="M200,138 L474,138" id="lk_s2s3base" fill="none" stroke="hsl(35 85% 55%)" stroke-width="2.5"/>
+          <path d="M200,138 L250,138" fill="none" stroke="hsl(35 85% 55%)" stroke-width="2.5"/>
+          <path d="M430,138 C455,138 455,78 478,78" fill="none" stroke="hsl(35 85% 55%)" stroke-width="2.5" marker-end="url(#aa)"/>
+          <path d="M660,78 L708,78" fill="none" stroke="hsl(35 85% 55%)" stroke-width="2.5" marker-end="url(#aa)"/>
+          <!-- what-if branch (sandbox) -->
+          <g id="branchLinks">
+            <path d="M430,138 C455,138 455,248 478,248" fill="none" stroke="hsl(170 45% 50%)" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#at)"/>
+            <path d="M660,248 L708,248" fill="none" stroke="hsl(170 45% 50%)" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#at)"/>
+          </g>
+        </svg>
+
+        <!-- canonical nodes -->
+        <div class="nd canon" style="left:20px;top:100px"><span class="sn">S1</span><div class="tt">Arrival</div><div class="sy">reach the dead arch at dusk</div></div>
+        <div class="nd canon" style="left:250px;top:100px"><span class="sn">S2</span><div class="tt">The Warning</div><div class="sy">the toll is named — fork point</div>
+          <div class="ndtools"><button class="wifBtn">⑂ What-if</button><button>⧉ Takes</button></div>
+        </div>
+        <div class="nd canon cur" id="nodeS3" style="left:480px;top:40px"><span class="sn">S3</span><div class="tt">Confrontation</div><div class="sy">nothing left to draw</div>
+          <div class="ndtools"><button class="wifBtn">⑂ What-if</button><button id="takesBtn">⧉ Takes (3)</button></div>
+        </div>
+        <div class="nd canon" id="nodeS4" style="left:710px;top:40px"><span class="sn">S4</span><div class="tt">Aftermath</div><div class="sy">a toll paid in memory</div></div>
+
+        <!-- what-if branch nodes -->
+        <div id="branchNodes">
+          <div class="nd wif" style="left:480px;top:210px"><span class="wbadge">⑂ what-if</span><span class="sn">S3′</span><div class="tt">Confrontation</div><div class="sy">Mira betrays him at the gate</div></div>
+          <div class="nd wif" style="left:710px;top:210px"><span class="sn">S4′</span><div class="tt">Betrayed</div><div class="sy">Kael alone, gate sealed behind</div></div>
+        </div>
+        <!-- judge badge on branch -->
+        <div class="jbadge" id="jbadge" style="left:480px;top:300px">
+          <div class="jh">⚖ branch vs canon</div>
+          <div class="jl bad">✗ breaks rule: Mira hidden → Ch.14</div>
+          <div class="jl"><span class="good">✓</span> coherence .88</div>
+          <div class="jl"><span class="up">▲</span> tension +0.20 · pacing +0.10</div>
+        </div>
+
+        <!-- what-if prompt bubble -->
+        <div class="wbubble" id="wbubble" style="left:250px;top:200px">
+          <div class="wt">⑂ What if… <span style="color:hsl(var(--muted-fg));font-weight:400">(from S2)</span></div>
+          <input placeholder="describe the divergence…" value="Mira betrays him here, instead of Ch.14" />
+          <div class="wsug">
+            <button>Mira betrays now</button>
+            <button>Kael has a hidden blade</button>
+            <button>the gate refuses them</button>
+          </div>
+          <button class="wgo" id="wgo">✦ Explore branch</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- INSPECTOR -->
+    <div class="insp">
+      <div class="ihead"><span class="it" id="ititle">⑂ What-if branch</span><span class="pill" id="ipill">SANDBOX</span></div>
+      <div class="ibody" id="ibody">
+        <div class="sand">🧪 This branch is a <b>sandbox</b> — it doesn't touch your manuscript until you <b>promote</b> it.</div>
+        <div class="prm">"Mira betrays him here, instead of Ch.14."</div>
+
+        <div class="secttl">Judge verdict (branch vs canon)</div>
+        <div class="conflict">✗ <b>Canon conflict:</b> rule "Mira's betrayal hidden → Ch.14" is broken by this branch.</div>
+        <div class="vrow"><span class="vn">Coherence</span><div style="flex:1"></div><span class="vv good">.88</span></div>
+        <div class="vrow"><span class="vn">Tension</span><div style="flex:1"></div><span class="vv up">▲ +0.20</span></div>
+        <div class="vrow"><span class="vn">Pacing</span><div style="flex:1"></div><span class="vv up">▲ +0.10</span></div>
+        <div class="vrow"><span class="vn">Voice (Kael)</span><div style="flex:1"></div><span class="vv good">.85</span></div>
+
+        <div class="acts">
+          <button class="promote" id="promote">✓ Promote branch to canonical</button>
+          <button class="ghost wifBtn">⑂ New what-if</button>
+          <button class="ghost disc" id="discard">🗑 Discard branch</button>
+        </div>
+
+        <div class="hr"></div>
+        <div class="secttl">Alternate takes — S3 Confrontation</div>
+        <div class="take sel"><div class="th">take 1 · current</div><div class="tp">"I have nothing left to draw," he said, letting his empty fingers fall open.</div></div>
+        <div class="take"><div class="th">take 2 · colder</div><div class="tp">He smiled at the empty place where the sword had been. "Then we are both unarmed."</div></div>
+        <div class="take"><div class="th">take 3 · interior</div><div class="tp">There was no sword. There hadn't been for a long time. He had only the habit of a hand that still believed.</div></div>
+      </div>
+      <div class="empty" id="empty">No branch selected.<br><span style="font-size:11px">Hover a scene → <b style="color:hsl(var(--accent))">⑂ What-if</b> to explore one.</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const bubble=document.getElementById('wbubble');
+  const branchNodes=document.getElementById('branchNodes');
+  const branchLinks=document.getElementById('branchLinks');
+  const jbadge=document.getElementById('jbadge');
+  const ibody=document.getElementById('ibody');
+  const empty=document.getElementById('empty');
+  function showBubble(){ bubble.classList.add('on'); }
+  function hideBubble(){ bubble.classList.remove('on'); }
+  function setBranchVisible(v){
+    branchNodes.style.display=v?'block':'none';
+    branchLinks.style.display=v?'block':'none';
+    jbadge.style.display=v?'block':'none';
+    ibody.style.display=v?'block':'none';
+    empty.style.display=v?'none':'block';
+    document.getElementById('ipill').style.display=v?'inline':'none';
+  }
+  document.querySelectorAll('.wifBtn').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();showBubble();}));
+  document.getElementById('wgo').addEventListener('click',()=>{ hideBubble(); setBranchVisible(true); });
+  document.querySelectorAll('.wsug button').forEach(b=>b.addEventListener('click',()=>{document.querySelector('#wbubble input').value=b.textContent;}));
+  // discard → empty state
+  document.getElementById('discard').addEventListener('click',()=>setBranchVisible(false));
+  // promote → branch becomes canonical (recolor), old canonical fades
+  document.getElementById('promote').addEventListener('click',()=>{
+    branchNodes.querySelectorAll('.nd').forEach(n=>{ n.classList.remove('wif'); n.classList.add('canon'); const w=n.querySelector('.wbadge'); if(w) w.remove(); n.querySelector('.sn').style.background='hsl(var(--primary))'; n.querySelector('.sn').style.color='hsl(var(--primary-fg))'; });
+    branchLinks.querySelectorAll('path').forEach(p=>{ p.setAttribute('stroke','hsl(35 85% 55%)'); p.setAttribute('stroke-dasharray','0'); p.setAttribute('marker-end','url(#aa)'); });
+    document.getElementById('nodeS3').style.opacity='.35';
+    document.getElementById('nodeS4').style.opacity='.35';
+    jbadge.style.display='none';
+    document.getElementById('ititle').textContent='✓ Promoted to canonical';
+    document.getElementById('ipill').textContent='CANONICAL';
+    document.getElementById('ipill').style.background='hsl(var(--primary)/.18)';
+    document.getElementById('ipill').style.color='hsl(var(--primary))';
+    document.querySelector('.sand').innerHTML='✓ This branch is now your <b>canonical path</b>. The old S3→S4 was retired (kept in history).';
+  });
+  // takes button focuses takes
+  document.getElementById('takesBtn').addEventListener('click',e=>{e.stopPropagation();document.querySelector('.take').scrollIntoView({behavior:'smooth'});});
+  document.querySelectorAll('.take').forEach(t=>t.addEventListener('click',()=>{document.querySelectorAll('.take').forEach(x=>x.classList.toggle('sel',x===t));}));
+  // close bubble on outside click
+  document.addEventListener('click',e=>{ if(bubble.classList.contains('on') && !e.target.closest('#wbubble') && !e.target.closest('.wifBtn')) hideBubble(); });
+  // default: branch explored + inspector populated
+  setBranchVisible(true);
+  if(location.hash.includes('prompt')) showBubble();
+</script>
+</body>
+</html>

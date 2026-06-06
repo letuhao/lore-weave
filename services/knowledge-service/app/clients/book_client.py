@@ -47,6 +47,7 @@ class BookClient:
         *,
         from_sort: int | None = None,
         to_sort: int | None = None,
+        editorial_status: str | None = None,
     ) -> int | None:
         """Return the number of active chapters for a book.
 
@@ -56,6 +57,12 @@ class BookClient:
         extraction estimate endpoint so users previewing "chapters
         10–20 only" see the range count rather than the whole book.
 
+        CM3c — the extraction cost-estimate passes ``editorial_status=
+        'published'`` so the preview count matches what the gated
+        whole-book rebuild actually extracts (drafts are skipped). The
+        same server-side filter backs the worker enumeration → no
+        estimate/enumeration divergence (R1-BLOCK#1).
+
         Returns None on any failure (timeout, connection error, bad
         response) — the caller decides how to handle missing data.
         """
@@ -64,6 +71,8 @@ class BookClient:
             params["from_sort"] = str(from_sort)
         if to_sort is not None:
             params["to_sort"] = str(to_sort)
+        if editorial_status is not None:
+            params["editorial_status"] = editorial_status
         url = f"{self._base_url}/internal/books/{book_id}/chapters"
         tid = trace_id_var.get()
         try:
@@ -224,6 +233,48 @@ class BookClient:
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             logger.warning(
                 "book-service unavailable fetching chapter text: %s trace_id=%s",
+                exc, tid,
+            )
+            return None
+
+    async def get_chapter_revision_text(
+        self, book_id: UUID, chapter_id: UUID, revision_id: str,
+    ) -> str | None:
+        """CM3c — fetch a chapter's PINNED published revision text.
+
+        Calls the CM3a internal route
+        ``/internal/books/{book_id}/chapters/{chapter_id}/revisions/{revision_id}/text``
+        which returns ``text_content`` for exactly the published revision
+        (vs the live draft). Used by passage-ingest on ``chapter.published``
+        so the semantic index canonizes only author-published content.
+
+        Returns None on any failure — the caller (passage ingester, with
+        ``delete_stale_on_missing=False``) treats None as "keep existing
+        passages" so a transient fetch failure does NOT wipe canon.
+        """
+        url = (
+            f"{self._base_url}/internal/books/{book_id}/chapters/{chapter_id}"
+            f"/revisions/{revision_id}/text"
+        )
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(
+                url, headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                logger.warning(
+                    "book-service %s returned %d, trace_id=%s",
+                    url, resp.status_code, tid,
+                )
+                return None
+            data = resp.json()
+            text = data.get("text_content")
+            if not isinstance(text, str) or not text.strip():
+                return None
+            return text
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning(
+                "book-service unavailable fetching revision text: %s trace_id=%s",
                 exc, tid,
             )
             return None

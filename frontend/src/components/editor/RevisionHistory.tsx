@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, RotateCcw } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { X, RotateCcw, GitCompare } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
@@ -25,6 +26,7 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
 }) {
   const { t } = useTranslation('editor');
   const { accessToken } = useAuth();
+  const navigate = useNavigate();
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [loading, setLoading] = useState(true);
   const [preview, setPreview] = useState<PreviewState>(null);
@@ -79,8 +81,17 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
   // — History list —
   return (
     <div className="flex h-full flex-col">
-      <div className="flex-shrink-0 border-b px-4 py-3 text-xs font-semibold text-muted-foreground">
-        {t('revision.header', { count: revisions.length })}
+      <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b px-4 py-3 text-xs font-semibold text-muted-foreground">
+        <span>{t('revision.header', { count: revisions.length })}</span>
+        {revisions.length >= 2 && (
+          <button
+            data-testid="revision-compare-open"
+            onClick={() => navigate(`/books/${bookId}/chapters/${chapterId}/compare`)}
+            className="inline-flex items-center gap-1 rounded-md border px-2 py-1 font-normal hover:text-primary"
+          >
+            <GitCompare className="h-3 w-3" /> {t('compare.open', { defaultValue: 'Compare' })}
+          </button>
+        )}
       </div>
       <div className="flex-1 overflow-y-auto">
         {revisions.length === 0 && (

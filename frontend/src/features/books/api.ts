@@ -1,4 +1,5 @@
 import { apiJson, apiBase } from '@/api';
+import type { RevisionCompare } from './types';
 
 export type Visibility = 'private' | 'unlisted' | 'public';
 
@@ -33,6 +34,10 @@ export type Chapter = {
   trashed_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  // Canon Model (CM1): editorial lifecycle. canon = published. New chapters
+  // start 'draft'; existing chapters were migrated to 'published'.
+  editorial_status?: 'draft' | 'published';
+  published_revision_id?: string | null;
 };
 
 // Shared base from @/api (relative '' default → proxy→gateway). For multipart
@@ -181,6 +186,28 @@ export const booksApi = {
   trashChapter(token: string, bookId: string, chapterId: string) {
     return apiJson<void>(`/v1/books/${bookId}/chapters/${chapterId}`, { method: 'DELETE', token });
   },
+  // Canon Model CM-FE: publish snapshots the current server draft as the
+  // pinned canon revision (canon = published) and emits chapter.published →
+  // KG + L3 passages extract at that revision. `expectedDraftVersion` echoes
+  // the editor's draft_version so a concurrent edit elsewhere → 409
+  // CHAPTER_DRAFT_CONFLICT instead of silently publishing stale content.
+  publishChapter(token: string, bookId: string, chapterId: string, expectedDraftVersion?: number) {
+    return apiJson<Chapter>(`/v1/books/${bookId}/chapters/${chapterId}/publish`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(
+        expectedDraftVersion !== undefined ? { expected_draft_version: expectedDraftVersion } : {},
+      ),
+    });
+  },
+  // Unpublish flips the chapter back to draft and retracts its canon (KG facts
+  // + L3 passages) via chapter.unpublished. Destructive-ish — the UI confirms.
+  unpublishChapter(token: string, bookId: string, chapterId: string) {
+    return apiJson<Chapter>(`/v1/books/${bookId}/chapters/${chapterId}/unpublish`, {
+      method: 'POST',
+      token,
+    });
+  },
   restoreChapter(token: string, bookId: string, chapterId: string) {
     return apiJson<Chapter>(`/v1/books/${bookId}/chapters/${chapterId}/restore`, { method: 'POST', token });
   },
@@ -230,6 +257,14 @@ export const booksApi = {
       method: 'POST',
       token,
     });
+  },
+  // Compare two revisions of the same chapter (server-computed line diff).
+  compareRevisions(token: string, bookId: string, chapterId: string, left: string, right: string) {
+    const qs = new URLSearchParams({ left, right }).toString();
+    return apiJson<RevisionCompare>(
+      `/v1/books/${bookId}/chapters/${chapterId}/revisions/compare?${qs}`,
+      { token },
+    );
   },
   getCover(token: string, bookId: string): Promise<Blob> {
     return fetch(`${base()}/v1/books/${bookId}/cover`, {

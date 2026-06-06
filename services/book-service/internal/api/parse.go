@@ -248,11 +248,30 @@ RETURNING id
 			_, _ = tx.Exec(r.Context(),
 				`INSERT INTO chapter_drafts(chapter_id, body, draft_format, draft_updated_at, draft_version) VALUES($1,$2,'json',now(),1)`,
 				chapterID, jsonBody)
-			_, _ = tx.Exec(r.Context(),
-				`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,$3,$4,$5)`,
-				chapterID, jsonBody, "json", "imported from "+originalFilename, ownerID)
-			_, _ = tx.Exec(r.Context(),
-				`UPDATE chapters SET draft_revision_count=1 WHERE id=$1`, chapterID)
+			// Canon Model CM1: capture the import revision id (error-checked,
+			// NOT fire-and-forget) so the chapter can be pinned as published.
+			var importRevID uuid.UUID
+			if err := tx.QueryRow(r.Context(),
+				`INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,$3,$4,$5) RETURNING id`,
+				chapterID, jsonBody, "json", "imported from "+originalFilename, ownerID).Scan(&importRevID); err != nil {
+				tx.Rollback(r.Context())
+				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT",
+					fmt.Sprintf("insert revision: %v", err))
+				return
+			}
+			// Imported content is finished canon → publish it and pin the import
+			// revision (else CM3c has nothing to pin → imported canon never extracted).
+			// Error-checked (NOT fire-and-forget): this UPDATE is what actually pins
+			// the revision + flips to published — swallowing its error would commit an
+			// orphan revision with the chapter stuck at 'draft' (adversary review-code W1).
+			if _, err := tx.Exec(r.Context(),
+				`UPDATE chapters SET draft_revision_count=1, editorial_status='published', published_revision_id=$2 WHERE id=$1`,
+				chapterID, importRevID); err != nil {
+				tx.Rollback(r.Context())
+				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT",
+					fmt.Sprintf("publish imported chapter: %v", err))
+				return
+			}
 
 			for _, sc := range ch.Scenes {
 				_, err := tx.Exec(r.Context(),

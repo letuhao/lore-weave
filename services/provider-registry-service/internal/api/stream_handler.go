@@ -62,6 +62,11 @@ type streamRequest struct {
 	ToolChoice   any            `json:"tool_choice,omitempty"` // OpenAI-shaped; chat only
 	Temperature  *float64       `json:"temperature,omitempty"`
 	MaxTokens    *int           `json:"max_tokens,omitempty"`
+	// Reasoning controls — forwarded to the provider unchanged (the adapter's
+	// forwardOptionalChatFields allowlist). `reasoning_effort:"none"` turns OFF
+	// hidden thinking so reasoning_tokens don't burn the output budget.
+	ReasoningEffort    *string        `json:"reasoning_effort,omitempty"`
+	ChatTemplateKwargs map[string]any `json:"chat_template_kwargs,omitempty"`
 	StreamFormat string         `json:"stream_format,omitempty"`
 	Input        map[string]any `json:"input,omitempty"` // Phase 5a; tts only
 	TraceID      string         `json:"trace_id,omitempty"`
@@ -288,6 +293,39 @@ WHERE platform_model_id=$1 AND status='active'
 	}
 }
 
+// buildChatStreamInput maps a streamRequest onto the adapter input map the
+// adapter's Stream() reads (same shape as Invoke() input). Pure + unit-testable.
+// Optional fields stay ABSENT when unset; reasoning_effort / chat_template_kwargs
+// are threaded so forwardOptionalChatFields forwards them to the provider (e.g.
+// reasoning_effort:"none" to disable hidden thinking on reasoning models).
+func buildChatStreamInput(in streamRequest) map[string]any {
+	input := map[string]any{
+		"messages": in.Messages,
+	}
+	if in.Temperature != nil {
+		input["temperature"] = *in.Temperature
+	}
+	// Policy: max_tokens=0 means "let the model decide" — same as omitting.
+	// Prevents the footgun of sending `max_tokens: 0` to upstream providers that
+	// interpret it as "cap output at 0".
+	if in.MaxTokens != nil && *in.MaxTokens > 0 {
+		input["max_tokens"] = *in.MaxTokens
+	}
+	if in.Tools != nil {
+		input["tools"] = in.Tools
+	}
+	if in.ToolChoice != nil {
+		input["tool_choice"] = in.ToolChoice
+	}
+	if in.ReasoningEffort != nil {
+		input["reasoning_effort"] = *in.ReasoningEffort
+	}
+	if in.ChatTemplateKwargs != nil {
+		input["chat_template_kwargs"] = in.ChatTemplateKwargs
+	}
+	return input
+}
+
 // streamChat — Phase 1a chat streaming, factored out so doLlmStream can
 // branch on operation. Identical to the pre-Phase-5a inline body.
 func (s *Server) streamChat(
@@ -299,26 +337,7 @@ func (s *Server) streamChat(
 	in streamRequest,
 	guard *streamGuard,
 ) {
-	// Build adapter input map. The adapter's Stream() reads messages,
-	// temperature, max_tokens, tools — same shape as Invoke() input.
-	input := map[string]any{
-		"messages": in.Messages,
-	}
-	if in.Temperature != nil {
-		input["temperature"] = *in.Temperature
-	}
-	// Policy: max_tokens=0 means "let the model decide" — same as
-	// omitting. Prevents the footgun of sending `max_tokens: 0` to
-	// upstream providers that interpret it as "cap output at 0".
-	if in.MaxTokens != nil && *in.MaxTokens > 0 {
-		input["max_tokens"] = *in.MaxTokens
-	}
-	if in.Tools != nil {
-		input["tools"] = in.Tools
-	}
-	if in.ToolChoice != nil {
-		input["tool_choice"] = in.ToolChoice
-	}
+	input := buildChatStreamInput(in)
 
 	emit := func(chunk provider.StreamChunk) error {
 		select {

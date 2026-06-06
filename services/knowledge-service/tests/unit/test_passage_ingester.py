@@ -125,9 +125,13 @@ def test_chunk_overlap_has_no_midword_start():
 # ── ingester ────────────────────────────────────────────────────────
 
 
-def _mk_book_client(text: str | None = "chapter text " * 100) -> MagicMock:
+def _mk_book_client(
+    text: str | None = "chapter text " * 100,
+    revision_text: str | None = "chapter text " * 100,
+) -> MagicMock:
     client = MagicMock()
     client.get_chapter_text = AsyncMock(return_value=text)
+    client.get_chapter_revision_text = AsyncMock(return_value=revision_text)
     return client
 
 
@@ -307,3 +311,57 @@ async def test_delete_chapter_passages_delegates(monkeypatch):
     kwargs = underlying.await_args.kwargs
     assert kwargs["source_type"] == "chapter"
     assert kwargs["source_id"] == str(CHAPTER_ID)
+
+
+# ── CM3c: pinned-revision fetch + delete_stale_on_missing ────────────
+
+
+@pytest.mark.asyncio
+async def test_ingest_fetches_pinned_revision_when_revision_id_set(monkeypatch):
+    """CM3c: revision_id set → fetch the PINNED revision text (not the live
+    draft via get_chapter_text)."""
+    rev = uuid4()
+    book = _mk_book_client()
+    emb = _mk_embedding_client(n_vectors=1, dim=1024)
+    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", AsyncMock())
+    monkeypatch.setattr(
+        "app.extraction.passage_ingester.delete_passages_for_source",
+        AsyncMock(return_value=0),
+    )
+
+    await ingest_chapter_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        book_id=BOOK_ID, chapter_id=CHAPTER_ID, chapter_index=None,
+        embedding_model="bge-m3", embedding_dim=1024,
+        revision_id=rev,
+    )
+    book.get_chapter_revision_text.assert_awaited_once_with(
+        BOOK_ID, CHAPTER_ID, str(rev),
+    )
+    book.get_chapter_text.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ingest_keeps_passages_when_revision_missing_and_flag_false(monkeypatch):
+    """CM3c (R3-WARN#1): a transient pinned-revision fetch returning None with
+    delete_stale_on_missing=False must NOT delete existing passages (else L3
+    passages vanish while the graph half holds canon)."""
+    rev = uuid4()
+    book = _mk_book_client(revision_text=None)
+    emb = _mk_embedding_client()
+    delete = AsyncMock(return_value=0)
+    monkeypatch.setattr(
+        "app.extraction.passage_ingester.delete_passages_for_source", delete,
+    )
+
+    result = await ingest_chapter_passages(
+        MagicMock(), book, emb,
+        user_id=USER_ID, project_id=PROJECT_ID,
+        book_id=BOOK_ID, chapter_id=CHAPTER_ID, chapter_index=None,
+        embedding_model="bge-m3", embedding_dim=1024,
+        revision_id=rev, delete_stale_on_missing=False,
+    )
+    assert result.chunks_created == 0
+    delete.assert_not_awaited()  # passages preserved
+    emb.embed.assert_not_called()

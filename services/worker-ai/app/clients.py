@@ -66,6 +66,16 @@ class ChapterInfo:
     chapter_id: str
     title: str
     sort_order: int
+    # Canon Model CM3b: set only for the 'chapters_pending' drain path —
+    # revision_id pins the published revision to extract (vs the live draft);
+    # pending_id is the extraction_pending row to mark processed after.
+    # CM3c: on the manual 'chapters'/'all' path, list_chapters now ALSO sets
+    # revision_id (from published_revision_id) so the manual rebuild reads the
+    # pinned published revision via the same fetch branch; pending_id stays None
+    # there (nothing to mark). editorial_status carries the canon state.
+    revision_id: str | None = None
+    pending_id: UUID | None = None
+    editorial_status: str | None = None
 
 
 @dataclass(frozen=True)
@@ -442,12 +452,23 @@ class BookClient:
     async def aclose(self) -> None:
         await self._http.aclose()
 
-    async def list_chapters(self, book_id: UUID) -> list[ChapterInfo] | None:
-        """GET /internal/books/{book_id}/chapters — returns all chapters.
+    async def list_chapters(
+        self, book_id: UUID, editorial_status: str | None = None,
+    ) -> list[ChapterInfo] | None:
+        """GET /internal/books/{book_id}/chapters — returns chapters.
+
+        CM3c: pass ``editorial_status='published'`` to server-filter the list
+        (and its count) to canon=published chapters only — the manual
+        ``/extraction/start`` rebuild skips drafts this way, and the gate
+        matches the knowledge cost-estimate (no count divergence). Each item's
+        ``published_revision_id`` is mapped onto ``ChapterInfo.revision_id`` so
+        the per-chapter fetch loop reads the pinned published revision.
 
         Returns None on failure.
         """
         url = f"{self._base_url}/internal/books/{book_id}/chapters?limit=1000"
+        if editorial_status:
+            url += f"&editorial_status={editorial_status}"
         try:
             resp = await self._http.get(url)
             if resp.status_code != 200:
@@ -459,6 +480,8 @@ class BookClient:
                     chapter_id=item["chapter_id"],
                     title=item.get("title") or "",
                     sort_order=item.get("sort_order", 0),
+                    revision_id=item.get("published_revision_id"),
+                    editorial_status=item.get("editorial_status"),
                 )
                 for item in data.get("items", [])
             ]
@@ -551,6 +574,33 @@ class BookClient:
             return data.get("text_content") or None
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             logger.warning("book-service chapter text failed: %s", exc)
+            return None
+
+    async def get_chapter_revision_text(
+        self, book_id: UUID, chapter_id: str, revision_id: str,
+    ) -> str | None:
+        """GET /internal/books/{book_id}/chapters/{chapter_id}/revisions/{revision_id}/text (CM3a).
+
+        Returns the PINNED published revision's plain text (vs the live draft),
+        so canon=published graph extraction reads exactly what the author
+        published. Returns None on failure (worker → text-unavailable → skip).
+        """
+        url = (
+            f"{self._base_url}/internal/books/{book_id}/chapters/{chapter_id}"
+            f"/revisions/{revision_id}/text"
+        )
+        try:
+            resp = await self._http.get(url)
+            if resp.status_code != 200:
+                logger.warning(
+                    "book-service revision %s/%s: %d",
+                    chapter_id, revision_id, resp.status_code,
+                )
+                return None
+            data = resp.json()
+            return data.get("text_content") or None
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning("book-service revision text failed: %s", exc)
             return None
 
 

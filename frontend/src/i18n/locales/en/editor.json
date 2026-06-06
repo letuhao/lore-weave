@@ -299,5 +299,39 @@
   },
   "media_guard": {
     "protected": "Media blocks are protected in Classic mode. Switch to AI mode to edit or delete."
+  },
+  "publish": {
+    "publish": "Publish",
+    "republish": "Re-publish",
+    "unpublish": "Unpublish",
+    "draft_badge": "Draft",
+    "published_badge": "Published",
+    "confirm_title": "Unpublish chapter?",
+    "confirm_body": "This removes the chapter from canon — its extracted knowledge and passages will be retracted until you re-publish.",
+    "published_toast": "Chapter published",
+    "unpublished_toast": "Chapter unpublished",
+    "conflict_toast": "Draft changed since you opened it — reload before publishing.",
+    "empty_toast": "This chapter has no content to publish — write something first.",
+    "save_first": "Save before publishing",
+    "gate_pending": "{{pending}} of {{total}} scenes not yet done",
+    "gate_no_scenes": "Create and complete at least one scene to publish"
+  },
+  "compare": {
+    "open": "Compare",
+    "title": "Compare revisions",
+    "back": "Back to editor",
+    "left": "Left revision",
+    "right": "Right revision",
+    "side_by_side": "Side by side",
+    "inline": "Inline",
+    "no_revisions": "No revisions",
+    "need_two": "This chapter needs at least two saved revisions to compare.",
+    "loading": "Loading…",
+    "diffing": "Computing diff…",
+    "error": "Could not load the comparison.",
+    "truncated": "These revisions are very large — showing a full replace instead of a fine-grained diff.",
+    "same": "Both sides are the same revision — no differences.",
+    "load_more": "Load more ({{loaded}}/{{total}})",
+    "load_more_hint": "Load older revisions into the picker"
   }
 }
