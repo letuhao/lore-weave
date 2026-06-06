@@ -16,7 +16,7 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.config import settings
 from app.db.neo4j import neo4j_session
@@ -34,10 +34,19 @@ router = APIRouter(
 
 
 class FactForCheckRequest(BaseModel):
-    entity_ids: list[str] = Field(min_length=1, max_length=200)
+    # Knowledge :Entity ids and/or composition glossary cast ids (A2-S3 — the
+    # latter resolved via the glossary_entity_id FK). At least one non-empty.
+    entity_ids: list[str] = Field(default_factory=list, max_length=200)
+    glossary_entity_ids: list[str] = Field(default_factory=list, max_length=200)
     at_order: int = Field(ge=0)
     relation_limit: int = Field(default=50, ge=1, le=500)
     event_limit: int = Field(default=50, ge=1, le=500)
+
+    @model_validator(mode="after")
+    def _require_some_ids(self) -> "FactForCheckRequest":
+        if not self.entity_ids and not self.glossary_entity_ids:
+            raise ValueError("entity_ids or glossary_entity_ids must be non-empty")
+        return self
 
 
 @router.post("/{project_id}/fact-for-check", response_model=FactForCheck)
@@ -64,6 +73,7 @@ async def fact_for_check(project_id: UUID, body: FactForCheckRequest) -> FactFor
             user_id=str(user_id),
             project_id=str(project_id),
             entity_ids=body.entity_ids,
+            glossary_entity_ids=body.glossary_entity_ids,
             at_order=body.at_order,
             relation_limit=body.relation_limit,
             event_limit=body.event_limit,

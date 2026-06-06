@@ -45,6 +45,7 @@ __all__ = [
 
 class FactCheckEntity(BaseModel):
     entity_id: str
+    glossary_entity_id: str | None = None  # FK back to the glossary id (the cast id)
     name: str | None = None
     canonical_name: str | None = None
     kind: str | None = None
@@ -80,8 +81,18 @@ UNWIND $entity_ids AS eid
 MATCH (e:Entity {id: eid})
 WHERE e.user_id = $user_id
   AND ($project_id IS NULL OR e.project_id = $project_id)
-RETURN e.id AS id, e.name AS name,
+RETURN e.id AS id, e.glossary_entity_id AS glossary_entity_id, e.name AS name,
        e.canonical_name AS canonical_name, e.kind AS kind
+"""
+
+# A2-S3 — resolve composition's cast (glossary entity_ids) to knowledge :Entity
+# ids via the glossary_entity_id FK. The composition guard holds glossary ids
+# (suggest-cast), not knowledge canonical_ids.
+_RESOLVE_GLOSSARY_IDS_CYPHER = """
+UNWIND $glossary_entity_ids AS gid
+MATCH (e:Entity {user_id: $user_id, glossary_entity_id: gid})
+WHERE ($project_id IS NULL OR e.project_id = $project_id)
+RETURN e.id AS id
 """
 
 # Events at or before the check position whose participants include any of the
@@ -109,17 +120,32 @@ async def get_fact_for_check(
     *,
     user_id: str,
     project_id: str | None,
-    entity_ids: list[str],
+    entity_ids: list[str] | None = None,
+    glossary_entity_ids: list[str] | None = None,
     at_order: int,
     min_evidence: int = 1,
     relation_limit: int = 50,
     event_limit: int = 50,
 ) -> FactForCheck:
-    """Assemble the canon snapshot for `entity_ids` at reading position
-    `at_order`. See module docstring."""
+    """Assemble the canon snapshot for the entity set at reading position
+    `at_order`. The set is given as knowledge `:Entity` ids (`entity_ids`)
+    and/or composition glossary ids (`glossary_entity_ids`, resolved via the
+    `glossary_entity_id` FK). See module docstring."""
     if not isinstance(at_order, int):
         raise ValueError("at_order must be an int (reading-axis event_order)")
-    ids = list(dict.fromkeys(entity_ids))  # de-dup, preserve order
+    ids = list(dict.fromkeys(entity_ids or []))
+
+    # A2-S3 — resolve composition's glossary cast ids → knowledge :Entity ids.
+    if glossary_entity_ids:
+        gres = await run_read(
+            session, _RESOLVE_GLOSSARY_IDS_CYPHER,
+            user_id=user_id, project_id=project_id,
+            glossary_entity_ids=list(dict.fromkeys(glossary_entity_ids)),
+        )
+        async for rec in gres:
+            if rec["id"] not in ids:
+                ids.append(rec["id"])
+
     if not ids:
         return FactForCheck(at_order=at_order)
 
@@ -138,6 +164,7 @@ async def get_fact_for_check(
     names: set[str] = set()
     async for rec in ent_result:
         meta[rec["id"]] = {
+            "glossary_entity_id": rec["glossary_entity_id"],
             "name": rec["name"],
             "canonical_name": rec["canonical_name"],
             "kind": rec["kind"],
@@ -149,6 +176,7 @@ async def get_fact_for_check(
     entities = [
         FactCheckEntity(
             entity_id=eid,
+            glossary_entity_id=meta.get(eid, {}).get("glossary_entity_id"),
             name=meta.get(eid, {}).get("name"),
             canonical_name=meta.get(eid, {}).get("canonical_name"),
             kind=meta.get(eid, {}).get("kind"),

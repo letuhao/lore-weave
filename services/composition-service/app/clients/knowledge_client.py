@@ -188,6 +188,35 @@ class KnowledgeClient:
             "/v1/knowledge/drawers/search", params, bearer, key="hits", label="drawers",
         )
 
+    async def fact_for_check(
+        self, *, project_id: UUID, at_order: int,
+        glossary_entity_ids: list[str] | None = None,
+        entity_ids: list[str] | None = None,
+    ) -> dict[str, Any] | None:
+        """A2-S2/S3 — the canon snapshot (status@P + entities + relations +
+        events≤P) for the SCORE symbolic guard. POST /internal/projects/{id}/
+        fact-for-check (X-Internal-Token). The cast is composition's glossary
+        entity ids (resolved server-side via the glossary_entity_id FK).
+        Returns the snapshot dict or None on any failure (the guard degrades to
+        advisory — a knowledge outage must never block a generate, F1)."""
+        if not glossary_entity_ids and not entity_ids:
+            return None
+        url = f"{self._base_url}/internal/projects/{project_id}/fact-for-check"
+        payload: dict[str, Any] = {"at_order": at_order}
+        if glossary_entity_ids:
+            payload["glossary_entity_ids"] = list(glossary_entity_ids)
+        if entity_ids:
+            payload["entity_ids"] = list(entity_ids)
+        try:
+            resp = await self._http.post(url, json=payload, headers=self._internal_headers())
+            if resp.status_code != 200:
+                logger.warning("knowledge fact-for-check → %d", resp.status_code)
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("knowledge fact-for-check unavailable: %s", exc)
+            return None
+
     async def _jwt_get_list(
         self, path: str, params: dict[str, Any], bearer: str, *, key: str, label: str,
     ) -> list[dict[str, Any]]:

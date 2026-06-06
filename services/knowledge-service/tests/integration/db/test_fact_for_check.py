@@ -117,5 +117,36 @@ async def test_fact_for_check_empty_ids(neo4j_driver, test_user):
     async with neo4j_driver.session() as session:
         snap = await get_fact_for_check(
             session, user_id=test_user, project_id="p-1",
-            entity_ids=[], at_order=1_000)
+            entity_ids=[], glossary_entity_ids=[], at_order=1_000)
     assert snap.entities == [] and snap.events == [] and snap.relations == []
+
+
+@pytest.mark.asyncio
+async def test_fact_for_check_resolves_glossary_cast_ids(neo4j_driver, test_user):
+    """A2-S3 — composition passes GLOSSARY cast ids; fact-for-check resolves
+    them to :Entity via the glossary_entity_id FK and returns status@P + the
+    glossary_entity_id back for correlation."""
+    P = "p-1"
+    async with neo4j_driver.session() as session:
+        kai = await merge_entity(session, user_id=test_user, project_id=P,
+                                 name="Kai", kind="character", source_type="book_content")
+        # stamp the glossary FK (set by glossary-sync in production).
+        await session.run(
+            "MATCH (e:Entity {id:$id}) SET e.glossary_entity_id = 'g-kai'", id=kai.id)
+        src = await upsert_extraction_source(session, user_id=test_user, project_id=P,
+                                             source_type="chapter", source_id="ch-1")
+        st = await merge_entity_status(session, user_id=test_user, project_id=P,
+                                       entity_id=kai.id, status="gone", from_order=5_000_000)
+        await add_evidence(session, user_id=test_user, target_label="EntityStatus",
+                           target_id=st.id, source_id=src.id, extraction_model="x",
+                           confidence=0.9, job_id="j")
+        # query by the GLOSSARY id (what composition holds), not the :Entity id.
+        snap = await get_fact_for_check(
+            session, user_id=test_user, project_id=P,
+            glossary_entity_ids=["g-kai"], at_order=9_000_000)
+
+    assert len(snap.entities) == 1
+    e = snap.entities[0]
+    assert e.entity_id == kai.id
+    assert e.glossary_entity_id == "g-kai"  # correlated back to the cast id
+    assert e.status == "gone"               # status@9M (after the death)
