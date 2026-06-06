@@ -23,7 +23,7 @@ const baseVersion = {
   translated_body_json: null, translated_body_format: 'text',
   source_language: 'en', target_language: 'vi', input_tokens: 10, output_tokens: 8,
   usage_log_id: null, error_message: null, started_at: null, finished_at: null,
-  created_at: '2026-01-01', quality_score: 72, qa_rounds_used: 2,
+  created_at: '2026-01-01', quality_score: 72, qa_rounds_used: 2, is_glossary_stale: false,
 };
 
 function renderViewer() {
@@ -73,5 +73,20 @@ describe('TranslationViewer needs-review badge', () => {
     await waitFor(() =>
       expect(setActiveVersion).toHaveBeenCalledWith('tok-1', 'c1', 'v1', false));
     expect(screen.queryByText('viewer.publish_anyway')).toBeNull();
+  });
+
+  it('M5c: shows the glossary-stale badge when is_glossary_stale', async () => {
+    getChapterVersion.mockResolvedValue(
+      { ...baseVersion, unresolved_high_count: 0, is_glossary_stale: true });
+    renderViewer();
+    expect(await screen.findByTitle('viewer.glossary_stale_title')).toBeInTheDocument();
+  });
+
+  it('M5c: hides the glossary-stale badge when not stale', async () => {
+    getChapterVersion.mockResolvedValue(
+      { ...baseVersion, unresolved_high_count: 0, is_glossary_stale: false });
+    renderViewer();
+    await screen.findByText('Hello world');
+    expect(screen.queryByTitle('viewer.glossary_stale_title')).toBeNull();
   });
 });

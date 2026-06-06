@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Copy, SplitSquareVertical, AlertTriangle } from 'lucide-react';
+import { Check, Copy, SplitSquareVertical, AlertTriangle, History } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { versionsApi, type ChapterTranslation } from '../api';
@@ -131,6 +131,15 @@ export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSe
             >
               <AlertTriangle className="h-2.5 w-2.5" />
               {t('viewer.needs_review', { count: version.unresolved_high_count })}
+            </span>
+          )}
+          {version.is_glossary_stale && (
+            <span
+              title={t('viewer.glossary_stale_title')}
+              className="flex items-center gap-1 rounded-full bg-[#5496e8]/10 px-2 py-0.5 text-[10px] font-medium text-[#5496e8]"
+            >
+              <History className="h-2.5 w-2.5" />
+              {t('viewer.glossary_stale')}
             </span>
           )}
         </div>

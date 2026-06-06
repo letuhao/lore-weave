@@ -32,6 +32,8 @@ export type ChapterTranslation = {
   quality_score: number | null;
   unresolved_high_count: number;
   qa_rounds_used: number;
+  // M5c: true when a glossary change post-dates this translation.
+  is_glossary_stale: boolean;
 };
 
 export type TranslationJob = {
