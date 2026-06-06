@@ -1,54 +1,39 @@
 ---
-description: Enter/resume the LOOM track — the lore-grounded co-writer (composition-service) + its Canon Model foundation. Loads track context, enforces the boundary, runs the 12-phase v2.2 human-in-loop workflow at the current milestone.
+description: Run the 12-phase v2.2 human-in-loop workflow on a task — classify size, then drive CLARIFY→…→RETRO with PO checkpoints and the workflow-gate. General-purpose, for any service/track.
 ---
 
-# /loom — Work the LOOM track
+# /loom — Run the human-in-loop 12-phase workflow
 
-**LOOM** = LoreWeave's loom. The **Canon Model** is the *warp* (the fixed threads: *published* canon, in-world/reading order, provenance); the AI **co-writer** weaves the *weft* (new prose) through it. Spoiler-safety = you can only weave with threads already laid down. LOOM turns a book into living canon, then co-writes grounded in it.
+`/loom` weaves a task through the **12-phase v2.2 human-in-loop workflow**. The phases, roles, size table, and anti-skip rules live in **`CLAUDE.md` → "Task Workflow"** — that file is the SSOT; this command is just the invocation harness around it. `/loom` is **general-purpose**: it is NOT tied to any one feature, service, or track.
 
-Optional argument: a milestone id (e.g. `/loom CM1`, `/loom M4`) to scope to it. No argument → read the **▶ NEXT** block and continue there.
+**Argument** (optional): what to work on — a free-text task, a ticket/milestone id, or `continue`.
+- A task/id → scope the workflow to it.
+- `continue` or empty → read the relevant **▶ NEXT SESSION** block (default `docs/sessions/SESSION_HANDOFF.md`; or a track-specific `docs/**/SESSION_HANDOFF.md` if the task clearly belongs to one) and resume there.
 
-## Track SSOT (read these, in this order, on invoke)
-1. **`docs/03_planning/LOOM/SESSION_HANDOFF.md`** — track charter + locked decisions + build order + **▶ NEXT SESSION** block. This is the entry point.
-2. The design SSOT for the **current** milestone only:
-   - Canon Model (Cycle 0): `docs/specs/2026-06-03-canon-model.md` + `docs/plans/2026-06-03-canon-model-cycle0.md` (**§8 is corrected/authoritative**).
-   - Composition (V0): `docs/specs/2026-06-02-composition-design.md` + `docs/plans/2026-06-02-composition-service-v0.md`.
-   Read only the section(s) for the milestone you're on — not the whole corpus.
-
-## Hard boundary (NON-NEGOTIABLE)
-- LOOM touches: **book-service · worker-infra · knowledge-service · worker-ai · extraction SDK · api-gateway-bff · frontend** + the new **composition-service**.
-- LOOM **NEVER touches `services/lore-enrichment-service/`** — it is a sibling track (another agent's work), not a dependency. Primitive 4 (provenance) is *design-aligned* with enrichment's H0, never code-coupled.
-- Additive infra only (docker-compose, postgres-init, gateway) — add LOOM blocks, don't edit enrichment's.
-
-## Workflow — 12-phase v2.2 human-in-loop (default)
+## The 12 phases
 `CLARIFY → DESIGN → REVIEW → PLAN → BUILD → VERIFY → REVIEW → QC → POST-REVIEW → SESSION → COMMIT → RETRO`
-- **PO checkpoints:** end of CLARIFY + POST-REVIEW (STOP and WAIT for the human).
-- **`/amaw` opt-in** for these LOOM milestones (cross-service / schema / migration / isolation): **CM1, CM3 (a/b/c), composition M1, M5**. Invoke `/amaw` at the start of those.
-- **Proactively suggest `/review-impl`** at POST-REVIEW for: the Canon Model cutover, the worker-ai drainer/retraction, provenance, prose-source concurrency, isolation — anything load-bearing.
-
-## Build order (current → done)
-**Cycle 0 — Canon Model (prerequisite):**
-`CM1` book editorial lifecycle + `/publish` + migration → `CM3a` revision_id event + internal revision-text endpoint → `CM2` relay confirm (no-op) → `CM3b` knowledge queue + worker-ai coalescing drainer + pinned-revision + retract-before-reextract + B7 fix → `CM3c` passage-ingest + manual-rebuild gating → `CM4` dual-order + backfills → `CM-FE` publish affordance → `CM5` provenance.
-**Then Composition V0:** `M0`→`M9` (skeleton → schema → repos → clients/prose-source → packer → isolation → engine+critic → contract+gateway → FE tab → OI-1 publish wiring).
+- **PO checkpoints — STOP and WAIT for the human:** end of **CLARIFY** and at **POST-REVIEW**.
+- Phases may be skipped **only** per the size-table allowances in `CLAUDE.md` (XS: CLARIFY+PLAN · S: PLAN). Never self-authorize a skip — STOP and ask.
 
 ## Process when /loom is invoked
-1. **Read** `docs/03_planning/LOOM/SESSION_HANDOFF.md` (the ▶ NEXT block). State the current milestone + its goal in one line.
-2. **Classify size** for the milestone: `bash scripts/workflow-gate.sh size <SIZE> <files> <logic> <sideeffects>` (run from repo root only — memory: subdir invocation splits state). Most CM/M milestones are M–XL.
-3. **If the milestone is in the `/amaw` list above**, announce and invoke `/amaw` before BUILD.
-4. **Enter CLARIFY** (`bash scripts/workflow-gate.sh phase clarify`); recover acceptance criteria from the milestone's plan row; **STOP at CLARIFY end for the PO checkpoint** unless resuming a phase already past it.
-5. Proceed through the 12 phases. At VERIFY, since LOOM is cross-service, the evidence string needs a **live-smoke token** (or an explicit `LIVE-SMOKE deferred to D-<NAME>` / `live infra unavailable`).
-6. **At POST-REVIEW:** present concise summary, STOP and WAIT. Suggest `/review-impl` if load-bearing.
-7. **At SESSION:** overwrite the **▶ NEXT SESSION** block in `docs/03_planning/LOOM/SESSION_HANDOFF.md` (header date/HEAD, NEXT items, Deferred). Land it in the same commit as the code.
-8. **COMMIT:** stage only changed files (no `git add -A`); message names the milestone + review fixes + test count.
+1. **Scope** the task from the argument (or the ▶ NEXT block on `continue`/empty). State the task + its goal in one line.
+2. **Classify size** — from the **repo root only** (a subdir invocation splits the state file):
+   `bash scripts/workflow-gate.sh size <XS|S|M|L|XL> <files> <logic> <sideeffects>`
+   (count files touched · logic changes · side effects, per the `CLAUDE.md` size table).
+3. **`/amaw` opt-in** when the task is **L+ and load-bearing**: data migrations, schema changes, tenant/isolation boundaries, security-critical paths, multi-system contracts. Announce + invoke `/amaw` before BUILD. Don't invoke for everyday work.
+4. **Enter CLARIFY** (`bash scripts/workflow-gate.sh phase clarify`); recover the acceptance criteria from the task's spec/plan row. **STOP at CLARIFY end** for the PO checkpoint (skip the stop only when resuming a phase already past it).
+5. Drive the phases with the gate (`phase <name>` / `complete <name> "<evidence>"`). **VERIFY is an evidence gate** — run the command, read the full output, *then* claim. If the change touches **≥2 services**, the VERIFY evidence needs a **live-smoke token** (or `LIVE-SMOKE deferred to D-<NAME>` / `live infra unavailable: <reason>`).
+6. **REVIEW (code)** is 2-stage (spec compliance + code quality). **At POST-REVIEW:** present a concise summary (files, decisions, verify evidence), **STOP and WAIT**. Proactively suggest **`/review-impl`** for load-bearing code (auth/credentials, tenant isolation, destructive ops, injection defenses, new service boundaries, concurrency, migrations).
+7. **SESSION:** overwrite the **▶ NEXT SESSION** block in the relevant `SESSION_HANDOFF.md` (date/HEAD, NEXT items, Deferred). Land it in the **same commit** as the code.
+8. **COMMIT:** stage only changed files (no `git add -A`); message names the phase/milestone + review fixes + test count. **Push only with explicit user approval.**
+9. **RETRO:** non-obvious decisions or workarounds → `add_lesson` to ContextHub if available, else a note in the handoff. Skip if nothing notable.
 
-## Operational notes (LOOM-specific, hard-won)
-- **Rebuild BOTH service + worker images** for any service that has one (book/knowledge/worker-ai/composition) — separate tags; use `scripts/build-stack.sh` (stamps the git-SHA freshness label). Stale-image false-greens are a recurring class here.
-- Canon Model **CM3b** is the load-bearing risk: coalescing drainer (respect the one-active-job/project unique index — NO job-per-event), pinned-revision fetch, and **retract-before-reextract** (wire `remove_evidence_for_source` + `cleanup_zero_evidence_nodes`, else re-publish drifts canon).
-- **canon = published:** never re-introduce extract-on-draft-save. Composition publishes a chapter only when **all its scenes are `status='done'`** (chapter-gate).
-- Cache the **glossary `entity_id`** (stable), never the knowledge `canonical_id` (rename-sensitive).
+## Operational notes
+- Run `scripts/workflow-gate.sh` (or `python scripts/workflow-gate.py`) **from the repo root** — a subdir invocation splits the `.workflow-state.json`.
+- This monorepo ships many services as **separate service + worker images**. When verifying a change live, rebuild **both** (stale-image false-greens are a recurring trap); `scripts/build-stack.sh` stamps a git-SHA freshness label.
+- Cross-service contracts hide bugs that unit/mocks miss — prefer a real live-smoke at VERIFY when ≥2 services are touched.
 
 ## What /loom does NOT do
-- Does NOT change the default workflow for other tracks.
-- Does NOT touch lore-enrichment.
-- Does NOT skip phases or PO checkpoints.
-- Is the LOOM track's entry/resume command — it reads state from the SESSION_HANDOFF, it does not invent the next step.
+- Does NOT skip phases or the PO checkpoints.
+- Does NOT self-authorize a size/skip change — if the task turns out bigger than classified, STOP, reclassify, announce.
+- Is NOT tied to any single track, service, or feature — scope comes from the argument or the handoff.
