@@ -57,6 +57,18 @@
     "save_changes": "儲存變更",
     "create": "建立類型"
   },
+  "ai_suggestions": {
+    "title": "AI 建議",
+    "intro": "這些實體由 AI 從你的書中擷取發現，但尚未加入詞彙表。將值得保留的採用，其餘拒絕——被拒絕的名稱不會再次建議。",
+    "empty_title": "沒有 AI 建議",
+    "empty_desc": "當擷取發現尚未加入詞彙表的實體時，會顯示在此供你審查。",
+    "mentions": "出現於 {{count}} 章",
+    "promote": "採用",
+    "reject": "拒絕",
+    "toast_promoted": "已採用「{{name}}」",
+    "toast_rejected": "已拒絕「{{name}}」",
+    "unnamed": "（未命名）"
+  },
   "unknown": {
     "title": "未知種類",
     "intro": "這些實體在擷取時帶有尚未存在於分類體系中的種類，因此被保留在此處而非被丟棄。請逐一處理：對應到既有種類（可選擇建立可重用的別名）或為其建立新種類。",

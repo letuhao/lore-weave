@@ -89,6 +89,21 @@ export const glossaryApi = {
   },
 
   /**
+   * Review queue: AI-suggested draft entities knowledge-service wrote back
+   * (glossary AI-pipeline v2, mui #1). Reuses the entities list filtered to
+   * status=draft + tag ai-suggested — no dedicated endpoint needed.
+   */
+  listAiSuggestions(
+    bookId: string,
+    token: string,
+  ): Promise<GlossaryEntityListResponse> {
+    return apiJson<GlossaryEntityListResponse>(
+      `${BASE}/books/${bookId}/entities?status=draft&tags=ai-suggested&limit=200`,
+      { token },
+    );
+  },
+
+  /**
    * Create an alias `alias_code → kind_id`. When `reassign` is true, also moves every
    * unknown entity whose source_kind_code == alias_code (scoped to book_id if given)
    * onto that kind — the "merge" action.

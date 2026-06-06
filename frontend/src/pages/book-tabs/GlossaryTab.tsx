@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Plus, Search, Filter, Trash2, Settings2, Layers, Sparkles, HelpCircle } from 'lucide-react';
+import { BookOpen, Plus, Search, Filter, Trash2, Settings2, Layers, Sparkles, HelpCircle, Lightbulb } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
@@ -12,10 +12,11 @@ import { cn } from '@/lib/utils';
 import { KindEditor } from './KindEditor';
 import { GenreGroupsPanel } from '@/features/glossary/components/GenreGroupsPanel';
 import { UnknownEntitiesPanel } from '@/features/glossary/components/UnknownEntitiesPanel';
+import { AiSuggestionsPanel } from '@/features/glossary/components/AiSuggestionsPanel';
 import { EntityEditorModal } from '@/components/entity-editor';
 import { ExtractionWizard } from '@/features/extraction/ExtractionWizard';
 
-type GlossaryView = 'entities' | 'kinds' | 'genres' | 'unknown';
+type GlossaryView = 'entities' | 'kinds' | 'genres' | 'unknown' | 'ai_suggestions';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-amber-400/15 text-amber-400',
@@ -69,6 +70,16 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
     staleTime: 60 * 1000, // badge-only read; resolve actions invalidate explicitly
   });
   const unknownCount = unknownData?.total ?? 0;
+
+  // AI-suggestions inbox count — drives the conditional trigger + badge.
+  // Shares the ['glossary-ai-suggestions', bookId] key with the panel/hook.
+  const { data: aiSuggestData } = useQuery({
+    queryKey: ['glossary-ai-suggestions', bookId],
+    queryFn: () => glossaryApi.listAiSuggestions(bookId, accessToken!),
+    enabled: !!accessToken,
+    staleTime: 60 * 1000,
+  });
+  const aiSuggestCount = aiSuggestData?.total ?? 0;
 
   const entities = entityData?.items ?? [];
   const total = entityData?.total ?? 0;
@@ -136,6 +147,9 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
   if (view === 'unknown') {
     return <UnknownEntitiesPanel bookId={bookId} kinds={kinds} onClose={() => setView('entities')} />;
   }
+  if (view === 'ai_suggestions') {
+    return <AiSuggestionsPanel bookId={bookId} onClose={() => setView('entities')} />;
+  }
 
   if (loading && entities.length === 0) {
     return (
@@ -170,6 +184,17 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
             <Sparkles className="h-3.5 w-3.5" />
             {t('glossary.extract')}
           </button>
+          {aiSuggestCount > 0 && (
+            <button
+              onClick={() => setView('ai_suggestions')}
+              data-testid="glossary-ai-suggestions-trigger"
+              className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+            >
+              <Lightbulb className="h-3.5 w-3.5" />
+              {t('glossary.ai_suggestions')}
+              <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold">{aiSuggestCount}</span>
+            </button>
+          )}
           {unknownCount > 0 && (
             <button
               onClick={() => setView('unknown')}

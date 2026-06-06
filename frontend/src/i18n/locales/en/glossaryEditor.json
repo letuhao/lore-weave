@@ -57,6 +57,18 @@
     "save_changes": "Save Changes",
     "create": "Create Genre"
   },
+  "ai_suggestions": {
+    "title": "AI Suggestions",
+    "intro": "These entities were discovered by AI extraction across your book but aren't in your glossary yet. Promote the ones worth keeping; reject the rest — a rejected name won't be suggested again.",
+    "empty_title": "No AI suggestions",
+    "empty_desc": "When extraction finds entities not yet in your glossary, they'll appear here for review.",
+    "mentions": "appears in {{count}} chapters",
+    "promote": "Promote",
+    "reject": "Reject",
+    "toast_promoted": "Promoted \"{{name}}\"",
+    "toast_rejected": "Rejected \"{{name}}\"",
+    "unnamed": "(unnamed)"
+  },
   "unknown": {
     "title": "Unknown Kinds",
     "intro": "These entities arrived from extraction with a kind that doesn't exist in your taxonomy yet, so they were parked here instead of being dropped. Resolve each one by mapping it to an existing kind (optionally as a reusable alias) or by creating a new kind for it.",

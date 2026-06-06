@@ -57,6 +57,18 @@
     "save_changes": "Lưu thay đổi",
     "create": "Tạo thể loại"
   },
+  "ai_suggestions": {
+    "title": "Đề xuất từ AI",
+    "intro": "Những thực thể này được AI phát hiện trong sách nhưng chưa có trong glossary. Duyệt những cái đáng giữ; từ chối phần còn lại — tên đã từ chối sẽ không được đề xuất lại.",
+    "empty_title": "Không có đề xuất nào",
+    "empty_desc": "Khi trích xuất tìm thấy thực thể chưa có trong glossary, chúng sẽ hiện ở đây để bạn duyệt.",
+    "mentions": "xuất hiện ở {{count}} chương",
+    "promote": "Duyệt",
+    "reject": "Từ chối",
+    "toast_promoted": "Đã duyệt \"{{name}}\"",
+    "toast_rejected": "Đã từ chối \"{{name}}\"",
+    "unnamed": "(chưa đặt tên)"
+  },
   "unknown": {
     "title": "Loại chưa rõ",
     "intro": "Những thực thể này được trích xuất với một loại chưa có trong hệ phân loại của bạn, nên được giữ lại ở đây thay vì bị bỏ đi. Hãy xử lý từng mục bằng cách ánh xạ sang một loại hiện có (tùy chọn dưới dạng bí danh tái sử dụng) hoặc tạo loại mới cho nó.",
