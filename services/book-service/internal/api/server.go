@@ -181,6 +181,7 @@ func (s *Server) Router() http.Handler {
 
 		r.Route("/{book_id}", func(r chi.Router) {
 			r.Get("/", s.getBook)
+			r.Get("/search", s.searchChapterText) // raw-search Phase 1 (lexical leg)
 			r.Patch("/", s.patchBook)
 			r.Delete("/", s.trashBook)
 			r.Post("/restore", s.restoreBook)

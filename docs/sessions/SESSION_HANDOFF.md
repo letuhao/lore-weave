@@ -6,6 +6,21 @@
 
 ## ▶ NEXT SESSION — start here
 
+### ▶ RAW SEARCH (branch `raw-search/foundation`, off `origin/main`)
+
+**State: DESIGN LOCKED + Phase-1 BE (lexical leg) BUILT.** New workstream — the missing **raw chapter-text** layer beneath glossary/knowledge/wiki (all lossy derivatives); serves authoring + extraction/trích-lục. Spec [`2026-06-07-raw-search.md`](../specs/2026-06-07-raw-search.md) (PART I design + PART II ATAM-lite eval; 7/7 confirm-at-BUILD resolved). Plan [`2026-06-07-raw-search.md`](../plans/2026-06-07-raw-search.md) (3 phases; ADJ-1..4 PO-acked).
+
+**Phase-1 BE shipped (book-service, single-service):** `BE-1` pg_trgm + `idx_chapter_blocks_trgm` GIN as a **best-effort separate Exec in `Up()`** (review-impl MED-1 — NOT in `schemaSQL`, where a privilege failure would abort the whole schema-init txn). `BE-2` `GET /v1/books/{id}/search?q=&surface=&limit=` — JWT + `ensureOwnerBook` tenant gate; **ILIKE-primary + `similarity()` rank** over draft `chapter_blocks`; rune-offset highlight + verbatim snippet; `surface:"draft"`/`matchType:"lexical"`; `purge_pending`→404; surface enum validated. 6 new test funcs (~20 cases); **go build/vet/test green**. `/review-impl`: MED-1, MED-2, LOW-1, LOW-2 fixed; 2 COSMETIC deferred.
+
+**NEXT:** **FE-1** — `frontend/src/features/raw-search/` (api/types/hook/components; mirror `useDrawerSearch`/`DrawerResultCard`/`FilterToolbar`; TanStack Query; jump-to-source; `draft` badge). Then **Phase 2** (semantic leg via knowledge `:Passage` + RRF orchestrator at `/v1/knowledge/books/{id}/search`).
+
+**Deferred (raw search):**
+- **D-RAWSEARCH-P1-LIVE-SMOKE** — real-stack CJK lexical search (pg_trgm on 封神演义) not yet live-verified; unit-covered + helpers proven. Smoke when book-service + DB are up.
+- **D-RAWSEARCH-FE-CODEPOINT-OFFSETS** (review-impl MED-2) — FE-1 must render highlights/jump by Unicode **code point** (`[...str]`), not UTF-16 `.slice`, else supplementary-plane chars misalign. Offsets in the API are code-point indices.
+- **D-RAWSEARCH-HANDLER-COVERAGE** (COSMETIC-1) — handler branch flow (401/400/404, score-boost, labels) relies on live-smoke (repo has no DB mock); optionally extract a pure row→result mapper.
+
+---
+
 ### ▶ TRANSLATION PIPELINE V3 (branch `feat/translation-pipeline-v3`)
 
 **State: M0 + M1(a–c) + M2 + M3 + M4(a–c) + config-plumbing + M5(a–d) DONE** (M1d, M4d deferred). **M5 COMPLETE.** M0 scaffold; M1 rule-tier verify + re-translate + romanization; M2 LLM verifier + QA loop; M3 semantic batching; M4a knowledge read-port; M4b relations+bios brief → Translator+Verifier; M4c cross-chapter memo + cold-start name harvest (**G4 complete**); **config-plumbing: `qa_depth`/`max_qa_rounds`/`verifier_model_*` now flow settings→job→coordinator→worker (mirror `pipeline_version`) — `thorough` + per-role verifier model configurable**. All PO-approved + `/review-impl`'d. Full suite **408 passed**; **parity** preserved (default `pipeline_version='v2'`).

@@ -163,3 +163,26 @@ func TestBackfillIsMarkerGatedOneTime(t *testing.T) {
 		}
 	}
 }
+
+// ── Raw search Phase 1 (lexical leg) - 2026-06-07 ───────────────────────────
+// Regression lock for the pg_trgm extension + GIN trigram index. IF NOT EXISTS
+// = idempotent (book-service has no down-migration; Up() re-run is rollback).
+func TestRawSearchTrigramMigration(t *testing.T) {
+	if !strings.Contains(rawSearchExtensionSQL, "CREATE EXTENSION IF NOT EXISTS pg_trgm") {
+		t.Fatalf("raw-search must create pg_trgm idempotently, got %q", rawSearchExtensionSQL)
+	}
+	for _, frag := range []string{
+		"CREATE INDEX IF NOT EXISTS idx_chapter_blocks_trgm",
+		"ON chapter_blocks USING gin (text_content gin_trgm_ops)",
+	} {
+		if !strings.Contains(rawSearchIndexSQL, frag) {
+			t.Fatalf("raw-search index DDL missing: %q", frag)
+		}
+	}
+	// review-impl MED-1: pg_trgm DDL must NOT live in schemaSQL — a CREATE
+	// EXTENSION failure there aborts the whole schema-init transaction on a
+	// restricted-privilege role. It must be a best-effort separate Exec.
+	if strings.Contains(schemaSQL, "pg_trgm") {
+		t.Fatal("pg_trgm DDL must be best-effort in Up(), not in schemaSQL (review-impl MED-1)")
+	}
+}
