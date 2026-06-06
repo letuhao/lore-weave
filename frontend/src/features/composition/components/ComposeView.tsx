@@ -4,13 +4,14 @@
 // a ghost preview — it is NOT in the editor doc and is NEVER autosaved until the
 // author clicks Accept (§13 SC4), which calls onAccept() to insert it and then
 // runs an advisory critique.
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCompositionStream } from '../hooks/useCompositionStream';
 import { useCritique } from '../hooks/useCritique';
 import { useAutoGenerate, useCorrection } from '../hooks/useAutoGenerate';
 import { CandidatesView } from './CandidatesView';
-import type { CorrectionBody, Critic } from '../types';
+import { CanonGatePanel } from './CanonGatePanel';
+import type { CanonViolation, CorrectionBody, Critic } from '../types';
 
 type ReasoningPref = 'off' | 'auto' | 'low' | 'medium' | 'high';
 
@@ -27,6 +28,7 @@ type Props = {
 export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName, token, onAccept }: Props) {
   const { t } = useTranslation('composition');
   const [guide, setGuide] = useState('');
+  const guideRef = useRef<HTMLTextAreaElement>(null);
   // Reasoning preference. "auto" lets the server decide per the selected model
   // (adaptive pass-through vs our rule-based scorer); off/low/medium/high are
   // explicit overrides.
@@ -72,6 +74,21 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
   const rejectAll = () => { correct({ kind: 'reject' }); auto.reset(); };
   const toggleDiverge = (on: boolean) => { setDiverge(on); auto.reset(); stream.clearGhost(); };
 
+  // ── A2-S4a: canon Revise — the author steers a re-generate. Pre-fill the guide
+  // with the violation context + focus the box (PO decision: author steers, not a
+  // one-click re-run). Appended (newline-sep) so any existing guidance is kept.
+  const revise = (v: CanonViolation) => {
+    const name = v.name || v.matched || v.entity_id;
+    const line =
+      t('reviseGuide', {
+        defaultValue:
+          'Keep canon consistent: {{name}} is gone from the story by this scene — do not portray them as present or acting.',
+        name,
+      }) + (v.why ? ` (${v.why})` : '');
+    setGuide((prev) => (prev.trim() ? `${prev.trim()}\n${line}` : line));
+    guideRef.current?.focus();
+  };
+
   // ── V0 cowrite-stream gate capture (slice 5) ──
   // Accepting the single stream ghost as-is is NOT a correction (H2; the inline
   // ghost is not editable, so a post-accept editor edit isn't cleanly captured).
@@ -88,6 +105,7 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
   return (
     <div className="flex flex-col gap-2 p-3">
       <textarea
+        ref={guideRef}
         className="w-full resize-none rounded border border-neutral-300 bg-transparent p-2 text-sm dark:border-neutral-600"
         rows={2}
         placeholder={t('guidePlaceholder', { defaultValue: 'Optional guidance for the co-writer…' })}
@@ -147,6 +165,10 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
         <div data-testid="compose-auto-error" className="rounded bg-red-50 p-2 text-xs text-red-700 dark:bg-red-950">
           {t('generateFailed', { defaultValue: 'Generation failed — try again.' })}
         </div>
+      )}
+      {/* A2-S4a canon gate verdict on the converged winner (hard/advisory/unchecked). */}
+      {diverge && auto.data?.canon && !auto.isPending && (
+        <CanonGatePanel canon={auto.data.canon} onRevise={revise} />
       )}
       {diverge && auto.data && !auto.isPending && (auto.data.candidates?.length ?? 0) > 0 && (
         <CandidatesView

@@ -83,5 +83,15 @@
   "reveal_gate": "cổng tiết lộ",
   "addRule": "Thêm quy tắc",
   "archive": "Lưu trữ",
-  "noRules": "Chưa có quy tắc canon."
+  "noRules": "Chưa có quy tắc canon.",
+  "canonClear": "Canon: không vấn đề",
+  "canonAutoRevised": "tự sửa ×{{n}}",
+  "canonHardTitle": "Mâu thuẫn canon",
+  "canonAdvisoryTitle": "Có thể sai canon (chưa xác minh)",
+  "canonUncheckedTitle": "Canon chưa được kiểm tra",
+  "canonUncheckedNoCast": "không có nhân vật được theo dõi trong cảnh này",
+  "canonUncheckedNoPosition": "cảnh này chưa có vị trí theo thứ tự đọc",
+  "canonUncheckedDegraded": "dịch vụ canon không khả dụng",
+  "revise": "Sửa lại",
+  "reviseGuide": "Giữ canon nhất quán: {{name}} đã rời khỏi câu chuyện tính đến cảnh này — đừng để họ xuất hiện hay hành động."
 }

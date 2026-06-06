@@ -88,6 +88,35 @@ export type GenerationJob = {
   critic: Critic;
 };
 
+// A2-S4 — the canon gate verdict on the converged auto winner (A2-S3b).
+// `confirmed`: true → HARD (a confirmed contradiction survived auto-revision);
+// null → ADVISORY (symbolic-only — the judge was down/not-distinct, unverified).
+// The backend already EXCLUDES judge-cleared (confirmed=false) from `violations`;
+// the FE filters defensively anyway.
+export type CanonViolation = {
+  kind: string;
+  source: string; // "score_symbolic" | "llm_judge"
+  entity_id: string;
+  glossary_entity_id?: string | null;
+  name?: string | null;
+  status: string; // "gone"
+  span?: string;
+  matched?: string;
+  confirmed?: boolean | null;
+  why?: string;
+};
+
+// `status`: checked → canon was verified at the scene's reading position.
+// skipped_no_cast / skipped_no_position / degraded → canon protection did NOT
+// apply (dirty data / knowledge outage) — the FE warns "unchecked", never a
+// false-green. `resolved` = no confirmed-HARD violation remains.
+export type CanonResult = {
+  violations: CanonViolation[];
+  resolved: boolean;
+  iterations: number;
+  status: 'checked' | 'skipped_no_cast' | 'skipped_no_position' | 'degraded' | string;
+};
+
 // V1 slice 3 — controlled-auto (diverge→converge) result. NON-streaming: the
 // auto /generate returns the winner + ALL K candidate texts so the FE shows
 // every option as a card (the human gate).
@@ -105,6 +134,8 @@ export type AutoGeneration = {
   reasoning_source?: string;
   reasoning_effort?: string | null;
   replay?: boolean;
+  // A2-S4 — the canon gate verdict (absent on an idempotent replay / cowrite).
+  canon?: CanonResult;
 };
 
 // The genuine-author-choice actions on the gate (H2: NO 'accept' — accepting the

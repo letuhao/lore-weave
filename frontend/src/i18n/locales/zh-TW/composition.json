@@ -83,5 +83,15 @@
   "reveal_gate": "揭露關卡",
   "addRule": "新增規則",
   "archive": "封存",
-  "noRules": "尚無正典規則。"
+  "noRules": "尚無正典規則。",
+  "canonClear": "正典：無問題",
+  "canonAutoRevised": "自動修訂 ×{{n}}",
+  "canonHardTitle": "正典矛盾",
+  "canonAdvisoryTitle": "可能的正典問題（未確認）",
+  "canonUncheckedTitle": "正典未驗證",
+  "canonUncheckedNoCast": "此場景沒有追蹤中的角色",
+  "canonUncheckedNoPosition": "此場景尚無閱讀順序位置",
+  "canonUncheckedDegraded": "正典服務無法使用",
+  "revise": "修訂",
+  "reviseGuide": "保持正典一致：{{name}} 在此場景時已退出故事——請勿讓其出現或行動。"
 }

@@ -83,5 +83,15 @@
   "reveal_gate": "reveal gate",
   "addRule": "Add rule",
   "archive": "Archive",
-  "noRules": "No canon rules yet."
+  "noRules": "No canon rules yet.",
+  "canonClear": "Canon: clear",
+  "canonAutoRevised": "auto-revised ×{{n}}",
+  "canonHardTitle": "Canon contradiction",
+  "canonAdvisoryTitle": "Possible canon issue (unverified)",
+  "canonUncheckedTitle": "Canon not verified",
+  "canonUncheckedNoCast": "no tracked characters in this scene",
+  "canonUncheckedNoPosition": "this scene has no reading-order position yet",
+  "canonUncheckedDegraded": "the canon service was unavailable",
+  "revise": "Revise",
+  "reviseGuide": "Keep canon consistent: {{name}} is gone from the story by this scene — do not portray them as present or acting."
 }

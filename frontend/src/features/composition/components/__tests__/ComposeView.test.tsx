@@ -165,3 +165,57 @@ describe('ComposeView (controlled-auto diverge gate — slice 3)', () => {
     expect(mockAuto.mutate).toHaveBeenCalledTimes(1); // re-ran the generation
   });
 });
+
+describe('ComposeView (A2-S4a — canon gate panel + Revise)', () => {
+  const withCanon = (over: Record<string, unknown> = {}) => ({
+    job_id: 'j1', mode: 'auto', status: 'completed', text: 'B', winner_index: 0, k: 1, candidates: ['B'],
+    canon: {
+      violations: [{ kind: 'gone_entity_present', source: 'llm_judge', entity_id: 'e1',
+        name: 'Castor', status: 'gone', matched: 'Castor', confirmed: true, why: 'died in ch3' }],
+      resolved: false, iterations: 1, status: 'checked',
+    },
+    ...over,
+  });
+
+  it('renders the canon gate panel (hard) when auto returns a canon verdict', () => {
+    mockAuto.data = withCanon();
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} />);
+    fireEvent.click(screen.getByRole('checkbox')); // diverge on
+    expect(screen.getByTestId('canon-gate-panel')).toBeTruthy();
+    expect(screen.getByTestId('canon-hard')).toBeTruthy();
+  });
+
+  it('does NOT render the canon panel when the auto result has no canon (replay/cowrite)', () => {
+    mockAuto.data = { job_id: 'j1', mode: 'auto', status: 'completed', text: 'B',
+      winner_index: 0, k: 1, candidates: ['B'] }; // no canon field
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} />);
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(screen.queryByTestId('canon-gate-panel')).toBeNull();
+  });
+
+  it('Revise pre-fills the guide textarea with the violation context + focuses it', () => {
+    mockAuto.data = withCanon();
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} />);
+    fireEvent.click(screen.getByRole('checkbox'));
+    const guide = screen.getByPlaceholderText('guidePlaceholder') as HTMLTextAreaElement;
+    expect(guide.value).toBe('');
+    fireEvent.click(screen.getByTestId('canon-revise-hard'));
+    expect(guide.value).toContain('reviseGuide'); // the i18n key (mock) + the why
+    expect(guide.value).toContain('died in ch3');
+    expect(document.activeElement).toBe(guide);
+  });
+
+  it('Revise PRESERVES existing guidance — appends on a new line, never replaces', () => {
+    // /review-impl #2 — the PO intent is "drop the violation context INTO the
+    // guide"; author-typed guidance must survive.
+    mockAuto.data = withCanon();
+    render(<ComposeView {...baseProps} onAccept={vi.fn()} />);
+    fireEvent.click(screen.getByRole('checkbox'));
+    const guide = screen.getByPlaceholderText('guidePlaceholder') as HTMLTextAreaElement;
+    fireEvent.change(guide, { target: { value: 'my own guidance' } });
+    fireEvent.click(screen.getByTestId('canon-revise-hard'));
+    expect(guide.value).toContain('my own guidance');
+    expect(guide.value).toContain('reviseGuide');
+    expect(guide.value.indexOf('my own guidance')).toBeLessThan(guide.value.indexOf('reviseGuide'));
+  });
+});

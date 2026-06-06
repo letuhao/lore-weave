@@ -83,5 +83,15 @@
   "reveal_gate": "開示ゲート",
   "addRule": "ルールを追加",
   "archive": "アーカイブ",
-  "noRules": "正典ルールはまだありません。"
+  "noRules": "正典ルールはまだありません。",
+  "canonClear": "正典: 問題なし",
+  "canonAutoRevised": "自動修正 ×{{n}}",
+  "canonHardTitle": "正典矛盾",
+  "canonAdvisoryTitle": "正典の懸念（未確認）",
+  "canonUncheckedTitle": "正典は未検証",
+  "canonUncheckedNoCast": "このシーンに追跡中の登場人物がいません",
+  "canonUncheckedNoPosition": "このシーンにはまだ読み順の位置がありません",
+  "canonUncheckedDegraded": "正典サービスを利用できませんでした",
+  "revise": "修正",
+  "reviseGuide": "正典との整合性を保つ: {{name}} はこのシーンの時点で物語から退場しています。登場・行動させないでください。"
 }
