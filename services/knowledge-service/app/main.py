@@ -21,6 +21,7 @@ from app.logging_config import setup_logging, trace_id_var
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
     context,
+    coref,
     health,
     internal_admin,
     internal_backfill,
@@ -642,6 +643,7 @@ app.include_router(health.router)
 app.include_router(ping.public_router)
 app.include_router(ping.internal_router)
 app.include_router(context.router)
+app.include_router(coref.router)
 app.include_router(internal_admin.router)
 app.include_router(internal_backfill.router)
 app.include_router(internal_benchmark.router)

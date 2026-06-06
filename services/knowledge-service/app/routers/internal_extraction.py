@@ -38,6 +38,7 @@ from app.extraction.pass2_orchestrator import (
     extract_pass2_chapter,
     extract_pass2_chat_turn,
 )
+from app.extraction import coref_detect
 from app.extraction.glossary_writeback import (
     WRITEBACK_CONFIG,
     should_writeback,
@@ -637,6 +638,60 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
         except Exception:
             logger.warning(
                 "mui#1 writeback failed source_id=%s (non-fatal)",
+                body.source_id, exc_info=True,
+            )
+
+    # mui #1c K-detect — opt-in auto coref pass at end-of-book (default OFF;
+    # PO-locked 2026-06-07). Same end-of-book gate as writeback so a detect
+    # pass runs once per job, not per chapter. Best-effort: proposes merge
+    # candidates to glossary for human review; never merges, never 500s.
+    if (
+        settings.coref_auto_on_extraction
+        and body.is_last_chapter_of_book
+        and body.project_id is not None
+    ):
+        try:
+            async with get_knowledge_pool().acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT book_id FROM knowledge_projects "
+                    "WHERE project_id = $1 AND user_id = $2",
+                    body.project_id, body.user_id,
+                )
+            cd_book_id = row["book_id"] if row else None
+            if cd_book_id is not None:
+                uid, pid = str(body.user_id), str(body.project_id)
+                async with neo4j_session() as cd_session:
+                    kinds = await coref_detect.load_anchored_kinds(
+                        cd_session, user_id=uid, project_id=pid
+                    )
+                    if kinds:
+                        cd_result = await coref_detect.detect_and_propose(
+                            session=cd_session,
+                            glossary=get_glossary_client(),
+                            llm=get_llm_client(),
+                            user_id=uid,
+                            project_id=pid,
+                            book_id=cd_book_id,
+                            kinds=kinds,
+                            score_floor=settings.coref_score_floor,
+                            name_weight=settings.coref_name_weight,
+                            struct_weight=settings.coref_struct_weight,
+                            max_pairs=settings.coref_max_pairs,
+                            max_bucket=settings.coref_max_bucket,
+                            max_candidates_per_kind=settings.coref_max_candidates_per_kind,
+                            min_mentions=settings.coref_min_mentions,
+                            llm_verify=settings.coref_llm_verify,
+                            judge_model=settings.coref_judge_model,
+                            judge_user=settings.coref_judge_user,
+                            judge_model_source=settings.coref_judge_model_source,
+                        )
+                        logger.info(
+                            "mui#1c auto coref: %d clusters, %d proposed book=%s",
+                            cd_result.clusters_found, cd_result.proposed, cd_book_id,
+                        )
+        except Exception:
+            logger.warning(
+                "mui#1c auto coref failed source_id=%s (non-fatal)",
                 body.source_id, exc_info=True,
             )
 

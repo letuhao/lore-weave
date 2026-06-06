@@ -74,8 +74,8 @@ Consistent with the branch invariant (glossary = SSOT/curation; knowledge = AI c
 1. ✅ **G-merge (glossary):** merge_journal + `merged_into_entity_id` migration; the merge endpoint (FK repoint + wiki policy + journal + soft-delete + event); un-merge endpoint. **Heaviest + riskiest — DB-integration tests for every FK + wiki conflict + un-merge round-trip.** *(DONE + /review-impl: MED-1 alias-fold, MED-2 TOCTOU lock, MED-3a chain-guard, MED-3b per-loser results.)*
 2. ✅ **K-sync (knowledge):** `glossary.entity_merged` event handler → repo merge_entities + alias_map. Unit + event-replay idempotency test. *(DONE + /review-impl: MED-1 orphan-relink compensation, MED-2 alias_map project_scope.)*
 3. ✅ **G-cand (glossary):** merge_candidates table + `POST /internal/.../merge-candidates` (knowledge→glossary) + public list/dismiss + best-effort mark-merged. *(DONE 2026-06-07 + /review-impl: MED-1 mark-merged subset semantics — partial merge of a larger cluster no longer closes it. 12/12 glossary api + 19/19 knowledge glossary_client. Cross-service smoke → DEFERRED 062, after K-detect.)*
-4. **K-detect (knowledge):** coref_detect (name + KG-structural blocking/score) + LLM verify + propose to glossary (`propose_merge_candidates` client method ready). Unit-test the scorer + blocking. **← NEXT**
-5. **FE:** merge-candidate review surface (reuse AI-Suggestions pattern) + confirm/dismiss + un-merge affordance.
+4. ✅ **K-detect (knowledge):** coref_detect (name + KG-structural blocking/score) + config-gated LLM verify + propose to glossary. *(DONE 2026-06-07 + /review-impl: HIGH-1 per-kind clustering — combined multi-kind scoring produced mixed clusters glossary rejects wholesale, losing valid same-kind pairs; MED-2 verdict-coerce — `bool("no")`==True inverted string rejects. 17/17 coref unit tests. Endpoint `POST /internal/coref/detect` + default-OFF auto-hook.)*
+5. **FE:** merge-candidate review surface (reuse AI-Suggestions pattern) + confirm/dismiss + un-merge affordance. **← NEXT**
 6. **VERIFY:** cross-service live smoke (DEFERRED 062) — propose a candidate, confirm merge, assert loser soft-deleted + FKs repointed + KG merged; then un-merge round-trip. Token mandatory (≥2 services).
 
 ## 7. Risks (from architecture eval)
@@ -98,6 +98,28 @@ Storage + plumbing only; the **scorer/detector is K-detect (phase 4)**. G-cand m
 - **knowledge `propose_merge_candidates(book_id, candidates)`** on `GlossaryClient` — mirrors `propose_entities` (best-effort, returns dict|None). K-detect will call it; G-cand ships it + a unit test.
 
 **Files (L):** glossary `migrate.go` (+`UpMergeCandidates`), `cmd/.../main.go` (register), `merge_candidates_handler.go` (new: propose/list/dismiss + mark-merged helper), `server.go` (routes), `merge_handler.go` (best-effort mark-merged call); knowledge `glossary_client.py` (+method). Tests: `merge_candidates_test.go` (DB-integration), `test_propose_merge_candidates.py`.
+
+## 7c. K-detect DESIGN (phase 4 — locked 2026-06-07)
+
+The coref detector. **CLARIFY locks (PO 2026-06-07):** trigger = **on-demand internal endpoint + opt-in auto-hook (default OFF)**; LLM-verify = **config-gated, on by default with score-only fallback** when no judge model is configured. Signals = name + KG-structural (spec §3.1, no embeddings). **Candidate members are glossary-anchored entities only** — the propose endpoint (G-cand) validates glossary membership, and unanchored KG discoveries flow through mui#1 writeback first.
+
+**Module split for testability** — `app/extraction/coref_detect.py`:
+- **Pure scorer** (no I/O, the unit-test target):
+  - `CorefEntity` record: `entity_id` (glossary_entity_id), `canonical_id` (KG node id), `name`, `canonical_name`, `aliases`, `mention_count`, `neighbor_ids: frozenset` (RELATES_TO neighbor KG ids).
+  - `_name_signal(a,b)` = max(exact alias/name overlap, substring containment, honorific-stripped equality, normalized edit-distance similarity) — reuses `canonicalize_entity_name`.
+  - `_structural_signal(a,b)` = Jaccard over `neighbor_ids` (catches 太公望↔姜子牙 — co-occur, no shared name chars).
+  - `score_pair(a,b)` = weighted blend `name_weight·name + struct_weight·struct`, ∈[0,1].
+  - `block_and_score(entities, …)` — **blocking** (bound O(n²)): bucket by shared exact alias/name token, shared neighbor id, and name char-bigram (drop buckets > MAX_BUCKET to avoid common-char explosion). Score only within-bucket pairs, dedup, filter ≥ floor, sort, cap at `max_pairs`. Returns `CandidatePair{a_id,b_id,score,name_score,struct_score,evidence}`.
+  - `cluster_pairs(pairs)` — union-find → clusters of ≥2 glossary ids (transitive A-B,B-C ⇒ {A,B,C}).
+- **Orchestrator** (`detect_from_records(records, llm, glossary, …)` — testable with fakes): score → LLM-verify above-floor pairs (kept only if `same==true`; **LLM failure degrades to score-only per-pair**, never drops a scored candidate) → cluster → suggested_winner = max `mention_count` → `glossary.propose_merge_candidates(book_id, candidates)`. Returns `DetectResult{clusters, proposed, suppressed, skipped}`.
+- **Neo4j loader** (`_load_coref_entities`, thin, covered by live-smoke not unit) — one `run_read` Cypher per kind: anchored entities (`glossary_entity_id IS NOT NULL`) for the project + their RELATES_TO neighbor ids, `LIMIT max_candidates_per_kind`.
+- **LLM verify** (`_verify_pair`) mirrors the Q4b online-judge call (`llm_client.submit_and_wait`, model from `coref_judge_model`/`_user`/`_model_source`); prompt = names + aliases + shared-neighbor evidence + 封神 naming-convention hint ("consider 名/字/号/title; beware two different people sharing a name") → JSON `{same, confidence, rationale}`.
+
+**Endpoint** `POST /internal/coref/detect` (`app/routers/coref.py`, internal-token) body `{user_id, project_id, kinds?}` → `ProjectsRepo.get` resolves `book_id` → orchestrator. **Auto-hook**: gated `if settings.coref_auto_on_extraction` at the end-of-book branch in `internal_extraction.py` (reuses the mui#1 is-last-chapter gate; best-effort, default OFF).
+
+**Config:** `coref_enabled=True`, `coref_auto_on_extraction=False`, `coref_score_floor=0.5`, `coref_name_weight=0.6`, `coref_struct_weight=0.4`, `coref_min_mentions=2`, `coref_max_pairs=200`, `coref_max_candidates_per_kind=500`, `coref_llm_verify=True`, `coref_judge_model=""`, `coref_judge_user=""`, `coref_judge_model_source="platform_model"`.
+
+**Files (L):** knowledge `app/extraction/coref_detect.py` (new), `app/routers/coref.py` (new), `app/config.py`, `app/main.py` (register router), `app/routers/internal_extraction.py` (auto-hook); tests `tests/unit/test_coref_detect.py`. Cross-service live-smoke = the mui#1c phase-6 VERIFY (DEFERRED 062) once a real duplicate-bearing project exists.
 
 ## 8. Confirm-at-BUILD
 - Exact glossary FK inventory + ON DELETE/UPDATE (chapter_entity_links, entity_attribute_values+evidences+attribute_translations, entity_enrichments, wiki_articles, extraction_audit_log) — re-read `migrate.go` before the repoint.
