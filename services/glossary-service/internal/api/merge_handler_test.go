@@ -28,7 +28,7 @@ func runMergeMigrations(t *testing.T, pool *pgxpool.Pool) {
 		{"UpSoftDelete", migrate.UpSoftDelete}, {"UpWiki", migrate.UpWiki},
 		{"UpWikiSuggestions", migrate.UpWikiSuggestions}, {"UpExtraction", migrate.UpExtraction},
 		{"UpOutbox", migrate.UpOutbox}, {"UpEntityEnrichments", migrate.UpEntityEnrichments},
-		{"UpEntityMerge", migrate.UpEntityMerge},
+		{"UpEntityMerge", migrate.UpEntityMerge}, {"UpMergeCandidates", migrate.UpMergeCandidates},
 	} {
 		if err := m.fn(ctx, pool); err != nil {
 			t.Fatalf("migrate.%s: %v", m.name, err)
@@ -61,6 +61,7 @@ func newMergeFixture(t *testing.T, bookSuffix string) *mergeFixture {
 	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='description' LIMIT 1`, f.kindID).Scan(&f.descAttr)
 	t.Cleanup(func() {
 		pool.Exec(ctx, `DELETE FROM merge_journal WHERE book_id=$1`, f.bookID)
+		pool.Exec(ctx, `DELETE FROM merge_candidates WHERE book_id=$1`, f.bookID)
 		pool.Exec(ctx, `DELETE FROM entity_attribute_values WHERE entity_id IN (SELECT entity_id FROM glossary_entities WHERE book_id=$1)`, f.bookID)
 		pool.Exec(ctx, `DELETE FROM glossary_entities WHERE book_id=$1`, f.bookID)
 	})

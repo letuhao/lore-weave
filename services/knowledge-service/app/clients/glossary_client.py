@@ -480,6 +480,40 @@ class GlossaryClient:
             logger.warning("glossary propose-entities failed: %s", exc)
             return None
 
+    async def propose_merge_candidates(
+        self,
+        book_id: UUID,
+        *,
+        candidates: list[dict],
+    ) -> dict | None:
+        """POST /internal/books/{book_id}/merge-candidates (mui #1c G-cand).
+
+        Propose coreference merge clusters discovered by the coref detector
+        (K-detect) to glossary, where the human reviews + confirms. Each
+        candidate dict: ``{"member_entity_ids": [...],
+        "suggested_winner_entity_id"?, "score"?, "evidence"?, "rationale"?}``
+        where member ids are glossary entity ids (the KG nodes' anchors).
+
+        Best-effort: returns the response dict, or None on any failure — a
+        detection pass must never crash because glossary is briefly down.
+        """
+        if not candidates:
+            return None
+        url = f"{self._base_url}/internal/books/{book_id}/merge-candidates"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.post(
+                url, json={"candidates": candidates},
+                headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code not in (200, 201):
+                logger.warning("glossary propose-merge-candidates %d", resp.status_code)
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("glossary propose-merge-candidates failed: %s", exc)
+            return None
+
     async def generate_wiki_stubs(
         self,
         book_id: UUID,

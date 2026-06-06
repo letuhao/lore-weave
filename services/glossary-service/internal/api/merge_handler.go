@@ -143,6 +143,7 @@ func (s *Server) mergeEntities(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := make([]mergeResultItem, 0, len(req.LoserIDs))
+	mergedLosers := make([]uuid.UUID, 0, len(req.LoserIDs))
 	for _, raw := range req.LoserIDs {
 		loserID, err := uuid.Parse(raw)
 		if err != nil {
@@ -162,6 +163,7 @@ func (s *Server) mergeEntities(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		results = append(results, mergeResultItem{LoserID: raw, JournalID: jid.String(), Status: "merged"})
+		mergedLosers = append(mergedLosers, loserID)
 		// Best-effort events post-commit: winner re-synced (aliases changed) +
 		// the merged signal that drives KG merge_entities + alias_map (K-sync).
 		s.emitEntityUpdated(ctx, winnerID, "updated")
@@ -174,6 +176,13 @@ func (s *Server) mergeEntities(w http.ResponseWriter, r *http.Request) {
 			EmittedAt: time.Now().UTC().Format(time.RFC3339),
 		})
 	}
+
+	// G-cand: a confirmed cluster shouldn't keep showing in the inbox. Flip only
+	// candidates fully resolved by THIS request (winner present + every member in
+	// {winner}∪{merged losers}) — a partial merge of a larger cluster leaves it
+	// proposed (review-impl MED-1). Done once after the loop with the full
+	// merged-loser set so subset semantics are exact.
+	s.markCandidatesMerged(ctx, bookID, winnerID, mergedLosers)
 
 	writeJSON(w, http.StatusOK, map[string]any{"winner_id": winnerID.String(), "results": results})
 }

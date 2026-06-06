@@ -152,6 +152,10 @@ func main() {
 		slog.Error("migrate entity-merge", "error", err)
 		os.Exit(1)
 	}
+	if err := migrate.UpMergeCandidates(ctx, pool); err != nil {
+		slog.Error("migrate merge-candidates", "error", err)
+		os.Exit(1)
+	}
 
 	// Run the short-description backfill in a background goroutine so
 	// the HTTP listener + healthcheck come up immediately. For a fresh

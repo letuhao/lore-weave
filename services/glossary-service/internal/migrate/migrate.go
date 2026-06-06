@@ -1384,3 +1384,42 @@ func UpEntityMerge(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	return nil
 }
+
+// mergeCandidatesSQL backs mui #1c G-cand — the merge-candidate review surface.
+// knowledge's coref detector (K-detect) proposes clusters of likely-same
+// entities INTO glossary (knowledge=AI compute, glossary=SSOT/curation); the
+// human reviews here and confirms via the existing R5 merge endpoint.
+// `member_set_key` is the sorted-distinct member-id set joined by ',' — the
+// UNIQUE(book_id, member_set_key) makes re-proposing the same cluster
+// idempotent, and the conditional upsert (WHERE status='proposed') means a
+// dismissed/merged cluster is never resurrected by a later detection pass.
+const mergeCandidatesSQL = `
+CREATE TABLE IF NOT EXISTS merge_candidates (
+  candidate_id               UUID PRIMARY KEY DEFAULT uuidv7(),
+  book_id                    UUID NOT NULL,
+  kind_id                    UUID NOT NULL REFERENCES entity_kinds(kind_id),
+  member_entity_ids          UUID[] NOT NULL,
+  member_set_key             TEXT NOT NULL,
+  suggested_winner_entity_id UUID,
+  score                      DOUBLE PRECISION NOT NULL DEFAULT 0,
+  evidence_json              JSONB NOT NULL DEFAULT '[]',
+  rationale                  TEXT NOT NULL DEFAULT '',
+  status                     TEXT NOT NULL DEFAULT 'proposed'
+    CHECK (status IN ('proposed','dismissed','merged')),
+  created_at                 TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at                 TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_merge_candidates_setkey
+  ON merge_candidates(book_id, member_set_key);
+CREATE INDEX IF NOT EXISTS idx_merge_candidates_book_status
+  ON merge_candidates(book_id, status);
+`
+
+// UpMergeCandidates creates the merge_candidates table (mui #1c G-cand).
+// Idempotent. Register in main.go after UpEntityMerge.
+func UpMergeCandidates(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, mergeCandidatesSQL); err != nil {
+		return fmt.Errorf("migrate merge-candidates: %w", err)
+	}
+	return nil
+}
