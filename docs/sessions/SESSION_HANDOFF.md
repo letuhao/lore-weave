@@ -20,7 +20,7 @@
 
 **M1c shipped:** `v3/romanization.py` — prompt-level Hán-Việt instruction for un-glossaried zh→vi names (**primary-subtag** matched: zh-Hans/zh-CN/vi-VN all covered), injected via a new additive `extra_system` param (v2 parity) into the translator + corrector prompts. No lexicon, no verifier check (prompt nudge, PO decision).
 
-**M1 split (PO-locked): M1a✓ M1b✓ M1c✓ → M1d.** **NEXT = M1d** (cross-service, glossary-service): swap the raw glossary scorer → **`select-for-context`** (tiered: pinned→exact→FTS→recent); **trust ladder** (confirmed/published lock · draft hint · exclude archived/superseded/`alive=false`); **write-back** missing names (draft) via `POST /internal/books/{id}/extract-entities` (idempotent). PO chose **no /amaw**. Note: the non-glossary **chapter-consistency pass** stays deferred to **M4** (needs the proper-noun record). (design §11 / §12.3)
+**M1 = M1a✓ M1b✓ M1c✓ DONE. M1d DEFERRED** (PO 2026-06-07). The CLARIFY contract probe found M1d's glossary work needs glossary-service **code**: the internal `translation-glossary` + `select-for-context` endpoints expose **no** translation `confidence`/`status`/`alive` (the only endpoint with `confidence` is JWT-only `GET entities/{id}`), so the **trust ladder can't be applied service-to-service** without a glossary-service change; and `select-for-context` returns **bios/aliases, not translations** → it's an **M4 context source**, not a name-map swap. The **write-back** half overlaps an **in-flight knowledge→glossary write-back task** → do translation's glossary part **after that merges** (may be unnecessary). **NEXT = M2** (LLM verifier + multi-round corrector loop — design §12.4). Non-glossary chapter-consistency pass stays at **M4** (proper-noun record).
 
 **Deferred (M0 /review-impl):**
 - **D-TRANSL-RESUME** — chunk rows are resume *substrate*; skip-completed-batch logic NOT built (re-run re-translates all). M1+/M5.
@@ -32,6 +32,8 @@
 - **D-TRANSL-VERIFY-COARSE** (M1a) — `number_mismatch` is set-based (loses multiplicity) + can false-positive on spelled-out numbers; CJK-leak can false-positive on intentionally-kept CJK names. Detect-only/med; refine once the M2 LLM-tier corroborates.
 - **D-TRANSL-VERIFY-2ND-FETCH** (M1a) — `_verify_correct_persist` re-fetches the glossary (V2 already did); M2 restructures the orchestrator to share one fetch.
 - **D-TRANSL-CORRECTOR-LIMITS** (M1b /review-impl) — corrector lacks `max_tokens` (large-block truncation risk) + loses block-type structure (lists/callouts re-translated as flat text). Defer (paragraphs dominate).
+- **D-TRANSL-M1D-GLOSSARY** (PO-deferred 2026-06-07) — trust ladder needs a small **additive glossary-service** change (expose translation `confidence` + entity `status`/`alive` on `translation-glossary` or `select-for-context`); until then the verifier hard-checks against ALL glossary translations incl. drafts. Translation **write-back** of missing names overlaps the in-flight knowledge→glossary task → revisit post-merge (may be unnecessary). PO: no /amaw when it lands.
+- **D-TRANSL-SELECTCTX-M4** — `select-for-context` returns character bios/aliases/short_description (NOT translations) → use it in **M4** to inject character notes (gender/role) for pronoun/honorific accuracy, not as a name-map.
 
 ---
 
