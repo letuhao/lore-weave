@@ -71,6 +71,59 @@ def build_messages(
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
+def build_revise_messages(
+    packed_prompt: str, profile: BookProfile, draft: str,
+    violations: list[Any],
+) -> list[dict[str, str]]:
+    """A2-S3b — (system, user) for a canon REVISE pass. The drafter rewrites
+    `draft` to remove the confirmed contradictions while preserving the scene.
+    Abstract + multilingual-safe (no English-only illustrative phrases)."""
+    lang = "" if profile.source_language in ("", "auto") else (
+        f" Write the prose in the language with code '{profile.source_language}'."
+    )
+    voice = f" Match this voice: {profile.voice}." if profile.voice else ""
+    system = (
+        "You are a co-writer revising a passage to fix continuity errors. The "
+        "listed characters are GONE (dead, destroyed, departed, or lost) before "
+        "this passage and MUST NOT be portrayed as an active presence — not "
+        "acting, speaking, perceiving, or bodily present. Rewrite the passage to "
+        "remove these contradictions while preserving its events, intent, voice, "
+        "and length. Output ONLY the revised prose." + lang + voice
+    )
+    listed = "\n".join(
+        f'- {getattr(v, "name", None) or getattr(v, "entity_id", "?")}'
+        f'{(": " + v.span) if getattr(v, "span", "") else ""}'
+        for v in violations
+    )
+    user = (
+        f"{packed_prompt}\n\nGONE CHARACTERS WRONGLY PRESENT (fix these):\n{listed}"
+        f"\n\nPASSAGE TO REVISE:\n{draft}"
+    )
+    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+
+async def revise_draft(
+    sdk: Any, *, user_id: str, model_source: str, model_ref: str,
+    messages: list[dict[str, Any]], prompt_token_estimate: int,
+    max_output_tokens: int, temperature: float = 0.7,
+    trace_id: str | None = None, reasoning_effort: str | None = None,
+) -> tuple[str, "DraftMetering"]:
+    """One-shot (non-stream) revise: drives `stream_draft` and harvests the
+    terminal usage frame. Returns (revised_text, metering). Empty text on LLM
+    error (the caller keeps the prior draft → reflect treats it as give-up)."""
+    text = ""
+    metering = DraftMetering(input_tokens=prompt_token_estimate, output_tokens=0, measured=False)
+    async for ev in stream_draft(
+        sdk, user_id=user_id, model_source=model_source, model_ref=model_ref,
+        messages=messages, prompt_token_estimate=prompt_token_estimate,
+        max_output_tokens=max_output_tokens, hard_cap_output=max_output_tokens * 2,
+        temperature=temperature, trace_id=trace_id, reasoning_effort=reasoning_effort,
+    ):
+        if ev["type"] == "usage":
+            text, metering = ev["text"], ev["metering"]
+    return text, metering
+
+
 async def stream_draft(
     sdk: Any, *, user_id: str, model_source: str, model_ref: str,
     messages: list[dict[str, Any]], prompt_token_estimate: int,

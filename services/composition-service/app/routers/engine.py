@@ -38,6 +38,7 @@ from app.deps import (
     get_llm_client_dep, get_outline_repo, get_scene_links_repo, get_works_repo,
 )
 from app.db.models import CorrectionKind
+from app.engine.canon_reflect import run_canon_reflect
 from app.engine.cowrite import build_messages, estimate_prompt_tokens, stream_draft
 from app.engine.critic import judge_prose
 from app.engine.select import select_draft
@@ -232,16 +233,50 @@ async def generate(
             await jobs.update_status(user_id, job.id, "failed")
             raise HTTPException(status_code=502, detail={"code": "GENERATE_FAILED"})
         w = sel.winner
+        # ── A2-S3b: canon check→revise on the converged winner (D1). The SCORE
+        # symbolic guard + the distinct LLM-judge confirm a `gone` cast member
+        # portrayed as present; reflect repairs ≤N then escalates (hard-gate
+        # signal on the job). Degrades to advisory on any knowledge/judge outage
+        # (CC4/F1) — never blocks the generate.
+        final_text = w.text
+        canon = {"violations": [], "resolved": True, "iterations": 0}
+        revise_out_tokens = 0
+        try:
+            cast_glossary_ids = [str(e) for e in (node.present_entity_ids or [])]
+            final_text, reflect, revise_out_tokens = await run_canon_reflect(
+                knowledge=knowledge, llm=llm,
+                user_id=user_id, project_id=project_id,
+                cast_glossary_ids=cast_glossary_ids,
+                scene_sort_order=pc.scene_sort_order,
+                draft=w.text, packed_prompt=pc.prompt, profile=pc.profile,
+                drafter_source=body.model_source, drafter_ref=str(body.model_ref),
+                judge_source=str(c_src) if distinct else None,
+                judge_ref=str(c_ref) if distinct else None,
+                prompt_estimate=prompt_estimate, max_output_tokens=body.max_output_tokens,
+                # /review-impl #2 — clamp the per-work setting to a sane ceiling so
+                # a typo'd/abusive reflect_max_iters can't fan out N revise LLM
+                # calls per generate (the §10.1 backtrack budget bound).
+                max_iters=max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),
+                reasoning_effort=None if reasoning.passthrough else reasoning.effort,
+            )
+            canon = {
+                "violations": [v.model_dump() for v in reflect.violations],
+                "resolved": reflect.resolved, "iterations": reflect.iterations,
+            }
+        except Exception:  # canon reflect must NEVER fail the generate (F1).
+            logger.warning("A2-S3b canon reflect failed (advisory) — keeping winner", exc_info=True)
+        total_out = w.metering.output_tokens + revise_out_tokens
         await jobs.update_status(
             user_id, job.id, "completed",
-            result={"text": w.text, "input_tokens": w.metering.input_tokens,
-                    "output_tokens": w.metering.output_tokens, "measured": w.metering.measured,
+            result={"text": final_text, "input_tokens": w.metering.input_tokens,
+                    "output_tokens": total_out, "measured": w.metering.measured,
                     "k": len(sel.candidates), "winner_index": sel.winner_index,
                     "rerank_reason": sel.rerank_reason, "rerank_measured": sel.rerank_measured,
-                    "candidates": [c.text for c in sel.candidates]},
+                    "candidates": [c.text for c in sel.candidates],
+                    "canon": canon},
         )
         return JSONResponse({
-            "job_id": str(job.id), "mode": "auto", "status": "completed", "text": w.text,
+            "job_id": str(job.id), "mode": "auto", "status": "completed", "text": final_text,
             "winner_index": sel.winner_index, "k": len(sel.candidates),
             # The K candidate texts so the FE can show ALL options as cards (the
             # controlled-auto human gate, slice 3). They're already computed +
@@ -249,6 +284,10 @@ async def generate(
             "candidates": [c.text for c in sel.candidates],
             "rerank_reason": sel.rerank_reason, "rerank_measured": sel.rerank_measured,
             "grounding_available": pc.grounding_available,
+            # A2-S3b — the canon gate: `resolved=false` + violations means a
+            # confirmed contradiction survived revision (D4 hard-gate signal for
+            # the publish/commit path + the author).
+            "canon": canon,
             "reasoning_source": reasoning.source, "reasoning_effort": reasoning.effort,
         })
 

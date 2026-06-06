@@ -62,6 +62,10 @@ class PackedContext:
     l4_dropped_no_position: int
     grounding_available: bool
     over_budget: bool
+    # A2-S3b — the scene's chapter reading-order (book sort_order), the canon
+    # guard's position axis (× stride = the event_order cutoff). None when the
+    # node has no resolved chapter → the guard skips (advisory).
+    scene_sort_order: int | None = None
     warnings: list[str] = field(default_factory=list)
 
 
@@ -160,6 +164,7 @@ async def pack(
         token_count=bres.total_tokens, dropped_count=bres.dropped_count,
         l4_dropped_no_position=l4.dropped_no_position,
         grounding_available=bundle.knowledge_seen, over_budget=bres.over_budget,
+        scene_sort_order=scene_sort_order,
         warnings=warnings,
     )
 
