@@ -494,7 +494,8 @@ async def test_chapter_scene_gate_counts_and_can_publish(pool):
 
     # zero done → blocked
     gate = await repo.chapter_scene_gate(user, project, chapter)
-    assert gate == {"chapter_id": str(chapter), "scenes_total": 2, "scenes_done": 0, "can_publish": False}
+    assert gate == {"chapter_id": str(chapter), "scenes_total": 2, "scenes_done": 0,
+                    "canon_blocked": False, "canon_unresolved_scenes": 0, "can_publish": False}
 
     # one done → still blocked
     await repo.update_node_commit_aware(user, s1.id, {"status": "done"})
@@ -517,6 +518,41 @@ async def test_chapter_scene_gate_zero_scenes_blocks(pool):
     user, project, _ = _ids()
     gate = await repo.chapter_scene_gate(user, project, uuid.uuid4())
     assert gate["scenes_total"] == 0 and gate["can_publish"] is False
+
+
+async def test_chapter_scene_gate_blocks_on_unresolved_canon(pool):
+    """D-A2S3B-PUBLISH-GATE — an all-scenes-done chapter is still blocked when a
+    scene's LATEST completed auto job left a confirmed canon contradiction
+    (result.canon.resolved == false); a newer resolved job supersedes it."""
+    repo = OutlineRepo(pool)
+    jobs = GenerationJobsRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    s1 = await repo.create_node(user, project, kind="scene", chapter_id=chapter)
+    await repo.update_node_commit_aware(user, s1.id, {"status": "done"})  # all done
+
+    # baseline: no jobs → not canon-blocked → publishable.
+    gate = await repo.chapter_scene_gate(user, project, chapter)
+    assert gate["can_publish"] is True and gate["canon_blocked"] is False
+
+    # latest completed auto job left an UNRESOLVED canon contradiction → blocked.
+    j1, _ = await jobs.create(user, project, operation="draft_scene",
+                              outline_node_id=s1.id, mode="auto", status="running", input={})
+    await jobs.update_status(user, j1.id, "completed",
+                             result={"text": "x", "canon": {"resolved": False,
+                                                            "violations": [{"entity_id": "e"}]}})
+    gate = await repo.chapter_scene_gate(user, project, chapter)
+    assert gate["scenes_done"] == 1
+    assert gate["canon_blocked"] is True and gate["canon_unresolved_scenes"] == 1
+    assert gate["can_publish"] is False
+
+    # a NEWER resolved job for the same scene supersedes (DISTINCT ON latest).
+    j2, _ = await jobs.create(user, project, operation="draft_scene",
+                              outline_node_id=s1.id, mode="auto", status="running", input={})
+    await jobs.update_status(user, j2.id, "completed",
+                             result={"text": "y", "canon": {"resolved": True}})
+    gate = await repo.chapter_scene_gate(user, project, chapter)
+    assert gate["canon_blocked"] is False and gate["can_publish"] is True
 
 
 # ──────────────────── generation_correction (V1 flywheel slice 1) ────────────────────

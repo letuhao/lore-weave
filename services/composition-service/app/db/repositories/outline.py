@@ -348,12 +348,41 @@ class OutlineRepo:
                 """,
                 user_id, project_id, chapter_id,
             )
+            # D-A2S3B-PUBLISH-GATE — enforce the D4 hard canon block: a scene
+            # whose LATEST completed auto-generation left a CONFIRMED canon
+            # contradiction (`result.canon.resolved == false`, A2-S3b) must not
+            # be published. Conservative-for-canon: a false-pass ships a
+            # contradiction; a false-block (the author edited the prose to fix it
+            # without re-generating) is recoverable by re-generating. DISTINCT ON
+            # the node → only the most recent job per scene counts.
+            canon_row = await c.fetchrow(
+                """
+                SELECT count(*) AS unresolved
+                FROM (
+                  SELECT DISTINCT ON (j.outline_node_id) j.result AS result
+                  FROM generation_job j
+                  JOIN outline_node n ON n.id = j.outline_node_id
+                  WHERE j.user_id = $1 AND j.project_id = $2 AND n.chapter_id = $3
+                    AND n.kind = 'scene' AND NOT n.is_archived
+                    AND j.status = 'completed'
+                  ORDER BY j.outline_node_id, j.created_at DESC, j.id DESC
+                ) latest
+                WHERE (latest.result -> 'canon' ->> 'resolved') = 'false'
+                """,
+                user_id, project_id, chapter_id,
+            )
         total, done = int(row["total"]), int(row["done"])
+        canon_unresolved = int(canon_row["unresolved"]) if canon_row else 0
+        canon_blocked = canon_unresolved > 0
         return {
             "chapter_id": str(chapter_id),
             "scenes_total": total,
             "scenes_done": done,
-            "can_publish": total > 0 and done == total,
+            # A2-S3b/D4 — surfaced so the FE (A2-S4) can explain WHY publish is
+            # blocked (an unresolved canon contradiction vs an undone scene).
+            "canon_blocked": canon_blocked,
+            "canon_unresolved_scenes": canon_unresolved,
+            "can_publish": total > 0 and done == total and not canon_blocked,
         }
 
     async def archive_node(self, user_id: UUID, node_id: UUID) -> OutlineNode | None:
