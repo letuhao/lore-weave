@@ -83,6 +83,8 @@ func (s *Server) Router() http.Handler {
 		r.Post("/books/{book_id}/extract-entities", s.bulkExtractEntities)
 		r.Get("/books/{book_id}/entity-count", s.internalEntityCount)
 		r.Get("/books/{book_id}/entities", s.internalListEntities)
+		// mui #4 — batch fetch by id for the knowledge semantic selector.
+		r.Post("/books/{book_id}/entities/by-ids", s.internalEntitiesByIDs)
 		// Set canonical content (short_description) on an existing entity.
 		// Used by lore-enrichment promote to write enriched canon THROUGH the
 		// glossary SSOT (Q2) — extract-entities can't set this column.
