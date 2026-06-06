@@ -45,7 +45,9 @@
     "load_failed": "Failed to load version: {{error}}",
     "copied": "Copied to clipboard",
     "set_active_success": "Set as active version",
-    "set_active_failed": "Failed: {{error}}"
+    "set_active_failed": "Failed: {{error}}",
+    "needs_review": "Needs review ({{count}})",
+    "needs_review_title": "Unresolved high-severity issues flagged by the verifier — review recommended."
   },
   "compare": {
     "original_label": "Original — {{lang}}",

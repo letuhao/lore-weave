@@ -411,6 +411,25 @@ def test_get_chapter_translation_returns_result(client, fake_pool):
     assert data["translated_body"] == "Phần mở đầu..."
     assert data["input_tokens"] == 120
     assert data["output_tokens"] == 98
+    # M5a: a V2/legacy row without the rollup columns surfaces safe defaults
+    assert data["quality_score"] is None
+    assert data["unresolved_high_count"] == 0
+    assert data["qa_rounds_used"] == 0
+
+
+def test_get_chapter_translation_surfaces_quality_rollup(client, fake_pool):
+    """M5a 'needs review' surfacing: the V3 quality rollup is exposed via the API."""
+    fake_pool.fetchrow.side_effect = [
+        FakeRecord({"owner_user_id": UUID(USER_ID)}),
+        FakeRecord({**_CHAPTER_ROW, "quality_score": 72,
+                    "unresolved_high_count": 3, "qa_rounds_used": 2}),
+    ]
+    resp = client.get(f"/v1/translation/jobs/{JOB_ID}/chapters/{CHAPTER_ID}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["quality_score"] == 72
+    assert data["unresolved_high_count"] == 3
+    assert data["qa_rounds_used"] == 2
 
 
 def test_get_chapter_translation_returns_403_when_not_owned(client, fake_pool):

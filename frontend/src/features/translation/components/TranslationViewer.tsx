@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Copy, SplitSquareVertical } from 'lucide-react';
+import { Check, Copy, SplitSquareVertical, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { versionsApi, type ChapterTranslation } from '../api';
@@ -104,6 +104,15 @@ export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSe
           ) : version.status === 'completed' && (
             <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
               {t('viewer.text_badge')}
+            </span>
+          )}
+          {version.unresolved_high_count > 0 && (
+            <span
+              title={t('viewer.needs_review_title')}
+              className="flex items-center gap-1 rounded-full bg-[#e8a33d]/10 px-2 py-0.5 text-[10px] font-medium text-[#e8a33d]"
+            >
+              <AlertTriangle className="h-2.5 w-2.5" />
+              {t('viewer.needs_review', { count: version.unresolved_high_count })}
             </span>
           )}
         </div>

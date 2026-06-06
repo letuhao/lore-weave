@@ -28,6 +28,10 @@ export type ChapterTranslation = {
   started_at: string | null;
   finished_at: string | null;
   created_at: string;
+  // V3 quality rollup (M5a). null/0 for V2 chapters.
+  quality_score: number | null;
+  unresolved_high_count: number;
+  qa_rounds_used: number;
 };
 
 export type TranslationJob = {

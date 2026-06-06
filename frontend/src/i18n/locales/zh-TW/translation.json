@@ -45,7 +45,9 @@
     "load_failed": "載入版本失敗：{{error}}",
     "copied": "已複製到剪貼簿",
     "set_active_success": "已設為使用中的版本",
-    "set_active_failed": "失敗：{{error}}"
+    "set_active_failed": "失敗：{{error}}",
+    "needs_review": "需審閱 ({{count}})",
+    "needs_review_title": "驗證器標記了未解決的高嚴重性問題 — 建議審閱。"
   },
   "compare": {
     "original_label": "原文 — {{lang}}",

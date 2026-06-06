@@ -45,7 +45,9 @@
     "load_failed": "Không thể tải phiên bản: {{error}}",
     "copied": "Đã sao chép vào clipboard",
     "set_active_success": "Đã đặt làm phiên bản đang dùng",
-    "set_active_failed": "Thất bại: {{error}}"
+    "set_active_failed": "Thất bại: {{error}}",
+    "needs_review": "Cần rà soát ({{count}})",
+    "needs_review_title": "Có vấn đề mức cao chưa xử lý do trình kiểm tra gắn cờ — nên rà soát lại."
   },
   "compare": {
     "original_label": "Nguyên gốc — {{lang}}",

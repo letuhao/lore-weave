@@ -175,6 +175,11 @@ class ChapterTranslation(BaseModel):
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     created_at: datetime
+    # V3 quality rollup (M5a "needs review" surfacing). Written by the V3
+    # orchestrator's _update_rollup; absent/zero for V2 chapters.
+    quality_score: Optional[int] = None
+    unresolved_high_count: int = 0
+    qa_rounds_used: int = 0
 
 
 class TranslationJob(BaseModel):
