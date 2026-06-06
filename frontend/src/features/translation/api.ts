@@ -133,8 +133,11 @@ export const versionsApi = {
     return apiJson(`/v1/translation/chapters/${chapterId}/versions/${versionId}`, { token });
   },
 
-  setActiveVersion(token: string, chapterId: string, versionId: string): Promise<ActiveVersionResponse> {
-    return apiJson(`/v1/translation/chapters/${chapterId}/versions/${versionId}/active`, {
+  setActiveVersion(
+    token: string, chapterId: string, versionId: string, acknowledgeIssues = false,
+  ): Promise<ActiveVersionResponse> {
+    const q = acknowledgeIssues ? '?acknowledge_issues=true' : '';
+    return apiJson(`/v1/translation/chapters/${chapterId}/versions/${versionId}/active${q}`, {
       method: 'PUT',
       token,
     });

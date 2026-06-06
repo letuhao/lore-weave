@@ -240,7 +240,12 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
                 "UPDATE translation_jobs SET completed_chapters=completed_chapters+1 WHERE job_id=$1",
                 job_id,
             )
-            # Auto-set active: insert only if no active version exists yet for (chapter_id, target_language)
+            # Auto-set active: insert only if no active version exists yet for
+            # (chapter_id, target_language). M5b: do NOT auto-publish a version the
+            # verifier flagged with unresolved high-severity issues — leave the slot
+            # empty so the reader sees "not translated" until the user reviews and
+            # explicitly sets it active (the publish gate). V2 chapters have
+            # unresolved_high_count=0 (default) → unchanged behaviour.
             await db.execute(
                 """
                 INSERT INTO active_chapter_translation_versions
@@ -248,6 +253,7 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
                 SELECT $1, ct.target_language, $2, ct.owner_user_id
                 FROM chapter_translations ct
                 WHERE ct.id = $2
+                  AND COALESCE(ct.unresolved_high_count, 0) = 0
                 ON CONFLICT (chapter_id, target_language) DO NOTHING
                 """,
                 chapter_id, chapter_translation_id,

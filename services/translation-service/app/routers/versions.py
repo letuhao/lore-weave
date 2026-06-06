@@ -105,11 +105,13 @@ async def get_chapter_version(
 async def set_active_version(
     chapter_id: UUID,
     version_id: UUID,
+    acknowledge_issues: bool = False,
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
 ):
     row = await db.fetchrow(
-        "SELECT owner_user_id, target_language, status FROM chapter_translations WHERE id=$1 AND chapter_id=$2",
+        "SELECT owner_user_id, target_language, status, unresolved_high_count "
+        "FROM chapter_translations WHERE id=$1 AND chapter_id=$2",
         version_id, chapter_id,
     )
     if not row:
@@ -120,6 +122,23 @@ async def set_active_version(
         raise HTTPException(
             status_code=422,
             detail={"code": "TRANSL_NOT_COMPLETED", "message": "Only completed versions can be set as active"},
+        )
+
+    # M5b publish quality-gate: hold a version the verifier flagged with unresolved
+    # high-severity issues, unless the user explicitly acknowledges. Soft gate —
+    # the verifier can false-positive, so the human stays in control.
+    unresolved = row["unresolved_high_count"] or 0
+    if unresolved > 0 and not acknowledge_issues:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "TRANSL_NEEDS_REVIEW",
+                "message": (
+                    f"This version has {unresolved} unresolved high-severity issue(s) "
+                    "flagged by the verifier. Acknowledge to publish it anyway."
+                ),
+                "unresolved_high_count": unresolved,
+            },
         )
 
     await db.execute(

@@ -47,7 +47,11 @@
     "set_active_success": "已設為使用中的版本",
     "set_active_failed": "失敗：{{error}}",
     "needs_review": "需審閱 ({{count}})",
-    "needs_review_title": "驗證器標記了未解決的高嚴重性問題 — 建議審閱。"
+    "needs_review_title": "驗證器標記了未解決的高嚴重性問題 — 建議審閱。",
+    "publish_confirm_title": "仍要在有未解決問題的情況下發布嗎？",
+    "publish_confirm": "此翻譯有 {{count}} 個驗證器標記的未解決高嚴重性問題。仍要設為使用中的版本嗎？",
+    "publish_anyway": "仍要發布",
+    "cancel": "取消"
   },
   "compare": {
     "original_label": "原文 — {{lang}}",

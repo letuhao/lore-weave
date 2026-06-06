@@ -74,6 +74,7 @@ def _active_row(**overrides):
         "owner_user_id": UUID(USER_ID),
         "target_language": "vi",
         "status": "completed",
+        "unresolved_high_count": 0,
     }
     base.update(overrides)
     return FakeRecord(base)
@@ -212,6 +213,39 @@ def test_set_active_version_returns_422_when_status_pending(client, fake_pool):
     resp = client.put(f"/v1/translation/chapters/{CHAPTER_ID}/versions/{VERSION_ID}/active")
     assert resp.status_code == 422
     assert resp.json()["detail"]["code"] == "TRANSL_NOT_COMPLETED"
+
+
+# ── M5b publish quality-gate ──────────────────────────────────────────────────
+
+def test_set_active_version_holds_when_unresolved_high_issues(client, fake_pool):
+    """Soft gate: a flagged version is held (409) and NOT made active without ack."""
+    fake_pool.fetchrow.return_value = _active_row(unresolved_high_count=2)
+    resp = client.put(f"/v1/translation/chapters/{CHAPTER_ID}/versions/{VERSION_ID}/active")
+    assert resp.status_code == 409
+    detail = resp.json()["detail"]
+    assert detail["code"] == "TRANSL_NEEDS_REVIEW"
+    assert detail["unresolved_high_count"] == 2
+    fake_pool.execute.assert_not_called()  # not published
+
+
+def test_set_active_version_publishes_flagged_with_acknowledge(client, fake_pool):
+    """acknowledge_issues=true overrides the hold and publishes the flagged version."""
+    fake_pool.fetchrow.return_value = _active_row(unresolved_high_count=2)
+    resp = client.put(
+        f"/v1/translation/chapters/{CHAPTER_ID}/versions/{VERSION_ID}/active"
+        "?acknowledge_issues=true"
+    )
+    assert resp.status_code == 200
+    assert resp.json()["active_id"] == VERSION_ID
+    fake_pool.execute.assert_called_once()
+
+
+def test_set_active_version_no_gate_when_clean(client, fake_pool):
+    """unresolved_high_count=0 → publishes directly, no acknowledgement needed."""
+    fake_pool.fetchrow.return_value = _active_row(unresolved_high_count=0)
+    resp = client.put(f"/v1/translation/chapters/{CHAPTER_ID}/versions/{VERSION_ID}/active")
+    assert resp.status_code == 200
+    fake_pool.execute.assert_called_once()
 
 
 def test_set_active_version_returns_422_when_status_running(client, fake_pool):

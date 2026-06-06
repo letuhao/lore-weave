@@ -430,6 +430,51 @@ async def test_block_pipeline_partial_success_still_completes():
     assert "completed" in all_sql
 
 
+@pytest.mark.asyncio
+async def test_block_pipeline_auto_active_gated_on_unresolved_high():
+    """M5b (review-impl): the completion auto-activate must NOT publish a
+    verifier-flagged version. The INSERT guards on unresolved_high_count=0 so a
+    flagged-only chapter leaves no active version (reader sees 'not translated'
+    until manual ack). Asserts the guard is present in the auto-active SQL."""
+    from app.workers.chapter_worker import handle_chapter_message
+
+    pool, db = _make_pool()
+    msg = _chapter_msg(target_language="ja")
+    block_body = {
+        "original_language": "en",
+        "body": {"content": [
+            {"type": "paragraph", "content": [{"type": "text", "text": "Hello."}]},
+        ]},
+        "text_content": "Hello.",
+    }
+    book_resp = MagicMock(spec=httpx.Response)
+    book_resp.status_code = 200
+    book_resp.is_success = True
+    book_resp.raise_for_status = MagicMock()
+    book_resp.json.return_value = block_body
+    translated_blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "こんにちは。"}]}]
+
+    with patch("app.workers.chapter_worker.httpx.AsyncClient") as mock_cls, \
+         patch("app.workers.chapter_worker._get_model_context_window",
+               new_callable=AsyncMock, return_value=8192), \
+         patch("app.workers.session_translator.translate_chapter_blocks",
+               new_callable=AsyncMock,
+               return_value=(translated_blocks, 10, 8, 1, 1, {0: "こんにちは。"})):
+        mock_cls.return_value.__aenter__ = AsyncMock(
+            return_value=_patched_book_http(book_resp=book_resp))
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        await handle_chapter_message(msg, pool, AsyncMock(), MagicMock(), retry_count=0)
+
+    auto_active = [
+        c for c in db.execute.call_args_list
+        if "active_chapter_translation_versions" in c.args[0]
+    ]
+    assert auto_active, "auto-active INSERT must run at completion"
+    assert "unresolved_high_count" in auto_active[0].args[0], \
+        "auto-active must be gated on the quality rollup (M5b)"
+
+
 # ── TD1: cross-chapter memo wiring (M0) ───────────────────────────────────────
 
 @pytest.mark.asyncio

@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { versionsApi, type ChapterTranslation } from '../api';
 import { useAuth } from '@/auth';
 import { ContentRenderer } from '@/components/reader/ContentRenderer';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 
 interface TranslationViewerProps {
   bookId?: string;
@@ -21,6 +22,7 @@ export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSe
   const { accessToken } = useAuth();
   const [version, setVersion] = useState<ChapterTranslation | null>(null);
   const [loading, setLoading] = useState(true);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (!accessToken || !versionId) return;
@@ -39,14 +41,30 @@ export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSe
     toast.success(t('viewer.copied'));
   }
 
-  async function handleSetActive() {
+  function handleSetActive() {
+    // M5b: hold publishing a verifier-flagged version behind a confirm. The 409
+    // TRANSL_NEEDS_REVIEW gate is the server-side backstop; we pre-confirm here
+    // (we already know the count) to avoid a failed round-trip.
+    if (version && version.unresolved_high_count > 0) {
+      setConfirmOpen(true);
+      return;
+    }
+    void doSetActive(false);
+  }
+
+  async function doSetActive(acknowledge: boolean) {
     if (!accessToken) return;
     try {
-      await versionsApi.setActiveVersion(accessToken, chapterId, versionId);
+      await versionsApi.setActiveVersion(accessToken, chapterId, versionId, acknowledge);
       onSetActive(versionId);
       toast.success(t('viewer.set_active_success'));
     } catch (e) {
-      toast.error(t('viewer.set_active_failed', { error: (e as Error).message }));
+      const err = e as Error & { code?: string };
+      if (err.code === 'TRANSL_NEEDS_REVIEW') {
+        setConfirmOpen(true);  // server backstop (e.g. count changed under us)
+        return;
+      }
+      toast.error(t('viewer.set_active_failed', { error: err.message }));
     }
   }
 
@@ -172,6 +190,17 @@ export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSe
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={t('viewer.publish_confirm_title')}
+        description={t('viewer.publish_confirm', { count: version?.unresolved_high_count ?? 0 })}
+        confirmLabel={t('viewer.publish_anyway')}
+        cancelLabel={t('viewer.cancel')}
+        onConfirm={() => { setConfirmOpen(false); void doSetActive(true); }}
+        icon={<AlertTriangle className="h-5 w-5 text-amber-500" />}
+      />
     </div>
   );
 }
