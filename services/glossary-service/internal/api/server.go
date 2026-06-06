@@ -83,6 +83,10 @@ func (s *Server) Router() http.Handler {
 		r.Post("/books/{book_id}/extract-entities", s.bulkExtractEntities)
 		r.Get("/books/{book_id}/entity-count", s.internalEntityCount)
 		r.Get("/books/{book_id}/entities", s.internalListEntities)
+		// mui #4 — batch fetch by id for the knowledge semantic selector.
+		r.Post("/books/{book_id}/entities/by-ids", s.internalEntitiesByIDs)
+		// mui #1c G-cand — knowledge's coref detector proposes merge clusters here.
+		r.Post("/books/{book_id}/merge-candidates", s.internalProposeMergeCandidates)
 		// Set canonical content (short_description) on an existing entity.
 		// Used by lore-enrichment promote to write enriched canon THROUGH the
 		// glossary SSOT (Q2) — extract-entities can't set this column.
@@ -168,6 +172,12 @@ func (s *Server) Router() http.Handler {
 			r.Get("/entity-names", s.listEntityNames)
 			// Kind-resolution epic: the per-book unknown-kind review queue.
 			r.Get("/unknown-entities", s.listUnknownEntities)
+			// mui #1c: revert a recorded entity merge.
+			r.Post("/merge-journal/{journal_id}/revert", s.revertMerge)
+			// mui #1c G-cand: the merge-candidate review inbox (list + dismiss).
+			// Confirm == the existing entities/{id}/merge endpoint.
+			r.Get("/merge-candidates", s.listMergeCandidates)
+			r.Post("/merge-candidates/{candidate_id}/dismiss", s.dismissMergeCandidate)
 			r.Route("/entities", func(r chi.Router) {
 				r.Get("/", s.listEntities)
 				r.Post("/", s.createEntity)
@@ -179,6 +189,8 @@ func (s *Server) Router() http.Handler {
 					r.Delete("/pin", s.unpinEntity)
 					// Kind-resolution epic: move a parked entity onto a real kind.
 					r.Post("/reassign-kind", s.reassignEntityKind)
+					// mui #1c: merge loser entities into this (winner) entity.
+					r.Post("/merge", s.mergeEntities)
 					r.Route("/chapter-links", func(r chi.Router) {
 						r.Get("/", s.listChapterLinks)
 						r.Post("/", s.createChapterLink)

@@ -139,6 +139,8 @@
     "extract": "Extract",
     "genres": "Genres",
     "unknown": "Unknown kinds",
+    "ai_suggestions": "AI suggestions",
+    "merge_candidates": "Merge candidates",
     "kinds": "Kinds",
     "new_entity": "New Entity",
     "no_kinds": "No kinds available",

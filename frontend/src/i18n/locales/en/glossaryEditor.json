@@ -57,6 +57,35 @@
     "save_changes": "Save Changes",
     "create": "Create Genre"
   },
+  "ai_suggestions": {
+    "title": "AI Suggestions",
+    "intro": "These entities were discovered by AI extraction across your book but aren't in your glossary yet. Promote the ones worth keeping; reject the rest — a rejected name won't be suggested again.",
+    "empty_title": "No AI suggestions",
+    "empty_desc": "When extraction finds entities not yet in your glossary, they'll appear here for review.",
+    "mentions": "appears in {{count}} chapters",
+    "promote": "Promote",
+    "reject": "Reject",
+    "toast_promoted": "Promoted \"{{name}}\"",
+    "toast_rejected": "Rejected \"{{name}}\"",
+    "unnamed": "(unnamed)"
+  },
+  "merge_candidates": {
+    "title": "Merge Candidates",
+    "intro": "AI found these entities that may be the same character under different names (e.g. 姜子牙 / 太公望 / 子牙). Pick the name to keep as canonical and merge — or dismiss if they're actually different. A merge is reversible.",
+    "empty_title": "No merge candidates",
+    "empty_desc": "When detection finds entities that look like duplicates, they'll appear here for review.",
+    "winner_label": "Keep one as canonical; the rest fold into it as aliases:",
+    "score": "{{score}}% match",
+    "mentions": "{{count}} chapters",
+    "confirm": "Merge",
+    "dismiss": "Dismiss",
+    "undo": "Undo",
+    "toast_merged": "Merged {{count}} into \"{{name}}\"",
+    "toast_none": "No entities were merged (they may have changed)",
+    "toast_dismissed": "Dismissed",
+    "toast_undone": "Merge undone",
+    "unnamed": "(unnamed)"
+  },
   "unknown": {
     "title": "Unknown Kinds",
     "intro": "These entities arrived from extraction with a kind that doesn't exist in your taxonomy yet, so they were parked here instead of being dropped. Resolve each one by mapping it to an existing kind (optionally as a reusable alias) or by creating a new kind for it.",

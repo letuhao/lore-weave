@@ -22,9 +22,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.clients.embedding_client import EmbeddingClient
-from app.clients.glossary_client import GlossaryClient
+from app.clients.glossary_client import GlossaryClient, GlossaryEntityForContext
 from app.clients.llm_client import LLMClient
 from app.context.builder import ProjectNotFound, build_context
+from app.context.selectors.glossary import select_glossary_semantic
+from app.db.neo4j import neo4j_session
 from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.summaries import SummariesRepo
 from app.deps import (
@@ -135,3 +137,52 @@ async def build(
             time.monotonic() - _t0
         )
     return ContextBuildResponse.model_validate(built)
+
+
+# ── mui #4 — semantic glossary selection (architecture B) ───────────────────
+
+
+class GlossarySemanticRequest(BaseModel):
+    user_id: UUID
+    project_id: UUID
+    query: str = Field(default="", max_length=4000)
+    max_entities: int = 20
+    max_tokens: int = 800
+
+
+class GlossarySemanticResponse(BaseModel):
+    items: list[GlossaryEntityForContext]
+
+
+@router.post("/glossary-semantic", response_model=GlossarySemanticResponse)
+async def glossary_semantic(
+    req: GlossarySemanticRequest,
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    glossary_client: GlossaryClient = Depends(get_glossary_client),
+    embedding_client: EmbeddingClient = Depends(get_embedding_client),
+) -> GlossarySemanticResponse:
+    """Semantic glossary entities for a query, ranked by entity-embedding
+    similarity. Used by composition's packer (and available to any caller that
+    wants vector ranking). Best-effort: returns `{items: []}` on a missing
+    project / no embedding model / any failure, so the caller falls back to
+    glossary's FTS select-for-context. Never 500s on the degraded paths.
+    """
+    project = await projects_repo.get(req.user_id, req.project_id)
+    if project is None or project.book_id is None or not project.embedding_model:
+        return GlossarySemanticResponse(items=[])
+
+    async with neo4j_session() as session:
+        items = await select_glossary_semantic(
+            session=session,
+            embedding_client=embedding_client,
+            glossary_client=glossary_client,
+            user_id=req.user_id,
+            project_id=req.project_id,
+            book_id=project.book_id,
+            embedding_model=project.embedding_model,
+            embedding_dimension=project.embedding_dimension,
+            query=req.query,
+            max_entities=req.max_entities,
+            max_tokens=req.max_tokens,
+        )
+    return GlossarySemanticResponse(items=items)

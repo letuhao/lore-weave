@@ -44,6 +44,42 @@ import (
 // glossary stream. Stable wire contract consumed by knowledge-service.
 const entityUpdatedEvent = "glossary.entity_updated"
 
+// entityMergedEvent (mui #1c) is emitted when a glossary entity is merged into
+// a winner. knowledge-service's consumer runs its existing repo merge_entities
+// (rewire KG edges) + entity_alias_map (anti-resurrection). aggregate_id is the
+// winner (the surviving canon).
+const entityMergedEvent = "glossary.entity_merged"
+
+type entityMergedPayload struct {
+	BookID         string `json:"book_id"`
+	WinnerEntityID string `json:"winner_glossary_id"`
+	LoserEntityID  string `json:"loser_glossary_id"`
+	Op             string `json:"op"` // "merged" | "unmerged"
+	EmittedAt      string `json:"emitted_at"`
+}
+
+// insertMergedOutboxEvent writes a glossary.entity_merged (or unmerged) outbox
+// row. Generic over pool/tx via the exec closure. Best-effort at the call site.
+func insertMergedOutboxEvent(
+	ctx context.Context,
+	exec func(ctx context.Context, sql string, args ...any) error,
+	winnerID uuid.UUID,
+	payload entityMergedPayload,
+) error {
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("merged outbox marshal: %w", err)
+	}
+	if err := exec(ctx, `
+		INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
+		VALUES ('glossary', $1, $2, $3)`,
+		winnerID, entityMergedEvent, payloadJSON,
+	); err != nil {
+		return fmt.Errorf("merged outbox insert: %w", err)
+	}
+	return nil
+}
+
 // entityEventPayload is the JSON payload carried by glossary.entity_updated.
 //
 // It is self-sufficient: it carries everything knowledge-service's

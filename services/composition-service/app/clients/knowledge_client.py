@@ -136,6 +136,34 @@ class KnowledgeClient:
             logger.warning("knowledge context/build unavailable: %s", exc)
             return None
 
+    async def glossary_semantic(
+        self, user_id: UUID, *, project_id: UUID, query: str,
+        max_entities: int = 20, max_tokens: int = 1000,
+    ) -> list[dict[str, Any]]:
+        """L1a (mui #4) — semantically-ranked glossary entities (X-Internal-Token).
+        POST /internal/context/glossary-semantic: knowledge embeds the query,
+        vector-ranks its `:Entity` nodes, and enriches the glossary-anchored hits
+        with canon detail. Same item shape as glossary select-for-context
+        (entity_id/cached_name/short_description/kind_code). Returns [] on any
+        failure or a no-embedding project — the caller falls back to glossary
+        FTS. Caller MUST have verified ownership first (SEC2; internal endpoint
+        trusts the token)."""
+        url = f"{self._base_url}/internal/context/glossary-semantic"
+        payload = {
+            "user_id": str(user_id), "project_id": str(project_id),
+            "query": query, "max_entities": max_entities, "max_tokens": max_tokens,
+        }
+        try:
+            resp = await self._http.post(url, json=payload, headers=self._internal_headers())
+            if resp.status_code != 200:
+                logger.warning("knowledge glossary-semantic → %d", resp.status_code)
+                return []
+            data = resp.json()
+            return data.get("items", []) if isinstance(data, dict) else []
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("knowledge glossary-semantic unavailable: %s", exc)
+            return []
+
     async def timeline(
         self, bearer: str, *, project_id: UUID, before_chronological: int | None = None,
         before_order: int | None = None, entity_id: str | None = None, limit: int = 50,

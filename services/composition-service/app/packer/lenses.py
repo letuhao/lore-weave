@@ -93,8 +93,13 @@ async def gather_present(
     rename-sensitive canonical_id. Returns (present, knowledge_seen)."""
     present: list[dict[str, Any]] = []
     seen = False
-    # Glossary bios (graceful [] on failure).
-    bios = await glossary.select_for_context(book_id, user_id, query)
+    # Bios: mui #4 — semantic-ranked entities from knowledge when the project
+    # has embeddings (vector beats lexical, esp. for CJK); fall back to glossary
+    # FTS select-for-context on empty/failure (AC4/AC5). Same item shape either
+    # way (entity_id/cached_name/short_description), so the loop below is shared.
+    bios = await knowledge.glossary_semantic(user_id, project_id=project_id, query=query)
+    if not bios:
+        bios = await glossary.select_for_context(book_id, user_id, query)
     for b in bios:
         eid = b.get("entity_id")
         if not eid:  # soft-absent / malformed → skip (DI3)

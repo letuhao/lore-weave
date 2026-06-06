@@ -144,6 +144,45 @@ export type EntityNameEntry = {
   kind_name?: string;
 };
 
+// ── Merge candidates (mui #1c — coreference merge inbox) ─────────────────────
+// knowledge's coref detector proposes clusters of likely-same entities; the
+// author reviews here and confirms via the R5 merge endpoint (or dismisses).
+
+export type MergeCandidateMember = {
+  entity_id: string;
+  name: string;
+  aliases: string[];
+  chapter_link_count: number;
+};
+
+export type MergeCandidate = {
+  candidate_id: string;
+  kind_code: string;
+  score: number;
+  rationale: string;
+  evidence: unknown;
+  suggested_winner_entity_id?: string;
+  status: 'proposed' | 'dismissed' | 'merged';
+  created_at: string;
+  members: MergeCandidateMember[];
+};
+
+export type MergeCandidateListResponse = {
+  candidates: MergeCandidate[];
+};
+
+export type MergeResultItem = {
+  loser_id: string;
+  journal_id?: string;
+  status: 'merged' | 'skipped' | 'failed';
+  reason?: string;
+};
+
+export type MergeResult = {
+  winner_id: string;
+  results: MergeResultItem[];
+};
+
 export type FilterState = {
   kindCodes: string[];
   status: 'all' | EntityStatus;
