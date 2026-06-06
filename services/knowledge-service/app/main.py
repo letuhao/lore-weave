@@ -198,6 +198,7 @@ async def lifespan(app: FastAPI):
             handle_chapter_unpublished,
             handle_chapter_deleted,
             handle_glossary_entity_updated,
+            handle_glossary_entity_merged,
         )
 
         dispatcher = EventDispatcher()
@@ -215,6 +216,11 @@ async def lifespan(app: FastAPI):
         # extract); this triggers the existing glossary_sync → Neo4j.
         dispatcher.register(
             "glossary.entity_updated", handle_glossary_entity_updated,
+        )
+        # mui #1c — glossary.entity_merged consolidates the KG: merge the loser
+        # :Entity into the winner + entity_alias_map (anti-resurrection).
+        dispatcher.register(
+            "glossary.entity_merged", handle_glossary_entity_merged,
         )
 
         consumer = EventConsumer(
