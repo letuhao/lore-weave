@@ -40,10 +40,15 @@ class StubGlossary:
 
 
 class StubKnowledge:
-    def __init__(self, events=None, hits=None, entity=None):
+    def __init__(self, events=None, hits=None, entity=None, semantic_bios=None):
         self._events = events if events is not None else []
         self._hits = hits if hits is not None else []
         self._entity = entity
+        # mui #4 C-1 — default [] so present falls back to glossary FTS (the
+        # pre-mui#4 behaviour these tests assert).
+        self._semantic_bios = semantic_bios if semantic_bios is not None else []
+    async def glossary_semantic(self, user_id, *, project_id, query, **kw):
+        return self._semantic_bios
     async def timeline(self, bearer, *, project_id, before_chronological=None, **kw):
         return self._events
     async def search_drawers(self, bearer, *, project_id, query, **kw):
