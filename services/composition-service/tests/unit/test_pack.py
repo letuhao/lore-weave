@@ -105,6 +105,60 @@ async def test_c3a_grounding_unavailable_when_no_knowledge():
     assert any("grounding_unavailable" in w for w in pc.warnings)
 
 
+async def _pack_with_compress(req, compress_fn, **kw):
+    return await pack(
+        req, book=kw.get("book") or StubBook(), glossary=StubGlossary(),
+        knowledge=kw.get("knowledge") or StubKnowledge(), canon_repo=StubCanon(),
+        outline_repo=StubOutline(), scene_links_repo=StubSceneLinks(),
+        budget_tokens=10_000, counter=_wc, compress_fn=compress_fn,
+    )
+
+
+async def test_s2_compress_fires_over_threshold(monkeypatch):
+    # tiny threshold → the 3 draft paras exceed it → compress the older 2, keep 1.
+    monkeypatch.setattr("app.packer.pack.settings.pack_compress_recent_threshold_chars", 5)
+    monkeypatch.setattr("app.packer.pack.settings.pack_compress_keep_immediate", 1)
+    seen: dict = {}
+
+    async def fake_compress(older, timeline, plan):
+        seen["older"], seen["plan"] = older, plan
+        return "STATE SUMMARY"
+
+    pc = await _pack_with_compress(_req(), fake_compress)
+    recent = pc.blocks.get("recent", "")
+    assert "STATE SUMMARY" in recent           # summary injected (older folded in)
+    assert "third para" in recent              # immediate prose kept verbatim
+    assert "first para" not in recent          # older compressed out of raw
+    assert seen["older"] == ["first para", "second para"]
+    assert seen["plan"] == "the escape"        # node synopsis used as the plan
+    # summary renders BEFORE the immediate prose (older→immediate order)
+    assert recent.index("STATE SUMMARY") < recent.index("third para")
+
+
+async def test_s2_compress_not_called_under_threshold():
+    called = {"n": 0}
+
+    async def fake_compress(older, timeline, plan):
+        called["n"] += 1
+        return "X"
+
+    pc = await _pack_with_compress(_req(), fake_compress)  # default threshold 6000 >> ~30 chars
+    assert called["n"] == 0
+    assert "first para" in pc.blocks.get("recent", "")  # raw retained
+
+
+async def test_s2_compress_degrade_keeps_raw(monkeypatch):
+    monkeypatch.setattr("app.packer.pack.settings.pack_compress_recent_threshold_chars", 5)
+
+    async def boom(older, timeline, plan):
+        raise RuntimeError("compress down")
+
+    pc = await _pack_with_compress(_req(), boom)  # raises → degrade
+    recent = pc.blocks.get("recent", "")
+    assert "STATE SUMMARY" not in recent
+    assert "first para" in recent and "third para" in recent  # raw kept, no crash
+
+
 async def test_l4_spoiler_drops_future_hits():
     kn = StubKnowledge(
         events=[{"chronological_order": 2, "title": "past", "summary": "x"}],

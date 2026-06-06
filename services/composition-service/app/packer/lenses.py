@@ -44,6 +44,10 @@ class LensBundle:
     recent: list[str] = field(default_factory=list)
     lore: list[dict[str, Any]] = field(default_factory=list)      # raw hits (spoiler-filtered in pack)
     knowledge_seen: bool = False  # True if any knowledge call returned data (C3a signal)
+    # S2 — compressed re-injectable state summary (older story-so-far + spoiler-
+    # filtered timeline + plan), set by pack() only when the raw "story so far"
+    # exceeds budget; renders FIRST in the `recent` block (older→immediate order).
+    state_summary: str = ""
 
 
 def _applies_at(rule: CanonRule, story_order: int | None) -> bool:

@@ -168,6 +168,9 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: INFO
+      # S2 — long-chapter state-compress threshold (chars of raw story-so-far
+      # before the packer compresses the older portion). Default 6000; overridable.
+      PACK_COMPRESS_RECENT_THRESHOLD_CHARS: ${PACK_COMPRESS_RECENT_THRESHOLD_CHARS:-6000}
       # Internal service URLs — consumed by the M3 client wrappers.
       KNOWLEDGE_INTERNAL_URL: http://knowledge-service:8092
       GLOSSARY_INTERNAL_URL: http://glossary-service:8088

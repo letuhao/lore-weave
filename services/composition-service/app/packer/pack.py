@@ -14,9 +14,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
+
+from app.config import settings
 
 from app.clients.book_client import BookClient
 from app.clients.glossary_client import GlossaryClient
@@ -83,6 +86,7 @@ async def pack(
     canon_repo: CanonRulesRepo, outline_repo: OutlineRepo, scene_links_repo: SceneLinksRepo,
     budget_tokens: int, counter: B.TokenCounter | None = None,
     jobs_repo: GenerationJobsRepo | None = None,
+    compress_fn: Callable[[list[str], list[str], str], Awaitable[str]] | None = None,
 ) -> PackedContext:
     # A1: never pack unscoped (knowledge timeline/entities widen cross-project).
     assemble.assert_project_scoped(req.project_id)
@@ -151,6 +155,37 @@ async def pack(
         planned=planned, recent=recent, lore=l4.kept,
         knowledge_seen=bool(seen_p or seen_t or seen_l),
     )
+
+    # S2 — when the raw "story so far" is large (long chapter), COMPRESS the older
+    # portion into a re-injectable state summary instead of letting the budget
+    # tail-trim it. Keep the last N immediate paragraphs verbatim. compress_fn is
+    # fed only the spoiler-FILTERED timeline (tl_kept) + strictly-prior prose, so
+    # it cannot leak future canon (/review-impl H2). Degrade-safe: "" → keep raw.
+    keep = max(1, settings.pack_compress_keep_immediate)
+    recent_chars = sum(len(p) for p in bundle.recent)
+    if (compress_fn is not None and len(bundle.recent) > keep
+            and recent_chars > settings.pack_compress_recent_threshold_chars):
+        older = bundle.recent[:-keep]
+        immediate = bundle.recent[-keep:]
+        timeline_texts = [
+            t for t in (f'{e.get("title", "")}: {e.get("summary", "")}'.strip(": ").strip()
+                        for e in tl_kept) if t
+        ]
+        plan = (node.get("synopsis") or node.get("goal") or "").strip()
+        try:
+            summary = await compress_fn(older, timeline_texts, plan)
+        except Exception:  # noqa: BLE001 — compress must never fail a pack
+            logger.warning("compress_fn raised — keeping raw recent prose", exc_info=True)
+            summary = ""
+        if summary:
+            logger.info(
+                "S2 compress engaged: %d older paras (%d chars) → summary %d chars "
+                "(project=%s node=%s)",
+                len(older), recent_chars, len(summary), req.project_id, node.get("id"),
+            )
+            bundle.state_summary = summary
+            bundle.recent = immediate
+
     segs = assemble.build_segments(bundle, guide=req.guide)
     bres = B.enforce_budget(segs, budget_tokens, counter or B.default_counter())
     blocks = assemble.segments_to_blocks(bres.kept)

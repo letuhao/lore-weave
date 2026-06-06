@@ -48,5 +48,12 @@ class Settings(BaseSettings):
     plan_max_scenes_per_chapter: int = 6
     plan_high_tension_threshold: int = 70
 
+    # S2 compress — when the packer's raw "story so far" (prior-scene prose)
+    # exceeds this many chars, compress the OLDER portion into a state summary
+    # (keeping the last N immediate paragraphs verbatim) so long chapters don't
+    # blow the prompt budget. ~4 chars/token → 6000 chars ≈ 1500 tokens.
+    pack_compress_recent_threshold_chars: int = 6000
+    pack_compress_keep_immediate: int = 2
+
 
 settings = Settings()  # type: ignore[call-arg]

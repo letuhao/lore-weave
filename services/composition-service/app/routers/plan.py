@@ -174,8 +174,10 @@ async def decompose_commit(
 
     # IDOR: every committed chapter_id must be one of THIS book's chapters
     # (list_chapters is JWT-scoped → only the user's book). 502 if unverifiable.
-    book_ids = {str(c["chapter_id"]) for c in await _book_chapter_ids(book, work.book_id, bearer)}
-    bad = [str(cid) for cid in req_chapter_ids if str(cid) not in book_ids]
+    # Also keep each chapter's reading-order sort_order to assign scene story_order.
+    book_chapters = await _book_chapter_ids(book, work.book_id, bearer)
+    sort_by_chapter = {str(c["chapter_id"]): (c.get("sort_order") or 0) for c in book_chapters}
+    bad = [str(cid) for cid in req_chapter_ids if str(cid) not in sort_by_chapter]
     if bad:
         raise HTTPException(status_code=400, detail={"code": "BAD_CHAPTER", "chapter_ids": bad})
 
@@ -204,11 +206,19 @@ async def decompose_commit(
             "detail": "chapters already have scenes — resend with force=true to add "
                       "these scenes IN ADDITION (existing scenes are NOT removed)"})
 
+    # Assign each scene a reading-order story_order = chapter.sort_order*1000 + idx.
+    # This is the position axis the packer + S1 state-reinjection key on (prior =
+    # lower story_order); WITHOUT it scenes are story_order=None and both the
+    # spoiler-windowed lenses AND S1's prior-scene fallback no-op. Chapter-major,
+    # scene-minor, stable + collision-free (≤1000 scenes/chapter).
+    _STRIDE = 1000
     spec = [{
         "chapter_id": ch.chapter_id, "title": ch.title, "intent": ch.intent,
         "beat_role": ch.beat_role,
         "scenes": [{"title": sc.title, "synopsis": sc.synopsis, "tension": sc.tension,
-                    "present_entity_ids": sc.present_entity_ids} for sc in ch.scenes],
+                    "present_entity_ids": sc.present_entity_ids,
+                    "story_order": sort_by_chapter[str(ch.chapter_id)] * _STRIDE + i}
+                   for i, sc in enumerate(ch.scenes)],
     } for ch in body.chapters]
     try:
         created = await outline.create_decomposed_tree(

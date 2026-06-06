@@ -173,6 +173,9 @@ def test_decompose_commit_persists_tree(ctx):
     # the persist spec carried beat_role at the chapter level (repo stamps it on scenes)
     assert outline.created["chapters"][0]["beat_role"] == "setup"
     assert outline.created["chapters"][0]["scenes"][0]["tension"] == 80
+    # story_order assigned = chapter.sort_order(1)*1000 + idx(0) — S1 state-reinjection
+    # needs it (NULL would no-op the position-bound fallback). Regression-lock.
+    assert outline.created["chapters"][0]["scenes"][0]["story_order"] == 1000
 
 
 def test_decompose_commit_bad_chapter_idor_400(ctx):

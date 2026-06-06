@@ -246,6 +246,7 @@ class OutlineRepo:
                             title=sc.get("title", ""), synopsis=sc.get("synopsis", ""),
                             tension=sc.get("tension"),
                             present_entity_ids=sc.get("present_entity_ids") or [],
+                            story_order=sc.get("story_order"),  # reading axis (S1 needs it)
                             status="outline", conn=c,
                         )
                         scene_ids.append(sn.id)

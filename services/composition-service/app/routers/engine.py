@@ -40,6 +40,7 @@ from app.deps import (
 from app.db.models import CorrectionKind
 from app.engine.adaptive_k import adaptive_k
 from app.engine.canon_reflect import run_canon_reflect
+from app.engine.compress import compress
 from app.engine.cowrite import build_messages, estimate_prompt_tokens, stream_draft
 from app.engine.critic import judge_prose
 from app.engine.select import select_draft
@@ -143,6 +144,17 @@ async def generate(
 ) -> Any:  # StreamingResponse (cowrite) | JSONResponse (auto)
     work, node = await _load_work_node(works, outline, user_id, project_id, body.outline_node_id)
 
+    # S2 — bind the compress primitive over the drafter model + the Work's source
+    # language; pack() calls it only when the raw story-so-far exceeds budget.
+    _src_lang = from_settings(work.settings).source_language
+
+    async def _compress_fn(older: list[str], timeline_texts: list[str], plan: str) -> str:
+        return await compress(
+            llm, user_id=str(user_id), model_source=body.model_source,
+            model_ref=str(body.model_ref), prose=older, timeline=timeline_texts,
+            plan=plan, source_language=_src_lang,
+        )
+
     # Retrieve (M4 packer) — raises OwnershipError (404) / BookClientError (502).
     try:
         pc = await pack(
@@ -153,6 +165,7 @@ async def generate(
             outline_repo=outline, scene_links_repo=scene_links,
             budget_tokens=settings.pack_token_budget,
             jobs_repo=jobs,  # S1 state-reinjection fallback source (prior generated scenes)
+            compress_fn=_compress_fn,  # S2 long-chapter state compression
         )
     except OwnershipError:
         raise HTTPException(status_code=404, detail="book not found")

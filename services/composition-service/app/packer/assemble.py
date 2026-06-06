@@ -62,6 +62,12 @@ def build_segments(bundle: LensBundle, *, guide: str = "") -> list[Segment]:
         segs.append(Segment("threads", f'{t.get("kind", "")} {t.get("label", "")} → {t.get("to", "")}'.strip(),
                             B.PRIO_THREADS_STALE))
 
+    # S2 — the compressed state summary (older story-so-far) renders FIRST in the
+    # `recent` block, BEFORE the immediate prose (older→immediate reading order).
+    # Protected: it's the condensed prior state, high value.
+    if bundle.state_summary:
+        segs.append(Segment("recent", bundle.state_summary, B.PRIO_RECENT_IMMEDIATE, protected=True))
+
     # L3 recent: the LAST paragraph is the immediate-preceding prose (protected);
     # earlier paragraphs are droppable.
     n = len(bundle.recent)
