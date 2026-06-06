@@ -113,3 +113,66 @@ async def test_default_pipeline_version_routes_to_v2():
 
     v2fn.assert_awaited_once()
     v3fn.assert_not_awaited()
+
+
+# ── M1a: rule-tier verification persists issues ───────────────────────────────
+
+@pytest.mark.asyncio
+async def test_v3_orchestrator_persists_rule_issues():
+    """M1a: after delegating to V2, the v3 orchestrator runs the deterministic
+    rule-tier and persists Issues + the chapter rollup. A seeded CJK-leak draft
+    must produce an INSERT into translation_quality_issues + a rollup UPDATE."""
+    from app.workers.v3 import orchestrator
+
+    blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "魔王來了。"}]}]
+    # Seeded error: residual CJK in a vi target.
+    result_blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "魔王 đã đến."}]}]
+
+    pool, db = _make_pool()
+    msg = _chapter_msg()  # target_language='vi', has book_id
+
+    with patch("app.workers.session_translator.translate_chapter_blocks",
+               new_callable=AsyncMock, return_value=(result_blocks, 10, 8, 1, 1)), \
+         patch("app.workers.glossary_client.fetch_translation_glossary",
+               new_callable=AsyncMock, return_value=[]):
+        await orchestrator.translate_chapter_blocks_v3(
+            blocks, "zh", msg, pool, uuid4(), llm_client=MagicMock(), context_window=8192,
+        )
+
+    sql = " ".join(c.args[0] for c in db.execute.call_args_list)
+    assert "translation_quality_issues" in sql   # issues inserted
+    assert "quality_score" in sql                # chapter rollup updated
+
+
+@pytest.mark.asyncio
+async def test_v3_rule_issues_attributed_to_correct_block():
+    """review-impl LOW-2/3: with multiple blocks, an issue must be attributed to
+    the RIGHT block_index (proves the source↔draft zip alignment, not just that
+    *some* row was written)."""
+    from app.workers.v3 import orchestrator
+
+    blocks = [
+        {"type": "paragraph", "content": [{"type": "text", "text": "你好。"}]},      # 0 clean
+        {"type": "paragraph", "content": [{"type": "text", "text": "魔王來了。"}]},   # 1 source
+    ]
+    result_blocks = [
+        {"type": "paragraph", "content": [{"type": "text", "text": "Xin chào."}]},   # 0 clean draft
+        {"type": "paragraph", "content": [{"type": "text", "text": "魔王 đã đến."}]}, # 1 CJK leak
+    ]
+    pool, db = _make_pool()
+    msg = _chapter_msg()
+
+    with patch("app.workers.session_translator.translate_chapter_blocks",
+               new_callable=AsyncMock, return_value=(result_blocks, 10, 8, 2, 2)), \
+         patch("app.workers.glossary_client.fetch_translation_glossary",
+               new_callable=AsyncMock, return_value=[]):
+        await orchestrator.translate_chapter_blocks_v3(
+            blocks, "zh", msg, pool, uuid4(), llm_client=MagicMock(), context_window=8192,
+        )
+
+    inserts = [
+        c for c in db.execute.call_args_list
+        if "INSERT INTO translation_quality_issues" in c.args[0]
+    ]
+    assert len(inserts) == 1                 # only the leaked block
+    assert inserts[0].args[2] == 1           # block_index = the leaked block, not the clean one

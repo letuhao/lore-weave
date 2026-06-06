@@ -8,13 +8,15 @@
 
 ### ▶ TRANSLATION PIPELINE V3 (branch `feat/translation-pipeline-v3`)
 
-**State: M0 DONE** — readiness gate + V3 scaffold behind the `pipeline_version` flag. Design across 3 specs + 1 plan, PO-approved; `/review-impl` ran (0 HIGH, 2 MED fixed, 4 LOW deferred). Full translation suite **323 passed** (307 baseline → +16); **behavioral parity** preserved (default `pipeline_version='v2'`).
+**State: M0 + M1a DONE** — M0 readiness gate + V3 scaffold behind `pipeline_version`; M1a deterministic Verifier rule-tier (detect+persist). Both PO-approved + `/review-impl`'d. Full translation suite **336 passed**; **parity** preserved (default `pipeline_version='v2'`).
 
 **Docs:** design [`2026-06-06-translation-pipeline-v3-multi-agent.md`](../specs/2026-06-06-translation-pipeline-v3-multi-agent.md) (**§12 = plan-of-record M0–M6**) · [research](../specs/2026-06-06-translation-llm-market-research.md) · [arch-review](../specs/2026-06-06-translation-v3-architecture-review-benchmark.md) · [M0 plan](../plans/2026-06-06-translation-v3-m0.md).
 
 **M0 shipped:** V8 schema (flag + `verifier_model_*` + `qa_depth`/`max_qa_rounds` + `translation_quality_issues` + chapter rollup); memo-wiring fix (TD1 — block pipeline now persists memo); block pipeline writes `chapter_translation_chunks` rows (TD3/W11); `app/metrics.py` structured stage events (W10, fail-safe); transactional job+chapters insert (W7); `pipeline_version` plumbed job→broker→coordinator→worker; `app/workers/v3/` orchestrator (delegates to V2 = parity).
 
-**NEXT — M1 (Deterministic quality + data upgrade):** Verifier **rule-tier** (glossary-name compliance · source-script/CJK leak · number preservation · sentence-count omission · repetition/looping — GalTransl checklist); **romanization policy** (zh→vi Sino-Vietnamese); **chapter-level name-consistency pass**; swap glossary scorer → `select-for-context` + **trust ladder** + write-back missing names; **regression gold-set**. (design §12.4 / §11)
+**M1a shipped:** `v3/verifier.py` rule-tier (5 GalTransl checks: glossary-name · source-script/CJK leak · number preservation · sentence-count omission · repetition/looping) + `v3/quality.py` (Issue/IssueReport+score); wired **post-V2 in the orchestrator (non-fatal)** → persist `translation_quality_issues` + chapter rollup; **gold-set** regression corpus. `/review-impl`: `len>=2` substring guard (MED-1) + block-attribution test.
+
+**M1 split (PO-locked): M1a✓ → M1b → M1c → M1d.** **NEXT = M1b** (translation-only): targeted re-translate of high-severity rule blocks (deterministic corrector, **no LLM loop**) + **chapter-level name-consistency pass** (each source name → one target across the chapter). Then **M1c** romanization (prompt-level policy, no lexicon) · **M1d** glossary `select-for-context` + trust ladder + write-back missing names (cross-service; PO chose **no /amaw**). (design §12.4 / §11)
 
 **Deferred (M0 /review-impl):**
 - **D-TRANSL-RESUME** — chunk rows are resume *substrate*; skip-completed-batch logic NOT built (re-run re-translates all). M1+/M5.
@@ -22,6 +24,9 @@
 - **D-TRANSL-FLAG-BOOKSETTINGS** — `pipeline_version` is per-job / DB-default only; not in `CONFIG_KEYS`/`BookSettingsPayload` (no per-book persistence / UI yet). Add when v3 productionizes.
 - **D-TRANSL-TXN-ROLLBACK-TEST** — job-insert rollback relies on asyncpg contract; mock test proves only "uses txn" + "no publish on fail". Accept.
 - **DOC-FIX** — CLAUDE.md services table calls `translation-service` Go/Chi; it is **Python/FastAPI**.
+- **D-TRANSL-VERIFY-WHOLEWORD** (M1a /review-impl) — Verifier name-compliance uses substring + a `len>=2` guard; proper fix = whole-word/conditional CJK matching (ties to V2 auto_correct, design §10 C.7).
+- **D-TRANSL-VERIFY-COARSE** (M1a) — `number_mismatch` is set-based (loses multiplicity) + can false-positive on spelled-out numbers; CJK-leak can false-positive on intentionally-kept CJK names. Detect-only/med; refine once the M2 LLM-tier corroborates.
+- **D-TRANSL-VERIFY-2ND-FETCH** (M1a) — `_verify_and_persist` re-fetches the glossary (V2 already did); M2 restructures the orchestrator to share one fetch.
 
 ---
 
