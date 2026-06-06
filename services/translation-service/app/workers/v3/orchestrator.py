@@ -1,13 +1,20 @@
-"""V3 orchestrator — M0 skeleton + M1a rule-tier + M1b targeted re-translate.
+"""V3 orchestrator — M0 scaffold + M1 (rule-tier/correct/romanization) + M2 (LLM verify + loop).
 
-``translate_chapter_blocks_v3`` delegates the translation to V2, runs the
-deterministic Verifier **rule-tier** (M1a), and re-translates HIGH-severity blocks
-once (M1b — rule-triggered, single pass; the LLM-verifier loop is M2). Corrections
-are spliced back into the returned blocks so the worker persists the fixed output.
+``translate_chapter_blocks_v3`` delegates the translation to V2 (with the M1c
+romanization nudge), then runs the QA loop:
+
+  rule-tier verify (+ optional LLM Tier-2)  →  re-translate HIGH-severity blocks
+  (keep-if-improved)  →  re-verify  →  repeat up to max_qa_rounds.
+
+Gating (`qa_depth`):
+  - rule_only : deterministic rule-tier only (M1 behavior).
+  - standard  : rule-tier + ONE LLM verify pass; single correction round (default).
+  - thorough  : rule-tier + LLM each round; loop up to max_qa_rounds.
+
+Conservative (§12.2): LLM-only issues are capped at advisory severity, so an LLM
+flag never alone reaches the HIGH set that triggers a destructive re-translate;
+the keep-if-improved check stays **deterministic** (rule-tier high count).
 See docs/specs/2026-06-06-translation-pipeline-v3-multi-agent.md.
-
-V2 imports are lazy (inside each call) to stay patchable in tests and avoid an
-import cycle with session_translator.
 """
 from __future__ import annotations
 
@@ -17,6 +24,11 @@ from uuid import UUID
 from ...metrics import record_stage
 
 log = logging.getLogger(__name__)
+
+# Hard ceiling on the verify→correct loop, independent of the configured
+# max_qa_rounds (review-impl MED-1) — a misconfigured large value must not run
+# unbounded LLM calls.
+_MAX_QA_ROUNDS = 5
 
 
 async def translate_chapter_blocks_v3(
@@ -29,7 +41,6 @@ async def translate_chapter_blocks_v3(
     llm_client,
     context_window: int = 8192,
 ):
-    """Translate via V2, then verify (M1a) + targeted re-translate (M1b)."""
     from ..session_translator import translate_chapter_blocks
     from .romanization import romanization_instruction
     result = await translate_chapter_blocks(
@@ -38,8 +49,7 @@ async def translate_chapter_blocks_v3(
         extra_system=romanization_instruction(source_lang, msg.get("target_language", "")),
     )
     # Non-fatal — verification/correction must never fail a translation that
-    # already succeeded. Corrections mutate result[0] in place (the worker then
-    # persists the corrected blocks).
+    # already succeeded. Corrections mutate result[0] in place.
     try:
         await _verify_correct_persist(
             blocks, result[0], source_lang, msg, pool, chapter_translation_id,
@@ -69,11 +79,35 @@ async def translate_chapter_v3(
     )
 
 
-# ── M1a verify + M1b correct + persist ────────────────────────────────────────
+def _verifier_model(msg: dict) -> tuple[str, str]:
+    """(source, ref) for the verifier — a nullable verifier model falls back to the translator."""
+    return (
+        msg.get("verifier_model_source") or msg["model_source"],
+        msg.get("verifier_model_ref") or msg["model_ref"],
+    )
 
-async def _verify_correct_persist(
-    blocks, result_blocks, source_lang, msg, pool, chapter_translation_id, *, llm_client,
-) -> None:
+
+async def _verify(source_texts, draft_texts, cmap, target, source_lang,
+                  use_llm, verifier_model, msg, llm_client):
+    """Rule-tier + (optional) LLM Tier-2. LLM issues are capped at 'med' so an
+    LLM-only flag never reaches the HIGH set that triggers re-translate (§12.2)."""
+    from .verifier import verify_rules
+    report = verify_rules(source_texts, draft_texts, cmap, target)
+    if use_llm:
+        from .llm_verifier import llm_verify
+        llm_issues = await llm_verify(
+            source_texts, draft_texts, source_lang, target, verifier_model, msg,
+            llm_client=llm_client,
+        )
+        for issue in llm_issues:
+            if issue.severity == "high":
+                issue.severity = "med"  # conservative gate
+            report.issues.append(issue)
+    return report
+
+
+async def _verify_correct_persist(blocks, result_blocks, source_lang, msg, pool,
+                                  chapter_translation_id, *, llm_client) -> None:
     if chapter_translation_id is None:
         return
     from ..block_classifier import classify_block, extract_translatable_text, rebuild_block
@@ -103,38 +137,60 @@ async def _verify_correct_persist(
     gctx = build_glossary_context(raw, "\n".join(source_texts.values()), target)
     cmap = gctx.correction_map
 
-    # M1a: detect + persist round 0.
-    report0 = verify_rules(source_texts, draft_texts, cmap, target)
-    await _persist_issues(pool, chapter_translation_id, report0, 0)
+    qa_depth = msg.get("qa_depth", "standard")
+    use_llm = qa_depth != "rule_only"
+    try:
+        configured_rounds = int(msg.get("max_qa_rounds", 2))
+    except (TypeError, ValueError):
+        configured_rounds = 2
+    # Cap regardless of config (review-impl MED-1).
+    max_rounds = min(_MAX_QA_ROUNDS, max(1, configured_rounds)) if qa_depth == "thorough" else 1
+    verifier_model = _verifier_model(msg)
 
-    final = report0
+    # Clean slate (review-impl MED-2): a worker retry re-runs with the SAME ct_id;
+    # clear all prior issue rows so a shorter re-run can't leave stale higher-round rows.
+    await _clear_issues(pool, chapter_translation_id)
+    report = await _verify(source_texts, draft_texts, cmap, target, source_lang,
+                           use_llm, verifier_model, msg, llm_client)
+    await _persist_issues(pool, chapter_translation_id, report, 0)
+
     rounds_used = 0
-    flagged = report0.block_indices_with_high()
-    if flagged:
-        # M1b: re-translate the high-severity blocks once, splice, re-verify.
-        rounds_used = 1
+    while report.block_indices_with_high() and rounds_used < max_rounds:
+        rounds_used += 1
+        flagged = report.block_indices_with_high()
         corrected = await correct_high_severity_blocks(
-            flagged, source_texts, draft_texts, report0,
+            flagged, source_texts, draft_texts, report,
             source_lang, target, msg, gctx.prompt_block, llm_client=llm_client,
         )
         for idx, text in corrected.items():
-            # keep-if-improved (review-impl MED-1): only accept a correction that
-            # REDUCES this block's high-severity count — never persist a worse draft.
-            orig_high = sum(1 for i in report0.issues
+            # keep-if-improved stays DETERMINISTIC (rule-tier high count) — the
+            # LLM's non-determinism must not drive the accept/reject decision.
+            orig_high = sum(1 for i in report.issues
                             if i.block_index == idx and i.severity == "high")
             new_high = len(verify_rules({idx: source_texts[idx]}, {idx: text}, cmap, target).high)
             if new_high < orig_high:
                 draft_texts[idx] = text
-                result_blocks[idx] = rebuild_block(blocks[idx], text)  # worker persists this
-        final = verify_rules(source_texts, draft_texts, cmap, target)
-        await _persist_issues(pool, chapter_translation_id, final, 1)
+                result_blocks[idx] = rebuild_block(blocks[idx], text)
+        report = await _verify(source_texts, draft_texts, cmap, target, source_lang,
+                               use_llm, verifier_model, msg, llm_client)
+        await _persist_issues(pool, chapter_translation_id, report, rounds_used)
 
-    await _update_rollup(pool, chapter_translation_id, final, rounds_used)
+    await _update_rollup(pool, chapter_translation_id, report, rounds_used)
     record_stage(
         "translation.verify", pipeline="v3", ct=str(chapter_translation_id),
-        issues0=len(report0.issues), high0=len(report0.high),
-        high_final=len(final.high), rounds=rounds_used, score=final.quality_score(),
+        qa_depth=qa_depth, rounds=rounds_used,
+        high_final=len(report.high), issues_final=len(report.issues),
+        score=report.quality_score(),
     )
+
+
+async def _clear_issues(pool, chapter_translation_id) -> None:
+    """Remove ALL prior issue rows for this chapter_translation (re-run clean slate)."""
+    async with pool.acquire() as db:
+        await db.execute(
+            "DELETE FROM translation_quality_issues WHERE chapter_translation_id=$1",
+            chapter_translation_id,
+        )
 
 
 async def _persist_issues(pool, chapter_translation_id, report, round_) -> None:
