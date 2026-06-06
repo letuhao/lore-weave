@@ -151,8 +151,11 @@ func (s *Server) mergeEntities(w http.ResponseWriter, r *http.Request) {
 		}
 		jid, reason, merr := s.mergeOne(ctx, bookID, winnerID, winnerKind, loserID, userID)
 		if merr != nil {
-			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "merge failed: "+merr.Error())
-			return
+			// MED-3b: don't abort the whole request — earlier losers already
+			// committed. Record this one as failed and continue so the response
+			// reports per-loser outcomes (each merge is independently journaled).
+			results = append(results, mergeResultItem{LoserID: raw, Status: "failed", Reason: merr.Error()})
+			continue
 		}
 		if reason != "" {
 			results = append(results, mergeResultItem{LoserID: raw, Status: "skipped", Reason: reason})
@@ -210,6 +213,53 @@ func (s *Server) mergeOne(
 	}
 	defer tx.Rollback(ctx)
 
+	// Lock both rows + re-validate liveness INSIDE the tx (MED-2: closes the
+	// TOCTOU between the pool-level validation above and the repoint — a
+	// concurrent merge/revert/delete of either side can't interleave). The
+	// ANY+ORDER BY locks in a deterministic order to avoid deadlock.
+	{
+		lrows, lerr := tx.Query(ctx,
+			`SELECT entity_id, deleted_at FROM glossary_entities
+			 WHERE entity_id = ANY($1::uuid[]) ORDER BY entity_id FOR UPDATE`,
+			[]uuid.UUID{winnerID, loserID})
+		if lerr != nil {
+			return uuid.Nil, "", lerr
+		}
+		live := map[uuid.UUID]bool{}
+		for lrows.Next() {
+			var id uuid.UUID
+			var del *time.Time
+			if e := lrows.Scan(&id, &del); e != nil {
+				lrows.Close()
+				return uuid.Nil, "", e
+			}
+			live[id] = del == nil
+		}
+		lrows.Close()
+		if e := lrows.Err(); e != nil {
+			return uuid.Nil, "", e
+		}
+		if !live[winnerID] {
+			return uuid.Nil, "winner not a live entity in this book", nil
+		}
+		if !live[loserID] {
+			return uuid.Nil, "loser not a live entity in this book", nil
+		}
+	}
+
+	// Resolve the kind's aliases attr_def up front. The aliases attribute is
+	// handled ONLY by the fold below — the generic EAV repoint EXCLUDES it — so
+	// the same row can never be both repointed AND folded, which would corrupt
+	// the loser's aliases on revert (MED-1).
+	var aliasDef uuid.UUID
+	var aliasDefPtr *uuid.UUID
+	if tx.QueryRow(ctx,
+		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id = $1 AND code = 'aliases' LIMIT 1`,
+		winnerKind,
+	).Scan(&aliasDef) == nil {
+		aliasDefPtr = &aliasDef
+	}
+
 	// 1. Repoint NON-conflicting child rows loser→winner, collecting PKs.
 	chLinks, err := scanUUIDs(ctx, tx, `
 		UPDATE chapter_entity_links SET entity_id = $1
@@ -222,8 +272,9 @@ func (s *Server) mergeOne(
 	eavs, err := scanUUIDs(ctx, tx, `
 		UPDATE entity_attribute_values SET entity_id = $1
 		WHERE entity_id = $2
+		  AND ($3::uuid IS NULL OR attr_def_id <> $3)
 		  AND attr_def_id NOT IN (SELECT attr_def_id FROM entity_attribute_values WHERE entity_id = $1)
-		RETURNING attr_value_id`, winnerID, loserID)
+		RETURNING attr_value_id`, winnerID, loserID, aliasDefPtr)
 	if err != nil {
 		return uuid.Nil, "", err
 	}
@@ -257,12 +308,9 @@ func (s *Server) mergeOne(
 
 	// 2. Fold loser name + aliases into the winner's aliases (anti-resurrection:
 	//    a future extract-entities with the loser name resolves to the winner).
+	//    Uses the aliasDef resolved up front (excluded from the EAV repoint).
 	var aliasesBefore *string
-	var aliasDef uuid.UUID
-	if err := tx.QueryRow(ctx,
-		`SELECT attr_def_id FROM attribute_definitions WHERE kind_id = $1 AND code = 'aliases' LIMIT 1`,
-		winnerKind,
-	).Scan(&aliasDef); err == nil {
+	if aliasDefPtr != nil {
 		winnerName, winnerAliases := entityNameAndAliases(ctx, tx, winnerID)
 		merged := dedupStrings(append(append(append([]string{}, winnerAliases...), loserAliases...), loserName))
 		// drop the winner's own name from its aliases (never alias-to-self)
@@ -352,6 +400,8 @@ func (s *Server) revertMerge(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_BAD_BOOK", "journal not in this book")
 	case "already_reverted":
 		writeError(w, http.StatusConflict, "GLOSS_ALREADY_REVERTED", "merge already reverted")
+	case "winner_since_merged":
+		writeError(w, http.StatusConflict, "GLOSS_WINNER_SINCE_MERGED", "winner has since been merged; revert the later merge first")
 	default:
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", reason)
 	}
@@ -384,6 +434,16 @@ func (s *Server) revertMergeCore(ctx context.Context, bookID, journalID uuid.UUI
 	}
 	if status != "merged" {
 		return "already_reverted", nil
+	}
+	// Chain-merge guard (MED-3a): if the winner has SINCE been merged away, its
+	// rows (incl. ones this journal moved onto it) have moved on to a later
+	// winner — reverting now would yank them to the loser incorrectly. Force
+	// LIFO: the later merge must be reverted first.
+	var winnerMergedInto *uuid.UUID
+	if err := s.pool.QueryRow(ctx,
+		`SELECT merged_into_entity_id FROM glossary_entities WHERE entity_id = $1`, winnerID,
+	).Scan(&winnerMergedInto); err == nil && winnerMergedInto != nil {
+		return "winner_since_merged", nil
 	}
 
 	tx, err := s.pool.Begin(ctx)

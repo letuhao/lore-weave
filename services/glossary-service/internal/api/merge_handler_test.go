@@ -239,3 +239,55 @@ func TestMerge_RevertRoundTrip(t *testing.T) {
 		t.Errorf("double revert: reason=%q", r)
 	}
 }
+
+// MED-1: winner lacks aliases, loser has them → the loser's aliases row must
+// NOT be repointed (only folded), so revert restores the loser's ORIGINAL
+// aliases instead of the folded/polluted form.
+func TestMerge_RevertRestoresLoserAliases_WhenWinnerLackedAliases(t *testing.T) {
+	f := newMergeFixture(t, "000000000005")
+	winner := f.mkEntity(t, "W", nil)                  // no aliases
+	loser := f.mkEntity(t, "L", []string{"别名一"}) // has aliases
+
+	jid, reason, err := f.srv.mergeOne(f.ctx, f.bookID, winner, f.kindID, loser, uuid.New())
+	if err != nil || reason != "" {
+		t.Fatalf("merge: %q %v", reason, err)
+	}
+	// winner gained folded aliases; loser keeps its own aliases row (not moved).
+	if al := f.aliasesOf(t, winner); !slices.Contains(al, "别名一") || !slices.Contains(al, "L") {
+		t.Errorf("winner fold wrong: %v", al)
+	}
+	if al := f.aliasesOf(t, loser); len(al) != 1 || al[0] != "别名一" {
+		t.Errorf("loser aliases moved/changed during merge: %v", al)
+	}
+
+	if r, err := f.srv.revertMergeCore(f.ctx, f.bookID, jid); err != nil || r != "" {
+		t.Fatalf("revert: %q %v", r, err)
+	}
+	// loser's ORIGINAL aliases intact; winner's inserted aliases row deleted.
+	if al := f.aliasesOf(t, loser); len(al) != 1 || al[0] != "别名一" {
+		t.Errorf("loser aliases corrupted by revert: %v", al)
+	}
+	if al := f.aliasesOf(t, winner); len(al) != 0 {
+		t.Errorf("winner aliases not cleaned on revert: %v", al)
+	}
+}
+
+// MED-3a: reverting out of order (the winner has since been merged away) is
+// rejected — the later merge must be reverted first.
+func TestRevert_ChainGuardRejectsOutOfOrder(t *testing.T) {
+	f := newMergeFixture(t, "000000000006")
+	a := f.mkEntity(t, "甲", nil)
+	b := f.mkEntity(t, "乙", nil)
+	c := f.mkEntity(t, "丙", nil)
+	jidAB, reason, err := f.srv.mergeOne(f.ctx, f.bookID, b, f.kindID, a, uuid.New()) // A→B
+	if err != nil || reason != "" {
+		t.Fatalf("merge A→B: %q %v", reason, err)
+	}
+	if _, reason, err := f.srv.mergeOne(f.ctx, f.bookID, c, f.kindID, b, uuid.New()); err != nil || reason != "" { // B→C
+		t.Fatalf("merge B→C: %q %v", reason, err)
+	}
+	// B is now merged into C → reverting A→B must be rejected.
+	if r, err := f.srv.revertMergeCore(f.ctx, f.bookID, jidAB); err != nil || r != "winner_since_merged" {
+		t.Errorf("chain guard: reason=%q err=%v (want winner_since_merged)", r, err)
+	}
+}
