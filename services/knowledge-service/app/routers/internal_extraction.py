@@ -38,6 +38,10 @@ from app.extraction.pass2_orchestrator import (
     extract_pass2_chapter,
     extract_pass2_chat_turn,
 )
+from app.extraction.glossary_writeback import (
+    WRITEBACK_CONFIG,
+    writeback_discovered_entities,
+)
 from app.extraction.pass2_writer import write_pass2_extraction
 from app.middleware.internal_auth import require_internal_token
 
@@ -588,6 +592,41 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             "(non-fatal) source_id=%s",
             body.source_id, exc_info=True,
         )
+
+    # Mui #1 — KG→glossary writeback. Propose discovered, unanchored,
+    # sufficiently-confident entities back to the glossary SSOT as
+    # ai-suggested drafts for human review. Best-effort: the canon writes
+    # (Neo4j + Postgres) already succeeded above, so a writeback failure
+    # must not 500 the worker (the next job re-proposes; glossary dedups by
+    # name + tombstone). Default OFF; enabled per-env per ADJ-1.
+    if WRITEBACK_CONFIG["enabled"] and body.project_id is not None:
+        try:
+            async with get_knowledge_pool().acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT book_id FROM knowledge_projects "
+                    "WHERE project_id = $1 AND user_id = $2",
+                    body.project_id, body.user_id,
+                )
+            wb_book_id = row["book_id"] if row else None
+            if wb_book_id is not None:
+                async with neo4j_session() as wb_session:
+                    proposed = await writeback_discovered_entities(
+                        wb_session,
+                        get_glossary_client(),
+                        user_id=str(body.user_id),
+                        project_id=str(body.project_id),
+                        book_id=wb_book_id,
+                    )
+                logger.info(
+                    "mui#1 writeback: proposed %d entities to glossary "
+                    "book=%s (source_id=%s)",
+                    proposed, wb_book_id, body.source_id,
+                )
+        except Exception:
+            logger.warning(
+                "mui#1 writeback failed source_id=%s (non-fatal)",
+                body.source_id, exc_info=True,
+            )
 
     return ExtractItemResponse(
         source_id=result.source_id,

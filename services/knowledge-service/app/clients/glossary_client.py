@@ -407,20 +407,33 @@ class GlossaryClient:
         entities: list[dict],
         source_language: str = "en",
         attribute_actions: dict | None = None,
+        default_tags: list[str] | None = None,
+        park_unknown_kinds: bool | None = None,
     ) -> dict | None:
         """POST /internal/books/{book_id}/extract-entities.
 
         Bulk propose extraction candidates to glossary-service.
         Returns the response or None on failure. Non-blocking — caller
         should queue in extraction_pending on prolonged outage.
+
+        ``default_tags`` (e.g. ``["ai-suggested"]``) marks the created
+        entities so the FE can surface them as a reviewable AI-suggestions
+        inbox; it also arms glossary's tombstone gate (an ``ai-rejected``
+        name is skipped). ``park_unknown_kinds=False`` opts out of the
+        glossary 'unknown' review bucket so experimental KG kinds don't
+        flood triage (mui #1).
         """
         url = f"{self._base_url}/internal/books/{book_id}/extract-entities"
         tid = trace_id_var.get()
-        body = {
+        body: dict = {
             "source_language": source_language,
             "attribute_actions": attribute_actions or {},
             "entities": entities,
         }
+        if default_tags is not None:
+            body["default_tags"] = default_tags
+        if park_unknown_kinds is not None:
+            body["park_unknown_kinds"] = park_unknown_kinds
         try:
             resp = await self._http.post(
                 url, json=body,
