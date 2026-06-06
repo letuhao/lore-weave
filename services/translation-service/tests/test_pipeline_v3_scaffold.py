@@ -215,6 +215,49 @@ async def test_v3_corrector_retranslates_and_splices_high_severity():
 
 
 @pytest.mark.asyncio
+async def test_v3_verifier_trusts_only_canon_glossary():
+    """D-TRANSL-M1D wiring lock: a glossary term with confidence='machine' is
+    demoted by the trust ladder, so the V3 verifier must NOT hard-fail on it and
+    the corrector must NOT run — even though the draft mistranslates the name.
+
+    Contrast with test_v3_corrector_retranslates_and_splices_high_severity, which
+    uses the SAME draft+name but NO confidence key (legacy → trusted → corrected).
+    That pair proves the suppression is caused by the confidence demotion, and
+    guards orchestrator.py:175 (cmap=gctx.verified_map) against a silent revert to
+    correction_map."""
+    from app.workers.v3 import orchestrator
+    from app.workers.block_classifier import extract_translatable_text
+    from tests.test_session_translator import FakeLLMClient
+
+    blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "提拉米来了。"}]}]
+    result_blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "Tirana đã đến."}]}]
+    # Same name, but machine-confidence → soft hint, not a hard rule.
+    glossary = [{"zh": ["提拉米"], "vi": ["Tirami"], "kind": "character", "confidence": "machine"}]
+
+    pool, db = _make_pool()
+    msg = _chapter_msg(qa_depth="rule_only")  # isolate the rule-tier (no LLM verifier)
+    fake = FakeLLMClient()  # nothing queued — the corrector must never be invoked
+
+    with patch("app.workers.session_translator.translate_chapter_blocks",
+               new_callable=AsyncMock, return_value=(result_blocks, 10, 8, 1, 1)), \
+         patch("app.workers.glossary_client.fetch_translation_glossary",
+               new_callable=AsyncMock, return_value=glossary):
+        result = await orchestrator.translate_chapter_blocks_v3(
+            blocks, "zh", msg, pool, uuid4(), llm_client=fake, context_window=8192,
+        )
+
+    assert len(fake.calls) == 0                                   # corrector never ran
+    assert "Tirana đã đến." in extract_translatable_text(result[0][0])  # draft untouched
+    # No HIGH wrong_name issue should have been persisted for the demoted term.
+    wrong_name_high = [
+        c for c in db.execute.call_args_list
+        if "INSERT INTO translation_quality_issues" in c.args[0]
+        and "wrong_name" in c.args and "high" in c.args
+    ]
+    assert wrong_name_high == []
+
+
+@pytest.mark.asyncio
 async def test_v3_corrector_rejected_when_not_improved():
     """review-impl MED-1 (keep-if-improved): a correction that does NOT reduce the
     block's high-severity count is rejected — the original draft is kept, never a

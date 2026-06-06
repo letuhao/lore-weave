@@ -370,6 +370,7 @@ SELECT
     eav.original_value AS name_zh,
     COALESCE(at.value, '') AS name_target,
     ek.code AS kind_code,
+    COALESCE(at.confidence, '') AS name_confidence,
     ae.best_tier
 FROM all_entities ae
 JOIN glossary_entities e ON e.entity_id = ae.entity_id
@@ -392,6 +393,7 @@ SELECT
     eav.original_value AS name_zh,
     COALESCE(at.value, '') AS name_target,
     ek.code AS kind_code,
+    COALESCE(at.confidence, '') AS name_confidence,
     0 AS best_tier
 FROM glossary_entities e
 JOIN entity_kinds ek ON ek.kind_id = e.kind_id
@@ -405,7 +407,7 @@ LEFT JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
 LEFT JOIN chapter_entity_links cel ON cel.entity_id = e.entity_id
 WHERE e.book_id = $1 AND e.status = 'active' AND e.deleted_at IS NULL
     AND eav.original_value IS NOT NULL AND eav.original_value != ''
-GROUP BY e.entity_id, eav.original_value, at.value, ek.code
+GROUP BY e.entity_id, eav.original_value, at.value, at.confidence, ek.code
 ORDER BY COUNT(cel.link_id) DESC, length(eav.original_value) DESC
 LIMIT $3`
 		args = []any{bookID, targetLang, maxEntries}
@@ -426,9 +428,9 @@ LIMIT $3`
 
 	items := make([]map[string]any, 0, maxEntries)
 	for rows.Next() {
-		var nameZH, nameTarget, kindCode string
+		var nameZH, nameTarget, kindCode, nameConfidence string
 		var tier int
-		if err := rows.Scan(&nameZH, &nameTarget, &kindCode, &tier); err != nil {
+		if err := rows.Scan(&nameZH, &nameTarget, &kindCode, &nameConfidence, &tier); err != nil {
 			continue
 		}
 		entry := map[string]any{
@@ -437,6 +439,9 @@ LIMIT $3`
 		}
 		if nameTarget != "" {
 			entry[targetLang] = []string{nameTarget}
+			// D-TRANSL-M1D trust ladder: expose the translation's confidence tier
+			// (verified|machine|draft) so the V3 verifier hard-enforces only canon.
+			entry["confidence"] = nameConfidence
 		}
 		items = append(items, entry)
 	}

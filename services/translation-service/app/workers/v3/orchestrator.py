@@ -168,7 +168,11 @@ async def _verify_correct_persist(blocks, result_blocks, source_lang, msg, pool,
         chapter_id=msg.get("chapter_id", ""),
     )
     gctx = build_glossary_context(raw, "\n".join(source_texts.values()), target)
-    cmap = gctx.correction_map
+    # D-TRANSL-M1D trust ladder: the verifier hard-fails (HIGH wrong_name →
+    # re-translate) only on canon (verified) glossary translations. The corrector
+    # still receives the FULL gctx.prompt_block, so machine/draft names remain
+    # soft hints the LLM may use — they just can't force churn.
+    cmap = gctx.verified_map
 
     qa_depth = msg.get("qa_depth", "standard")
     use_llm = qa_depth != "rule_only"

@@ -29,10 +29,20 @@ _GLOSSARY_FETCH_TIMEOUT = 5.0  # seconds
 
 @dataclass
 class GlossaryEntry:
-    """A single glossary entity for translation context."""
+    """A single glossary entity for translation context.
+
+    ``confidence`` is the target translation's trust tier (``verified`` |
+    ``machine`` | ``draft``) from glossary-service. ``None`` means the field was
+    absent — a glossary build predating D-TRANSL-M1D — and is treated as legacy
+    *trusted* (hard-checked) for backward compatibility. Both rolling-deploy
+    orders are therefore safe with no ordering constraint: glossary-old +
+    translation-new ⇒ key absent ⇒ legacy hard-check (old behavior); glossary-new
+    + translation-old ⇒ the old client ignores the extra field entirely.
+    """
     zh_names: list[str]
     target_names: list[str]
     kind: str
+    confidence: str | None = None
 
     def to_jsonl(self, target_lang: str) -> str:
         """Format as compact JSONL line for prompt injection."""
@@ -48,8 +58,12 @@ class GlossaryContext:
     entries: list[GlossaryEntry] = field(default_factory=list)
     prompt_block: str = ""
     token_estimate: int = 0
-    # Source→target map for auto-correct post-processing
+    # Source→target map for auto-correct post-processing + prompt (ALL tiers).
     correction_map: dict[str, str] = field(default_factory=dict)
+    # D-TRANSL-M1D trust ladder: the canon-only subset of ``correction_map`` the
+    # V3 verifier hard-enforces (HIGH wrong_name → re-translate). Excludes
+    # ``machine``/``draft`` translations so an unverified term never forces churn.
+    verified_map: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -134,13 +148,20 @@ def build_glossary_context(
 
     # Parse entries
     entries: list[GlossaryEntry] = []
+    _MISSING = object()
     for raw in raw_entries:
         zh_names = raw.get("zh", [])
         target_names = raw.get(target_language, [])
         kind = raw.get("kind", "")
         if not zh_names:
             continue
-        entries.append(GlossaryEntry(zh_names=zh_names, target_names=target_names, kind=kind))
+        # Distinguish an ABSENT confidence key (legacy glossary → None → trusted)
+        # from a present-but-blank one ("" → demoted, not verified).
+        raw_conf = raw.get("confidence", _MISSING)
+        confidence = None if raw_conf is _MISSING else raw_conf
+        entries.append(GlossaryEntry(
+            zh_names=zh_names, target_names=target_names, kind=kind, confidence=confidence,
+        ))
 
     if not entries:
         return GlossaryContext()
@@ -171,6 +192,7 @@ def build_glossary_context(
     token_estimate = 0
     selected: list[GlossaryEntry] = []
     correction_map: dict[str, str] = {}
+    verified_map: dict[str, str] = {}
 
     for score, entry in scored:
         line = entry.to_jsonl(target_language)
@@ -182,11 +204,17 @@ def build_glossary_context(
         token_estimate += line_tokens
         selected.append(entry)
 
-        # Build correction map: source name → target name
+        # Build correction map: source name → target name. The full map drives V2
+        # auto-correct + the prompt block (unchanged). The verified subset is what
+        # the V3 verifier hard-enforces — trust ladder: an absent confidence key is
+        # legacy-trusted; a present 'verified' is canon; machine/draft are demoted.
         if entry.target_names:
             primary_target = entry.target_names[0]
+            is_verified = entry.confidence is None or entry.confidence == "verified"
             for zh_name in entry.zh_names:
                 correction_map[zh_name] = primary_target
+                if is_verified:
+                    verified_map[zh_name] = primary_target
 
     if not lines:
         return GlossaryContext()
@@ -206,6 +234,7 @@ def build_glossary_context(
         prompt_block=prompt_block,
         token_estimate=token_estimate,
         correction_map=correction_map,
+        verified_map=verified_map,
     )
 
 

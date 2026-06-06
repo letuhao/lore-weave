@@ -106,6 +106,68 @@ class TestBuildGlossaryContext:
                 assert "kind" in parsed
 
 
+# ── trust ladder (D-TRANSL-M1D): verified_map vs correction_map ───────────────
+
+class TestTrustLadder:
+    """The V3 verifier hard-checks only *canon* translations. build_glossary_context
+    splits the glossary into the full ``correction_map`` (V2 auto-correct + prompt,
+    unchanged) and a ``verified_map`` subset the V3 verifier enforces."""
+
+    def test_verified_map_keeps_only_verified_confidence(self):
+        entries = [
+            {"zh": ["提拉米"], "vi": ["Tirami"], "kind": "character", "confidence": "verified"},
+            {"zh": ["阿尔德里克"], "vi": ["Aldric"], "kind": "character", "confidence": "machine"},
+            {"zh": ["伊斯坦莎"], "vi": ["Isutansha"], "kind": "character", "confidence": "draft"},
+        ]
+        text = "提拉米 阿尔德里克 伊斯坦莎"
+        ctx = build_glossary_context(entries, text, "vi")
+        # Full map carries every translated entry (V2 parity).
+        assert ctx.correction_map == {
+            "提拉米": "Tirami", "阿尔德里克": "Aldric", "伊斯坦莎": "Isutansha",
+        }
+        # Hard-check map carries ONLY the human-confirmed (verified) one.
+        assert ctx.verified_map == {"提拉米": "Tirami"}
+
+    def test_absent_confidence_key_is_legacy_trusted(self):
+        """A glossary build that predates the confidence field (key absent) must
+        behave exactly as before — every translation hard-checked. Guards the
+        rolling-deploy window where translation-service reads confidence before
+        glossary-service emits it."""
+        entries = [
+            {"zh": ["提拉米"], "vi": ["Tirami"], "kind": "character"},
+            {"zh": ["魔族"], "vi": ["Ma tộc"], "kind": "race"},
+        ]
+        text = "提拉米 魔族"
+        ctx = build_glossary_context(entries, text, "vi")
+        assert ctx.verified_map == ctx.correction_map
+        assert ctx.verified_map == {"提拉米": "Tirami", "魔族": "Ma tộc"}
+
+    def test_empty_confidence_string_is_demoted(self):
+        """An explicit empty-string confidence (present but blank) is NOT verified —
+        only a truly absent key is the legacy escape hatch."""
+        entries = [{"zh": ["提拉米"], "vi": ["Tirami"], "kind": "character", "confidence": ""}]
+        ctx = build_glossary_context(entries, "提拉米", "vi")
+        assert ctx.correction_map == {"提拉米": "Tirami"}
+        assert ctx.verified_map == {}
+
+    def test_verified_map_empty_when_no_entries(self):
+        ctx = build_glossary_context([], CHAPTER_TEXT, "vi")
+        assert ctx.verified_map == {}
+
+    def test_machine_translation_does_not_hard_fail_verifier(self):
+        """End-to-end at the unit level: a machine-confidence glossary term that the
+        draft renders differently must NOT produce a HIGH wrong_name issue, because
+        the verifier is fed verified_map (which excludes it)."""
+        from app.workers.v3.verifier import verify_rules
+        entries = [{"zh": ["提拉米"], "vi": ["Tirami"], "kind": "character", "confidence": "machine"}]
+        ctx = build_glossary_context(entries, "提拉米", "vi")
+        report = verify_rules({0: "提拉米 来了"}, {0: "Tilami came"}, ctx.verified_map, "vi")
+        assert not any(i.type == "wrong_name" for i in report.issues)
+        # And the full map still WOULD have flagged it (proves the demotion is the cause).
+        report_full = verify_rules({0: "提拉米 来了"}, {0: "Tilami came"}, ctx.correction_map, "vi")
+        assert any(i.type == "wrong_name" for i in report_full.issues)
+
+
 # ── auto_correct_glossary ────────────────────────────────────────────────
 
 class TestAutoCorrectGlossary:
