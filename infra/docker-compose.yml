@@ -387,6 +387,8 @@ services:
       # env var for naming consistency with knowledge-service + worker-ai.
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       GLOSSARY_SERVICE_INTERNAL_URL: http://glossary-service:8088
+      # M4a: V3 knowledge layer (relations → pronoun/honorific). Empty disables it.
+      KNOWLEDGE_SERVICE_INTERNAL_URL: http://knowledge-service:8092
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
@@ -428,6 +430,8 @@ services:
       # Phase 4c-α: SDK install. Same host as legacy URL.
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       GLOSSARY_SERVICE_INTERNAL_URL: http://glossary-service:8088
+      # M4a: V3 knowledge layer (relations → pronoun/honorific). Empty disables it.
+      KNOWLEDGE_SERVICE_INTERNAL_URL: http://knowledge-service:8092
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}

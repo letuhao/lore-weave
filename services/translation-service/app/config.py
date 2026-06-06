@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     # field and consolidate.
     provider_registry_internal_url: str = "http://provider-registry-service:8085"
     glossary_service_internal_url: str = "http://glossary-service:8088"
+    # M4a: knowledge-service for the V3 knowledge layer (relations → pronoun/
+    # honorific context). Empty by default = feature off (Null port): the client
+    # degrades to an empty neighbourhood and makes no HTTP call. Set in the live
+    # stack to enable. Internal-token auth (shared internal_service_token).
+    knowledge_service_internal_url: str = ""
     rabbitmq_url: str
     notification_service_internal_url: str = "http://notification-service:8091"
     internal_service_token: str
