@@ -40,6 +40,7 @@ from app.extraction.pass2_orchestrator import (
 )
 from app.extraction.glossary_writeback import (
     WRITEBACK_CONFIG,
+    should_writeback,
     writeback_discovered_entities,
 )
 from app.extraction.pass2_writer import write_pass2_extraction
@@ -599,7 +600,18 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
     # (Neo4j + Postgres) already succeeded above, so a writeback failure
     # must not 500 the worker (the next job re-proposes; glossary dedups by
     # name + tombstone). Default OFF; enabled per-env per ADJ-1.
-    if WRITEBACK_CONFIG["enabled"] and body.project_id is not None:
+    #
+    # Fires ONCE per extraction job, at the last chapter of the book — NOT
+    # per chapter. find_gap_candidates scans the whole project, so running it
+    # on every persist-pass2 would re-propose the entire gap list each chapter
+    # (an entity_updated event storm; the "lãng phí" this loop exists to kill).
+    # `is_last_chapter_of_book` is the same end-of-book signal the P3 summary
+    # enqueue above uses. (review-impl HIGH-1 2026-06-07.)
+    if should_writeback(
+        enabled=WRITEBACK_CONFIG["enabled"],
+        project_id=body.project_id,
+        is_last_chapter_of_book=body.is_last_chapter_of_book,
+    ):
         try:
             async with get_knowledge_pool().acquire() as conn:
                 row = await conn.fetchrow(

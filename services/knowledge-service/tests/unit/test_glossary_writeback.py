@@ -91,6 +91,17 @@ async def test_writeback_no_candidates_skips_call(monkeypatch):
     gc.propose_entities.assert_not_awaited()
 
 
+def test_should_writeback_only_at_end_of_book():
+    # The HIGH-1 invariant: fire once at book-end, never per-chapter.
+    assert gw.should_writeback(enabled=True, project_id="p1", is_last_chapter_of_book=True) is True
+    # mid-book chapter → no writeback (avoids re-proposing the whole project gap list)
+    assert gw.should_writeback(enabled=True, project_id="p1", is_last_chapter_of_book=False) is False
+    # disabled flag
+    assert gw.should_writeback(enabled=False, project_id="p1", is_last_chapter_of_book=True) is False
+    # no linked project (chat-only / no book glossary)
+    assert gw.should_writeback(enabled=True, project_id=None, is_last_chapter_of_book=True) is False
+
+
 def test_config_defaults_off(monkeypatch):
     for k in (
         "KNOWLEDGE_GLOSSARY_WRITEBACK_ENABLED",

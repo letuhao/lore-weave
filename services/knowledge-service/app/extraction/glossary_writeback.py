@@ -79,6 +79,20 @@ def _load_writeback_config() -> WritebackConfig:
 WRITEBACK_CONFIG: WritebackConfig = _load_writeback_config()
 
 
+def should_writeback(
+    *, enabled: bool, project_id: object, is_last_chapter_of_book: bool
+) -> bool:
+    """Gate for the per-job writeback trigger.
+
+    Returns True only at the END of a book extraction (last chapter), never
+    per-chapter: find_gap_candidates scans the whole project, so firing on
+    every persist-pass2 would re-propose the entire gap list each chapter — an
+    entity_updated event storm. Also requires a linked project (book glossary
+    to write back to) and the feature flag. (review-impl HIGH-1 2026-06-07.)
+    """
+    return bool(enabled and project_id is not None and is_last_chapter_of_book)
+
+
 def build_writeback_entities(
     candidates: Sequence[Entity], *, confidence_floor: float
 ) -> list[dict]:
