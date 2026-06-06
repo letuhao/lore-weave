@@ -23,6 +23,11 @@
 - Cast name→id resolver (case/canonical match against the glossary roster; unmatched → `present_entity_names_unresolved`).
 - Tests: Level-1 reconcile (B>C, B<C, B==C; no chapter dropped), Level-2 tolerant filter (malformed scene dropped, chapter keeps good), cast resolution (matched + unmatched), bounded fan-out.
 
+> **/review-impl carry-ins (from the B1-B3 checkpoint review):**
+> - **MUST (B4)** — enforce `plan_max_chapters` at the decompose endpoint BEFORE calling `plan.decompose` (refuse/clamp larger books with a clear error). `decompose` itself has no guard; a 500-chapter book would fire 500 L2 calls.
+> - **Accepted/LOW** — `_resolve_cast` matches canonical glossary names only, not aliases (the L2 prompt constrains the model to the roster, so bounded); revisit if alias-named cast refs show up unresolved in the eval.
+> - **Resolved at BUILD** — design HIGH#1 ("compute K before the budget reservation") was MOOT: there is no K-multiplied reservation in the auto path (only the K-independent prompt-size 413); adaptive K just derives-and-passes. The real bug found+fixed was a **tension SCALE mismatch** (adaptive_k/planner assumed 1-5; outline_node.tension is 0..100 per reasoning/policy `>=70`) — now aligned to 0..100, threshold 70, with an engine-level regression-lock.
+
 ### B4 — endpoints (`routers/plan.py` or extend `routers/outline.py`)
 - `POST /works/{project_id}/outline/decompose` → preview tree (no persist).
 - `POST /works/{project_id}/outline/decompose/commit` → persist arc+chapter+scene nodes (rank order; reuse `OutlineRepo.create_node` or a new `create_nodes_bulk`). Guards: `_require_work`, every `chapter_id` ∈ the book (IDOR), every `present_entity_id` a real glossary id, `replace` flag (default refuse double-plan).

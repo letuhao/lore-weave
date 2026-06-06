@@ -85,6 +85,37 @@ async def test_list_revisions_for_base_revision_id():
 
 
 @respx.mock
+async def test_list_chapters_projects_active_ordered_and_coerces_null_title():
+    route = respx.get(f"{BASE}/v1/books/{BOOK}/chapters").mock(
+        return_value=httpx.Response(200, json={"items": [
+            {"chapter_id": str(CH), "title": "Ch 1", "sort_order": 1},
+            {"chapter_id": str(uuid.uuid4()), "title": None, "sort_order": 2},
+        ], "total": 2})
+    )
+    c = await _client()
+    try:
+        out = await c.list_chapters(BOOK, "jwt")
+        # forwards the active-lifecycle filter + JWT
+        assert route.calls.last.request.headers["Authorization"] == "Bearer jwt"
+        assert "lifecycle_state=active" in str(route.calls.last.request.url)
+        assert [r["title"] for r in out] == ["Ch 1", ""]  # null title coerced to ''
+        assert [r["sort_order"] for r in out] == [1, 2]
+    finally:
+        await c.aclose()
+
+
+@respx.mock
+async def test_list_chapters_404_returns_empty():
+    respx.get(f"{BASE}/v1/books/{BOOK}/chapters").mock(
+        return_value=httpx.Response(404, json={"error": "BOOK_NOT_FOUND"}))
+    c = await _client()
+    try:
+        assert await c.list_chapters(BOOK, "jwt") == []
+    finally:
+        await c.aclose()
+
+
+@respx.mock
 async def test_get_chapter_sort_orders_uses_internal_token():
     ch1, ch2 = uuid.uuid4(), uuid.uuid4()
     route = respx.post(f"{BASE}/internal/chapters/sort-orders").mock(

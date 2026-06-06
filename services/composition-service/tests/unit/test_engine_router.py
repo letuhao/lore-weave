@@ -224,6 +224,30 @@ def test_generate_auto_returns_reranked_winner_as_json(ctx, monkeypatch):
     assert completed[0]["result"]["candidates"] == ["draft A", "draft B"]
 
 
+def test_generate_auto_uses_adaptive_k_from_node_tension(ctx, monkeypatch):
+    # A3: the auto path must derive K from the node's structural weight, NOT the
+    # fixed compose_diverge_k. A low-tension connective scene (tension 10 on the
+    # 0..100 scale) → K=1. This regression-locks the wiring + the tension SCALE:
+    # with a 1-5 mis-scale, tension 10 would read as "high" → ceiling 3 and fail.
+    c, _, outline, _, _, _, _ = ctx
+    from app.engine.select import Candidate, Selection
+    outline.node = OutlineNode(id=NODE, user_id=USER, project_id=PROJECT, kind="scene",
+                               rank="a0", chapter_id=uuid.uuid4(), goal="walk",
+                               synopsis="a quiet transition", tension=10)
+    seen: dict = {}
+
+    async def fake_select(llm, judge, **kw):
+        seen["k"] = kw["k"]
+        cands = [Candidate("only", DraftMetering(10, 5, False))]
+        return Selection(winner=cands[0], winner_index=0, candidates=cands,
+                         rerank_reason="", rerank_measured=False)
+
+    monkeypatch.setattr("app.routers.engine.select_draft", fake_select)
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "auto"})
+    assert r.status_code == 200
+    assert seen["k"] == 1  # tension 10 (low, 0..100) → K=1, not the fixed default 3
+
+
 def test_generate_auto_select_failure_fails_job_502(ctx, monkeypatch):
     c, _, _, _, jobs, _, _ = ctx
 

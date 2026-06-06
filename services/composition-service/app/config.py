@@ -35,5 +35,18 @@ class Settings(BaseSettings):
     compose_diverge_k: int = 3
     compose_diverge_temperature: float = 0.8
 
+    # V1 Phase A3 — decompose planner + adaptive K.
+    # plan_max_chapters: refuse to decompose a book with more active chapters
+    # than this (bounds the per-chapter Level-2 LLM fan-out). plan_*_scenes:
+    # the LLM-chosen scene count per chapter is clamped to this range.
+    # plan_high_tension_threshold: scene tension at/above which adaptive K spends
+    # the full ceiling (climax/midpoint beats); below it spends less. Tension is
+    # the EXISTING 0..100 scale (outline_node.tension / reasoning policy, which
+    # gates "high dramatic tension" at >=70) — NOT 1-5.
+    plan_max_chapters: int = 40
+    plan_min_scenes_per_chapter: int = 1
+    plan_max_scenes_per_chapter: int = 6
+    plan_high_tension_threshold: int = 70
+
 
 settings = Settings()  # type: ignore[call-arg]

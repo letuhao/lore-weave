@@ -38,6 +38,7 @@ from app.deps import (
     get_llm_client_dep, get_outline_repo, get_scene_links_repo, get_works_repo,
 )
 from app.db.models import CorrectionKind
+from app.engine.adaptive_k import adaptive_k
 from app.engine.canon_reflect import run_canon_reflect
 from app.engine.cowrite import build_messages, estimate_prompt_tokens, stream_draft
 from app.engine.critic import judge_prose
@@ -224,7 +225,19 @@ async def generate(
                 judge_source=str(c_src) if distinct else body.model_source,
                 judge_ref=str(c_ref) if distinct else str(body.model_ref),
                 packed_prompt=pc.prompt, profile=pc.profile, operation=body.operation,
-                guide=body.guide, k=settings.compose_diverge_k, prompt_est=prompt_estimate,
+                # A3 — adaptive K from the scene's structural weight (beat_role +
+                # tension the planner emitted). Hand-authored nodes (no beat_role/
+                # tension) fall back to compose_diverge_k. NOTE: there is no
+                # K-multiplied budget reservation in this path (the only pre-check
+                # is the K-independent prompt-size 413 above; per-call spend is
+                # gateway-side), so design HIGH#1's "compute K before the budget
+                # reservation" is moot — verified against engine.py: just derive
+                # and pass it.
+                guide=body.guide,
+                k=adaptive_k(node.beat_role, node.tension,
+                             k_ceiling=settings.compose_diverge_k,
+                             high_threshold=settings.plan_high_tension_threshold),
+                prompt_est=prompt_estimate,
                 max_tokens=body.max_output_tokens, temperature=settings.compose_diverge_temperature,
                 reasoning_effort=None if reasoning.passthrough else reasoning.effort,
             )
