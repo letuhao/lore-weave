@@ -43,16 +43,22 @@ async def run_canon_reflect(
 ) -> tuple[str, ReflectResult, int]:
     """Run the canon check→revise loop on `draft`. Returns
     (final_text, ReflectResult, revise_output_tokens)."""
+    # Explicit skip reasons so dirty data (a dangling chapter ref, a knowledge
+    # outage) doesn't SILENTLY strip canon protection while reporting a green.
+    if not cast_glossary_ids:
+        # Nothing to check — benign (no entities could contradict).
+        return draft, ReflectResult(text=draft, resolved=True, status="skipped_no_cast"), 0
     at_order = scene_at_order(scene_sort_order)
-    # No position or no cast → the symbolic guard can't run; skip (advisory).
-    if at_order is None or not cast_glossary_ids:
-        return draft, ReflectResult(text=draft, resolved=True), 0
+    if at_order is None:
+        # Has a cast but no resolved reading position → could NOT verify.
+        return draft, ReflectResult(text=draft, resolved=True, status="skipped_no_position"), 0
 
     snapshot = await knowledge.fact_for_check(
         project_id=project_id, at_order=at_order,
         glossary_entity_ids=cast_glossary_ids,
     )
-    # Knowledge outage → snapshot None → check_canon returns [] → no-op (F1).
+    # Knowledge outage → snapshot None → check_canon returns [] → could NOT verify.
+    degraded = snapshot is None
 
     # The judge must be a DISTINCT model (anti-self-reinforcement §4). No distinct
     # critic configured → symbolic-only (confirmed stays None → ADVISORY, never
@@ -86,6 +92,9 @@ async def run_canon_reflect(
     result = await reflect_revise(
         draft=draft, check_fn=check_fn, revise_fn=revise_fn, max_iters=max_iters,
     )
+    # `checked` only when the snapshot was actually retrieved; a knowledge
+    # outage verified nothing even though reflect_revise ran cleanly.
+    result.status = "degraded" if degraded else "checked"
     if result.iterations:
         logger.info(
             "A2-S3b canon reflect: project=%s iters=%d resolved=%s remaining=%d",

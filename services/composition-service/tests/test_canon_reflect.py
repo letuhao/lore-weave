@@ -73,6 +73,7 @@ async def test_reflect_repairs_seeded_contradiction():
     )
     assert "Kai" not in final            # the gone character was revised out
     assert result.resolved is True       # no hard violation remains
+    assert result.status == "checked"    # the guard actually ran
     assert result.iterations == 1
     assert revise_tokens == 7            # the revise pass metered
     # the snapshot was fetched at sort_order × stride = 5_000_000.
@@ -92,7 +93,38 @@ async def test_reflect_skips_without_position():
         drafter_source="user_model", drafter_ref="d", judge_source="user_model", judge_ref="c",
         prompt_estimate=10, max_output_tokens=128, max_iters=1,
     )
+    # dirty data (no position) must NOT be a silent green — status says so.
     assert final == "Kai acts." and result.resolved and knowledge.calls == []
+    assert result.status == "skipped_no_position"
+
+
+@pytest.mark.asyncio
+async def test_reflect_no_cast_is_skipped_no_cast():
+    knowledge = _FakeKnowledge(_snapshot())
+    llm = _FakeLLM("x")
+    final, result, _ = await run_canon_reflect(
+        knowledge=knowledge, llm=llm, user_id=uuid4(), project_id=uuid4(),
+        cast_glossary_ids=[], scene_sort_order=5,  # cast empty
+        draft="A quiet scene.", packed_prompt="", profile=SimpleNamespace(source_language="en", voice=""),
+        drafter_source="user_model", drafter_ref="d", judge_source="user_model", judge_ref="c",
+        prompt_estimate=10, max_output_tokens=128, max_iters=1,
+    )
+    assert result.status == "skipped_no_cast" and knowledge.calls == []
+
+
+@pytest.mark.asyncio
+async def test_reflect_degraded_when_knowledge_unavailable():
+    # fact_for_check returns None (knowledge outage) → verified nothing → degraded.
+    knowledge = _FakeKnowledge(None)
+    llm = _FakeLLM("x")
+    final, result, _ = await run_canon_reflect(
+        knowledge=knowledge, llm=llm, user_id=uuid4(), project_id=uuid4(),
+        cast_glossary_ids=["g-kai"], scene_sort_order=5,
+        draft="Kai charged.", packed_prompt="", profile=SimpleNamespace(source_language="en", voice=""),
+        drafter_source="user_model", drafter_ref="d", judge_source="user_model", judge_ref="c",
+        prompt_estimate=10, max_output_tokens=128, max_iters=1,
+    )
+    assert result.status == "degraded" and result.resolved is True
 
 
 @pytest.mark.asyncio

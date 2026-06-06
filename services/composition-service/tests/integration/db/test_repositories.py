@@ -495,7 +495,8 @@ async def test_chapter_scene_gate_counts_and_can_publish(pool):
     # zero done → blocked
     gate = await repo.chapter_scene_gate(user, project, chapter)
     assert gate == {"chapter_id": str(chapter), "scenes_total": 2, "scenes_done": 0,
-                    "canon_blocked": False, "canon_unresolved_scenes": 0, "can_publish": False}
+                    "canon_blocked": False, "canon_unresolved_scenes": 0,
+                    "canon_unchecked_scenes": 0, "can_publish": False}
 
     # one done → still blocked
     await repo.update_node_commit_aware(user, s1.id, {"status": "done"})
@@ -553,6 +554,28 @@ async def test_chapter_scene_gate_blocks_on_unresolved_canon(pool):
                              result={"text": "y", "canon": {"resolved": True}})
     gate = await repo.chapter_scene_gate(user, project, chapter)
     assert gate["canon_blocked"] is False and gate["can_publish"] is True
+
+
+async def test_chapter_scene_gate_surfaces_unchecked_without_blocking(pool):
+    """Dirty-data path: a scene whose latest auto job could NOT verify canon
+    (status=skipped_no_position / degraded) is SURFACED via canon_unchecked_scenes
+    but does NOT block publish (false-blocking every un-positioned scene is worse;
+    the FE warns instead)."""
+    repo = OutlineRepo(pool)
+    jobs = GenerationJobsRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    s1 = await repo.create_node(user, project, kind="scene", chapter_id=chapter)
+    await repo.update_node_commit_aware(user, s1.id, {"status": "done"})
+    j, _ = await jobs.create(user, project, operation="draft_scene",
+                             outline_node_id=s1.id, mode="auto", status="running", input={})
+    await jobs.update_status(user, j.id, "completed",
+                             result={"text": "x", "canon": {"resolved": True,
+                                                            "status": "skipped_no_position"}})
+    gate = await repo.chapter_scene_gate(user, project, chapter)
+    assert gate["canon_unchecked_scenes"] == 1
+    assert gate["canon_blocked"] is False
+    assert gate["can_publish"] is True  # surfaced, NOT blocked
 
 
 # ──────────────────── generation_correction (V1 flywheel slice 1) ────────────────────

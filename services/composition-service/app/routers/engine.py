@@ -239,7 +239,9 @@ async def generate(
         # signal on the job). Degrades to advisory on any knowledge/judge outage
         # (CC4/F1) — never blocks the generate.
         final_text = w.text
-        canon = {"violations": [], "resolved": True, "iterations": 0}
+        # Default status=degraded so the except path below (canon reflect raised)
+        # reads as "could not verify", not a false-green.
+        canon = {"violations": [], "resolved": True, "iterations": 0, "status": "degraded"}
         revise_out_tokens = 0
         try:
             cast_glossary_ids = [str(e) for e in (node.present_entity_ids or [])]
@@ -262,6 +264,7 @@ async def generate(
             canon = {
                 "violations": [v.model_dump() for v in reflect.violations],
                 "resolved": reflect.resolved, "iterations": reflect.iterations,
+                "status": reflect.status,
             }
         except Exception:  # canon reflect must NEVER fail the generate (F1).
             logger.warning("A2-S3b canon reflect failed (advisory) — keeping winner", exc_info=True)

@@ -357,7 +357,14 @@ class OutlineRepo:
             # the node → only the most recent job per scene counts.
             canon_row = await c.fetchrow(
                 """
-                SELECT count(*) AS unresolved
+                SELECT
+                  count(*) FILTER (
+                    WHERE (latest.result -> 'canon' ->> 'resolved') = 'false'
+                  ) AS unresolved,
+                  count(*) FILTER (
+                    WHERE (latest.result -> 'canon' ->> 'status')
+                          IN ('skipped_no_position', 'degraded')
+                  ) AS unchecked
                 FROM (
                   SELECT DISTINCT ON (j.outline_node_id) j.result AS result
                   FROM generation_job j
@@ -367,21 +374,27 @@ class OutlineRepo:
                     AND j.status = 'completed'
                   ORDER BY j.outline_node_id, j.created_at DESC, j.id DESC
                 ) latest
-                WHERE (latest.result -> 'canon' ->> 'resolved') = 'false'
                 """,
                 user_id, project_id, chapter_id,
             )
         total, done = int(row["total"]), int(row["done"])
         canon_unresolved = int(canon_row["unresolved"]) if canon_row else 0
+        # Scenes whose latest auto job had a CAST but could not be verified
+        # (dangling chapter position / knowledge outage). Dirty data is normal in
+        # a real DB, so this is SURFACED, not hard-blocked — false-blocking every
+        # un-positioned scene would be worse; the FE warns + the author can act.
+        canon_unchecked = int(canon_row["unchecked"]) if canon_row else 0
         canon_blocked = canon_unresolved > 0
         return {
             "chapter_id": str(chapter_id),
             "scenes_total": total,
             "scenes_done": done,
             # A2-S3b/D4 — surfaced so the FE (A2-S4) can explain WHY publish is
-            # blocked (an unresolved canon contradiction vs an undone scene).
+            # blocked (an unresolved canon contradiction vs an undone scene), and
+            # warn when canon protection silently did NOT apply (dirty data).
             "canon_blocked": canon_blocked,
             "canon_unresolved_scenes": canon_unresolved,
+            "canon_unchecked_scenes": canon_unchecked,
             "can_publish": total > 0 and done == total and not canon_blocked,
         }
 

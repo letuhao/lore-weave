@@ -251,6 +251,16 @@ async def check_canon(
 # ── reflect: check → revise ≤ N (spec §6/§8.3) ─────────────────────────
 
 class ReflectResult(BaseModel):
+    # Whether the canon guard actually ran, so a SKIP isn't a silent false-green:
+    #   checked            — the guard ran over a real position + cast.
+    #   skipped_no_cast    — the scene has no cast entities (nothing to check).
+    #   skipped_no_position— the scene has a cast but no resolved reading position
+    #                        (dirty/dangling chapter ref) → could NOT verify.
+    #   degraded           — knowledge unavailable → could NOT verify.
+    # `resolved=True` only means "no confirmed contradiction"; on a non-`checked`
+    # status it means "nothing was verified", which the FE + publish-gate surface
+    # so dirty data doesn't silently strip canon protection.
+    status: str = "checked"
     text: str                                    # final draft (possibly revised)
     # Remaining violations the author should see: confirmed-HARD (confirmed=True)
     # AND ADVISORY (confirmed=None — symbolic-only, the judge was down/not-distinct
