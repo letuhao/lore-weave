@@ -104,5 +104,36 @@ class Settings(BaseSettings):
     # past that the row is dead novel-text weight.
     extraction_run_sample_ttl_days: int = 7
 
+    # mui #1c K-detect — coreference detection (proposes merge candidates to
+    # glossary). PO-locked 2026-06-07: on-demand endpoint + opt-in auto-hook
+    # (default OFF); LLM-verify config-gated on-by-default with score-only
+    # fallback when no judge model is configured. Signals = name + KG-structural
+    # (no embeddings). Only glossary-anchored entities are candidates.
+    coref_enabled: bool = True
+    # Auto-run a detect pass at end-of-book extraction. OFF by default — LLM
+    # verify costs tokens and L1 locks human-confirm-every-merge, so detection
+    # cadence is a deliberate choice, not every extraction run.
+    coref_auto_on_extraction: bool = False
+    # A pair must blend to >= this to be a candidate (name·w_name + struct·w_struct).
+    coref_score_floor: float = 0.5
+    coref_name_weight: float = 0.6
+    coref_struct_weight: float = 0.4
+    # Ignore long-tail entities with very few mentions (noise).
+    coref_min_mentions: int = 2
+    # Hard cap on scored pairs taken forward to LLM-verify+propose per pass —
+    # bounds LLM cost on a dense graph.
+    coref_max_pairs: int = 200
+    # Per-kind ceiling on entities loaded from Neo4j for one pass.
+    coref_max_candidates_per_kind: int = 500
+    # Blocking: drop name char-bigram buckets larger than this (common-char
+    # explosion guard — keeps blocking sub-quadratic).
+    coref_max_bucket: int = 50
+    # Config-gate for the LLM verify step. Effective ONLY when coref_judge_model
+    # is set; otherwise the pass degrades to score-only (propose all above floor).
+    coref_llm_verify: bool = True
+    coref_judge_model: str = ""
+    coref_judge_user: str = ""
+    coref_judge_model_source: str = "platform_model"
+
 
 settings = Settings()
