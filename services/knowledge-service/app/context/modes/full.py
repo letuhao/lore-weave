@@ -576,6 +576,7 @@ async def build_full_mode(
                 user_id=user_id,
                 project=project,
                 message=message,
+                embedding_client=embedding_client,  # mui #4 — semantic-first
             ),
             timeout=settings.context_glossary_timeout_s,
         )

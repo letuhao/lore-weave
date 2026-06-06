@@ -51,6 +51,7 @@ from app.context.formatters.stopwords import (
     STOPPHRASES_LOWER,
 )
 from app.db.models import Project
+from app.db.neo4j import neo4j_session
 from app.db.neo4j_helpers import CypherSession
 from app.db.neo4j_repos.entities import find_entities_by_vector
 
@@ -283,6 +284,58 @@ async def select_glossary_semantic(
     return out[:max_entities]
 
 
+async def _pinned_entities(
+    client: GlossaryClient, user_id: UUID, book_id: UUID, max_tokens: int
+) -> list[GlossaryEntityForContext]:
+    """Fetch just the pinned tier (empty-query select-for-context returns
+    pinned + recent; keep only pinned). Best-effort — [] on failure."""
+    rows = await client.select_for_context(
+        user_id=user_id, book_id=book_id, query="",
+        max_entities=10, max_tokens=max_tokens,
+    )
+    return [r for r in rows if r.tier == "pinned"]
+
+
+async def _semantic_with_pinned(
+    client: GlossaryClient,
+    embedding_client: EmbeddingClient,
+    *,
+    user_id: UUID,
+    project: Project,
+    message: str,
+    max_entities: int,
+    max_tokens: int,
+) -> list[GlossaryEntityForContext]:
+    """mui #4 K-2: vector-ranked entities + pinned merged ahead. Returns []
+    if semantic yielded nothing (caller falls back to FTS)."""
+    async with neo4j_session() as session:
+        semantic = await select_glossary_semantic(
+            session=session,
+            embedding_client=embedding_client,
+            glossary_client=client,
+            user_id=user_id,
+            project_id=project.project_id,
+            book_id=project.book_id,
+            embedding_model=project.embedding_model,
+            embedding_dimension=project.embedding_dimension,
+            query=message,
+            max_entities=max_entities,
+        )
+    if not semantic:
+        return []
+    # Pinned is an authoring signal vectors can't represent — merge it ahead
+    # of the semantic hits, deduped by entity_id (AC3).
+    pinned = await _pinned_entities(client, user_id, project.book_id, max_tokens)
+    seen: set[str] = set()
+    out: list[GlossaryEntityForContext] = []
+    for e in [*pinned, *semantic]:
+        if e.entity_id in seen:
+            continue
+        seen.add(e.entity_id)
+        out.append(e)
+    return out[:max_entities]
+
+
 async def select_glossary_for_context(
     client: GlossaryClient,
     *,
@@ -291,9 +344,23 @@ async def select_glossary_for_context(
     message: str,
     max_entities: int = 20,
     max_tokens: int = 800,
+    embedding_client: EmbeddingClient | None = None,
 ) -> list[GlossaryEntityForContext]:
     if project.book_id is None:
         return []
+
+    # mui #4 — semantic-first when embeddings are available (Mode 3 passes
+    # embedding_client; Mode 2/static has none → FTS as before). On empty or
+    # any failure, select_glossary_semantic returns [] and we fall through to
+    # the FTS candidate path below — graceful degradation (AC2/AC5).
+    if embedding_client is not None and project.embedding_model:
+        semantic = await _semantic_with_pinned(
+            client, embedding_client,
+            user_id=user_id, project=project, message=message,
+            max_entities=max_entities, max_tokens=max_tokens,
+        )
+        if semantic:
+            return semantic
 
     candidates = extract_candidates(message)
 
