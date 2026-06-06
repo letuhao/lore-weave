@@ -31,7 +31,8 @@ _VALID_TYPES = frozenset({"omission", "mistranslation", "wrong_name", "added"})
 
 
 def _build_messages(source_texts: dict[int, str], draft_texts: dict[int, str],
-                    source_lang: str, target_lang: str) -> list[dict]:
+                    source_lang: str, target_lang: str,
+                    knowledge_brief: str = "") -> list[dict]:
     parts = [
         f"[BLOCK {idx}]\nSOURCE: {source_texts.get(idx, '')}\nTRANSLATION: {draft_texts[idx]}"
         for idx in sorted(draft_texts)
@@ -40,7 +41,10 @@ def _build_messages(source_texts: dict[int, str], draft_texts: dict[int, str],
         "source_lang": _lang_name(source_lang),
         "target_lang": _lang_name(target_lang),
     }))
-    user = "Review these blocks:\n\n" + "\n\n".join(parts)
+    # M4b/G4 — the same character/relation brief the Translator saw, so the
+    # verifier judges names/pronouns against the authored context.
+    preamble = f"{knowledge_brief}\n\n" if knowledge_brief else ""
+    user = preamble + "Review these blocks:\n\n" + "\n\n".join(parts)
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
@@ -89,12 +93,14 @@ async def llm_verify(
     msg: dict,
     *,
     llm_client,
+    knowledge_brief: str = "",
 ) -> list[Issue]:
     """Best-effort LLM semantic verification → list[Issue] (detected_by='llm')."""
     if not draft_texts:
         return []
     src_model, ref = verifier_model
-    messages = _build_messages(source_texts, draft_texts, source_lang, target_lang)
+    messages = _build_messages(source_texts, draft_texts, source_lang, target_lang,
+                               knowledge_brief)
     try:
         job = await llm_client.submit_and_wait(
             user_id=msg["user_id"],

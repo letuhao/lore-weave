@@ -70,3 +70,24 @@ async def test_llm_verify_no_drafts_skips_call():
     issues = await llm_verify({}, {}, "zh", "vi", ("platform_model", "m"), _MSG, llm_client=fake)
     assert issues == []
     assert len(fake.calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_llm_verify_injects_knowledge_brief(monkeypatch):
+    fake = FakeLLMClient()
+    fake.queue_translation(content="[]")
+    await llm_verify(
+        {0: "源"}, {0: "draft"}, "zh", "vi", ("platform_model", "m"), _MSG,
+        llm_client=fake, knowledge_brief="CHARACTER CONTEXT: Tirami leads Paladins")
+    user_msg = fake.calls[0]["input"]["messages"][1]["content"]
+    assert "CHARACTER CONTEXT: Tirami leads Paladins" in user_msg
+
+
+@pytest.mark.asyncio
+async def test_llm_verify_no_brief_omits_preamble():
+    fake = FakeLLMClient()
+    fake.queue_translation(content="[]")
+    await llm_verify({0: "源"}, {0: "draft"}, "zh", "vi", ("platform_model", "m"), _MSG,
+                     llm_client=fake)
+    user_msg = fake.calls[0]["input"]["messages"][1]["content"]
+    assert user_msg.startswith("Review these blocks:")

@@ -52,6 +52,21 @@ class GlossaryContext:
     correction_map: dict[str, str] = field(default_factory=dict)
 
 
+@dataclass
+class ContextEntity:
+    """A tiered glossary entity from select-for-context (M4b).
+
+    Carries the ``entity_id`` (the anchor the knowledge layer keys on) plus the
+    authored bio (name/kind/short_description) used for pronoun/honorific cues.
+    """
+    entity_id: str
+    name: str
+    aliases: list[str]
+    short_description: str
+    kind: str
+    tier: str
+
+
 async def fetch_translation_glossary(
     book_id: str,
     target_language: str,
@@ -265,6 +280,69 @@ async def fetch_known_entities(
     except Exception as exc:
         log.warning("known entities fetch failed for book=%s: %s", book_id, exc)
         return []
+
+
+async def fetch_context_entities(
+    book_id: str,
+    user_id: str,
+    query: str,
+    max_entities: int = 20,
+    max_tokens: int = 1000,
+) -> list[ContextEntity]:
+    """Fetch tiered context entities (pinned→exact→fts→recent) for a chapter.
+
+    Calls: POST /internal/books/{book_id}/select-for-context
+
+    Returns parsed ``ContextEntity`` objects (with entity_id + bio), or an empty
+    list on any failure. The entity_id anchors the knowledge layer (M4b relations);
+    the bio drives pronoun/honorific cues. ``query`` is the chapter source text —
+    it drives the exact/FTS tiers (capped to keep the payload reasonable).
+    """
+    if not book_id:
+        return []
+    try:
+        async with httpx.AsyncClient(timeout=_GLOSSARY_FETCH_TIMEOUT) as client:
+            resp = await client.post(
+                f"{settings.glossary_service_internal_url}"
+                f"/internal/books/{book_id}/select-for-context",
+                json={
+                    "user_id": user_id,
+                    "query": (query or "")[:4000],
+                    "max_entities": max_entities,
+                    "max_tokens": max_tokens,
+                    "exclude_ids": [],
+                },
+                headers={"X-Internal-Token": settings.internal_service_token},
+            )
+            if resp.status_code != 200:
+                log.warning(
+                    "select-for-context returned %d for book=%s — no entity context",
+                    resp.status_code, book_id,
+                )
+                return []
+            payload = resp.json()
+    except Exception as exc:
+        log.warning("select-for-context fetch failed for book=%s: %s", book_id, exc)
+        return []
+
+    out: list[ContextEntity] = []
+    for e in payload.get("entities", []):
+        if not isinstance(e, dict):
+            continue
+        eid = e.get("entity_id")
+        if not eid:
+            continue
+        raw_aliases = e.get("cached_aliases")
+        aliases = [str(a) for a in raw_aliases] if isinstance(raw_aliases, list) else []
+        out.append(ContextEntity(
+            entity_id=str(eid),
+            name=(e.get("cached_name") or ""),
+            aliases=aliases,
+            short_description=(e.get("short_description") or ""),
+            kind=str(e.get("kind_code", "")),
+            tier=str(e.get("tier", "")),
+        ))
+    return out
 
 
 async def post_extracted_entities(

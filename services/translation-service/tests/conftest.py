@@ -15,6 +15,24 @@ os.environ.setdefault("RABBITMQ_URL", "amqp://test:test@localhost:5672/")
 os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test_internal_token")
 
 
+@pytest.fixture(autouse=True)
+def _hermetic_knowledge_brief(monkeypatch):
+    """M4b: keep the suite hermetic + fast.
+
+    The V3 orchestrator builds a per-chapter knowledge brief, whose first step is
+    a glossary `select-for-context` HTTP call. In unit tests that host isn't
+    reachable, so it degrades to empty — but only after paying DNS-fail latency
+    per test. Default it to an empty fetch (no network); tests that exercise the
+    brief override `knowledge_context.fetch_context_entities` themselves.
+    """
+    async def _no_entities(*a, **k):
+        return []
+    monkeypatch.setattr(
+        "app.workers.v3.knowledge_context.fetch_context_entities",
+        _no_entities, raising=False,
+    )
+
+
 class FakeRecord(dict):
     """Minimal asyncpg-Record substitute: supports dict() and key access."""
     pass

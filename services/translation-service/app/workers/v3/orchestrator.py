@@ -43,12 +43,34 @@ async def translate_chapter_blocks_v3(
     context_window: int = 8192,
 ):
     from ..session_translator import translate_chapter_blocks
+    from ..block_classifier import classify_block, extract_translatable_text
     from .romanization import romanization_instruction
     from .semantic_chunker import tag_groups
+    from .knowledge_context import build_context_brief
+
+    # M4b/G4 — pronoun/honorific brief from glossary bios + knowledge relations,
+    # computed ONCE per chapter and fed to BOTH the Translator and the Verifier
+    # (§12.2 #4). Best-effort: a failure here must not fail the translation.
+    try:
+        chapter_src = "\n".join(
+            extract_translatable_text(b) for b in blocks
+            if classify_block(b) != "passthrough"
+        )
+        knowledge_brief = await build_context_brief(
+            msg.get("book_id", ""), msg.get("user_id", ""), chapter_src,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        log.warning("v3 knowledge brief failed (non-fatal): %s", exc)
+        knowledge_brief = ""
+
+    extra = romanization_instruction(source_lang, msg.get("target_language", ""))
+    if knowledge_brief:
+        extra = (extra + "\n\n" + knowledge_brief).strip()
+
     result = await translate_chapter_blocks(
         blocks, source_lang, msg, pool, chapter_translation_id,
         llm_client=llm_client, context_window=context_window,
-        extra_system=romanization_instruction(source_lang, msg.get("target_language", "")),
+        extra_system=extra,
         group_ids=tag_groups(blocks),  # M3/G5 — dialogue/scene-aware batching (V3 only)
     )
     # Non-fatal — verification/correction must never fail a translation that
@@ -56,7 +78,7 @@ async def translate_chapter_blocks_v3(
     try:
         await _verify_correct_persist(
             blocks, result[0], source_lang, msg, pool, chapter_translation_id,
-            llm_client=llm_client,
+            llm_client=llm_client, knowledge_brief=knowledge_brief,
         )
     except Exception as exc:  # pragma: no cover - defensive
         log.warning("v3 verify/correct failed (non-fatal) ct=%s: %s",
@@ -91,16 +113,17 @@ def _verifier_model(msg: dict) -> tuple[str, str]:
 
 
 async def _verify(source_texts, draft_texts, cmap, target, source_lang,
-                  use_llm, verifier_model, msg, llm_client):
+                  use_llm, verifier_model, msg, llm_client, knowledge_brief=""):
     """Rule-tier + (optional) LLM Tier-2. LLM issues are capped at 'med' so an
-    LLM-only flag never reaches the HIGH set that triggers re-translate (§12.2)."""
+    LLM-only flag never reaches the HIGH set that triggers re-translate (§12.2).
+    The M4b knowledge brief (relations/bios) is fed to the LLM verifier too."""
     from .verifier import verify_rules
     report = verify_rules(source_texts, draft_texts, cmap, target)
     if use_llm:
         from .llm_verifier import llm_verify
         llm_issues = await llm_verify(
             source_texts, draft_texts, source_lang, target, verifier_model, msg,
-            llm_client=llm_client,
+            llm_client=llm_client, knowledge_brief=knowledge_brief,
         )
         for issue in llm_issues:
             if issue.severity == "high":
@@ -110,7 +133,8 @@ async def _verify(source_texts, draft_texts, cmap, target, source_lang,
 
 
 async def _verify_correct_persist(blocks, result_blocks, source_lang, msg, pool,
-                                  chapter_translation_id, *, llm_client) -> None:
+                                  chapter_translation_id, *, llm_client,
+                                  knowledge_brief: str = "") -> None:
     if chapter_translation_id is None:
         return
     from ..block_classifier import classify_block, extract_translatable_text, rebuild_block
@@ -154,7 +178,7 @@ async def _verify_correct_persist(blocks, result_blocks, source_lang, msg, pool,
     # clear all prior issue rows so a shorter re-run can't leave stale higher-round rows.
     await _clear_issues(pool, chapter_translation_id)
     report = await _verify(source_texts, draft_texts, cmap, target, source_lang,
-                           use_llm, verifier_model, msg, llm_client)
+                           use_llm, verifier_model, msg, llm_client, knowledge_brief)
     await _persist_issues(pool, chapter_translation_id, report, 0)
 
     rounds_used = 0
@@ -175,7 +199,7 @@ async def _verify_correct_persist(blocks, result_blocks, source_lang, msg, pool,
                 draft_texts[idx] = text
                 result_blocks[idx] = rebuild_block(blocks[idx], text)
         report = await _verify(source_texts, draft_texts, cmap, target, source_lang,
-                               use_llm, verifier_model, msg, llm_client)
+                               use_llm, verifier_model, msg, llm_client, knowledge_brief)
         await _persist_issues(pool, chapter_translation_id, report, rounds_used)
 
     await _update_rollup(pool, chapter_translation_id, report, rounds_used)
