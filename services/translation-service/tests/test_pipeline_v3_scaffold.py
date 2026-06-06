@@ -174,5 +174,72 @@ async def test_v3_rule_issues_attributed_to_correct_block():
         c for c in db.execute.call_args_list
         if "INSERT INTO translation_quality_issues" in c.args[0]
     ]
-    assert len(inserts) == 1                 # only the leaked block
-    assert inserts[0].args[2] == 1           # block_index = the leaked block, not the clean one
+    # INSERT binds: ($1 ct, $2 block_index, $3 round, ...). Filter to round 0 — M1b
+    # may add a round-1 row for the same block when correction can't fix it.
+    round0 = [c for c in inserts if c.args[3] == 0]
+    assert len(round0) == 1                   # only the leaked block, in round 0
+    assert round0[0].args[2] == 1             # block_index = the leaked block, not the clean one
+
+
+@pytest.mark.asyncio
+async def test_v3_corrector_retranslates_and_splices_high_severity():
+    """M1b: a high-severity rule issue triggers ONE targeted re-translate; the
+    corrected text is spliced into the returned blocks and the rollup records the
+    correction round."""
+    from app.workers.v3 import orchestrator
+    from app.workers.block_classifier import extract_translatable_text
+    from tests.test_session_translator import FakeLLMClient
+
+    blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "提拉米来了。"}]}]
+    # Seeded error: wrong target name (glossary wants 'Tirami').
+    result_blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "Tirana đã đến."}]}]
+    glossary = [{"zh": ["提拉米"], "vi": ["Tirami"], "kind": "character"}]
+
+    pool, db = _make_pool()
+    msg = _chapter_msg()
+    fake = FakeLLMClient()
+    fake.queue_translation(content="Tirami đã đến.")  # the corrected re-translation
+
+    with patch("app.workers.session_translator.translate_chapter_blocks",
+               new_callable=AsyncMock, return_value=(result_blocks, 10, 8, 1, 1)), \
+         patch("app.workers.glossary_client.fetch_translation_glossary",
+               new_callable=AsyncMock, return_value=glossary):
+        result = await orchestrator.translate_chapter_blocks_v3(
+            blocks, "zh", msg, pool, uuid4(), llm_client=fake, context_window=8192,
+        )
+
+    assert len(fake.calls) == 1                                  # corrector ran exactly once
+    assert "Tirami" in extract_translatable_text(result[0][0])   # corrected block spliced back
+    sql = " ".join(c.args[0] for c in db.execute.call_args_list)
+    assert "qa_rounds_used" in sql                              # rollup written
+
+
+@pytest.mark.asyncio
+async def test_v3_corrector_rejected_when_not_improved():
+    """review-impl MED-1 (keep-if-improved): a correction that does NOT reduce the
+    block's high-severity count is rejected — the original draft is kept, never a
+    worse one."""
+    from app.workers.v3 import orchestrator
+    from app.workers.block_classifier import extract_translatable_text
+    from tests.test_session_translator import FakeLLMClient
+
+    blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "提拉米来了。"}]}]
+    result_blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "Tirana đã đến."}]}]
+    glossary = [{"zh": ["提拉米"], "vi": ["Tirami"], "kind": "character"}]
+
+    pool, _ = _make_pool()
+    msg = _chapter_msg()
+    fake = FakeLLMClient()
+    fake.queue_translation(content="Tirana vẫn đến.")  # STILL wrong (no 'Tirami') → not improved
+
+    with patch("app.workers.session_translator.translate_chapter_blocks",
+               new_callable=AsyncMock, return_value=(result_blocks, 10, 8, 1, 1)), \
+         patch("app.workers.glossary_client.fetch_translation_glossary",
+               new_callable=AsyncMock, return_value=glossary):
+        result = await orchestrator.translate_chapter_blocks_v3(
+            blocks, "zh", msg, pool, uuid4(), llm_client=fake, context_window=8192,
+        )
+
+    text = extract_translatable_text(result[0][0])
+    assert "Tirana đã đến." in text   # original draft kept
+    assert "vẫn" not in text          # the not-improved correction was rejected

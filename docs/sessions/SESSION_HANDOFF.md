@@ -8,7 +8,7 @@
 
 ### ▶ TRANSLATION PIPELINE V3 (branch `feat/translation-pipeline-v3`)
 
-**State: M0 + M1a DONE** — M0 readiness gate + V3 scaffold behind `pipeline_version`; M1a deterministic Verifier rule-tier (detect+persist). Both PO-approved + `/review-impl`'d. Full translation suite **336 passed**; **parity** preserved (default `pipeline_version='v2'`).
+**State: M0 + M1a + M1b DONE** — M0 readiness gate + V3 scaffold; M1a Verifier rule-tier (detect); M1b targeted re-translate of high-severity blocks (keep-if-improved). All PO-approved + `/review-impl`'d. Full suite **341 passed**; **parity** preserved (default `pipeline_version='v2'`).
 
 **Docs:** design [`2026-06-06-translation-pipeline-v3-multi-agent.md`](../specs/2026-06-06-translation-pipeline-v3-multi-agent.md) (**§12 = plan-of-record M0–M6**) · [research](../specs/2026-06-06-translation-llm-market-research.md) · [arch-review](../specs/2026-06-06-translation-v3-architecture-review-benchmark.md) · [M0 plan](../plans/2026-06-06-translation-v3-m0.md).
 
@@ -16,7 +16,9 @@
 
 **M1a shipped:** `v3/verifier.py` rule-tier (5 GalTransl checks: glossary-name · source-script/CJK leak · number preservation · sentence-count omission · repetition/looping) + `v3/quality.py` (Issue/IssueReport+score); wired **post-V2 in the orchestrator (non-fatal)** → persist `translation_quality_issues` + chapter rollup; **gold-set** regression corpus. `/review-impl`: `len>=2` substring guard (MED-1) + block-attribution test.
 
-**M1 split (PO-locked): M1a✓ → M1b → M1c → M1d.** **NEXT = M1b** (translation-only): targeted re-translate of high-severity rule blocks (deterministic corrector, **no LLM loop**) + **chapter-level name-consistency pass** (each source name → one target across the chapter). Then **M1c** romanization (prompt-level policy, no lexicon) · **M1d** glossary `select-for-context` + trust ladder + write-back missing names (cross-service; PO chose **no /amaw**). (design §12.4 / §11)
+**M1b shipped:** `v3/corrector.py` re-translates high-severity blocks once (rule-triggered, single pass) with **keep-if-improved** (only splices a correction that reduces the block's high count — never persists a worse draft); spliced into the returned blocks → persist round-1 issues + rollup (`qa_rounds_used`). `/review-impl`: keep-if-improved guard (MED-1) + thinking-suppression parity (LOW-2).
+
+**M1 split (PO-locked): M1a✓ M1b✓ → M1c → M1d.** **NEXT = M1c** (translation-only): **romanization** prompt-level policy (zh→vi Hán-Việt instruction for un-glossaried names; **no lexicon**). Then **M1d** glossary `select-for-context` + trust ladder + write-back missing names (cross-service; PO chose **no /amaw**). Note: the non-glossary **chapter-consistency pass** is deferred to **M4** (needs the proper-noun record). (design §12.4 / §11)
 
 **Deferred (M0 /review-impl):**
 - **D-TRANSL-RESUME** — chunk rows are resume *substrate*; skip-completed-batch logic NOT built (re-run re-translates all). M1+/M5.
@@ -26,7 +28,8 @@
 - **DOC-FIX** — CLAUDE.md services table calls `translation-service` Go/Chi; it is **Python/FastAPI**.
 - **D-TRANSL-VERIFY-WHOLEWORD** (M1a /review-impl) — Verifier name-compliance uses substring + a `len>=2` guard; proper fix = whole-word/conditional CJK matching (ties to V2 auto_correct, design §10 C.7).
 - **D-TRANSL-VERIFY-COARSE** (M1a) — `number_mismatch` is set-based (loses multiplicity) + can false-positive on spelled-out numbers; CJK-leak can false-positive on intentionally-kept CJK names. Detect-only/med; refine once the M2 LLM-tier corroborates.
-- **D-TRANSL-VERIFY-2ND-FETCH** (M1a) — `_verify_and_persist` re-fetches the glossary (V2 already did); M2 restructures the orchestrator to share one fetch.
+- **D-TRANSL-VERIFY-2ND-FETCH** (M1a) — `_verify_correct_persist` re-fetches the glossary (V2 already did); M2 restructures the orchestrator to share one fetch.
+- **D-TRANSL-CORRECTOR-LIMITS** (M1b /review-impl) — corrector lacks `max_tokens` (large-block truncation risk) + loses block-type structure (lists/callouts re-translated as flat text). Defer (paragraphs dominate).
 
 ---
 
