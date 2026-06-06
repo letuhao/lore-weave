@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     # stack to enable. Internal-token auth (shared internal_service_token).
     knowledge_service_internal_url: str = ""
     rabbitmq_url: str
+    # M5c: Redis Streams — consume glossary change events to flag stale translations.
+    redis_url: str = "redis://redis:6379"
     notification_service_internal_url: str = "http://notification-service:8091"
     internal_service_token: str
     port: int = 8087

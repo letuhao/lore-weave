@@ -1,4 +1,6 @@
-from contextlib import asynccontextmanager
+import asyncio
+import logging
+from contextlib import asynccontextmanager, suppress
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 
@@ -7,6 +9,9 @@ from .database import create_pool, close_pool
 from .llm_client import close_llm_client, get_llm_client
 from .migrate import run_migrations
 from .broker import connect_broker, close_broker
+from .events.glossary_consumer import GlossaryStaleConsumer
+
+log = logging.getLogger(__name__)
 from .routers import settings as settings_router
 from .routers import jobs as jobs_router
 from .routers import versions as versions_router
@@ -36,8 +41,18 @@ async def lifespan(app: FastAPI):
     # workers to use this client.
     get_llm_client()
 
+    # M5c: consume glossary change events → flag stale translations. Best-effort
+    # background task; a Redis hiccup must never take down the API.
+    consumer = GlossaryStaleConsumer(settings.redis_url, pool)
+    consumer_task = asyncio.create_task(consumer.run())
+
     yield
 
+    await consumer.stop()
+    consumer_task.cancel()
+    with suppress(asyncio.CancelledError, Exception):
+        await consumer_task
+    await consumer.close()
     await close_llm_client()
     await close_broker()
     await close_pool()

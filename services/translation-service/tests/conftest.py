@@ -73,6 +73,14 @@ def client(fake_pool):
     """
     from fastapi.testclient import TestClient
 
+    # M5c: stub the glossary-staleness consumer so the lifespan never opens a real
+    # Redis connection in tests (an unresolvable 'redis' host otherwise blocks
+    # TestClient teardown on the connect attempt — a multi-minute suite hang).
+    _stub_consumer = MagicMock()
+    _stub_consumer.run = AsyncMock()
+    _stub_consumer.stop = AsyncMock()
+    _stub_consumer.close = AsyncMock()
+
     with (
         patch("app.database.create_pool", new_callable=AsyncMock, return_value=fake_pool),
         patch("app.database.close_pool", new_callable=AsyncMock),
@@ -82,6 +90,7 @@ def client(fake_pool):
         patch("app.broker.close_broker", new_callable=AsyncMock),
         patch("app.routers.jobs.publish", new_callable=AsyncMock),
         patch("app.routers.jobs.publish_event", new_callable=AsyncMock),
+        patch("app.main.GlossaryStaleConsumer", return_value=_stub_consumer),
     ):
         from app.main import app
         # Override get_db to return our fake pool directly

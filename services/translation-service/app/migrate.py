@@ -277,6 +277,12 @@ ALTER TABLE chapter_translations
   ADD COLUMN IF NOT EXISTS quality_score         INT,
   ADD COLUMN IF NOT EXISTS unresolved_high_count INT NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS qa_rounds_used        INT NOT NULL DEFAULT 0;
+
+-- M5c living-book: glossary-staleness flag. Set true (coarse, book-level) when a
+-- glossary entity for the book changes (consumed from loreweave:events:glossary);
+-- a hint that the translation predates the glossary edit. Additive + idempotent.
+ALTER TABLE chapter_translations
+  ADD COLUMN IF NOT EXISTS is_glossary_stale BOOLEAN NOT NULL DEFAULT false;
 """
 
 

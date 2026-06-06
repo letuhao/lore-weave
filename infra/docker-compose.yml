@@ -392,6 +392,8 @@ services:
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # M5c: consume glossary change events (Redis Stream) to flag stale translations.
+      REDIS_URL: redis://redis:6379
       PORT: "8087"
     depends_on:
       postgres:

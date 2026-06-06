@@ -180,6 +180,8 @@ class ChapterTranslation(BaseModel):
     quality_score: Optional[int] = None
     unresolved_high_count: int = 0
     qa_rounds_used: int = 0
+    # M5c living-book: true when a glossary change post-dates this translation.
+    is_glossary_stale: bool = False
 
 
 class TranslationJob(BaseModel):
