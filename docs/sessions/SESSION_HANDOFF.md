@@ -58,7 +58,9 @@
 
 **🏁 V3 DONE.** All 5 original goals + the full M0–M6 plan-of-record shipped, every load-bearing milestone `/review-impl`'d, V2 byte-parity preserved (default `pipeline_version='v2'`). Remaining = small enhancements + deferred rows below.
 
-**NEXT options:** (1) **push** the branch — **22 commits unpushed** (needs explicit approval; strongly recommended to preserve the work) · (2) **D-TRANSL-EXTRASYSTEM-BUDGET** (perf) · (3) **M6 full-propagate** (term→chapter index + auto-affected-chapters re-translate; deferred) · (4) clear deferred rows (M1d, M4d, M5/M6 live-smokes) when stacks are up.
+**Pushed:** branch `feat/translation-pipeline-v3` is on origin (PR: github.com/letuhao/lore-weave/pull/new/feat/translation-pipeline-v3). **D-TRANSL-EXTRASYSTEM-BUDGET CLEARED** (the V3 injected context — romanization + knowledge brief + prev-memo — is now reserved in `compute_input_budget` via `extra_system_tokens`; +3 tests; 429 passed; V2 parity). One commit since the push (budget fix) — not yet pushed.
+
+**NEXT options:** (1) **push** the budget-fix commit · (2) **M6 full-propagate** (term→chapter index + auto-affected-chapters re-translate; deferred) · (3) clear remaining deferred rows (M1d, M4d, M5c/M6a live-smokes) when the full stack is up · (4) open the PR. V3 feature-complete; remaining work is the live-smokes + the optional full-propagate refinement.
 
 **Deferred (M0 /review-impl):**
 - **D-TRANSL-RESUME** — chunk rows are resume *substrate*; skip-completed-batch logic NOT built (re-run re-translates all). M1+/M5.

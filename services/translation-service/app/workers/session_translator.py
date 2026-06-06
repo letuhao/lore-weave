@@ -1001,6 +1001,9 @@ async def translate_chapter_blocks(
         source_lang=source_lang,
         target_lang=target_code,
         group_ids=group_ids,
+        # D-TRANSL-EXTRASYSTEM-BUDGET: reserve room for the V3 injected context
+        # (romanization + knowledge brief + prev-memo) appended to the system prompt.
+        extra_system_tokens=estimate_tokens(extra_system),
     )
     log.info(
         "block_translator_v2: %d blocks (%d translate, %d pass, %d caption) → %d batches (ct=%s)",
