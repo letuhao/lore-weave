@@ -39,9 +39,11 @@ The Mode builder just iterates whatever we return.
 """
 
 import asyncio
+import logging
 import re
 from uuid import UUID
 
+from app.clients.embedding_client import EmbeddingClient
 from app.clients.glossary_client import GlossaryClient, GlossaryEntityForContext
 from app.context.formatters.stopwords import (
     ARTICLE_STOPPHRASES,
@@ -49,8 +51,16 @@ from app.context.formatters.stopwords import (
     STOPPHRASES_LOWER,
 )
 from app.db.models import Project
+from app.db.neo4j_helpers import CypherSession
+from app.db.neo4j_repos.entities import find_entities_by_vector
 
-__all__ = ["extract_candidates", "select_glossary_for_context"]
+logger = logging.getLogger(__name__)
+
+__all__ = [
+    "extract_candidates",
+    "select_glossary_for_context",
+    "select_glossary_semantic",
+]
 
 
 # ── candidate extraction ───────────────────────────────────────────────────
@@ -186,6 +196,91 @@ def extract_candidates(message: str, *, max_candidates: int = MAX_CANDIDATES) ->
 
 
 # ── selector ───────────────────────────────────────────────────────────────
+
+
+async def select_glossary_semantic(
+    *,
+    session: CypherSession,
+    embedding_client: EmbeddingClient,
+    glossary_client: GlossaryClient,
+    user_id: UUID,
+    project_id: UUID,
+    book_id: UUID,
+    embedding_model: str | None,
+    embedding_dimension: int | None,
+    query: str,
+    max_entities: int = 20,
+) -> list[GlossaryEntityForContext]:
+    """mui #4 — semantic glossary selection (architecture B).
+
+    Embed the query, vector-search `:Entity` nodes (knowledge owns the
+    embeddings), keep only glossary-anchored hits, enrich them via glossary's
+    `entities/by-ids`, and rank by `weighted_score`. Best-effort: returns []
+    on missing embedding config or any failure (the caller falls back to FTS).
+    Only `glossary_entity_id`-anchored entities are returned, so orphan KG
+    nodes never leak into glossary context (AC6).
+    """
+    if not query.strip() or not embedding_model or not embedding_dimension:
+        return []
+
+    try:
+        emb = await embedding_client.embed(
+            user_id=user_id,
+            model_source="user_model",
+            model_ref=embedding_model,
+            texts=[query],
+        )
+    except Exception:
+        logger.warning("semantic glossary: embed failed (non-fatal)", exc_info=True)
+        return []
+    vector = emb.embeddings[0] if emb.embeddings else None
+    if not vector:
+        return []
+
+    try:
+        hits = await find_entities_by_vector(
+            session,
+            user_id=str(user_id),
+            project_id=str(project_id),
+            query_vector=vector,
+            dim=embedding_dimension,
+            embedding_model=embedding_model,
+            limit=max_entities,
+        )
+    except Exception:
+        logger.warning(
+            "semantic glossary: vector search failed (non-fatal)", exc_info=True
+        )
+        return []
+
+    # weighted_score = raw_score * anchor_score (two-layer). Sort defensively
+    # in case the index query order isn't relied upon, then keep the first
+    # occurrence of each glossary-anchored id.
+    hits.sort(key=lambda h: h.weighted_score, reverse=True)
+    ranked_ids: list[str] = []
+    score_by_id: dict[str, float] = {}
+    for h in hits:
+        gid = h.entity.glossary_entity_id
+        if not gid or gid in score_by_id:
+            continue
+        score_by_id[gid] = h.weighted_score
+        ranked_ids.append(gid)
+    if not ranked_ids:
+        return []
+
+    rows = await glossary_client.fetch_entities_by_ids(
+        book_id=book_id, entity_ids=ranked_ids
+    )
+    by_id = {r.entity_id: r for r in rows}
+    out: list[GlossaryEntityForContext] = []
+    for gid in ranked_ids:  # preserve vector rank order
+        r = by_id.get(gid)
+        if r is None:
+            continue
+        r.tier = "semantic"
+        r.rank_score = score_by_id[gid]
+        out.append(r)
+    return out[:max_entities]
 
 
 async def select_glossary_for_context(

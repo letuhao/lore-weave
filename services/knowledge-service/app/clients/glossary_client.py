@@ -400,6 +400,39 @@ class GlossaryClient:
             return False
 
 
+    async def fetch_entities_by_ids(
+        self,
+        *,
+        book_id: UUID,
+        entity_ids: list[str],
+    ) -> list[GlossaryEntityForContext]:
+        """POST /internal/books/{book_id}/entities/by-ids (mui #4).
+
+        Batch-fetch glossary entities by id so the semantic selector can
+        enrich vector hits with canon detail. Best-effort: returns [] on any
+        failure — the caller degrades to FTS.
+        """
+        if not entity_ids:
+            return []
+        url = f"{self._base_url}/internal/books/{book_id}/entities/by-ids"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.post(
+                url, json={"entity_ids": entity_ids},
+                headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                logger.warning("glossary entities/by-ids %d", resp.status_code)
+                return []
+            data = resp.json()
+            return [
+                GlossaryEntityForContext.model_validate(it)
+                for it in data.get("items", [])
+            ]
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("glossary entities/by-ids failed: %s", exc)
+            return []
+
     async def propose_entities(
         self,
         book_id: UUID,

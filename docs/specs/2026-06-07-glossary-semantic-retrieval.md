@@ -27,7 +27,7 @@
 - Internal-token gated. This is the only glossary change.
 
 ### 3.2 New knowledge internal endpoint — semantic glossary selection
-`POST /internal/knowledge/glossary-semantic` · body `{ user_id, project_id, query, max_entities, max_tokens }` → `{ items: [GlossaryEntityForContext-with-score] }`.
+`POST /internal/context/glossary-semantic` *(lives on the existing context router, K-1 done)* · body `{ user_id, project_id, query, max_entities, max_tokens }` → `{ items: [GlossaryEntityForContext-with-score] }`.
 Flow:
 1. Resolve project → `book_id`, `embedding_model`, `embedding_dimension` (knowledge_projects). If no embedding model / extraction never ran → return `{items: []}` (signals caller to fall back).
 2. `EmbeddingClient.embed(query, model)` → query_vector (per-project model, via provider-registry). Embedding cache reused (existing L3 cache).
