@@ -100,6 +100,17 @@ Overwrite the **▶ NEXT SESSION** block in `docs/sessions/SESSION_HANDOFF.md` i
 - Update Deferred list (clear resolved rows, add new ones)
 - Keep the file short — append historical detail to `<details>` blocks or archive it
 
+### Session continuity — do NOT suggest restarting
+
+A commit is a **task checkpoint, not a session boundary**. Once code is committed, the next task continues in the *same* session.
+
+- **Do NOT** suggest opening a new session, "starting fresh", pausing, or "wrapping up" based on commit count, number of milestones done, elapsed time, or conversation length. None of these are reasons to stop.
+- This matters most during **`/loom`** multi-milestone runs: after each milestone commits, just present the close-out and continue to the next `/loom <…>` — never advise a new session in between.
+- Only mention context at all when it is **genuinely near full (>90% used)**. At normal usage (e.g. a 1M window with most of it free) context is a non-issue — say nothing about it.
+- If compaction is truly needed, run `/compact`. Do not ask the user to restart.
+
+The legitimate stop points are the workflow's own PO checkpoints (CLARIFY end, POST-REVIEW) and the user explicitly saying they're done — nothing else.
+
 ---
 
 ## MCP Integration (ContextHub)
