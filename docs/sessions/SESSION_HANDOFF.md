@@ -8,7 +8,7 @@
 
 ### ▶ TRANSLATION PIPELINE V3 (branch `feat/translation-pipeline-v3`)
 
-**State: M0 + M1(a–c) + M2 DONE** (M1d deferred). M0 readiness gate + V3 scaffold; M1 rule-tier verify + targeted re-translate + romanization; **M2 LLM verifier (Tier-2) + multi-round QA loop**. All PO-approved + `/review-impl`'d. Full suite **357 passed**; **parity** preserved (default `pipeline_version='v2'`).
+**State: M0 + M1(a–c) + M2 + M3 DONE** (M1d deferred). M0 readiness gate + V3 scaffold; M1 rule-tier verify + targeted re-translate + romanization; M2 LLM verifier (Tier-2) + multi-round QA loop; **M3 dialogue/scene-aware semantic batching**. All PO-approved + `/review-impl`'d. Full suite **368 passed**; **parity** preserved (default `pipeline_version='v2'`).
 
 **Docs:** design [`2026-06-06-translation-pipeline-v3-multi-agent.md`](../specs/2026-06-06-translation-pipeline-v3-multi-agent.md) (**§12 = plan-of-record M0–M6**) · [research](../specs/2026-06-06-translation-llm-market-research.md) · [arch-review](../specs/2026-06-06-translation-v3-architecture-review-benchmark.md) · [M0 plan](../plans/2026-06-06-translation-v3-m0.md).
 
@@ -24,7 +24,9 @@
 
 **M2 shipped:** `v3/llm_verifier.py` (Tier-2 semantic LLM verify → JSON issues, tolerant parse, best-effort) + orchestrator **QA loop**: rule-tier + optional LLM verify → re-translate rule-high (keep-if-improved) → re-verify → loop. `qa_depth` (rule_only · **standard default** · thorough), `max_qa_rounds` (default 2, **capped 5**), nullable `verifier_model`→translator. **Conservative:** LLM issues capped advisory (med) — never auto-trigger re-translate (surfaced/persisted only). `/review-impl`: rounds-cap (MED-1) + clean-slate re-run delete (MED-2); a `format_map` brace bug was fixed during build (would've silently disabled LLM verify in prod).
 
-**NEXT options:** (1) **config plumbing** (small, mechanical) — wire `qa_depth`/`max_qa_rounds`/`verifier_model` settings→job→coordinator→worker (mirror `pipeline_version`) so `thorough` + a dedicated verifier model become configurable (today orchestrator uses msg defaults = `standard`); (2) **M3 semantic chunker** (design §12.4); (3) **M4 context** (cross-chapter memo wiring + knowledge relations + select-for-context bios).
+**M3 shipped (G5):** `v3/semantic_chunker.py` — `tag_groups(blocks)` tags each block *dialogue run* / *scene boundary* (heading/horizontalRule) / *paragraph cluster*; new group on scene OR kind-change → contiguous runs. `build_batch_plan` gained an additive `group_ids=None` param + a **group-aware early flush** (at a new group's first block, flush if the whole group fits a fresh batch but not the remaining budget; group > full batch → greedy-split fallback). `session_translator.translate_chapter_blocks` **forwards** `group_ids` (stays v3-agnostic — no v2→v3 dep); `orchestrator` injects `tag_groups(blocks)` (**V3 always-on**, PO decision). `group_ids=None` ⇒ **byte-identical V2**. Net: a dialogue exchange / scene tends to land in one LLM call. **+11 tests** (368 total). `/review-impl` not run — deterministic in-memory heuristic, not load-bearing (PO-approved skip).
+
+**NEXT options:** (1) **config plumbing** (small, mechanical) — wire `qa_depth`/`max_qa_rounds`/`verifier_model` settings→job→coordinator→worker (mirror `pipeline_version`) so `thorough` + a dedicated verifier model become configurable (today orchestrator uses msg defaults = `standard`); (2) **M4 context** (cross-chapter memo wiring + knowledge relations + select-for-context bios); (3) **M5/M6** (living-book surfacing · human-fix flywheel).
 
 **Deferred (M0 /review-impl):**
 - **D-TRANSL-RESUME** — chunk rows are resume *substrate*; skip-completed-batch logic NOT built (re-run re-translates all). M1+/M5.
@@ -41,6 +43,7 @@
 - **D-TRANSL-M2-CONFIG** (M2) — `qa_depth`/`max_qa_rounds`/`verifier_model` are read from the chapter msg with defaults but NOT yet plumbed settings→job→coordinator→worker; prod v3 runs `standard`. Wire it (mirror `pipeline_version`) to enable `thorough` + a per-role verifier model.
 - **D-TRANSL-M2-VERIFY-BATCHING** (M2) — the LLM verifier reviews the whole chapter in ONE call; very large chapters may truncate → degrade to `[]`. Batch like the translator (40-block cap).
 - **D-TRANSL-M2-LLM-ADVISORY** (M2) — LLM-detected issues are advisory (surfaced/persisted, capped med), NOT auto-corrected (only rule-high triggers the corrector — §12.2 conservative). Auto-fixing LLM issues with deterministic corroboration is a later enhancement (or M6 human-fix loop).
+- **D-TRANSL-M3-DIALOGUE-HEURISTIC** (M3 review-code, LOW, accepted) — `_has_dialogue` includes straight ASCII `"` in its marker set → can false-positive on narration that quotes a term, mis-tagging a paragraph as dialogue. Grouping-only (never alters content), so harmless; refine to balanced-quote / source-script-aware detection only if batch grouping is observed to suffer.
 
 ---
 

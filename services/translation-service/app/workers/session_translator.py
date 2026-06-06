@@ -839,6 +839,7 @@ async def translate_chapter_blocks(
     llm_client: LLMClient,
     context_window: int = _FALLBACK_CONTEXT_WINDOW,
     extra_system: str = "",
+    group_ids: dict[int, int] | None = None,
 ) -> tuple[list[dict], int, int]:
     """
     Translate a chapter's Tiptap blocks using the block-level pipeline (V2).
@@ -877,6 +878,7 @@ async def translate_chapter_blocks(
         context_window_tokens=context_window,
         source_lang=source_lang,
         target_lang=target_code,
+        group_ids=group_ids,
     )
     log.info(
         "block_translator_v2: %d blocks (%d translate, %d pass, %d caption) → %d batches (ct=%s)",

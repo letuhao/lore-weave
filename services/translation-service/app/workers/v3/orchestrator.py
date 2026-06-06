@@ -1,7 +1,8 @@
-"""V3 orchestrator — M0 scaffold + M1 (rule-tier/correct/romanization) + M2 (LLM verify + loop).
+"""V3 orchestrator — M0 scaffold + M1 (rule-tier/correct/romanization) + M2 (LLM verify + loop) + M3 (semantic batching).
 
 ``translate_chapter_blocks_v3`` delegates the translation to V2 (with the M1c
-romanization nudge), then runs the QA loop:
+romanization nudge and the M3/G5 dialogue/scene-aware batch grouping), then runs
+the QA loop:
 
   rule-tier verify (+ optional LLM Tier-2)  →  re-translate HIGH-severity blocks
   (keep-if-improved)  →  re-verify  →  repeat up to max_qa_rounds.
@@ -43,10 +44,12 @@ async def translate_chapter_blocks_v3(
 ):
     from ..session_translator import translate_chapter_blocks
     from .romanization import romanization_instruction
+    from .semantic_chunker import tag_groups
     result = await translate_chapter_blocks(
         blocks, source_lang, msg, pool, chapter_translation_id,
         llm_client=llm_client, context_window=context_window,
         extra_system=romanization_instruction(source_lang, msg.get("target_language", "")),
+        group_ids=tag_groups(blocks),  # M3/G5 — dialogue/scene-aware batching (V3 only)
     )
     # Non-fatal — verification/correction must never fail a translation that
     # already succeeded. Corrections mutate result[0] in place.
