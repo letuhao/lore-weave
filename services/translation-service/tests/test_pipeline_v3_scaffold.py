@@ -32,7 +32,7 @@ def _block_book_resp():
 
 @pytest.mark.asyncio
 async def test_translate_chapter_blocks_v3_delegates_to_v2():
-    sentinel = (["RESULT"], 11, 7, 1, 1)
+    sentinel = (["RESULT"], 11, 7, 1, 1, {})
     with patch("app.workers.session_translator.translate_chapter_blocks",
                new_callable=AsyncMock, return_value=sentinel) as v2:
         from app.workers.v3.orchestrator import translate_chapter_blocks_v3
@@ -74,7 +74,7 @@ async def test_pipeline_version_v3_routes_to_v3_orchestrator():
                new_callable=AsyncMock, return_value=8192), \
          patch("app.workers.v3.orchestrator.translate_chapter_blocks_v3",
                new_callable=AsyncMock,
-               return_value=(translated_blocks, 10, 8, 1, 1)) as v3fn, \
+               return_value=(translated_blocks, 10, 8, 1, 1, {})) as v3fn, \
          patch("app.workers.session_translator.translate_chapter_blocks",
                new_callable=AsyncMock) as v2fn:
         mock_cls.return_value.__aenter__ = AsyncMock(
@@ -103,7 +103,7 @@ async def test_default_pipeline_version_routes_to_v2():
                new_callable=AsyncMock) as v3fn, \
          patch("app.workers.session_translator.translate_chapter_blocks",
                new_callable=AsyncMock,
-               return_value=(translated_blocks, 10, 8, 1, 1)) as v2fn:
+               return_value=(translated_blocks, 10, 8, 1, 1, {})) as v2fn:
         mock_cls.return_value.__aenter__ = AsyncMock(
             return_value=_patched_book_http(book_resp=_block_book_resp()))
         mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)

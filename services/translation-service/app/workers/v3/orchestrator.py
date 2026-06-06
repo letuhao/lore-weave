@@ -63,9 +63,15 @@ async def translate_chapter_blocks_v3(
         log.warning("v3 knowledge brief failed (non-fatal): %s", exc)
         knowledge_brief = ""
 
+    # M4c — opportunistic prev-chapter memo (§12.1): used when chapter N-1's memo
+    # already exists; never forces ordering. V3-only (V2 ignores msg["prev_memo"]).
+    from .chapter_memo import build_prev_memo_block
+    prev_memo_block = build_prev_memo_block(msg.get("prev_memo"))
+
     extra = romanization_instruction(source_lang, msg.get("target_language", ""))
-    if knowledge_brief:
-        extra = (extra + "\n\n" + knowledge_brief).strip()
+    for _seg in (knowledge_brief, prev_memo_block):
+        if _seg:
+            extra = (extra + "\n\n" + _seg).strip()
 
     result = await translate_chapter_blocks(
         blocks, source_lang, msg, pool, chapter_translation_id,

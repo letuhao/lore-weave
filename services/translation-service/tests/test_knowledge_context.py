@@ -157,9 +157,12 @@ async def test_orchestrator_threads_brief_to_translator_and_verifier(monkeypatch
     monkeypatch.setattr(orchestrator, "_verify_correct_persist", fake_vcp)
 
     blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "hi"}]}]
-    msg = {"book_id": "b", "user_id": "u", "target_language": "vi"}
+    # M4c: prev-chapter memo present → its block must also reach the Translator.
+    msg = {"book_id": "b", "user_id": "u", "target_language": "vi",
+           "prev_memo": {"terms_used": ["Zeldarion"], "story_summary": "prior events"}}
     await orchestrator.translate_chapter_blocks_v3(
         blocks, "zh", msg, MagicMock(), uuid4(), llm_client=MagicMock())
 
-    assert "KB-SENTINEL" in captured["extra_system"]
+    assert "KB-SENTINEL" in captured["extra_system"]          # M4b knowledge brief
+    assert "Zeldarion" in captured["extra_system"]             # M4c prev-memo names
     assert captured["verify_brief"] == "KB-SENTINEL"

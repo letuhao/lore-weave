@@ -862,11 +862,12 @@ async def translate_chapter_blocks(
 
     Returns:
         (translated_blocks, total_input_tokens, total_output_tokens,
-         translated_count, translatable_count)
+         translated_count, translatable_count, translated_texts)
         translated_count/translatable_count let the caller detect a total
         failure (translatable blocks existed but none translated) and mark the
         chapter FAILED instead of silently persisting all-original blocks as
-        "completed".
+        "completed". translated_texts ({block_index: text}) is the translated-only
+        text for the cross-chapter memo (M4c).
     """
     from .block_classifier import rebuild_block, extract_translatable_text
     from .block_batcher import build_batch_plan, parse_translated_blocks
@@ -887,7 +888,7 @@ async def translate_chapter_blocks(
     )
 
     if not plan.batches:
-        return blocks, 0, 0, 0, plan.translatable_count
+        return blocks, 0, 0, 0, plan.translatable_count, {}
 
     user_id = msg["user_id"]
 
@@ -1182,4 +1183,8 @@ async def translate_chapter_blocks(
             sorted(failed_blocks), chapter_translation_id,
         )
 
-    return result_blocks, total_input, total_output, translated_count, plan.translatable_count
+    # translated_texts ({idx: text}) is the authoritative translated-only source
+    # for the cross-chapter memo (M4c, D-TRANSL-MEMO-M4) — failed blocks fell back
+    # to original in result_blocks and must NOT pollute the memo.
+    return (result_blocks, total_input, total_output, translated_count,
+            plan.translatable_count, translated_texts)

@@ -193,7 +193,7 @@ async def test_block_pipeline_writes_chunk_rows():
     with patch("app.workers.glossary_client.fetch_translation_glossary",
                new_callable=AsyncMock, return_value=[]):
         from app.workers.session_translator import translate_chapter_blocks
-        _blocks, _tin, _tout, translated_count, translatable_count = await translate_chapter_blocks(
+        _blocks, _tin, _tout, translated_count, translatable_count, _translated_texts = await translate_chapter_blocks(
             blocks=blocks, source_lang="en", msg=msg, pool=pool,
             chapter_translation_id=uuid4(), llm_client=fake, context_window=8192,
         )

@@ -376,7 +376,7 @@ async def test_block_pipeline_total_failure_marks_chapter_failed():
                new_callable=AsyncMock, return_value=8192), \
          patch("app.workers.session_translator.translate_chapter_blocks",
                new_callable=AsyncMock,
-               return_value=(original_blocks, 0, 0, 0, 1)):  # 0/1 translated → total failure
+               return_value=(original_blocks, 0, 0, 0, 1, {})):  # 0/1 translated → total failure
         mock_cls.return_value.__aenter__ = AsyncMock(
             return_value=_patched_book_http(book_resp=book_resp))
         mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -419,7 +419,7 @@ async def test_block_pipeline_partial_success_still_completes():
                new_callable=AsyncMock, return_value=8192), \
          patch("app.workers.session_translator.translate_chapter_blocks",
                new_callable=AsyncMock,
-               return_value=(translated_blocks, 10, 8, 1, 1)):  # 1/1 translated
+               return_value=(translated_blocks, 10, 8, 1, 1, {0: "こんにちは。"})):  # 1/1 translated
         mock_cls.return_value.__aenter__ = AsyncMock(
             return_value=_patched_book_http(book_resp=book_resp))
         mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -464,7 +464,8 @@ async def test_block_pipeline_saves_nonempty_memo():
                new_callable=AsyncMock, return_value=8192), \
          patch("app.workers.session_translator.translate_chapter_blocks",
                new_callable=AsyncMock,
-               return_value=(translated_blocks, 10, 8, 1, 1)):  # 1/1 translated
+               return_value=(translated_blocks, 10, 8, 1, 1,
+                             {0: "こんにちは。今日はいい天気です。"})):  # 1/1 translated
         mock_cls.return_value.__aenter__ = AsyncMock(
             return_value=_patched_book_http(book_resp=book_resp))
         mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)

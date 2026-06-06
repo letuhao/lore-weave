@@ -124,6 +124,9 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
     prev_memo = await _load_chapter_memo(pool, msg["book_id"], chapter_index - 1, target_language)
     if prev_memo:
         log.info("chapter %s: loaded memo from chapter %d", chapter_id, chapter_index - 1)
+        # M4c: hand the prev-chapter memo to the V3 orchestrator for opportunistic
+        # injection into the Translator (§12.1). V2 ignores it → byte-parity.
+        msg["prev_memo"] = prev_memo
 
     # M0: select pipeline implementation by snapshotted flag. Default 'v2'. The v3
     # orchestrator currently delegates to v2 (parity) — M1+ adds the multi-agent loop.
@@ -150,7 +153,8 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             "chapter %s: using BLOCK pipeline (%d blocks, model=%s/%s)",
             chapter_id, len(blocks), msg.get("model_source"), msg.get("model_ref"),
         )
-        translated_blocks, input_tokens, output_tokens, translated_count, translatable_count = (
+        (translated_blocks, input_tokens, output_tokens, translated_count,
+         translatable_count, translated_texts) = (
             await _translate_blocks(
                 blocks=blocks,
                 source_lang=source_lang,
@@ -177,13 +181,12 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
         translated_body_json = json.dumps(translated_blocks)
         translated_body_text = None  # not used for block translations
         translated_body_format = "json"
-        # TD1 fix: the block pipeline has no flat translated_body_text, so derive
-        # plain text from the translated blocks for the cross-chapter memo (it was
-        # silently empty before). No effect on translation output — prev_memo
-        # injection into the prompt lands in M4 (context).
-        from .block_classifier import extract_translatable_text
+        # TD1 fix + M4c (D-TRANSL-MEMO-M4): build the cross-chapter memo from the
+        # TRANSLATED-ONLY text. `translated_texts` ({idx: text}) excludes blocks
+        # that fell back to original on failure, so a failed block's source text
+        # no longer pollutes the memo.
         memo_text = "\n".join(
-            t for b in translated_blocks if (t := extract_translatable_text(b))
+            translated_texts[i] for i in sorted(translated_texts) if translated_texts[i]
         )
         log.info(
             "chapter %s: block pipeline done — %d blocks, %d/%d translated, in=%s out=%s",
@@ -459,7 +462,12 @@ async def _load_chapter_memo(pool, book_id, chapter_index: int, target_language:
 async def _save_chapter_memo(
     pool, book_id, chapter_index: int, target_language: str, translated_text: str,
 ) -> None:
-    """Save a brief translation memo for the next chapter's context."""
+    """Save a brief translation memo for the next chapter's context.
+
+    M4c: also persists ``terms_used`` — recurring target-side proper nouns
+    harvested from this chapter (the cold-start in-run name record), so the next
+    chapter can reuse the exact spelling for cross-chapter name consistency.
+    """
     if not translated_text:
         return
     # Extract last ~5 sentences as story summary
@@ -469,15 +477,20 @@ async def _save_chapter_memo(
     if len(story_summary) > 500:
         story_summary = story_summary[-500:]
 
+    from .v3.chapter_memo import harvest_names
+    terms_used = harvest_names(translated_text, target_language)
+
     try:
         async with pool.acquire() as db:
             await db.execute(
                 """INSERT INTO translation_chapter_memos
-                     (book_id, chapter_index, target_language, story_summary)
-                   VALUES ($1, $2, $3, $4)
+                     (book_id, chapter_index, target_language, story_summary, terms_used)
+                   VALUES ($1, $2, $3, $4, $5)
                    ON CONFLICT (book_id, chapter_index, target_language)
-                   DO UPDATE SET story_summary = EXCLUDED.story_summary, created_at = now()""",
+                   DO UPDATE SET story_summary = EXCLUDED.story_summary,
+                                 terms_used = EXCLUDED.terms_used, created_at = now()""",
                 UUID(str(book_id)), chapter_index, target_language, story_summary,
+                json.dumps(terms_used, ensure_ascii=False),
             )
     except Exception as exc:
         log.warning("chapter_memo save failed: %s — non-fatal", exc)
