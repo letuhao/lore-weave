@@ -86,11 +86,11 @@ def models(token):
     return drafter["user_model_id"], critic["user_model_id"]
 
 
-def gen_auto_text(token, proj, node_id, drafter):
+def gen_auto_text(token, proj, node_id, drafter, guide=""):
     r = _req("POST", f"/v1/composition/works/{proj}/generate", token,
              {"outline_node_id": node_id, "model_source": "user_model", "model_ref": drafter,
               "operation": "draft_scene", "mode": "auto", "reasoning": "off",
-              "max_output_tokens": 400})
+              "guide": guide, "max_output_tokens": 400})
     return r.get("text", ""), r.get("k")
 
 
@@ -146,10 +146,19 @@ def build_one(token, user_id, drafter, critic, premise, cast):
     per_chapter = {}
     for n in scenes:
         per_chapter.setdefault(str(n["chapter_id"]), []).append(n)
+    # B (state-reinjection probe): thread the chapter's PRIOR generated scenes into
+    # each scene's `guide` so A3 isn't drafted blind to its predecessors (the
+    # A-EVAL finding). Cheap simulation of Re3-F2 / the narrative_thread ledger.
     a3_parts, a3_k = [], []
+    chapter_running: dict[str, list[str]] = {}
     for n in scenes:
-        txt, k = gen_auto_text(token, proj, n["id"], drafter)
+        cid = str(n["chapter_id"])
+        prior = chapter_running.get(cid, [])
+        guide = ("Continue this chapter coherently and consistently with what came "
+                 "before. PREVIOUSLY IN THIS CHAPTER:\n\n" + "\n\n".join(prior)) if prior else ""
+        txt, k = gen_auto_text(token, proj, n["id"], drafter, guide=guide)
         a3_parts.append(txt); a3_k.append(k or 0)
+        chapter_running.setdefault(cid, []).append(txt)
     a3_draft = "\n\n".join(p for p in a3_parts if p)
 
     # V0: one bare single-draft per chapter (thin synopsis, no plan), sized to the
@@ -212,8 +221,8 @@ def main():
     print("\n=== RESULT ===")
     print(f"pairwise wins — A3:{a3_wins}  V0:{v0_wins}  tie:{ties}  (n={n})")
     print(f"total defects — A3:{a3_def_tot}  V0:{v0_def_tot}")
-    print("\nLIVE-SMOKE: longer-form A3-full vs V0 pairwise judge ran end-to-end "
-          "(decompose→commit→multi-scene generate + cowrite baseline + internal pairwise-judge).")
+    print("\nLIVE-SMOKE: longer-form A3-THREADED (guide state-reinjection) vs V0 pairwise judge "
+          "ran end-to-end (decompose→commit→multi-scene generate + cowrite baseline + pairwise-judge).")
     if a3_wins > v0_wins:
         print(f"GATE: PASS — A3 wins {a3_wins} > V0 {v0_wins} (orchestrated reasoning beats V0 "
               "on longer-form pairwise — the discriminating signal the coherence-median lacked).")
