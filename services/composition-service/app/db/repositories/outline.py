@@ -192,6 +192,65 @@ class OutlineRepo:
                 row = await _do(c)
         return _row_to_node(row)
 
+    async def existing_scene_chapter_ids(
+        self, user_id: UUID, project_id: UUID, chapter_ids: list[UUID],
+    ) -> set[UUID]:
+        """A3 commit replace-guard: which of `chapter_ids` already have ≥1 active
+        scene outline node. The endpoint refuses to re-decompose those unless
+        `replace=true` (don't silently double-plan a chapter)."""
+        if not chapter_ids:
+            return set()
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(
+                """
+                SELECT DISTINCT chapter_id FROM outline_node
+                WHERE user_id = $1 AND project_id = $2 AND kind = 'scene'
+                  AND NOT is_archived AND chapter_id = ANY($3)
+                """,
+                user_id, project_id, chapter_ids,
+            )
+        return {r["chapter_id"] for r in rows}
+
+    async def create_decomposed_tree(
+        self, user_id: UUID, project_id: UUID, *,
+        arc_title: str, chapters: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """A3 commit — persist an arc→chapter→scene tree ATOMICALLY (one Tx; a
+        mid-insert failure rolls back the whole plan). Each `chapters` item:
+        ``{chapter_id, title, intent, beat_role, scenes:[{title, synopsis,
+        tension, present_entity_ids}]}``. `beat_role` is stamped on the SCENES
+        (the DB CHECK forbids it on chapter); the chapter node carries the beat's
+        intent in `goal`. Returns the created node ids.
+
+        Caller MUST pre-validate (chapter_id ∈ book, present_entity_id ∈ glossary,
+        replace-guard) — this method only persists."""
+        async with self._pool.acquire() as c:
+            async with c.transaction():
+                arc = await self.create_node(
+                    user_id, project_id, kind="arc", title=arc_title,
+                    status="outline", conn=c,
+                )
+                chapter_ids: list[UUID] = []
+                scene_ids: list[UUID] = []
+                for ch in chapters:
+                    ch_node = await self.create_node(
+                        user_id, project_id, kind="chapter", parent_id=arc.id,
+                        chapter_id=ch["chapter_id"], title=ch.get("title", ""),
+                        goal=ch.get("intent", ""), status="outline", conn=c,
+                    )
+                    chapter_ids.append(ch_node.id)
+                    for sc in ch.get("scenes", []):
+                        sn = await self.create_node(
+                            user_id, project_id, kind="scene", parent_id=ch_node.id,
+                            chapter_id=ch["chapter_id"], beat_role=ch.get("beat_role"),
+                            title=sc.get("title", ""), synopsis=sc.get("synopsis", ""),
+                            tension=sc.get("tension"),
+                            present_entity_ids=sc.get("present_entity_ids") or [],
+                            status="outline", conn=c,
+                        )
+                        scene_ids.append(sn.id)
+        return {"arc_id": arc.id, "chapter_ids": chapter_ids, "scene_ids": scene_ids}
+
     async def list_tree(
         self, user_id: UUID, project_id: UUID, *, include_archived: bool = False,
     ) -> list[OutlineNode]:

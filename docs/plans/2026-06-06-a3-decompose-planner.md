@@ -35,6 +35,11 @@
 - Confirm gateway `pathFilter` proxies `/v1/composition/works/*/outline/*` (likely already; add a block only if missing — additive).
 - Tests: preview shape, commit persists the right kinds/fields (beat_role on scene only; chapter_id set), IDOR reject, replace-guard, present_entity validation.
 
+> **/review-impl carry-ins (from the B4 endpoints review):**
+> - **D-A3-COMMIT-TRUE-REPLACE (deferred)** — the commit `force` flag adds scenes ALONGSIDE existing ones; it does NOT replace. True replace (archive the prior decomposed subtree before adding) needs its own design (what to archive: manual vs prior-decompose scenes). Renamed `replace`→`force` so the name is honest meanwhile.
+> - **D-A3-COMMIT-IDEMPOTENCY (deferred, MED)** — commit has no idempotency_key; a double-submit with `force=true` duplicates the whole tree. `/generate` has a key; revisit if the FE surfaces double-submit.
+> - **B5 MUST live-smoke the repo persistence** — `create_decomposed_tree` + `existing_scene_chapter_ids` are router-stub-tested only (no unit/integration coverage of the real atomic insert / replace-guard query); the B5 `decompose → commit → generate` run is their first real exercise.
+
 ### B5 — eval + VERIFY
 - `scripts/eval_a3_decompose.py` (host-orchestrated, mirrors `eval_a1_diverge.py`): A3 (decompose→commit→generate, adaptive K) vs A1 (bare outline, fixed K) on coherence + outline-relevance medians; report wall-clock + total K spend.
 - **Live cross-process token** at VERIFY (composition + glossary + book + provider-registry): `live smoke: eval_a3_decompose …`. Run on a seeded book with real chapters + a small cast.
