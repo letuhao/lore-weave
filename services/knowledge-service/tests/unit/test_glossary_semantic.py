@@ -12,6 +12,7 @@ from uuid import uuid4
 
 import pytest
 
+import app.context.query_embedding as qe_mod
 from app.clients.glossary_client import GlossaryEntityForContext
 from app.context.selectors import glossary as gsel
 from app.db.neo4j_repos.entities import Entity, VectorSearchHit
@@ -19,6 +20,15 @@ from app.db.neo4j_repos.entities import Entity, VectorSearchHit
 USER = uuid4()
 PROJECT = uuid4()
 BOOK = uuid4()
+
+
+@pytest.fixture(autouse=True)
+def _clear_query_embedding_cache():
+    # MED-2 shared cache is module-global — isolate tests so a cache hit from
+    # one test doesn't skip the embed path another test is asserting on.
+    qe_mod._query_embedding_cache.clear()
+    yield
+    qe_mod._query_embedding_cache.clear()
 
 
 def _hit(gid: str | None, name: str, score: float) -> VectorSearchHit:
@@ -104,6 +114,26 @@ async def test_embed_failure_falls_back_to_empty(monkeypatch):
     embed.embed = AsyncMock(side_effect=RuntimeError("provider down"))
     out = await _run(monkeypatch, hits=[_hit("g1", "x", 0.9)], rows=[_row("g1", "x")], embed=embed)
     assert out == []
+
+
+@pytest.mark.asyncio
+async def test_respects_max_tokens(monkeypatch):
+    # MED-1 — semantic results are trimmed to the token budget (parity with
+    # FTS select-for-context). Three ~40-token entities; budget 50 keeps 1.
+    big = "描述" * 20  # 40 CJK chars ≈ 40 tokens
+    hits = [_hit("g1", "甲", 0.9), _hit("g2", "乙", 0.8), _hit("g3", "丙", 0.7)]
+    rows = [
+        GlossaryEntityForContext(entity_id=f"g{i}", cached_name="甲", kind_code="character", short_description=big)
+        for i in (1, 2, 3)
+    ]
+    monkeypatch.setattr(gsel, "find_entities_by_vector", AsyncMock(return_value=hits))
+    out = await gsel.select_glossary_semantic(
+        session=MagicMock(), embedding_client=_embed_ok(), glossary_client=_glossary_with(rows),
+        user_id=USER, project_id=PROJECT, book_id=BOOK,
+        embedding_model="m", embedding_dimension=1024, query="q",
+        max_entities=20, max_tokens=50,
+    )
+    assert [e.entity_id for e in out] == ["g1"]  # only the top-ranked fits
 
 
 @pytest.mark.asyncio

@@ -49,6 +49,7 @@ from app.context.intent.classifier import IntentResult, classify
 from app.context.modes.no_project import BuiltContext, split_at_boundary
 from app.context.selectors.absence import detect_absences
 from app.context.selectors.facts import L2FactResult, select_l2_facts
+from app.context.query_embedding import embed_query_cached
 from app.context.selectors.glossary import select_glossary_for_context
 from app.context.intent.abstract_query import is_abstract_query
 from app.context.selectors.passages import L3Passage  # select_l3_passages is lazy-imported in _safe_l3_passages for test-patchability
@@ -212,12 +213,15 @@ async def _safe_summary_blend(
     if embedding_client is None or not project.embedding_model:
         return []
 
+    # mui #4 MED-2 — shared query-embedding cache: the same message embedded
+    # for L3 / glossary-semantic in this build is reused here (and vice versa).
     try:
-        embed_result = await embedding_client.embed(
+        query_embedding = await embed_query_cached(
+            embedding_client,
             user_id=user_id,
-            model_source="user_model",
-            model_ref=project.embedding_model,
-            texts=[message],
+            project_id=str(project.project_id),
+            embedding_model=project.embedding_model,
+            message=message,
         )
     except Exception:
         logger.warning(
@@ -226,7 +230,7 @@ async def _safe_summary_blend(
         )
         return []
 
-    if not embed_result.embeddings or not embed_result.embeddings[0]:
+    if query_embedding is None:
         return []
 
     try:
@@ -236,7 +240,7 @@ async def _safe_summary_blend(
                     session,
                     project_id=str(project.project_id),
                     embedding_model_uuid=project.embedding_model,
-                    query_embedding=embed_result.embeddings[0],
+                    query_embedding=query_embedding,
                 ),
                 timeout=settings.context_l3_timeout_s,
             )

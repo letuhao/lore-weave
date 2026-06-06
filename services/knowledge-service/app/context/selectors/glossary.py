@@ -45,6 +45,7 @@ from uuid import UUID
 
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.glossary_client import GlossaryClient, GlossaryEntityForContext
+from app.context.query_embedding import embed_query_cached
 from app.context.formatters.stopwords import (
     ARTICLE_STOPPHRASES,
     CJK_PARTICLES,
@@ -199,6 +200,24 @@ def extract_candidates(message: str, *, max_candidates: int = MAX_CANDIDATES) ->
 # ── selector ───────────────────────────────────────────────────────────────
 
 
+def _estimate_entity_tokens(e: GlossaryEntityForContext) -> int:
+    """Rough token estimate for an entity's rendered context form
+    (name + aliases + short_description). CJK ≈ 1 token/char, latin ≈ 1/4;
+    over-estimate is safe — mirrors the writeback metering heuristic."""
+    text = " ".join(
+        s for s in (
+            e.cached_name or "",
+            " ".join(e.cached_aliases or []),
+            e.short_description or "",
+        ) if s
+    )
+    if not text:
+        return 1
+    cjk = sum(1 for ch in text if "一" <= ch <= "鿿")
+    other = len(text) - cjk
+    return cjk + max(1, other // 4)
+
+
 async def select_glossary_semantic(
     *,
     session: CypherSession,
@@ -211,6 +230,7 @@ async def select_glossary_semantic(
     embedding_dimension: int | None,
     query: str,
     max_entities: int = 20,
+    max_tokens: int = 800,
 ) -> list[GlossaryEntityForContext]:
     """mui #4 — semantic glossary selection (architecture B).
 
@@ -225,16 +245,16 @@ async def select_glossary_semantic(
         return []
 
     try:
-        emb = await embedding_client.embed(
+        vector = await embed_query_cached(
+            embedding_client,
             user_id=user_id,
-            model_source="user_model",
-            model_ref=embedding_model,
-            texts=[query],
+            project_id=str(project_id),
+            embedding_model=embedding_model,
+            message=query,
         )
     except Exception:
         logger.warning("semantic glossary: embed failed (non-fatal)", exc_info=True)
         return []
-    vector = emb.embeddings[0] if emb.embeddings else None
     if not vector:
         return []
 
@@ -281,7 +301,20 @@ async def select_glossary_semantic(
         r.tier = "semantic"
         r.rank_score = score_by_id[gid]
         out.append(r)
-    return out[:max_entities]
+
+    # mui #4 MED-1 — respect max_tokens (parity with FTS select-for-context,
+    # which trims its response to the token budget). Without this the semantic
+    # block could overrun the caller's glossary budget. Always keep at least
+    # the top-ranked entity; stop before the budget would go negative.
+    trimmed: list[GlossaryEntityForContext] = []
+    budget = max_tokens
+    for r in out[:max_entities]:
+        cost = _estimate_entity_tokens(r)
+        if trimmed and cost > budget:
+            break
+        budget -= cost
+        trimmed.append(r)
+    return trimmed
 
 
 async def _pinned_entities(
@@ -320,6 +353,7 @@ async def _semantic_with_pinned(
             embedding_dimension=project.embedding_dimension,
             query=message,
             max_entities=max_entities,
+            max_tokens=max_tokens,
         )
     if not semantic:
         return []

@@ -74,6 +74,14 @@ Packer L1a (`gather_present` / glossary_client): call knowledge `glossary-semant
 - **Cost:** one embed per query — reuse the existing embedding cache; cheap vs the LLM calls already in the path.
 - This mui also produces the **entity-similarity signal mui #1c (merge detection) needs** — `find_entities_by_vector` entity-to-entity becomes the blocking step there.
 
+## review-impl findings (2026-06-07, all fixed)
+
+- **MED-1 — FIXED:** `select_glossary_semantic` now takes `max_tokens` and trims results by an estimated token cost (parity with FTS select-for-context, which the semantic path was bypassing → glossary block could overrun budget). `_estimate_entity_tokens` (CJK-aware, over-estimate-safe).
+- **MED-2 — FIXED:** the same message was embedded 2–3× per Mode-3 build (L3 + summary-blend + new glossary-semantic). Lifted passages.py's P-K18.3-01 query-embedding cache into shared `app/context/query_embedding.py::embed_query_cached`; all three selectors now share one TTL cache → one embed per (user, project, model, message) per window.
+- **LOW-1 — FIXED:** added unit tests for the `/internal/context/glossary-semantic` endpoint (project resolution / book_id-None / no-embedding-model → []; happy path).
+- Verified non-issues: by-ids has status parity with the FTS tier (both `deleted_at IS NULL` only); AC6 anchor-leak filtered + tested; dim-mismatch degrades.
+- Tests: 58 unit green (semantic + endpoint + wiring + query-cache + passages + summary-blend + selector-budget regression).
+
 ## 7. Open confirm-at-BUILD
 - Exact `VectorSearchHit` fields (confirm `glossary_entity_id` + score present).
 - Exact `GlossaryEntityForContext` JSON shape parity between the new by-ids endpoint and select-for-context.

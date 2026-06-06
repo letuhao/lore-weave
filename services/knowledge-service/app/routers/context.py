@@ -183,5 +183,6 @@ async def glossary_semantic(
             embedding_dimension=project.embedding_dimension,
             query=req.query,
             max_entities=req.max_entities,
+            max_tokens=req.max_tokens,
         )
     return GlossarySemanticResponse(items=items)
