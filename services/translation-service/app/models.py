@@ -102,12 +102,31 @@ class CreateJobPayload(BaseModel):
     model_source: Optional[str] = None
     model_ref: Optional[UUID] = None
     pipeline_version: Optional[str] = None  # 'v2' (default) | 'v3' — per-job override
+    # V3 QA config (per-job overrides; otherwise inherit book/prefs defaults).
+    qa_depth: Optional[str] = None           # 'rule_only' | 'standard' | 'thorough'
+    max_qa_rounds: Optional[int] = None      # 1..5 (orchestrator caps at 5)
+    verifier_model_source: Optional[str] = None
+    verifier_model_ref: Optional[UUID] = None
 
     @field_validator("pipeline_version")
     @classmethod
     def _valid_pipeline_version(cls, v: Optional[str]) -> Optional[str]:
         if v is not None and v not in ("v2", "v3"):
             raise ValueError("pipeline_version must be 'v2' or 'v3'")
+        return v
+
+    @field_validator("qa_depth")
+    @classmethod
+    def _valid_qa_depth(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in ("rule_only", "standard", "thorough"):
+            raise ValueError("qa_depth must be 'rule_only', 'standard', or 'thorough'")
+        return v
+
+    @field_validator("max_qa_rounds")
+    @classmethod
+    def _valid_max_qa_rounds(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and not (1 <= v <= 5):
+            raise ValueError("max_qa_rounds must be between 1 and 5")
         return v
 
     @field_validator("chapter_ids")
@@ -124,6 +143,9 @@ class CreateJobPayload(BaseModel):
         # model_ref alone is fine — it inherits the resolved model_source.
         if self.model_source is not None and self.model_ref is None:
             raise ValueError("model_ref is required when model_source is overridden")
+        # Same pairing rule for the verifier model (else source/ref would mismatch).
+        if self.verifier_model_source is not None and self.verifier_model_ref is None:
+            raise ValueError("verifier_model_ref is required when verifier_model_source is overridden")
         return self
 
 
@@ -172,6 +194,10 @@ class TranslationJob(BaseModel):
     chunk_size_tokens: int = 2000
     invoke_timeout_secs: int = 300
     pipeline_version: str = "v2"
+    qa_depth: str = "standard"
+    max_qa_rounds: int = 2
+    verifier_model_source: Optional[str] = None
+    verifier_model_ref: Optional[UUID] = None
     chapter_ids: list[UUID]
     total_chapters: int
     completed_chapters: int

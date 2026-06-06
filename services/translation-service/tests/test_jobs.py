@@ -201,6 +201,68 @@ def test_create_job_rejects_invalid_pipeline_version(client, fake_pool):
     assert resp.status_code == 422
 
 
+def test_create_job_qa_config_overrides_flow_to_broker(client, fake_pool):
+    """config-plumbing: per-job qa_depth / max_qa_rounds / verifier_model overrides
+    are snapshotted and carried in the broker message → coordinator → worker."""
+    verifier_ref = str(uuid4())
+    fake_pool.fetchrow.side_effect = [_BOOK_SETTINGS_ROW, FakeRecord({**_JOB_ROW})]
+
+    with patch("app.routers.jobs.httpx.AsyncClient") as mock_client_cls, \
+         patch("app.routers.jobs.publish", new_callable=AsyncMock) as mock_publish, \
+         patch("app.routers.jobs.publish_event", new_callable=AsyncMock):
+        mock_client_cls.return_value.__aenter__.return_value = AsyncMock(
+            get=AsyncMock(return_value=_mock_book_service_response()))
+        resp = client.post(
+            f"/v1/translation/books/{BOOK_ID}/jobs",
+            json={"chapter_ids": [CHAPTER_ID], "pipeline_version": "v3",
+                  "qa_depth": "thorough", "max_qa_rounds": 4,
+                  "verifier_model_source": "platform_model",
+                  "verifier_model_ref": verifier_ref},
+        )
+
+    assert resp.status_code == 201
+    published = mock_publish.call_args.args[1]
+    assert published["qa_depth"] == "thorough"
+    assert published["max_qa_rounds"] == 4
+    assert published["verifier_model_source"] == "platform_model"
+    assert published["verifier_model_ref"] == verifier_ref
+
+    # Also guard the INSERT positional args ($17-$20) — a column/value swap would
+    # persist wrong data yet still pass the message assertion above (built from eff).
+    insert_args = fake_pool.fetchrow.call_args_list[1].args  # [0]=resolve, [1]=INSERT
+    assert insert_args[-4:] == ("thorough", 4, "platform_model", UUID(verifier_ref))
+
+
+def test_create_job_defaults_qa_config_when_unset(client, fake_pool):
+    """No overrides + book settings without QA columns → standard defaults in the msg."""
+    fake_pool.fetchrow.side_effect = [_BOOK_SETTINGS_ROW, FakeRecord({**_JOB_ROW})]
+    with patch("app.routers.jobs.httpx.AsyncClient") as mock_client_cls, \
+         patch("app.routers.jobs.publish", new_callable=AsyncMock) as mock_publish, \
+         patch("app.routers.jobs.publish_event", new_callable=AsyncMock):
+        mock_client_cls.return_value.__aenter__.return_value = AsyncMock(
+            get=AsyncMock(return_value=_mock_book_service_response()))
+        resp = client.post(f"/v1/translation/books/{BOOK_ID}/jobs",
+                           json={"chapter_ids": [CHAPTER_ID]})
+    assert resp.status_code == 201
+    published = mock_publish.call_args.args[1]
+    assert published["qa_depth"] == "standard"
+    assert published["max_qa_rounds"] == 2
+    assert published["verifier_model_ref"] is None
+
+
+def test_create_job_rejects_invalid_qa_config(client, fake_pool):
+    """qa_depth enum, max_qa_rounds bounds, and verifier source⇒ref are validated."""
+    base = {"chapter_ids": [CHAPTER_ID]}
+    for bad in (
+        {"qa_depth": "ultra"},
+        {"max_qa_rounds": 9},
+        {"max_qa_rounds": 0},
+        {"verifier_model_source": "platform_model"},  # ref missing
+    ):
+        resp = client.post(f"/v1/translation/books/{BOOK_ID}/jobs", json={**base, **bad})
+        assert resp.status_code == 422, f"expected 422 for {bad}"
+
+
 def test_create_job_uses_per_job_override_without_settings(client, fake_pool):
     """Fix-C: a job carrying its own model_ref/target_language succeeds even when NO
     book settings and NO user prefs exist (resolver returns defaults with model_ref=None)."""

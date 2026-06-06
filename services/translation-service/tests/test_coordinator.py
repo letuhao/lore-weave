@@ -149,6 +149,37 @@ async def test_coordinator_defaults_pipeline_version_when_absent():
 
 
 @pytest.mark.asyncio
+async def test_coordinator_forwards_qa_config():
+    """config-plumbing: qa_depth / max_qa_rounds / verifier_model must survive the
+    job→chapter fan-out (else a 'thorough' job silently runs 'standard' defaults)."""
+    pool, _ = _make_pool()
+    publish = AsyncMock()
+    vref = str(uuid4())
+    msg = {**_job_msg([str(uuid4())]), "qa_depth": "thorough", "max_qa_rounds": 4,
+           "verifier_model_source": "platform_model", "verifier_model_ref": vref}
+    from app.workers.coordinator import handle_job_message
+    await handle_job_message(msg, pool, publish, AsyncMock())
+
+    body = publish.call_args.args[1]
+    assert body["qa_depth"] == "thorough" and body["max_qa_rounds"] == 4
+    assert body["verifier_model_source"] == "platform_model"
+    assert body["verifier_model_ref"] == vref
+
+
+@pytest.mark.asyncio
+async def test_coordinator_defaults_qa_config_when_absent():
+    """A legacy job message without QA config fans out as standard defaults."""
+    pool, _ = _make_pool()
+    publish = AsyncMock()
+    from app.workers.coordinator import handle_job_message
+    await handle_job_message(_job_msg([str(uuid4())]), pool, publish, AsyncMock())
+
+    body = publish.call_args.args[1]
+    assert body["qa_depth"] == "standard" and body["max_qa_rounds"] == 2
+    assert body["verifier_model_ref"] is None
+
+
+@pytest.mark.asyncio
 async def test_coordinator_chapter_id_matches_input():
     pool, _ = _make_pool()
     publish = AsyncMock()

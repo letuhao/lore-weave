@@ -50,6 +50,13 @@ def _normalize(row: dict) -> dict:
         "chunk_size_tokens":       row.get("chunk_size_tokens", 2000),
         "invoke_timeout_secs":     row.get("invoke_timeout_secs", 300),
         "pipeline_version":        row.get("pipeline_version", "v2"),
+        # V3 QA config (M2 + config-plumbing). Like pipeline_version, these are
+        # resolved here + snapshotted onto the job; not in CONFIG_KEYS / book-
+        # settings UI yet (D-TRANSL-FLAG-BOOKSETTINGS).
+        "qa_depth":                row.get("qa_depth", "standard"),
+        "max_qa_rounds":           row.get("max_qa_rounds", 2),
+        "verifier_model_source":   row.get("verifier_model_source"),
+        "verifier_model_ref":      row.get("verifier_model_ref"),
     }
 
 
