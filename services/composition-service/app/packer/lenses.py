@@ -24,6 +24,7 @@ from app.clients.glossary_client import GlossaryClient
 from app.clients.knowledge_client import KnowledgeClient
 from app.db.models import CanonRule
 from app.db.repositories.canon_rules import CanonRulesRepo
+from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 
@@ -172,17 +173,40 @@ async def gather_structural(
 
 
 async def gather_recent(
-    book: BookClient, book_id: UUID, chapter_id: UUID, bearer: str, *, k: int = _RECENT_PARAGRAPHS,
+    book: BookClient, book_id: UUID, chapter_id: UUID, bearer: str, *,
+    k: int = _RECENT_PARAGRAPHS,
+    jobs_repo: GenerationJobsRepo | None = None,
+    user_id: UUID | None = None, project_id: UUID | None = None,
+    story_order: int | None = None,
 ) -> list[str]:
-    """L3 — last K paragraphs of the scene's chapter draft (chapter-tail
-    approximation; M8 upgrades to precise SceneAnchor ranges)."""
+    """L3 — the chapter's 'story so far'. PRIMARY source = the accepted chapter
+    DRAFT (last K paragraphs — chapter-tail; M8 upgrades to precise SceneAnchor
+    ranges).
+
+    **S1 state-reinjection fallback** (D-COMP-LONGFORM-STATE-REINJECTION): when
+    there is NO accepted draft yet (autonomous generation / not-yet-accepted —
+    the case the A-EVAL/B concat eval exposed), fall back to the prior generated
+    scene winners, **STRICTLY position-bounded** (`story_order < current`;
+    spoiler-safe, /review-impl H1). Returns ALL prior prose as paragraphs — the
+    budget ladder protects the immediate-preceding one (PRIO_RECENT_IMMEDIATE) and
+    trims older ones (PRIO_RECENT_OLDER), so it never evicts canon/spoiler-safety."""
     try:
         draft = await book.get_draft(book_id, chapter_id, bearer)
+        text = draft.get("text_content") or ""
     except BookClientError:
-        return []
-    text = draft.get("text_content") or ""
+        text = ""
     paras = [p.strip() for p in text.split("\n") if p.strip()]
-    return paras[-k:]
+    if paras:
+        return paras[-k:]  # primary: the accepted draft tail
+    # Fallback: no accepted draft → prior generated scene winners (strictly prior).
+    if jobs_repo is not None and user_id is not None and project_id is not None and story_order is not None:
+        try:
+            prior = await jobs_repo.prior_scene_drafts(user_id, project_id, chapter_id, story_order)
+        except Exception:  # noqa: BLE001
+            logger.warning("gather_recent prior-scene fallback failed", exc_info=True)
+            return []
+        return [p.strip() for t in prior for p in t.split("\n") if p.strip()]
+    return []
 
 
 async def gather_lore(

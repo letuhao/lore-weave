@@ -145,6 +145,39 @@ class GenerationJobsRepo:
             rows = await c.fetch(query, user_id, project_id, outline_node_id, list(_ACTIVE_STATUSES))
         return [_row_to_job(r) for r in rows]
 
+    async def prior_scene_drafts(
+        self, user_id: UUID, project_id: UUID, chapter_id: UUID, before_story_order: int,
+    ) -> list[str]:
+        """S1 state-reinjection fallback (used when no accepted chapter draft yet):
+        the latest COMPLETED generation winner text for each scene in `chapter_id`
+        with ``story_order < before_story_order``, returned in story_order.
+
+        ⚠ STRICTLY POSITION-BOUNDED (spoiler-safety, /review-impl H1): only scenes
+        BEFORE the current one — a scene must never see its own future. Latest job
+        per node (DISTINCT ON + created_at DESC). Empty text is filtered out.
+        Scope: INTRA-chapter only (`o.chapter_id`) — cross-chapter context comes
+        from the canon/timeline KG lenses, not here. M5 isolation: filters
+        user_id/project_id on BOTH the job AND the joined node (defense-in-depth)."""
+        query = """
+        SELECT story_order, text FROM (
+            SELECT DISTINCT ON (o.id)
+                   o.story_order AS story_order, j.result->>'text' AS text
+            FROM generation_job j
+            JOIN outline_node o ON o.id = j.outline_node_id
+            WHERE j.user_id = $1 AND j.project_id = $2
+              AND o.user_id = $1 AND o.project_id = $2
+              AND o.chapter_id = $3 AND o.kind = 'scene'
+              AND o.story_order IS NOT NULL AND o.story_order < $4
+              AND j.status = 'completed'
+            ORDER BY o.id, j.created_at DESC
+        ) latest
+        WHERE text IS NOT NULL AND text <> ''
+        ORDER BY story_order
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, user_id, project_id, chapter_id, before_story_order)
+        return [r["text"] for r in rows]
+
     async def update_status(
         self,
         user_id: UUID,

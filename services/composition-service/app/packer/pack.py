@@ -22,6 +22,7 @@ from app.clients.book_client import BookClient
 from app.clients.glossary_client import GlossaryClient
 from app.clients.knowledge_client import KnowledgeClient
 from app.db.repositories.canon_rules import CanonRulesRepo
+from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.packer import assemble
@@ -81,6 +82,7 @@ async def pack(
     book: BookClient, glossary: GlossaryClient, knowledge: KnowledgeClient,
     canon_repo: CanonRulesRepo, outline_repo: OutlineRepo, scene_links_repo: SceneLinksRepo,
     budget_tokens: int, counter: B.TokenCounter | None = None,
+    jobs_repo: GenerationJobsRepo | None = None,
 ) -> PackedContext:
     # A1: never pack unscoped (knowledge timeline/entities widen cross-project).
     assemble.assert_project_scoped(req.project_id)
@@ -108,7 +110,9 @@ async def pack(
             gather_timeline(knowledge, req.bearer, req.project_id, story_order),
             gather_structural(outline_repo, scene_links_repo, user_id=req.user_id,
                               project_id=req.project_id, node=node),
-            gather_recent(book, req.book_id, chapter_id, req.bearer) if chapter_id else _empty_list(),
+            gather_recent(book, req.book_id, chapter_id, req.bearer,
+                          jobs_repo=jobs_repo, user_id=req.user_id, project_id=req.project_id,
+                          story_order=story_order) if chapter_id else _empty_list(),
             gather_lore(knowledge, req.bearer, req.project_id, query),
         )
     )

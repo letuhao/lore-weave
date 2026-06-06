@@ -152,6 +152,7 @@ async def generate(
             book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
             outline_repo=outline, scene_links_repo=scene_links,
             budget_tokens=settings.pack_token_budget,
+            jobs_repo=jobs,  # S1 state-reinjection fallback source (prior generated scenes)
         )
     except OwnershipError:
         raise HTTPException(status_code=404, detail="book not found")
