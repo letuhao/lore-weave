@@ -243,3 +243,24 @@ async def test_v3_corrector_rejected_when_not_improved():
     text = extract_translatable_text(result[0][0])
     assert "Tirana đã đến." in text   # original draft kept
     assert "vẫn" not in text          # the not-improved correction was rejected
+
+
+@pytest.mark.asyncio
+async def test_v3_zh_vi_injects_romanization_into_translation():
+    """M1c: the v3 path passes the Hán-Việt romanization instruction to the V2
+    translator for zh→vi (the unit tests cover other pairs returning '')."""
+    from app.workers.v3 import orchestrator
+
+    blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "你好。"}]}]
+    pool, _ = _make_pool()
+    msg = _chapter_msg()  # target_language='vi'
+
+    with patch("app.workers.session_translator.translate_chapter_blocks",
+               new_callable=AsyncMock, return_value=(blocks, 0, 0, 0, 0)) as v2, \
+         patch("app.workers.glossary_client.fetch_translation_glossary",
+               new_callable=AsyncMock, return_value=[]):
+        await orchestrator.translate_chapter_blocks_v3(
+            blocks, "zh", msg, pool, uuid4(), llm_client=MagicMock(), context_window=8192,
+        )
+
+    assert "Hán-Việt" in v2.call_args.kwargs["extra_system"]

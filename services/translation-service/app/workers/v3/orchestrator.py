@@ -31,9 +31,11 @@ async def translate_chapter_blocks_v3(
 ):
     """Translate via V2, then verify (M1a) + targeted re-translate (M1b)."""
     from ..session_translator import translate_chapter_blocks
+    from .romanization import romanization_instruction
     result = await translate_chapter_blocks(
         blocks, source_lang, msg, pool, chapter_translation_id,
         llm_client=llm_client, context_window=context_window,
+        extra_system=romanization_instruction(source_lang, msg.get("target_language", "")),
     )
     # Non-fatal — verification/correction must never fail a translation that
     # already succeeded. Corrections mutate result[0] in place (the worker then

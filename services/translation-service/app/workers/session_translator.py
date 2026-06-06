@@ -838,6 +838,7 @@ async def translate_chapter_blocks(
     *,
     llm_client: LLMClient,
     context_window: int = _FALLBACK_CONTEXT_WINDOW,
+    extra_system: str = "",
 ) -> tuple[list[dict], int, int]:
     """
     Translate a chapter's Tiptap blocks using the block-level pipeline (V2).
@@ -959,6 +960,8 @@ async def translate_chapter_blocks(
                 "\n\nIMPORTANT: For names and terms listed in the GLOSSARY above, "
                 "you MUST use the EXACT translations provided. Do NOT invent your own."
             )
+        if extra_system:
+            system_content += "\n\n" + extra_system
 
         # Build user message with optional rolling summary
         user_parts = []

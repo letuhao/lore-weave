@@ -8,7 +8,7 @@
 
 ### ▶ TRANSLATION PIPELINE V3 (branch `feat/translation-pipeline-v3`)
 
-**State: M0 + M1a + M1b DONE** — M0 readiness gate + V3 scaffold; M1a Verifier rule-tier (detect); M1b targeted re-translate of high-severity blocks (keep-if-improved). All PO-approved + `/review-impl`'d. Full suite **341 passed**; **parity** preserved (default `pipeline_version='v2'`).
+**State: M0 + M1a + M1b + M1c DONE** — M0 readiness gate + V3 scaffold; M1a Verifier rule-tier; M1b targeted re-translate (keep-if-improved); M1c prompt-level romanization (zh→vi Hán-Việt). All PO-approved + `/review-impl`'d. Full suite **346 passed**; **parity** preserved (default `pipeline_version='v2'`).
 
 **Docs:** design [`2026-06-06-translation-pipeline-v3-multi-agent.md`](../specs/2026-06-06-translation-pipeline-v3-multi-agent.md) (**§12 = plan-of-record M0–M6**) · [research](../specs/2026-06-06-translation-llm-market-research.md) · [arch-review](../specs/2026-06-06-translation-v3-architecture-review-benchmark.md) · [M0 plan](../plans/2026-06-06-translation-v3-m0.md).
 
@@ -18,7 +18,9 @@
 
 **M1b shipped:** `v3/corrector.py` re-translates high-severity blocks once (rule-triggered, single pass) with **keep-if-improved** (only splices a correction that reduces the block's high count — never persists a worse draft); spliced into the returned blocks → persist round-1 issues + rollup (`qa_rounds_used`). `/review-impl`: keep-if-improved guard (MED-1) + thinking-suppression parity (LOW-2).
 
-**M1 split (PO-locked): M1a✓ M1b✓ → M1c → M1d.** **NEXT = M1c** (translation-only): **romanization** prompt-level policy (zh→vi Hán-Việt instruction for un-glossaried names; **no lexicon**). Then **M1d** glossary `select-for-context` + trust ladder + write-back missing names (cross-service; PO chose **no /amaw**). Note: the non-glossary **chapter-consistency pass** is deferred to **M4** (needs the proper-noun record). (design §12.4 / §11)
+**M1c shipped:** `v3/romanization.py` — prompt-level Hán-Việt instruction for un-glossaried zh→vi names (**primary-subtag** matched: zh-Hans/zh-CN/vi-VN all covered), injected via a new additive `extra_system` param (v2 parity) into the translator + corrector prompts. No lexicon, no verifier check (prompt nudge, PO decision).
+
+**M1 split (PO-locked): M1a✓ M1b✓ M1c✓ → M1d.** **NEXT = M1d** (cross-service, glossary-service): swap the raw glossary scorer → **`select-for-context`** (tiered: pinned→exact→FTS→recent); **trust ladder** (confirmed/published lock · draft hint · exclude archived/superseded/`alive=false`); **write-back** missing names (draft) via `POST /internal/books/{id}/extract-entities` (idempotent). PO chose **no /amaw**. Note: the non-glossary **chapter-consistency pass** stays deferred to **M4** (needs the proper-noun record). (design §11 / §12.3)
 
 **Deferred (M0 /review-impl):**
 - **D-TRANSL-RESUME** — chunk rows are resume *substrate*; skip-completed-batch logic NOT built (re-run re-translates all). M1+/M5.

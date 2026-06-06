@@ -209,6 +209,29 @@ async def test_block_pipeline_writes_chunk_rows():
     assert "Xin chào thế giới." in (update_calls[-1].args[1] or "")
 
 
+@pytest.mark.asyncio
+async def test_block_pipeline_appends_extra_system():
+    """M1c: extra_system is appended to the block system prompt (default '' = v2 parity)."""
+    from unittest.mock import patch
+    pool = _make_pool()
+    msg = _make_msg()
+    blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "Hello world."}]}]
+    fake = FakeLLMClient()
+    fake.queue_translation(content="[BLOCK 0]\nXin chào.")
+
+    with patch("app.workers.glossary_client.fetch_translation_glossary",
+               new_callable=AsyncMock, return_value=[]):
+        from app.workers.session_translator import translate_chapter_blocks
+        await translate_chapter_blocks(
+            blocks=blocks, source_lang="zh", msg=msg, pool=pool,
+            chapter_translation_id=uuid4(), llm_client=fake, context_window=8192,
+            extra_system="ZZZ_ROMANIZE_MARKER",
+        )
+
+    system = fake.calls[0]["input"]["messages"][0]["content"]
+    assert "ZZZ_ROMANIZE_MARKER" in system
+
+
 # ── Multi-chunk chapter ────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio

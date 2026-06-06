@@ -28,6 +28,10 @@ def _build_messages(source_text, draft_text, issues, source_lang, target_lang, g
     }))
     if glossary_block:
         system += "\n\n" + glossary_block + "\n\nUse the EXACT glossary translations above."
+    from .romanization import romanization_instruction
+    rom = romanization_instruction(source_lang, target_lang)
+    if rom:
+        system += "\n\n" + rom
     user = (
         f"SOURCE:\n{source_text}\n\n"
         f"PREVIOUS (flawed) TRANSLATION:\n{draft_text}\n\n"
