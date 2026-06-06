@@ -67,73 +67,92 @@ def _wire(monkeypatch, *, loser, winner, merge_exc=None):
         return None
 
     unlink = AsyncMock()
+    relink = AsyncMock()
     merge = AsyncMock(side_effect=merge_exc) if merge_exc else AsyncMock()
     monkeypatch.setattr(entities_mod, "get_entity_by_glossary_id", fake_get)
     monkeypatch.setattr(entities_mod, "unlink_from_glossary", unlink)
+    monkeypatch.setattr(entities_mod, "link_to_glossary", relink)
     monkeypatch.setattr(entities_mod, "merge_entities", merge)
 
     repo = MagicMock()
     repo.record_merge = AsyncMock()
     monkeypatch.setattr(alias_mod, "EntityAliasMapRepo", lambda pool: repo)
-    return unlink, merge, repo
+    return SimpleNamespace(unlink=unlink, relink=relink, merge=merge, repo=repo)
 
 
 def _entity(cid, canon, aliases, kind="character"):
-    return SimpleNamespace(id=cid, canonical_name=canon, aliases=aliases, kind=kind, project_id=str(PROJECT))
+    return SimpleNamespace(id=cid, name=canon, canonical_name=canon, aliases=aliases, kind=kind, project_id=str(PROJECT))
 
 
 @pytest.mark.asyncio
 async def test_consolidates_kg_and_records_aliases(monkeypatch):
     loser = _entity("c-loser", "太公望", ["子牙"])
     winner = _entity("c-winner", "姜子牙", [])
-    unlink, merge, repo = _wire(monkeypatch, loser=loser, winner=winner)
+    m = _wire(monkeypatch, loser=loser, winner=winner)
 
     await handle_glossary_entity_merged(_event(), pool=_pool())
 
-    unlink.assert_awaited_once()  # loser anchor cleared (bypass glossary_conflict)
-    assert unlink.await_args.kwargs["canonical_id"] == "c-loser"
-    merge.assert_awaited_once()
-    assert merge.await_args.kwargs["source_id"] == "c-loser"
-    assert merge.await_args.kwargs["target_id"] == "c-winner"
-    # alias-map: loser canon + each alias → winner
-    recorded = {c.kwargs["canonical_alias"] for c in repo.record_merge.await_args_list}
+    m.unlink.assert_awaited_once()  # loser anchor cleared (bypass glossary_conflict)
+    assert m.unlink.await_args.kwargs["canonical_id"] == "c-loser"
+    m.merge.assert_awaited_once()
+    assert m.merge.await_args.kwargs["source_id"] == "c-loser"
+    assert m.merge.await_args.kwargs["target_id"] == "c-winner"
+    m.relink.assert_not_awaited()  # no failure → no compensation
+    # alias-map: loser canon + each alias → winner, scoped to the node's project
+    recorded = {c.kwargs["canonical_alias"] for c in m.repo.record_merge.await_args_list}
     assert "太公望" in recorded and "子牙" in recorded
-    for c in repo.record_merge.await_args_list:
+    for c in m.repo.record_merge.await_args_list:
         assert c.kwargs["target_entity_id"] == "c-winner"
+        assert c.kwargs["project_scope"] == str(PROJECT)  # MED-2: entity project
 
 
 @pytest.mark.asyncio
 async def test_unmerged_is_noop(monkeypatch):
-    unlink, merge, repo = _wire(monkeypatch, loser=_entity("l", "L", []), winner=_entity("w", "W", []))
+    m = _wire(monkeypatch, loser=_entity("l", "L", []), winner=_entity("w", "W", []))
     await handle_glossary_entity_merged(_event(op="unmerged"), pool=_pool())
-    merge.assert_not_awaited()
-    repo.record_merge.assert_not_awaited()
+    m.merge.assert_not_awaited()
+    m.repo.record_merge.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_no_project_is_noop(monkeypatch):
-    unlink, merge, repo = _wire(monkeypatch, loser=_entity("l", "L", []), winner=_entity("w", "W", []))
+    m = _wire(monkeypatch, loser=_entity("l", "L", []), winner=_entity("w", "W", []))
     await handle_glossary_entity_merged(_event(), pool=_pool(project_found=False))
-    merge.assert_not_awaited()
+    m.merge.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_absent_nodes_no_merge(monkeypatch):
     # loser node missing → nothing to consolidate
-    unlink, merge, repo = _wire(monkeypatch, loser=None, winner=_entity("w", "W", []))
+    m = _wire(monkeypatch, loser=None, winner=_entity("w", "W", []))
     await handle_glossary_entity_merged(_event(), pool=_pool())
-    merge.assert_not_awaited()
-    repo.record_merge.assert_not_awaited()
+    m.merge.assert_not_awaited()
+    m.repo.record_merge.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_same_entity_is_idempotent_noop(monkeypatch):
-    loser = _entity("c", "X", [])
-    winner = _entity("c", "X", [])
-    unlink, merge, repo = _wire(
-        monkeypatch, loser=loser, winner=winner,
+    m = _wire(
+        monkeypatch, loser=_entity("c", "X", []), winner=_entity("c", "X", []),
         merge_exc=MergeEntitiesError("same_entity", "already one"),
     )
-    # must NOT raise (swallowed as idempotent)
+    # must NOT raise (swallowed as idempotent), and no compensation re-link
     await handle_glossary_entity_merged(_event(), pool=_pool())
-    merge.assert_awaited_once()
+    m.merge.assert_awaited_once()
+    m.relink.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_merge_failure_relinks_loser_and_raises(monkeypatch):
+    # MED-1: a non-same_entity merge failure must re-link the loser (the unlink
+    # already committed) so a redelivery can find + retry it, then propagate.
+    m = _wire(
+        monkeypatch, loser=_entity("c-loser", "L", ["la"]), winner=_entity("c-winner", "W", []),
+        merge_exc=MergeEntitiesError("entity_not_found", "transient"),
+    )
+    with pytest.raises(MergeEntitiesError):
+        await handle_glossary_entity_merged(_event(), pool=_pool())
+    m.relink.assert_awaited_once()
+    assert m.relink.await_args.kwargs["canonical_id"] == "c-loser"
+    assert m.relink.await_args.kwargs["glossary_entity_id"] == str(LOSER_GID)
+    m.repo.record_merge.assert_not_awaited()  # alias-map not written on failure
