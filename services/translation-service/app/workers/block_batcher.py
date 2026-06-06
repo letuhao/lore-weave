@@ -136,6 +136,7 @@ def build_batch_plan(
     budget_ratio: float = 0.25,
     source_lang: str = "",
     target_lang: str = "",
+    group_ids: dict[int, int] | None = None,
 ) -> BatchPlan:
     """Build a batch plan from a Tiptap block array.
 
@@ -145,6 +146,12 @@ def build_batch_plan(
         budget_ratio: Legacy param, ignored when source/target langs provided.
         source_lang: Source language code (e.g. "zh", "ja").
         target_lang: Target language code (e.g. "vi", "en").
+        group_ids: Optional {block_index: group_id} from the V3 semantic chunker
+            (M3/G5). When provided, the greedy fill prefers NOT to split a group
+            across a batch boundary — at the first block of a new group it flushes
+            early if the whole group fits a fresh batch but not the remaining
+            budget. A group larger than a full batch falls back to plain greedy
+            splitting. ``None`` (default) ⇒ byte-identical V2 behaviour.
 
     Returns:
         BatchPlan with batches and block entries.
@@ -165,9 +172,23 @@ def build_batch_plan(
         text = extract_translatable_text(block)
         entries.append(BlockEntry(index=i, action=action, text=text, block=block))
 
+    # M3/G5: precompute each group's total batchable tokens so we can flush at a
+    # group boundary before splitting a group that would still fit a fresh batch.
+    group_tokens: dict[int, int] = {}
+    if group_ids:
+        for entry in entries:
+            if entry.action == "passthrough" or not entry.text:
+                continue
+            gid = group_ids.get(entry.index)
+            if gid is None:
+                continue
+            t = estimate_tokens(entry.text) + estimate_tokens(BLOCK_MARKER.format(i=entry.index)) + 2
+            group_tokens[gid] = group_tokens.get(gid, 0) + t
+
     # 2. Group translatable + caption_only blocks into batches
     batches: list[BatchGroup] = []
     current_batch = BatchGroup()
+    prev_gid: int | None = None
 
     for entry in entries:
         if entry.action == "passthrough":
@@ -181,6 +202,18 @@ def build_batch_plan(
         tokens = estimate_tokens(text_to_translate)
         marker_overhead = estimate_tokens(BLOCK_MARKER.format(i=entry.index)) + 2  # newlines
 
+        # M3/G5: at the first block of a new group, flush early if the whole
+        # group won't fit the remaining budget but DOES fit a fresh batch — keeps
+        # a dialogue exchange / scene in one call. A group larger than a full
+        # batch is left to plain greedy splitting below (the §3 fallback).
+        gid = group_ids.get(entry.index) if group_ids else None
+        if current_batch.entries and gid is not None and gid != prev_gid:
+            gtok = group_tokens.get(gid, 0)
+            remaining = max_tokens - current_batch.token_estimate
+            if 0 < gtok <= max_tokens and gtok > remaining:
+                batches.append(current_batch)
+                current_batch = BatchGroup()
+
         # Flush if adding this block exceeds token budget OR block count cap
         if current_batch.entries and (
             current_batch.token_estimate + tokens + marker_overhead > max_tokens
@@ -191,6 +224,7 @@ def build_batch_plan(
 
         current_batch.entries.append(entry)
         current_batch.token_estimate += tokens + marker_overhead
+        prev_gid = gid
 
         # If single block exceeds budget, it gets its own batch
         if current_batch.token_estimate > max_tokens and len(current_batch.entries) == 1:

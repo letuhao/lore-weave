@@ -45,7 +45,15 @@
     "load_failed": "Không thể tải phiên bản: {{error}}",
     "copied": "Đã sao chép vào clipboard",
     "set_active_success": "Đã đặt làm phiên bản đang dùng",
-    "set_active_failed": "Thất bại: {{error}}"
+    "set_active_failed": "Thất bại: {{error}}",
+    "needs_review": "Cần rà soát ({{count}})",
+    "needs_review_title": "Có vấn đề mức cao chưa xử lý do trình kiểm tra gắn cờ — nên rà soát lại.",
+    "publish_confirm_title": "Vẫn xuất bản dù còn vấn đề?",
+    "publish_confirm": "Bản dịch này còn {{count}} vấn đề mức cao chưa xử lý do trình kiểm tra gắn cờ. Vẫn đặt làm bản đang dùng?",
+    "publish_anyway": "Vẫn xuất bản",
+    "cancel": "Hủy",
+    "glossary_stale": "Glossary đã đổi",
+    "glossary_stale_title": "Glossary đã thay đổi sau bản dịch này — có thể đã lỗi thời."
   },
   "compare": {
     "original_label": "Nguyên gốc — {{lang}}",

@@ -45,7 +45,15 @@
     "load_failed": "Failed to load version: {{error}}",
     "copied": "Copied to clipboard",
     "set_active_success": "Set as active version",
-    "set_active_failed": "Failed: {{error}}"
+    "set_active_failed": "Failed: {{error}}",
+    "needs_review": "Needs review ({{count}})",
+    "needs_review_title": "Unresolved high-severity issues flagged by the verifier — review recommended.",
+    "publish_confirm_title": "Publish despite unresolved issues?",
+    "publish_confirm": "This translation has {{count}} unresolved high-severity issue(s) flagged by the verifier. Set it active anyway?",
+    "publish_anyway": "Publish anyway",
+    "cancel": "Cancel",
+    "glossary_stale": "Glossary updated",
+    "glossary_stale_title": "The glossary changed after this translation — it may be outdated."
   },
   "compare": {
     "original_label": "Original — {{lang}}",

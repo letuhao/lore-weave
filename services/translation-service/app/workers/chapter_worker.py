@@ -6,6 +6,7 @@ import httpx
 
 from ..config import settings
 from ..llm_client import LLMClient
+from ..metrics import record_stage
 from .session_translator import translate_chapter
 
 log = logging.getLogger(__name__)
@@ -43,12 +44,16 @@ async def handle_chapter_message(
         await _fail_chapter_idempotent(pool, job_id, chapter_id, f"transient: {exc}")
         await _emit_chapter_done(publish_event, user_id, msg, "failed", f"transient: {exc}")
         await _check_job_completion(pool, job_id, user_id, msg, publish_event)
+        record_stage("translation.chapter", pipeline=msg.get("pipeline_version", "v2"),
+                     status="failed", chapter_id=str(chapter_id), reason=str(exc)[:80])
         raise
     except Exception as exc:
         log.exception("chapter %s: unhandled error — %s", chapter_id, exc)
         await _fail_chapter_idempotent(pool, job_id, chapter_id, f"permanent: {exc}")
         await _emit_chapter_done(publish_event, user_id, msg, "failed", f"permanent: {exc}")
         await _check_job_completion(pool, job_id, user_id, msg, publish_event)
+        record_stage("translation.chapter", pipeline=msg.get("pipeline_version", "v2"),
+                     status="failed", chapter_id=str(chapter_id), reason=str(exc)[:80])
         raise
 
 
@@ -119,6 +124,21 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
     prev_memo = await _load_chapter_memo(pool, msg["book_id"], chapter_index - 1, target_language)
     if prev_memo:
         log.info("chapter %s: loaded memo from chapter %d", chapter_id, chapter_index - 1)
+        # M4c: hand the prev-chapter memo to the V3 orchestrator for opportunistic
+        # injection into the Translator (§12.1). V2 ignores it → byte-parity.
+        msg["prev_memo"] = prev_memo
+
+    # M0: select pipeline implementation by snapshotted flag. Default 'v2'. The v3
+    # orchestrator currently delegates to v2 (parity) — M1+ adds the multi-agent loop.
+    pipeline_version = msg.get("pipeline_version", "v2")
+    if pipeline_version == "v3":
+        from .v3.orchestrator import (
+            translate_chapter_blocks_v3 as _translate_blocks,
+            translate_chapter_v3 as _translate_text,
+        )
+    else:
+        from .session_translator import translate_chapter_blocks as _translate_blocks
+        _translate_text = translate_chapter
 
     # Detect JSON body → use block pipeline, otherwise fall back to text pipeline
     use_block_pipeline = (
@@ -128,14 +148,14 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
     )
 
     if use_block_pipeline:
-        from .session_translator import translate_chapter_blocks
         blocks = chapter_body["content"]
         log.info(
             "chapter %s: using BLOCK pipeline (%d blocks, model=%s/%s)",
             chapter_id, len(blocks), msg.get("model_source"), msg.get("model_ref"),
         )
-        translated_blocks, input_tokens, output_tokens, translated_count, translatable_count = (
-            await translate_chapter_blocks(
+        (translated_blocks, input_tokens, output_tokens, translated_count,
+         translatable_count, translated_texts) = (
+            await _translate_blocks(
                 blocks=blocks,
                 source_lang=source_lang,
                 msg=msg,
@@ -161,6 +181,13 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
         translated_body_json = json.dumps(translated_blocks)
         translated_body_text = None  # not used for block translations
         translated_body_format = "json"
+        # TD1 fix + M4c (D-TRANSL-MEMO-M4): build the cross-chapter memo from the
+        # TRANSLATED-ONLY text. `translated_texts` ({idx: text}) excludes blocks
+        # that fell back to original on failure, so a failed block's source text
+        # no longer pollutes the memo.
+        memo_text = "\n".join(
+            translated_texts[i] for i in sorted(translated_texts) if translated_texts[i]
+        )
         log.info(
             "chapter %s: block pipeline done — %d blocks, %d/%d translated, in=%s out=%s",
             chapter_id, len(translated_blocks), translated_count, translatable_count,
@@ -171,7 +198,7 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             "chapter %s: using TEXT pipeline (model=%s/%s)",
             chapter_id, msg.get("model_source"), msg.get("model_ref"),
         )
-        translated_body_text, input_tokens, output_tokens = await translate_chapter(
+        translated_body_text, input_tokens, output_tokens = await _translate_text(
             chapter_text=chapter_text,
             source_lang=source_lang,
             msg=msg,
@@ -182,6 +209,7 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
         )
         translated_body_json = None
         translated_body_format = "text"
+        memo_text = translated_body_text or ""
         log.info(
             "chapter %s: text pipeline done — %d output chars, in=%s out=%s",
             chapter_id, len(translated_body_text or ""), input_tokens, output_tokens,
@@ -212,7 +240,12 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
                 "UPDATE translation_jobs SET completed_chapters=completed_chapters+1 WHERE job_id=$1",
                 job_id,
             )
-            # Auto-set active: insert only if no active version exists yet for (chapter_id, target_language)
+            # Auto-set active: insert only if no active version exists yet for
+            # (chapter_id, target_language). M5b: do NOT auto-publish a version the
+            # verifier flagged with unresolved high-severity issues — leave the slot
+            # empty so the reader sees "not translated" until the user reviews and
+            # explicitly sets it active (the publish gate). V2 chapters have
+            # unresolved_high_count=0 (default) → unchanged behaviour.
             await db.execute(
                 """
                 INSERT INTO active_chapter_translation_versions
@@ -220,6 +253,7 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
                 SELECT $1, ct.target_language, $2, ct.owner_user_id
                 FROM chapter_translations ct
                 WHERE ct.id = $2
+                  AND COALESCE(ct.unresolved_high_count, 0) = 0
                 ON CONFLICT (chapter_id, target_language) DO NOTHING
                 """,
                 chapter_id, chapter_translation_id,
@@ -236,10 +270,15 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             })
     log.info("chapter %s: DB persist complete", chapter_id)
 
-    # V2: Save chapter memo for next chapter's context
+    # V2: Save chapter memo for next chapter's context (TD1: now also populated
+    # for the block pipeline via memo_text derived above).
     await _save_chapter_memo(
-        pool, msg["book_id"], chapter_index, target_language,
-        translated_body_text or "",
+        pool, msg["book_id"], chapter_index, target_language, memo_text,
+    )
+
+    record_stage(
+        "translation.chapter", pipeline=pipeline_version, status="completed",
+        chapter_id=str(chapter_id), in_tokens=input_tokens or 0, out_tokens=output_tokens or 0,
     )
 
     await _emit_chapter_done(publish_event, user_id, msg, "completed", None)
@@ -429,7 +468,12 @@ async def _load_chapter_memo(pool, book_id, chapter_index: int, target_language:
 async def _save_chapter_memo(
     pool, book_id, chapter_index: int, target_language: str, translated_text: str,
 ) -> None:
-    """Save a brief translation memo for the next chapter's context."""
+    """Save a brief translation memo for the next chapter's context.
+
+    M4c: also persists ``terms_used`` — recurring target-side proper nouns
+    harvested from this chapter (the cold-start in-run name record), so the next
+    chapter can reuse the exact spelling for cross-chapter name consistency.
+    """
     if not translated_text:
         return
     # Extract last ~5 sentences as story summary
@@ -439,15 +483,20 @@ async def _save_chapter_memo(
     if len(story_summary) > 500:
         story_summary = story_summary[-500:]
 
+    from .v3.chapter_memo import harvest_names
+    terms_used = harvest_names(translated_text, target_language)
+
     try:
         async with pool.acquire() as db:
             await db.execute(
                 """INSERT INTO translation_chapter_memos
-                     (book_id, chapter_index, target_language, story_summary)
-                   VALUES ($1, $2, $3, $4)
+                     (book_id, chapter_index, target_language, story_summary, terms_used)
+                   VALUES ($1, $2, $3, $4, $5)
                    ON CONFLICT (book_id, chapter_index, target_language)
-                   DO UPDATE SET story_summary = EXCLUDED.story_summary, created_at = now()""",
+                   DO UPDATE SET story_summary = EXCLUDED.story_summary,
+                                 terms_used = EXCLUDED.terms_used, created_at = now()""",
                 UUID(str(book_id)), chapter_index, target_language, story_summary,
+                json.dumps(terms_used, ensure_ascii=False),
             )
     except Exception as exc:
         log.warning("chapter_memo save failed: %s — non-fatal", exc)

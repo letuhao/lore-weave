@@ -45,7 +45,15 @@
     "load_failed": "版の読み込みに失敗しました: {{error}}",
     "copied": "クリップボードにコピーしました",
     "set_active_success": "使用中の版に設定しました",
-    "set_active_failed": "失敗しました: {{error}}"
+    "set_active_failed": "失敗しました: {{error}}",
+    "needs_review": "要確認 ({{count}})",
+    "needs_review_title": "検証器が検出した未解決の重大な問題があります — 確認を推奨します。",
+    "publish_confirm_title": "未解決の問題がありますが公開しますか？",
+    "publish_confirm": "この翻訳には検証器が検出した未解決の重大な問題が {{count}} 件あります。それでも使用中の版に設定しますか？",
+    "publish_anyway": "それでも公開",
+    "cancel": "キャンセル",
+    "glossary_stale": "用語集が更新",
+    "glossary_stale_title": "この翻訳の後に用語集が変更されました — 古くなっている可能性があります。"
   },
   "compare": {
     "original_label": "原文 — {{lang}}",

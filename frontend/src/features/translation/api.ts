@@ -28,6 +28,12 @@ export type ChapterTranslation = {
   started_at: string | null;
   finished_at: string | null;
   created_at: string;
+  // V3 quality rollup (M5a). null/0 for V2 chapters.
+  quality_score: number | null;
+  unresolved_high_count: number;
+  qa_rounds_used: number;
+  // M5c: true when a glossary change post-dates this translation.
+  is_glossary_stale: boolean;
 };
 
 export type TranslationJob = {
@@ -129,8 +135,11 @@ export const versionsApi = {
     return apiJson(`/v1/translation/chapters/${chapterId}/versions/${versionId}`, { token });
   },
 
-  setActiveVersion(token: string, chapterId: string, versionId: string): Promise<ActiveVersionResponse> {
-    return apiJson(`/v1/translation/chapters/${chapterId}/versions/${versionId}/active`, {
+  setActiveVersion(
+    token: string, chapterId: string, versionId: string, acknowledgeIssues = false,
+  ): Promise<ActiveVersionResponse> {
+    const q = acknowledgeIssues ? '?acknowledge_issues=true' : '';
+    return apiJson(`/v1/translation/chapters/${chapterId}/versions/${versionId}/active${q}`, {
       method: 'PUT',
       token,
     });
