@@ -69,6 +69,23 @@
     "toast_rejected": "Đã từ chối \"{{name}}\"",
     "unnamed": "(chưa đặt tên)"
   },
+  "merge_candidates": {
+    "title": "Ứng viên hợp nhất",
+    "intro": "AI phát hiện những thực thể này có thể là cùng một nhân vật dưới nhiều tên khác nhau (vd: 姜子牙 / 太公望 / 子牙). Chọn tên giữ làm chính thức rồi hợp nhất — hoặc bỏ qua nếu thực sự khác nhau. Việc hợp nhất có thể hoàn tác.",
+    "empty_title": "Không có ứng viên hợp nhất",
+    "empty_desc": "Khi phát hiện tìm thấy thực thể trông giống trùng lặp, chúng sẽ hiện ở đây để bạn duyệt.",
+    "winner_label": "Giữ một tên làm chính thức; phần còn lại gộp vào làm bí danh:",
+    "score": "khớp {{score}}%",
+    "mentions": "{{count}} chương",
+    "confirm": "Hợp nhất",
+    "dismiss": "Bỏ qua",
+    "undo": "Hoàn tác",
+    "toast_merged": "Đã gộp {{count}} vào \"{{name}}\"",
+    "toast_none": "Không có thực thể nào được gộp (có thể đã thay đổi)",
+    "toast_dismissed": "Đã bỏ qua",
+    "toast_undone": "Đã hoàn tác hợp nhất",
+    "unnamed": "(chưa đặt tên)"
+  },
   "unknown": {
     "title": "Loại chưa rõ",
     "intro": "Những thực thể này được trích xuất với một loại chưa có trong hệ phân loại của bạn, nên được giữ lại ở đây thay vì bị bỏ đi. Hãy xử lý từng mục bằng cách ánh xạ sang một loại hiện có (tùy chọn dưới dạng bí danh tái sử dụng) hoặc tạo loại mới cho nó.",

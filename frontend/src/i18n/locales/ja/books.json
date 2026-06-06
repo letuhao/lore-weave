@@ -140,6 +140,7 @@
     "genres": "ジャンル",
     "unknown": "未分類の種別",
     "ai_suggestions": "AI の提案",
+    "merge_candidates": "統合候補",
     "kinds": "種類",
     "new_entity": "新しいエンティティ",
     "no_kinds": "利用可能な種類がありません",

@@ -103,6 +103,54 @@ export const glossaryApi = {
     );
   },
 
+  // ── Merge candidates (mui #1c — coreference merge inbox) ───────────────────
+
+  /** Proposed merge clusters for review (knowledge's coref detector wrote them). */
+  listMergeCandidates(
+    bookId: string,
+    token: string,
+  ): Promise<import('./types').MergeCandidateListResponse> {
+    return apiJson(`${BASE}/books/${bookId}/merge-candidates?status=proposed`, { token });
+  },
+
+  /** Confirm a merge: fold `loserIds` into `winnerId` (R5 destructive merge). */
+  confirmMerge(
+    bookId: string,
+    winnerId: string,
+    loserIds: string[],
+    token: string,
+  ): Promise<import('./types').MergeResult> {
+    return apiJson(`${BASE}/books/${bookId}/entities/${winnerId}/merge`, {
+      method: 'POST',
+      body: JSON.stringify({ loser_ids: loserIds }),
+      token,
+    });
+  },
+
+  /** Dismiss a proposed cluster (re-propose then suppressed). */
+  dismissMergeCandidate(
+    bookId: string,
+    candidateId: string,
+    token: string,
+  ): Promise<{ candidate_id: string; status: string }> {
+    return apiJson(`${BASE}/books/${bookId}/merge-candidates/${candidateId}/dismiss`, {
+      method: 'POST',
+      token,
+    });
+  },
+
+  /** Undo a merge by replaying its journal. */
+  revertMerge(
+    bookId: string,
+    journalId: string,
+    token: string,
+  ): Promise<{ journal_id: string; status: string }> {
+    return apiJson(`${BASE}/books/${bookId}/merge-journal/${journalId}/revert`, {
+      method: 'POST',
+      token,
+    });
+  },
+
   /**
    * Create an alias `alias_code → kind_id`. When `reassign` is true, also moves every
    * unknown entity whose source_kind_code == alias_code (scoped to book_id if given)

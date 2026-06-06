@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Plus, Search, Filter, Trash2, Settings2, Layers, Sparkles, HelpCircle, Lightbulb } from 'lucide-react';
+import { BookOpen, Plus, Search, Filter, Trash2, Settings2, Layers, Sparkles, HelpCircle, Lightbulb, GitMerge } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
@@ -13,10 +13,11 @@ import { KindEditor } from './KindEditor';
 import { GenreGroupsPanel } from '@/features/glossary/components/GenreGroupsPanel';
 import { UnknownEntitiesPanel } from '@/features/glossary/components/UnknownEntitiesPanel';
 import { AiSuggestionsPanel } from '@/features/glossary/components/AiSuggestionsPanel';
+import { MergeCandidatePanel } from '@/features/glossary/components/MergeCandidatePanel';
 import { EntityEditorModal } from '@/components/entity-editor';
 import { ExtractionWizard } from '@/features/extraction/ExtractionWizard';
 
-type GlossaryView = 'entities' | 'kinds' | 'genres' | 'unknown' | 'ai_suggestions';
+type GlossaryView = 'entities' | 'kinds' | 'genres' | 'unknown' | 'ai_suggestions' | 'merge_candidates';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-amber-400/15 text-amber-400',
@@ -80,6 +81,16 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
     staleTime: 60 * 1000,
   });
   const aiSuggestCount = aiSuggestData?.total ?? 0;
+
+  // Merge-candidate inbox count (mui #1c) — conditional trigger + badge.
+  // Shares ['glossary-merge-candidates', bookId] with the panel/hook.
+  const { data: mergeCandData } = useQuery({
+    queryKey: ['glossary-merge-candidates', bookId],
+    queryFn: () => glossaryApi.listMergeCandidates(bookId, accessToken!),
+    enabled: !!accessToken,
+    staleTime: 60 * 1000,
+  });
+  const mergeCandCount = mergeCandData?.candidates.length ?? 0;
 
   const entities = entityData?.items ?? [];
   const total = entityData?.total ?? 0;
@@ -150,6 +161,9 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
   if (view === 'ai_suggestions') {
     return <AiSuggestionsPanel bookId={bookId} onClose={() => setView('entities')} />;
   }
+  if (view === 'merge_candidates') {
+    return <MergeCandidatePanel bookId={bookId} onClose={() => setView('entities')} />;
+  }
 
   if (loading && entities.length === 0) {
     return (
@@ -193,6 +207,17 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
               <Lightbulb className="h-3.5 w-3.5" />
               {t('glossary.ai_suggestions')}
               <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold">{aiSuggestCount}</span>
+            </button>
+          )}
+          {mergeCandCount > 0 && (
+            <button
+              onClick={() => setView('merge_candidates')}
+              data-testid="glossary-merge-candidates-trigger"
+              className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+            >
+              <GitMerge className="h-3.5 w-3.5" />
+              {t('glossary.merge_candidates')}
+              <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold">{mergeCandCount}</span>
             </button>
           )}
           {unknownCount > 0 && (

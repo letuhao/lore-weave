@@ -75,8 +75,10 @@ Consistent with the branch invariant (glossary = SSOT/curation; knowledge = AI c
 2. ✅ **K-sync (knowledge):** `glossary.entity_merged` event handler → repo merge_entities + alias_map. Unit + event-replay idempotency test. *(DONE + /review-impl: MED-1 orphan-relink compensation, MED-2 alias_map project_scope.)*
 3. ✅ **G-cand (glossary):** merge_candidates table + `POST /internal/.../merge-candidates` (knowledge→glossary) + public list/dismiss + best-effort mark-merged. *(DONE 2026-06-07 + /review-impl: MED-1 mark-merged subset semantics — partial merge of a larger cluster no longer closes it. 12/12 glossary api + 19/19 knowledge glossary_client. Cross-service smoke → DEFERRED 062, after K-detect.)*
 4. ✅ **K-detect (knowledge):** coref_detect (name + KG-structural blocking/score) + config-gated LLM verify + propose to glossary. *(DONE 2026-06-07 + /review-impl: HIGH-1 per-kind clustering — combined multi-kind scoring produced mixed clusters glossary rejects wholesale, losing valid same-kind pairs; MED-2 verdict-coerce — `bool("no")`==True inverted string rejects. 17/17 coref unit tests. Endpoint `POST /internal/coref/detect` + default-OFF auto-hook.)*
-5. **FE:** merge-candidate review surface (reuse AI-Suggestions pattern) + confirm/dismiss + un-merge affordance. **← NEXT**
-6. **VERIFY:** cross-service live smoke (DEFERRED 062) — propose a candidate, confirm merge, assert loser soft-deleted + FKs repointed + KG merged; then un-merge round-trip. Token mandatory (≥2 services).
+5. ✅ **FE:** merge-candidate review surface (AI-Suggestions inbox pattern) — list clusters + member detail + rationale → winner radio (defaults to suggested) → Confirm (R5 merge) / Dismiss + Undo toast (un-merge via journal_id). *(DONE 2026-06-07 + /review-impl: MED-1 — toast count now reflects actual merges, info-toast on no-op. 13/13 vitest + tsc clean. 4 locales × 2 namespaces.)*
+6. **VERIFY:** cross-service live smoke (DEFERRED 062) — propose a candidate, confirm merge, assert loser soft-deleted + FKs repointed + KG merged; then un-merge round-trip. Token mandatory (≥2 services). **← ONLY REMAINING — needs a rebuilt stack + a duplicate-bearing project.**
+
+**mui #1c is FEATURE-COMPLETE** (G-merge · K-sync · G-cand · K-detect · FE) — only the end-to-end live-smoke (062) remains, which is a data+infra condition, not code.
 
 ## 7. Risks (from architecture eval)
 - **R5 (biggest):** glossary merge-execution is all-new; FK repoint across 6+ tables must be transactional + complete (AC3/AC8). Mitigation: journal-first, transaction, exhaustive per-FK tests, reuse knowledge's merge as a reference for edge-handling.
@@ -120,6 +122,20 @@ The coref detector. **CLARIFY locks (PO 2026-06-07):** trigger = **on-demand int
 **Config:** `coref_enabled=True`, `coref_auto_on_extraction=False`, `coref_score_floor=0.5`, `coref_name_weight=0.6`, `coref_struct_weight=0.4`, `coref_min_mentions=2`, `coref_max_pairs=200`, `coref_max_candidates_per_kind=500`, `coref_llm_verify=True`, `coref_judge_model=""`, `coref_judge_user=""`, `coref_judge_model_source="platform_model"`.
 
 **Files (L):** knowledge `app/extraction/coref_detect.py` (new), `app/routers/coref.py` (new), `app/config.py`, `app/main.py` (register router), `app/routers/internal_extraction.py` (auto-hook); tests `tests/unit/test_coref_detect.py`. Cross-service live-smoke = the mui#1c phase-6 VERIFY (DEFERRED 062) once a real duplicate-bearing project exists.
+
+## 7d. FE DESIGN (phase 5 — locked 2026-06-07)
+
+Reuses the mui#1 **AI-Suggestions inbox** pattern (panel + hook + badge in GlossaryTab; gateway auto-proxies `/v1/glossary/*` — no gateway change). Surface = spec §3.2: list proposed clusters → member detail + evidence + suggested winner → **Confirm** (pick winner → R5 merge) / **Dismiss** (G-cand dismiss). Un-merge affordance = an **Undo toast** after a confirm (the merge response carries `journal_id`s → revert), so no journal-list endpoint is needed.
+
+- **`api.ts`**: `listMergeCandidates(bookId, token)` GET `.../merge-candidates?status=proposed`; `confirmMerge(bookId, winnerId, loserIds, token)` POST `.../entities/{winner}/merge`; `dismissMergeCandidate(bookId, candidateId, token)` POST `.../merge-candidates/{id}/dismiss`; `revertMerge(bookId, journalId, token)` POST `.../merge-journal/{id}/revert`.
+- **`types.ts`**: `MergeCandidateMember{entity_id,name,aliases,chapter_link_count}`, `MergeCandidate{candidate_id,kind_code,score,rationale,evidence,suggested_winner_entity_id,status,created_at,members[]}`, `MergeCandidateListResponse{candidates[]}`, `MergeResult{winner_id,results[{loser_id,journal_id,status,reason}]}`.
+- **`hooks/useMergeCandidates.ts`**: query `['glossary-merge-candidates',bookId]`; actions `confirm(candidate, winnerId)` (losers = members − winner → confirmMerge; returns journal_ids for undo), `dismiss(candidate)`, `undo(journalId)`. All invalidate the inbox + `['glossary-entities',bookId]`.
+- **`components/MergeCandidatePanel.tsx`** (+ a compact `MergeCandidateCard` sub-component to respect the ~100-line rule): per cluster — member rows with a winner radio (defaults to `suggested_winner_entity_id`), evidence/score summary, Confirm + Dismiss. Confirm success → `toast.success` with an **Undo** action calling `undo(journal_id)`.
+- **`GlossaryTab.tsx`**: `['glossary-merge-candidates',bookId]` count query → conditional button (badge) → `setView('merge_candidates')` → `<MergeCandidatePanel>`.
+- **i18n**: `books.json` `glossary.merge_candidates` (button) + `glossaryEditor.json` `merge_candidates.*` (panel), all 4 locales (en/vi/ja/zh-TW).
+- **Tests**: `useMergeCandidates.test.tsx` (load/confirm-losers-computed/dismiss/invalidate) + `MergeCandidatePanel.test.tsx` (render cluster, winner-pick, confirm→undo-toast, dismiss).
+
+**Files (L):** `api.ts`, `types.ts`, `hooks/useMergeCandidates.ts` (new), `components/MergeCandidatePanel.tsx` (new), `pages/book-tabs/GlossaryTab.tsx`, i18n (8 files), 2 tests. Confirm triggers the destructive R5 merge via API — covered by component test + the existing G-merge DB tests.
 
 ## 8. Confirm-at-BUILD
 - Exact glossary FK inventory + ON DELETE/UPDATE (chapter_entity_links, entity_attribute_values+evidences+attribute_translations, entity_enrichments, wiki_articles, extraction_audit_log) — re-read `migrate.go` before the repoint.
