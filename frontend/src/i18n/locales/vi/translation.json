@@ -55,6 +55,23 @@
     "glossary_stale": "Glossary đã đổi",
     "glossary_stale_title": "Glossary đã thay đổi sau bản dịch này — có thể đã lỗi thời."
   },
+  "confirm_name": {
+    "button": "Sửa tên",
+    "button_title": "Xác nhận tên đã sửa vào glossary",
+    "title": "Xác nhận tên trong glossary",
+    "description": "Đặt cách viết {{lang}} đã xác minh cho một tên. Các bản dịch liên quan sẽ bị đánh dấu lỗi thời để bạn dịch lại.",
+    "source_label": "Tên gốc",
+    "source_placeholder": "vd. 提拉米",
+    "target_label": "Bản dịch đúng",
+    "target_placeholder": "vd. Tirami",
+    "submit": "Xác nhận",
+    "submitting": "Đang xác nhận…",
+    "cancel": "Hủy",
+    "confirmed": "Đã xác nhận \"{{name}}\" trong glossary",
+    "not_found": "Tên này chưa có trong glossary — hãy thêm trong trình Glossary trước.",
+    "no_name_attr": "Mục này không có thuộc tính tên để cập nhật.",
+    "error": "Không xác nhận được tên. Vui lòng thử lại."
+  },
   "compare": {
     "original_label": "Nguyên gốc — {{lang}}",
     "translation_label": "Bản dịch — {{lang}}",

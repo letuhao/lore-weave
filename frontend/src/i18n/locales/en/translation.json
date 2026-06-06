@@ -55,6 +55,23 @@
     "glossary_stale": "Glossary updated",
     "glossary_stale_title": "The glossary changed after this translation — it may be outdated."
   },
+  "confirm_name": {
+    "button": "Fix a name",
+    "button_title": "Confirm a corrected name into the glossary",
+    "title": "Confirm a name in the glossary",
+    "description": "Set the verified {{lang}} spelling for a name. Affected translations are then flagged stale so you can re-translate.",
+    "source_label": "Original name",
+    "source_placeholder": "e.g. 提拉米",
+    "target_label": "Correct translation",
+    "target_placeholder": "e.g. Tirami",
+    "submit": "Confirm",
+    "submitting": "Confirming…",
+    "cancel": "Cancel",
+    "confirmed": "Confirmed \"{{name}}\" in the glossary",
+    "not_found": "That name isn't in the glossary yet — add it in the Glossary editor first.",
+    "no_name_attr": "That entry has no name attribute to update.",
+    "error": "Couldn't confirm the name. Please try again."
+  },
   "compare": {
     "original_label": "Original — {{lang}}",
     "translation_label": "Translation — {{lang}}",
