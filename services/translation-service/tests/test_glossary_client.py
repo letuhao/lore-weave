@@ -168,6 +168,37 @@ class TestTrustLadder:
         assert any(i.type == "wrong_name" for i in report_full.issues)
 
 
+# ── M6b: used_entity_ids (glossary usage index source) ────────────────────────
+
+class TestUsedEntityIds:
+    def test_records_entity_ids_of_entries_in_chapter(self):
+        """Only entities whose names appear in the chapter (score > 0) are 'used'."""
+        entries = [
+            {"zh": ["提拉米"], "vi": ["Tirami"], "kind": "character", "entity_id": "E-TIRAMI"},
+            {"zh": ["阿尔德里克"], "vi": ["Aldric"], "kind": "character", "entity_id": "E-ALDRIC"},
+        ]
+        ctx = build_glossary_context(entries, "提拉米 来了。提拉米 走了。", "vi")
+        assert ctx.used_entity_ids == {"E-TIRAMI"}  # 阿尔德里克 absent from text → not used
+
+    def test_pinned_score0_entity_not_marked_used(self):
+        """A pinned entity with a target translation but absent from THIS chapter's
+        text is included in the prompt but is NOT 'used' (no staleness link)."""
+        entries = [{"zh": ["不在文中"], "vi": ["Pinned"], "kind": "character", "entity_id": "E-PIN"}]
+        ctx = build_glossary_context(entries, "提拉米 来了", "vi")
+        assert "E-PIN" not in ctx.used_entity_ids
+
+    def test_missing_entity_id_is_skipped(self):
+        """A legacy glossary build without entity_id contributes nothing (no crash)."""
+        entries = [{"zh": ["提拉米"], "vi": ["Tirami"], "kind": "character"}]
+        ctx = build_glossary_context(entries, "提拉米 来了", "vi")
+        assert ctx.used_entity_ids == set()
+
+    def test_entry_carries_entity_id(self):
+        entries = [{"zh": ["提拉米"], "vi": ["Tirami"], "kind": "character", "entity_id": "E1"}]
+        ctx = build_glossary_context(entries, "提拉米", "vi")
+        assert ctx.entries[0].entity_id == "E1"
+
+
 # ── auto_correct_glossary ────────────────────────────────────────────────
 
 class TestAutoCorrectGlossary:

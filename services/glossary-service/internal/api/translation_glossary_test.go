@@ -127,7 +127,7 @@ func TestTranslationGlossary_ExposesConfidenceTier(t *testing.T) {
 	srv, token := newContextTestServer(t, pool)
 
 	bookID := "00000000-0000-0000-0000-0000000d4001"
-	seedTranslationEntity(t, pool, bookID, "提拉米", "vi", "Tirami", "verified")
+	tiramiID := seedTranslationEntity(t, pool, bookID, "提拉米", "vi", "Tirami", "verified")
 	seedTranslationEntity(t, pool, bookID, "阿尔德里克", "vi", "Aldric", "machine")
 	// An active entity with NO target translation must still be returned, with
 	// no confidence key (guards the nameTarget=="" scan/emit path).
@@ -147,6 +147,7 @@ func TestTranslationGlossary_ExposesConfidenceTier(t *testing.T) {
 		hasKey bool
 	}
 	got := map[string]entry{}
+	idByName := map[string]string{}
 	for _, it := range items {
 		zh, _ := it["zh"].([]any)
 		if len(zh) == 0 {
@@ -155,6 +156,17 @@ func TestTranslationGlossary_ExposesConfidenceTier(t *testing.T) {
 		name, _ := zh[0].(string)
 		conf, hasKey := it["confidence"].(string)
 		got[name] = entry{conf, hasKey}
+		// M6b: every entry must carry entity_id so the worker can record usage.
+		if eid, ok := it["entity_id"].(string); ok {
+			idByName[name] = eid
+		}
+	}
+	// M6b: entity_id present + matches the seeded entity (drives the usage index).
+	if idByName["提拉米"] != tiramiID {
+		t.Errorf("提拉米: entity_id = %q, want %q (items=%+v)", idByName["提拉米"], tiramiID, items)
+	}
+	if idByName["无译名"] == "" {
+		t.Errorf("name-only entity must still carry entity_id (items=%+v)", items)
 	}
 	if got["提拉米"].conf != "verified" {
 		t.Errorf("提拉米: want confidence=verified, got %q (items=%+v)", got["提拉米"].conf, items)

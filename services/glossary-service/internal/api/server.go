@@ -375,6 +375,7 @@ all_entities AS (
     ) combined GROUP BY entity_id
 )
 SELECT
+    e.entity_id AS entity_id,
     eav.original_value AS name_zh,
     COALESCE(at.value, '') AS name_target,
     ek.code AS kind_code,
@@ -398,6 +399,7 @@ LIMIT $4`
 		// No chapter scoping — return most-linked entities across the book
 		query = `
 SELECT
+    e.entity_id AS entity_id,
     eav.original_value AS name_zh,
     COALESCE(at.value, '') AS name_target,
     ek.code AS kind_code,
@@ -436,14 +438,18 @@ LIMIT $3`
 
 	items := make([]map[string]any, 0, maxEntries)
 	for rows.Next() {
+		var entityID uuid.UUID
 		var nameZH, nameTarget, kindCode, nameConfidence string
 		var tier int
-		if err := rows.Scan(&nameZH, &nameTarget, &kindCode, &nameConfidence, &tier); err != nil {
+		if err := rows.Scan(&entityID, &nameZH, &nameTarget, &kindCode, &nameConfidence, &tier); err != nil {
 			continue
 		}
 		entry := map[string]any{
-			"zh":   []string{nameZH},
-			"kind": kindCode,
+			// M6b: entity_id lets translation-service record per-chapter glossary
+			// usage so a later entity change flags only the chapters that used it.
+			"entity_id": entityID.String(),
+			"zh":        []string{nameZH},
+			"kind":      kindCode,
 		}
 		if nameTarget != "" {
 			entry[targetLang] = []string{nameTarget}

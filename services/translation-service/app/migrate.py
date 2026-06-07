@@ -286,6 +286,24 @@ ALTER TABLE chapter_translations
 -- a hint that the translation predates the glossary edit. Additive + idempotent.
 ALTER TABLE chapter_translations
   ADD COLUMN IF NOT EXISTS is_glossary_stale BOOLEAN NOT NULL DEFAULT false;
+
+-- M6b full-propagate: per-(chapter_translation, entity) glossary usage index.
+-- The worker records which glossary entities a chapter's translation actually
+-- drew on (entries that scored > 0 against the chapter text). On a later
+-- glossary.entity_updated the staleness consumer flags ONLY the chapter
+-- translations whose index contains the changed entity_id (and, when the event
+-- carries target_language, only that language) instead of the whole book.
+-- A translation with NO rows here (translated before this index existed) falls
+-- back to the coarse flag — no false-negatives. ON DELETE CASCADE ties usage to
+-- its translation version.
+CREATE TABLE IF NOT EXISTS chapter_translation_glossary_usage (
+  chapter_translation_id UUID NOT NULL
+    REFERENCES chapter_translations(id) ON DELETE CASCADE,
+  entity_id              UUID NOT NULL,
+  PRIMARY KEY (chapter_translation_id, entity_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ctgu_entity
+  ON chapter_translation_glossary_usage(entity_id);
 """
 
 

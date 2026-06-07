@@ -43,6 +43,10 @@ class GlossaryEntry:
     target_names: list[str]
     kind: str
     confidence: str | None = None
+    # M6b: the glossary entity anchor. Lets the worker record which entities a
+    # chapter's translation used so a later entity change flags only the affected
+    # chapters. None for a legacy glossary build predating the endpoint change.
+    entity_id: str | None = None
 
     def to_jsonl(self, target_lang: str) -> str:
         """Format as compact JSONL line for prompt injection."""
@@ -60,6 +64,10 @@ class GlossaryContext:
     token_estimate: int = 0
     # Source→target map for auto-correct post-processing + prompt (ALL tiers).
     correction_map: dict[str, str] = field(default_factory=dict)
+    # M6b full-propagate: entity_ids of entries that scored > 0 — the glossary
+    # entities this chapter's text actually references, recorded so a later
+    # change to one of them flags only the chapters that used it.
+    used_entity_ids: set[str] = field(default_factory=set)
     # D-TRANSL-M1D trust ladder: the canon-only subset of ``correction_map`` the
     # V3 verifier hard-enforces (HIGH wrong_name → re-translate). Excludes
     # ``machine``/``draft`` translations so an unverified term never forces churn.
@@ -159,8 +167,10 @@ def build_glossary_context(
         # from a present-but-blank one ("" → demoted, not verified).
         raw_conf = raw.get("confidence", _MISSING)
         confidence = None if raw_conf is _MISSING else raw_conf
+        entity_id = raw.get("entity_id") or None
         entries.append(GlossaryEntry(
-            zh_names=zh_names, target_names=target_names, kind=kind, confidence=confidence,
+            zh_names=zh_names, target_names=target_names, kind=kind,
+            confidence=confidence, entity_id=entity_id,
         ))
 
     if not entries:
@@ -168,11 +178,17 @@ def build_glossary_context(
 
     # Score by occurrence in chapter text × name length
     scored: list[tuple[int, GlossaryEntry]] = []
+    # M6b: entities whose names appear in this chapter (score > 0) are the ones
+    # the translation drew on — the staleness propagation unit. Pinned score-0
+    # entities (not in this chapter's text) are NOT "used".
+    used_entity_ids: set[str] = set()
     for entry in entries:
         score = 0
         for name in entry.zh_names:
             count = chapter_text.count(name)
             score += count * len(name)
+        if score > 0 and entry.entity_id:
+            used_entity_ids.add(entry.entity_id)
         # Include score-0 entries only if they have a target translation
         # (Tier 0 pinned entities — worth including even if not in this chunk)
         if score > 0 or entry.target_names:
@@ -217,7 +233,7 @@ def build_glossary_context(
                     verified_map[zh_name] = primary_target
 
     if not lines:
-        return GlossaryContext()
+        return GlossaryContext(used_entity_ids=used_entity_ids)
 
     prompt_block = (
         "GLOSSARY — Use these EXACT translations for character/place/term names:\n"
@@ -235,6 +251,7 @@ def build_glossary_context(
         token_estimate=token_estimate,
         correction_map=correction_map,
         verified_map=verified_map,
+        used_entity_ids=used_entity_ids,
     )
 
 

@@ -306,6 +306,8 @@ func (s *Server) createTranslation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "insert failed")
 		return
 	}
+	// M6b: propagate target-language-specific staleness to translation-service.
+	s.emitTranslationChanged(r.Context(), bookID, entityID, tr.LanguageCode)
 	writeJSON(w, http.StatusCreated, tr)
 }
 
@@ -418,6 +420,8 @@ func (s *Server) updateTranslation(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	// M6b: propagate target-language-specific staleness to translation-service.
+	s.emitTranslationChanged(ctx, bookID, entityID, tr.LanguageCode)
 	writeJSON(w, http.StatusOK, tr)
 }
 
@@ -455,16 +459,22 @@ func (s *Server) deleteTranslation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, err := s.pool.Exec(r.Context(),
-		`DELETE FROM attribute_translations WHERE translation_id=$1 AND attr_value_id=$2`,
-		translationID, attrValueID)
+	// RETURNING language_code so M6b can emit a per-language staleness event
+	// AFTER the row is gone (ErrNoRows ⇒ nothing deleted ⇒ 404, no emit).
+	var deletedLang string
+	err := s.pool.QueryRow(r.Context(),
+		`DELETE FROM attribute_translations WHERE translation_id=$1 AND attr_value_id=$2
+		 RETURNING language_code`,
+		translationID, attrValueID).Scan(&deletedLang)
 	if err != nil {
+		if err == pgx.ErrNoRows {
+			writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "translation not found")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "delete failed")
 		return
 	}
-	if tag.RowsAffected() == 0 {
-		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "translation not found")
-		return
-	}
+	// M6b: propagate target-language-specific staleness to translation-service.
+	s.emitTranslationChanged(r.Context(), bookID, entityID, deletedLang)
 	w.WriteHeader(http.StatusNoContent)
 }

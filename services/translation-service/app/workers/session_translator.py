@@ -661,6 +661,33 @@ async def _insert_chunk_row(
     return row["id"]
 
 
+async def _record_glossary_usage(
+    pool, chapter_translation_id: UUID, used_entity_ids: set[str],
+) -> None:
+    """M6b: record which glossary entities this chapter's translation drew on so a
+    later glossary.entity_updated flags only the chapters that used it (not the
+    whole book). Best-effort + additive — a failure here never breaks translation.
+    Batched single statement; idempotent (ON CONFLICT DO NOTHING). $2::uuid casts
+    the text entity_ids from the glossary endpoint."""
+    if not used_entity_ids:
+        return
+    try:
+        await pool.executemany(
+            """
+            INSERT INTO chapter_translation_glossary_usage
+              (chapter_translation_id, entity_id)
+            VALUES ($1, $2::uuid)
+            ON CONFLICT DO NOTHING
+            """,
+            [(chapter_translation_id, eid) for eid in used_entity_ids],
+        )
+    except Exception:  # defensive, non-fatal (covered by usage-record tests)
+        log.warning(
+            "M6b: failed to record glossary usage for ct=%s (non-fatal)",
+            chapter_translation_id, exc_info=True,
+        )
+
+
 async def _update_chunk_row(
     pool, chunk_row_id: UUID, translated_text: str, in_tok: int, out_tok: int,
 ) -> None:
@@ -1040,6 +1067,10 @@ async def translate_chapter_blocks(
         "block_translator_v2: glossary — %d entries, ~%d tokens, %d correction rules (ct=%s)",
         len(glossary_ctx.entries), glossary_ctx.token_estimate,
         len(glossary_ctx.correction_map), chapter_translation_id,
+    )
+    # M6b: record per-chapter glossary-entity usage for targeted staleness.
+    await _record_glossary_usage(
+        pool, chapter_translation_id, glossary_ctx.used_entity_ids,
     )
 
     # Per-block translated texts (index → translated text)
