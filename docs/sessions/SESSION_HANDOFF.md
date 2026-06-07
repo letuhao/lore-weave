@@ -8,7 +8,7 @@
 
 ### ▶ RAW SEARCH (branch `raw-search/foundation`, off `origin/main`)
 
-**State: Phase-1 + Phase-2 FULL-STACK DONE — hybrid (lexical+semantic, RRF) end-to-end.** New workstream — the missing **raw chapter-text** layer beneath glossary/knowledge/wiki (all lossy derivatives); serves authoring + extraction/trích-lục. Spec [`2026-06-07-raw-search.md`](../specs/2026-06-07-raw-search.md) (PART I design + PART II ATAM-lite eval; 7/7 confirm-at-BUILD resolved). Plan [`2026-06-07-raw-search.md`](../plans/2026-06-07-raw-search.md) (3 phases; ADJ-1..4 PO-acked).
+**State: Phase-1 + Phase-2 FULL-STACK DONE + LIVE-SMOKE PASSED (2026-06-07).** Hybrid (lexical+semantic, RRF) end-to-end. New workstream — the missing **raw chapter-text** layer beneath glossary/knowledge/wiki (all lossy derivatives); serves authoring + extraction/trích-lục. Spec [`2026-06-07-raw-search.md`](../specs/2026-06-07-raw-search.md) (PART I design + PART II ATAM-lite eval; 7/7 confirm-at-BUILD resolved). Plan [`2026-06-07-raw-search.md`](../plans/2026-06-07-raw-search.md) (3 phases; ADJ-1..4 PO-acked).
 
 **Phase-1 BE (book-service, commit a956fbb3):** `BE-1` pg_trgm + `idx_chapter_blocks_trgm` GIN as a **best-effort Exec in `Up()`** (review-impl MED-1 — NOT in `schemaSQL`). `BE-2` `GET /v1/books/{id}/search?q=&surface=&limit=` — JWT + `ensureOwnerBook`; **ILIKE-primary + `similarity()` rank** over draft `chapter_blocks`; rune-offset highlight; `surface:"draft"`/`matchType:"lexical"`; `purge_pending`→404. 6 test funcs; go build/vet/test green. /review-impl: MED-1/MED-2/LOW-1/LOW-2 fixed.
 
@@ -18,17 +18,20 @@
 
 **Phase-2 P2b (frontend):** `rawSearchApi.searchHybrid` → `/v1/knowledge/books/{id}/search`, **falls back to the book-service lexical endpoint on 404 OR any 5xx** (review-impl MED-1) + injects a `degraded.semantic` note (MED-2); `useRawSearch` **mode toggle** (Hybrid default / Lexical) + `degraded` passthrough; `RawSearchResultCard` handles semantic hits (`location.chunkIndex`, `chapterTitle:null`, match-type chip); panel mode toggle + degraded banner; `rawSearch` i18n +4 keys ×4. **vitest 14/14 · tsc 0 · i18n parity OK.** /review-impl: MED-1 (5xx fallback) + MED-2 (degraded-on-fallback) fixed; 1 reject-path test removed (vitest 2.1.9 unhandled-rejection quirk — behaviour inspection-covered).
 
-**NEXT:** **Phase 3** — canon-lexical projection (spec open #2), char-offset cross-leg dedup, semantic-on-draft (debounced ingest), optional LLM rerank, jump-to-source precision. OR run the deferred **live-smokes** (P1 lexical + P2 hybrid) on a stacked 封神演义 corpus. OR **push** the branch (6 commits).
+**Live-smoke PASSED (2026-06-07, real stack vs 封神演義 demo book, rebuilt book+knowledge from branch):** P1 lexical — `蛟龍`/`猛虎`/`蓬萊` each return the draft hit with **rune-correct CJK highlights** (`[9,11]`/`[20,22]`/`[4,6]`) + exact-substring score boost; `乾坤圈`→clean 0-hit. **R1 (pg_trgm on Classical Chinese) CLEARED**; rune offsets exact (byte would be 3× off); pg_trgm migration ran on startup (no 500 ⇒ best-effort Exec works). P2 hybrid orchestrator — `mode=lexical` fuses the cross-service book-internal hit (RRF), `mode=semantic` runs clean (0 passages, no degrade), `mode=hybrid` fuses both; ownership gate 200; **no 500 on any path. Zero bugs.** Residual: a *positive* semantic match unverified (demo book has no ingested chapter passages).
+
+**NEXT:** **Phase 3** (a basket — pick a slice): P3-A jump-to-source precision (FE) · P3-B canon-lexical projection (book-service) · P3-C char-offset dedup + copy-exact (knowledge) · P3-D ranking polish/rerank · P3-E semantic-on-draft. OR **push** the branch (6 commits).
 
 **Deferred (raw search):**
-- **D-RAWSEARCH-P1-LIVE-SMOKE** — real-stack CJK lexical search (pg_trgm on 封神演义) + FE↔BE browser smoke not yet live-verified; unit-covered. Smoke when book-service + DB + FE are up.
 - **D-RAWSEARCH-FE-JUMP-PRECISION** (FE-1 LOW-2) — jump-to-source navigates to the book hub only; precise chapter-open + scroll-to-block (via `location.charStart`) deferred.
 - **D-RAWSEARCH-FE-MULTIRANGE** (FE-1 LOW-3) — `renderHighlight` assumes sorted/non-overlapping ranges; BE emits one today; sort when Phase-3 returns multiple spans.
 - **D-RAWSEARCH-FE-MINOR** (FE-1 LOW-1/LOW-4/COSMETIC) — score not displayed; book-page launch-button strings hardcoded (not i18n); no error/empty/loading-state vitest. Batch later.
 - **D-RAWSEARCH-HANDLER-COVERAGE** (BE COSMETIC-1) — handler branch flow relies on live-smoke (no DB mock); optionally extract a pure row→result mapper.
-- **D-RAWSEARCH-P2-LIVE-SMOKE** (P2a) — cross-service hybrid (book lexical + knowledge semantic + RRF) not live-verified; unit-covered (pytest 41). Needs book+knowledge+PG+Neo4j+provider-registry up.
+- **D-RAWSEARCH-P2-SEMANTIC-SMOKE** (P2a residual) — the hybrid cross-service contract is live-verified (2026-06-07); a *positive* semantic match (passage hit) wasn't observed — the demo book has no ingested chapter `:Passage` nodes. Publish a chapter → ingest passages → re-smoke `mode=semantic` to close.
 - **D-RAWSEARCH-P2-SEMANTIC-TITLES** (P2a ADJ-2) — semantic hits return `chapterTitle:null`; batch-enrich via `BookClient.get_chapter_titles` later.
 - **D-RAWSEARCH-P2-COSINE-RANK** (P2a LOW-2) — semantic leg uses raw cosine (no K18.3 hub-penalty/MMR); drawers precedent; refine if ranking quality needs it.
+
+**Recently cleared (raw search):** ✅ **D-RAWSEARCH-P1-LIVE-SMOKE** (2026-06-07 — lexical CJK live on 封神演義, rune-correct highlights, pg_trgm migration confirmed) · ✅ **D-RAWSEARCH-P2-LIVE-SMOKE** (cross-service hybrid contract live: lexical/fusion/degradation/ownership-gate all clean; residual → D-RAWSEARCH-P2-SEMANTIC-SMOKE).
 
 **RETRO note** (ContextHub MCP offline this session):
 - FE: a redundant `onKeyDown` Enter/Space handler on a **native `<button>`** double-fires on Space (button already activates `onClick` on keyup); only add it for `role="button"` non-buttons. Lowering a search min-length to 1 needs an input **debounce**.
