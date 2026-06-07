@@ -386,3 +386,64 @@ async def handle_chat_feedback(event: EventData, *, pool: asyncpg.Pool) -> None:
         "chat feedback persisted: message=%s rating=%s origin=chat:%s",
         message_id, rating, event.outbox_id,
     )
+
+
+async def handle_translation_quality(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`translation.quality` → a `source='auto'` quality_score (track M7a, Channel 2
+    — the LLM-action log).
+
+    The V3 verifier's per-chapter rollup (overall `quality_score` in [0,1]) becomes
+    a tunable auto signal keyed to the chapter translation
+    (`target_kind='translation'`, `metric_name='translation_quality_score'`). The
+    richer breakdown (unresolved-high count, qa rounds, per-issue-type counts,
+    language, pipeline) is stashed in `comment` — the consumed dedup is one row per
+    event (`origin_service`+`outbox_id`), so the score is the single persisted
+    metric and the rest is context for later analysis/tuning.
+
+    Validated against score_config; idempotent on the relay `outbox_id`. An empty
+    `outbox_id`, missing `user_id`/`chapter_translation_id`, or non-numeric score
+    raises → DLQ."""
+    payload = event.payload
+    if not event.outbox_id:
+        raise ValueError("translation.quality has empty outbox_id — refusing to insert")
+    ct_id = payload.get("chapter_translation_id") or event.aggregate_id
+    user_id = _uuid_or_none(payload.get("user_id"))
+    if user_id is None or not ct_id:
+        raise ValueError(
+            "translation.quality missing user_id/chapter_translation_id "
+            f"(user_id={payload.get('user_id')!r} ct={ct_id!r}) — refusing"
+        )
+    try:
+        score = float(payload.get("quality_score"))
+    except (TypeError, ValueError) as e:
+        raise ValueError(
+            f"translation.quality quality_score not numeric: {payload.get('quality_score')!r}"
+        ) from e
+
+    detail = json.dumps(
+        {
+            "unresolved_high_count": payload.get("unresolved_high_count"),
+            "qa_rounds_used": payload.get("qa_rounds_used"),
+            "issue_counts": payload.get("issue_counts") or {},
+            "target_language": payload.get("target_language"),
+            "pipeline_version": payload.get("pipeline_version"),
+        },
+        ensure_ascii=False,
+    )
+    await persist_consumed_score(
+        pool,
+        target_kind="translation",
+        target_id=str(ct_id),
+        user_id=user_id,
+        book_id=_uuid_or_none(payload.get("book_id")),
+        metric_name="translation_quality_score",
+        value_num=score,
+        source="auto",
+        origin_service="translation",
+        origin_event_id=event.outbox_id,
+        comment=detail,
+    )
+    logger.debug(
+        "translation quality persisted: ct=%s score=%s origin=translation:%s",
+        ct_id, score, event.outbox_id,
+    )

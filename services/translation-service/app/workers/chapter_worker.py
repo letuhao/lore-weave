@@ -276,6 +276,17 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             })
     log.info("chapter %s: DB persist complete", chapter_id)
 
+    # M7a: emit the V3 quality rollup → learning-service (feedback flywheel).
+    # POST-commit + best-effort (review-impl MED): a feedback-log failure must
+    # never roll back a successful translation. Outbox-atomicity is traded for
+    # safety — losing one telemetry event is fine; losing the translation is not.
+    try:
+        await _emit_translation_quality(
+            pool, chapter_translation_id, msg, pipeline_version,
+        )
+    except Exception:  # noqa: BLE001 — telemetry must not break the worker
+        log.warning("M7a: failed to emit translation quality (non-fatal)", exc_info=True)
+
     # V2: Save chapter memo for next chapter's context (TD1: now also populated
     # for the block pipeline via memo_text derived above).
     await _save_chapter_memo(
@@ -396,12 +407,69 @@ async def _emit_chapter_done(publish_event, user_id, msg, status, error_message)
     })
 
 
-async def _insert_outbox_event(db, event_type: str, aggregate_id, payload: dict) -> None:
-    """Insert a transactional outbox event for worker-infra relay to Redis Streams."""
+async def _insert_outbox_event(
+    db, event_type: str, aggregate_id, payload: dict, aggregate_type: str = "chapter",
+) -> None:
+    """Insert a transactional outbox event for worker-infra relay to Redis Streams.
+
+    ``aggregate_type`` keys the destination stream (``loreweave:events:<type>``).
+    Defaults to 'chapter' (statistics pipeline); M7a uses 'translation' so the
+    quality-log event lands on ``loreweave:events:translation`` for learning."""
     await db.execute(
         """INSERT INTO outbox_events (event_type, aggregate_type, aggregate_id, payload)
-           VALUES ($1, 'chapter', $2, $3::jsonb)""",
-        event_type, aggregate_id, json.dumps(payload),
+           VALUES ($1, $2, $3, $4::jsonb)""",
+        event_type, aggregate_type, aggregate_id, json.dumps(payload),
+    )
+
+
+async def _emit_translation_quality(
+    conn, chapter_translation_id, msg: dict, pipeline_version: str,
+) -> None:
+    """M7a (Channel 2 — LLM action log): emit ``translation.quality`` to
+    learning-service so the verifier's per-chapter rollup becomes a tunable
+    ``source=auto`` signal. Carries the score + per-issue-type counts.
+
+    Skips when there is no V3 quality signal (``quality_score`` NULL — e.g. the V2
+    path), so empty rows are never logged. ``aggregate_type='translation'`` routes
+    it to ``loreweave:events:translation``. Best-effort + post-commit (called by
+    the worker AFTER the persist txn) so a feedback-log failure never rolls back a
+    successful translation — ``conn`` may be the pool or a connection.
+
+    review-impl HIGH: the verifier's ``quality_score()`` is an **int in [0, 100]**
+    (``quality.py``), but the platform's score_config convention (F1/precision/…)
+    is **[0, 1]**; emit the **normalised** ``/100`` value so learning's
+    ``translation_quality_score`` ([0,1]) validates it instead of DLQ-ing every
+    event."""
+    row = await conn.fetchrow(
+        """SELECT quality_score, unresolved_high_count, qa_rounds_used
+           FROM chapter_translations WHERE id = $1""",
+        chapter_translation_id,
+    )
+    if row is None or row["quality_score"] is None:
+        return  # V2 / no quality signal → nothing to log
+    issue_rows = await conn.fetch(
+        """SELECT issue_type, COUNT(*) AS n
+           FROM translation_quality_issues
+           WHERE chapter_translation_id = $1
+           GROUP BY issue_type""",
+        chapter_translation_id,
+    )
+    issue_counts = {r["issue_type"]: r["n"] for r in issue_rows}
+    await _insert_outbox_event(
+        conn, "translation.quality", chapter_translation_id,
+        {
+            "user_id": str(msg["user_id"]),
+            "book_id": str(msg["book_id"]),
+            "chapter_id": str(msg["chapter_id"]),
+            "chapter_translation_id": str(chapter_translation_id),
+            "target_language": msg["target_language"],
+            "pipeline_version": pipeline_version,
+            "quality_score": float(row["quality_score"]) / 100.0,  # 0-100 int → [0,1]
+            "unresolved_high_count": row["unresolved_high_count"] or 0,
+            "qa_rounds_used": row["qa_rounds_used"] or 0,
+            "issue_counts": issue_counts,
+        },
+        aggregate_type="translation",
     )
 
 

@@ -64,6 +64,10 @@ SCORE_CONFIG_SEED: list[dict[str, Any]] = [
     {"name": "online_judge_precision", "data_type": "numeric", "min_value": 0.0, "max_value": 1.0,
      "description": "Online LLM-judge precision: per-item supported-credit of an extraction "
                     "vs its source text (Q4b; needs items + source from an opted-in run)."},
+    {"name": "translation_quality_score", "data_type": "numeric", "min_value": 0.0, "max_value": 1.0,
+     "description": "M7a (Channel 2): the V3 translation verifier's per-chapter overall "
+                    "quality score (auto/LLM-action log). Breakdown (unresolved-high, qa "
+                    "rounds, issue-type counts) carried in the score comment."},
 ]
 
 
