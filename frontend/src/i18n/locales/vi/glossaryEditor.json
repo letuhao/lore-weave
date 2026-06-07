@@ -119,5 +119,32 @@
     "err_save": "Áp dụng thất bại",
     "toast_merged": "Đã ánh xạ {{count}} thực thể từ \"{{code}}\"",
     "toast_reassigned": "Đã gán lại \"{{name}}\""
+  },
+  "history": {
+    "title": "Lịch sử phiên bản",
+    "close": "Đóng",
+    "loading": "Đang tải lịch sử…",
+    "empty": "Chưa có phiên bản nào.",
+    "view": "Xem",
+    "restore": "Khôi phục",
+    "cancel": "Hủy",
+    "restore_confirm_title": "Khôi phục phiên bản này?",
+    "restore_confirm_desc": "Khôi phục thực thể về phiên bản #{{num}}. Trạng thái hiện tại được lưu thành phiên bản mới nên có thể hoàn tác.",
+    "toast_restored": "Đã khôi phục về phiên bản #{{num}}",
+    "snap_status": "Trạng thái",
+    "snap_chapters": "Chương",
+    "op": {
+      "created": "tạo",
+      "updated": "cập nhật",
+      "restore": "khôi phục",
+      "baseline": "ban đầu",
+      "delete": "xóa"
+    },
+    "actor": {
+      "user": "bạn",
+      "pipeline": "AI",
+      "system": "hệ thống"
+    },
+    "error": "Không tải được lịch sử phiên bản."
   }
 }

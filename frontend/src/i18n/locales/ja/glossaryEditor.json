@@ -119,5 +119,32 @@
     "err_save": "適用に失敗しました",
     "toast_merged": "「{{code}}」から {{count}} 件をマッピングしました",
     "toast_reassigned": "「{{name}}」を再割り当てしました"
+  },
+  "history": {
+    "title": "バージョン履歴",
+    "close": "閉じる",
+    "loading": "履歴を読み込み中…",
+    "empty": "まだリビジョンがありません。",
+    "view": "表示",
+    "restore": "復元",
+    "cancel": "キャンセル",
+    "restore_confirm_title": "このリビジョンを復元しますか？",
+    "restore_confirm_desc": "エンティティをリビジョン #{{num}} に復元します。現在の状態は新しいリビジョンとして保存されるため、元に戻せます。",
+    "toast_restored": "リビジョン #{{num}} に復元しました",
+    "snap_status": "ステータス",
+    "snap_chapters": "章",
+    "op": {
+      "created": "作成",
+      "updated": "更新",
+      "restore": "復元",
+      "baseline": "初期",
+      "delete": "削除"
+    },
+    "actor": {
+      "user": "あなた",
+      "pipeline": "AI",
+      "system": "システム"
+    },
+    "error": "バージョン履歴を読み込めませんでした。"
   }
 }
