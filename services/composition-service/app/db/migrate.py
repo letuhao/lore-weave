@@ -171,6 +171,24 @@ CREATE TABLE IF NOT EXISTS outbox_events (
   last_error     TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_pending ON outbox_events(created_at) WHERE published_at IS NULL;
+
+-- ── decompose_commit: exactly-once ledger for A3 decompose-commit (idempotency).
+-- A client idempotency_key dedups a double-submit / retried commit so the
+-- arc→chapter→scene tree is never persisted twice (D-A3-COMMIT-IDEMPOTENCY). The
+-- stored `result` lets a replay return the original ids without re-inserting.
+-- project_id is cross-DB (no FK); the unique index is the exactly-once guard.
+-- Scope = (user, PROJECT, key): the commit endpoint is per-project, so a key
+-- reused across projects must NOT replay another project's result (/review-impl).
+CREATE TABLE IF NOT EXISTS decompose_commit (
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id         UUID NOT NULL,
+  project_id      UUID NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  arc_id          UUID NOT NULL,
+  result          JSONB NOT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_decompose_commit_idem ON decompose_commit(user_id, project_id, idempotency_key);
 """
 
 # Built-in structure templates (owner_user_id NULL = global). Deterministic ids

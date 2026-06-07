@@ -40,6 +40,18 @@ class ReferenceViolationError(Exception):
         self.message = message
 
 
+class AlreadyPlannedError(Exception):
+    """Raised by commit_decomposed_tree when one of the target chapters already
+    has active scenes and the caller did not pass replace=true. Carries the
+    offending chapter_ids so the router can return them in the 409 body. The
+    check + the insert run in ONE transaction (closes the TOCTOU race that a
+    pre-transaction guard left open — D-A3-COMMIT-IDEMPOTENCY)."""
+
+    def __init__(self, chapter_ids: list[Any]) -> None:
+        super().__init__("chapters already planned")
+        self.chapter_ids = chapter_ids
+
+
 def rows_changed(status: str) -> int:
     """Parse an asyncpg command tag like 'UPDATE 1' / 'DELETE 0' safely."""
     try:
@@ -48,4 +60,4 @@ def rows_changed(status: str) -> int:
         return 0
 
 
-__all__ = ["VersionMismatchError", "ReferenceViolationError", "rows_changed"]
+__all__ = ["VersionMismatchError", "ReferenceViolationError", "AlreadyPlannedError", "rows_changed"]

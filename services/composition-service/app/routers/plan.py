@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.clients.book_client import BookClient, BookClientError
-from app.db.repositories import ReferenceViolationError
+from app.db.repositories import AlreadyPlannedError, ReferenceViolationError
 from app.clients.glossary_client import GlossaryClient
 from app.clients.llm_client import LLMClient
 from app.config import settings
@@ -72,12 +72,16 @@ class CommitChapter(BaseModel):
 class CommitRequest(BaseModel):
     arc_title: str = "Arc"
     chapters: list[CommitChapter] = Field(min_length=1)
-    # `force` is honest: it does NOT replace a chapter's existing scenes, it adds
-    # the new tree ALONGSIDE them (bypassing the already-planned guard). True
-    # replace (archive the prior decomposed subtree) is a deferred follow-up
-    # (D-A3-COMMIT-TRUE-REPLACE) — its archival scope (manual vs prior-decompose
-    # scenes) needs its own design. Default false = refuse to double-plan.
+    # `replace=true` archives the target chapters' EXISTING scenes (a true replace
+    # — D-A3-COMMIT-TRUE-REPLACE), scoped to ONLY those chapters; default false =
+    # refuse to double-plan (409 CHAPTER_ALREADY_PLANNED). `force` kept as a
+    # deprecated alias for back-compat (old callers); `replace` wins if both set.
+    replace: bool = False
     force: bool = False
+    # Client idempotency key — a double-submit / retry with the same key replays
+    # the original commit instead of persisting a second tree (exactly-once,
+    # D-A3-COMMIT-IDEMPOTENCY). Optional (older callers omit it).
+    idempotency_key: str | None = None
 
 
 async def _require_work(works: WorksRepo, user_id: UUID, project_id: UUID):
@@ -196,16 +200,10 @@ async def decompose_commit(
         if bad_ents:
             raise HTTPException(status_code=400, detail={"code": "BAD_ENTITY", "entity_ids": bad_ents})
 
-    # already-planned guard: don't silently double-plan a chapter that already
-    # has scenes. `force=true` adds the new tree ALONGSIDE the old scenes (it does
-    # NOT replace them — see CommitRequest.force).
-    existing = await outline.existing_scene_chapter_ids(user_id, project_id, req_chapter_ids)
-    if existing and not body.force:
-        raise HTTPException(status_code=409, detail={
-            "code": "CHAPTER_ALREADY_PLANNED",
-            "chapter_ids": sorted(str(c) for c in existing),
-            "detail": "chapters already have scenes — resend with force=true to add "
-                      "these scenes IN ADDITION (existing scenes are NOT removed)"})
+    # The already-planned guard now runs INSIDE commit_decomposed_tree's
+    # transaction (closes the TOCTOU race a pre-Tx check left open). `replace=true`
+    # archives the target chapters' existing scenes; an idempotency_key dedups a
+    # double-submit. `force` is the deprecated alias for `replace`.
 
     # Assign each scene a reading-order story_order = chapter.sort_order*STRIDE + idx.
     # This is the position axis the packer + S1 state-reinjection key on (prior =
@@ -222,9 +220,16 @@ async def decompose_commit(
                    for i, sc in enumerate(ch.scenes)],
     } for ch in body.chapters]
     try:
-        created = await outline.create_decomposed_tree(
+        created = await outline.commit_decomposed_tree(
             user_id, project_id, arc_title=body.arc_title, chapters=spec,
+            replace=body.replace or body.force, idempotency_key=body.idempotency_key,
         )
+    except AlreadyPlannedError as exc:
+        raise HTTPException(status_code=409, detail={
+            "code": "CHAPTER_ALREADY_PLANNED",
+            "chapter_ids": sorted(str(c) for c in exc.chapter_ids),
+            "detail": "chapters already have scenes — resend with replace=true to "
+                      "archive the existing scenes and replace them"}) from exc
     except ReferenceViolationError as exc:
         raise HTTPException(status_code=400,
                             detail={"code": "BAD_REFERENCE", "detail": exc.message}) from exc
@@ -233,4 +238,5 @@ async def decompose_commit(
                             detail={"code": "CONSTRAINT", "detail": str(exc)}) from exc
     return {"arc_id": str(created["arc_id"]),
             "chapter_ids": [str(i) for i in created["chapter_ids"]],
-            "scene_ids": [str(i) for i in created["scene_ids"]]}
+            "scene_ids": [str(i) for i in created["scene_ids"]],
+            "replay": bool(created.get("replay"))}

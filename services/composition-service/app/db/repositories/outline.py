@@ -9,13 +9,16 @@ an archived parent. Hard FK CASCADE is reserved for scene_link edges only.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from uuid import UUID
 
 import asyncpg
 
 from app.db.models import OutlineNode
-from app.db.repositories import ReferenceViolationError, VersionMismatchError, outbox
+from app.db.repositories import (
+    AlreadyPlannedError, ReferenceViolationError, VersionMismatchError, outbox,
+)
 from app.db.repositories.rank import rank_after
 
 _SELECT_COLS = """
@@ -23,6 +26,10 @@ _SELECT_COLS = """
   present_entity_ids, goal, beat_role, status, chapter_id, tension,
   story_order, synopsis, version, is_archived, created_at, updated_at
 """
+
+# Namespace key (arg-1) for the per-project decompose-commit advisory xact lock.
+# Distinguishes it from any other pg_advisory_xact_lock(int4, int4) in the service.
+_DECOMPOSE_COMMIT_LOCK_NS = 0x10AF
 
 _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
     {"parent_id", "rank", "title", "pov_entity_id", "present_entity_ids", "goal",
@@ -231,46 +238,143 @@ class OutlineRepo:
             )
         return [_row_to_node(r) for r in rows]
 
+    async def _insert_decomposed_tree(
+        self, c: asyncpg.Connection, user_id: UUID, project_id: UUID, *,
+        arc_title: str, chapters: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Insert arc→chapter→scene on an open connection (NO Tx of its own — the
+        caller owns the transaction). `beat_role` is stamped on the SCENES (DB
+        CHECK forbids it on chapter); the chapter node carries the beat intent in
+        `goal`. Returns the created node ids (UUIDs)."""
+        arc = await self.create_node(
+            user_id, project_id, kind="arc", title=arc_title, status="outline", conn=c,
+        )
+        chapter_ids: list[UUID] = []
+        scene_ids: list[UUID] = []
+        for ch in chapters:
+            ch_node = await self.create_node(
+                user_id, project_id, kind="chapter", parent_id=arc.id,
+                chapter_id=ch["chapter_id"], title=ch.get("title", ""),
+                goal=ch.get("intent", ""), status="outline", conn=c,
+            )
+            chapter_ids.append(ch_node.id)
+            for sc in ch.get("scenes", []):
+                sn = await self.create_node(
+                    user_id, project_id, kind="scene", parent_id=ch_node.id,
+                    chapter_id=ch["chapter_id"], beat_role=ch.get("beat_role"),
+                    title=sc.get("title", ""), synopsis=sc.get("synopsis", ""),
+                    tension=sc.get("tension"),
+                    present_entity_ids=sc.get("present_entity_ids") or [],
+                    story_order=sc.get("story_order"),  # reading axis (S1 needs it)
+                    status="outline", conn=c,
+                )
+                scene_ids.append(sn.id)
+        return {"arc_id": arc.id, "chapter_ids": chapter_ids, "scene_ids": scene_ids}
+
     async def create_decomposed_tree(
         self, user_id: UUID, project_id: UUID, *,
         arc_title: str, chapters: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        """A3 commit — persist an arc→chapter→scene tree ATOMICALLY (one Tx; a
-        mid-insert failure rolls back the whole plan). Each `chapters` item:
-        ``{chapter_id, title, intent, beat_role, scenes:[{title, synopsis,
-        tension, present_entity_ids}]}``. `beat_role` is stamped on the SCENES
-        (the DB CHECK forbids it on chapter); the chapter node carries the beat's
-        intent in `goal`. Returns the created node ids.
-
-        Caller MUST pre-validate (chapter_id ∈ book, present_entity_id ∈ glossary,
-        replace-guard) — this method only persists."""
+        """A3 commit — persist an arc→chapter→scene tree ATOMICALLY (one Tx).
+        Low-level inserter (no idempotency/replace guard); prefer
+        `commit_decomposed_tree` from the router. Caller MUST pre-validate
+        (chapter_id ∈ book, present_entity_id ∈ glossary)."""
         async with self._pool.acquire() as c:
             async with c.transaction():
-                arc = await self.create_node(
-                    user_id, project_id, kind="arc", title=arc_title,
-                    status="outline", conn=c,
+                return await self._insert_decomposed_tree(
+                    c, user_id, project_id, arc_title=arc_title, chapters=chapters,
                 )
-                chapter_ids: list[UUID] = []
-                scene_ids: list[UUID] = []
-                for ch in chapters:
-                    ch_node = await self.create_node(
-                        user_id, project_id, kind="chapter", parent_id=arc.id,
-                        chapter_id=ch["chapter_id"], title=ch.get("title", ""),
-                        goal=ch.get("intent", ""), status="outline", conn=c,
+
+    async def commit_decomposed_tree(
+        self, user_id: UUID, project_id: UUID, *,
+        arc_title: str, chapters: list[dict[str, Any]],
+        replace: bool = False, idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Atomic + idempotent A3 commit (D-A3-COMMIT-IDEMPOTENCY/TRUE-REPLACE).
+        In ONE transaction: (1) replay — a committed `idempotency_key` returns its
+        stored result; (2) guard — a target chapter with active scenes + NOT
+        `replace` raises AlreadyPlannedError (in-Tx → closes the TOCTOU race a
+        pre-Tx check left open); (3) replace — `replace=true` soft-archives ONLY
+        the target chapters' existing scenes (book chapters + other plans
+        untouched); (4) insert the tree; (5) ledger the (key→result) for replay.
+        A per-project advisory lock serializes concurrent commits so even a
+        NO-KEY concurrent double-submit can't both pass the guard (the lock — not
+        the plain SELECT — is what closes the TOCTOU); keyed exactly-once is also
+        backed by the ledger unique index. Result ids are strings (JSON-stable)."""
+        affected = [ch["chapter_id"] for ch in chapters]
+
+        async def _replay(c: asyncpg.Connection) -> dict[str, Any] | None:
+            if not idempotency_key:
+                return None
+            row = await c.fetchrow(
+                "SELECT result FROM decompose_commit "
+                "WHERE user_id = $1 AND project_id = $2 AND idempotency_key = $3",
+                user_id, project_id, idempotency_key,
+            )
+            return {**json.loads(row["result"]), "replay": True} if row else None
+
+        async with self._pool.acquire() as c:
+            try:
+                async with c.transaction():
+                    # Serialize commits per (project) — a plain existing-scenes
+                    # SELECT takes no lock, so two concurrent no-key submits would
+                    # both see "empty" and double-insert. The advisory xact lock
+                    # (namespaced, released at Tx end) makes the guard real for the
+                    # no-key path too. Replay is re-checked UNDER the lock so a
+                    # concurrent same-key replays instead of hitting the guard.
+                    await c.execute(
+                        "SELECT pg_advisory_xact_lock($1, hashtext($2))",
+                        _DECOMPOSE_COMMIT_LOCK_NS, str(project_id),
                     )
-                    chapter_ids.append(ch_node.id)
-                    for sc in ch.get("scenes", []):
-                        sn = await self.create_node(
-                            user_id, project_id, kind="scene", parent_id=ch_node.id,
-                            chapter_id=ch["chapter_id"], beat_role=ch.get("beat_role"),
-                            title=sc.get("title", ""), synopsis=sc.get("synopsis", ""),
-                            tension=sc.get("tension"),
-                            present_entity_ids=sc.get("present_entity_ids") or [],
-                            story_order=sc.get("story_order"),  # reading axis (S1 needs it)
-                            status="outline", conn=c,
+                    replayed = await _replay(c)
+                    if replayed is not None:
+                        return replayed
+                    existing = await c.fetch(
+                        """
+                        SELECT DISTINCT chapter_id FROM outline_node
+                        WHERE user_id = $1 AND project_id = $2 AND kind = 'scene'
+                          AND NOT is_archived AND chapter_id = ANY($3)
+                        """,
+                        user_id, project_id, affected,
+                    )
+                    existing_ids = [r["chapter_id"] for r in existing]
+                    if existing_ids and not replace:
+                        raise AlreadyPlannedError(existing_ids)
+                    if replace and existing_ids:
+                        # true replace — archive ONLY the target chapters' scenes.
+                        await c.execute(
+                            """
+                            UPDATE outline_node SET is_archived = true, updated_at = now()
+                            WHERE user_id = $1 AND project_id = $2 AND kind = 'scene'
+                              AND NOT is_archived AND chapter_id = ANY($3)
+                            """,
+                            user_id, project_id, existing_ids,
                         )
-                        scene_ids.append(sn.id)
-        return {"arc_id": arc.id, "chapter_ids": chapter_ids, "scene_ids": scene_ids}
+                    ids = await self._insert_decomposed_tree(
+                        c, user_id, project_id, arc_title=arc_title, chapters=chapters,
+                    )
+                    result = {
+                        "arc_id": str(ids["arc_id"]),
+                        "chapter_ids": [str(x) for x in ids["chapter_ids"]],
+                        "scene_ids": [str(x) for x in ids["scene_ids"]],
+                    }
+                    if idempotency_key:
+                        await c.execute(
+                            """
+                            INSERT INTO decompose_commit
+                              (user_id, project_id, idempotency_key, arc_id, result)
+                            VALUES ($1, $2, $3, $4, $5::jsonb)
+                            """,
+                            user_id, project_id, idempotency_key, ids["arc_id"], json.dumps(result),
+                        )
+                    return result
+            except asyncpg.UniqueViolationError:
+                # a concurrent same-key commit won the ledger race → our Tx rolled
+                # back (no dup tree). Replay the winner's stored result.
+                replayed = await _replay(c)
+                if replayed is not None:
+                    return replayed
+                raise
 
     async def list_tree(
         self, user_id: UUID, project_id: UUID, *, include_archived: bool = False,

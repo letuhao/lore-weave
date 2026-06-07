@@ -51,15 +51,23 @@ class StubGlossary:
 
 class StubOutline:
     def __init__(self):
-        self.existing: set = set()
+        self.existing: set = set()   # chapter_ids that already have active scenes
         self.created = None
-    async def existing_scene_chapter_ids(self, u, p, ids):
-        return self.existing
-    async def create_decomposed_tree(self, u, p, *, arc_title, chapters):
-        self.created = {"arc_title": arc_title, "chapters": chapters}
-        return {"arc_id": uuid.uuid4(),
-                "chapter_ids": [uuid.uuid4() for _ in chapters],
-                "scene_ids": [uuid.uuid4() for ch in chapters for _ in ch["scenes"]]}
+        self.ledger: dict = {}       # idempotency_key → result (replay)
+    async def commit_decomposed_tree(self, u, p, *, arc_title, chapters, replace=False, idempotency_key=None):
+        if idempotency_key and idempotency_key in self.ledger:
+            return {**self.ledger[idempotency_key], "replay": True}
+        clash = [ch["chapter_id"] for ch in chapters if ch["chapter_id"] in self.existing]
+        if clash and not replace:
+            from app.db.repositories import AlreadyPlannedError
+            raise AlreadyPlannedError(clash)
+        self.created = {"arc_title": arc_title, "chapters": chapters, "replace": replace}
+        result = {"arc_id": str(uuid.uuid4()),
+                  "chapter_ids": [str(uuid.uuid4()) for _ in chapters],
+                  "scene_ids": [str(uuid.uuid4()) for ch in chapters for _ in ch["scenes"]]}
+        if idempotency_key:
+            self.ledger[idempotency_key] = result
+        return result
 
 
 class StubTemplates:
@@ -194,15 +202,40 @@ def test_decompose_commit_bad_entity_400(ctx):
     assert r.status_code == 400 and r.json()["detail"]["code"] == "BAD_ENTITY"
 
 
-def test_decompose_commit_already_planned_guard_409_then_force_201(ctx):
+def test_decompose_commit_already_planned_guard_409_then_replace_201(ctx):
     c, _, _, _, outline, _ = ctx
     outline.existing = {CH1}  # CH1 already has scenes
     r = c.post(f"/v1/composition/works/{PROJECT}/outline/decompose/commit", json=_commit_body())
     assert r.status_code == 409 and r.json()["detail"]["code"] == "CHAPTER_ALREADY_PLANNED"
-    # force=true adds anyway (does NOT replace — documented)
+    # replace=true archives the existing scenes + persists (true replace, not add)
     r2 = c.post(f"/v1/composition/works/{PROJECT}/outline/decompose/commit",
-                json=_commit_body(force=True))
-    assert r2.status_code == 201
+                json=_commit_body(replace=True))
+    assert r2.status_code == 201 and outline.created["replace"] is True
+
+
+def test_decompose_commit_force_alias_maps_to_replace(ctx):
+    # `force` is the deprecated alias for `replace` (back-compat) → still archives.
+    c, _, _, _, outline, _ = ctx
+    outline.existing = {CH1}
+    r = c.post(f"/v1/composition/works/{PROJECT}/outline/decompose/commit",
+               json=_commit_body(force=True))
+    assert r.status_code == 201 and outline.created["replace"] is True
+
+
+def test_decompose_commit_idempotency_key_replays(ctx):
+    # D-A3-COMMIT-IDEMPOTENCY: a second commit with the same key replays the
+    # original result instead of persisting a second tree.
+    c, _, _, _, outline, _ = ctx
+    r1 = c.post(f"/v1/composition/works/{PROJECT}/outline/decompose/commit",
+                json=_commit_body(idempotency_key="k1"))
+    assert r1.status_code == 201 and r1.json()["replay"] is False
+    first_arc = r1.json()["arc_id"]
+    outline.created = None  # prove the 2nd does NOT re-persist
+    r2 = c.post(f"/v1/composition/works/{PROJECT}/outline/decompose/commit",
+                json=_commit_body(idempotency_key="k1"))
+    assert r2.status_code == 201 and r2.json()["replay"] is True
+    assert r2.json()["arc_id"] == first_arc
+    assert outline.created is None  # no second persist
 
 
 def test_decompose_commit_reference_violation_maps_400(ctx):
@@ -213,7 +246,7 @@ def test_decompose_commit_reference_violation_maps_400(ctx):
     async def boom(*a, **kw):
         raise ReferenceViolationError("bad parent")
 
-    outline.create_decomposed_tree = boom
+    outline.commit_decomposed_tree = boom
     r = c.post(f"/v1/composition/works/{PROJECT}/outline/decompose/commit", json=_commit_body())
     assert r.status_code == 400 and r.json()["detail"]["code"] == "BAD_REFERENCE"
 
