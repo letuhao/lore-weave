@@ -39,6 +39,7 @@ from app.deps import (
 )
 from app.db.models import CorrectionKind
 from app.engine.adaptive_k import adaptive_k
+from app.engine.assembly import resolve_assembly_mode
 from app.engine.canon_reflect import run_canon_reflect
 from app.engine.compress import compress
 from app.engine.cowrite import build_messages, estimate_prompt_tokens, stream_draft
@@ -81,6 +82,10 @@ class GenerateBody(BaseModel):
     model_kind: str | None = None
     model_name: str | None = None
     idempotency_key: str | None = None
+    # Chapter-assembly mode override (B1). None → resolve from the work setting
+    # then the config default. Literal → a bad value 422s here, before any job.
+    # 'chapter' (B2 single-pass) is not implemented yet → 501 in generate().
+    assembly_mode: Literal["per_scene", "chapter"] | None = None
 
 
 class CritiqueBody(BaseModel):
@@ -143,6 +148,16 @@ async def generate(
     llm: LLMClient = Depends(get_llm_client_dep),
 ) -> Any:  # StreamingResponse (cowrite) | JSONResponse (auto)
     work, node = await _load_work_node(works, outline, user_id, project_id, body.outline_node_id)
+
+    # B1 — resolve the chapter-assembly mode (request override → work setting →
+    # config default). 'chapter' (single-pass, B2) is not implemented yet, so a
+    # resolved 'chapter' 501s BEFORE any job/pack/stream — never silently runs the
+    # per-scene engine. B2 replaces this guard with the chapter path.
+    assembly_mode = resolve_assembly_mode(
+        body.assembly_mode, work.settings, settings.composition_assembly_mode_default)
+    if assembly_mode == "chapter":
+        raise HTTPException(status_code=501, detail={
+            "code": "ASSEMBLY_MODE_NOT_IMPLEMENTED", "assembly_mode": "chapter"})
 
     # S2 — bind the compress primitive over the drafter model + the Work's source
     # language; pack() calls it only when the raw story-so-far exceeds budget.
@@ -228,7 +243,8 @@ async def generate(
             return JSONResponse({"job_id": str(job.id), "mode": "auto", "replay": True,
                                  "text": r.get("text", ""), "status": job.status,
                                  "winner_index": r.get("winner_index"),
-                                 "k": r.get("k"), "candidates": r.get("candidates", [])})
+                                 "k": r.get("k"), "candidates": r.get("candidates", []),
+                                 "assembly_mode": assembly_mode})
         sdict = work.settings or {}
         c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
         distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
@@ -319,13 +335,15 @@ async def generate(
             # the publish/commit path + the author).
             "canon": canon,
             "reasoning_source": reasoning.source, "reasoning_effort": reasoning.effort,
+            "assembly_mode": assembly_mode,
         })
 
     async def event_gen():
         yield _sse({"type": "job", "job_id": str(job.id), "created": created,
                     "grounding_available": pc.grounding_available,
                     "reasoning_source": reasoning.source,
-                    "reasoning_effort": reasoning.effort})
+                    "reasoning_effort": reasoning.effort,
+                    "assembly_mode": assembly_mode})
         if not created:
             # Idempotent replay — don't re-stream; report the existing job.
             yield _sse({"type": "done", "job_id": str(job.id), "status": job.status, "replay": True})

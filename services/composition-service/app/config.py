@@ -63,5 +63,17 @@ class Settings(BaseSettings):
     # is RECENT + scalable. 0 → no lower bound (carry all prior; small books).
     pack_timeline_recent_chapters: int = 5
 
+    # Chapter-assembly modes (LOOM chapter-assembly-modes). The default mode for a
+    # Work that hasn't set `settings.assembly_mode`: 'per_scene' (the validated
+    # per-scene engine + B3 stitch) or 'chapter' (B2 single-pass from the plan).
+    # A per-request override may still pick the other mode. Default per_scene =
+    # co-write parity; autonomous long-form sets 'chapter' on the Work.
+    composition_assembly_mode_default: str = "per_scene"
+    # Output ceilings for the two chapter-level paths. Declared here so config is
+    # stable across milestones; UNUSED until B2 (chapter single-pass) / B3 (stitch)
+    # consume them. A whole chapter is one pass → larger than the per-scene 1024.
+    chapter_gen_max_tokens: int = 4096
+    stitch_max_tokens: int = 4096
+
 
 settings = Settings()  # type: ignore[call-arg]
