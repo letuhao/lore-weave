@@ -1,9 +1,12 @@
 """Two-axis spoiler cutoff (§2.2) — the spoiler-safety guarantee.
 
-In-world axis (true cutoff, L1b): keep events whose `chronological_order` is
-strictly before the scene's `story_order`. The timeline query already applies
-`before_chronological=story_order`; this is a defensive re-filter (fail-closed if
-the query was ever issued unscoped).
+In-world axis (true cutoff, L1b): keep events whose `event_order` (the DENSE
+reading-order axis = chapter sort_order × stride; CM4) is strictly before the
+scene's chapter cutoff `at_order` (= scene chapter sort_order × stride). The
+timeline query already applies `before_order=at_order`; this is a defensive
+re-filter (fail-closed if the query was ever issued unscoped). NOTE: the sparse
+date-derived `chronological_order` is NOT used here — most extracted events are
+dateless (NULL chrono), so the date axis silently dropped prior-chapter plot.
 
 Reading-order axis (approximation, L4): a retrieved passage only knows its
 chapter (`source_id`/`chapter_index`), not in-world time. Keep hits whose chapter
@@ -21,17 +24,21 @@ from typing import Any, Callable
 
 
 def filter_inworld_events(
-    events: list[dict[str, Any]], story_order: int | None,
+    events: list[dict[str, Any]], at_order: int | None,
 ) -> tuple[list[dict[str, Any]], int]:
-    """L1b: keep events with `chronological_order < story_order`. Returns
-    (kept, dropped). `story_order=None` → no safe cutoff → drop all (fail
-    closed; the lens shouldn't even query timeline in that case)."""
-    if story_order is None:
+    """L1b: keep events with `event_order < at_order` — the DENSE reading-order
+    axis (`event_order` = chapter sort_order × stride; CM4), NOT the sparse
+    date-derived `chronological_order` (dateless events have NULL chrono and would
+    be silently dropped — the LOOM-32 cross-chapter-carry fix). Returns (kept,
+    dropped). `at_order=None` → no safe cutoff → drop all (fail closed; the lens
+    shouldn't even query timeline in that case). Defensive re-filter of the
+    `before_order=at_order` query (fail-closed if it was ever issued unscoped)."""
+    if at_order is None:
         return [], len(events)
     kept = [
         e for e in events
-        if isinstance(e.get("chronological_order"), int)
-        and e["chronological_order"] < story_order
+        if isinstance(e.get("event_order"), int)
+        and e["event_order"] < at_order
     ]
     return kept, len(events) - len(kept)
 

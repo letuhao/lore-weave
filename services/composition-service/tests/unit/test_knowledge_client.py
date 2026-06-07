@@ -109,6 +109,24 @@ async def test_timeline_always_sends_project_id_and_cutoff():
 
 
 @respx.mock
+async def test_timeline_forwards_event_order_window():
+    # LOOM-32: the packer drives the timeline on the DENSE event_order axis with a
+    # recent-window — assert both bounds reach the wire (project_id always sent).
+    route = respx.get(f"{BASE}/v1/knowledge/timeline").mock(
+        return_value=httpx.Response(200, json={"events": [], "total": 0})
+    )
+    c = await _client()
+    try:
+        await c.timeline("jwt", project_id=PROJECT, before_order=10_000_000, after_order=4_999_999)
+    finally:
+        await c.aclose()
+    params = route.calls.last.request.url.params
+    assert params["project_id"] == str(PROJECT)
+    assert params["before_order"] == "10000000"
+    assert params["after_order"] == "4999999"
+
+
+@respx.mock
 async def test_get_entity_and_search_drawers():
     respx.get(f"{BASE}/v1/knowledge/entities/e1").mock(
         return_value=httpx.Response(200, json={"entity": {"id": "e1"}, "relations": []})

@@ -55,5 +55,13 @@ class Settings(BaseSettings):
     pack_compress_recent_threshold_chars: int = 6000
     pack_compress_keep_immediate: int = 2
 
+    # L1b timeline RECENT-WINDOW (LOOM-32 /review-impl MED#1) — the knowledge
+    # timeline endpoint orders event_order ASC + LIMIT, so an unbounded query deep
+    # in a long book returns the OLDEST prior events (chapter 1), not the
+    # most-recent-prior chapters that drive continuity. Bound the lookback to the
+    # last N chapters before the scene's chapter (after_order window) so the carry
+    # is RECENT + scalable. 0 → no lower bound (carry all prior; small books).
+    pack_timeline_recent_chapters: int = 5
+
 
 settings = Settings()  # type: ignore[call-arg]

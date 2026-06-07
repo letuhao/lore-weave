@@ -28,6 +28,9 @@ from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
+# scene_at_order / EVENT_ORDER_CHAPTER_STRIDE — the reading-axis cutoff contract
+# (canon_check is pure, no app imports → no cycle into the packer).
+from app.engine.canon_check import scene_at_order
 from app.packer import assemble
 from app.packer import budget as B
 from app.packer import profile as profile_mod
@@ -105,13 +108,33 @@ async def pack(
         [_as_uuid(node.get("pov_entity_id"))] + [_as_uuid(e) for e in (node.get("present_entity_ids") or [])]
     ) if u is not None]
 
+    # Resolve the scene's chapter reading position FIRST — it is the timeline
+    # cutoff on the DENSE event_order axis (at_order = sort × stride; CM4) AND the
+    # canon-guard / L4 reading position. gather_timeline MUST query
+    # before_order=at_order (not the sparse chronological axis), or dateless events
+    # — the majority, esp. CJK — never carry across chapters (LOOM-32 Round-2).
+    scene_sort_order = None
+    if chapter_id is not None:
+        scene_sort_order = (await book.get_chapter_sort_orders([chapter_id])).get(str(chapter_id))
+    at_order = scene_at_order(scene_sort_order)
+    # RECENT-WINDOW lower bound (/review-impl MED#1): the timeline endpoint orders
+    # event_order ASC + LIMIT, so deep in a long book an unbounded query returns the
+    # OLDEST prior events. Bound the lookback to the last N chapters before this one
+    # so the carry is RECENT. None when the scene is within the first N chapters
+    # (carry all prior) or its chapter is unplaceable.
+    timeline_after = None
+    _window = settings.pack_timeline_recent_chapters
+    if scene_sort_order is not None and _window > 0 and scene_sort_order > _window:
+        lo = scene_at_order(scene_sort_order - _window)  # (N - W) × stride
+        timeline_after = lo - 1 if lo is not None else None  # strict '>' → include chapter (N-W)
+
     canon, (present, seen_p), (timeline, seen_t), (beat, threads, planned), recent, (lore, seen_l) = (
         await asyncio.gather(
             gather_canon(canon_repo, req.user_id, req.project_id, story_order),
             gather_present(glossary, knowledge, book_id=req.book_id, user_id=req.user_id,
                            project_id=req.project_id, bearer=req.bearer, query=query,
                            present_entity_ids=present_ids),
-            gather_timeline(knowledge, req.bearer, req.project_id, story_order),
+            gather_timeline(knowledge, req.bearer, req.project_id, at_order, after_order=timeline_after),
             gather_structural(outline_repo, scene_links_repo, user_id=req.user_id,
                               project_id=req.project_id, node=node),
             gather_recent(book, req.book_id, chapter_id, req.bearer,
@@ -121,21 +144,23 @@ async def pack(
         )
     )
 
-    # Resolve reading positions in ONE batch: the scene's chapter + any lore hit
-    # whose chapter_index is None (best-effort ingest left it unset).
-    to_resolve: list[UUID] = []
-    if chapter_id is not None:
-        to_resolve.append(chapter_id)
+    # The scene's own chapter sort is resolved above; here resolve ONLY the lore
+    # hits whose chapter_index is None (best-effort ingest left it unset).
+    sort_map: dict[str, int] = {}
+    if chapter_id is not None and scene_sort_order is not None:
+        sort_map[str(chapter_id)] = scene_sort_order
+    lore_to_resolve: list[UUID] = []
     for h in lore:
         if h.get("chapter_index") is None:
             sid = _as_uuid(h.get("source_id"))
             if sid is not None:
-                to_resolve.append(sid)
-    sort_map = await book.get_chapter_sort_orders(to_resolve) if to_resolve else {}
-    scene_sort_order = sort_map.get(str(chapter_id)) if chapter_id is not None else None
+                lore_to_resolve.append(sid)
+    if lore_to_resolve:
+        sort_map.update(await book.get_chapter_sort_orders(lore_to_resolve))
 
-    # Spoiler — two axes.
-    tl_kept, tl_dropped = spoiler.filter_inworld_events(timeline, story_order)
+    # Spoiler — two axes. In-world (L1b) on the dense event_order axis (at_order);
+    # reading-order (L4) on the chapter sort axis (scene_sort_order).
+    tl_kept, tl_dropped = spoiler.filter_inworld_events(timeline, at_order)
 
     def position_for(h: dict[str, Any]) -> int | None:
         ci = h.get("chapter_index")

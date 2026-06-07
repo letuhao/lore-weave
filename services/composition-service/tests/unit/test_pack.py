@@ -47,9 +47,19 @@ class StubKnowledge:
         # mui #4 C-1 — default [] so present falls back to glossary FTS (the
         # pre-mui#4 behaviour these tests assert).
         self._semantic_bios = semantic_bios if semantic_bios is not None else []
+        # default so a test can assert these even when timeline() is never called
+        # (e.g. a node with no chapter_id → gather_timeline short-circuits).
+        self.seen_before_order: int | None = None
+        self.seen_after_order: int | None = None
     async def glossary_semantic(self, user_id, *, project_id, query, **kw):
         return self._semantic_bios
-    async def timeline(self, bearer, *, project_id, before_chronological=None, **kw):
+    async def timeline(self, bearer, *, project_id, before_order=None, after_order=None, **kw):
+        # LOOM-32: the lens now queries the DENSE event_order axis (before_order),
+        # not the sparse before_chronological. Record both bounds so a test can
+        # assert the cutoff (= scene chapter sort × stride) AND the recent-window
+        # lower bound (/review-impl MED#1).
+        self.seen_before_order = before_order
+        self.seen_after_order = after_order
         return self._events
     async def search_drawers(self, bearer, *, project_id, query, **kw):
         return self._hits
@@ -165,8 +175,10 @@ async def test_s2_compress_degrade_keeps_raw(monkeypatch):
 
 
 async def test_l4_spoiler_drops_future_hits():
+    # scene chapter sort = 5 → at_order cutoff = 5_000_000. A ch2 event (2e6) is
+    # in-world-past → kept; lore hits are filtered on the chapter-sort axis.
     kn = StubKnowledge(
-        events=[{"chronological_order": 2, "title": "past", "summary": "x"}],
+        events=[{"event_order": 2_000_000, "title": "past", "summary": "x"}],
         hits=[
             {"source_id": "a", "chapter_index": 1, "text": "early lore"},   # before cutoff 5 → keep
             {"source_id": "b", "chapter_index": 9, "text": "future lore"},  # after → drop
@@ -178,6 +190,52 @@ async def test_l4_spoiler_drops_future_hits():
     assert "future lore" not in pc.blocks.get("lore", "")
     # in-world timeline event present in memory block
     assert "past" in pc.blocks.get("memory", "")
+    assert kn.seen_before_order == 5_000_000  # cutoff = scene chapter sort × stride
+
+
+async def test_timeline_dense_axis_carries_dateless_and_excludes_future():
+    # LOOM-32 cross-chapter carry regression: the timeline lens reads event_order
+    # (dense, always set on publish), NOT chronological_order (sparse/dateless).
+    # A prior-chapter event with NO date (chronological_order absent) MUST carry;
+    # a same/future-chapter event MUST be excluded. Scene chapter sort=5 → cutoff 5e6.
+    kn = StubKnowledge(events=[
+        {"event_order": 1_000_000, "title": "ch1 dateless plot", "summary": "the keep fell"},
+        {"event_order": 5_000_000, "title": "ch5 future", "summary": "spoiler"},
+        {"event_order": 5_500_000, "title": "ch6 future", "summary": "spoiler2"},
+    ])
+    pc = await _pack(_req(story_order=5005), knowledge=kn)
+    memory = pc.blocks.get("memory", "")
+    assert "ch1 dateless plot" in memory          # dateless prior-chapter event carries
+    assert "ch5 future" not in memory and "ch6 future" not in memory  # spoiler-bounded
+    assert kn.seen_after_order is None  # sort 5 ≤ window 5 → no lower bound (carry all prior)
+
+
+async def test_timeline_recent_window_bounds_lookback_on_deep_chapter():
+    # /review-impl MED#1: deep in a long book the endpoint's ASC+LIMIT would return
+    # the OLDEST prior events. The packer bounds lookback to the last W chapters via
+    # after_order. Scene chapter sort=10, W=5 → carry chapters [5,9): after_order =
+    # (10-5)×stride - 1 = 4_999_999, before_order = 10_000_000.
+    kn = StubKnowledge(events=[{"event_order": 6_000_000, "title": "recent ch6", "summary": "x"}])
+    pc = await _pack(_req(), knowledge=kn, book=StubBook(sort_map={str(CHAPTER): 10}))
+    assert kn.seen_before_order == 10_000_000
+    assert kn.seen_after_order == 4_999_999  # (10 - 5) × stride - 1 → includes chapter 5 onward
+    assert "recent ch6" in pc.blocks.get("memory", "")
+
+
+async def test_timeline_empty_when_chapter_unplaceable():
+    # /review-impl LOW#2: a node with no chapter_id → scene_sort_order None →
+    # at_order None → gather_timeline returns [] (fail closed, no leak).
+    kn = StubKnowledge(events=[{"event_order": 1_000_000, "title": "should not appear"}])
+    req = PackRequest(
+        user_id=USER, project_id=PROJECT, book_id=BOOK,
+        node={"id": str(NODE), "chapter_id": None, "story_order": 5,
+              "present_entity_ids": [], "pov_entity_id": None, "beat_role": "hook",
+              "goal": "g", "synopsis": "s", "title": "t"},
+        bearer="jwt",
+    )
+    pc = await _pack(req, knowledge=kn)
+    assert kn.seen_before_order is None  # no chapter → at_order None → not queried
+    assert "should not appear" not in pc.blocks.get("memory", "")
 
 
 async def test_l4_conservative_drop_counts_no_position():

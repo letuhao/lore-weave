@@ -166,18 +166,24 @@ class KnowledgeClient:
 
     async def timeline(
         self, bearer: str, *, project_id: UUID, before_chronological: int | None = None,
-        before_order: int | None = None, entity_id: str | None = None, limit: int = 50,
+        before_order: int | None = None, after_order: int | None = None,
+        entity_id: str | None = None, limit: int = 50,
     ) -> list[dict[str, Any]]:
         """L1b — in-world events for a project (JWT-forward). `project_id` is
         ALWAYS sent (A1/§12: omitting it widens to ALL the user's projects).
-        `before_chronological` is the true in-world spoiler cutoff. Returns the
-        events list (each carries `chronological_order`/`event_order`/`title`/
-        `summary`/`participants`) or [] on failure."""
+        `before_order` is the dense reading-order spoiler cutoff (event_order);
+        `after_order` is the RECENT-WINDOW lower bound (the endpoint orders
+        event_order ASC + LIMIT, so without it a deep-book query returns the
+        OLDEST prior events — LOOM-32 MED#1). Returns the events list (each carries
+        `chronological_order`/`event_order`/`title`/`summary`/`participants`) or
+        [] on failure."""
         params: dict[str, Any] = {"project_id": str(project_id), "limit": limit}
         if before_chronological is not None:
             params["before_chronological"] = before_chronological
         if before_order is not None:
             params["before_order"] = before_order
+        if after_order is not None:
+            params["after_order"] = after_order
         if entity_id is not None:
             params["entity_id"] = entity_id
         return await self._jwt_get_list(

@@ -133,14 +133,26 @@ async def gather_present(
 
 
 async def gather_timeline(
-    knowledge: KnowledgeClient, bearer: str, project_id: UUID, story_order: int | None,
+    knowledge: KnowledgeClient, bearer: str, project_id: UUID, at_order: int | None,
+    after_order: int | None = None,
 ) -> tuple[list[dict[str, Any]], bool]:
-    """L1b — in-world events strictly before the scene moment. NEVER queried
-    without a cutoff: `story_order=None` → [] (a no-cutoff timeline call would
-    leak future events). Returns (events, knowledge_seen)."""
-    if story_order is None:
+    """L1b — in-world events strictly before the scene's chapter, on the DENSE
+    reading-order axis (`event_order` = chapter sort_order × stride; CM4).
+
+    Queries `before_order=at_order`, NOT the sparse date-derived
+    `chronological_order`: extraction leaves most events dateless (esp. CJK) →
+    `chronological_order` NULL → the date-axis query silently drops them, so prior
+    chapters' plot never carried into a new chapter's pack (LOOM-32 Round-2 finding
+    — the chapter-boundary re-establishment defect). `event_order` is always set
+    when a chapter is published, so the dense axis carries ALL position-bound
+    events.
+
+    NEVER queried without a cutoff: `at_order=None` (scene's chapter unplaceable)
+    → [] (a no-cutoff call would leak future events). Returns (events, seen)."""
+    if at_order is None:
         return [], False
-    events = await knowledge.timeline(bearer, project_id=project_id, before_chronological=story_order)
+    events = await knowledge.timeline(bearer, project_id=project_id, before_order=at_order,
+                                      after_order=after_order)
     return events, bool(events)
 
 

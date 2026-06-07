@@ -81,18 +81,23 @@ def test_budget_protected_over_target_flags_over_budget():
 # ── spoiler (two-axis cutoff) ──
 
 def test_inworld_drops_future_events():
+    # LOOM-32: in-world filter is on the DENSE event_order axis (= chapter
+    # sort × stride), NOT the sparse chronological_order. at_order = the scene's
+    # chapter cutoff (ch3 → 3_000_000); a ch1 event (1e6) is kept, ch5 (5e6) is
+    # future, and an event with NO event_order (legacy/chat) is conservative-dropped
+    # even though it has a chronological_order (proves we no longer read that axis).
     events = [
-        {"chronological_order": 3, "title": "past"},
-        {"chronological_order": 10, "title": "future"},
-        {"chronological_order": None, "title": "unplaceable"},
+        {"event_order": 1_000_000, "title": "ch1 past"},
+        {"event_order": 5_000_000, "title": "ch5 future"},
+        {"event_order": None, "chronological_order": 2, "title": "no-event-order"},
     ]
-    kept, dropped = spoiler.filter_inworld_events(events, story_order=5)
-    assert [e["title"] for e in kept] == ["past"]
-    assert dropped == 2  # future + unplaceable both excluded
+    kept, dropped = spoiler.filter_inworld_events(events, at_order=3_000_000)
+    assert [e["title"] for e in kept] == ["ch1 past"]
+    assert dropped == 2  # future + no-event-order both excluded
 
 
-def test_inworld_none_story_order_fails_closed():
-    kept, dropped = spoiler.filter_inworld_events([{"chronological_order": 1}], story_order=None)
+def test_inworld_none_at_order_fails_closed():
+    kept, dropped = spoiler.filter_inworld_events([{"event_order": 1_000_000}], at_order=None)
     assert kept == [] and dropped == 1
 
 
