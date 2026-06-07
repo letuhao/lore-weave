@@ -29,10 +29,12 @@ import json
 import sys
 import time
 import urllib.request
+import uuid
 
 GW = "http://localhost:3123"
 COMP_INTERNAL = "http://localhost:8217"
 GLOSSARY_INTERNAL = "http://localhost:8211"
+KNOWLEDGE_INTERNAL = "http://localhost:8216"
 INTERNAL_TOKEN = "dev_internal_token"
 DUMP = "_grounded_dump.json"
 
@@ -170,7 +172,41 @@ def probe_bios(book, user_id, cast):
     return grounded
 
 
-def build_one(token, user_id, drafter, premise, cast):
+def seed_kg_timeline(token, user_id, proj, book, chapters, per_chapter, cast):
+    """Populate the KG timeline with each chapter's PLAN events (chapter_index=i →
+    event_order=i×1e6) so a scene in chapter N grounds on chapters <N via the
+    LOOM-33-fixed timeline lens (before_order=scene_at_order). Simulates production
+    publish-as-you-write extraction WITHOUT the slow/flaky real publish+extract.
+    Seed ALL chapters up front — the lens position-bounds each scene to prior
+    chapters, so no interleave needed."""
+    cast_names = [n for n, _ in cast]
+    total = 0
+    for ci, ch in enumerate(chapters, start=1):  # chapters created in order → sort_order = ci
+        events = [{
+            "name": (s.get("title") or "scene"), "kind": "event",
+            "participants": cast_names, "participant_ids": [None] * len(cast_names),
+            "location": None, "time_cue": None,
+            "summary": (s.get("synopsis") or s.get("title") or ""),
+            "confidence": 0.9, "event_id": None, "event_date": None, "status_effects": [],
+        } for s in per_chapter.get(str(ch), [])]
+        if not events:
+            continue
+        total += len(events)
+        _internal("POST", KNOWLEDGE_INTERNAL, "/internal/extraction/persist-pass2", {
+            "user_id": user_id, "project_id": proj, "source_type": "chapter",
+            "source_id": f"seed:{ch}", "job_id": str(uuid.uuid4()),
+            "extraction_model": "grounded-kg-seed", "entities": [], "relations": [], "facts": [],
+            "events": events,
+            "hierarchy_paths": {"book_id": book, "book_path": "book", "book_title": None,
+                                "part_id": str(uuid.uuid4()), "part_path": "book/p1", "part_index": 1,
+                                "part_title": None, "chapter_id": ch,
+                                "chapter_path": f"book/p1/c{ci}", "chapter_index": ci,
+                                "chapter_title": None, "scenes": []},
+            "provenance": "human_authored"})
+    return total
+
+
+def build_one(token, user_id, drafter, premise, cast, seed_kg=False):
     book = _req("POST", "/v1/books", token,
                 {"title": f"GRND {int(time.time()*1000) % 100000}", "original_language": "en"})["book_id"]
     chapters = [_req("POST", f"/v1/books/{book}/chapters", token,
@@ -206,6 +242,11 @@ def build_one(token, user_id, drafter, premise, cast):
     for n in scenes:
         per_chapter.setdefault(str(n["chapter_id"]), []).append(n)
 
+    if seed_kg:
+        seeded = seed_kg_timeline(token, user_id, proj, book, chapters, per_chapter, cast)
+        print(f"    KG timeline seeded: {seeded} events across {len(chapters)} chapters "
+              f"(chapter N+1 now grounds on chapters <N+1 via the fixed lens)")
+
     a3_parts, a3_k = [], []
     for n in scenes:
         txt, k = gen_auto_text(token, proj, n["id"], drafter)
@@ -224,18 +265,21 @@ def build_one(token, user_id, drafter, premise, cast):
 
 
 def main():
-    n = int(sys.argv[1]) if len(sys.argv) > 1 else 2
+    pos = [a for a in sys.argv[1:] if not a.startswith("--")]
+    n = int(pos[0]) if pos else 2
     n = max(1, min(n, len(PREMISES)))
+    seed_kg = "--seed-kg" in sys.argv  # also seed the KG timeline per chapter (LOOM-34 re-measure)
     token = login()
     user_id = jwt_sub(token)
     drafter, critic = models(token)
-    print(f"user={user_id} drafter={drafter} judge-critic={critic} n={n} (gen critic=drafter, no-swap)\n")
+    mode = "bios + KG-timeline-seeding" if seed_kg else "bios only"
+    print(f"user={user_id} drafter={drafter} judge-critic={critic} n={n} mode={mode} (gen critic=drafter, no-swap)\n")
 
     built = []  # (premise, cast, book, a3, v0, a3_k)
     for premise, cast in PREMISES[:n]:
         print(f"  building: {premise[:60]}...")
         t0 = time.time()
-        book, a3, v0, a3k = build_one(token, user_id, drafter, premise, cast)
+        book, a3, v0, a3k = build_one(token, user_id, drafter, premise, cast, seed_kg=seed_kg)
         built.append((premise, cast, book, a3, v0, a3k))
         print(f"    A3 {len(a3)} chars (K={a3k}) | V0 {len(v0)} chars | {time.time()-t0:.0f}s")
 
