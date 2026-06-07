@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useParams, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Settings, Plus, Trash2 } from 'lucide-react';
+import { Settings, Plus, Trash2, Search } from 'lucide-react';
 import { useBookViewTracker } from '@/hooks/useBookViewTracker';
 import { useAuth } from '@/auth';
 import { booksApi, type Book } from '@/features/books/api';
@@ -104,6 +104,14 @@ export function BookDetailPage() {
         actions={
           <div className="flex items-center gap-2">
             {book.visibility && <StatusBadge variant={book.visibility} />}
+            <Link
+              to={`/books/${bookId}/search`}
+              aria-label="Raw search"
+              title="Raw search"
+              className="inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <Search className="h-3.5 w-3.5" />
+            </Link>
             <button
               onClick={() => setTrashOpen(true)}
               className="inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"

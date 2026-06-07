@@ -1,0 +1,9 @@
+{
+  "title": "Tìm kiếm thô",
+  "subtitle": "Tìm trong nguyên văn các chương của sách này (bản nháp).",
+  "placeholder": "Tìm trong văn bản chương…",
+  "hint": "Nhập để tìm trong nguyên văn chương.",
+  "loading": "Đang tìm…",
+  "no_results": "Không tìm thấy kết quả.",
+  "error": "Tìm kiếm thất bại. Vui lòng thử lại."
+}

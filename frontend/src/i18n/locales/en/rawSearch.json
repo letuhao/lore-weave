@@ -1,0 +1,9 @@
+{
+  "title": "Raw search",
+  "subtitle": "Search the verbatim text of this book's chapters (draft).",
+  "placeholder": "Search chapter text…",
+  "hint": "Type to search the raw chapter text.",
+  "loading": "Searching…",
+  "no_results": "No matches found.",
+  "error": "Search failed. Please try again."
+}

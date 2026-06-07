@@ -8,16 +8,22 @@
 
 ### ▶ RAW SEARCH (branch `raw-search/foundation`, off `origin/main`)
 
-**State: DESIGN LOCKED + Phase-1 BE (lexical leg) BUILT.** New workstream — the missing **raw chapter-text** layer beneath glossary/knowledge/wiki (all lossy derivatives); serves authoring + extraction/trích-lục. Spec [`2026-06-07-raw-search.md`](../specs/2026-06-07-raw-search.md) (PART I design + PART II ATAM-lite eval; 7/7 confirm-at-BUILD resolved). Plan [`2026-06-07-raw-search.md`](../plans/2026-06-07-raw-search.md) (3 phases; ADJ-1..4 PO-acked).
+**State: DESIGN LOCKED + Phase-1 FULL-STACK (lexical leg) DONE — BE + FE.** New workstream — the missing **raw chapter-text** layer beneath glossary/knowledge/wiki (all lossy derivatives); serves authoring + extraction/trích-lục. Spec [`2026-06-07-raw-search.md`](../specs/2026-06-07-raw-search.md) (PART I design + PART II ATAM-lite eval; 7/7 confirm-at-BUILD resolved). Plan [`2026-06-07-raw-search.md`](../plans/2026-06-07-raw-search.md) (3 phases; ADJ-1..4 PO-acked).
 
-**Phase-1 BE shipped (book-service, single-service):** `BE-1` pg_trgm + `idx_chapter_blocks_trgm` GIN as a **best-effort separate Exec in `Up()`** (review-impl MED-1 — NOT in `schemaSQL`, where a privilege failure would abort the whole schema-init txn). `BE-2` `GET /v1/books/{id}/search?q=&surface=&limit=` — JWT + `ensureOwnerBook` tenant gate; **ILIKE-primary + `similarity()` rank** over draft `chapter_blocks`; rune-offset highlight + verbatim snippet; `surface:"draft"`/`matchType:"lexical"`; `purge_pending`→404; surface enum validated. 6 new test funcs (~20 cases); **go build/vet/test green**. `/review-impl`: MED-1, MED-2, LOW-1, LOW-2 fixed; 2 COSMETIC deferred.
+**Phase-1 BE (book-service, commit a956fbb3):** `BE-1` pg_trgm + `idx_chapter_blocks_trgm` GIN as a **best-effort Exec in `Up()`** (review-impl MED-1 — NOT in `schemaSQL`). `BE-2` `GET /v1/books/{id}/search?q=&surface=&limit=` — JWT + `ensureOwnerBook`; **ILIKE-primary + `similarity()` rank** over draft `chapter_blocks`; rune-offset highlight; `surface:"draft"`/`matchType:"lexical"`; `purge_pending`→404. 6 test funcs; go build/vet/test green. /review-impl: MED-1/MED-2/LOW-1/LOW-2 fixed.
 
-**NEXT:** **FE-1** — `frontend/src/features/raw-search/` (api/types/hook/components; mirror `useDrawerSearch`/`DrawerResultCard`/`FilterToolbar`; TanStack Query; jump-to-source; `draft` badge). Then **Phase 2** (semantic leg via knowledge `:Passage` + RRF orchestrator at `/v1/knowledge/books/{id}/search`).
+**Phase-1 FE-1 (frontend):** `features/raw-search/` — `useRawSearch` (TanStack, min-len 1, **debounced 250ms**), `renderHighlight` (consumes BE **code-point** offsets via `Array.from` ⇒ resolves the UTF-16/supplementary-plane caveat), `RawSearchResultCard` (draft + matchType badges), `RawSearchPanel`; `RawSearchPage` at route `/books/:bookId/search` + a Search button on `BookDetailPage`; `rawSearch` i18n ×4. **vitest 7/7 · tsc --noEmit 0 · i18n parity OK.** /review-impl: MED-1 (native-button Space double-fire — dropped redundant `onKeyDown`) + MED-2 (added debounce) fixed.
+
+**NEXT:** **Phase 2 (hybrid)** — semantic leg via knowledge `:Passage` (`find_passages_by_vector`) + **RRF** orchestrator `GET /v1/knowledge/books/{id}/search` (project-resolve auth); book-service **internal** lexical mount `/internal/books/{id}/lexical-search` + `BookClient.lexical_search`; FE fallback on 404/503 + match-type chips. Decide canon-lexical projection (spec open #2). See plan.
 
 **Deferred (raw search):**
-- **D-RAWSEARCH-P1-LIVE-SMOKE** — real-stack CJK lexical search (pg_trgm on 封神演义) not yet live-verified; unit-covered + helpers proven. Smoke when book-service + DB are up.
-- **D-RAWSEARCH-FE-CODEPOINT-OFFSETS** (review-impl MED-2) — FE-1 must render highlights/jump by Unicode **code point** (`[...str]`), not UTF-16 `.slice`, else supplementary-plane chars misalign. Offsets in the API are code-point indices.
-- **D-RAWSEARCH-HANDLER-COVERAGE** (COSMETIC-1) — handler branch flow (401/400/404, score-boost, labels) relies on live-smoke (repo has no DB mock); optionally extract a pure row→result mapper.
+- **D-RAWSEARCH-P1-LIVE-SMOKE** — real-stack CJK lexical search (pg_trgm on 封神演义) + FE↔BE browser smoke not yet live-verified; unit-covered. Smoke when book-service + DB + FE are up.
+- **D-RAWSEARCH-FE-JUMP-PRECISION** (FE-1 LOW-2) — jump-to-source navigates to the book hub only; precise chapter-open + scroll-to-block (via `location.charStart`) deferred.
+- **D-RAWSEARCH-FE-MULTIRANGE** (FE-1 LOW-3) — `renderHighlight` assumes sorted/non-overlapping ranges; BE emits one today; sort when Phase-3 returns multiple spans.
+- **D-RAWSEARCH-FE-MINOR** (FE-1 LOW-1/LOW-4/COSMETIC) — score not displayed; book-page launch-button strings hardcoded (not i18n); no error/empty/loading-state vitest. Batch later.
+- **D-RAWSEARCH-HANDLER-COVERAGE** (BE COSMETIC-1) — handler branch flow relies on live-smoke (no DB mock); optionally extract a pure row→result mapper.
+
+**RETRO note** (ContextHub MCP offline this session): FE lesson — a redundant `onKeyDown` Enter/Space handler on a **native `<button>`** double-fires on Space (button already activates `onClick` on keyup); only add it for `role="button"` non-buttons. And: lowering a search min-length to 1 needs an input **debounce** to avoid a query per keystroke.
 
 ---
 
