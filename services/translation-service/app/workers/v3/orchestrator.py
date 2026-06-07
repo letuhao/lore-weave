@@ -46,7 +46,7 @@ async def translate_chapter_blocks_v3(
     from ..block_classifier import classify_block, extract_translatable_text
     from .romanization import romanization_instruction
     from .semantic_chunker import tag_groups
-    from .knowledge_context import build_context_brief
+    from .knowledge_context import build_context_brief, build_timeline_block
 
     # M4b/G4 — pronoun/honorific brief from glossary bios + knowledge relations,
     # computed ONCE per chapter and fed to BOTH the Translator and the Verifier
@@ -63,13 +63,30 @@ async def translate_chapter_blocks_v3(
         log.warning("v3 knowledge brief failed (non-fatal): %s", exc)
         knowledge_brief = ""
 
+    # M4d-1 — cross-chapter "story so far" timeline memo (knowledge events before
+    # this chapter). Best-effort, V3-only, Translator-side only (continuity
+    # context, not a verifier rule). Keyed on the book-service `sort_order` (the
+    # global reading position knowledge's event_order uses) — NOT the job-local
+    # `chapter_index`. When sort_order is unavailable we skip rather than window
+    # the wrong events.
+    timeline_block = ""
+    chapter_order = msg.get("chapter_sort_order")
+    if chapter_order is not None:
+        try:
+            timeline_block = await build_timeline_block(
+                msg.get("book_id", ""), int(chapter_order),
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            log.warning("v3 timeline memo failed (non-fatal): %s", exc)
+            timeline_block = ""
+
     # M4c — opportunistic prev-chapter memo (§12.1): used when chapter N-1's memo
     # already exists; never forces ordering. V3-only (V2 ignores msg["prev_memo"]).
     from .chapter_memo import build_prev_memo_block
     prev_memo_block = build_prev_memo_block(msg.get("prev_memo"))
 
     extra = romanization_instruction(source_lang, msg.get("target_language", ""))
-    for _seg in (knowledge_brief, prev_memo_block):
+    for _seg in (knowledge_brief, prev_memo_block, timeline_block):
         if _seg:
             extra = (extra + "\n\n" + _seg).strip()
 

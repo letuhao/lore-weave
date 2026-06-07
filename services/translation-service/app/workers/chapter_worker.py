@@ -109,6 +109,12 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
     source_lang  = chapter.get("original_language") or "unknown"
     chapter_text = chapter.get("text_content") or ""
     chapter_body = chapter.get("body")  # Tiptap JSONB (dict with "content" key) or None
+    # M4d-1: the book-service chapter sort_order is the GLOBAL reading position —
+    # the same axis knowledge-service keys event_order on. The V3 timeline memo
+    # MUST use this, not the job-local `chapter_index` (= enumerate(chapter_ids)),
+    # or a job that doesn't start at chapter 0 would window the wrong events.
+    if chapter.get("sort_order") is not None:
+        msg["chapter_sort_order"] = chapter["sort_order"]
     log.info(
         "chapter %s: fetched %d chars, source_lang=%s, has_json_body=%s",
         chapter_id, len(chapter_text), source_lang, bool(chapter_body and isinstance(chapter_body, dict)),

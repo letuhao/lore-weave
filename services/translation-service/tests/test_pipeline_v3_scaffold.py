@@ -309,6 +309,69 @@ async def test_v3_zh_vi_injects_romanization_into_translation():
     assert "Hán-Việt" in v2.call_args.kwargs["extra_system"]
 
 
+@pytest.mark.asyncio
+async def test_v3_injects_timeline_memo_into_translation(monkeypatch):
+    """M4d-1: the cross-chapter "story so far" timeline memo is injected into the
+    Translator extra_system (continuity context, Translator-side only)."""
+    from app.workers.v3 import orchestrator
+    from app.workers.knowledge_client import TimelineBrief, TimelineEvent
+
+    async def fake_timeline(book_id, chapter_index, limit=25):
+        return TimelineBrief(found=True, events=[
+            TimelineEvent("The siege of Eld", "The northern army fell.", "Y2", ["Tirami"]),
+        ])
+    monkeypatch.setattr("app.workers.v3.knowledge_context.fetch_timeline", fake_timeline)
+
+    blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "你好。"}]}]
+    pool, _ = _make_pool()
+    msg = _chapter_msg()  # target_language='vi'
+    # M4d-1: the timeline keys on the book-service global sort_order, NOT the
+    # job-local chapter_index. The worker threads it onto the msg.
+    msg["chapter_sort_order"] = 12
+
+    with patch("app.workers.session_translator.translate_chapter_blocks",
+               new_callable=AsyncMock, return_value=(blocks, 0, 0, 0, 0)) as v2, \
+         patch("app.workers.glossary_client.fetch_translation_glossary",
+               new_callable=AsyncMock, return_value=[]):
+        await orchestrator.translate_chapter_blocks_v3(
+            blocks, "zh", msg, pool, uuid4(), llm_client=MagicMock(), context_window=8192,
+        )
+
+    extra = v2.call_args.kwargs["extra_system"]
+    assert "RECENT STORY EVENTS" in extra
+    assert "The siege of Eld" in extra
+
+
+@pytest.mark.asyncio
+async def test_v3_skips_timeline_when_no_sort_order(monkeypatch):
+    """M4d-1 review-impl MED-1: without a book-service sort_order on the msg, the
+    timeline is SKIPPED (not windowed on the wrong job-local axis)."""
+    from app.workers.v3 import orchestrator
+
+    called = {"n": 0}
+
+    async def fake_timeline(book_id, chapter_order, limit=25):
+        called["n"] += 1
+        from app.workers.knowledge_client import TimelineBrief, TimelineEvent
+        return TimelineBrief(found=True, events=[TimelineEvent("X", None, None, [])])
+    monkeypatch.setattr("app.workers.v3.knowledge_context.fetch_timeline", fake_timeline)
+
+    blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "你好。"}]}]
+    pool, _ = _make_pool()
+    msg = _chapter_msg()  # NO chapter_sort_order
+
+    with patch("app.workers.session_translator.translate_chapter_blocks",
+               new_callable=AsyncMock, return_value=(blocks, 0, 0, 0, 0)) as v2, \
+         patch("app.workers.glossary_client.fetch_translation_glossary",
+               new_callable=AsyncMock, return_value=[]):
+        await orchestrator.translate_chapter_blocks_v3(
+            blocks, "zh", msg, pool, uuid4(), llm_client=MagicMock(), context_window=8192,
+        )
+
+    assert called["n"] == 0  # never fetched — no wrong-axis window
+    assert "RECENT STORY EVENTS" not in v2.call_args.kwargs["extra_system"]
+
+
 # ── M2: LLM verifier (standard) + multi-round loop (thorough) ─────────────────
 
 @pytest.mark.asyncio
