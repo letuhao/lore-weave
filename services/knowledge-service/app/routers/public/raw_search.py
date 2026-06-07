@@ -22,6 +22,8 @@ from pydantic import BaseModel
 
 from app.clients.book_client import BookClient
 from app.clients.embedding_client import EmbeddingClient
+from app.clients.reranker_client import RerankerClient
+from app.config import settings
 from app.context.query_embedding import embed_query_cached
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.passages import (
@@ -30,7 +32,12 @@ from app.db.neo4j_repos.passages import (
     find_passages_by_vector,
 )
 from app.db.repositories.projects import ProjectsRepo
-from app.deps import get_book_client, get_embedding_client, get_projects_repo
+from app.deps import (
+    get_book_client,
+    get_embedding_client,
+    get_projects_repo,
+    get_reranker_client,
+)
 from app.middleware.jwt_auth import get_current_user
 from app.search.hybrid_fusion import (
     BLOCK_CHAPTER_CAP,
@@ -123,6 +130,41 @@ async def _enrich_titles(hits: list[dict[str, Any]], book_client: BookClient) ->
             h["chapterTitle"] = title
 
 
+async def _apply_rerank(
+    q: str,
+    fused: list[dict[str, Any]],
+    reranker: RerankerClient,
+    *,
+    pool_n: int,
+    min_rerank_score: float,
+    degraded: dict[str, str],
+) -> list[dict[str, Any]]:
+    """E5B — cross-encoder rerank the top `pool_n` fused candidates.
+
+    Re-sorts by the cross-encoder score (set as each hit's `relevance`) and
+    drops hits below `min_rerank_score` — this is the junk-rejection a global
+    cosine floor couldn't do (the candidates beyond `pool_n` are dropped, so a
+    fully-off-topic query that scores everything low returns nothing).
+    Reranker unavailable ⇒ keep the fusion order untouched (degraded marker)."""
+    if not fused:
+        return fused
+    cand = fused[:pool_n]
+    docs = [str(h.get("snippet") or "") for h in cand]
+    scores = await reranker.rerank(q, docs)
+    if scores is None:
+        degraded["rerank"] = "unavailable"
+        return fused
+    by_index = {int(s["index"]): float(s["relevance_score"]) for s in scores if "index" in s}
+    reranked: list[dict[str, Any]] = []
+    for i, h in enumerate(cand):
+        sc = by_index.get(i)
+        if sc is None or sc < min_rerank_score:
+            continue
+        reranked.append({**h, "relevance": sc})
+    reranked.sort(key=lambda h: h["relevance"], reverse=True)
+    return reranked
+
+
 @router.get("/books/{book_id}/search", response_model=RawSearchResponse)
 async def search_book(
     book_id: UUID = Path(..., description="Book to search."),
@@ -131,10 +173,13 @@ async def search_book(
     limit: int = Query(20, ge=1, le=RAW_SEARCH_MAX_LIMIT),
     granularity: Granularity = Query("chapter"),
     min_relevance: float = Query(MIN_RELEVANCE_DEFAULT, ge=0.0, le=1.0),
+    rerank: bool = Query(True),
+    min_rerank_score: float | None = Query(None, ge=0.0, le=1.0),
     user_id: UUID = Depends(get_current_user),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     book_client: BookClient = Depends(get_book_client),
     embedding_client: EmbeddingClient = Depends(get_embedding_client),
+    reranker_client: RerankerClient = Depends(get_reranker_client),
 ) -> RawSearchResponse:
     q = query.strip()
     if not q:
@@ -205,6 +250,24 @@ async def search_book(
     # granularity sets the per-chapter cap (chapter=1 best block; block=lift cap
     # for exhaustive mining). RRF still ranks; `relevance` survives fusion.
     fused = rrf_fuse([lexical_hits, semantic_hits])
+    # E5B: cross-encoder rerank for semantic/hybrid (where junk leaks). Lexical
+    # mode is already clean (exact substring) so it skips rerank + stays fast.
+    if (
+        rerank
+        and settings.rerank_enabled
+        and mode != "lexical"
+        and fused
+    ):
+        floor = settings.min_rerank_score if min_rerank_score is None else min_rerank_score
+        fused = await _apply_rerank(
+            q, fused, reranker_client,
+            # 2*limit: two-leg fusion yields up to 2*limit hits — rerank the
+            # whole returnable pool so no distinct chapter is dropped pre-cap
+            # (review-impl LOW-1).
+            pool_n=max(settings.rerank_top_n, 2 * limit),
+            min_rerank_score=floor,
+            degraded=degraded,
+        )
     fused = apply_relevance_floor(fused, min_relevance)
     # `cap_per_chapter` keys on chapterId ALONE (not surface), so chapter mode
     # (cap=1) yields exactly one row per chapter even in hybrid — if a chapter

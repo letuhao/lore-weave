@@ -258,6 +258,7 @@ func (s *Server) Router() http.Handler {
 		// audio paths (transcriptions, speech) pass through.
 		r.HandleFunc("/proxy/*", s.internalProxy)
 		r.Post("/embed", s.internalEmbed)
+		r.Post("/rerank", s.internalRerank) // E5B — cross-encoder rerank (platform service)
 
 		// Phase 1a — service-to-service streaming endpoint.
 		r.Post("/llm/stream", s.internalLlmStream)
@@ -2293,6 +2294,42 @@ func (s *Server) recordInvocation(ctx context.Context, payload map[string]any) (
 }
 
 // ── K12.1 — Embedding endpoint ──────────────────────────────────────────────
+
+// internalRerank handles POST /internal/rerank — cross-encoder reranking for
+// raw-search junk-rejection (E5B). The reranker is a single PLATFORM service
+// (config RERANK_URL + RERANK_SERVICE_TOKEN), not a per-user BYOK provider, so
+// there's no credential resolution here. Empty RerankURL ⇒ 503 (the knowledge
+// caller degrades to fusion order — search never fails because rerank is off).
+func (s *Server) internalRerank(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.RerankURL == "" {
+		writeError(w, http.StatusServiceUnavailable, "RERANK_UNAVAILABLE", "rerank service not configured")
+		return
+	}
+	var in struct {
+		Model     string   `json:"model"`
+		Query     string   `json:"query"`
+		Documents []string `json:"documents"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "invalid payload")
+		return
+	}
+	if strings.TrimSpace(in.Query) == "" || len(in.Documents) == 0 {
+		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "query and documents are required")
+		return
+	}
+	model := in.Model
+	if model == "" {
+		model = s.cfg.RerankModel
+	}
+	results, err := provider.Rerank(r.Context(), s.invokeClient, s.cfg.RerankURL, s.cfg.RerankServiceToken, model, in.Query, in.Documents)
+	if err != nil {
+		// Upstream rerank failure ⇒ 502 so the caller degrades (not a client bug).
+		writeError(w, http.StatusBadGateway, "RERANK_UPSTREAM_ERROR", "rerank service error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"model": model, "results": results})
+}
 
 // internalEmbed handles POST /internal/embed.
 // Resolves the user's embedding model via BYOK credentials and

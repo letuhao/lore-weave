@@ -18,6 +18,8 @@ from app.clients.book_client import get_book_client as _get_book_client_singleto
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.embedding_client import get_embedding_client as _get_embedding_client_singleton
 from app.clients.glossary_client import GlossaryClient
+from app.clients.reranker_client import RerankerClient
+from app.clients.reranker_client import get_reranker_client as _get_reranker_client_singleton
 from app.clients.glossary_client import get_glossary_client as _get_glossary_client_singleton
 from app.clients.llm_client import LLMClient
 from app.clients.llm_client import get_llm_client as _get_llm_client_singleton
@@ -96,6 +98,10 @@ async def get_book_client() -> BookClient:
 
 async def get_embedding_client() -> EmbeddingClient:
     return _get_embedding_client_singleton()
+
+
+async def get_reranker_client() -> RerankerClient:
+    return _get_reranker_client_singleton()
 
 
 async def get_llm_client() -> LLMClient:

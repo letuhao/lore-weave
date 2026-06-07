@@ -79,6 +79,17 @@ class Settings(BaseSettings):
     # longer should split their work rather than raise this.
     provider_client_timeout_s: float = 60.0
 
+    # E5B — cross-encoder rerank (raw-search junk-rejection). Routes through
+    # provider-registry /internal/rerank. `rerank_enabled` is a kill-switch
+    # (off ⇒ pure E5 behavior). `min_rerank_score` 0.30 is data-calibrated on
+    # the eval corpus (negatives < 0.30 < real positives). top_n bounds the
+    # cross-encoder passes; timeout is load-tolerant for cold-start.
+    rerank_enabled: bool = True
+    rerank_model: str = "bge-reranker-v2-m3"
+    rerank_top_n: int = 30
+    min_rerank_score: float = 0.30
+    rerank_timeout_s: float = 12.0
+
     # K11.2 — Neo4j connection (Track 2 extraction graph). Empty
     # `neo4j_uri` means "skip Neo4j init at startup" — Track 1 dev
     # keeps working without Neo4j running. Set to e.g.

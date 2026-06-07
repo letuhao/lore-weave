@@ -78,7 +78,12 @@ def _make_client(project=_SENT, lexical=_SENT):
         project = _project()
     from app.main import app
     from app.middleware.jwt_auth import get_current_user
-    from app.deps import get_book_client, get_embedding_client, get_projects_repo
+    from app.deps import (
+        get_book_client,
+        get_embedding_client,
+        get_projects_repo,
+        get_reranker_client,
+    )
 
     projects_repo = MagicMock()
     projects_repo.list = AsyncMock(
@@ -91,10 +96,20 @@ def _make_client(project=_SENT, lexical=_SENT):
     book_client.get_chapter_titles = AsyncMock(return_value={})
     embedding_client = MagicMock()
 
+    # Default reranker: passthrough — every doc scored above the floor in input
+    # order, so existing tests behave as if rerank is an identity. Rerank tests
+    # re-override get_reranker_client with their own mock.
+    async def _passthrough(query, documents):
+        return [{"index": i, "relevance_score": max(0.9 - i * 0.05, 0.4)}
+                for i in range(len(documents))]
+    reranker = MagicMock()
+    reranker.rerank = AsyncMock(side_effect=_passthrough)
+
     app.dependency_overrides[get_current_user] = lambda: _USER
     app.dependency_overrides[get_projects_repo] = lambda: projects_repo
     app.dependency_overrides[get_book_client] = lambda: book_client
     app.dependency_overrides[get_embedding_client] = lambda: embedding_client
+    app.dependency_overrides[get_reranker_client] = lambda: reranker
     return TestClient(app, raise_server_exceptions=False), projects_repo, book_client
 
 
@@ -268,7 +283,8 @@ def test_explicit_min_relevance_floors_low_hit(mock_embed, mock_find):
     mock_embed.return_value = [0.1] * 1024
     mock_find.return_value = [_passage_hit(0, 0.2)]
     client, _, _ = _make_client()
-    resp = client.get(_url("semantic") + "&min_relevance=0.5")
+    # rerank=false isolates the E5 cosine floor (rerank would overwrite relevance)
+    resp = client.get(_url("semantic") + "&min_relevance=0.5&rerank=false")
     assert resp.status_code == 200
     assert resp.json()["results"] == []
 
@@ -281,7 +297,7 @@ def test_floor_off_by_default_keeps_low_hit(mock_embed, mock_find):
     mock_embed.return_value = [0.1] * 1024
     mock_find.return_value = [_passage_hit(0, 0.2)]
     client, _, _ = _make_client()
-    resp = client.get(_url("semantic"))
+    resp = client.get(_url("semantic") + "&rerank=false")  # isolate E5 cosine path
     assert resp.status_code == 200
     assert len(resp.json()["results"]) == 1
 
@@ -325,6 +341,71 @@ def test_block_mode_keeps_both_surfaces(mock_embed, mock_find):
     body = client.get(_url("hybrid") + "&granularity=block").json()
     rows = [h for h in body["results"] if h["chapterId"] == "ch-draft"]
     assert len(rows) == 2  # draft + canon both kept
+
+
+# ── E5B: cross-encoder rerank ────────────────────────────────────────
+
+
+def _override_reranker(return_value=None, side_effect=None):
+    from app.main import app
+    from app.deps import get_reranker_client
+    rr = MagicMock()
+    rr.rerank = AsyncMock(return_value=return_value, side_effect=side_effect)
+    app.dependency_overrides[get_reranker_client] = lambda: rr
+    return rr
+
+
+@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+def test_rerank_floors_and_reorders(mock_embed, mock_find):
+    # 2 fused hits; reranker scores idx0=0.2 (< 0.30 floor → dropped),
+    # idx1=0.8 (kept). Result = 1 hit, relevance = the cross-encoder score.
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit(0, 0.9)]
+    client, _, _ = _make_client()  # lexical _lex_hit + semantic passage → 2 hits
+    rr = _override_reranker(return_value=[
+        {"index": 0, "relevance_score": 0.2}, {"index": 1, "relevance_score": 0.8},
+    ])
+    body = client.get(_url("hybrid")).json()
+    rr.rerank.assert_awaited()
+    assert len(body["results"]) == 1
+    assert body["results"][0]["relevance"] == 0.8
+
+
+@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+def test_rerank_unavailable_degrades(mock_embed, mock_find):
+    # reranker None → keep fusion order + degraded marker (never 500).
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit(0, 0.9)]
+    client, _, _ = _make_client()
+    _override_reranker(return_value=None)
+    body = client.get(_url("hybrid")).json()
+    assert body["degraded"].get("rerank") == "unavailable"
+    assert len(body["results"]) == 2  # both legs retained, unreranked
+
+
+def test_lexical_mode_skips_rerank():
+    client, _, _ = _make_client()
+    rr = _override_reranker(return_value=[])
+    resp = client.get(_url("lexical"))
+    assert resp.status_code == 200
+    rr.rerank.assert_not_awaited()  # lexical is already clean → no rerank
+
+
+@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+def test_rerank_false_skips(mock_embed, mock_find):
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit(0, 0.9)]
+    client, _, _ = _make_client()
+    rr = _override_reranker(return_value=[])
+    resp = client.get(_url("hybrid") + "&rerank=false")
+    assert resp.status_code == 200
+    rr.rerank.assert_not_awaited()
 
 
 @patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
