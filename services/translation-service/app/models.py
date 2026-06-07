@@ -107,6 +107,7 @@ class CreateJobPayload(BaseModel):
     max_qa_rounds: Optional[int] = None      # 1..5 (orchestrator caps at 5)
     verifier_model_source: Optional[str] = None
     verifier_model_ref: Optional[UUID] = None
+    cold_start_mode: Optional[str] = None    # 'single_pass' (default) | 'two_pass' (M4d-2c)
 
     @field_validator("pipeline_version")
     @classmethod
@@ -120,6 +121,13 @@ class CreateJobPayload(BaseModel):
     def _valid_qa_depth(cls, v: Optional[str]) -> Optional[str]:
         if v is not None and v not in ("rule_only", "standard", "thorough"):
             raise ValueError("qa_depth must be 'rule_only', 'standard', or 'thorough'")
+        return v
+
+    @field_validator("cold_start_mode")
+    @classmethod
+    def _valid_cold_start_mode(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in ("single_pass", "two_pass"):
+            raise ValueError("cold_start_mode must be 'single_pass' or 'two_pass'")
         return v
 
     @field_validator("max_qa_rounds")
@@ -205,6 +213,7 @@ class TranslationJob(BaseModel):
     max_qa_rounds: int = 2
     verifier_model_source: Optional[str] = None
     verifier_model_ref: Optional[UUID] = None
+    cold_start_mode: str = "single_pass"
     chapter_ids: list[UUID]
     total_chapters: int
     completed_chapters: int

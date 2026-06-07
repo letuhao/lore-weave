@@ -32,6 +32,76 @@ log = logging.getLogger(__name__)
 _MAX_QA_ROUNDS = 5
 
 
+# Cap on the source + pass-1 translation fed to the bilingual extractor, so a very
+# long chapter can't overflow the model context (M4d-2a review-impl LOW).
+_COLD_START_EXTRACT_CHARS = 8000
+
+
+async def _maybe_two_pass_cold_start(
+    blocks, result, source_lang, msg, pool, chapter_translation_id,
+    *, base_extra, llm_client, context_window,
+):
+    """M4d-2c — when the book has NO glossary (cold start) AND the job opted into
+    ``cold_start_mode='two_pass'`` AND the bilingual extractor finds recurring
+    source→target pairs: seed them to the glossary (drafts → future chapters +
+    human review) and RE-TRANSLATE the chapter (pass 2) with the in-run name map
+    injected directly — the seeded drafts aren't ``active`` so a glossary re-fetch
+    wouldn't surface them. Returns the pass-2 result, or pass-1's on any gate /
+    failure. Fully best-effort (a glossary-less chapter must still translate)."""
+    if msg.get("cold_start_mode") != "two_pass":
+        return result
+    try:
+        from ..session_translator import translate_chapter_blocks
+        from ..block_classifier import classify_block, extract_translatable_text
+        from .semantic_chunker import tag_groups
+        from .bilingual_extractor import extract_name_pairs, build_namepair_block
+        from ..glossary_client import fetch_translation_glossary, writeback_name_pairs
+
+        book_id = msg.get("book_id", "")
+        target = msg.get("target_language", "")
+        # Cold-start = empty translation-glossary. With a glossary, single-pass +
+        # the glossary hard-check already handles names — no 2nd pass needed.
+        if await fetch_translation_glossary(book_id, target):
+            return result
+
+        src = "\n".join(
+            extract_translatable_text(b) for b in blocks
+            if classify_block(b) != "passthrough"
+        )[:_COLD_START_EXTRACT_CHARS]
+        translated = "\n".join(
+            extract_translatable_text(b) for b in result[0]
+            if classify_block(b) != "passthrough"
+        )[:_COLD_START_EXTRACT_CHARS]
+        if not src or not translated:
+            return result
+
+        pairs = await extract_name_pairs(src, translated, source_lang, target,
+                                         llm_client=llm_client, msg=msg)
+        if not pairs:
+            return result  # nothing recurring → pass 2 wouldn't help; skip the 2× cost
+
+        # Seed the glossary (drafts, ai-suggested) for FUTURE chapters + review.
+        await writeback_name_pairs(book_id, source_lang, target, pairs)
+
+        names_block = build_namepair_block(pairs)
+        extra2 = (base_extra + "\n\n" + names_block).strip() if names_block else base_extra
+        log.info("v3 two-pass cold-start: re-translating ct=%s with %d harvested names",
+                 chapter_translation_id, len(pairs))
+        pass2 = await translate_chapter_blocks(
+            blocks, source_lang, msg, pool, chapter_translation_id,
+            llm_client=llm_client, context_window=context_window,
+            extra_system=extra2, group_ids=tag_groups(blocks),
+        )
+        # The chapter took BOTH passes — sum the token cost (blocks/counts/texts are
+        # pass 2's final state) so the 2× cost isn't under-reported. (The extractor's
+        # own call is smaller + uncounted — D-TRANSL-M4D2C-EXTRACT-TOKENS.)
+        return (pass2[0], result[1] + pass2[1], result[2] + pass2[2],
+                pass2[3], pass2[4], pass2[5])
+    except Exception as exc:  # pragma: no cover - defensive
+        log.warning("v3 two-pass cold-start failed (non-fatal): %s", exc)
+        return result
+
+
 async def translate_chapter_blocks_v3(
     blocks: list[dict],
     source_lang: str,
@@ -96,6 +166,15 @@ async def translate_chapter_blocks_v3(
         extra_system=extra,
         group_ids=tag_groups(blocks),  # M3/G5 — dialogue/scene-aware batching (V3 only)
     )
+
+    # M4d-2c — 2-pass cold-start: a glossary-less book in two_pass mode re-translates
+    # with the pass-1-harvested name map enforced (best-effort; returns pass-1's
+    # result on any gate/failure). V2 + single_pass untouched.
+    result = await _maybe_two_pass_cold_start(
+        blocks, result, source_lang, msg, pool, chapter_translation_id,
+        base_extra=extra, llm_client=llm_client, context_window=context_window,
+    )
+
     # Non-fatal — verification/correction must never fail a translation that
     # already succeeded. Corrections mutate result[0] in place.
     try:

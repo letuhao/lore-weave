@@ -57,6 +57,8 @@ def _normalize(row: dict) -> dict:
         "max_qa_rounds":           row.get("max_qa_rounds", 2),
         "verifier_model_source":   row.get("verifier_model_source"),
         "verifier_model_ref":      row.get("verifier_model_ref"),
+        # M4d-2c — 2-pass cold-start mode (single_pass default | two_pass).
+        "cold_start_mode":         row.get("cold_start_mode", "single_pass"),
     }
 
 

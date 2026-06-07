@@ -240,21 +240,24 @@ ALTER TABLE user_translation_preferences
   ADD COLUMN IF NOT EXISTS verifier_model_source TEXT,
   ADD COLUMN IF NOT EXISTS verifier_model_ref    UUID,
   ADD COLUMN IF NOT EXISTS max_qa_rounds         INT  NOT NULL DEFAULT 2,
-  ADD COLUMN IF NOT EXISTS qa_depth              TEXT NOT NULL DEFAULT 'standard';
+  ADD COLUMN IF NOT EXISTS qa_depth              TEXT NOT NULL DEFAULT 'standard',
+  ADD COLUMN IF NOT EXISTS cold_start_mode       TEXT NOT NULL DEFAULT 'single_pass';
 
 ALTER TABLE book_translation_settings
   ADD COLUMN IF NOT EXISTS pipeline_version      TEXT NOT NULL DEFAULT 'v2',
   ADD COLUMN IF NOT EXISTS verifier_model_source TEXT,
   ADD COLUMN IF NOT EXISTS verifier_model_ref    UUID,
   ADD COLUMN IF NOT EXISTS max_qa_rounds         INT  NOT NULL DEFAULT 2,
-  ADD COLUMN IF NOT EXISTS qa_depth              TEXT NOT NULL DEFAULT 'standard';
+  ADD COLUMN IF NOT EXISTS qa_depth              TEXT NOT NULL DEFAULT 'standard',
+  ADD COLUMN IF NOT EXISTS cold_start_mode       TEXT NOT NULL DEFAULT 'single_pass';
 
 ALTER TABLE translation_jobs
   ADD COLUMN IF NOT EXISTS pipeline_version      TEXT NOT NULL DEFAULT 'v2',
   ADD COLUMN IF NOT EXISTS verifier_model_source TEXT,
   ADD COLUMN IF NOT EXISTS verifier_model_ref    UUID,
   ADD COLUMN IF NOT EXISTS max_qa_rounds         INT  NOT NULL DEFAULT 2,
-  ADD COLUMN IF NOT EXISTS qa_depth              TEXT NOT NULL DEFAULT 'standard';
+  ADD COLUMN IF NOT EXISTS qa_depth              TEXT NOT NULL DEFAULT 'standard',
+  ADD COLUMN IF NOT EXISTS cold_start_mode       TEXT NOT NULL DEFAULT 'single_pass';
 
 -- Per-block QA issues — drives targeted re-translate + the future "needs review" UI.
 CREATE TABLE IF NOT EXISTS translation_quality_issues (

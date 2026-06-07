@@ -372,6 +372,101 @@ async def test_v3_skips_timeline_when_no_sort_order(monkeypatch):
     assert "RECENT STORY EVENTS" not in v2.call_args.kwargs["extra_system"]
 
 
+# ── M4d-2c: 2-pass cold-start ─────────────────────────────────────────────────
+
+def _two_pass_setup(monkeypatch, *, glossary, pairs, mode="two_pass"):
+    """Patch the 2-pass dependencies; returns (extras list, writeback mock, msg)."""
+    from app.workers.v3.bilingual_extractor import NamePair  # noqa: F401
+    result_blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "Tirami came."}]}]
+    extras: list[str] = []
+
+    async def fake_translate(blocks, source_lang, msg, pool, ctid, *,
+                             llm_client, context_window, extra_system="", group_ids=None):
+        extras.append(extra_system)
+        return (result_blocks, 10, 8, 1, 1, {0: "Tirami came."})
+
+    monkeypatch.setattr("app.workers.session_translator.translate_chapter_blocks", fake_translate)
+    monkeypatch.setattr("app.workers.glossary_client.fetch_translation_glossary",
+                        AsyncMock(return_value=glossary))
+    wb = AsyncMock(return_value={"created": 1})
+    monkeypatch.setattr("app.workers.glossary_client.writeback_name_pairs", wb)
+    monkeypatch.setattr("app.workers.v3.bilingual_extractor.extract_name_pairs",
+                        AsyncMock(return_value=pairs))
+    msg = _chapter_msg()
+    msg["cold_start_mode"] = mode
+    return extras, wb, msg
+
+
+@pytest.mark.asyncio
+async def test_v3_two_pass_cold_start_retranslates_with_names(monkeypatch):
+    """Cold start (empty glossary) + two_pass + recurring pairs → pass 2 re-translates
+    with the harvested name map injected, and the pairs are seeded for future chapters."""
+    from app.workers.v3 import orchestrator
+    from app.workers.v3.bilingual_extractor import NamePair
+
+    blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "提拉米来了。"}]}]
+    extras, wb, msg = _two_pass_setup(
+        monkeypatch, glossary=[], pairs=[NamePair("提拉米", "Tirami", "character")])
+    pool, _ = _make_pool()
+    result = await orchestrator.translate_chapter_blocks_v3(
+        blocks, "zh", msg, pool, uuid4(), llm_client=MagicMock(), context_window=8192)
+
+    assert len(extras) == 2  # pass 1 + pass 2
+    assert "NAME CONSISTENCY" in extras[1]
+    assert "提拉米 → Tirami" in extras[1]
+    wb.assert_awaited_once()
+    # review-impl MED: token cost reflects BOTH passes (each fake pass = 10 in / 8 out).
+    assert result[1] == 20 and result[2] == 16
+
+
+@pytest.mark.asyncio
+async def test_v3_single_pass_mode_does_not_retranslate(monkeypatch):
+    from app.workers.v3 import orchestrator
+    from app.workers.v3.bilingual_extractor import NamePair
+
+    blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "提拉米来了。"}]}]
+    extras, wb, msg = _two_pass_setup(
+        monkeypatch, glossary=[], pairs=[NamePair("提拉米", "Tirami")], mode="single_pass")
+    pool, _ = _make_pool()
+    await orchestrator.translate_chapter_blocks_v3(
+        blocks, "zh", msg, pool, uuid4(), llm_client=MagicMock(), context_window=8192)
+
+    assert len(extras) == 1  # single pass only
+    wb.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_v3_two_pass_skipped_when_glossary_present(monkeypatch):
+    """Not cold-start (the book HAS a glossary) → no 2nd pass even in two_pass mode."""
+    from app.workers.v3 import orchestrator
+    from app.workers.v3.bilingual_extractor import NamePair
+
+    blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "提拉米来了。"}]}]
+    extras, wb, msg = _two_pass_setup(
+        monkeypatch, glossary=[{"zh": ["提拉米"], "vi": ["Tirami"], "kind": "character"}],
+        pairs=[NamePair("提拉米", "Tirami")])
+    pool, _ = _make_pool()
+    await orchestrator.translate_chapter_blocks_v3(
+        blocks, "zh", msg, pool, uuid4(), llm_client=MagicMock(), context_window=8192)
+
+    assert len(extras) == 1
+    wb.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_v3_two_pass_skipped_when_no_recurring_pairs(monkeypatch):
+    from app.workers.v3 import orchestrator
+
+    blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "提拉米来了。"}]}]
+    extras, wb, msg = _two_pass_setup(monkeypatch, glossary=[], pairs=[])  # extractor found nothing
+    pool, _ = _make_pool()
+    await orchestrator.translate_chapter_blocks_v3(
+        blocks, "zh", msg, pool, uuid4(), llm_client=MagicMock(), context_window=8192)
+
+    assert len(extras) == 1  # no pairs → no 2× cost
+    wb.assert_not_awaited()
+
+
 # ── M2: LLM verifier (standard) + multi-round loop (thorough) ─────────────────
 
 @pytest.mark.asyncio

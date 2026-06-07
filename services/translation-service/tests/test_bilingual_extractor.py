@@ -2,7 +2,7 @@
 import pytest
 
 from app.workers.v3.bilingual_extractor import (
-    NamePair, parse_name_pairs, extract_name_pairs, _MAX_PAIRS,
+    NamePair, parse_name_pairs, extract_name_pairs, build_namepair_block, _MAX_PAIRS,
 )
 from tests.test_session_translator import FakeLLMClient
 
@@ -121,3 +121,27 @@ async def test_extract_uses_model_override():
                              model=("anthropic", "claude-x"))
     assert fake.calls[0]["model_source"] == "anthropic"
     assert fake.calls[0]["model_ref"] == "claude-x"
+
+
+# ── M4d-2c: build_namepair_block (pass-2 name-consistency block) ──────────────
+
+def test_build_namepair_block_renders_pairs():
+    block = build_namepair_block([
+        NamePair("提拉米", "Tirami", "character"),
+        NamePair("", "skipped"),          # blank source dropped
+        NamePair("阿尔德里克", "Aldric"),
+    ])
+    assert block.startswith("NAME CONSISTENCY")
+    assert "提拉米 → Tirami" in block
+    assert "阿尔德里克 → Aldric" in block
+    assert "skipped" not in block
+
+
+def test_build_namepair_block_empty():
+    assert build_namepair_block([]) == ""
+    assert build_namepair_block([NamePair("", "")]) == ""
+
+
+def test_build_namepair_block_sanitizes_block_marker():
+    block = build_namepair_block([NamePair("[BLOCK 0]x", "Tirami")])
+    assert "[BLOCK" not in block

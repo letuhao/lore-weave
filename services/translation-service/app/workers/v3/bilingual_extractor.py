@@ -140,3 +140,23 @@ async def extract_name_pairs(
     except Exception as exc:  # best-effort — never fail the chapter on extraction
         log.warning("v3 bilingual extractor failed (non-fatal): %s", exc)
         return []
+
+
+def build_namepair_block(pairs: list[NamePair], max_pairs: int = _MAX_PAIRS) -> str:
+    """A "use these EXACT renderings" prompt block from harvested source→target
+    pairs — injected into pass 2 of the 2-pass cold-start (M4d-2c) so recurring
+    proper nouns render consistently. Sanitized minimally (the pairs are model
+    output crossing back into a prompt). Empty when there are no usable pairs."""
+    from .knowledge_context import _sanitize
+    lines: list[str] = []
+    for p in pairs[:max_pairs]:
+        src = _sanitize(p.source, 80)
+        tgt = _sanitize(p.target, 80)
+        if src and tgt:
+            lines.append(f"{src} → {tgt}")
+    if not lines:
+        return ""
+    return (
+        "NAME CONSISTENCY (cold-start) — these proper nouns recur in this chapter; "
+        "render each EXACTLY and consistently as shown:\n" + "\n".join(lines)
+    )
