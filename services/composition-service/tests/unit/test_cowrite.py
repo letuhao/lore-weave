@@ -121,6 +121,14 @@ def test_build_messages_neutral_no_forced_language():
     assert "language with code" not in msgs[0]["content"]
 
 
+def test_build_messages_has_anti_reestablishment_instruction():
+    # LOOM-36: the draft prompt must tell the drafter the context is ALREADY
+    # established and to continue forward, not re-narrate prior scenes (the
+    # cross-chapter re-establishment lever). Lock it against accidental removal.
+    sys = cowrite.build_messages("ctx", NEUTRAL, "draft_scene")[0]["content"]
+    assert "ALREADY happened" in sys and "do NOT re-introduce" in sys
+
+
 def test_char_estimate_over_estimates_and_clamps():
     assert cowrite.char_estimate("") == 0
     assert cowrite.char_estimate("abc") >= 1

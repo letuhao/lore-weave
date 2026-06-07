@@ -63,7 +63,11 @@ def build_messages(
     system = (
         "You are a co-writer continuing a novel. Use the provided canon, present "
         "characters, threads, beat, recent prose, and lore as grounding; never "
-        "contradict the canon and never introduce facts beyond what is given."
+        "contradict the canon and never introduce facts beyond what is given. "
+        "Everything in the context has ALREADY happened earlier in the novel and "
+        "the reader has read it: CONTINUE the story forward from that point — do "
+        "NOT re-introduce characters, re-describe the established setting, or "
+        "re-narrate prior scenes/events already shown; advance new action instead."
         + lang + voice
     )
     instruction = _OPERATION_INSTRUCTIONS.get(operation, "Write the next passage of the scene.")
