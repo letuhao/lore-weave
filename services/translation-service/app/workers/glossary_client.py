@@ -443,3 +443,67 @@ def auto_correct_glossary(
             )
 
     return result, corrections
+
+
+# ── M4d-2b: 2-pass cold-start target writeback ───────────────────────────────
+
+
+def _sanitize_name(s: str, max_len: int = 120) -> str:
+    """Light cross-service sanitize for a name/translation going into glossary:
+    strip control chars, collapse whitespace, length-cap."""
+    if not s:
+        return ""
+    s = "".join(ch if (ch >= " " and ch != "\x7f") else " " for ch in s)
+    s = " ".join(s.split())
+    return s[:max_len].rstrip()
+
+
+async def writeback_name_pairs(book_id: str, source_language: str,
+                               target_language: str, pairs) -> dict | None:
+    """Seed M4d-2a source→target NamePairs as draft glossary entities WITH the
+    target translation (name attr at ``confidence='machine'``). Best-effort; reuses
+    mui#1's AI-suggested draft inbox + ai-rejected tombstone.
+
+    ``pairs`` is a sequence of NamePair-like objects (duck-typed on
+    ``.source``/``.target``/``.kind``) — taken structurally to avoid importing from
+    ``app.workers.v3`` (which would cycle back through this module). Returns the
+    upsert response dict, or None (no URL / no pairs / any failure). Never raises.
+    """
+    if not settings.glossary_service_internal_url:
+        return None
+    entities: list[dict] = []
+    for p in pairs:
+        source = _sanitize_name(getattr(p, "source", "") or "")
+        target = _sanitize_name(getattr(p, "target", "") or "")
+        if not source or not target:
+            continue
+        entities.append({
+            "kind_code": getattr(p, "kind", "") or "other",
+            "name": source,
+            "attributes": {},
+            "translation": {"language_code": target_language, "value": target},
+        })
+    if not entities:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{settings.glossary_service_internal_url}"
+                f"/internal/books/{book_id}/extract-entities",
+                json={
+                    "source_language": source_language,
+                    "attribute_actions": {},
+                    "entities": entities,
+                    "default_tags": ["ai-suggested"],
+                    "park_unknown_kinds": False,
+                },
+                headers={"X-Internal-Token": settings.internal_service_token},
+            )
+            if resp.status_code != 200:
+                log.warning("name-pair writeback returned %d for book=%s",
+                            resp.status_code, book_id)
+                return None
+            return resp.json()
+    except Exception as exc:
+        log.warning("name-pair writeback failed for book=%s: %s", book_id, exc)
+        return None

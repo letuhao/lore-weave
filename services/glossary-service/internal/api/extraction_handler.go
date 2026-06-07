@@ -366,6 +366,17 @@ type extractedEntity struct {
 	Attributes   map[string]any    `json:"attributes"`
 	Evidence     string            `json:"evidence"`
 	ChapterLinks []chapterLinkIn   `json:"chapter_links"`
+	// Translation (M4d-2b) — optional target-language rendering of the name, seeded
+	// by the translation 2-pass cold-start writeback. Written to the name attr's
+	// attribute_translations at confidence='machine' (the M1d trust ladder treats
+	// it as a soft hint, not canon). Omitted ⇒ no translation written (backward-
+	// compatible). Never overwrites a human-verified translation (see §upsert).
+	Translation *translationIn `json:"translation"`
+}
+
+type translationIn struct {
+	LanguageCode string `json:"language_code"`
+	Value        string `json:"value"`
 }
 
 type chapterLinkIn struct {
@@ -612,6 +623,49 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
+		}
+
+		// 5b. M4d-2b — optional target translation for the name attribute. Seeds
+		// the 2-pass cold-start source→target renderings as machine drafts.
+		// Conditional upsert: insert when absent, overwrite a draft/machine value,
+		// but NEVER a verified (human) translation (M1d trust ladder). An
+		// overwritten machine value remains recoverable via the VG-1 revision
+		// history. Best-effort (the entity already committed above).
+		translationChanged := false
+		if ent.Translation != nil && ent.Translation.LanguageCode != "" && ent.Translation.Value != "" {
+			entID, _ := uuid.Parse(result.EntityID)
+			nameAttrDefID, nameOK := attrDefMap[kindID.String()+":name"]
+			if nameOK {
+				var nameAVID uuid.UUID
+				if err := s.pool.QueryRow(ctx, `
+					SELECT attr_value_id FROM entity_attribute_values
+					WHERE entity_id = $1 AND attr_def_id = $2
+				`, entID, nameAttrDefID).Scan(&nameAVID); err == nil {
+					ct, err := s.pool.Exec(ctx, `
+						INSERT INTO attribute_translations (attr_value_id, language_code, value, confidence, translator)
+						VALUES ($1, $2, $3, 'machine', 'translation-2pass')
+						ON CONFLICT (attr_value_id, language_code) DO UPDATE
+						  SET value = EXCLUDED.value, confidence = 'machine',
+						      translator = EXCLUDED.translator, updated_at = now()
+						  WHERE attribute_translations.confidence <> 'verified'
+					`, nameAVID, ent.Translation.LanguageCode, ent.Translation.Value)
+					if err != nil {
+						slog.Warn("extraction: failed to write name translation",
+							"entity", ent.Name, "error", err)
+					} else if ct.RowsAffected() > 0 {
+						translationChanged = true
+					}
+				}
+			}
+		}
+		// review-impl: a translation-only change to an EXISTING entity merges to
+		// "skipped" (no attr changed), but the translation DID change — it must
+		// still emit so VG-1 versions it (recoverable) and M5c marks dependents
+		// stale. Promote skipped→updated so the emit below fires.
+		if translationChanged && result.Status == "skipped" {
+			result.Status = "updated"
+			updated++
+			skipped--
 		}
 
 		// 6. C4 (K14) — emit ONE glossary.entity_updated per entity that

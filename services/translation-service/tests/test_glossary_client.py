@@ -207,3 +207,107 @@ class TestAutoCorrectGlossary:
         corrected, count = auto_correct_glossary(text, correction_map)
         assert corrected == "Anh ta là người Ma tộc duy nhất."
         assert count == 1
+
+
+# ── M4d-2b: writeback_name_pairs (target-translation seeding) ─────────────────
+
+class _Pair:
+    def __init__(self, source, target, kind="character"):
+        self.source = source
+        self.target = target
+        self.kind = kind
+
+
+class _WResp:
+    def __init__(self, status_code, payload):
+        self.status_code = status_code
+        self._p = payload
+
+    def json(self):
+        return self._p
+
+
+class _WClient:
+    last = {}
+
+    def __init__(self, resp=None, exc=None):
+        self._resp = resp
+        self._exc = exc
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def post(self, url, json=None, headers=None):
+        _WClient.last = {"url": url, "json": json, "headers": headers}
+        if self._exc:
+            raise self._exc
+        return self._resp
+
+
+def _patch_w(monkeypatch, *, url="http://gloss:8088", resp=None, exc=None):
+    from app.workers import glossary_client as gc
+    monkeypatch.setattr(gc.settings, "glossary_service_internal_url", url)
+    monkeypatch.setattr(gc.settings, "internal_service_token", "tok")
+    monkeypatch.setattr(gc.httpx, "AsyncClient", lambda *a, **k: _WClient(resp=resp, exc=exc))
+    _WClient.last = {}
+
+
+class TestSanitizeName:
+    def test_strips_control_and_collapses(self):
+        from app.workers.glossary_client import _sanitize_name
+        assert _sanitize_name("提拉\t米  \n苏") == "提拉 米 苏"
+
+    def test_caps_length(self):
+        from app.workers.glossary_client import _sanitize_name
+        assert len(_sanitize_name("x" * 500)) == 120
+
+    def test_empty(self):
+        from app.workers.glossary_client import _sanitize_name
+        assert _sanitize_name("") == ""
+
+
+@pytest.mark.asyncio
+class TestWritebackNamePairs:
+    async def test_body_shape_and_sanitize_and_skip_empty(self, monkeypatch):
+        from app.workers.glossary_client import writeback_name_pairs
+        _patch_w(monkeypatch, resp=_WResp(200, {"created": 2}))
+        pairs = [_Pair("提拉米", "Tirami"), _Pair("  ", "x"),
+                 _Pair("阿尔德里克", "Aldric", "location")]
+        res = await writeback_name_pairs("b1", "zh", "vi", pairs)
+        assert res == {"created": 2}
+        body = _WClient.last["json"]
+        assert body["default_tags"] == ["ai-suggested"]
+        assert body["park_unknown_kinds"] is False
+        assert body["source_language"] == "zh"
+        assert len(body["entities"]) == 2  # blank-source pair skipped
+        assert body["entities"][0] == {
+            "kind_code": "character", "name": "提拉米", "attributes": {},
+            "translation": {"language_code": "vi", "value": "Tirami"},
+        }
+        assert body["entities"][1]["kind_code"] == "location"
+        assert _WClient.last["headers"]["X-Internal-Token"] == "tok"
+        assert _WClient.last["url"].endswith("/internal/books/b1/extract-entities")
+
+    async def test_null_gate_when_unconfigured(self, monkeypatch):
+        from app.workers.glossary_client import writeback_name_pairs
+        _patch_w(monkeypatch, url="", resp=_WResp(200, {}))
+        assert await writeback_name_pairs("b1", "zh", "vi", [_Pair("a", "b")]) is None
+        assert _WClient.last == {}  # no HTTP
+
+    async def test_no_pairs_returns_none(self, monkeypatch):
+        from app.workers.glossary_client import writeback_name_pairs
+        _patch_w(monkeypatch, resp=_WResp(200, {}))
+        assert await writeback_name_pairs("b1", "zh", "vi", []) is None
+
+    async def test_non_200_degrades(self, monkeypatch):
+        from app.workers.glossary_client import writeback_name_pairs
+        _patch_w(monkeypatch, resp=_WResp(503, {}))
+        assert await writeback_name_pairs("b1", "zh", "vi", [_Pair("a", "b")]) is None
+
+    async def test_transport_error_degrades(self, monkeypatch):
+        from app.workers.glossary_client import writeback_name_pairs
+        _patch_w(monkeypatch, exc=RuntimeError("boom"))
+        assert await writeback_name_pairs("b1", "zh", "vi", [_Pair("a", "b")]) is None
