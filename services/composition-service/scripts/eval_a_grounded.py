@@ -124,6 +124,39 @@ def cowrite_text(token, proj, node_id, drafter, max_tokens):
     return "".join(parts)
 
 
+# ── B4 chapter-assembly arms ──
+
+def mark_scene_done(token, node_id):
+    """PATCH a scene to status='done' so the stitch gate (all-scenes-done) passes."""
+    _req("PATCH", f"/v1/composition/outline/nodes/{node_id}", token, {"status": "done"})
+
+
+def gen_chapter_text(token, proj, chapter_id, drafter, persist=False):
+    """B2 chapter single-pass endpoint → the whole chapter in one draft."""
+    r = _req("POST", f"/v1/composition/works/{proj}/chapters/{chapter_id}/generate", token,
+             {"model_source": "user_model", "model_ref": drafter, "reasoning": "off",
+              "max_output_tokens": 2048, "persist": persist})
+    return r.get("text", ""), r
+
+
+def stitch_chapter_text(token, proj, chapter_id, drafter, persist=False):
+    """B3 stitch endpoint → merge the chapter's done scene drafts into one chapter.
+    Requires all the chapter's scenes status='done' (gate)."""
+    r = _req("POST", f"/v1/composition/works/{proj}/chapters/{chapter_id}/stitch", token,
+             {"model_source": "user_model", "model_ref": drafter, "reasoning": "off",
+              "max_output_tokens": 2048, "persist": persist})
+    return r.get("text", ""), r
+
+
+def prose_plain_text(token, proj, chapter_id):
+    """GET the chapter draft and project the Tiptap doc back to plain text (join
+    each paragraph's _text) — the persist round-trip check."""
+    draft = _req("GET", f"/v1/composition/works/{proj}/chapters/{chapter_id}/prose", token)
+    body = draft.get("body") or {}
+    paras = [n.get("_text", "") for n in (body.get("content") or []) if isinstance(n, dict)]
+    return "\n\n".join(p for p in paras if p)
+
+
 def seed_bios(token, user_id, book, ch_ids, cast):
     """Seed each cast member as a glossary entity with a gender+role bio.
 
@@ -206,7 +239,7 @@ def seed_kg_timeline(token, user_id, proj, book, chapters, per_chapter, cast):
     return total
 
 
-def build_one(token, user_id, drafter, premise, cast, seed_kg=False):
+def build_one(token, user_id, drafter, premise, cast, seed_kg=False, arms=("per_scene",)):
     book = _req("POST", "/v1/books", token,
                 {"title": f"GRND {int(time.time()*1000) % 100000}", "original_language": "en"})["book_id"]
     chapters = [_req("POST", f"/v1/books/{book}/chapters", token,
@@ -247,11 +280,28 @@ def build_one(token, user_id, drafter, premise, cast, seed_kg=False):
         print(f"    KG timeline seeded: {seeded} events across {len(chapters)} chapters "
               f"(chapter N+1 now grounds on chapters <N+1 via the fixed lens)")
 
-    a3_parts, a3_k = [], []
-    for n in scenes:
-        txt, k = gen_auto_text(token, proj, n["id"], drafter)
-        a3_parts.append(txt); a3_k.append(k or 0)
-    a3 = "\n\n".join(p for p in a3_parts if p)
+    # ── assembly arms (all on the SAME book + decompose plan = apples-to-apples) ──
+    arms_text, a3_k = {}, []
+
+    # per-scene auto drafts feed BOTH the per_scene arm AND the stitch arm (the
+    # stitch endpoint reads each scene's completed generation job).
+    if "per_scene" in arms or "stitch" in arms:
+        parts = []
+        for n in scenes:
+            txt, k = gen_auto_text(token, proj, n["id"], drafter)
+            parts.append(txt); a3_k.append(k or 0)
+        if "per_scene" in arms:
+            arms_text["per_scene"] = "\n\n".join(p for p in parts if p)
+
+    if "stitch" in arms:
+        for n in scenes:
+            mark_scene_done(token, n["id"])  # the all-scenes-done stitch gate
+        st = [stitch_chapter_text(token, proj, ch, drafter)[0] for ch in chapters]
+        arms_text["stitch"] = "\n\n".join(p for p in st if p)
+
+    if "chapter" in arms:
+        ch_t = [gen_chapter_text(token, proj, ch, drafter)[0] for ch in chapters]
+        arms_text["chapter"] = "\n\n".join(p for p in ch_t if p)
 
     v0_parts = []
     for i, ch in enumerate(chapters):
@@ -261,7 +311,42 @@ def build_one(token, user_id, drafter, premise, cast, seed_kg=False):
                     "synopsis": f"{premise} (chapter {i+1})"})["id"]
         v0_parts.append(cowrite_text(token, proj, sid, drafter, max_tokens=min(1200, 400 * n_sc)))
     v0 = "\n\n".join(p for p in v0_parts if p)
-    return book, a3, v0, a3_k
+    return book, proj, chapters, arms_text, v0, a3_k
+
+
+ARMS_ALL = ["per_scene", "stitch", "chapter"]
+
+
+def _judge_arm(user_id, critic, arm_text, v0, swap):
+    """Pairwise-judge one assembly arm vs V0 (order-swapped). Returns
+    (winner in {'arm','v0','tie'}, arm_defects, v0_defects, why)."""
+    da, db = (v0, arm_text) if swap else (arm_text, v0)
+    verdict = _internal("POST", COMP_INTERNAL, "/internal/composition/eval/pairwise-judge",
+                        {"user_id": user_id, "model_source": "user_model", "model_ref": critic,
+                         "draft_a": da, "draft_b": db})
+    arm_label = "2" if swap else "1"; v0_label = "1" if swap else "2"
+    d_arm = sum(v for v in (verdict.get(f"defects_{arm_label}") or {}).values() if isinstance(v, int))
+    d_v0 = sum(v for v in (verdict.get(f"defects_{v0_label}") or {}).values() if isinstance(v, int))
+    better = verdict.get("better", "tie")
+    who = "arm" if better == arm_label else ("v0" if better == v0_label else "tie")
+    return who, d_arm, d_v0, verdict.get("why", "")
+
+
+def persist_round_trip_smoke(token, proj, chapter_id, drafter):
+    """D-COMP-ASSEMBLY-LIVE-SMOKE — chapter-generate with persist=True, then GET
+    the book draft and confirm the assembled prose round-tripped as valid Tiptap
+    (catches D-COMP-TIPTAP-SHAPE-DRIFT)."""
+    text, r = gen_chapter_text(token, proj, chapter_id, drafter, persist=True)
+    if not r.get("persisted"):
+        print(f"  PERSIST ROUND-TRIP: FAIL (persisted={r.get('persisted')} "
+              f"err={r.get('persist_error')})")
+        return False
+    back = prose_plain_text(token, proj, chapter_id)
+    head = (text or "").strip()[:60]
+    ok = bool(head) and head in back
+    print(f"  PERSIST ROUND-TRIP: {'PASS' if ok else 'FAIL'} "
+          f"(draft v{r.get('draft_version')}, {len(back)} chars back, head-match={ok})")
+    return ok
 
 
 def main():
@@ -269,55 +354,62 @@ def main():
     n = int(pos[0]) if pos else 2
     n = max(1, min(n, len(PREMISES)))
     seed_kg = "--seed-kg" in sys.argv  # also seed the KG timeline per chapter (LOOM-34 re-measure)
+    asm = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--assembly=")), "per_scene")
+    arms = ARMS_ALL if asm == "all" else [asm]
+    persist_smoke = "--persist-smoke" in sys.argv  # live cross-service persist round-trip
     token = login()
     user_id = jwt_sub(token)
     drafter, critic = models(token)
     mode = "bios + KG-timeline-seeding" if seed_kg else "bios only"
-    print(f"user={user_id} drafter={drafter} judge-critic={critic} n={n} mode={mode} (gen critic=drafter, no-swap)\n")
+    print(f"user={user_id} drafter={drafter} judge-critic={critic} n={n} mode={mode} "
+          f"arms={arms} persist_smoke={persist_smoke}\n")
 
-    built = []  # (premise, cast, book, a3, v0, a3_k)
+    built = []  # (premise, cast, book, proj, chapters, arms_text, v0, a3_k)
     for premise, cast in PREMISES[:n]:
         print(f"  building: {premise[:60]}...")
         t0 = time.time()
-        book, a3, v0, a3k = build_one(token, user_id, drafter, premise, cast, seed_kg=seed_kg)
-        built.append((premise, cast, book, a3, v0, a3k))
-        print(f"    A3 {len(a3)} chars (K={a3k}) | V0 {len(v0)} chars | {time.time()-t0:.0f}s")
+        book, proj, chapters, arms_text, v0, a3k = build_one(
+            token, user_id, drafter, premise, cast, seed_kg=seed_kg, arms=arms)
+        built.append((premise, cast, book, proj, chapters, arms_text, v0, a3k))
+        sizes = " ".join(f"{a}={len(t)}" for a, t in arms_text.items())
+        print(f"    {sizes} | V0 {len(v0)} chars (K={a3k}) | {time.time()-t0:.0f}s")
 
-    json.dump([{"premise": p, "cast": [c[0] for c in cast], "a3": a3, "v0": v0}
-               for p, cast, _, a3, v0, _ in built],
+    json.dump([{"premise": p, "cast": [c[0] for c in cast], "arms": at, "v0": v0}
+               for p, cast, _, _, _, at, v0, _ in built],
               open(DUMP, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
     print(f"\ndrafts → {DUMP}\n")
 
-    # ── judge ALL at the end with the DISTINCT critic (1 model swap total) ──
-    a3_w = v0_w = ties = 0
-    a3_def = v0_def = 0
-    for i, (premise, cast, book, a3, v0, a3k) in enumerate(built):
-        if not a3.strip() or not v0.strip():
-            print(f"  P{i}: SKIP empty"); continue
-        swap = (i % 2 == 1)
-        da, db = (v0, a3) if swap else (a3, v0)
-        verdict = _internal("POST", COMP_INTERNAL, "/internal/composition/eval/pairwise-judge",
-                            {"user_id": user_id, "model_source": "user_model", "model_ref": critic,
-                             "draft_a": da, "draft_b": db})
-        a3_label = "2" if swap else "1"; v0_label = "1" if swap else "2"
-        da3 = sum(v for v in (verdict.get(f"defects_{a3_label}") or {}).values() if isinstance(v, int))
-        dv0 = sum(v for v in (verdict.get(f"defects_{v0_label}") or {}).values() if isinstance(v, int))
-        a3_def += da3; v0_def += dv0
-        better = verdict.get("better", "tie")
-        who = "A3" if better == a3_label else ("V0" if better == v0_label else "tie")
-        if who == "A3": a3_w += 1
-        elif who == "V0": v0_w += 1
-        else: ties += 1
-        print(f"  P{i}: winner={who} | A3 {da3} defects vs V0 {dv0} defects")
-        if verdict.get("why"):
-            print(f"       why: {verdict['why'][:160]}")
+    # ── live cross-service persist round-trip (once, on the first book) ──
+    if persist_smoke and built and ("chapter" in arms or "stitch" in arms):
+        _, _, _, proj0, chapters0, _, _, _ = built[0]
+        if chapters0:
+            persist_round_trip_smoke(token, proj0, chapters0[0], drafter)
 
-    print("\n=== RESULT (GROUNDED) ===")
-    print(f"pairwise — A3:{a3_w} V0:{v0_w} tie:{ties} (n={n}) | defects A3:{a3_def} vs V0:{v0_def}")
-    print("Compare to n=3 UNGROUNDED baseline: A3:1 V0:2 tie:0, defects A3:16 vs V0:9.")
-    print(f"Read {DUMP}: is the gender flip GONE? is chapter-boundary re-establishment reduced?")
+    # ── judge each arm vs V0 with the DISTINCT critic (order-swapped per premise) ──
+    print("\n=== RESULT (GROUNDED, per arm vs V0) ===")
+    for arm in arms:
+        w = l = ties = 0
+        d_arm = d_v0 = 0
+        for i, (premise, cast, book, proj, chapters, arms_text, v0, a3k) in enumerate(built):
+            at = arms_text.get(arm, "")
+            if not at.strip() or not v0.strip():
+                print(f"  [{arm}] P{i}: SKIP empty"); continue
+            who, da, dv, why = _judge_arm(user_id, critic, at, v0, swap=(i % 2 == 1))
+            d_arm += da; d_v0 += dv
+            if who == "arm": w += 1
+            elif who == "v0": l += 1
+            else: ties += 1
+            print(f"  [{arm}] P{i}: winner={who} | {arm} {da} defects vs V0 {dv} defects")
+            if why:
+                print(f"        why: {why[:150]}")
+        print(f"  >> {arm}: {arm} {w} / V0 {l} / tie {ties} (n={n}) | "
+              f"defects {arm}:{d_arm} vs V0:{d_v0}\n")
 
-    for _, _, book, _, _, _ in built:
+    print("Reference: eval_a_fair chapter-granularity = A3 3-0 vs V0; "
+          "per-scene concat historically loses on granularity, not state.")
+    print(f"Read {DUMP}: does stitch close the granularity gap while keeping canon guards?")
+
+    for _, _, book, _, _, _, _, _ in built:
         try:
             _req("DELETE", f"/v1/books/{book}", token)
         except Exception as exc:  # noqa
