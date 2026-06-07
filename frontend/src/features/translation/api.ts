@@ -79,6 +79,9 @@ export type CoverageCell = {
   latest_version_num: number | null;
   latest_status: ChapterTranslationStatus | 'running' | null;
   version_count: number;
+  // M6b-2: active version's glossary-staleness (fallback latest). Legacy rows
+  // default false (additive — old servers omit it).
+  is_glossary_stale?: boolean;
 };
 
 export type ChapterCoverage = {

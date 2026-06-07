@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Languages, Check, Clock, AlertCircle, Loader2, Plus, Filter, X, Sparkles } from 'lucide-react';
+import { Languages, Check, Clock, AlertCircle, Loader2, Plus, Filter, X, Sparkles, History } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
 import { translationApi, type BookCoverageResponse, type CoverageCell } from '@/features/translation/api';
@@ -87,6 +87,28 @@ function languagesWithData(coverage: BookCoverageResponse): Set<string> {
   return active;
 }
 
+/**
+ * M6b-2: which chapters have a glossary-stale translation in any visible language,
+ * plus the total count of stale (chapter × language) cells. Drives the "N affected"
+ * legend + the "Select affected" quick-action (→ existing translate flow).
+ */
+export function staleChapterIds(
+  coverage: BookCoverageResponse,
+  visibleLangs: string[],
+): { ids: Set<string>; cells: number } {
+  const ids = new Set<string>();
+  let cells = 0;
+  for (const row of coverage.coverage) {
+    for (const lang of visibleLangs) {
+      if (row.languages[lang]?.is_glossary_stale) {
+        cells++;
+        ids.add(row.chapter_id);
+      }
+    }
+  }
+  return { ids, cells };
+}
+
 export function TranslationTab({ bookId }: { bookId: string }) {
   const { t } = useTranslation('translation');
   const { accessToken } = useAuth();
@@ -164,6 +186,13 @@ export function TranslationTab({ bookId }: { bookId: string }) {
     }
     return { done, running, partial, failed };
   }, [coverage, visibleLangs]);
+
+  // M6b-2: chapters with a glossary-stale active translation in a visible language.
+  const stale = useMemo(
+    () => coverage ? staleChapterIds(coverage, visibleLangs) : { ids: new Set<string>(), cells: 0 },
+    [coverage, visibleLangs],
+  );
+  const selectStale = () => setSelectedChapters(new Set(stale.ids));
 
   if (loading) {
     return (
@@ -322,13 +351,23 @@ export function TranslationTab({ bookId }: { bookId: string }) {
                       </td>
                       {visibleLangs.map((lang) => {
                         const cell = row.languages[lang];
+                        const isStale = !!cell?.is_glossary_stale;
                         return (
                           <td
                             key={lang}
                             className={cn('px-4 py-2 text-center cursor-default transition-colors', cellBg(cell))}
-                            title={cell && cell.version_count > 0 ? t('matrix.cell_version_info', { num: cell.latest_version_num, count: cell.version_count }) : t('matrix.cell_not_translated')}
+                            title={isStale
+                              ? t('matrix.cell_stale_title')
+                              : cell && cell.version_count > 0
+                                ? t('matrix.cell_version_info', { num: cell.latest_version_num, count: cell.version_count })
+                                : t('matrix.cell_not_translated')}
                           >
-                            {cellContent(cell, t)}
+                            <span className="inline-flex items-center justify-center gap-1">
+                              {cellContent(cell, t)}
+                              {isStale && (
+                                <History className="h-2.5 w-2.5 shrink-0 text-sky-400" aria-label={t('matrix.cell_stale_title')} />
+                              )}
+                            </span>
                           </td>
                         );
                       })}
@@ -343,6 +382,16 @@ export function TranslationTab({ bookId }: { bookId: string }) {
           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
             <span>{t('matrix.showing_chapters', { shown: coverage.coverage.length, total: chapters.length })}</span>
             <div className="flex items-center gap-3">
+              {stale.cells > 0 && (
+                <button
+                  onClick={selectStale}
+                  title={t('matrix.select_affected_title')}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-sky-400/40 px-2 py-0.5 text-sky-400 hover:bg-sky-400/10 transition-colors"
+                >
+                  <History className="h-3 w-3" />
+                  {t('matrix.legend_stale', { count: stale.ids.size })}
+                </button>
+              )}
               {summaryCounts.done > 0 && (
                 <span className="inline-flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-green-500" />{t('matrix.legend_translated', { count: summaryCounts.done })}

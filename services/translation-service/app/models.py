@@ -285,6 +285,9 @@ class CoverageCell(BaseModel):
     latest_version_num: Optional[int]
     latest_status: Optional[str]
     version_count: int
+    # M6b-2: the active version's glossary-staleness flag (fallback latest) so the
+    # book-level matrix can surface "N chapters out of date from glossary changes".
+    is_glossary_stale: bool = False
 
 
 class ChapterCoverage(BaseModel):
