@@ -26,9 +26,14 @@ export function RawSearchPanel({ bookId }: RawSearchPanelProps) {
     bookId, debouncedQuery, { mode },
   );
 
-  // Jump-to-source: v1 navigates to the book's chapters hub. Precise
-  // chapter-open + scroll-to-block is deferred (D-RAWSEARCH-FE-JUMP-PRECISION).
-  const onJump = () => navigate(`/books/${bookId}`);
+  // Jump-to-source: open the chapter reader and scroll to the matched block.
+  // Lexical hits carry a blockIndex (→ ?block=N, the reader scrolls there).
+  // Semantic hits have only a chunkIndex (not a block index) → open the chapter
+  // without precise scroll (full semantic precision deferred).
+  const onJump = (chapterId: string, blockIndex?: number) => {
+    const target = blockIndex != null ? `?block=${blockIndex}` : '';
+    navigate(`/books/${bookId}/chapters/${chapterId}/read${target}`);
+  };
   const isDegraded = Object.keys(degraded).length > 0;
 
   return (

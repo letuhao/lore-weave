@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
+
+function LocationProbe() {
+  const loc = useLocation();
+  return <div data-testid="loc">{loc.pathname}{loc.search}</div>;
+}
 
 const searchMock = vi.fn();
 const hybridMock = vi.fn();
@@ -81,5 +86,41 @@ describe('RawSearchPanel', () => {
     fireEvent.change(screen.getByTestId('raw-search-input'), { target: { value: 'x' } });
     fireEvent.click(screen.getByTestId('raw-search-mode-lexical'));
     await waitFor(() => expect(searchMock).toHaveBeenCalled());
+  });
+
+  it('jumps to the chapter reader at the matched block on click (lexical)', async () => {
+    hybridMock.mockResolvedValue({ query: 'x', mode: 'hybrid', results: [_draft] });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <RawSearchPanel bookId="book-1" />
+          <LocationProbe />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    fireEvent.change(screen.getByTestId('raw-search-input'), { target: { value: 'x' } });
+    await waitFor(() => expect(screen.getByTestId('raw-search-result')).toBeInTheDocument());
+    fireEvent.click(within(screen.getByTestId('raw-search-result')).getByRole('button'));
+    expect(screen.getByTestId('loc').textContent).toBe(
+      '/books/book-1/chapters/cd/read?block=0',
+    );
+  });
+
+  it('opens the chapter without ?block for a semantic hit', async () => {
+    hybridMock.mockResolvedValue({ query: 'x', mode: 'hybrid', results: [_canon] });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <RawSearchPanel bookId="book-1" />
+          <LocationProbe />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    fireEvent.change(screen.getByTestId('raw-search-input'), { target: { value: 'x' } });
+    await waitFor(() => expect(screen.getByTestId('raw-search-result')).toBeInTheDocument());
+    fireEvent.click(within(screen.getByTestId('raw-search-result')).getByRole('button'));
+    expect(screen.getByTestId('loc').textContent).toBe('/books/book-1/chapters/cc/read');
   });
 });

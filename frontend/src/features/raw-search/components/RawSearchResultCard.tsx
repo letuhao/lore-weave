@@ -16,9 +16,10 @@ export interface RawSearchResultCardProps {
 }
 
 export function RawSearchResultCard({ hit, onJump }: RawSearchResultCardProps) {
-  // blockIndex (lexical) or chunkIndex (semantic) — both feed jump-to-source.
-  const jump = () =>
-    onJump(hit.chapterId, hit.location.blockIndex ?? hit.location.chunkIndex);
+  // Pass the lexical blockIndex (matches the reader's data-block-id) for precise
+  // scroll. Semantic hits have only a chunkIndex (not a block index) → blockIndex
+  // is undefined → the reader opens the chapter without scroll.
+  const jump = () => onJump(hit.chapterId, hit.location.blockIndex);
   return (
     <li data-testid="raw-search-result">
       {/* Native <button> activates onClick on both Enter and Space — no
