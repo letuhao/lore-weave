@@ -2,9 +2,12 @@
 // services/book-service/internal/api/search.go response shape.
 
 export interface RawSearchLocation {
-  blockIndex: number;
+  /** lexical (draft) hits — block index within the chapter. */
+  blockIndex?: number;
+  /** semantic (canon) hits — passage chunk index within the chapter. */
+  chunkIndex?: number;
   headingContext: string | null;
-  /** Unicode CODE-POINT offsets of the match within the block (jump-to-source). */
+  /** Unicode CODE-POINT offsets of the match within the block (lexical only). */
   charStart: number;
   charEnd: number;
 }
@@ -29,10 +32,13 @@ export interface RawSearchResponse {
   query: string;
   mode: string;
   results: RawSearchHit[];
+  /** Which leg degraded (knowledge hybrid only), e.g. { semantic: "embed_unavailable" }. */
+  degraded?: Record<string, string>;
 }
 
 export interface RawSearchParams {
   q: string;
   surface?: 'draft' | 'canon' | 'all';
+  mode?: 'lexical' | 'semantic' | 'hybrid';
   limit?: number;
 }

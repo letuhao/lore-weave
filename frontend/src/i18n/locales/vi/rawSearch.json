@@ -5,5 +5,9 @@
   "hint": "Nhập để tìm trong nguyên văn chương.",
   "loading": "Đang tìm…",
   "no_results": "Không tìm thấy kết quả.",
-  "error": "Tìm kiếm thất bại. Vui lòng thử lại."
+  "error": "Tìm kiếm thất bại. Vui lòng thử lại.",
+  "mode_label": "Chế độ tìm",
+  "mode_hybrid": "Kết hợp",
+  "mode_lexical": "Từ khóa",
+  "degraded": "Một số kết quả có thể bị giới hạn — một backend tìm kiếm không khả dụng."
 }

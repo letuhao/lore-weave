@@ -5,5 +5,9 @@
   "hint": "輸入以搜尋章節原文。",
   "loading": "搜尋中…",
   "no_results": "找不到符合的結果。",
-  "error": "搜尋失敗，請再試一次。"
+  "error": "搜尋失敗，請再試一次。",
+  "mode_label": "搜尋模式",
+  "mode_hybrid": "混合",
+  "mode_lexical": "字面",
+  "degraded": "部分結果可能受限（某個搜尋後端無法使用）。"
 }

@@ -8,7 +8,7 @@
 
 ### ▶ RAW SEARCH (branch `raw-search/foundation`, off `origin/main`)
 
-**State: Phase-1 FULL-STACK + Phase-2 P2a (BE hybrid) DONE.** New workstream — the missing **raw chapter-text** layer beneath glossary/knowledge/wiki (all lossy derivatives); serves authoring + extraction/trích-lục. Spec [`2026-06-07-raw-search.md`](../specs/2026-06-07-raw-search.md) (PART I design + PART II ATAM-lite eval; 7/7 confirm-at-BUILD resolved). Plan [`2026-06-07-raw-search.md`](../plans/2026-06-07-raw-search.md) (3 phases; ADJ-1..4 PO-acked).
+**State: Phase-1 + Phase-2 FULL-STACK DONE — hybrid (lexical+semantic, RRF) end-to-end.** New workstream — the missing **raw chapter-text** layer beneath glossary/knowledge/wiki (all lossy derivatives); serves authoring + extraction/trích-lục. Spec [`2026-06-07-raw-search.md`](../specs/2026-06-07-raw-search.md) (PART I design + PART II ATAM-lite eval; 7/7 confirm-at-BUILD resolved). Plan [`2026-06-07-raw-search.md`](../plans/2026-06-07-raw-search.md) (3 phases; ADJ-1..4 PO-acked).
 
 **Phase-1 BE (book-service, commit a956fbb3):** `BE-1` pg_trgm + `idx_chapter_blocks_trgm` GIN as a **best-effort Exec in `Up()`** (review-impl MED-1 — NOT in `schemaSQL`). `BE-2` `GET /v1/books/{id}/search?q=&surface=&limit=` — JWT + `ensureOwnerBook`; **ILIKE-primary + `similarity()` rank** over draft `chapter_blocks`; rune-offset highlight; `surface:"draft"`/`matchType:"lexical"`; `purge_pending`→404. 6 test funcs; go build/vet/test green. /review-impl: MED-1/MED-2/LOW-1/LOW-2 fixed.
 
@@ -16,7 +16,9 @@
 
 **Phase-2 P2a (BE hybrid):** knowledge orchestrator `GET /v1/knowledge/books/{id}/search?query=&mode=hybrid|semantic|lexical` — book→project resolve = ownership gate (`404 not_indexed`); legs via `asyncio.gather`: lexical (`BookClient.lexical_search` → book-service **internal** `/internal/books/{id}/lexical-search`, shared `runLexicalSearch` core) + semantic (`embed_query_cached` + `find_passages_by_vector(source_type="chapter")`); **RRF** (k=60) + per-chapter cap 3 (`app/search/hybrid_fusion.py`); per-leg degradation never 500s. Plan [`2026-06-07-raw-search-phase2.md`](../plans/2026-06-07-raw-search-phase2.md). knowledge **pytest 41/41** + book-service go green. /review-impl: MED-1 (book_client test) + LOW-4 (dim-mismatch test) fixed.
 
-**NEXT:** **Phase 2 P2b (FE hybrid)** — `rawSearchApi.searchHybrid` hitting `/v1/knowledge/books/{id}/search` with **fallback to lexical on 404/503**; `useRawSearch` mode select; match-type chips; FE handles semantic hits (`location.chunkIndex`, `chapterTitle:null`). Then **Phase 3** (canon-lexical, char-offset dedup, semantic-on-draft, rerank).
+**Phase-2 P2b (frontend):** `rawSearchApi.searchHybrid` → `/v1/knowledge/books/{id}/search`, **falls back to the book-service lexical endpoint on 404 OR any 5xx** (review-impl MED-1) + injects a `degraded.semantic` note (MED-2); `useRawSearch` **mode toggle** (Hybrid default / Lexical) + `degraded` passthrough; `RawSearchResultCard` handles semantic hits (`location.chunkIndex`, `chapterTitle:null`, match-type chip); panel mode toggle + degraded banner; `rawSearch` i18n +4 keys ×4. **vitest 14/14 · tsc 0 · i18n parity OK.** /review-impl: MED-1 (5xx fallback) + MED-2 (degraded-on-fallback) fixed; 1 reject-path test removed (vitest 2.1.9 unhandled-rejection quirk — behaviour inspection-covered).
+
+**NEXT:** **Phase 3** — canon-lexical projection (spec open #2), char-offset cross-leg dedup, semantic-on-draft (debounced ingest), optional LLM rerank, jump-to-source precision. OR run the deferred **live-smokes** (P1 lexical + P2 hybrid) on a stacked 封神演义 corpus. OR **push** the branch (6 commits).
 
 **Deferred (raw search):**
 - **D-RAWSEARCH-P1-LIVE-SMOKE** — real-stack CJK lexical search (pg_trgm on 封神演义) + FE↔BE browser smoke not yet live-verified; unit-covered. Smoke when book-service + DB + FE are up.

@@ -12,11 +12,13 @@ const SURFACE_CLASSES: Record<string, string> = {
 
 export interface RawSearchResultCardProps {
   hit: RawSearchHit;
-  onJump: (chapterId: string, blockIndex: number) => void;
+  onJump: (chapterId: string, pos?: number) => void;
 }
 
 export function RawSearchResultCard({ hit, onJump }: RawSearchResultCardProps) {
-  const jump = () => onJump(hit.chapterId, hit.location.blockIndex);
+  // blockIndex (lexical) or chunkIndex (semantic) — both feed jump-to-source.
+  const jump = () =>
+    onJump(hit.chapterId, hit.location.blockIndex ?? hit.location.chunkIndex);
   return (
     <li data-testid="raw-search-result">
       {/* Native <button> activates onClick on both Enter and Space — no
@@ -36,7 +38,10 @@ export function RawSearchResultCard({ hit, onJump }: RawSearchResultCardProps) {
           >
             {hit.surface}
           </span>
-          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          <span
+            className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+            data-testid="raw-search-matchtype"
+          >
             {hit.matchType}
           </span>
         </span>
