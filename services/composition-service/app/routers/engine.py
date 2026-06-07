@@ -39,12 +39,12 @@ from app.deps import (
 )
 from app.db.models import CorrectionKind
 from app.engine.adaptive_k import adaptive_k
-from app.engine.assembly import resolve_assembly_mode
+from app.engine.chapter_gen import build_chapter_pack_node
 from app.engine.canon_reflect import run_canon_reflect
 from app.engine.compress import compress
 from app.engine.cowrite import build_messages, estimate_prompt_tokens, stream_draft
 from app.engine.critic import judge_prose
-from app.engine.select import select_draft
+from app.engine.select import diverge, select_draft
 from app.reasoning import ReasoningSignals, score_effort
 from loreweave_llm import infer_reasoning_control, resolve_reasoning
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
@@ -82,10 +82,26 @@ class GenerateBody(BaseModel):
     model_kind: str | None = None
     model_name: str | None = None
     idempotency_key: str | None = None
-    # Chapter-assembly mode override (B1). None → resolve from the work setting
-    # then the config default. Literal → a bad value 422s here, before any job.
-    # 'chapter' (B2 single-pass) is not implemented yet → 501 in generate().
+    # Chapter-assembly mode override (B1). None → the per-scene endpoint always
+    # assembles per scene; an explicit 'chapter' here 409-redirects to the chapter
+    # endpoint (B2). Literal → a bad value 422s at request validation.
     assembly_mode: Literal["per_scene", "chapter"] | None = None
+
+
+class GenerateChapterBody(BaseModel):
+    # B2 chapter single-pass: no outline_node_id (chapter-scoped) and no
+    # assembly_mode (this endpoint IS chapter). Mirrors GenerateBody otherwise.
+    model_source: Literal["user_model", "platform_model"]
+    model_ref: UUID
+    operation: str = "draft_chapter"
+    guide: str = ""
+    # None → settings.chapter_gen_max_tokens (a whole chapter is one long pass,
+    # larger than the per-scene default). An explicit value still caps at 8192.
+    max_output_tokens: int | None = Field(default=None, ge=1, le=8192)
+    reasoning: Literal["off", "auto", "low", "medium", "high"] = "auto"
+    model_kind: str | None = None
+    model_name: str | None = None
+    idempotency_key: str | None = None
 
 
 class CritiqueBody(BaseModel):
@@ -149,15 +165,17 @@ async def generate(
 ) -> Any:  # StreamingResponse (cowrite) | JSONResponse (auto)
     work, node = await _load_work_node(works, outline, user_id, project_id, body.outline_node_id)
 
-    # B1 — resolve the chapter-assembly mode (request override → work setting →
-    # config default). 'chapter' (single-pass, B2) is not implemented yet, so a
-    # resolved 'chapter' 501s BEFORE any job/pack/stream — never silently runs the
-    # per-scene engine. B2 replaces this guard with the chapter path.
-    assembly_mode = resolve_assembly_mode(
-        body.assembly_mode, work.settings, settings.composition_assembly_mode_default)
-    if assembly_mode == "chapter":
-        raise HTTPException(status_code=501, detail={
-            "code": "ASSEMBLY_MODE_NOT_IMPLEMENTED", "assembly_mode": "chapter"})
+    # B2 — this is the PER-SCENE endpoint. An explicit assembly_mode='chapter'
+    # override here is a caller mistake (chapter assembly has its own endpoint),
+    # so 409-redirect rather than silently producing a per-scene draft. A work
+    # whose DEFAULT is 'chapter' does NOT block per-scene co-write here: the mode
+    # selects the autonomous entrypoint, not whether co-writing a scene is allowed.
+    if body.assembly_mode == "chapter":
+        raise HTTPException(status_code=409, detail={
+            "code": "USE_CHAPTER_ENDPOINT",
+            "detail": "this work assembles by chapter; "
+                      "POST /v1/composition/works/{project_id}/chapters/{chapter_id}/generate"})
+    assembly_mode = "per_scene"  # echoed below — this endpoint always assembles per scene
 
     # S2 — bind the compress primitive over the drafter model + the Work's source
     # language; pack() calls it only when the raw story-so-far exceeds budget.
@@ -377,6 +395,167 @@ async def generate(
             yield _sse({"type": "done", "job_id": str(job.id), "status": "failed"})
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
+@router.post("/works/{project_id}/chapters/{chapter_id}/generate")
+async def generate_chapter(
+    project_id: UUID,
+    chapter_id: UUID,
+    body: GenerateChapterBody,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+    scene_links: SceneLinksRepo = Depends(get_scene_links_repo),
+    canon: CanonRulesRepo = Depends(get_canon_rules_repo),
+    jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
+    book: BookClient = Depends(get_book_client_dep),
+    glossary: GlossaryClient = Depends(get_glossary_client_dep),
+    knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
+    llm: LLMClient = Depends(get_llm_client_dep),
+) -> Any:
+    """B2 chapter single-pass (assembly_mode='chapter'): generate a WHOLE chapter
+    in ONE drafter pass from its A3 decompose plan (scene nodes), grounded at the
+    chapter reading position, then run a chapter-level canon check+reflect over
+    the union cast. Non-stream JSON (like the auto path). The synthetic pack node
+    is in-memory only — never persisted (MED-1)."""
+    work = await works.get(user_id, project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail="work not found")
+
+    scenes = await outline.scenes_for_chapter(user_id, project_id, chapter_id)
+    if not scenes:
+        raise HTTPException(status_code=400, detail={
+            "code": "NO_CHAPTER_PLAN", "detail": "chapter has no scene plan; decompose it first"})
+
+    # Chapter-level intent/title from the kind='chapter' outline node (the scenes'
+    # shared parent). Defensive: empty if absent / not a chapter (hand-authored).
+    chapter_intent, chapter_title = "", ""
+    parent_id = scenes[0].parent_id
+    if parent_id is not None:
+        parent = await outline.get_node(user_id, parent_id)
+        if parent is not None and parent.kind == "chapter":
+            chapter_intent, chapter_title = parent.goal, parent.title
+
+    # Chapter reading position (book sort_order) → story_order (strictly-prior
+    # context) + the canon position. pack() re-resolves it from chapter_id.
+    chapter_sort = (await book.get_chapter_sort_orders([chapter_id])).get(str(chapter_id))
+    pack_node = build_chapter_pack_node(
+        chapter_id=chapter_id, chapter_sort=chapter_sort,
+        chapter_intent=chapter_intent, chapter_title=chapter_title, scenes=scenes)
+
+    _src_lang = from_settings(work.settings).source_language
+
+    async def _compress_fn(older: list[str], timeline_texts: list[str], plan: str) -> str:
+        return await compress(
+            llm, user_id=str(user_id), model_source=body.model_source,
+            model_ref=str(body.model_ref), prose=older, timeline=timeline_texts,
+            plan=plan, source_language=_src_lang)
+
+    try:
+        pc = await pack(
+            PackRequest(user_id=user_id, project_id=project_id, book_id=work.book_id,
+                        node=pack_node, bearer=bearer, guide=body.guide,
+                        settings=work.settings),
+            book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
+            outline_repo=outline, scene_links_repo=scene_links,
+            budget_tokens=settings.pack_token_budget, jobs_repo=jobs,
+            compress_fn=_compress_fn)
+    except OwnershipError:
+        raise HTTPException(status_code=404, detail="book not found")
+    except BookClientError:
+        raise HTTPException(status_code=502, detail={"code": "BOOK_SERVICE_UNAVAILABLE"})
+
+    messages = build_messages(pc.prompt, pc.profile, body.operation, body.guide)
+    prompt_estimate = estimate_prompt_tokens(messages, B.default_counter())
+    prompt_ceiling = settings.pack_token_budget * 2
+    if prompt_estimate > prompt_ceiling:
+        raise HTTPException(status_code=413, detail={
+            "code": "PROMPT_TOO_LARGE", "estimate": prompt_estimate, "ceiling": prompt_ceiling})
+
+    active_rules = await canon.list_active(user_id, project_id)
+    signals = ReasoningSignals(
+        operation=body.operation, n_canon_rules=len(active_rules),
+        n_present_entities=len(pack_node["present_entity_ids"]),
+        has_reveal_gate=any(r.scope == "reveal_gate" for r in active_rules),
+        tension=None, guide=body.guide)
+    control = infer_reasoning_control(body.model_kind, body.model_name)
+    reasoning = resolve_reasoning(
+        user_pref=body.reasoning, model_control=control, auto_effort=score_effort(signals),
+        auto_source=str(work.settings.get("reasoning_engine", "rule_based")))
+
+    max_out = body.max_output_tokens or settings.chapter_gen_max_tokens
+
+    # Idempotency keyed on the caller's key (design LOW-1: key on chapter_id +
+    # assembly_mode in the value the caller builds). No in-flight cancel: chapter
+    # jobs aren't node-scoped.
+    job, created = await jobs.create(
+        user_id, project_id, operation=body.operation, outline_node_id=None,
+        mode="auto", status="running",
+        input={"model_source": body.model_source, "model_ref": str(body.model_ref),
+               "operation": body.operation, "prompt_estimate": prompt_estimate,
+               "assembly_mode": "chapter", "chapter_id": str(chapter_id),
+               "reasoning": reasoning.source, "reasoning_effort": reasoning.effort},
+        idempotency_key=body.idempotency_key)
+    if not created:  # idempotent replay → return the existing job, don't re-run
+        r = job.result or {}
+        return JSONResponse({"job_id": str(job.id), "mode": "auto", "replay": True,
+                             "text": r.get("text", ""), "status": job.status,
+                             "canon": r.get("canon"), "assembly_mode": "chapter"})
+
+    sdict = work.settings or {}
+    c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
+    distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+    try:
+        cands = await diverge(
+            llm, user_id=str(user_id), model_source=body.model_source,
+            model_ref=str(body.model_ref), packed_prompt=pc.prompt, profile=pc.profile,
+            operation=body.operation, guide=body.guide, k=1, prompt_est=prompt_estimate,
+            max_tokens=max_out, temperature=settings.compose_diverge_temperature,
+            reasoning_effort=None if reasoning.passthrough else reasoning.effort)
+    except Exception as exc:  # no candidate / transport — fail the job, 502
+        logger.warning("chapter draft failed: %s", exc)
+        await jobs.update_status(user_id, job.id, "failed")
+        raise HTTPException(status_code=502, detail={"code": "GENERATE_FAILED"})
+    winner = cands[0]
+
+    # Chapter-level A2 canon check→reflect over the union cast at the chapter
+    # position (the per-scene guard runs at the same at_order for every scene, so
+    # this is equivalent-granularity — plan CANON-SAFETY). Degrades to advisory on
+    # any knowledge/judge outage, never blocks (F1).
+    final_text = winner.text
+    canon_v: dict[str, Any] = {"violations": [], "resolved": True, "iterations": 0,
+                               "status": "degraded"}
+    revise_out_tokens = 0
+    try:
+        final_text, reflect, revise_out_tokens = await run_canon_reflect(
+            knowledge=knowledge, llm=llm, user_id=user_id, project_id=project_id,
+            cast_glossary_ids=[str(e) for e in pack_node["present_entity_ids"]],
+            scene_sort_order=pc.scene_sort_order, draft=winner.text,
+            packed_prompt=pc.prompt, profile=pc.profile,
+            drafter_source=body.model_source, drafter_ref=str(body.model_ref),
+            judge_source=str(c_src) if distinct else None,
+            judge_ref=str(c_ref) if distinct else None,
+            prompt_estimate=prompt_estimate, max_output_tokens=max_out,
+            max_iters=max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),
+            reasoning_effort=None if reasoning.passthrough else reasoning.effort)
+        canon_v = {"violations": [v.model_dump() for v in reflect.violations],
+                   "resolved": reflect.resolved, "iterations": reflect.iterations,
+                   "status": reflect.status}
+    except Exception:  # canon reflect must NEVER fail the generate (F1).
+        logger.warning("chapter canon reflect failed (advisory) — keeping draft", exc_info=True)
+
+    total_out = winner.metering.output_tokens + revise_out_tokens
+    await jobs.update_status(
+        user_id, job.id, "completed",
+        result={"text": final_text, "input_tokens": winner.metering.input_tokens,
+                "output_tokens": total_out, "measured": winner.metering.measured,
+                "canon": canon_v, "assembly_mode": "chapter", "chapter_id": str(chapter_id)})
+    return JSONResponse({
+        "job_id": str(job.id), "mode": "auto", "status": "completed", "text": final_text,
+        "canon": canon_v, "grounding_available": pc.grounding_available,
+        "reasoning_source": reasoning.source, "reasoning_effort": reasoning.effort,
+        "assembly_mode": "chapter"})
 
 
 @router.post("/works/{project_id}/scenes/{node_id}/suggest-cast")

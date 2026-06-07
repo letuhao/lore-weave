@@ -7,6 +7,8 @@ settings enum validator (422 on a bad stored value), and the /generate wiring
 
 from __future__ import annotations
 
+import uuid
+
 import pydantic
 import pytest
 
@@ -14,7 +16,9 @@ from app.engine.assembly import ASSEMBLY_MODES, resolve_assembly_mode
 from app.routers.works import WorkPatch
 
 # Reuse the engine-router TestClient fixture + ids (pack/stream/judge stubbed).
-from tests.unit.test_engine_router import PROJECT, NODE, DRAFTER, ctx  # noqa: F401
+from tests.unit.test_engine_router import (  # noqa: F401
+    BOOK, DRAFTER, JOB, NODE, PROJECT, USER, ctx,
+)
 
 
 # ── resolver (pure) ──
@@ -65,27 +69,29 @@ def _gen_body():
     return {"outline_node_id": str(NODE), "model_source": "user_model", "model_ref": str(DRAFTER)}
 
 
-def test_generate_chapter_mode_override_501(ctx):
-    # The request override resolves to 'chapter' → 501 (B2 not built), before any job.
+def test_generate_explicit_chapter_override_409_redirects(ctx):
+    # B2: the per-scene endpoint 409-redirects an EXPLICIT assembly_mode='chapter'
+    # override to the chapter endpoint, BEFORE any job.
     c, _, _, _, jobs, _, _ = ctx
     r = c.post(f"/v1/composition/works/{PROJECT}/generate",
                json={**_gen_body(), "assembly_mode": "chapter"})
-    assert r.status_code == 501
-    assert r.json()["detail"]["code"] == "ASSEMBLY_MODE_NOT_IMPLEMENTED"
-    # guarded BEFORE job creation — assert jobs.create was never reached (the
-    # StubJobs records its kwargs on _last_create only when create() runs). An
-    # empty jobs.updates alone would NOT prove this (create precedes the first
-    # update_status), so check the create sentinel directly. (/review-impl COSMETIC-1)
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "USE_CHAPTER_ENDPOINT"
+    # guarded BEFORE job creation — the StubJobs records kwargs on _last_create
+    # only when create() runs; an empty jobs.updates alone wouldn't prove this.
     assert not hasattr(jobs, "_last_create")
     assert jobs.updates == []
 
 
-def test_generate_chapter_mode_from_work_setting_501(ctx):
-    # No override, but the work setting selects 'chapter' → 501.
+def test_generate_work_default_chapter_still_allows_per_scene(ctx):
+    # B2: a work whose DEFAULT is 'chapter' does NOT block per-scene co-write via
+    # /generate (the mode selects the autonomous entrypoint, not whether co-write
+    # is allowed). No explicit override → runs per-scene, echoes per_scene.
     c, works, _, _, _, _, _ = ctx
     works.work.settings = {"assembly_mode": "chapter"}
     r = c.post(f"/v1/composition/works/{PROJECT}/generate", json=_gen_body())
-    assert r.status_code == 501
+    assert r.status_code == 200
+    assert '"assembly_mode": "per_scene"' in r.text
 
 
 def test_generate_per_scene_default_streams_and_echoes_mode(ctx):
@@ -136,3 +142,196 @@ def test_generate_body_literal_matches_assembly_modes():
     for member in get_args(ann):  # union members: Literal[...] and NoneType
         literal_values |= set(get_args(member))  # Literal members; non-literal → ()
     assert literal_values == set(ASSEMBLY_MODES)
+
+
+# ── chapter single-pass endpoint (B2) ──
+
+CHAPTER = uuid.uuid4()
+ENT1, ENT2 = uuid.uuid4(), uuid.uuid4()
+
+
+@pytest.fixture
+def chap_ctx(monkeypatch):
+    """TestClient wired for the chapter endpoint: scenes_for_chapter + chapter
+    parent node + book sort + pack/diverge/run_canon_reflect monkeypatched. The
+    outline stub asserts create_node is NEVER called (the synthetic pack node must
+    not be persisted — MED-1)."""
+    from unittest.mock import AsyncMock
+
+    from fastapi.testclient import TestClient
+
+    from app.db.models import CompositionWork, GenerationJob, OutlineNode
+    from app.engine.canon_check import ReflectResult
+    from app.engine.cowrite import DraftMetering
+    from app.engine.select import Candidate
+    from app.packer.pack import PackedContext
+    from app.packer.profile import NEUTRAL
+
+    monkeypatch.setattr("app.main.create_pool", AsyncMock())
+    monkeypatch.setattr("app.main.run_migrations", AsyncMock())
+    monkeypatch.setattr("app.main.close_pool", AsyncMock())
+    monkeypatch.setattr("app.main.get_pool", lambda: object())
+
+    chapter_node = OutlineNode(id=uuid.uuid4(), user_id=USER, project_id=PROJECT,
+                               kind="chapter", rank="a0", chapter_id=CHAPTER,
+                               title="Ch1", goal="the arrival")
+    scenes = [
+        OutlineNode(id=uuid.uuid4(), user_id=USER, project_id=PROJECT, kind="scene",
+                    rank="a0", parent_id=chapter_node.id, chapter_id=CHAPTER, title="S1",
+                    synopsis="they enter", tension=30, present_entity_ids=[ENT1],
+                    story_order=3000),
+        OutlineNode(id=uuid.uuid4(), user_id=USER, project_id=PROJECT, kind="scene",
+                    rank="a1", parent_id=chapter_node.id, chapter_id=CHAPTER, title="S2",
+                    synopsis="the duel", tension=85, present_entity_ids=[ENT2],
+                    pov_entity_id=ENT1, story_order=3001),
+    ]
+
+    class W:
+        def __init__(self):
+            self.work = CompositionWork(project_id=PROJECT, user_id=USER, book_id=BOOK, settings={})
+        async def get(self, u, p):
+            return self.work
+
+    class O:
+        def __init__(self):
+            self.nodes = {chapter_node.id: chapter_node}
+            self.scenes = scenes
+        async def scenes_for_chapter(self, u, p, ch):
+            return self.scenes
+        async def get_node(self, u, nid, conn=None):
+            return self.nodes.get(nid)
+        async def create_node(self, *a, **k):
+            raise AssertionError("chapter pack node must NOT be persisted")
+        async def create_decomposed_tree(self, *a, **k):
+            raise AssertionError("chapter generate must NOT persist a tree")
+
+    class Bk:
+        async def get_chapter_sort_orders(self, ids):
+            return {str(CHAPTER): 3}
+
+    class Cn:
+        async def list_active(self, u, p):
+            return []
+
+    class J:
+        def __init__(self):
+            self.created = True
+            self.updates = []
+            self.job = GenerationJob(id=JOB, user_id=USER, project_id=PROJECT,
+                                     operation="draft_chapter", status="running", input={})
+        async def create(self, u, p, **kw):
+            self._last_create = kw
+            return self.job, self.created
+        async def update_status(self, u, jid, status, **kw):
+            self.updates.append((str(jid), status, kw))
+            return self.job
+        async def get(self, u, jid):
+            return self.job
+
+    state = {"diverge": {}}
+
+    async def fake_pack(req, **kw):
+        return PackedContext(blocks={}, prompt="GROUNDING", profile=NEUTRAL, token_count=5,
+                             dropped_count=0, l4_dropped_no_position=0, grounding_available=True,
+                             over_budget=False, warnings=[], scene_sort_order=3)
+
+    async def fake_diverge(llm, **kw):
+        state["diverge"] = kw
+        return [Candidate("CHAPTER DRAFT", DraftMetering(40, 10, True))]
+
+    async def fake_reflect(**kw):
+        state["reflect"] = kw
+        return (kw["draft"], ReflectResult(text=kw["draft"], status="checked",
+                                           violations=[], iterations=0, resolved=True), 0)
+
+    monkeypatch.setattr("app.routers.engine.pack", fake_pack)
+    monkeypatch.setattr("app.routers.engine.diverge", fake_diverge)
+    monkeypatch.setattr("app.routers.engine.run_canon_reflect", fake_reflect)
+
+    from app.deps import (get_book_client_dep, get_canon_rules_repo,
+                          get_generation_jobs_repo, get_glossary_client_dep,
+                          get_knowledge_client_dep, get_llm_client_dep, get_outline_repo,
+                          get_scene_links_repo, get_works_repo)
+    from app.main import app
+    from app.middleware.jwt_auth import get_bearer_token, get_current_user
+
+    from types import SimpleNamespace
+    works, outline, jobs = W(), O(), J()
+    app.dependency_overrides[get_current_user] = lambda: USER
+    app.dependency_overrides[get_bearer_token] = lambda: "jwt"
+    app.dependency_overrides[get_works_repo] = lambda: works
+    app.dependency_overrides[get_outline_repo] = lambda: outline
+    app.dependency_overrides[get_canon_rules_repo] = lambda: Cn()
+    app.dependency_overrides[get_generation_jobs_repo] = lambda: jobs
+    app.dependency_overrides[get_scene_links_repo] = lambda: object()
+    app.dependency_overrides[get_book_client_dep] = lambda: Bk()
+    app.dependency_overrides[get_glossary_client_dep] = lambda: object()
+    app.dependency_overrides[get_knowledge_client_dep] = lambda: object()
+    app.dependency_overrides[get_llm_client_dep] = lambda: SimpleNamespace(sdk=object())
+    with TestClient(app) as c:
+        yield c, works, outline, jobs, state
+    app.dependency_overrides.clear()
+
+
+def _chap_body():
+    return {"model_source": "user_model", "model_ref": str(DRAFTER)}
+
+
+def _chap_url():
+    return f"/v1/composition/works/{PROJECT}/chapters/{CHAPTER}/generate"
+
+
+def test_chapter_generate_happy_path(chap_ctx):
+    c, _, _, jobs, state = chap_ctx
+    r = c.post(_chap_url(), json=_chap_body())
+    assert r.status_code == 200
+    body = r.json()
+    assert body["text"] == "CHAPTER DRAFT" and body["assembly_mode"] == "chapter"
+    assert body["canon"]["status"] == "checked"
+    # single pass — diverge called with k=1, and the union cast reached canon reflect
+    assert state["diverge"]["k"] == 1
+    assert state["reflect"]["cast_glossary_ids"] == [str(ENT1), str(ENT2)]
+    assert state["reflect"]["scene_sort_order"] == 3
+    # job completed, op draft_chapter, no outline_node_id
+    assert jobs._last_create["operation"] == "draft_chapter"
+    assert jobs._last_create["outline_node_id"] is None
+    assert any(s == "completed" for _, s, _ in jobs.updates)
+
+
+def test_chapter_generate_no_plan_400(chap_ctx):
+    c, _, outline, jobs, _ = chap_ctx
+    outline.scenes = []  # no decompose plan for this chapter
+    r = c.post(_chap_url(), json=_chap_body())
+    assert r.status_code == 400
+    assert r.json()["detail"]["code"] == "NO_CHAPTER_PLAN"
+    assert not hasattr(jobs, "_last_create")  # guarded before job creation
+
+
+def test_chapter_generate_draft_failure_502_fails_job(chap_ctx, monkeypatch):
+    c, _, _, jobs, _ = chap_ctx
+
+    async def boom(llm, **kw):
+        raise RuntimeError("no candidates")
+
+    monkeypatch.setattr("app.routers.engine.diverge", boom)
+    r = c.post(_chap_url(), json=_chap_body())
+    assert r.status_code == 502
+    assert any(s == "failed" for _, s, _ in jobs.updates)
+
+
+def test_chapter_generate_idempotent_replay(chap_ctx):
+    c, _, _, jobs, state = chap_ctx
+    jobs.created = False
+    jobs.job.result = {"text": "PRIOR", "canon": {"status": "checked", "resolved": True}}
+    r = c.post(_chap_url(), json={**_chap_body(), "idempotency_key": "k1"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["replay"] is True and body["text"] == "PRIOR"
+    assert state["diverge"] == {}  # short-circuited before drafting
+
+
+def test_chapter_generate_work_404(chap_ctx):
+    c, works, _, _, _ = chap_ctx
+    works.work = None
+    r = c.post(_chap_url(), json=_chap_body())
+    assert r.status_code == 404

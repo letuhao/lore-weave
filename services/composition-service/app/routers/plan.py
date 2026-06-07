@@ -35,6 +35,7 @@ from app.deps import (
     get_book_client_dep, get_glossary_client_dep, get_llm_client_dep,
     get_outline_repo, get_structure_templates_repo, get_works_repo,
 )
+from app.engine.chapter_gen import STORY_ORDER_CHAPTER_STRIDE
 from app.engine.plan import ChapterPlan, decompose
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.packer.profile import from_settings
@@ -206,18 +207,18 @@ async def decompose_commit(
             "detail": "chapters already have scenes — resend with force=true to add "
                       "these scenes IN ADDITION (existing scenes are NOT removed)"})
 
-    # Assign each scene a reading-order story_order = chapter.sort_order*1000 + idx.
+    # Assign each scene a reading-order story_order = chapter.sort_order*STRIDE + idx.
     # This is the position axis the packer + S1 state-reinjection key on (prior =
     # lower story_order); WITHOUT it scenes are story_order=None and both the
     # spoiler-windowed lenses AND S1's prior-scene fallback no-op. Chapter-major,
-    # scene-minor, stable + collision-free (≤1000 scenes/chapter).
-    _STRIDE = 1000
+    # scene-minor, stable + collision-free (≤STRIDE scenes/chapter). The stride is
+    # shared with B2 chapter-mode (build_chapter_pack_node) so the two never drift.
     spec = [{
         "chapter_id": ch.chapter_id, "title": ch.title, "intent": ch.intent,
         "beat_role": ch.beat_role,
         "scenes": [{"title": sc.title, "synopsis": sc.synopsis, "tension": sc.tension,
                     "present_entity_ids": sc.present_entity_ids,
-                    "story_order": sort_by_chapter[str(ch.chapter_id)] * _STRIDE + i}
+                    "story_order": sort_by_chapter[str(ch.chapter_id)] * STORY_ORDER_CHAPTER_STRIDE + i}
                    for i, sc in enumerate(ch.scenes)],
     } for ch in body.chapters]
     try:

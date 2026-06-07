@@ -211,6 +211,26 @@ class OutlineRepo:
             )
         return {r["chapter_id"] for r in rows}
 
+    async def scenes_for_chapter(
+        self, user_id: UUID, project_id: UUID, chapter_id: UUID,
+    ) -> list[OutlineNode]:
+        """B2 chapter-assembly — the caller's active scene nodes for `chapter_id`
+        in reading order (story_order, then fractional rank as tiebreak). The
+        chapter single-pass path builds its combined synopsis + union cast from
+        these (the A3 decompose plan). story_order NULLS LAST so a legacy scene
+        without a reading-order still sorts deterministically after placed ones."""
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(
+                f"""
+                SELECT {_SELECT_COLS} FROM outline_node
+                WHERE user_id = $1 AND project_id = $2 AND chapter_id = $3
+                  AND kind = 'scene' AND NOT is_archived
+                ORDER BY story_order NULLS LAST, rank COLLATE "C", id
+                """,
+                user_id, project_id, chapter_id,
+            )
+        return [_row_to_node(r) for r in rows]
+
     async def create_decomposed_tree(
         self, user_id: UUID, project_id: UUID, *,
         arc_title: str, chapters: list[dict[str, Any]],

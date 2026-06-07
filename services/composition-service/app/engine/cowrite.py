@@ -28,6 +28,11 @@ logger = logging.getLogger(__name__)
 _OPERATION_INSTRUCTIONS = {
     "continue": "Continue the scene from where the recent prose ends, in the same voice.",
     "draft_scene": "Draft this scene from its beat, goal, POV, and synopsis.",
+    # B2 chapter single-pass: the user prompt carries the chapter intent + every
+    # scene beat in order; write the WHOLE chapter as one continuous narrative
+    # (not a single scene) so the output isn't fragmented back into per-scene size.
+    "draft_chapter": "Draft the ENTIRE chapter as one continuous narrative, covering "
+                     "every scene beat in the outline in order, with smooth transitions.",
     "expand": "Expand the current passage with more sensory and interior detail.",
     "rewrite": "Rewrite the current passage, keeping its events but improving the prose.",
     "describe": "Write a vivid description for the current moment.",
