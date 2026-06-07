@@ -11,6 +11,10 @@ from typing import Any
 
 RRF_K = 60
 PER_CHAPTER_CAP = 3
+# E5: "block" granularity (exhaustive mining) lifts the per-chapter cap so
+# every matching block can surface; "chapter" granularity uses cap=1 (best
+# block per chapter). A large finite cap (vs None) keeps the function total.
+BLOCK_CHAPTER_CAP = 10_000
 
 Hit = dict[str, Any]
 
@@ -62,3 +66,17 @@ def cap_per_chapter(hits: list[Hit], *, cap: int = PER_CHAPTER_CAP) -> list[Hit]
         seen[cid] = n + 1
         out.append(hit)
     return out
+
+
+def apply_relevance_floor(hits: list[Hit], min_relevance: float) -> list[Hit]:
+    """E5 — drop hits whose native `relevance` (0–1: lexical similarity /
+    semantic cosine) is below `min_relevance`. This is the score-floor that
+    suppresses junk: a negative-control query (e.g. an absent term) returns
+    only low-cosine nearest-neighbours, which the floor removes.
+
+    A hit MISSING `relevance` passes through (treated as 1.0) so a leg that
+    doesn't yet emit the field is never silently nuked. `min_relevance <= 0`
+    is a no-op (floor disabled)."""
+    if min_relevance <= 0.0:
+        return hits
+    return [h for h in hits if float(h.get("relevance", 1.0)) >= min_relevance]

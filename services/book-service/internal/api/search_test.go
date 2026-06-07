@@ -44,6 +44,22 @@ func TestValidateSurface(t *testing.T) {
 	}
 }
 
+func TestValidateGranularity(t *testing.T) {
+	t.Parallel()
+	// "" and "chapter" both normalise to the chapter default (navigate).
+	for in, want := range map[string]string{"": "chapter", "chapter": "chapter", "block": "block"} {
+		got, msg := validateGranularity(in)
+		if msg != "" || got != want {
+			t.Fatalf("granularity %q -> (%q,%q), want (%q,\"\")", in, got, msg, want)
+		}
+	}
+	for _, bad := range []string{"Chapter", "blocks", "garbage", "page"} {
+		if _, msg := validateGranularity(bad); msg == "" {
+			t.Fatalf("granularity %q should be rejected", bad)
+		}
+	}
+}
+
 func TestEscapeLikePattern(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{

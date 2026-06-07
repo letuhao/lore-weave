@@ -51,6 +51,7 @@ def _lex_hit(block_index=0, score=1.5) -> dict:
     return {
         "chapterId": "ch-draft", "chapterTitle": "Draft Ch", "sortOrder": 3,
         "surface": "draft", "matchType": "lexical", "score": score,
+        "relevance": 1.0,  # E5: exact-match lexical relevance
         "snippet": "draft prose", "highlights": [[0, 3]],
         "location": {"blockIndex": block_index, "headingContext": None,
                      "charStart": 0, "charEnd": 3},
@@ -234,3 +235,105 @@ def test_semantic_hit_titles_enriched(mock_embed, mock_find):
     assert hit["surface"] == "canon"
     assert hit["chapterTitle"] == "第3回 — Bridge Duel"
     book_client.get_chapter_titles.assert_awaited()
+
+
+# ── E5: granularity + relevance + score-floor ────────────────────────
+
+
+def test_granularity_defaults_to_chapter_and_forwards():
+    client, _, book_client = _make_client()
+    assert client.get(_url("lexical")).status_code == 200
+    _, kwargs = book_client.lexical_search.call_args
+    assert kwargs.get("granularity") == "chapter"  # navigate default
+
+
+def test_granularity_block_forwarded():
+    client, _, book_client = _make_client()
+    assert client.get(_url("lexical") + "&granularity=block").status_code == 200
+    _, kwargs = book_client.lexical_search.call_args
+    assert kwargs.get("granularity") == "block"
+
+
+def test_bad_granularity_rejected():
+    client, _, _ = _make_client()
+    assert client.get(_url("lexical") + "&granularity=page").status_code == 422
+
+
+@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+def test_explicit_min_relevance_floors_low_hit(mock_embed, mock_find):
+    # the floor is OFF by default (compressed cosine → lossy); an explicit
+    # min_relevance opt-in drops a low-cosine hit (0.2 < 0.5).
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit(0, 0.2)]
+    client, _, _ = _make_client()
+    resp = client.get(_url("semantic") + "&min_relevance=0.5")
+    assert resp.status_code == 200
+    assert resp.json()["results"] == []
+
+
+@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+def test_floor_off_by_default_keeps_low_hit(mock_embed, mock_find):
+    # default min_relevance=0.0 → low-cosine hit survives (no global threshold)
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit(0, 0.2)]
+    client, _, _ = _make_client()
+    resp = client.get(_url("semantic"))
+    assert resp.status_code == 200
+    assert len(resp.json()["results"]) == 1
+
+
+@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+def test_chapter_mode_caps_across_surfaces(mock_embed, mock_find):
+    # MED-2: chapter granularity caps on chapterId ALONE — a chapter with BOTH
+    # a lexical(draft) and a semantic(canon) hit collapses to ONE row (navigate
+    # shape). Pin the behaviour so a future fusion change can't silently alter it.
+    mock_embed.return_value = [0.1] * 1024
+    # semantic passage on the SAME chapterId as the default lexical hit ("ch-draft")
+    p = Passage(
+        id="pg-x", user_id=str(_USER), project_id=str(_PROJECT_ID),
+        source_type="chapter", source_id="ch-draft", chunk_index=0, text="canon",
+        embedding_model="bge-m3", is_hub=False, chapter_index=3,
+        created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
+    )
+    mock_find.return_value = [PassageSearchHit(passage=p, raw_score=0.95, vector=None)]
+    client, _, _ = _make_client()  # lexical leg returns _lex_hit (chapterId ch-draft)
+    body = client.get(_url("hybrid")).json()  # default granularity=chapter
+    rows = [h for h in body["results"] if h["chapterId"] == "ch-draft"]
+    assert len(rows) == 1  # one row for the chapter despite two surfaces
+
+
+@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+def test_block_mode_keeps_both_surfaces(mock_embed, mock_find):
+    # block granularity lifts the cap → both surfaces of the same chapter surface.
+    mock_embed.return_value = [0.1] * 1024
+    p = Passage(
+        id="pg-y", user_id=str(_USER), project_id=str(_PROJECT_ID),
+        source_type="chapter", source_id="ch-draft", chunk_index=0, text="canon",
+        embedding_model="bge-m3", is_hub=False, chapter_index=3,
+        created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
+    )
+    mock_find.return_value = [PassageSearchHit(passage=p, raw_score=0.95, vector=None)]
+    client, _, _ = _make_client()
+    body = client.get(_url("hybrid") + "&granularity=block").json()
+    rows = [h for h in body["results"] if h["chapterId"] == "ch-draft"]
+    assert len(rows) == 2  # draft + canon both kept
+
+
+@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+def test_results_carry_relevance(mock_embed, mock_find):
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit(0, 0.9)]
+    client, _, _ = _make_client()
+    body = client.get(_url("hybrid")).json()
+    assert body["results"]
+    assert all("relevance" in h for h in body["results"])

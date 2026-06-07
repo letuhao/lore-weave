@@ -39,6 +39,36 @@ WHERE c.book_id = $1
 ORDER BY (cb.text_content ILIKE $3) DESC, sim DESC, c.sort_order, cb.block_index
 LIMIT $4`
 
+// lexicalSearchChapterSQL — E5 "chapter" granularity (navigate): one BEST block
+// per chapter, so `LIMIT $4` bounds distinct CHAPTERS, not blocks. The flat
+// block SQL spent its limit on blocks that cluster into few chapters, capping
+// recall for wide terms (P3-EVAL: lexical oracle-recall 0.63). A window function
+// keeps the top-ranked block per chapter (exact-first, then similarity), then the
+// outer query ranks chapters. Same 7 projected columns as lexicalSearchSQL.
+//
+//	$1 = book_id   $2 = raw query   $3 = escaped ILIKE pattern   $4 = limit
+const lexicalSearchChapterSQL = `
+SELECT t.chapter_id, t.title, t.sort_order, t.block_index, t.heading_context,
+       t.text_content, t.sim
+FROM (
+  SELECT cb.chapter_id, c.title, c.sort_order, cb.block_index, cb.heading_context,
+         cb.text_content, similarity(cb.text_content, $2) AS sim,
+         (cb.text_content ILIKE $3) AS exact,
+         ROW_NUMBER() OVER (
+           PARTITION BY cb.chapter_id
+           ORDER BY (cb.text_content ILIKE $3) DESC, similarity(cb.text_content, $2) DESC,
+                    cb.block_index
+         ) AS rn
+  FROM chapter_blocks cb
+  JOIN chapters c ON c.id = cb.chapter_id
+  WHERE c.book_id = $1
+    AND c.lifecycle_state = 'active'
+    AND (cb.text_content ILIKE $3 OR cb.text_content % $2)
+) t
+WHERE t.rn = 1
+ORDER BY t.exact DESC, t.sim DESC, t.sort_order
+LIMIT $4`
+
 // validateSearchQuery trims ?q= and enforces presence + the length cap (SP5).
 // errMsg non-empty ⇒ the handler returns 400.
 func validateSearchQuery(raw string) (q, errMsg string) {
@@ -61,6 +91,22 @@ func validateSurface(raw string) string {
 		return ""
 	default:
 		return "invalid surface"
+	}
+}
+
+// validateGranularity normalises ?granularity= (E5). "" defaults to "chapter"
+// (best-block-per-chapter — the navigate default, strictly better chapter recall
+// than the flat block list). "block" returns every matching block (exhaustive
+// mining). An unrecognised value is a 400 so client typos don't silently fall
+// through to the default.
+func validateGranularity(raw string) (granularity, errMsg string) {
+	switch raw {
+	case "", "chapter":
+		return "chapter", ""
+	case "block":
+		return "block", ""
+	default:
+		return "", "invalid granularity"
 	}
 }
 
@@ -157,6 +203,11 @@ func (s *Server) searchChapterText(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", errMsg)
 		return
 	}
+	granularity, errMsg := validateGranularity(r.URL.Query().Get("granularity"))
+	if errMsg != "" {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", errMsg)
+		return
+	}
 	// Ownership IS the tenant gate (INV-4) — internal-token callers don't reach
 	// this external route; here the JWT subject must own the book.
 	lifecycle, okBook, status := s.ensureOwnerBook(r.Context(), bookID, ownerID)
@@ -173,7 +224,7 @@ func (s *Server) searchChapterText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	limit, _ := parseLimitOffset(r) // default 20, max 100; v1 has no pagination (offset ignored, LOW-3)
-	results, err := s.runLexicalSearch(r.Context(), bookID, q, limit)
+	results, err := s.runLexicalSearch(r.Context(), bookID, q, limit, granularity)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "search failed")
 		return
@@ -199,8 +250,13 @@ func (s *Server) searchChapterTextInternal(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", errMsg)
 		return
 	}
+	granularity, errMsg := validateGranularity(r.URL.Query().Get("granularity"))
+	if errMsg != "" {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", errMsg)
+		return
+	}
 	limit, _ := parseLimitOffset(r)
-	results, err := s.runLexicalSearch(r.Context(), bookID, q, limit)
+	results, err := s.runLexicalSearch(r.Context(), bookID, q, limit, granularity)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "search failed")
 		return
@@ -211,8 +267,12 @@ func (s *Server) searchChapterTextInternal(w http.ResponseWriter, r *http.Reques
 // runLexicalSearch is the shared lexical-search core (no auth/ownership — the
 // callers gate that). Returns verbatim-snippet hit maps for the book's draft
 // chapter_blocks. surface="draft"/matchType="lexical" by construction.
-func (s *Server) runLexicalSearch(ctx context.Context, bookID uuid.UUID, q string, limit int) ([]map[string]any, error) {
-	rows, err := s.pool.Query(ctx, lexicalSearchSQL, bookID, q, escapeLikePattern(q), limit)
+func (s *Server) runLexicalSearch(ctx context.Context, bookID uuid.UUID, q string, limit int, granularity string) ([]map[string]any, error) {
+	sql := lexicalSearchSQL // "block": every matching block (exhaustive mining)
+	if granularity == "chapter" {
+		sql = lexicalSearchChapterSQL // best block per chapter (navigate; max chapter recall)
+	}
+	rows, err := s.pool.Query(ctx, sql, bookID, q, escapeLikePattern(q), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -230,9 +290,11 @@ func (s *Server) runLexicalSearch(ctx context.Context, bookID uuid.UUID, q strin
 		}
 		hl := computeHighlight(textContent, q, searchSnippetWindow)
 		score := sim
+		relevance := sim // E5: calibrated 0–1 relevance (exact match ⇒ 1.0)
 		highlights := make([][]int, 0, 1)
 		if hl.Matched {
 			score = 1 + sim // exact-substring boost (mirrors the ILIKE-first ORDER BY)
+			relevance = 1.0
 			highlights = append(highlights, []int{hl.HLStart, hl.HLEnd})
 		}
 		// NOTE (review-impl MED-2): charStart/charEnd + highlights are Unicode
@@ -244,6 +306,7 @@ func (s *Server) runLexicalSearch(ctx context.Context, bookID uuid.UUID, q strin
 			"surface":      "draft",
 			"matchType":    "lexical",
 			"score":        score,
+			"relevance":    relevance,
 			"snippet":      hl.Snippet,
 			"highlights":   highlights,
 			"location": map[string]any{

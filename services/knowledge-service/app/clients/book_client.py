@@ -98,17 +98,22 @@ class BookClient:
 
     async def lexical_search(
         self, book_id: UUID, q: str, *, limit: int = 20,
+        granularity: str = "chapter",
     ) -> list[dict] | None:
         """Raw-search Phase 2 — lexical leg. Calls book-service
         GET /internal/books/{book_id}/lexical-search and returns the list
         of hit dicts. Returns None on ANY failure so the hybrid
-        orchestrator degrades to semantic-only (never 500s the search)."""
+        orchestrator degrades to semantic-only (never 500s the search).
+
+        E5 — `granularity` ("chapter" = best block per chapter for max
+        distinct-chapter recall / navigate; "block" = every matching block
+        for exhaustive mining) is forwarded to book-service verbatim."""
         url = f"{self._base_url}/internal/books/{book_id}/lexical-search"
         tid = trace_id_var.get()
         try:
             resp = await self._http.get(
                 url,
-                params={"q": q, "limit": str(limit)},
+                params={"q": q, "limit": str(limit), "granularity": granularity},
                 headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code != 200:

@@ -66,12 +66,16 @@ def _esc_sql(s: str) -> str:
     return s.replace("'", "''")
 
 
-def search(base: str, jwt: str, book_id: str, q: str, mode: str, k: int) -> dict | None:
+def search(base: str, jwt: str, book_id: str, q: str, mode: str, k: int,
+           granularity: str = "chapter", min_relevance: float | None = None) -> dict | None:
     """GET the orchestrator endpoint. Returns parsed JSON or None on transport error."""
     url = f"{base}/v1/knowledge/books/{book_id}/search"
+    params: dict = {"query": q, "mode": mode, "limit": k, "granularity": granularity}
+    if min_relevance is not None:
+        params["min_relevance"] = min_relevance
     try:
         r = requests.get(url, headers={"Authorization": f"Bearer {jwt}"},
-                         params={"query": q, "mode": mode, "limit": k}, timeout=30)
+                         params=params, timeout=30)
     except requests.RequestException as e:
         log(f"transport error {mode} '{q}': {e}")
         return None
@@ -134,7 +138,11 @@ def main() -> None:
         _REPO / "services" / "knowledge-service" / "app" / "benchmark" / "rawsearch_golden.json"))
     ap.add_argument("--k", type=int, nargs="+", default=[5, 10])
     ap.add_argument("--base", choices=["knowledge", "gateway"], default="knowledge")
+    ap.add_argument("--granularity", choices=["chapter", "block"], default="chapter")
+    ap.add_argument("--min-relevance", type=float, default=None,
+                    help="override the server score-floor (default: server's)")
     args = ap.parse_args()
+    gran, mr = args.granularity, args.min_relevance
 
     golden = json.loads(Path(args.golden).read_text(encoding="utf-8"))
     book_id = golden["book_id"]
@@ -156,7 +164,7 @@ def main() -> None:
         per_k = {k: {"hit": [], "recall": [], "ndcg": []} for k in args.k}
         mrr_vals = []
         for qd in pos:
-            resp = search(base, jwt, book_id, qd["q"], mode, maxk)
+            resp = search(base, jwt, book_id, qd["q"], mode, maxk, gran, mr)
             if not resp or "_status" in (resp or {}):
                 continue
             for kk, vv in (resp.get("degraded") or {}).items():
@@ -180,12 +188,12 @@ def main() -> None:
     # ── baseline 1: lexical oracle recall (endpoint vs exact substring) ──
     ora = []
     for qd in pos:
-        if qd.get("band") != "exact":
-            continue  # oracle only meaningful for substring-present terms
+        if qd.get("band") not in ("exact", "phrase"):
+            continue  # oracle recall only meaningful for substring-present terms
         truth = oracle_chapters(book_id, qd["q"])
         if not truth:
             continue
-        resp = search(base, jwt, book_id, qd["q"], "lexical", maxk)
+        resp = search(base, jwt, book_id, qd["q"], "lexical", maxk, gran, mr)
         ranked = set(ranked_chapter_ids(resp)) if resp and "_status" not in resp else set()
         ora.append(len(truth & ranked) / len(truth))
     report["baselines"]["lexical_oracle_recall@maxk"] = {
@@ -201,7 +209,7 @@ def main() -> None:
     for mode in MODES:
         leaks = []
         for qd in negs:
-            resp = search(base, jwt, book_id, qd["q"], mode, maxk)
+            resp = search(base, jwt, book_id, qd["q"], mode, maxk, gran, mr)
             n = len(resp.get("results", [])) if resp and "_status" not in resp else 0
             top = resp["results"][0].get("score") if (resp and resp.get("results")) else None
             leaks.append({"q": qd["q"], "returned": n, "top_score": top})

@@ -32,7 +32,13 @@ from app.db.neo4j_repos.passages import (
 from app.db.repositories.projects import ProjectsRepo
 from app.deps import get_book_client, get_embedding_client, get_projects_repo
 from app.middleware.jwt_auth import get_current_user
-from app.search.hybrid_fusion import PER_CHAPTER_CAP, cap_per_chapter, rrf_fuse
+from app.search.hybrid_fusion import (
+    BLOCK_CHAPTER_CAP,
+    PER_CHAPTER_CAP,
+    apply_relevance_floor,
+    cap_per_chapter,
+    rrf_fuse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +50,19 @@ router = APIRouter(
 
 RAW_SEARCH_MAX_LIMIT = 100
 RAW_SEARCH_QUERY_MAX_LENGTH = 1000
+# E5 score-floor default — DISABLED (0.0), and that is an evidence-based choice.
+# Calibration probe (2026-06-08, bge-m3 on the eval corpus) showed semantic
+# cosine is compressed in [0.68, 0.82] with POOR separation: a negative-control
+# query (封神榜 0.733) outscores a real positive (a paraphrase at 0.706). So NO
+# global cosine threshold cleanly drops junk without also dropping true hits —
+# a floor would be lossy. The calibrated `relevance` field still ships (real
+# cosine / lexical similarity, useful for display + opt-in filtering via the
+# `min_relevance` query param). Real junk-rejection needs a reranker /
+# per-query score normalisation → D-RAWSEARCH-E5B-RERANK.
+MIN_RELEVANCE_DEFAULT = 0.0
 
 SearchMode = Literal["lexical", "semantic", "hybrid"]
+Granularity = Literal["chapter", "block"]
 
 
 class RawSearchResponse(BaseModel):
@@ -69,6 +86,7 @@ def _passage_to_hit(h: PassageSearchHit) -> dict[str, Any]:
         "surface": "canon",
         "matchType": "semantic",
         "score": h.raw_score,
+        "relevance": h.raw_score,  # E5: native cosine (0–1) for the score-floor
         "snippet": p.text,
         "highlights": [],
         "location": {
@@ -111,6 +129,8 @@ async def search_book(
     query: str = Query(..., min_length=1, max_length=RAW_SEARCH_QUERY_MAX_LENGTH),
     mode: SearchMode = Query("hybrid"),
     limit: int = Query(20, ge=1, le=RAW_SEARCH_MAX_LIMIT),
+    granularity: Granularity = Query("chapter"),
+    min_relevance: float = Query(MIN_RELEVANCE_DEFAULT, ge=0.0, le=1.0),
     user_id: UUID = Depends(get_current_user),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     book_client: BookClient = Depends(get_book_client),
@@ -133,7 +153,9 @@ async def search_book(
     async def _lexical() -> list[dict[str, Any]]:
         if mode == "semantic":
             return []
-        hits = await book_client.lexical_search(book_id, q, limit=limit)
+        hits = await book_client.lexical_search(
+            book_id, q, limit=limit, granularity=granularity,
+        )
         if hits is None:
             degraded["lexical"] = "book_service_unavailable"
             return []
@@ -179,7 +201,16 @@ async def search_book(
         return hits
 
     lexical_hits, semantic_hits = await asyncio.gather(_lexical(), _semantic())
-    fused = cap_per_chapter(
-        rrf_fuse([lexical_hits, semantic_hits]), cap=PER_CHAPTER_CAP,
-    )[:limit]
+    # E5: score-floor drops low-relevance junk (negative-control queries);
+    # granularity sets the per-chapter cap (chapter=1 best block; block=lift cap
+    # for exhaustive mining). RRF still ranks; `relevance` survives fusion.
+    fused = rrf_fuse([lexical_hits, semantic_hits])
+    fused = apply_relevance_floor(fused, min_relevance)
+    # `cap_per_chapter` keys on chapterId ALONE (not surface), so chapter mode
+    # (cap=1) yields exactly one row per chapter even in hybrid — if a chapter
+    # has both a lexical(draft) and semantic(canon) hit, the higher-RRF one wins.
+    # That's the intended navigate shape (one best result per chapter); use
+    # granularity=block to see every hit (all surfaces, all blocks).
+    cap = 1 if granularity == "chapter" else BLOCK_CHAPTER_CAP
+    fused = cap_per_chapter(fused, cap=cap)[:limit]
     return RawSearchResponse(query=q, mode=mode, results=fused, degraded=degraded)

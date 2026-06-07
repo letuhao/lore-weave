@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
-from app.search.hybrid_fusion import cap_per_chapter, rrf_fuse
+from app.search.hybrid_fusion import (
+    apply_relevance_floor,
+    cap_per_chapter,
+    rrf_fuse,
+)
 
 
-def _h(chapter: str, surface: str, pos: int, score: float = 0.0) -> dict:
+def _h(chapter: str, surface: str, pos: int, score: float = 0.0,
+       relevance: float | None = None) -> dict:
     loc = {"blockIndex": pos} if surface == "draft" else {"chunkIndex": pos}
-    return {"chapterId": chapter, "surface": surface, "score": score, "location": loc}
+    h = {"chapterId": chapter, "surface": surface, "score": score, "location": loc}
+    if relevance is not None:
+        h["relevance"] = relevance
+    return h
 
 
 def test_rrf_combines_legs_distinct_keys():
@@ -50,3 +58,30 @@ def test_cap_per_chapter_limits_flooding():
 
 def test_rrf_empty_legs():
     assert rrf_fuse([[], []]) == []
+
+
+# ── E5: relevance survives fusion + score-floor ──────────────────────
+
+
+def test_rrf_preserves_relevance_field():
+    # the native `relevance` must survive RRF (which only rewrites `score`)
+    fused = rrf_fuse([[_h("a", "draft", 0, score=1.5, relevance=0.8)]])
+    assert fused[0]["relevance"] == 0.8
+    assert fused[0]["score"] == round(1.0 / 61, 6)  # score replaced, relevance kept
+
+
+def test_relevance_floor_drops_low_hits():
+    hits = [_h("a", "canon", 0, relevance=0.9), _h("b", "canon", 1, relevance=0.2)]
+    kept = apply_relevance_floor(hits, 0.3)
+    assert [h["chapterId"] for h in kept] == ["a"]
+
+
+def test_relevance_floor_missing_field_passes_through():
+    # a hit without `relevance` is treated as 1.0 → never silently nuked
+    hits = [_h("a", "draft", 0)]  # no relevance key
+    assert apply_relevance_floor(hits, 0.5) == hits
+
+
+def test_relevance_floor_zero_is_noop():
+    hits = [_h("a", "canon", 0, relevance=0.01)]
+    assert apply_relevance_floor(hits, 0.0) == hits
