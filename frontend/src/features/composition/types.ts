@@ -145,6 +145,27 @@ export type AutoGeneration = {
   canon?: CanonResult;
 };
 
+// LOOM chapter-assembly-modes — how a chapter's prose is assembled.
+export type AssemblyMode = 'per_scene' | 'chapter';
+
+// Response of the chapter single-pass (B2) + stitch (B3) endpoints. Non-stream
+// JSON (like AutoGeneration) but chapter-scoped: no candidates (single pass).
+export type ChapterGeneration = {
+  job_id: string;
+  status: string;
+  text: string;
+  canon?: CanonResult;
+  assembly_mode: 'chapter' | 'per_scene_stitch';
+  stitched?: boolean; // stitch arm: true = the LLM merge ran; false = raw concat
+  degraded?: boolean; // stitch fell back to the raw concatenation
+  persisted?: boolean; // best-effort write to the book draft (FE uses persist=false)
+  draft_version?: number | null;
+  persist_error?: string | null;
+  reasoning_source?: string;
+  reasoning_effort?: string | null;
+  replay?: boolean;
+};
+
 // The genuine-author-choice actions on the gate (H2: NO 'accept' — accepting the
 // winner as-is is not a correction). Maps 1:1 to the composition correction API.
 export type CorrectionKind = 'edit' | 'pick_different' | 'regenerate' | 'reject';

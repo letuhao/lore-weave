@@ -10,6 +10,7 @@ import { aiModelsApi } from '../../ai-models/api';
 import { useChapterScenes, useCreateScene, useCreateWork, useSetSceneStatus, useWorkResolution } from '../hooks/useWork';
 import type { Work } from '../types';
 import { ComposeView } from './ComposeView';
+import { ChapterAssembleView } from './ChapterAssembleView';
 import { GroundingPanel } from './GroundingPanel';
 import { CanonRulesPanel } from './CanonRulesPanel';
 import { QualityPanel } from './QualityPanel';
@@ -21,7 +22,7 @@ type Props = {
   onAccept: (text: string) => void; // insert accepted prose into the editor
 };
 
-type SubTab = 'compose' | 'grounding' | 'canon' | 'quality';
+type SubTab = 'compose' | 'assemble' | 'grounding' | 'canon' | 'quality';
 
 export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) {
   const { t } = useTranslation('composition');
@@ -72,6 +73,8 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
   const effectiveScene = sceneId || scenes.data?.[0]?.id || '';
   const selectedScene = scenes.data?.find((s) => s.id === effectiveScene);
   const sceneDone = selectedScene?.status === 'done';
+  // Stitch (B3) is the publishable artifact → gated on every scene being done.
+  const scenesAllDone = !!scenes.data?.length && scenes.data.every((s) => s.status === 'done');
   // The selected model's metadata — hints for the server's auto-reasoning
   // strategy (adaptive pass-through vs our rule-based scorer).
   const selectedModel = models.data?.find((m) => m.user_model_id === modelRef);
@@ -142,7 +145,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
 
       {/* sub-tabs */}
       <div className="flex gap-1 border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700">
-        {(['compose', 'grounding', 'canon', 'quality'] as SubTab[]).map((tb) => (
+        {(['compose', 'assemble', 'grounding', 'canon', 'quality'] as SubTab[]).map((tb) => (
           <button
             key={tb}
             data-testid={`composition-subtab-${tb}`}
@@ -162,6 +165,20 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
             modelRef={modelRef}
             modelKind={selectedModel?.provider_kind}
             modelName={selectedModel?.provider_model_name}
+            token={token}
+            onAccept={onAccept}
+          />
+        )}
+        {tab === 'assemble' && (
+          <ChapterAssembleView
+            projectId={work.project_id}
+            bookId={bookId}
+            chapterId={chapterId}
+            modelRef={modelRef}
+            modelKind={selectedModel?.provider_kind}
+            modelName={selectedModel?.provider_model_name}
+            settings={work.settings}
+            scenesAllDone={scenesAllDone}
             token={token}
             onAccept={onAccept}
           />

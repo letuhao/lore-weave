@@ -3,9 +3,19 @@
 // uses a raw fetch+ReadableStream in useCompositionStream (apiJson can't stream).
 import { apiBase, apiJson } from '../../api';
 import type {
-  AutoGeneration, CanonRule, CorrectionBody, CorrectionStats, GenerationJob, Grounding,
-  OutlineNode, PublishGate, Work, WorkResolution,
+  AutoGeneration, CanonRule, ChapterGeneration, CorrectionBody, CorrectionStats, GenerationJob,
+  Grounding, OutlineNode, PublishGate, Work, WorkResolution,
 } from './types';
+
+// Params for a chapter-level assembly (B2 chapter single-pass / B3 stitch).
+export type ChapterAssembleParams = {
+  modelRef: string;
+  modelSource?: 'user_model' | 'platform_model';
+  reasoning?: 'off' | 'auto' | 'low' | 'medium' | 'high';
+  modelKind?: string;
+  modelName?: string;
+  persist?: boolean; // FE default false — show + human Accept, don't clobber the draft
+};
 
 // Params for an auto (diverge→converge) generation — mirrors the SSE generate
 // body minus the streaming bits; `mode: 'auto'` is added by the api method.
@@ -70,6 +80,35 @@ export const compositionApi = {
         reasoning: params.reasoning ?? 'auto',
         model_kind: params.modelKind,
         model_name: params.modelName,
+      }),
+    });
+  },
+  // Patch the Work (LOOM chapter-assembly: set settings.assembly_mode). NOTE the
+  // server REPLACES the whole settings blob — the caller MUST merge the existing
+  // settings (see useChapterAssembly.setAssemblyMode) so it never drops
+  // critic_model_*/reasoning_engine/etc.
+  patchWork(projectId: string, patch: { settings?: Record<string, unknown>; status?: string }, token: string): Promise<Work> {
+    return apiJson(`${BASE}/works/${projectId}`, { method: 'PATCH', body: JSON.stringify(patch), token });
+  },
+  // B2 chapter single-pass — generate a whole chapter from its decompose plan.
+  generateChapter(projectId: string, chapterId: string, params: ChapterAssembleParams, token: string): Promise<ChapterGeneration> {
+    return apiJson(`${BASE}/works/${projectId}/chapters/${chapterId}/generate`, {
+      method: 'POST', token,
+      body: JSON.stringify({
+        model_source: params.modelSource ?? 'user_model', model_ref: params.modelRef,
+        reasoning: params.reasoning ?? 'auto', model_kind: params.modelKind, model_name: params.modelName,
+        persist: params.persist ?? false,
+      }),
+    });
+  },
+  // B3 stitch — merge a chapter's done scene drafts into one seamless chapter.
+  stitchChapter(projectId: string, chapterId: string, params: ChapterAssembleParams, token: string): Promise<ChapterGeneration> {
+    return apiJson(`${BASE}/works/${projectId}/chapters/${chapterId}/stitch`, {
+      method: 'POST', token,
+      body: JSON.stringify({
+        model_source: params.modelSource ?? 'user_model', model_ref: params.modelRef,
+        reasoning: params.reasoning ?? 'auto', model_kind: params.modelKind, model_name: params.modelName,
+        persist: params.persist ?? false,
       }),
     });
   },
