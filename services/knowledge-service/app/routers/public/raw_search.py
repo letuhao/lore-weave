@@ -80,6 +80,31 @@ def _passage_to_hit(h: PassageSearchHit) -> dict[str, Any]:
     }
 
 
+async def _enrich_titles(hits: list[dict[str, Any]], book_client: BookClient) -> None:
+    """Populate `chapterTitle` on semantic hits (D-RAWSEARCH-P2-SEMANTIC-TITLES).
+    Lexical hits already carry titles from book-service; passages don't. One
+    batched `get_chapter_titles` call; best-effort — it returns {} on failure,
+    so titles stay null (FE falls back to #sortOrder)."""
+    ids: set[UUID] = set()
+    for h in hits:
+        try:
+            ids.add(UUID(str(h["chapterId"])))
+        except (ValueError, TypeError, KeyError):
+            pass
+    if not ids:
+        return
+    titles = await book_client.get_chapter_titles(list(ids))
+    if not titles:
+        return
+    for h in hits:
+        try:
+            title = titles.get(UUID(str(h["chapterId"])))
+        except (ValueError, TypeError, KeyError):
+            title = None
+        if title:
+            h["chapterTitle"] = title
+
+
 @router.get("/books/{book_id}/search", response_model=RawSearchResponse)
 async def search_book(
     book_id: UUID = Path(..., description="Book to search."),
@@ -149,7 +174,9 @@ async def search_book(
         except ValueError:
             degraded["semantic"] = "embedding_dim_mismatch"
             return []
-        return [_passage_to_hit(h) for h in raw_hits]
+        hits = [_passage_to_hit(h) for h in raw_hits]
+        await _enrich_titles(hits, book_client)  # semantic hits lack titles
+        return hits
 
     lexical_hits, semantic_hits = await asyncio.gather(_lexical(), _semantic())
     fused = cap_per_chapter(

@@ -22,7 +22,9 @@
 
 **Phase-3 P3-A jump-to-source (frontend):** result click → opens the chapter **reader** at `/books/{id}/chapters/{ch}/read?block=N`; `ReaderPage` reads `?block` and scrolls the matched block to centre once content renders (reuses `ContentRenderer`'s `data-block-id` + the TTS scroll path — full reader renders all blocks, no virtualization). **Lexical** hits scroll precisely (blockIndex matches the rendered Tiptap content array); **semantic** hits open the chapter (top) — `chunkIndex` is a passage index, not a block index. **vitest 18/18 · tsc 0.** /review-impl: virtualization risk cleared by inspection; +semantic-nav test; block-alignment assumption documented.
 
-**NEXT:** **Phase 3** remaining slices: P3-B canon-lexical projection (book-service) · P3-C char-offset dedup + copy-exact (knowledge) · P3-D ranking polish/rerank · P3-E semantic-on-draft. OR **push** the branch (8 commits).
+**Phase-3 P3-D semantic titles (knowledge):** orchestrator batch-enriches semantic hits' `chapterTitle` via `BookClient.get_chapter_titles` (`_enrich_titles`, best-effort, UUID-keyed) — lexical hits already had titles. **pytest 42/42.** Clears D-RAWSEARCH-P2-SEMANTIC-TITLES. /review-impl: key-type contract verified UUID-keyed (no false-green); LOW title-format inconsistency noted.
+
+**NEXT:** **Phase 3** remaining slices: P3-B canon-lexical projection (book-service) · P3-C char-offset dedup + copy-exact (knowledge) · P3-D' semantic ranking polish (MMR/hub-penalty/rerank) · P3-E semantic-on-draft. OR **push** the branch (9 commits).
 
 **Deferred (raw search):**
 - **D-RAWSEARCH-FE-JUMP-SEMANTIC** (P3-A residual) — lexical jump scrolls precisely (✅ P3-A); **semantic** hits only open the chapter (top) because `chunkIndex`≠block index. Precise semantic scroll needs a chunk→block mapping (ties to the D-RAWSEARCH-P2 char-offset work). Char-level highlight in the reader (via `location.charStart/End`) also deferred.
@@ -30,10 +32,10 @@
 - **D-RAWSEARCH-FE-MINOR** (FE-1 LOW-1/LOW-4/COSMETIC) — score not displayed; book-page launch-button strings hardcoded (not i18n); no error/empty/loading-state vitest. Batch later.
 - **D-RAWSEARCH-HANDLER-COVERAGE** (BE COSMETIC-1) — handler branch flow relies on live-smoke (no DB mock); optionally extract a pure row→result mapper.
 - **D-RAWSEARCH-P2-SEMANTIC-SMOKE** (P2a residual) — the hybrid cross-service contract is live-verified (2026-06-07); a *positive* semantic match (passage hit) wasn't observed — the demo book has no ingested chapter `:Passage` nodes. Publish a chapter → ingest passages → re-smoke `mode=semantic` to close.
-- **D-RAWSEARCH-P2-SEMANTIC-TITLES** (P2a ADJ-2) — semantic hits return `chapterTitle:null`; batch-enrich via `BookClient.get_chapter_titles` later.
+- **D-RAWSEARCH-TITLE-FORMAT** (P3-D /review-impl LOW-1) — lexical hits show the raw `chapters.title`; semantic hits show `get_chapter_titles`'s denormalized "Chapter N — Title". Mixed hybrid lists show two styles. Align later (touches the lexical BE handler).
 - **D-RAWSEARCH-P2-COSINE-RANK** (P2a LOW-2) — semantic leg uses raw cosine (no K18.3 hub-penalty/MMR); drawers precedent; refine if ranking quality needs it.
 
-**Recently cleared (raw search):** ✅ **D-RAWSEARCH-P1-LIVE-SMOKE** (2026-06-07 — lexical CJK live on 封神演義, rune-correct highlights, pg_trgm migration confirmed) · ✅ **D-RAWSEARCH-P2-LIVE-SMOKE** (cross-service hybrid contract live: lexical/fusion/degradation/ownership-gate all clean; residual → D-RAWSEARCH-P2-SEMANTIC-SMOKE).
+**Recently cleared (raw search):** ✅ **D-RAWSEARCH-P1-LIVE-SMOKE** (2026-06-07 — lexical CJK live on 封神演義, rune-correct highlights, pg_trgm migration confirmed) · ✅ **D-RAWSEARCH-P2-LIVE-SMOKE** (cross-service hybrid contract live: lexical/fusion/degradation/ownership-gate all clean; residual → D-RAWSEARCH-P2-SEMANTIC-SMOKE) · ✅ **D-RAWSEARCH-P2-SEMANTIC-TITLES** (P3-D — semantic hits enriched via `get_chapter_titles`).
 
 **RETRO note** (ContextHub MCP offline this session):
 - FE: a redundant `onKeyDown` Enter/Space handler on a **native `<button>`** double-fires on Space (button already activates `onClick` on keyup); only add it for `role="button"` non-buttons. Lowering a search min-length to 1 needs an input **debounce**.

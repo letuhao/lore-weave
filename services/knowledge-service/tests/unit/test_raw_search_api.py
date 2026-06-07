@@ -87,6 +87,7 @@ def _make_client(project=_SENT, lexical=_SENT):
     book_client.lexical_search = AsyncMock(
         return_value=([_lex_hit()] if lexical is _SENT else lexical)
     )
+    book_client.get_chapter_titles = AsyncMock(return_value={})
     embedding_client = MagicMock()
 
     app.dependency_overrides[get_current_user] = lambda: _USER
@@ -210,3 +211,26 @@ def test_dim_mismatch_degrades_to_lexical(mock_embed, mock_find):
     assert resp.status_code == 200
     assert resp.json()["degraded"].get("semantic") == "embedding_dim_mismatch"
     assert {h["surface"] for h in resp.json()["results"]} == {"draft"}
+
+
+@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
+@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+def test_semantic_hit_titles_enriched(mock_embed, mock_find):
+    cid = uuid4()
+    p = Passage(
+        id="pg-t", user_id=str(_USER), project_id=str(_PROJECT_ID),
+        source_type="chapter", source_id=str(cid), chunk_index=0, text="canon prose",
+        embedding_model="bge-m3", is_hub=False, chapter_index=3,
+        created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
+    )
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [PassageSearchHit(passage=p, raw_score=0.9, vector=None)]
+    client, _, book_client = _make_client()
+    book_client.get_chapter_titles = AsyncMock(return_value={cid: "第3回 — Bridge Duel"})
+    resp = client.get(_url("semantic"))
+    assert resp.status_code == 200, resp.json()
+    hit = resp.json()["results"][0]
+    assert hit["surface"] == "canon"
+    assert hit["chapterTitle"] == "第3回 — Bridge Duel"
+    book_client.get_chapter_titles.assert_awaited()
