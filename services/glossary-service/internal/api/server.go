@@ -200,6 +200,14 @@ func (s *Server) Router() http.Handler {
 						})
 					})
 					r.Get("/evidences", s.listEntityEvidences)
+					// VG-2: entity version history + restore (mirrors wiki/revisions).
+					r.Route("/revisions", func(r chi.Router) {
+						r.Get("/", s.listEntityRevisions)
+						r.Route("/{rev_id}", func(r chi.Router) {
+							r.Get("/", s.getEntityRevision)
+							r.Post("/restore", s.restoreEntityRevision)
+						})
+					})
 					r.Route("/attributes/{attr_value_id}", func(r chi.Router) {
 						r.Patch("/", s.patchAttributeValue)
 						r.Route("/translations", func(r chi.Router) {
