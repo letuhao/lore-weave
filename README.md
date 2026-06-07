@@ -118,7 +118,7 @@ Track token usage, costs, and performance across all AI operations. Per-model an
 - Genre groups for entity categorization
 - Soft delete with full restore
 
-### Knowledge Graph & Wiki (Phase 2 — Live)
+### Knowledge Graph & Wiki (Phase 2 — Complete)
 - Two-layer model: glossary (authored SSOT) + knowledge-service (fuzzy/semantic layer) anchored via `glossary_entity_id`
 - Automated entity extraction from chapters into a structured knowledge graph
 - **Postgres SSOT + Neo4j** derived graph via outbox → publisher → projections pipeline
@@ -126,7 +126,33 @@ Track token usage, costs, and performance across all AI operations. Per-model an
 - Relation merge with conflict resolution (MAX confidence, UNION evidence, earliest `valid_from`)
 - Wiki articles + revisions + suggestions hosted inside glossary-service (not a separate service)
 - Pattern validated by Microsoft GraphRAG (arXiv:2404.16130) and HippoRAG (arXiv:2405.14831)
-- **Current focus:** RAG retrieval quality evaluation — building golden-set eval dataset, target P ≥ 0.85 R ≥ 0.70
+- **Baseline locked: F1 = 0.869** (95% CI [0.842, 0.895]) via independent-judge evaluation across 9 golden chapters
+- Merge-candidate detection with coreference resolution and UI review surface
+
+### Composition & Canon-Aware Co-Writing (Phase 3 — Live)
+- **Lore-grounded co-writer**: RAG-packs canon context (knowledge graph + glossary + prose) into the LLM's window
+- Editorial lifecycle with canon model — draft → review → published, spoiler-safe context assembly
+- Advisory prose critic (`judge_prose`) flags canon inconsistencies before you accept a suggestion
+- Dual-order (narrative + canonical) provenance tracking for every generated block
+
+### Lore Enrichment (Phase 3 — Live)
+- AI-driven enrichment pipeline: gap detection, structured lore generation, canon verification
+- Retrieval-grounded generation anchored to the knowledge graph — suggestions grounded in what you already wrote
+- Eval loop with structural completeness and LLM-as-judge scoring
+
+### Translation Pipeline V3 (Phase 2 → 3)
+- **Multi-agent pipeline**: rule-tier verifier (glossary names, script leak, number preservation, sentence-count, loops) + LLM semantic verifier
+- **Knowledge-grounded context**: character relationships + honorifics brief injected per chapter via wiki-neighborhood
+- **Cross-chapter memo**: established name records carry forward across chapters (cold-start consistency)
+- **Semantic chunking**: dialogue runs and scene blocks tend to land in a single LLM call
+- **Quality gate**: "needs review" badge + publish hold for verifier-flagged versions
+- **Glossary staleness**: Redis-Streams consumer flags translations stale when glossary entities change
+
+### Production Eval & Feedback Flywheel (Phase 3 — Live)
+- `learning-service` — persistent quality scoring, eval runs, gold labels from corrections
+- Online eval on every production extraction (structural completeness + optional LLM-as-judge precision)
+- Chat feedback (thumbs up/down, implicit regenerate-as-negative) wired into the quality pipeline
+- Judge calibration (Cohen's κ, balanced accuracy) with anti-self-reinforcement panel safety
 
 ### Community
 - Public book catalog with search, genre, and language filters
@@ -146,7 +172,7 @@ Track token usage, costs, and performance across all AI operations. Per-model an
 
 ## Architecture
 
-Self-hosted Docker Compose monorepo. **19 application services + infra containers + frontend.** Contract-first API design. Event-driven with the outbox pattern.
+Self-hosted Docker Compose monorepo. **24 application services + infra containers + frontend.** Contract-first API design. Event-driven with the outbox pattern.
 
 ```
                     ┌─────────────────────────┐
@@ -186,13 +212,17 @@ Self-hosted Docker Compose monorepo. **19 application services + infra container
 | **glossary-service** | Go / Chi | Glossary entities, dynamic attributes, evidence linking, wiki articles/revisions |
 | **statistics-service** | Go / Chi | Analytics, usage metrics, dashboard data |
 | **notification-service** | Go / Chi | Notifications, email delivery |
-| **translation-service** | Python / FastAPI | Translation API + job orchestration |
+| **translation-service** | Python / FastAPI | Translation API + V3 multi-agent pipeline orchestration |
 | **translation-worker** | Python | Async RabbitMQ batch translation worker |
-| **chat-service** | Python / FastAPI | Streaming AI chat, thinking mode, multi-provider SSE |
-| **knowledge-service** | Python / FastAPI | Knowledge graph (Postgres SSOT + Neo4j derived), entity extraction, summaries |
+| **chat-service** | Python / FastAPI | Streaming AI chat, thinking mode, multi-provider SSE, message feedback |
+| **knowledge-service** | Python / FastAPI | Knowledge graph (Postgres SSOT + Neo4j derived), entity extraction, summaries, merge-candidate detection |
+| **composition-service** | Python / FastAPI | Canon-aware co-writer — RAG context packing, LLM prose generation, advisory critic, editorial lifecycle |
+| **lore-enrichment-service** | Python / FastAPI | AI-driven lore enrichment — gap detection, retrieval-grounded generation, canon verification |
+| **learning-service** | Python / FastAPI | Production eval + feedback flywheel — quality scores, eval runs, gold labels, online judge |
 | **video-gen-service** | Python / FastAPI | Media generation BFF; ComfyUI workloads live in sibling repo **local-image-generator-service** (SD 1.5 / SDXL / Illustrious / Flux 1–2 / Qwen Image / Wan / LTX Video + custom game-asset, object-sheet, and animation pipelines) |
 | **worker-infra** | Go | Outbox relay, cleanup, import processing, Pandoc conversion |
 | **worker-ai** | Python | AI-driven async tasks (entity extraction, summary regen, embedding jobs) |
+| **game-server** | TypeScript / Node.js + Colyseus | Living Worlds (Phase 6) — real-time multiplayer rooms, zone/combat/chat rooms |
 | **tilemap-service** | Rust | Living Worlds (Phase 6+) — tile/spatial layer |
 | **travel-service** | Rust | Living Worlds (Phase 6+) — movement/travel mechanics |
 | **world-service** | Rust | Living Worlds (Phase 6+) — world state, reality model |
@@ -396,17 +426,17 @@ LoreWeave is model-agnostic. Connect any provider:
 | Phase | Focus | Status |
 |-------|-------|--------|
 | **Phase 1** | Platform Core — Auth, Books, Sharing, Providers, Translation, Glossary | ✅ Done |
-| **Phase 2** | Knowledge Graph & RAG — entity extraction, Postgres+Neo4j, hierarchical summaries, RAG eval | 🔄 In Progress |
-| **Phase 3** | Knowledge Services — grounded Q&A extraction, timeline | Planned |
+| **Phase 2** | Knowledge Graph & RAG — entity extraction, Postgres+Neo4j, hierarchical summaries, eval baseline | ✅ Done |
+| **Phase 3** | Intelligence Layer — Canon co-writing, Lore enrichment, Translation V3, Production eval flywheel | 🔄 In Progress |
 | **Phase 4** | Continuation & Canon Safety — AI story continuation grounded in canon | Planned |
 | **Phase 5** | Hardening & Scale — Performance, multi-tenancy, cloud deployment | Planned |
-| **Phase 6+** | **Living Worlds (extension)** — LLM-driven NPCs, shared persistent realities, player characters, multiverse model ([design track](docs/03_planning/LLM_MMO_RPG/)) | Design track |
+| **Phase 6+** | **Living Worlds** — LLM-driven NPCs, shared persistent realities, player characters, multiverse model ([design track](docs/03_planning/LLM_MMO_RPG/)) | Foundation building |
 
-**Phase 2 (active):** 3-pass hierarchical extraction live — structural decompose (P1 ✅) → per-op cache-wrap (P2 ✅) → hierarchical reduce + summaries (P3 🔄). Current focus: RAG quality eval dataset, target Sherlock baseline P ≥ 0.85 R ≥ 0.70.
+**Phase 2 complete:** 3-pass hierarchical extraction shipped. Independent-judge eval baseline locked at **F1 = 0.869** (95% CI [0.842, 0.895]) across 9 golden chapters. Merge-candidate detection + wiki stub generation live.
 
-**Planned services (Phase 3–5):** QA Extraction (grounded Q&A), Continuation (canon-aware drafting), Orchestrator (LangGraph multi-agent workflows).
+**Phase 3 (active):** `composition-service` and `lore-enrichment-service` live. Translation Pipeline V3 (multi-agent + knowledge-grounded) M0–M5 shipped, M6 (human-fix flywheel) remaining. Production eval flywheel Q0–Q4 live (`learning-service`). Translation M6 + eval flywheel Q5+ are the current active tracks.
 
-**Extension services (Phase 6+):** `world-service` (Rust, skeleton live), `tilemap-service` (Rust, skeleton live), `travel-service` (Rust, skeleton live), `roleplay-service`, `publisher`, `meta-worker` — see [LLM_MMO_RPG/](docs/03_planning/LLM_MMO_RPG/) for architecture.
+**Phase 6 foundation:** `game-server` V0 live (Node.js + Colyseus, WS path validation). `world-service`, `tilemap-service`, `travel-service` (Rust, skeletons live). Design track locked at 179 features across 12 categories — see [LLM_MMO_RPG/](docs/03_planning/LLM_MMO_RPG/).
 
 ---
 
