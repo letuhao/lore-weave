@@ -96,6 +96,36 @@ class BookClient:
             )
             return None
 
+    async def lexical_search(
+        self, book_id: UUID, q: str, *, limit: int = 20,
+    ) -> list[dict] | None:
+        """Raw-search Phase 2 — lexical leg. Calls book-service
+        GET /internal/books/{book_id}/lexical-search and returns the list
+        of hit dicts. Returns None on ANY failure so the hybrid
+        orchestrator degrades to semantic-only (never 500s the search)."""
+        url = f"{self._base_url}/internal/books/{book_id}/lexical-search"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(
+                url,
+                params={"q": q, "limit": str(limit)},
+                headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                logger.warning(
+                    "book-service %s returned %d, trace_id=%s",
+                    url, resp.status_code, tid,
+                )
+                return None
+            results = resp.json().get("results", [])
+            return results if isinstance(results, list) else None
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning(
+                "book-service lexical-search unavailable: %s, trace_id=%s",
+                exc, tid,
+            )
+            return None
+
     async def get_chapter_titles(
         self, chapter_ids: list[UUID],
     ) -> dict[UUID, str]:

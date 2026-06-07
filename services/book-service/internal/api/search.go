@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"unicode"
@@ -172,11 +173,48 @@ func (s *Server) searchChapterText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	limit, _ := parseLimitOffset(r) // default 20, max 100; v1 has no pagination (offset ignored, LOW-3)
-
-	rows, err := s.pool.Query(r.Context(), lexicalSearchSQL, bookID, q, escapeLikePattern(q), limit)
+	results, err := s.runLexicalSearch(r.Context(), bookID, q, limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "search failed")
 		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"query":   q,
+		"mode":    "lexical",
+		"results": results,
+	})
+}
+
+// searchChapterTextInternal — GET /internal/books/{book_id}/lexical-search?q=&limit=.
+// Internal-token gated (caller-trusted: no ownership re-check, matching the other
+// /internal endpoints). The Phase-2 knowledge orchestrator calls this for the
+// lexical leg after it has already resolved the user's project for the book.
+func (s *Server) searchChapterTextInternal(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	q, errMsg := validateSearchQuery(r.URL.Query().Get("q"))
+	if errMsg != "" {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", errMsg)
+		return
+	}
+	limit, _ := parseLimitOffset(r)
+	results, err := s.runLexicalSearch(r.Context(), bookID, q, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "search failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"results": results})
+}
+
+// runLexicalSearch is the shared lexical-search core (no auth/ownership — the
+// callers gate that). Returns verbatim-snippet hit maps for the book's draft
+// chapter_blocks. surface="draft"/matchType="lexical" by construction.
+func (s *Server) runLexicalSearch(ctx context.Context, bookID uuid.UUID, q string, limit int) ([]map[string]any, error) {
+	rows, err := s.pool.Query(ctx, lexicalSearchSQL, bookID, q, escapeLikePattern(q), limit)
+	if err != nil {
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -198,8 +236,7 @@ func (s *Server) searchChapterText(w http.ResponseWriter, r *http.Request) {
 			highlights = append(highlights, []int{hl.HLStart, hl.HLEnd})
 		}
 		// NOTE (review-impl MED-2): charStart/charEnd + highlights are Unicode
-		// CODE-POINT (rune) offsets, NOT UTF-16 units — FE-1 must index by code
-		// point (e.g. [...str]) so supplementary-plane chars don't misalign.
+		// CODE-POINT (rune) offsets, NOT UTF-16 units — clients index by code point.
 		results = append(results, map[string]any{
 			"chapterId":    chapterID,
 			"chapterTitle": title,
@@ -218,12 +255,7 @@ func (s *Server) searchChapterText(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	if err := rows.Err(); err != nil {
-		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "search failed")
-		return
+		return nil, err
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"query":   q,
-		"mode":    "lexical",
-		"results": results,
-	})
+	return results, nil
 }

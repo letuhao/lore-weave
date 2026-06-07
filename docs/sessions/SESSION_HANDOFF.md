@@ -8,13 +8,15 @@
 
 ### ▶ RAW SEARCH (branch `raw-search/foundation`, off `origin/main`)
 
-**State: DESIGN LOCKED + Phase-1 FULL-STACK (lexical leg) DONE — BE + FE.** New workstream — the missing **raw chapter-text** layer beneath glossary/knowledge/wiki (all lossy derivatives); serves authoring + extraction/trích-lục. Spec [`2026-06-07-raw-search.md`](../specs/2026-06-07-raw-search.md) (PART I design + PART II ATAM-lite eval; 7/7 confirm-at-BUILD resolved). Plan [`2026-06-07-raw-search.md`](../plans/2026-06-07-raw-search.md) (3 phases; ADJ-1..4 PO-acked).
+**State: Phase-1 FULL-STACK + Phase-2 P2a (BE hybrid) DONE.** New workstream — the missing **raw chapter-text** layer beneath glossary/knowledge/wiki (all lossy derivatives); serves authoring + extraction/trích-lục. Spec [`2026-06-07-raw-search.md`](../specs/2026-06-07-raw-search.md) (PART I design + PART II ATAM-lite eval; 7/7 confirm-at-BUILD resolved). Plan [`2026-06-07-raw-search.md`](../plans/2026-06-07-raw-search.md) (3 phases; ADJ-1..4 PO-acked).
 
 **Phase-1 BE (book-service, commit a956fbb3):** `BE-1` pg_trgm + `idx_chapter_blocks_trgm` GIN as a **best-effort Exec in `Up()`** (review-impl MED-1 — NOT in `schemaSQL`). `BE-2` `GET /v1/books/{id}/search?q=&surface=&limit=` — JWT + `ensureOwnerBook`; **ILIKE-primary + `similarity()` rank** over draft `chapter_blocks`; rune-offset highlight; `surface:"draft"`/`matchType:"lexical"`; `purge_pending`→404. 6 test funcs; go build/vet/test green. /review-impl: MED-1/MED-2/LOW-1/LOW-2 fixed.
 
 **Phase-1 FE-1 (frontend):** `features/raw-search/` — `useRawSearch` (TanStack, min-len 1, **debounced 250ms**), `renderHighlight` (consumes BE **code-point** offsets via `Array.from` ⇒ resolves the UTF-16/supplementary-plane caveat), `RawSearchResultCard` (draft + matchType badges), `RawSearchPanel`; `RawSearchPage` at route `/books/:bookId/search` + a Search button on `BookDetailPage`; `rawSearch` i18n ×4. **vitest 7/7 · tsc --noEmit 0 · i18n parity OK.** /review-impl: MED-1 (native-button Space double-fire — dropped redundant `onKeyDown`) + MED-2 (added debounce) fixed.
 
-**NEXT:** **Phase 2 (hybrid)** — semantic leg via knowledge `:Passage` (`find_passages_by_vector`) + **RRF** orchestrator `GET /v1/knowledge/books/{id}/search` (project-resolve auth); book-service **internal** lexical mount `/internal/books/{id}/lexical-search` + `BookClient.lexical_search`; FE fallback on 404/503 + match-type chips. Decide canon-lexical projection (spec open #2). See plan.
+**Phase-2 P2a (BE hybrid):** knowledge orchestrator `GET /v1/knowledge/books/{id}/search?query=&mode=hybrid|semantic|lexical` — book→project resolve = ownership gate (`404 not_indexed`); legs via `asyncio.gather`: lexical (`BookClient.lexical_search` → book-service **internal** `/internal/books/{id}/lexical-search`, shared `runLexicalSearch` core) + semantic (`embed_query_cached` + `find_passages_by_vector(source_type="chapter")`); **RRF** (k=60) + per-chapter cap 3 (`app/search/hybrid_fusion.py`); per-leg degradation never 500s. Plan [`2026-06-07-raw-search-phase2.md`](../plans/2026-06-07-raw-search-phase2.md). knowledge **pytest 41/41** + book-service go green. /review-impl: MED-1 (book_client test) + LOW-4 (dim-mismatch test) fixed.
+
+**NEXT:** **Phase 2 P2b (FE hybrid)** — `rawSearchApi.searchHybrid` hitting `/v1/knowledge/books/{id}/search` with **fallback to lexical on 404/503**; `useRawSearch` mode select; match-type chips; FE handles semantic hits (`location.chunkIndex`, `chapterTitle:null`). Then **Phase 3** (canon-lexical, char-offset dedup, semantic-on-draft, rerank).
 
 **Deferred (raw search):**
 - **D-RAWSEARCH-P1-LIVE-SMOKE** — real-stack CJK lexical search (pg_trgm on 封神演义) + FE↔BE browser smoke not yet live-verified; unit-covered. Smoke when book-service + DB + FE are up.
@@ -22,8 +24,13 @@
 - **D-RAWSEARCH-FE-MULTIRANGE** (FE-1 LOW-3) — `renderHighlight` assumes sorted/non-overlapping ranges; BE emits one today; sort when Phase-3 returns multiple spans.
 - **D-RAWSEARCH-FE-MINOR** (FE-1 LOW-1/LOW-4/COSMETIC) — score not displayed; book-page launch-button strings hardcoded (not i18n); no error/empty/loading-state vitest. Batch later.
 - **D-RAWSEARCH-HANDLER-COVERAGE** (BE COSMETIC-1) — handler branch flow relies on live-smoke (no DB mock); optionally extract a pure row→result mapper.
+- **D-RAWSEARCH-P2-LIVE-SMOKE** (P2a) — cross-service hybrid (book lexical + knowledge semantic + RRF) not live-verified; unit-covered (pytest 41). Needs book+knowledge+PG+Neo4j+provider-registry up.
+- **D-RAWSEARCH-P2-SEMANTIC-TITLES** (P2a ADJ-2) — semantic hits return `chapterTitle:null`; batch-enrich via `BookClient.get_chapter_titles` later.
+- **D-RAWSEARCH-P2-COSINE-RANK** (P2a LOW-2) — semantic leg uses raw cosine (no K18.3 hub-penalty/MMR); drawers precedent; refine if ranking quality needs it.
 
-**RETRO note** (ContextHub MCP offline this session): FE lesson — a redundant `onKeyDown` Enter/Space handler on a **native `<button>`** double-fires on Space (button already activates `onClick` on keyup); only add it for `role="button"` non-buttons. And: lowering a search min-length to 1 needs an input **debounce** to avoid a query per keystroke.
+**RETRO note** (ContextHub MCP offline this session):
+- FE: a redundant `onKeyDown` Enter/Space handler on a **native `<button>`** double-fires on Space (button already activates `onClick` on keyup); only add it for `role="button"` non-buttons. Lowering a search min-length to 1 needs an input **debounce**.
+- BE: local `pytest` of knowledge-service needs `PYTHONPATH=sdks/python` (or `pip install -e sdks/python`) so `loreweave_grounding` imports — else `app.main` import fails at collection. The hybrid lexical leg relies on the **`project.book_id` = owned-book invariant** (book_id isn't user-settable via public project create/update; same trust as `context`/`extraction`).
 
 ---
 

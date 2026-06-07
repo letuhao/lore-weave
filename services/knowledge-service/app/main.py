@@ -37,6 +37,7 @@ from app.routers import (
 )
 from app.routers.public import costs as public_costs
 from app.routers.public import drawers as public_drawers
+from app.routers.public import raw_search as public_raw_search
 from app.routers.public import entities as public_entities
 from app.routers.public import extraction as public_extraction
 from app.routers.public import logs as public_logs
@@ -656,6 +657,7 @@ app.include_router(internal_wiki.router)
 app.include_router(metrics.router)
 app.include_router(public_costs.router)
 app.include_router(public_drawers.router)
+app.include_router(public_raw_search.router)
 app.include_router(public_entities.router)
 app.include_router(public_entities.entities_router)
 app.include_router(public_relations.relations_router)

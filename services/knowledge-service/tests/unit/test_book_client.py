@@ -43,6 +43,49 @@ def _revision_url(book_id, chapter_id, revision_id) -> str:
     )
 
 
+def _lexical_url(book_id) -> str:
+    return f"http://book-service:8082/internal/books/{book_id}/lexical-search"
+
+
+# ── lexical_search (raw-search Phase 2) ──────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_lexical_search_success(bc: BookClient):
+    book_id = uuid4()
+    hit = {
+        "chapterId": "c1", "surface": "draft", "matchType": "lexical",
+        "snippet": "乾坤圈", "location": {"blockIndex": 0},
+    }
+    with respx.mock() as mock:
+        route = mock.get(_lexical_url(book_id)).mock(
+            return_value=httpx.Response(200, json={"results": [hit]}),
+        )
+        out = await bc.lexical_search(book_id, "乾坤圈", limit=5)
+    assert out == [hit]
+    # query + limit forwarded as query params
+    assert route.calls.last.request.url.params["q"] == "乾坤圈"
+    assert route.calls.last.request.url.params["limit"] == "5"
+
+
+@pytest.mark.asyncio
+async def test_lexical_search_non_200_returns_none(bc: BookClient):
+    book_id = uuid4()
+    with respx.mock() as mock:
+        mock.get(_lexical_url(book_id)).mock(return_value=httpx.Response(500))
+        assert await bc.lexical_search(book_id, "x") is None
+
+
+@pytest.mark.asyncio
+async def test_lexical_search_transport_error_returns_none(bc: BookClient):
+    book_id = uuid4()
+    with respx.mock() as mock:
+        mock.get(_lexical_url(book_id)).mock(
+            side_effect=httpx.ConnectError("book-service down"),
+        )
+        assert await bc.lexical_search(book_id, "x") is None
+
+
 # ── count_chapters ──────────────────────────────────────────────────
 
 
