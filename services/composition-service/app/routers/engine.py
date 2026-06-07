@@ -39,7 +39,9 @@ from app.deps import (
 )
 from app.db.models import CorrectionKind
 from app.engine.adaptive_k import adaptive_k
-from app.engine.chapter_gen import build_chapter_pack_node
+from app.engine.chapter_gen import build_chapter_pack_node, union_cast
+from app.engine.prose_doc import text_to_tiptap_doc
+from app.engine.stitch import stitch_chapter
 from app.engine.canon_reflect import run_canon_reflect
 from app.engine.compress import compress
 from app.engine.cowrite import build_messages, estimate_prompt_tokens, stream_draft
@@ -102,6 +104,22 @@ class GenerateChapterBody(BaseModel):
     model_kind: str | None = None
     model_name: str | None = None
     idempotency_key: str | None = None
+    # MED-2: write the assembled chapter to the book-service draft (best-effort).
+    # Eval / dry-run callers set False to get just the generated text.
+    persist: bool = True
+
+
+class StitchBody(BaseModel):
+    # B3 stitch pass: no outline_node_id, no assembly_mode (stitch is the
+    # per_scene+stitch step). Mirrors GenerateChapterBody.
+    model_source: Literal["user_model", "platform_model"]
+    model_ref: UUID
+    max_output_tokens: int | None = Field(default=None, ge=1, le=8192)
+    reasoning: Literal["off", "auto", "low", "medium", "high"] = "auto"
+    model_kind: str | None = None
+    model_name: str | None = None
+    idempotency_key: str | None = None
+    persist: bool = True
 
 
 class CritiqueBody(BaseModel):
@@ -145,6 +163,31 @@ async def _load_work_node(works, outline, user_id, project_id, node_id):
     if node is None or str(node.project_id) != str(project_id):
         raise HTTPException(status_code=404, detail="scene not found")
     return work, node
+
+
+async def _persist_chapter_draft(
+    book: BookClient, book_id: UUID, chapter_id: UUID, bearer: str,
+    text: str, commit_message: str,
+) -> tuple[bool, int | None, str | None]:
+    """B3/MED-2 — BEST-EFFORT write of an AI-assembled chapter into the
+    book-service draft. Returns (persisted, draft_version, error_code) and NEVER
+    raises: a persist failure (concurrent edit 409, outage) must not discard the
+    generated text, which is already durable in generation_job.result (the
+    cross-store best-effort rule). The body is a Tiptap doc built to match
+    book-service's own shape (prose_doc.text_to_tiptap_doc) — book's PATCH stores
+    it verbatim with no text→doc conversion."""
+    try:
+        current = await book.get_draft(book_id, chapter_id, bearer)
+        updated = await book.patch_draft(
+            book_id, chapter_id, bearer,
+            body=text_to_tiptap_doc(text),
+            expected_draft_version=current.get("draft_version"),
+            body_format="json", commit_message=commit_message,
+        )
+        return True, updated.get("draft_version"), None
+    except BookClientError as exc:
+        logger.warning("chapter draft persist failed (best-effort, kept in job): %s", exc)
+        return False, None, exc.code or "BOOK_DRAFT_PERSIST_FAILED"
 
 
 @router.post("/works/{project_id}/generate")
@@ -545,17 +588,145 @@ async def generate_chapter(
     except Exception:  # canon reflect must NEVER fail the generate (F1).
         logger.warning("chapter canon reflect failed (advisory) — keeping draft", exc_info=True)
 
+    # MED-2 — best-effort persist of the assembled chapter to the book draft.
+    persisted, draft_version, persist_error = False, None, None
+    if body.persist:
+        persisted, draft_version, persist_error = await _persist_chapter_draft(
+            book, work.book_id, chapter_id, bearer, final_text, "AI chapter draft (chapter mode)")
+
     total_out = winner.metering.output_tokens + revise_out_tokens
     await jobs.update_status(
         user_id, job.id, "completed",
         result={"text": final_text, "input_tokens": winner.metering.input_tokens,
                 "output_tokens": total_out, "measured": winner.metering.measured,
-                "canon": canon_v, "assembly_mode": "chapter", "chapter_id": str(chapter_id)})
+                "canon": canon_v, "assembly_mode": "chapter", "chapter_id": str(chapter_id),
+                "persisted": persisted, "draft_version": draft_version})
     return JSONResponse({
         "job_id": str(job.id), "mode": "auto", "status": "completed", "text": final_text,
         "canon": canon_v, "grounding_available": pc.grounding_available,
         "reasoning_source": reasoning.source, "reasoning_effort": reasoning.effort,
-        "assembly_mode": "chapter"})
+        "assembly_mode": "chapter", "persisted": persisted, "draft_version": draft_version,
+        "persist_error": persist_error})
+
+
+@router.post("/works/{project_id}/chapters/{chapter_id}/stitch")
+async def stitch_chapter_endpoint(
+    project_id: UUID,
+    chapter_id: UUID,
+    body: StitchBody,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+    canon: CanonRulesRepo = Depends(get_canon_rules_repo),
+    jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
+    book: BookClient = Depends(get_book_client_dep),
+    knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
+    llm: LLMClient = Depends(get_llm_client_dep),
+) -> Any:
+    """B3 per_scene+stitch: merge a chapter's done scene drafts into one seamless
+    chapter (ONE LLM pass; degrade→raw concat), re-run the chapter-level canon
+    guard, and best-effort persist to the book draft (MED-2). Gated on all scenes
+    `done` (the publishable artifact). Non-stream JSON."""
+    work = await works.get(user_id, project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail="work not found")
+
+    # Trigger guard: the stitch is the publishable artifact → require all scenes
+    # done (mirrors the publish-gate's done==total). 409 otherwise.
+    gate = await outline.chapter_scene_gate(user_id, project_id, chapter_id)
+    if not (gate["scenes_total"] > 0 and gate["scenes_done"] == gate["scenes_total"]):
+        raise HTTPException(status_code=409, detail={"code": "SCENES_NOT_DONE", "gate": gate})
+
+    drafts = await jobs.chapter_scene_drafts(user_id, project_id, chapter_id)
+    if not drafts:
+        raise HTTPException(status_code=400, detail={
+            "code": "NO_SCENE_DRAFTS", "detail": "no completed scene drafts to stitch"})
+
+    scenes = await outline.scenes_for_chapter(user_id, project_id, chapter_id)
+    chapter_intent = ""
+    if scenes and scenes[0].parent_id is not None:
+        parent = await outline.get_node(user_id, scenes[0].parent_id)
+        if parent is not None and parent.kind == "chapter":
+            chapter_intent = parent.goal
+    profile = from_settings(work.settings)
+
+    active_rules = await canon.list_active(user_id, project_id)
+    signals = ReasoningSignals(
+        operation="stitch_chapter", n_canon_rules=len(active_rules),
+        n_present_entities=len(union_cast(scenes)),
+        has_reveal_gate=any(r.scope == "reveal_gate" for r in active_rules),
+        tension=None, guide="")
+    control = infer_reasoning_control(body.model_kind, body.model_name)
+    reasoning = resolve_reasoning(
+        user_pref=body.reasoning, model_control=control, auto_effort=score_effort(signals),
+        auto_source=str(work.settings.get("reasoning_engine", "rule_based")))
+    max_out = body.max_output_tokens or settings.stitch_max_tokens
+
+    job, created = await jobs.create(
+        user_id, project_id, operation="stitch_chapter", outline_node_id=None,
+        mode="auto", status="running",
+        input={"model_source": body.model_source, "model_ref": str(body.model_ref),
+               "operation": "stitch_chapter", "assembly_mode": "per_scene_stitch",
+               "chapter_id": str(chapter_id), "reasoning": reasoning.source,
+               "reasoning_effort": reasoning.effort},
+        idempotency_key=body.idempotency_key)
+    if not created:  # idempotent replay
+        r = job.result or {}
+        return JSONResponse({"job_id": str(job.id), "mode": "auto", "replay": True,
+                             "text": r.get("text", ""), "status": job.status,
+                             "canon": r.get("canon"), "assembly_mode": "per_scene_stitch"})
+
+    # Stitch (degrade → raw concat). The raw concat is the safe fallback artifact.
+    stitched = await stitch_chapter(
+        llm, user_id=str(user_id), model_source=body.model_source, model_ref=str(body.model_ref),
+        scene_drafts=drafts, chapter_intent=chapter_intent, profile=profile,
+        max_tokens=max_out, max_input_chars=settings.stitch_max_input_chars,
+        reasoning_effort=None if reasoning.passthrough else reasoning.effort)
+    degraded = not stitched
+    final_text = stitched or "\n\n".join(drafts)
+
+    # Post-stitch canon re-check over the union cast at the chapter position (a
+    # rewrite can re-introduce a gone character). Degrade-safe, never blocks (F1).
+    chapter_sort = (await book.get_chapter_sort_orders([chapter_id])).get(str(chapter_id))
+    sdict = work.settings or {}
+    c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
+    distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+    canon_v: dict[str, Any] = {"violations": [], "resolved": True, "iterations": 0,
+                               "status": "degraded"}
+    try:
+        final_text, reflect, _ = await run_canon_reflect(
+            knowledge=knowledge, llm=llm, user_id=user_id, project_id=project_id,
+            cast_glossary_ids=[str(e) for e in union_cast(scenes)],
+            scene_sort_order=chapter_sort, draft=final_text, packed_prompt="", profile=profile,
+            drafter_source=body.model_source, drafter_ref=str(body.model_ref),
+            judge_source=str(c_src) if distinct else None,
+            judge_ref=str(c_ref) if distinct else None,
+            prompt_estimate=0, max_output_tokens=max_out,
+            max_iters=max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),
+            reasoning_effort=None if reasoning.passthrough else reasoning.effort)
+        canon_v = {"violations": [v.model_dump() for v in reflect.violations],
+                   "resolved": reflect.resolved, "iterations": reflect.iterations,
+                   "status": reflect.status}
+    except Exception:
+        logger.warning("stitch canon reflect failed (advisory) — keeping stitched draft", exc_info=True)
+
+    persisted, draft_version, persist_error = False, None, None
+    if body.persist:
+        persisted, draft_version, persist_error = await _persist_chapter_draft(
+            book, work.book_id, chapter_id, bearer, final_text, "AI chapter draft (stitch)")
+
+    await jobs.update_status(
+        user_id, job.id, "completed",
+        result={"text": final_text, "canon": canon_v, "assembly_mode": "per_scene_stitch",
+                "stitched": not degraded, "chapter_id": str(chapter_id),
+                "persisted": persisted, "draft_version": draft_version})
+    return JSONResponse({
+        "job_id": str(job.id), "mode": "auto", "status": "completed", "text": final_text,
+        "canon": canon_v, "assembly_mode": "per_scene_stitch", "stitched": not degraded,
+        "degraded": degraded, "reasoning_source": reasoning.source,
+        "reasoning_effort": reasoning.effort, "persisted": persisted,
+        "draft_version": draft_version, "persist_error": persist_error})
 
 
 @router.post("/works/{project_id}/scenes/{node_id}/suggest-cast")

@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     # consume them. A whole chapter is one pass → larger than the per-scene 1024.
     chapter_gen_max_tokens: int = 4096
     stitch_max_tokens: int = 4096
+    # B3 stitch input cap (MED-3) — when the chapter's concatenated scene drafts
+    # exceed this many chars, keep the earliest + latest scenes and elide the
+    # middle (head+tail keep). ~4 chars/token → 24000 ≈ 6000 tokens of input.
+    stitch_max_input_chars: int = 24000
 
 
 settings = Settings()  # type: ignore[call-arg]
