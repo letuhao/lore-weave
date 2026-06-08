@@ -131,6 +131,13 @@ def main() -> None:
                   "wide terms), phrase, paraphrase, typo (fuzzy), negative.",
         "book_id": bid, "project_id": args.project_id,
         "counts": bands, "total": len(queries),
+        # EVAL-CI gate thresholds (run_rawsearch_eval.py --gate); tune as the
+        # corpus/model evolve. Reflect the measured baseline with headroom.
+        "thresholds": {
+            "hybrid_hit@5": 0.90, "hybrid_ndcg@10": 0.70,
+            "lexical_oracle_recall": 0.80, "semantic_ann_recall": 0.90,
+            "max_negative_leak": 0,
+        },
         "queries": queries,
     }
     OUT.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")

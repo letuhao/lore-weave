@@ -145,6 +145,11 @@ def main() -> None:
                     help="override the server score-floor (default: server's)")
     ap.add_argument("--rerank", action="store_true", default=True)
     ap.add_argument("--no-rerank", dest="rerank", action="store_false")
+    ap.add_argument("--gate", action="store_true",
+                    help="exit 1 if any threshold (golden.thresholds or defaults) fails — for CI")
+    ap.add_argument("--persist", nargs="?", const=str(
+        _REPO / "services" / "knowledge-service" / "eval" / "rawsearch_eval_runs.jsonl"),
+        default=None, help="append the run summary as a JSONL line (default path if bare)")
     args = ap.parse_args()
     gran, mr, rrk = args.granularity, args.min_relevance, args.rerank
 
@@ -162,6 +167,7 @@ def main() -> None:
     report: dict = {"book_id": book_id, "modes": {}, "baselines": {}, "negatives": {}}
     maxk = max(args.k)
     degraded_seen: dict[str, str] = {}
+    per_band: dict[str, dict[str, list]] = {}  # hybrid metrics bucketed by band
 
     # ── per-mode IR metrics (over positive-band queries) ────────────────
     for mode in MODES:
@@ -181,6 +187,11 @@ def main() -> None:
                 per_k[k]["hit"].append(hit_at_k(expected, ranked, k))
                 per_k[k]["recall"].append(recall_at_k(expected, ranked, k))
                 per_k[k]["ndcg"].append(ndcg_at_k(graded, ranked, k))
+            if mode == "hybrid":  # per-band breakdown on the production default
+                b = qd.get("band", "?")
+                per_band.setdefault(b, {"hit": [], "ndcg": []})
+                per_band[b]["hit"].append(hit_at_k(expected, ranked, maxk))
+                per_band[b]["ndcg"].append(ndcg_at_k(graded, ranked, maxk))
         report["modes"][mode] = {
             "MRR": round(mean(mrr_vals), 4),
             **{f"hit@{k}": round(mean(per_k[k]["hit"]), 4) for k in args.k},
@@ -188,6 +199,12 @@ def main() -> None:
             **{f"ndcg@{k}": round(mean(per_k[k]["ndcg"]), 4) for k in args.k},
         }
     report["degraded_seen"] = degraded_seen
+    report["per_band"] = {
+        b: {"n": len(v["hit"]),
+            f"hit@{maxk}": round(mean(v["hit"]), 4),
+            f"ndcg@{maxk}": round(mean(v["ndcg"]), 4)}
+        for b, v in sorted(per_band.items())
+    }
 
     # ── baseline 1: lexical oracle recall (endpoint vs exact substring) ──
     ora = []
@@ -237,8 +254,52 @@ def main() -> None:
           f"— Neo4j index vs flat-kNN")
     if degraded_seen:
         print(f"degraded legs seen: {degraded_seen}")
+    print("\nper-band (hybrid):")
+    for b, v in report["per_band"].items():
+        print(f"  {b.ljust(11)} n={v['n']:<3} hit@{maxk}={v[f'hit@{maxk}']:.3f} ndcg@{maxk}={v[f'ndcg@{maxk}']:.3f}")
+
+    # ── EVAL-CI: threshold gate ─────────────────────────────────────────
+    # Defaults reflect the measured baseline; override via golden["thresholds"].
+    thresholds = {
+        "hybrid_hit@5": 0.90, "hybrid_ndcg@10": 0.70,
+        "lexical_oracle_recall": 0.80, "semantic_ann_recall": 0.90,
+        "max_negative_leak": 0,
+    }
+    thresholds.update(golden.get("thresholds") or {})
+    neg_leak = sum(x["returned"] for m in MODES for x in report["negatives"][m])
+    checks = {
+        "hybrid_hit@5": (report["modes"]["hybrid"].get("hit@5", 0), thresholds["hybrid_hit@5"], "ge"),
+        "hybrid_ndcg@10": (report["modes"]["hybrid"].get("ndcg@10", 0), thresholds["hybrid_ndcg@10"], "ge"),
+        "lexical_oracle_recall": (bl["lexical_oracle_recall@maxk"]["value"], thresholds["lexical_oracle_recall"], "ge"),
+        "semantic_ann_recall": (sar.get("mean_ann_recall_at_k", 0) or 0, thresholds["semantic_ann_recall"], "ge"),
+        "max_negative_leak": (neg_leak, thresholds["max_negative_leak"], "le"),
+    }
+    failures = []
+    for name, (val, thr, op) in checks.items():
+        ok = val >= thr if op == "ge" else val <= thr
+        if not ok:
+            failures.append(f"{name}={val} {'<' if op == 'ge' else '>'} {thr}")
+    report["gate"] = {"passed": not failures, "failures": failures, "thresholds": thresholds}
+    print(f"\nGATE: {'PASS' if not failures else 'FAIL — ' + '; '.join(failures)}")
+
+    # ── EVAL-CI: persist the run (JSONL) ────────────────────────────────
+    if args.persist:
+        import datetime as _dt
+        line = {"ts": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+                "book_id": book_id, "modes": report["modes"],
+                "baselines": {"lexical_oracle_recall": bl["lexical_oracle_recall@maxk"]["value"],
+                              "semantic_ann_recall": sar.get("mean_ann_recall_at_k")},
+                "per_band": report["per_band"], "gate": report["gate"]}
+        p = Path(args.persist)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with p.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(line, ensure_ascii=False) + "\n")
+        print(f"persisted run → {p}")
+
     print("\n--- JSON ---")
     print(json.dumps(report, ensure_ascii=False))
+    if args.gate and failures:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

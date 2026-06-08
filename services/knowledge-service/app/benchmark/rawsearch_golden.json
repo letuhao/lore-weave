@@ -10,6 +10,13 @@
     "negative": 5
   },
   "total": 33,
+  "thresholds": {
+    "hybrid_hit@5": 0.9,
+    "hybrid_ndcg@10": 0.7,
+    "lexical_oracle_recall": 0.8,
+    "semantic_ann_recall": 0.9,
+    "max_negative_leak": 0
+  },
   "queries": [
     {
       "q": "龙象般若",
