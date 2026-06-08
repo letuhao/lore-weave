@@ -158,7 +158,16 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {tab === 'compose' && (
+        {/* All sub-panels stay MOUNTED, toggled with CSS `hidden`, so in-progress
+            generation/edit state (a co-write draft, a chapter/stitch preview)
+            survives a tab switch — CLAUDE.md "never conditionally unmount stateful
+            components". A ternary here would destroy ComposeView/ChapterAssembleView
+            hook state on every tab change.
+            Trade-off (PO: holistic): the read-only panels now fetch eagerly even if
+            never opened — QualityPanel (correction-stats) + CanonRulesPanel (list).
+            Both are bounded + react-query-cached; GroundingPanel self-guards on an
+            empty sceneId (no eager query). Accepted for uniform state-preservation. */}
+        <div className={tab === 'compose' ? '' : 'hidden'}>
           <ComposeView
             projectId={work.project_id}
             sceneId={effectiveScene}
@@ -168,8 +177,8 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
             token={token}
             onAccept={onAccept}
           />
-        )}
-        {tab === 'assemble' && (
+        </div>
+        <div className={tab === 'assemble' ? '' : 'hidden'}>
           <ChapterAssembleView
             projectId={work.project_id}
             bookId={bookId}
@@ -182,12 +191,16 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
             token={token}
             onAccept={onAccept}
           />
-        )}
-        {tab === 'grounding' && (
+        </div>
+        <div className={tab === 'grounding' ? '' : 'hidden'}>
           <GroundingPanel projectId={work.project_id} sceneId={effectiveScene} token={token} />
-        )}
-        {tab === 'canon' && <CanonRulesPanel projectId={work.project_id} token={token} />}
-        {tab === 'quality' && <QualityPanel projectId={work.project_id} token={token} />}
+        </div>
+        <div className={tab === 'canon' ? '' : 'hidden'}>
+          <CanonRulesPanel projectId={work.project_id} token={token} />
+        </div>
+        <div className={tab === 'quality' ? '' : 'hidden'}>
+          <QualityPanel projectId={work.project_id} token={token} />
+        </div>
       </div>
     </div>
   );
