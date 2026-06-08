@@ -283,6 +283,10 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
     try:
         await _emit_translation_quality(
             pool, chapter_translation_id, msg, pipeline_version,
+            # M7d-3: feed the judge its inputs (attached only when the feed flag is
+            # on). `memo_text` is the translated-only text for BOTH pipelines; for a
+            # block chapter `chapter_text` may be empty → the emit skips the feed.
+            source_text=chapter_text, translated_text=memo_text,
         )
     except Exception:  # noqa: BLE001 — telemetry must not break the worker
         log.warning("M7a: failed to emit translation quality (non-fatal)", exc_info=True)
@@ -424,6 +428,7 @@ async def _insert_outbox_event(
 
 async def _emit_translation_quality(
     conn, chapter_translation_id, msg: dict, pipeline_version: str,
+    *, source_text: str = "", translated_text: str = "",
 ) -> None:
     """M7a (Channel 2 — LLM action log): emit ``translation.quality`` to
     learning-service so the verifier's per-chapter rollup becomes a tunable
@@ -439,7 +444,11 @@ async def _emit_translation_quality(
     (``quality.py``), but the platform's score_config convention (F1/precision/…)
     is **[0, 1]**; emit the **normalised** ``/100`` value so learning's
     ``translation_quality_score`` ([0,1]) validates it instead of DLQ-ing every
-    event."""
+    event.
+
+    M7d-3: when ``translation_judge_feed_enabled`` is on, also carry a truncated
+    ``source_text`` + ``translated_text`` so the M7d-2 online fidelity judge has
+    inputs. Off by default — the payload is then byte-identical to M7a."""
     row = await conn.fetchrow(
         """SELECT quality_score, unresolved_high_count, qa_rounds_used
            FROM chapter_translations WHERE id = $1""",
@@ -455,20 +464,40 @@ async def _emit_translation_quality(
         chapter_translation_id,
     )
     issue_counts = {r["issue_type"]: r["n"] for r in issue_rows}
+    payload = {
+        "user_id": str(msg["user_id"]),
+        "book_id": str(msg["book_id"]),
+        "chapter_id": str(msg["chapter_id"]),
+        "chapter_translation_id": str(chapter_translation_id),
+        "target_language": msg["target_language"],
+        "pipeline_version": pipeline_version,
+        "quality_score": float(row["quality_score"]) / 100.0,  # 0-100 int → [0,1]
+        "unresolved_high_count": row["unresolved_high_count"] or 0,
+        "qa_rounds_used": row["qa_rounds_used"] or 0,
+        "issue_counts": issue_counts,
+    }
+    # M7d-3: opt-in fidelity feed. OFF by default → payload stays byte-identical to
+    # M7a (no text shipped). When on, attach a head-sample of BOTH sides under the
+    # exact keys the M7d-2 learning hook reads. Require both non-empty so a block
+    # chapter with empty text_content simply doesn't feed (keys absent → the
+    # consumer judge hook stays inert, no crash).
+    #
+    # review-impl MED (cross-service-normalization-bug-class): a *character* is not
+    # a language-invariant unit — 2000 zh chars cover far more story than 2000 vi
+    # chars. Truncating each side independently to the same char count would feed
+    # the judge MISALIGNED spans (e.g. 60% of the source vs 25% of the translation)
+    # → it reads the translation as "omits the back half" and scores fidelity
+    # systematically low for exactly the CJK→Latin pairs this channel tunes. So
+    # sample both by the SAME fraction of their own length, with the fraction picked
+    # so neither side exceeds the cap. Both samples then cover the same story span
+    # AND stay bounded. cap<=0 → skip the feed (don't emit empty strings).
+    cap = settings.translation_judge_feed_max_chars
+    if settings.translation_judge_feed_enabled and source_text and translated_text and cap > 0:
+        frac = min(1.0, cap / len(source_text), cap / len(translated_text))
+        payload["source_text"] = source_text[: max(1, int(len(source_text) * frac))]
+        payload["translated_text"] = translated_text[: max(1, int(len(translated_text) * frac))]
     await _insert_outbox_event(
-        conn, "translation.quality", chapter_translation_id,
-        {
-            "user_id": str(msg["user_id"]),
-            "book_id": str(msg["book_id"]),
-            "chapter_id": str(msg["chapter_id"]),
-            "chapter_translation_id": str(chapter_translation_id),
-            "target_language": msg["target_language"],
-            "pipeline_version": pipeline_version,
-            "quality_score": float(row["quality_score"]) / 100.0,  # 0-100 int → [0,1]
-            "unresolved_high_count": row["unresolved_high_count"] or 0,
-            "qa_rounds_used": row["qa_rounds_used"] or 0,
-            "issue_counts": issue_counts,
-        },
+        conn, "translation.quality", chapter_translation_id, payload,
         aggregate_type="translation",
     )
 

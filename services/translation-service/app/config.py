@@ -44,6 +44,15 @@ class Settings(BaseSettings):
     notification_service_internal_url: str = "http://notification-service:8091"
     internal_service_token: str
     port: int = 8087
+    # M7d-3: opt-in feed of source+translated text into the translation.quality
+    # event so the M7d-2 online fidelity judge has inputs to score. OFF by default
+    # — when off, the event payload is byte-identical to M7a (no extra cost, no
+    # text shipped). INDEPENDENT of learning's online_translation_judge_enabled
+    # (the consumer-side gate): both must be on for a judge to actually run, so
+    # turning the feed on alone is harmless. Truncate each side to bound the
+    # event-bus payload — a head-sample is enough for a fidelity judgment.
+    translation_judge_feed_enabled: bool = False
+    translation_judge_feed_max_chars: int = 2000
 
     class Config:
         env_file = ".env"
