@@ -101,7 +101,7 @@ describe('RawSearchPanel', () => {
     );
     fireEvent.change(screen.getByTestId('raw-search-input'), { target: { value: 'x' } });
     await waitFor(() => expect(screen.getByTestId('raw-search-result')).toBeInTheDocument());
-    fireEvent.click(within(screen.getByTestId('raw-search-result')).getByRole('button'));
+    fireEvent.click(within(screen.getByTestId('raw-search-result')).getByTestId('raw-search-jump'));
     expect(screen.getByTestId('loc').textContent).toBe(
       '/books/book-1/chapters/cd/read?block=0',
     );
@@ -120,7 +120,7 @@ describe('RawSearchPanel', () => {
     );
     fireEvent.change(screen.getByTestId('raw-search-input'), { target: { value: 'x' } });
     await waitFor(() => expect(screen.getByTestId('raw-search-result')).toBeInTheDocument());
-    fireEvent.click(within(screen.getByTestId('raw-search-result')).getByRole('button'));
+    fireEvent.click(within(screen.getByTestId('raw-search-result')).getByTestId('raw-search-jump'));
     expect(screen.getByTestId('loc').textContent).toBe('/books/book-1/chapters/cc/read');
   });
 
@@ -181,6 +181,17 @@ describe('RawSearchPanel', () => {
       expect(screen.getByTestId('raw-search-relevance')).toBeInTheDocument(),
     );
     expect(screen.getByTestId('raw-search-relevance').getAttribute('title')).toBe('97%');
+  });
+
+  it('copy-exact button writes the snippet to the clipboard (P3-C)', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    hybridMock.mockResolvedValue({ query: 'x', mode: 'hybrid', results: [_draft] });
+    renderPanel();
+    fireEvent.change(screen.getByTestId('raw-search-input'), { target: { value: 'x' } });
+    await waitFor(() => expect(screen.getByTestId('raw-search-copy')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('raw-search-copy'));
+    expect(writeText).toHaveBeenCalledWith('draft prose');
   });
 
   // ── FE-MINOR: empty / error states ─────────────────────────────────

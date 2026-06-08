@@ -2225,12 +2225,17 @@ WHERE c.id=$1 AND c.book_id=$2 AND c.lifecycle_state='active'
 		writeError(w, http.StatusInternalServerError, "CHAPTER_NOT_FOUND", "failed to load chapter")
 		return
 	}
-	// Aggregate plain text from chapter_blocks for translation-service consumption
+	// Aggregate plain text from chapter_blocks for translation-service consumption.
+	// `block_indices` is the ORDERED list of block_index values text_content was
+	// joined from (same ORDER BY): raw-search P3-C maps a passage's paragraph
+	// position in text_content → its real block_index for precise jump-to-source.
 	var textContent *string
+	var blockIndices []int32
 	_ = s.pool.QueryRow(r.Context(), `
-SELECT string_agg(text_content, E'\n\n' ORDER BY block_index)
+SELECT string_agg(text_content, E'\n\n' ORDER BY block_index),
+       array_agg(block_index ORDER BY block_index)
 FROM chapter_blocks WHERE chapter_id=$1
-`, chapterID).Scan(&textContent)
+`, chapterID).Scan(&textContent, &blockIndices)
 	ChapterFetchTotal.WithLabelValues(OutcomeOK).Inc()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"chapter_id":        chapterID,
@@ -2241,6 +2246,7 @@ FROM chapter_blocks WHERE chapter_id=$1
 		"body":              body,
 		"body_format":       "json",
 		"text_content":      textContent,
+		"block_indices":     blockIndices,
 		"editorial_status":  editorialStatus,
 		"published_revision_id": publishedRevID,
 	})

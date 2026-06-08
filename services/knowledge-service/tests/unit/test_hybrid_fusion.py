@@ -85,3 +85,15 @@ def test_relevance_floor_missing_field_passes_through():
 def test_relevance_floor_zero_is_noop():
     hits = [_h("a", "canon", 0, relevance=0.01)]
     assert apply_relevance_floor(hits, 0.0) == hits
+
+
+def test_hit_key_keeps_distinct_chunks_sharing_a_block_index():
+    # P3-C/MED-1: two distinct semantic passages can share a block_index
+    # (one oversized paragraph → several chunks). The dedup key must use the
+    # UNIQUE chunkIndex, not blockIndex, or fusion drops one of them.
+    h1 = {"chapterId": "a", "surface": "canon", "score": 0.0,
+          "location": {"chunkIndex": 0, "blockIndex": 3}}
+    h2 = {"chapterId": "a", "surface": "canon", "score": 0.0,
+          "location": {"chunkIndex": 1, "blockIndex": 3}}
+    fused = rrf_fuse([[h1, h2]])
+    assert len(fused) == 2  # both kept (keyed on chunkIndex, not block 3)

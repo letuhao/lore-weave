@@ -16,5 +16,7 @@
   "granularity_block_hint": "一致するすべての箇所",
   "limit_label": "件数",
   "relevance_label": "関連度",
+  "copy": "コピー",
+  "copied": "コピーしました",
   "degraded": "一部の結果が制限される場合があります（検索バックエンドが利用できません）。"
 }

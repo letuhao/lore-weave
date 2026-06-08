@@ -21,12 +21,17 @@ Hit = dict[str, Any]
 
 def _hit_key(hit: Hit) -> tuple:
     """Stable identity for a hit. `surface` distinguishes the legs
-    (lexical=draft / semantic=canon in v1), and position is the block
-    (lexical) or chunk (semantic) index within the chapter."""
+    (lexical=draft / semantic=canon in v1), and position is the chunk
+    (semantic) or block (lexical) index within the chapter.
+
+    chunkIndex is preferred because it is UNIQUE per passage; blockIndex is
+    NOT (P3-C: several chunks of one oversized paragraph share a block_index).
+    Keying on blockIndex would collide distinct semantic passages and drop
+    them in fusion (review-impl MED-1). Lexical hits carry only blockIndex."""
     loc = hit.get("location") or {}
-    pos = loc.get("blockIndex")
+    pos = loc.get("chunkIndex")
     if pos is None:
-        pos = loc.get("chunkIndex")
+        pos = loc.get("blockIndex")
     return (hit.get("chapterId"), hit.get("surface"), pos)
 
 

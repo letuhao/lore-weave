@@ -272,6 +272,36 @@ class BookClient:
             )
             return None
 
+    async def get_chapter_text_and_blocks(
+        self, book_id: UUID, chapter_id: UUID,
+    ) -> tuple[str | None, list[int]]:
+        """P3-C — like get_chapter_text but also returns `block_indices`, the
+        ORDERED chapter_blocks.block_index list `text_content` was joined from.
+        Lets passage ingestion map a chunk's paragraph position → its real
+        block_index for precise jump-to-source. Returns (None, []) on failure
+        (caller falls back to no-block-mapping)."""
+        url = f"{self._base_url}/internal/books/{book_id}/chapters/{chapter_id}"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(
+                url, headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                return None, []
+            data = resp.json()
+            text = data.get("text_content")
+            if not isinstance(text, str) or not text.strip():
+                return None, []
+            raw = data.get("block_indices") or []
+            blocks = [int(b) for b in raw] if isinstance(raw, list) else []
+            return text, blocks
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+            logger.warning(
+                "book-service unavailable fetching chapter text+blocks: %s trace_id=%s",
+                exc, tid,
+            )
+            return None, []
+
     async def get_chapter_revision_text(
         self, book_id: UUID, chapter_id: UUID, revision_id: str,
     ) -> str | None:

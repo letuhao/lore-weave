@@ -16,5 +16,7 @@
   "granularity_block_hint": "Mọi đoạn khớp",
   "limit_label": "Số kết quả",
   "relevance_label": "Độ liên quan",
+  "copy": "Sao chép",
+  "copied": "Đã sao chép",
   "degraded": "Một số kết quả có thể bị giới hạn — một backend tìm kiếm không khả dụng."
 }

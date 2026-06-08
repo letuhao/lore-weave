@@ -70,6 +70,10 @@ class Passage(BaseModel):
     embedding_model: str | None = None
     is_hub: bool = False
     chapter_index: int | None = None
+    # P3-C — chapter_blocks.block_index where this chunk's content starts, so
+    # a semantic hit can jump-to-source precisely (reader scrolls to ?block=N).
+    # None for chunks ingested before P3-C or from the canon/revision path.
+    block_index: int | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -139,6 +143,7 @@ ON CREATE SET
   p.embedding_model = $embedding_model,
   p.is_hub = $is_hub,
   p.chapter_index = $chapter_index,
+  p.block_index = $block_index,
   p.{embed_prop} = $embedding,
   p.created_at = datetime(),
   p.updated_at = datetime()
@@ -147,6 +152,7 @@ ON MATCH SET
   p.embedding_model = $embedding_model,
   p.is_hub = $is_hub,
   p.chapter_index = $chapter_index,
+  p.block_index = $block_index,
   p.{embed_prop} = $embedding,
   p.updated_at = datetime()
 WITH p WHERE p.user_id = $user_id
@@ -168,6 +174,7 @@ async def upsert_passage(
     embedding_model: str | None = None,
     is_hub: bool = False,
     chapter_index: int | None = None,
+    block_index: int | None = None,
 ) -> Passage:
     """Idempotent MERGE of a `:Passage` with its per-dim embedding.
 
@@ -219,6 +226,7 @@ async def upsert_passage(
         embedding_model=embedding_model,
         is_hub=is_hub,
         chapter_index=chapter_index,
+        block_index=block_index,
         embedding=embedding,
     )
     record = await result.single()

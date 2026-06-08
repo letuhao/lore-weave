@@ -98,6 +98,9 @@ def _passage_to_hit(h: PassageSearchHit) -> dict[str, Any]:
         "highlights": [],
         "location": {
             "chunkIndex": p.chunk_index,
+            # P3-C: real chapter block where this chunk starts → FE jumps to
+            # source precisely (reader scrolls to ?block=N), like lexical hits.
+            "blockIndex": p.block_index,
             "headingContext": None,
             "charStart": 0,
             "charEnd": 0,

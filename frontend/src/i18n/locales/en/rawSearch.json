@@ -16,5 +16,7 @@
   "granularity_block_hint": "Every matching passage",
   "limit_label": "Results",
   "relevance_label": "Relevance",
+  "copy": "Copy text",
+  "copied": "Copied",
   "degraded": "Some results may be limited — a search backend is unavailable."
 }
