@@ -229,6 +229,7 @@ async def generate(
             llm, user_id=str(user_id), model_source=body.model_source,
             model_ref=str(body.model_ref), prose=older, timeline=timeline_texts,
             plan=plan, source_language=_src_lang,
+            max_input_chars=settings.compress_max_input_chars,
         )
 
     # Retrieve (M4 packer) — raises OwnershipError (404) / BookClientError (502).
@@ -493,7 +494,8 @@ async def generate_chapter(
         return await compress(
             llm, user_id=str(user_id), model_source=body.model_source,
             model_ref=str(body.model_ref), prose=older, timeline=timeline_texts,
-            plan=plan, source_language=_src_lang)
+            plan=plan, source_language=_src_lang,
+            max_input_chars=settings.compress_max_input_chars)
 
     try:
         pc = await pack(
@@ -527,7 +529,11 @@ async def generate_chapter(
         user_pref=body.reasoning, model_control=control, auto_effort=score_effort(signals),
         auto_source=str(work.settings.get("reasoning_engine", "rule_based")))
 
-    max_out = body.max_output_tokens or settings.chapter_gen_max_tokens
+    # Size the output budget from the plan (scene count) so a multi-scene chapter
+    # gets room instead of a flat cap that silently truncates long-form; clamp to
+    # the ceiling. An explicit body override still wins.
+    max_out = body.max_output_tokens or min(
+        len(scenes) * settings.chapter_gen_per_scene_tokens, settings.chapter_gen_max_tokens)
 
     # Idempotency keyed on the caller's key (design LOW-1: key on chapter_id +
     # assembly_mode in the value the caller builds). No in-flight cancel: chapter
@@ -594,6 +600,11 @@ async def generate_chapter(
         persisted, draft_version, persist_error = await _persist_chapter_draft(
             book, work.book_id, chapter_id, bearer, final_text, "AI chapter draft (chapter mode)")
 
+    # NOTE (D-COMP-TRUNCATION-SURFACING): a reliable "was the output cut at the
+    # cap?" flag needs the gateway's finish_reason — a char_estimate heuristic is
+    # too biased (over-counts EN → false positives ~75% budget, under-counts CJK →
+    # misses) to ship. The plan-sized `max_output_tokens` (returned below) is the
+    # deterministic anti-truncation lever; accurate surfacing is deferred.
     total_out = winner.metering.output_tokens + revise_out_tokens
     await jobs.update_status(
         user_id, job.id, "completed",
@@ -606,7 +617,7 @@ async def generate_chapter(
         "canon": canon_v, "grounding_available": pc.grounding_available,
         "reasoning_source": reasoning.source, "reasoning_effort": reasoning.effort,
         "assembly_mode": "chapter", "persisted": persisted, "draft_version": draft_version,
-        "persist_error": persist_error})
+        "persist_error": persist_error, "max_output_tokens": max_out})
 
 
 @router.post("/works/{project_id}/chapters/{chapter_id}/stitch")
@@ -661,7 +672,10 @@ async def stitch_chapter_endpoint(
     reasoning = resolve_reasoning(
         user_pref=body.reasoning, model_control=control, auto_effort=score_effort(signals),
         auto_source=str(work.settings.get("reasoning_engine", "rule_based")))
-    max_out = body.max_output_tokens or settings.stitch_max_tokens
+    # Size from the number of scene drafts being merged (the stitched chapter is
+    # ~their combined length), clamped to the ceiling — long chapters need room.
+    max_out = body.max_output_tokens or min(
+        len(drafts) * settings.chapter_gen_per_scene_tokens, settings.stitch_max_tokens)
 
     job, created = await jobs.create(
         user_id, project_id, operation="stitch_chapter", outline_node_id=None,
@@ -711,6 +725,8 @@ async def stitch_chapter_endpoint(
     except Exception:
         logger.warning("stitch canon reflect failed (advisory) — keeping stitched draft", exc_info=True)
 
+    # Truncation surfacing deferred to D-COMP-TRUNCATION-SURFACING (needs the
+    # gateway finish_reason; a char_estimate heuristic is too biased to ship).
     persisted, draft_version, persist_error = False, None, None
     if body.persist:
         persisted, draft_version, persist_error = await _persist_chapter_draft(
@@ -726,7 +742,8 @@ async def stitch_chapter_endpoint(
         "canon": canon_v, "assembly_mode": "per_scene_stitch", "stitched": not degraded,
         "degraded": degraded, "reasoning_source": reasoning.source,
         "reasoning_effort": reasoning.effort, "persisted": persisted,
-        "draft_version": draft_version, "persist_error": persist_error})
+        "draft_version": draft_version, "persist_error": persist_error,
+        "max_output_tokens": max_out})
 
 
 @router.post("/works/{project_id}/scenes/{node_id}/suggest-cast")

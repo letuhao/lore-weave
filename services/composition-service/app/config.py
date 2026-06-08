@@ -69,15 +69,23 @@ class Settings(BaseSettings):
     # A per-request override may still pick the other mode. Default per_scene =
     # co-write parity; autonomous long-form sets 'chapter' on the Work.
     composition_assembly_mode_default: str = "per_scene"
-    # Output ceilings for the two chapter-level paths. Declared here so config is
-    # stable across milestones; UNUSED until B2 (chapter single-pass) / B3 (stitch)
-    # consume them. A whole chapter is one pass → larger than the per-scene 1024.
-    chapter_gen_max_tokens: int = 4096
-    stitch_max_tokens: int = 4096
+    # Output CEILINGS for the two chapter-level paths (cap the proportional
+    # plan-sizing below — a long chapter is one pass and needs room, but never
+    # beyond the request field's le=8192). chapter-gen/stitch size their max_tokens
+    # from the plan's scene count × chapter_gen_per_scene_tokens, clamped here.
+    chapter_gen_max_tokens: int = 8192
+    stitch_max_tokens: int = 8192
+    # Per-scene output budget for the proportional chapter/stitch sizing (so a
+    # multi-scene chapter gets room instead of a flat cap that silently truncates).
+    chapter_gen_per_scene_tokens: int = 700
     # B3 stitch input cap (MED-3) — when the chapter's concatenated scene drafts
     # exceed this many chars, keep the earliest + latest scenes and elide the
     # middle (head+tail keep). ~4 chars/token → 24000 ≈ 6000 tokens of input.
     stitch_max_input_chars: int = 24000
+    # S2 compress input cap (D-COMP-COMPRESS-INPUT-CAP) — bound the older
+    # story-so-far prose fed to compress() so a very long chapter doesn't blow
+    # compress's OWN prompt. Keep the most-recent chars (continuity-relevant).
+    compress_max_input_chars: int = 24000
 
 
 settings = Settings()  # type: ignore[call-arg]

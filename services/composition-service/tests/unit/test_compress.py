@@ -7,6 +7,25 @@ from types import SimpleNamespace
 from app.engine import compress as C
 
 
+def test_cap_recent_prose_keeps_most_recent_within_budget():
+    # D-COMP-COMPRESS-INPUT-CAP: keep the newest paragraphs whose total ≤ cap.
+    prose = ["A" * 100, "B" * 100, "C" * 100, "D" * 100]  # 400 chars
+    assert C.cap_recent_prose(prose, 1000) == prose          # under budget → unchanged
+    assert C.cap_recent_prose(prose, 250) == ["C" * 100, "D" * 100]  # newest two fit
+    # always keeps ≥1 even if the newest alone exceeds the cap
+    assert C.cap_recent_prose(["X" * 500], 100) == ["X" * 500]
+
+
+async def test_compress_caps_input_to_recent():
+    # the older prose is bounded before the LLM call (newest kept).
+    llm = FakeLLM(content="summary")
+    await C.compress(llm, user_id="u", model_source="user_model", model_ref="m",
+                     prose=["old" * 100, "mid" * 100, "new" * 100], timeline=[],
+                     max_input_chars=350)
+    user_msg = llm.last_input["messages"][1]["content"]
+    assert "new" in user_msg and "old" not in user_msg  # oldest elided
+
+
 class FakeLLM:
     def __init__(self, content=None, status="completed", raises=False):
         self._content, self._status, self._raises = content, status, raises

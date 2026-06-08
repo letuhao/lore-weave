@@ -314,6 +314,9 @@ def test_chapter_generate_happy_path(chap_ctx):
     assert body["canon"]["status"] == "checked"
     # single pass — diverge called with k=1, and the union cast reached canon reflect
     assert state["diverge"]["k"] == 1
+    # max_out sized from the plan: 2 scenes × 700 = 1400 (< 8192 ceiling).
+    assert state["diverge"]["max_tokens"] == 1400
+    assert body["max_output_tokens"] == 1400
     assert state["reflect"]["cast_glossary_ids"] == [str(ENT1), str(ENT2)]
     assert state["reflect"]["scene_sort_order"] == 3
     # job completed, op draft_chapter, no outline_node_id
@@ -416,6 +419,8 @@ def test_stitch_happy_path_persists(chap_ctx):
     body = r.json()
     assert body["text"] == "STITCHED CHAPTER" and body["assembly_mode"] == "per_scene_stitch"
     assert body["stitched"] is True and body["degraded"] is False
+    # max_out sized from the 2 scene drafts: 2 × 700 = 1400
+    assert state["stitch"]["max_tokens"] == 1400 and body["max_output_tokens"] == 1400
     # the chapter's scene drafts reached the stitcher
     assert state["stitch"]["scene_drafts"] == ["scene one prose", "scene two prose"]
     # post-stitch canon re-check ran on the stitched text

@@ -60,16 +60,35 @@ def build_compress_messages(
     return system, "\n\n".join(parts)
 
 
+def cap_recent_prose(prose: list[str], max_chars: int) -> list[str]:
+    """D-COMP-COMPRESS-INPUT-CAP — bound the prose fed to compress(): keep the
+    MOST-RECENT paragraphs whose total ≤ max_chars (a state summary cares most
+    about recency). Always keeps ≥1 (the immediate-preceding paragraph) even if it
+    alone exceeds the cap. Returns the kept paragraphs in original order."""
+    if max_chars <= 0 or sum(len(p) for p in prose) <= max_chars:
+        return prose
+    kept: list[str] = []
+    budget = max_chars
+    for p in reversed(prose):  # newest-first
+        if kept and len(p) > budget:
+            break
+        kept.append(p)
+        budget -= len(p)
+    return list(reversed(kept))
+
+
 async def compress(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     prose: list[str], timeline: list[str], plan: str = "",
-    source_language: str = "auto", max_tokens: int = 512, trace_id: str | None = None,
+    source_language: str = "auto", max_tokens: int = 512,
+    max_input_chars: int = 24000, trace_id: str | None = None,
 ) -> str:
     """Condense into a re-injectable state summary. Returns "" on any failure
     (caller keeps the raw, budget-trimmed prose). No-op ("" ) when there is
     nothing to compress."""
     if not prose and not timeline:
         return ""
+    prose = cap_recent_prose(prose, max_input_chars)
     system, user = build_compress_messages(prose, timeline, plan, source_language)
     try:
         job = await llm.submit_and_wait(
