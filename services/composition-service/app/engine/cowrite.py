@@ -44,6 +44,11 @@ class DraftMetering:
     input_tokens: int
     output_tokens: int
     measured: bool   # False → over-estimated from a char model (no real usage frame)
+    # Raw model stop reason from the gateway (DoneEvent / job.result["finish_reason"]).
+    # "length" ⇒ the model hit the output cap (truncated); None ⇒ not reported.
+    # D-COMP-TRUNCATION-SURFACING: the authoritative truncation signal (replaces the
+    # cycle-3 char-estimate heuristic that was dropped for being too biased).
+    finish_reason: str | None = None
 
 
 def char_estimate(text: str) -> int:
@@ -159,6 +164,7 @@ async def stream_draft(
     in_tok = out_tok = 0
     est_out = 0
     capped = False
+    finish_reason: str | None = None
     try:
         async for ev in sdk.stream(req, user_id=user_id):
             if isinstance(ev, TokenEvent):
@@ -176,7 +182,9 @@ async def stream_draft(
                 in_tok = ev.input_tokens or 0
                 out_tok = ev.output_tokens or 0
             elif isinstance(ev, DoneEvent):
-                pass
+                # D-COMP-TRUNCATION-SURFACING: the model's stop reason ("length" ⇒
+                # hit the cap). Previously discarded.
+                finish_reason = ev.finish_reason
     except LLMError as exc:
         logger.warning("stream_draft LLM error: %s", exc)
         yield {"type": "error", "error": str(exc)}
@@ -191,5 +199,6 @@ async def stream_draft(
         input_tokens=in_tok if (measured and in_tok > 0) else prompt_token_estimate,
         output_tokens=out_tok if out_measured else char_estimate(text),
         measured=out_measured,
+        finish_reason=finish_reason,
     )
     yield {"type": "usage", "text": text, "metering": metering, "capped": capped}

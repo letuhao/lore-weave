@@ -380,6 +380,10 @@ async def generate(
         except Exception:  # canon reflect must NEVER fail the generate (F1).
             logger.warning("A2-S3b canon reflect failed (advisory) — keeping winner", exc_info=True)
         total_out = w.metering.output_tokens + revise_out_tokens
+        # D-COMP-TRUNCATION-SURFACING: authoritative truncation flag from the
+        # drafter's stop reason (the winner draft is the cap-prone generation; a
+        # canon-revise is a targeted edit — its truncation isn't surfaced here).
+        truncated = w.metering.finish_reason == "length"
         await jobs.update_status(
             user_id, job.id, "completed",
             result={"text": final_text, "input_tokens": w.metering.input_tokens,
@@ -387,10 +391,12 @@ async def generate(
                     "k": len(sel.candidates), "winner_index": sel.winner_index,
                     "rerank_reason": sel.rerank_reason, "rerank_measured": sel.rerank_measured,
                     "candidates": [c.text for c in sel.candidates],
+                    "truncated": truncated, "finish_reason": w.metering.finish_reason,
                     "canon": canon},
         )
         return JSONResponse({
             "job_id": str(job.id), "mode": "auto", "status": "completed", "text": final_text,
+            "truncated": truncated, "finish_reason": w.metering.finish_reason,
             "winner_index": sel.winner_index, "k": len(sel.candidates),
             # The K candidate texts so the FE can show ALL options as cards (the
             # controlled-auto human gate, slice 3). They're already computed +
@@ -431,15 +437,23 @@ async def generate(
                 yield _sse(ev)
         if final is not None:
             m = final["metering"]
+            # D-COMP-TRUNCATION-SURFACING: "length" ⇒ the model hit its max_tokens
+            # cap. DISTINCT from `capped` (composition's own hard-cap abort, which
+            # breaks BEFORE the DoneEvent so finish_reason stays None). Both mean the
+            # output was cut — a consumer wanting "incomplete?" should treat
+            # (capped OR truncated) as the signal; both are surfaced below.
+            truncated = m.finish_reason == "length"
             await jobs.update_status(
                 user_id, job.id, "completed",
                 result={"text": final["text"], "input_tokens": m.input_tokens,
                         "output_tokens": m.output_tokens, "measured": m.measured,
-                        "capped": final.get("capped", False)},
+                        "capped": final.get("capped", False),
+                        "truncated": truncated, "finish_reason": m.finish_reason},
             )
             yield _sse({"type": "done", "job_id": str(job.id), "status": "completed",
                         "output_tokens": m.output_tokens, "measured": m.measured,
-                        "capped": final.get("capped", False)})
+                        "capped": final.get("capped", False),
+                        "truncated": truncated, "finish_reason": m.finish_reason})
         else:
             await jobs.update_status(user_id, job.id, "failed")
             yield _sse({"type": "done", "job_id": str(job.id), "status": "failed"})
@@ -620,14 +634,19 @@ async def generate_chapter(
     # misses) to ship. The plan-sized `max_output_tokens` (returned below) is the
     # deterministic anti-truncation lever; accurate surfacing is deferred.
     total_out = winner.metering.output_tokens + revise_out_tokens
+    # D-COMP-TRUNCATION-SURFACING: "length" ⇒ the single-pass chapter draft hit the
+    # cap (the deterministic plan-sized max_out is the prevention; this is the signal).
+    truncated = winner.metering.finish_reason == "length"
     await jobs.update_status(
         user_id, job.id, "completed",
         result={"text": final_text, "input_tokens": winner.metering.input_tokens,
                 "output_tokens": total_out, "measured": winner.metering.measured,
+                "truncated": truncated, "finish_reason": winner.metering.finish_reason,
                 "canon": canon_v, "assembly_mode": "chapter", "chapter_id": str(chapter_id),
                 "persisted": persisted, "draft_version": draft_version})
     return JSONResponse({
         "job_id": str(job.id), "mode": "auto", "status": "completed", "text": final_text,
+        "truncated": truncated, "finish_reason": winner.metering.finish_reason,
         "canon": canon_v, "grounding_available": pc.grounding_available,
         "reasoning_source": reasoning.source, "reasoning_effort": reasoning.effort,
         "assembly_mode": "chapter", "persisted": persisted, "draft_version": draft_version,
@@ -714,13 +733,16 @@ async def stitch_chapter_endpoint(
                              "canon": r.get("canon"), "assembly_mode": "per_scene_stitch"})
 
     # Stitch (degrade → raw concat). The raw concat is the safe fallback artifact.
-    stitched = await stitch_chapter(
+    stitched, stitch_finish = await stitch_chapter(
         llm, user_id=str(user_id), model_source=body.model_source, model_ref=str(body.model_ref),
         scene_drafts=drafts, chapter_intent=chapter_intent, profile=profile,
         max_tokens=max_out, max_input_chars=settings.stitch_max_input_chars,
         reasoning_effort=None if reasoning.passthrough else reasoning.effort)
     degraded = not stitched
     final_text = stitched or "\n\n".join(drafts)
+    # D-COMP-TRUNCATION-SURFACING: "length" ⇒ the stitch pass hit the cap. Only
+    # meaningful when NOT degraded (a raw concat has no model stop reason).
+    truncated = (not degraded) and stitch_finish == "length"
 
     # Post-stitch canon re-check over the union cast at the chapter position (a
     # rewrite can re-introduce a gone character). Degrade-safe, never blocks (F1).
@@ -747,8 +769,6 @@ async def stitch_chapter_endpoint(
     except Exception:
         logger.warning("stitch canon reflect failed (advisory) — keeping stitched draft", exc_info=True)
 
-    # Truncation surfacing deferred to D-COMP-TRUNCATION-SURFACING (needs the
-    # gateway finish_reason; a char_estimate heuristic is too biased to ship).
     persisted, draft_version, persist_error = False, None, None
     if body.persist:
         persisted, draft_version, persist_error = await _persist_chapter_draft(
@@ -758,11 +778,13 @@ async def stitch_chapter_endpoint(
         user_id, job.id, "completed",
         result={"text": final_text, "canon": canon_v, "assembly_mode": "per_scene_stitch",
                 "stitched": not degraded, "chapter_id": str(chapter_id),
+                "truncated": truncated, "finish_reason": stitch_finish,
                 "persisted": persisted, "draft_version": draft_version})
     return JSONResponse({
         "job_id": str(job.id), "mode": "auto", "status": "completed", "text": final_text,
         "canon": canon_v, "assembly_mode": "per_scene_stitch", "stitched": not degraded,
-        "degraded": degraded, "reasoning_source": reasoning.source,
+        "degraded": degraded, "truncated": truncated, "finish_reason": stitch_finish,
+        "reasoning_source": reasoning.source,
         "reasoning_effort": reasoning.effort, "persisted": persisted,
         "draft_version": draft_version, "persist_error": persist_error,
         "max_output_tokens": max_out})

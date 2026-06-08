@@ -58,13 +58,15 @@ async def stitch_chapter(
     scene_drafts: list[str], chapter_intent: str, profile: BookProfile,
     max_tokens: int, max_input_chars: int,
     reasoning_effort: str | None = None, trace_id: str | None = None,
-) -> str:
-    """Merge the chapter's scene drafts into one seamless chapter. Returns the
-    stitched prose, or "" on empty input / LLM failure / empty output (the caller
-    degrades to the raw concatenation)."""
+) -> tuple[str, str | None]:
+    """Merge the chapter's scene drafts into one seamless chapter. Returns
+    ``(stitched_prose, finish_reason)`` — prose is "" on empty input / LLM failure
+    / empty output (the caller degrades to the raw concatenation); finish_reason is
+    the model's stop reason ("length" ⇒ the stitch hit the cap; None when degraded
+    or unreported — D-COMP-TRUNCATION-SURFACING)."""
     drafts = [d for d in scene_drafts if d and d.strip()]
     if not drafts:
-        return ""
+        return "", None
     kept, elided = cap_scene_drafts(drafts, max_input_chars)
     if elided:
         logger.info("stitch input capped: kept %d/%d scene drafts (elided %d middle)",
@@ -99,9 +101,11 @@ async def stitch_chapter(
         )
     except LLMError as exc:
         logger.warning("stitch LLM error: %s → degrade to raw concat", exc)
-        return ""
+        return "", None
     if job.status != "completed":
         logger.info("stitch status=%s → degrade to raw concat", job.status)
-        return ""
+        return "", None
     text = extract_judge_content(job.result)
-    return text if text.strip() else ""
+    if not text.strip():
+        return "", None
+    return text, (job.result or {}).get("finish_reason")

@@ -41,15 +41,19 @@ class _Job:
 
 
 class _LLM:
-    def __init__(self, *, status="completed", content="STITCHED", raises=None):
+    def __init__(self, *, status="completed", content="STITCHED", raises=None, finish_reason=None):
         self._status, self._content, self._raises = status, content, raises
+        self._finish_reason = finish_reason
         self.calls = []
 
     async def submit_and_wait(self, **kw):
         self.calls.append(kw)
         if self._raises:
             raise self._raises
-        return _Job(self._status, {"messages": [{"content": self._content}]})
+        result = {"messages": [{"content": self._content}]}
+        if self._finish_reason is not None:
+            result["finish_reason"] = self._finish_reason
+        return _Job(self._status, result)
 
 
 async def _stitch(llm, drafts, **over):
@@ -60,29 +64,37 @@ async def _stitch(llm, drafts, **over):
     return await stitch_chapter(llm, **kw)
 
 
+# stitch_chapter returns (text, finish_reason) — D-COMP-TRUNCATION-SURFACING.
+
 async def test_stitch_empty_input_returns_empty_no_llm_call():
     llm = _LLM()
-    assert await _stitch(llm, []) == ""
-    assert await _stitch(llm, ["   ", ""]) == ""  # whitespace-only filtered
+    assert await _stitch(llm, []) == ("", None)
+    assert await _stitch(llm, ["   ", ""]) == ("", None)  # whitespace-only filtered
     assert llm.calls == []
 
 
-async def test_stitch_success_returns_content():
-    llm = _LLM(content="MERGED CHAPTER")
-    assert await _stitch(llm, ["a", "b"]) == "MERGED CHAPTER"
+async def test_stitch_success_returns_content_and_finish_reason():
+    llm = _LLM(content="MERGED CHAPTER", finish_reason="stop")
+    assert await _stitch(llm, ["a", "b"]) == ("MERGED CHAPTER", "stop")
     assert llm.calls and llm.calls[0]["operation"] == "chat"
+
+
+async def test_stitch_surfaces_length_finish_reason():
+    # the truncation signal the engine maps to truncated=True
+    llm = _LLM(content="LONG MERGED", finish_reason="length")
+    assert await _stitch(llm, ["a", "b"]) == ("LONG MERGED", "length")
 
 
 async def test_stitch_llm_error_degrades_to_empty():
     llm = _LLM(raises=LLMError("boom"))
-    assert await _stitch(llm, ["a", "b"]) == ""
+    assert await _stitch(llm, ["a", "b"]) == ("", None)
 
 
 async def test_stitch_non_completed_degrades_to_empty():
     llm = _LLM(status="failed")
-    assert await _stitch(llm, ["a", "b"]) == ""
+    assert await _stitch(llm, ["a", "b"]) == ("", None)
 
 
 async def test_stitch_empty_output_degrades_to_empty():
     llm = _LLM(content="   ")
-    assert await _stitch(llm, ["a", "b"]) == ""
+    assert await _stitch(llm, ["a", "b"]) == ("", None)

@@ -132,6 +132,25 @@ def test_generate_streams_and_completes_job(ctx):
     assert '"type": "job"' in body and '"type": "token"' in body and '"type": "done"' in body
     # the job was completed with the metered tokens
     assert any(s == "completed" for _, s, _ in jobs.updates)
+    # D-COMP-TRUNCATION-SURFACING: a clean stop (fake metering finish_reason None) →
+    # the done frame reports truncated=false (non-default contrast for the test below).
+    assert '"truncated": false' in body
+
+
+def test_generate_done_surfaces_truncated(ctx, monkeypatch):
+    # D-COMP-TRUNCATION-SURFACING: when the stream's terminal metering reports
+    # finish_reason="length", the SSE done frame carries truncated=true.
+    c, *_ = ctx
+
+    async def trunc_stream(sdk, **kw):
+        yield {"type": "token", "delta": "Hello"}
+        yield {"type": "usage", "text": "Hello",
+               "metering": DraftMetering(40, 2, True, finish_reason="length"), "capped": False}
+
+    monkeypatch.setattr("app.routers.engine.stream_draft", trunc_stream)
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate", json=_gen_body())
+    assert r.status_code == 200
+    assert '"truncated": true' in r.text and '"finish_reason": "length"' in r.text
 
 
 def test_generate_reasoning_off_is_user_none(ctx):
@@ -222,6 +241,27 @@ def test_generate_auto_returns_reranked_winner_as_json(ctx, monkeypatch):
     completed = [k for _, s, k in jobs.updates if s == "completed"]
     assert completed and completed[0]["result"]["text"] == "draft B"
     assert completed[0]["result"]["candidates"] == ["draft A", "draft B"]
+    # D-COMP-TRUNCATION-SURFACING: clean winner (finish_reason None) → truncated false
+    # (non-default contrast for test_generate_auto_surfaces_truncated below).
+    assert body["truncated"] is False
+
+
+def test_generate_auto_surfaces_truncated(ctx, monkeypatch):
+    # D-COMP-TRUNCATION-SURFACING: the auto path derives truncated from the
+    # select_draft winner's metering — a "length" stop → truncated=True.
+    c, *_ = ctx
+    from app.engine.select import Candidate, Selection
+
+    async def trunc_select(llm, judge, **kw):
+        cands = [Candidate("draft A", DraftMetering(10, 9, True, finish_reason="length"))]
+        return Selection(winner=cands[0], winner_index=0, candidates=cands,
+                         rerank_reason="", rerank_measured=False)
+
+    monkeypatch.setattr("app.routers.engine.select_draft", trunc_select)
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "auto"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["truncated"] is True and body["finish_reason"] == "length"
 
 
 def test_generate_auto_uses_adaptive_k_from_node_tension(ctx, monkeypatch):

@@ -84,7 +84,14 @@ async def _one_draft(
     text = extract_judge_content(job.result)
     if not text.strip():
         return None
-    return Candidate(text=text, metering=DraftMetering(prompt_est, char_estimate(text), measured=False))
+    # D-COMP-TRUNCATION-SURFACING: the gateway aggregator stamps finish_reason on
+    # the job result ("length" ⇒ hit the output cap). Carry it on the metering.
+    finish_reason = (job.result or {}).get("finish_reason")
+    return Candidate(
+        text=text,
+        metering=DraftMetering(prompt_est, char_estimate(text), measured=False,
+                               finish_reason=finish_reason),
+    )
 
 
 async def diverge(

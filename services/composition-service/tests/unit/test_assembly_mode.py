@@ -277,7 +277,7 @@ def chap_ctx(monkeypatch):
 
     async def fake_stitch(llm, **kw):
         state["stitch"] = kw
-        return "STITCHED CHAPTER"
+        return "STITCHED CHAPTER", "stop"  # (text, finish_reason)
 
     monkeypatch.setattr("app.routers.engine.pack", fake_pack)
     monkeypatch.setattr("app.routers.engine.diverge", fake_diverge)
@@ -324,6 +324,7 @@ def test_chapter_generate_happy_path(chap_ctx):
     body = r.json()
     assert body["text"] == "CHAPTER DRAFT" and body["assembly_mode"] == "chapter"
     assert body["canon"]["status"] == "checked"
+    assert body["truncated"] is False  # clean stop (fake_diverge finish_reason None)
     # single pass — diverge called with k=1, and the union cast reached canon reflect
     assert state["diverge"]["k"] == 1
     # max_out sized from the plan: 2 scenes × 700 = 1400 (< 8192 ceiling).
@@ -437,6 +438,24 @@ def test_chapter_generate_in_flight_409(chap_ctx):
     assert not hasattr(jobs, "_last_create")  # guard fired before create
 
 
+def test_chapter_generate_surfaces_truncated(chap_ctx, monkeypatch):
+    # D-COMP-TRUNCATION-SURFACING: a winner draft that stopped on "length" → the
+    # response surfaces truncated=True + raw finish_reason (non-default: the happy
+    # path's None finish_reason yields truncated=False).
+    from app.engine.cowrite import DraftMetering
+    from app.engine.select import Candidate
+    c, _, _, _, _, _ = chap_ctx
+
+    async def truncated_diverge(llm, **kw):
+        return [Candidate("CHAPTER DRAFT", DraftMetering(40, 10, True, finish_reason="length"))]
+
+    monkeypatch.setattr("app.routers.engine.diverge", truncated_diverge)
+    r = c.post(_chap_url(), json=_chap_body())
+    assert r.status_code == 200
+    body = r.json()
+    assert body["truncated"] is True and body["finish_reason"] == "length"
+
+
 # ── stitch endpoint (B3) ──
 
 def _stitch_url():
@@ -450,6 +469,7 @@ def test_stitch_happy_path_persists(chap_ctx):
     body = r.json()
     assert body["text"] == "STITCHED CHAPTER" and body["assembly_mode"] == "per_scene_stitch"
     assert body["stitched"] is True and body["degraded"] is False
+    assert body["truncated"] is False  # fake_stitch finish_reason "stop"
     # max_out sized from the 2 scene drafts: 2 × 700 = 1400
     assert state["stitch"]["max_tokens"] == 1400 and body["max_output_tokens"] == 1400
     # the chapter's scene drafts reached the stitcher
@@ -465,7 +485,7 @@ def test_stitch_degrades_to_raw_concat(chap_ctx, monkeypatch):
     c, _, _, _, _, _ = chap_ctx
 
     async def empty_stitch(llm, **kw):
-        return ""  # LLM failure → degrade
+        return "", None  # LLM failure → degrade
 
     monkeypatch.setattr("app.routers.engine.stitch_chapter", empty_stitch)
     r = c.post(_stitch_url(), json=_chap_body())
@@ -474,6 +494,23 @@ def test_stitch_degrades_to_raw_concat(chap_ctx, monkeypatch):
     assert body["degraded"] is True and body["stitched"] is False
     # raw concatenation of the scene drafts is the fallback artifact
     assert body["text"] == "scene one prose\n\nscene two prose"
+    # a degraded raw-concat has no model stop reason → never truncated
+    assert body["truncated"] is False
+
+
+def test_stitch_surfaces_truncated(chap_ctx, monkeypatch):
+    # D-COMP-TRUNCATION-SURFACING: a non-degraded stitch that stopped on "length"
+    # → truncated=True (non-default vs the happy path's "stop").
+    c, _, _, _, _, _ = chap_ctx
+
+    async def truncated_stitch(llm, **kw):
+        return "STITCHED CHAPTER", "length"
+
+    monkeypatch.setattr("app.routers.engine.stitch_chapter", truncated_stitch)
+    r = c.post(_stitch_url(), json=_chap_body())
+    assert r.status_code == 200
+    body = r.json()
+    assert body["truncated"] is True and body["finish_reason"] == "length"
 
 
 def test_stitch_requires_all_scenes_done_409(chap_ctx):
