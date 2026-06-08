@@ -20,6 +20,9 @@ export interface RawSearchHit {
   surface: 'draft' | 'canon';
   matchType: 'lexical' | 'semantic' | 'both';
   score: number;
+  /** Calibrated 0–1 relevance: cross-encoder rerank score (semantic/hybrid,
+   *  E5B) or lexical similarity (1.0 exact). Absent on older responses. */
+  relevance?: number;
   /** Verbatim windowed excerpt of the matched block. */
   snippet: string;
   /** [start, end] CODE-POINT offset pairs into `snippet` (book-service emits
@@ -41,4 +44,9 @@ export interface RawSearchParams {
   surface?: 'draft' | 'canon' | 'all';
   mode?: 'lexical' | 'semantic' | 'hybrid';
   limit?: number;
+  /** chapter = best block per chapter (Navigate); block = every match (Mine). */
+  granularity?: 'chapter' | 'block';
+  /** Cross-encoder rerank (knowledge/hybrid only). Off for Mine so block
+   *  granularity stays exhaustive (rerank's score-floor would prune it). */
+  rerank?: boolean;
 }

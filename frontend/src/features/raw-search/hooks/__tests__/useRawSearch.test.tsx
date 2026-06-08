@@ -52,7 +52,9 @@ describe('useRawSearch', () => {
     const { result } = renderHook(() => useRawSearch('book-1', '乾坤圈'), { wrapper });
     await waitFor(() => expect(result.current.hits).toHaveLength(1));
     expect(hybridMock).toHaveBeenCalledWith(
-      'book-1', { q: '乾坤圈', mode: 'hybrid', limit: 20 }, 'tok',
+      'book-1',
+      { q: '乾坤圈', mode: 'hybrid', limit: 20, granularity: 'chapter', rerank: true },
+      'tok',
     );
     expect(searchMock).not.toHaveBeenCalled();
     expect(result.current.degraded).toEqual({ semantic: 'embed_unavailable' });
@@ -64,7 +66,9 @@ describe('useRawSearch', () => {
       () => useRawSearch('book-1', 'x', { mode: 'lexical' }), { wrapper },
     );
     await waitFor(() => expect(result.current.hits).toHaveLength(1));
-    expect(searchMock).toHaveBeenCalledWith('book-1', { q: 'x', limit: 20 }, 'tok');
+    expect(searchMock).toHaveBeenCalledWith(
+      'book-1', { q: 'x', limit: 20, granularity: 'chapter' }, 'tok',
+    );
     expect(hybridMock).not.toHaveBeenCalled();
   });
 });

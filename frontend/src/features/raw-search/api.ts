@@ -11,6 +11,7 @@ function lexicalSearch(
   qs.set('q', params.q);
   if (params.surface) qs.set('surface', params.surface);
   if (params.limit != null) qs.set('limit', String(params.limit));
+  if (params.granularity) qs.set('granularity', params.granularity);
   return apiJson<RawSearchResponse>(
     `/v1/books/${bookId}/search?${qs.toString()}`,
     { token },
@@ -31,6 +32,9 @@ async function hybridSearch(
   qs.set('query', params.q); // knowledge endpoint param is `query`
   qs.set('mode', params.mode ?? 'hybrid');
   if (params.limit != null) qs.set('limit', String(params.limit));
+  if (params.granularity) qs.set('granularity', params.granularity);
+  // Only send rerank when disabling it (Mine) — backend default is on.
+  if (params.rerank === false) qs.set('rerank', 'false');
   try {
     return await apiJson<RawSearchResponse>(
       `/v1/knowledge/books/${bookId}/search?${qs.toString()}`,
@@ -44,7 +48,9 @@ async function hybridSearch(
     // upstream errors/timeouts). Other 4xx (auth/validation) propagate.
     if (stat === 404 || (stat != null && stat >= 500)) {
       const fallback = await lexicalSearch(
-        bookId, { q: params.q, limit: params.limit }, token,
+        bookId,
+        { q: params.q, limit: params.limit, granularity: params.granularity },
+        token,
       );
       // Tell the UI the semantic leg was skipped (AC5 transparency).
       return { ...fallback, degraded: { ...fallback.degraded, semantic: 'unavailable' } };

@@ -9,5 +9,12 @@
   "mode_label": "Chế độ tìm",
   "mode_hybrid": "Kết hợp",
   "mode_lexical": "Từ khóa",
+  "granularity_label": "Chế độ kết quả",
+  "granularity_chapter": "Điều hướng",
+  "granularity_block": "Khai thác",
+  "granularity_chapter_hint": "Một kết quả tốt nhất mỗi chương",
+  "granularity_block_hint": "Mọi đoạn khớp",
+  "limit_label": "Số kết quả",
+  "relevance_label": "Độ liên quan",
   "degraded": "Một số kết quả có thể bị giới hạn — một backend tìm kiếm không khả dụng."
 }

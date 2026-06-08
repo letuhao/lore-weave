@@ -14,10 +14,13 @@ export const RAW_SEARCH_MIN_QUERY_LENGTH = 1;
 const DEFAULT_LIMIT = 20;
 
 export type RawSearchMode = 'lexical' | 'hybrid';
+/** chapter = best block per chapter (Navigate); block = every match (Mine). */
+export type RawSearchGranularity = 'chapter' | 'block';
 
 export interface UseRawSearchOptions {
   mode?: RawSearchMode;
   limit?: number;
+  granularity?: RawSearchGranularity;
 }
 
 export interface UseRawSearchResult {
@@ -36,18 +39,24 @@ export function useRawSearch(
   query: string,
   opts: UseRawSearchOptions = {},
 ): UseRawSearchResult {
-  const { mode = 'hybrid', limit = DEFAULT_LIMIT } = opts;
+  const { mode = 'hybrid', limit = DEFAULT_LIMIT, granularity = 'chapter' } = opts;
   const { accessToken, user } = useAuth();
   const userId = user?.user_id ?? 'anon';
   const q = query.trim();
   const active = !!bookId && q.length >= RAW_SEARCH_MIN_QUERY_LENGTH;
 
+  // Mine (block) ⇒ rerank off, so it stays exhaustive (the rerank score-floor
+  // would prune matches); Navigate (chapter) keeps rerank for precision.
+  const rerank = granularity !== 'block';
+
   const result = useQuery({
-    queryKey: ['raw-search', userId, bookId, mode, q, limit] as const,
+    queryKey: ['raw-search', userId, bookId, mode, q, limit, granularity] as const,
     queryFn: () =>
       mode === 'lexical'
-        ? rawSearchApi.search(bookId, { q, limit }, accessToken!)
-        : rawSearchApi.searchHybrid(bookId, { q, mode: 'hybrid', limit }, accessToken!),
+        ? rawSearchApi.search(bookId, { q, limit, granularity }, accessToken!)
+        : rawSearchApi.searchHybrid(
+            bookId, { q, mode: 'hybrid', limit, granularity, rerank }, accessToken!,
+          ),
     enabled: !!accessToken && active,
     retry: false,
     staleTime: 30_000,

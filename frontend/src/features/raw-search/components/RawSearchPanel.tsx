@@ -3,7 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useRawSearch, type RawSearchMode } from '../hooks/useRawSearch';
+import {
+  useRawSearch,
+  type RawSearchMode,
+  type RawSearchGranularity,
+} from '../hooks/useRawSearch';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { RawSearchResultCard } from './RawSearchResultCard';
 
@@ -14,16 +18,21 @@ export interface RawSearchPanelProps {
 }
 
 const MODES: RawSearchMode[] = ['hybrid', 'lexical'];
+const GRANULARITIES: RawSearchGranularity[] = ['chapter', 'block'];
+const LIMITS = [10, 20, 50, 100] as const;
 
 export function RawSearchPanel({ bookId }: RawSearchPanelProps) {
   const { t } = useTranslation('rawSearch');
   const navigate = useNavigate();
   const [input, setInput] = useState('');
   const [mode, setMode] = useState<RawSearchMode>('hybrid');
+  // E6 — Navigate (chapter, best-per-chapter) vs Mine (block, every match).
+  const [granularity, setGranularity] = useState<RawSearchGranularity>('chapter');
+  const [limit, setLimit] = useState<number>(20);
   // Debounce so a real BE query doesn't fire on every keystroke (review-impl MED-2).
   const debouncedQuery = useDebouncedValue(input, 250);
   const { hits, disabled, isFetching, error, degraded } = useRawSearch(
-    bookId, debouncedQuery, { mode },
+    bookId, debouncedQuery, { mode, granularity, limit },
   );
 
   // Jump-to-source: open the chapter reader and scroll to the matched block.
@@ -74,6 +83,47 @@ export function RawSearchPanel({ bookId }: RawSearchPanelProps) {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* E6 options row — granularity (Navigate/Mine) + result count (K). */}
+      <div className="flex items-center justify-between gap-2">
+        <div
+          className="flex rounded-md border p-0.5"
+          role="group"
+          aria-label={t('granularity_label')}
+        >
+          {GRANULARITIES.map((g) => (
+            <button
+              key={g}
+              type="button"
+              onClick={() => setGranularity(g)}
+              aria-pressed={granularity === g}
+              title={t(`granularity_${g}_hint`)}
+              data-testid={`raw-search-granularity-${g}`}
+              className={cn(
+                'rounded px-2 py-1 text-xs font-medium transition-colors',
+                granularity === g
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {t(`granularity_${g}`)}
+            </button>
+          ))}
+        </div>
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          {t('limit_label')}
+          <select
+            value={limit}
+            onChange={(e) => setLimit(Number(e.target.value))}
+            data-testid="raw-search-limit"
+            className="rounded-md border bg-background px-1.5 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring/40"
+          >
+            {LIMITS.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {isDegraded && !error && (

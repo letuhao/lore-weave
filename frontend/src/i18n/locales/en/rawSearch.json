@@ -9,5 +9,12 @@
   "mode_label": "Search mode",
   "mode_hybrid": "Hybrid",
   "mode_lexical": "Lexical",
+  "granularity_label": "Result mode",
+  "granularity_chapter": "Navigate",
+  "granularity_block": "Mine",
+  "granularity_chapter_hint": "One best match per chapter",
+  "granularity_block_hint": "Every matching passage",
+  "limit_label": "Results",
+  "relevance_label": "Relevance",
   "degraded": "Some results may be limited — a search backend is unavailable."
 }

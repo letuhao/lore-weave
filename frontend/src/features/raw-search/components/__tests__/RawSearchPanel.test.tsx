@@ -123,4 +123,63 @@ describe('RawSearchPanel', () => {
     fireEvent.click(within(screen.getByTestId('raw-search-result')).getByRole('button'));
     expect(screen.getByTestId('loc').textContent).toBe('/books/book-1/chapters/cc/read');
   });
+
+  // ── E6: granularity / K / relevance ────────────────────────────────
+
+  it('defaults to Navigate (chapter) + limit 20', async () => {
+    renderPanel();
+    fireEvent.change(screen.getByTestId('raw-search-input'), { target: { value: 'x' } });
+    await waitFor(() =>
+      expect(hybridMock).toHaveBeenCalledWith(
+        'book-1', expect.objectContaining({ granularity: 'chapter', limit: 20 }), 'tok',
+      ),
+    );
+  });
+
+  it('switching to Mine queries with granularity=block', async () => {
+    renderPanel();
+    fireEvent.change(screen.getByTestId('raw-search-input'), { target: { value: '乾' } });
+    await waitFor(() => expect(hybridMock).toHaveBeenCalled());
+    fireEvent.click(screen.getByTestId('raw-search-granularity-block'));
+    // Mine ⇒ rerank off so it stays exhaustive (review-impl MED-1).
+    await waitFor(() =>
+      expect(hybridMock).toHaveBeenCalledWith(
+        'book-1', expect.objectContaining({ granularity: 'block', rerank: false }), 'tok',
+      ),
+    );
+  });
+
+  it('Navigate (default) keeps rerank on', async () => {
+    renderPanel();
+    fireEvent.change(screen.getByTestId('raw-search-input'), { target: { value: 'x' } });
+    await waitFor(() =>
+      expect(hybridMock).toHaveBeenCalledWith(
+        'book-1', expect.objectContaining({ granularity: 'chapter', rerank: true }), 'tok',
+      ),
+    );
+  });
+
+  it('changing the K selector re-queries with the new limit', async () => {
+    renderPanel();
+    fireEvent.change(screen.getByTestId('raw-search-input'), { target: { value: 'x' } });
+    await waitFor(() => expect(hybridMock).toHaveBeenCalled());
+    fireEvent.change(screen.getByTestId('raw-search-limit'), { target: { value: '50' } });
+    await waitFor(() =>
+      expect(hybridMock).toHaveBeenCalledWith(
+        'book-1', expect.objectContaining({ limit: 50 }), 'tok',
+      ),
+    );
+  });
+
+  it('renders the relevance bar for a scored hit', async () => {
+    hybridMock.mockResolvedValue({
+      query: 'x', mode: 'hybrid', results: [{ ..._canon, relevance: 0.97 }],
+    });
+    renderPanel();
+    fireEvent.change(screen.getByTestId('raw-search-input'), { target: { value: 'x' } });
+    await waitFor(() =>
+      expect(screen.getByTestId('raw-search-relevance')).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId('raw-search-relevance').getAttribute('title')).toBe('97%');
+  });
 });
