@@ -119,5 +119,32 @@
     "err_save": "套用失敗",
     "toast_merged": "已從「{{code}}」對應 {{count}} 個實體",
     "toast_reassigned": "已重新指派「{{name}}」"
+  },
+  "history": {
+    "title": "版本歷史",
+    "close": "關閉",
+    "loading": "正在載入歷史…",
+    "empty": "尚無修訂版本。",
+    "view": "檢視",
+    "restore": "還原",
+    "cancel": "取消",
+    "restore_confirm_title": "要還原此修訂版本嗎？",
+    "restore_confirm_desc": "將實體還原至修訂版本 #{{num}}。目前狀態會儲存為新的修訂版本，因此可以復原。",
+    "toast_restored": "已還原至修訂版本 #{{num}}",
+    "snap_status": "狀態",
+    "snap_chapters": "章節",
+    "op": {
+      "created": "建立",
+      "updated": "更新",
+      "restore": "還原",
+      "baseline": "初始",
+      "delete": "刪除"
+    },
+    "actor": {
+      "user": "你",
+      "pipeline": "AI",
+      "system": "系統"
+    },
+    "error": "無法載入版本歷史。"
   }
 }

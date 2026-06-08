@@ -33,19 +33,75 @@ def test_parse_non_dict_payload():
     assert payload == {}
 
 
-# ── handle_glossary_event ─────────────────────────────────────────────────────
+ENTITY_ID = str(uuid4())
+
+
+# ── handle_glossary_event — M6b targeted path ─────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_handle_marks_book_stale():
+async def test_handle_targeted_uses_usage_index():
+    """entity_id present ⇒ the targeted query keys on the usage index + falls back
+    to legacy (NOT EXISTS) chapters; carries book/entity/language args."""
+    pool = AsyncMock()
+    handled = await handle_glossary_event(
+        pool, "glossary.entity_updated",
+        {"book_id": BOOK_ID, "glossary_entity_id": ENTITY_ID, "target_language": "vi"})
+    assert handled is True
+    pool.execute.assert_awaited_once()
+    sql, book_arg, entity_arg, lang_arg = pool.execute.await_args.args
+    assert "is_glossary_stale = true" in sql
+    assert "chapter_translation_glossary_usage" in sql       # precise join
+    assert "NOT EXISTS" in sql                                # legacy fallback
+    # review-impl MED-HIGH: per-language filter matches the PRIMARY SUBTAG
+    # (case-insensitive) — NOT an exact `=` — so "vi" flags a "vi-VN" chapter.
+    assert "SPLIT_PART(ct.target_language, '-', 1)" in sql
+    assert "ct.target_language = $3" not in sql              # no brittle exact match
+    assert str(book_arg) == BOOK_ID
+    assert str(entity_arg) == ENTITY_ID
+    assert lang_arg == "vi"
+
+
+@pytest.mark.asyncio
+async def test_handle_targeted_no_language_flags_all_langs():
+    """A name/structural change carries no target_language ⇒ lang arg is None
+    ($3 IS NULL ⇒ all languages of the affected chapters)."""
+    pool = AsyncMock()
+    await handle_glossary_event(
+        pool, "glossary.entity_updated",
+        {"book_id": BOOK_ID, "glossary_entity_id": ENTITY_ID})
+    _sql, _book, _entity, lang_arg = pool.execute.await_args.args
+    assert lang_arg is None
+
+
+# ── handle_glossary_event — coarse fallback (no entity anchor) ────────────────
+
+@pytest.mark.asyncio
+async def test_handle_coarse_when_no_entity_id():
+    """A legacy event without glossary_entity_id ⇒ coarse book-level flag
+    (the old M5c path), still honoring an optional language filter."""
     pool = AsyncMock()
     handled = await handle_glossary_event(
         pool, "glossary.entity_updated", {"book_id": BOOK_ID})
     assert handled is True
     pool.execute.assert_awaited_once()
-    sql, arg = pool.execute.await_args.args
+    sql, book_arg, lang_arg = pool.execute.await_args.args
     assert "is_glossary_stale = true" in sql
     assert "WHERE book_id" in sql
-    assert str(arg) == BOOK_ID  # parsed to UUID, matches
+    assert "chapter_translation_glossary_usage" not in sql    # NOT the targeted query
+    assert str(book_arg) == BOOK_ID
+    assert lang_arg is None
+
+
+@pytest.mark.asyncio
+async def test_handle_invalid_entity_id_falls_back_to_coarse():
+    """A malformed entity_id must not crash — degrade to the coarse path."""
+    pool = AsyncMock()
+    handled = await handle_glossary_event(
+        pool, "glossary.entity_updated",
+        {"book_id": BOOK_ID, "glossary_entity_id": "not-a-uuid"})
+    assert handled is True
+    sql = pool.execute.await_args.args[0]
+    assert "chapter_translation_glossary_usage" not in sql
 
 
 @pytest.mark.asyncio

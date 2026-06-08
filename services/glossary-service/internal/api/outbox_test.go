@@ -116,6 +116,80 @@ func TestBuildEntityEventPayload_PipelineHasNoActorOrSnapshots(t *testing.T) {
 	}
 }
 
+// M6b — buildTranslationEventPayload carries target_language + actor=pipeline
+// (deliberate: learning-service has no slot for a translation-tier change) and
+// NO before/after.
+func TestBuildTranslationEventPayload_ShapeAndLanguage(t *testing.T) {
+	p := buildTranslationEventPayload(
+		"book-1", "ent-1", "提拉米", "character", []string{"提拉"}, "a hero", "vi",
+	)
+	if p.TargetLanguage != "vi" {
+		t.Fatalf("target_language = %q, want vi", p.TargetLanguage)
+	}
+	if p.ActorType != "pipeline" {
+		t.Fatalf("actor_type = %q, want pipeline (must not pollute learning corrections)", p.ActorType)
+	}
+	if p.Op != "updated" || p.SourceType != "glossary" {
+		t.Fatalf("op/source = %q/%q, want updated/glossary", p.Op, p.SourceType)
+	}
+	if p.BookID != "book-1" || p.GlossaryEntityID != "ent-1" || p.Name != "提拉米" || p.Kind != "character" {
+		t.Fatalf("identity not carried: %+v", p)
+	}
+	if p.Before != nil || p.After != nil || p.ActorID != "" {
+		t.Fatalf("translation event must carry no before/after/actor_id; got before=%v after=%v id=%q",
+			p.Before, p.After, p.ActorID)
+	}
+	if p.EmittedAt == "" {
+		t.Fatalf("emitted_at must be set")
+	}
+}
+
+// target_language is omitempty: a name/structural change leaves it absent so an
+// old consumer flags all languages (rolling-deploy safe). A set language is on
+// the wire.
+func TestTranslationEventPayload_TargetLanguageOmitemptyWiring(t *testing.T) {
+	// name-change builder leaves target_language empty → omitted from the wire
+	name := buildEntityEventPayload("b", "e", "n", "k", nil, "", "updated", "user", "a", nil)
+	nb, _ := json.Marshal(name)
+	var nd map[string]json.RawMessage
+	json.Unmarshal(nb, &nd)
+	if _, present := nd["target_language"]; present {
+		t.Fatalf("name-change event must omit target_language (all-language flag)")
+	}
+	// translation-change builder sets it → present on the wire
+	tr := buildTranslationEventPayload("b", "e", "n", "k", nil, "", "vi")
+	tb, _ := json.Marshal(tr)
+	var td map[string]json.RawMessage
+	json.Unmarshal(tb, &td)
+	if string(td["target_language"]) != `"vi"` {
+		t.Fatalf("translation event target_language = %s, want \"vi\"", td["target_language"])
+	}
+}
+
+// M7c-3 — buildNameConfirmedPayload carries the source→target + actor=user.
+func TestBuildNameConfirmedPayload_Shape(t *testing.T) {
+	p := buildNameConfirmedPayload("book-1", "ent-1", "提拉米", "character", "vi", "Tirami", "user-9")
+	if p.SourceName != "提拉米" || p.Value != "Tirami" || p.LanguageCode != "vi" {
+		t.Fatalf("source→target not carried: %+v", p)
+	}
+	if p.ActorType != "user" || p.ActorID != "user-9" {
+		t.Fatalf("actor not carried: type=%q id=%q", p.ActorType, p.ActorID)
+	}
+	if p.BookID != "book-1" || p.GlossaryEntityID != "ent-1" || p.Kind != "character" {
+		t.Fatalf("identity not carried: %+v", p)
+	}
+	if p.EmittedAt == "" {
+		t.Fatalf("emitted_at must be set")
+	}
+	// wire shape: actor_id present, omitempty respected
+	b, _ := json.Marshal(p)
+	var d map[string]json.RawMessage
+	json.Unmarshal(b, &d)
+	if string(d["source_name"]) != `"提拉米"` || string(d["value"]) != `"Tirami"` {
+		t.Fatalf("wire fields wrong: source_name=%s value=%s", d["source_name"], d["value"])
+	}
+}
+
 // TestBulkFanOut_OneEventPerWrittenEntity locks the bulk-path contract: one
 // event per created/updated entity, zero for skipped, and all are pipeline.
 func TestBulkFanOut_OneEventPerWrittenEntity(t *testing.T) {

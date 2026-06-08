@@ -226,11 +226,12 @@ def test_create_job_qa_config_overrides_flow_to_broker(client, fake_pool):
     assert published["max_qa_rounds"] == 4
     assert published["verifier_model_source"] == "platform_model"
     assert published["verifier_model_ref"] == verifier_ref
+    assert published["cold_start_mode"] == "single_pass"  # M4d-2c default (not overridden here)
 
-    # Also guard the INSERT positional args ($17-$20) — a column/value swap would
+    # Also guard the INSERT positional args ($17-$21) — a column/value swap would
     # persist wrong data yet still pass the message assertion above (built from eff).
     insert_args = fake_pool.fetchrow.call_args_list[1].args  # [0]=resolve, [1]=INSERT
-    assert insert_args[-4:] == ("thorough", 4, "platform_model", UUID(verifier_ref))
+    assert insert_args[-5:] == ("thorough", 4, "platform_model", UUID(verifier_ref), "single_pass")
 
 
 def test_create_job_defaults_qa_config_when_unset(client, fake_pool):
@@ -248,6 +249,31 @@ def test_create_job_defaults_qa_config_when_unset(client, fake_pool):
     assert published["qa_depth"] == "standard"
     assert published["max_qa_rounds"] == 2
     assert published["verifier_model_ref"] is None
+    assert published["cold_start_mode"] == "single_pass"  # M4d-2c default
+
+
+def test_create_job_cold_start_mode_override_flows_to_broker(client, fake_pool):
+    """M4d-2c: a per-job cold_start_mode='two_pass' override is snapshotted into the
+    broker message → coordinator → worker."""
+    fake_pool.fetchrow.side_effect = [_BOOK_SETTINGS_ROW, FakeRecord({**_JOB_ROW})]
+    with patch("app.routers.jobs.httpx.AsyncClient") as mock_client_cls, \
+         patch("app.routers.jobs.publish", new_callable=AsyncMock) as mock_publish, \
+         patch("app.routers.jobs.publish_event", new_callable=AsyncMock):
+        mock_client_cls.return_value.__aenter__.return_value = AsyncMock(
+            get=AsyncMock(return_value=_mock_book_service_response()))
+        resp = client.post(f"/v1/translation/books/{BOOK_ID}/jobs",
+                           json={"chapter_ids": [CHAPTER_ID], "cold_start_mode": "two_pass"})
+    assert resp.status_code == 201
+    assert mock_publish.call_args.args[1]["cold_start_mode"] == "two_pass"
+    insert_args = fake_pool.fetchrow.call_args_list[1].args
+    assert insert_args[-1] == "two_pass"  # last INSERT positional = cold_start_mode
+
+
+def test_create_job_rejects_invalid_cold_start_mode(client):
+    """The validator rejects an unknown cold_start_mode at request parsing (422)."""
+    resp = client.post(f"/v1/translation/books/{BOOK_ID}/jobs",
+                       json={"chapter_ids": [CHAPTER_ID], "cold_start_mode": "turbo"})
+    assert resp.status_code == 422
 
 
 def test_create_job_rejects_invalid_qa_config(client, fake_pool):

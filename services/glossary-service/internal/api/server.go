@@ -200,6 +200,14 @@ func (s *Server) Router() http.Handler {
 						})
 					})
 					r.Get("/evidences", s.listEntityEvidences)
+					// VG-2: entity version history + restore (mirrors wiki/revisions).
+					r.Route("/revisions", func(r chi.Router) {
+						r.Get("/", s.listEntityRevisions)
+						r.Route("/{rev_id}", func(r chi.Router) {
+							r.Get("/", s.getEntityRevision)
+							r.Post("/restore", s.restoreEntityRevision)
+						})
+					})
 					r.Route("/attributes/{attr_value_id}", func(r chi.Router) {
 						r.Patch("/", s.patchAttributeValue)
 						r.Route("/translations", func(r chi.Router) {
@@ -367,9 +375,11 @@ all_entities AS (
     ) combined GROUP BY entity_id
 )
 SELECT
+    e.entity_id AS entity_id,
     eav.original_value AS name_zh,
     COALESCE(at.value, '') AS name_target,
     ek.code AS kind_code,
+    COALESCE(at.confidence, '') AS name_confidence,
     ae.best_tier
 FROM all_entities ae
 JOIN glossary_entities e ON e.entity_id = ae.entity_id
@@ -389,9 +399,11 @@ LIMIT $4`
 		// No chapter scoping — return most-linked entities across the book
 		query = `
 SELECT
+    e.entity_id AS entity_id,
     eav.original_value AS name_zh,
     COALESCE(at.value, '') AS name_target,
     ek.code AS kind_code,
+    COALESCE(at.confidence, '') AS name_confidence,
     0 AS best_tier
 FROM glossary_entities e
 JOIN entity_kinds ek ON ek.kind_id = e.kind_id
@@ -405,7 +417,7 @@ LEFT JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
 LEFT JOIN chapter_entity_links cel ON cel.entity_id = e.entity_id
 WHERE e.book_id = $1 AND e.status = 'active' AND e.deleted_at IS NULL
     AND eav.original_value IS NOT NULL AND eav.original_value != ''
-GROUP BY e.entity_id, eav.original_value, at.value, ek.code
+GROUP BY e.entity_id, eav.original_value, at.value, at.confidence, ek.code
 ORDER BY COUNT(cel.link_id) DESC, length(eav.original_value) DESC
 LIMIT $3`
 		args = []any{bookID, targetLang, maxEntries}
@@ -426,17 +438,24 @@ LIMIT $3`
 
 	items := make([]map[string]any, 0, maxEntries)
 	for rows.Next() {
-		var nameZH, nameTarget, kindCode string
+		var entityID uuid.UUID
+		var nameZH, nameTarget, kindCode, nameConfidence string
 		var tier int
-		if err := rows.Scan(&nameZH, &nameTarget, &kindCode, &tier); err != nil {
+		if err := rows.Scan(&entityID, &nameZH, &nameTarget, &kindCode, &nameConfidence, &tier); err != nil {
 			continue
 		}
 		entry := map[string]any{
-			"zh":   []string{nameZH},
-			"kind": kindCode,
+			// M6b: entity_id lets translation-service record per-chapter glossary
+			// usage so a later entity change flags only the chapters that used it.
+			"entity_id": entityID.String(),
+			"zh":        []string{nameZH},
+			"kind":      kindCode,
 		}
 		if nameTarget != "" {
 			entry[targetLang] = []string{nameTarget}
+			// D-TRANSL-M1D trust ladder: expose the translation's confidence tier
+			// (verified|machine|draft) so the V3 verifier hard-enforces only canon.
+			entry["confidence"] = nameConfidence
 		}
 		items = append(items, entry)
 	}

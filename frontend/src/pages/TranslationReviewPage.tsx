@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, BookCheck } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
 import { versionsApi, type ChapterTranslation } from '@/features/translation/api';
 import { BlockAlignedReview, computeReviewStats } from '@/features/translation/components/BlockAlignedReview';
 import { SplitCompareView } from '@/features/translation/components/SplitCompareView';
+import { ConfirmNameDialog } from '@/features/translation/components/ConfirmNameDialog';
 import { cn } from '@/lib/utils';
 import type { JSONContent } from '@tiptap/react';
 
@@ -25,6 +26,7 @@ export default function TranslationReviewPage() {
   const [isBlockMode, setIsBlockMode] = useState(false);
   const [showPassthrough, setShowPassthrough] = useState(true);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [confirmNameOpen, setConfirmNameOpen] = useState(false);
 
   // Version list for switcher
   const [versions, setVersions] = useState<{ id: string; version_num: number; target_language: string; status: string }[]>([]);
@@ -195,8 +197,29 @@ export default function TranslationReviewPage() {
           )}>
             {isBlockMode ? t('review.block_mode') : t('review.text_mode')}
           </span>
+
+          {/* M6a: confirm a corrected name into the glossary (human-fix flywheel) */}
+          {version && bookId && (
+            <button
+              onClick={() => setConfirmNameOpen(true)}
+              className="flex items-center gap-1 rounded px-2 py-1 text-[10px] text-[#3da692] hover:bg-[#3da692]/10 transition-colors"
+              title={t('confirm_name.button_title')}
+            >
+              <BookCheck className="h-3 w-3" />
+              {t('confirm_name.button')}
+            </button>
+          )}
         </div>
       </div>
+
+      {version && bookId && (
+        <ConfirmNameDialog
+          open={confirmNameOpen}
+          onOpenChange={setConfirmNameOpen}
+          bookId={bookId}
+          targetLang={version.target_language}
+        />
+      )}
 
       {/* ── Pane headers ────────────────────────────────────────────── */}
       {isBlockMode && (

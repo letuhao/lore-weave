@@ -147,3 +147,64 @@ async def test_fetch_malformed_body_degrades(monkeypatch):
     _patch_client(monkeypatch, resp=_BadResp())
     nb = await fetch_wiki_neighborhood("u1", "e1")
     assert nb == WikiNeighborhood.empty("e1")
+
+
+# ── M4d-1: fetch_timeline (best-effort) ───────────────────────────────────────
+
+from app.workers.knowledge_client import fetch_timeline, TimelineBrief
+
+_TL_PAYLOAD = {
+    "found": True,
+    "events": [
+        {"title": "The pact", "summary": "Two houses allied.", "event_date": "Y1",
+         "participants": ["Tirami", "Aldric"]},
+        {"title": "The betrayal", "summary": None, "event_date": None, "participants": []},
+    ],
+    "count": 2,
+    "total": 2,
+}
+
+
+@pytest.mark.asyncio
+async def test_fetch_timeline_null_gate_when_unconfigured(monkeypatch):
+    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "")
+    _patch_client(monkeypatch, resp=_FakeResp(200, _TL_PAYLOAD))  # would succeed if called
+    brief = await fetch_timeline("b1", 5)
+    assert brief == TimelineBrief.empty()
+    assert _FakeClient.last_call == {}  # no request made
+
+
+@pytest.mark.asyncio
+async def test_fetch_timeline_success_parses(monkeypatch):
+    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "http://kn:8092")
+    monkeypatch.setattr(kc.settings, "internal_service_token", "tok")
+    _patch_client(monkeypatch, resp=_FakeResp(200, _TL_PAYLOAD))
+    brief = await fetch_timeline("b1", 5, limit=10)
+    assert brief.found and len(brief.events) == 2
+    assert brief.events[0].title == "The pact" and brief.events[0].participants == ["Tirami", "Aldric"]
+    assert brief.events[1].summary is None
+    assert _FakeClient.last_call["json"] == {"book_id": "b1", "chapter_order": 5, "limit": 10}
+    assert _FakeClient.last_call["headers"]["X-Internal-Token"] == "tok"
+    assert _FakeClient.last_call["url"].endswith("/internal/knowledge/timeline")
+
+
+@pytest.mark.asyncio
+async def test_fetch_timeline_non_200_degrades(monkeypatch):
+    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "http://kn:8092")
+    _patch_client(monkeypatch, resp=_FakeResp(503, {}))
+    assert await fetch_timeline("b1", 5) == TimelineBrief.empty()
+
+
+@pytest.mark.asyncio
+async def test_fetch_timeline_transport_error_degrades(monkeypatch):
+    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "http://kn:8092")
+    _patch_client(monkeypatch, exc=RuntimeError("connection refused"))
+    assert await fetch_timeline("b1", 5) == TimelineBrief.empty()
+
+
+@pytest.mark.asyncio
+async def test_fetch_timeline_ignores_non_dict_events(monkeypatch):
+    monkeypatch.setattr(kc.settings, "knowledge_service_internal_url", "http://kn:8092")
+    _patch_client(monkeypatch, resp=_FakeResp(200, {"found": True, "events": ["bad", 3, None]}))
+    brief = await fetch_timeline("b1", 5)
+    assert brief.found and brief.events == []

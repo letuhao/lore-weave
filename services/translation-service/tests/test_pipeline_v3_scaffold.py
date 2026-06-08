@@ -215,6 +215,49 @@ async def test_v3_corrector_retranslates_and_splices_high_severity():
 
 
 @pytest.mark.asyncio
+async def test_v3_verifier_trusts_only_canon_glossary():
+    """D-TRANSL-M1D wiring lock: a glossary term with confidence='machine' is
+    demoted by the trust ladder, so the V3 verifier must NOT hard-fail on it and
+    the corrector must NOT run — even though the draft mistranslates the name.
+
+    Contrast with test_v3_corrector_retranslates_and_splices_high_severity, which
+    uses the SAME draft+name but NO confidence key (legacy → trusted → corrected).
+    That pair proves the suppression is caused by the confidence demotion, and
+    guards orchestrator.py:175 (cmap=gctx.verified_map) against a silent revert to
+    correction_map."""
+    from app.workers.v3 import orchestrator
+    from app.workers.block_classifier import extract_translatable_text
+    from tests.test_session_translator import FakeLLMClient
+
+    blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "提拉米来了。"}]}]
+    result_blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "Tirana đã đến."}]}]
+    # Same name, but machine-confidence → soft hint, not a hard rule.
+    glossary = [{"zh": ["提拉米"], "vi": ["Tirami"], "kind": "character", "confidence": "machine"}]
+
+    pool, db = _make_pool()
+    msg = _chapter_msg(qa_depth="rule_only")  # isolate the rule-tier (no LLM verifier)
+    fake = FakeLLMClient()  # nothing queued — the corrector must never be invoked
+
+    with patch("app.workers.session_translator.translate_chapter_blocks",
+               new_callable=AsyncMock, return_value=(result_blocks, 10, 8, 1, 1)), \
+         patch("app.workers.glossary_client.fetch_translation_glossary",
+               new_callable=AsyncMock, return_value=glossary):
+        result = await orchestrator.translate_chapter_blocks_v3(
+            blocks, "zh", msg, pool, uuid4(), llm_client=fake, context_window=8192,
+        )
+
+    assert len(fake.calls) == 0                                   # corrector never ran
+    assert "Tirana đã đến." in extract_translatable_text(result[0][0])  # draft untouched
+    # No HIGH wrong_name issue should have been persisted for the demoted term.
+    wrong_name_high = [
+        c for c in db.execute.call_args_list
+        if "INSERT INTO translation_quality_issues" in c.args[0]
+        and "wrong_name" in c.args and "high" in c.args
+    ]
+    assert wrong_name_high == []
+
+
+@pytest.mark.asyncio
 async def test_v3_corrector_rejected_when_not_improved():
     """review-impl MED-1 (keep-if-improved): a correction that does NOT reduce the
     block's high-severity count is rejected — the original draft is kept, never a
@@ -264,6 +307,164 @@ async def test_v3_zh_vi_injects_romanization_into_translation():
         )
 
     assert "Hán-Việt" in v2.call_args.kwargs["extra_system"]
+
+
+@pytest.mark.asyncio
+async def test_v3_injects_timeline_memo_into_translation(monkeypatch):
+    """M4d-1: the cross-chapter "story so far" timeline memo is injected into the
+    Translator extra_system (continuity context, Translator-side only)."""
+    from app.workers.v3 import orchestrator
+    from app.workers.knowledge_client import TimelineBrief, TimelineEvent
+
+    async def fake_timeline(book_id, chapter_index, limit=25):
+        return TimelineBrief(found=True, events=[
+            TimelineEvent("The siege of Eld", "The northern army fell.", "Y2", ["Tirami"]),
+        ])
+    monkeypatch.setattr("app.workers.v3.knowledge_context.fetch_timeline", fake_timeline)
+
+    blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "你好。"}]}]
+    pool, _ = _make_pool()
+    msg = _chapter_msg()  # target_language='vi'
+    # M4d-1: the timeline keys on the book-service global sort_order, NOT the
+    # job-local chapter_index. The worker threads it onto the msg.
+    msg["chapter_sort_order"] = 12
+
+    with patch("app.workers.session_translator.translate_chapter_blocks",
+               new_callable=AsyncMock, return_value=(blocks, 0, 0, 0, 0)) as v2, \
+         patch("app.workers.glossary_client.fetch_translation_glossary",
+               new_callable=AsyncMock, return_value=[]):
+        await orchestrator.translate_chapter_blocks_v3(
+            blocks, "zh", msg, pool, uuid4(), llm_client=MagicMock(), context_window=8192,
+        )
+
+    extra = v2.call_args.kwargs["extra_system"]
+    assert "RECENT STORY EVENTS" in extra
+    assert "The siege of Eld" in extra
+
+
+@pytest.mark.asyncio
+async def test_v3_skips_timeline_when_no_sort_order(monkeypatch):
+    """M4d-1 review-impl MED-1: without a book-service sort_order on the msg, the
+    timeline is SKIPPED (not windowed on the wrong job-local axis)."""
+    from app.workers.v3 import orchestrator
+
+    called = {"n": 0}
+
+    async def fake_timeline(book_id, chapter_order, limit=25):
+        called["n"] += 1
+        from app.workers.knowledge_client import TimelineBrief, TimelineEvent
+        return TimelineBrief(found=True, events=[TimelineEvent("X", None, None, [])])
+    monkeypatch.setattr("app.workers.v3.knowledge_context.fetch_timeline", fake_timeline)
+
+    blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "你好。"}]}]
+    pool, _ = _make_pool()
+    msg = _chapter_msg()  # NO chapter_sort_order
+
+    with patch("app.workers.session_translator.translate_chapter_blocks",
+               new_callable=AsyncMock, return_value=(blocks, 0, 0, 0, 0)) as v2, \
+         patch("app.workers.glossary_client.fetch_translation_glossary",
+               new_callable=AsyncMock, return_value=[]):
+        await orchestrator.translate_chapter_blocks_v3(
+            blocks, "zh", msg, pool, uuid4(), llm_client=MagicMock(), context_window=8192,
+        )
+
+    assert called["n"] == 0  # never fetched — no wrong-axis window
+    assert "RECENT STORY EVENTS" not in v2.call_args.kwargs["extra_system"]
+
+
+# ── M4d-2c: 2-pass cold-start ─────────────────────────────────────────────────
+
+def _two_pass_setup(monkeypatch, *, glossary, pairs, mode="two_pass"):
+    """Patch the 2-pass dependencies; returns (extras list, writeback mock, msg)."""
+    from app.workers.v3.bilingual_extractor import NamePair  # noqa: F401
+    result_blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "Tirami came."}]}]
+    extras: list[str] = []
+
+    async def fake_translate(blocks, source_lang, msg, pool, ctid, *,
+                             llm_client, context_window, extra_system="", group_ids=None):
+        extras.append(extra_system)
+        return (result_blocks, 10, 8, 1, 1, {0: "Tirami came."})
+
+    monkeypatch.setattr("app.workers.session_translator.translate_chapter_blocks", fake_translate)
+    monkeypatch.setattr("app.workers.glossary_client.fetch_translation_glossary",
+                        AsyncMock(return_value=glossary))
+    wb = AsyncMock(return_value={"created": 1})
+    monkeypatch.setattr("app.workers.glossary_client.writeback_name_pairs", wb)
+    monkeypatch.setattr("app.workers.v3.bilingual_extractor.extract_name_pairs",
+                        AsyncMock(return_value=pairs))
+    msg = _chapter_msg()
+    msg["cold_start_mode"] = mode
+    return extras, wb, msg
+
+
+@pytest.mark.asyncio
+async def test_v3_two_pass_cold_start_retranslates_with_names(monkeypatch):
+    """Cold start (empty glossary) + two_pass + recurring pairs → pass 2 re-translates
+    with the harvested name map injected, and the pairs are seeded for future chapters."""
+    from app.workers.v3 import orchestrator
+    from app.workers.v3.bilingual_extractor import NamePair
+
+    blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "提拉米来了。"}]}]
+    extras, wb, msg = _two_pass_setup(
+        monkeypatch, glossary=[], pairs=[NamePair("提拉米", "Tirami", "character")])
+    pool, _ = _make_pool()
+    result = await orchestrator.translate_chapter_blocks_v3(
+        blocks, "zh", msg, pool, uuid4(), llm_client=MagicMock(), context_window=8192)
+
+    assert len(extras) == 2  # pass 1 + pass 2
+    assert "NAME CONSISTENCY" in extras[1]
+    assert "提拉米 → Tirami" in extras[1]
+    wb.assert_awaited_once()
+    # review-impl MED: token cost reflects BOTH passes (each fake pass = 10 in / 8 out).
+    assert result[1] == 20 and result[2] == 16
+
+
+@pytest.mark.asyncio
+async def test_v3_single_pass_mode_does_not_retranslate(monkeypatch):
+    from app.workers.v3 import orchestrator
+    from app.workers.v3.bilingual_extractor import NamePair
+
+    blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "提拉米来了。"}]}]
+    extras, wb, msg = _two_pass_setup(
+        monkeypatch, glossary=[], pairs=[NamePair("提拉米", "Tirami")], mode="single_pass")
+    pool, _ = _make_pool()
+    await orchestrator.translate_chapter_blocks_v3(
+        blocks, "zh", msg, pool, uuid4(), llm_client=MagicMock(), context_window=8192)
+
+    assert len(extras) == 1  # single pass only
+    wb.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_v3_two_pass_skipped_when_glossary_present(monkeypatch):
+    """Not cold-start (the book HAS a glossary) → no 2nd pass even in two_pass mode."""
+    from app.workers.v3 import orchestrator
+    from app.workers.v3.bilingual_extractor import NamePair
+
+    blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "提拉米来了。"}]}]
+    extras, wb, msg = _two_pass_setup(
+        monkeypatch, glossary=[{"zh": ["提拉米"], "vi": ["Tirami"], "kind": "character"}],
+        pairs=[NamePair("提拉米", "Tirami")])
+    pool, _ = _make_pool()
+    await orchestrator.translate_chapter_blocks_v3(
+        blocks, "zh", msg, pool, uuid4(), llm_client=MagicMock(), context_window=8192)
+
+    assert len(extras) == 1
+    wb.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_v3_two_pass_skipped_when_no_recurring_pairs(monkeypatch):
+    from app.workers.v3 import orchestrator
+
+    blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "提拉米来了。"}]}]
+    extras, wb, msg = _two_pass_setup(monkeypatch, glossary=[], pairs=[])  # extractor found nothing
+    pool, _ = _make_pool()
+    await orchestrator.translate_chapter_blocks_v3(
+        blocks, "zh", msg, pool, uuid4(), llm_client=MagicMock(), context_window=8192)
+
+    assert len(extras) == 1  # no pairs → no 2× cost
+    wb.assert_not_awaited()
 
 
 # ── M2: LLM verifier (standard) + multi-round loop (thorough) ─────────────────

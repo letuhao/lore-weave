@@ -32,6 +32,17 @@ def _hermetic_knowledge_brief(monkeypatch):
         _no_entities, raising=False,
     )
 
+    # M4d-1: the orchestrator also fetches a cross-chapter timeline memo. Default
+    # it to empty (no network); tests that exercise it override fetch_timeline.
+    from app.workers.knowledge_client import TimelineBrief
+
+    async def _no_timeline(*a, **k):
+        return TimelineBrief.empty()
+    monkeypatch.setattr(
+        "app.workers.v3.knowledge_context.fetch_timeline",
+        _no_timeline, raising=False,
+    )
+
 
 class FakeRecord(dict):
     """Minimal asyncpg-Record substitute: supports dict() and key access."""

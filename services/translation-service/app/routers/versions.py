@@ -1,14 +1,19 @@
+import json
+import logging
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 import asyncpg
 
 from ..deps import get_current_user, get_db
+
+log = logging.getLogger(__name__)
 from ..models import (
     ChapterTranslation,
     ChapterVersionsResponse,
     LanguageVersionGroup,
     VersionSummary,
     ActiveVersionResponse,
+    SaveEditedTranslationRequest,
 )
 
 router = APIRouter(prefix="/v1/translation", tags=["translation-versions"])
@@ -110,7 +115,7 @@ async def set_active_version(
     db: asyncpg.Pool = Depends(get_db),
 ):
     row = await db.fetchrow(
-        "SELECT owner_user_id, target_language, status, unresolved_high_count "
+        "SELECT owner_user_id, book_id, target_language, status, unresolved_high_count "
         "FROM chapter_translations WHERE id=$1 AND chapter_id=$2",
         version_id, chapter_id,
     )
@@ -152,8 +157,124 @@ async def set_active_version(
         chapter_id, row["target_language"], version_id, UUID(user_id),
     )
 
+    # M7b (Channel 1a — human signal): setting a version active is a human-only
+    # action (the worker auto-activates via a different path), so it is a genuine
+    # "this translation is good enough to publish" judgment → learning source=human.
+    # acknowledge_issues=true is the high-value case: the human published DESPITE
+    # the verifier's flags (verifier-calibration signal). Best-effort + post-commit
+    # (the active version is already set — a feedback-log failure must not 500 the
+    # publish). aggregate_type='translation' reuses M7a's stream.
+    try:
+        await db.execute(
+            """INSERT INTO outbox_events (event_type, aggregate_type, aggregate_id, payload)
+               VALUES ('translation.reviewed', 'translation', $1, $2::jsonb)""",
+            version_id,
+            json.dumps({
+                "user_id": user_id,
+                "book_id": str(row["book_id"]),
+                "chapter_id": str(chapter_id),
+                "chapter_translation_id": str(version_id),
+                "target_language": row["target_language"],
+                "acknowledged_issues": bool(acknowledge_issues),
+                "unresolved_high_count": unresolved,
+            }),
+        )
+    except Exception:  # noqa: BLE001 — telemetry must not break publish
+        log.warning("M7b: failed to emit translation.reviewed (non-fatal)", exc_info=True)
+
     return ActiveVersionResponse(
         chapter_id=chapter_id,
         target_language=row["target_language"],
         active_id=version_id,
     )
+
+
+# ── Save a human-edited translation (M7c human-fix gold) ──────────────────────
+
+@router.post(
+    "/chapters/{chapter_id}/versions/edit",
+    response_model=ChapterTranslation,
+    status_code=201,
+)
+async def save_edited_version(
+    chapter_id: UUID,
+    body: SaveEditedTranslationRequest,
+    user_id: str = Depends(get_current_user),
+    db: asyncpg.Pool = Depends(get_db),
+):
+    """M7c (Channel 1b): save a human-edited translation as a NEW version
+    (``authored_by='human'``, linked to the LLM version it was edited from). The
+    LLM-draft → human-edit diff is emitted as learning gold (`translation.corrected`,
+    before=LLM / after=human) so future tuning can see what the LLM got wrong."""
+    src = await db.fetchrow(
+        "SELECT owner_user_id, book_id, target_language, version_num, "
+        "translated_body, translated_body_json "
+        "FROM chapter_translations WHERE id=$1 AND chapter_id=$2",
+        body.edited_from_version_id, chapter_id,
+    )
+    if not src:
+        raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Source version not found"})
+    _assert_owner(src, user_id)
+    if src["target_language"] != body.target_language:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "TRANSL_LANG_MISMATCH", "message": "target_language does not match the source version"},
+        )
+
+    # New human version: max(version_num)+1 for (chapter, lang); reuse the source
+    # version's job_id/book_id/owner (the edit attaches to the same job — avoids
+    # making job_id a nullable FK). authored_by='human' + the parent link.
+    new = await db.fetchrow(
+        """
+        INSERT INTO chapter_translations
+          (job_id, chapter_id, book_id, owner_user_id, status, target_language,
+           translated_body, translated_body_json, translated_body_format,
+           version_num, authored_by, edited_from_version_id, finished_at)
+        SELECT job_id, chapter_id, book_id, owner_user_id, 'completed', target_language,
+               $3, $4::jsonb, $5,
+               COALESCE((SELECT MAX(version_num) FROM chapter_translations
+                          WHERE chapter_id=$2 AND target_language=$6), 0) + 1,
+               'human', $1, now()
+        FROM chapter_translations WHERE id=$1
+        RETURNING *
+        """,
+        body.edited_from_version_id, chapter_id,
+        body.translated_body,
+        json.dumps(body.translated_body_json) if body.translated_body_json is not None else None,
+        body.translated_body_format, body.target_language,
+    )
+
+    # M7c gold: emit the LLM→human diff (best-effort post-commit; a feedback-log
+    # failure must not lose the user's edit). Raw before/after bodies — PO chose
+    # raw-text retention for translation tuning.
+    try:
+        before_json = src["translated_body_json"]
+        if isinstance(before_json, str):
+            before_json = json.loads(before_json)
+        before_body = before_json if before_json is not None else src["translated_body"]
+        after_body = (
+            body.translated_body_json
+            if body.translated_body_json is not None
+            else body.translated_body
+        )
+        await db.execute(
+            """INSERT INTO outbox_events (event_type, aggregate_type, aggregate_id, payload)
+               VALUES ('translation.corrected', 'translation', $1, $2::jsonb)""",
+            new["id"],
+            json.dumps({
+                "user_id": user_id,
+                "book_id": str(src["book_id"]),
+                "chapter_id": str(chapter_id),
+                "chapter_translation_id": str(new["id"]),
+                "edited_from_version_id": str(body.edited_from_version_id),
+                "target_language": body.target_language,
+                "before": {"target_language": body.target_language,
+                           "version_num": src["version_num"], "body": before_body},
+                "after": {"target_language": body.target_language,
+                          "version_num": new["version_num"], "body": after_body},
+            }),
+        )
+    except Exception:  # noqa: BLE001 — telemetry must not lose the edit
+        log.warning("M7c: failed to emit translation.corrected (non-fatal)", exc_info=True)
+
+    return ChapterTranslation(**dict(new))

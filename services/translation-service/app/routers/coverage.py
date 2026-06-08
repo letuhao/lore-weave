@@ -41,7 +41,21 @@ async def get_book_coverage(
           actv.chapter_translation_id                                        AS active_ct_id,
           (SELECT version_num
              FROM chapter_translations ct3
-            WHERE ct3.id = actv.chapter_translation_id)                      AS active_version_num
+            WHERE ct3.id = actv.chapter_translation_id)                      AS active_version_num,
+          -- M6b-2: the active version's staleness (what the reader sees); fall
+          -- back to the latest version when no version is active yet.
+          COALESCE(
+            (SELECT is_glossary_stale
+               FROM chapter_translations ct4
+              WHERE ct4.id = actv.chapter_translation_id),
+            (SELECT is_glossary_stale
+               FROM chapter_translations ct5
+              WHERE ct5.chapter_id      = ct.chapter_id
+                AND ct5.target_language = ct.target_language
+              ORDER BY ct5.created_at DESC
+              LIMIT 1),
+            false
+          )                                                                  AS is_glossary_stale
         FROM chapter_translations ct
         LEFT JOIN active_chapter_translation_versions actv
           ON actv.chapter_id      = ct.chapter_id
@@ -72,6 +86,7 @@ async def get_book_coverage(
             latest_version_num=row["latest_version_num"],
             latest_status=row["latest_status"],
             version_count=row["version_count"],
+            is_glossary_stale=row["is_glossary_stale"],
         )
 
     coverage = [

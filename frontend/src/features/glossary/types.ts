@@ -268,3 +268,53 @@ export type PatchEvidencePayload = {
   block_or_line?: string;
   note?: string | null;
 };
+
+// ── VG-3: entity revision history (D-GLOSSARY-VERSIONING) ────────────────────
+
+export type EntityRevisionSummary = {
+  revision_id: string;
+  revision_num: number;
+  op: string; // created | updated | restore | baseline | delete
+  actor_type: string; // user | pipeline | system
+  actor_id?: string;
+  created_at: string;
+};
+
+export type RevisionSnapshotTranslation = {
+  language_code: string;
+  value: string;
+  confidence?: string;
+};
+
+export type RevisionSnapshotEvidence = {
+  evidence_type?: string;
+  original_text?: string;
+  chapter_title?: string | null;
+};
+
+export type RevisionSnapshotAttribute = {
+  code?: string;
+  name?: string;
+  original_value?: string;
+  translations?: RevisionSnapshotTranslation[];
+  evidences?: RevisionSnapshotEvidence[];
+};
+
+export type RevisionSnapshotChapterLink = {
+  chapter_title?: string | null;
+  chapter_index?: number | null;
+  relevance?: string;
+};
+
+export type RevisionSnapshot = {
+  status?: string;
+  alive?: boolean;
+  tags?: string[];
+  kind?: { code?: string; name?: string };
+  attributes?: RevisionSnapshotAttribute[];
+  chapter_links?: RevisionSnapshotChapterLink[];
+};
+
+export type EntityRevisionDetail = EntityRevisionSummary & {
+  snapshot: RevisionSnapshot;
+};

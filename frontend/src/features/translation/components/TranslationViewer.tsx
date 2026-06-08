@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Copy, SplitSquareVertical, AlertTriangle, History } from 'lucide-react';
+import { Check, Copy, SplitSquareVertical, AlertTriangle, History, Pencil, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { versionsApi, type ChapterTranslation } from '../api';
 import { useAuth } from '@/auth';
 import { ContentRenderer } from '@/components/reader/ContentRenderer';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { TiptapEditor } from '@/components/editor/TiptapEditor';
+import { useEditTranslation } from '../hooks/useEditTranslation';
 
 interface TranslationViewerProps {
   bookId?: string;
@@ -14,15 +16,23 @@ interface TranslationViewerProps {
   versionId: string;
   isActive: boolean;
   onSetActive: (versionId: string) => void;
+  // M7c-2: a human edit saved a new version — let the parent refresh/select it.
+  onSaved?: (saved: ChapterTranslation) => void;
 }
 
-export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSetActive }: TranslationViewerProps) {
+export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSetActive, onSaved }: TranslationViewerProps) {
   const { t } = useTranslation('translation');
   const navigate = useNavigate();
   const { accessToken } = useAuth();
   const [version, setVersion] = useState<ChapterTranslation | null>(null);
   const [loading, setLoading] = useState(true);
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // M7c-2: human-edit controller. Saving creates a new human version (gold).
+  const edit = useEditTranslation(chapterId, version, (saved) => {
+    setVersion(saved);
+    onSaved?.(saved);
+  });
 
   useEffect(() => {
     if (!accessToken || !versionId) return;
@@ -168,7 +178,7 @@ export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSe
               {t('viewer.review')}
             </button>
           )}
-          {version.status === 'completed' && !isActive && (
+          {version.status === 'completed' && !isActive && !edit.editing && (
             <button
               type="button"
               onClick={handleSetActive}
@@ -178,12 +188,61 @@ export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSe
               {t('viewer.set_active')}
             </button>
           )}
+          {/* M7c-2: human-edit a translation → Save creates a new version (gold) */}
+          {version.status === 'completed' && !edit.editing && (
+            <button
+              type="button"
+              onClick={edit.startEdit}
+              className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-[#3da692] hover:bg-[#3da692]/10 transition-colors"
+            >
+              <Pencil className="h-3 w-3" />
+              {t('viewer.edit')}
+            </button>
+          )}
+          {edit.editing && (
+            <>
+              <button
+                type="button"
+                onClick={edit.cancel}
+                disabled={edit.saving}
+                className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors disabled:opacity-40"
+              >
+                <X className="h-3 w-3" />
+                {t('viewer.cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={edit.save}
+                disabled={edit.saving}
+                className="flex items-center gap-1 rounded bg-[#3da692] px-2.5 py-1 text-[11px] font-medium text-white hover:brightness-110 transition-all disabled:opacity-50"
+              >
+                <Check className="h-3 w-3" />
+                {edit.saving ? t('viewer.saving') : t('viewer.save_edit')}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6">
-        {version.translated_body_format === 'json' && Array.isArray(version.translated_body_json) ? (
+        {edit.editing ? (
+          <div className="mx-auto max-w-[680px]">
+            {edit.isJson ? (
+              <TiptapEditor
+                content={edit.editorContent()}
+                editable
+                onUpdate={(json) => edit.onEditorUpdate(json)}
+              />
+            ) : (
+              <textarea
+                value={edit.draftText}
+                onChange={(e) => edit.setDraftText(e.target.value)}
+                className="min-h-[60vh] w-full resize-y rounded border border-border bg-transparent p-3 font-serif text-[15px] leading-[1.9] text-foreground/90 focus:border-[#3da692] focus:outline-none"
+              />
+            )}
+          </div>
+        ) : version.translated_body_format === 'json' && Array.isArray(version.translated_body_json) ? (
           <div className="mx-auto max-w-[680px]">
             <ContentRenderer blocks={version.translated_body_json as any} />
           </div>

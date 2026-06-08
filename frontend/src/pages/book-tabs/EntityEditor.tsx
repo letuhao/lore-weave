@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import { X, Save, Loader2, Link2, Tag, Trash2 } from 'lucide-react';
+import { X, Save, Loader2, Link2, Tag, Trash2, History } from 'lucide-react';
+import { EntityHistoryPanel } from '../../features/glossary/components/EntityHistoryPanel';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
@@ -144,6 +145,7 @@ export function EntityEditor({ bookId, entityId, onClose, onSaved, onDelete }: E
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [pendingChanges, setPendingChanges] = useState<Map<string, string>>(new Map());
+  const [showHistory, setShowHistory] = useState(false);
 
   const load = useCallback(async () => {
     if (!accessToken) return;
@@ -227,7 +229,7 @@ export function EntityEditor({ bookId, entityId, onClose, onSaved, onDelete }: E
   );
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="relative flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between border-b px-6 py-4 flex-shrink-0">
         <div className="flex items-center gap-2.5 min-w-0">
@@ -252,6 +254,13 @@ export function EntityEditor({ bookId, entityId, onClose, onSaved, onDelete }: E
             <option value="inactive">Inactive</option>
           </select>
           <button
+            onClick={() => setShowHistory(true)}
+            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          >
+            <History className="h-3.5 w-3.5" />
+            History
+          </button>
+          <button
             onClick={onClose}
             className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
           >
@@ -260,6 +269,20 @@ export function EntityEditor({ bookId, entityId, onClose, onSaved, onDelete }: E
           </button>
         </div>
       </div>
+
+      {showHistory && (
+        <div className="absolute inset-0 z-20">
+          <EntityHistoryPanel
+            bookId={bookId}
+            entityId={entityId}
+            onRestored={() => {
+              void load();
+              onSaved();
+            }}
+            onClose={() => setShowHistory(false)}
+          />
+        </div>
+      )}
 
       {/* Scrollable form */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">

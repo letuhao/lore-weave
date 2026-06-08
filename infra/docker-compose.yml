@@ -478,12 +478,18 @@ services:
       # depends_on coupling). Without it, /wiki/generate omits the KG relationship
       # sections in the dev/prod stack.
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      # VG-1: glossary entity versioning. When set, glossary-service runs the
+      # revision-projection consumer on loreweave:events:glossary (whole-entity
+      # snapshots into entity_revisions — the recovery/undo substrate). Unset =
+      # feature dormant. Recovery-critical (PO 2026-06-07), so wired in the stack.
+      REDIS_URL: redis://redis:6379
       # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
-
+      redis:
+        condition: service_healthy
       book-service:
         condition: service_healthy
     healthcheck:

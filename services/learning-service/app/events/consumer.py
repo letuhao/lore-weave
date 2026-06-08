@@ -6,6 +6,7 @@ event spine and dispatches to handlers that persist to `corrections`.
 Streams consumed:
   - loreweave:events:glossary   (glossary.entity_updated — filtered to actor=user)
   - loreweave:events:knowledge  (knowledge.*_corrected — added in BUILD sub-session B)
+  - loreweave:events:translation (translation.quality — M7a, V3 verifier rollup, source=auto)
 
 Consumer group: "learning-collector" — DISTINCT from knowledge-service's
 "knowledge-extractor". Redis delivers a copy of every message to each group, so
@@ -39,6 +40,7 @@ STREAMS = [
     "loreweave:events:knowledge",
     "loreweave:events:chat",  # Q3 — chat.message_feedback (user thumbs/regenerate)
     "loreweave:events:composition",  # V1 slice 2 — composition.generation_corrected (co-write human gate)
+    "loreweave:events:translation",  # M7a — translation.quality (V3 verifier rollup)
 ]
 GROUP_NAME = "learning-collector"
 MAX_RETRIES = 3

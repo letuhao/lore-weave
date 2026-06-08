@@ -97,6 +97,12 @@ type entityEventPayload struct {
 	Op               string   `json:"op"`          // "created" | "updated"
 	SourceType       string   `json:"source_type"` // "glossary" (authored canon)
 	EmittedAt        string   `json:"emitted_at"`  // RFC3339
+	// M6b full-propagate: set ONLY when the change is target-language-specific
+	// (a translation create/update/delete) so the translation-staleness consumer
+	// flags just that language's chapter translations. Absent (omitempty) for
+	// name/alias/structural changes ⇒ all-language flag (conservative, the prior
+	// behavior — rolling-deploy safe: an old consumer ignores the field).
+	TargetLanguage   string   `json:"target_language,omitempty"`
 	// Phase B correction-capture enrichment (ADDITIVE — knowledge-service's
 	// glossary_sync consumer ignores these). actor_type distinguishes a USER
 	// correction ("user") from a pipeline write ("pipeline"); before/after
@@ -169,6 +175,37 @@ func buildEntityEventPayload(
 		}
 	}
 	return p
+}
+
+// buildTranslationEventPayload assembles a glossary.entity_updated payload for a
+// target-language-specific change (a translation create/update/delete — M6b).
+//
+// actor_type is "pipeline" DELIBERATELY: learning-service filters glossary events
+// to actor=="user" and its EntitySnapshot (name/kind/aliases/short_description)
+// has NO slot for a translation-tier change, so a "user" event would record a
+// 0-diff correction. "pipeline" is cleanly ignored by learning, still consumed by
+// the translation-staleness consumer (actor-agnostic) and captured by VG-1. The
+// TargetLanguage field lets that consumer flag only the affected language. No
+// before/after (a translation value is not representable in EntitySnapshot).
+func buildTranslationEventPayload(
+	bookID, entityID, name, kind string, aliases []string, shortDescription, targetLanguage string,
+) entityEventPayload {
+	if aliases == nil {
+		aliases = []string{}
+	}
+	return entityEventPayload{
+		BookID:           bookID,
+		GlossaryEntityID: entityID,
+		Name:             name,
+		Kind:             kind,
+		Aliases:          aliases,
+		ShortDescription: shortDescription,
+		Op:               "updated",
+		SourceType:       "glossary",
+		EmittedAt:        time.Now().UTC().Format(time.RFC3339),
+		ActorType:        "pipeline",
+		TargetLanguage:   targetLanguage,
+	}
 }
 
 // loadEntityEventFields reads the snapshot fields needed for the event
@@ -291,6 +328,104 @@ func (s *Server) emitEntityUpdated(ctx context.Context, entityID uuid.UUID, op s
 	}
 	if err := insertEntityOutboxEvent(ctx, exec, entityID, payload); err != nil {
 		slog.Warn("emitEntityUpdated: outbox insert failed (non-fatal)",
+			"entity_id", entityID.String(), "err", err)
+	}
+}
+
+// emitTranslationChanged emits a glossary.entity_updated for a target-language-
+// specific change (M6b — translation create/update/delete). BEST-EFFORT +
+// post-commit: the translation write already committed, so a broker hiccup is
+// logged, never fatal. Carries target_language so the translation-staleness
+// consumer flags only that language's chapter translations (D-TRANSL-M5C-COARSE-
+// LANG). Without it the M6a flywheel never fired (the translation endpoints
+// emitted nothing — D-TRANSL-M6A-LIVE-SMOKE).
+func (s *Server) emitTranslationChanged(
+	ctx context.Context, bookID, entityID uuid.UUID, targetLanguage string,
+) {
+	name, kind, aliases, shortDesc, ok := loadEntityEventFields(ctx, s.pool, entityID)
+	if !ok {
+		slog.Warn("emitTranslationChanged: entity fields unavailable (non-fatal)",
+			"entity_id", entityID.String())
+		return
+	}
+	payload := buildTranslationEventPayload(
+		bookID.String(), entityID.String(), name, kind, aliases, shortDesc, targetLanguage,
+	)
+	exec := func(ctx context.Context, sql string, args ...any) error {
+		_, e := s.pool.Exec(ctx, sql, args...)
+		return e
+	}
+	if err := insertEntityOutboxEvent(ctx, exec, entityID, payload); err != nil {
+		slog.Warn("emitTranslationChanged: outbox insert failed (non-fatal)",
+			"entity_id", entityID.String(), "err", err)
+	}
+}
+
+const nameConfirmedEvent = "glossary.name_confirmed"
+
+// nameConfirmedPayload is carried by glossary.name_confirmed (M7c-3 — the human
+// name-confirm flywheel). A USER set a name translation to confidence='verified'
+// (the M6a "confirm a name" action), so it is a human-canonical source→target
+// rendering — learning-service persists it as a source='human' signal. Distinct
+// from glossary.entity_updated (which drives staleness + is actor='pipeline').
+type nameConfirmedPayload struct {
+	BookID           string `json:"book_id"`
+	GlossaryEntityID string `json:"glossary_entity_id"`
+	SourceName       string `json:"source_name"`     // the entity's authored name (source side)
+	Kind             string `json:"kind"`
+	LanguageCode     string `json:"language_code"`   // the confirmed target language
+	Value            string `json:"value"`           // the confirmed target rendering
+	ActorType        string `json:"actor_type"`      // always "user" (these are JWT endpoints)
+	ActorID          string `json:"actor_id,omitempty"`
+	EmittedAt        string `json:"emitted_at"`
+}
+
+// buildNameConfirmedPayload assembles the glossary.name_confirmed payload. Pure /
+// DB-free so it is unit-testable. actor_type is always "user" (these are JWT
+// endpoints — the verify is a human action).
+func buildNameConfirmedPayload(
+	bookID, entityID, sourceName, kind, languageCode, value, actorID string,
+) nameConfirmedPayload {
+	return nameConfirmedPayload{
+		BookID:           bookID,
+		GlossaryEntityID: entityID,
+		SourceName:       sourceName,
+		Kind:             kind,
+		LanguageCode:     languageCode,
+		Value:            value,
+		ActorType:        "user",
+		ActorID:          actorID,
+		EmittedAt:        time.Now().UTC().Format(time.RFC3339),
+	}
+}
+
+// emitNameConfirmed emits glossary.name_confirmed when a user verifies a name
+// translation. BEST-EFFORT + post-commit (the verify already committed). The
+// source name comes from the cached entity fields (DB-free for the payload shape
+// beyond that one read).
+func (s *Server) emitNameConfirmed(
+	ctx context.Context, bookID, entityID uuid.UUID, languageCode, value, actorID string,
+) {
+	name, kind, _, _, ok := loadEntityEventFields(ctx, s.pool, entityID)
+	if !ok {
+		slog.Warn("emitNameConfirmed: entity fields unavailable (non-fatal)",
+			"entity_id", entityID.String())
+		return
+	}
+	payload := buildNameConfirmedPayload(
+		bookID.String(), entityID.String(), name, kind, languageCode, value, actorID,
+	)
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		slog.Warn("emitNameConfirmed: marshal failed (non-fatal)", "err", err)
+		return
+	}
+	if _, err := s.pool.Exec(ctx, `
+		INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
+		VALUES ('glossary', $1, $2, $3)`,
+		entityID, nameConfirmedEvent, payloadJSON,
+	); err != nil {
+		slog.Warn("emitNameConfirmed: outbox insert failed (non-fatal)",
 			"entity_id", entityID.String(), "err", err)
 	}
 }

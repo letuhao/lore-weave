@@ -79,6 +79,9 @@ export type CoverageCell = {
   latest_version_num: number | null;
   latest_status: ChapterTranslationStatus | 'running' | null;
   version_count: number;
+  // M6b-2: active version's glossary-staleness (fallback latest). Legacy rows
+  // default false (additive — old servers omit it).
+  is_glossary_stale?: boolean;
 };
 
 export type ChapterCoverage = {
@@ -142,6 +145,26 @@ export const versionsApi = {
     return apiJson(`/v1/translation/chapters/${chapterId}/versions/${versionId}/active${q}`, {
       method: 'PUT',
       token,
+    });
+  },
+
+  // M7c: save a human-edited translation as a new version. The LLM→human diff is
+  // captured as learning gold server-side (translation.corrected).
+  saveEditedVersion(
+    token: string,
+    chapterId: string,
+    payload: {
+      target_language: string;
+      edited_from_version_id: string;
+      translated_body?: string;
+      translated_body_json?: unknown[];
+      translated_body_format: 'text' | 'json';
+    },
+  ): Promise<ChapterTranslation> {
+    return apiJson(`/v1/translation/chapters/${chapterId}/versions/edit`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
     });
   },
 };
