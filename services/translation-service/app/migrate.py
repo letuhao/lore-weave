@@ -304,6 +304,14 @@ CREATE TABLE IF NOT EXISTS chapter_translation_glossary_usage (
 );
 CREATE INDEX IF NOT EXISTS idx_ctgu_entity
   ON chapter_translation_glossary_usage(entity_id);
+
+-- M7c (human-fix gold): mark human-authored translation versions + link the LLM
+-- version they were edited from, so the LLM→human diff can be captured as a
+-- learning correction (before=LLM draft, after=human edit). Additive + idempotent.
+-- 'llm' default keeps every existing/worker-produced version unchanged.
+ALTER TABLE chapter_translations
+  ADD COLUMN IF NOT EXISTS authored_by TEXT NOT NULL DEFAULT 'llm',
+  ADD COLUMN IF NOT EXISTS edited_from_version_id UUID;
 """
 
 

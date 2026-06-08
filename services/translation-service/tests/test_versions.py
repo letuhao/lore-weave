@@ -30,6 +30,10 @@ def _list_row(**overrides):
         "source_language": "en",
         "target_language": "vi",
         "version_num": 1,
+        "translated_body_json": None,
+        "translated_body_format": "text",
+        "authored_by": "llm",
+        "edited_from_version_id": None,
         "input_tokens": 100,
         "output_tokens": 80,
         "usage_log_id": None,
@@ -58,6 +62,10 @@ def _get_row(**overrides):
         "source_language": "en",
         "target_language": "vi",
         "version_num": 1,
+        "translated_body_json": None,
+        "translated_body_format": "text",
+        "authored_by": "llm",
+        "edited_from_version_id": None,
         "input_tokens": 100,
         "output_tokens": 80,
         "usage_log_id": None,
@@ -297,6 +305,65 @@ def test_held_version_emits_nothing(client, fake_pool):
     resp = client.put(f"/v1/translation/chapters/{CHAPTER_ID}/versions/{VERSION_ID}/active")
     assert resp.status_code == 409
     assert _reviewed_emits(fake_pool) == []
+
+
+# ── M7c: save a human-edited translation (gold) ───────────────────────────────
+
+def _edit_body(**over):
+    base = {"target_language": "vi", "edited_from_version_id": VERSION_ID,
+            "translated_body": "Bản người sửa", "translated_body_format": "text"}
+    base.update(over)
+    return base
+
+
+def _corrected_emits(fake_pool):
+    return [c for c in fake_pool.execute.call_args_list if "translation.corrected" in c.args[0]]
+
+
+def test_save_edited_creates_human_version_and_emits_gold(client, fake_pool):
+    src = _get_row(translated_body="LLM draft")          # the version edited from
+    new = _get_row(id=uuid4(), authored_by="human",      # the new human version
+                   edited_from_version_id=UUID(VERSION_ID), translated_body="Bản người sửa")
+    fake_pool.fetchrow.side_effect = [src, new]
+    resp = client.post(f"/v1/translation/chapters/{CHAPTER_ID}/versions/edit", json=_edit_body())
+    assert resp.status_code == 201
+    assert resp.json()["authored_by"] == "human"
+    # review-impl: pin the INSERT SHAPE (not just the mocked response) — the 2nd
+    # fetchrow is the INSERT...RETURNING; it must actually write authored_by='human'
+    # + the parent link + version_num=MAX+1.
+    insert_sql = fake_pool.fetchrow.call_args_list[1].args[0]
+    assert "INSERT INTO chapter_translations" in insert_sql
+    assert "authored_by" in insert_sql and "'human'" in insert_sql
+    assert "edited_from_version_id" in insert_sql
+    assert "MAX(version_num)" in insert_sql
+    # translation.corrected emitted with before(LLM)/after(human)
+    emits = _corrected_emits(fake_pool)
+    assert len(emits) == 1
+    payload = json.loads(emits[0].args[2])
+    assert payload["before"]["body"] == "LLM draft"
+    assert payload["after"]["body"] == "Bản người sửa"
+    assert payload["edited_from_version_id"] == VERSION_ID
+
+
+def test_save_edited_404_when_source_missing(client, fake_pool):
+    fake_pool.fetchrow.return_value = None
+    resp = client.post(f"/v1/translation/chapters/{CHAPTER_ID}/versions/edit", json=_edit_body())
+    assert resp.status_code == 404
+    assert _corrected_emits(fake_pool) == []
+
+
+def test_save_edited_403_when_not_owned(client, fake_pool):
+    fake_pool.fetchrow.return_value = _get_row(owner_user_id=UUID(OTHER_USER_ID))
+    resp = client.post(f"/v1/translation/chapters/{CHAPTER_ID}/versions/edit", json=_edit_body())
+    assert resp.status_code == 403
+
+
+def test_save_edited_422_on_language_mismatch(client, fake_pool):
+    fake_pool.fetchrow.return_value = _get_row(target_language="en")
+    resp = client.post(f"/v1/translation/chapters/{CHAPTER_ID}/versions/edit",
+                       json=_edit_body(target_language="vi"))
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["code"] == "TRANSL_LANG_MISMATCH"
 
 
 def test_set_active_version_returns_422_when_status_running(client, fake_pool):

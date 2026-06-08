@@ -41,6 +41,14 @@ _CLASSIFICATION: dict[str, dict[str, str]] = {
         "time_cue": "content",
         "participants": "content",
     },
+    # M7c: a human-edited translation. Language/version are structural; the
+    # translated body is content (hashed here; the translation handler ALSO stores
+    # the raw before/after body per the PO raw-text choice).
+    "translation": {
+        "target_language": "structural",
+        "version_num": "structural",
+        "body": "content",
+    },
 }
 
 

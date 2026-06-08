@@ -190,6 +190,21 @@ class ChapterTranslation(BaseModel):
     qa_rounds_used: int = 0
     # M5c living-book: true when a glossary change post-dates this translation.
     is_glossary_stale: bool = False
+    # M7c human-fix gold: 'llm' (worker) | 'human' (edited via the editor) + the
+    # LLM version a human edit was based on (the before/after diff source).
+    authored_by: str = "llm"
+    edited_from_version_id: Optional[UUID] = None
+
+
+class SaveEditedTranslationRequest(BaseModel):
+    """M7c: save a human-edited translation as a new version. The diff between the
+    LLM source version (``edited_from_version_id``) and this edit becomes learning
+    gold. One of translated_body / translated_body_json must be present."""
+    target_language: str
+    edited_from_version_id: UUID
+    translated_body: Optional[str] = None
+    translated_body_json: Optional[list] = None
+    translated_body_format: str = "text"
 
 
 class TranslationJob(BaseModel):

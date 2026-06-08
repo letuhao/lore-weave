@@ -496,3 +496,65 @@ async def handle_translation_reviewed(event: EventData, *, pool: asyncpg.Pool) -
         "translation reviewed persisted: ct=%s ack=%s origin=translation:%s",
         ct_id, payload.get("acknowledged_issues"), event.outbox_id,
     )
+
+
+async def handle_translation_corrected(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`translation.corrected` → a `corrections` row (track M7c, Channel 1b — the
+    human-fix gold). A human edited an LLM translation; the LLM draft (`before`)
+    and the human edit (`after`) are captured so future tuning can see exactly
+    what the model got wrong and how the human fixed it.
+
+    Unlike the entity/relation/event paths (redact-by-default → hash only), the
+    translation path ALSO stores the RAW before/after body in
+    `before_content`/`after_content` (PO 2026-06-08: raw-text retention for
+    translation tuning). Structural (language/version) + a content hash are also
+    written. `actor_type='user'`; idempotent on the relay `outbox_id`; per-owner.
+    Empty `outbox_id` / missing `user_id`/`chapter_translation_id` raises → DLQ."""
+    payload = event.payload
+    if not event.outbox_id:
+        raise ValueError("translation.corrected has empty outbox_id — refusing to insert")
+    ct_id = payload.get("chapter_translation_id") or event.aggregate_id
+    user_id = _uuid_or_none(payload.get("user_id"))
+    if user_id is None or not ct_id:
+        raise ValueError(
+            "translation.corrected missing user_id/chapter_translation_id "
+            f"(user_id={payload.get('user_id')!r} ct={ct_id!r}) — refusing"
+        )
+
+    before = payload.get("before") or {}
+    after = payload.get("after") or {}
+    before_structural, before_hash = split_snapshot("translation", before)
+    after_structural, after_hash = split_snapshot("translation", after)
+    diff_class = derive_diff_class(
+        target_type="translation",
+        op="updated",
+        before_structural=before_structural,
+        after_structural=after_structural,
+        before_content_hash=before_hash,
+        after_content_hash=after_hash,
+    )
+
+    await pool.execute(
+        """
+        INSERT INTO corrections (
+          user_id, book_id, target_type, target_id, op,
+          before_structural, after_structural, before_content_hash, after_content_hash,
+          before_content, after_content, diff_class,
+          source_chapter, actor_type, origin_service, origin_event_id, origin_event_type
+        ) VALUES (
+          $1, $2, 'translation', $3, 'updated',
+          $4::jsonb, $5::jsonb, $6, $7,
+          $8::jsonb, $9::jsonb, $10,
+          $11, 'user', 'translation', $12, $13
+        )
+        ON CONFLICT (origin_service, origin_event_id) DO NOTHING
+        """,
+        user_id, _uuid_or_none(payload.get("book_id")), str(ct_id),
+        _jsonb(before_structural), _jsonb(after_structural), before_hash, after_hash,
+        _jsonb({"body": before.get("body")}), _jsonb({"body": after.get("body")}), diff_class,
+        payload.get("chapter_id"), event.outbox_id, event.event_type,
+    )
+    logger.debug(
+        "translation correction persisted: ct=%s diff=%s origin=translation:%s",
+        ct_id, diff_class, event.outbox_id,
+    )
