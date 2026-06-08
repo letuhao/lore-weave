@@ -44,6 +44,7 @@ __all__ = [
     "knowledge_extraction_recovery_decisions_total",
     "knowledge_extraction_writer_autocreate_total",
     "knowledge_extraction_filter_reload_total",
+    "knowledge_extraction_status_effect_total",
 ]
 
 registry = CollectorRegistry()
@@ -267,6 +268,21 @@ knowledge_extraction_dropped_total = Counter(
 for _op in ("entity_extraction", "relation_extraction", "event_extraction"):
     for _r in ("missing_name", "missing_kind", "missing_evidence_passage_id", "validation"):
         knowledge_extraction_dropped_total.labels(operation=_op, reason=_r)
+
+# A2-S1b (Cycle 11 / DEFERRED 066) — outcome of each event status_effect the
+# Pass-2 writer consumes. `persisted` = an :EntityStatus was merged; the two
+# `skipped_*` outcomes were previously LOG-ONLY (silent on dashboards), which is
+# exactly the 066 "status unresolved silently" gap — surface them as a metric so
+# a producer regression (no event_order threaded / entity_ref never resolves) is
+# visible as a non-zero skip rate, not buried in logs.
+knowledge_extraction_status_effect_total = Counter(
+    "knowledge_extraction_status_effect_total",
+    "A2-S1b event status_effect outcomes in the Pass-2 writer",
+    ["outcome"],
+    registry=registry,
+)
+for _outcome in ("persisted", "skipped_no_event_order", "skipped_unresolved"):
+    knowledge_extraction_status_effect_total.labels(outcome=_outcome)
 
 # ── K13.0 anchor resolver ──────────────────────────────────────────
 

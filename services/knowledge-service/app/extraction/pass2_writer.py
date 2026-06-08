@@ -75,7 +75,10 @@ from app.extraction.entity_resolver import (
 )
 from app.extraction.hierarchy_writer import HierarchyPaths, upsert_for_chapter
 from app.extraction.injection_defense import neutralize_injection
-from app.metrics import knowledge_extraction_writer_autocreate_total
+from app.metrics import (
+    knowledge_extraction_status_effect_total,
+    knowledge_extraction_writer_autocreate_total,
+)
 from loreweave_extraction.extractors.entity import LLMEntityCandidate
 from loreweave_extraction.extractors.event import LLMEventCandidate
 from loreweave_extraction.extractors.fact import LLMFactCandidate
@@ -629,6 +632,9 @@ async def write_pass2_extraction(
                     "event_order (legacy/chat, no hierarchy) ref=%r status=%r",
                     name_clean, eff.entity_ref, eff.status,
                 )
+                knowledge_extraction_status_effect_total.labels(
+                    outcome="skipped_no_event_order",
+                ).inc()
                 continue
             entity_id = _resolve_status_entity_id(
                 eff.entity_ref,
@@ -642,6 +648,9 @@ async def write_pass2_extraction(
                     "status=%r (no chapter-map/anchor match) — skipping",
                     eff.entity_ref, eff.status,
                 )
+                knowledge_extraction_status_effect_total.labels(
+                    outcome="skipped_unresolved",
+                ).inc()
                 continue
             status_node = await merge_entity_status(
                 session,
@@ -655,6 +664,9 @@ async def write_pass2_extraction(
                 provenance=provenance,
             )
             statuses_merged += 1
+            knowledge_extraction_status_effect_total.labels(
+                outcome="persisted",
+            ).inc()
             status_ev = await add_evidence(
                 session,
                 user_id=user_id,

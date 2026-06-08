@@ -22,8 +22,10 @@ The earlier [debt-payoff roadmap](2026-06-07-debt-payoff-roadmap.md) (063/064/K1
 
 > worker-ai `_mark_complete` writes `status='complete'` but the constraint allows only `'completed'` → **every finished extraction CheckViolates → marked `failed`** ([runner.py:722](../../services/worker-ai/app/runner.py#L722) + the `NOT IN ('complete',…)` guards at 724/740/767). Real platform-wide bug (completion signal broken). Fix `'complete'`→`'completed'`, add a test, **re-run the cycle-8 full-chain smoke** to confirm a job reaches `completed`. Cheap, highest leverage (also unblocks cycle 11's verification).
 
-### Cycle 11 — DEFERRED 066: A2-S1b status_effects → :EntityStatus producer gap (MED, M/L)
-Depends on cycle 10. The cycle-8 smoke proved a real death-chapter extraction yields **no `:EntityStatus{gone}`** (entities had `canonical_id=NULL` — the anchor-link gap). Chase WHY: (a) does the extractor emit `status_effects` in the worker config? (b) is `event_order` threaded? (c) does anchoring (`canonical_id`/≥2 chapter_entity_links) gate the status write? Fix the producer so a published death yields `:EntityStatus`. **AC:** re-run the full-chain smoke → cypher shows `:EntityStatus{gone}` for the dead character. Cross-service live-smoke.
+### Cycle 11 — DEFERRED 066: A2-S1b status_effects → :EntityStatus producer gap — ✅ DONE 2026-06-08 (LOOM-53)
+**Diagnosis CORRECTED + instrumented.** The cycle-8 "canonical_id=NULL anchoring blocks the status" hypothesis was WRONG — the Pass-2 resolver keys the chapter map on `entity.id` (always set, no `≥2 links` need) and the whole producer path is statically correct. PO chose instrument-first → added `knowledge_extraction_status_effect_total{outcome}` so the silent-skip is observable; live: rebuilt knowledge-service, cycle-10 constraint swap confirmed live, metric exposed. The real-LLM death-chapter diagnostic (run one extraction, read the counter) → **DEFERRED 067** (now cheap to interpret). Original framing below:
+
+> Depends on cycle 10. The cycle-8 smoke proved a real death-chapter extraction yields **no `:EntityStatus{gone}`** (entities had `canonical_id=NULL` — the anchor-link gap). Chase WHY: (a) does the extractor emit `status_effects` in the worker config? (b) is `event_order` threaded? (c) does anchoring (`canonical_id`/≥2 chapter_entity_links) gate the status write? Fix the producer so a published death yields `:EntityStatus`. **AC:** re-run the full-chain smoke → cypher shows `:EntityStatus{gone}` for the dead character. Cross-service live-smoke.
 
 ---
 

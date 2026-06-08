@@ -29,11 +29,18 @@ from loreweave_extraction.extractors.event import LLMEventCandidate, StatusEffec
 from app.extraction.hierarchy_writer import HierarchyPaths
 from app.extraction.pass2_writer import write_pass2_extraction
 from app.db.neo4j_repos.events import EVENT_ORDER_CHAPTER_STRIDE
+from app.metrics import knowledge_extraction_status_effect_total
 
 USER_ID = "test-user-001"
 PROJECT_ID = "test-project-001"
 JOB_ID = "test-job-001"
 _PATCH_BASE = "app.extraction.pass2_writer"
+
+
+def _status_metric(outcome: str) -> float:
+    """Current value of the A2-S1b status_effect outcome counter (module-level
+    Counter accumulates across tests, so assert a DELTA, not an absolute)."""
+    return knowledge_extraction_status_effect_total.labels(outcome=outcome)._value.get()
 
 
 def _fake_session() -> Any:
@@ -101,6 +108,7 @@ async def test_status_written_at_event_order(
     mock_evidence.return_value = _evidence(True)
     mock_merge_status.return_value = _result("status-1")
 
+    before = _status_metric("persisted")
     result = await write_pass2_extraction(
         _fake_session(),
         user_id=USER_ID, project_id=PROJECT_ID,
@@ -114,6 +122,7 @@ async def test_status_written_at_event_order(
     )
 
     assert result.statuses_merged == 1
+    assert _status_metric("persisted") - before == 1
     mock_merge_status.assert_awaited_once()
     kwargs = mock_merge_status.call_args.kwargs
     assert kwargs["entity_id"] == "eid-kai"
@@ -143,6 +152,7 @@ async def test_status_skipped_when_event_order_none(
     mock_merge_event.return_value = _result("evid-kai falls")
     mock_evidence.return_value = _evidence(True)
 
+    before = _status_metric("skipped_no_event_order")
     result = await write_pass2_extraction(
         _fake_session(),
         user_id=USER_ID, project_id=PROJECT_ID,
@@ -156,6 +166,7 @@ async def test_status_skipped_when_event_order_none(
     )
 
     assert result.statuses_merged == 0
+    assert _status_metric("skipped_no_event_order") - before == 1
     mock_merge_status.assert_not_awaited()
 
 
@@ -177,6 +188,7 @@ async def test_status_skipped_when_entity_unresolved(
     mock_merge_event.return_value = _result("evid-kai falls")
     mock_evidence.return_value = _evidence(True)
 
+    before = _status_metric("skipped_unresolved")
     result = await write_pass2_extraction(
         _fake_session(),
         user_id=USER_ID, project_id=PROJECT_ID,
@@ -190,6 +202,7 @@ async def test_status_skipped_when_entity_unresolved(
     )
 
     assert result.statuses_merged == 0
+    assert _status_metric("skipped_unresolved") - before == 1
     mock_merge_status.assert_not_awaited()
 
 
@@ -212,6 +225,7 @@ async def test_status_skipped_when_kind_ambiguous(
     mock_merge_event.return_value = _result("evid-fall")
     mock_evidence.return_value = _evidence(True)
 
+    before = _status_metric("skipped_unresolved")
     result = await write_pass2_extraction(
         _fake_session(),
         user_id=USER_ID, project_id=PROJECT_ID,
@@ -225,4 +239,5 @@ async def test_status_skipped_when_kind_ambiguous(
     )
 
     assert result.statuses_merged == 0
+    assert _status_metric("skipped_unresolved") - before == 1
     mock_merge_status.assert_not_awaited()
