@@ -24,7 +24,9 @@ import logging
 import re
 
 from ..glossary_client import fetch_context_entities, ContextEntity
-from ..knowledge_client import fetch_wiki_neighborhood, WikiNeighborhood
+from ..knowledge_client import (
+    fetch_wiki_neighborhood, WikiNeighborhood, fetch_timeline, TimelineEvent,
+)
 from ..chunk_splitter import estimate_tokens
 
 log = logging.getLogger(__name__)
@@ -145,3 +147,66 @@ async def build_context_brief(
         return ""
     log.info("knowledge_context: %d entities in brief, ~%d tokens", len(lines), used)
     return _HEADER + "\n" + "\n".join(f"- {ln}" for ln in lines)
+
+
+# ── M4d-1: timeline → "story so far" memo block ───────────────────────────────
+
+_TIMELINE_HEADER = (
+    "RECENT STORY EVENTS (what has happened up to here — keep names, "
+    "relationships and plot consistent with these):"
+)
+_TIMELINE_TOKEN_BUDGET = 350
+_TIMELINE_TITLE_MAX = 120
+_TIMELINE_SUMMARY_MAX = 200
+_TIMELINE_MAX_PARTICIPANTS = 6
+
+
+def _format_timeline_event(ev: TimelineEvent) -> str | None:
+    """One sanitized memo line per event. None when there is no usable title."""
+    title = _sanitize(ev.title, _TIMELINE_TITLE_MAX)
+    if not title:
+        return None
+    date = _sanitize(ev.event_date or "", 30)
+    head = f"{date}: {title}" if date else title
+    parts = [head]
+    summary = _sanitize(ev.summary or "", _TIMELINE_SUMMARY_MAX)
+    if summary:
+        parts.append(summary)
+    who = [p for p in (_sanitize(x, 60) for x in ev.participants) if p][:_TIMELINE_MAX_PARTICIPANTS]
+    if who:
+        parts.append("participants: " + ", ".join(who))
+    return " — ".join(parts)
+
+
+async def build_timeline_block(
+    book_id: str,
+    chapter_order: int,
+    *,
+    token_budget: int = _TIMELINE_TOKEN_BUDGET,
+) -> str:
+    """Build the cross-chapter "story so far" event memo (empty string on no data).
+
+    ``chapter_order`` is the book-service chapter ``sort_order`` (global reading
+    position). Best-effort, like ``build_context_brief``: feature-off / cold-start
+    / any knowledge failure all yield an empty string. Injected into the
+    Translator ``extra_system`` only (continuity context, not a verifier rule)."""
+    brief = await fetch_timeline(book_id, chapter_order)
+    if not brief.events:
+        return ""
+
+    lines: list[str] = []
+    used = estimate_tokens(_TIMELINE_HEADER)
+    for ev in brief.events:
+        line = _format_timeline_event(ev)
+        if not line:
+            continue
+        cost = estimate_tokens(line) + 1
+        if used + cost > token_budget and lines:
+            break  # budget exhausted — keep the earliest recent events
+        lines.append(line)
+        used += cost
+
+    if not lines:
+        return ""
+    log.info("knowledge_context: %d timeline events in memo, ~%d tokens", len(lines), used)
+    return _TIMELINE_HEADER + "\n" + "\n".join(f"- {ln}" for ln in lines)

@@ -107,6 +107,7 @@ class CreateJobPayload(BaseModel):
     max_qa_rounds: Optional[int] = None      # 1..5 (orchestrator caps at 5)
     verifier_model_source: Optional[str] = None
     verifier_model_ref: Optional[UUID] = None
+    cold_start_mode: Optional[str] = None    # 'single_pass' (default) | 'two_pass' (M4d-2c)
 
     @field_validator("pipeline_version")
     @classmethod
@@ -120,6 +121,13 @@ class CreateJobPayload(BaseModel):
     def _valid_qa_depth(cls, v: Optional[str]) -> Optional[str]:
         if v is not None and v not in ("rule_only", "standard", "thorough"):
             raise ValueError("qa_depth must be 'rule_only', 'standard', or 'thorough'")
+        return v
+
+    @field_validator("cold_start_mode")
+    @classmethod
+    def _valid_cold_start_mode(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in ("single_pass", "two_pass"):
+            raise ValueError("cold_start_mode must be 'single_pass' or 'two_pass'")
         return v
 
     @field_validator("max_qa_rounds")
@@ -182,6 +190,21 @@ class ChapterTranslation(BaseModel):
     qa_rounds_used: int = 0
     # M5c living-book: true when a glossary change post-dates this translation.
     is_glossary_stale: bool = False
+    # M7c human-fix gold: 'llm' (worker) | 'human' (edited via the editor) + the
+    # LLM version a human edit was based on (the before/after diff source).
+    authored_by: str = "llm"
+    edited_from_version_id: Optional[UUID] = None
+
+
+class SaveEditedTranslationRequest(BaseModel):
+    """M7c: save a human-edited translation as a new version. The diff between the
+    LLM source version (``edited_from_version_id``) and this edit becomes learning
+    gold. One of translated_body / translated_body_json must be present."""
+    target_language: str
+    edited_from_version_id: UUID
+    translated_body: Optional[str] = None
+    translated_body_json: Optional[list] = None
+    translated_body_format: str = "text"
 
 
 class TranslationJob(BaseModel):
@@ -205,6 +228,7 @@ class TranslationJob(BaseModel):
     max_qa_rounds: int = 2
     verifier_model_source: Optional[str] = None
     verifier_model_ref: Optional[UUID] = None
+    cold_start_mode: str = "single_pass"
     chapter_ids: list[UUID]
     total_chapters: int
     completed_chapters: int
@@ -276,6 +300,9 @@ class CoverageCell(BaseModel):
     latest_version_num: Optional[int]
     latest_status: Optional[str]
     version_count: int
+    # M6b-2: the active version's glossary-staleness flag (fallback latest) so the
+    # book-level matrix can surface "N chapters out of date from glossary changes".
+    is_glossary_stale: bool = False
 
 
 class ChapterCoverage(BaseModel):

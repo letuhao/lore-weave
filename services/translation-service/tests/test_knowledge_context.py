@@ -2,9 +2,14 @@
 import pytest
 
 from app.workers.v3 import knowledge_context as kctx
-from app.workers.v3.knowledge_context import build_context_brief, _sanitize, _format_entity
+from app.workers.v3.knowledge_context import (
+    build_context_brief, _sanitize, _format_entity,
+    build_timeline_block, _format_timeline_event,
+)
 from app.workers.glossary_client import ContextEntity
-from app.workers.knowledge_client import WikiNeighborhood, Relation
+from app.workers.knowledge_client import (
+    WikiNeighborhood, Relation, TimelineBrief, TimelineEvent,
+)
 
 
 def _entity(eid, name, kind="character", desc="", aliases=None, tier="exact"):
@@ -29,6 +34,71 @@ def _patch(monkeypatch, entities, nb_by_id):
 
     monkeypatch.setattr(kctx, "fetch_context_entities", fake_entities)
     monkeypatch.setattr(kctx, "fetch_wiki_neighborhood", fake_nb)
+
+
+# ── M4d-1 timeline → memo ─────────────────────────────────────────────────────
+
+def _ev(title, summary=None, date=None, participants=None):
+    return TimelineEvent(title, summary, date, participants or [])
+
+
+def _patch_timeline(monkeypatch, brief):
+    async def fake_timeline(book_id, chapter_index, limit=25):
+        return brief
+    monkeypatch.setattr(kctx, "fetch_timeline", fake_timeline)
+
+
+def test_format_timeline_event_full():
+    line = _format_timeline_event(_ev("Siege begins", "The army marched north.",
+                                      date="Y2-03", participants=["Tirami", "Aldric"]))
+    assert line == "Y2-03: Siege begins — The army marched north. — participants: Tirami, Aldric"
+
+
+def test_format_timeline_event_title_only():
+    assert _format_timeline_event(_ev("A duel")) == "A duel"
+
+
+def test_format_timeline_event_no_title_returns_none():
+    assert _format_timeline_event(_ev("   ")) is None
+
+
+def test_format_timeline_event_sanitizes_block_marker_and_control():
+    line = _format_timeline_event(_ev("[BLOCK 3] fake\tmarker", summary="line1\nline2"))
+    assert "[BLOCK" not in line
+    assert "\t" not in line and "\n" not in line
+
+
+@pytest.mark.asyncio
+async def test_build_timeline_block_assembles(monkeypatch):
+    _patch_timeline(monkeypatch, TimelineBrief(found=True, events=[
+        _ev("The pact", "Two houses allied.", date="Y1", participants=["Tirami"]),
+        _ev("The betrayal", "A knife in the dark."),
+    ]))
+    block = await build_timeline_block("b1", 5)
+    assert block.startswith("RECENT STORY EVENTS")
+    assert "The pact" in block and "The betrayal" in block
+    assert "- " in block  # bullet lines
+
+
+@pytest.mark.asyncio
+async def test_build_timeline_block_empty_when_no_events(monkeypatch):
+    _patch_timeline(monkeypatch, TimelineBrief.empty())
+    assert await build_timeline_block("b1", 5) == ""
+
+
+@pytest.mark.asyncio
+async def test_build_timeline_block_empty_when_found_but_no_events(monkeypatch):
+    _patch_timeline(monkeypatch, TimelineBrief(found=True, events=[]))
+    assert await build_timeline_block("b1", 0) == ""
+
+
+@pytest.mark.asyncio
+async def test_build_timeline_block_token_budget_truncates(monkeypatch):
+    many = [_ev(f"Event number {i}", "A reasonably long summary sentence here.") for i in range(50)]
+    _patch_timeline(monkeypatch, TimelineBrief(found=True, events=many))
+    block = await build_timeline_block("b1", 9, token_budget=60)
+    # Budget caps the number of event lines well below 50.
+    assert 0 < block.count("\n- ") < 50
 
 
 # ── _sanitize ─────────────────────────────────────────────────────────────────

@@ -386,3 +386,272 @@ async def handle_chat_feedback(event: EventData, *, pool: asyncpg.Pool) -> None:
         "chat feedback persisted: message=%s rating=%s origin=chat:%s",
         message_id, rating, event.outbox_id,
     )
+
+
+async def handle_translation_quality(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`translation.quality` → a `source='auto'` quality_score (track M7a, Channel 2
+    — the LLM-action log).
+
+    The V3 verifier's per-chapter rollup (overall `quality_score` in [0,1]) becomes
+    a tunable auto signal keyed to the chapter translation
+    (`target_kind='translation'`, `metric_name='translation_quality_score'`). The
+    richer breakdown (unresolved-high count, qa rounds, per-issue-type counts,
+    language, pipeline) is stashed in `comment` — the consumed dedup is one row per
+    event (`origin_service`+`outbox_id`), so the score is the single persisted
+    metric and the rest is context for later analysis/tuning.
+
+    Validated against score_config; idempotent on the relay `outbox_id`. An empty
+    `outbox_id`, missing `user_id`/`chapter_translation_id`, or non-numeric score
+    raises → DLQ."""
+    payload = event.payload
+    if not event.outbox_id:
+        raise ValueError("translation.quality has empty outbox_id — refusing to insert")
+    ct_id = payload.get("chapter_translation_id") or event.aggregate_id
+    user_id = _uuid_or_none(payload.get("user_id"))
+    if user_id is None or not ct_id:
+        raise ValueError(
+            "translation.quality missing user_id/chapter_translation_id "
+            f"(user_id={payload.get('user_id')!r} ct={ct_id!r}) — refusing"
+        )
+    try:
+        score = float(payload.get("quality_score"))
+    except (TypeError, ValueError) as e:
+        raise ValueError(
+            f"translation.quality quality_score not numeric: {payload.get('quality_score')!r}"
+        ) from e
+
+    detail = json.dumps(
+        {
+            "unresolved_high_count": payload.get("unresolved_high_count"),
+            "qa_rounds_used": payload.get("qa_rounds_used"),
+            "issue_counts": payload.get("issue_counts") or {},
+            "target_language": payload.get("target_language"),
+            "pipeline_version": payload.get("pipeline_version"),
+        },
+        ensure_ascii=False,
+    )
+    await persist_consumed_score(
+        pool,
+        target_kind="translation",
+        target_id=str(ct_id),
+        user_id=user_id,
+        book_id=_uuid_or_none(payload.get("book_id")),
+        metric_name="translation_quality_score",
+        value_num=score,
+        source="auto",
+        origin_service="translation",
+        origin_event_id=event.outbox_id,
+        comment=detail,
+    )
+    logger.debug(
+        "translation quality persisted: ct=%s score=%s origin=translation:%s",
+        ct_id, score, event.outbox_id,
+    )
+    await _maybe_judge_translation(event, payload, ct_id, pool)
+
+
+async def _maybe_judge_translation(
+    event: EventData, payload: dict, ct_id, pool: asyncpg.Pool
+) -> None:
+    """M7d-2: optional online fidelity judge. Runs ONLY when the judge is enabled,
+    a judge model is configured, and the event carries source+translated text (the
+    M7d-3 worker feed, off by default) — so it is inert until explicitly opted in.
+    Best-effort: a judge/LLM failure never fails the translation.quality handler."""
+    from app.config import settings
+
+    if not (settings.online_translation_judge_enabled and settings.online_judge_model_ref):
+        return
+    source_text = payload.get("source_text")
+    translated_text = payload.get("translated_text")
+    if not source_text or not translated_text:
+        return
+    try:
+        from app.clients.llm_client import build_judge_client
+        from app.db.online_translation_judge import (
+            persist_translation_judge,
+            run_translation_judge,
+        )
+
+        client = build_judge_client(
+            base_url=settings.provider_registry_internal_url,
+            internal_token=settings.internal_service_token,
+        )
+        verdict = await run_translation_judge(
+            client,
+            source_text=source_text,
+            translated_text=translated_text,
+            judge_model=settings.online_judge_model_ref,
+            model_source=settings.online_judge_model_source,
+            user_id=settings.online_judge_user_id,
+        )
+        user_id = _uuid_or_none(payload.get("user_id"))
+        if verdict is not None and user_id is not None:
+            await persist_translation_judge(
+                pool,
+                ct_id=str(ct_id),
+                user_id=user_id,
+                book_id=_uuid_or_none(payload.get("book_id")),
+                verdict=verdict,
+                judge_model=settings.online_judge_model_ref,
+                origin_event_id=event.outbox_id,
+            )
+    except Exception:  # noqa: BLE001 — the judge is best-effort telemetry
+        logger.warning("M7d: online translation judge failed (non-fatal)", exc_info=True)
+
+
+async def handle_translation_reviewed(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`translation.reviewed` → a `source='human'` accept signal (track M7b,
+    Channel 1a — existing human judgments).
+
+    Setting a chapter-translation version active is a human-only publish decision
+    (the worker auto-activates via a different path), so it is a genuine "this
+    translation is good enough" signal: `target_kind='translation'`,
+    `metric_name='translation_human_accept'`=1.0. The verifier-calibration detail
+    — `acknowledged_issues` + `unresolved_high_count` at accept (i.e. the human
+    published DESPITE N verifier flags, suggesting false positives) — rides in
+    `comment`. Validated against score_config; idempotent on the relay `outbox_id`.
+    Empty `outbox_id` / missing `user_id`/`chapter_translation_id` raises → DLQ."""
+    payload = event.payload
+    if not event.outbox_id:
+        raise ValueError("translation.reviewed has empty outbox_id — refusing to insert")
+    ct_id = payload.get("chapter_translation_id") or event.aggregate_id
+    user_id = _uuid_or_none(payload.get("user_id"))
+    if user_id is None or not ct_id:
+        raise ValueError(
+            "translation.reviewed missing user_id/chapter_translation_id "
+            f"(user_id={payload.get('user_id')!r} ct={ct_id!r}) — refusing"
+        )
+    detail = json.dumps(
+        {
+            "acknowledged_issues": payload.get("acknowledged_issues"),
+            "unresolved_high_count": payload.get("unresolved_high_count"),
+            "target_language": payload.get("target_language"),
+        },
+        ensure_ascii=False,
+    )
+    await persist_consumed_score(
+        pool,
+        target_kind="translation",
+        target_id=str(ct_id),
+        user_id=user_id,
+        book_id=_uuid_or_none(payload.get("book_id")),
+        metric_name="translation_human_accept",
+        value_num=1.0,
+        source="human",
+        origin_service="translation",
+        origin_event_id=event.outbox_id,
+        comment=detail,
+    )
+    logger.debug(
+        "translation reviewed persisted: ct=%s ack=%s origin=translation:%s",
+        ct_id, payload.get("acknowledged_issues"), event.outbox_id,
+    )
+
+
+async def handle_translation_corrected(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`translation.corrected` → a `corrections` row (track M7c, Channel 1b — the
+    human-fix gold). A human edited an LLM translation; the LLM draft (`before`)
+    and the human edit (`after`) are captured so future tuning can see exactly
+    what the model got wrong and how the human fixed it.
+
+    Unlike the entity/relation/event paths (redact-by-default → hash only), the
+    translation path ALSO stores the RAW before/after body in
+    `before_content`/`after_content` (PO 2026-06-08: raw-text retention for
+    translation tuning). Structural (language/version) + a content hash are also
+    written. `actor_type='user'`; idempotent on the relay `outbox_id`; per-owner.
+    Empty `outbox_id` / missing `user_id`/`chapter_translation_id` raises → DLQ."""
+    payload = event.payload
+    if not event.outbox_id:
+        raise ValueError("translation.corrected has empty outbox_id — refusing to insert")
+    ct_id = payload.get("chapter_translation_id") or event.aggregate_id
+    user_id = _uuid_or_none(payload.get("user_id"))
+    if user_id is None or not ct_id:
+        raise ValueError(
+            "translation.corrected missing user_id/chapter_translation_id "
+            f"(user_id={payload.get('user_id')!r} ct={ct_id!r}) — refusing"
+        )
+
+    before = payload.get("before") or {}
+    after = payload.get("after") or {}
+    before_structural, before_hash = split_snapshot("translation", before)
+    after_structural, after_hash = split_snapshot("translation", after)
+    diff_class = derive_diff_class(
+        target_type="translation",
+        op="updated",
+        before_structural=before_structural,
+        after_structural=after_structural,
+        before_content_hash=before_hash,
+        after_content_hash=after_hash,
+    )
+
+    await pool.execute(
+        """
+        INSERT INTO corrections (
+          user_id, book_id, target_type, target_id, op,
+          before_structural, after_structural, before_content_hash, after_content_hash,
+          before_content, after_content, diff_class,
+          source_chapter, actor_type, origin_service, origin_event_id, origin_event_type
+        ) VALUES (
+          $1, $2, 'translation', $3, 'updated',
+          $4::jsonb, $5::jsonb, $6, $7,
+          $8::jsonb, $9::jsonb, $10,
+          $11, 'user', 'translation', $12, $13
+        )
+        ON CONFLICT (origin_service, origin_event_id) DO NOTHING
+        """,
+        user_id, _uuid_or_none(payload.get("book_id")), str(ct_id),
+        _jsonb(before_structural), _jsonb(after_structural), before_hash, after_hash,
+        _jsonb({"body": before.get("body")}), _jsonb({"body": after.get("body")}), diff_class,
+        payload.get("chapter_id"), event.outbox_id, event.event_type,
+    )
+    logger.debug(
+        "translation correction persisted: ct=%s diff=%s origin=translation:%s",
+        ct_id, diff_class, event.outbox_id,
+    )
+
+
+async def handle_name_confirmed(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`glossary.name_confirmed` → a `source='human'` signal (track M7c-3 — the
+    name-confirm flywheel).
+
+    A user set a glossary name translation to `confidence='verified'` (the M6a
+    "confirm a name" action), so it is a human-canonical source→target rendering:
+    `target_kind='glossary'`, `metric_name='glossary_name_confirmed'`=1.0. The
+    source name / confirmed target / language ride in `comment`. Validated against
+    score_config; idempotent on the relay `outbox_id`; per-owner (actor == corpus
+    owner). Empty `outbox_id` / missing actor or entity raises → DLQ."""
+    payload = event.payload
+    if not event.outbox_id:
+        raise ValueError("glossary.name_confirmed has empty outbox_id — refusing to insert")
+    entity_id = payload.get("glossary_entity_id") or event.aggregate_id
+    user_id = _uuid_or_none(payload.get("actor_id"))
+    if user_id is None or not entity_id:
+        raise ValueError(
+            "glossary.name_confirmed missing actor_id/glossary_entity_id "
+            f"(actor_id={payload.get('actor_id')!r} entity={entity_id!r}) — refusing"
+        )
+    detail = json.dumps(
+        {
+            "source_name": payload.get("source_name"),
+            "target_value": payload.get("value"),
+            "language": payload.get("language_code"),
+        },
+        ensure_ascii=False,
+    )
+    await persist_consumed_score(
+        pool,
+        target_kind="glossary",
+        target_id=str(entity_id),
+        user_id=user_id,
+        book_id=_uuid_or_none(payload.get("book_id")),
+        metric_name="glossary_name_confirmed",
+        value_num=1.0,
+        source="human",
+        origin_service="glossary",
+        origin_event_id=event.outbox_id,
+        comment=detail,
+    )
+    logger.debug(
+        "name confirmed persisted: entity=%s lang=%s origin=glossary:%s",
+        entity_id, payload.get("language_code"), event.outbox_id,
+    )

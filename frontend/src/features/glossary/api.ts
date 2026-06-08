@@ -13,6 +13,8 @@ import type {
   Evidence,
   Translation,
   Confidence,
+  EntityRevisionSummary,
+  EntityRevisionDetail,
 } from './types';
 
 const BASE = '/v1/glossary';
@@ -64,6 +66,43 @@ export const glossaryApi = {
       body: JSON.stringify(changes),
       token,
     });
+  },
+
+  // ── VG-3: entity revision history + restore (D-GLOSSARY-VERSIONING) ─────────
+
+  listEntityRevisions(
+    bookId: string,
+    entityId: string,
+    token: string,
+  ): Promise<{ revisions: EntityRevisionSummary[] }> {
+    return apiJson<{ revisions: EntityRevisionSummary[] }>(
+      `${BASE}/books/${bookId}/entities/${entityId}/revisions`,
+      { token },
+    );
+  },
+
+  getEntityRevision(
+    bookId: string,
+    entityId: string,
+    revId: string,
+    token: string,
+  ): Promise<EntityRevisionDetail> {
+    return apiJson<EntityRevisionDetail>(
+      `${BASE}/books/${bookId}/entities/${entityId}/revisions/${revId}`,
+      { token },
+    );
+  },
+
+  restoreEntityRevision(
+    bookId: string,
+    entityId: string,
+    revId: string,
+    token: string,
+  ): Promise<{ restored: boolean; from_revision_num: number }> {
+    return apiJson<{ restored: boolean; from_revision_num: number }>(
+      `${BASE}/books/${bookId}/entities/${entityId}/revisions/${revId}/restore`,
+      { method: 'POST', token },
+    );
   },
 
   /** Lightweight names-only list for editor decoration scanning */

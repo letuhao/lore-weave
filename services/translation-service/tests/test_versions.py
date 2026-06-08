@@ -1,5 +1,6 @@
 """Unit tests for /v1/translation/chapters/.../versions endpoints (LW-72)."""
 import datetime
+import json
 from uuid import UUID, uuid4
 
 import pytest
@@ -29,6 +30,10 @@ def _list_row(**overrides):
         "source_language": "en",
         "target_language": "vi",
         "version_num": 1,
+        "translated_body_json": None,
+        "translated_body_format": "text",
+        "authored_by": "llm",
+        "edited_from_version_id": None,
         "input_tokens": 100,
         "output_tokens": 80,
         "usage_log_id": None,
@@ -57,6 +62,10 @@ def _get_row(**overrides):
         "source_language": "en",
         "target_language": "vi",
         "version_num": 1,
+        "translated_body_json": None,
+        "translated_body_format": "text",
+        "authored_by": "llm",
+        "edited_from_version_id": None,
         "input_tokens": 100,
         "output_tokens": 80,
         "usage_log_id": None,
@@ -72,12 +81,26 @@ def _get_row(**overrides):
 def _active_row(**overrides):
     base = {
         "owner_user_id": UUID(USER_ID),
+        "book_id": UUID(BOOK_ID),  # M7b: read for the translation.reviewed emit
         "target_language": "vi",
         "status": "completed",
         "unresolved_high_count": 0,
     }
     base.update(overrides)
     return FakeRecord(base)
+
+
+def _active_upsert_called(fake_pool):
+    """True if the active-versions upsert ran (ignores the M7b translation.reviewed emit)."""
+    return any(
+        "active_chapter_translation_versions" in c.args[0]
+        for c in fake_pool.execute.call_args_list
+    )
+
+
+def _reviewed_emits(fake_pool):
+    """The translation.reviewed outbox emits captured on fake_pool.execute (M7b)."""
+    return [c for c in fake_pool.execute.call_args_list if "translation.reviewed" in c.args[0]]
 
 
 # ── GET /v1/translation/chapters/{chapter_id}/versions ────────────────────────
@@ -183,8 +206,8 @@ def test_set_active_version_returns_200_and_upserts(client, fake_pool):
     assert data["active_id"] == VERSION_ID
     assert data["target_language"] == "vi"
     assert data["chapter_id"] == CHAPTER_ID
-    # DB execute must be called to upsert active table
-    fake_pool.execute.assert_called_once()
+    # DB execute upserts the active table (+ M7b emits translation.reviewed)
+    assert _active_upsert_called(fake_pool)
 
 
 def test_set_active_version_returns_404_when_not_found(client, fake_pool):
@@ -237,7 +260,7 @@ def test_set_active_version_publishes_flagged_with_acknowledge(client, fake_pool
     )
     assert resp.status_code == 200
     assert resp.json()["active_id"] == VERSION_ID
-    fake_pool.execute.assert_called_once()
+    assert _active_upsert_called(fake_pool)
 
 
 def test_set_active_version_no_gate_when_clean(client, fake_pool):
@@ -245,7 +268,102 @@ def test_set_active_version_no_gate_when_clean(client, fake_pool):
     fake_pool.fetchrow.return_value = _active_row(unresolved_high_count=0)
     resp = client.put(f"/v1/translation/chapters/{CHAPTER_ID}/versions/{VERSION_ID}/active")
     assert resp.status_code == 200
-    fake_pool.execute.assert_called_once()
+    assert _active_upsert_called(fake_pool)
+
+
+# ── M7b: human-accept signal emit ─────────────────────────────────────────────
+
+def test_set_active_emits_translation_reviewed(client, fake_pool):
+    """Setting a version active emits translation.reviewed (human accept → learning)."""
+    fake_pool.fetchrow.return_value = _active_row()
+    resp = client.put(f"/v1/translation/chapters/{CHAPTER_ID}/versions/{VERSION_ID}/active")
+    assert resp.status_code == 200
+    emits = _reviewed_emits(fake_pool)
+    assert len(emits) == 1
+    # args: sql, $1 version_id (aggregate_id), $2 payload json
+    payload = json.loads(emits[0].args[2])
+    assert payload["chapter_translation_id"] == VERSION_ID
+    assert payload["acknowledged_issues"] is False
+    assert payload["target_language"] == "vi"
+
+
+def test_acknowledged_publish_emits_with_flag_and_count(client, fake_pool):
+    """The verifier-calibration case: ack=true + the flagged count ride in the event."""
+    fake_pool.fetchrow.return_value = _active_row(unresolved_high_count=2)
+    resp = client.put(
+        f"/v1/translation/chapters/{CHAPTER_ID}/versions/{VERSION_ID}/active?acknowledge_issues=true"
+    )
+    assert resp.status_code == 200
+    payload = json.loads(_reviewed_emits(fake_pool)[0].args[2])
+    assert payload["acknowledged_issues"] is True
+    assert payload["unresolved_high_count"] == 2
+
+
+def test_held_version_emits_nothing(client, fake_pool):
+    """A 409 hold (no ack) sets nothing active → no human-accept signal."""
+    fake_pool.fetchrow.return_value = _active_row(unresolved_high_count=2)
+    resp = client.put(f"/v1/translation/chapters/{CHAPTER_ID}/versions/{VERSION_ID}/active")
+    assert resp.status_code == 409
+    assert _reviewed_emits(fake_pool) == []
+
+
+# ── M7c: save a human-edited translation (gold) ───────────────────────────────
+
+def _edit_body(**over):
+    base = {"target_language": "vi", "edited_from_version_id": VERSION_ID,
+            "translated_body": "Bản người sửa", "translated_body_format": "text"}
+    base.update(over)
+    return base
+
+
+def _corrected_emits(fake_pool):
+    return [c for c in fake_pool.execute.call_args_list if "translation.corrected" in c.args[0]]
+
+
+def test_save_edited_creates_human_version_and_emits_gold(client, fake_pool):
+    src = _get_row(translated_body="LLM draft")          # the version edited from
+    new = _get_row(id=uuid4(), authored_by="human",      # the new human version
+                   edited_from_version_id=UUID(VERSION_ID), translated_body="Bản người sửa")
+    fake_pool.fetchrow.side_effect = [src, new]
+    resp = client.post(f"/v1/translation/chapters/{CHAPTER_ID}/versions/edit", json=_edit_body())
+    assert resp.status_code == 201
+    assert resp.json()["authored_by"] == "human"
+    # review-impl: pin the INSERT SHAPE (not just the mocked response) — the 2nd
+    # fetchrow is the INSERT...RETURNING; it must actually write authored_by='human'
+    # + the parent link + version_num=MAX+1.
+    insert_sql = fake_pool.fetchrow.call_args_list[1].args[0]
+    assert "INSERT INTO chapter_translations" in insert_sql
+    assert "authored_by" in insert_sql and "'human'" in insert_sql
+    assert "edited_from_version_id" in insert_sql
+    assert "MAX(version_num)" in insert_sql
+    # translation.corrected emitted with before(LLM)/after(human)
+    emits = _corrected_emits(fake_pool)
+    assert len(emits) == 1
+    payload = json.loads(emits[0].args[2])
+    assert payload["before"]["body"] == "LLM draft"
+    assert payload["after"]["body"] == "Bản người sửa"
+    assert payload["edited_from_version_id"] == VERSION_ID
+
+
+def test_save_edited_404_when_source_missing(client, fake_pool):
+    fake_pool.fetchrow.return_value = None
+    resp = client.post(f"/v1/translation/chapters/{CHAPTER_ID}/versions/edit", json=_edit_body())
+    assert resp.status_code == 404
+    assert _corrected_emits(fake_pool) == []
+
+
+def test_save_edited_403_when_not_owned(client, fake_pool):
+    fake_pool.fetchrow.return_value = _get_row(owner_user_id=UUID(OTHER_USER_ID))
+    resp = client.post(f"/v1/translation/chapters/{CHAPTER_ID}/versions/edit", json=_edit_body())
+    assert resp.status_code == 403
+
+
+def test_save_edited_422_on_language_mismatch(client, fake_pool):
+    fake_pool.fetchrow.return_value = _get_row(target_language="en")
+    resp = client.post(f"/v1/translation/chapters/{CHAPTER_ID}/versions/edit",
+                       json=_edit_body(target_language="vi"))
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["code"] == "TRANSL_LANG_MISMATCH"
 
 
 def test_set_active_version_returns_422_when_status_running(client, fake_pool):

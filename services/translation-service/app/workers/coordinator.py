@@ -45,6 +45,7 @@ async def handle_job_message(msg: dict, pool, publish, publish_event) -> None:
             "max_qa_rounds":        msg.get("max_qa_rounds", 2),
             "verifier_model_source": msg.get("verifier_model_source"),
             "verifier_model_ref":   msg.get("verifier_model_ref"),
+            "cold_start_mode":      msg.get("cold_start_mode", "single_pass"),
         })
 
     log.info("coordinator: job %s — all %d chapter messages published", job_id, n)

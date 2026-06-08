@@ -240,21 +240,24 @@ ALTER TABLE user_translation_preferences
   ADD COLUMN IF NOT EXISTS verifier_model_source TEXT,
   ADD COLUMN IF NOT EXISTS verifier_model_ref    UUID,
   ADD COLUMN IF NOT EXISTS max_qa_rounds         INT  NOT NULL DEFAULT 2,
-  ADD COLUMN IF NOT EXISTS qa_depth              TEXT NOT NULL DEFAULT 'standard';
+  ADD COLUMN IF NOT EXISTS qa_depth              TEXT NOT NULL DEFAULT 'standard',
+  ADD COLUMN IF NOT EXISTS cold_start_mode       TEXT NOT NULL DEFAULT 'single_pass';
 
 ALTER TABLE book_translation_settings
   ADD COLUMN IF NOT EXISTS pipeline_version      TEXT NOT NULL DEFAULT 'v2',
   ADD COLUMN IF NOT EXISTS verifier_model_source TEXT,
   ADD COLUMN IF NOT EXISTS verifier_model_ref    UUID,
   ADD COLUMN IF NOT EXISTS max_qa_rounds         INT  NOT NULL DEFAULT 2,
-  ADD COLUMN IF NOT EXISTS qa_depth              TEXT NOT NULL DEFAULT 'standard';
+  ADD COLUMN IF NOT EXISTS qa_depth              TEXT NOT NULL DEFAULT 'standard',
+  ADD COLUMN IF NOT EXISTS cold_start_mode       TEXT NOT NULL DEFAULT 'single_pass';
 
 ALTER TABLE translation_jobs
   ADD COLUMN IF NOT EXISTS pipeline_version      TEXT NOT NULL DEFAULT 'v2',
   ADD COLUMN IF NOT EXISTS verifier_model_source TEXT,
   ADD COLUMN IF NOT EXISTS verifier_model_ref    UUID,
   ADD COLUMN IF NOT EXISTS max_qa_rounds         INT  NOT NULL DEFAULT 2,
-  ADD COLUMN IF NOT EXISTS qa_depth              TEXT NOT NULL DEFAULT 'standard';
+  ADD COLUMN IF NOT EXISTS qa_depth              TEXT NOT NULL DEFAULT 'standard',
+  ADD COLUMN IF NOT EXISTS cold_start_mode       TEXT NOT NULL DEFAULT 'single_pass';
 
 -- Per-block QA issues — drives targeted re-translate + the future "needs review" UI.
 CREATE TABLE IF NOT EXISTS translation_quality_issues (
@@ -283,6 +286,32 @@ ALTER TABLE chapter_translations
 -- a hint that the translation predates the glossary edit. Additive + idempotent.
 ALTER TABLE chapter_translations
   ADD COLUMN IF NOT EXISTS is_glossary_stale BOOLEAN NOT NULL DEFAULT false;
+
+-- M6b full-propagate: per-(chapter_translation, entity) glossary usage index.
+-- The worker records which glossary entities a chapter's translation actually
+-- drew on (entries that scored > 0 against the chapter text). On a later
+-- glossary.entity_updated the staleness consumer flags ONLY the chapter
+-- translations whose index contains the changed entity_id (and, when the event
+-- carries target_language, only that language) instead of the whole book.
+-- A translation with NO rows here (translated before this index existed) falls
+-- back to the coarse flag — no false-negatives. ON DELETE CASCADE ties usage to
+-- its translation version.
+CREATE TABLE IF NOT EXISTS chapter_translation_glossary_usage (
+  chapter_translation_id UUID NOT NULL
+    REFERENCES chapter_translations(id) ON DELETE CASCADE,
+  entity_id              UUID NOT NULL,
+  PRIMARY KEY (chapter_translation_id, entity_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ctgu_entity
+  ON chapter_translation_glossary_usage(entity_id);
+
+-- M7c (human-fix gold): mark human-authored translation versions + link the LLM
+-- version they were edited from, so the LLM→human diff can be captured as a
+-- learning correction (before=LLM draft, after=human edit). Additive + idempotent.
+-- 'llm' default keeps every existing/worker-produced version unchanged.
+ALTER TABLE chapter_translations
+  ADD COLUMN IF NOT EXISTS authored_by TEXT NOT NULL DEFAULT 'llm',
+  ADD COLUMN IF NOT EXISTS edited_from_version_id UUID;
 """
 
 

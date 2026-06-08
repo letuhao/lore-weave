@@ -64,6 +64,22 @@ SCORE_CONFIG_SEED: list[dict[str, Any]] = [
     {"name": "online_judge_precision", "data_type": "numeric", "min_value": 0.0, "max_value": 1.0,
      "description": "Online LLM-judge precision: per-item supported-credit of an extraction "
                     "vs its source text (Q4b; needs items + source from an opted-in run)."},
+    {"name": "translation_quality_score", "data_type": "numeric", "min_value": 0.0, "max_value": 1.0,
+     "description": "M7a (Channel 2): the V3 translation verifier's per-chapter overall "
+                    "quality score (auto/LLM-action log). Breakdown (unresolved-high, qa "
+                    "rounds, issue-type counts) carried in the score comment."},
+    {"name": "translation_human_accept", "data_type": "numeric", "min_value": 0.0, "max_value": 1.0,
+     "description": "M7b (Channel 1a): a human set this chapter-translation version active "
+                    "(=1.0, a publish judgment). The verifier-calibration detail "
+                    "(acknowledged_issues + unresolved_high at accept) rides in the comment."},
+    {"name": "glossary_name_confirmed", "data_type": "numeric", "min_value": 0.0, "max_value": 1.0,
+     "description": "M7c-3: a human verified a glossary name's target rendering (the M6a "
+                    "confirm-a-name action) =1.0 — a canonical source→target pair (in the "
+                    "comment) for name-rendering tuning."},
+    {"name": "translation_judge_fidelity", "data_type": "numeric", "min_value": 0.0, "max_value": 1.0,
+     "description": "M7d: online LLM-judge fidelity of a translation vs its source [0,1] "
+                    "(source=auto, panel_safe=false — a single online judge). Reason + judge "
+                    "model in the comment."},
 ]
 
 

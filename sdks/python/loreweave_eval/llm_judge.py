@@ -70,6 +70,8 @@ __all__ = [
     "judge_chapter",
     "format_items_for_judge",
     "run_dump_judge",
+    "FidelityVerdict",
+    "judge_translation_fidelity",
 ]
 
 
@@ -761,3 +763,64 @@ async def run_dump_judge(
         chapters_incomplete=chapters_incomplete,
         verdicts=verdicts,
     )
+
+
+# ── M7d-1: translation-fidelity judge ─────────────────────────────────
+# A standalone judge for the translation feedback flywheel (track M7d): rate how
+# faithfully a translation conveys its source. Unlike judge_precision (which
+# scores extracted items vs source), this scores a TRANSLATION vs its SOURCE — a
+# single [0,1] fidelity score, no gold needed. Best-effort: any non-usable
+# outcome (bad call / unparseable / out-of-range / empty input) returns None so a
+# single judge hiccup never aborts a multi-chapter pass.
+
+_FIDELITY_SYSTEM = _NO_THINK_PREFIX + (
+    "You are a bilingual translation-quality judge. You are given a SOURCE text "
+    "and its TRANSLATION. Rate how FAITHFULLY the translation conveys the source's "
+    "meaning on a 0.0-1.0 scale: 1.0 = fully faithful (no omissions, additions, or "
+    "mistranslations); 0.5 = partially faithful (some meaning lost or altered); "
+    "0.0 = unrelated or grossly wrong. Judge MEANING fidelity, completeness, and "
+    "accuracy ONLY — do NOT reward or penalise target-language fluency or style. "
+    'Return ONLY a JSON object: {"score": <number 0.0-1.0>, "reason": "<=15 words"}.'
+)
+
+
+@dataclass
+class FidelityVerdict:
+    """One translation-fidelity judgment: a [0,1] score + a short rationale."""
+
+    score: float
+    reason: str
+
+
+async def judge_translation_fidelity(
+    client: JudgeLLMClient,
+    *,
+    judge_model: str,
+    user_id: str,
+    model_source: str,
+    source_text: str,
+    translated_text: str,
+) -> "FidelityVerdict | None":
+    """One LLM call rating translation fidelity in [0,1]. Returns None on any
+    non-usable outcome (empty inputs / failed call / unparseable / out-of-range)
+    so the caller treats it as 'unjudged' rather than aborting."""
+    if not source_text.strip() or not translated_text.strip():
+        return None
+    user = f"SOURCE:\n{source_text}\n\nTRANSLATION:\n{translated_text}"
+    try:
+        raw = await _call_judge(
+            client,
+            judge_model=judge_model,
+            user_id=user_id,
+            model_source=model_source,
+            system=_FIDELITY_SYSTEM,
+            user=user,
+            n_items=1,
+        )
+        parsed = _extract_json_object(raw)
+        score = float(parsed.get("score"))
+    except (ValueError, KeyError, TypeError):
+        return None
+    if not (0.0 <= score <= 1.0):
+        return None
+    return FidelityVerdict(score=score, reason=str(parsed.get("reason", "")))

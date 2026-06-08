@@ -30,6 +30,7 @@ from app.routers import (
     internal_extraction,
     internal_parse,
     internal_summarize,
+    internal_timeline,
     internal_tools,
     internal_wiki,
     metrics,
@@ -652,6 +653,7 @@ app.include_router(internal_enrichment.router)
 app.include_router(internal_extraction.router)
 app.include_router(internal_parse.router)
 app.include_router(internal_summarize.router)
+app.include_router(internal_timeline.router)
 app.include_router(internal_tools.router)
 app.include_router(internal_wiki.router)
 app.include_router(metrics.router)

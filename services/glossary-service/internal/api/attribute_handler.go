@@ -306,6 +306,12 @@ func (s *Server) createTranslation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "insert failed")
 		return
 	}
+	// M6b: propagate target-language-specific staleness to translation-service.
+	s.emitTranslationChanged(r.Context(), bookID, entityID, tr.LanguageCode)
+	// M7c-3: a user-verified name is a human-canonical rendering → learning gold.
+	if tr.Confidence == "verified" {
+		s.emitNameConfirmed(r.Context(), bookID, entityID, tr.LanguageCode, tr.Value, userID.String())
+	}
 	writeJSON(w, http.StatusCreated, tr)
 }
 
@@ -418,6 +424,13 @@ func (s *Server) updateTranslation(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	// M6b: propagate target-language-specific staleness to translation-service.
+	s.emitTranslationChanged(ctx, bookID, entityID, tr.LanguageCode)
+	// M7c-3: capture the verify ACTION (confidence set to 'verified' in this patch)
+	// as a human-canonical name confirmation → learning gold.
+	if _, hadConf := in["confidence"]; hadConf && tr.Confidence == "verified" {
+		s.emitNameConfirmed(ctx, bookID, entityID, tr.LanguageCode, tr.Value, userID.String())
+	}
 	writeJSON(w, http.StatusOK, tr)
 }
 
@@ -455,16 +468,22 @@ func (s *Server) deleteTranslation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, err := s.pool.Exec(r.Context(),
-		`DELETE FROM attribute_translations WHERE translation_id=$1 AND attr_value_id=$2`,
-		translationID, attrValueID)
+	// RETURNING language_code so M6b can emit a per-language staleness event
+	// AFTER the row is gone (ErrNoRows ⇒ nothing deleted ⇒ 404, no emit).
+	var deletedLang string
+	err := s.pool.QueryRow(r.Context(),
+		`DELETE FROM attribute_translations WHERE translation_id=$1 AND attr_value_id=$2
+		 RETURNING language_code`,
+		translationID, attrValueID).Scan(&deletedLang)
 	if err != nil {
+		if err == pgx.ErrNoRows {
+			writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "translation not found")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "delete failed")
 		return
 	}
-	if tag.RowsAffected() == 0 {
-		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "translation not found")
-		return
-	}
+	// M6b: propagate target-language-specific staleness to translation-service.
+	s.emitTranslationChanged(r.Context(), bookID, entityID, deletedLang)
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -119,5 +119,32 @@
     "err_save": "Failed to apply",
     "toast_merged": "Mapped {{count}} entities from \"{{code}}\"",
     "toast_reassigned": "Reassigned \"{{name}}\""
+  },
+  "history": {
+    "title": "Version history",
+    "close": "Close",
+    "loading": "Loading history…",
+    "empty": "No revisions yet.",
+    "view": "View",
+    "restore": "Restore",
+    "cancel": "Cancel",
+    "restore_confirm_title": "Restore this revision?",
+    "restore_confirm_desc": "Restore the entity to revision #{{num}}. The current state is saved as a new revision, so this is reversible.",
+    "toast_restored": "Restored to revision #{{num}}",
+    "snap_status": "Status",
+    "snap_chapters": "Chapters",
+    "op": {
+      "created": "created",
+      "updated": "updated",
+      "restore": "restored",
+      "baseline": "baseline",
+      "delete": "deleted"
+    },
+    "actor": {
+      "user": "you",
+      "pipeline": "AI",
+      "system": "system"
+    },
+    "error": "Couldn't load version history."
   }
 }

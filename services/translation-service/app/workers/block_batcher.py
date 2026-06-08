@@ -67,14 +67,23 @@ def compute_input_budget(
     source_lang: str = "",
     target_lang: str = "",
     glossary_tokens: int = _GLOSSARY_OVERHEAD,
+    extra_system_tokens: int = 0,
 ) -> int:
     """Compute the max input tokens per batch given context window and overheads.
 
     Budget formula:
-      available = context_window - system - glossary - rolling_summary
+      available = context_window - system - glossary - rolling_summary - extra_system
       input_budget = available / (1 + expansion_ratio)
+
+    ``extra_system_tokens`` (D-TRANSL-EXTRASYSTEM-BUDGET): the V3 pipeline appends
+    romanization + knowledge brief + prev-chapter memo to the system prompt; that
+    text must be reserved here or a large injected context overflows the window.
+    Defaults to 0 — V2 (and the book-agnostic sync block mode) inject nothing.
     """
-    overhead = _SYSTEM_PROMPT_OVERHEAD + glossary_tokens + _ROLLING_SUMMARY_OVERHEAD
+    overhead = (
+        _SYSTEM_PROMPT_OVERHEAD + glossary_tokens + _ROLLING_SUMMARY_OVERHEAD
+        + max(0, extra_system_tokens)
+    )
     available = context_window - overhead
     if available < 200:
         available = 200
@@ -137,6 +146,7 @@ def build_batch_plan(
     source_lang: str = "",
     target_lang: str = "",
     group_ids: dict[int, int] | None = None,
+    extra_system_tokens: int = 0,
 ) -> BatchPlan:
     """Build a batch plan from a Tiptap block array.
 
@@ -158,7 +168,10 @@ def build_batch_plan(
     """
     # V2: use expansion-ratio-aware budget when languages are known
     if source_lang and target_lang:
-        max_tokens = compute_input_budget(context_window_tokens, source_lang, target_lang)
+        max_tokens = compute_input_budget(
+            context_window_tokens, source_lang, target_lang,
+            extra_system_tokens=extra_system_tokens,
+        )
     else:
         # Legacy fallback
         max_tokens = int(context_window_tokens * budget_ratio)

@@ -142,3 +142,91 @@ async def fetch_wiki_neighborhood(
             glossary_entity_id, exc,
         )
         return WikiNeighborhood.empty(glossary_entity_id)
+
+
+# ── M4d-1: timeline (cross-chapter "story so far" memo) ───────────────────────
+
+_DEFAULT_TIMELINE_LIMIT = 25
+
+
+@dataclass
+class TimelineEvent:
+    """One narrative event up to the reading position."""
+    title: str
+    summary: str | None
+    event_date: str | None
+    participants: list[str] = field(default_factory=list)
+
+
+@dataclass
+class TimelineBrief:
+    """Recent story events before the chapter being translated. ``found`` is
+    False when the book has no knowledge project (cold start)."""
+    found: bool = False
+    events: list[TimelineEvent] = field(default_factory=list)
+
+    @classmethod
+    def empty(cls) -> "TimelineBrief":
+        return cls(found=False)
+
+
+def _parse_timeline_event(raw: dict) -> TimelineEvent:
+    parts = raw.get("participants", [])
+    participants = [str(p) for p in parts] if isinstance(parts, list) else []
+    return TimelineEvent(
+        title=str(raw.get("title", "")),
+        summary=raw.get("summary"),
+        event_date=raw.get("event_date"),
+        participants=participants,
+    )
+
+
+async def fetch_timeline(
+    book_id: str,
+    chapter_order: int,
+    limit: int = _DEFAULT_TIMELINE_LIMIT,
+) -> TimelineBrief:
+    """Fetch recent narrative events before ``chapter_order`` from knowledge-service.
+
+    Calls: POST {knowledge}/internal/knowledge/timeline
+
+    ``chapter_order`` is the book-service global chapter ``sort_order`` (the
+    reading position knowledge's ``event_order`` is keyed on) — NOT the job-local
+    ``chapter_index``. The endpoint resolves project + owner tenant from
+    ``book_id`` server-side, so translation passes only ``book_id`` + the reading
+    position. Returns a populated ``TimelineBrief`` on success, or an empty one
+    when the feature is off (no URL) or on any failure. Never raises.
+    """
+    if not settings.knowledge_service_internal_url:
+        return TimelineBrief.empty()
+
+    try:
+        async with httpx.AsyncClient(timeout=_KNOWLEDGE_FETCH_TIMEOUT) as client:
+            resp = await client.post(
+                f"{settings.knowledge_service_internal_url}"
+                f"/internal/knowledge/timeline",
+                json={
+                    "book_id": book_id,
+                    "chapter_order": chapter_order,
+                    "limit": limit,
+                },
+                headers={"X-Internal-Token": settings.internal_service_token},
+            )
+            if resp.status_code != 200:
+                log.warning(
+                    "timeline returned %d for book=%s — no timeline context",
+                    resp.status_code, book_id,
+                )
+                return TimelineBrief.empty()
+            payload = resp.json()
+            events = [
+                _parse_timeline_event(e)
+                for e in payload.get("events", []) if isinstance(e, dict)
+            ]
+            return TimelineBrief(found=bool(payload.get("found", False)), events=events)
+    except Exception as exc:
+        log.warning(
+            "timeline fetch failed for book=%s: %s — no timeline context",
+            book_id, exc,
+        )
+        return TimelineBrief.empty()

@@ -76,6 +76,8 @@ async def create_job(
         eff["verifier_model_source"] = payload.verifier_model_source
     if payload.verifier_model_ref:
         eff["verifier_model_ref"] = payload.verifier_model_ref
+    if payload.cold_start_mode:
+        eff["cold_start_mode"] = payload.cold_start_mode
     if not eff.get("model_ref"):
         raise HTTPException(
             status_code=422,
@@ -99,9 +101,10 @@ async def create_job(
                    compact_system_prompt, compact_user_prompt_tpl,
                    chunk_size_tokens, invoke_timeout_secs,
                    chapter_ids, total_chapters, pipeline_version,
-                   qa_depth, max_qa_rounds, verifier_model_source, verifier_model_ref)
+                   qa_depth, max_qa_rounds, verifier_model_source, verifier_model_ref,
+                   cold_start_mode)
                 VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-                        $17,$18,$19,$20)
+                        $17,$18,$19,$20,$21)
                 RETURNING *
                 """,
                 book_id, uid,
@@ -114,6 +117,7 @@ async def create_job(
                 chapter_ids, len(chapter_ids), eff.get("pipeline_version", "v2"),
                 eff.get("qa_depth", "standard"), eff.get("max_qa_rounds", 2),
                 eff.get("verifier_model_source"), eff.get("verifier_model_ref"),
+                eff.get("cold_start_mode", "single_pass"),
             )
 
             job_id = job_row["job_id"]
@@ -152,6 +156,7 @@ async def create_job(
         "max_qa_rounds":           eff.get("max_qa_rounds", 2),
         "verifier_model_source":   eff.get("verifier_model_source"),
         "verifier_model_ref":      str(eff["verifier_model_ref"]) if eff.get("verifier_model_ref") else None,
+        "cold_start_mode":         eff.get("cold_start_mode", "single_pass"),
     })
     await publish_event(user_id, {
         "event":    "job.created",
