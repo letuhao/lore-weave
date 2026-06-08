@@ -266,3 +266,7 @@ frontend-game/test-results/
 # deterministic enrichment-v1.json; this live-judge variant is local-only —
 # the authoritative longitudinal record is the enrichment_eval_runs DB table).
 eval/baselines/enrichment-v1-live.json
+
+# Local-only dev dumps & ad-hoc smoke scripts (underscore-prefixed convention)
+services/**/_*.json
+services/**/scripts/_*.py
