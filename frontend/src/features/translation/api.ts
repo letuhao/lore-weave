@@ -147,6 +147,26 @@ export const versionsApi = {
       token,
     });
   },
+
+  // M7c: save a human-edited translation as a new version. The LLM→human diff is
+  // captured as learning gold server-side (translation.corrected).
+  saveEditedVersion(
+    token: string,
+    chapterId: string,
+    payload: {
+      target_language: string;
+      edited_from_version_id: string;
+      translated_body?: string;
+      translated_body_json?: unknown[];
+      translated_body_format: 'text' | 'json';
+    },
+  ): Promise<ChapterTranslation> {
+    return apiJson(`/v1/translation/chapters/${chapterId}/versions/edit`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    });
+  },
 };
 
 // ── Translation API ───────────────────────────────────────────────────────────
