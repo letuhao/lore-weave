@@ -165,13 +165,26 @@ After `rrf_fuse` produces the candidate list:
 New query params: `rerank: bool = True` (default on for hybrid/semantic), `min_rerank_score: float`.
 
 ### 6.3 Degradation contract (mandatory)
-Reranker `None`/timeout/`503`/down → **skip rerank, keep the RRF fusion order** (current E5 behavior), set `degraded["rerank"]="unavailable"`. Never 500, never block the search. Cold-start: use a **load-tolerant timeout** (e.g. 8–10s) on the *first* call, short (≤2s) on warm calls — or fire a `POST /v1/models/{id}/load` pre-warm at app start / on a schedule so user-facing searches are always warm.
+Reranker `None`/timeout/`503`/down → **skip rerank, keep the RRF fusion order** (current E5 behavior), set `degraded["rerank"]="unavailable"`. Never 500, never block the search. A single `rerank_timeout_s` (knowledge config, **5s**) covers the cold-reload (~1.7s, §6.6) with margin while still degrading promptly on a real hang.
 
 ### 6.4 Calibrating `min_rerank_score`
 Cross-encoder scores separate cleanly (unlike cosine), so a real floor works. Calibrate via the eval harness: run the negative-control queries (`封神榜`…) + positives (incl. the weak `三年前…`) through rerank, set the floor between the highest-negative and lowest-true-positive cross-encoder score. Re-run `scripts/run_rawsearch_eval.py --rerank` and confirm: negatives → 0 results, positives retained, hybrid MRR/ndcg ≥ the E5 baseline.
 
 ### 6.5 Config keys (this repo)
-`RERANK_URL`, `RERANK_SERVICE_TOKEN`, `RERANK_MODEL_REF`, `RERANK_TOP_N` (30), `MIN_RERANK_SCORE` (calibrated), `RERANK_TIMEOUT_WARM_MS` / `RERANK_TIMEOUT_COLD_MS`, `RERANK_ENABLED` (kill-switch → pure E5 behavior).
+`RERANK_URL`, `RERANK_SERVICE_TOKEN`, `RERANK_MODEL` (`bge-reranker-v2-m3`), `RERANK_TOP_N` (30), `MIN_RERANK_SCORE` (0.30, calibrated), `RERANK_TIMEOUT_S` (5.0), `RERANK_ENABLED` (kill-switch → pure E5 behavior).
+
+### 6.6 Measured latency + warm-keeping policy (2026-06-08)
+Benchmarked `bge-reranker-v2-m3`, 30 CJK passages (~the rerank pool):
+
+| | latency |
+|---|---|
+| **warm** p50 / p95 | **44 ms / 60 ms** (GPU-class — negligible for a search box) |
+| **cold** (after TTL idle-unload → reload) | **~1.7 s** (one call) |
+
+Warm rerank is a non-issue. The only cost is the cold reload after the model idle-unloads (§4.1 TTL). **Recommended policy — scale the TTL to demand** (operator's call on the rerank service, no app change):
+- **High TTL** (e.g. `RERANK_DEFAULT_TTL=3600`+, or tuned to expected request gaps): under sustained search traffic each call resets the timer, so the model stays resident and *only the very first request after a genuinely-long idle pays the ~1.7s* — VRAM is still freed during real idle. **Preferred for variable/bursty usage.**
+- **`keep_warm: true`**: never unloads → zero cold start, permanent VRAM. For an always-hot, latency-critical reranker.
+- The app side needs nothing: `rerank_timeout_s=5` absorbs the occasional cold call, and degrade-to-fusion (§6.3) covers a true outage.
 
 ---
 

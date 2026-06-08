@@ -88,7 +88,12 @@ class Settings(BaseSettings):
     rerank_model: str = "bge-reranker-v2-m3"
     rerank_top_n: int = 30
     min_rerank_score: float = 0.30
-    rerank_timeout_s: float = 12.0
+    # Measured 2026-06-08 (bge-reranker-v2-m3, 30 CJK passages): warm p50 44ms /
+    # p95 60ms (GPU-class); cold-reload (after TTL idle-unload) ~1.7s. 5s covers
+    # cold with margin yet degrades fast on a real hang. PROD: scale the rerank
+    # service's TTL to demand (high TTL ⇒ stays warm under traffic, only the
+    # first-after-long-idle pays cold) — see rerank guide §6.6 (D-RAWSEARCH-RERANK-LATENCY).
+    rerank_timeout_s: float = 5.0
 
     # K11.2 — Neo4j connection (Track 2 extraction graph). Empty
     # `neo4j_uri` means "skip Neo4j init at startup" — Track 1 dev
