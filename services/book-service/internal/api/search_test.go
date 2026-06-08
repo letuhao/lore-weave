@@ -36,13 +36,15 @@ func TestValidateSearchQuery(t *testing.T) {
 
 func TestValidateSurface(t *testing.T) {
 	t.Parallel()
-	for _, ok := range []string{"", "draft", "canon", "all"} {
-		if msg := validateSurface(ok); msg != "" {
-			t.Fatalf("surface %q should be accepted, got %q", ok, msg)
+	// "" + "draft" normalise to "draft"; canon/all pass through.
+	for in, want := range map[string]string{"": "draft", "draft": "draft", "canon": "canon", "all": "all"} {
+		got, msg := validateSurface(in)
+		if msg != "" || got != want {
+			t.Fatalf("surface %q -> (%q,%q), want (%q,\"\")", in, got, msg, want)
 		}
 	}
 	for _, bad := range []string{"drafts", "DRAFT", "garbage", "publish"} {
-		if msg := validateSurface(bad); msg == "" {
+		if _, msg := validateSurface(bad); msg == "" {
 			t.Fatalf("surface %q should be rejected", bad)
 		}
 	}
@@ -53,7 +55,7 @@ func TestBuildLexicalHit(t *testing.T) {
 	cid := uuid.New()
 	title := "第5章 龙象般若"
 	// exact substring → boosted score + relevance 1.0 + a highlight span
-	hit := buildLexicalHit(cid, &title, nil, 5, 2, "他修炼龙象般若掌", 0.4, "龙象般若")
+	hit := buildLexicalHit(cid, &title, nil, 5, 2, "他修炼龙象般若掌", 0.4, "龙象般若", "draft")
 	if hit["surface"] != "draft" || hit["matchType"] != "lexical" {
 		t.Fatalf("surface/matchType wrong: %v / %v", hit["surface"], hit["matchType"])
 	}
@@ -68,7 +70,10 @@ func TestBuildLexicalHit(t *testing.T) {
 	}
 
 	// trigram-only (no exact substring) → score=relevance=sim, no highlight
-	miss := buildLexicalHit(cid, &title, nil, 5, 2, "完全不相关的文字", 0.31, "龙象般若")
+	miss := buildLexicalHit(cid, &title, nil, 5, 2, "完全不相关的文字", 0.31, "龙象般若", "canon")
+	if miss["surface"] != "canon" {
+		t.Fatalf("surface should pass through: got %v", miss["surface"])
+	}
 	if miss["score"].(float64) != 0.31 || miss["relevance"].(float64) != 0.31 {
 		t.Fatalf("non-exact score/relevance = %v/%v, want 0.31", miss["score"], miss["relevance"])
 	}

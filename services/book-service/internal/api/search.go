@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -69,6 +70,29 @@ WHERE t.rn = 1
 ORDER BY t.exact DESC, t.sim DESC, t.sort_order
 LIMIT $4`
 
+// lexicalSearchCanonSQL — P3-B canon surface. Searches the PUBLISHED revision
+// text per chapter (chapter_revisions.body JSONB `_text` elements) rather than
+// the live draft chapter_blocks. block_index = JSONB content-array ordinal,
+// which matches the reader's data-block-id for a published chapter (P3-C scroll).
+// No trigram GIN on the JSONB text → a seq scan; acceptable until a canon corpus
+// exists (then denormalize to a canon_blocks table). Same 7 projected columns as
+// the draft SQLs so buildLexicalHit/runLexicalSQL are shared.
+//
+//	$1 = book_id   $2 = raw query   $3 = escaped ILIKE pattern   $4 = limit
+const lexicalSearchCanonSQL = `
+SELECT c.id, c.title, c.sort_order, (x.ord - 1)::int AS block_index,
+       NULL::text AS heading_context, (x.elem ->> '_text') AS text_content,
+       similarity(x.elem ->> '_text', $2) AS sim
+FROM chapters c
+JOIN chapter_revisions rv ON rv.id = c.published_revision_id
+CROSS JOIN LATERAL jsonb_array_elements(rv.body -> 'content') WITH ORDINALITY AS x(elem, ord)
+WHERE c.book_id = $1
+  AND c.lifecycle_state = 'active'
+  AND (x.elem ->> '_text') IS NOT NULL
+  AND ((x.elem ->> '_text') ILIKE $3 OR (x.elem ->> '_text') % $2)
+ORDER BY ((x.elem ->> '_text') ILIKE $3) DESC, sim DESC, c.sort_order, x.ord
+LIMIT $4`
+
 // validateSearchQuery trims ?q= and enforces presence + the length cap (SP5).
 // errMsg non-empty ⇒ the handler returns 400.
 func validateSearchQuery(raw string) (q, errMsg string) {
@@ -82,15 +106,19 @@ func validateSearchQuery(raw string) (q, errMsg string) {
 	return q, ""
 }
 
-// validateSurface accepts "", "draft", "canon", or "all" (ADJ-3). v1 always
-// returns draft hits — a recognised value is accepted for forward-compat; an
-// unrecognised one is a 400 so client typos don't silently fall through to draft.
-func validateSurface(raw string) string {
+// validateSurface normalises ?surface= (P3-B). "" defaults to "draft" (live
+// chapter_blocks); "canon" searches the published-revision text; "all" merges
+// both. An unrecognised value is a 400 so client typos don't fall through.
+func validateSurface(raw string) (surface, errMsg string) {
 	switch raw {
-	case "", "draft", "canon", "all":
-		return ""
+	case "", "draft":
+		return "draft", ""
+	case "canon":
+		return "canon", ""
+	case "all":
+		return "all", ""
 	default:
-		return "invalid surface"
+		return "", "invalid surface"
 	}
 }
 
@@ -199,7 +227,8 @@ func (s *Server) searchChapterText(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", errMsg)
 		return
 	}
-	if errMsg := validateSurface(r.URL.Query().Get("surface")); errMsg != "" {
+	surface, errMsg := validateSurface(r.URL.Query().Get("surface"))
+	if errMsg != "" {
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", errMsg)
 		return
 	}
@@ -224,7 +253,7 @@ func (s *Server) searchChapterText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	limit, _ := parseLimitOffset(r) // default 20, max 100; v1 has no pagination (offset ignored, LOW-3)
-	results, err := s.runLexicalSearch(r.Context(), bookID, q, limit, granularity)
+	results, err := s.runLexicalSearch(r.Context(), bookID, q, limit, granularity, surface)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "search failed")
 		return
@@ -255,8 +284,13 @@ func (s *Server) searchChapterTextInternal(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", errMsg)
 		return
 	}
+	surface, errMsg := validateSurface(r.URL.Query().Get("surface"))
+	if errMsg != "" {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", errMsg)
+		return
+	}
 	limit, _ := parseLimitOffset(r)
-	results, err := s.runLexicalSearch(r.Context(), bookID, q, limit, granularity)
+	results, err := s.runLexicalSearch(r.Context(), bookID, q, limit, granularity, surface)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "search failed")
 		return
@@ -272,7 +306,7 @@ func (s *Server) searchChapterTextInternal(w http.ResponseWriter, r *http.Reques
 //
 // NOTE (review-impl MED-2): charStart/charEnd + highlights are Unicode
 // CODE-POINT (rune) offsets, NOT UTF-16 units — clients index by code point.
-func buildLexicalHit(chapterID uuid.UUID, title, headingCtx *string, sortOrder, blockIndex int, textContent string, sim float64, q string) map[string]any {
+func buildLexicalHit(chapterID uuid.UUID, title, headingCtx *string, sortOrder, blockIndex int, textContent string, sim float64, q, surface string) map[string]any {
 	hl := computeHighlight(textContent, q, searchSnippetWindow)
 	score := sim
 	relevance := sim // E5: calibrated 0–1 relevance (exact match ⇒ 1.0)
@@ -286,7 +320,7 @@ func buildLexicalHit(chapterID uuid.UUID, title, headingCtx *string, sortOrder, 
 		"chapterId":    chapterID,
 		"chapterTitle": title,
 		"sortOrder":    sortOrder,
-		"surface":      "draft",
+		"surface":      surface, // P3-B: "draft" (chapter_blocks) or "canon" (published rev)
 		"matchType":    "lexical",
 		"score":        score,
 		"relevance":    relevance,
@@ -302,13 +336,43 @@ func buildLexicalHit(chapterID uuid.UUID, title, headingCtx *string, sortOrder, 
 }
 
 // runLexicalSearch is the shared lexical-search core (no auth/ownership — the
-// callers gate that). Returns verbatim-snippet hit maps for the book's draft
-// chapter_blocks. surface="draft"/matchType="lexical" by construction.
-func (s *Server) runLexicalSearch(ctx context.Context, bookID uuid.UUID, q string, limit int, granularity string) ([]map[string]any, error) {
-	sql := lexicalSearchSQL // "block": every matching block (exhaustive mining)
+// callers gate that). `surface` (P3-B) selects the text searched: "draft" (live
+// chapter_blocks, default), "canon" (published-revision text), or "all" (both,
+// merged by score). `granularity` applies to the draft leg (chapter-best vs
+// every-block). matchType="lexical" by construction.
+func (s *Server) runLexicalSearch(ctx context.Context, bookID uuid.UUID, q string, limit int, granularity, surface string) ([]map[string]any, error) {
+	draftSQL := lexicalSearchSQL // "block": every matching block (exhaustive mining)
 	if granularity == "chapter" {
-		sql = lexicalSearchChapterSQL // best block per chapter (navigate; max chapter recall)
+		draftSQL = lexicalSearchChapterSQL // best block per chapter (navigate)
 	}
+	switch surface {
+	case "canon":
+		return s.runLexicalSQL(ctx, lexicalSearchCanonSQL, bookID, q, limit, "canon")
+	case "all":
+		draft, err := s.runLexicalSQL(ctx, draftSQL, bookID, q, limit, "draft")
+		if err != nil {
+			return nil, err
+		}
+		canon, err := s.runLexicalSQL(ctx, lexicalSearchCanonSQL, bookID, q, limit, "canon")
+		if err != nil {
+			return nil, err
+		}
+		merged := append(draft, canon...)
+		sort.SliceStable(merged, func(i, j int) bool {
+			return merged[i]["score"].(float64) > merged[j]["score"].(float64)
+		})
+		if len(merged) > limit {
+			merged = merged[:limit]
+		}
+		return merged, nil
+	default: // "draft"
+		return s.runLexicalSQL(ctx, draftSQL, bookID, q, limit, "draft")
+	}
+}
+
+// runLexicalSQL runs one lexical SQL ($1 book_id, $2 raw q, $3 escaped pattern,
+// $4 limit) and maps each row → a hit with the given surface label.
+func (s *Server) runLexicalSQL(ctx context.Context, sql string, bookID uuid.UUID, q string, limit int, surface string) ([]map[string]any, error) {
 	rows, err := s.pool.Query(ctx, sql, bookID, q, escapeLikePattern(q), limit)
 	if err != nil {
 		return nil, err
@@ -325,7 +389,7 @@ func (s *Server) runLexicalSearch(ctx context.Context, bookID uuid.UUID, q strin
 		if err := rows.Scan(&chapterID, &title, &sortOrder, &blockIndex, &headingCtx, &textContent, &sim); err != nil {
 			continue
 		}
-		results = append(results, buildLexicalHit(chapterID, title, headingCtx, sortOrder, blockIndex, textContent, sim, q))
+		results = append(results, buildLexicalHit(chapterID, title, headingCtx, sortOrder, blockIndex, textContent, sim, q, surface))
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
