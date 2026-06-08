@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Menu, X, ChevronLeft, ChevronRight, Pencil, Volume2, Sun } from 'lucide-react';
 import { useAuth } from '@/auth';
@@ -42,6 +42,9 @@ function computeReadingStats(blocks: JSONContent[], language?: string) {
 export function ReaderPage() {
   const { t } = useTranslation('reader');
   const { bookId = '', chapterId = '' } = useParams();
+  // raw-search jump-to-source: ?block=N scrolls to that block once content renders.
+  const [searchParams] = useSearchParams();
+  const jumpBlock = searchParams.get('block');
   const { accessToken, user } = useAuth();
   // GA4-style reading tracker — zero re-renders, flushes via sendBeacon
   const sentinelRef = useReadingTracker({ bookId, chapterId, accessToken });
@@ -76,6 +79,22 @@ export function ReaderPage() {
   const ttsControls = useTTSControls();
   useBlockScroll(scrollRef, autoScrollTTS);
   useTTSShortcuts();
+
+  // Raw-search jump-to-source: once the chapter content has rendered, scroll the
+  // targeted block to centre (reuses ContentRenderer's `data-block-id="block-N"`,
+  // the same hook TTS auto-scroll uses; the reader renders all blocks, no
+  // virtualization). blockIndex matches the BE's lexical hit — both index the
+  // top-level Tiptap content array. (A translation view that merges/splits blocks
+  // could drift; `?.scrollIntoView` no-ops if the index isn't present.)
+  useEffect(() => {
+    if (!jumpBlock || loading || blocks.length === 0) return;
+    const timer = window.setTimeout(() => {
+      document
+        .querySelector(`[data-block-id="block-${jumpBlock}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [jumpBlock, loading, blocks.length]);
 
   const handleStartTTS = useCallback(() => {
     if (ttsState.status !== 'idle') {

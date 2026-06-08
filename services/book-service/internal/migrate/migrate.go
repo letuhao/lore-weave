@@ -276,6 +276,17 @@ CREATE TABLE IF NOT EXISTS canon_model_migration (
 );
 `
 
+// rawSearchExtensionSQL / rawSearchIndexSQL — lexical leg of raw-search
+// (docs/specs/2026-06-07-raw-search.md §3.2). Run as BEST-EFFORT separate Execs
+// in Up() (NOT inside schemaSQL) so a DB role lacking CREATE EXTENSION privilege
+// degrades search to 500-on-use rather than aborting the whole schema-init
+// transaction / blocking startup (review-impl MED-1; mirrors the block_count
+// pattern below). Idempotent (IF NOT EXISTS); rollback = DROP INDEX
+// idx_chapter_blocks_trgm.
+const rawSearchExtensionSQL = `CREATE EXTENSION IF NOT EXISTS pg_trgm`
+const rawSearchIndexSQL = `CREATE INDEX IF NOT EXISTS idx_chapter_blocks_trgm
+  ON chapter_blocks USING gin (text_content gin_trgm_ops)`
+
 func Up(ctx context.Context, pool *pgxpool.Pool) error {
 	if _, err := pool.Exec(ctx, schemaSQL); err != nil {
 		return fmt.Errorf("migrate: %w", err)
@@ -289,6 +300,12 @@ func Up(ctx context.Context, pool *pgxpool.Pool) error {
 		EXCEPTION WHEN duplicate_column THEN NULL;
 		END $$;
 	`)
+
+	// Raw search Phase 1 (lexical leg): pg_trgm + trigram index, best-effort &
+	// separate from schemaSQL so a privilege failure can't abort schema init or
+	// block startup (review-impl MED-1). Search degrades to 500-on-use if absent.
+	_, _ = pool.Exec(ctx, rawSearchExtensionSQL)
+	_, _ = pool.Exec(ctx, rawSearchIndexSQL)
 
 	// Canon Model CM1: one-time editorial backfill (marker-gated; idempotent).
 	if _, err := pool.Exec(ctx, backfillSQL); err != nil {
