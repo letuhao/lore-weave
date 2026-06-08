@@ -590,11 +590,13 @@ class OutlineRepo:
         already archived. Scoped by user_id at the CTE root, so the subtree can
         only contain the caller's nodes.
 
-        UNION (not UNION ALL): a malformed parent_id CYCLE (reachable today —
-        update_node permits reparenting with no cycle guard) would make UNION ALL
-        recurse forever (and hang past the pool command_timeout). UNION dedups,
-        so the walk terminates at the cycle. (Reparent cycle PREVENTION is a
-        router-layer validation, tracked as D-COMP-M2-XREF-OWNERSHIP.)"""
+        UNION (not UNION ALL): defense-in-depth against a malformed parent_id
+        CYCLE — UNION ALL would recurse forever (and hang past the pool
+        command_timeout), UNION dedups so the walk terminates at the cycle. Note
+        that reparent-cycle PREVENTION is already enforced upstream by
+        `_validate_reparent` (via `_descendant_ids`) on every `update_node`
+        reparent (D-COMP-M2-XREF-OWNERSHIP CLEARED, LOOM cycle 5); a cycle is only
+        reachable via raw SQL, which this UNION still tolerates as a backstop."""
         query = f"""
         WITH RECURSIVE subtree AS (
           SELECT id FROM outline_node
