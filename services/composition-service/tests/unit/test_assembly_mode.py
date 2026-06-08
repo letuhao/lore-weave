@@ -250,6 +250,7 @@ def chap_ctx(monkeypatch):
     state = {"diverge": {}}
 
     async def fake_pack(req, **kw):
+        state["pack_req"] = req  # capture so tests can assert the chapter_sort_hint wiring
         return PackedContext(blocks={}, prompt="GROUNDING", profile=NEUTRAL, token_count=5,
                              dropped_count=0, l4_dropped_no_position=0, grounding_available=True,
                              over_budget=False, warnings=[], scene_sort_order=3)
@@ -317,6 +318,9 @@ def test_chapter_generate_happy_path(chap_ctx):
     # max_out sized from the plan: 2 scenes × 700 = 1400 (< 8192 ceiling).
     assert state["diverge"]["max_tokens"] == 1400
     assert body["max_output_tokens"] == 1400
+    # chapter_sort double-fetch fix: the endpoint passes the sort it already
+    # fetched as chapter_sort_hint (Bk stub returns 3) so pack() doesn't re-fetch.
+    assert state["pack_req"].chapter_sort_hint == 3
     assert state["reflect"]["cast_glossary_ids"] == [str(ENT1), str(ENT2)]
     assert state["reflect"]["scene_sort_order"] == 3
     # job completed, op draft_chapter, no outline_node_id

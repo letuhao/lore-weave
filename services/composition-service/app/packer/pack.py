@@ -57,6 +57,10 @@ class PackRequest:
     bearer: str
     guide: str = ""
     settings: dict[str, Any] | None = None  # composition_work.settings → BookProfile
+    # Caller-provided chapter sort_order — when the caller already fetched it
+    # (B2/B3 chapter+stitch build the synthetic node's story_order from it), pass
+    # it here so pack() skips the redundant book.get_chapter_sort_orders call.
+    chapter_sort_hint: int | None = None
 
 
 @dataclass
@@ -115,7 +119,10 @@ async def pack(
     # — the majority, esp. CJK — never carry across chapters (LOOM-32 Round-2).
     scene_sort_order = None
     if chapter_id is not None:
-        scene_sort_order = (await book.get_chapter_sort_orders([chapter_id])).get(str(chapter_id))
+        scene_sort_order = (
+            req.chapter_sort_hint if req.chapter_sort_hint is not None
+            else (await book.get_chapter_sort_orders([chapter_id])).get(str(chapter_id))
+        )
     at_order = scene_at_order(scene_sort_order)
     # RECENT-WINDOW lower bound (/review-impl MED#1): the timeline endpoint orders
     # event_order ASC + LIMIT, so deep in a long book an unbounded query returns the

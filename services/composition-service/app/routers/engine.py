@@ -501,7 +501,7 @@ async def generate_chapter(
         pc = await pack(
             PackRequest(user_id=user_id, project_id=project_id, book_id=work.book_id,
                         node=pack_node, bearer=bearer, guide=body.guide,
-                        settings=work.settings),
+                        settings=work.settings, chapter_sort_hint=chapter_sort),
             book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
             outline_repo=outline, scene_links_repo=scene_links,
             budget_tokens=settings.pack_token_budget, jobs_repo=jobs,

@@ -120,6 +120,26 @@ async def test_c3a_grounding_unavailable_when_no_knowledge():
     assert any("grounding_unavailable" in w for w in pc.warnings)
 
 
+async def test_chapter_sort_hint_skips_redundant_book_fetch():
+    # Cycle-4 (chapter_sort double-fetch): when the caller already fetched the
+    # chapter sort (B2/B3 build the synthetic node's story_order from it) and
+    # passes chapter_sort_hint, pack() drives scene_sort_order from the hint and
+    # does NOT re-call book.get_chapter_sort_orders for the scene's own chapter.
+    class CountingBook(StubBook):
+        def __init__(self):
+            super().__init__()
+            self.sort_calls = 0
+        async def get_chapter_sort_orders(self, chapter_ids):
+            self.sort_calls += 1
+            return await super().get_chapter_sort_orders(chapter_ids)
+
+    book = CountingBook()
+    req = _req()
+    req.chapter_sort_hint = 7
+    pc = await _pack(req, book=book)
+    assert pc.scene_sort_order == 7 and book.sort_calls == 0
+
+
 async def _pack_with_compress(req, compress_fn, **kw):
     return await pack(
         req, book=kw.get("book") or StubBook(), glossary=StubGlossary(),
