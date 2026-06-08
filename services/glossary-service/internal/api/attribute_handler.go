@@ -308,6 +308,10 @@ func (s *Server) createTranslation(w http.ResponseWriter, r *http.Request) {
 	}
 	// M6b: propagate target-language-specific staleness to translation-service.
 	s.emitTranslationChanged(r.Context(), bookID, entityID, tr.LanguageCode)
+	// M7c-3: a user-verified name is a human-canonical rendering → learning gold.
+	if tr.Confidence == "verified" {
+		s.emitNameConfirmed(r.Context(), bookID, entityID, tr.LanguageCode, tr.Value, userID.String())
+	}
 	writeJSON(w, http.StatusCreated, tr)
 }
 
@@ -422,6 +426,11 @@ func (s *Server) updateTranslation(w http.ResponseWriter, r *http.Request) {
 	}
 	// M6b: propagate target-language-specific staleness to translation-service.
 	s.emitTranslationChanged(ctx, bookID, entityID, tr.LanguageCode)
+	// M7c-3: capture the verify ACTION (confidence set to 'verified' in this patch)
+	// as a human-canonical name confirmation → learning gold.
+	if _, hadConf := in["confidence"]; hadConf && tr.Confidence == "verified" {
+		s.emitNameConfirmed(ctx, bookID, entityID, tr.LanguageCode, tr.Value, userID.String())
+	}
 	writeJSON(w, http.StatusOK, tr)
 }
 

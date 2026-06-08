@@ -166,6 +166,30 @@ func TestTranslationEventPayload_TargetLanguageOmitemptyWiring(t *testing.T) {
 	}
 }
 
+// M7c-3 — buildNameConfirmedPayload carries the source→target + actor=user.
+func TestBuildNameConfirmedPayload_Shape(t *testing.T) {
+	p := buildNameConfirmedPayload("book-1", "ent-1", "提拉米", "character", "vi", "Tirami", "user-9")
+	if p.SourceName != "提拉米" || p.Value != "Tirami" || p.LanguageCode != "vi" {
+		t.Fatalf("source→target not carried: %+v", p)
+	}
+	if p.ActorType != "user" || p.ActorID != "user-9" {
+		t.Fatalf("actor not carried: type=%q id=%q", p.ActorType, p.ActorID)
+	}
+	if p.BookID != "book-1" || p.GlossaryEntityID != "ent-1" || p.Kind != "character" {
+		t.Fatalf("identity not carried: %+v", p)
+	}
+	if p.EmittedAt == "" {
+		t.Fatalf("emitted_at must be set")
+	}
+	// wire shape: actor_id present, omitempty respected
+	b, _ := json.Marshal(p)
+	var d map[string]json.RawMessage
+	json.Unmarshal(b, &d)
+	if string(d["source_name"]) != `"提拉米"` || string(d["value"]) != `"Tirami"` {
+		t.Fatalf("wire fields wrong: source_name=%s value=%s", d["source_name"], d["value"])
+	}
+}
+
 // TestBulkFanOut_OneEventPerWrittenEntity locks the bulk-path contract: one
 // event per created/updated entity, zero for skipped, and all are pipeline.
 func TestBulkFanOut_OneEventPerWrittenEntity(t *testing.T) {

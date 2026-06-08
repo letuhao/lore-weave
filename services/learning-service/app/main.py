@@ -26,6 +26,7 @@ from app.events.handlers import (
     handle_config_adjusted,
     handle_glossary_entity_updated,
     handle_knowledge_corrected,
+    handle_name_confirmed,
     handle_run_completed,
     handle_translation_corrected,
     handle_translation_quality,
@@ -50,7 +51,8 @@ def build_dispatcher() -> EventDispatcher:
     dispatcher.register("chat.message_feedback", handle_chat_feedback)  # Q3
     dispatcher.register("translation.quality", handle_translation_quality)  # M7a
     dispatcher.register("translation.reviewed", handle_translation_reviewed)  # M7b
-    dispatcher.register("translation.corrected", handle_translation_corrected)  # M7c
+    dispatcher.register("translation.corrected", handle_translation_corrected)  # M7c-1
+    dispatcher.register("glossary.name_confirmed", handle_name_confirmed)  # M7c-3
     return dispatcher
 
 

@@ -360,3 +360,72 @@ func (s *Server) emitTranslationChanged(
 			"entity_id", entityID.String(), "err", err)
 	}
 }
+
+const nameConfirmedEvent = "glossary.name_confirmed"
+
+// nameConfirmedPayload is carried by glossary.name_confirmed (M7c-3 — the human
+// name-confirm flywheel). A USER set a name translation to confidence='verified'
+// (the M6a "confirm a name" action), so it is a human-canonical source→target
+// rendering — learning-service persists it as a source='human' signal. Distinct
+// from glossary.entity_updated (which drives staleness + is actor='pipeline').
+type nameConfirmedPayload struct {
+	BookID           string `json:"book_id"`
+	GlossaryEntityID string `json:"glossary_entity_id"`
+	SourceName       string `json:"source_name"`     // the entity's authored name (source side)
+	Kind             string `json:"kind"`
+	LanguageCode     string `json:"language_code"`   // the confirmed target language
+	Value            string `json:"value"`           // the confirmed target rendering
+	ActorType        string `json:"actor_type"`      // always "user" (these are JWT endpoints)
+	ActorID          string `json:"actor_id,omitempty"`
+	EmittedAt        string `json:"emitted_at"`
+}
+
+// buildNameConfirmedPayload assembles the glossary.name_confirmed payload. Pure /
+// DB-free so it is unit-testable. actor_type is always "user" (these are JWT
+// endpoints — the verify is a human action).
+func buildNameConfirmedPayload(
+	bookID, entityID, sourceName, kind, languageCode, value, actorID string,
+) nameConfirmedPayload {
+	return nameConfirmedPayload{
+		BookID:           bookID,
+		GlossaryEntityID: entityID,
+		SourceName:       sourceName,
+		Kind:             kind,
+		LanguageCode:     languageCode,
+		Value:            value,
+		ActorType:        "user",
+		ActorID:          actorID,
+		EmittedAt:        time.Now().UTC().Format(time.RFC3339),
+	}
+}
+
+// emitNameConfirmed emits glossary.name_confirmed when a user verifies a name
+// translation. BEST-EFFORT + post-commit (the verify already committed). The
+// source name comes from the cached entity fields (DB-free for the payload shape
+// beyond that one read).
+func (s *Server) emitNameConfirmed(
+	ctx context.Context, bookID, entityID uuid.UUID, languageCode, value, actorID string,
+) {
+	name, kind, _, _, ok := loadEntityEventFields(ctx, s.pool, entityID)
+	if !ok {
+		slog.Warn("emitNameConfirmed: entity fields unavailable (non-fatal)",
+			"entity_id", entityID.String())
+		return
+	}
+	payload := buildNameConfirmedPayload(
+		bookID.String(), entityID.String(), name, kind, languageCode, value, actorID,
+	)
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		slog.Warn("emitNameConfirmed: marshal failed (non-fatal)", "err", err)
+		return
+	}
+	if _, err := s.pool.Exec(ctx, `
+		INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
+		VALUES ('glossary', $1, $2, $3)`,
+		entityID, nameConfirmedEvent, payloadJSON,
+	); err != nil {
+		slog.Warn("emitNameConfirmed: outbox insert failed (non-fatal)",
+			"entity_id", entityID.String(), "err", err)
+	}
+}

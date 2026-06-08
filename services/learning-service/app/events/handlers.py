@@ -558,3 +558,50 @@ async def handle_translation_corrected(event: EventData, *, pool: asyncpg.Pool) 
         "translation correction persisted: ct=%s diff=%s origin=translation:%s",
         ct_id, diff_class, event.outbox_id,
     )
+
+
+async def handle_name_confirmed(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`glossary.name_confirmed` → a `source='human'` signal (track M7c-3 — the
+    name-confirm flywheel).
+
+    A user set a glossary name translation to `confidence='verified'` (the M6a
+    "confirm a name" action), so it is a human-canonical source→target rendering:
+    `target_kind='glossary'`, `metric_name='glossary_name_confirmed'`=1.0. The
+    source name / confirmed target / language ride in `comment`. Validated against
+    score_config; idempotent on the relay `outbox_id`; per-owner (actor == corpus
+    owner). Empty `outbox_id` / missing actor or entity raises → DLQ."""
+    payload = event.payload
+    if not event.outbox_id:
+        raise ValueError("glossary.name_confirmed has empty outbox_id — refusing to insert")
+    entity_id = payload.get("glossary_entity_id") or event.aggregate_id
+    user_id = _uuid_or_none(payload.get("actor_id"))
+    if user_id is None or not entity_id:
+        raise ValueError(
+            "glossary.name_confirmed missing actor_id/glossary_entity_id "
+            f"(actor_id={payload.get('actor_id')!r} entity={entity_id!r}) — refusing"
+        )
+    detail = json.dumps(
+        {
+            "source_name": payload.get("source_name"),
+            "target_value": payload.get("value"),
+            "language": payload.get("language_code"),
+        },
+        ensure_ascii=False,
+    )
+    await persist_consumed_score(
+        pool,
+        target_kind="glossary",
+        target_id=str(entity_id),
+        user_id=user_id,
+        book_id=_uuid_or_none(payload.get("book_id")),
+        metric_name="glossary_name_confirmed",
+        value_num=1.0,
+        source="human",
+        origin_service="glossary",
+        origin_event_id=event.outbox_id,
+        comment=detail,
+    )
+    logger.debug(
+        "name confirmed persisted: entity=%s lang=%s origin=glossary:%s",
+        entity_id, payload.get("language_code"), event.outbox_id,
+    )
