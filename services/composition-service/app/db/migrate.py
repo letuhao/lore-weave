@@ -138,6 +138,12 @@ CREATE INDEX IF NOT EXISTS idx_generation_job_node    ON generation_job(outline_
 -- outline_node_id IS NULL predicate is plan-matchable; status is filtered after).
 CREATE INDEX IF NOT EXISTS idx_generation_job_chapter_inflight
   ON generation_job((input->>'chapter_id')) WHERE outline_node_id IS NULL;
+-- Cycle-6 reaper + cycle-2 guard: both scan only NON-terminal jobs by created_at
+-- (the global sweep marks stale active jobs failed; the in-flight guard filters
+-- active-and-recent). A partial index on the active rows keeps both off a full
+-- scan as completed/failed history accumulates.
+CREATE INDEX IF NOT EXISTS idx_generation_job_active
+  ON generation_job(created_at) WHERE status IN ('pending','running');
 
 -- ── generation_correction: the human-gate signal (V1 correction flywheel, §3).
 -- ONE row per author correction on a generation. Only GENUINE-AUTHOR-CHOICE kinds

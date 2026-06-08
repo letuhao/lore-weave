@@ -9,8 +9,10 @@ idempotency replay + COALESCE status update; txn-local outbox emit/rollback.
 
 from __future__ import annotations
 
+import json
 import os
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import asyncpg
 import pytest
@@ -372,6 +374,49 @@ async def test_generation_job_status_update_coalesces(pool):
     assert done.result == {"text": "draft"} and done.critic == {"coherence": 4}
     assert done.status == "completed"
     assert await repo.list_active_for_node(user, project, node_id) == []
+
+
+async def _insert_stale_job(pool, user, project, *, chapter_id=None) -> uuid.UUID:
+    """Insert a `running` job created 1h ago (a crash-orphan). Optional chapter_id
+    in input makes it a chapter-level node-less job for the opportunistic-reap test."""
+    inp = {"chapter_id": str(chapter_id)} if chapter_id else {}
+    async with pool.acquire() as c:
+        return await c.fetchval(
+            """INSERT INTO generation_job
+                 (user_id, project_id, operation, mode, status, input, created_at)
+               VALUES ($1,$2,'draft_chapter','auto','running',$3::jsonb, now() - interval '1 hour')
+               RETURNING id""",
+            user, project, json.dumps(inp))
+
+
+async def test_reap_stale_jobs_marks_stale_failed_leaves_fresh(pool):
+    # D-COMP-CHAPTER-INFLIGHT-REAPER sweep: jobs orphaned in `running` past the
+    # cutoff are marked failed; a fresh one is untouched.
+    repo = GenerationJobsRepo(pool)
+    user, project, _ = _ids()
+    stale = [await _insert_stale_job(pool, user, project) for _ in range(2)]
+    fresh, _ = await repo.create(user, project, operation="draft_chapter", status="running")
+    reaped = await repo.reap_stale_jobs(datetime.now(timezone.utc) - timedelta(minutes=30))
+    assert reaped == 2  # clean test DB → exactly the two stale jobs
+    async with pool.acquire() as c:
+        for sid in stale:
+            assert await c.fetchval("SELECT status FROM generation_job WHERE id=$1", sid) == "failed"
+        assert await c.fetchval("SELECT status FROM generation_job WHERE id=$1", fresh.id) == "running"
+
+
+async def test_create_chapter_job_guarded_opportunistic_reap(pool):
+    # The guard marks THIS chapter's stale node-less jobs failed (opportunistic),
+    # then creates a new one (the stale job is past the window, so it doesn't block).
+    repo = GenerationJobsRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    stale = await _insert_stale_job(pool, user, project, chapter_id=chapter)
+    job, created = await repo.create_chapter_job_guarded(
+        user, project, chapter, operation="draft_chapter",
+        input={"chapter_id": str(chapter)}, stale_secs=1800)
+    assert created is True and job.status == "running"
+    async with pool.acquire() as c:
+        assert await c.fetchval("SELECT status FROM generation_job WHERE id=$1", stale) == "failed"
 
 
 # ───────────────────────── outbox (txn-local) ─────────────────────────

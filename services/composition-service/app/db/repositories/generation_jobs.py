@@ -175,6 +175,20 @@ class GenerationJobsRepo:
                     "SELECT pg_advisory_xact_lock($1, hashtext($2))",
                     _CHAPTER_JOB_LOCK_NS, f"{project_id}:{chapter_id}",
                 )
+                # 0. Opportunistic reap (D-COMP-CHAPTER-INFLIGHT-REAPER): mark THIS
+                # chapter's STALE node-less jobs failed — the ones the guard's
+                # `created_at > cutoff` filter (step 2) intentionally skips. Keeps a
+                # crash-orphaned `running` row from lingering; the periodic sweep is
+                # the global backstop. Under the lock, so it can't race the guard.
+                await c.execute(
+                    """
+                    UPDATE generation_job SET status = 'failed', updated_at = now()
+                    WHERE user_id = $1 AND project_id = $2 AND outline_node_id IS NULL
+                      AND input->>'chapter_id' = $3 AND status = ANY($4::text[])
+                      AND created_at <= $5
+                    """,
+                    user_id, project_id, str(chapter_id), list(_ACTIVE_STATUSES), cutoff,
+                )
                 # 1. Replay-under-lock: a same-key replay returns the existing job
                 # and must short-circuit BEFORE the guard. Scoped to user_id (the
                 # idempotency index is global on the key) so a cross-user key
@@ -212,6 +226,25 @@ class GenerationJobsRepo:
                     mode=mode, status=status, input=input,
                     idempotency_key=idempotency_key, conn=c,
                 )
+
+    async def reap_stale_jobs(self, cutoff: datetime) -> int:
+        """Mark jobs orphaned in a non-terminal state as failed; return the count.
+
+        A job still `pending`/`running` with `created_at <= cutoff` is presumed
+        dead — its producer (a request handler / process) was killed mid-run and
+        will never transition it (composition has no producer that resumes).
+        Covers ALL job types (chapter-level + per-scene hygiene). Idempotent +
+        multi-replica safe: a concurrent sweep just matches 0 already-reaped rows.
+        The periodic backstop for D-COMP-CHAPTER-INFLIGHT-REAPER (the guard reaps
+        per-chapter opportunistically; this catches never-re-requested chapters)."""
+        query = """
+        UPDATE generation_job SET status = 'failed', updated_at = now()
+        WHERE status = ANY($1::text[]) AND created_at <= $2
+        RETURNING id
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, list(_ACTIVE_STATUSES), cutoff)
+        return len(rows)
 
     async def get(self, user_id: UUID, job_id: UUID) -> GenerationJob | None:
         query = f"SELECT {_SELECT_COLS} FROM generation_job WHERE user_id = $1 AND id = $2"

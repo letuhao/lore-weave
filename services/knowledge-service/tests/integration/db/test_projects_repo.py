@@ -75,6 +75,67 @@ async def test_list_by_book_id_is_user_scoped(pool):
     assert await repo.list(user_b, book_id=book) == []
 
 
+def _mk_book(name: str = "bk", *, book_id: UUID) -> ProjectCreate:
+    return ProjectCreate(name=name, project_type="book", book_id=book_id)
+
+
+@pytest.mark.asyncio
+async def test_create_or_get_book_is_idempotent(pool):
+    """D-COMP-POST-WORK-RACE: a repeat book-project create_or_get for the same
+    (user, book) returns the EXISTING project, not a duplicate."""
+    repo = ProjectsRepo(pool)
+    user, book = uuid4(), uuid4()
+    first, created1 = await repo.create_or_get(user, _mk_book("a", book_id=book))
+    assert created1 is True
+    second, created2 = await repo.create_or_get(user, _mk_book("b", book_id=book))
+    assert created2 is False
+    assert second.project_id == first.project_id  # same project, no dup
+    # exactly one book project exists for the book
+    assert len(await repo.list(user, book_id=book)) == 1
+
+
+@pytest.mark.asyncio
+async def test_create_or_get_general_always_inserts(pool):
+    """Non-book (or book-typed-without-book_id) creates are NOT deduped — the
+    general-project create UX is unchanged."""
+    repo = ProjectsRepo(pool)
+    user = uuid4()
+    a, ca = await repo.create_or_get(user, _mk("g1"))
+    b, cb = await repo.create_or_get(user, _mk("g2"))
+    assert ca is True and cb is True
+    assert a.project_id != b.project_id
+
+
+@pytest.mark.asyncio
+async def test_create_or_get_book_concurrent_one_wins(pool):
+    """Two concurrent book-project create_or_get for the same (user, book) →
+    exactly one INSERT, both return the same project (advisory lock serialises)."""
+    import asyncio
+
+    repo = ProjectsRepo(pool)
+    user, book = uuid4(), uuid4()
+    r1, r2 = await asyncio.gather(
+        repo.create_or_get(user, _mk_book("x", book_id=book)),
+        repo.create_or_get(user, _mk_book("y", book_id=book)),
+    )
+    created_flags = [r1[1], r2[1]]
+    assert created_flags.count(True) == 1 and created_flags.count(False) == 1
+    assert r1[0].project_id == r2[0].project_id
+    assert len(await repo.list(user, book_id=book)) == 1
+
+
+@pytest.mark.asyncio
+async def test_create_or_get_book_without_book_id_always_inserts(pool):
+    """A book-typed project with NO book_id can't be deduped (nothing to key on)
+    → always inserts."""
+    repo = ProjectsRepo(pool)
+    user = uuid4()
+    a, ca = await repo.create_or_get(user, ProjectCreate(name="nb1", project_type="book"))
+    b, cb = await repo.create_or_get(user, ProjectCreate(name="nb2", project_type="book"))
+    assert ca is True and cb is True
+    assert a.project_id != b.project_id
+
+
 @pytest.mark.asyncio
 async def test_update_patches_fields(pool):
     repo = ProjectsRepo(pool)

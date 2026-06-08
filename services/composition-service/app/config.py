@@ -86,6 +86,12 @@ class Settings(BaseSettings):
     # LLM + reflect iters on a long chapter); too short → the guard leaks a
     # double-run, too long → a longer post-crash lockout. Default 30 min.
     chapter_inflight_stale_secs: int = 1800
+    # Periodic stale-job reaper (D-COMP-CHAPTER-INFLIGHT-REAPER): the in-process
+    # sweep interval. Every N secs it marks jobs `running`/`pending` longer than
+    # `chapter_inflight_stale_secs` (the shared "running this long ⇒ dead" window)
+    # as failed — the global backstop for chapters the guard's opportunistic reap
+    # never revisits. 0 disables the sweep (the opportunistic reap still runs).
+    job_reaper_sweep_secs: int = 600
     # B3 stitch input cap (MED-3) — when the chapter's concatenated scene drafts
     # exceed this many chars, keep the earliest + latest scenes and elide the
     # middle (head+tail keep). ~4 chars/token → 24000 ≈ 6000 tokens of input.

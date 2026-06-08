@@ -15,6 +15,11 @@ from app.context import cache
 from app.db.models import ExtractionStatus, Project, ProjectCreate, ProjectUpdate
 from app.db.repositories import VersionMismatchError
 
+# Advisory-lock namespace for the per-(user, book) book-project get-or-create
+# (create_or_get). Transaction-scoped (released at commit), paired with
+# hashtext("{user}:{book}"). Distinct from the cron jobs' single-key locks.
+_PROJECT_BOOK_LOCK_NS = 0x4B50  # "KP"
+
 _SELECT_COLS = """
   project_id, user_id, name, description, project_type, book_id, instructions,
   extraction_enabled, extraction_status, embedding_model, embedding_dimension,
@@ -85,24 +90,69 @@ class ProjectsRepo:
         self._pool = pool
 
     async def create(self, user_id: UUID, data: ProjectCreate) -> Project:
+        async with self._pool.acquire() as conn:
+            return _row_to_project(await self._insert(conn, user_id, data))
+
+    async def _insert(
+        self, conn: asyncpg.Connection, user_id: UUID, data: ProjectCreate
+    ) -> asyncpg.Record:
         query = f"""
         INSERT INTO knowledge_projects
           (user_id, name, description, project_type, book_id, instructions, genre)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING {_SELECT_COLS}
         """
+        return await conn.fetchrow(
+            query,
+            user_id,
+            data.name,
+            data.description,
+            data.project_type,
+            data.book_id,
+            data.instructions,
+            data.genre,
+        )
+
+    async def create_or_get(
+        self, user_id: UUID, data: ProjectCreate
+    ) -> tuple[Project, bool]:
+        """Idempotent create for the book-binding path. Returns ``(project, created)``.
+
+        A book has ONE knowledge graph, but two concurrent first-POSTs for the
+        same book (composition's get-or-create-work flow — D-COMP-POST-WORK-RACE)
+        each saw "no project" and each created a DUPLICATE empty book project. For
+        `project_type='book'` WITH a `book_id`, this serialises per-(user, book)
+        with an advisory xact lock and returns the existing non-archived book
+        project if one already exists (created=False), else inserts (created=True).
+
+        Scoped to `project_type='book'`: a general/translation/code project — or a
+        book-typed one with no `book_id` — still always inserts (the FE general-
+        project create UX is unchanged). No UNIQUE(user, book_id) constraint is
+        added (legacy rows may have several projects per book; `resolve_work`
+        already tolerates that by picking the earliest)."""
+        if not (data.project_type == "book" and data.book_id is not None):
+            return await self.create(user_id, data), True
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(
-                query,
-                user_id,
-                data.name,
-                data.description,
-                data.project_type,
-                data.book_id,
-                data.instructions,
-                data.genre,
-            )
-        return _row_to_project(row)
+            async with conn.transaction():
+                # Lock released at Tx commit — there is NO cross-service call held
+                # under it (pure DB), so the window is a single SELECT+INSERT.
+                await conn.execute(
+                    "SELECT pg_advisory_xact_lock($1, hashtext($2))",
+                    _PROJECT_BOOK_LOCK_NS, f"{user_id}:{data.book_id}",
+                )
+                existing = await conn.fetchrow(
+                    f"""
+                    SELECT {_SELECT_COLS} FROM knowledge_projects
+                    WHERE user_id = $1 AND project_type = 'book'
+                      AND book_id = $2 AND NOT is_archived
+                    ORDER BY created_at ASC
+                    LIMIT 1
+                    """,
+                    user_id, data.book_id,
+                )
+                if existing is not None:
+                    return _row_to_project(existing), False
+                return _row_to_project(await self._insert(conn, user_id, data)), True
 
     async def list(
         self,
