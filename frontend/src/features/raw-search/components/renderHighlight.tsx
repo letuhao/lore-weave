@@ -13,7 +13,10 @@ export function renderHighlight(snippet: string, ranges: number[][]): ReactNode[
   const cp = Array.from(snippet); // code points, not UTF-16 units
   const out: ReactNode[] = [];
   let cursor = 0;
-  ranges.forEach(([start, end], i) => {
+  // Sort by start so the cursor walk is correct even if Phase-3 returns spans
+  // out of order (FE-MULTIRANGE); the cursor-max below absorbs any overlap.
+  const sorted = [...ranges].sort((a, b) => a[0] - b[0]);
+  sorted.forEach(([start, end], i) => {
     const s = Math.max(0, Math.min(start, cp.length));
     const e = Math.max(s, Math.min(end, cp.length));
     if (s > cursor) out.push(cp.slice(cursor, s).join(''));

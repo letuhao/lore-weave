@@ -264,6 +264,43 @@ func (s *Server) searchChapterTextInternal(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, map[string]any{"results": results})
 }
 
+// buildLexicalHit maps one scanned chapter_blocks row → the raw-search hit map.
+// Pure (no DB) so the highlight/score/relevance/offset logic is unit-testable
+// without a live Postgres (D-RAWSEARCH-HANDLER-COVERAGE). `sim` is the trigram
+// similarity from the SQL; an exact substring (computeHighlight matched) boosts
+// score to 1+sim and pins relevance to 1.0.
+//
+// NOTE (review-impl MED-2): charStart/charEnd + highlights are Unicode
+// CODE-POINT (rune) offsets, NOT UTF-16 units — clients index by code point.
+func buildLexicalHit(chapterID uuid.UUID, title, headingCtx *string, sortOrder, blockIndex int, textContent string, sim float64, q string) map[string]any {
+	hl := computeHighlight(textContent, q, searchSnippetWindow)
+	score := sim
+	relevance := sim // E5: calibrated 0–1 relevance (exact match ⇒ 1.0)
+	highlights := make([][]int, 0, 1)
+	if hl.Matched {
+		score = 1 + sim // exact-substring boost (mirrors the ILIKE-first ORDER BY)
+		relevance = 1.0
+		highlights = append(highlights, []int{hl.HLStart, hl.HLEnd})
+	}
+	return map[string]any{
+		"chapterId":    chapterID,
+		"chapterTitle": title,
+		"sortOrder":    sortOrder,
+		"surface":      "draft",
+		"matchType":    "lexical",
+		"score":        score,
+		"relevance":    relevance,
+		"snippet":      hl.Snippet,
+		"highlights":   highlights,
+		"location": map[string]any{
+			"blockIndex":     blockIndex,
+			"headingContext": headingCtx,
+			"charStart":      hl.BlockStart,
+			"charEnd":        hl.BlockEnd,
+		},
+	}
+}
+
 // runLexicalSearch is the shared lexical-search core (no auth/ownership — the
 // callers gate that). Returns verbatim-snippet hit maps for the book's draft
 // chapter_blocks. surface="draft"/matchType="lexical" by construction.
@@ -288,34 +325,7 @@ func (s *Server) runLexicalSearch(ctx context.Context, bookID uuid.UUID, q strin
 		if err := rows.Scan(&chapterID, &title, &sortOrder, &blockIndex, &headingCtx, &textContent, &sim); err != nil {
 			continue
 		}
-		hl := computeHighlight(textContent, q, searchSnippetWindow)
-		score := sim
-		relevance := sim // E5: calibrated 0–1 relevance (exact match ⇒ 1.0)
-		highlights := make([][]int, 0, 1)
-		if hl.Matched {
-			score = 1 + sim // exact-substring boost (mirrors the ILIKE-first ORDER BY)
-			relevance = 1.0
-			highlights = append(highlights, []int{hl.HLStart, hl.HLEnd})
-		}
-		// NOTE (review-impl MED-2): charStart/charEnd + highlights are Unicode
-		// CODE-POINT (rune) offsets, NOT UTF-16 units — clients index by code point.
-		results = append(results, map[string]any{
-			"chapterId":    chapterID,
-			"chapterTitle": title,
-			"sortOrder":    sortOrder,
-			"surface":      "draft",
-			"matchType":    "lexical",
-			"score":        score,
-			"relevance":    relevance,
-			"snippet":      hl.Snippet,
-			"highlights":   highlights,
-			"location": map[string]any{
-				"blockIndex":     blockIndex,
-				"headingContext": headingCtx,
-				"charStart":      hl.BlockStart,
-				"charEnd":        hl.BlockEnd,
-			},
-		})
+		results = append(results, buildLexicalHit(chapterID, title, headingCtx, sortOrder, blockIndex, textContent, sim, q))
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

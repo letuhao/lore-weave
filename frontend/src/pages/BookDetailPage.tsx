@@ -106,8 +106,8 @@ export function BookDetailPage() {
             {book.visibility && <StatusBadge variant={book.visibility} />}
             <Link
               to={`/books/${bookId}/search`}
-              aria-label="Raw search"
-              title="Raw search"
+              aria-label={t('rawSearch:title')}
+              title={t('rawSearch:title')}
               className="inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             >
               <Search className="h-3.5 w-3.5" />

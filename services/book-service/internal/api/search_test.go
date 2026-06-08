@@ -1,6 +1,10 @@
 package api
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/google/uuid"
+)
 
 func TestValidateSearchQuery(t *testing.T) {
 	t.Parallel()
@@ -41,6 +45,35 @@ func TestValidateSurface(t *testing.T) {
 		if msg := validateSurface(bad); msg == "" {
 			t.Fatalf("surface %q should be rejected", bad)
 		}
+	}
+}
+
+func TestBuildLexicalHit(t *testing.T) {
+	t.Parallel()
+	cid := uuid.New()
+	title := "第5章 龙象般若"
+	// exact substring → boosted score + relevance 1.0 + a highlight span
+	hit := buildLexicalHit(cid, &title, nil, 5, 2, "他修炼龙象般若掌", 0.4, "龙象般若")
+	if hit["surface"] != "draft" || hit["matchType"] != "lexical" {
+		t.Fatalf("surface/matchType wrong: %v / %v", hit["surface"], hit["matchType"])
+	}
+	if hit["score"].(float64) != 1.4 {
+		t.Fatalf("exact score = %v, want 1.4 (1+sim)", hit["score"])
+	}
+	if hit["relevance"].(float64) != 1.0 {
+		t.Fatalf("exact relevance = %v, want 1.0", hit["relevance"])
+	}
+	if len(hit["highlights"].([][]int)) != 1 {
+		t.Fatalf("exact match should emit one highlight span, got %v", hit["highlights"])
+	}
+
+	// trigram-only (no exact substring) → score=relevance=sim, no highlight
+	miss := buildLexicalHit(cid, &title, nil, 5, 2, "完全不相关的文字", 0.31, "龙象般若")
+	if miss["score"].(float64) != 0.31 || miss["relevance"].(float64) != 0.31 {
+		t.Fatalf("non-exact score/relevance = %v/%v, want 0.31", miss["score"], miss["relevance"])
+	}
+	if len(miss["highlights"].([][]int)) != 0 {
+		t.Fatalf("non-exact match should emit no highlight, got %v", miss["highlights"])
 	}
 }
 

@@ -56,6 +56,26 @@ describe('rawSearchApi.searchHybrid', () => {
     expect(res.degraded).toMatchObject({ semantic: 'unavailable' });
   });
 
+  it('forwards granularity to the lexical fallback (E6-LOW)', async () => {
+    mockApiJson.mockImplementation((path: string) =>
+      String(path).includes('/v1/knowledge/')
+        ? Promise.reject(httpError(404))
+        : Promise.resolve({ query: 'x', mode: 'lexical', results: [] }),
+    );
+    await rawSearchApi.searchHybrid('b1', { q: 'x', granularity: 'block' }, 'tok');
+    const fallbackPath = String(mockApiJson.mock.calls[1][0]);
+    expect(fallbackPath).toContain('/v1/books/b1/search');
+    expect(fallbackPath).toContain('granularity=block');
+  });
+
+  it('sends rerank=false only when disabled (Mine), omits it otherwise', async () => {
+    mockApiJson.mockResolvedValue({ query: 'x', mode: 'hybrid', results: [] });
+    await rawSearchApi.searchHybrid('b1', { q: 'x', rerank: false }, 'tok');
+    expect(String(mockApiJson.mock.calls[0][0])).toContain('rerank=false');
+    await rawSearchApi.searchHybrid('b1', { q: 'x', rerank: true }, 'tok');
+    expect(String(mockApiJson.mock.calls[1][0])).not.toContain('rerank=');
+  });
+
   // NOTE: the "non-404/503 errors propagate (no fallback)" path is verified by
   // inspection (hybridSearch falls back ONLY on 404/503, else `throw e`) — a
   // unit assertion on that reject path trips vitest 2.1.9's unhandled-rejection

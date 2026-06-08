@@ -182,4 +182,20 @@ describe('RawSearchPanel', () => {
     );
     expect(screen.getByTestId('raw-search-relevance').getAttribute('title')).toBe('97%');
   });
+
+  // ── FE-MINOR: empty / error states ─────────────────────────────────
+
+  it('shows the empty state when a query returns no results', async () => {
+    hybridMock.mockResolvedValue({ query: 'zzz', mode: 'hybrid', results: [] });
+    renderPanel();
+    fireEvent.change(screen.getByTestId('raw-search-input'), { target: { value: 'zzz' } });
+    await waitFor(() => expect(screen.getByTestId('raw-search-empty')).toBeInTheDocument());
+  });
+
+  it('shows the error state when the search fails', async () => {
+    hybridMock.mockRejectedValue(new Error('boom'));
+    renderPanel();
+    fireEvent.change(screen.getByTestId('raw-search-input'), { target: { value: 'x' } });
+    await waitFor(() => expect(screen.getByTestId('raw-search-error')).toBeInTheDocument());
+  });
 });

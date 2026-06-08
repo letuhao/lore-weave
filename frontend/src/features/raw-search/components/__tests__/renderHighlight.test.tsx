@@ -21,4 +21,12 @@ describe('renderHighlight', () => {
     expect(container.querySelector('mark')).toBeNull();
     expect(container.textContent).toBe('hello');
   });
+
+  it('handles out-of-order ranges (FE-MULTIRANGE)', () => {
+    // spans given [4,7] then [0,2] — must still mark both & preserve text order
+    const { container } = render(<>{renderHighlight('AABBCCC', [[4, 7], [0, 2]])}</>);
+    const marks = [...container.querySelectorAll('mark')].map((m) => m.textContent);
+    expect(marks).toEqual(['AA', 'CCC']);
+    expect(container.textContent).toBe('AABBCCC');
+  });
 });
