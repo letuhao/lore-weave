@@ -1,0 +1,22 @@
+{
+  "title": "原文検索",
+  "subtitle": "この本の章の原文（下書き）を検索します。",
+  "placeholder": "章の本文を検索…",
+  "hint": "入力して章の原文を検索します。",
+  "loading": "検索中…",
+  "no_results": "一致する結果がありません。",
+  "error": "検索に失敗しました。もう一度お試しください。",
+  "mode_label": "検索モード",
+  "mode_hybrid": "ハイブリッド",
+  "mode_lexical": "字句",
+  "granularity_label": "結果モード",
+  "granularity_chapter": "ナビゲート",
+  "granularity_block": "抽出",
+  "granularity_chapter_hint": "章ごとに最良の一致を1件",
+  "granularity_block_hint": "一致するすべての箇所",
+  "limit_label": "件数",
+  "relevance_label": "関連度",
+  "copy": "コピー",
+  "copied": "コピーしました",
+  "degraded": "一部の結果が制限される場合があります（検索バックエンドが利用できません）。"
+}

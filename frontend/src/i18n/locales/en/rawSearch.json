@@ -1,0 +1,22 @@
+{
+  "title": "Raw search",
+  "subtitle": "Search the verbatim text of this book's chapters (draft).",
+  "placeholder": "Search chapter text…",
+  "hint": "Type to search the raw chapter text.",
+  "loading": "Searching…",
+  "no_results": "No matches found.",
+  "error": "Search failed. Please try again.",
+  "mode_label": "Search mode",
+  "mode_hybrid": "Hybrid",
+  "mode_lexical": "Lexical",
+  "granularity_label": "Result mode",
+  "granularity_chapter": "Navigate",
+  "granularity_block": "Mine",
+  "granularity_chapter_hint": "One best match per chapter",
+  "granularity_block_hint": "Every matching passage",
+  "limit_label": "Results",
+  "relevance_label": "Relevance",
+  "copy": "Copy text",
+  "copied": "Copied",
+  "degraded": "Some results may be limited — a search backend is unavailable."
+}
