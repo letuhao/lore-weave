@@ -1,8 +1,12 @@
+import json
+import logging
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 import asyncpg
 
 from ..deps import get_current_user, get_db
+
+log = logging.getLogger(__name__)
 from ..models import (
     ChapterTranslation,
     ChapterVersionsResponse,
@@ -110,7 +114,7 @@ async def set_active_version(
     db: asyncpg.Pool = Depends(get_db),
 ):
     row = await db.fetchrow(
-        "SELECT owner_user_id, target_language, status, unresolved_high_count "
+        "SELECT owner_user_id, book_id, target_language, status, unresolved_high_count "
         "FROM chapter_translations WHERE id=$1 AND chapter_id=$2",
         version_id, chapter_id,
     )
@@ -151,6 +155,31 @@ async def set_active_version(
         """,
         chapter_id, row["target_language"], version_id, UUID(user_id),
     )
+
+    # M7b (Channel 1a — human signal): setting a version active is a human-only
+    # action (the worker auto-activates via a different path), so it is a genuine
+    # "this translation is good enough to publish" judgment → learning source=human.
+    # acknowledge_issues=true is the high-value case: the human published DESPITE
+    # the verifier's flags (verifier-calibration signal). Best-effort + post-commit
+    # (the active version is already set — a feedback-log failure must not 500 the
+    # publish). aggregate_type='translation' reuses M7a's stream.
+    try:
+        await db.execute(
+            """INSERT INTO outbox_events (event_type, aggregate_type, aggregate_id, payload)
+               VALUES ('translation.reviewed', 'translation', $1, $2::jsonb)""",
+            version_id,
+            json.dumps({
+                "user_id": user_id,
+                "book_id": str(row["book_id"]),
+                "chapter_id": str(chapter_id),
+                "chapter_translation_id": str(version_id),
+                "target_language": row["target_language"],
+                "acknowledged_issues": bool(acknowledge_issues),
+                "unresolved_high_count": unresolved,
+            }),
+        )
+    except Exception:  # noqa: BLE001 — telemetry must not break publish
+        log.warning("M7b: failed to emit translation.reviewed (non-fatal)", exc_info=True)
 
     return ActiveVersionResponse(
         chapter_id=chapter_id,

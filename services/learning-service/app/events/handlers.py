@@ -447,3 +447,52 @@ async def handle_translation_quality(event: EventData, *, pool: asyncpg.Pool) ->
         "translation quality persisted: ct=%s score=%s origin=translation:%s",
         ct_id, score, event.outbox_id,
     )
+
+
+async def handle_translation_reviewed(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`translation.reviewed` → a `source='human'` accept signal (track M7b,
+    Channel 1a — existing human judgments).
+
+    Setting a chapter-translation version active is a human-only publish decision
+    (the worker auto-activates via a different path), so it is a genuine "this
+    translation is good enough" signal: `target_kind='translation'`,
+    `metric_name='translation_human_accept'`=1.0. The verifier-calibration detail
+    — `acknowledged_issues` + `unresolved_high_count` at accept (i.e. the human
+    published DESPITE N verifier flags, suggesting false positives) — rides in
+    `comment`. Validated against score_config; idempotent on the relay `outbox_id`.
+    Empty `outbox_id` / missing `user_id`/`chapter_translation_id` raises → DLQ."""
+    payload = event.payload
+    if not event.outbox_id:
+        raise ValueError("translation.reviewed has empty outbox_id — refusing to insert")
+    ct_id = payload.get("chapter_translation_id") or event.aggregate_id
+    user_id = _uuid_or_none(payload.get("user_id"))
+    if user_id is None or not ct_id:
+        raise ValueError(
+            "translation.reviewed missing user_id/chapter_translation_id "
+            f"(user_id={payload.get('user_id')!r} ct={ct_id!r}) — refusing"
+        )
+    detail = json.dumps(
+        {
+            "acknowledged_issues": payload.get("acknowledged_issues"),
+            "unresolved_high_count": payload.get("unresolved_high_count"),
+            "target_language": payload.get("target_language"),
+        },
+        ensure_ascii=False,
+    )
+    await persist_consumed_score(
+        pool,
+        target_kind="translation",
+        target_id=str(ct_id),
+        user_id=user_id,
+        book_id=_uuid_or_none(payload.get("book_id")),
+        metric_name="translation_human_accept",
+        value_num=1.0,
+        source="human",
+        origin_service="translation",
+        origin_event_id=event.outbox_id,
+        comment=detail,
+    )
+    logger.debug(
+        "translation reviewed persisted: ct=%s ack=%s origin=translation:%s",
+        ct_id, payload.get("acknowledged_issues"), event.outbox_id,
+    )

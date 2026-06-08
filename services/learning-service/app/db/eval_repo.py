@@ -68,6 +68,10 @@ SCORE_CONFIG_SEED: list[dict[str, Any]] = [
      "description": "M7a (Channel 2): the V3 translation verifier's per-chapter overall "
                     "quality score (auto/LLM-action log). Breakdown (unresolved-high, qa "
                     "rounds, issue-type counts) carried in the score comment."},
+    {"name": "translation_human_accept", "data_type": "numeric", "min_value": 0.0, "max_value": 1.0,
+     "description": "M7b (Channel 1a): a human set this chapter-translation version active "
+                    "(=1.0, a publish judgment). The verifier-calibration detail "
+                    "(acknowledged_issues + unresolved_high at accept) rides in the comment."},
 ]
 
 

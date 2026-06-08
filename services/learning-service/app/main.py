@@ -28,6 +28,7 @@ from app.events.handlers import (
     handle_knowledge_corrected,
     handle_run_completed,
     handle_translation_quality,
+    handle_translation_reviewed,
 )
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import corrections, eval as eval_routes, mining
@@ -47,6 +48,7 @@ def build_dispatcher() -> EventDispatcher:
     dispatcher.register("knowledge.config_adjusted", handle_config_adjusted)
     dispatcher.register("chat.message_feedback", handle_chat_feedback)  # Q3
     dispatcher.register("translation.quality", handle_translation_quality)  # M7a
+    dispatcher.register("translation.reviewed", handle_translation_reviewed)  # M7b
     return dispatcher
 
 
