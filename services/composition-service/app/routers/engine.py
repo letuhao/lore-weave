@@ -23,7 +23,7 @@ from app.clients.glossary_client import GlossaryClient
 from app.clients.knowledge_client import KnowledgeClient
 from app.clients.llm_client import LLMClient
 from app.config import settings
-from app.db.repositories import ReferenceViolationError
+from app.db.repositories import ChapterJobInFlightError, ReferenceViolationError
 from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.generation_corrections import (
     GenerationCorrectionsRepo, count_changed_blocks,
@@ -188,6 +188,12 @@ async def _persist_chapter_draft(
     except BookClientError as exc:
         logger.warning("chapter draft persist failed (best-effort, kept in job): %s", exc)
         return False, None, exc.code or "BOOK_DRAFT_PERSIST_FAILED"
+    except Exception:  # noqa: BLE001 — /review-impl Cycle-2 #2: honor "NEVER raises".
+        # A non-BookClientError (raw httpx timeout/connect error) must NOT escape:
+        # the text is already durable in generation_job.result, and an escape would
+        # leave the job stuck `running` (feeding the #1 lockout). Best-effort = swallow.
+        logger.warning("chapter draft persist raised (best-effort, kept in job)", exc_info=True)
+        return False, None, "BOOK_DRAFT_PERSIST_FAILED"
 
 
 @router.post("/works/{project_id}/generate")
@@ -536,16 +542,24 @@ async def generate_chapter(
         len(scenes) * settings.chapter_gen_per_scene_tokens, settings.chapter_gen_max_tokens)
 
     # Idempotency keyed on the caller's key (design LOW-1: key on chapter_id +
-    # assembly_mode in the value the caller builds). No in-flight cancel: chapter
-    # jobs aren't node-scoped.
-    job, created = await jobs.create(
-        user_id, project_id, operation=body.operation, outline_node_id=None,
-        mode="auto", status="running",
-        input={"model_source": body.model_source, "model_ref": str(body.model_ref),
-               "operation": body.operation, "prompt_estimate": prompt_estimate,
-               "assembly_mode": "chapter", "chapter_id": str(chapter_id),
-               "reasoning": reasoning.source, "reasoning_effort": reasoning.effort},
-        idempotency_key=body.idempotency_key)
+    # assembly_mode in the value the caller builds). Chapter jobs aren't
+    # node-scoped, so the per-scene S2 cancel doesn't apply; instead an in-flight
+    # guard (Cycle-2) rejects a concurrent chapter-level job for the same chapter
+    # with 409 — generate and stitch both write this chapter's draft, so two at
+    # once double-spend the LLM and race the persist. Same-key replay is honored.
+    try:
+        job, created = await jobs.create_chapter_job_guarded(
+            user_id, project_id, chapter_id, operation=body.operation,
+            mode="auto", status="running",
+            input={"model_source": body.model_source, "model_ref": str(body.model_ref),
+                   "operation": body.operation, "prompt_estimate": prompt_estimate,
+                   "assembly_mode": "chapter", "chapter_id": str(chapter_id),
+                   "reasoning": reasoning.source, "reasoning_effort": reasoning.effort},
+            idempotency_key=body.idempotency_key,
+            stale_secs=settings.chapter_inflight_stale_secs)
+    except ChapterJobInFlightError as exc:
+        raise HTTPException(status_code=409, detail={
+            "code": "CHAPTER_JOB_IN_FLIGHT", "active_job_id": exc.active_job_id})
     if not created:  # idempotent replay → return the existing job, don't re-run
         r = job.result or {}
         return JSONResponse({"job_id": str(job.id), "mode": "auto", "replay": True,
@@ -677,14 +691,22 @@ async def stitch_chapter_endpoint(
     max_out = body.max_output_tokens or min(
         len(drafts) * settings.chapter_gen_per_scene_tokens, settings.stitch_max_tokens)
 
-    job, created = await jobs.create(
-        user_id, project_id, operation="stitch_chapter", outline_node_id=None,
-        mode="auto", status="running",
-        input={"model_source": body.model_source, "model_ref": str(body.model_ref),
-               "operation": "stitch_chapter", "assembly_mode": "per_scene_stitch",
-               "chapter_id": str(chapter_id), "reasoning": reasoning.source,
-               "reasoning_effort": reasoning.effort},
-        idempotency_key=body.idempotency_key)
+    # In-flight guard (Cycle-2): reject a concurrent chapter-level job for this
+    # chapter (a running generate or stitch) with 409 — both write this chapter's
+    # draft. Same-key idempotent replay is honored before the guard.
+    try:
+        job, created = await jobs.create_chapter_job_guarded(
+            user_id, project_id, chapter_id, operation="stitch_chapter",
+            mode="auto", status="running",
+            input={"model_source": body.model_source, "model_ref": str(body.model_ref),
+                   "operation": "stitch_chapter", "assembly_mode": "per_scene_stitch",
+                   "chapter_id": str(chapter_id), "reasoning": reasoning.source,
+                   "reasoning_effort": reasoning.effort},
+            idempotency_key=body.idempotency_key,
+            stale_secs=settings.chapter_inflight_stale_secs)
+    except ChapterJobInFlightError as exc:
+        raise HTTPException(status_code=409, detail={
+            "code": "CHAPTER_JOB_IN_FLIGHT", "active_job_id": exc.active_job_id})
     if not created:  # idempotent replay
         r = job.result or {}
         return JSONResponse({"job_id": str(job.id), "mode": "auto", "replay": True,

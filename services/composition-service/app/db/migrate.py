@@ -132,6 +132,12 @@ CREATE TABLE IF NOT EXISTS generation_job (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_generation_job_idem ON generation_job(idempotency_key) WHERE idempotency_key IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_generation_job_project ON generation_job(project_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_generation_job_node    ON generation_job(outline_node_id);
+-- Cycle-2 chapter in-flight guard: the per-(project,chapter) guard scans
+-- chapter-level jobs by input->>'chapter_id'. Partial expression index over only
+-- node-less (chapter-level) jobs keeps it cheap as job history grows (the static
+-- outline_node_id IS NULL predicate is plan-matchable; status is filtered after).
+CREATE INDEX IF NOT EXISTS idx_generation_job_chapter_inflight
+  ON generation_job((input->>'chapter_id')) WHERE outline_node_id IS NULL;
 
 -- ── generation_correction: the human-gate signal (V1 correction flywheel, §3).
 -- ONE row per author correction on a generation. Only GENUINE-AUTHOR-CHOICE kinds

@@ -234,10 +234,21 @@ def chap_ctx(monkeypatch):
             self.created = True
             self.updates = []
             self.scene_drafts = ["scene one prose", "scene two prose"]
+            self.inflight = None  # set to an active_job_id to simulate the guard firing
             self.job = GenerationJob(id=JOB, user_id=USER, project_id=PROJECT,
                                      operation="draft_chapter", status="running", input={})
         async def create(self, u, p, **kw):
             self._last_create = kw
+            return self.job, self.created
+        async def create_chapter_job_guarded(self, u, p, ch, **kw):
+            # Mirrors the real method: raises the in-flight error when a concurrent
+            # active chapter job exists, else creates a node-less chapter job. The
+            # real method hardcodes outline_node_id=None, so reflect that here so
+            # the happy-path assertions on _last_create still hold.
+            if self.inflight is not None:
+                from app.db.repositories import ChapterJobInFlightError
+                raise ChapterJobInFlightError(self.inflight)
+            self._last_create = {"outline_node_id": None, **kw}
             return self.job, self.created
         async def update_status(self, u, jid, status, **kw):
             self.updates.append((str(jid), status, kw))
@@ -410,6 +421,22 @@ def test_chapter_generate_work_404(chap_ctx):
     assert r.status_code == 404
 
 
+def test_chapter_generate_in_flight_409(chap_ctx):
+    # Cycle-2 in-flight guard: a concurrent chapter-level job for this chapter
+    # rejects with 409 (no LLM spend, no draft race). The guard fires inside the
+    # advisory-locked guarded-create, BEFORE drafting.
+    c, _, _, jobs, _, state = chap_ctx
+    prior = str(uuid.uuid4())
+    jobs.inflight = prior
+    r = c.post(_chap_url(), json=_chap_body())
+    assert r.status_code == 409
+    detail = r.json()["detail"]
+    assert detail["code"] == "CHAPTER_JOB_IN_FLIGHT"
+    assert detail["active_job_id"] == prior
+    assert state["diverge"] == {}  # never drafted
+    assert not hasattr(jobs, "_last_create")  # guard fired before create
+
+
 # ── stitch endpoint (B3) ──
 
 def _stitch_url():
@@ -473,3 +500,19 @@ def test_stitch_persist_false_skips_book_write(chap_ctx):
     assert r.status_code == 200
     assert r.json()["persisted"] is False
     assert book.patched is None
+
+
+def test_stitch_in_flight_409(chap_ctx):
+    # Cycle-2: a stitch is blocked by ANY active chapter-level job for the chapter
+    # (a running generate or stitch) — both write the same chapter draft. 409, no
+    # stitch work performed.
+    c, _, _, jobs, _, state = chap_ctx
+    prior = str(uuid.uuid4())
+    jobs.inflight = prior
+    r = c.post(_stitch_url(), json=_chap_body())
+    assert r.status_code == 409
+    detail = r.json()["detail"]
+    assert detail["code"] == "CHAPTER_JOB_IN_FLIGHT"
+    assert detail["active_job_id"] == prior
+    assert "stitch" not in state  # stitcher never ran
+    assert not hasattr(jobs, "_last_create")

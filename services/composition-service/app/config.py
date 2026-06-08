@@ -78,6 +78,14 @@ class Settings(BaseSettings):
     # Per-scene output budget for the proportional chapter/stitch sizing (so a
     # multi-scene chapter gets room instead of a flat cap that silently truncates).
     chapter_gen_per_scene_tokens: int = 700
+    # Cycle-2 in-flight guard staleness window: the chapter-level generate/stitch
+    # guard REJECTS a concurrent job, so a `running` job orphaned by a mid-
+    # generation crash/kill would otherwise lock that chapter out forever (no
+    # reaper exists). A job `running` longer than this is presumed dead and no
+    # longer blocks. Must exceed the worst-case generation wall-clock (slow local
+    # LLM + reflect iters on a long chapter); too short → the guard leaks a
+    # double-run, too long → a longer post-crash lockout. Default 30 min.
+    chapter_inflight_stale_secs: int = 1800
     # B3 stitch input cap (MED-3) — when the chapter's concatenated scene drafts
     # exceed this many chars, keep the earliest + latest scenes and elide the
     # middle (head+tail keep). ~4 chars/token → 24000 ≈ 6000 tokens of input.
