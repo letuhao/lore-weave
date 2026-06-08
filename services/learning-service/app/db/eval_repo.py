@@ -76,6 +76,10 @@ SCORE_CONFIG_SEED: list[dict[str, Any]] = [
      "description": "M7c-3: a human verified a glossary name's target rendering (the M6a "
                     "confirm-a-name action) =1.0 — a canonical source→target pair (in the "
                     "comment) for name-rendering tuning."},
+    {"name": "translation_judge_fidelity", "data_type": "numeric", "min_value": 0.0, "max_value": 1.0,
+     "description": "M7d: online LLM-judge fidelity of a translation vs its source [0,1] "
+                    "(source=auto, panel_safe=false — a single online judge). Reason + judge "
+                    "model in the comment."},
 ]
 
 

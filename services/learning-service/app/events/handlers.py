@@ -447,6 +447,56 @@ async def handle_translation_quality(event: EventData, *, pool: asyncpg.Pool) ->
         "translation quality persisted: ct=%s score=%s origin=translation:%s",
         ct_id, score, event.outbox_id,
     )
+    await _maybe_judge_translation(event, payload, ct_id, pool)
+
+
+async def _maybe_judge_translation(
+    event: EventData, payload: dict, ct_id, pool: asyncpg.Pool
+) -> None:
+    """M7d-2: optional online fidelity judge. Runs ONLY when the judge is enabled,
+    a judge model is configured, and the event carries source+translated text (the
+    M7d-3 worker feed, off by default) — so it is inert until explicitly opted in.
+    Best-effort: a judge/LLM failure never fails the translation.quality handler."""
+    from app.config import settings
+
+    if not (settings.online_translation_judge_enabled and settings.online_judge_model_ref):
+        return
+    source_text = payload.get("source_text")
+    translated_text = payload.get("translated_text")
+    if not source_text or not translated_text:
+        return
+    try:
+        from app.clients.llm_client import build_judge_client
+        from app.db.online_translation_judge import (
+            persist_translation_judge,
+            run_translation_judge,
+        )
+
+        client = build_judge_client(
+            base_url=settings.provider_registry_internal_url,
+            internal_token=settings.internal_service_token,
+        )
+        verdict = await run_translation_judge(
+            client,
+            source_text=source_text,
+            translated_text=translated_text,
+            judge_model=settings.online_judge_model_ref,
+            model_source=settings.online_judge_model_source,
+            user_id=settings.online_judge_user_id,
+        )
+        user_id = _uuid_or_none(payload.get("user_id"))
+        if verdict is not None and user_id is not None:
+            await persist_translation_judge(
+                pool,
+                ct_id=str(ct_id),
+                user_id=user_id,
+                book_id=_uuid_or_none(payload.get("book_id")),
+                verdict=verdict,
+                judge_model=settings.online_judge_model_ref,
+                origin_event_id=event.outbox_id,
+            )
+    except Exception:  # noqa: BLE001 — the judge is best-effort telemetry
+        logger.warning("M7d: online translation judge failed (non-fatal)", exc_info=True)
 
 
 async def handle_translation_reviewed(event: EventData, *, pool: asyncpg.Pool) -> None:
