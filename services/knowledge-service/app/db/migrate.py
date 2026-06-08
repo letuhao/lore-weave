@@ -284,7 +284,7 @@ CREATE TABLE IF NOT EXISTS extraction_jobs (
     CHECK (scope IN ('chapters','chat','glossary_sync','all','chapters_pending')),
   scope_range       JSONB,
   status            TEXT NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending','running','paused','complete','failed','cancelled')),
+    CHECK (status IN ('pending','running','paused','summarizing','complete','failed','cancelled')),
 
   llm_model         TEXT NOT NULL,
   embedding_model   TEXT NOT NULL,
@@ -731,14 +731,28 @@ CREATE TABLE IF NOT EXISTS summary_books (
   UNIQUE (book_id, embedding_model_uuid)
 );
 
--- M1: extend extraction_jobs.status CHECK to include 'summarizing'.
--- Idempotent via DROP IF EXISTS + re-add. Wrap in DO block so a missing
--- constraint doesn't abort the migration.
+-- M1 (Cycle 10 reconcile): the AUTHORITATIVE extraction_jobs.status vocabulary.
+-- The status values the code EMITS must stay in sync with
+-- `app.jobs.state_machine.JobStatus` + the repo guards
+-- (`app.db.repositories.extraction_jobs`) + worker-ai's `_complete_job`/`_fail_job`
+-- + the FE (`ExtractionJobsTab`): pending/running/paused/complete/failed/cancelled.
+-- 'summarizing' is a RESERVED transitional state introduced by the original M1 —
+-- it has no writer yet and is intentionally NOT in JobStatus; kept here so a future
+-- summary phase can use it without a constraint migration. The original M1 added
+-- 'summarizing' but silently renamed 'complete'->'completed' and DROPPED
+-- 'paused'/'cancelled' — which the whole codebase still emits, so every
+-- finished/paused/cancelled extraction CheckViolated and was misreported
+-- (DEFERRED 065). Reconciled to the full set the code uses (a widening — never
+-- rejects an existing valid row). Idempotent via DROP IF EXISTS + re-add.
+-- CAVEAT: the EXCEPTION-swallow below means a failed ADD (existing-row violation /
+-- lock) leaves the OLD constraint in place SILENTLY — confirm the live swap took
+-- via the cycle-11 extraction smoke (a real job reaching 'complete') or
+-- pg_get_constraintdef, not by migrate exit code alone.
 DO $$ BEGIN
   ALTER TABLE extraction_jobs
     DROP CONSTRAINT IF EXISTS extraction_jobs_status_check;
   ALTER TABLE extraction_jobs ADD CONSTRAINT extraction_jobs_status_check
-    CHECK (status IN ('pending','running','summarizing','completed','failed'));
+    CHECK (status IN ('pending','running','paused','summarizing','complete','failed','cancelled'));
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
