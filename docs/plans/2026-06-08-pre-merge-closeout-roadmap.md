@@ -6,6 +6,13 @@
 
 The branch-debt cleanup campaign (cycles 5–9) cleared the composition/LOOM branch's own ledger. This roadmap covers everything that was **excluded** or **re-scoped** there, plus the producer bugs the cycle-8 live-smoke surfaced.
 
+### Reconciliation with the 2026-06-07 debt-payoff roadmap (063/064/K17)
+
+The earlier [debt-payoff roadmap](2026-06-07-debt-payoff-roadmap.md) (063/064/K17) is **absorbed into this one** — it is no longer a separate plan:
+- **K17** → **Cycle 12** here (entity-embedding write pipeline).
+- **064** → **Cycle 15** here (already re-scouted cy5 = no clean slice; cy15 confirms + closes).
+- **063** → **Cycle 17** here (added 2026-06-08 — it had fallen out of this composition close-out because it is a *lore-enrichment* debt, not a composition-branch one; PO 2026-06-08 chose to clear it pre-merge anyway so the whole platform ledger reaches zero).
+
 ---
 
 ## Phase 1 — Producer bugs (unblock the canon flywheel) — do FIRST
@@ -39,6 +46,9 @@ Re-scouted cy5: no clean slice (SDK NFKC would fold composition's `<`→`＜` de
 ### Cycle 16 — Cosmetic LOW batch (XS–S)
 Batch the tiny accepted LOWs: (a) stale comment at [works.py:138](../../services/composition-service/app/routers/works.py#L138) (cy6 fixed the race knowledge-side); (b) revise-path truncation not surfaced (cy7 `truncated` is winner-scoped — thread the canon-revise `finish_reason` if cheap); (c) `stitch`-revise `packed_prompt=""`.
 
+### Cycle 17 — DEFERRED 063: D-GROUNDING-COMPOSE-MIGRATE (M, lore-enrichment) — added 2026-06-08
+Cross-track item folded in (PO 2026-06-08): migrate lore-enrichment's grounding-COMPOSE path from the local `GroundingRef` to the SDK's `GroundingCite`, closing the last mui#3 compose-side gap. Full design + AC in the [debt-payoff roadmap §063](2026-06-07-debt-payoff-roadmap.md#item-2--063-d-grounding-compose-migrate-m). **Recommended internal-only migration** (keep `source_refs_json` byte-stable, route compose through `loreweave_grounding.compose_cites` + `from_grounding_ref`, adapt at the persistence boundary) → zero data-migration, preserves the re-cook `UUID(corpus_id)` license path. P2/P3 are gate-locked, so this is forward-guard cleanup, not a live-path fix. Single-service (lore-enrichment) — no cross-service live-smoke needed. **Note:** unrelated to the composition branch; bundled here only to reach a zero platform ledger before merge.
+
 ---
 
 ## Explicitly NOT reopening (conscious won't-fix, accepted cy5)
@@ -49,6 +59,6 @@ Batch the tiny accepted LOWs: (a) stale comment at [works.py:138](../../services
 ---
 
 ## Close-out gate (when to merge PR #19)
-Merge only after: cycles 10–14 done (065/066 producer bugs + K17 + planner-FE + narrative_thread); 015/016 done or consciously re-deferred; the won't-fix items remain documented accepts. At that point the branch has **zero** open debt or missing features, and PR #19 closes the full composition V1 + Canon arc.
+Merge only after: cycles 10–14 done (065/066 producer bugs + K17 + planner-FE + narrative_thread); 15/16 done or consciously re-deferred; cycle 17 (063) done or re-deferred (it does **not** block the composition merge — it's a cross-track lore-enrichment item bundled for a zero platform ledger); the won't-fix items remain documented accepts. At that point the branch has **zero** open debt or missing features, and PR #19 closes the full composition V1 + Canon arc.
 
-**Order:** 10 → 11 (flywheel unblock) → 12 (K17) → 13 (planner-FE) → 14 (narrative_thread) → 15/16 (optional+cosmetic) → MERGE. Order is flexible; 11 depends on 10, the rest are independent.
+**Order:** 10 → 11 (flywheel unblock) → 12 (K17) → 13 (planner-FE) → 14 (narrative_thread) → 15/16 (optional+cosmetic) → 17 (063, cross-track) → MERGE. Order is flexible; 11 depends on 10, the rest are independent. 17 is independent and can run anytime (or slip to post-merge if the PO re-prioritizes — it's the only non-composition item).

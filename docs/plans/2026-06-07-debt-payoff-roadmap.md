@@ -1,5 +1,10 @@
 # Roadmap — Debt Payoff (063 + K17 + 064 re-scout)
 
+> **⚠️ SUPERSEDED 2026-06-08 — absorbed into [`2026-06-08-pre-merge-closeout-roadmap.md`](2026-06-08-pre-merge-closeout-roadmap.md).**
+> This doc is retained for its detailed per-item **design + AC** (the close-out roadmap links back here for 063 and K17). Execution sequencing now lives in the close-out roadmap:
+> - **K17** → close-out **Cycle 12** · **063** → close-out **Cycle 17** · **064** → close-out **Cycle 15** (already re-scouted cy5 = no clean slice).
+> Don't plan from this doc's "Recommended sequence" below — use the close-out roadmap's cycle order. The technical content (§Item 1/2/3) is still current.
+
 - **Date:** 2026-06-07 · **Branch:** `feat/composition-service` (or a fresh branch per cycle)
 - **Origin:** user-requested debt-payoff plan for the residual deferred rows after mui#3/#4.
 - **Scope (PO-locked 2026-06-07):** pay off **K17** (entity-embedding write pipeline) + **063** (grounding-compose migrate); **064** gets a cheap re-scout for a clean slice before deciding (default: keep deferred).
