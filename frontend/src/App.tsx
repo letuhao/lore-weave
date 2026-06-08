@@ -46,6 +46,7 @@ import ReadingHistoryPage from '@/pages/ReadingHistoryPage';
 import { LeaderboardPage } from '@/pages/LeaderboardPage';
 import { ProfilePage } from '@/pages/ProfilePage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
+import { RawSearchPage } from '@/pages/RawSearchPage';
 
 function AuthenticatedThemeProvider({ children }: { children: React.ReactNode }) {
   const { accessToken } = useAuth();
@@ -122,6 +123,7 @@ export function App() {
             <Route path="/books/:bookId/sharing" element={<BookDetailPage />} />
             <Route path="/books/:bookId/settings" element={<BookDetailPage />} />
             <Route path="/books/:bookId/wiki" element={<BookDetailPage />} />
+            <Route path="/books/:bookId/search" element={<RawSearchPage />} />
 
             {/* Chat — placeholder removed, see FullBleedLayout below */}
 
