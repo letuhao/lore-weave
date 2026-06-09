@@ -63,6 +63,15 @@ type Config struct {
 	// E5B rerank is BYOK (D-RERANK-NOT-BYOK): /internal/rerank resolves the
 	// user's rerank model from provider-registry like /internal/embed — there is
 	// no platform rerank endpoint/model config here anymore.
+
+	// S4b (decision C) — usage outbox relay → Redis streams. Active only when
+	// RedisURL is set (reuses the S3a client). MAXLEN bounds each stream (G8).
+	UsageStream               string
+	CampaignUsageStream       string
+	UsageStreamMaxLen         int
+	CampaignUsageStreamMaxLen int
+	UsageRelayPollMs          int
+	UsageRelayBatch           int
 }
 
 func Load() (*Config, error) {
@@ -129,6 +138,21 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	if c.BreakerCooldownS, err = getEnvInt("BREAKER_COOLDOWN_S", 30); err != nil {
+		return nil, err
+	}
+	// S4b usage outbox relay (optional; active only when REDIS_URL is set).
+	c.UsageStream = getEnv("USAGE_STREAM", "loreweave:events:usage")
+	c.CampaignUsageStream = getEnv("CAMPAIGN_USAGE_STREAM", "loreweave:events:campaign_usage")
+	if c.UsageStreamMaxLen, err = getEnvInt("USAGE_STREAM_MAXLEN", 100000); err != nil {
+		return nil, err
+	}
+	if c.CampaignUsageStreamMaxLen, err = getEnvInt("CAMPAIGN_USAGE_STREAM_MAXLEN", 50000); err != nil {
+		return nil, err
+	}
+	if c.UsageRelayPollMs, err = getEnvInt("USAGE_RELAY_POLL_MS", 500); err != nil {
+		return nil, err
+	}
+	if c.UsageRelayBatch, err = getEnvInt("USAGE_RELAY_BATCH", 100); err != nil {
 		return nil, err
 	}
 	return c, nil

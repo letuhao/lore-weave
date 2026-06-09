@@ -118,6 +118,22 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 				})
 				s.jobsWorker.WithGovernance(gov, brk)
 				slog.Info("S3a governance enabled", "cloud_max", cfg.GovernorCloudMax, "breaker_threshold", cfg.BreakerThreshold)
+
+				// S4b (decision C) — start the usage outbox relay on the same
+				// Redis client. Drains usage_outbox → loreweave:events:usage (+
+				// :campaign_usage for tagged rows). context.Background(): the
+				// loop is idempotent/resumable, so process-exit stopping it is
+				// safe (graceful stop → D-S4B-RELAY-SHUTDOWN).
+				relay := jobs.NewUsageRelay(rdb, pool, jobs.RelayConfig{
+					UsageStream:         cfg.UsageStream,
+					CampaignUsageStream: cfg.CampaignUsageStream,
+					UsageMaxLen:         int64(cfg.UsageStreamMaxLen),
+					CampaignMaxLen:      int64(cfg.CampaignUsageStreamMaxLen),
+					PollInterval:        time.Duration(cfg.UsageRelayPollMs) * time.Millisecond,
+					BatchSize:           cfg.UsageRelayBatch,
+				}, nil)
+				go relay.Run(context.Background())
+				slog.Info("S4b usage relay enabled", "usage_stream", cfg.UsageStream, "campaign_stream", cfg.CampaignUsageStream)
 			} else {
 				slog.Warn("S3a: REDIS_URL set but unparseable — governance disabled", "err", err)
 			}

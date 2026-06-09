@@ -13,10 +13,20 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/loreweave/provider-registry-service/internal/billing"
 )
+
+// PgxPool is the subset of *pgxpool.Pool that Repo + UsageRelay use. Declaring it
+// as an interface lets tests inject pgxmock (PgxPoolIface) while production passes
+// the real *pgxpool.Pool. Both satisfy these four signatures.
+type PgxPool interface {
+	Begin(ctx context.Context) (pgx.Tx, error)
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
 
 // Job is the in-memory representation of an `llm_jobs` row. Field names
 // + JSON tags mirror the openapi Job schema so the handler can serialize
@@ -57,10 +67,10 @@ type Job struct {
 
 // Repo wraps the pgx pool with typed CRUD over llm_jobs.
 type Repo struct {
-	pool *pgxpool.Pool
+	pool PgxPool
 }
 
-func NewRepo(pool *pgxpool.Pool) *Repo {
+func NewRepo(pool PgxPool) *Repo {
 	return &Repo{pool: pool}
 }
 
@@ -206,28 +216,43 @@ WHERE job_id = $1
 	return nil
 }
 
-// Finalize transitions the job to a terminal state. The DB-level
-// llm_jobs_terminal_consistency CHECK enforces that completed_at is
-// non-NULL on terminal status, so we stamp it here.
-// Finalize transitions the job to a terminal state. Returns
-// rowsAffected so callers can gate side-effects (notifier emission)
-// on actually-took-effect transitions — the WHERE-status='running'
-// guard means a late finalize after cancel returns 0 and emits nothing.
-func (r *Repo) Finalize(
+// UsageOutbox is the model-level usage a completed job spent. The worker fills
+// it from the result `usage` block × model pricing (cost may be nil — media /
+// unpriced). Written transactionally with the finalize in FinalizeWithUsageOutbox.
+type UsageOutbox struct {
+	ModelSource  string
+	ModelRef     uuid.UUID
+	Operation    string
+	InputTokens  int
+	OutputTokens int
+	CostUSD      *float64 // nil → cost unresolvable (stored NULL)
+}
+
+// FinalizeWithUsageOutbox is the worker's terminal-path finalize (S4b, decision
+// C). It does the same status transition as Finalize AND — only when the
+// transition actually takes effect (rows=1) on a COMPLETED job with a non-nil
+// usage — writes one `usage_outbox` row in the SAME tx, so a relay can deliver
+// usage exactly-once (at-least-once + request_id dedup downstream). campaign_id
+// is parsed from the job's own job_meta (the S4a correlation tag) inside the tx.
+//
+// usage may be nil (failed/cancelled, or no resolvable tokens) → no outbox row.
+// Returns rowsAffected so the caller gates the notifier exactly as before.
+func (r *Repo) FinalizeWithUsageOutbox(
 	ctx context.Context,
 	jobID uuid.UUID,
-	status string, // 'completed' | 'failed' | 'cancelled'
-	result any, // marshaled to JSONB; nil leaves NULL
+	ownerUserID uuid.UUID,
+	status string,
+	result any,
 	errorCode, errorMessage, finishReason string,
+	usage *UsageOutbox,
 ) (int64, error) {
 	if status != "completed" && status != "failed" && status != "cancelled" {
 		return 0, fmt.Errorf("invalid terminal status: %q", status)
 	}
 	var resultJSON []byte
-	var err error
 	if result != nil {
-		resultJSON, err = json.Marshal(result)
-		if err != nil {
+		var err error
+		if resultJSON, err = json.Marshal(result); err != nil {
 			return 0, fmt.Errorf("marshal result: %w", err)
 		}
 	}
@@ -241,26 +266,74 @@ func (r *Repo) Finalize(
 	if finishReason != "" {
 		fr = &finishReason
 	}
-	// Race protection: only finalize from running. If a DELETE
-	// (cancel) flipped status='cancelled' while we were streaming, the
-	// goroutine's Finalize must be a no-op — otherwise we'd silently
-	// overwrite cancelled → completed. The WHERE clause means a
-	// late-arriving Finalize is dropped on the floor, which matches
-	// the user-visible semantic ("cancel won").
-	tag, err := r.pool.Exec(ctx, `
-UPDATE llm_jobs
-SET status = $2,
-    completed_at = now(),
-    result = $3,
-    error_code = $4,
-    error_message = $5,
-    finish_reason = $6
-WHERE job_id = $1 AND status = 'running'
-`, jobID, status, resultJSON, ec, em, fr)
+
+	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("finalize: %w", err)
+		return 0, fmt.Errorf("finalize+outbox: begin: %w", err)
 	}
-	return tag.RowsAffected(), nil
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Same race guard as Finalize (WHERE status='running'); RETURNING job_meta so
+	// we can stamp the outbox row with the job's campaign_id in this tx. No row
+	// matched ⇒ a cancel beat us → no transition, no outbox (matches notifier gate).
+	var jobMeta []byte
+	err = tx.QueryRow(ctx, `
+UPDATE llm_jobs
+SET status = $2, completed_at = now(), result = $3,
+    error_code = $4, error_message = $5, finish_reason = $6
+WHERE job_id = $1 AND status = 'running'
+RETURNING job_meta
+`, jobID, status, resultJSON, ec, em, fr).Scan(&jobMeta)
+	if errors.Is(err, pgx.ErrNoRows) {
+		if cerr := tx.Commit(ctx); cerr != nil {
+			return 0, fmt.Errorf("finalize+outbox: commit (no-op): %w", cerr)
+		}
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("finalize+outbox: update: %w", err)
+	}
+
+	if status == "completed" && usage != nil {
+		campaignID := parseJobMetaCampaignID(jobMeta)
+		if _, err := tx.Exec(ctx, `
+INSERT INTO usage_outbox
+  (request_id, owner_user_id, campaign_id, model_source, model_ref,
+   operation, input_tokens, output_tokens, cost_usd)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+`, jobID, ownerUserID, campaignID, usage.ModelSource, usage.ModelRef,
+			usage.Operation, usage.InputTokens, usage.OutputTokens, usage.CostUSD); err != nil {
+			return 0, fmt.Errorf("finalize+outbox: insert outbox: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("finalize+outbox: commit: %w", err)
+	}
+	return 1, nil
+}
+
+// parseJobMetaCampaignID extracts job_meta.campaign_id (the S4a correlation tag)
+// as a UUID. Nil-tolerant on EVERY failure (absent / non-object / non-string /
+// bad-uuid) — a malformed tag must never fail a billing-critical finalize; it
+// just yields an un-attributed (campaign_id NULL) usage row.
+func parseJobMetaCampaignID(jobMeta []byte) *uuid.UUID {
+	if len(jobMeta) == 0 {
+		return nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(jobMeta, &m); err != nil {
+		return nil
+	}
+	raw, ok := m["campaign_id"].(string)
+	if !ok || raw == "" {
+		return nil
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		return nil
+	}
+	return &id
 }
 
 // Cancel transitions a pre-terminal job to cancelled and stamps
