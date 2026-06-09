@@ -24,7 +24,12 @@ from app.config import settings
 from app.database import create_pool, get_pool
 from app.llm_client import close_llm_client, get_llm_client
 from app.migrate import run_migrations
-from app.broker import connect_broker, publish, publish_event
+from app.broker import (
+    connect_broker,
+    publish,
+    publish_event,
+    chapter_retry_queue_for_attempt,
+)
 from app.workers.coordinator import handle_job_message
 from app.workers.chapter_worker import handle_chapter_message, _TransientError
 from app.workers.extraction_worker import handle_extraction_job
@@ -140,9 +145,15 @@ async def main() -> None:
             # Republish as a new message with an incremented counter so the next worker
             # picks it up fresh. Ack the original to remove it from the queue.
             if retry_count < _MAX_TRANSIENT_RETRIES:
+                # S3b (G6): route the retry through a fixed-TTL backoff rung
+                # (1s→2s→4s) instead of republishing immediately. The rung
+                # dead-letters back to translation.chapters after its TTL, so a
+                # flapping upstream gets graduated backoff, not a tight retry
+                # loop. x-retry-count survives the dead-letter (headers carry).
+                retry_queue = chapter_retry_queue_for_attempt(retry_count)
                 log.warning(
-                    "Chapter %s transient error (retry %d/%d): %s — republishing",
-                    chapter_id, retry_count, _MAX_TRANSIENT_RETRIES, exc,
+                    "Chapter %s transient error (retry %d/%d): %s — backing off via %s",
+                    chapter_id, retry_count, _MAX_TRANSIENT_RETRIES, exc, retry_queue,
                 )
                 await channel.default_exchange.publish(
                     aio_pika.Message(
@@ -151,7 +162,7 @@ async def main() -> None:
                         content_type="application/json",
                         headers={**(message.headers or {}), "x-retry-count": retry_count + 1},
                     ),
-                    routing_key="translation.chapters",
+                    routing_key=retry_queue,
                 )
             else:
                 log.error(

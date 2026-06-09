@@ -1,7 +1,7 @@
 # Session Handoff — Session 105 (eval R&D closed + Production Eval Flywheel track planned)
 
 > **Purpose:** orient the next agent in one read. This file is the single, unversioned handoff — updated in place at the end of each session. (Older `SESSION_PATCH.md` is deprecated → archive later.)
-> **Date:** 2026-06-09 (Auto-Draft Factory **S1 spine + S2 idempotency + S3a governor/breaker** shipped; human-in-loop v2.2).
+> **Date:** 2026-06-09 (Auto-Draft Factory **S1 + S2 + S3a + S3b** shipped; human-in-loop v2.2).
 > **HEAD:** TBD (post-commit). Branch: `feat/advanced-translation-pipeline`.
 
 ## ▶ NEXT SESSION — start here
@@ -48,7 +48,11 @@
 
 **Recently cleared:** ✅ **G5** (governor + circuit-breaker; the overnight-failure risk).
 
-**▶ NEXT:** **S3b** (translation worker exponential backoff — RabbitMQ retry-TTL-ladder, G6, translation-only, small) · then **S3c** (campaign pause endpoint + `FOR UPDATE SKIP LOCKED` claim-dispatch [`D-CAMPAIGN-DRIVER-SINGLETON`] + cancel propagation via new internal cancel endpoints + **breaker→campaign-pause** keyed on `LLM_CIRCUIT_OPEN`, F) · then **S3d**/**S4** (budget-pause + usage→outbox, coupled). `/loom S3b`.
+**✅ S3b DONE — translation worker exponential backoff (M, 2026-06-09).** Closes **G6**. The worker no longer republishes transient chapter failures immediately (thundering herd); it routes each retry through a fixed-TTL **backoff rung** — `translation.chapters.retry.{1000,2000,4000}` (one per `_MAX_TRANSIENT_RETRIES`=3) which dead-letters back to `translation.chapters`, giving **1s→2s→4s** graduated backoff. Plugin-free (PO chose TTL-ladder over the delayed-message plugin — no infra dep). `broker.py` (ladder constant + `chapter_retry_queue_for_attempt` + idempotent rung declares) · `worker.py` (route retry to the rung; `x-retry-count` survives the dead-letter via headers). Per-rung *fixed* TTL avoids head-of-line blocking; `retry_count<MAX` guard = no loop, 24h DLQ safety net unchanged. **VERIFY:** translation **527** passed (+5). **/review-impl: 1 LOW fixed** (test now enforces ladder-len == retry-budget coupling); verified clean (header survival, DLX routing, no rung-drift — worker + broker share the constant). LIVE-SMOKE deferred (`D-S3B-BACKOFF-LIVE-SMOKE` — observe 1/2/4s delays + redelivery on a real RabbitMQ).
+
+**Recently cleared:** ✅ **G6** (transient-retry backoff).
+
+**▶ NEXT:** **S3c** (campaign pause endpoint + `FOR UPDATE SKIP LOCKED` claim-dispatch [`D-CAMPAIGN-DRIVER-SINGLETON`] + cancel propagation via new internal cancel endpoints on translation+knowledge + **breaker→campaign-pause** keyed on `LLM_CIRCUIT_OPEN`, decision F) · then **S3d**/**S4** (budget-pause + usage→outbox, coupled). `/loom S3c`.
 
 ### ▶ RAW SEARCH (branch `raw-search/foundation`, off `origin/main`)
 

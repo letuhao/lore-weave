@@ -7,6 +7,26 @@ _channel: aio_pika.abc.AbstractChannel | None = None
 _jobs_exchange: aio_pika.abc.AbstractExchange | None = None
 _events_exchange: aio_pika.abc.AbstractExchange | None = None
 
+# S3b (G6) — exponential-backoff retry ladder for transient chapter failures.
+# One fixed-TTL rung per retry attempt (matches worker _MAX_TRANSIENT_RETRIES=3):
+# 1s → 2s → 4s. The worker publishes a transient retry to the rung for its
+# attempt; the rung's x-message-ttl delays it, then it dead-letters back to
+# `translation.chapters` for a fresh pickup. Plugin-free (stock RabbitMQ).
+# Per-rung FIXED ttl (not per-message) avoids the head-of-line-blocking gotcha
+# where a long-TTL message at the queue head stalls shorter ones behind it.
+CHAPTER_RETRY_DELAYS_MS = (1000, 2000, 4000)
+
+
+def chapter_retry_queue_name(delay_ms: int) -> str:
+    return f"translation.chapters.retry.{delay_ms}"
+
+
+def chapter_retry_queue_for_attempt(retry_count: int) -> str:
+    """Rung for the message's CURRENT retry_count (0-based). Clamps to the last
+    rung so a count beyond the ladder still gets the max delay."""
+    idx = min(retry_count, len(CHAPTER_RETRY_DELAYS_MS) - 1)
+    return chapter_retry_queue_name(CHAPTER_RETRY_DELAYS_MS[idx])
+
 
 async def connect_broker() -> None:
     global _connection, _channel, _jobs_exchange, _events_exchange
@@ -33,6 +53,20 @@ async def connect_broker() -> None:
         },
     )
     await _channel.declare_queue("translation.chapters.dlq", durable=True)
+
+    # S3b — backoff retry rungs. Each holds a transient retry for its fixed TTL,
+    # then dead-letters back to translation.chapters (default exchange → queue
+    # name) for a fresh pickup. Declared idempotently; args must stay stable.
+    for _delay in CHAPTER_RETRY_DELAYS_MS:
+        await _channel.declare_queue(
+            chapter_retry_queue_name(_delay),
+            durable=True,
+            arguments={
+                "x-message-ttl": _delay,
+                "x-dead-letter-exchange": "",
+                "x-dead-letter-routing-key": "translation.chapters",
+            },
+        )
 
     # Extraction job queue
     extraction_q = await _channel.declare_queue("extraction.jobs", durable=True)
