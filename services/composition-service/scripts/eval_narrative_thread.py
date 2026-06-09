@@ -66,8 +66,12 @@ def _req(method, path, token=None, body=None, timeout=600):
     req.add_header("Content-Type", "application/json")
     if token:
         req.add_header("Authorization", f"Bearer {token}")
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        raw = resp.read().decode().strip()
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode().strip()
+    except urllib.error.HTTPError as e:  # surface the upstream error body for diagnosis
+        print(f"  HTTP {e.code} {method} {path}: {e.read().decode()[:400]}")
+        raise
     return json.loads(raw) if raw else {}
 
 
@@ -236,6 +240,11 @@ def main():
     token = login()
     user_id = jwt_sub(token)
     drafter, judge, disjoint = models(token)
+    # --drafter=<user_model_id> overrides the drafter (e.g. a frontier ceiling probe);
+    # the judge stays on the cheap/local default so only generation hits the override.
+    drafter_override = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--drafter=")), None)
+    if drafter_override:
+        drafter = drafter_override
     print(f"user={user_id} drafter={drafter} judge={judge} disjoint_judge={disjoint} n={n} mode={mode}")
     if not disjoint:
         print("  ⚠ only ONE chat model registered — judge==drafter (self-reinforcement "
