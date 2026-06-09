@@ -52,8 +52,8 @@ The reasoning-engine spec's Phase-B `narrative_thread` ledger (§4/§5/§10.2) �
 
 ## Phase 3 — Optional + cosmetic cleanup (last)
 
-### Cycle 15 — D-GROUNDING-C-ADOPT (064) (XS–S, optional)
-Re-scouted cy5: no clean slice (SDK NFKC would fold composition's `<`→`＜` delimiter defense; no `GroundingCite` consumer). Only act if a generation-side cite consumer now exists OR composition's sanitize is rebuilt. Likely stays deferred — confirm + close.
+### Cycle 15 — D-GROUNDING-C-ADOPT (064) (XS, optional) — ✅ DONE (LOOM-59)
+Re-scouted cy5: no clean slice (SDK NFKC would fold composition's `<`→`＜` delimiter defense; no `GroundingCite` consumer). Only act if a generation-side cite consumer now exists OR composition's sanitize is rebuilt. ✅ **Re-CONFIRMED against HEAD 6492f0fa (code-verified, not assumed):** both blockers still hold — [sanitize.py:40](../../services/composition-service/app/packer/sanitize.py#L40) fullwidth-escapes `<`→`＜` + `⟦…⟧` directives, and the SDK `prenormalize` NFKC-folds it back ([sdks/.../sanitize.py:110-114](../../sdks/python/loreweave_grounding/sanitize.py#L110-L114)); grep = ZERO `GroundingCite`/`compose_cites`/`loreweave_grounding` in composition. **PO 2026-06-09: keep deferred (re-confirmed), NOT won't-fix** — genuine future trigger (a cite consumer appears OR sanitize is rebuilt). DEFERRED 064 stamped with the re-confirmation + trigger. Docs-only cycle, no production code.
 
 ### Cycle 16 — Cosmetic LOW batch (XS–S)
 Batch the tiny accepted LOWs: (a) stale comment at [works.py:138](../../services/composition-service/app/routers/works.py#L138) (cy6 fixed the race knowledge-side); (b) revise-path truncation not surfaced (cy7 `truncated` is winner-scoped — thread the canon-revise `finish_reason` if cheap); (c) `stitch`-revise `packed_prompt=""`.
