@@ -97,6 +97,13 @@ CREATE TABLE IF NOT EXISTS campaign_usage_seen (
   cost_usd    NUMERIC(16,8),
   seen_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- S5b — per-campaign VERIFIER model (V3 translation). NULL = fall back to the
+-- translator model (matches v3/orchestrator.py _verifier_model). Threaded through
+-- the translation dispatch onto the job. (Embedding/reranker are NOT stored here —
+-- they are applied to the chosen knowledge project at create; the project is SSOT.)
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS verifier_model_source TEXT;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS verifier_model_ref    UUID;
 """
 
 

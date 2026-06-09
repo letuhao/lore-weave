@@ -16,9 +16,16 @@ from fastapi import HTTPException
 from app.routers.internal_dispatch import (
     dispatch_extraction,
     dispatch_cancel_extraction,
+    set_campaign_models,
     InternalExtractionPayload,
     InternalCancelPayload,
+    SetCampaignModelsPayload,
 )
+from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
+
+_GOOD_DIM = next(iter(SUPPORTED_PASSAGE_DIMS))
+EMB = UUID("44444444-4444-4444-4444-444444444444")
+RR = UUID("55555555-5555-5555-5555-555555555555")
 
 USER = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 PROJ = UUID("99999999-9999-9999-9999-999999999999")
@@ -115,6 +122,97 @@ async def test_no_model_ref_422(mocker):
         await dispatch_extraction(PROJ, payload, pr, jr, br)
     assert exc.value.status_code == 422
     assert exc.value.detail["code"] == "KNOW_NO_LLM_MODEL"
+
+
+# ── S5b: set-campaign-models ───────────────────────────────────────────────
+
+def _scm_project(*, embedding_model=None, extraction_status="disabled", rerank_model=None):
+    pr = AsyncMock()
+    pr.get = AsyncMock(return_value=SimpleNamespace(
+        embedding_model=embedding_model,
+        extraction_status=extraction_status,
+        rerank_model=rerank_model,
+    ))
+    pr.set_extraction_state = AsyncMock()
+    pr.set_rerank_model = AsyncMock()
+    return pr
+
+
+async def test_scm_fresh_project_sets_embedding_no_delete(mocker):
+    probe = mocker.patch("app.routers.internal_dispatch.probe_embedding_dimension",
+                         new_callable=AsyncMock, return_value=_GOOD_DIM)
+    delete = mocker.patch("app.routers.internal_dispatch._delete_project_graph",
+                          new_callable=AsyncMock)
+    pr = _scm_project(embedding_model=None, extraction_status="disabled")
+    resp = await set_campaign_models(
+        PROJ, SetCampaignModelsPayload(user_id=USER, embedding_model_ref=EMB), pr)
+    assert resp.embedding_changed is True
+    assert resp.graph_deleted is False
+    assert resp.embedding_model == str(EMB)
+    probe.assert_awaited_once()
+    delete.assert_not_awaited()           # fresh project → no destructive delete
+    pr.set_extraction_state.assert_awaited_once()
+
+
+async def test_scm_conflict_without_confirm_409(mocker):
+    probe = mocker.patch("app.routers.internal_dispatch.probe_embedding_dimension",
+                         new_callable=AsyncMock, return_value=_GOOD_DIM)
+    pr = _scm_project(embedding_model="old-model", extraction_status="ready")
+    with pytest.raises(HTTPException) as exc:
+        await set_campaign_models(
+            PROJ, SetCampaignModelsPayload(user_id=USER, embedding_model_ref=EMB), pr)
+    assert exc.value.status_code == 409
+    assert exc.value.detail["code"] == "KNOW_EMBEDDING_CONFLICT"
+    probe.assert_not_awaited()            # rejected BEFORE any probe/delete
+    pr.set_extraction_state.assert_not_awaited()
+
+
+async def test_scm_confirm_deletes_graph_then_sets(mocker):
+    mocker.patch("app.routers.internal_dispatch.app_settings",
+                 SimpleNamespace(neo4j_uri="bolt://x"))
+    mocker.patch("app.routers.internal_dispatch.probe_embedding_dimension",
+                 new_callable=AsyncMock, return_value=_GOOD_DIM)
+    delete = mocker.patch("app.routers.internal_dispatch._delete_project_graph",
+                          new_callable=AsyncMock, return_value=7)
+    pr = _scm_project(embedding_model="old-model", extraction_status="ready")
+    resp = await set_campaign_models(
+        PROJ, SetCampaignModelsPayload(
+            user_id=USER, embedding_model_ref=EMB, confirm_embedding_change=True), pr)
+    assert resp.embedding_changed is True and resp.graph_deleted is True
+    delete.assert_awaited_once()
+    pr.set_extraction_state.assert_awaited_once()
+
+
+async def test_scm_rerank_only_no_embedding_touch(mocker):
+    probe = mocker.patch("app.routers.internal_dispatch.probe_embedding_dimension",
+                         new_callable=AsyncMock)
+    pr = _scm_project(embedding_model="m", extraction_status="ready")
+    resp = await set_campaign_models(
+        PROJ, SetCampaignModelsPayload(user_id=USER, rerank_model_ref=RR), pr)
+    assert resp.embedding_changed is False
+    assert resp.rerank_model == str(RR)
+    probe.assert_not_awaited()            # rerank has no embedding hazard
+    pr.set_rerank_model.assert_awaited_once()
+
+
+async def test_scm_same_embedding_is_noop(mocker):
+    probe = mocker.patch("app.routers.internal_dispatch.probe_embedding_dimension",
+                         new_callable=AsyncMock)
+    pr = _scm_project(embedding_model=str(EMB), extraction_status="ready")
+    resp = await set_campaign_models(
+        PROJ, SetCampaignModelsPayload(user_id=USER, embedding_model_ref=EMB), pr)
+    assert resp.embedding_changed is False
+    probe.assert_not_awaited()
+    pr.set_extraction_state.assert_not_awaited()
+
+
+async def test_scm_project_not_found_404():
+    pr = AsyncMock()
+    pr.get = AsyncMock(return_value=None)
+    with pytest.raises(HTTPException) as exc:
+        await set_campaign_models(
+            PROJ, SetCampaignModelsPayload(user_id=USER, embedding_model_ref=EMB), pr)
+    assert exc.value.status_code == 404
 
 
 async def test_cancel_reuses_core_with_asserted_user(mocker):

@@ -77,6 +77,46 @@ def test_dispatch_forwards_campaign_id_to_core(client, mocker):
     assert str(core.call_args.kwargs["campaign_id"]) == CAMP
 
 
+def test_dispatch_forwards_verifier_model_to_payload(client, mocker):
+    """S5b: a campaign-picked verifier model is threaded onto the CreateJobPayload
+    (which already persists+publishes it; the V3 orchestrator resolves it with a
+    translator fallback)."""
+    mocker.patch(
+        "app.routers.internal_dispatch._verify_book_owner", new_callable=AsyncMock)
+    core = mocker.patch(
+        "app.routers.internal_dispatch._resolve_and_create_job",
+        new_callable=AsyncMock, return_value=SimpleNamespace(job_id=UUID(JOB)))
+    VER = "99999999-9999-9999-9999-999999999999"
+    resp = client.post(
+        "/internal/translation/dispatch-job",
+        json=_body(verifier_model_source="user_model", verifier_model_ref=VER),
+        headers={"X-Internal-Token": TOKEN},
+    )
+    assert resp.status_code == 201, resp.text
+    created_payload = core.call_args.args[2]  # (db, book_id, CreateJobPayload, user_id)
+    assert created_payload.verifier_model_source == "user_model"
+    assert str(created_payload.verifier_model_ref) == VER
+
+
+def test_dispatch_drops_half_verifier_override(client, mocker):
+    """A verifier source with no ref is a half-override → both dropped (the
+    CreateJobPayload pairing validator would otherwise 422)."""
+    mocker.patch(
+        "app.routers.internal_dispatch._verify_book_owner", new_callable=AsyncMock)
+    core = mocker.patch(
+        "app.routers.internal_dispatch._resolve_and_create_job",
+        new_callable=AsyncMock, return_value=SimpleNamespace(job_id=UUID(JOB)))
+    resp = client.post(
+        "/internal/translation/dispatch-job",
+        json=_body(verifier_model_source="user_model"),  # no ref
+        headers={"X-Internal-Token": TOKEN},
+    )
+    assert resp.status_code == 201, resp.text
+    created_payload = core.call_args.args[2]
+    assert created_payload.verifier_model_source is None
+    assert created_payload.verifier_model_ref is None
+
+
 def test_ownership_failure_propagates(client, mocker):
     mocker.patch(
         "app.routers.internal_dispatch._verify_book_owner",

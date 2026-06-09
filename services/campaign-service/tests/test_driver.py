@@ -33,6 +33,8 @@ def _campaign(**over):
         "knowledge_model_ref": None,
         "translation_model_source": "user_model",
         "translation_model_ref": None,
+        "verifier_model_source": None,
+        "verifier_model_ref": None,
         "target_language": "vi",
     }
     base.update(over)
@@ -92,7 +94,9 @@ async def test_cold_start_dispatches_both_stages(fake_pool, patch_repo):
         _ch(C1, k="done"), _ch(C2, k="pending"),
     ]
     clients, tr, kn = _clients()
-    await _process(fake_pool, clients, _campaign())
+    VER = "77777777-7777-7777-7777-777777777777"
+    await _process(fake_pool, clients,
+                   _campaign(verifier_model_source="user_model", verifier_model_ref=VER))
 
     tr.dispatch_job.assert_awaited_once()
     assert tr.dispatch_job.call_args.kwargs["chapter_ids"] == [C1]
@@ -100,6 +104,9 @@ async def test_cold_start_dispatches_both_stages(fake_pool, patch_repo):
     # S4a: both dispatches carry the campaign_id for cost attribution.
     assert tr.dispatch_job.call_args.kwargs["campaign_id"] == str(CID)
     assert kn.dispatch_extraction.call_args.kwargs["campaign_id"] == str(CID)
+    # S5b: the campaign's verifier model is threaded onto the translation dispatch.
+    assert tr.dispatch_job.call_args.kwargs["verifier_model_source"] == "user_model"
+    assert tr.dispatch_job.call_args.kwargs["verifier_model_ref"] == VER
     # Both claimed rows flipped to dispatched.
     stages = {c.args[3] for c in patch_repo["mark_stage_dispatched"].call_args_list}
     assert stages == {"knowledge", "translation"}

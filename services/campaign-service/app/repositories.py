@@ -38,6 +38,7 @@ _CAMPAIGN_COLS = """
   target_language, knowledge_project_id,
   knowledge_model_source, knowledge_model_ref,
   translation_model_source, translation_model_ref,
+  verifier_model_source, verifier_model_ref,
   chapter_from, chapter_to, budget_usd, spent_usd, total_chapters, error_message,
   created_at, updated_at, started_at, finished_at
 """
@@ -70,6 +71,8 @@ async def create_campaign(
     chapter_to: Optional[int],
     total_chapters: int,
     budget_usd: Optional[Decimal] = None,
+    verifier_model_source: Optional[str] = None,
+    verifier_model_ref: Optional[UUID] = None,
 ) -> asyncpg.Record:
     return await conn.fetchrow(
         f"""
@@ -77,14 +80,16 @@ async def create_campaign(
           owner_user_id, book_id, name, gating_mode, target_language,
           knowledge_project_id, knowledge_model_source, knowledge_model_ref,
           translation_model_source, translation_model_ref,
+          verifier_model_source, verifier_model_ref,
           chapter_from, chapter_to, total_chapters, budget_usd
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
         RETURNING {_CAMPAIGN_COLS}
         """,
         owner_user_id, book_id, name, gating_mode, target_language,
         knowledge_project_id, knowledge_model_source, knowledge_model_ref,
         translation_model_source, translation_model_ref,
+        verifier_model_source, verifier_model_ref,
         chapter_from, chapter_to, total_chapters, budget_usd,
     )
 

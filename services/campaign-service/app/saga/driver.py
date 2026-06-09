@@ -173,6 +173,11 @@ async def process_campaign(
                     if campaign["translation_model_ref"] else None
                 ),
                 campaign_id=str(campaign_id),  # S4a: cost attribution
+                verifier_model_source=campaign["verifier_model_source"],  # S5b
+                verifier_model_ref=(
+                    str(campaign["verifier_model_ref"])
+                    if campaign["verifier_model_ref"] else None
+                ),
             )
             if tr_job_id:  # S3c-2: record for cancel propagation
                 await repo.set_dispatched_job_id(

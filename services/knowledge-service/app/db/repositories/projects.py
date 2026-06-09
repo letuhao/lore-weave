@@ -382,6 +382,31 @@ class ProjectsRepo:
                 )
         return _row_to_project(row) if row else None
 
+    async def set_rerank_model(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        *,
+        rerank_model: str | None,
+        rerank_model_source: str = "user_model",
+    ) -> Project | None:
+        """S5b: set the project's BYOK reranker (campaign override path). Unlike
+        embedding, rerank has no vector-space hazard — it is applied at raw-search
+        time — so no graph delete / confirm is needed. rerank_model NULL clears the
+        selection (rerank skipped); rerank_model_source is NOT NULL (default
+        'user_model'). Owner-scoped; returns None if not owned / not found."""
+        query = f"""
+        UPDATE knowledge_projects
+        SET rerank_model = $3, rerank_model_source = $4, updated_at = now()
+        WHERE user_id = $1 AND project_id = $2
+        RETURNING {_SELECT_COLS}
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(
+                query, user_id, project_id, rerank_model, rerank_model_source,
+            )
+        return _row_to_project(row) if row else None
+
     async def archive(
         self, user_id: UUID, project_id: UUID
     ) -> Project | None:

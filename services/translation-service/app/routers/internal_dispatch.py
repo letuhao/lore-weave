@@ -46,6 +46,11 @@ class InternalDispatchPayload(BaseModel):
     target_language: str | None = None
     model_source: str | None = None
     model_ref: UUID | None = None
+    # S5b: per-campaign V3 verifier model (null → falls back to the translator,
+    # per v3/orchestrator.py _verifier_model). CreateJobPayload already overlays
+    # + persists + publishes these; we just forward them.
+    verifier_model_source: str | None = None
+    verifier_model_ref: UUID | None = None
     # S2: default-skip idempotency applies here too (the campaign driver relies
     # on it — re-dispatching an already-translated chapter must not re-spend).
     force_retranslate: bool = False
@@ -80,6 +85,8 @@ async def dispatch_job(
     # campaign supplies no model_ref, leave BOTH unset so the job falls back to the
     # user's saved translation settings rather than 422-ing on a half-override.
     model_source = payload.model_source if payload.model_ref else None
+    # Same pairing rule for the verifier override: keep both unset on a half-override.
+    verifier_model_source = payload.verifier_model_source if payload.verifier_model_ref else None
     job = await _resolve_and_create_job(
         db,
         payload.book_id,
@@ -88,6 +95,8 @@ async def dispatch_job(
             target_language=payload.target_language,
             model_source=model_source,
             model_ref=payload.model_ref,
+            verifier_model_source=verifier_model_source,
+            verifier_model_ref=payload.verifier_model_ref,
             force_retranslate=payload.force_retranslate,
         ),
         user_id,

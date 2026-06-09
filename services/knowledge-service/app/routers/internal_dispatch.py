@@ -29,9 +29,13 @@ from app.deps import (
     get_extraction_jobs_repo,
     get_projects_repo,
 )
+from app.clients.embedding_client import EmbeddingError, probe_embedding_dimension
+from app.config import settings as app_settings
+from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
 from app.middleware.internal_auth import require_internal_token
 from app.routers.public.extraction import (
     StartJobRequest,
+    _delete_project_graph,
     _start_extraction_job_core,
     cancel_extraction_job,
 )
@@ -110,6 +114,114 @@ async def dispatch_extraction(
         campaign_id=payload.campaign_id,
     )
     return DispatchResponse(job_id=job.job_id)
+
+
+class SetCampaignModelsPayload(BaseModel):
+    """S5b — a campaign applies its embedding/reranker picks to the chosen project
+    (the project is SSOT for these). user_id is the asserted owner. A *_model_ref
+    of None means 'not provided — leave unchanged'."""
+    user_id: UUID
+    embedding_model_source: str | None = None
+    embedding_model_ref: UUID | None = None
+    rerank_model_source: str | None = None
+    rerank_model_ref: UUID | None = None
+    # Required to change embedding on a project that already has a graph
+    # (destructive: deletes the stale vectors before re-embedding).
+    confirm_embedding_change: bool = False
+
+
+class SetCampaignModelsResponse(BaseModel):
+    project_id: UUID
+    embedding_model: str | None
+    embedding_changed: bool
+    graph_deleted: bool
+    rerank_model: str | None
+
+
+@router.post("/{project_id}/set-campaign-models", response_model=SetCampaignModelsResponse)
+async def set_campaign_models(
+    project_id: UUID,
+    payload: SetCampaignModelsPayload,
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+) -> SetCampaignModelsResponse:
+    """S5b — apply a campaign's embedding/reranker model picks to its project.
+
+    Embedding is the hazard: changing it invalidates the project's existing vector
+    space. We use `extraction_status == 'disabled'` as the 'no graph yet' signal:
+    a fresh project sets the model freely; a project WITH a graph requires
+    `confirm_embedding_change` (→ probe dim, delete graph, set). Reranker is applied
+    directly (no re-embed needed). The embedding dimension is probed BEFORE any
+    delete so a bad model leaves the graph intact (422)."""
+    project = await projects_repo.get(payload.user_id, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "KNOW_PROJECT_NOT_FOUND", "message": "project not found"},
+        )
+
+    embedding_changed = False
+    graph_deleted = False
+    new_embedding = project.embedding_model
+
+    if payload.embedding_model_ref is not None:
+        new_model = str(payload.embedding_model_ref)
+        if new_model != (project.embedding_model or ""):
+            has_graph = project.extraction_status != "disabled"
+            if has_graph and not payload.confirm_embedding_change:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "KNOW_EMBEDDING_CONFLICT",
+                        "message": ("changing the embedding model deletes the project's "
+                                    "existing knowledge graph; resubmit with confirm_embedding_change"),
+                    },
+                )
+            # Probe the new model's dimension BEFORE any destructive delete.
+            try:
+                new_dim = await probe_embedding_dimension(payload.user_id, new_model)
+            except EmbeddingError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail={"code": "KNOW_EMBEDDING_PROBE_FAILED", "message": f"embedding probe failed: {exc}"},
+                )
+            if new_dim not in SUPPORTED_PASSAGE_DIMS:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail={"code": "KNOW_EMBEDDING_DIM_UNSUPPORTED",
+                            "message": f"embedding dimension {new_dim} has no :Passage vector index"},
+                )
+            if has_graph:
+                if not app_settings.neo4j_uri:
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail={"code": "KNOW_NEO4J_UNAVAILABLE", "message": "Neo4j not configured"},
+                    )
+                await _delete_project_graph(payload.user_id, project_id)
+                graph_deleted = True
+            await projects_repo.set_extraction_state(
+                payload.user_id, project_id,
+                extraction_enabled=False, extraction_status="disabled",
+                embedding_model=new_model, embedding_dimension=new_dim,
+            )
+            embedding_changed = True
+            new_embedding = new_model
+
+    new_rerank = project.rerank_model
+    if payload.rerank_model_ref is not None:
+        new_rerank = str(payload.rerank_model_ref)
+        await projects_repo.set_rerank_model(
+            payload.user_id, project_id,
+            rerank_model=new_rerank,
+            rerank_model_source=payload.rerank_model_source or "user_model",
+        )
+
+    return SetCampaignModelsResponse(
+        project_id=project_id,
+        embedding_model=new_embedding,
+        embedding_changed=embedding_changed,
+        graph_deleted=graph_deleted,
+        rerank_model=new_rerank,
+    )
 
 
 class InternalCancelPayload(BaseModel):

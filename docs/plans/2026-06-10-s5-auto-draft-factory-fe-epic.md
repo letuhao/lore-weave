@@ -41,9 +41,111 @@ model → reject (409) or force re-embed, never silently corrupt retrieval. Same
 caution (lighter) for reranker. **Do not lose this in S5b.**
 
 ## Slices
-- **S5a** — cost/time estimate endpoint (this doc). FS, cross-service (provider-registry + campaign-service). No schema change.
-- **S5b** — 6-role persistence + plumbing. FS, schema migration + cross-service (translation verifier, learning eval-judge, knowledge embedding/rerank). Embedding-safety guard above.
-- **S5c** — FE wizard (multi-step) + minimal detail page. FE-only against the S5a/S5b contracts. i18n ×4.
+- **S5a** — cost/time estimate endpoint (DONE, `53b3d630`). FS, cross-service. No schema change.
+- **S5b** — verifier + embedding/reranker per-campaign (this doc, below). FS, schema migration + cross-service (campaign + translation + knowledge).
+- **S5b-eval** — translation eval-judge pipeline (NEW feature, its own loom this session). PO chose to build it now; it's not plumbing (no translation judge exists today — see below).
+- **S5c** — FE wizard (multi-step) + minimal detail page. FE-only against the S5a/S5b(/eval) contracts. i18n ×4.
+
+---
+
+# S5b — verifier + embedding/reranker per-campaign
+
+> CLARIFY (2026-06-10): PO chose **build eval-judge now** (→ split to S5b-eval, a new
+> cross-service feature, NOT plumbing — the campaign "eval" stage is advanced *passively*
+> by `translation.quality`; there is no LLM translation-judge today), **embedding override
+> allowed with confirm+graph-delete**, **v2.2 + /review-impl**. This loom = the 3 ready
+> editable roles: verifier (→translation) + embedding/reranker (→knowledge). Reclassified L→XL.
+
+## Grounding (verified)
+- **Verifier ~done downstream**: translation `_resolve_and_create_job` already overlays +
+  persists + publishes `verifier_model_source/ref` (jobs.py:100-103,164,179) and the V3
+  orchestrator resolves it with translator-fallback (`v3/orchestrator.py:209`). The job
+  `CreateJobPayload` already has the fields; `translation_jobs` already has the columns.
+  ⇒ only `InternalDispatchPayload` needs the 2 fields + pass-through.
+- **Embedding safety is already enforced by knowledge-service**: PATCH project 422s an
+  embedding change when `extraction_status != 'disabled'` (has a graph); `PUT
+  /embedding-model?confirm=true` probes the dim + deletes the graph + sets the model
+  (extraction.py:982). So `extraction_status == 'disabled'` is the clean "no vector space
+  yet" signal — no Neo4j passage count needed.
+- Campaign references an EXISTING project (`create` requires `knowledge_project_id`).
+
+## Design
+### 1. Verifier (campaign → translation)
+- `campaigns += verifier_model_source TEXT, verifier_model_ref UUID` (migrate.py).
+- `CreateCampaignPayload`/`Campaign` += `verifier_model_source/ref`; `_CAMPAIGN_COLS` +
+  `create_campaign` INSERT += them; `_campaign_row` test fixture += them.
+- `TranslationDispatchClient.dispatch_job` += `verifier_model_source/ref` (params + body);
+  driver passes them from the campaign row.
+- translation `InternalDispatchPayload` += `verifier_model_source/ref` → forwarded to
+  `CreateJobPayload` (downstream already threads them to the provider job).
+
+### 2. Embedding + reranker (campaign → knowledge, applied at CREATE)
+Applied ONCE at campaign create (user-initiated, confirm flag in the body) — NOT in the
+per-tick driver. The project is the SSOT for these; the campaign does not store them
+(avoids drift). New knowledge **internal** endpoint reuses the public destructive core:
+- `POST /internal/knowledge/projects/{project_id}/set-campaign-models`
+  (X-Internal-Token + asserted user_id) body `{user_id, embedding_model_source/ref?,
+  rerank_model_source/ref?, confirm_embedding_change}`:
+  - embedding override == current → no-op.
+  - embedding override != current AND `extraction_status == 'disabled'` (fresh, no graph)
+    → probe dim + `set_extraction_state(embedding_model, embedding_dimension)`. No confirm.
+  - embedding override != current AND has a graph → **409 `KNOW_EMBEDDING_CONFLICT`** unless
+    `confirm_embedding_change` → then probe dim + `_delete_project_graph` + set
+    (extraction_status stays/→'disabled'). (Destructive; PO-approved.)
+  - rerank override → `ProjectsRepo.set_rerank_model` (no vector-space hazard; applied at
+    query time). New tiny repo setter (no version/If-Match dance for an internal call).
+  - probe failure / unsupported dim → 422 (graph left intact — probe BEFORE delete).
+- `CreateCampaignPayload` += `embedding_model_source/ref`, `rerank_model_source/ref`,
+  `confirm_embedding_change: bool = False` (NOT persisted on campaigns).
+- `KnowledgeDispatchClient.set_campaign_models(...)` (httpx; 409 → `EmbeddingConflict` →
+  campaign `create` returns **409 `CAMPAIGN_EMBEDDING_CONFLICT`**).
+- campaign `create_campaign`: after ownership verify + chapter enumerate, if embedding/rerank
+  overrides present → call `set_campaign_models` BEFORE the campaign INSERT (a post-patch
+  insert failure leaves the project with the user's chosen model — benign; documented).
+
+## Edge cases
+| Case | Handling |
+|---|---|
+| verifier null | translator model used (orchestrator fallback) — no campaign col needed beyond storing null. |
+| embedding == project's current | no-op (no delete). |
+| embedding differs, fresh project (disabled) | set freely, no confirm. |
+| embedding differs, project has a graph, no confirm | 409 `CAMPAIGN_EMBEDDING_CONFLICT`. |
+| embedding differs, has graph, confirm=true | probe → delete graph → set (destructive, PO-approved). |
+| embedding probe fails / bad dim | 422, graph intact. |
+| rerank set | applied directly (no re-embed needed). |
+| set-campaign-models OK then campaign INSERT fails | project carries the chosen model; no campaign. Benign; user retries. |
+
+## review-impl resolution (2026-06-10)
+- **#1 LOW (embedding_model_source silently ignored)** → fixed: documented on the payload that
+  it's accepted for FE Model-Matrix symmetry but ignored (knowledge embedding is always BYOK
+  user_model; `knowledge_projects` has no embedding-source column — only `embedding_model_ref` applies).
+- **#2 LOW (accept)** — the `'disabled' == no-graph` guard reuses knowledge-service's own
+  PATCH-project signal (projects.py:289); any orphan risk from a hypothetical disable-without-delete
+  is pre-existing + shared, not introduced here.
+- **#3 LOW (accept) `D-S5B-EMBED-CREATE-ATOMICITY`** — patch-before-insert is the safer order
+  (insert-first would leave a campaign pointing at an unpatched project); the destructive-confirm +
+  insert-fail window is rare and the user already opted into the rebuild.
+- **#4 LOW (accept)** — `rerank_model_ref=None` = "leave unchanged"; the campaign path sets but
+  cannot CLEAR a reranker (clearing stays on the project form).
+- **#5 COSMETIC (accept)** — the endpoint's probe-failure / dim-unsupported branches aren't in the
+  new unit tests (logic reused verbatim from the tested public `change_embedding_model`).
+
+## Deferred
+- **`D-S5B-LIVE-SMOKE`** — real 3-service: create a campaign with verifier + embedding/rerank
+  → verify the translation job carries `verifier_model_ref`, the project's embedding/rerank
+  are patched (fresh-set + confirm-delete paths), and a graph-conflict create 409s.
+- **`D-S5B-EMBED-CREATE-ATOMICITY`** — the project patch precedes the campaign INSERT (no
+  cross-service transaction); a post-patch insert failure leaves a benign project mutation.
+  Acceptable for a user-initiated create; revisit if it bites.
+
+## Test plan
+- campaign: create threads verifier into the translation dispatch (driver/dispatch_client);
+  create with embedding/rerank → `set_campaign_models` called; 409 conflict propagates to
+  `CAMPAIGN_EMBEDDING_CONFLICT`; verifier persists on the row.
+- translation: `InternalDispatchPayload` verifier fields → `CreateJobPayload` (passthrough).
+- knowledge: `set-campaign-models` — fresh-set (no confirm), conflict-no-confirm-409,
+  confirm-delete, rerank-only, not-found, same-model no-op.
+- VERIFY: campaign pytest; translation pytest; knowledge pytest. Live-smoke deferred.
 
 ---
 

@@ -1,14 +1,15 @@
-# Session Handoff — Session 107 (Auto-Draft Factory S5a — estimate endpoint)
+# Session Handoff — Session 107 (Auto-Draft Factory S5a + S5b)
 
 > **Purpose:** orient the next agent in one read. This file is the single, unversioned handoff — updated in place at the end of each session. (Older `SESSION_PATCH.md` is deprecated → archive later.)
-> **Date:** 2026-06-10 (backend S0–S4 COMPLETE; **S5 epic started → S5a cost/time estimate endpoint shipped**; human-in-loop v2.2).
+> **Date:** 2026-06-10 (backend S0–S4 COMPLETE; **S5 epic: S5a estimate endpoint + S5b verifier/embedding/rerank per-campaign shipped**; human-in-loop v2.2).
 > **HEAD:** TBD (post-commit). Branch: `feat/advanced-translation-pipeline`.
 
-## ▶ NEXT: S5b — 6-role model persistence + cross-service plumbing
-S5 (Auto-Draft Factory wizard/monitor) was reframed at CLARIFY into a multi-service epic and **decomposed S5a→S5b→S5c** (PO 2026-06-10; full record + the embedding-safety constraint in [`docs/plans/2026-06-10-s5-auto-draft-factory-fe-epic.md`](../plans/2026-06-10-s5-auto-draft-factory-fe-epic.md)). PO chose **all 6 roles editable incl. embedding**, a real backend estimate, and create+launch→minimal detail.
-- **S5a DONE** (this session) — see block below.
-- **S5b (next)** — schema migration: `campaigns += verifier_model_source/ref + eval_judge_model_source/ref` (extractor+translator already persisted); plumb verifier→translation dispatch (translation jobs already accept `verifier_model_source/ref`, `v3/orchestrator.py:209` — just thread it), eval-judge→learning-service (**cross-service refactor**: judge model is env-only today, `learning-service/config.py:23`); embedding+reranker surfaced from the knowledge project. **⚠ HARD CONSTRAINT:** per-campaign embedding override is only safe on a project with NO embedded passages yet — else reject(409)/re-embed (changing embedding invalidates the vector space). Recommend `/loom S5b` with AMAW (schema + cross-service + billing). v2.2 self-review per prior-slice PO pref.
-- **S5c** — FE wizard (multi-step) + minimal detail page, against the S5a/S5b contracts. i18n ×4.
+## ▶ NEXT: S5b-eval — translation eval-judge pipeline (NEW feature)
+S5 (Auto-Draft Factory wizard/monitor) was reframed at CLARIFY into a multi-service epic, **decomposed S5a→S5b→(S5b-eval)→S5c** (PO 2026-06-10; full record + the embedding-safety constraint in [`docs/plans/2026-06-10-s5-auto-draft-factory-fe-epic.md`](../plans/2026-06-10-s5-auto-draft-factory-fe-epic.md)). PO chose **all 6 roles editable incl. embedding**, a real backend estimate, create+launch→minimal detail, and **build eval-judge now**.
+- **S5a DONE** (`53b3d630`, pushed) — cost/time estimate endpoint.
+- **S5b DONE** (this session) — verifier + embedding/reranker per-campaign. See block below.
+- **S5b-eval (NEXT)** — investigation found eval-judge is **not plumbing**: the campaign "eval" stage is advanced *passively* by the `translation.quality` event and there is **no LLM translation-judge today** (learning-service's online judge consumes `knowledge.extraction_run_completed`, extraction-only). So this is a **new cross-service feature** (its own CLARIFY/DESIGN): define what a translation-fidelity judge does, on which event, with what data (source+translation), where it runs (learning-service?), and thread a per-campaign `eval_judge_model_source/ref`. PO chose to build it now → `/loom S5b-eval`. Needs design — don't treat as a thread-it slice.
+- **S5c** — FE wizard (multi-step) + minimal detail page, against the S5a/S5b(/eval) contracts. i18n ×4.
 
 ## ▶ NEXT SESSION — start here
 
@@ -117,7 +118,13 @@ S5 (Auto-Draft Factory wizard/monitor) was reframed at CLARIFY into a multi-serv
 - **`D-S5A-TARGET-LANG-RATIO`** (review-impl #4) — `target_language` accepted but expansion ratio is a flat 1.5; refine per-language with the sampling estimator.
 - **`D-S5A-SUMMARY-COST`** — knowledge summary-gen LLM spend (the `D-S4-SUMMARY-ATTRIBUTION` hop) not in the stage map; fold in when that attribution lands.
 
-Also pending: deferred **live-smokes** across S4a–d + `D-RERANK-BYOK-LIVE-SMOKE` on a real stack-up. S4 commits pushed to `origin/feat/advanced-translation-pipeline`; **S5a not yet pushed**. PR `→ main` when the FE lands or per PO.
+**✅ S5b DONE — verifier + embedding/reranker per-campaign (XL, one loom, 3-service, 2026-06-10).** Design in the epic doc. Makes 3 of the 6 Model-Matrix roles per-campaign editable (extractor+translator already were). **Verifier:** `campaigns += verifier_model_source/ref` (migration) → driver → `TranslationDispatchClient.dispatch_job` → translation `InternalDispatchPayload` → `CreateJobPayload` (translation already persisted/published/resolved verifier — `v3/orchestrator.py` falls back to the translator when null). **Embedding/reranker:** applied to the chosen knowledge **project** at campaign-create (the project is SSOT — NOT stored on the campaign, no drift) via a new knowledge **internal** endpoint `POST /internal/knowledge/projects/{id}/set-campaign-models` (reuses `probe_embedding_dimension` + `_delete_project_graph`; **`extraction_status != 'disabled'` = has-a-graph** guard → 409 `KNOW_EMBEDDING_CONFLICT` unless `confirm_embedding_change` → probe-before-delete then set; rerank applied directly, no hazard) + `ProjectsRepo.set_rerank_model`. Campaign `create` calls it BEFORE the INSERT (conflict → 409 `CAMPAIGN_EMBEDDING_CONFLICT`, no campaign). **VERIFY:** campaign **96**+6 skip · translation **544** (no regress) · knowledge unit **2114** (no regress). **/review-impl: 1 LOW fixed** (documented `embedding_model_source` is ignored — embedding is always BYOK user_model) + 4 LOW/COSMETIC accepted (create-atomicity tracked; inherited disabled-guard; no rerank-clear; reused-branch coverage).
+
+**S5b deferred rows:**
+- **`D-S5B-LIVE-SMOKE`** — real 3-service: create w/ verifier + embedding/rerank → translation job carries `verifier_model_ref`, project embedding/rerank patched (fresh-set + confirm-delete), graph-conflict create 409s.
+- **`D-S5B-EMBED-CREATE-ATOMICITY`** — the project patch precedes the campaign INSERT (no cross-service tx); a post-(destructive)-patch insert failure leaves a benign project mutation. Acceptable for user-initiated create; revisit if it bites.
+
+Also pending: deferred **live-smokes** across S4a–d + `D-RERANK-BYOK-LIVE-SMOKE` on a real stack-up. S4 + S5a pushed to `origin/feat/advanced-translation-pipeline`; **S5b not yet pushed**. PR `→ main` when the FE lands or per PO.
 
 ### ▶ RAW SEARCH (branch `raw-search/foundation`, off `origin/main`)
 

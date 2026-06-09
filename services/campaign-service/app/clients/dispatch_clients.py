@@ -20,6 +20,13 @@ class DispatchError(Exception):
     """A downstream dispatch call failed (network or non-2xx)."""
 
 
+class EmbeddingConflict(Exception):
+    """S5b: the campaign's embedding override differs from the project's current
+    model AND the project already has a graph, but confirm_embedding_change was not
+    set. Changing it would destroy the existing vectors — the caller must surface a
+    409 so the user explicitly confirms the destructive change."""
+
+
 class TranslationDispatchClient:
     def __init__(self, base_url: str, internal_token: str, timeout_s: float = 10.0) -> None:
         self._base_url = base_url.rstrip("/")
@@ -41,11 +48,15 @@ class TranslationDispatchClient:
         model_source: str | None,
         model_ref: str | None,
         campaign_id: str | None = None,
+        verifier_model_source: str | None = None,
+        verifier_model_ref: str | None = None,
     ) -> str:
         """POST /internal/translation/dispatch-job → returns the new job_id.
 
         S4a: campaign_id is threaded so every provider job the translation job
-        spawns is attributable to this campaign's cumulative spend (decision C)."""
+        spawns is attributable to this campaign's cumulative spend (decision C).
+        S5b: verifier_model_* lets the campaign pick the V3 verifier model (null →
+        translation falls back to the translator model)."""
         url = f"{self._base_url}/internal/translation/dispatch-job"
         body = {
             "user_id": user_id,
@@ -55,6 +66,8 @@ class TranslationDispatchClient:
             "model_source": model_source,
             "model_ref": model_ref,
             "campaign_id": campaign_id,
+            "verifier_model_source": verifier_model_source,
+            "verifier_model_ref": verifier_model_ref,
         }
         try:
             resp = await self._http.post(url, json=body)
@@ -126,6 +139,42 @@ class KnowledgeDispatchClient:
         if not resp.is_success:
             raise DispatchError(f"knowledge dispatch {resp.status_code}: {resp.text[:300]}")
         return str(resp.json().get("job_id", ""))
+
+    async def set_campaign_models(
+        self,
+        *,
+        project_id: str,
+        user_id: str,
+        embedding_model_source: str | None = None,
+        embedding_model_ref: str | None = None,
+        rerank_model_source: str | None = None,
+        rerank_model_ref: str | None = None,
+        confirm_embedding_change: bool = False,
+    ) -> dict:
+        """S5b: apply the campaign's embedding/reranker picks to its knowledge
+        project (the project is SSOT). Raises EmbeddingConflict on a 409 (graph
+        exists + embedding differs + not confirmed) so create can surface it;
+        DispatchError on other failures."""
+        url = f"{self._base_url}/internal/knowledge/projects/{project_id}/set-campaign-models"
+        body = {
+            "user_id": user_id,
+            "embedding_model_source": embedding_model_source,
+            "embedding_model_ref": embedding_model_ref,
+            "rerank_model_source": rerank_model_source,
+            "rerank_model_ref": rerank_model_ref,
+            "confirm_embedding_change": confirm_embedding_change,
+        }
+        try:
+            resp = await self._http.post(url, json=body)
+        except httpx.RequestError as exc:
+            raise DispatchError(f"knowledge set-campaign-models: {exc}") from exc
+        if resp.status_code == 409:
+            raise EmbeddingConflict(resp.text[:300])
+        if not resp.is_success:
+            raise DispatchError(
+                f"knowledge set-campaign-models {resp.status_code}: {resp.text[:300]}"
+            )
+        return resp.json()
 
     async def cancel_extraction(self, *, user_id: str, project_id: str) -> None:
         """S3c-2: cancel the project's active extraction job (campaign cancel).

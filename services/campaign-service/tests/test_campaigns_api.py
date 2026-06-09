@@ -32,6 +32,8 @@ def _campaign_row(**over):
         "knowledge_model_ref": None,
         "translation_model_source": "user_model",
         "translation_model_ref": None,
+        "verifier_model_source": None,
+        "verifier_model_ref": None,
         "chapter_from": None,
         "chapter_to": None,
         "budget_usd": None,
@@ -118,6 +120,70 @@ def test_create_invalid_gating_mode_422(client, mocker):
     _book_stub(mocker)
     resp = client.post("/v1/campaigns", json=_payload(gating_mode="bogus"))
     assert resp.status_code == 422
+
+
+# ── S5b model matrix: verifier + embedding/reranker ──────────────────────────
+
+VER = "77777777-7777-7777-7777-777777777777"
+EMB = "44444444-4444-4444-4444-444444444444"
+
+
+def _knowledge_stub(mocker, *, exc=None):
+    from app.clients.dispatch_clients import EmbeddingConflict, DispatchError  # noqa: F401
+    inst = MagicMock()
+    inst.set_campaign_models = AsyncMock(return_value={}, side_effect=exc)
+    inst.aclose = AsyncMock()
+    mocker.patch("app.routers.campaigns.KnowledgeDispatchClient", return_value=inst)
+    return inst
+
+
+def test_create_threads_verifier_to_repo(client, mocker):
+    _book_stub(mocker)
+    create = mocker.patch("app.repositories.create_campaign",
+                          new_callable=AsyncMock, return_value=_campaign_row())
+    mocker.patch("app.repositories.seed_campaign_chapters", new_callable=AsyncMock)
+    resp = client.post("/v1/campaigns", json=_payload(
+        verifier_model_source="user_model", verifier_model_ref=VER))
+    assert resp.status_code == 201, resp.text
+    assert create.call_args.kwargs["verifier_model_source"] == "user_model"
+    assert str(create.call_args.kwargs["verifier_model_ref"]) == VER
+
+
+def test_create_with_embedding_applies_to_project(client, mocker):
+    _book_stub(mocker)
+    kn = _knowledge_stub(mocker)
+    mocker.patch("app.repositories.create_campaign",
+                 new_callable=AsyncMock, return_value=_campaign_row())
+    mocker.patch("app.repositories.seed_campaign_chapters", new_callable=AsyncMock)
+    resp = client.post("/v1/campaigns", json=_payload(
+        embedding_model_source="user_model", embedding_model_ref=EMB))
+    assert resp.status_code == 201, resp.text
+    kn.set_campaign_models.assert_awaited_once()
+    assert str(kn.set_campaign_models.call_args.kwargs["embedding_model_ref"]) == EMB
+
+
+def test_create_no_model_overrides_skips_knowledge_call(client, mocker):
+    _book_stub(mocker)
+    kn = _knowledge_stub(mocker)
+    mocker.patch("app.repositories.create_campaign",
+                 new_callable=AsyncMock, return_value=_campaign_row())
+    mocker.patch("app.repositories.seed_campaign_chapters", new_callable=AsyncMock)
+    resp = client.post("/v1/campaigns", json=_payload())
+    assert resp.status_code == 201, resp.text
+    kn.set_campaign_models.assert_not_called()  # no embedding/rerank picks → no patch
+
+
+def test_create_embedding_conflict_409(client, mocker):
+    from app.clients.dispatch_clients import EmbeddingConflict
+    _book_stub(mocker)
+    _knowledge_stub(mocker, exc=EmbeddingConflict("graph exists"))
+    # create_campaign must NOT be reached when the project patch conflicts.
+    create = mocker.patch("app.repositories.create_campaign", new_callable=AsyncMock)
+    resp = client.post("/v1/campaigns", json=_payload(
+        embedding_model_source="user_model", embedding_model_ref=EMB))
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_EMBEDDING_CONFLICT"
+    create.assert_not_called()
 
 
 # ── S4d budget cap ───────────────────────────────────────────────────────────

@@ -32,6 +32,21 @@ class CreateCampaignPayload(BaseModel):
     knowledge_model_ref: Optional[UUID] = None
     translation_model_source: Optional[str] = None
     translation_model_ref: Optional[UUID] = None
+    # S5b — per-campaign VERIFIER model (V3). None = fall back to the translator.
+    verifier_model_source: Optional[str] = None
+    verifier_model_ref: Optional[UUID] = None
+    # S5b — knowledge-project model overrides applied to the project at create
+    # (the project is SSOT; these are NOT persisted on the campaign). embedding
+    # override on a project that already has a graph needs confirm_embedding_change
+    # (destructive: deletes the stale vectors). reranker has no vector-space hazard.
+    # NOTE: embedding_model_source is accepted for FE Model-Matrix symmetry but
+    # IGNORED — knowledge embedding is always BYOK user_model (knowledge_projects
+    # has no embedding-source column); only embedding_model_ref is applied.
+    embedding_model_source: Optional[str] = None
+    embedding_model_ref: Optional[UUID] = None
+    rerank_model_source: Optional[str] = None
+    rerank_model_ref: Optional[UUID] = None
+    confirm_embedding_change: bool = False
     # Chapter range (sort_order, inclusive). None = whole book.
     chapter_from: Optional[int] = None
     chapter_to: Optional[int] = None
@@ -88,6 +103,8 @@ class Campaign(BaseModel):
     knowledge_model_ref: Optional[UUID]
     translation_model_source: Optional[str]
     translation_model_ref: Optional[UUID]
+    verifier_model_source: Optional[str]
+    verifier_model_ref: Optional[UUID]
     chapter_from: Optional[int]
     chapter_to: Optional[int]
     budget_usd: Optional[Decimal]

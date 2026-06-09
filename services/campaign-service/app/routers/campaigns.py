@@ -17,6 +17,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from ..config import settings
 from ..deps import get_current_user, get_db
 from ..clients.book_client import BookClient, BookNotFound, BookServiceError
+from ..clients.dispatch_clients import (
+    KnowledgeDispatchClient,
+    DispatchError,
+    EmbeddingConflict,
+)
 from ..clients.provider_registry_client import (
     ProviderRegistryEstimateClient,
     EstimateUnavailable,
@@ -107,6 +112,43 @@ async def create_campaign(
         chapter_from=payload.chapter_from, chapter_to=payload.chapter_to,
     )
 
+    # ── S5b: apply the campaign's embedding/reranker picks to its project ───
+    # (the project is SSOT for these). Done BEFORE the INSERT so a graph-conflict
+    # rejects the whole create. A post-patch INSERT failure leaves the project with
+    # the user's chosen model (benign — D-S5B-EMBED-CREATE-ATOMICITY).
+    if payload.embedding_model_ref is not None or payload.rerank_model_ref is not None:
+        kc = KnowledgeDispatchClient(
+            settings.knowledge_service_internal_url, settings.internal_service_token,
+            timeout_s=settings.dispatch_timeout_s,
+        )
+        try:
+            await kc.set_campaign_models(
+                project_id=str(payload.knowledge_project_id), user_id=user_id,
+                embedding_model_source=payload.embedding_model_source,
+                embedding_model_ref=(str(payload.embedding_model_ref)
+                                     if payload.embedding_model_ref else None),
+                rerank_model_source=payload.rerank_model_source,
+                rerank_model_ref=(str(payload.rerank_model_ref)
+                                  if payload.rerank_model_ref else None),
+                confirm_embedding_change=payload.confirm_embedding_change,
+            )
+        except EmbeddingConflict as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "CAMPAIGN_EMBEDDING_CONFLICT",
+                        "message": ("changing the project's embedding model deletes its existing "
+                                    "knowledge graph; resubmit with confirm_embedding_change=true "
+                                    "or pick an empty project"),
+                        "detail": str(exc)},
+            )
+        except DispatchError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail={"code": "CAMPAIGN_KNOWLEDGE_SERVICE_ERROR", "message": str(exc)},
+            )
+        finally:
+            await kc.aclose()
+
     async with db.acquire() as conn:
         async with conn.transaction():
             row = await repo.create_campaign(
@@ -125,6 +167,8 @@ async def create_campaign(
                 chapter_to=payload.chapter_to,
                 total_chapters=len(chapters),
                 budget_usd=payload.budget_usd,
+                verifier_model_source=payload.verifier_model_source,
+                verifier_model_ref=payload.verifier_model_ref,
             )
             await repo.seed_campaign_chapters(
                 conn, row["campaign_id"],
