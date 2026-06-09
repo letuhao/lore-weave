@@ -213,6 +213,10 @@ class KnowledgeClient:
         # are supplied, the endpoint MERGEs the hierarchy in the same Tx
         # and enqueues `summary.chapter` (+ part/book on last chapter).
         hierarchy_paths: dict | None = None,
+        # FD-4 (066 fix): chapter reading-order ordinal (sort_order), passed
+        # SEPARATELY from hierarchy_paths so a flat book (no part) still gets a
+        # dense event_order → status_effects/timeline aren't silently dropped.
+        chapter_index: int | None = None,
         book_parts: list[tuple[str, str, str]] | None = None,
         is_last_chapter_of_book: bool = False,
         embedding_model_uuid: str | None = None,
@@ -254,6 +258,8 @@ class KnowledgeClient:
         # Per `feedback_sdk_default_arg_dropped_from_wire` we explicitly
         # check None (not falsy) so an empty book_parts on a single-part
         # book still rides through correctly.
+        if chapter_index is not None:
+            body["chapter_index"] = chapter_index
         if hierarchy_paths is not None:
             body["hierarchy_paths"] = hierarchy_paths
         if book_parts is not None:

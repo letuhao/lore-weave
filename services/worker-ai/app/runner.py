@@ -1057,6 +1057,10 @@ async def _extract_and_persist(
     # branch) supplies these to opt into hierarchy MERGE + summary
     # enqueue. chat_turn branch keeps the legacy behaviour.
     hierarchy_paths: dict | None = None,
+    # FD-4 (066 fix): chapter reading-order ordinal (sort_order), threaded
+    # independent of hierarchy_paths so a flat book (no part) still gets a
+    # dense event_order → status_effects/timeline aren't silently dropped.
+    chapter_index: int | None = None,
     book_parts: list[tuple[str, str, str]] | None = None,
     is_last_chapter_of_book: bool = False,
     embedding_model_uuid: str | None = None,
@@ -1149,6 +1153,7 @@ async def _extract_and_persist(
         # P3 — pass-through to the receiving endpoint. When None →
         # endpoint skips hierarchy MERGE + summary enqueue.
         hierarchy_paths=hierarchy_paths,
+        chapter_index=chapter_index,  # FD-4 (066) — event_order for flat books
         book_parts=book_parts,
         is_last_chapter_of_book=is_last_chapter_of_book,
         embedding_model_uuid=embedding_model_uuid,
@@ -1334,6 +1339,14 @@ async def process_job(
                 hierarchy = await book_client.get_chapter_hierarchy(
                     book_id, ch.chapter_id,
                 )
+                # FD-4 (066 fix): capture the chapter's reading-order ordinal
+                # INDEPENDENT of the part gate below. hierarchy.chapter_index is
+                # the book-service sort_order and is present even for a flat book
+                # (no part); without threading it, no-part books got
+                # event_order=None → status_effects + timeline silently dropped.
+                p3_chapter_index: int | None = (
+                    hierarchy.chapter_index if hierarchy is not None else None
+                )
                 if (
                     hierarchy is not None
                     and hierarchy.part is not None
@@ -1397,6 +1410,7 @@ async def process_job(
                     writer_autocreate=run_snapshot.writer_autocreate,
                     text=text,
                     hierarchy_paths=p3_hierarchy_paths,
+                    chapter_index=p3_chapter_index,  # FD-4 (066) — flat-book event_order
                     book_parts=p3_book_parts,
                     is_last_chapter_of_book=p3_is_last,
                     embedding_model_uuid=(

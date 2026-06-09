@@ -80,10 +80,14 @@ class StatusEffect(BaseModel):
     is the coarse V1 vocabulary (``active``/``gone``); the LLM-judge (A2-S3)
     covers the semantic residue.
 
-    **Dormant until A2-S1b-2.** No prompt asks the model to emit this yet, so
-    in production the list is always empty (eval-safe). The field + wire
-    contract exist now so the persist plumbing is in place and b2 is a pure
-    prompt edit.
+    **ACTIVE since A2-S1b-2** (commit fe0dae9e): the event-extraction prompt
+    (`event_extraction_system.md` Rule 10 + schema + a death example) asks the
+    model to emit these, and the knowledge persist layer writes an :EntityStatus
+    per well-formed entry. Verified live (FD-4/067): a real extraction through
+    provider-registry on a death scene emits `{gone}` for the dying participants.
+    NOTE: a *reasoning* model can emit empty output (it burns the token budget on
+    <think> before any JSON) → zero events → zero status_effects; use a
+    non-reasoning model or reasoning_effort=none for extraction.
     """
 
     entity_ref: str
@@ -107,9 +111,10 @@ class _LLMEvent(BaseModel):
     event_date: str | None = None
     summary: str
     confidence: float = Field(ge=0.0, le=1.0)
-    # A2-S1b — coarse status transitions this event asserts (dormant until
-    # b2's prompt). The validator TOLERATES + FILTERS malformed entries
-    # (drop, don't reject the event) per feedback_llm_schema_tolerate_filter.
+    # A2-S1b — coarse status transitions this event asserts (ACTIVE since
+    # A2-S1b-2 fe0dae9e; the prompt populates these). The validator TOLERATES +
+    # FILTERS malformed entries (drop, don't reject the event) per
+    # feedback_llm_schema_tolerate_filter.
     status_effects: list[StatusEffect] = []
 
     @field_validator("event_date", mode="before")
@@ -173,10 +178,9 @@ class LLMEventCandidate(BaseModel):
     summary: str
     confidence: float = Field(ge=0.0, le=1.0)
     event_id: str | None
-    # A2-S1b — coarse status transitions threaded from _LLMEvent. Empty in
-    # production until b2's prompt populates it; the knowledge persist layer
-    # resolves each entity_ref and writes an :EntityStatus at this event's
-    # event_order.
+    # A2-S1b — coarse status transitions threaded from _LLMEvent (ACTIVE since
+    # A2-S1b-2 fe0dae9e). The knowledge persist layer resolves each entity_ref
+    # and writes an :EntityStatus at this event's event_order.
     status_effects: list[StatusEffect] = Field(default_factory=list)
 
 
@@ -369,7 +373,7 @@ def _postprocess(
             summary=summary,
             confidence=evt.confidence,
             event_id=eid,
-            status_effects=evt.status_effects,  # A2-S1b (empty until b2 prompt)
+            status_effects=evt.status_effects,  # A2-S1b (active since fe0dae9e)
         )
 
         # Dedup by event_id (higher confidence wins)
@@ -515,7 +519,7 @@ def _tolerant_parse_events(
                 summary=summary,
                 confidence=confidence,
                 # A2-S1b — _filter_status_effects validator tolerates/drops
-                # malformed entries; absent → []. Dormant until b2 prompt.
+                # malformed entries; absent → []. Active since b2 (fe0dae9e).
                 status_effects=item.get("status_effects"),
             ))
         except ValidationError:

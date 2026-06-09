@@ -223,6 +223,37 @@ async def test_process_job_chapters_success(mock_extract_persist):
     assert pool.execute.call_count >= 3
 
 
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_chapter_index_threaded_when_no_part(mock_extract_persist):
+    """FD-4 (066 regression): a part-less chapter (hierarchy.part is None) must
+    STILL thread chapter_index (= sort_order) to persist — the capture reads
+    hierarchy.chapter_index INDEPENDENT of the part gate. Before the fix the
+    chapter_index lived only inside the `part is not None` block, so flat books
+    got event_order=None → every status_effect silently dropped. hierarchy_paths
+    stays None (the part-MERGE genuinely needs a part)."""
+    from types import SimpleNamespace
+
+    mock_extract_persist.return_value = _ok_result()
+    job = _job(scope="chapters")
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    llm = _mock_llm_client()
+    bc = _mock_book_client()
+    # Part-less hierarchy: no part, no chapter_path — but a real sort_order.
+    bc.get_chapter_hierarchy = AsyncMock(return_value=SimpleNamespace(
+        part=None, chapter_path=None, chapter_index=2, book_id="bk-1",
+    ))
+    gc = _mock_glossary_client()
+
+    await process_job(pool, kc, llm, bc, gc, job)
+
+    mock_extract_persist.assert_called_once()
+    kwargs = mock_extract_persist.call_args.kwargs
+    assert kwargs["chapter_index"] == 2          # threaded despite no part
+    assert kwargs["hierarchy_paths"] is None      # part-MERGE correctly skipped
+
+
 def _execs_with(pool, needle):
     return [
         c for c in pool.execute.call_args_list

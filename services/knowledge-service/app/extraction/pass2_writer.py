@@ -243,6 +243,13 @@ async def write_pass2_extraction(
     # When None: legacy flat-write behavior preserved (chat_turn path +
     # back-compat for callers that don't yet pass hierarchy).
     hierarchy_paths: HierarchyPaths | None = None,
+    # FD-4 (066 fix): the chapter's own reading-order ordinal (book-service
+    # sort_order, 1-based). Used to compute event_order when there is NO part
+    # hierarchy (`hierarchy_paths` is part-gated). A FLAT book (chapters, no
+    # parts) previously got event_order=None → every status_effect was skipped
+    # (skipped_no_event_order) AND the dense timeline axis collapsed. None for
+    # genuinely positionless sources (chat turns).
+    chapter_index: int | None = None,
     # Cycle 73e: writer autocreate gates.
     #   ``autocreate_enabled=False`` (default) → Tier A.1 + A.2 free
     #   repairs run unconditionally (cheap; bug-fixes silent cascade);
@@ -544,17 +551,24 @@ async def write_pass2_extraction(
     # Step 4 — merge events.
     # CM4: assign event_order = chapter sort_order × 1e6 + within-chapter
     # index, so the reading-order (spoiler) axis is dense at chapter
-    # granularity. The chapter ordinal is `hierarchy_paths.chapter_index`
-    # (= book-service sort_order, already threaded for P3). Legacy/chat
-    # callers pass no hierarchy → event_order stays None → the timeline
-    # null-sinks them via coalesce(event_order, INT64_MAX). `idx` advances
-    # only for events actually written (skipped empties leave gaps — fine for
-    # the strict range filter, and keeps the order non-decreasing). The stride
-    # is the SHARED EVENT_ORDER_CHAPTER_STRIDE (events.py) — backfill imports
-    # the same constant so both write on one scale.
+    # granularity. The chapter ordinal is the P3 hierarchy's `chapter_index`
+    # when present, ELSE the chapter's own `chapter_index` (sort_order) param
+    # — both ARE the book-service sort_order, so a FLAT book (chapters, no
+    # parts) gets the same dense event_order instead of None (FD-4/066: without
+    # this fallback, no-part books silently lost status_effects + timeline).
+    # Only a genuinely positionless source (chat turn) has neither → None →
+    # the timeline null-sinks via coalesce(event_order, INT64_MAX). `idx`
+    # advances only for events actually written (skipped empties leave gaps —
+    # fine for the strict range filter, keeps the order non-decreasing). The
+    # stride is the SHARED EVENT_ORDER_CHAPTER_STRIDE (events.py) — backfill
+    # imports the same constant so both write on one scale.
+    _chapter_ordinal = (
+        hierarchy_paths.chapter_index if hierarchy_paths is not None
+        else chapter_index
+    )
     chapter_base = (
-        hierarchy_paths.chapter_index * EVENT_ORDER_CHAPTER_STRIDE
-        if hierarchy_paths is not None
+        _chapter_ordinal * EVENT_ORDER_CHAPTER_STRIDE
+        if _chapter_ordinal is not None
         else None
     )
     events_merged = 0

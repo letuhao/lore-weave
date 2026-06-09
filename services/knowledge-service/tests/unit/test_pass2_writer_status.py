@@ -142,6 +142,52 @@ async def test_status_written_at_event_order(
 @patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+async def test_status_written_from_chapter_index_when_no_part(
+    mock_source, mock_resolve, mock_merge_event, mock_evidence, mock_merge_status,
+):
+    """FD-4 (066 fix): a FLAT book (no part → no hierarchy_paths) STILL writes
+    :EntityStatus when the chapter's own sort_order is threaded as
+    `chapter_index`. Regression guard for the bug where no-part books silently
+    dropped every status_effect (skipped_no_event_order) — found by the
+    canonical 067 run on a part-less death-chapter book. Contrast with
+    `test_status_skipped_when_event_order_none` (no hierarchy AND no
+    chapter_index → genuinely positionless → still skipped)."""
+    mock_source.return_value = _result("src-1")
+    mock_resolve.return_value = _result("eid-kai")
+    mock_merge_event.return_value = _result("evid-kai falls")
+    mock_evidence.return_value = _evidence(True)
+    mock_merge_status.return_value = _result("status-1")
+
+    before = _status_metric("persisted")
+    result = await write_pass2_extraction(
+        _fake_session(),
+        user_id=USER_ID, project_id=PROJECT_ID,
+        source_type="chapter", source_id="ch-uuid-1", job_id=JOB_ID,
+        entities=[_entity("Kai")],
+        events=[_event_with_status(
+            "Kai falls", ["Kai"],
+            [StatusEffect(entity_ref="Kai", status="gone")],
+        )],
+        # NO hierarchy_paths (flat book — no part) BUT the chapter sort_order is
+        # threaded → event_order must fall back to it (the FD-4 fix).
+        chapter_index=3,
+    )
+
+    assert result.statuses_merged == 1
+    assert _status_metric("persisted") - before == 1
+    mock_merge_status.assert_awaited_once()
+    kwargs = mock_merge_status.call_args.kwargs
+    assert kwargs["status"] == "gone"
+    # event_order falls back to chapter_index(3) * stride + within-chapter idx(0)
+    assert kwargs["from_order"] == 3 * EVENT_ORDER_CHAPTER_STRIDE
+
+
+@pytest.mark.asyncio
+@patch(f"{_PATCH_BASE}.merge_entity_status", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
 async def test_status_skipped_when_event_order_none(
     mock_source, mock_resolve, mock_merge_event, mock_evidence, mock_merge_status,
 ):

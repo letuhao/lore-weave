@@ -156,6 +156,14 @@ class PersistPass2Request(BaseModel):
     events: list[LLMEventCandidate] = Field(default_factory=list)
     facts: list[LLMFactCandidate] = Field(default_factory=list)
 
+    # FD-4 (066 fix): the chapter's reading-order ordinal (book-service
+    # sort_order), threaded SEPARATELY from hierarchy_paths so a flat book
+    # (chapters, no part) still gets a dense event_order for events/status.
+    # ge=0 (not ge=1 like the part-gated HierarchyPathsPayload.chapter_index):
+    # this field rides on EVERY part-less persist, so a hypothetical 0-based
+    # sort_order must NOT 422 the whole persist — event_order=0*stride+idx is a
+    # perfectly valid dense base (review-impl LOW#1).
+    chapter_index: int | None = Field(default=None, ge=0)
     # P3 — caller supplies these to opt into hierarchy writes + summary enqueue.
     hierarchy_paths: HierarchyPathsPayload | None = None
     # book_parts only consumed when is_last_chapter_of_book=True. Each
@@ -524,6 +532,7 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             extraction_model=body.extraction_model,
             anchors=anchors,
             hierarchy_paths=hierarchy_paths,  # P3 D2a — Tx-bound hierarchy MERGE
+            chapter_index=body.chapter_index,  # FD-4 (066) — event_order for flat books
             autocreate_enabled=autocreate_enabled,
             autocreate_max=_WRITER_AUTOCREATE_CONFIG["autocreate_max"],
             provenance=body.provenance,  # CM5
