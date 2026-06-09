@@ -78,9 +78,11 @@ def ctx(monkeypatch):
     monkeypatch.setattr("app.main.get_pool", lambda: object())
 
     async def fake_pack(req, **kw):
+        # reinjected_promise_count=2 (non-default) → the response echo (FD-1 S4b)
+        # must carry the pack's value, not a hardcoded 0.
         return PackedContext(blocks={}, prompt="GROUNDING", profile=NEUTRAL, token_count=5,
                              dropped_count=0, l4_dropped_no_position=0, grounding_available=True,
-                             over_budget=False, warnings=[])
+                             over_budget=False, reinjected_promise_count=2, warnings=[])
 
     captured: dict = {}
 
@@ -238,6 +240,7 @@ def test_generate_auto_returns_reranked_winner_as_json(ctx, monkeypatch):
     body = r.json()  # JSON, NOT an SSE stream
     assert body["mode"] == "auto" and body["text"] == "draft B"
     assert body["winner_index"] == 1 and body["k"] == 2 and body["rerank_measured"] is True
+    assert body["reinjected_promise_count"] == 2  # FD-1 S4b — echoes the pack value
     # slice 3: the K candidate texts are in the response so the FE shows all cards
     assert body["candidates"] == ["draft A", "draft B"]
     # the job completed with the winner persisted (incl. the candidates for transparency)

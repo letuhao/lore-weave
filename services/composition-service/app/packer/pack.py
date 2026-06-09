@@ -77,6 +77,12 @@ class PackedContext:
     # guard's position axis (× stride = the event_order cutoff). None when the
     # node has no resolved chapter → the guard skips (advisory).
     scene_sort_order: int | None = None
+    # FD-1 S4b: how many open promises (S3) were re-injected into THIS prompt (the
+    # gathered re-injectable set fed to assemble; the `<open_promises>` block is
+    # protected so the budget keeps it). 0 when the Work opts out / no repo / none
+    # open. A DETERMINISTIC per-generation signal that S3 fired - distinct from
+    # S4a's `open_promise_count` (the arc-end unpaid-DEBT total).
+    reinjected_promise_count: int = 0
     warnings: list[str] = field(default_factory=list)
 
 
@@ -244,6 +250,7 @@ async def pack(
         l4_dropped_no_position=l4.dropped_no_position,
         grounding_available=bundle.knowledge_seen, over_budget=bres.over_budget,
         scene_sort_order=scene_sort_order,
+        reinjected_promise_count=len(open_promises),  # FD-1 S4b — S3 fired-signal
         warnings=warnings,
     )
 

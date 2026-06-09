@@ -459,6 +459,10 @@ async def generate(
             "canon": canon,
             "reasoning_source": reasoning.source, "reasoning_effort": reasoning.effort,
             "assembly_mode": assembly_mode,
+            # FD-1 S4b — how many open promises S3 re-injected into this draft's
+            # prompt (advisory; 0 when narrative_thread is off). Deterministic S3
+            # fired-signal for the live-smoke.
+            "reinjected_promise_count": pc.reinjected_promise_count,
         })
 
     async def event_gen():
@@ -721,7 +725,8 @@ async def generate_chapter(
         "reasoning_source": reasoning.source, "reasoning_effort": reasoning.effort,
         "assembly_mode": "chapter", "persisted": persisted, "draft_version": draft_version,
         "persist_error": persist_error, "max_output_tokens": max_out,
-        "open_promise_count": open_promise_count})  # FD-1 S4a advisory debt flag
+        "open_promise_count": open_promise_count,  # FD-1 S4a advisory debt flag
+        "reinjected_promise_count": pc.reinjected_promise_count})  # FD-1 S4b S3 fired-signal
 
 
 @router.post("/works/{project_id}/chapters/{chapter_id}/stitch")

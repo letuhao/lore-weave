@@ -141,6 +141,7 @@ async def test_open_promises_reinjected_when_enabled():
     )
     assert "<open_promises>" in pc.prompt
     assert "foreshadow: a black spear on the wall" in pc.prompt
+    assert pc.reinjected_promise_count == 1  # FD-1 S4b — deterministic S3 fired-signal
 
 
 async def test_open_promises_absent_when_flag_off():
@@ -150,12 +151,25 @@ async def test_open_promises_absent_when_flag_off():
         narrative_threads=StubNarrativeThreads([("foreshadow", "X")]),
     )
     assert "<open_promises>" not in pc.prompt
+    assert pc.reinjected_promise_count == 0
 
 
 async def test_open_promises_absent_when_no_repo():
     # Flag on but no repo wired → no gather, no block (no crash).
     pc = await _pack(_req(settings={"narrative_thread_enabled": True}), narrative_threads=None)
     assert "<open_promises>" not in pc.prompt
+    assert pc.reinjected_promise_count == 0
+
+
+async def test_reinjected_promise_count_matches_gathered_set():
+    # FD-1 S4b non-default lock — the count is the re-injected set size (3), not a
+    # hardcoded 0/1; proves the live-smoke's deterministic signal tracks the ledger.
+    pc = await _pack(
+        _req(settings={"narrative_thread_enabled": True}),
+        narrative_threads=StubNarrativeThreads(
+            [("foreshadow", "the spear"), ("promise", "Kael's vow"), ("question", "the heir")]),
+    )
+    assert pc.reinjected_promise_count == 3
 
 
 async def test_chapter_sort_hint_skips_redundant_book_fetch():
