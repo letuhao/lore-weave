@@ -30,7 +30,11 @@ from app.deps import (
     get_projects_repo,
 )
 from app.middleware.internal_auth import require_internal_token
-from app.routers.public.extraction import StartJobRequest, start_extraction_job
+from app.routers.public.extraction import (
+    StartJobRequest,
+    start_extraction_job,
+    cancel_extraction_job,
+)
 
 router = APIRouter(
     prefix="/internal/knowledge/projects",
@@ -102,3 +106,21 @@ async def dispatch_extraction(
         project_id, body, payload.user_id, projects_repo, jobs_repo, benchmark_repo,
     )
     return DispatchResponse(job_id=job.job_id)
+
+
+class InternalCancelPayload(BaseModel):
+    user_id: UUID
+
+
+@router.post("/{project_id}/extraction/cancel", status_code=status.HTTP_200_OK)
+async def dispatch_cancel_extraction(
+    project_id: UUID,
+    payload: InternalCancelPayload,
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+) -> dict:
+    """S3c-2: cancel a project's active extraction on behalf of a campaign
+    (internal-token + asserted user_id). Reuses the public cancel core — a 404
+    (no active job) is treated as success by the campaign caller."""
+    job = await cancel_extraction_job(project_id, payload.user_id, projects_repo, jobs_repo)
+    return {"job_id": str(job.job_id), "status": job.status}

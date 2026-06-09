@@ -324,6 +324,77 @@ async def mark_stage_dispatched(
     )
 
 
+_STAGE_JOB_COL = {"knowledge": "knowledge_job_id", "translation": "translation_job_id"}
+
+
+async def set_dispatched_job_id(
+    pool: asyncpg.Pool, campaign_id: UUID, chapter_ids: list[str], stage: str, job_id: str,
+) -> None:
+    """Record the downstream job that owns these chapters' in-flight `stage`
+    (S3c-2), so a campaign cancel can target it. Only stamps rows still
+    `dispatched` for this stage (the just-claimed batch)."""
+    job_col = _STAGE_JOB_COL.get(stage)
+    if job_col is None:
+        raise ValueError(f"stage {stage!r} has no job-id column")
+    col = _stage_col(stage)
+    await pool.execute(
+        f"""
+        UPDATE campaign_chapters
+        SET {job_col} = $3, updated_at = now()
+        WHERE campaign_id = $1 AND chapter_id = ANY($2::uuid[])
+          AND {col} = 'dispatched'
+        """,
+        campaign_id, [UUID(c) for c in chapter_ids], UUID(job_id),
+    )
+
+
+async def inflight_translation_job_ids(pool: asyncpg.Pool, campaign_id: UUID) -> list[UUID]:
+    """Distinct translation job_ids still in flight (translation_status='dispatched')
+    — the set a campaign cancel must propagate to."""
+    rows = await pool.fetch(
+        """
+        SELECT DISTINCT translation_job_id FROM campaign_chapters
+        WHERE campaign_id = $1 AND translation_status = 'dispatched'
+          AND translation_job_id IS NOT NULL
+        """,
+        campaign_id,
+    )
+    return [r["translation_job_id"] for r in rows]
+
+
+async def has_inflight_knowledge(pool: asyncpg.Pool, campaign_id: UUID) -> bool:
+    """Whether any knowledge stage is in flight (so a cancel should hit the
+    project's extraction job). Knowledge is one job per project, so we cancel by
+    project_id rather than tracking per-chapter knowledge job_ids."""
+    return bool(await pool.fetchval(
+        """
+        SELECT 1 FROM campaign_chapters
+        WHERE campaign_id = $1 AND knowledge_status = 'dispatched' LIMIT 1
+        """,
+        campaign_id,
+    ))
+
+
+async def mark_dispatched_stages_cancelled(pool: asyncpg.Pool, campaign_id: UUID) -> None:
+    """Terminalize still-`dispatched` stages on a cancel: the underlying jobs were
+    just cancelled and will NOT emit completion events, so without this the rows
+    stay `dispatched` forever and the campaign can't finalize. A genuine
+    completion that raced in before cancel already flipped the row to `done`
+    (consumer includes 'cancelling') — only still-dispatched rows are touched."""
+    await pool.execute(
+        """
+        UPDATE campaign_chapters
+        SET knowledge_status = CASE WHEN knowledge_status = 'dispatched' THEN 'failed' ELSE knowledge_status END,
+            translation_status = CASE WHEN translation_status = 'dispatched' THEN 'failed' ELSE translation_status END,
+            last_error = COALESCE(last_error, 'campaign cancelled'),
+            updated_at = now()
+        WHERE campaign_id = $1
+          AND ('dispatched' IN (knowledge_status, translation_status))
+        """,
+        campaign_id,
+    )
+
+
 async def mark_stage_failed(
     pool: asyncpg.Pool, campaign_id: UUID, chapter_id: str, stage: str,
     error: str,

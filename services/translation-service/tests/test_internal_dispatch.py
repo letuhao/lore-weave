@@ -78,3 +78,24 @@ def test_empty_chapter_ids_422(client, mocker):
         headers={"X-Internal-Token": TOKEN},
     )
     assert resp.status_code == 422
+
+
+# ── S3c-2 internal cancel ────────────────────────────────────────────────────
+
+def test_cancel_rejects_missing_token(client):
+    resp = client.post(f"/internal/translation/jobs/{JOB}/cancel", json={"user_id": USER})
+    assert resp.status_code == 401
+
+
+def test_cancel_invokes_core_with_asserted_user(client, mocker):
+    core = mocker.patch(
+        "app.routers.internal_dispatch._cancel_job_core", new_callable=AsyncMock)
+    resp = client.post(
+        f"/internal/translation/jobs/{JOB}/cancel", json={"user_id": USER},
+        headers={"X-Internal-Token": TOKEN},
+    )
+    assert resp.status_code == 204
+    core.assert_awaited_once()
+    # core(db, job_id, user_id) — asserted user propagated
+    assert core.call_args.args[2] == USER
+    assert str(core.call_args.args[1]) == JOB

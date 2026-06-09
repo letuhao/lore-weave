@@ -21,7 +21,7 @@ from pydantic import BaseModel
 from ..config import settings as app_settings
 from ..deps import get_db
 from ..models import CreateJobPayload
-from .jobs import _verify_book_owner, _resolve_and_create_job
+from .jobs import _verify_book_owner, _resolve_and_create_job, _cancel_job_core
 
 router = APIRouter(prefix="/internal/translation", tags=["internal"])
 
@@ -91,3 +91,23 @@ async def dispatch_job(
         user_id,
     )
     return DispatchResponse(job_id=job.job_id)
+
+
+class InternalCancelPayload(BaseModel):
+    user_id: UUID
+
+
+@router.post(
+    "/jobs/{job_id}/cancel",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_internal_token)],
+)
+async def dispatch_cancel(
+    job_id: UUID,
+    payload: InternalCancelPayload,
+    db: asyncpg.Pool = Depends(get_db),
+) -> None:
+    """S3c-2: cancel a translation job on behalf of a campaign (internal-token +
+    asserted user_id). Reuses the public cancel core — owner-scoped (404 if not
+    owned), 409 if already terminal (the campaign treats both as success)."""
+    await _cancel_job_core(db, job_id, str(payload.user_id))

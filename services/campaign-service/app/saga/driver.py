@@ -62,14 +62,18 @@ async def process_campaign(
 
     states = await repo.load_chapter_states(pool, campaign_id)
 
-    # ── cancellation: stop dispatching, drain in-flight, then finalize ──────
+    # ── cancellation (S3c-2): ACTIVELY cancel in-flight jobs, then finalize ──
+    # Propagate cancel to the downstream jobs (best-effort), terminalize the
+    # still-dispatched stages (cancelled jobs won't emit completion events, so
+    # waiting for a passive drain would hang forever), then finalize. A genuine
+    # completion that raced in before cancel already flipped its row to `done`.
     if status == "cancelling":
-        inflight = await repo.count_inflight(pool, campaign_id)
-        if inflight == 0:
-            await repo.set_campaign_status(
-                pool, campaign_id, "cancelled", set_finished=True
-            )
-            logger.info("campaign %s cancelled (drained)", campaign_id)
+        await _propagate_cancel(pool, clients, campaign)
+        await repo.mark_dispatched_stages_cancelled(pool, campaign_id)
+        await repo.set_campaign_status(
+            pool, campaign_id, "cancelled", set_finished=True
+        )
+        logger.info("campaign %s cancelled (propagated + finalized)", campaign_id)
         return
 
     # ── completion ──────────────────────────────────────────────────────────
@@ -129,7 +133,7 @@ async def process_campaign(
             for cid in knowledge_ch:
                 await repo.mark_stage_dispatched(pool, campaign_id, cid, "knowledge")
             try:
-                await clients.knowledge.dispatch_extraction(
+                kn_job_id = await clients.knowledge.dispatch_extraction(
                     project_id=str(project_id),
                     user_id=user_id,
                     scope="chapters",
@@ -141,6 +145,10 @@ async def process_campaign(
                         if campaign["knowledge_model_ref"] else None
                     ),
                 )
+                if kn_job_id:  # S3c-2: record for cancel propagation
+                    await repo.set_dispatched_job_id(
+                        pool, campaign_id, knowledge_ch, "knowledge", kn_job_id
+                    )
             except DispatchError as exc:
                 logger.warning("campaign %s knowledge dispatch failed: %s", campaign_id, exc)
                 for cid in knowledge_ch:
@@ -153,7 +161,7 @@ async def process_campaign(
         for cid in translation_ch:
             await repo.mark_stage_dispatched(pool, campaign_id, cid, "translation")
         try:
-            await clients.translation.dispatch_job(
+            tr_job_id = await clients.translation.dispatch_job(
                 user_id=user_id,
                 book_id=book_id,
                 chapter_ids=translation_ch,
@@ -164,12 +172,40 @@ async def process_campaign(
                     if campaign["translation_model_ref"] else None
                 ),
             )
+            if tr_job_id:  # S3c-2: record for cancel propagation
+                await repo.set_dispatched_job_id(
+                    pool, campaign_id, translation_ch, "translation", tr_job_id
+                )
         except DispatchError as exc:
             logger.warning("campaign %s translation dispatch failed: %s", campaign_id, exc)
             for cid in translation_ch:
                 await repo.mark_stage_failed(
                     pool, campaign_id, cid, "translation", str(exc)
                 )
+
+
+async def _propagate_cancel(
+    pool: asyncpg.Pool, clients: DispatchClients, campaign: asyncpg.Record,
+) -> None:
+    """S3c-2: cancel the campaign's in-flight downstream jobs. Best-effort — a
+    cancel failure must not block finalization (the worker settles on its own;
+    we terminalize the projection regardless). Translation is cancelled per
+    distinct in-flight job_id; knowledge by the project's active extraction."""
+    campaign_id: UUID = campaign["campaign_id"]
+    user_id = str(campaign["owner_user_id"])
+
+    for jid in await repo.inflight_translation_job_ids(pool, campaign_id):
+        try:
+            await clients.translation.cancel_job(user_id=user_id, job_id=str(jid))
+        except DispatchError as exc:
+            logger.warning("campaign %s translation cancel %s failed: %s", campaign_id, jid, exc)
+
+    project_id = campaign["knowledge_project_id"]
+    if project_id is not None and await repo.has_inflight_knowledge(pool, campaign_id):
+        try:
+            await clients.knowledge.cancel_extraction(user_id=user_id, project_id=str(project_id))
+        except DispatchError as exc:
+            logger.warning("campaign %s knowledge cancel failed: %s", campaign_id, exc)
 
 
 async def reconcile_once(

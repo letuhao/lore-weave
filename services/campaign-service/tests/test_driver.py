@@ -64,6 +64,17 @@ def patch_repo(mocker):
             "app.saga.driver.repo.mark_stage_failed", new_callable=AsyncMock),
         "set_campaign_status": mocker.patch(
             "app.saga.driver.repo.set_campaign_status", new_callable=AsyncMock),
+        # S3c-2 cancel-propagation + job-id tracking
+        "set_dispatched_job_id": mocker.patch(
+            "app.saga.driver.repo.set_dispatched_job_id", new_callable=AsyncMock),
+        "inflight_translation_job_ids": mocker.patch(
+            "app.saga.driver.repo.inflight_translation_job_ids",
+            new_callable=AsyncMock, return_value=[]),
+        "has_inflight_knowledge": mocker.patch(
+            "app.saga.driver.repo.has_inflight_knowledge",
+            new_callable=AsyncMock, return_value=False),
+        "mark_dispatched_stages_cancelled": mocker.patch(
+            "app.saga.driver.repo.mark_dispatched_stages_cancelled", new_callable=AsyncMock),
     }
     return m
 
@@ -101,23 +112,66 @@ async def test_completion_sets_completed(fake_pool, patch_repo):
     kn.dispatch_extraction.assert_not_called()
 
 
-async def test_cancelling_drained_finalizes(fake_pool, patch_repo):
+async def test_cancelling_propagates_and_finalizes(fake_pool, patch_repo):
+    # S3c-2: cancelling ACTIVELY cancels in-flight jobs then finalizes (no passive
+    # drain). Translation cancelled per in-flight job_id; knowledge per project.
     patch_repo["load_chapter_states"].return_value = [_ch(C1, k="dispatched")]
-    patch_repo["count_inflight"].return_value = 0
+    patch_repo["inflight_translation_job_ids"].return_value = [UUID("aaaaaaaa-0000-0000-0000-000000000001")]
+    patch_repo["has_inflight_knowledge"].return_value = True
     clients, tr, kn = _clients()
+    tr.cancel_job = AsyncMock()
+    kn.cancel_extraction = AsyncMock()
+
     await _process(fake_pool, clients, _campaign(status="cancelling"))
-    patch_repo["set_campaign_status"].assert_awaited_once()
+
+    tr.cancel_job.assert_awaited_once()  # in-flight translation job cancelled
+    kn.cancel_extraction.assert_awaited_once()  # project extraction cancelled
+    patch_repo["mark_dispatched_stages_cancelled"].assert_awaited_once()  # terminalize
+    assert patch_repo["set_campaign_status"].call_args.args[2] == "cancelled"
+    # NOT dispatching new work while cancelling
+    tr.dispatch_job.assert_not_called()
+    kn.dispatch_extraction.assert_not_called()
+
+
+async def test_cancelling_reads_inflight_before_terminalizing(fake_pool, patch_repo):
+    # ORDER invariant (the correctness lynchpin): in-flight translation job_ids
+    # must be read BEFORE mark_dispatched_stages_cancelled flips those rows to
+    # failed — else the cancel set is empty and the jobs orphan. Lock it.
+    seen = {}
+
+    async def _inflight(pool, campaign_id):
+        seen["mark_awaits_when_inflight_read"] = \
+            patch_repo["mark_dispatched_stages_cancelled"].await_count
+        return [UUID("aaaaaaaa-0000-0000-0000-000000000001")]
+
+    patch_repo["inflight_translation_job_ids"].side_effect = _inflight
+    patch_repo["load_chapter_states"].return_value = [_ch(C1, k="dispatched")]
+    clients, tr, kn = _clients()
+    tr.cancel_job = AsyncMock()
+    await _process(fake_pool, clients, _campaign(status="cancelling"))
+    assert seen["mark_awaits_when_inflight_read"] == 0  # mark had NOT run yet
+
+
+async def test_cancelling_propagate_failure_still_finalizes(fake_pool, patch_repo):
+    # Best-effort: a downstream cancel error must not block finalization.
+    patch_repo["load_chapter_states"].return_value = [_ch(C1, k="dispatched")]
+    patch_repo["inflight_translation_job_ids"].return_value = [UUID("aaaaaaaa-0000-0000-0000-000000000001")]
+    clients, tr, kn = _clients()
+    tr.cancel_job = AsyncMock(side_effect=DispatchError("translation down"))
+    await _process(fake_pool, clients, _campaign(status="cancelling"))
+    patch_repo["mark_dispatched_stages_cancelled"].assert_awaited_once()
     assert patch_repo["set_campaign_status"].call_args.args[2] == "cancelled"
 
 
-async def test_cancelling_with_inflight_waits(fake_pool, patch_repo):
-    patch_repo["load_chapter_states"].return_value = [_ch(C1, k="dispatched")]
-    patch_repo["count_inflight"].return_value = 2
+async def test_dispatch_records_job_id_for_cancel(fake_pool, patch_repo):
+    # S3c-2: a successful dispatch records the job_id so cancel can target it.
+    patch_repo["load_chapter_states"].return_value = [_ch(C1, k="done")]  # translate c1
     clients, tr, kn = _clients()
-    await _process(fake_pool, clients, _campaign(status="cancelling"))
-    patch_repo["set_campaign_status"].assert_not_called()
-    tr.dispatch_job.assert_not_called()
-    kn.dispatch_extraction.assert_not_called()
+    tr.dispatch_job = AsyncMock(return_value="job-xyz")
+    await _process(fake_pool, clients, _campaign())
+    set_calls = [c for c in patch_repo["set_dispatched_job_id"].call_args_list
+                 if c.args[3] == "translation"]
+    assert set_calls and set_calls[0].args[4] == "job-xyz"
 
 
 async def test_knowledge_without_project_marks_failed(fake_pool, patch_repo):

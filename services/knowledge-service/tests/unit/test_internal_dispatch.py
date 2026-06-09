@@ -15,7 +15,9 @@ from fastapi import HTTPException
 
 from app.routers.internal_dispatch import (
     dispatch_extraction,
+    dispatch_cancel_extraction,
     InternalExtractionPayload,
+    InternalCancelPayload,
 )
 
 USER = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
@@ -87,3 +89,19 @@ async def test_no_model_ref_422(mocker):
         await dispatch_extraction(PROJ, payload, pr, jr, br)
     assert exc.value.status_code == 422
     assert exc.value.detail["code"] == "KNOW_NO_LLM_MODEL"
+
+
+async def test_cancel_reuses_core_with_asserted_user(mocker):
+    # S3c-2: internal cancel delegates to the public cancel_extraction_job with
+    # the asserted user_id (project-scoped).
+    cancel = mocker.patch(
+        "app.routers.internal_dispatch.cancel_extraction_job",
+        new_callable=AsyncMock,
+        return_value=SimpleNamespace(job_id=JOB, status="cancelled"))
+    pr, jr, _ = _repos(_project())
+    resp = await dispatch_cancel_extraction(PROJ, InternalCancelPayload(user_id=USER), pr, jr)
+    assert resp["status"] == "cancelled"
+    cancel.assert_awaited_once()
+    # cancel_extraction_job(project_id, user_id, projects_repo, jobs_repo)
+    assert cancel.call_args.args[0] == PROJ
+    assert cancel.call_args.args[1] == USER

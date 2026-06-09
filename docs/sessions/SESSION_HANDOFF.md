@@ -1,7 +1,7 @@
 # Session Handoff — Session 105 (eval R&D closed + Production Eval Flywheel track planned)
 
 > **Purpose:** orient the next agent in one read. This file is the single, unversioned handoff — updated in place at the end of each session. (Older `SESSION_PATCH.md` is deprecated → archive later.)
-> **Date:** 2026-06-09 (Auto-Draft Factory **S1 + S2 + S3a + S3b + S3c-foundation** shipped; human-in-loop v2.2).
+> **Date:** 2026-06-09 (Auto-Draft Factory **S1 + S2 + S3a + S3b + S3c-foundation + S3c-2a (cancel-prop)** shipped; human-in-loop v2.2).
 > **HEAD:** TBD (post-commit). Branch: `feat/advanced-translation-pipeline`.
 
 ## ▶ NEXT SESSION — start here
@@ -61,7 +61,12 @@
 
 **Recently cleared:** ✅ **D-CAMPAIGN-DRIVER-SINGLETON** (claim-based HA dispatch).
 
-**▶ NEXT:** **S3c-2** (cancel-prop + breaker→pause, per the two deferred rows) · then **S3d**/**S4** (budget-pause + usage→outbox, coupled). `/loom S3c-2`.
+**✅ S3c-2a DONE — cancel propagation (XL, 2026-06-09, cross-service).** Decision F. A campaign cancel now ACTIVELY stops in-flight jobs (saves spend) instead of S1's passive drain. **campaign:** `campaign_chapters.{knowledge,translation}_job_id` (stamped post-dispatch); `cancelling` → `_propagate_cancel` (cancel each distinct in-flight translation job + the project's knowledge extraction, **best-effort**) → `mark_dispatched_stages_cancelled` (terminalize still-dispatched; cancelled jobs won't emit completion) → finalize `cancelled`. **translation:** factored `_cancel_job_core` + `POST /internal/translation/jobs/{id}/cancel`. **knowledge:** `POST /internal/knowledge/projects/{id}/extraction/cancel` reusing public `cancel_extraction_job`. Both internal: X-Internal-Token + asserted user_id; 404/409 = success (idempotent). **VERIFY:** campaign **60** · translation **529** · knowledge **2178**(+360 skip). **Self-review + /review-impl: ordering verified (read in-flight job_ids BEFORE terminalize — added a test locking it); reuse no-drift; idempotent.** Accept/doc: cancel disables project extraction_status (transient, re-enabled by next dispatch), best-effort orphan spend, project-scoped knowledge cancel coarseness.
+
+**S3c-2a deferred rows:**
+- **`D-CAMPAIGN-CANCEL-LIVE-SMOKE`** — live: cancel a running campaign → in-flight translation+knowledge jobs flip to cancelled, dispatched chapter-stages terminalize, campaign finalizes cancelled; raced completion preserved.
+
+**▶ NEXT:** **S3c-2b breaker→campaign-pause** (`D-CAMPAIGN-BREAKER-PAUSE`) — worker (translation + worker-ai) emits a per-chapter `*.failed` outbox event carrying the error_code (none today — only success events); campaign consumer counts `LLM_CIRCUIT_OPEN` → auto-pause. Then **S3d**/**S4** (budget-pause + usage→outbox, coupled). `/loom S3c-2b`.
 
 ### ▶ RAW SEARCH (branch `raw-search/foundation`, off `origin/main`)
 

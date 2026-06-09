@@ -63,6 +63,11 @@ CREATE TABLE IF NOT EXISTS campaign_chapters (
   eval_status        TEXT NOT NULL DEFAULT 'pending',
   knowledge_attempts   INT NOT NULL DEFAULT 0,
   translation_attempts INT NOT NULL DEFAULT 0,
+  -- S3c-2 cancel-propagation: the downstream job that owns this chapter's
+  -- in-flight stage, so a campaign cancel can target it. Set when the stage is
+  -- dispatched; NULL until then.
+  knowledge_job_id     UUID,
+  translation_job_id   UUID,
   last_error         TEXT,
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (campaign_id, chapter_id)
@@ -72,6 +77,10 @@ CREATE INDEX IF NOT EXISTS idx_campchap_campaign
 -- Projection lookup by chapter (the consumer joins inbound events here).
 CREATE INDEX IF NOT EXISTS idx_campchap_chapter
   ON campaign_chapters(chapter_id);
+
+-- S3c-2 cancel-propagation (additive; existing tables get these via ALTER).
+ALTER TABLE campaign_chapters ADD COLUMN IF NOT EXISTS knowledge_job_id UUID;
+ALTER TABLE campaign_chapters ADD COLUMN IF NOT EXISTS translation_job_id UUID;
 """
 
 

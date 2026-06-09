@@ -59,6 +59,19 @@ class TranslationDispatchClient:
             raise DispatchError(f"translation dispatch {resp.status_code}: {resp.text[:300]}")
         return str(resp.json().get("job_id", ""))
 
+    async def cancel_job(self, *, user_id: str, job_id: str) -> None:
+        """S3c-2: cancel an in-flight translation job (campaign cancel). Idempotent
+        on the translation side; a 404/409 (already terminal) is treated as success."""
+        url = f"{self._base_url}/internal/translation/jobs/{job_id}/cancel"
+        try:
+            resp = await self._http.post(url, json={"user_id": user_id})
+        except httpx.RequestError as exc:
+            raise DispatchError(f"translation cancel: {exc}") from exc
+        if resp.status_code in (404, 409):
+            return  # already terminal / gone — nothing to cancel
+        if not resp.is_success:
+            raise DispatchError(f"translation cancel {resp.status_code}: {resp.text[:300]}")
+
 
 class KnowledgeDispatchClient:
     def __init__(self, base_url: str, internal_token: str, timeout_s: float = 10.0) -> None:
@@ -106,3 +119,17 @@ class KnowledgeDispatchClient:
         if not resp.is_success:
             raise DispatchError(f"knowledge dispatch {resp.status_code}: {resp.text[:300]}")
         return str(resp.json().get("job_id", ""))
+
+    async def cancel_extraction(self, *, user_id: str, project_id: str) -> None:
+        """S3c-2: cancel the project's active extraction job (campaign cancel).
+        Knowledge cancel is project-scoped. 404/409 (no active job / already
+        terminal) is treated as success."""
+        url = f"{self._base_url}/internal/knowledge/projects/{project_id}/extraction/cancel"
+        try:
+            resp = await self._http.post(url, json={"user_id": user_id})
+        except httpx.RequestError as exc:
+            raise DispatchError(f"knowledge cancel: {exc}") from exc
+        if resp.status_code in (404, 409):
+            return
+        if not resp.is_success:
+            raise DispatchError(f"knowledge cancel {resp.status_code}: {resp.text[:300]}")

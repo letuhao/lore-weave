@@ -321,12 +321,9 @@ async def get_chapter_translation(
 
 # ── Cancel job ────────────────────────────────────────────────────────────────
 
-@router.post("/jobs/{job_id}/cancel", status_code=status.HTTP_204_NO_CONTENT)
-async def cancel_job(
-    job_id: UUID,
-    user_id: str = Depends(get_current_user),
-    db: asyncpg.Pool = Depends(get_db),
-):
+async def _cancel_job_core(db: asyncpg.Pool, job_id: UUID, user_id: str) -> None:
+    """Cancel core (shared by the public route + the S3c-2 internal endpoint).
+    Owner-scoped (404 if not found / not owned), 409 if already terminal."""
     row = await db.fetchrow(
         "SELECT owner_user_id, status FROM translation_jobs WHERE job_id=$1", job_id
     )
@@ -343,3 +340,12 @@ async def cancel_job(
         "UPDATE translation_jobs SET status='cancelled', finished_at=now() WHERE job_id=$1",
         job_id,
     )
+
+
+@router.post("/jobs/{job_id}/cancel", status_code=status.HTTP_204_NO_CONTENT)
+async def cancel_job(
+    job_id: UUID,
+    user_id: str = Depends(get_current_user),
+    db: asyncpg.Pool = Depends(get_db),
+):
+    await _cancel_job_core(db, job_id, user_id)
