@@ -6,7 +6,7 @@
 
 ## ▶ NEXT SESSION — start here
 
-### ▶ WIKI LLM-BUILDING (branch `wiki/llm-building`, off `main`) — 2026-06-08
+### ▶ WIKI LLM-BUILDING (branch `wiki/llm-gen` off `main`; bug-fixes + design merged via PR #25) — 2026-06-08
 
 **State: DESIGN v3 complete (spec + mockup) + 2 pre-existing data-loss bug fixes BUILT & committed** (first commits on the branch, *before* the feature — `/loom` L, **17 tests green on real Postgres**, /review-impl clear).
 
@@ -18,7 +18,13 @@
 
 **Design (spec v3 [`2026-06-08-wiki-llm-building.md`](../specs/2026-06-08-wiki-llm-building.md) · mockup `-mockup.html`, 5 screens):** wiki = **deferred-sync materialized view** over a versioned knowledge base. Home = **knowledge-service** (Python; glossary stays SSOT front door). LLM contract = **constrained Markdown → IR → deterministic TipTap mapper** (NOT LLM-emits-TipTap). Generate = **bounded multi-pass** (write→deterministic rule-gate→CanonVerifier→1×revise, keep-if-improved). **Change-control:** capture (MVP: `wiki_article_source_usage` + `build_inputs` fingerprint) → defer (DB `wiki_staleness` ledger + sweep, **NOT realtime CDC**) → decide (**user-gated** regen, cost-capped). Locked PO decisions: BookProfile→**move to book-service**; spoiler = capture-horizon + reader-gate; ledger = DB-table+sweep; feedback+eval flywheel in MVP.
 
-**NEXT:** wiki-LLM feature BUILD per spec v3 — **Phase-1 MVP = generation + §5.1 dependency capture**. Prerequisite sub-task: **move BookProfile → book-service** (cross-cutting, touches lore-enrichment — isolate + test first). Then knowledge-service `app/wiki/` module (clone lore-enrichment runner→generate→verify→writeback).
+**MERGED to main (PR #25 @ 2ace6272):** bug-fixes + design v3. **Phase-1 plan committed** (`e9313ef0`, [`2026-06-08-wiki-llm-gen-phase1.md`](../plans/2026-06-08-wiki-llm-gen-phase1.md)) — contract-first (IR · Markdown→IR→TipTap · **citation mark = anti-hallucination feature, FE+BE** · writeback/schema/fingerprint), M0-M8 milestones, 15 risks surfaced.
+
+**BookProfile decision REVERSED → option (A):** STAYS in lore-enrichment (AI-domain, LLM detection `profile_suggest.py`), read via a NEW internal-token `GET /internal/lore-enrichment/books/{id}/profile` — NOT moved to book-service (Go/CRUD can't host the LLM detection = wrong boundary). **LE-runner verified:** build a fresh ~150-line wiki orchestrator reusing the generic job infra (state-machine/cost-budget/events/meter/LLM-seam/verify-gate), NOT clone the gap/proposal-coupled `JobRunner`.
+
+**M0 DONE** (`app/wiki/`, knowledge-service, pure, /loom L, **ruff + 14 unit tests green**, /review-impl clear): render-agnostic **IR** (`WikiArticleIR/Block/Span/Source`) + **dep-free constrained-markdown→IR parser** (cite-lift · drop-unknown-as-hallucinated · grounded-flag · spoiler `source_chapter_max`) + **mappers** `IR→TipTap` (ContentRenderer vocab + `citation` mark w/ jump-anchor + References) · `IR→markdown` (round-trips) · `IR→plaintext`. /review-impl: removed dead `quote` block-type (round-trip drift) + 3 coverage tests; LOW-3/4 documented.
+
+**NEXT:** **M1** (BookProfile internal endpoint + knowledge client, option A — small) or **M2** (retriever `run_hybrid_search` in-process + `context.py`). Critical path M2→M3→M4→M5→M6→M7b; M1 + M7a (citation mark FE) parallel-able. See plan §II.
 
 **Deferred (wiki):**
 - **D-WIKI-SEED-ROBUSTNESS** (test-infra, /review-impl COSMETIC-1) — `migrate.Seed` guards on table-empty; on a shared test DB a prior 'unknown' kind makes default-kind seeding skip → merge fixtures lose 'character'. Worked around in the merge fixture (seed-if-missing); root-cause fix = make `migrate.Seed` per-kind idempotent (`ON CONFLICT (code) DO NOTHING`) — separate cleanup task.
