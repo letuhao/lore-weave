@@ -25,7 +25,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import asyncpg
 
@@ -176,11 +176,20 @@ async def reconcile_once(
     pool: asyncpg.Pool,
     clients: DispatchClients,
     *,
+    driver_id: str,
     max_attempts: int,
     max_inflight: int,
+    lease_seconds: int = 60,
+    claim_limit: int = 100,
 ) -> None:
-    """One full pass over every active campaign."""
-    campaigns = await repo.list_active_campaigns(pool)
+    """One pass over the active campaigns THIS driver claims (HA, S3c). The lease
+    (`lease_seconds`) must exceed how long a tick spends per campaign so a peer
+    replica doesn't re-claim a campaign mid-process; the owner renews its own
+    leases each tick via `driver_id`. `paused` campaigns are not claimed → new
+    dispatch stops while in-flight work drains."""
+    campaigns = await repo.claim_active_campaigns(
+        pool, driver_id=driver_id, lease_seconds=lease_seconds, limit=claim_limit,
+    )
     for c in campaigns:
         try:
             await process_campaign(
@@ -208,17 +217,24 @@ class SagaDriver:
         self._tick = tick_seconds
         self._max_attempts = max_attempts
         self._max_inflight = max_inflight
+        # Unique per process → owns its leases (renew own, exclude peers). HA-safe.
+        self._driver_id = uuid4().hex
+        # Lease must outlast a tick so a campaign mid-process isn't re-claimed by
+        # a peer; the owner renews it every tick.
+        self._lease_seconds = max(int(tick_seconds * 6), 30)
         self._running = False
 
     async def run(self) -> None:
         self._running = True
-        logger.info("saga driver started (tick=%ss)", self._tick)
+        logger.info("saga driver started (tick=%ss, id=%s)", self._tick, self._driver_id)
         while self._running:
             try:
                 await reconcile_once(
                     self._pool, self._clients,
+                    driver_id=self._driver_id,
                     max_attempts=self._max_attempts,
                     max_inflight=self._max_inflight,
+                    lease_seconds=self._lease_seconds,
                 )
             except asyncio.CancelledError:
                 logger.info("saga driver cancelled")

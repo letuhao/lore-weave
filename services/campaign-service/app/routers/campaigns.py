@@ -161,6 +161,31 @@ async def start_campaign(
     return _campaign_model(updated)
 
 
+@router.post("/{campaign_id}/pause", response_model=Campaign)
+async def pause_campaign(
+    campaign_id: UUID,
+    user_id: str = Depends(get_current_user),
+    db: asyncpg.Pool = Depends(get_db),
+):
+    """Pause a running campaign (S3c). Stops NEW dispatch — the driver's claim
+    only leases running/cancelling campaigns, so a paused one is skipped — while
+    in-flight jobs drain and their completions still advance the projection
+    (the consumer includes 'paused'). Resume via POST /start (paused → running)."""
+    row = await repo.get_campaign(db, campaign_id, UUID(user_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
+                                                     "message": "campaign not found"})
+    if row["status"] != "running":
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "CAMPAIGN_NOT_PAUSABLE",
+                    "message": f"only a running campaign can be paused (status={row['status']})"},
+        )
+    await repo.set_campaign_status(db, campaign_id, "paused")
+    updated = await repo.get_campaign(db, campaign_id, UUID(user_id))
+    return _campaign_model(updated)
+
+
 @router.post("/{campaign_id}/cancel", response_model=Campaign)
 async def cancel_campaign(
     campaign_id: UUID,

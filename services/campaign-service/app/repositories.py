@@ -202,7 +202,10 @@ async def mark_stage_done_by_chapter(
         WHERE c.campaign_id = cc.campaign_id
           AND c.book_id = $1
           AND c.owner_user_id = $2
-          AND c.status IN ('running', 'cancelling')
+          -- 'paused' included (S3c): a paused campaign stops NEW dispatch but
+          -- must still absorb completions of already-in-flight jobs, else those
+          -- chapters stay 'dispatched' and get stuck on resume.
+          AND c.status IN ('running', 'cancelling', 'paused')
           AND cc.chapter_id = $3
           AND ($4::text IS NULL OR c.target_language IS NULL OR c.target_language = $4)
           AND cc.{col} <> 'done'
@@ -220,10 +223,46 @@ async def mark_stage_done_by_chapter(
 
 
 async def list_active_campaigns(pool: asyncpg.Pool) -> list[asyncpg.Record]:
-    """Non-terminal campaigns the reconcile loop must drive."""
+    """Non-terminal campaigns the reconcile loop must drive (no claim — used by
+    tests / single-replica callers)."""
     return await pool.fetch(
         f"SELECT {_CAMPAIGN_COLS} FROM campaigns "
         f"WHERE status IN ('running', 'cancelling') ORDER BY created_at ASC"
+    )
+
+
+async def claim_active_campaigns(
+    pool: asyncpg.Pool, *, driver_id: str, lease_seconds: int, limit: int,
+) -> list[asyncpg.Record]:
+    """HA claim (S3c, D-CAMPAIGN-DRIVER-SINGLETON): atomically LEASE up to `limit`
+    active campaigns to THIS driver and return them. Claimable = lease expired,
+    NULL, OR already owned by this driver (`driver_leased_by = driver_id`) — so
+    the owner RENEWS its own leases every tick while a peer skips a live lease.
+    `FOR UPDATE SKIP LOCKED` gives disjoint claims across concurrent replicas;
+    the lease (not a held lock) lets the driver process outside the transaction.
+    A crashed driver's lease expires → another replica re-claims.
+
+    The lease MUST exceed one process_campaign tick so a campaign this driver is
+    mid-processing isn't re-claimed by a peer."""
+    return await pool.fetch(
+        f"""
+        UPDATE campaigns
+        SET driver_leased_until = now() + make_interval(secs => $1::int),
+            driver_leased_by = $3,
+            updated_at = now()
+        WHERE campaign_id IN (
+            SELECT campaign_id FROM campaigns
+            WHERE status IN ('running', 'cancelling')
+              AND (driver_leased_until IS NULL
+                   OR driver_leased_until < now()
+                   OR driver_leased_by = $3)
+            ORDER BY created_at ASC
+            FOR UPDATE SKIP LOCKED
+            LIMIT $2::int
+        )
+        RETURNING {_CAMPAIGN_COLS}
+        """,
+        lease_seconds, limit, driver_id,
     )
 
 

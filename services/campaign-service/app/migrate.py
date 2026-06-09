@@ -37,6 +37,17 @@ CREATE INDEX IF NOT EXISTS idx_campaigns_owner
 -- Driver-claim index: the reconcile loop only scans non-terminal campaigns.
 CREATE INDEX IF NOT EXISTS idx_campaigns_active
   ON campaigns(status) WHERE status IN ('running', 'cancelling');
+
+-- S3c — HA claim-based dispatch (D-CAMPAIGN-DRIVER-SINGLETON). A driver leases
+-- a campaign before processing; a lease in the future means another (live)
+-- driver owns it. Expired/NULL → claimable (FOR UPDATE SKIP LOCKED). A crashed
+-- driver's lease simply expires → another replica picks the campaign up.
+-- `driver_leased_by` = the owning driver's instance id, so a driver RENEWS its
+-- own leases each tick (re-claimable when leased_by = me) while peers skip a
+-- live lease — without it a driver couldn't re-process a campaign it just leased
+-- until the lease expired (dispatch cadence would collapse to the lease period).
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS driver_leased_until TIMESTAMPTZ;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS driver_leased_by TEXT;
 -- Event→campaign correlation: the projection consumer maps an inbound event
 -- (carrying book_id) to active campaigns on that book.
 CREATE INDEX IF NOT EXISTS idx_campaigns_book_active

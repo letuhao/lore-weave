@@ -182,6 +182,43 @@ def test_cancel_created_immediately_cancelled(client, mocker):
     assert setter.call_args.args[2] == "cancelled"
 
 
+def test_pause_running_to_paused(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 side_effect=[_campaign_row(status="running"),
+                              _campaign_row(status="paused")])
+    setter = mocker.patch("app.repositories.set_campaign_status", new_callable=AsyncMock)
+    resp = client.post(f"/v1/campaigns/{CAMP}/pause")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "paused"
+    assert setter.call_args.args[2] == "paused"
+
+
+def test_pause_rejects_non_running(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="created"))
+    resp = client.post(f"/v1/campaigns/{CAMP}/pause")
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_NOT_PAUSABLE"
+
+
+def test_pause_not_found_404(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock, return_value=None)
+    resp = client.post(f"/v1/campaigns/{CAMP}/pause")
+    assert resp.status_code == 404
+
+
+def test_start_resumes_paused(client, mocker):
+    # paused → running via the existing start endpoint (resume).
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 side_effect=[_campaign_row(status="paused"),
+                              _campaign_row(status="running")])
+    setter = mocker.patch("app.repositories.set_campaign_status", new_callable=AsyncMock)
+    resp = client.post(f"/v1/campaigns/{CAMP}/start")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "running"
+    assert setter.call_args.args[2] == "running"
+
+
 def test_cancel_terminal_409(client, mocker):
     mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
                  return_value=_campaign_row(status="completed"))

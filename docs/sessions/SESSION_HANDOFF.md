@@ -1,7 +1,7 @@
 # Session Handoff — Session 105 (eval R&D closed + Production Eval Flywheel track planned)
 
 > **Purpose:** orient the next agent in one read. This file is the single, unversioned handoff — updated in place at the end of each session. (Older `SESSION_PATCH.md` is deprecated → archive later.)
-> **Date:** 2026-06-09 (Auto-Draft Factory **S1 + S2 + S3a + S3b** shipped; human-in-loop v2.2).
+> **Date:** 2026-06-09 (Auto-Draft Factory **S1 + S2 + S3a + S3b + S3c-foundation** shipped; human-in-loop v2.2).
 > **HEAD:** TBD (post-commit). Branch: `feat/advanced-translation-pipeline`.
 
 ## ▶ NEXT SESSION — start here
@@ -52,7 +52,16 @@
 
 **Recently cleared:** ✅ **G6** (transient-retry backoff).
 
-**▶ NEXT:** **S3c** (campaign pause endpoint + `FOR UPDATE SKIP LOCKED` claim-dispatch [`D-CAMPAIGN-DRIVER-SINGLETON`] + cancel propagation via new internal cancel endpoints on translation+knowledge + **breaker→campaign-pause** keyed on `LLM_CIRCUIT_OPEN`, decision F) · then **S3d**/**S4** (budget-pause + usage→outbox, coupled). `/loom S3c`.
+**✅ S3c-foundation DONE — pause + claim-based dispatch (XL→scoped, 2026-06-09).** PO decomposed S3c: this loom = the 2 self-contained pieces; cancel-prop + breaker→pause → S3c-2. **Pause:** `POST /v1/campaigns/{id}/pause` (running→paused; resume via existing `/start`); driver stops NEW dispatch (claim only leases running/cancelling) while in-flight drains; consumer WHERE now includes `paused` so **in-flight completions still converge** (else stuck-dispatched on resume). Completes the lifecycle (`paused` was recognized but unreachable). **Claim-based dispatch (HA) — closes `D-CAMPAIGN-DRIVER-SINGLETON`:** `driver_leased_until`/`driver_leased_by` columns + `claim_active_campaigns` (owner-scoped lease via `FOR UPDATE SKIP LOCKED`); each driver has a per-process `driver_id`, renews its own leases each tick (lease=6×tick), peers skip live leases, a crashed driver's lease expires → another re-claims. **VERIFY:** campaign-service **58** passed (+6). **Self-review caught+fixed a real bug** (lease without owner-id → a driver couldn't re-claim its own campaign until lease expiry → cadence collapse; fixed with `driver_leased_by`). **/review-impl: 1 COSMETIC fixed** (claim→process wiring test); claim/pause-convergence logic verified clean. LIVE-SMOKE deferred.
+
+**S3c deferred rows:**
+- **`D-CAMPAIGN-CLAIM-LIVE-SMOKE`** — the owner-lease SQL (renew-own / exclude-peer / expire) + paused-convergence are **live-only** (fake-pool unit tests cover the call shape, not the SQL). Live: 2 concurrent driver replicas get disjoint claims, owner renews, crashed-driver lease re-claimed, paused campaign's in-flight completion converges.
+- **`D-CAMPAIGN-CANCEL-PROP`** (S3c-2) — propagate campaign cancel to in-flight per-service jobs. Needs: store dispatched job_ids (campaign_chapters.{kn,tr}_job_id) + new `/internal` cancel endpoints on translation + knowledge (assert-verified-user_id) + driver calls them on `cancelling`.
+- **`D-CAMPAIGN-BREAKER-PAUSE`** (S3c-2) — auto-pause a campaign when its provider's S3a circuit opens (`LLM_CIRCUIT_OPEN`). Needs a worker→campaign FAILURE signal: translation/knowledge emit a per-chapter `*.failed` outbox event carrying the error code (none today — only success events exist); campaign consumer pauses on repeated CIRCUIT_OPEN.
+
+**Recently cleared:** ✅ **D-CAMPAIGN-DRIVER-SINGLETON** (claim-based HA dispatch).
+
+**▶ NEXT:** **S3c-2** (cancel-prop + breaker→pause, per the two deferred rows) · then **S3d**/**S4** (budget-pause + usage→outbox, coupled). `/loom S3c-2`.
 
 ### ▶ RAW SEARCH (branch `raw-search/foundation`, off `origin/main`)
 

@@ -5,7 +5,7 @@ from uuid import UUID
 
 import pytest
 
-from app.saga.driver import process_campaign, DispatchClients
+from app.saga.driver import process_campaign, reconcile_once, DispatchClients
 from app.saga.gating import ChapterState
 from app.clients.dispatch_clients import DispatchError
 from tests.conftest import FakeRecord
@@ -155,6 +155,33 @@ async def test_inflight_ceiling_blocks_new_dispatch(fake_pool, patch_repo):
     await _process(fake_pool, clients, _campaign(), max_inflight=20)
     tr.dispatch_job.assert_not_called()
     kn.dispatch_extraction.assert_not_called()
+
+
+async def test_reconcile_claims_not_lists(fake_pool, mocker):
+    # S3c HA: reconcile must CLAIM (lease) campaigns, not plain-list them — so
+    # peer replicas don't double-process. Lock the claim wiring.
+    claim = mocker.patch("app.saga.driver.repo.claim_active_campaigns",
+                         new_callable=AsyncMock, return_value=[])
+    listed = mocker.patch("app.saga.driver.repo.list_active_campaigns",
+                          new_callable=AsyncMock, return_value=[])
+    clients, _, _ = _clients()
+    await reconcile_once(fake_pool, clients, driver_id="drv-1", max_attempts=3, max_inflight=20)
+    claim.assert_awaited_once()
+    listed.assert_not_called()
+    # claim is owner-scoped (renew own / exclude peers) + leased > tick
+    assert claim.call_args.kwargs["driver_id"] == "drv-1"
+    assert claim.call_args.kwargs["lease_seconds"] >= 30
+
+
+async def test_reconcile_processes_each_claimed_campaign(fake_pool, mocker):
+    # Lock the claim→process wiring: every CLAIMED campaign is processed this tick.
+    c1, c2 = _campaign(), _campaign(status="cancelling")
+    mocker.patch("app.saga.driver.repo.claim_active_campaigns",
+                 new_callable=AsyncMock, return_value=[c1, c2])
+    proc = mocker.patch("app.saga.driver.process_campaign", new_callable=AsyncMock)
+    clients, _, _ = _clients()
+    await reconcile_once(fake_pool, clients, driver_id="d", max_attempts=3, max_inflight=20)
+    assert proc.await_count == 2
 
 
 async def test_dispatched_rows_not_redispatched(fake_pool, patch_repo):
