@@ -1,8 +1,13 @@
 """Wiki LLM-generation module (knowledge-service).
 
 M0 = the render-agnostic Wiki Article IR + the constrained-Markdown parser + the
-IR→{TipTap, Markdown, plaintext} mappers. Pure, no I/O. Downstream milestones (M2-M6)
-add context-gathering, the LLM call, verify/cite, and the glossary writeback.
+IR→{TipTap, Markdown, plaintext} mappers. This package surface stays PURE (no I/O)
+so the IR can be imported without the service's DB/HTTP deps.
+
+M2 added `context.py` (per-entity grounding gather) — it touches clients/db, so it
+is imported DIRECTLY (`from app.wiki.context import gather_entity_context`), NOT
+re-exported here, to keep this surface dependency-light. Later milestones (M3-M6)
+add the LLM call, verify/cite, and the glossary writeback the same way.
 """
 
 from app.wiki.ir import Block, Source, Span, WikiArticleIR
