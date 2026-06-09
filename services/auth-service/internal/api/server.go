@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -10,6 +11,7 @@ import (
 	"github.com/loreweave/observability"
 
 	"github.com/loreweave/auth-service/internal/config"
+	"github.com/loreweave/serviceacl"
 	"github.com/loreweave/auth-service/internal/ratelimit"
 )
 
@@ -27,6 +29,28 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 		secret: []byte(cfg.JWTSecret),
 		rl:     ratelimit.New(cfg.RateLimitWindow, cfg.RateLimitMax),
 	}
+}
+
+func (s *Server) requireInternalToken(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.cfg.InternalServiceToken == "" || r.Header.Get("X-Internal-Token") != s.cfg.InternalServiceToken {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid internal token"})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) internalAudit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		slog.Info("internal_rpc",
+			"caller", r.Header.Get("X-Caller-Service"),
+			"method", r.Method,
+			"path", r.URL.Path,
+			"request_id", r.Header.Get("X-Request-Id"),
+		)
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) Router() http.Handler {
@@ -61,8 +85,11 @@ func (s *Server) Router() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 
-	// Internal (service-to-service, no JWT required)
+	// Internal (service-to-service, X-Internal-Token required)
 	r.Route("/internal", func(r chi.Router) {
+		r.Use(s.requireInternalToken)
+		r.Use(serviceacl.OptionalMiddleware)
+		r.Use(s.internalAudit)
 		r.Get("/users/{user_id}/profile", http.HandlerFunc(s.internalGetUserProfile))
 	})
 
@@ -86,6 +113,9 @@ func (s *Server) Router() http.Handler {
 		r.Post("/auth/password-reset/confirm", http.HandlerFunc(s.passwordResetConfirm))
 
 		r.Post("/auth/change-password", http.HandlerFunc(s.changePassword))
+		r.Post("/auth/stream-ticket", func(w http.ResponseWriter, r *http.Request) {
+			ratelimit.Middleware(s.rl, "stream-ticket", http.HandlerFunc(s.issueStreamTicket)).ServeHTTP(w, r)
+		})
 
 		r.Get("/account/profile", http.HandlerFunc(s.getProfile))
 		r.Patch("/account/profile", http.HandlerFunc(s.patchProfile))

@@ -17,18 +17,26 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/loreweave/observability"
+	"github.com/loreweave/serviceacl"
 
 	"github.com/loreweave/sharing-service/internal/config"
+	"github.com/loreweave/sharing-service/internal/ratelimit"
 )
 
 type Server struct {
-	pool   *pgxpool.Pool
-	cfg    *config.Config
-	secret []byte
+	pool            *pgxpool.Pool
+	cfg             *config.Config
+	secret          []byte
+	unlistedLimiter *ratelimit.Limiter
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
-	return &Server{pool: pool, cfg: cfg, secret: []byte(cfg.JWTSecret)}
+	return &Server{
+		pool:            pool,
+		cfg:             cfg,
+		secret:          []byte(cfg.JWTSecret),
+		unlistedLimiter: ratelimit.New(cfg.UnlistedRateLimitWindow, cfg.UnlistedRateLimitMax),
+	}
 }
 
 // Phase 6c — traced transport so outbound calls carry a W3C traceparent + emit a CLIENT span.
@@ -43,6 +51,9 @@ func (s *Server) internalGet(url string) (*http.Response, error) {
 		if s.cfg.InternalServiceToken != "" {
 			req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
 		}
+		if s.cfg.ServiceName != "" {
+			req.Header.Set("X-Caller-Service", s.cfg.ServiceName)
+		}
 		return internalClient.Do(req)
 	}
 	res, err := do()
@@ -55,7 +66,7 @@ func (s *Server) internalGet(url string) (*http.Response, error) {
 
 func (s *Server) requireInternalToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.cfg.InternalServiceToken != "" && r.Header.Get("X-Internal-Token") != s.cfg.InternalServiceToken {
+		if s.cfg.InternalServiceToken == "" || r.Header.Get("X-Internal-Token") != s.cfg.InternalServiceToken {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid internal token"})
 			return
 		}
@@ -97,6 +108,7 @@ func (s *Server) Router() http.Handler {
 
 	r.Route("/internal/sharing", func(r chi.Router) {
 		r.Use(s.requireInternalToken)
+		r.Use(serviceacl.OptionalMiddleware)
 		r.Get("/public", s.listPublicInternal)
 		r.Get("/public/{book_id}", s.getPublicInternal)
 		r.Get("/books/{book_id}/visibility", s.getBookVisibilityInternal)
@@ -105,9 +117,14 @@ func (s *Server) Router() http.Handler {
 	r.Route("/v1/sharing", func(r chi.Router) {
 		r.Get("/books/{book_id}", s.getSharingPolicy)
 		r.Patch("/books/{book_id}", s.patchSharingPolicy)
-		r.Get("/unlisted/{access_token}", s.getUnlistedBook)
-		r.Get("/unlisted/{access_token}/chapters", s.listUnlistedChapters)
-		r.Get("/unlisted/{access_token}/chapters/{chapter_id}", s.getUnlistedChapter)
+		r.Route("/unlisted", func(r chi.Router) {
+			r.Use(func(next http.Handler) http.Handler {
+				return ratelimit.Middleware(s.unlistedLimiter, "unlisted", next)
+			})
+			r.Get("/{access_token}", s.getUnlistedBook)
+			r.Get("/{access_token}/chapters", s.listUnlistedChapters)
+			r.Get("/{access_token}/chapters/{chapter_id}", s.getUnlistedChapter)
+		})
 	})
 	return r
 }

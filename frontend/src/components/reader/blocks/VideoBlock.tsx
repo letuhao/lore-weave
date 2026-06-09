@@ -1,17 +1,20 @@
 import type { JSONContent } from '@tiptap/react';
 import { useTranslation } from 'react-i18next';
+import { useMediaAuthUrl } from '@/hooks/useMediaAuthUrl';
 
 interface VideoBlockProps {
   node: JSONContent;
+  accessToken?: string | null;
 }
 
-export function VideoBlock({ node }: VideoBlockProps) {
+export function VideoBlock({ node, accessToken }: VideoBlockProps) {
   const { t } = useTranslation('reader');
-  const src = node.attrs?.src as string | null;
+  const rawSrc = node.attrs?.src as string | null;
+  const src = useMediaAuthUrl(rawSrc, accessToken);
   const caption = (node.attrs?.caption as string) || '';
   const width = (node.attrs?.width as number) || 100;
 
-  if (!src) {
+  if (!rawSrc) {
     return (
       <figure className="block-video">
         <div className="video-wrapper block-video-empty">
@@ -29,8 +32,7 @@ export function VideoBlock({ node }: VideoBlockProps) {
   return (
     <figure className="block-video" style={{ maxWidth: `${width}%` }}>
       <div className="video-wrapper">
-        <video controls preload="metadata">
-          <source src={src} />
+        <video controls preload="metadata" src={src}>
         </video>
       </div>
       {caption && <figcaption>{caption}</figcaption>}

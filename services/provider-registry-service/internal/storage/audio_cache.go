@@ -15,7 +15,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
@@ -28,6 +30,8 @@ type AudioCache struct {
 	client      *minio.Client
 	bucket      string
 	externalURL string
+	publicRead  bool
+	presignTTL  time.Duration
 }
 
 // Config carries the MinIO + bucket settings.
@@ -38,6 +42,8 @@ type Config struct {
 	UseSSL      bool
 	Bucket      string // e.g. "loreweave-audio-cache"
 	ExternalURL string // e.g. "http://localhost:9123" (dev) or "https://media.loreweave.com" (prod)
+	PublicRead    bool
+	PresignTTL    int // seconds for presigned URLs when PublicRead is false
 }
 
 // NewAudioCache initializes the MinIO client, ensures the bucket exists,
@@ -79,23 +85,21 @@ func NewAudioCache(ctx context.Context, cfg Config, logger *slog.Logger) (*Audio
 		}
 	}
 
-	// Public-read policy (anonymous GET) — mirrors book-service's
-	// setBucketPublicRead at media.go:587. Keys are UUIDs (unguessable).
-	publicPolicy := `{
-		"Version": "2012-10-17",
-		"Statement": [{
-			"Effect": "Allow",
-			"Principal": {"AWS": ["*"]},
-			"Action": ["s3:GetObject"],
-			"Resource": ["arn:aws:s3:::` + cfg.Bucket + `/*"]
-		}]
-	}`
-	if err := mc.SetBucketPolicy(ctx, cfg.Bucket, publicPolicy); err != nil {
-		// /review-impl(DESIGN) MED#2 — log + continue. Bucket may already
-		// have an equivalent policy; or operator can fix post-deploy.
-		if logger != nil {
-			logger.Warn("audio_cache: SetBucketPolicy failed — URL-mode public access may not work",
-				"err", err, "bucket", cfg.Bucket)
+	if cfg.PublicRead {
+		publicPolicy := `{
+			"Version": "2012-10-17",
+			"Statement": [{
+				"Effect": "Allow",
+				"Principal": {"AWS": ["*"]},
+				"Action": ["s3:GetObject"],
+				"Resource": ["arn:aws:s3:::` + cfg.Bucket + `/*"]
+			}]
+		}`
+		if err := mc.SetBucketPolicy(ctx, cfg.Bucket, publicPolicy); err != nil {
+			if logger != nil {
+				logger.Warn("audio_cache: SetBucketPolicy failed — URL-mode public access may not work",
+					"err", err, "bucket", cfg.Bucket)
+			}
 		}
 	}
 
@@ -118,10 +122,16 @@ func NewAudioCache(ctx context.Context, cfg Config, logger *slog.Logger) (*Audio
 		}
 	}
 
+	ttl := time.Duration(cfg.PresignTTL) * time.Second
+	if ttl <= 0 {
+		ttl = time.Hour
+	}
 	return &AudioCache{
 		client:      mc,
 		bucket:      cfg.Bucket,
 		externalURL: strings.TrimRight(cfg.ExternalURL, "/"),
+		publicRead:  cfg.PublicRead,
+		presignTTL:  ttl,
 	}, nil
 }
 
@@ -168,7 +178,14 @@ func (a *AudioCache) Stage(ctx context.Context, jobID uuid.UUID, idx int, format
 	if err != nil {
 		return "", fmt.Errorf("audio_cache put object: %w", err)
 	}
-	return fmt.Sprintf("%s/%s/%s", a.externalURL, a.bucket, objectKey), nil
+	if a.publicRead {
+		return fmt.Sprintf("%s/%s/%s", a.externalURL, a.bucket, objectKey), nil
+	}
+	presigned, err := a.client.PresignedGetObject(ctx, a.bucket, objectKey, a.presignTTL, url.Values{})
+	if err != nil {
+		return "", fmt.Errorf("audio_cache presign: %w", err)
+	}
+	return presigned.String(), nil
 }
 
 // Bucket returns the configured bucket name (helpful for tests).

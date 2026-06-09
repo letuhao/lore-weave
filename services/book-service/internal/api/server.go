@@ -22,6 +22,7 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 
 	"github.com/loreweave/observability"
+	"github.com/loreweave/serviceacl"
 
 	"github.com/loreweave/book-service/internal/config"
 	"github.com/loreweave/book-service/internal/textdiff"
@@ -98,7 +99,7 @@ var internalClient = &http.Client{Timeout: 10 * time.Second, Transport: observab
 
 func (s *Server) requireInternalToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.cfg.InternalServiceToken != "" && r.Header.Get("X-Internal-Token") != s.cfg.InternalServiceToken {
+		if s.cfg.InternalServiceToken == "" || r.Header.Get("X-Internal-Token") != s.cfg.InternalServiceToken {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid internal token"})
 			return
 		}
@@ -145,6 +146,7 @@ func (s *Server) Router() http.Handler {
 
 	r.Route("/internal", func(r chi.Router) {
 		r.Use(s.requireInternalToken)
+		r.Use(serviceacl.OptionalMiddleware)
 		r.Get("/books/{book_id}/projection", s.getBookProjection)
 		r.Get("/books/{book_id}/lexical-search", s.searchChapterTextInternal) // raw-search Phase 2 (lexical leg for the knowledge orchestrator)
 		r.Get("/books/{book_id}/chapters", s.getInternalBookChapters)
@@ -194,6 +196,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/cover", s.getCover)
 			r.Post("/cover", s.uploadCover)
 			r.Delete("/cover", s.deleteCover)
+			r.Get("/media/object", s.getMediaObject)
 
 			r.Get("/chapters", s.listChapters)
 			r.Post("/chapters", s.createChapter)
@@ -260,6 +263,32 @@ type accessClaims struct {
 	jwt.RegisteredClaims
 }
 
+type streamClaims struct {
+	Type string `json:"typ"`
+	jwt.RegisteredClaims
+}
+
+func (s *Server) parseStreamToken(tokenStr string) (uuid.UUID, bool) {
+	tok, err := jwt.ParseWithClaims(tokenStr, &streamClaims{}, func(t *jwt.Token) (any, error) {
+		if t.Method != jwt.SigningMethodHS256 {
+			return nil, fmt.Errorf("unexpected signing method")
+		}
+		return s.secret, nil
+	})
+	if err != nil || !tok.Valid {
+		return uuid.Nil, false
+	}
+	claims, ok := tok.Claims.(*streamClaims)
+	if !ok || claims.Type != "stream" {
+		return uuid.Nil, false
+	}
+	id, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
 func (s *Server) requireUserID(r *http.Request) (uuid.UUID, bool) {
 	auth := r.Header.Get("Authorization")
 	if !strings.HasPrefix(auth, "Bearer ") {
@@ -284,6 +313,18 @@ func (s *Server) requireUserID(r *http.Request) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return id, true
+}
+
+// requireUserIDAllowQuery accepts Bearer access JWT or ?stream_token= (typ=stream only).
+func (s *Server) requireUserIDAllowQuery(r *http.Request) (uuid.UUID, bool) {
+	if id, ok := s.requireUserID(r); ok {
+		return id, true
+	}
+	token := r.URL.Query().Get("stream_token")
+	if token == "" {
+		return uuid.Nil, false
+	}
+	return s.parseStreamToken(token)
 }
 
 func parseUUIDParam(w http.ResponseWriter, r *http.Request, name string) (uuid.UUID, bool) {

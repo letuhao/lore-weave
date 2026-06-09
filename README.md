@@ -158,12 +158,20 @@ Track token usage, costs, and performance across all AI operations. Per-model an
 
 ## Quick Start
 
-### Docker (recommended)
+### Docker (recommended — dev)
 ```bash
 cd infra
 docker compose up --build
 ```
-Access the UI at [http://localhost:5173](http://localhost:5173)
+Access the UI at [http://localhost:5174](http://localhost:5174). Gateway at [http://localhost:3123](http://localhost:3123).
+
+### On-prem / ngrok (single port)
+```bash
+cp infra/.env.example infra/.env   # set JWT_SECRET
+scripts/deploy-onprem.sh           # or deploy-onprem.ps1 on Windows
+ngrok http 5296
+```
+See [infra/ON_PREM_DEPLOY.md](infra/ON_PREM_DEPLOY.md).
 
 ### Manual / Hybrid
 1. **Infra**: `cd infra && docker compose up -d postgres minio redis mailhog`

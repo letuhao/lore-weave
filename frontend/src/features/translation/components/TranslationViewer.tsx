@@ -244,7 +244,7 @@ export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSe
           </div>
         ) : version.translated_body_format === 'json' && Array.isArray(version.translated_body_json) ? (
           <div className="mx-auto max-w-[680px]">
-            <ContentRenderer blocks={version.translated_body_json as any} />
+            <ContentRenderer blocks={version.translated_body_json as any} accessToken={accessToken} />
           </div>
         ) : version.translated_body ? (
           <div className="mx-auto max-w-[680px] whitespace-pre-wrap font-serif text-[15px] leading-[1.9] text-foreground/90">

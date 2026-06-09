@@ -3,9 +3,11 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { cn } from '@/lib/utils';
 import type { MediaVersion } from '@/features/books/api';
+import { AuthenticatedMediaLink } from '@/components/media/AuthenticatedMedia';
 
 interface VersionTimelineProps {
   versions: MediaVersion[];
+  accessToken?: string | null;
   selectedId: string | null;
   onSelect: (version: MediaVersion) => void;
   onRestore: (version: MediaVersion) => void;
@@ -48,6 +50,7 @@ function formatSize(bytes: number | null): string {
 
 export function VersionTimeline({
   versions,
+  accessToken,
   selectedId,
   onSelect,
   onRestore,
@@ -158,8 +161,9 @@ export function VersionTimeline({
             </button>
           )}
           {selected.media_url && (
-            <a
-              href={selected.media_url}
+            <AuthenticatedMediaLink
+              url={selected.media_url}
+              accessToken={accessToken}
               download
               onClick={(e) => {
                 e.stopPropagation();
@@ -168,7 +172,7 @@ export function VersionTimeline({
               className="flex items-center gap-1 rounded px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             >
               <Download className="h-3 w-3" />
-            </a>
+            </AuthenticatedMediaLink>
           )}
           {!isLatest && (
             <button

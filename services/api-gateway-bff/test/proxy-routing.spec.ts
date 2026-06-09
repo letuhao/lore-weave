@@ -39,6 +39,8 @@ describe('Gateway proxy routing', () => {
   let notificationServer: http.Server;
   let knowledgeServer: http.Server;
   let loreEnrichmentServer: http.Server;
+  let learningServer: http.Server;
+  let compositionServer: http.Server;
 
   beforeAll(async () => {
     [
@@ -56,6 +58,8 @@ describe('Gateway proxy routing', () => {
       notificationServer,
       knowledgeServer,
       loreEnrichmentServer,
+      learningServer,
+      compositionServer,
     ] = await Promise.all([
       startUpstream('auth'),
       startUpstream('books'),
@@ -71,6 +75,8 @@ describe('Gateway proxy routing', () => {
       startUpstream('notification'),
       startUpstream('knowledge'),
       startUpstream('lore-enrichment'),
+      startUpstream('learning'),
+      startUpstream('composition'),
     ]);
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -93,6 +99,8 @@ describe('Gateway proxy routing', () => {
       notificationUrl: urlOf(notificationServer),
       knowledgeUrl: urlOf(knowledgeServer),
       loreEnrichmentUrl: urlOf(loreEnrichmentServer),
+      learningUrl: urlOf(learningServer),
+      compositionUrl: urlOf(compositionServer),
     });
     await app.init();
   });
@@ -114,6 +122,8 @@ describe('Gateway proxy routing', () => {
       new Promise((resolve) => notificationServer.close(resolve)),
       new Promise((resolve) => knowledgeServer.close(resolve)),
       new Promise((resolve) => loreEnrichmentServer.close(resolve)),
+      new Promise((resolve) => learningServer.close(resolve)),
+      new Promise((resolve) => compositionServer.close(resolve)),
     ]);
   });
 
@@ -128,6 +138,10 @@ describe('Gateway proxy routing', () => {
     await request(app.getHttpServer()).get('/v1/catalog/books').expect(200).expect('catalog');
     await request(app.getHttpServer()).get('/v1/model-registry/providers').expect(200).expect('provider-registry');
     await request(app.getHttpServer()).get('/v1/model-billing/usage-logs').expect(200).expect('usage-billing');
+  });
+
+  it('routes /v1/llm/* paths to provider-registry service', async () => {
+    await request(app.getHttpServer()).get('/v1/llm/jobs/job-1').expect(200).expect('provider-registry');
   });
 
   it('routes /v1/translation/* paths to translation service', async () => {
@@ -156,6 +170,14 @@ describe('Gateway proxy routing', () => {
 
   it('routes /v1/lore-enrichment/* paths to lore-enrichment service', async () => {
     await request(app.getHttpServer()).get('/v1/lore-enrichment/jobs').expect(200).expect('lore-enrichment');
+  });
+
+  it('routes /v1/learning/* paths to learning service', async () => {
+    await request(app.getHttpServer()).get('/v1/learning/corrections').expect(200).expect('learning');
+  });
+
+  it('routes /v1/composition/* paths to composition service', async () => {
+    await request(app.getHttpServer()).get('/v1/composition/books/b1/work').expect(200).expect('composition');
   });
 
   it('returns 404 for unmatched path', async () => {

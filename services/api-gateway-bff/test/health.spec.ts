@@ -29,6 +29,9 @@ describe('Gateway (e2e)', () => {
       statisticsUrl: 'http://127.0.0.1:9',
       notificationUrl: 'http://127.0.0.1:9',
       knowledgeUrl: 'http://127.0.0.1:9',
+      loreEnrichmentUrl: 'http://127.0.0.1:9',
+      learningUrl: 'http://127.0.0.1:9',
+      compositionUrl: 'http://127.0.0.1:9',
     });
     await app.init();
   });

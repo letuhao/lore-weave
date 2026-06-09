@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     minio_secret_key: str = Field(default="loreweave_dev_minio_secret", validation_alias="MINIO_SECRET_KEY")
     minio_bucket: str = Field(default="lore-enrichment-uploads", validation_alias="MINIO_BUCKET")
     minio_use_ssl: bool = Field(default=False, validation_alias="MINIO_USE_SSL")
+    enrichment_upload_public_read: bool = Field(
+        default=True, validation_alias="ENRICHMENT_UPLOAD_PUBLIC_READ"
+    )
     # Per-file upload caps (mode F). Bound the synchronous read + the OCR fan-out.
     upload_max_bytes: int = Field(default=25 * 1024 * 1024, validation_alias="LORE_ENRICHMENT_UPLOAD_MAX_BYTES")
     upload_max_pages: int = Field(default=300, validation_alias="LORE_ENRICHMENT_UPLOAD_MAX_PAGES")

@@ -30,6 +30,10 @@ import (
 )
 
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
+	if !s.cfg.AllowPublicRegistration {
+		writeErr(w, http.StatusForbidden, "AUTH_REGISTRATION_DISABLED", "public registration is disabled")
+		return
+	}
 	var body struct {
 		Email       string  `json:"email"`
 		Password    string  `json:"password"`

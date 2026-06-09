@@ -19,6 +19,8 @@ const TEXT_BLOCK_TYPES = new Set(['paragraph', 'heading', 'blockquote', 'callout
 interface ContentRendererProps {
   /** doc.content array from Tiptap JSON */
   blocks: JSONContent[];
+  /** Access token for private `/media/object` URLs */
+  accessToken?: string | null;
   /** 'full' for reader page, 'compact' for panels/embeds */
   mode?: 'full' | 'compact';
   /** Block id to highlight (TTS sync — gold left border) */
@@ -47,18 +49,18 @@ function normalize(s: string): string {
 }
 
 /** Render the inner content for a single block based on its type. */
-function renderBlockContent(node: JSONContent) {
+function renderBlockContent(node: JSONContent, accessToken?: string | null) {
   switch (node.type) {
     case 'paragraph':
       return <ParagraphBlock node={node} />;
     case 'heading':
       return <HeadingBlock node={node} />;
     case 'imageBlock':
-      return <ImageBlock node={node} />;
+      return <ImageBlock node={node} accessToken={accessToken} />;
     case 'videoBlock':
-      return <VideoBlock node={node} />;
+      return <VideoBlock node={node} accessToken={accessToken} />;
     case 'audioBlock':
-      return <AudioBlock node={node} />;
+      return <AudioBlock node={node} accessToken={accessToken} />;
     case 'codeBlock':
       return <CodeBlock node={node} />;
     case 'callout':
@@ -136,6 +138,7 @@ function AudioIndicator({ audioUrl, audioSource, audioSubtitle, blockText }: {
  */
 export function ContentRenderer({
   blocks,
+  accessToken,
   mode = 'full',
   ttsActiveBlock,
   showIndices = false,
@@ -173,7 +176,7 @@ export function ContentRenderer({
             onClick={onBlockClick ? () => onBlockClick(blockId) : undefined}
           >
             {showIndices && <span className="block-index">{i}</span>}
-            {renderBlockContent(node)}
+            {renderBlockContent(node, accessToken)}
             {hasAudio && (
               <AudioIndicator
                 audioUrl={audioUrl!}

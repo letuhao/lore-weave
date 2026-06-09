@@ -13,6 +13,7 @@ RUN apk add --no-cache git
 # Copy SDKs first (separate cache layers), then service files.
 COPY sdks/go/llmgw /src/sdks/go/llmgw
 COPY sdks/go/observability /src/sdks/go/observability
+COPY sdks/go/serviceacl /src/sdks/go/serviceacl
 COPY services/book-service /src/services/book-service
 
 WORKDIR /src/services/book-service
@@ -22,7 +23,9 @@ RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/book-service ./cmd/book-serv
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates wget
 COPY --from=build /out/book-service /book-service
+COPY contracts/service_acl /contracts/service_acl
 ENV HTTP_ADDR=:8082
+ENV SERVICE_ACL_MATRIX_PATH=/contracts/service_acl/matrix.yaml
 EXPOSE 8082
 USER nobody
 HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=5 \

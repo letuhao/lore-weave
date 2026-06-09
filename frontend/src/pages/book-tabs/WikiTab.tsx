@@ -315,7 +315,7 @@ function WikiArticleView({ bookId, articleId }: { bookId: string; articleId: str
 
           {hasContent ? (
             <div className="wiki-article-body">
-              <ContentRenderer blocks={blocks} mode="full" />
+              <ContentRenderer blocks={blocks} mode="full" accessToken={accessToken} />
             </div>
           ) : (
             <p className="text-sm text-muted-foreground italic">{t('noContent')}</p>

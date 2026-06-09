@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { apiBase } from '@/api';
+import { apiBase, fetchStreamTicket } from '@/api';
 
 export type ImportStatusEvent = {
   type: 'import.status';
@@ -24,11 +24,19 @@ export function useImportEvents(
   const connect = useCallback(() => {
     if (!token) return;
 
-    // WebSocket needs an ABSOLUTE url — a relative '' base (the default) won't do, so
-    // fall back to the page origin (vite/nginx proxy /ws → gateway). Honors VITE_API_BASE
-    // when set for custom setups.
-    const base = apiBase() || window.location.origin;
-    const wsUrl = base.replace(/^http/, 'ws') + '/ws?token=' + encodeURIComponent(token);
+    void (async () => {
+      let streamToken: string;
+      try {
+        streamToken = await fetchStreamTicket(token);
+      } catch (err) {
+        if (import.meta.env.PROD) {
+          console.error('stream-ticket failed in prod', err);
+          return;
+        }
+        streamToken = token;
+      }
+      const base = apiBase() || window.location.origin;
+      const wsUrl = base.replace(/^http/, 'ws') + '/ws?token=' + encodeURIComponent(streamToken);
 
     try {
       const ws = new WebSocket(wsUrl);
@@ -55,6 +63,7 @@ export function useImportEvents(
     } catch {
       // WS not available — silent fallback to polling
     }
+    })();
   }, [token]);
 
   useEffect(() => {

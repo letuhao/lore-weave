@@ -9,6 +9,7 @@ require (
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/loreweave/llmgw v0.1.0
 	github.com/loreweave/observability v0.1.0
+	github.com/loreweave/serviceacl v0.0.0
 	github.com/minio/minio-go/v7 v7.0.100
 	github.com/prometheus/client_golang v1.23.2
 )
@@ -16,6 +17,8 @@ require (
 replace github.com/loreweave/llmgw => ../../sdks/go/llmgw
 
 replace github.com/loreweave/observability => ../../sdks/go/observability
+
+replace github.com/loreweave/serviceacl => ../../sdks/go/serviceacl
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -62,4 +65,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/grpc v1.80.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

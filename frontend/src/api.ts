@@ -15,6 +15,63 @@ const base = () => import.meta.env.VITE_API_BASE || '';
  *  WebSocket callers need an absolute URL: use `apiBase() || window.location.origin`. */
 export const apiBase = base;
 
+/** Mint a short-lived stream ticket for WS/SSE and private media URLs. */
+export async function fetchStreamTicket(accessToken: string): Promise<string> {
+  const res = await fetch(`${apiBase()}/v1/auth/stream-ticket`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    throw new Error(`stream-ticket failed: ${res.status}`);
+  }
+  const body = (await res.json()) as { stream_token: string; expires_in_seconds?: number };
+  return body.stream_token;
+}
+
+let streamTicketCache: { token: string; expiresAt: number } | null = null;
+let streamTicketInflight: Promise<string> | null = null;
+
+async function getCachedStreamTicket(accessToken: string): Promise<string> {
+  const now = Date.now();
+  if (streamTicketCache && streamTicketCache.expiresAt > now + 10_000) {
+    return streamTicketCache.token;
+  }
+  if (!streamTicketInflight) {
+    streamTicketInflight = fetchStreamTicket(accessToken)
+      .then((token) => {
+        streamTicketCache = { token, expiresAt: now + 110_000 };
+        streamTicketInflight = null;
+        return token;
+      })
+      .catch((err) => {
+        streamTicketInflight = null;
+        throw err;
+      });
+  }
+  return streamTicketInflight;
+}
+
+/** Resolve private book media URL with cached stream ticket (`?stream_token=`). */
+export async function resolveMediaUrl(
+  url: string | null | undefined,
+  accessToken: string | null | undefined,
+): Promise<string | undefined> {
+  if (!url) return undefined;
+  if (!accessToken || !url.includes('/media/object')) return url;
+  const streamToken = await getCachedStreamTicket(accessToken);
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}stream_token=${encodeURIComponent(streamToken)}`;
+}
+
+/** @deprecated Use resolveMediaUrl — sync helper cannot attach stream tickets. */
+export function mediaUrlWithAuth(
+  url: string | null | undefined,
+  _accessToken: string | null | undefined,
+): string | undefined {
+  if (!url) return undefined;
+  return url;
+}
+
 export type ApiError = { code: string; message: string };
 
 export async function apiJson<T>(

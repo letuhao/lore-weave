@@ -1,0 +1,6 @@
+# Temporary override: enable registration to seed local security test users.
+# Remove after bootstrap — do not use in production.
+services:
+  auth-service:
+    environment:
+      ALLOW_PUBLIC_REGISTRATION: "true"

@@ -18,10 +18,10 @@ import {
 } from '@nestjs/common';
 import { Observable, Subject } from 'rxjs';
 import { finalize } from 'rxjs/operators';
-import * as jwt from 'jsonwebtoken';
 import type { Request } from 'express';
 
 import { AmqpService } from '../ws/amqp.service';
+import { resolveUserIdFromToken } from '../ws/token';
 
 interface NotificationMessageEvent {
   data: object;
@@ -59,8 +59,7 @@ export class NotificationsController {
 
     let userId: string;
     try {
-      const decoded = jwt.verify(token, jwtSecret) as { sub: string };
-      userId = decoded.sub;
+      userId = resolveUserIdFromToken(token, jwtSecret);
     } catch (err) {
       this.logger.warn(
         `SSE rejected: invalid_token — ${(err as Error).message}`,

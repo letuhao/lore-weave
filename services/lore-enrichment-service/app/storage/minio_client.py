@@ -50,6 +50,18 @@ async def ensure_bucket() -> None:
         await loop.run_in_executor(None, lambda: client.head_bucket(Bucket=settings.minio_bucket))
     except Exception:  # noqa: BLE001 — 404 shape varies MinIO/AWS; create on any miss
         await loop.run_in_executor(None, lambda: client.create_bucket(Bucket=settings.minio_bucket))
+    if not settings.enrichment_upload_public_read:
+        # Private bucket — no anonymous GetObject policy (prod on-prem).
+        private_policy = (
+            '{"Version":"2012-10-17","Statement":[{"Effect":"Deny","Principal":{"AWS":["*"]},'
+            '"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::'
+            + settings.minio_bucket
+            + '/*"],"Condition":{"StringNotEquals":{"aws:PrincipalType":"User"}}}]}'
+        )
+        await loop.run_in_executor(
+            None,
+            lambda: client.put_bucket_policy(Bucket=settings.minio_bucket, Policy=private_policy),
+        )
 
 
 async def upload_file(key: str, data: BinaryIO, content_type: str = "application/octet-stream") -> str:

@@ -95,6 +95,8 @@ func main() {
 			UseSSL:      cfg.MinioUseSSL,
 			Bucket:      cfg.AudioCacheBucket,
 			ExternalURL: cfg.MinioExternalURL,
+			PublicRead:  cfg.AudioCachePublicRead,
+			PresignTTL:  cfg.AudioCachePresignTTL,
 		}, slog.Default())
 		if err != nil {
 			slog.Error("audio_cache bootstrap failed; audio_gen url-mode disabled", "error", err)

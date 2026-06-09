@@ -26,7 +26,9 @@ type Config struct {
 	MinioSecretKey   string
 	MinioUseSSL      bool
 	MinioExternalURL string // public URL prefix (e.g. http://localhost:9123)
-	AudioCacheBucket string // default "loreweave-audio-cache" when empty
+	AudioCacheBucket      string // default "loreweave-audio-cache" when empty
+	AudioCachePublicRead  bool
+	AudioCachePresignTTL  int
 
 	// Phase 6a Subsystem A — spend-guardrail estimator tuning knobs. These
 	// are token-count estimation parameters (not money limits), so they
@@ -72,7 +74,8 @@ func Load() (*Config, error) {
 		MinioSecretKey:   os.Getenv("MINIO_SECRET_KEY"),
 		MinioUseSSL:      os.Getenv("MINIO_USE_SSL") == "true",
 		MinioExternalURL: os.Getenv("MINIO_EXTERNAL_URL"),
-		AudioCacheBucket: getEnv("AUDIO_CACHE_BUCKET", "loreweave-audio-cache"),
+		AudioCacheBucket:     getEnv("AUDIO_CACHE_BUCKET", "loreweave-audio-cache"),
+		AudioCachePublicRead: getEnv("AUDIO_CACHE_PUBLIC_READ", "true") == "true",
 		// E5B — rerank service (all optional; empty URL disables rerank).
 		RerankURL:          os.Getenv("RERANK_URL"),
 		RerankServiceToken: os.Getenv("RERANK_SERVICE_TOKEN"),
@@ -102,6 +105,9 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	if c.JobMaxRetries, err = getEnvInt("JOB_MAX_RETRIES", 3); err != nil {
+		return nil, err
+	}
+	if c.AudioCachePresignTTL, err = getEnvInt("AUDIO_CACHE_PRESIGN_TTL_SECONDS", 3600); err != nil {
 		return nil, err
 	}
 	return c, nil

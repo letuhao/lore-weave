@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -141,7 +142,7 @@ func (s *Server) uploadChapterMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mediaURL := s.mediaURL(objectKey)
+	mediaURL := s.mediaURL(bookID, objectKey)
 
 	// Auto-create version record if block_id provided
 	var versionID *string
@@ -239,7 +240,7 @@ func (s *Server) listMediaVersions(w http.ResponseWriter, r *http.Request) {
 			"created_at":       createdAt,
 		}
 		if mediaRef != nil && *mediaRef != "" {
-			item["media_url"] = s.mediaURL(*mediaRef)
+			item["media_url"] = s.mediaURL(bookID, *mediaRef)
 		}
 		items = append(items, item)
 	}
@@ -542,7 +543,7 @@ func (s *Server) generateChapterMedia(w http.ResponseWriter, r *http.Request) {
 		chapterID, body.BlockID, nextVersion, objectKey, body.Prompt, "", contentType, uploadInfo.Size,
 	).Scan(&versionID)
 
-	mediaURL := s.mediaURL(objectKey)
+	mediaURL := s.mediaURL(bookID, objectKey)
 
 	// 6. Best-effort usage billing. provider_kind is empty string —
 	// gateway records its own model-level usage; this call records
@@ -600,13 +601,19 @@ func (s *Server) ensureMediaBucket(ctx context.Context) error {
 		if err != nil {
 			if exists2, _ := s.minio.BucketExists(ctx, mediaBucket); exists2 {
 				mediaBucketReady = true
-				return s.setBucketPublicRead(ctx)
+				if s.cfg.MediaPublicRead {
+					return s.setBucketPublicRead(ctx)
+				}
+				return nil
 			}
 			return err
 		}
 	}
 	mediaBucketReady = true
-	return s.setBucketPublicRead(ctx)
+	if s.cfg.MediaPublicRead {
+		return s.setBucketPublicRead(ctx)
+	}
+	return nil
 }
 
 func (s *Server) setBucketPublicRead(ctx context.Context) error {
@@ -626,8 +633,81 @@ func (s *Server) setBucketPublicRead(ctx context.Context) error {
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 // mediaURL returns the browser-accessible URL for a MinIO/S3 object.
-func (s *Server) mediaURL(objectKey string) string {
-	return fmt.Sprintf("%s/%s/%s", s.cfg.MinioExternalURL, mediaBucket, objectKey)
+func (s *Server) mediaURL(bookID uuid.UUID, objectKey string) string {
+	if s.cfg.MediaPublicRead {
+		return fmt.Sprintf("%s/%s/%s", s.cfg.MinioExternalURL, mediaBucket, objectKey)
+	}
+	return fmt.Sprintf("/v1/books/%s/media/object?key=%s", bookID, url.QueryEscape(objectKey))
+}
+
+// getMediaObject streams a private bucket object after JWT ownership check.
+// Supports ?stream_token= (short-lived typ=stream ticket) for <img>/<audio> tags.
+func (s *Server) getMediaObject(w http.ResponseWriter, r *http.Request) {
+	if s.minio == nil {
+		writeError(w, http.StatusServiceUnavailable, "MEDIA_UNAVAILABLE", "media storage not configured")
+		return
+	}
+	ownerID, ok := s.requireUserIDAllowQuery(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
+		return
+	}
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	objectKey := r.URL.Query().Get("key")
+	if objectKey == "" || strings.Contains(objectKey, "..") {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "invalid key")
+		return
+	}
+	if !s.mediaObjectKeyAllowed(r.Context(), bookID, objectKey) {
+		writeError(w, http.StatusForbidden, "BOOK_FORBIDDEN", "object not in book")
+		return
+	}
+	if _, okBook, st := s.ensureOwnerBook(r.Context(), bookID, ownerID); !okBook {
+		writeError(w, st, "BOOK_NOT_FOUND", "book not found")
+		return
+	}
+	obj, err := s.minio.GetObject(r.Context(), mediaBucket, objectKey, minio.GetObjectOptions{})
+	if err != nil {
+		writeError(w, http.StatusNotFound, "MEDIA_NOT_FOUND", "object not found")
+		return
+	}
+	defer obj.Close()
+	info, err := obj.Stat()
+	if err != nil {
+		writeError(w, http.StatusNotFound, "MEDIA_NOT_FOUND", "object not found")
+		return
+	}
+	if info.ContentType != "" {
+		w.Header().Set("Content-Type", info.ContentType)
+	}
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, obj)
+}
+
+// mediaObjectKeyAllowed ensures the object key belongs to the book in the URL path.
+func (s *Server) mediaObjectKeyAllowed(ctx context.Context, bookID uuid.UUID, objectKey string) bool {
+	bookPrefix := "books/" + bookID.String() + "/"
+	if strings.HasPrefix(objectKey, bookPrefix) {
+		return true
+	}
+	if strings.HasPrefix(objectKey, "audio/") {
+		parts := strings.Split(objectKey, "/")
+		if len(parts) < 2 {
+			return false
+		}
+		chapterID, err := uuid.Parse(parts[1])
+		if err != nil {
+			return false
+		}
+		var exists bool
+		err = s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chapters WHERE id=$1 AND book_id=$2)`, chapterID, bookID).Scan(&exists)
+		return err == nil && exists
+	}
+	return false
 }
 
 func nilIfEmpty(s string) *string {

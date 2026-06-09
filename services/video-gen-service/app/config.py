@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     minio_access_key: str
     minio_secret_key: str
     minio_external_url: str = "http://localhost:9123"
+    video_media_public_read: bool = True
 
 
 settings = Settings()

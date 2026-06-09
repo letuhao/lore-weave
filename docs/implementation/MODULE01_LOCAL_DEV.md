@@ -4,12 +4,13 @@
 
 | Service | Port | Notes |
 |---------|------|--------|
-| Postgres | 5432 | Docker Compose (`infra/docker-compose.yml`) |
-| Mailhog UI | 8025 | Optional |
-| Mailhog SMTP | 1025 | Optional |
-| `auth-service` | 8081 | Go |
-| `api-gateway-bff` | 3000 | NestJS reverse proxy to auth |
-| `frontend` (Vite) | 5173 | `VITE_API_BASE` → gateway |
+| Postgres (host) | 5555 | Docker Compose (`infra/docker-compose.yml`) |
+| Mailhog UI (host) | 8148 | Optional |
+| Mailhog SMTP (host) | 1148 | Optional |
+| `api-gateway-bff` (host) | 3123 | Container listens on :3000 |
+| `frontend` Docker nginx (host) | 5174 | Static prod build |
+| `frontend` Vite dev | 5174 | Proxies `/v1` → gateway :3123 |
+| On-prem prod overlay | 5296 | Single public port — see `infra/ON_PREM_DEPLOY.md` |
 
 ## One-time prerequisites
 
@@ -34,10 +35,10 @@ Builds and runs Postgres, Mailhog, `auth-service`, `api-gateway-bff`, and the fr
 docker compose up --build
 ```
 
-Open **http://localhost:5173** (UI). Gateway **http://localhost:3000**, auth **http://localhost:8081**, Mailhog UI **http://localhost:8025**.
+Open **http://localhost:5174** (UI). Gateway **http://localhost:3123**. Mailhog UI **http://localhost:8148**.
 
 - Default `JWT_SECRET` is suitable for local dev only; override with env `JWT_SECRET` (≥ 32 chars) or `infra/.env` (see `infra/.env.example`).
-- `VITE_API_BASE` is baked in at **image build** time (default `http://localhost:3000`). If the browser must use another host/port, rebuild with e.g. `VITE_API_BASE=http://192.168.1.10:3000 docker compose build frontend`.
+- Dev frontend uses **relative `/v1`** via Vite proxy → `:3123`. Prod/on-prem uses `docker-compose.prod.yml` — see `infra/ON_PREM_DEPLOY.md`.
 
 ## Auth service
 
@@ -70,7 +71,7 @@ npm ci
 npm run dev
 ```
 
-Open `http://localhost:5173`. All API calls go to `VITE_API_BASE` (gateway).
+Open `http://localhost:5174`. API calls use relative `/v1` (Vite proxy → gateway :3123).
 
 **UI stack:** The Vite app uses **Tailwind CSS**, **shadcn/ui** (Radix), **lucide-react**, **react-hook-form**, and **zod** — see `docs/03_planning/23_MODULE01_GUI_VISUAL_IMPROVEMENT_PLAN.md`. Global styles live in `src/index.css`. After pulling dependency changes, run **`npm ci`** in `frontend/` so the lockfile matches `package.json`.
 
@@ -84,10 +85,10 @@ Open `http://localhost:5173`. All API calls go to `VITE_API_BASE` (gateway).
 SMTP_HOST=localhost
 SMTP_PORT=1025
 SMTP_FROM=LoreWeave <noreply@loreweave.local>
-PUBLIC_APP_URL=http://localhost:5173
+PUBLIC_APP_URL=http://localhost:5174
 ```
 
-**Without SMTP** (`SMTP_HOST` empty): no email is sent; with `DEV_LOG_EMAIL_TOKENS=1` (default), tokens still print to **auth-service stdout** for the Verify and Reset pages.
+**Without SMTP** (`SMTP_HOST` empty): no email is sent. Set `DEV_LOG_EMAIL_TOKENS=1` in `infra/.env` only when you need verify/reset tokens printed to **auth-service stdout** (default is off for security). **Never** enable this in prod overlay.
 
 ## Module 02 prep (object storage — planning)
 

@@ -2,11 +2,21 @@ import type { INestApplication } from '@nestjs/common';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import type { Request, Response, NextFunction } from 'express';
 import type { Socket } from 'net';
+import { createRateLimitMiddleware, resolveBffRateLimit } from './rate-limit';
 
 /**
  * CORS, /v1 proxy by domain, and GET /health.
  * Shared by main bootstrap and tests.
  */
+function resolveCorsOrigin(): boolean | string | string[] {
+  const raw = process.env.BFF_CORS_ORIGINS?.trim();
+  if (!raw) {
+    return true; // dev: reflect request origin
+  }
+  const origins = raw.split(',').map((o) => o.trim()).filter(Boolean);
+  return origins.length === 1 ? origins[0] : origins;
+}
+
 export function configureGatewayApp(
   app: INestApplication,
   urls: {
@@ -29,7 +39,7 @@ export function configureGatewayApp(
   },
 ): void {
   app.enableCors({
-    origin: true,
+    origin: resolveCorsOrigin(),
     credentials: true,
     // D-K8-03: `If-Match` carries the weak ETag the FE captured on
     // GET. Without an explicit entry here the CORS preflight
@@ -71,6 +81,13 @@ export function configureGatewayApp(
     target: urls.providerRegistryUrl,
     changeOrigin: true,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/model-registry'),
+  });
+  const llmProxy = createProxyMiddleware({
+    target: urls.providerRegistryUrl,
+    changeOrigin: true,
+    // SSE streaming + async job lifecycle — un-buffered like chat.
+    selfHandleResponse: false,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/llm'),
   });
   const usageBillingProxy = createProxyMiddleware({
     target: urls.usageBillingUrl,
@@ -237,6 +254,23 @@ export function configureGatewayApp(
 
   const httpAdapter = app.getHttpAdapter();
   const instance = httpAdapter.getInstance();
+  const { windowMs, max } = resolveBffRateLimit();
+  instance.use(
+    createRateLimitMiddleware({
+      windowMs,
+      max,
+      keyPrefix: 'bff',
+      pathPrefix: '/v1/',
+    }),
+  );
+  instance.use(
+    createRateLimitMiddleware({
+      windowMs,
+      max: Math.min(max, 30),
+      keyPrefix: 'bff-auth',
+      pathPrefix: '/v1/auth',
+    }),
+  );
   const authProxyFn = authProxy as unknown as (
     req: Request,
     res: Response,
@@ -258,6 +292,11 @@ export function configureGatewayApp(
     next: NextFunction,
   ) => void;
   const providerRegistryProxyFn = providerRegistryProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
+  const llmProxyFn = llmProxy as unknown as (
     req: Request,
     res: Response,
     next: NextFunction,
@@ -337,6 +376,9 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/model-registry')) {
       return providerRegistryProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/llm')) {
+      return llmProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/model-billing')) {
       return usageBillingProxyFn(req, res, next);

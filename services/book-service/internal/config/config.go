@@ -19,6 +19,8 @@ type Config struct {
 	MinioSecretKey     string
 	MinioUseSSL        bool
 	MinioExternalURL   string // URL prefix for browser-accessible media (e.g. http://localhost:9123)
+	// When false (prod), bucket policy is not public-read; media URLs use authenticated API routes.
+	MediaPublicRead bool
 	// Phase 5e-β.2 — `ProviderRegistryURL` field dropped; audio.go was
 	// its last consumer (now migrated to use llmgw SDK via LLMGatewayInternalURL).
 	LLMGatewayInternalURL  string
@@ -44,6 +46,7 @@ func Load() (*Config, error) {
 		MinioSecretKey:         os.Getenv("MINIO_SECRET_KEY"),
 		MinioUseSSL:            getEnv("MINIO_USE_SSL", "false") == "true",
 		MinioExternalURL:       strings.TrimRight(os.Getenv("MINIO_EXTERNAL_URL"), "/"),
+		MediaPublicRead:        getBool("BOOKS_MEDIA_PUBLIC_READ", true),
 		LLMGatewayInternalURL:  os.Getenv("LLM_GATEWAY_INTERNAL_URL"),
 		UsageBillingServiceURL: getEnv("USAGE_BILLING_SERVICE_URL", ""),
 		InternalServiceToken:   os.Getenv("INTERNAL_SERVICE_TOKEN"),
@@ -78,6 +81,18 @@ func getEnv(k, def string) string {
 		return v
 	}
 	return def
+}
+
+func getBool(k string, def bool) bool {
+	v := os.Getenv(k)
+	if v == "" {
+		return def
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return def
+	}
+	return b
 }
 
 func getInt64(k string, def int64) int64 {

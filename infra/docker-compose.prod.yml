@@ -1,0 +1,402 @@
+# Production / on-prem overlay — single public port (default host :5296).
+
+# Usage (from infra/):
+
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+#
+
+# Requires infra/.env with JWT_SECRET and INTERNAL_SERVICE_TOKEN (>= 32 chars each).
+
+# Optional: --profile dev-mail for internal Mailhog when SMTP is not configured.
+
+
+
+x-no-host-ports: &no-host-ports
+
+  ports: !override []
+
+
+
+x-prod-internal-token: &prod-internal-token
+
+  INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?INTERNAL_SERVICE_TOKEN must be set in infra/.env}
+
+
+
+x-prod-jwt: &prod-jwt
+
+  JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in infra/.env (min 32 chars)}
+
+
+
+services:
+
+  postgres:
+
+    <<: *no-host-ports
+
+
+
+  redis:
+
+    <<: *no-host-ports
+
+
+
+  minio:
+
+    <<: *no-host-ports
+
+
+
+  mock-audio-service:
+
+    <<: *no-host-ports
+
+
+
+  mailhog:
+
+    <<: *no-host-ports
+
+    profiles: [dev-mail]
+
+
+
+  auth-service:
+
+    <<: *no-host-ports
+
+    depends_on: !override
+
+      postgres:
+
+        condition: service_healthy
+
+    environment:
+
+      <<: [*prod-jwt, *prod-internal-token]
+
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:${PUBLIC_HTTP_PORT:-5296}}
+
+      DEV_LOG_EMAIL_TOKENS: "0"
+
+      ALLOW_PUBLIC_REGISTRATION: "false"
+      SERVICE_NAME: auth-service
+      SERVICE_ACL_ENFORCE: "true"
+
+      SMTP_HOST: ${SMTP_HOST:-}
+
+      SMTP_PORT: ${SMTP_PORT:-587}
+
+      SMTP_FROM: ${SMTP_FROM:-}
+
+
+
+  book-service:
+
+    <<: *no-host-ports
+
+    environment:
+
+      <<: [*prod-jwt, *prod-internal-token]
+
+      MINIO_EXTERNAL_URL: ${MINIO_EXTERNAL_URL:-${PUBLIC_APP_URL:-http://localhost:${PUBLIC_HTTP_PORT:-5296}}}
+
+      BOOKS_MEDIA_PUBLIC_READ: "false"
+      SERVICE_NAME: book-service
+      SERVICE_ACL_ENFORCE: "true"
+
+
+
+  composition-service:
+
+    <<: *no-host-ports
+
+    environment:
+
+      <<: [*prod-jwt, *prod-internal-token]
+
+
+
+  sharing-service:
+
+    <<: *no-host-ports
+
+    environment:
+
+      <<: [*prod-jwt, *prod-internal-token]
+      SERVICE_NAME: sharing-service
+      SERVICE_ACL_ENFORCE: "true"
+
+
+
+  catalog-service:
+
+    <<: *no-host-ports
+
+    environment:
+
+      <<: *prod-internal-token
+
+
+
+  provider-registry-service:
+
+    <<: *no-host-ports
+
+    environment:
+
+      <<: [*prod-jwt, *prod-internal-token]
+
+      MINIO_EXTERNAL_URL: ${MINIO_EXTERNAL_URL:-${PUBLIC_APP_URL:-http://localhost:${PUBLIC_HTTP_PORT:-5296}}}
+
+      AUDIO_CACHE_PUBLIC_READ: "false"
+
+
+
+  usage-billing-service:
+
+    <<: *no-host-ports
+
+    environment:
+
+      <<: [*prod-jwt, *prod-internal-token]
+
+
+
+  rabbitmq:
+
+    <<: *no-host-ports
+
+
+
+  translation-service:
+
+    <<: *no-host-ports
+
+    environment:
+
+      <<: [*prod-jwt, *prod-internal-token]
+
+
+
+  translation-worker:
+
+    <<: *no-host-ports
+
+    environment:
+
+      <<: *prod-internal-token
+
+
+
+  glossary-service:
+
+    <<: *no-host-ports
+
+    environment:
+
+      <<: [*prod-jwt, *prod-internal-token]
+
+
+
+  video-gen-service:
+
+    <<: *no-host-ports
+
+    environment:
+
+      <<: [*prod-jwt, *prod-internal-token]
+
+      MINIO_EXTERNAL_URL: ${MINIO_EXTERNAL_URL:-${PUBLIC_APP_URL:-http://localhost:${PUBLIC_HTTP_PORT:-5296}}}
+
+      VIDEO_MEDIA_PUBLIC_READ: "false"
+
+
+
+  chat-service:
+
+    <<: *no-host-ports
+
+    environment:
+
+      <<: [*prod-jwt, *prod-internal-token]
+
+      MINIO_EXTERNAL_URL: ${MINIO_EXTERNAL_URL:-${PUBLIC_APP_URL:-http://localhost:${PUBLIC_HTTP_PORT:-5296}}}
+
+
+
+  knowledge-service:
+
+    <<: *no-host-ports
+
+    environment:
+
+      <<: [*prod-jwt, *prod-internal-token]
+
+
+
+  lore-enrichment-service:
+
+    <<: *no-host-ports
+
+    environment:
+
+      <<: [*prod-jwt, *prod-internal-token]
+      ENRICHMENT_UPLOAD_PUBLIC_READ: "false"
+
+
+
+  lore-enrichment-worker:
+
+    environment:
+
+      <<: [*prod-jwt, *prod-internal-token]
+      ENRICHMENT_UPLOAD_PUBLIC_READ: "false"
+
+
+
+  learning-service:
+
+    <<: *no-host-ports
+
+    environment:
+
+      <<: [*prod-jwt, *prod-internal-token]
+
+
+
+  worker-infra:
+
+    <<: *no-host-ports
+
+    environment:
+
+      <<: *prod-internal-token
+
+
+
+  worker-ai:
+
+    <<: *no-host-ports
+
+    environment:
+
+      <<: *prod-internal-token
+
+
+
+  statistics-service:
+
+    <<: *no-host-ports
+
+    environment:
+
+      <<: *prod-internal-token
+
+
+
+  notification-service:
+
+    <<: *no-host-ports
+
+    environment:
+
+      <<: [*prod-jwt, *prod-internal-token]
+
+
+
+  api-gateway-bff:
+
+    <<: *no-host-ports
+
+    environment:
+
+      <<: [*prod-jwt, *prod-internal-token]
+
+      BFF_CORS_ORIGINS: ${BFF_CORS_ORIGINS:-${PUBLIC_APP_URL:-http://localhost:${PUBLIC_HTTP_PORT:-5296}}}
+      BFF_RATE_LIMIT_WINDOW_SECONDS: ${BFF_RATE_LIMIT_WINDOW_SECONDS:-60}
+      BFF_RATE_LIMIT_MAX_REQUESTS: ${BFF_RATE_LIMIT_MAX_REQUESTS:-120}
+      BFF_REQUIRE_STREAM_TICKET: "true"
+      TRUST_PROXY: "true"
+
+
+
+  languagetool:
+
+    <<: *no-host-ports
+
+
+
+  pandoc-server:
+
+    <<: *no-host-ports
+
+
+
+  frontend:
+
+    ports: !override
+
+      - "${PUBLIC_HTTP_PORT:-5296}:80"
+
+    build:
+
+      args:
+
+        VITE_API_BASE: ""
+
+        NGINX_CONF: nginx.prod.conf
+
+
+
+  neo4j:
+
+    <<: *no-host-ports
+
+
+
+  otel-collector:
+
+    <<: *no-host-ports
+
+
+
+  tempo:
+
+    <<: *no-host-ports
+
+
+
+  grafana:
+
+    <<: *no-host-ports
+
+
+
+  tilemap-service:
+
+    <<: *no-host-ports
+
+    environment:
+
+      LOREWEAVE_INTERNAL_TOKEN: ${INTERNAL_SERVICE_TOKEN:?INTERNAL_SERVICE_TOKEN must be set in infra/.env}
+
+
+
+  game-server:
+
+    <<: *no-host-ports
+
+    environment:
+
+      LOREWEAVE_INTERNAL_TOKEN: ${INTERNAL_SERVICE_TOKEN:?INTERNAL_SERVICE_TOKEN must be set in infra/.env}
+
+
+
+  frontend-game:
+
+    <<: *no-host-ports
+

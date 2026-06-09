@@ -1,0 +1,28 @@
+# S11 interim ACL — caller service → allowed internal route prefixes.
+# Enforced by X-Caller-Service + X-Internal-Token on /internal/* routes.
+version: 1
+rules:
+  - caller: sharing-service
+    allow:
+      - GET /internal/books/
+      - GET /internal/users/
+  - caller: catalog-service
+    allow:
+      - GET /internal/books/
+      - GET /internal/sharing/
+  - caller: notification-service
+    allow:
+      - GET /internal/users/
+  - caller: book-service
+    allow:
+      - GET /internal/sharing/
+  - caller: translation-service
+    allow:
+      - GET /internal/books/
+  - caller: knowledge-service
+    allow:
+      - GET /internal/books/
+  - caller: composition-service
+    allow:
+      - GET /internal/books/
+      - GET /internal/sharing/

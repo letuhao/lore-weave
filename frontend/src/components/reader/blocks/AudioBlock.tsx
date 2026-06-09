@@ -1,8 +1,10 @@
 import type { JSONContent } from '@tiptap/react';
 import { useTranslation } from 'react-i18next';
+import { AuthenticatedMediaAudio } from '@/components/media/AuthenticatedMedia';
 
 interface AudioBlockProps {
   node: JSONContent;
+  accessToken?: string | null;
 }
 
 function formatDuration(ms: number): string {
@@ -12,7 +14,7 @@ function formatDuration(ms: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export function AudioBlock({ node }: AudioBlockProps) {
+export function AudioBlock({ node, accessToken }: AudioBlockProps) {
   const { t } = useTranslation('reader');
   const src = node.attrs?.src as string | null;
   const subtitle = (node.attrs?.subtitle as string) || '';
@@ -37,9 +39,7 @@ export function AudioBlock({ node }: AudioBlockProps) {
   return (
     <figure className="block-audio">
       <div className="audio-player">
-        <audio controls preload="metadata" src={src}>
-          {t('block.audio_fallback')}
-        </audio>
+        <AuthenticatedMediaAudio url={src} accessToken={accessToken} preload="metadata" />
         {(durationMs != null || title) && (
           <div className="audio-meta">
             {durationMs != null && <span>{formatDuration(durationMs)}</span>}

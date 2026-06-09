@@ -178,7 +178,7 @@ export function RevisionHistory({ bookId, chapterId, onRestore }: {
           <div className="flex flex-1 justify-center overflow-y-auto px-6 py-10">
             <div className="w-full max-w-4xl">
               {preview.blocks.length > 0 ? (
-                <ContentRenderer blocks={preview.blocks} mode="compact" />
+                <ContentRenderer blocks={preview.blocks} mode="compact" accessToken={accessToken} />
               ) : (
                 <p className="text-center text-sm text-muted-foreground italic">{t('revision.empty_revision')}</p>
               )}

@@ -470,7 +470,7 @@ func (s *Server) generateAudio(w http.ResponseWriter, r *http.Request) {
 		// cleanup runs AFTER this loop only if no failures occurred.
 		segments = append(segments, segResult{
 			BlockIndex: inputs[i].idx,
-			MediaURL:   s.mediaURL(objectKey),
+			MediaURL:   s.mediaURL(bookID, objectKey),
 			MediaKey:   objectKey,
 			DurationMs: item.DurationMs,
 		})
@@ -646,7 +646,7 @@ func (s *Server) uploadBlockAudio(w http.ResponseWriter, r *http.Request) {
 	subtitle := r.FormValue("subtitle")
 
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"audio_url":    s.mediaURL(objectKey),
+		"audio_url":    s.mediaURL(bookID, objectKey),
 		"media_key":    objectKey,
 		"duration_ms":  0,
 		"size_bytes":   fh.Size,

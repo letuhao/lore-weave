@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { JSONContent } from '@tiptap/react';
 import { cn } from '@/lib/utils';
 import { InlineRenderer } from '@/components/reader/InlineRenderer';
+import { useAuth } from '@/auth';
 import { ContentRenderer } from '@/components/reader/ContentRenderer';
 
 // ── Block type classification ──────────────────────────────────────────────
@@ -239,8 +240,9 @@ function BlockRow({ index, original, translated, action, isActive, onClick }: Bl
 const COMPOUND_TYPES = new Set(['bulletList', 'orderedList', 'blockquote', 'callout']);
 
 function BlockContent({ block }: { block: JSONContent }) {
+  const { accessToken } = useAuth();
   if (COMPOUND_TYPES.has(block.type ?? '')) {
-    return <ContentRenderer blocks={[block]} mode="compact" />;
+    return <ContentRenderer blocks={[block]} mode="compact" accessToken={accessToken} />;
   }
   return block.content ? <InlineRenderer content={block.content} /> : null;
 }

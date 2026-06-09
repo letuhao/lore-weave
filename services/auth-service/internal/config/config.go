@@ -29,6 +29,8 @@ type Config struct {
 	// Notification service internal URL for creating notifications on events.
 	NotificationServiceInternalURL string
 	InternalServiceToken           string
+	AllowPublicRegistration        bool
+	StreamTicketTTLSeconds         int
 }
 
 func Load() (*Config, error) {
@@ -38,7 +40,9 @@ func Load() (*Config, error) {
 		JWTSecret:         os.Getenv("JWT_SECRET"),
 		PasswordMinLength: getInt("PASSWORD_MIN_LENGTH", 8),
 		RateLimitMax:      getInt("RATE_LIMIT_MAX_REQUESTS", 60),
-		DevLogEmailTokens: getBool("DEV_LOG_EMAIL_TOKENS", true),
+		DevLogEmailTokens:           getBool("DEV_LOG_EMAIL_TOKENS", false),
+		AllowPublicRegistration:     getBool("ALLOW_PUBLIC_REGISTRATION", true),
+		StreamTicketTTLSeconds:      getInt("STREAM_TICKET_TTL_SECONDS", 120),
 		SMTPHost:          os.Getenv("SMTP_HOST"),
 		SMTPPort:          getInt("SMTP_PORT", 1025),
 		SMTPUser:          os.Getenv("SMTP_USER"),

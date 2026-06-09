@@ -389,6 +389,7 @@ export function ReaderPage() {
           {blocks.length > 0 ? (
             <ContentRenderer
               blocks={blocks}
+              accessToken={accessToken}
               showIndices={showIndices}
               ttsActiveBlock={ttsState.activeBlockId ?? undefined}
               onBlockClick={ttsState.status !== 'idle' ? handleBlockClick : undefined}

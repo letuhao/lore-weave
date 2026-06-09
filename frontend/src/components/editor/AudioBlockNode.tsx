@@ -9,6 +9,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { booksApi } from '@/features/books/api';
+import { useMediaAuthUrl } from '@/hooks/useMediaAuthUrl';
 import { getUploadContext } from './ImageBlockNode';
 
 const MAX_AUDIO_SIZE = 20 * 1024 * 1024; // 20 MB
@@ -120,7 +121,9 @@ function AudioBlockNodeView({ node, updateAttributes, selected, editor, deleteNo
   const { t } = useTranslation('editor');
   const editorMode = ((editor.storage as any).mediaGuard?.editorMode as string) || 'ai';
   const isClassic = editorMode === 'classic';
-  const src = node.attrs.src as string | null;
+  const rawSrc = node.attrs.src as string | null;
+  const uploadCtx = getUploadContext();
+  const src = useMediaAuthUrl(rawSrc, uploadCtx?.token ?? null);
   const subtitle = (node.attrs.subtitle as string) || '';
   const title = (node.attrs.title as string) || t('audio.default_title');
   const durationMs = node.attrs.duration_ms as number | null;

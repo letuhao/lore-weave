@@ -8,6 +8,7 @@ RUN apk add --no-cache git
 # context: .. and dockerfile: services/sharing-service/Dockerfile.
 # Copy the shared module first (separate cache layer), then service files.
 COPY sdks/go/observability /src/sdks/go/observability
+COPY sdks/go/serviceacl /src/sdks/go/serviceacl
 COPY services/sharing-service /src/services/sharing-service
 
 WORKDIR /src/services/sharing-service
@@ -17,7 +18,9 @@ RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/sharing-service ./cmd/sharin
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates wget
 COPY --from=build /out/sharing-service /sharing-service
+COPY contracts/service_acl /contracts/service_acl
 ENV HTTP_ADDR=:8083
+ENV SERVICE_ACL_MATRIX_PATH=/contracts/service_acl/matrix.yaml
 EXPOSE 8083
 USER nobody
 HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=5 \

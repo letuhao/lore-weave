@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"time"
 )
 
 type Config struct {
@@ -11,6 +13,9 @@ type Config struct {
 	JWTSecret              string
 	BookServiceInternalURL string
 	InternalServiceToken   string
+	ServiceName            string
+	UnlistedRateLimitWindow time.Duration
+	UnlistedRateLimitMax    int
 }
 
 func Load() (*Config, error) {
@@ -19,8 +24,12 @@ func Load() (*Config, error) {
 		DatabaseURL:            os.Getenv("DATABASE_URL"),
 		JWTSecret:              os.Getenv("JWT_SECRET"),
 		BookServiceInternalURL: os.Getenv("BOOK_SERVICE_INTERNAL_URL"),
-		InternalServiceToken:   os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		InternalServiceToken:    os.Getenv("INTERNAL_SERVICE_TOKEN"),
+		ServiceName:             getEnv("SERVICE_NAME", "sharing-service"),
+		UnlistedRateLimitMax:    getInt("UNLISTED_RATE_LIMIT_MAX_REQUESTS", 60),
 	}
+	winSec := getInt("UNLISTED_RATE_LIMIT_WINDOW_SECONDS", 60)
+	c.UnlistedRateLimitWindow = time.Duration(winSec) * time.Second
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
 	}
@@ -34,6 +43,18 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("BOOK_SERVICE_INTERNAL_URL is required")
 	}
 	return c, nil
+}
+
+func getInt(k string, def int) int {
+	v := os.Getenv(k)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return def
+	}
+	return n
 }
 
 func getEnv(k, def string) string {

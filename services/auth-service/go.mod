@@ -8,10 +8,13 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/loreweave/observability v0.1.0
+	github.com/loreweave/serviceacl v0.0.0
 	golang.org/x/crypto v0.49.0
 )
 
 replace github.com/loreweave/observability => ../../sdks/go/observability
+
+replace github.com/loreweave/serviceacl => ../../sdks/go/serviceacl
 
 require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
@@ -40,4 +43,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/grpc v1.80.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

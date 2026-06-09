@@ -16,7 +16,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import { apiBase } from '@/api';
+import { apiBase, fetchStreamTicket } from '@/api';
 
 /**
  * Shape of the SSE event body. Matches the gateway's wire format
@@ -79,10 +79,21 @@ export function useNotificationStream(
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let backoff = MIN_BACKOFF_MS;
 
-    const connect = () => {
+    const connect = async () => {
       if (cancelled) return;
       setState('connecting');
-      const url = `${apiBase()}/v1/notifications/stream?token=${encodeURIComponent(accessToken)}`;
+      let streamToken: string;
+      try {
+        streamToken = await fetchStreamTicket(accessToken);
+      } catch (err) {
+        if (import.meta.env.PROD) {
+          console.error('stream-ticket failed in prod', err);
+          return;
+        }
+        streamToken = accessToken;
+      }
+      if (cancelled) return;
+      const url = `${apiBase()}/v1/notifications/stream?token=${encodeURIComponent(streamToken)}`;
       es = new EventSource(url);
 
       es.onopen = () => {

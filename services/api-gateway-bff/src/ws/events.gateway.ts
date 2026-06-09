@@ -8,8 +8,8 @@ import { Logger } from '@nestjs/common';
 import { Server } from 'ws';
 import type { WebSocket } from 'ws';
 import type { IncomingMessage } from 'http';
-import * as jwt from 'jsonwebtoken';
 import { AmqpService } from './amqp.service';
+import { resolveUserIdFromToken } from './token';
 
 @WebSocketGateway({ path: '/ws' })
 export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
@@ -46,8 +46,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     let userId: string;
     try {
-      const decoded = jwt.verify(token, jwtSecret) as { sub: string };
-      userId = decoded.sub;
+      userId = resolveUserIdFromToken(token, jwtSecret);
     } catch (err) {
       this.logger.warn(`WS rejected: invalid_token — ${(err as Error).message}`);
       socket.close(4001, 'invalid_token');

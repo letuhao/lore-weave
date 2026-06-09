@@ -71,7 +71,7 @@ export function SplitCompareView({ bookId, chapterId, versionId, originalLanguag
         </div>
         <div className="flex-1 overflow-y-auto p-6">
           {originalBlocks ? (
-            <div className="mx-auto max-w-[680px]"><ContentRenderer blocks={originalBlocks} mode="compact" /></div>
+            <div className="mx-auto max-w-[680px]"><ContentRenderer blocks={originalBlocks} mode="compact" accessToken={accessToken} /></div>
           ) : (
             <div className="whitespace-pre-wrap font-serif text-[15px] leading-[2.0] text-foreground/85">{originalBody}</div>
           )}
@@ -94,7 +94,7 @@ export function SplitCompareView({ bookId, chapterId, versionId, originalLanguag
         </div>
         <div className="flex-1 overflow-y-auto p-6">
           {translatedBlocks ? (
-            <div className="mx-auto max-w-[680px]"><ContentRenderer blocks={translatedBlocks} mode="compact" /></div>
+            <div className="mx-auto max-w-[680px]"><ContentRenderer blocks={translatedBlocks} mode="compact" accessToken={accessToken} /></div>
           ) : (
             <div className="whitespace-pre-wrap font-serif text-[15px] leading-[1.9] text-foreground/90">
               {translatedBody || t('compare.no_translated')}

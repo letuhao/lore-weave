@@ -1,6 +1,7 @@
 import { ArrowLeft, X, ImageIcon, Loader2 } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { AuthenticatedMediaImg } from '@/components/media/AuthenticatedMedia';
 import { booksApi, type MediaVersion } from '@/features/books/api';
 import { VersionTimeline } from './VersionTimeline';
 import { PromptDiff } from './PromptDiff';
@@ -153,7 +154,7 @@ export function VersionHistoryPanel({
                   </div>
                   <div className="flex flex-1 items-center justify-center p-4">
                     {compareWith.media_url ? (
-                      <img src={compareWith.media_url} alt={`Version ${compareWith.version}`} className="max-h-full max-w-full rounded-md" />
+                      <AuthenticatedMediaImg url={compareWith.media_url} accessToken={token} alt={`Version ${compareWith.version}`} className="max-h-full max-w-full rounded-md" />
                     ) : (
                       <div className="flex flex-col items-center gap-2 text-muted-foreground">
                         <ImageIcon className="h-8 w-8 opacity-20" />
@@ -175,7 +176,7 @@ export function VersionHistoryPanel({
                   </div>
                   <div className="flex flex-1 items-center justify-center p-4">
                     {selected.media_url ? (
-                      <img src={selected.media_url} alt={`Version ${selected.version}`} className="max-h-full max-w-full rounded-md" />
+                      <AuthenticatedMediaImg url={selected.media_url} accessToken={token} alt={`Version ${selected.version}`} className="max-h-full max-w-full rounded-md" />
                     ) : (
                       <div className="flex flex-col items-center gap-2 text-muted-foreground">
                         <ImageIcon className="h-8 w-8 opacity-20" />
@@ -189,7 +190,7 @@ export function VersionHistoryPanel({
               /* Single version — show just the image */
               <div className="flex flex-1 items-center justify-center bg-background p-4">
                 {selected.media_url ? (
-                  <img src={selected.media_url} alt={`Version ${selected.version}`} className="max-h-full max-w-full rounded-md" />
+                  <AuthenticatedMediaImg url={selected.media_url} accessToken={token} alt={`Version ${selected.version}`} className="max-h-full max-w-full rounded-md" />
                 ) : (
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <ImageIcon className="h-8 w-8 opacity-20" />
@@ -218,6 +219,7 @@ export function VersionHistoryPanel({
         {/* Right: version timeline */}
         <VersionTimeline
           versions={versions}
+          accessToken={token}
           selectedId={selectedId}
           onSelect={(v) => setSelectedId(v.id)}
           onRestore={handleRestore}
