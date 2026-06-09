@@ -18,6 +18,7 @@ from .config import settings
 from .database import create_pool, close_pool
 from .migrate import run_migrations
 from .events.consumer import ProjectionConsumer
+from .events.spend_consumer import SpendConsumer
 from .saga.driver import SagaDriver, DispatchClients
 from .clients.dispatch_clients import (
     TranslationDispatchClient,
@@ -39,6 +40,11 @@ async def lifespan(app: FastAPI):
 
     consumer = ProjectionConsumer(settings.redis_url, pool)
     consumer_task = asyncio.create_task(consumer.run())
+
+    # S4d — budget-cap spend consumer (loreweave:events:campaign_usage). Separate
+    # group + flat-field parse + dedup; accumulates spent_usd and auto-pauses at cap.
+    spend_consumer = SpendConsumer(settings.redis_url, pool)
+    spend_task = asyncio.create_task(spend_consumer.run())
 
     clients = DispatchClients(
         translation=TranslationDispatchClient(
@@ -64,14 +70,18 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await consumer.stop()
+        await spend_consumer.stop()
         await driver.stop()
         consumer_task.cancel()
+        spend_task.cancel()
         driver_task.cancel()
-        for t in (consumer_task, driver_task):
+        for t in (consumer_task, spend_task, driver_task):
             with suppress(asyncio.CancelledError, Exception):
                 await t
         with suppress(Exception):
             await consumer.close()
+        with suppress(Exception):
+            await spend_consumer.close()
         with suppress(Exception):
             await clients.translation.aclose()
         with suppress(Exception):

@@ -58,6 +58,7 @@ def client(fake_pool):
         patch("app.database.get_pool", return_value=fake_pool),
         patch("app.migrate.run_migrations", new_callable=AsyncMock),
         patch("app.main.ProjectionConsumer", return_value=_stub),
+        patch("app.main.SpendConsumer", return_value=_stub),
         patch("app.main.SagaDriver", return_value=_stub),
     ):
         from app.main import app

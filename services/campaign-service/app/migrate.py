@@ -81,6 +81,22 @@ CREATE INDEX IF NOT EXISTS idx_campchap_chapter
 -- S3c-2 cancel-propagation (additive; existing tables get these via ALTER).
 ALTER TABLE campaign_chapters ADD COLUMN IF NOT EXISTS knowledge_job_id UUID;
 ALTER TABLE campaign_chapters ADD COLUMN IF NOT EXISTS translation_job_id UUID;
+
+-- S4d — per-campaign budget cap. budget_usd NULL = uncapped; spent_usd is summed
+-- from the loreweave:events:campaign_usage stream by the SpendConsumer and the
+-- campaign auto-pauses when spent_usd >= budget_usd (reactive; overshoot accepted).
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS budget_usd NUMERIC(16,8);
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS spent_usd  NUMERIC(16,8) NOT NULL DEFAULT 0;
+
+-- S4d dedup ledger: usage delivery is at-least-once, so this PK makes spend
+-- accumulation exactly-once (the sum-across-a-boundary bug class). request_id is
+-- the provider-registry job_id carried on the usage event.
+CREATE TABLE IF NOT EXISTS campaign_usage_seen (
+  request_id  UUID PRIMARY KEY,
+  campaign_id UUID NOT NULL,
+  cost_usd    NUMERIC(16,8),
+  seen_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 """
 
 

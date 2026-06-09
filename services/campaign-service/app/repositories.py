@@ -13,6 +13,7 @@ validated against the whitelist before any SQL interpolation.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 
@@ -37,7 +38,7 @@ _CAMPAIGN_COLS = """
   target_language, knowledge_project_id,
   knowledge_model_source, knowledge_model_ref,
   translation_model_source, translation_model_ref,
-  chapter_from, chapter_to, total_chapters, error_message,
+  chapter_from, chapter_to, budget_usd, spent_usd, total_chapters, error_message,
   created_at, updated_at, started_at, finished_at
 """
 
@@ -68,6 +69,7 @@ async def create_campaign(
     chapter_from: Optional[int],
     chapter_to: Optional[int],
     total_chapters: int,
+    budget_usd: Optional[Decimal] = None,
 ) -> asyncpg.Record:
     return await conn.fetchrow(
         f"""
@@ -75,15 +77,15 @@ async def create_campaign(
           owner_user_id, book_id, name, gating_mode, target_language,
           knowledge_project_id, knowledge_model_source, knowledge_model_ref,
           translation_model_source, translation_model_ref,
-          chapter_from, chapter_to, total_chapters
+          chapter_from, chapter_to, total_chapters, budget_usd
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
         RETURNING {_CAMPAIGN_COLS}
         """,
         owner_user_id, book_id, name, gating_mode, target_language,
         knowledge_project_id, knowledge_model_source, knowledge_model_ref,
         translation_model_source, translation_model_ref,
-        chapter_from, chapter_to, total_chapters,
+        chapter_from, chapter_to, total_chapters, budget_usd,
     )
 
 
@@ -165,6 +167,74 @@ async def set_campaign_status(
         WHERE campaign_id = $1
         """,
         campaign_id, status, error_message, set_started, set_finished,
+    )
+
+
+# ── S4d budget cap: spend accumulation + budget update ─────────────────────
+
+
+async def accumulate_and_maybe_pause(
+    pool: asyncpg.Pool,
+    *,
+    request_id: UUID,
+    campaign_id: UUID,
+    cost_usd: Decimal,
+) -> bool:
+    """Add one usage event's cost to the campaign's spent_usd and auto-pause it if
+    that reaches budget_usd — all in ONE tx. Idempotent: the campaign_usage_seen PK
+    dedups a redelivered event (returns False, no double-count). The pause is folded
+    into the accumulate UPDATE and only fires `running`→`paused` (so it composes with
+    breaker-pause / manual pause and never resurrects a terminal campaign).
+
+    Returns True when this event was freshly counted, False on a duplicate.
+    """
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            fresh = await conn.fetchval(
+                """
+                INSERT INTO campaign_usage_seen (request_id, campaign_id, cost_usd)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (request_id) DO NOTHING
+                RETURNING request_id
+                """,
+                request_id, campaign_id, cost_usd,
+            )
+            if fresh is None:
+                return False  # already counted — no-op
+            await conn.execute(
+                """
+                UPDATE campaigns
+                SET spent_usd = spent_usd + $2,
+                    status = CASE
+                        WHEN budget_usd IS NOT NULL AND spent_usd + $2 >= budget_usd
+                             AND status = 'running' THEN 'paused'
+                        ELSE status END,
+                    error_message = CASE
+                        WHEN budget_usd IS NOT NULL AND spent_usd + $2 >= budget_usd
+                             AND status = 'running' THEN 'budget cap reached'
+                        ELSE error_message END,
+                    updated_at = now()
+                WHERE campaign_id = $1
+                """,
+                campaign_id, cost_usd,
+            )
+            return True
+
+
+async def update_budget(
+    pool: asyncpg.Pool, campaign_id: UUID, owner_user_id: UUID, budget_usd: Decimal,
+) -> Optional[asyncpg.Record]:
+    """Owner-scoped budget update (PATCH). Returns the updated row, or None when the
+    campaign isn't found / not owned (→ 404). Does NOT change status — a paused
+    campaign stays paused; resume via /start once budget_usd is above spent_usd."""
+    return await pool.fetchrow(
+        f"""
+        UPDATE campaigns
+        SET budget_usd = $3, updated_at = now()
+        WHERE campaign_id = $1 AND owner_user_id = $2
+        RETURNING {_CAMPAIGN_COLS}
+        """,
+        campaign_id, owner_user_id, budget_usd,
     )
 
 

@@ -1,6 +1,7 @@
 """Campaign API tests — ownership verify-once, projection seed, lifecycle."""
 
 from datetime import datetime, timezone
+from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
@@ -33,6 +34,8 @@ def _campaign_row(**over):
         "translation_model_ref": None,
         "chapter_from": None,
         "chapter_to": None,
+        "budget_usd": None,
+        "spent_usd": Decimal("0"),
         "total_chapters": 1,
         "error_message": None,
         "created_at": NOW,
@@ -115,6 +118,77 @@ def test_create_invalid_gating_mode_422(client, mocker):
     _book_stub(mocker)
     resp = client.post("/v1/campaigns", json=_payload(gating_mode="bogus"))
     assert resp.status_code == 422
+
+
+# ── S4d budget cap ───────────────────────────────────────────────────────────
+
+def test_create_with_budget_persists_it(client, mocker):
+    _book_stub(mocker)
+    create = mocker.patch("app.repositories.create_campaign",
+                          new_callable=AsyncMock, return_value=_campaign_row(budget_usd=Decimal("5.00")))
+    mocker.patch("app.repositories.seed_campaign_chapters", new_callable=AsyncMock)
+    resp = client.post("/v1/campaigns", json=_payload(budget_usd="5.00"))
+    assert resp.status_code == 201, resp.text
+    assert create.call_args.kwargs["budget_usd"] == Decimal("5.00")
+
+
+def test_create_rejects_nonpositive_budget_422(client, mocker):
+    _book_stub(mocker)
+    resp = client.post("/v1/campaigns", json=_payload(budget_usd="0"))
+    assert resp.status_code == 422
+
+
+def test_patch_budget_updates(client, mocker):
+    mocker.patch("app.repositories.update_budget", new_callable=AsyncMock,
+                 return_value=_campaign_row(budget_usd=Decimal("10.00")))
+    resp = client.patch(f"/v1/campaigns/{CAMP}", json={"budget_usd": "10.00"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["budget_usd"] == "10.00"
+
+
+def test_patch_budget_not_found_404(client, mocker):
+    mocker.patch("app.repositories.update_budget", new_callable=AsyncMock, return_value=None)
+    resp = client.patch(f"/v1/campaigns/{CAMP}", json={"budget_usd": "10.00"})
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_NOT_FOUND"
+
+
+def test_patch_budget_rejects_nonpositive_422(client, mocker):
+    resp = client.patch(f"/v1/campaigns/{CAMP}", json={"budget_usd": "-1"})
+    assert resp.status_code == 422
+
+
+def test_create_rejects_over_ceiling_budget_422(client, mocker):
+    _book_stub(mocker)
+    resp = client.post("/v1/campaigns", json=_payload(budget_usd="100000000"))
+    assert resp.status_code == 422  # >= 10^8 overflows numeric(16,8)
+
+
+def test_patch_rejects_over_ceiling_budget_422(client, mocker):
+    resp = client.patch(f"/v1/campaigns/{CAMP}", json={"budget_usd": "100000000"})
+    assert resp.status_code == 422
+
+
+def test_start_over_budget_409(client, mocker):
+    # D-S4D-RESUME-GUARD: resuming a still-over-budget campaign is refused.
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="paused",
+                                            budget_usd=Decimal("5"), spent_usd=Decimal("10")))
+    resp = client.post(f"/v1/campaigns/{CAMP}/start")
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_OVER_BUDGET"
+
+
+def test_start_paused_under_budget_resumes(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 side_effect=[
+                     _campaign_row(status="paused", budget_usd=Decimal("10"), spent_usd=Decimal("3")),
+                     _campaign_row(status="running", budget_usd=Decimal("10"), spent_usd=Decimal("3")),
+                 ])
+    mocker.patch("app.repositories.set_campaign_status", new_callable=AsyncMock)
+    resp = client.post(f"/v1/campaigns/{CAMP}/start")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "running"
 
 
 # ── get / list ──────────────────────────────────────────────────────────────
