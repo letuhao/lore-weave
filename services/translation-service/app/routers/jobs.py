@@ -57,16 +57,25 @@ async def create_job(
     db: asyncpg.Pool = Depends(get_db),
 ):
     await _verify_book_owner(book_id, user_id)
+    # S4a: campaign_id is NOT taken from the public body — a user must not be able
+    # to tag their job to another user's campaign (which would inflate that
+    # campaign's spend and trip its budget pause). Only the internal dispatch
+    # endpoint (ownership pre-verified) supplies it.
     return await _resolve_and_create_job(db, book_id, payload, user_id)
 
 
 async def _resolve_and_create_job(
     db: asyncpg.Pool, book_id: UUID, payload: CreateJobPayload, user_id: str,
+    *, campaign_id: UUID | None = None,
 ) -> TranslationJob:
     """Core job-create: resolve effective settings + overrides, insert the job +
     chapter rows in one transaction, publish to RabbitMQ. Ownership is assumed
     already verified by the caller (public route via JWT+book-service; internal
-    dispatch via the asserted-and-reverified user_id — decision A)."""
+    dispatch via the asserted-and-reverified user_id — decision A).
+
+    S4a: `campaign_id` is an internal-only attribution tag (None for public
+    callers); it is persisted on the job + rides the message chain to every
+    provider job's job_meta."""
     uid = UUID(user_id)
 
     # Resolve effective settings, then overlay any per-job overrides (Fix-C): a one-off
@@ -153,9 +162,9 @@ async def _resolve_and_create_job(
                    chunk_size_tokens, invoke_timeout_secs,
                    chapter_ids, total_chapters, pipeline_version,
                    qa_depth, max_qa_rounds, verifier_model_source, verifier_model_ref,
-                   cold_start_mode)
+                   cold_start_mode, campaign_id)
                 VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-                        $17,$18,$19,$20,$21)
+                        $17,$18,$19,$20,$21,$22)
                 RETURNING *
                 """,
                 book_id, uid,
@@ -168,7 +177,7 @@ async def _resolve_and_create_job(
                 chapter_ids, len(chapter_ids), eff.get("pipeline_version", "v2"),
                 eff.get("qa_depth", "standard"), eff.get("max_qa_rounds", 2),
                 eff.get("verifier_model_source"), eff.get("verifier_model_ref"),
-                eff.get("cold_start_mode", "single_pass"),
+                eff.get("cold_start_mode", "single_pass"), campaign_id,
             )
 
             job_id = job_row["job_id"]
@@ -236,6 +245,8 @@ async def _resolve_and_create_job(
             "verifier_model_source":   eff.get("verifier_model_source"),
             "verifier_model_ref":      str(eff["verifier_model_ref"]) if eff.get("verifier_model_ref") else None,
             "cold_start_mode":         eff.get("cold_start_mode", "single_pass"),
+            # S4a: ride campaign_id through the message chain (job → chapter → job_meta).
+            "campaign_id":             str(campaign_id) if campaign_id else None,
         })
     await publish_event(user_id, {
         "event":    "job.created",

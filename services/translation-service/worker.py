@@ -30,6 +30,7 @@ from app.broker import (
     publish_event,
     chapter_retry_queue_for_attempt,
 )
+from app.llm_client import set_campaign_id
 from app.workers.coordinator import handle_job_message
 from app.workers.chapter_worker import handle_chapter_message, _TransientError
 from app.workers.extraction_worker import handle_extraction_job
@@ -178,6 +179,12 @@ async def main() -> None:
             await message.ack()
 
     async def on_extraction(message: aio_pika.IncomingMessage) -> None:
+        # S4a: this consumer shares the process + llm_client with on_chapter, which
+        # binds a campaign_id contextvar. Extraction jobs are NOT campaign-owned, so
+        # clear it here — defends against a chapter's campaign_id leaking into an
+        # extraction LLM call (mis-attribution) regardless of whether the AMQP lib
+        # isolates context per message-task.
+        set_campaign_id(None)
         async with message.process(requeue=True):
             msg = json.loads(message.body)
             log.info("Extraction worker: job %s (%d chapters)", msg["job_id"], len(msg["chapter_ids"]))

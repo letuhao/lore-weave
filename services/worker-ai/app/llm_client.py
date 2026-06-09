@@ -14,6 +14,7 @@ process for the full LLM wall-time.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import logging
 from typing import Any
 
@@ -32,9 +33,28 @@ __all__ = [
     "LLMClient",
     "get_llm_client",
     "close_llm_client",
+    "set_campaign_id",
 ]
 
 logger = logging.getLogger(__name__)
+
+# S4a — Auto-Draft Factory cost attribution. The owning campaign for the
+# extraction job running on THIS async task. process_job sets it once
+# (set_campaign_id) and submit_and_wait merges it into every provider job's
+# job_meta — so a campaign's extraction spend is summable from the usage events
+# (decision C). Task-local: concurrent jobs for different campaigns don't cross
+# (each asyncio Task copies the context). Default None ⇒ non-campaign jobs are
+# unchanged (no campaign_id key added).
+_campaign_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "worker_ai_campaign_id", default=None,
+)
+
+
+def set_campaign_id(campaign_id: str | None) -> None:
+    """Set the owning campaign for provider jobs submitted on this async task.
+    Call once at the start of processing a job; pass None to clear (a
+    non-campaign job must not inherit a previous job's campaign)."""
+    _campaign_id_ctx.set(campaign_id)
 
 
 class LLMClient:
@@ -76,6 +96,13 @@ class LLMClient:
         Caller inspects Job.status + Job.error to decide what to do —
         this method does NOT raise on Job.status=failed.
         """
+        # S4a: stamp the owning campaign (if any) onto job_meta centrally — this
+        # is the one chokepoint every extraction LLM call flows through, so no
+        # call site in loreweave_extraction can silently drop attribution.
+        campaign_id = _campaign_id_ctx.get()
+        if campaign_id and (job_meta is None or "campaign_id" not in job_meta):
+            job_meta = {**(job_meta or {}), "campaign_id": campaign_id}
+
         attempts = 0
         max_attempts = 1 + transient_retry_budget
         while attempts < max_attempts:

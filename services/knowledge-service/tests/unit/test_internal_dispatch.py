@@ -38,7 +38,7 @@ def _project(embedding_model="bge-m3"):
 
 async def test_happy_path_reuses_start_core(mocker):
     start = mocker.patch(
-        "app.routers.internal_dispatch.start_extraction_job",
+        "app.routers.internal_dispatch._start_extraction_job_core",
         new_callable=AsyncMock, return_value=SimpleNamespace(job_id=JOB))
     pr, jr, br = _repos(_project())
     payload = InternalExtractionPayload(
@@ -57,12 +57,38 @@ async def test_happy_path_reuses_start_core(mocker):
 
 async def test_no_range_omits_scope_range(mocker):
     start = mocker.patch(
-        "app.routers.internal_dispatch.start_extraction_job",
+        "app.routers.internal_dispatch._start_extraction_job_core",
         new_callable=AsyncMock, return_value=SimpleNamespace(job_id=JOB))
     pr, jr, br = _repos(_project())
     payload = InternalExtractionPayload(user_id=USER, model_ref=MODEL)
     await dispatch_extraction(PROJ, payload, pr, jr, br)
     assert start.call_args.args[1].scope_range is None
+
+
+async def test_forwards_campaign_id_to_core(mocker):
+    """S4a: a campaign-dispatched extraction carries campaign_id into the core
+    (→ persisted on extraction_jobs → worker-ai stamps it on provider job_meta)."""
+    start = mocker.patch(
+        "app.routers.internal_dispatch._start_extraction_job_core",
+        new_callable=AsyncMock, return_value=SimpleNamespace(job_id=JOB))
+    pr, jr, br = _repos(_project())
+    camp = UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
+    payload = InternalExtractionPayload(user_id=USER, model_ref=MODEL, campaign_id=camp)
+    await dispatch_extraction(PROJ, payload, pr, jr, br)
+    assert start.call_args.kwargs["campaign_id"] == camp
+
+
+async def test_public_route_passes_no_campaign_id(mocker):
+    """S4a guard: the public start route never sets campaign_id (a user cannot
+    tag their job to a campaign). The wrapper delegates with the default None."""
+    from app.routers.public import extraction as ext
+    core = mocker.patch.object(
+        ext, "_start_extraction_job_core",
+        new_callable=AsyncMock, return_value=SimpleNamespace(job_id=JOB))
+    body = ext.StartJobRequest(scope="chapters", llm_model=str(MODEL), embedding_model="bge-m3")
+    await ext.start_extraction_job(PROJ, body, USER, AsyncMock(), AsyncMock(), AsyncMock())
+    # campaign_id not supplied → core uses its default None
+    assert core.call_args.kwargs.get("campaign_id") is None
 
 
 async def test_project_not_found_404(mocker):

@@ -47,7 +47,7 @@ from app.clients import (
     GlossaryEntity,
     KnowledgeClient,
 )
-from app.llm_client import LLMClient
+from app.llm_client import LLMClient, set_campaign_id
 from app.outbox_emit import (
     emit_chapter_extracted_best_effort,
     emit_chapter_failed_best_effort,
@@ -505,6 +505,10 @@ class JobRow:
     items_processed: int
     current_cursor: dict | None
     cost_spent_usd: Decimal
+    # S4a — Auto-Draft Factory cost attribution: the owning campaign (NULL for
+    # user-initiated jobs). process_job binds it as a contextvar so every
+    # provider job_meta carries it (see app.llm_client.set_campaign_id).
+    campaign_id: UUID | None = None
     # P3 D-P3-EXTRACTION-CALLER-WIRE-UP — sourced from knowledge_projects
     # (extraction_jobs doesn't carry the dimension; the project's
     # embedding_model UUID + dimension are the per-project vector-space
@@ -541,8 +545,8 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
         SELECT j.job_id, j.user_id, j.project_id, j.scope, j.scope_range,
                j.status, j.llm_model, j.embedding_model, j.max_spend_usd,
                j.items_total, j.items_processed, j.current_cursor,
-               j.cost_spent_usd, p.embedding_dimension, p.extraction_config,
-               p.genre, p.save_raw_extraction
+               j.cost_spent_usd, j.campaign_id, p.embedding_dimension,
+               p.extraction_config, p.genre, p.save_raw_extraction
         FROM extraction_jobs j
         LEFT JOIN knowledge_projects p
           ON p.user_id = j.user_id AND p.project_id = j.project_id
@@ -575,6 +579,7 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
             items_processed=r["items_processed"],
             current_cursor=cc,
             cost_spent_usd=r["cost_spent_usd"],
+            campaign_id=r["campaign_id"],
             embedding_dimension=r["embedding_dimension"],
             extraction_config=ec if isinstance(ec, dict) else None,
             genre=r["genre"],
@@ -1210,6 +1215,13 @@ async def process_job(
         job.job_id, job.scope, job.project_id,
         job.items_processed, job.items_total or "?",
     )
+
+    # S4a: bind the owning campaign (or clear it) for this job's task before any
+    # extraction LLM call, so every provider job submitted while processing this
+    # job carries campaign_id in its job_meta. process_job runs as its own task
+    # per job (poll_and_run), so the ContextVar is task-local — concurrent jobs
+    # for different campaigns never cross-contaminate.
+    set_campaign_id(str(job.campaign_id) if job.campaign_id else None)
 
     items_processed = 0
     try:

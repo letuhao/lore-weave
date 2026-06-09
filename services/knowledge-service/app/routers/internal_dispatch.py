@@ -32,7 +32,7 @@ from app.deps import (
 from app.middleware.internal_auth import require_internal_token
 from app.routers.public.extraction import (
     StartJobRequest,
-    start_extraction_job,
+    _start_extraction_job_core,
     cancel_extraction_job,
 )
 
@@ -53,6 +53,9 @@ class InternalExtractionPayload(BaseModel):
     # only `model_ref` (the extraction LLM) is forwarded as `llm_model`.
     model_source: str | None = None
     model_ref: UUID | None = None
+    # S4a: the owning campaign, persisted on the extraction job + stamped onto
+    # every provider job_meta by worker-ai for per-campaign cost attribution.
+    campaign_id: UUID | None = None
 
 
 class DispatchResponse(BaseModel):
@@ -102,8 +105,9 @@ async def dispatch_extraction(
         llm_model=str(payload.model_ref),
         embedding_model=project.embedding_model,
     )
-    job = await start_extraction_job(
+    job = await _start_extraction_job_core(
         project_id, body, payload.user_id, projects_repo, jobs_repo, benchmark_repo,
+        campaign_id=payload.campaign_id,
     )
     return DispatchResponse(job_id=job.job_id)
 

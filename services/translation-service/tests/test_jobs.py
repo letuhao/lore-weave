@@ -230,8 +230,11 @@ def test_create_job_qa_config_overrides_flow_to_broker(client, fake_pool):
 
     # Also guard the INSERT positional args ($17-$21) — a column/value swap would
     # persist wrong data yet still pass the message assertion above (built from eff).
+    # S4a appended campaign_id as the final positional ($22), so the qa/verifier
+    # tuple is now [-6:-1] and the trailing arg is campaign_id (None — no campaign).
     insert_args = fake_pool.fetchrow.call_args_list[1].args  # [0]=resolve, [1]=INSERT
-    assert insert_args[-5:] == ("thorough", 4, "platform_model", UUID(verifier_ref), "single_pass")
+    assert insert_args[-6:-1] == ("thorough", 4, "platform_model", UUID(verifier_ref), "single_pass")
+    assert insert_args[-1] is None  # campaign_id — public job is not campaign-owned
 
 
 def test_create_job_defaults_qa_config_when_unset(client, fake_pool):
@@ -252,6 +255,47 @@ def test_create_job_defaults_qa_config_when_unset(client, fake_pool):
     assert published["cold_start_mode"] == "single_pass"  # M4d-2c default
 
 
+@pytest.mark.asyncio
+async def test_resolve_and_create_job_threads_campaign_id(fake_pool):
+    """S4a (LOW-5 hop guard): with an internal campaign_id, the core persists it on
+    the job INSERT AND publishes it on the job message — the dispatch→message hop
+    exercised with the REAL jobs.py code (not a mocked core)."""
+    from app.routers.jobs import _resolve_and_create_job
+    from app.models import CreateJobPayload
+    camp = UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
+    fake_pool.fetchrow.side_effect = [_BOOK_SETTINGS_ROW, FakeRecord({**_JOB_ROW})]
+    with patch("app.routers.jobs.publish", new_callable=AsyncMock) as mock_publish, \
+         patch("app.routers.jobs.publish_event", new_callable=AsyncMock):
+        await _resolve_and_create_job(
+            fake_pool, UUID(BOOK_ID),
+            CreateJobPayload(chapter_ids=[UUID(CHAPTER_ID)]),
+            USER_ID, campaign_id=camp,
+        )
+    # persisted (final INSERT positional) + published on the "translation.job" message
+    assert fake_pool.fetchrow.call_args_list[1].args[-1] == camp
+    assert mock_publish.call_args.args[1]["campaign_id"] == str(camp)
+
+
+def test_public_create_job_ignores_campaign_id_in_body(client, fake_pool):
+    """S4a security guard: a user cannot tag their job to a campaign via the public
+    route. campaign_id is not a CreateJobPayload field, so an injected body value is
+    silently ignored → the job + message carry campaign_id=None."""
+    fake_pool.fetchrow.side_effect = [_BOOK_SETTINGS_ROW, FakeRecord({**_JOB_ROW})]
+    with patch("app.routers.jobs.httpx.AsyncClient") as mock_client_cls, \
+         patch("app.routers.jobs.publish", new_callable=AsyncMock) as mock_publish, \
+         patch("app.routers.jobs.publish_event", new_callable=AsyncMock):
+        mock_client_cls.return_value.__aenter__.return_value = AsyncMock(
+            get=AsyncMock(return_value=_mock_book_service_response()))
+        resp = client.post(
+            f"/v1/translation/books/{BOOK_ID}/jobs",
+            json={"chapter_ids": [CHAPTER_ID],
+                  "campaign_id": "cccccccc-cccc-cccc-cccc-cccccccccccc"},
+        )
+    assert resp.status_code == 201
+    assert mock_publish.call_args.args[1]["campaign_id"] is None  # not honoured
+    assert fake_pool.fetchrow.call_args_list[1].args[-1] is None  # NULL persisted
+
+
 def test_create_job_cold_start_mode_override_flows_to_broker(client, fake_pool):
     """M4d-2c: a per-job cold_start_mode='two_pass' override is snapshotted into the
     broker message → coordinator → worker."""
@@ -266,7 +310,9 @@ def test_create_job_cold_start_mode_override_flows_to_broker(client, fake_pool):
     assert resp.status_code == 201
     assert mock_publish.call_args.args[1]["cold_start_mode"] == "two_pass"
     insert_args = fake_pool.fetchrow.call_args_list[1].args
-    assert insert_args[-1] == "two_pass"  # last INSERT positional = cold_start_mode
+    # S4a: campaign_id is now the final positional; cold_start_mode is second-to-last.
+    assert insert_args[-2] == "two_pass"  # cold_start_mode
+    assert insert_args[-1] is None  # campaign_id — public job is not campaign-owned
 
 
 def test_create_job_rejects_invalid_cold_start_mode(client):

@@ -58,6 +58,25 @@ def test_dispatch_creates_job_with_asserted_user(client, mocker):
     assert core.call_args.args[3] == USER
 
 
+def test_dispatch_forwards_campaign_id_to_core(client, mocker):
+    """S4a: a campaign-dispatched job carries campaign_id into the create core
+    (→ persisted on translation_jobs + the published message → provider job_meta)."""
+    mocker.patch(
+        "app.routers.internal_dispatch._verify_book_owner", new_callable=AsyncMock)
+    core = mocker.patch(
+        "app.routers.internal_dispatch._resolve_and_create_job",
+        new_callable=AsyncMock, return_value=SimpleNamespace(job_id=UUID(JOB)))
+    CAMP = "cccccccc-cccc-cccc-cccc-cccccccccccc"
+    resp = client.post(
+        "/internal/translation/dispatch-job", json=_body(campaign_id=CAMP),
+        headers={"X-Internal-Token": TOKEN},
+    )
+    assert resp.status_code == 201, resp.text
+    # S4a: campaign_id is an internal-only kwarg to the core, NOT a CreateJobPayload
+    # field (the public route must not accept it).
+    assert str(core.call_args.kwargs["campaign_id"]) == CAMP
+
+
 def test_ownership_failure_propagates(client, mocker):
     mocker.patch(
         "app.routers.internal_dispatch._verify_book_owner",

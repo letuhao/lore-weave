@@ -40,8 +40,12 @@ class TranslationDispatchClient:
         target_language: str | None,
         model_source: str | None,
         model_ref: str | None,
+        campaign_id: str | None = None,
     ) -> str:
-        """POST /internal/translation/dispatch-job → returns the new job_id."""
+        """POST /internal/translation/dispatch-job → returns the new job_id.
+
+        S4a: campaign_id is threaded so every provider job the translation job
+        spawns is attributable to this campaign's cumulative spend (decision C)."""
         url = f"{self._base_url}/internal/translation/dispatch-job"
         body = {
             "user_id": user_id,
@@ -50,6 +54,7 @@ class TranslationDispatchClient:
             "target_language": target_language,
             "model_source": model_source,
             "model_ref": model_ref,
+            "campaign_id": campaign_id,
         }
         try:
             resp = await self._http.post(url, json=body)
@@ -94,6 +99,7 @@ class KnowledgeDispatchClient:
         chapter_to: int | None,
         model_source: str | None,
         model_ref: str | None,
+        campaign_id: str | None = None,
     ) -> str:
         """POST /internal/knowledge/projects/{project_id}/dispatch-extraction →
         returns the new extraction job_id.
@@ -111,6 +117,7 @@ class KnowledgeDispatchClient:
             "chapter_to": chapter_to,
             "model_source": model_source,
             "model_ref": model_ref,
+            "campaign_id": campaign_id,
         }
         try:
             resp = await self._http.post(url, json=body)

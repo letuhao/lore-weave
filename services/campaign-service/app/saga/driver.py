@@ -144,6 +144,7 @@ async def process_campaign(
                         str(campaign["knowledge_model_ref"])
                         if campaign["knowledge_model_ref"] else None
                     ),
+                    campaign_id=str(campaign_id),  # S4a: cost attribution
                 )
                 if kn_job_id:  # S3c-2: record for cancel propagation
                     await repo.set_dispatched_job_id(
@@ -171,6 +172,7 @@ async def process_campaign(
                     str(campaign["translation_model_ref"])
                     if campaign["translation_model_ref"] else None
                 ),
+                campaign_id=str(campaign_id),  # S4a: cost attribution
             )
             if tr_job_id:  # S3c-2: record for cancel propagation
                 await repo.set_dispatched_job_id(

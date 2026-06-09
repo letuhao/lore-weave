@@ -9,13 +9,28 @@ production translation.
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 import pytest
 
 from app.llm_client import (
     LLMClient,
     close_llm_client,
     get_llm_client,
+    set_campaign_id,
 )
+
+
+class _FakeSubmit:
+    def __init__(self, job_id: str) -> None:
+        self.job_id = job_id
+
+
+def _fake_sdk():
+    sdk = AsyncMock()
+    sdk.submit_job = AsyncMock(return_value=_FakeSubmit("job-1"))
+    sdk.wait_terminal = AsyncMock(return_value=object())
+    return sdk
 
 
 @pytest.fixture(autouse=True)
@@ -89,6 +104,62 @@ def test_get_llm_client_reads_provider_registry_internal_url_from_settings(
 
     client = get_llm_client()
     assert sentinel.rstrip("/") == str(client.sdk._base_url)
+
+
+@pytest.mark.asyncio
+async def test_submit_and_wait_stamps_campaign_id_from_contextvar():
+    """S4a — the central chokepoint: when a campaign is bound on this task, EVERY
+    provider job's job_meta carries campaign_id (so no call site can drop
+    attribution), and the caller's own job_meta keys are preserved."""
+    sdk = _fake_sdk()
+    client = LLMClient(sdk)
+    set_campaign_id("camp-123")
+    try:
+        await client.submit_and_wait(
+            user_id="u", operation="translation",
+            model_source="user_model", model_ref="m",
+            input={"messages": []}, job_meta={"chunk_idx": 0},
+        )
+    finally:
+        set_campaign_id(None)
+    req = sdk.submit_job.call_args.args[0]
+    assert req.job_meta["campaign_id"] == "camp-123"
+    assert req.job_meta["chunk_idx"] == 0  # caller key preserved
+
+
+@pytest.mark.asyncio
+async def test_submit_and_wait_no_campaign_id_when_unset():
+    """S4a — non-campaign work is unchanged: no campaign_id key is added when the
+    contextvar is clear (default None)."""
+    set_campaign_id(None)
+    sdk = _fake_sdk()
+    client = LLMClient(sdk)
+    await client.submit_and_wait(
+        user_id="u", operation="translation",
+        model_source="user_model", model_ref="m",
+        input={}, job_meta={"endpoint": "x"},
+    )
+    req = sdk.submit_job.call_args.args[0]
+    assert "campaign_id" not in (req.job_meta or {})
+
+
+def test_submit_job_only_invoked_via_wrapper():
+    """S4a drift guard (review-impl LOW-2): the campaign_id attribution merge lives
+    ONLY in LLMClient.submit_and_wait. If a future call site invokes the SDK's
+    submit_job directly, it bypasses attribution silently and no other test would
+    catch it. Lock the invariant: `.submit_job(` appears only in llm_client.py."""
+    import pathlib
+
+    app_dir = pathlib.Path(__file__).resolve().parent.parent / "app"
+    offenders = [
+        str(p.relative_to(app_dir))
+        for p in app_dir.rglob("*.py")
+        if p.name != "llm_client.py" and ".submit_job(" in p.read_text(encoding="utf-8")
+    ]
+    assert not offenders, (
+        f"submit_job called outside the llm_client wrapper (bypasses campaign "
+        f"attribution): {offenders}"
+    )
 
 
 def test_llm_client_satisfies_extraction_protocol():

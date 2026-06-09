@@ -97,6 +97,9 @@ async def test_cold_start_dispatches_both_stages(fake_pool, patch_repo):
     tr.dispatch_job.assert_awaited_once()
     assert tr.dispatch_job.call_args.kwargs["chapter_ids"] == [C1]
     kn.dispatch_extraction.assert_awaited_once()
+    # S4a: both dispatches carry the campaign_id for cost attribution.
+    assert tr.dispatch_job.call_args.kwargs["campaign_id"] == str(CID)
+    assert kn.dispatch_extraction.call_args.kwargs["campaign_id"] == str(CID)
     # Both claimed rows flipped to dispatched.
     stages = {c.args[3] for c in patch_repo["mark_stage_dispatched"].call_args_list}
     assert stages == {"knowledge", "translation"}

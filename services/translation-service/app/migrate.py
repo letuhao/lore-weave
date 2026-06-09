@@ -312,6 +312,13 @@ CREATE INDEX IF NOT EXISTS idx_ctgu_entity
 ALTER TABLE chapter_translations
   ADD COLUMN IF NOT EXISTS authored_by TEXT NOT NULL DEFAULT 'llm',
   ADD COLUMN IF NOT EXISTS edited_from_version_id UUID;
+
+-- S4a (Auto-Draft Factory cost attribution): the owning campaign for a
+-- campaign-dispatched job. NULL for ordinary user-initiated translations. Stored
+-- for queryability; the runtime correlation rides through to each provider job's
+-- job_meta via the per-chapter message + a worker-set contextvar (see llm_client).
+ALTER TABLE translation_jobs
+  ADD COLUMN IF NOT EXISTS campaign_id UUID;
 """
 
 

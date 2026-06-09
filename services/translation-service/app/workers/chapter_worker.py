@@ -5,7 +5,7 @@ from uuid import UUID
 import httpx
 
 from ..config import settings
-from ..llm_client import LLMClient
+from ..llm_client import LLMClient, set_campaign_id
 from ..metrics import record_stage
 from .session_translator import translate_chapter
 
@@ -36,6 +36,12 @@ async def handle_chapter_message(
     job_id     = UUID(msg["job_id"])
     chapter_id = UUID(msg["chapter_id"])
     user_id    = msg["user_id"]
+
+    # S4a: bind the owning campaign (or clear it) for THIS task before any LLM
+    # call, so every provider job submitted while processing this chapter carries
+    # campaign_id in its job_meta. Unconditional set (None for non-campaign work)
+    # prevents a sequential reuse from inheriting a prior chapter's campaign.
+    set_campaign_id(msg.get("campaign_id"))
 
     try:
         await _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event, llm_client)

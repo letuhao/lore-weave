@@ -49,6 +49,8 @@ class InternalDispatchPayload(BaseModel):
     # S2: default-skip idempotency applies here too (the campaign driver relies
     # on it — re-dispatching an already-translated chapter must not re-spend).
     force_retranslate: bool = False
+    # S4a: the owning campaign, threaded into the job + every provider job_meta.
+    campaign_id: UUID | None = None
 
 
 class DispatchResponse(BaseModel):
@@ -89,6 +91,7 @@ async def dispatch_job(
             force_retranslate=payload.force_retranslate,
         ),
         user_id,
+        campaign_id=payload.campaign_id,
     )
     return DispatchResponse(job_id=job.job_id)
 
