@@ -26,6 +26,7 @@ from app.clients.llm_client import get_llm_client
 from app.config import settings
 from app.db.neo4j import neo4j_session
 from app.db.pool import get_knowledge_pool
+from app.deps import get_projects_repo
 from app.db.repositories.job_logs import JobLogsRepo
 from app.extraction.anchor_loader import Anchor, load_glossary_anchors
 from loreweave_extraction.errors import ExtractionError
@@ -1102,4 +1103,103 @@ async def process_summarize_message_endpoint(
         re_enqueued=result.re_enqueued,
         skipped_retry_exhausted=result.skipped_retry_exhausted,
         summary_id=str(result.summary_id) if result.summary_id else None,
+    )
+
+
+# ── K17 (cycle 12b) — entity-embedding backfill ───────────────────────
+
+# One batch's worth of candidates per producer call; the loop drains.
+_EMBED_BACKFILL_BATCH = 200
+# Safety net: bounds the drain loop even if the producer pathologically keeps
+# reporting a full batch (e.g. a future bug). At 200/iter this caps a single
+# request at 40k entities — far above any real project.
+_EMBED_BACKFILL_MAX_ITER = 200
+
+
+class EmbedBackfillRequest(BaseModel):
+    user_id: UUID
+    project_id: UUID
+    # Per-request safety cap on how many entities to embed (cost guard).
+    max_entities: int = Field(default=2000, ge=1, le=20000)
+
+
+class EmbedBackfillResponse(BaseModel):
+    embedded: int
+    skipped: int
+    iterations: int
+    drained: bool
+    reason: str | None = None
+
+
+@router.post(
+    "/embed-entities-backfill",
+    response_model=EmbedBackfillResponse,
+    summary="K17 — (re)embed a project's anchored entities for semantic glossary search",
+    description=(
+        "Drains `find_entities_needing_embedding` for the project's current "
+        "embedding model: stamps `:Entity.embedding_{dim}` so "
+        "/internal/context/glossary-semantic returns tier=semantic. Idempotent "
+        "(already-embedded entities are not re-found) and cost-bounded "
+        "(`max_entities`). Degrades cleanly (no embedding model / no book → 0 "
+        "embedded, reason set). Behind X-Internal-Token."
+    ),
+)
+async def embed_entities_backfill(
+    body: EmbedBackfillRequest,
+    projects_repo=Depends(get_projects_repo),
+) -> EmbedBackfillResponse:
+    from app.clients.embedding_client import get_embedding_client
+    from app.extraction.entity_embedder import embed_project_entities
+
+    project = await projects_repo.get(body.user_id, body.project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="project not found",
+        )
+    if not project.embedding_model or not project.embedding_dimension:
+        return EmbedBackfillResponse(
+            embedded=0, skipped=0, iterations=0, drained=True,
+            reason="project has no embedding model configured",
+        )
+    if project.book_id is None:
+        return EmbedBackfillResponse(
+            embedded=0, skipped=0, iterations=0, drained=True,
+            reason="project has no book",
+        )
+
+    embedding_client = get_embedding_client()
+    glossary_client = get_glossary_client()
+    embedded = skipped = iterations = 0
+    drained = False
+
+    async with neo4j_session() as session:
+        while iterations < _EMBED_BACKFILL_MAX_ITER and embedded < body.max_entities:
+            res = await embed_project_entities(
+                session,
+                embedding_client,
+                glossary_client,
+                user_id=body.user_id,
+                project_id=body.project_id,
+                book_id=project.book_id,
+                embedding_model=project.embedding_model,
+                embedding_dim=project.embedding_dimension,
+                limit=_EMBED_BACKFILL_BATCH,
+            )
+            embedded += res.embedded
+            skipped += res.skipped
+            iterations += 1
+            if res.candidates < _EMBED_BACKFILL_BATCH:
+                # Fewer candidates than a full batch → the queue is drained.
+                drained = True
+                break
+            if res.embedded == 0:
+                # A FULL batch of candidates but none embedded — the remaining
+                # entities are permanently un-embeddable (empty text / dim
+                # mismatch) or the provider just failed. Re-running would
+                # re-find the same set, so stop to avoid an infinite loop
+                # (the find query returns "still needs embedding" rows).
+                break
+
+    return EmbedBackfillResponse(
+        embedded=embedded, skipped=skipped, iterations=iterations, drained=drained,
     )
