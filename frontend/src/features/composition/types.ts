@@ -18,6 +18,47 @@ export type WorkResolution = {
   book_project_ids: string[];
 };
 
+// ── A3 decompose planner (cycle 13) ──────────────────────────────────────────
+export type StructureTemplate = { id: string; name: string; kind?: string; beats?: unknown[] };
+
+// Preview shape — mirrors composition-service DecomposeResult (dataclasses.asdict).
+// The chapter is nested under `chapter`; scenes carry resolved present_entity_ids
+// PLUS the names the planner could not resolve against the roster.
+export type PlannerScenePreview = {
+  title: string;
+  synopsis: string;
+  tension: number;
+  present_entity_ids: string[];
+  present_entity_names_unresolved: string[];
+  suggested_k: number;
+};
+export type PlannerChapterPreview = {
+  chapter: { chapter_id: string; title: string; sort_order: number; beat_role: string | null; intent: string };
+  scenes: PlannerScenePreview[];
+  warning: string | null;
+};
+export type DecomposePreview = {
+  arc_title: string;
+  chapters: PlannerChapterPreview[];
+  unmapped_beats: string[];
+};
+
+// Editable draft (what the UI mutates) + the commit payload (BE CommitRequest).
+export type PlannerSceneDraft = { title: string; synopsis: string; tension: number | null; present_entity_ids: string[] };
+export type PlannerChapterDraft = {
+  chapter_id: string;
+  title: string;
+  intent: string;
+  beat_role: string | null;
+  scenes: PlannerSceneDraft[];
+};
+export type CommitDecomposePayload = {
+  arc_title: string;
+  chapters: PlannerChapterDraft[];
+  replace: boolean;
+  idempotency_key: string;
+};
+
 export type OutlineNode = {
   id: string;
   project_id: string;

@@ -3,9 +3,17 @@
 // uses a raw fetch+ReadableStream in useCompositionStream (apiJson can't stream).
 import { apiBase, apiJson } from '../../api';
 import type {
-  AutoGeneration, CanonRule, ChapterGeneration, CorrectionBody, CorrectionStats, GenerationJob,
-  Grounding, OutlineNode, PublishGate, Work, WorkResolution,
+  AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
+  DecomposePreview, GenerationJob, Grounding, OutlineNode, PublishGate, StructureTemplate, Work, WorkResolution,
 } from './types';
+
+// A3 decompose preview request (cycle 13).
+export type DecomposeBody = {
+  structure_template_id: string;
+  premise: string;
+  model_source: 'user_model' | 'platform_model';
+  model_ref: string;
+};
 
 // Params for a chapter-level assembly (B2 chapter single-pass / B3 stitch).
 export type ChapterAssembleParams = {
@@ -49,6 +57,20 @@ export const compositionApi = {
   // chapter-gate + emits composition.scene_committed server-side).
   patchNode(nodeId: string, patch: Partial<OutlineNode>, token: string): Promise<OutlineNode> {
     return apiJson(`${BASE}/outline/nodes/${nodeId}`, { method: 'PATCH', body: JSON.stringify(patch), token });
+  },
+  // A3 decompose planner (cycle 13). listTemplates → built-in + user structure
+  // templates; decomposePreview → the proposed (NOT persisted) arc→chapter→scene
+  // tree; commitDecompose → persist the edited tree (409 CHAPTER_ALREADY_PLANNED
+  // carries .body.detail.chapter_ids → the hook resends with replace=true).
+  listTemplates(token: string): Promise<StructureTemplate[]> {
+    return apiJson<{ templates: StructureTemplate[] }>(`${BASE}/templates`, { token })
+      .then((r) => r.templates);
+  },
+  decomposePreview(projectId: string, body: DecomposeBody, token: string): Promise<DecomposePreview> {
+    return apiJson(`${BASE}/works/${projectId}/outline/decompose`, { method: 'POST', body: JSON.stringify(body), token });
+  },
+  commitDecompose(projectId: string, payload: CommitDecomposePayload, token: string): Promise<unknown> {
+    return apiJson(`${BASE}/works/${projectId}/outline/decompose/commit`, { method: 'POST', body: JSON.stringify(payload), token });
   },
   // M9 chapter-gate — is the chapter publishable (all scenes done)?
   publishGate(projectId: string, chapterId: string, token: string): Promise<PublishGate> {

@@ -10,7 +10,7 @@ import { CompositionPanel } from '../CompositionPanel';
 // edit state survives. We mock each sub-panel to (a) drop a stable testid and
 // (b) bump a per-panel MOUNT counter on mount; a remount (the bug) would bump it.
 
-const mounts = vi.hoisted(() => ({ compose: 0, assemble: 0, grounding: 0, canon: 0, quality: 0 }));
+const mounts = vi.hoisted(() => ({ compose: 0, assemble: 0, planner: 0, grounding: 0, canon: 0, quality: 0 }));
 
 function mockPanel(name: keyof typeof mounts) {
   return function Mock() {
@@ -23,6 +23,7 @@ function mockPanel(name: keyof typeof mounts) {
 
 vi.mock('../ComposeView', () => ({ ComposeView: mockPanel('compose') }));
 vi.mock('../ChapterAssembleView', () => ({ ChapterAssembleView: mockPanel('assemble') }));
+vi.mock('../PlannerView', () => ({ PlannerView: mockPanel('planner') }));
 vi.mock('../GroundingPanel', () => ({ GroundingPanel: mockPanel('grounding') }));
 vi.mock('../CanonRulesPanel', () => ({ CanonRulesPanel: mockPanel('canon') }));
 vi.mock('../QualityPanel', () => ({ QualityPanel: mockPanel('quality') }));
@@ -40,7 +41,7 @@ vi.mock('../../../ai-models/api', () => ({
 }));
 
 beforeEach(() => {
-  mounts.compose = mounts.assemble = mounts.grounding = mounts.canon = mounts.quality = 0;
+  mounts.compose = mounts.assemble = mounts.planner = mounts.grounding = mounts.canon = mounts.quality = 0;
 });
 
 function renderPanel() {
@@ -55,15 +56,27 @@ function renderPanel() {
 const wrapperOf = (name: string) => screen.getByTestId(`mock-${name}`).parentElement;
 
 describe('CompositionPanel sub-tab CSS-hidden (visibility-transition)', () => {
-  it('mounts ALL five sub-panels (none ternary-unmounted), only the active one visible', () => {
+  it('mounts ALL six sub-panels (none ternary-unmounted), only the active one visible', () => {
     renderPanel();
-    for (const name of ['compose', 'assemble', 'grounding', 'canon', 'quality']) {
+    for (const name of ['compose', 'assemble', 'planner', 'grounding', 'canon', 'quality']) {
       expect(screen.getByTestId(`mock-${name}`)).toBeInTheDocument();
     }
-    // compose is the default tab → visible; the rest carry `hidden`.
+    // compose is the default tab → visible; the rest (incl. planner) carry `hidden`.
     expect(wrapperOf('compose')).not.toHaveClass('hidden');
     expect(wrapperOf('assemble')).toHaveClass('hidden');
+    expect(wrapperOf('planner')).toHaveClass('hidden');
     expect(wrapperOf('grounding')).toHaveClass('hidden');
+  });
+
+  it('the Planner tab stays mounted across a tab round-trip (a half-edited plan survives)', () => {
+    renderPanel();
+    expect(mounts.planner).toBe(1); // mounted once, hidden
+    fireEvent.click(screen.getByTestId('composition-subtab-planner'));
+    expect(wrapperOf('planner')).not.toHaveClass('hidden');
+    fireEvent.click(screen.getByTestId('composition-subtab-compose'));
+    // planner stayed in the DOM (a ternary-unmount would have dropped its draft).
+    expect(screen.getByTestId('mock-planner')).toBeInTheDocument();
+    expect(mounts.planner).toBe(1);
   });
 
   it('a tab round-trip toggles visibility WITHOUT remounting (state survives)', () => {
