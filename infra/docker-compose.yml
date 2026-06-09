@@ -274,12 +274,9 @@ services:
       MINIO_USE_SSL: "false"
       MINIO_EXTERNAL_URL: http://localhost:9123
       AUDIO_CACHE_BUCKET: loreweave-audio-cache
-      # E5B — external cross-encoder rerank service (raw-search junk-rejection).
-      # Platform service (not BYOK); empty RERANK_URL disables rerank (callers
-      # degrade to fusion order). Runs in its own repo on the host.
-      RERANK_URL: ${RERANK_URL:-http://host.docker.internal:28417}
-      RERANK_SERVICE_TOKEN: ${RERANK_SERVICE_TOKEN:-change-me}
-      RERANK_MODEL: ${RERANK_MODEL:-bge-reranker-v2-m3}
+      # E5B rerank is now BYOK (D-RERANK-NOT-BYOK): /internal/rerank resolves the
+      # user's rerank model from provider-registry like /internal/embed — no
+      # platform RERANK_URL / RERANK_MODEL / RERANK_SERVICE_TOKEN config anymore.
       # Session-61 long-chapter perf fix — per-Read idle timeout on
       # streaming upstreams (see provider/streamer.go). Defense-in-depth
       # against LM Studio auto-evicting a loaded model mid-stream (the

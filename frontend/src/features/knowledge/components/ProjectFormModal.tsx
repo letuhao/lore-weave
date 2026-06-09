@@ -10,6 +10,7 @@ import type {
   ProjectUpdatePayload,
 } from '../types';
 import { EmbeddingModelPicker } from './EmbeddingModelPicker';
+import { RerankModelPicker } from './RerankModelPicker';
 
 // Caps mirror the backend Pydantic StringConstraints in
 // services/knowledge-service/app/db/models.py. Keeping them in sync
@@ -57,6 +58,10 @@ export function ProjectFormModal({
   // not on create (new projects have no extracted data yet).
   const [embeddingModel, setEmbeddingModel] = useState<string | null>(null);
   const [initialEmbeddingModel, setInitialEmbeddingModel] = useState<string | null>(null);
+  // D-RERANK-NOT-BYOK (S0b): per-project BYOK rerank model — edit-only, like
+  // embedding_model. null ⇒ raw-search skips rerank.
+  const [rerankModel, setRerankModel] = useState<string | null>(null);
+  const [initialRerankModel, setInitialRerankModel] = useState<string | null>(null);
   // K21-C (D3/D4): per-project memory-tool toggles. Edit-only (like
   // embedding_model) — they govern the chat tool loop, which is
   // meaningless on a project with no chat history yet. Both mirror
@@ -93,6 +98,8 @@ export function ProjectFormModal({
       setGenre(project.genre ?? '');
       setEmbeddingModel(project.embedding_model);
       setInitialEmbeddingModel(project.embedding_model);
+      setRerankModel(project.rerank_model);
+      setInitialRerankModel(project.rerank_model);
       setToolCallingEnabled(project.tool_calling_enabled);
       setMemoryRememberConfirm(project.memory_remember_confirm);
       setBaselineVersion(project.version);
@@ -105,6 +112,8 @@ export function ProjectFormModal({
       setGenre('');
       setEmbeddingModel(null);
       setInitialEmbeddingModel(null);
+      setRerankModel(null);
+      setInitialRerankModel(null);
       setToolCallingEnabled(true);
       setMemoryRememberConfirm(false);
       setBaselineVersion(null);
@@ -155,6 +164,10 @@ export function ProjectFormModal({
         // (ProjectUpdate.model_dump(exclude_unset=True) pattern).
         if (embeddingModel !== initialEmbeddingModel) {
           patch.embedding_model = embeddingModel;
+        }
+        // D-RERANK-NOT-BYOK (S0b): include rerank_model only when changed.
+        if (rerankModel !== initialRerankModel) {
+          patch.rerank_model = rerankModel;
         }
         await onUpdate(project.project_id, patch, baselineVersion);
       }
@@ -337,6 +350,16 @@ export function ProjectFormModal({
             onChange={setEmbeddingModel}
             disabled={saving}
             projectId={project?.project_id}
+          />
+        )}
+
+        {/* D-RERANK-NOT-BYOK (S0b): per-project BYOK rerank model — edit-only,
+            mirroring the embedding picker. Optional: empty ⇒ raw-search skips rerank. */}
+        {mode === 'edit' && (
+          <RerankModelPicker
+            value={rerankModel}
+            onChange={setRerankModel}
+            disabled={saving}
           />
         )}
 

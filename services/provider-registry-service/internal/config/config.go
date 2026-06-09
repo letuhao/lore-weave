@@ -48,14 +48,9 @@ type Config struct {
 	// Config-driven (env JOB_MAX_RETRIES), code default 3.
 	JobMaxRetries int
 
-	// E5B — cross-encoder rerank service (raw-search junk-rejection). A single
-	// PLATFORM service (not per-user BYOK), so it's configured here rather than
-	// resolved from a provider_credential. Empty RerankURL ⇒ /internal/rerank
-	// returns 503 RERANK_UNAVAILABLE (the knowledge caller degrades to fusion
-	// order). RerankServiceToken is sent as a Bearer header.
-	RerankURL          string
-	RerankServiceToken string
-	RerankModel        string
+	// E5B rerank is BYOK (D-RERANK-NOT-BYOK): /internal/rerank resolves the
+	// user's rerank model from provider-registry like /internal/embed — there is
+	// no platform rerank endpoint/model config here anymore.
 }
 
 func Load() (*Config, error) {
@@ -73,10 +68,6 @@ func Load() (*Config, error) {
 		MinioUseSSL:      os.Getenv("MINIO_USE_SSL") == "true",
 		MinioExternalURL: os.Getenv("MINIO_EXTERNAL_URL"),
 		AudioCacheBucket: getEnv("AUDIO_CACHE_BUCKET", "loreweave-audio-cache"),
-		// E5B — rerank service (all optional; empty URL disables rerank).
-		RerankURL:          os.Getenv("RERANK_URL"),
-		RerankServiceToken: os.Getenv("RERANK_SERVICE_TOKEN"),
-		RerankModel:        getEnv("RERANK_MODEL", "bge-reranker-v2-m3"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")

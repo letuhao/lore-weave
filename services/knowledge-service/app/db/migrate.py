@@ -234,6 +234,13 @@ ALTER TABLE knowledge_projects
 ALTER TABLE knowledge_projects
   DROP COLUMN IF EXISTS embedding_provider_id;
 
+-- D-RERANK-NOT-BYOK — per-project BYOK rerank model (mirrors embedding_model):
+-- the user's provider-registry user_model UUID + source. NULL rerank_model ⇒
+-- raw-search SKIPS the rerank step (rerank is optional, never platform-fixed).
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS rerank_model        TEXT,
+  ADD COLUMN IF NOT EXISTS rerank_model_source TEXT NOT NULL DEFAULT 'user_model';
+
 -- ═══════════════════════════════════════════════════════════════
 -- K10.1 — extraction_pending
 -- Events that arrived while extraction was disabled for their project.

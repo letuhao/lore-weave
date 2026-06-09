@@ -2296,19 +2296,27 @@ func (s *Server) recordInvocation(ctx context.Context, payload map[string]any) (
 // ── K12.1 — Embedding endpoint ──────────────────────────────────────────────
 
 // internalRerank handles POST /internal/rerank — cross-encoder reranking for
-// raw-search junk-rejection (E5B). The reranker is a single PLATFORM service
-// (config RERANK_URL + RERANK_SERVICE_TOKEN), not a per-user BYOK provider, so
-// there's no credential resolution here. Empty RerankURL ⇒ 503 (the knowledge
-// caller degrades to fusion order — search never fails because rerank is off).
+// raw-search junk-rejection (E5B). BYOK (D-RERANK-NOT-BYOK): the rerank model is
+// resolved per-user from provider-registry credentials exactly like
+// /internal/embed — NO hardcoded model name and NO platform endpoint. The
+// knowledge caller only calls this when the project has a rerank model set, and
+// degrades to fusion order on any non-200, so rerank stays optional.
 func (s *Server) internalRerank(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.RerankURL == "" {
-		writeError(w, http.StatusServiceUnavailable, "RERANK_UNAVAILABLE", "rerank service not configured")
+	userIDStr := r.URL.Query().Get("user_id")
+	if userIDStr == "" {
+		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "user_id query param required")
+		return
+	}
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "invalid user_id")
 		return
 	}
 	var in struct {
-		Model     string   `json:"model"`
-		Query     string   `json:"query"`
-		Documents []string `json:"documents"`
+		ModelSource string   `json:"model_source"`
+		ModelRef    string   `json:"model_ref"`
+		Query       string   `json:"query"`
+		Documents   []string `json:"documents"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "invalid payload")
@@ -2318,17 +2326,55 @@ func (s *Server) internalRerank(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "query and documents are required")
 		return
 	}
-	model := in.Model
-	if model == "" {
-		model = s.cfg.RerankModel
+	if in.ModelRef == "" {
+		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "model_ref required")
+		return
 	}
-	results, err := provider.Rerank(r.Context(), s.invokeClient, s.cfg.RerankURL, s.cfg.RerankServiceToken, model, in.Query, in.Documents)
+	modelRef, err := uuid.Parse(in.ModelRef)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "invalid model_ref")
+		return
+	}
+
+	// Resolve the user's BYOK rerank credential — same tenant-isolated query as
+	// internalEmbed (owner_user_id=$2 guarantees a user can only use their own model).
+	var providerModelName, endpointBaseURL, secret string
+	if in.ModelSource != "user_model" {
+		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "model_source must be user_model")
+		return
+	}
+	var secretCipher string
+	err = s.pool.QueryRow(r.Context(), `
+SELECT um.provider_model_name, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,'')
+FROM user_models um
+JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
+WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
+`, modelRef, userID).Scan(&providerModelName, &endpointBaseURL, &secretCipher)
+	if err == pgx.ErrNoRows {
+		writeError(w, http.StatusNotFound, "RERANK_MODEL_NOT_FOUND", "rerank model not found or inactive")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "RERANK_MODEL_QUERY_FAILED", "failed to resolve model")
+		return
+	}
+	if secretCipher == "" {
+		writeError(w, http.StatusInternalServerError, "RERANK_MISSING_CREDENTIAL", "user_model has no provider credential ciphertext")
+		return
+	}
+	secret, err = s.decryptSecret(secretCipher)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "RERANK_SECRET_FAILED", "failed to decrypt secret")
+		return
+	}
+
+	results, err := provider.Rerank(r.Context(), s.invokeClient, endpointBaseURL, secret, providerModelName, in.Query, in.Documents)
 	if err != nil {
 		// Upstream rerank failure ⇒ 502 so the caller degrades (not a client bug).
 		writeError(w, http.StatusBadGateway, "RERANK_UPSTREAM_ERROR", "rerank service error")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"model": model, "results": results})
+	writeJSON(w, http.StatusOK, map[string]any{"model": providerModelName, "results": results})
 }
 
 // internalEmbed handles POST /internal/embed.
