@@ -38,15 +38,17 @@
 
 **8 commits LOCAL on `wiki/llm-gen` (off main `2ace6272`), NOT pushed:** `e9313ef0` plan · `12956b1e` M0 · `fc969f03` M1 · `1cdf53ee` M2 · `f982f7c4` M3 · `a3505367` M4 · `6e420c30` M5 · (this) M6 orchestrator+jobs+lock+consumer+delegate.
 
-**▶ NEXT SESSION — Phase-1 BUILD complete; remaining wiki work:**
-1. **`D-WIKI-M6-E2E-LIVE-SMOKE`** (collapses M3/M4/M5 smokes) — rebuild knowledge+glossary images, configure a model_ref, set `WIKI_GEN_ENABLED=true`, trigger a job for a real 封神演義 entity → verify the article generates → writes back → renders. The first true end-to-end proof on the live stack.
-2. **M7a** (FE `CitationMark` extension — editor mark + reader hover-preview + jump-to-source, authed + public; the anti-hallucination trust layer) — parallel-able, needs only M0+M5.
+**✅ E2E LIVE-SMOKE PASSED (2026-06-09, `D-WIKI-M6-E2E-LIVE-SMOKE` cleared — collapsed M3/M4/M5 smokes too):** rebuilt knowledge+glossary, created a project for the Dracula book `019e97e4` (36 entities), enabled `WIKI_GEN_ENABLED`, triggered 3 entities via **gemma-4-26b** (model `51ea9fd7`, LM Studio). Job `pending→running→complete 3/3`. Articles landed in glossary with full `generation_provenance` (C7 build_inputs fingerprint + M4 citations 1–2 each + verify_flags), §5.1 `source_usage` (entity+block rows), `generation_status` generated/needs_review, **citation marks `[1][2]` in the TipTap body** (C3/M0), and the **clobber-guard live** ('system' stub → 'ai' overwrite). The whole M0→M6 pipeline works end-to-end on real services + a real LLM. NOTE: dev stack now has a test project + 3 Dracula articles (harmless); `WIKI_GEN_ENABLED` is on in the running knowledge container until its next plain recreate.
+
+**▶ NEXT SESSION — Phase-1 BUILD + E2E proof complete; remaining wiki work:**
+1. **M7a** (FE `CitationMark` extension — editor mark + reader hover-preview + jump-to-source, authed + public; the anti-hallucination trust layer) — parallel-able, needs only M0+M5.
 3. **M7b** (FE rest — model picker, job-row progress polling, AI-unverified badge + verify flags, regenerate; **+ the M6 resume/cancel endpoint** for D-WIKI-M6-RESUME) — needs M6+M7a.
 4. **M8** (feedback-emit `wiki.corrected`/`suggestion_reviewed` via glossary outbox + thin eval harness) — needs M5+M7.
 Then **Phase-2** (change-control: `wiki_staleness` ledger + fingerprint sweep over the M5 `build_inputs` — see plan §IV).
 
+**Recently cleared (wiki):** ✅ **D-WIKI-M6-E2E-LIVE-SMOKE** + **D-WIKI-M3/M4/M5-LIVE-SMOKE** (2026-06-09 — the full M0→M6 pipeline generated 3 Dracula articles end-to-end on the live stack via gemma-4-26b; provenance + source_usage + citation marks + clobber-guard all verified live, see the ✅ block above) · ✅ **D-WIKI-M1-LIVE-SMOKE** (the BookProfile read ran in the live generation path — neutral default, no profile set on the Dracula book).
+
 **Deferred (wiki):**
-- **D-WIKI-M6-E2E-LIVE-SMOKE** (M6 — collapses D-WIKI-M3/M4/M5-LIVE-SMOKE) — the full generate→writeback E2E on a running stack with a configured model is unverified (components unit-tested; migration + per-book lock + glossary writeback all DB-proven). NEXT-session item #1 above.
 - **D-WIKI-M6-CONSUMER-GROUP** (M6 /review-impl MED-2) — the consumer uses `XREAD` from `'$'`, not `XREADGROUP`. With ≥2 knowledge replicas, EVERY replica processes EVERY job (double LLM spend; clobber-guard saves the writeback, not the cost). + no ack/DLQ. Single-replica + flag-off = no impact today. Switch to a consumer group (per-replica claim + PEL recovery) before multi-replica deploy.
 - **D-WIKI-M6-RESUME** (M6 /review-impl LOW-4) — a budget-`paused` job holds the per-book lock with no resume/cancel endpoint (an operator clears it via the DB). Add resume/cancel in M7b (resume re-enqueues; the orchestrator's skip-done handles partial progress).
 - **D-WIKI-M6-PRECISE-COST** (M6) — the cost-cap charges a configured per-article ESTIMATE (`wiki_gen_cost_per_article_usd`), not real tokens (the LLMClient meters via provider-registry but doesn't surface per-call cost to the orchestrator). Wire real per-job metering when the provider-registry usage seam is exposed.
