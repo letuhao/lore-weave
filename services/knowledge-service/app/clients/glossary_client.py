@@ -514,6 +514,35 @@ class GlossaryClient:
             logger.warning("glossary propose-merge-candidates failed: %s", exc)
             return None
 
+    async def write_wiki_article(
+        self,
+        book_id: UUID,
+        *,
+        body: dict,
+    ) -> dict | None:
+        """wiki-llm M5 — POST /internal/books/{book_id}/wiki/articles.
+
+        Write an AI-generated article through glossary's clobber-guarded
+        writeback. Returns the response dict ({action, article_id,
+        generation_status}) or None on any failure (the caller logs + the
+        orchestrator decides retry/skip — a writeback miss must not crash a
+        batch). `action` distinguishes a direct write from a filed suggestion
+        (the human-edited-article guard)."""
+        url = f"{self._base_url}/internal/books/{book_id}/wiki/articles"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.post(
+                url, json=body,
+                headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                logger.warning("glossary wiki-writeback %d", resp.status_code)
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("glossary wiki-writeback failed: %s", exc)
+            return None
+
     async def generate_wiki_stubs(
         self,
         book_id: UUID,

@@ -118,6 +118,43 @@ func insertWikiDeletedOutboxEvent(
 	return nil
 }
 
+// wikiGeneratedEvent (wiki-llm M5) is emitted when an AI generation lands an
+// article via the internal writeback — either as a direct WRITE (clean upsert)
+// or as a SUGGESTION (a human-edited article wasn't clobbered). aggregate_id is
+// the article_id. Phase-2 staleness + the FE generation surface consume it.
+const wikiGeneratedEvent = "wiki.generated"
+
+type wikiGeneratedPayload struct {
+	BookID           string `json:"book_id"`
+	ArticleID        string `json:"article_id"`
+	EntityID         string `json:"entity_id"`
+	Action           string `json:"action"`            // "written" | "suggestion"
+	GenerationStatus string `json:"generation_status"` // generated | needs_review | blocked
+	EmittedAt        string `json:"emitted_at"`
+}
+
+// insertWikiGeneratedOutboxEvent writes a wiki.generated outbox row in the
+// caller's tx (transactional outbox — atomic with the article write).
+func insertWikiGeneratedOutboxEvent(
+	ctx context.Context,
+	exec func(ctx context.Context, sql string, args ...any) error,
+	articleID uuid.UUID,
+	payload wikiGeneratedPayload,
+) error {
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("wiki.generated outbox marshal: %w", err)
+	}
+	if err := exec(ctx, `
+		INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
+		VALUES ('glossary', $1, $2, $3)`,
+		articleID, wikiGeneratedEvent, payloadJSON,
+	); err != nil {
+		return fmt.Errorf("wiki.generated outbox insert: %w", err)
+	}
+	return nil
+}
+
 // entityEventPayload is the JSON payload carried by glossary.entity_updated.
 //
 // It is self-sufficient: it carries everything knowledge-service's

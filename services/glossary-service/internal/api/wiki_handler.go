@@ -1021,7 +1021,7 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 
 		if _, err := tx.Exec(r.Context(), `
 			INSERT INTO wiki_revisions (article_id, version, body_json, author_id, author_type, summary)
-			VALUES ($1, 1, $2, $3, 'owner', 'Auto-generated from KG')`,
+			VALUES ($1, 1, $2, $3, 'system', 'Auto-generated from KG')`,
 			aid, rs.body, userID,
 		); err != nil {
 			slog.Error("generateWikiStubs insert revision", "error", err)
