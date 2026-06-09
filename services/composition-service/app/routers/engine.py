@@ -354,6 +354,7 @@ async def generate(
         # reads as "could not verify", not a false-green.
         canon = {"violations": [], "resolved": True, "iterations": 0, "status": "degraded"}
         revise_out_tokens = 0
+        revise_finish: str | None = None
         try:
             cast_glossary_ids = [str(e) for e in (node.present_entity_ids or [])]
             final_text, reflect, revise_out_tokens = await run_canon_reflect(
@@ -377,13 +378,15 @@ async def generate(
                 "resolved": reflect.resolved, "iterations": reflect.iterations,
                 "status": reflect.status,
             }
+            revise_finish = reflect.revise_finish_reason
         except Exception:  # canon reflect must NEVER fail the generate (F1).
             logger.warning("A2-S3b canon reflect failed (advisory) — keeping winner", exc_info=True)
         total_out = w.metering.output_tokens + revise_out_tokens
         # D-COMP-TRUNCATION-SURFACING: authoritative truncation flag from the
-        # drafter's stop reason (the winner draft is the cap-prone generation; a
-        # canon-revise is a targeted edit — its truncation isn't surfaced here).
-        truncated = w.metering.finish_reason == "length"
+        # drafter's stop reason (the winner draft is the cap-prone generation). A
+        # canon-revise repair can ALSO truncate, so OR in its stop reason (cy16) —
+        # else a cut-off repair is a silent green.
+        truncated = (w.metering.finish_reason == "length") or (revise_finish == "length")
         await jobs.update_status(
             user_id, job.id, "completed",
             result={"text": final_text, "input_tokens": w.metering.input_tokens,
@@ -604,6 +607,7 @@ async def generate_chapter(
     canon_v: dict[str, Any] = {"violations": [], "resolved": True, "iterations": 0,
                                "status": "degraded"}
     revise_out_tokens = 0
+    revise_finish: str | None = None
     try:
         final_text, reflect, revise_out_tokens = await run_canon_reflect(
             knowledge=knowledge, llm=llm, user_id=user_id, project_id=project_id,
@@ -619,6 +623,7 @@ async def generate_chapter(
         canon_v = {"violations": [v.model_dump() for v in reflect.violations],
                    "resolved": reflect.resolved, "iterations": reflect.iterations,
                    "status": reflect.status}
+        revise_finish = reflect.revise_finish_reason
     except Exception:  # canon reflect must NEVER fail the generate (F1).
         logger.warning("chapter canon reflect failed (advisory) — keeping draft", exc_info=True)
 
@@ -636,7 +641,8 @@ async def generate_chapter(
     total_out = winner.metering.output_tokens + revise_out_tokens
     # D-COMP-TRUNCATION-SURFACING: "length" ⇒ the single-pass chapter draft hit the
     # cap (the deterministic plan-sized max_out is the prevention; this is the signal).
-    truncated = winner.metering.finish_reason == "length"
+    # A canon-revise repair can also truncate → OR in its stop reason (cy16).
+    truncated = (winner.metering.finish_reason == "length") or (revise_finish == "length")
     await jobs.update_status(
         user_id, job.id, "completed",
         result={"text": final_text, "input_tokens": winner.metering.input_tokens,
@@ -752,11 +758,16 @@ async def stitch_chapter_endpoint(
     distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
     canon_v: dict[str, Any] = {"violations": [], "resolved": True, "iterations": 0,
                                "status": "degraded"}
+    revise_finish: str | None = None
     try:
         final_text, reflect, _ = await run_canon_reflect(
             knowledge=knowledge, llm=llm, user_id=user_id, project_id=project_id,
             cast_glossary_ids=[str(e) for e in union_cast(scenes)],
-            scene_sort_order=chapter_sort, draft=final_text, packed_prompt="", profile=profile,
+            # A stitch has no single packed prompt — pass the chapter intent as the
+            # revise context so a canon-repair has the chapter's goal to steer by,
+            # not just the violations list (cy16; was "").
+            scene_sort_order=chapter_sort, draft=final_text, packed_prompt=chapter_intent,
+            profile=profile,
             drafter_source=body.model_source, drafter_ref=str(body.model_ref),
             judge_source=str(c_src) if distinct else None,
             judge_ref=str(c_ref) if distinct else None,
@@ -766,8 +777,12 @@ async def stitch_chapter_endpoint(
         canon_v = {"violations": [v.model_dump() for v in reflect.violations],
                    "resolved": reflect.resolved, "iterations": reflect.iterations,
                    "status": reflect.status}
+        revise_finish = reflect.revise_finish_reason
     except Exception:
         logger.warning("stitch canon reflect failed (advisory) — keeping stitched draft", exc_info=True)
+    # A canon-repair during the post-stitch re-check can itself truncate — OR its
+    # stop reason into the stitch-pass flag so a cut-off repair isn't a silent green.
+    truncated = truncated or (revise_finish == "length")
 
     persisted, draft_version, persist_error = False, None, None
     if body.persist:

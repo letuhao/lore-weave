@@ -269,6 +269,12 @@ class ReflectResult(BaseModel):
     violations: list[CanonViolation] = Field(default_factory=list)
     iterations: int = 0                          # revise passes actually run
     resolved: bool = True                        # no confirmed-HARD violations remain
+    # D-COMP-TRUNCATION-SURFACING: the stop reason of the revise pass that produced
+    # the final `text` ("length" ⇒ that repair itself hit the cap, so `text` may be
+    # truncated even when the original winner draft was not). None when no revise
+    # pass produced text (no repair, or the reviser gave up). The engine ORs this
+    # into the job's `truncated` flag so a truncating repair isn't a silent green.
+    revise_finish_reason: str | None = None
 
 
 async def reflect_revise(

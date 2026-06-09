@@ -134,8 +134,11 @@ async def create_work_for_book(
 
     # Get-or-create the composition_work row. The get-then-create is not atomic,
     # so a concurrent same-project POST can lose the PK race — catch the unique
-    # violation and re-get (atomic get-or-create). (The rarer duplicate-knowledge-
-    # project race is tracked as D-COMP-POST-WORK-RACE.)
+    # violation and re-get (atomic get-or-create). (The duplicate-knowledge-project
+    # race — two first-POSTs each creating a book project — was resolved cy6/LOOM-48
+    # knowledge-side: create_project now dedupes via ProjectsRepo.create_or_get under
+    # a per-(user,book) advisory lock, so both POSTs resolve to the SAME project_id
+    # and this unique-violation catch dedupes the work row.)
     existing = await works.get(user_id, project_id)  # type: ignore[arg-type]
     if existing is not None:
         return existing.model_dump(mode="json")

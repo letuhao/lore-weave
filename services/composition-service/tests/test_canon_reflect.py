@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from loreweave_llm.models import TokenEvent, UsageEvent
+from loreweave_llm.models import DoneEvent, TokenEvent, UsageEvent
 
 from app.engine.canon_reflect import run_canon_reflect
 
@@ -28,19 +28,24 @@ class _FakeKnowledge:
 
 
 class _FakeSDK:
-    """stream() yields the REVISED prose (no 'Kai') + a usage frame."""
-    def __init__(self, revised_text):
+    """stream() yields the REVISED prose (no 'Kai') + a usage frame, and a
+    DoneEvent carrying the model stop reason when `finish_reason` is set (the
+    revise-path truncation surface)."""
+    def __init__(self, revised_text, finish_reason=None):
         self._revised = revised_text
+        self._finish_reason = finish_reason
 
     async def stream(self, req, *, user_id):
         yield TokenEvent(delta=self._revised)
         yield UsageEvent(input_tokens=10, output_tokens=7)
+        if self._finish_reason is not None:
+            yield DoneEvent(finish_reason=self._finish_reason)
 
 
 class _FakeLLM:
     """submit_and_wait → judge confirms the violation; .sdk → revise stream."""
-    def __init__(self, revised_text):
-        self.sdk = _FakeSDK(revised_text)
+    def __init__(self, revised_text, finish_reason=None):
+        self.sdk = _FakeSDK(revised_text, finish_reason)
 
     async def submit_and_wait(self, **kwargs):
         return SimpleNamespace(
@@ -76,9 +81,33 @@ async def test_reflect_repairs_seeded_contradiction():
     assert result.status == "checked"    # the guard actually ran
     assert result.iterations == 1
     assert revise_tokens == 7            # the revise pass metered
+    # a clean (non-"length") revise leaves no truncation signal — the non-default
+    # contrast for the truncating-revise test below.
+    assert result.revise_finish_reason is None
     # the snapshot was fetched at sort_order × stride = 5_000_000.
     assert knowledge.calls[0]["at_order"] == 5_000_000
     assert knowledge.calls[0]["glossary_entity_ids"] == ["g-kai"]
+
+
+@pytest.mark.asyncio
+async def test_reflect_surfaces_truncated_revise_pass():
+    # The repair itself hits the token cap: the revise stream ends with
+    # finish_reason="length". run_canon_reflect must surface that on the result so
+    # the engine ORs it into the job's `truncated` flag (a cut-off repair is NOT a
+    # silent green even though the original winner draft was complete).
+    knowledge = _FakeKnowledge(_snapshot())
+    llm = _FakeLLM("The sword lay still in the empty hall and", finish_reason="length")
+    final, result, revise_tokens = await run_canon_reflect(
+        knowledge=knowledge, llm=llm, user_id=uuid4(), project_id=uuid4(),
+        cast_glossary_ids=["g-kai"], scene_sort_order=5,
+        draft="Kai drew his sword and charged the gate.",
+        packed_prompt="<canon>...</canon>", profile=SimpleNamespace(source_language="en", voice=""),
+        drafter_source="user_model", drafter_ref=str(uuid4()),
+        judge_source="user_model", judge_ref=str(uuid4()),  # distinct → judge runs
+        prompt_estimate=100, max_output_tokens=512, max_iters=1,
+    )
+    assert result.iterations == 1                      # a revise pass ran
+    assert result.revise_finish_reason == "length"     # and it truncated → surfaced
 
 
 @pytest.mark.asyncio

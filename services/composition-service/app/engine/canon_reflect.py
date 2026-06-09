@@ -76,9 +76,10 @@ async def run_canon_reflect(
         )
 
     revise_out_tokens = 0
+    revise_finish_reason: str | None = None
 
     async def revise_fn(text: str, hard: list[CanonViolation]) -> str | None:
-        nonlocal revise_out_tokens
+        nonlocal revise_out_tokens, revise_finish_reason
         messages = build_revise_messages(packed_prompt, profile, text, hard)
         revised, metering = await revise_draft(
             llm.sdk, user_id=str(user_id), model_source=drafter_source,
@@ -87,11 +88,17 @@ async def run_canon_reflect(
             trace_id=trace_id, reasoning_effort=reasoning_effort,
         )
         revise_out_tokens += metering.output_tokens
+        # Track the stop reason of the LAST pass that actually produced text — that
+        # output is what reflect_revise keeps as the final draft, so its truncation
+        # is the one that matters (D-COMP-TRUNCATION-SURFACING revise-path).
+        if revised:
+            revise_finish_reason = metering.finish_reason
         return revised or None
 
     result = await reflect_revise(
         draft=draft, check_fn=check_fn, revise_fn=revise_fn, max_iters=max_iters,
     )
+    result.revise_finish_reason = revise_finish_reason
     # `checked` only when the snapshot was actually retrieved; a knowledge
     # outage verified nothing even though reflect_revise ran cleanly.
     result.status = "degraded" if degraded else "checked"
