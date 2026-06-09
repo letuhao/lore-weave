@@ -24,6 +24,7 @@ from app.runner import (
     poll_and_run,
 )
 from app.summary_consumer import consume_summary_stream
+from app.wake import WakeWaiter
 
 logger = logging.getLogger("worker-ai")
 
@@ -83,6 +84,17 @@ async def main() -> None:
     # than at the first job.
     llm_client = get_llm_client()
 
+    # FD-22 — block on the knowledge-service wake stream between poll cycles so
+    # a freshly started job is picked up immediately. None (disabled / no
+    # redis_url) → plain sleep. The poll body is unchanged: the wake only
+    # shortens the wait, the atomic claim in poll_and_run still owns correctness.
+    wake_waiter: WakeWaiter | None = None
+    if settings.extraction_wake_enabled and settings.redis_url:
+        wake_waiter = WakeWaiter(settings.redis_url, settings.extraction_wake_stream)
+        logger.info("FD-22: extraction wake enabled (stream=%s)", settings.extraction_wake_stream)
+    else:
+        logger.info("FD-22: extraction wake disabled — plain polling")
+
     async def _job_poll_loop() -> None:
         while True:
             try:
@@ -95,7 +107,11 @@ async def main() -> None:
             except Exception:
                 logger.exception("Poll cycle error (will retry)")
 
-            await asyncio.sleep(settings.poll_interval_s)
+            if wake_waiter is not None:
+                if await wake_waiter.wait(settings.poll_interval_s):
+                    logger.debug("FD-22: woke on extraction signal — polling now")
+            else:
+                await asyncio.sleep(settings.poll_interval_s)
 
     # P3 D-P3-WORKER-AI-CONSUMER-WIRING: run the extraction-job poll loop
     # AND the Redis Stream consumer for `extraction.summarize` in
@@ -140,6 +156,8 @@ async def main() -> None:
         await knowledge_client.aclose()
         await book_client.aclose()
         await glossary_client.aclose()
+        if wake_waiter is not None:
+            await wake_waiter.aclose()
         await pool.close()
         logger.info("worker-ai stopped")
 

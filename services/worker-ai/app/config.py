@@ -38,6 +38,14 @@ class Settings(BaseSettings):
     # Poll interval (seconds) — how often to check for running jobs.
     poll_interval_s: float = 5.0
 
+    # FD-22 — block on a knowledge-service wake signal instead of a blind sleep
+    # between poll cycles, so a freshly started job is picked up immediately.
+    # The poll stays the source-of-truth; this only shortens the wait. Disabled
+    # (or no redis_url) → plain sleep = pure polling. Stream name MUST match the
+    # producer's `EXTRACTION_WAKE_STREAM` in knowledge-service.
+    extraction_wake_enabled: bool = True
+    extraction_wake_stream: str = "extraction.wake"
+
     # Max items to process per poll cycle before re-checking job status.
     # Lower = more responsive to pause/cancel, higher = less DB overhead.
     items_per_status_check: int = 1
