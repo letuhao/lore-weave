@@ -24,7 +24,11 @@
 
 **M0 DONE** (`app/wiki/`, knowledge-service, pure, /loom L, **ruff + 14 unit tests green**, /review-impl clear): render-agnostic **IR** (`WikiArticleIR/Block/Span/Source`) + **dep-free constrained-markdown→IR parser** (cite-lift · drop-unknown-as-hallucinated · grounded-flag · spoiler `source_chapter_max`) + **mappers** `IR→TipTap` (ContentRenderer vocab + `citation` mark w/ jump-anchor + References) · `IR→markdown` (round-trips) · `IR→plaintext`. /review-impl: removed dead `quote` block-type (round-trip drift) + 3 coverage tests; LOW-3/4 documented.
 
-**NEXT:** **M1** (BookProfile internal endpoint + knowledge client, option A — small) or **M2** (retriever `run_hybrid_search` in-process + `context.py`). Critical path M2→M3→M4→M5→M6→M7b; M1 + M7a (citation mark FE) parallel-able. See plan §II.
+**2 commits LOCAL on `wiki/llm-gen` (off main `2ace6272`), NOT pushed:** `e9313ef0` plan + BookProfile-A decision · `12956b1e` M0.
+
+**▶ NEXT SESSION = `/loom` M1 — BookProfile read (option A).** Add `GET /internal/lore-enrichment/books/{book_id}/profile` to lore-enrichment ([`app/api/book_profile.py`](../../services/lore-enrichment-service/app/api/book_profile.py); internal-token via `require_internal_token`, reuse `get_book_profile`, neutral default if unset — additive, touches the profile API only, NOT enrichment internals) + a knowledge-service `BookProfileClient` that reads it **once per book per job** (cache). Fields used by the wiki prompt: `worldview/voice/era_policy/language/anachronism_markers`. Plan §I-**C8** + §II-**M1**. Small/low-risk.
+
+Then **M2** (retriever `run_hybrid_search` in-process + `context.py` — critical path). M1 + M7a (citation-mark FE) are parallel-able; critical path = M2→M3→M4→M5→M6→M7b. Plan §II + §III risks (the M3/M4/M6 design points resolve at their milestone's CLARIFY).
 
 **Deferred (wiki):**
 - **D-WIKI-SEED-ROBUSTNESS** (test-infra, /review-impl COSMETIC-1) — `migrate.Seed` guards on table-empty; on a shared test DB a prior 'unknown' kind makes default-kind seeding skip → merge fixtures lose 'character'. Worked around in the merge fixture (seed-if-missing); root-cause fix = make `migrate.Seed` per-kind idempotent (`ON CONFLICT (code) DO NOTHING`) — separate cleanup task.
