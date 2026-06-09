@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"path"
 	"strconv"
@@ -22,12 +23,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/loreweave/observability"
 	"github.com/loreweave/provider-registry-service/internal/billing"
 	"github.com/loreweave/provider-registry-service/internal/config"
 	"github.com/loreweave/provider-registry-service/internal/jobs"
 	"github.com/loreweave/provider-registry-service/internal/provider"
+	"github.com/loreweave/provider-registry-service/internal/ratelimit"
 	"github.com/loreweave/provider-registry-service/internal/storage"
 )
 
@@ -97,6 +100,28 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 	if pool != nil {
 		s.jobsRepo = jobs.NewRepo(pool)
 		s.jobsWorker = jobs.NewWorker(s.jobsRepo, s.resolveJobCreds, jobsAdapterFactory(s.invokeClient), notifier, nil, audioCache, s.guardrail, cfg.JobMaxRetries)
+		// S3a (G5) — attach the per-provider governor + circuit-breaker when
+		// REDIS_URL is configured. Untyped-nil interfaces stay in place when it
+		// isn't, so Guard passes calls through (governance disabled).
+		if cfg.RedisURL != "" {
+			if opts, err := redis.ParseURL(cfg.RedisURL); err == nil {
+				rdb := redis.NewClient(opts)
+				gov := ratelimit.NewGovernor(rdb, ratelimit.GovernorConfig{
+					CloudMax:       cfg.GovernorCloudMax,
+					Lease:          time.Duration(cfg.GovernorLeaseMs) * time.Millisecond,
+					AcquireTimeout: time.Duration(cfg.GovernorAcquireTimeoutMs) * time.Millisecond,
+				})
+				brk := ratelimit.NewBreaker(rdb, ratelimit.BreakerConfig{
+					Threshold: cfg.BreakerThreshold,
+					Window:    time.Duration(cfg.BreakerWindowS) * time.Second,
+					Cooldown:  time.Duration(cfg.BreakerCooldownS) * time.Second,
+				})
+				s.jobsWorker.WithGovernance(gov, brk)
+				slog.Info("S3a governance enabled", "cloud_max", cfg.GovernorCloudMax, "breaker_threshold", cfg.BreakerThreshold)
+			} else {
+				slog.Warn("S3a: REDIS_URL set but unparseable — governance disabled", "err", err)
+			}
+		}
 	}
 	return s
 }

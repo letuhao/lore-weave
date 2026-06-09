@@ -20,6 +20,7 @@ import (
 	"github.com/loreweave/provider-registry-service/internal/billing"
 	"github.com/loreweave/provider-registry-service/internal/chunker"
 	"github.com/loreweave/provider-registry-service/internal/provider"
+	"github.com/loreweave/provider-registry-service/internal/ratelimit"
 	"github.com/loreweave/provider-registry-service/internal/storage"
 )
 
@@ -63,6 +64,11 @@ type Worker struct {
 	// Phase 6b — transient-retry budget (config JOB_MAX_RETRIES). 0 → a
 	// failed upstream call is not retried.
 	maxRetries int
+	// S3a (G5) — per-provider concurrency governor + circuit-breaker. Both
+	// nil when REDIS_URL is unset → ratelimit.Guard passes calls through
+	// unchanged (governance disabled; existing tests stay Redis-free).
+	gov ratelimit.ConcurrencyGovernor
+	brk ratelimit.CircuitBreaker
 }
 
 func NewWorker(repo *Repo, resolve CredResolver, adapter AdapterFactory, notifier Notifier, logger *slog.Logger, audioCache *storage.AudioCache, guardrail *billing.GuardrailClient, maxRetries int) *Worker {
@@ -73,6 +79,15 @@ func NewWorker(repo *Repo, resolve CredResolver, adapter AdapterFactory, notifie
 		notifier = NoopNotifier{}
 	}
 	return &Worker{repo: repo, resolve: resolve, adapter: adapter, notifier: notifier, logger: logger, audioCache: audioCache, guardrail: guardrail, maxRetries: maxRetries}
+}
+
+// WithGovernance attaches the S3a governor + circuit-breaker (fluent so the
+// existing NewWorker call sites and their tests are untouched). Pass untyped-nil
+// interfaces to disable a layer — never a typed-nil concrete (see ratelimit.Guard).
+func (w *Worker) WithGovernance(gov ratelimit.ConcurrencyGovernor, brk ratelimit.CircuitBreaker) *Worker {
+	w.gov = gov
+	w.brk = brk
+	return w
 }
 
 // finalizeAndNotify is the only path through which the worker ends a
@@ -367,17 +382,14 @@ func (w *Worker) Process(
 	// Otherwise we fall through to single-call Phase 2b path unchanged.
 	chunkPieces := w.maybeChunk(inputMap, chunking, logger)
 	if len(chunkPieces) > 1 {
-		if err := w.processChunks(ctx, jobID, agg, adapter, endpointBaseURL, secret, providerModelName, inputMap, chunkPieces, emit, logger); err != nil {
-			errCode := "LLM_UPSTREAM_ERROR"
-			if err == provider.ErrStreamNotSupported {
-				errCode = "LLM_STREAM_NOT_SUPPORTED"
-			}
+		if err := w.processChunks(ctx, jobID, agg, adapter, providerKind, endpointBaseURL, secret, providerModelName, inputMap, chunkPieces, emit, logger); err != nil {
+			errCode := classifyStreamErrorCode(err)
 			w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil, errCode, err.Error(), "")
 			return
 		}
 	} else {
 		// Single-call Phase 2b path with Phase 4a-α Step 0b transient retry.
-		streamErr := w.streamWithRetry(ctx, agg, adapter, endpointBaseURL, secret, providerModelName, inputMap, emit, logger)
+		streamErr := w.streamWithRetry(ctx, agg, adapter, providerKind, endpointBaseURL, secret, providerModelName, inputMap, emit, logger)
 		if streamErr != nil {
 			logger.Error("stream failed", "err", streamErr)
 			errCode := classifyStreamErrorCode(streamErr)
@@ -430,6 +442,7 @@ func (w *Worker) processChunks(
 	jobID uuid.UUID,
 	agg Aggregator,
 	adapter provider.Adapter,
+	providerKind string,
 	endpointBaseURL, secret, providerModelName string,
 	inputMap map[string]any,
 	chunks []string,
@@ -447,7 +460,12 @@ func (w *Worker) processChunks(
 			// StartChunk resets the per-chunk buffer — so a retry after a
 			// partial stream discards that attempt's partial (Phase 6b).
 			agg.StartChunk(i)
-			return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, perChunkInput, emit)
+			// S3a: governor + circuit-breaker wrap the provider call. Inside
+			// retryTransient so each retry re-checks the breaker + re-acquires
+			// a slot, and a transient failure counts toward opening.
+			return ratelimit.Guard(ctx, w.gov, w.brk, providerKind, provider.IsTransientUpstreamError, func() error {
+				return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, perChunkInput, emit)
+			})
 		})
 		if streamErr != nil {
 			// EndChunk is NOT called on failure: the job fails and the
@@ -482,6 +500,7 @@ func (w *Worker) streamWithRetry(
 	ctx context.Context,
 	agg Aggregator,
 	adapter provider.Adapter,
+	providerKind string,
 	endpointBaseURL, secret, providerModelName string,
 	input map[string]any,
 	emit EmitFn,
@@ -489,7 +508,10 @@ func (w *Worker) streamWithRetry(
 ) error {
 	err := retryTransient(ctx, w.maxRetries, logger, func() error {
 		agg.StartChunk(0)
-		return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, input, emit)
+		// S3a: governor + circuit-breaker wrap the provider call (see processChunks).
+		return ratelimit.Guard(ctx, w.gov, w.brk, providerKind, provider.IsTransientUpstreamError, func() error {
+			return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, input, emit)
+		})
 	})
 	if err != nil {
 		// EndChunk skipped on failure — the failed job's result is
@@ -503,6 +525,9 @@ func (w *Worker) streamWithRetry(
 // classifyStreamErrorCode picks the canonical LLM_* error code for a
 // stream failure so finalizeAndNotify can emit a stable error envelope.
 func classifyStreamErrorCode(err error) string {
+	if errors.Is(err, ratelimit.ErrCircuitOpen) {
+		return "LLM_CIRCUIT_OPEN" // S3a: provider circuit open — failed fast, provider untouched
+	}
 	if err == provider.ErrStreamNotSupported {
 		return "LLM_STREAM_NOT_SUPPORTED"
 	}

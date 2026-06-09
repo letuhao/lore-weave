@@ -294,6 +294,13 @@ services:
       # Phase 6b — transient-retry budget for a worker job. Optional; the
       # code default (3) applies when unset.
       JOB_MAX_RETRIES: ${JOB_MAX_RETRIES:-3}
+      # S3a (G5) — per-provider concurrency governor + circuit-breaker on the
+      # jobs-worker path. REDIS_URL enables it (unset = governance off). Tunables
+      # have code defaults; set to override for the autonomous batch.
+      REDIS_URL: redis://redis:6379
+      GOVERNOR_CLOUD_MAX: ${GOVERNOR_CLOUD_MAX:-8}
+      BREAKER_THRESHOLD: ${BREAKER_THRESHOLD:-5}
+      BREAKER_COOLDOWN_S: ${BREAKER_COOLDOWN_S:-30}
       # Phase 6c — OpenTelemetry trace export. Unset = no-op tracer (the
       # service still boots). Set it + bring up the `observability` profile
       # to wire tracing to the collector; see the otel-collector block.

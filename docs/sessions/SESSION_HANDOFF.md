@@ -1,7 +1,7 @@
 # Session Handoff — Session 105 (eval R&D closed + Production Eval Flywheel track planned)
 
 > **Purpose:** orient the next agent in one read. This file is the single, unversioned handoff — updated in place at the end of each session. (Older `SESSION_PATCH.md` is deprecated → archive later.)
-> **Date:** 2026-06-09 (Auto-Draft Factory **S1 spine + S2 idempotency/range/eval-per-user** shipped; human-in-loop v2.2).
+> **Date:** 2026-06-09 (Auto-Draft Factory **S1 spine + S2 idempotency + S3a governor/breaker** shipped; human-in-loop v2.2).
 > **HEAD:** TBD (post-commit). Branch: `feat/advanced-translation-pipeline`.
 
 ## ▶ NEXT SESSION — start here
@@ -37,7 +37,18 @@
 
 **Recently cleared:** ✅ **D-K16.2-02b** (knowledge runner honours chapter_range) · ✅ **D-TRANSL-IDEMPOTENCY / D-TRANSL-RESUME** (G3 — declarative skip; Resume/Re-run = re-run with default skip) · ✅ **D-EVAL-JUDGE-PER-USER** (content-owner billing).
 
-**▶ NEXT (S3):** reliability + policy — Redis per-provider rate-limit governor · circuit-breaker → campaign-pause · exponential backoff · campaign budget-cap pause · paced dispatch (fairness) · unified cancel. Also `D-CAMPAIGN-DRIVER-SINGLETON` (claim-based dispatch for HA) belongs here. `/loom S3`.
+**S3 DECOMPOSED (PO 2026-06-09)** into S3a (governor+breaker) · S3b (backoff) · S3c (campaign pause/claim/cancel + breaker→pause) · S3d (budget-pause, co-design w/ S4). v2.2.
+
+**✅ S3a DONE — per-provider governor + circuit-breaker (XL, one loom, 2026-06-09).** Plan [`docs/plans/2026-06-09-s3a-governor-breaker.md`](../plans/2026-06-09-s3a-governor-breaker.md). Closes **G5** (the "#1 overnight risk"). New `provider-registry/internal/ratelimit/`: **Governor** (Redis sliding-window concurrency limiter via atomic Lua — cloud kinds capped at `GOVERNOR_CLOUD_MAX`, local ollama/lm_studio **serialized to 1** = the single GPU; lease-TTL=300s so a crashed worker's slot self-frees; **fails-open** on redis-down — no SPOF). **Breaker** (pure `decideAllow`/`decideRecord` state machine + thin Redis I/O: closed→open at threshold→half-open after cooldown→close/re-open; counts only `isTransient` failures so a 400 never trips it). **Guard** (breaker-open → fail-fast `LLM_CIRCUIT_OPEN`, provider untouched). Wired into the **jobs-worker** path (`processChunks`/`streamWithRetry`, keyed by `providerKind`, inside `retryTransient`); **nil-tolerant** `WithGovernance` (REDIS_URL unset → pass-through, existing tests untouched). config + `NewServer` redis-init + compose (`REDIS_URL` + tunables) + go.mod (go-redis/v9). **VERIFY:** `go build ./...` + `go vet` + `go test ./...` all green (api/billing/chunker/jobs/provider/ratelimit). Pure logic unit-tested (breaker state-machine ×8, maxFor, Guard ×5) + **wiring tests** (spy gov/brk in a real Worker → Guard invoked; open-circuit fails fast w/o calling provider even with retry budget). **/review-impl (2 passes): fixed lease 120s→300s (over-admission), maxN<1 clamp, added the wiring test (the real catch — governance could've silently no-op'd & all tests stay green).** LIVE-SMOKE deferred (Lua atomicity + cap + breaker recovery under load).
+
+**S3a deferred rows:**
+- **`D-S3A-GOVERNOR-LIVE-SMOKE`** — live: concurrency cap honoured under parallel load; breaker opens on induced 5xx + recovers after cooldown; governor fail-open on redis-down.
+- **`D-S3A-INTERACTIVE-GOVERNANCE`** — wrap `stream_handler.go` (interactive) + media workers (audio/image/video); S3a covers the jobs/batch path only.
+- **`D-S3A-GOVERNOR-FAIRNESS`** — acquire poll-loop (50ms) loads Redis under saturation; a blocking-pop/fair-queue is a scale follow-on (mitigated by campaign paced dispatch).
+
+**Recently cleared:** ✅ **G5** (governor + circuit-breaker; the overnight-failure risk).
+
+**▶ NEXT:** **S3b** (translation worker exponential backoff — RabbitMQ retry-TTL-ladder, G6, translation-only, small) · then **S3c** (campaign pause endpoint + `FOR UPDATE SKIP LOCKED` claim-dispatch [`D-CAMPAIGN-DRIVER-SINGLETON`] + cancel propagation via new internal cancel endpoints + **breaker→campaign-pause** keyed on `LLM_CIRCUIT_OPEN`, F) · then **S3d**/**S4** (budget-pause + usage→outbox, coupled). `/loom S3b`.
 
 ### ▶ RAW SEARCH (branch `raw-search/foundation`, off `origin/main`)
 

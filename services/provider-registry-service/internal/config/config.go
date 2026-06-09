@@ -48,6 +48,18 @@ type Config struct {
 	// Config-driven (env JOB_MAX_RETRIES), code default 3.
 	JobMaxRetries int
 
+	// S3a (G5) — per-provider concurrency governor + circuit-breaker on the
+	// jobs-worker path. RedisURL empty → governance disabled (Guard passes
+	// calls through). Sized for the autonomous batch: bound cloud concurrency,
+	// serialize local GPU (=1), and auto-pause a flapping provider.
+	RedisURL                 string
+	GovernorCloudMax         int // concurrency cap per cloud provider kind
+	GovernorLeaseMs          int // per-acquisition lease TTL (> max call duration)
+	GovernorAcquireTimeoutMs int // max wait for a slot before a transient error
+	BreakerThreshold         int // windowed failures that trip the breaker
+	BreakerWindowS           int // failure-count decay window
+	BreakerCooldownS         int // open → half-open wait
+
 	// E5B rerank is BYOK (D-RERANK-NOT-BYOK): /internal/rerank resolves the
 	// user's rerank model from provider-registry like /internal/embed — there is
 	// no platform rerank endpoint/model config here anymore.
@@ -93,6 +105,30 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	if c.JobMaxRetries, err = getEnvInt("JOB_MAX_RETRIES", 3); err != nil {
+		return nil, err
+	}
+	// S3a governor + breaker (all optional; RedisURL empty disables governance).
+	c.RedisURL = os.Getenv("REDIS_URL")
+	if c.GovernorCloudMax, err = getEnvInt("GOVERNOR_CLOUD_MAX", 8); err != nil {
+		return nil, err
+	}
+	// Lease TTL ≥ the max provider-call duration (invoke_timeout_secs≈300s) so a
+	// long stream's slot isn't reclaimed mid-call (which would over-admit — for a
+	// local GPU, a 2nd concurrent call). A crashed worker's slot still frees when
+	// this elapses.
+	if c.GovernorLeaseMs, err = getEnvInt("GOVERNOR_LEASE_MS", 300000); err != nil {
+		return nil, err
+	}
+	if c.GovernorAcquireTimeoutMs, err = getEnvInt("GOVERNOR_ACQUIRE_TIMEOUT_MS", 30000); err != nil {
+		return nil, err
+	}
+	if c.BreakerThreshold, err = getEnvInt("BREAKER_THRESHOLD", 5); err != nil {
+		return nil, err
+	}
+	if c.BreakerWindowS, err = getEnvInt("BREAKER_WINDOW_S", 60); err != nil {
+		return nil, err
+	}
+	if c.BreakerCooldownS, err = getEnvInt("BREAKER_COOLDOWN_S", 30); err != nil {
 		return nil, err
 	}
 	return c, nil
