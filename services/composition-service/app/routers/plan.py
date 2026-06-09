@@ -186,6 +186,19 @@ async def decompose_commit(
     if bad:
         raise HTTPException(status_code=400, detail={"code": "BAD_CHAPTER", "chapter_ids": bad})
 
+    # Robustness (LOOM-73): refuse to commit an ALL-EMPTY plan — a decompose that
+    # produced no scenes for ANY (valid) chapter, i.e. the planner LLM degraded
+    # (the pre-LOOM-71 reasoning_effort 400, or any future model/parse failure).
+    # Without this guard the empty commit succeeds silently and the author hits a
+    # mysterious NO_CHAPTER_PLAN only later at generate-time. Fail fast with an
+    # actionable code (the per-chapter `warning`s in the preview say WHY). Placed
+    # AFTER the IDOR check so a bad-chapter body still reports BAD_CHAPTER first.
+    if not any(ch.scenes for ch in body.chapters):
+        raise HTTPException(status_code=400, detail={
+            "code": "EMPTY_DECOMPOSE_PLAN",
+            "detail": "the plan has no scenes for any chapter — the planner likely "
+                      "degraded (try again, or use a different model). Nothing was committed."})
+
     # present_entity validation against the glossary cast. Best-effort: on a
     # glossary outage (empty roster) we SKIP rather than false-reject valid ids
     # (present_entity_ids are non-FK, packer-tolerant). Only validate when we have

@@ -194,6 +194,19 @@ def test_decompose_commit_bad_chapter_idor_400(ctx):
     assert r.status_code == 400 and r.json()["detail"]["code"] == "BAD_CHAPTER"
 
 
+def test_decompose_commit_empty_plan_400(ctx):
+    # LOOM-73: a VALID chapter with NO scenes (the planner degraded — e.g. the
+    # pre-LOOM-71 reasoning_effort 400 left every chapter empty) must be rejected
+    # at commit with EMPTY_DECOMPOSE_PLAN, not silently committed (which would
+    # surface only later as a mysterious NO_CHAPTER_PLAN at generate-time).
+    c, _, _, _, outline, _ = ctx
+    r = c.post(f"/v1/composition/works/{PROJECT}/outline/decompose/commit",
+               json=_commit_body(chapters=[{"chapter_id": str(CH1), "title": "Ch 1",
+                                            "intent": "open", "beat_role": "setup", "scenes": []}]))
+    assert r.status_code == 400 and r.json()["detail"]["code"] == "EMPTY_DECOMPOSE_PLAN"
+    assert outline.created is None  # nothing committed
+
+
 def test_decompose_commit_bad_entity_400(ctx):
     c, *_ = ctx
     body = _commit_body()
