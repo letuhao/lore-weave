@@ -98,6 +98,26 @@ def test_dispatch_forwards_verifier_model_to_payload(client, mocker):
     assert str(created_payload.verifier_model_ref) == VER
 
 
+def test_dispatch_forwards_eval_judge_model_to_payload(client, mocker):
+    """S5b-eval: a campaign-picked eval-judge model threads onto CreateJobPayload
+    (rides the translation.quality event to learning's M7d-2 fidelity judge)."""
+    mocker.patch(
+        "app.routers.internal_dispatch._verify_book_owner", new_callable=AsyncMock)
+    core = mocker.patch(
+        "app.routers.internal_dispatch._resolve_and_create_job",
+        new_callable=AsyncMock, return_value=SimpleNamespace(job_id=UUID(JOB)))
+    EJ = "88888888-8888-8888-8888-888888888888"
+    resp = client.post(
+        "/internal/translation/dispatch-job",
+        json=_body(eval_judge_model_source="user_model", eval_judge_model_ref=EJ),
+        headers={"X-Internal-Token": TOKEN},
+    )
+    assert resp.status_code == 201, resp.text
+    created_payload = core.call_args.args[2]
+    assert created_payload.eval_judge_model_source == "user_model"
+    assert str(created_payload.eval_judge_model_ref) == EJ
+
+
 def test_dispatch_drops_half_verifier_override(client, mocker):
     """A verifier source with no ref is a half-override → both dropped (the
     CreateJobPayload pairing validator would otherwise 422)."""

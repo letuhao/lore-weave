@@ -35,6 +35,10 @@ class CreateCampaignPayload(BaseModel):
     # S5b — per-campaign VERIFIER model (V3). None = fall back to the translator.
     verifier_model_source: Optional[str] = None
     verifier_model_ref: Optional[UUID] = None
+    # S5b-eval — per-campaign translation EVAL-JUDGE model. None = no per-campaign
+    # judge (learning falls back to its service-wide config).
+    eval_judge_model_source: Optional[str] = None
+    eval_judge_model_ref: Optional[UUID] = None
     # S5b — knowledge-project model overrides applied to the project at create
     # (the project is SSOT; these are NOT persisted on the campaign). embedding
     # override on a project that already has a graph needs confirm_embedding_change
@@ -105,6 +109,8 @@ class Campaign(BaseModel):
     translation_model_ref: Optional[UUID]
     verifier_model_source: Optional[str]
     verifier_model_ref: Optional[UUID]
+    eval_judge_model_source: Optional[str]
+    eval_judge_model_ref: Optional[UUID]
     chapter_from: Optional[int]
     chapter_to: Optional[int]
     budget_usd: Optional[Decimal]
@@ -173,6 +179,9 @@ class CampaignChapter(BaseModel):
     knowledge_attempts: int
     translation_attempts: int
     last_error: Optional[str]
+    # S5b-eval: the translation-fidelity judge's [0,1] verdict (None until judged;
+    # best-effort telemetry, does not gate the eval stage).
+    eval_fidelity_score: Optional[Decimal] = None
 
 
 class CampaignDetail(Campaign):

@@ -39,6 +39,7 @@ _CAMPAIGN_COLS = """
   knowledge_model_source, knowledge_model_ref,
   translation_model_source, translation_model_ref,
   verifier_model_source, verifier_model_ref,
+  eval_judge_model_source, eval_judge_model_ref,
   chapter_from, chapter_to, budget_usd, spent_usd, total_chapters, error_message,
   created_at, updated_at, started_at, finished_at
 """
@@ -73,6 +74,8 @@ async def create_campaign(
     budget_usd: Optional[Decimal] = None,
     verifier_model_source: Optional[str] = None,
     verifier_model_ref: Optional[UUID] = None,
+    eval_judge_model_source: Optional[str] = None,
+    eval_judge_model_ref: Optional[UUID] = None,
 ) -> asyncpg.Record:
     return await conn.fetchrow(
         f"""
@@ -81,15 +84,17 @@ async def create_campaign(
           knowledge_project_id, knowledge_model_source, knowledge_model_ref,
           translation_model_source, translation_model_ref,
           verifier_model_source, verifier_model_ref,
+          eval_judge_model_source, eval_judge_model_ref,
           chapter_from, chapter_to, total_chapters, budget_usd
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
         RETURNING {_CAMPAIGN_COLS}
         """,
         owner_user_id, book_id, name, gating_mode, target_language,
         knowledge_project_id, knowledge_model_source, knowledge_model_ref,
         translation_model_source, translation_model_ref,
         verifier_model_source, verifier_model_ref,
+        eval_judge_model_source, eval_judge_model_ref,
         chapter_from, chapter_to, total_chapters, budget_usd,
     )
 
@@ -143,7 +148,7 @@ async def get_campaign_chapters(
         """
         SELECT chapter_id, chapter_sort, ingest_status, knowledge_status,
                translation_status, eval_status, knowledge_attempts,
-               translation_attempts, last_error
+               translation_attempts, last_error, eval_fidelity_score
         FROM campaign_chapters
         WHERE campaign_id = $1
         ORDER BY chapter_sort ASC
@@ -288,6 +293,41 @@ async def mark_stage_done_by_chapter(
         book_id, owner_user_id, chapter_id, target_language,
     )
     # asyncpg returns e.g. "UPDATE 3"
+    try:
+        return int(result.split()[-1])
+    except (ValueError, IndexError, AttributeError):
+        return 0
+
+
+async def set_eval_fidelity_by_chapter(
+    pool: asyncpg.Pool,
+    *,
+    owner_user_id: UUID,
+    book_id: UUID,
+    chapter_id: UUID,
+    score: float,
+    target_language: Optional[str] = None,
+) -> int:
+    """S5b-eval: record the translation-fidelity judge's [0,1] score for a chapter
+    across every active campaign on this (book, user). Additive telemetry — does
+    NOT touch eval_status (the eval stage still advances via translation.quality;
+    the LLM judge is best-effort and must not gate completion). Same (book, owner,
+    language) correlation + active-status filter as the stage-done path; idempotent
+    (a re-delivered eval_judged event just rewrites the same score)."""
+    result = await pool.execute(
+        """
+        UPDATE campaign_chapters cc
+        SET eval_fidelity_score = $4, updated_at = now()
+        FROM campaigns c
+        WHERE c.campaign_id = cc.campaign_id
+          AND c.book_id = $1
+          AND c.owner_user_id = $2
+          AND c.status IN ('running', 'cancelling', 'paused')
+          AND cc.chapter_id = $3
+          AND ($5::text IS NULL OR c.target_language IS NULL OR c.target_language = $5)
+        """,
+        book_id, owner_user_id, chapter_id, score, target_language,
+    )
     try:
         return int(result.split()[-1])
     except (ValueError, IndexError, AttributeError):

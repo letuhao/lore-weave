@@ -39,6 +39,37 @@ async def test_known_event_advances_correct_stage(fake_pool, mocker, event_type,
     assert mark.call_args.kwargs["chapter_id"] == UUID(CHAP)
 
 
+async def test_eval_judged_sets_fidelity_score_not_stage(fake_pool, mocker):
+    """S5b-eval: translation.eval_judged records the fidelity score (additive) and
+    must NOT advance the eval stage (that rides translation.quality)."""
+    setter = mocker.patch(
+        "app.events.consumer.repo.set_eval_fidelity_by_chapter",
+        new_callable=AsyncMock, return_value=1,
+    )
+    stage_mark = mocker.patch(
+        "app.events.consumer.repo.mark_stage_done_by_chapter", new_callable=AsyncMock,
+    )
+    handled = await handle_event(
+        fake_pool, "translation.eval_judged",
+        _payload(target_language="vi", score=0.87),
+    )
+    assert handled is True
+    setter.assert_awaited_once()
+    assert setter.call_args.kwargs["score"] == 0.87
+    assert setter.call_args.kwargs["target_language"] == "vi"
+    stage_mark.assert_not_awaited()  # NOT a stage-done signal
+
+
+async def test_eval_judged_bad_score_ignored(fake_pool, mocker):
+    setter = mocker.patch(
+        "app.events.consumer.repo.set_eval_fidelity_by_chapter", new_callable=AsyncMock,
+    )
+    handled = await handle_event(
+        fake_pool, "translation.eval_judged", _payload(score="not-a-number"))
+    assert handled is False
+    setter.assert_not_awaited()
+
+
 async def test_translation_event_passes_target_language_guard(fake_pool, mocker):
     # The language guard: translation/eval events carry target_language and must
     # forward it so a different-language translation can't falsely complete a

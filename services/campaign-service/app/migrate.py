@@ -104,6 +104,15 @@ CREATE TABLE IF NOT EXISTS campaign_usage_seen (
 -- they are applied to the chosen knowledge project at create; the project is SSOT.)
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS verifier_model_source TEXT;
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS verifier_model_ref    UUID;
+
+-- S5b-eval — per-campaign translation EVAL-JUDGE model. NULL = use the
+-- service-wide default (or no judge). Rides the translation.quality event to
+-- learning-service's M7d-2 fidelity judge. eval_fidelity_score on the projection
+-- stores the judge's [0,1] verdict per chapter (additive telemetry — best-effort,
+-- does NOT gate the eval stage, which still rides translation.quality).
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS eval_judge_model_source TEXT;
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS eval_judge_model_ref    UUID;
+ALTER TABLE campaign_chapters ADD COLUMN IF NOT EXISTS eval_fidelity_score NUMERIC(4,3);
 """
 
 

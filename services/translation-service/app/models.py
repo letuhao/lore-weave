@@ -107,6 +107,11 @@ class CreateJobPayload(BaseModel):
     max_qa_rounds: Optional[int] = None      # 1..5 (orchestrator caps at 5)
     verifier_model_source: Optional[str] = None
     verifier_model_ref: Optional[UUID] = None
+    # S5b-eval: per-campaign translation eval-judge model. NOT used by the worker —
+    # it rides through to the translation.quality event so learning-service's M7d-2
+    # fidelity judge uses the campaign's chosen model (campaign pick = opt-in).
+    eval_judge_model_source: Optional[str] = None
+    eval_judge_model_ref: Optional[UUID] = None
     cold_start_mode: Optional[str] = None    # 'single_pass' (default) | 'two_pass' (M4d-2c)
     # S2 idempotency (G3): by default the job SKIPS chapters that already have a
     # fresh successful active translation for the target language (declarative
@@ -159,6 +164,8 @@ class CreateJobPayload(BaseModel):
         # Same pairing rule for the verifier model (else source/ref would mismatch).
         if self.verifier_model_source is not None and self.verifier_model_ref is None:
             raise ValueError("verifier_model_ref is required when verifier_model_source is overridden")
+        if self.eval_judge_model_source is not None and self.eval_judge_model_ref is None:
+            raise ValueError("eval_judge_model_ref is required when eval_judge_model_source is overridden")
         return self
 
 

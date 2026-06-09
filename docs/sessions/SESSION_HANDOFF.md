@@ -1,15 +1,15 @@
-# Session Handoff — Session 107 (Auto-Draft Factory S5a + S5b)
+# Session Handoff — Session 107 (Auto-Draft Factory S5a + S5b + S5b-eval)
 
 > **Purpose:** orient the next agent in one read. This file is the single, unversioned handoff — updated in place at the end of each session. (Older `SESSION_PATCH.md` is deprecated → archive later.)
-> **Date:** 2026-06-10 (backend S0–S4 COMPLETE; **S5 epic: S5a estimate endpoint + S5b verifier/embedding/rerank per-campaign shipped**; human-in-loop v2.2).
+> **Date:** 2026-06-10 (backend S0–S4 COMPLETE; **S5 epic: S5a estimate + S5b verifier/embedding/rerank + S5b-eval per-campaign judge shipped → all 6 Model-Matrix roles configurable**; human-in-loop v2.2).
 > **HEAD:** TBD (post-commit). Branch: `feat/advanced-translation-pipeline`.
 
-## ▶ NEXT: S5b-eval — translation eval-judge pipeline (NEW feature)
-S5 (Auto-Draft Factory wizard/monitor) was reframed at CLARIFY into a multi-service epic, **decomposed S5a→S5b→(S5b-eval)→S5c** (PO 2026-06-10; full record + the embedding-safety constraint in [`docs/plans/2026-06-10-s5-auto-draft-factory-fe-epic.md`](../plans/2026-06-10-s5-auto-draft-factory-fe-epic.md)). PO chose **all 6 roles editable incl. embedding**, a real backend estimate, create+launch→minimal detail, and **build eval-judge now**.
-- **S5a DONE** (`53b3d630`, pushed) — cost/time estimate endpoint.
-- **S5b DONE** (this session) — verifier + embedding/reranker per-campaign. See block below.
-- **S5b-eval (NEXT)** — investigation found eval-judge is **not plumbing**: the campaign "eval" stage is advanced *passively* by the `translation.quality` event and there is **no LLM translation-judge today** (learning-service's online judge consumes `knowledge.extraction_run_completed`, extraction-only). So this is a **new cross-service feature** (its own CLARIFY/DESIGN): define what a translation-fidelity judge does, on which event, with what data (source+translation), where it runs (learning-service?), and thread a per-campaign `eval_judge_model_source/ref`. PO chose to build it now → `/loom S5b-eval`. Needs design — don't treat as a thread-it slice.
-- **S5c** — FE wizard (multi-step) + minimal detail page, against the S5a/S5b(/eval) contracts. i18n ×4.
+## ▶ NEXT: S5c — Auto-Draft Factory FE wizard + minimal detail page
+S5 (Auto-Draft Factory wizard/monitor) was reframed at CLARIFY into a multi-service epic, **decomposed S5a→S5b→S5b-eval→S5c** (PO 2026-06-10; full record + the embedding-safety constraint in [`docs/plans/2026-06-10-s5-auto-draft-factory-fe-epic.md`](../plans/2026-06-10-s5-auto-draft-factory-fe-epic.md)). PO chose **all 6 roles editable incl. embedding**, a real backend estimate, create+launch→minimal detail, build eval-judge now.
+- **S5a DONE** (`53b3d630`, pushed) — cost/time estimate endpoint (`POST /v1/campaigns/estimate`).
+- **S5b DONE** (`9d6b53b6`, **not pushed**) — verifier + embedding/reranker per-campaign.
+- **S5b-eval DONE** (this session) — per-campaign translation eval-judge model. See block below. **🏁 all 6 Model-Matrix roles now configurable** (extractor, translator, verifier, embedding, reranker, eval-judge) — backend complete for the wizard.
+- **S5c (NEXT)** — the **FE-only** wizard: a multi-step setup (book + knowledge project → chapter range → Model Matrix [6 BYOK role pickers, mirror `EmbeddingModelPicker`] → budget + `POST /v1/campaigns/estimate` cost/time review → launch=create+`/start`) + a minimal campaign detail/list page (status, spent/budget, chapter_count). Embedding picker must collect `confirm_embedding_change` when the project has a graph (else create 409s `CAMPAIGN_EMBEDDING_CONFLICT`). No stepper component exists — build one. Route `/campaigns` + sidebar nav + i18n ×4 (en/vi/ja/zh-TW). Rich monitor (per-chapter projection, pause/resume/cancel, fidelity scores) = S6.
 
 ## ▶ NEXT SESSION — start here
 
@@ -124,7 +124,13 @@ S5 (Auto-Draft Factory wizard/monitor) was reframed at CLARIFY into a multi-serv
 - **`D-S5B-LIVE-SMOKE`** — real 3-service: create w/ verifier + embedding/rerank → translation job carries `verifier_model_ref`, project embedding/rerank patched (fresh-set + confirm-delete), graph-conflict create 409s.
 - **`D-S5B-EMBED-CREATE-ATOMICITY`** — the project patch precedes the campaign INSERT (no cross-service tx); a post-(destructive)-patch insert failure leaves a benign project mutation. Acceptable for user-initiated create; revisit if it bites.
 
-Also pending: deferred **live-smokes** across S4a–d + `D-RERANK-BYOK-LIVE-SMOKE` on a real stack-up. S4 + S5a pushed to `origin/feat/advanced-translation-pipeline`; **S5b not yet pushed**. PR `→ main` when the FE lands or per PO.
+**✅ S5b-eval DONE — per-campaign translation eval-judge model (XL, one loom, 3-service, 2026-06-10). 🏁 all 6 Model-Matrix roles configurable.** Design in the epic doc. **CLARIFY reframe:** the M7d-2 translation-fidelity judge ALREADY exists (`learning-service .../online_translation_judge.py`, invoked by `handlers._maybe_judge_translation` on `translation.quality`); it used a SERVICE-WIDE model. S5b-eval makes the MODEL per-campaign (NOT a new pipeline — investigate-before-you-build). **Thread:** `campaigns += eval_judge_model_source/ref` + `translation_jobs += eval_judge_model_source/ref` (migrations) → driver → translation dispatch → persisted on the job → published on the job msg → coordinator → per-chapter msg → `_emit_translation_quality` rides the model + **force-feeds source/translated text** when set (campaign opt-in, independent of the `translation_judge_feed_enabled` flag). **learning:** `_maybe_judge_translation` uses the EVENT's model when present (campaign pick = opt-in, bypasses both global flags); bills the content owner. **Verdict emit (PO #3):** best-effort XADD `translation.eval_judged` → **dedicated** `loreweave:events:translation_eval` stream (so learning doesn't consume its own emit) → campaign projection consumer → `campaign_chapters.eval_fidelity_score` (additive; `eval_status` STILL rides `translation.quality` — the judge is best-effort and must not gate completion). **VERIFY:** campaign **98**+6 skip · translation **547** (INSERT-arg assertions updated for the new trailing cols) · learning **134**. **/review-impl: coverage gap fixed** (create→repo eval_judge persistence test) + LOWs accepted (per-emit redis conn; verdict-after-terminal not recorded; best-effort emit). No cross-tenant model leak; idempotent overwrite.
+
+**S5b-eval deferred rows:**
+- **`D-S5BEVAL-LIVE-SMOKE`** — real 3-service: campaign w/ eval_judge model → translation.quality carries model+texts → learning judges with the campaign model → translation.eval_judged → campaign_chapters.eval_fidelity_score set.
+- **`D-S5BEVAL-LEARNING-OUTBOX`** — the eval_judged emit is a best-effort XADD (learning has no transactional outbox); a lost emit drops a fidelity score. Add a real outbox if this telemetry becomes load-bearing.
+
+Also pending: deferred **live-smokes** across S4a–d + `D-RERANK-BYOK-LIVE-SMOKE` + S5a/S5b/S5b-eval smokes on a real stack-up. S4 + S5a pushed to `origin/feat/advanced-translation-pipeline`; **S5b + S5b-eval not yet pushed**. PR `→ main` when the FE lands or per PO.
 
 ### ▶ RAW SEARCH (branch `raw-search/foundation`, off `origin/main`)
 

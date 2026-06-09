@@ -169,6 +169,8 @@ async def create_campaign(
                 budget_usd=payload.budget_usd,
                 verifier_model_source=payload.verifier_model_source,
                 verifier_model_ref=payload.verifier_model_ref,
+                eval_judge_model_source=payload.eval_judge_model_source,
+                eval_judge_model_ref=payload.eval_judge_model_ref,
             )
             await repo.seed_campaign_chapters(
                 conn, row["campaign_id"],

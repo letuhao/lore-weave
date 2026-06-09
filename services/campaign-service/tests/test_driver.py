@@ -35,6 +35,8 @@ def _campaign(**over):
         "translation_model_ref": None,
         "verifier_model_source": None,
         "verifier_model_ref": None,
+        "eval_judge_model_source": None,
+        "eval_judge_model_ref": None,
         "target_language": "vi",
     }
     base.update(over)
@@ -95,8 +97,10 @@ async def test_cold_start_dispatches_both_stages(fake_pool, patch_repo):
     ]
     clients, tr, kn = _clients()
     VER = "77777777-7777-7777-7777-777777777777"
+    EJ = "88888888-8888-8888-8888-888888888888"
     await _process(fake_pool, clients,
-                   _campaign(verifier_model_source="user_model", verifier_model_ref=VER))
+                   _campaign(verifier_model_source="user_model", verifier_model_ref=VER,
+                             eval_judge_model_source="user_model", eval_judge_model_ref=EJ))
 
     tr.dispatch_job.assert_awaited_once()
     assert tr.dispatch_job.call_args.kwargs["chapter_ids"] == [C1]
@@ -107,6 +111,9 @@ async def test_cold_start_dispatches_both_stages(fake_pool, patch_repo):
     # S5b: the campaign's verifier model is threaded onto the translation dispatch.
     assert tr.dispatch_job.call_args.kwargs["verifier_model_source"] == "user_model"
     assert tr.dispatch_job.call_args.kwargs["verifier_model_ref"] == VER
+    # S5b-eval: the campaign's eval-judge model is threaded too.
+    assert tr.dispatch_job.call_args.kwargs["eval_judge_model_source"] == "user_model"
+    assert tr.dispatch_job.call_args.kwargs["eval_judge_model_ref"] == EJ
     # Both claimed rows flipped to dispatched.
     stages = {c.args[3] for c in patch_repo["mark_stage_dispatched"].call_args_list}
     assert stages == {"knowledge", "translation"}

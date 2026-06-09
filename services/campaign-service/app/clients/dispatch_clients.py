@@ -50,6 +50,8 @@ class TranslationDispatchClient:
         campaign_id: str | None = None,
         verifier_model_source: str | None = None,
         verifier_model_ref: str | None = None,
+        eval_judge_model_source: str | None = None,
+        eval_judge_model_ref: str | None = None,
     ) -> str:
         """POST /internal/translation/dispatch-job → returns the new job_id.
 
@@ -68,6 +70,8 @@ class TranslationDispatchClient:
             "campaign_id": campaign_id,
             "verifier_model_source": verifier_model_source,
             "verifier_model_ref": verifier_model_ref,
+            "eval_judge_model_source": eval_judge_model_source,
+            "eval_judge_model_ref": eval_judge_model_ref,
         }
         try:
             resp = await self._http.post(url, json=body)

@@ -51,6 +51,11 @@ class InternalDispatchPayload(BaseModel):
     # + persists + publishes these; we just forward them.
     verifier_model_source: str | None = None
     verifier_model_ref: UUID | None = None
+    # S5b-eval: per-campaign translation eval-judge model. Rides through to the
+    # translation.quality event (not used by the worker) so learning's M7d-2
+    # fidelity judge uses the campaign's chosen model.
+    eval_judge_model_source: str | None = None
+    eval_judge_model_ref: UUID | None = None
     # S2: default-skip idempotency applies here too (the campaign driver relies
     # on it — re-dispatching an already-translated chapter must not re-spend).
     force_retranslate: bool = False
@@ -87,6 +92,7 @@ async def dispatch_job(
     model_source = payload.model_source if payload.model_ref else None
     # Same pairing rule for the verifier override: keep both unset on a half-override.
     verifier_model_source = payload.verifier_model_source if payload.verifier_model_ref else None
+    eval_judge_model_source = payload.eval_judge_model_source if payload.eval_judge_model_ref else None
     job = await _resolve_and_create_job(
         db,
         payload.book_id,
@@ -97,6 +103,8 @@ async def dispatch_job(
             model_ref=payload.model_ref,
             verifier_model_source=verifier_model_source,
             verifier_model_ref=payload.verifier_model_ref,
+            eval_judge_model_source=eval_judge_model_source,
+            eval_judge_model_ref=payload.eval_judge_model_ref,
             force_retranslate=payload.force_retranslate,
         ),
         user_id,

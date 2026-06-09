@@ -259,6 +259,13 @@ ALTER TABLE translation_jobs
   ADD COLUMN IF NOT EXISTS qa_depth              TEXT NOT NULL DEFAULT 'standard',
   ADD COLUMN IF NOT EXISTS cold_start_mode       TEXT NOT NULL DEFAULT 'single_pass';
 
+-- S5b-eval: per-campaign translation eval-judge model. Only on translation_jobs
+-- (campaign-supplied via dispatch; NOT a user/book setting). Rides the
+-- translation.quality event to learning-service's M7d-2 fidelity judge.
+ALTER TABLE translation_jobs
+  ADD COLUMN IF NOT EXISTS eval_judge_model_source TEXT,
+  ADD COLUMN IF NOT EXISTS eval_judge_model_ref    UUID;
+
 -- Per-block QA issues — drives targeted re-translate + the future "needs review" UI.
 CREATE TABLE IF NOT EXISTS translation_quality_issues (
   id                     UUID PRIMARY KEY DEFAULT uuidv7(),

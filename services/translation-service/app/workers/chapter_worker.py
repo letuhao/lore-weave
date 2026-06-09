@@ -523,8 +523,17 @@ async def _emit_translation_quality(
     # sample both by the SAME fraction of their own length, with the fraction picked
     # so neither side exceeds the cap. Both samples then cover the same story span
     # AND stay bounded. cap<=0 → skip the feed (don't emit empty strings).
+    # S5b-eval: a campaign-chosen eval-judge model rides the event so learning's
+    # M7d-2 judge uses it. The campaign pick IS the opt-in — when present, force the
+    # text feed for THIS chapter regardless of the service-wide feed flag (otherwise
+    # the judge has no inputs). Non-campaign traffic still honours the flag.
+    eval_judge_ref = msg.get("eval_judge_model_ref")
+    if eval_judge_ref:
+        payload["eval_judge_model_source"] = msg.get("eval_judge_model_source")
+        payload["eval_judge_model_ref"] = eval_judge_ref
     cap = settings.translation_judge_feed_max_chars
-    if settings.translation_judge_feed_enabled and source_text and translated_text and cap > 0:
+    feed_texts = settings.translation_judge_feed_enabled or bool(eval_judge_ref)
+    if feed_texts and source_text and translated_text and cap > 0:
         frac = min(1.0, cap / len(source_text), cap / len(translated_text))
         payload["source_text"] = source_text[: max(1, int(len(source_text) * frac))]
         payload["translated_text"] = translated_text[: max(1, int(len(translated_text) * frac))]

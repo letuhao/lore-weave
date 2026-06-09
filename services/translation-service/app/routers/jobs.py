@@ -101,6 +101,10 @@ async def _resolve_and_create_job(
         eff["verifier_model_source"] = payload.verifier_model_source
     if payload.verifier_model_ref:
         eff["verifier_model_ref"] = payload.verifier_model_ref
+    if payload.eval_judge_model_source:
+        eff["eval_judge_model_source"] = payload.eval_judge_model_source
+    if payload.eval_judge_model_ref:
+        eff["eval_judge_model_ref"] = payload.eval_judge_model_ref
     if payload.cold_start_mode:
         eff["cold_start_mode"] = payload.cold_start_mode
     if not eff.get("model_ref"):
@@ -162,9 +166,10 @@ async def _resolve_and_create_job(
                    chunk_size_tokens, invoke_timeout_secs,
                    chapter_ids, total_chapters, pipeline_version,
                    qa_depth, max_qa_rounds, verifier_model_source, verifier_model_ref,
-                   cold_start_mode, campaign_id)
+                   cold_start_mode, campaign_id,
+                   eval_judge_model_source, eval_judge_model_ref)
                 VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-                        $17,$18,$19,$20,$21,$22)
+                        $17,$18,$19,$20,$21,$22,$23,$24)
                 RETURNING *
                 """,
                 book_id, uid,
@@ -178,6 +183,7 @@ async def _resolve_and_create_job(
                 eff.get("qa_depth", "standard"), eff.get("max_qa_rounds", 2),
                 eff.get("verifier_model_source"), eff.get("verifier_model_ref"),
                 eff.get("cold_start_mode", "single_pass"), campaign_id,
+                eff.get("eval_judge_model_source"), eff.get("eval_judge_model_ref"),
             )
 
             job_id = job_row["job_id"]
@@ -244,6 +250,8 @@ async def _resolve_and_create_job(
             "max_qa_rounds":           eff.get("max_qa_rounds", 2),
             "verifier_model_source":   eff.get("verifier_model_source"),
             "verifier_model_ref":      str(eff["verifier_model_ref"]) if eff.get("verifier_model_ref") else None,
+            "eval_judge_model_source": eff.get("eval_judge_model_source"),
+            "eval_judge_model_ref":    str(eff["eval_judge_model_ref"]) if eff.get("eval_judge_model_ref") else None,
             "cold_start_mode":         eff.get("cold_start_mode", "single_pass"),
             # S4a: ride campaign_id through the message chain (job → chapter → job_meta).
             "campaign_id":             str(campaign_id) if campaign_id else None,

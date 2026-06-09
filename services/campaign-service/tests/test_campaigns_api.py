@@ -34,6 +34,8 @@ def _campaign_row(**over):
         "translation_model_ref": None,
         "verifier_model_source": None,
         "verifier_model_ref": None,
+        "eval_judge_model_source": None,
+        "eval_judge_model_ref": None,
         "chapter_from": None,
         "chapter_to": None,
         "budget_usd": None,
@@ -147,6 +149,19 @@ def test_create_threads_verifier_to_repo(client, mocker):
     assert resp.status_code == 201, resp.text
     assert create.call_args.kwargs["verifier_model_source"] == "user_model"
     assert str(create.call_args.kwargs["verifier_model_ref"]) == VER
+
+
+def test_create_threads_eval_judge_to_repo(client, mocker):
+    _book_stub(mocker)
+    create = mocker.patch("app.repositories.create_campaign",
+                          new_callable=AsyncMock, return_value=_campaign_row())
+    mocker.patch("app.repositories.seed_campaign_chapters", new_callable=AsyncMock)
+    EJ = "88888888-8888-8888-8888-888888888888"
+    resp = client.post("/v1/campaigns", json=_payload(
+        eval_judge_model_source="user_model", eval_judge_model_ref=EJ))
+    assert resp.status_code == 201, resp.text
+    assert create.call_args.kwargs["eval_judge_model_source"] == "user_model"
+    assert str(create.call_args.kwargs["eval_judge_model_ref"]) == EJ
 
 
 def test_create_with_embedding_applies_to_project(client, mocker):

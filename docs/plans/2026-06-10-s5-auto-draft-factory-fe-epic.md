@@ -42,9 +42,94 @@ caution (lighter) for reranker. **Do not lose this in S5b.**
 
 ## Slices
 - **S5a** — cost/time estimate endpoint (DONE, `53b3d630`). FS, cross-service. No schema change.
-- **S5b** — verifier + embedding/reranker per-campaign (this doc, below). FS, schema migration + cross-service (campaign + translation + knowledge).
-- **S5b-eval** — translation eval-judge pipeline (NEW feature, its own loom this session). PO chose to build it now; it's not plumbing (no translation judge exists today — see below).
+- **S5b** — verifier + embedding/reranker per-campaign (DONE, `9d6b53b6`). FS, migration + cross-service.
+- **S5b-eval** — per-campaign translation eval-judge MODEL (this doc, below). The judge ALREADY exists
+  (M7d-2); this threads a per-campaign model + emits the verdict for the monitor.
 - **S5c** — FE wizard (multi-step) + minimal detail page. FE-only against the S5a/S5b(/eval) contracts. i18n ×4.
+
+---
+
+# S5b-eval — per-campaign translation eval-judge model
+
+> CLARIFY REFRAME (2026-06-10): the M7d-2 translation-fidelity judge ALREADY exists
+> (`learning-service/app/db/online_translation_judge.py run_translation_judge`, invoked by
+> `handlers._maybe_judge_translation` on `translation.quality`; the event already carries
+> `source_text`+`translated_text` behind a flag). It uses a SERVICE-WIDE model
+> (`online_judge_model_ref`). S5b-eval makes that model PER-CAMPAIGN. NOT a new pipeline.
+> PO: ride the model on the event (no cross-DB); campaign pick = opt-in (bypass the 2 global
+> flags for campaign chapters); ALSO emit `translation.eval_judged` → campaign_chapters fidelity.
+
+## Grounding (verified)
+- `_maybe_judge_translation` (handlers.py:453) gates on `online_translation_judge_enabled` +
+  `online_judge_model_ref` + event-carried texts; bills the content owner (D-EVAL-JUDGE-PER-USER).
+- `translation.quality` payload (chapter_worker.py:465 `_emit_translation_quality`) carries the
+  texts only when `translation_judge_feed_enabled` (off by default).
+- campaign projection consumer reads `loreweave:events:translation` (where `translation.quality` rides).
+- **learning-service is consume-only** — no XADD/outbox today. #3 adds a minimal **best-effort XADD**
+  (reuse the consumer's redis client) — consistent with the judge being best-effort telemetry; a
+  lost emit just leaves `eval_fidelity_score` null. No transactional outbox.
+
+## Design
+### 1. Thread the campaign's judge model to the event (campaign → translation → event)
+- `campaigns += eval_judge_model_source/ref`; `translation_jobs += eval_judge_model_source/ref`
+  (migrations) — mirrors verifier. `CreateCampaignPayload`/`Campaign`/`_CAMPAIGN_COLS`/`create` +=,
+  driver → `dispatch_job` += , translation `InternalDispatchPayload` += → persisted on the job.
+- `_emit_translation_quality`: when the job has `eval_judge_model_ref`, include
+  `eval_judge_model_source/ref` AND force-include `source_text`+`translated_text` on the event
+  (campaign opt-in — independent of `translation_judge_feed_enabled`).
+
+### 2. learning-service uses the event's model (campaign opt-in)
+- `_maybe_judge_translation`: if the event carries `eval_judge_model_ref` → run the judge with it
+  (regardless of the 2 global flags — the campaign pick IS the opt-in); else preserve today's
+  global-flag + global-model behavior. Bill the content owner (unchanged).
+
+### 3. Emit the verdict for the monitor (PO #3)
+- After `persist_translation_judge`, **best-effort XADD** `translation.eval_judged` to
+  `loreweave:events:translation` carrying `{user_id, book_id, chapter_id, target_language, score, judge_model}`.
+  (chapter_id: the event carries chapter_translation_id; include chapter_id too — `_emit_translation_quality`
+  has it.) Wrapped in try/except (best-effort; never fails the handler).
+- `campaign_chapters += eval_fidelity_score NUMERIC` (migration). Campaign projection consumer handles
+  `translation.eval_judged` → set `eval_fidelity_score` by (book_id, owner, chapter_id, language).
+  **Additive only** — `eval_status='done'` STILL rides `translation.quality` (the judge is best-effort;
+  a judge failure must NOT block campaign completion).
+
+## Edge cases
+| Case | Handling |
+|---|---|
+| campaign sets no eval_judge | event carries no judge model → learning falls back to global flags (today's behavior). |
+| campaign eval_judge set, global flags off | judge runs anyway for campaign chapters (campaign = opt-in). |
+| judge LLM fails | best-effort: logged, no verdict, no eval_judged emit; eval_status still done via quality. |
+| eval_judged XADD fails | eval_fidelity_score stays null; campaign still completes. |
+| eval_judged arrives before/without a matching chapter | consumer no-ops (same (book,owner,chapter,lang) correlation as other stages). |
+
+## Deferred
+- **`D-S5BEVAL-LIVE-SMOKE`** — real 3-service: campaign w/ eval_judge model → translation.quality
+  carries model+texts → learning judges with the campaign model → translation.eval_judged →
+  campaign_chapters.eval_fidelity_score set.
+- **`D-S5BEVAL-LEARNING-OUTBOX`** — the eval_judged emit is a best-effort XADD (no transactional
+  outbox in learning-service); a lost emit drops a fidelity score. Add a real outbox if this telemetry
+  becomes load-bearing.
+
+## review-impl resolution (2026-06-10)
+- **Coverage gap fixed** — added `test_create_threads_eval_judge_to_repo` (the per-campaign
+  persistence the whole feature rests on; previously only covered by verifier-symmetry).
+- **LOW (accept)** — `_emit_eval_judged` opens a redis connection per judged chapter (no
+  pooling); negligible vs the LLM judge latency + best-effort.
+- **LOW (accept)** — a verdict arriving after the campaign reaches a terminal status isn't
+  recorded (the active-status filter); acceptable for best-effort telemetry.
+- **LOW (accept) `D-S5BEVAL-LEARNING-OUTBOX`** — the emit is a best-effort XADD (learning has no
+  transactional outbox); a lost emit just leaves eval_fidelity_score null.
+- No cross-tenant model leak (provider-registry resolves the judge model scoped to the
+  content-owner); idempotent overwrite (no dedup needed, unlike spend accumulation).
+
+## Test plan
+- campaign: eval_judge threads to dispatch (driver/dispatch_client) + persists on create;
+  consumer maps `translation.eval_judged` → eval_fidelity_score.
+- translation: `InternalDispatchPayload` eval_judge → CreateJobPayload/job; `_emit_translation_quality`
+  includes model + texts when eval_judge set (and omits when not).
+- learning: `_maybe_judge_translation` uses event model over global config; runs on campaign opt-in
+  with global flags off; emits eval_judged best-effort (+ failure is non-fatal).
+- VERIFY: campaign + translation + learning pytest. Live-smoke deferred.
 
 ---
 

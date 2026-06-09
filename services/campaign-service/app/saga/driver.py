@@ -178,6 +178,11 @@ async def process_campaign(
                     str(campaign["verifier_model_ref"])
                     if campaign["verifier_model_ref"] else None
                 ),
+                eval_judge_model_source=campaign["eval_judge_model_source"],  # S5b-eval
+                eval_judge_model_ref=(
+                    str(campaign["eval_judge_model_ref"])
+                    if campaign["eval_judge_model_ref"] else None
+                ),
             )
             if tr_job_id:  # S3c-2: record for cancel propagation
                 await repo.set_dispatched_job_id(

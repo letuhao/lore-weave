@@ -63,6 +63,9 @@ STREAMS = [
     "loreweave:events:knowledge",
     "loreweave:events:chapter",
     "loreweave:events:translation",
+    # S5b-eval: learning-service emits translation.eval_judged here (a DEDICATED
+    # stream so learning doesn't consume its own emit off :translation).
+    "loreweave:events:translation_eval",
 ]
 GROUP_NAME = "campaign-collector"
 BLOCK_MS = 5000
@@ -76,6 +79,11 @@ async def handle_event(pool: asyncpg.Pool, event_type: str, payload: dict) -> bo
     failure_stage = FAILURE_EVENT_STAGE.get(event_type)
     if failure_stage is not None:
         return await _handle_circuit_failure(pool, failure_stage, payload)
+
+    # S5b-eval: a translation-fidelity verdict records a per-chapter score (additive
+    # telemetry — does NOT advance the eval stage, which rides translation.quality).
+    if event_type == "translation.eval_judged":
+        return await _handle_eval_judged(pool, payload)
 
     stage = EVENT_STAGE.get(event_type)
     if stage is None:
@@ -137,6 +145,35 @@ async def _handle_circuit_failure(pool: asyncpg.Pool, stage: str, payload: dict)
         logger.warning(
             "circuit-open auto-paused %d campaign(s) on book=%s stage=%s", paused, book_id, stage,
         )
+    return True
+
+
+async def _handle_eval_judged(pool: asyncpg.Pool, payload: dict) -> bool:
+    """S5b-eval: store the translation-fidelity judge's [0,1] score on the chapter's
+    projection row(s). Best-effort telemetry — a malformed/missing score is ignored
+    (never DLQ'd; the judge itself is best-effort) and it never touches eval_status."""
+    try:
+        user_id = payload["user_id"]
+        book_id = payload["book_id"]
+        chapter_id = payload["chapter_id"]
+        score = float(payload["score"])
+    except (KeyError, TypeError, ValueError):
+        logger.warning("translation.eval_judged missing/invalid fields — ignoring")
+        return False
+    if not user_id or not book_id or not chapter_id:
+        return False
+    try:
+        await repo.set_eval_fidelity_by_chapter(
+            pool,
+            owner_user_id=UUID(str(user_id)),
+            book_id=UUID(str(book_id)),
+            chapter_id=UUID(str(chapter_id)),
+            score=score,
+            target_language=payload.get("target_language"),
+        )
+    except (ValueError, TypeError):
+        logger.warning("translation.eval_judged has malformed UUID(s)")
+        return False
     return True
 
 
