@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -108,4 +109,85 @@ func (s *Server) fetchWikiNeighborhood(ctx context.Context, ownerUserID, glossar
 		return nil, nil
 	}
 	return &n, nil
+}
+
+// wiki-llm M6 — the LLM-generation delegate. When a wiki-generate request carries
+// a model_ref, glossary delegates to knowledge-service's batch generator instead
+// of rendering the deterministic stub. Unlike the read above this is NOT a
+// degrade-to-nil path: the user asked to generate, so the upstream status
+// (202 accept / 409 active-job / 404 not-indexed) is PROPAGATED to the caller.
+func (s *Server) triggerWikiGeneration(
+	ctx context.Context, bookID, userID uuid.UUID,
+	modelSource, modelRef string, entityIDs []string, maxSpendUSD *float64,
+) (status int, respBody []byte, err error) {
+	base := strings.TrimRight(s.cfg.KnowledgeServiceURL, "/")
+	if base == "" {
+		return 0, nil, fmt.Errorf("knowledge-service not configured")
+	}
+	payload := map[string]any{
+		"user_id":      userID.String(),
+		"model_source": modelSource,
+		"model_ref":    modelRef,
+		"entity_ids":   entityIDs,
+	}
+	if maxSpendUSD != nil {
+		payload["max_spend_usd"] = *maxSpendUSD
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return 0, nil, err
+	}
+	url := fmt.Sprintf("%s/internal/knowledge/books/%s/wiki/generate", base, bookID.String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if s.cfg.InternalServiceToken != "" {
+		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	}
+	if tid := TraceIDFromContext(ctx); tid != "" {
+		req.Header.Set(traceIDHeader, tid)
+	}
+	res, err := knowledgeHTTPClient.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer res.Body.Close()
+	respBody, _ = io.ReadAll(io.LimitReader(res.Body, 1<<16))
+	return res.StatusCode, respBody, nil
+}
+
+// resolveWikiGenEntities lists the candidate entity ids for an LLM wiki-gen
+// delegate: active, non-deleted entities in the book, optionally filtered by
+// kind, bounded by limit. The clobber-guard (M5) protects any human-edited
+// article downstream, so this selects ALL matching entities (not only ones
+// without an article) — the LLM may regenerate a stub.
+func (s *Server) resolveWikiGenEntities(
+	ctx context.Context, bookID uuid.UUID, kindCodes []string, limit int,
+) ([]string, error) {
+	sql := `SELECT ge.entity_id::text
+		FROM glossary_entities ge
+		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		WHERE ge.book_id = $1 AND ge.deleted_at IS NULL AND ge.status = 'active'`
+	args := []any{bookID}
+	if len(kindCodes) > 0 {
+		sql += ` AND ek.code = ANY($2)`
+		args = append(args, kindCodes)
+	}
+	sql += fmt.Sprintf(` ORDER BY ge.created_at LIMIT %d`, limit)
+	rows, err := s.pool.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }

@@ -27,13 +27,20 @@ which is the Neo4j tenant key.
 from __future__ import annotations
 
 import logging
+from decimal import Decimal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+import redis.asyncio as aioredis
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
+from app.config import settings
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.entities import get_neighborhood_by_glossary_id
+from app.db.repositories.projects import ProjectsRepo
+from app.db.repositories.wiki_gen_jobs import ActiveJobExists, WikiGenJobsRepo
+from app.deps import get_knowledge_pool, get_projects_repo
+from app.jobs.wiki_gen_enqueue import enqueue_wiki_gen
 from app.middleware.internal_auth import require_internal_token
 
 logger = logging.getLogger(__name__)
@@ -169,3 +176,62 @@ async def get_wiki_neighborhood(
         total_relations=detail.total_relations,
         relations_truncated=detail.relations_truncated,
     )
+
+
+# ── wiki-llm M6 — batch generation trigger ───────────────────────────────────
+
+_redis_client: aioredis.Redis | None = None
+
+
+def _redis() -> aioredis.Redis:
+    """Lazy module-level redis client for the wiki-gen XADD (mirrors the summary
+    enqueue pattern; one client per process)."""
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = aioredis.from_url(settings.redis_url)
+    return _redis_client
+
+
+class WikiGenerateRequest(BaseModel):
+    user_id: UUID
+    model_source: str = Field(min_length=1)
+    model_ref: str = Field(min_length=1)
+    #: the entities to generate. Empty is rejected (the glossary delegate resolves
+    #: the selection by kind and passes explicit ids); generate-ALL is a follow-up.
+    entity_ids: list[str] = Field(default_factory=list)
+    max_spend_usd: Decimal | None = None
+
+
+@router.post("/books/{book_id}/wiki/generate", status_code=status.HTTP_202_ACCEPTED)
+async def trigger_wiki_generation(
+    book_id: UUID,
+    req: WikiGenerateRequest,
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+) -> dict:
+    """Create a wiki-gen job for the book + enqueue it. 202 + job_id on accept;
+    404 not_indexed if the user has no project for the book; 409 (+ the existing
+    job_id) when an active job already holds the per-book lock."""
+    if not req.entity_ids:
+        raise HTTPException(status_code=400, detail="entity_ids required")
+    projects = await projects_repo.list(req.user_id, book_id=book_id, limit=1)
+    if not projects:
+        raise HTTPException(status_code=404, detail="not_indexed")
+
+    repo = WikiGenJobsRepo(get_knowledge_pool())
+    try:
+        job = await repo.create(
+            user_id=req.user_id, project_id=projects[0].project_id, book_id=book_id,
+            model_source=req.model_source, model_ref=req.model_ref,
+            entity_ids=req.entity_ids, max_spend_usd=req.max_spend_usd,
+            items_total=len(req.entity_ids),
+        )
+    except ActiveJobExists as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "active_job_exists",
+                "job_id": str(exc.existing_job_id) if exc.existing_job_id else None,
+            },
+        )
+    await enqueue_wiki_gen(_redis(), str(job.job_id))
+    return {"job_id": str(job.job_id), "status": "pending"}

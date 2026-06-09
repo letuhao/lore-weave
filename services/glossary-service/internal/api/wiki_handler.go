@@ -870,6 +870,12 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		KindCodes []string `json:"kind_codes"`
 		Limit     *int     `json:"limit"`
+		// wiki-llm M6 — when ModelRef is set the request is DELEGATED to
+		// knowledge-service's LLM batch generator instead of the deterministic
+		// stub render. ModelSource defaults to "user_model".
+		ModelRef    string   `json:"model_ref"`
+		ModelSource string   `json:"model_source"`
+		MaxSpendUSD *float64 `json:"max_spend_usd"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "WIKI_BAD_REQUEST", "invalid JSON body")
@@ -879,6 +885,37 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 	genLimit := 50
 	if req.Limit != nil && *req.Limit > 0 && *req.Limit <= 200 {
 		genLimit = *req.Limit
+	}
+
+	// wiki-llm M6 — LLM delegate. Resolve the candidate entities + hand off to
+	// knowledge-service; propagate its 202/409/404. The deterministic stub path
+	// below is unchanged (the fallback when no model_ref is supplied).
+	if req.ModelRef != "" {
+		entityIDs, err := s.resolveWikiGenEntities(r.Context(), bookID, req.KindCodes, genLimit)
+		if err != nil {
+			slog.Error("generateWikiStubs resolve entities (delegate)", "error", err)
+			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+			return
+		}
+		if len(entityIDs) == 0 {
+			writeJSON(w, http.StatusOK, map[string]any{"action": "none", "entities": 0})
+			return
+		}
+		modelSource := req.ModelSource
+		if modelSource == "" {
+			modelSource = "user_model"
+		}
+		status, body, err := s.triggerWikiGeneration(
+			r.Context(), bookID, userID, modelSource, req.ModelRef, entityIDs, req.MaxSpendUSD)
+		if err != nil {
+			slog.Error("generateWikiStubs delegate", "error", err)
+			writeError(w, http.StatusBadGateway, "WIKI_DELEGATE", "generation service unavailable")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = w.Write(body)
+		return
 	}
 
 	// Find entities without wiki articles.

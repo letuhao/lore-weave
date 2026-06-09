@@ -72,6 +72,18 @@ class Settings(BaseSettings):
     lore_enrichment_client_timeout_s: float = 5.0
     book_profile_cache_ttl_s: float = 60.0
 
+    # wiki-llm M6 — batch wiki-generation orchestrator. `wiki_gen_enabled` gates
+    # the stream consumer (OFF by default: generation costs tokens, so a deploy
+    # never auto-starts generating). cost_per_article is the per-article ESTIMATE
+    # charged against a job's max_spend_usd (the LLMClient meters real tokens via
+    # provider-registry; precise per-job metering is a follow-up). prompt/pipeline
+    # version stamp the C7 build_inputs fingerprint (Phase-2 staleness).
+    wiki_gen_enabled: bool = False
+    wiki_gen_cost_per_article_usd: float = 0.05
+    wiki_gen_passage_limit: int = 8
+    wiki_prompt_version: str = "wiki-v1"
+    wiki_pipeline_version: str = "wiki-m6"
+
     # P1 (2026-05-23) — /internal/parse body size cap. Default 200 MiB
     # matches book-service's maxImportSize at services/book-service/internal/api/import.go.
     # H3 fix: explicit ceiling — without this, a misconfigured caller could

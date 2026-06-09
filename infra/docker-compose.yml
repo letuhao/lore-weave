@@ -644,6 +644,9 @@ services:
       # wiki-llm M1 (option A) — read the authored de-bias BookProfile from
       # lore-enrichment over the internal token to shape the wiki-gen prompt.
       LORE_ENRICHMENT_SERVICE_URL: http://lore-enrichment-service:8093
+      # wiki-llm M6 — batch wiki-generation consumer. OFF by default (spends
+      # tokens); set true to drain loreweave:events:wiki-gen and generate.
+      WIKI_GEN_ENABLED: ${KNOWLEDGE_WIKI_GEN_ENABLED:-false}
     depends_on:
       postgres:
         condition: service_healthy
