@@ -6,6 +6,17 @@
 
 ## ▶ NEXT SESSION — start here
 
+### ▶ ON-PREM DEPLOY — scaling & cost assessment (branch `feat/on-prem-single-port`)
+
+**Deploy scalability + operating-cost assessment done (2026-06-09).** Full doc: [`2026-06-09-deploy-scaling-cost-assessment.md`](../plans/2026-06-09-deploy-scaling-cost-assessment.md). **Verdict:** BYOK removed the dominant cost (LLM tokens + GPU); one node serves thousands of **readers** fine, but **AI-job** concurrency is capped by **DB connections + single-replica workers**, NOT by LLM. **Quick-wins shipped (config-only, `docker compose config` EXIT 0):** `restart: unless-stopped` on 20 always-on services in the prod overlay; Postgres `max_connections=200`+`shared_buffers=256MB` (interim A1 headroom); committed `infra/daemon.json` (host-wide log rotation — manual install step). **A2 worker single-replica = accepted design** (back-pressure + BYOK cost-control); scaling lever documented, not pulled.
+
+**Deferred (deploy) — priority order:**
+- **D-DEPLOY-PGBOUNCER** — aggregate per-service pool max (~205–245) > Postgres `max_connections` (default 100, now interim-200). PgBouncer (txn pooling) is the real fix + a hard prerequisite for any horizontal replica scaling (incl. SR08's `db_pool_size 30–60/replica`).
+- **D-DEPLOY-MINIO-LIFECYCLE** — no bucket expiry on `lw-chat`/`loreweave-audio-cache`/books/video (reaper covers only lore-enrichment). Audio-cache 48h TTL specified-but-unenforced.
+- **D-DEPLOY-RESOURCE-LIMITS** — only Neo4j has `deploy.resources.limits`; a runaway service can OOM the node.
+- **D-DEPLOY-HEALTHCHECK** — 9 services spawn `python -c` every 5s; db-ensure runs 15× `psql` every 5s. Switch to `curl`, widen interval, db-ensure init-only.
+- **D-DEPLOY-WORKER-REPLICAS** (accepted/deferred) — raise `replicas:`/`prefetch` for translation/worker-ai/lore-enrichment workers ONLY when AI-job concurrency is the measured constraint, AND after PgBouncer.
+
 ### ▶ RAW SEARCH (branch `raw-search/foundation`, off `origin/main`)
 
 **State: Phase-1 + 2 + 3(A,C,D) + P3-EVAL + E5 + E5B + E6 DONE + LIVE-SMOKE PASSED (2026-06-08).** Hybrid (lexical+semantic, RRF) + cross-encoder rerank end-to-end, surfaced in the search UI, with precise jump-to-source for both legs. Branch pushed (origin/raw-search/foundation). New workstream — the missing **raw chapter-text** layer beneath glossary/knowledge/wiki (all lossy derivatives); serves authoring + extraction/trích-lục. Spec [`2026-06-07-raw-search.md`](../specs/2026-06-07-raw-search.md) (PART I design + PART II ATAM-lite eval; 7/7 confirm-at-BUILD resolved). Plan [`2026-06-07-raw-search.md`](../plans/2026-06-07-raw-search.md) (3 phases; ADJ-1..4 PO-acked).

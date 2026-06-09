@@ -153,6 +153,16 @@ All novel UI API calls go through BFF except grammar (nginx → languagetool) an
 - After `git pull`, rebuild — stale images skip P1 flags (registration gate, stream-ticket, prod nginx).
 - Set `REALTEST_EMAIL` / `SEC_REVIEW_EMAIL_*` in `infra/.env` when `ALLOW_PUBLIC_REGISTRATION=false`.
 
+## Operational hardening (24×7)
+
+The prod overlay sets `restart: unless-stopped` on all always-on services and raises Postgres `max_connections=200` + `shared_buffers=256MB`. Two manual host steps complete the hardening:
+
+1. **Log rotation (host-wide, prevents disk fill):** install [daemon.json](./daemon.json) →
+   `sudo cp infra/daemon.json /etc/docker/daemon.json && sudo systemctl restart docker`, then recreate the stack. (Docker Desktop: Settings → Docker Engine → merge `log-opts` → Apply.)
+2. **Neo4j RAM (~3.5 GB):** if the graph isn't needed, run Track-1-only with `NEO4J_URI=` (empty) and leave the neo4j container stopped; otherwise size the box for it.
+
+Full analysis + remaining items (PgBouncer, MinIO lifecycle, resource limits, worker scaling) — see [docs/plans/2026-06-09-deploy-scaling-cost-assessment.md](../docs/plans/2026-06-09-deploy-scaling-cost-assessment.md).
+
 ## Troubleshooting
 
 | Symptom | Check |
