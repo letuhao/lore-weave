@@ -43,7 +43,22 @@ func newKindAliasServer(t *testing.T, pool *pgxpool.Pool) *Server {
 func runKindAliasMigrations(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	runK2aMigrations(t, pool)
-	if err := migrate.SeedKindAliases(context.Background(), pool); err != nil {
+	ctx := context.Background()
+	// deleteKind now reads wiki_articles + writes the wiki.deleted outbox row
+	// (Bug-2 fix) — bring those tables up too.
+	for _, m := range []struct {
+		name string
+		fn   func(context.Context, *pgxpool.Pool) error
+	}{
+		{"UpOutbox", migrate.UpOutbox},
+		{"UpWiki", migrate.UpWiki},
+		{"UpWikiSuggestions", migrate.UpWikiSuggestions},
+	} {
+		if err := m.fn(ctx, pool); err != nil {
+			t.Fatalf("migrate.%s: %v", m.name, err)
+		}
+	}
+	if err := migrate.SeedKindAliases(ctx, pool); err != nil {
 		t.Fatalf("migrate.SeedKindAliases: %v", err)
 	}
 }
@@ -350,8 +365,33 @@ func TestDeleteKind_BlocksActiveButPurgesSoftDeleted(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE glossary_entities SET deleted_at=now() WHERE entity_id=$1`, eid); err != nil {
 		t.Fatalf("soft-delete entity (sql): %v", err)
 	}
-	if w := userReq(t, srv, http.MethodDelete, "/v1/glossary/kinds/"+ck.KindID, ""); w.Code != http.StatusNoContent {
-		t.Fatalf("delete kind with only soft-deleted entities: want 204, got %d (%s)", w.Code, w.Body.String())
+	// Bug-2 fix: give the soft-deleted entity a wiki_article (a product). With the
+	// entity FK now RESTRICT, deleteKind must delete it EXPLICITLY (not FK-block),
+	// surface a count, and emit wiki.deleted — instead of the prior silent CASCADE.
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO wiki_articles (entity_id, book_id, body_json, status) VALUES ($1,$2,'{}','draft')`,
+		eid, book); err != nil {
+		t.Fatalf("seed wiki article: %v", err)
+	}
+	w := userReq(t, srv, http.MethodDelete, "/v1/glossary/kinds/"+ck.KindID, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete kind: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	var delResp struct {
+		DeletedWikiArticles int `json:"deleted_wiki_articles"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &delResp)
+	if delResp.DeletedWikiArticles != 1 {
+		t.Errorf("deleted_wiki_articles = %d, want 1 (article must be deleted explicitly, not silently)", delResp.DeletedWikiArticles)
+	}
+	var nEvent, nArt int
+	pool.QueryRow(ctx, `SELECT count(*) FROM outbox_events WHERE event_type='wiki.deleted' AND payload->>'entity_id'=$1`, eid).Scan(&nEvent)
+	if nEvent != 1 {
+		t.Errorf("wiki.deleted events for entity = %d, want 1 (destruction must be observable)", nEvent)
+	}
+	pool.QueryRow(ctx, `SELECT count(*) FROM wiki_articles WHERE entity_id=$1`, eid).Scan(&nArt)
+	if nArt != 0 {
+		t.Errorf("wiki article not deleted (%d remain)", nArt)
 	}
 	var kindRows, entRows int
 	pool.QueryRow(ctx, `SELECT count(*) FROM entity_kinds WHERE kind_id=$1`, ck.KindID).Scan(&kindRows)

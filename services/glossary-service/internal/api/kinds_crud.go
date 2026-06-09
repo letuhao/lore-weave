@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/loreweave/glossary-service/internal/domain"
@@ -222,6 +224,58 @@ func (s *Server) deleteKind(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(r.Context())
+
+	// Bug-2 fix: wiki_articles is a product table; the entity FK is now RESTRICT
+	// (no silent cascade). Explicitly delete the articles of the soft-deleted
+	// entities being purged — emitting wiki.deleted per article (observable) and
+	// surfacing a count — BEFORE deleting the entities (else RESTRICT FK-blocks).
+	type delArt struct{ articleID, entityID, bookID uuid.UUID }
+	var deletedArts []delArt
+	artRows, err := tx.Query(r.Context(), `
+		SELECT wa.article_id, wa.entity_id, wa.book_id
+		FROM wiki_articles wa
+		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
+		WHERE ge.kind_id=$1 AND ge.deleted_at IS NOT NULL`, kindID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "gather wiki articles failed")
+		return
+	}
+	for artRows.Next() {
+		var a delArt
+		if err := artRows.Scan(&a.articleID, &a.entityID, &a.bookID); err != nil {
+			artRows.Close()
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "scan wiki articles failed")
+			return
+		}
+		deletedArts = append(deletedArts, a)
+	}
+	artRows.Close()
+	if err := artRows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "gather wiki articles failed")
+		return
+	}
+	exec := func(ctx context.Context, sql string, args ...any) error {
+		_, e := tx.Exec(ctx, sql, args...)
+		return e
+	}
+	for _, a := range deletedArts {
+		// wiki_revisions + wiki_suggestions cascade off article_id (intended; wiki-internal).
+		if _, err := tx.Exec(r.Context(), `DELETE FROM wiki_articles WHERE article_id=$1`, a.articleID); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "delete wiki article failed")
+			return
+		}
+		if err := insertWikiDeletedOutboxEvent(r.Context(), exec, a.articleID, wikiDeletedPayload{
+			BookID:    a.bookID.String(),
+			ArticleID: a.articleID.String(),
+			EntityID:  a.entityID.String(),
+			Reason:    "kind_deleted",
+			EmittedAt: time.Now().UTC().Format(time.RFC3339),
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "emit wiki.deleted failed")
+			return
+		}
+	}
+
 	if _, err := tx.Exec(r.Context(),
 		`DELETE FROM glossary_entities WHERE kind_id=$1 AND deleted_at IS NOT NULL`, kindID,
 	); err != nil {
@@ -239,7 +293,8 @@ func (s *Server) deleteKind(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx commit failed")
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	// Bug-2: surface the count of destroyed articles (was 204 No Content — silent).
+	writeJSON(w, http.StatusOK, map[string]any{"deleted_wiki_articles": len(deletedArts)})
 }
 
 // createAttrDef handles POST /v1/glossary/kinds/{kind_id}/attributes
