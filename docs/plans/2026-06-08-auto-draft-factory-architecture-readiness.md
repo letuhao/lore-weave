@@ -159,7 +159,7 @@ One component is the home for **G1** (orchestration), **G7** (projection), **D**
 | Slice | Scope | Closes |
 |---|---|---|
 | **S0** (pre-req) | BYOK: reranker adapter+per-user · eval judges per-campaign-owner | G10 |
-| **S1** | `campaign-service` skeleton: campaign + `campaign_chapters` projection (consume events) · saga driver + reconcile-loop self-resume · ownership verify+propagate (A) · gating interface with **both** modes (phase-barrier + cold-start-interleaved, user-selected per campaign) (B) | G1, G7, D, A, B |
+| **S1** | `campaign-service` skeleton: campaign + `campaign_chapters` projection (consume events) + **`knowledge.chapter_extracted` per-chapter emit (H)** · saga driver + reconcile-loop self-resume · ownership verify+propagate (A) · gating interface with **both** modes (phase-barrier + cold-start-interleaved, user-selected per campaign) (B) · campaign = knowledge→translation→eval, ingest is a precondition (I) | G1, G7, D, A, B, H, I |
 | **S2** | Translation idempotency (`skip_existing` + staleness gate) → unlocks Resume/Re-run-failed · knowledge `chapter_range` | G3, G2 |
 | **S3** | Reliability + policy: Redis per-provider governor · circuit-breaker→campaign-pause · backoff · campaign budget-cap pause · paced dispatch (fairness) · unified cancel | G5, G6, G4, E, F |
 | **S4** | Cost + events: usage→outbox exactly-once + reconcile · per-campaign estimate/spend aggregation (reuse `estimate.go`) · dedicated `campaign` stream MAXLEN | C, G8 |
@@ -167,3 +167,23 @@ One component is the home for **G1** (orchestration), **G7** (projection), **D**
 | **Sx** (post-v1) | Capacity load-test + tuning | G9, G |
 
 **Why this ordering is safe:** S1 builds the spine + projection + the two security/consistency decisions (A, B) that are hardest to retrofit. S2 makes the core economic invariant (idempotency) true before any large run. S3 makes it survivable unattended. S4 makes cost exact. FE last.
+
+---
+
+## Final decisions H / I / J (PO-directed 2026-06-08) — design CLOSED
+
+**H — Per-chapter events for the projection: ADD them (not polling).**
+The campaign projection needs per-(chapter, stage) granularity (Monitor heatmap + per-stage idempotency); job-level counters can't give it. Each stage emits a per-chapter completion outbox event the campaign-service consumes:
+- ingest → `chapter.saved` (book-service, **exists**)
+- knowledge → **`knowledge.chapter_extracted` (NEW)** — a small knowledge-service emit mirroring translation's per-chapter pattern, routed via `aggregate_type` to a stream the campaign consumes
+- translation → `chapter.translated` / `translation.quality` (**exist**)
+- eval → rides on translation events
+→ the new knowledge per-chapter emit is part of **S1**.
+
+**I — Ingest is a PRECONDITION, not a v1 campaign stage.**
+Ingest (bulk upload + parse + chunk + MinIO) is LLM-free (book-service has no model), one-time, with its own UX. **v1 campaign = knowledge → translation → eval over already-ingested chapters.** The wizard Scope step **gates** on ingest readiness (won't launch on a partially-ingested book; offers "ingest first") but does not orchestrate it. Folding "upload + AI" into one campaign is a **v2** enhancement. → simpler v1, matches reality.
+
+**J — Idempotency is GENERALIZED to all stages, centralized in the projection.**
+`skip_existing` is not translation-only. The campaign-service dispatches a **(chapter, stage)** only if its `campaign_chapters` status is `not-done ∨ stale ∨ failed ∨ forced`. The **projection (G7) is the single source of truth** for "what's done" → unifies **G3 + G7 + J**. Each stage is already idempotent underneath (Neo4j `MERGE`, glossary `ON CONFLICT`, translation versions), so a stray re-dispatch is safe; the gate just avoids the cost. → one rule, four stages, one source of truth.
+
+**✅ DESIGN CLOSED.** Cross-cutting architecture is resolved. Remaining work is **per-slice DESIGN** (exact `campaign_chapters` schema, governor algorithm, retry-ladder, event payloads) + **load-test** (G9/G) — done *inside* each slice with code in front of us, not pre-decided on paper. **Build order:** S0 (reranker BYOK, zero open questions) → S1 (campaign-service: projection + per-chapter events H + gating A/B + self-resume) → S2 → S3 → S4 → S5/6.
