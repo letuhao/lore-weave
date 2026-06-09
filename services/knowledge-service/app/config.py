@@ -62,6 +62,16 @@ class Settings(BaseSettings):
     book_service_url: str = "http://book-service:8082"
     book_client_timeout_s: float = 5.0
 
+    # wiki-llm M1 (option A) — lore-enrichment hosts the authored de-bias
+    # BookProfile (worldview/voice/era/language/anachronism). The wiki
+    # generator reads it over the internal token to shape its prompt. The
+    # client caches per book for `book_profile_cache_ttl_s` so a wiki-gen job
+    # over N entities makes ONE call per book, while an edited profile is
+    # still picked up within the TTL (a failed read is NOT cached → retries).
+    lore_enrichment_service_url: str = "http://lore-enrichment-service:8093"
+    lore_enrichment_client_timeout_s: float = 5.0
+    book_profile_cache_ttl_s: float = 60.0
+
     # P1 (2026-05-23) — /internal/parse body size cap. Default 200 MiB
     # matches book-service's maxImportSize at services/book-service/internal/api/import.go.
     # H3 fix: explicit ceiling — without this, a misconfigured caller could

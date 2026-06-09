@@ -27,6 +27,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
+from app.api.eval import require_internal_token
 from app.api.principal import Principal, require_principal
 from app.clients.book import BookClient, BookProjection, BookServiceError
 from app.clients.knowledge import KnowledgeClient, KnowledgeServiceError
@@ -284,3 +285,31 @@ async def suggest_book_profile(
             detail=f"suggest produced no usable profile: {exc}",
         )
     return _suggested_view(draft)
+
+
+# ── internal (server-to-server) read ────────────────────────────────────────────
+# wiki-llm M1 / option A — the de-bias BookProfile stays AUTHORED here (it's an
+# AI-domain artifact: LLM-suggested, era/anachronism-aware), and knowledge-service
+# reads it over the internal token to SHAPE the wiki-generation prompt (worldview/
+# voice/era/language). Additive: a NEW internal router, NOT a change to enrichment
+# internals. No owner check — the internal token is the trust boundary (the caller
+# is another LoreWeave service, like the eval gate-status route). Never 404s on a
+# missing profile: get_book_profile returns the neutral default (a no-profile book
+# shapes the prompt like a generic worldbuilder, never the hardcoded 封神 default).
+
+internal_router = APIRouter(
+    prefix="/internal/lore-enrichment/books",
+    tags=["Internal"],
+    dependencies=[Depends(require_internal_token)],
+)
+
+
+@internal_router.get("/{book_id}/profile")
+async def get_profile_internal(
+    book_id: UUID,
+    pool: asyncpg.Pool = Depends(get_db),
+) -> dict:
+    """The book's enrichment profile for server-to-server consumers (neutral
+    default if unset). Same view shape as the authored GET; X-Internal-Token."""
+    profile = await get_book_profile(pool, book_id)
+    return _profile_view(profile)
