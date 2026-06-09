@@ -21,20 +21,10 @@ def _job_row_to_model(row, chapter_rows=None) -> TranslationJob:
 
 # ── Create job ────────────────────────────────────────────────────────────────
 
-@router.post(
-    "/books/{book_id}/jobs",
-    response_model=TranslationJob,
-    status_code=status.HTTP_201_CREATED,
-)
-async def create_job(
-    book_id: UUID,
-    payload: CreateJobPayload,
-    user_id: str = Depends(get_current_user),
-    db: asyncpg.Pool = Depends(get_db),
-):
-    uid = UUID(user_id)
 
-    # Verify book ownership via book-service internal projection
+async def _verify_book_owner(book_id: UUID, user_id: str) -> None:
+    """Verify `user_id` owns `book_id` via book-service. Raises HTTPException on
+    not-found (404) / not-owner (403) / book-service error (502)."""
     async with httpx.AsyncClient(timeout=10) as client:
         try:
             r = await client.get(
@@ -52,6 +42,31 @@ async def create_job(
     projection = r.json()
     if str(projection.get("owner_user_id")) != user_id:
         raise HTTPException(status_code=403, detail={"code": "TRANSL_FORBIDDEN", "message": "Not your book"})
+
+
+@router.post(
+    "/books/{book_id}/jobs",
+    response_model=TranslationJob,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_job(
+    book_id: UUID,
+    payload: CreateJobPayload,
+    user_id: str = Depends(get_current_user),
+    db: asyncpg.Pool = Depends(get_db),
+):
+    await _verify_book_owner(book_id, user_id)
+    return await _resolve_and_create_job(db, book_id, payload, user_id)
+
+
+async def _resolve_and_create_job(
+    db: asyncpg.Pool, book_id: UUID, payload: CreateJobPayload, user_id: str,
+) -> TranslationJob:
+    """Core job-create: resolve effective settings + overrides, insert the job +
+    chapter rows in one transaction, publish to RabbitMQ. Ownership is assumed
+    already verified by the caller (public route via JWT+book-service; internal
+    dispatch via the asserted-and-reverified user_id — decision A)."""
+    uid = UUID(user_id)
 
     # Resolve effective settings, then overlay any per-job overrides (Fix-C): a one-off
     # translation can carry its own language/model so it does not depend on a prior

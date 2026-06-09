@@ -1,0 +1,231 @@
+"""Saga driver — stateless reconcile loop (S1).
+
+Every tick, for each ACTIVE campaign:
+  1. load the per-chapter projection (the single source of truth — decision J);
+  2. ask `gating.next_dispatches` what to run (mode-aware);
+  3. mark attempt-exhausted stages terminally failed;
+  4. issue ONE batched downstream job per stage (the existing APIs are batch-
+     oriented: translation takes a chapter_ids list, knowledge starts a job over
+     a scope) and mark each claimed row `dispatched`;
+  5. flip the campaign to `completed` when every in-scope stage is settled;
+  6. honour `cancelling` (stop dispatching, let in-flight drain, → `cancelled`).
+
+Stateless by construction: nothing is held in memory between ticks — a restart
+re-derives everything from `campaign_chapters`, so the loop is crash-resumable
+(decision D). Per-chapter completion arrives asynchronously via the projection
+consumer (`knowledge.chapter_extracted`, `chapter.translated`).
+
+Reliability hardening (rate-limit governor, circuit-breaker, budget pause, paced
+fairness, stuck-`dispatched` timeout reconcile) is **S3** — S1's only pacing is
+the gate's bounded in-flight window.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from dataclasses import dataclass
+from uuid import UUID
+
+import asyncpg
+
+from .. import repositories as repo
+from ..clients.dispatch_clients import (
+    DispatchError,
+    KnowledgeDispatchClient,
+    TranslationDispatchClient,
+)
+from . import gating
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class DispatchClients:
+    translation: TranslationDispatchClient
+    knowledge: KnowledgeDispatchClient
+
+
+async def process_campaign(
+    pool: asyncpg.Pool,
+    clients: DispatchClients,
+    campaign: asyncpg.Record,
+    *,
+    max_attempts: int,
+    max_inflight: int,
+) -> None:
+    """Drive one campaign one tick. Swallows per-campaign errors at the loop
+    boundary (a single sick campaign must not stall the others)."""
+    campaign_id: UUID = campaign["campaign_id"]
+    status: str = campaign["status"]
+    stages: list[str] = list(campaign["stages"])
+
+    states = await repo.load_chapter_states(pool, campaign_id)
+
+    # ── cancellation: stop dispatching, drain in-flight, then finalize ──────
+    if status == "cancelling":
+        inflight = await repo.count_inflight(pool, campaign_id)
+        if inflight == 0:
+            await repo.set_campaign_status(
+                pool, campaign_id, "cancelled", set_finished=True
+            )
+            logger.info("campaign %s cancelled (drained)", campaign_id)
+        return
+
+    # ── completion ──────────────────────────────────────────────────────────
+    if gating.is_complete(chapters=states, stages=stages, max_attempts=max_attempts):
+        await repo.set_campaign_status(
+            pool, campaign_id, "completed", set_finished=True
+        )
+        logger.info("campaign %s completed", campaign_id)
+        return
+
+    # Enforce the per-campaign in-flight ceiling ACROSS ticks (not just per tick):
+    # the fan-out budget this tick is the ceiling minus what's already dispatched.
+    # Prevents a 4000-chapter campaign from dumping everything over a few ticks
+    # (S3 replaces this with the real per-provider governor + paced fairness).
+    inflight = await repo.count_inflight(pool, campaign_id)
+    budget = max(0, max_inflight - inflight) if max_inflight >= 0 else -1
+    if budget == 0:
+        return  # at ceiling — wait for in-flight to drain (events advance them)
+
+    result = gating.next_dispatches(
+        gating_mode=campaign["gating_mode"],
+        chapters=states,
+        stages=stages,
+        max_attempts=max_attempts,
+        max_inflight=budget,
+    )
+
+    # Attempt-exhausted stages → terminal failed (no more dispatch).
+    for f in result.exhausted:
+        await repo.mark_stage_failed(
+            pool, campaign_id, f.chapter_id, f.stage, "attempts exhausted"
+        )
+
+    knowledge_ch = [d.chapter_id for d in result.dispatches if d.stage == "knowledge"]
+    translation_ch = [d.chapter_id for d in result.dispatches if d.stage == "translation"]
+
+    user_id = str(campaign["owner_user_id"])
+    book_id = str(campaign["book_id"])
+
+    # CLAIM-FIRST ordering (double-spend guard): flip the rows to `dispatched`
+    # BEFORE the HTTP job-create, then release to `failed` if the call errors. A
+    # crash between claim and dispatch leaves a chapter STUCK (re-driven by the S3
+    # stuck-timeout reconcile) rather than re-dispatched next tick = double-spent.
+    # The per-row `pending|failed → dispatched` guard in mark_stage_dispatched
+    # also makes a concurrent reconcile a no-op for an already-claimed row.
+
+    # ── knowledge: one extraction job covering the campaign's project ───────
+    if knowledge_ch:
+        project_id = campaign["knowledge_project_id"]
+        if project_id is None:
+            for cid in knowledge_ch:
+                await repo.mark_stage_failed(
+                    pool, campaign_id, cid, "knowledge",
+                    "no knowledge_project_id configured",
+                )
+        else:
+            for cid in knowledge_ch:
+                await repo.mark_stage_dispatched(pool, campaign_id, cid, "knowledge")
+            try:
+                await clients.knowledge.dispatch_extraction(
+                    project_id=str(project_id),
+                    user_id=user_id,
+                    scope="chapters",
+                    chapter_from=campaign["chapter_from"],
+                    chapter_to=campaign["chapter_to"],
+                    model_source=campaign["knowledge_model_source"],
+                    model_ref=(
+                        str(campaign["knowledge_model_ref"])
+                        if campaign["knowledge_model_ref"] else None
+                    ),
+                )
+            except DispatchError as exc:
+                logger.warning("campaign %s knowledge dispatch failed: %s", campaign_id, exc)
+                for cid in knowledge_ch:
+                    await repo.mark_stage_failed(
+                        pool, campaign_id, cid, "knowledge", str(exc)
+                    )
+
+    # ── translation: one job over the eligible chapter batch ────────────────
+    if translation_ch:
+        for cid in translation_ch:
+            await repo.mark_stage_dispatched(pool, campaign_id, cid, "translation")
+        try:
+            await clients.translation.dispatch_job(
+                user_id=user_id,
+                book_id=book_id,
+                chapter_ids=translation_ch,
+                target_language=campaign["target_language"],
+                model_source=campaign["translation_model_source"],
+                model_ref=(
+                    str(campaign["translation_model_ref"])
+                    if campaign["translation_model_ref"] else None
+                ),
+            )
+        except DispatchError as exc:
+            logger.warning("campaign %s translation dispatch failed: %s", campaign_id, exc)
+            for cid in translation_ch:
+                await repo.mark_stage_failed(
+                    pool, campaign_id, cid, "translation", str(exc)
+                )
+
+
+async def reconcile_once(
+    pool: asyncpg.Pool,
+    clients: DispatchClients,
+    *,
+    max_attempts: int,
+    max_inflight: int,
+) -> None:
+    """One full pass over every active campaign."""
+    campaigns = await repo.list_active_campaigns(pool)
+    for c in campaigns:
+        try:
+            await process_campaign(
+                pool, clients, c,
+                max_attempts=max_attempts, max_inflight=max_inflight,
+            )
+        except Exception:
+            logger.exception("driver: error processing campaign %s", c["campaign_id"])
+
+
+class SagaDriver:
+    """Background reconcile loop; run() as a lifespan task."""
+
+    def __init__(
+        self,
+        pool: asyncpg.Pool,
+        clients: DispatchClients,
+        *,
+        tick_seconds: float,
+        max_attempts: int,
+        max_inflight: int,
+    ) -> None:
+        self._pool = pool
+        self._clients = clients
+        self._tick = tick_seconds
+        self._max_attempts = max_attempts
+        self._max_inflight = max_inflight
+        self._running = False
+
+    async def run(self) -> None:
+        self._running = True
+        logger.info("saga driver started (tick=%ss)", self._tick)
+        while self._running:
+            try:
+                await reconcile_once(
+                    self._pool, self._clients,
+                    max_attempts=self._max_attempts,
+                    max_inflight=self._max_inflight,
+                )
+            except asyncio.CancelledError:
+                logger.info("saga driver cancelled")
+                break
+            except Exception:
+                logger.exception("saga driver tick error")
+            await asyncio.sleep(self._tick)
+
+    async def stop(self) -> None:
+        self._running = False

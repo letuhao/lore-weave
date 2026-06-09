@@ -23,6 +23,7 @@ export function configureGatewayApp(
     statisticsUrl: string;
     notificationUrl: string;
     knowledgeUrl: string;
+    campaignUrl: string;
     loreEnrichmentUrl: string;
     learningUrl: string;
     compositionUrl: string;
@@ -173,6 +174,13 @@ export function configureGatewayApp(
       },
     },
   });
+  // Auto-Draft Factory S1 — campaign-service (saga orchestrator API).
+  const campaignProxy = createProxyMiddleware({
+    target: urls.campaignUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/campaigns'),
+  });
+
   const loreEnrichmentProxy = createProxyMiddleware({
     target: urls.loreEnrichmentUrl,
     changeOrigin: true,
@@ -307,6 +315,11 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const campaignProxyFn = campaignProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
   const loreEnrichmentProxyFn = loreEnrichmentProxy as unknown as (
     req: Request,
     res: Response,
@@ -367,6 +380,9 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/knowledge')) {
       return knowledgeProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/campaigns')) {
+      return campaignProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/learning')) {
       return learningProxyFn(req, res, next);

@@ -30,6 +30,11 @@ from typing import Any, Protocol
 logger = logging.getLogger(__name__)
 
 RUN_COMPLETED_EVENT = "knowledge.extraction_run_completed"
+# Auto-Draft Factory S1 (decision H) — per-chapter knowledge completion, consumed
+# by campaign-service's projection (`campaign-collector`) to advance the
+# knowledge stage. Distinct from the run-telemetry event above (which learning
+# consumes); both ride `loreweave:events:knowledge`.
+CHAPTER_EXTRACTED_EVENT = "knowledge.chapter_extracted"
 
 
 class _Executor(Protocol):
@@ -66,4 +71,47 @@ async def emit_extraction_run_best_effort(pool: _Executor, payload: dict) -> Non
             "outbox: failed to emit extraction_run (outcome=%s) for run %s "
             "(non-fatal — run log under-counts a failure)",
             payload.get("outcome"), payload.get("run_id"), exc_info=True,
+        )
+
+
+async def emit_chapter_extracted_best_effort(
+    executor: _Executor,
+    *,
+    user_id: str,
+    project_id: str,
+    book_id: str | None,
+    chapter_id: str,
+) -> None:
+    """Auto-Draft Factory S1 (decision H) — emit `knowledge.chapter_extracted`
+    on a chapter's successful extraction, for campaign-service's projection.
+
+    Best-effort: the campaign projection self-heals (a stuck-`dispatched` row is
+    reconciled in S3), so a lost emit must never fail the extraction. Carries the
+    minimal correlation tuple the projection needs (user_id, book_id, chapter_id);
+    `book_id` may be None for a project with no linked book (no campaign matches —
+    a harmless no-op on the consumer side). aggregate_id = chapter_id."""
+    try:
+        await executor.execute(
+            """
+            INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
+            VALUES ('knowledge', $1, $2, $3::jsonb)
+            """,
+            uuid.UUID(str(chapter_id)),
+            CHAPTER_EXTRACTED_EVENT,
+            json.dumps(
+                {
+                    "user_id": str(user_id),
+                    "project_id": str(project_id),
+                    "book_id": str(book_id) if book_id else None,
+                    "chapter_id": str(chapter_id),
+                    "status": "extracted",
+                },
+                default=str,
+            ),
+        )
+    except Exception:
+        logger.warning(
+            "outbox: failed to emit %s for chapter %s (non-fatal — campaign "
+            "projection self-heals)",
+            CHAPTER_EXTRACTED_EVENT, chapter_id, exc_info=True,
         )

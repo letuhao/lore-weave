@@ -1,0 +1,80 @@
+"""Internal dispatch endpoint — Auto-Draft Factory S1 (decision A).
+
+Guards the assert-verified-user_id contract: the internal token authenticates
+the SERVICE; ownership is re-verified against the asserted user_id; the core
+job-create path is reused.
+"""
+
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+from uuid import UUID
+
+import pytest
+from fastapi import HTTPException
+
+TOKEN = "test_internal_token"  # matches conftest INTERNAL_SERVICE_TOKEN
+USER = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+BOOK = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+C1 = "11111111-1111-1111-1111-111111111111"
+JOB = "dddddddd-dddd-dddd-dddd-dddddddddddd"
+
+
+def _body(**over):
+    b = {"user_id": USER, "book_id": BOOK, "chapter_ids": [C1],
+         "target_language": "vi", "model_source": "user_model"}
+    b.update(over)
+    return b
+
+
+def test_rejects_missing_internal_token(client):
+    resp = client.post("/internal/translation/dispatch-job", json=_body())
+    assert resp.status_code == 401
+
+
+def test_rejects_wrong_internal_token(client):
+    resp = client.post(
+        "/internal/translation/dispatch-job", json=_body(),
+        headers={"X-Internal-Token": "nope"},
+    )
+    assert resp.status_code == 401
+
+
+def test_dispatch_creates_job_with_asserted_user(client, mocker):
+    verify = mocker.patch(
+        "app.routers.internal_dispatch._verify_book_owner", new_callable=AsyncMock)
+    core = mocker.patch(
+        "app.routers.internal_dispatch._resolve_and_create_job",
+        new_callable=AsyncMock, return_value=SimpleNamespace(job_id=UUID(JOB)))
+    resp = client.post(
+        "/internal/translation/dispatch-job", json=_body(),
+        headers={"X-Internal-Token": TOKEN},
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["job_id"] == JOB
+    # ownership re-verified against the asserted user_id
+    verify.assert_awaited_once()
+    assert verify.call_args.args[1] == USER
+    # core job-create reused with the asserted user_id
+    assert core.call_args.args[3] == USER
+
+
+def test_ownership_failure_propagates(client, mocker):
+    mocker.patch(
+        "app.routers.internal_dispatch._verify_book_owner",
+        new_callable=AsyncMock,
+        side_effect=HTTPException(status_code=403, detail={"code": "TRANSL_FORBIDDEN"}))
+    resp = client.post(
+        "/internal/translation/dispatch-job", json=_body(),
+        headers={"X-Internal-Token": TOKEN},
+    )
+    assert resp.status_code == 403
+
+
+def test_empty_chapter_ids_422(client, mocker):
+    mocker.patch(
+        "app.routers.internal_dispatch._verify_book_owner", new_callable=AsyncMock)
+    resp = client.post(
+        "/internal/translation/dispatch-job", json=_body(chapter_ids=[]),
+        headers={"X-Internal-Token": TOKEN},
+    )
+    assert resp.status_code == 422

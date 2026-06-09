@@ -64,3 +64,7 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_learning')\
 -- Composition (LOOM co-writer; tables created by composition-service migrate.py M1)
 SELECT 'CREATE DATABASE loreweave_composition'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_composition')\gexec
+
+-- Campaign (Auto-Draft Factory saga orchestrator; tables via campaign-service migrate.py)
+SELECT 'CREATE DATABASE loreweave_campaign'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_campaign')\gexec

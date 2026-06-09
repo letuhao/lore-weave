@@ -1,0 +1,193 @@
+"""Campaign API tests — ownership verify-once, projection seed, lifecycle."""
+
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID
+
+import pytest
+
+from app.clients.book_client import ChapterRef, BookNotFound, BookServiceError
+from tests.conftest import FakeRecord, TEST_USER
+
+BOOK = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+PROJ = "99999999-9999-9999-9999-999999999999"
+CAMP = "dddddddd-dddd-dddd-dddd-dddddddddddd"
+C1 = "11111111-1111-1111-1111-111111111111"
+NOW = datetime(2026, 6, 9, tzinfo=timezone.utc)
+
+
+def _campaign_row(**over):
+    base = {
+        "campaign_id": UUID(CAMP),
+        "owner_user_id": UUID(TEST_USER),
+        "book_id": UUID(BOOK),
+        "name": "My Campaign",
+        "status": "created",
+        "gating_mode": "phase_barrier",
+        "stages": ["knowledge", "translation", "eval"],
+        "target_language": "vi",
+        "knowledge_project_id": UUID(PROJ),
+        "knowledge_model_source": "user_model",
+        "knowledge_model_ref": None,
+        "translation_model_source": "user_model",
+        "translation_model_ref": None,
+        "chapter_from": None,
+        "chapter_to": None,
+        "total_chapters": 1,
+        "error_message": None,
+        "created_at": NOW,
+        "updated_at": NOW,
+        "started_at": None,
+        "finished_at": None,
+    }
+    base.update(over)
+    return FakeRecord(base)
+
+
+def _book_stub(mocker, *, owner=TEST_USER, chapters=None, owner_exc=None, chapters_exc=None):
+    inst = MagicMock()
+    inst.get_owner_user_id = AsyncMock(
+        return_value=owner, side_effect=owner_exc)
+    inst.list_published_chapters = AsyncMock(
+        return_value=chapters if chapters is not None else [ChapterRef(C1, 0)],
+        side_effect=chapters_exc)
+    inst.aclose = AsyncMock()
+    mocker.patch("app.routers.campaigns.BookClient", return_value=inst)
+    return inst
+
+
+def _payload(**over):
+    p = {"book_id": BOOK, "name": "My Campaign", "knowledge_project_id": PROJ,
+         "gating_mode": "phase_barrier", "target_language": "vi"}
+    p.update(over)
+    return p
+
+
+# ── create ────────────────────────────────────────────────────────────────
+
+def test_create_success(client, mocker):
+    _book_stub(mocker)
+    mocker.patch("app.repositories.create_campaign",
+                 new_callable=AsyncMock, return_value=_campaign_row())
+    mocker.patch("app.repositories.seed_campaign_chapters", new_callable=AsyncMock)
+    resp = client.post("/v1/campaigns", json=_payload())
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["campaign_id"] == CAMP
+    assert resp.json()["status"] == "created"
+
+
+def test_create_requires_knowledge_project(client, mocker):
+    _book_stub(mocker)
+    resp = client.post("/v1/campaigns", json=_payload(knowledge_project_id=None))
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_NO_KNOWLEDGE_PROJECT"
+
+
+def test_create_forbidden_when_not_owner(client, mocker):
+    _book_stub(mocker, owner="ffffffff-ffff-ffff-ffff-ffffffffffff")
+    resp = client.post("/v1/campaigns", json=_payload())
+    assert resp.status_code == 403
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_FORBIDDEN"
+
+
+def test_create_book_not_found(client, mocker):
+    _book_stub(mocker, owner_exc=BookNotFound(BOOK))
+    resp = client.post("/v1/campaigns", json=_payload())
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_BOOK_NOT_FOUND"
+
+
+def test_create_book_service_down(client, mocker):
+    _book_stub(mocker, owner_exc=BookServiceError("conn refused"))
+    resp = client.post("/v1/campaigns", json=_payload())
+    assert resp.status_code == 502
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_BOOK_SERVICE_ERROR"
+
+
+def test_create_no_chapters_in_range(client, mocker):
+    _book_stub(mocker, chapters=[])
+    resp = client.post("/v1/campaigns", json=_payload())
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_NO_CHAPTERS"
+
+
+def test_create_invalid_gating_mode_422(client, mocker):
+    _book_stub(mocker)
+    resp = client.post("/v1/campaigns", json=_payload(gating_mode="bogus"))
+    assert resp.status_code == 422
+
+
+# ── get / list ──────────────────────────────────────────────────────────────
+
+def test_get_not_found(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock, return_value=None)
+    resp = client.get(f"/v1/campaigns/{CAMP}")
+    assert resp.status_code == 404
+
+
+def test_get_returns_projection(client, mocker):
+    mocker.patch("app.repositories.get_campaign",
+                 new_callable=AsyncMock, return_value=_campaign_row())
+    mocker.patch("app.repositories.get_campaign_chapters", new_callable=AsyncMock,
+                 return_value=[FakeRecord({
+                     "chapter_id": UUID(C1), "chapter_sort": 0,
+                     "ingest_status": "done", "knowledge_status": "pending",
+                     "translation_status": "pending", "eval_status": "pending",
+                     "knowledge_attempts": 0, "translation_attempts": 0,
+                     "last_error": None,
+                 })])
+    resp = client.get(f"/v1/campaigns/{CAMP}")
+    assert resp.status_code == 200
+    assert len(resp.json()["chapters"]) == 1
+    assert resp.json()["chapters"][0]["chapter_id"] == C1
+
+
+# ── start / cancel ───────────────────────────────────────────────────────────
+
+def test_start_created_to_running(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 side_effect=[_campaign_row(status="created"),
+                              _campaign_row(status="running")])
+    setter = mocker.patch("app.repositories.set_campaign_status", new_callable=AsyncMock)
+    resp = client.post(f"/v1/campaigns/{CAMP}/start")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "running"
+    assert setter.call_args.args[2] == "running"
+
+
+def test_start_rejects_running(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="running"))
+    resp = client.post(f"/v1/campaigns/{CAMP}/start")
+    assert resp.status_code == 409
+
+
+def test_cancel_running_to_cancelling(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 side_effect=[_campaign_row(status="running"),
+                              _campaign_row(status="cancelling")])
+    setter = mocker.patch("app.repositories.set_campaign_status", new_callable=AsyncMock)
+    resp = client.post(f"/v1/campaigns/{CAMP}/cancel")
+    assert resp.status_code == 200
+    assert setter.call_args.args[2] == "cancelling"
+
+
+def test_cancel_created_immediately_cancelled(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 side_effect=[_campaign_row(status="created"),
+                              _campaign_row(status="cancelled")])
+    setter = mocker.patch("app.repositories.set_campaign_status", new_callable=AsyncMock)
+    resp = client.post(f"/v1/campaigns/{CAMP}/cancel")
+    assert resp.status_code == 200
+    assert setter.call_args.args[2] == "cancelled"
+
+
+def test_cancel_terminal_409(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="completed"))
+    resp = client.post(f"/v1/campaigns/{CAMP}/cancel")
+    assert resp.status_code == 409
+
+
+def test_health(client):
+    assert client.get("/health").text == "ok"

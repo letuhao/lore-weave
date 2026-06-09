@@ -417,6 +417,43 @@ services:
     ports:
       - "8210:8087"
 
+  campaign-service:
+    # Auto-Draft Factory S1 — saga orchestrator + per-chapter projection.
+    # Context = repo root so the Dockerfile can COPY sdks/python (loreweave_obs)
+    # alongside the service code (same pattern as translation/knowledge).
+    build:
+      context: ..
+      dockerfile: services/campaign-service/Dockerfile
+      labels: *build-labels
+    environment:
+      DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_campaign
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
+      TRANSLATION_SERVICE_INTERNAL_URL: http://translation-service:8087
+      KNOWLEDGE_SERVICE_INTERNAL_URL: http://knowledge-service:8092
+      # Projection consumer reads the existing event spine (chapter/translation/
+      # knowledge streams). Reconnect loop tolerates redis startup races, so
+      # redis is NOT a hard depends_on (matches translation-service).
+      REDIS_URL: redis://redis:6379
+      PORT: "8095"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      book-service:
+        condition: service_healthy
+      translation-service:
+        condition: service_healthy
+      knowledge-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8095/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    ports:
+      - "8223:8095"
+
   translation-worker:
     # Phase 4c-α: context bumped to repo root for SDK install.
     # restart policy matches sibling background workers (worker-infra/worker-ai):
@@ -970,6 +1007,8 @@ services:
       STATISTICS_SERVICE_URL: http://statistics-service:8089
       NOTIFICATION_SERVICE_URL: http://notification-service:8091
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      # Auto-Draft Factory S1 — campaign saga API (/v1/campaigns).
+      CAMPAIGN_SERVICE_URL: http://campaign-service:8095
       LORE_ENRICHMENT_SERVICE_URL: http://lore-enrichment-service:8093
       LEARNING_SERVICE_URL: http://learning-service:8094
       # LOOM M7 — composition-service (co-writer). Same in-cluster pattern.
@@ -1004,6 +1043,10 @@ services:
         condition: service_healthy
       knowledge-service:
         condition: service_healthy
+      campaign-service:
+        # Auto-Draft Factory S1 — start-ordering only (not a hard gate): the
+        # gateway must not wedge the stack if the saga orchestrator is unhealthy.
+        condition: service_started
       lore-enrichment-service:
         # C0 skeleton — start-ordering only, NOT a hard health gate: the gateway
         # must not wedge the whole stack if this nascent service is unhealthy

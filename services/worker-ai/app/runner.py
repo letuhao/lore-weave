@@ -48,7 +48,11 @@ from app.clients import (
     KnowledgeClient,
 )
 from app.llm_client import LLMClient
-from app.outbox_emit import emit_extraction_run, emit_extraction_run_best_effort
+from app.outbox_emit import (
+    emit_chapter_extracted_best_effort,
+    emit_extraction_run,
+    emit_extraction_run_best_effort,
+)
 from app.sample_emit import persist_run_sample_best_effort
 
 __all__ = ["process_job", "poll_and_run"]
@@ -1499,6 +1503,16 @@ async def process_job(
                     pool, job.user_id, job.job_id,
                     {"last_chapter_id": ch.chapter_id, "scope": "chapters"},
                     run_payload,
+                )
+                # Auto-Draft Factory S1 (decision H): per-chapter knowledge
+                # completion for campaign-service's projection. Best-effort,
+                # separate from the run-telemetry event above.
+                await emit_chapter_extracted_best_effort(
+                    pool,
+                    user_id=str(job.user_id),
+                    project_id=str(job.project_id),
+                    book_id=str(book_id) if book_id else None,
+                    chapter_id=str(ch.chapter_id),
                 )
                 # D-K16.11-01: bump per-project monthly + all-time spend
                 # counters so CostSummary's GET /costs reflects reality.
