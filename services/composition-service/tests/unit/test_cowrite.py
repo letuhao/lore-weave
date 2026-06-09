@@ -129,6 +129,14 @@ def test_build_messages_has_anti_reestablishment_instruction():
     assert "ALREADY happened" in sys and "do NOT re-introduce" in sys
 
 
+def test_build_messages_has_anti_repetition_instruction():
+    # LOOM-69d: the diagnostic found the local drafter reuses distinctive images /
+    # openings across scenes (recurring weather/colour motifs). The prompt must push
+    # for surface variety — lock the clause against accidental removal.
+    sys = cowrite.build_messages("ctx", NEUTRAL, "draft_scene")[0]["content"]
+    assert "Vary your prose" in sys and "do NOT reuse a distinctive image" in sys
+
+
 def test_char_estimate_over_estimates_and_clamps():
     assert cowrite.char_estimate("") == 0
     assert cowrite.char_estimate("abc") >= 1

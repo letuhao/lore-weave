@@ -77,7 +77,15 @@ def build_messages(
         "Everything in the context has ALREADY happened earlier in the novel and "
         "the reader has read it: CONTINUE the story forward from that point — do "
         "NOT re-introduce characters, re-describe the established setting, or "
-        "re-narrate prior scenes/events already shown; advance new action instead."
+        "re-narrate prior scenes/events already shown; advance new action instead. "
+        # Anti-repetition (LOOM-69d): the model-vs-architecture diagnostic found the
+        # local drafter reuses a small set of distinctive images/openings across
+        # scenes (recurring weather/color motifs, a repeated opening construction).
+        # Push for surface variety — a model-agnostic craft nudge.
+        "Vary your prose: do NOT reuse a distinctive image, metaphor, or "
+        "sentence-opening you have already used in this work (e.g. a recurring "
+        "weather or colour motif, or a repeated opening line) — each passage should "
+        "read freshly with its own sensory language."
         + lang + voice
     )
     instruction = _OPERATION_INSTRUCTIONS.get(operation, "Write the next passage of the scene.")

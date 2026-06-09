@@ -23,6 +23,7 @@ Dump : _nt_dump.json (untracked — both arms' arc text per premise)
 """
 import base64
 import json
+import re
 import sys
 import time
 import urllib.request
@@ -194,6 +195,21 @@ def gen_arc(token, proj, scenes, chapters, drafter, *, smoke=None, mode="chapter
     return "\n\n".join(p for p in parts if p)
 
 
+def repetition_score(text):
+    """Deterministic prose-repetition metric (LOOM-69d) — NO LLM. Higher = more
+    repetitive. `opening_repeat` = fraction of paragraph openings (first 4 words)
+    that repeat an earlier one (catches the "the wind did not X" tic);
+    `trigram_repeat` = 1 - distinct/total word-trigrams (catches reused imagery
+    like a recurring "bruised sky"). Measures the anti-repetition clause's effect."""
+    paras = [p.strip() for p in (text or "").split("\n") if p.strip()]
+    openings = [" ".join(p.lower().split()[:4]) for p in paras if len(p.split()) >= 4]
+    open_rep = round(1 - len(set(openings)) / len(openings), 3) if openings else 0.0
+    words = re.findall(r"\w+", (text or "").lower())
+    tris = list(zip(words, words[1:], words[2:]))
+    tri_rep = round(1 - len(set(tris)) / len(tris), 3) if tris else 0.0
+    return {"opening_repeat": open_rep, "trigram_repeat": tri_rep}
+
+
 def audit(user_id, judge, arc_text):  # v1 (dropped-rate, unstable denominator)
     return _internal(COMP_INTERNAL, "/internal/composition/eval/promise-audit",
                      {"user_id": user_id, "model_source": "user_model", "model_ref": judge,
@@ -248,7 +264,9 @@ def main():
         promises = extract_promises(user_id, judge, premise, plan_off)
         c_off = coverage(user_id, judge, promises, off_text)
         c_on = coverage(user_id, judge, promises, on_text)
-        rows.append((idx + 1, a_off, a_on, off_open, on_open, paid, c_off, c_on, len(promises)))
+        # deterministic prose-repetition (LOOM-69d) — measures the anti-repetition clause.
+        rep_off, rep_on = repetition_score(off_text), repetition_score(on_text)
+        rows.append((idx + 1, a_off, a_on, off_open, on_open, paid, c_off, c_on, len(promises), rep_off, rep_on))
         dump.append({"premise": premise, "off": off_text, "on": on_text, "promises": promises})
         print(f"    v1 dropped_rate OFF={a_off['dropped_rate']:.2f} ON={a_on['dropped_rate']:.2f} | "
               f"ledger on: {on_open} open / {paid} paid | {time.time()-t0:.0f}s")
@@ -257,6 +275,8 @@ def main():
               f"ON={c_on['abandon_rate']:.2f}({c_on['abandoned_count']}/{c_on['introduced_count']}) | "
               f"pay_rate OFF={c_off['pay_rate']:.2f} ON={c_on['pay_rate']:.2f} | "
               f"sustained OFF={c_off['sustained_rate']:.2f} ON={c_on['sustained_rate']:.2f}")
+        print(f"    repetition (lower=better) OFF open={rep_off['opening_repeat']} tri={rep_off['trigram_repeat']} | "
+              f"ON open={rep_on['opening_repeat']} tri={rep_on['trigram_repeat']}")
 
         # ── full-loop live-smoke (premise #1, ON arm) ──
         if smoke is not None:
@@ -315,6 +335,14 @@ def main():
           "introduced-inflation) + separates ABANDONED (real drop) from PROGRESSING "
           "(sustained tension at the cutoff). Still directional (n small, LLM variance, "
           "separate per-arm plans are structural). Read the dump; don't over-claim.")
+
+    # ── prose repetition (LOOM-69d anti-repetition clause) — deterministic ──
+    ro = mean(lambda r: r[9]["opening_repeat"]); rt = mean(lambda r: r[9]["trigram_repeat"])
+    no = mean(lambda r: r[10]["opening_repeat"]); nt = mean(lambda r: r[10]["trigram_repeat"])
+    print(f"\n══ PROSE REPETITION (n={N}, deterministic, lower=better) ══")
+    print(f"  opening-repeat: OFF={ro:.3f}  ON={no:.3f}   |   trigram-repeat: OFF={rt:.3f}  ON={nt:.3f}")
+    print("  NOTE: the anti-repetition clause is ALWAYS-ON (both arms), so this run's numbers are the "
+          "POST-clause baseline — compare against a pre-clause dump to gauge the clause's effect.")
 
 
 if __name__ == "__main__":
