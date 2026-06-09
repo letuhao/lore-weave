@@ -42,14 +42,6 @@ from tests.test_stream_tools import (
 )
 
 
-@pytest.fixture(autouse=True)
-def _bespoke_tool_path(monkeypatch):
-    """Loop tests here assert on the bespoke knowledge_client.execute_tool path;
-    pin USE_MCP_TOOLS False (default flipped to True) so the transport choice —
-    covered by test_mcp_execute_tool — doesn't reroute them to mcp_execute_tool."""
-    monkeypatch.setattr(settings, "use_mcp_tools", False)
-
-
 # ── schema / name set ────────────────────────────────────────────────────────
 
 
@@ -97,7 +89,7 @@ class TestSuspendLoop:
                 tools=[{"type": "function", "function": {"name": "propose_edit"}}],
             ))
         # never executed server-side
-        kc.execute_tool.assert_not_awaited()
+        kc.mcp_execute_tool.assert_not_awaited()
         kc.mcp_execute_tool.assert_not_awaited()
         # a single suspend chunk with the pending call + working history
         suspends = [c for c in chunks if "suspend" in c]
@@ -115,7 +107,7 @@ class TestSuspendLoop:
         """A pass with a memory_* tool AND propose_edit: the memory tool runs
         inline (result in working), then the loop suspends on propose_edit."""
         kc = AsyncMock()
-        kc.execute_tool.return_value = _envelope(success=True, result={"hits": []})
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"hits": []})
         scripts = [[
             tool_frag(index=0, id="call_mem", name="memory_search"),
             tool_frag(index=0, arguments_delta='{"query":"Kai"}'),
@@ -131,7 +123,7 @@ class TestSuspendLoop:
                        {"type": "function", "function": {"name": "propose_edit"}}],
             ))
         # memory tool executed once
-        kc.execute_tool.assert_awaited_once()
+        kc.mcp_execute_tool.assert_awaited_once()
         # a tool_call chunk for the memory tool + a suspend for propose_edit
         tool_chunks = [c for c in chunks if "tool_call" in c]
         assert [c["tool_call"]["tool"] for c in tool_chunks] == ["memory_search"]
@@ -146,7 +138,7 @@ class TestSuspendLoop:
         """Regression: a pass with only a memory tool still executes inline and
         loops to a normal text answer (no suspend)."""
         kc = AsyncMock()
-        kc.execute_tool.return_value = _envelope(success=True, result={"hits": []})
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"hits": []})
         scripts = [
             [tool_frag(index=0, id="c1", name="memory_search"),
              tool_frag(index=0, arguments_delta='{"query":"Kai"}'),
@@ -158,7 +150,7 @@ class TestSuspendLoop:
                 scripts, knowledge_client=kc,
                 tools=[{"type": "function", "function": {"name": "memory_search"}}],
             ))
-        kc.execute_tool.assert_awaited_once()
+        kc.mcp_execute_tool.assert_awaited_once()
         assert not [c for c in chunks if "suspend" in c]
         # final text chunk present
         assert any(c.get("content") == "Kai is a knight." for c in chunks)

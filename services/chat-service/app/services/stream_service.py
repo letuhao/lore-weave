@@ -382,17 +382,13 @@ async def _stream_with_tools(
                         "result": {"prose": prose}, "error": None,
                     }}
                     continue
-                # backend (memory) tool — execute inline (existing path, below)
-                if settings.use_mcp_tools:
-                    envelope = await knowledge_client.mcp_execute_tool(
-                        user_id=user_id, session_id=session_id, project_id=project_id,
-                        tool_name=c["name"], tool_args=args_obj,
-                    )
-                else:
-                    envelope = await knowledge_client.execute_tool(
-                        user_id=user_id, session_id=session_id, project_id=project_id,
-                        tool_name=c["name"], tool_args=args_obj,
-                    )
+                # backend (memory) tool — execute via the ai-gateway over MCP
+                # (ai-gateway P0: the only tool transport; the bespoke path was
+                # retired with the hard cutover).
+                envelope = await knowledge_client.mcp_execute_tool(
+                    user_id=user_id, session_id=session_id, project_id=project_id,
+                    tool_name=c["name"], tool_args=args_obj,
+                )
                 ok = bool(envelope.get("success"))
                 tool_payload = envelope.get("result") if ok else {"error": envelope.get("error")}
                 working.append({

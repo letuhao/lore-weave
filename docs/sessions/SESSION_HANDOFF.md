@@ -8,13 +8,21 @@
 
 ### ▶ GLOSSARY ASSISTANT + `ai-gateway` (branch `feat/glossary-extracting-assistant`) — 2026-06-10
 
-**State: ARCHITECTURE FROZEN** (design + ATAM-lite eval + all 15 holes resolved + **H3 spike proven on real code**). No feature code built yet.
+**State: P0 `ai-gateway` BUILT + verified (pure MCP).** Architecture frozen (design + ATAM-lite eval + 15 holes resolved + H3 spike proven). `/loom` XL: CLARIFY→…→QC done, /review-impl ran (MED-1 fixed), both deviations resolved to pure-MCP. Gateway jest 12/12 + chat pytest 321 + gateway↔fake-provider live-smoke PASS + provider-gate OK. Full-stack chat→gateway→knowledge smoke deferred (067).
+
+**P0 delivered:** new `services/ai-gateway/` (NestJS+`@modelcontextprotocol/sdk`, node16) — MCP server upstream + MCP client downstream federating knowledge's `/mcp`; per-call envelope (INV-7, proven no cross-user leak), catalog version + partial-on-down (H10), per-provider session (H14), SO-1 internal-token gate (unit-tested). chat **hard-cutover to pure MCP**: `get_tool_definitions` via MCP `list-tools`, execution via `mcp_execute_tool` → gateway; `build_context` (grounding) stays on knowledge (P6); the bespoke `execute_tool` path + `USE_MCP_TOOLS` flag REMOVED. docker-compose `ai-gateway` (8218:8210) + chat `AI_GATEWAY_URL`. Plan: [`docs/plans/2026-06-10-ai-gateway-p0.md`](../plans/2026-06-10-ai-gateway-p0.md).
 
 **Decisions (9, all locked):** domain owns its MCP tools + a dedicated **`ai-gateway`** (TS/NestJS) federates them (consumers = chat + composition); **true MCP every hop** — glossary becomes a Go MCP server (official `modelcontextprotocol/go-sdk`), run **stateless + wrapped by our own net/http middleware** that lifts `X-User-Id`→ctx (PROVEN by the H3 spike, pattern in spec §20); `book_id` = LLM arg + **hard ownership** (book-service `verifyBookOwner`, cached, fail-closed); writes split (edit-existing = frontend-propose/Apply, new = draft→AI-suggestions inbox); Tier-S schema = server-minted confirm-token (un-bypassable); gateway also consolidates grounding (mui#3) **with a mandatory `[]`-fallback**. Spec: [`2026-06-10-glossary-assistant-architecture.md`](../specs/2026-06-10-glossary-assistant-architecture.md) — Part I design · II 15-hole eval · III resolutions + INV-1..9 + per-phase DoD.
 
 **Enforcement added this session:** CLAUDE.md **MCP-first invariant** (AI *agent* logic must be MCP tool-calls via ai-gateway, not raw-prompt+HTTP) + strengthened provider-registry rules; programmatic gate `scripts/ai-provider-gate.py` wired as pre-commit (`.githooks/`, `core.hooksPath`); DEFERRED **065** (knowledge model-maps drift), **066** (AI-agent MCP-migration audit).
 
-**NEXT:** build **P0 — `ai-gateway`** (MCP server upstream + MCP client federating knowledge's existing `/mcp`; repoint consumers; knowledge unchanged → zero regression). Then P1 glossary Go MCP **read tools** → ship a read-only assistant; then write tiers P2–P5, grounding P6. `/loom` per phase; `/amaw` for the write path. Verified-feasible: §20 pattern.
+**NEXT:** **P1 — glossary Go MCP server** (official `modelcontextprotocol/go-sdk`, stateless + own net/http middleware → ctx per §20) exposing Tier-R **read tools** (`glossary_search`/`glossary_get_entity`/`glossary_list_kinds`) with the ownership guard (INV-8: `verifyBookOwner` cached + fail-closed, uniform `GLOSS_NOT_ACCESSIBLE`); add glossary as gateway provider #2 → ship a **read-only assistant**. Then write tiers P2–P5, grounding P6. `/amaw` for the write path (P3+).
+
+**P0 deferred (accepted, from /review-impl):**
+- **D-AIGW-LOW1** — no try/catch around `transport.handleRequest` in `mcp.controller.ts`; a transport-level error → Nest 500 instead of a JSON-RPC error. LOW.
+- **D-AIGW-LOW2** — gateway `executeTool` drops the CallTool `_meta`/progress-token (knowledge tools don't use it). LOW.
+- **D-AIGW-LOW3** — gateway doesn't fail-fast on a missing `X-User-Id`; knowledge raises a cryptic error instead (not a security hole — knowledge enforces). LOW.
+- **067** — full-stack chat→ai-gateway→knowledge live-smoke (stack not bootable in dev session) — the prod-traffic gate given hard cutover.
 
 **Then — glossary LLM-flow migration (user directive 2026-06-10):** ai-gateway/MCP arrived AFTER the glossary pipeline, so existing glossary flows that drive LLMs **via prompt** (token-wasteful, unoptimized) should migrate to glossary MCP tools once the MCP exists. A full review of those flows is the immediate follow-on to P1 (see DEFERRED 066). *(Review starting this session — findings to be appended.)*
 

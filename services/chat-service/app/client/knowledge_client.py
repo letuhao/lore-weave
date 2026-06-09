@@ -122,6 +122,7 @@ class KnowledgeClient:
         retries: int,
         *,
         tool_timeout_s: float = 30.0,
+        tools_base_url: str | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         """Construct the client.
@@ -141,6 +142,10 @@ class KnowledgeClient:
         silently break a `@patch("...httpx.AsyncClient")`.
         """
         self._base_url = base_url.rstrip("/")
+        # ai-gateway P0: tool definitions + MCP execution target the gateway;
+        # build_context (grounding) stays on _base_url (knowledge). Defaults to
+        # _base_url so tests that omit it keep their existing single-host wiring.
+        self._tools_base_url = (tools_base_url or base_url).rstrip("/")
         self._retries = max(0, retries)
         self._tool_timeout_s = tool_timeout_s
         client_kwargs: dict = {
@@ -262,105 +267,53 @@ class KnowledgeClient:
         return _degraded()
 
     async def get_tool_definitions(self) -> list[dict]:
-        """GET /internal/tools/definitions — the OpenAI tool schemas
-        (K21-B D1). Cached process-wide after the first success.
+        """Fetch the federated tool catalog from the ai-gateway via MCP
+        ``list-tools`` and convert each entry to an OpenAI function schema
+        (the shape the chat tool-loop advertises to the LLM). Cached
+        process-wide after the first success.
 
         Returns ``[]`` on any failure; the caller then runs the chat turn
         tool-free. A failure is deliberately NOT cached, so a later turn
-        retries — ``build_context`` already runs every turn, so one extra
-        GET while knowledge-service is unreachable is negligible.
+        retries.
         """
         if self._tool_definitions is not None:
             return self._tool_definitions
-
-        url = f"{self._base_url}/internal/tools/definitions"
-        tid = current_trace_id()
-        call_headers = {"X-Trace-Id": tid} if tid else None
-        try:
-            resp = await self._http.get(url, headers=call_headers)
-        except httpx.HTTPError as exc:
-            logger.warning("knowledge tool definitions fetch failed: %s", exc)
-            return []
-        if resp.status_code != 200:
+        if streamablehttp_client is None or ClientSession is None:
             logger.warning(
-                "knowledge tool definitions fetch %d", resp.status_code
+                "get_tool_definitions called but the 'mcp' package is not installed"
             )
             return []
+
+        mcp_url = f"{self._tools_base_url}/mcp"
+        headers = {"X-Internal-Token": self._http.headers["X-Internal-Token"]}
+        tid = current_trace_id()
+        if tid:
+            headers["X-Trace-Id"] = tid
         try:
-            tools = resp.json().get("tools", [])
+            async with streamablehttp_client(
+                mcp_url, headers=headers,
+                timeout=self._tool_timeout_s, sse_read_timeout=self._tool_timeout_s,
+            ) as (read, write, _):
+                async with ClientSession(read, write) as mcp_session:
+                    await mcp_session.initialize()
+                    listed = await mcp_session.list_tools()
         except Exception as exc:
-            logger.warning("knowledge tool definitions decode failed: %s", exc)
+            logger.warning("get_tool_definitions (mcp list-tools) failed: %s", exc)
             return []
-        if not isinstance(tools, list):
-            logger.warning("knowledge tool definitions: unexpected shape")
-            return []
+
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": t.name,
+                    "description": t.description or "",
+                    "parameters": t.inputSchema or {"type": "object"},
+                },
+            }
+            for t in listed.tools
+        ]
         self._tool_definitions = tools
         return tools
-
-    async def execute_tool(
-        self,
-        *,
-        user_id: str,
-        session_id: str,
-        tool_name: str,
-        tool_args: dict,
-        project_id: str | None = None,
-    ) -> dict:
-        """POST /internal/tools/execute (K21-B).
-
-        Returns the ``{success, result, error}`` envelope. On a transport
-        failure or a non-200 it returns a synthesised ``success=False``
-        envelope so the tool-calling loop can tell the LLM the tool
-        failed and carry on — this never raises.
-        """
-        url = f"{self._base_url}/internal/tools/execute"
-        body: dict = {
-            "user_id": user_id,
-            "session_id": session_id,
-            "tool_name": tool_name,
-            "tool_args": tool_args,
-        }
-        # Omit project_id when empty/None — a no-project chat is valid
-        # and the executor handles a null project per Cycle A design D3.
-        if project_id:
-            body["project_id"] = project_id
-
-        tid = current_trace_id()
-        call_headers = {"X-Trace-Id": tid} if tid else None
-        try:
-            # Override the client-wide build_context budget — a memory
-            # tool does real work and would ReadTimeout at 500ms (D-K21B-06).
-            resp = await self._http.post(
-                url, json=body, headers=call_headers, timeout=self._tool_timeout_s
-            )
-        except httpx.HTTPError as exc:
-            logger.warning("knowledge execute_tool transport error: %s", exc)
-            return {
-                "success": False, "result": None,
-                "error": f"tool backend unavailable: {type(exc).__name__}",
-            }
-        if resp.status_code != 200:
-            logger.warning("knowledge execute_tool HTTP %d", resp.status_code)
-            return {
-                "success": False, "result": None,
-                "error": f"tool backend error (HTTP {resp.status_code})",
-            }
-        try:
-            body = resp.json()
-        except Exception as exc:
-            logger.warning("knowledge execute_tool decode failed: %s", exc)
-            return {
-                "success": False, "result": None,
-                "error": "tool backend returned an invalid response",
-            }
-        # Canonical {} empty-success contract: an empty/None success result
-        # is represented as {} on BOTH transports (the MCP server's _dispatch
-        # already does `result.result or {}`). Coerce only the success+None
-        # case so this envelope is byte-identical to the MCP path; leave every
-        # failure/non-success body untouched.
-        if body.get("success") is True and body.get("result") is None:
-            body["result"] = {}
-        return body
 
     async def mcp_execute_tool(
         self,
@@ -389,7 +342,7 @@ class KnowledgeClient:
                 "error": "mcp tool backend unavailable: mcp package not installed",
             }
 
-        mcp_url = f"{self._base_url}/mcp"
+        mcp_url = f"{self._tools_base_url}/mcp"
         headers = {
             "X-Internal-Token": self._http.headers["X-Internal-Token"],
             "X-User-Id": user_id,
@@ -493,6 +446,8 @@ def init_knowledge_client() -> KnowledgeClient:
         timeout_s=settings.knowledge_client_timeout_s,
         retries=settings.knowledge_client_retries,
         tool_timeout_s=settings.knowledge_tool_timeout_s,
+        # ai-gateway P0: route tools (definitions + MCP execute) through the gateway.
+        tools_base_url=settings.ai_gateway_url,
     )
     return _client
 
