@@ -145,10 +145,10 @@ One component is the home for **G1** (orchestration), **G7** (projection), **D**
 | **G10** BYOK | reranker → adapter-dispatched + per-user; eval judges → per-campaign owner | knowledge / provider-registry / learning | S0 |
 | **G9 / G** capacity | **load-test plan** (post-v1): Neo4j batched writes, embedding index pre-build, glossary upsert already idempotent (`ON CONFLICT`), MinIO read cache, local-GPU serialized by the G5 governor | — | perf slice |
 
-### Locked decisions (★ = PO please confirm the two forks)
+### Locked decisions (PO-confirmed 2026-06-08)
 
-- ★ **`campaign-service`** (new, Python/FastAPI, own DB) over gateway-module / Temporal.
-- ★ **Phase-barrier gating** (knowledge-ALL → translate) as the default; cold-start-parallel as the opt-in (already the wizard's two "context strategy" options).
+- ✅ **`campaign-service`** (new, Python/FastAPI, own DB) over gateway-module / Temporal. *(PO-confirmed.)*
+- ✅ **Gating is a per-campaign user choice** (NOT a forced default): the campaign-service must implement **both** dispatch modes — **phase-barrier** (knowledge-ALL → translate, highest quality) and **cold-start interleaved** (translate immediately, bootstrap glossary via 2-pass). The wizard's "context strategy" step surfaces both; the orchestrator honours whichever the campaign selected. *(PO-confirmed.)* → S1 must build both dispatch modes behind one gating interface.
 - **Identity:** verify-once-at-entry + assert-verified-`user_id` over internal-token; no minted user-JWTs.
 - **Billing:** usage recording → outbox (exactly-once via `request_id` dedup) — reuse the proven backbone.
 - **Reliability:** Redis governor + circuit-breaker (→ campaign pause) + backoff; reuse outbox/streams. **No new infra beyond campaign-service + its DB.**
@@ -159,7 +159,7 @@ One component is the home for **G1** (orchestration), **G7** (projection), **D**
 | Slice | Scope | Closes |
 |---|---|---|
 | **S0** (pre-req) | BYOK: reranker adapter+per-user · eval judges per-campaign-owner | G10 |
-| **S1** | `campaign-service` skeleton: campaign + `campaign_chapters` projection (consume events) · saga driver + reconcile-loop self-resume · ownership verify+propagate (A) · phase-barrier gating (B) | G1, G7, D, A, B |
+| **S1** | `campaign-service` skeleton: campaign + `campaign_chapters` projection (consume events) · saga driver + reconcile-loop self-resume · ownership verify+propagate (A) · gating interface with **both** modes (phase-barrier + cold-start-interleaved, user-selected per campaign) (B) | G1, G7, D, A, B |
 | **S2** | Translation idempotency (`skip_existing` + staleness gate) → unlocks Resume/Re-run-failed · knowledge `chapter_range` | G3, G2 |
 | **S3** | Reliability + policy: Redis per-provider governor · circuit-breaker→campaign-pause · backoff · campaign budget-cap pause · paced dispatch (fairness) · unified cancel | G5, G6, G4, E, F |
 | **S4** | Cost + events: usage→outbox exactly-once + reconcile · per-campaign estimate/spend aggregation (reuse `estimate.go`) · dedicated `campaign` stream MAXLEN | C, G8 |
