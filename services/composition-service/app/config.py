@@ -78,6 +78,10 @@ class Settings(BaseSettings):
     # Per-scene output budget for the proportional chapter/stitch sizing (so a
     # multi-scene chapter gets room instead of a flat cap that silently truncates).
     chapter_gen_per_scene_tokens: int = 700
+    # FD-1 / narrative_thread S2 — cap on NEW promise threads a single generated
+    # passage may open, so a verbose detector can't flood the ledger. The pass
+    # itself is per-Work opt-in via `work.settings["narrative_thread_enabled"]`.
+    narrative_thread_max_open_per_scene: int = 5
     # Cycle-2 in-flight guard staleness window: the chapter-level generate/stitch
     # guard REJECTS a concurrent job, so a `running` job orphaned by a mid-
     # generation crash/kill would otherwise lock that chapter out forever (no

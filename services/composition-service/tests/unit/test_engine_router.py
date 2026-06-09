@@ -98,7 +98,8 @@ def ctx(monkeypatch):
     from app.main import app
     from app.deps import (get_book_client_dep, get_canon_rules_repo, get_generation_jobs_repo,
                           get_glossary_client_dep, get_knowledge_client_dep, get_llm_client_dep,
-                          get_outline_repo, get_scene_links_repo, get_works_repo)
+                          get_narrative_thread_repo, get_outline_repo, get_scene_links_repo,
+                          get_works_repo)
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
 
     works, outline, canon, jobs = StubWorks(), StubOutline(), StubCanon(), StubJobs()
@@ -109,6 +110,8 @@ def ctx(monkeypatch):
     app.dependency_overrides[get_canon_rules_repo] = lambda: canon
     app.dependency_overrides[get_generation_jobs_repo] = lambda: jobs
     app.dependency_overrides[get_scene_links_repo] = lambda: object()
+    # FD-1: unused unless work.settings.narrative_thread_enabled (off in these tests).
+    app.dependency_overrides[get_narrative_thread_repo] = lambda: object()
     app.dependency_overrides[get_book_client_dep] = lambda: object()
     app.dependency_overrides[get_glossary_client_dep] = lambda: object()
     app.dependency_overrides[get_knowledge_client_dep] = lambda: object()

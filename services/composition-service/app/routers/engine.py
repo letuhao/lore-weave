@@ -29,13 +29,15 @@ from app.db.repositories.generation_corrections import (
     GenerationCorrectionsRepo, count_changed_blocks,
 )
 from app.db.repositories.generation_jobs import GenerationJobsRepo
+from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.works import WorksRepo
 from app.deps import (
     get_book_client_dep, get_canon_rules_repo, get_generation_corrections_repo,
     get_generation_jobs_repo, get_glossary_client_dep, get_knowledge_client_dep,
-    get_llm_client_dep, get_outline_repo, get_scene_links_repo, get_works_repo,
+    get_llm_client_dep, get_narrative_thread_repo, get_outline_repo,
+    get_scene_links_repo, get_works_repo,
 )
 from app.db.models import CorrectionKind
 from app.engine.adaptive_k import adaptive_k
@@ -43,6 +45,7 @@ from app.engine.chapter_gen import build_chapter_pack_node, union_cast
 from app.engine.prose_doc import text_to_tiptap_doc
 from app.engine.stitch import stitch_chapter
 from app.engine.canon_reflect import run_canon_reflect
+from app.engine.narrative_thread import detect_and_update_threads
 from app.engine.compress import compress
 from app.engine.cowrite import build_messages, estimate_prompt_tokens, stream_draft
 from app.engine.critic import judge_prose
@@ -165,6 +168,28 @@ async def _load_work_node(works, outline, user_id, project_id, node_id):
     return work, node
 
 
+async def _maybe_detect_narrative_threads(
+    work, *, llm, repo, user_id, project_id, scene_text,
+    opened_at_node, model_source, model_ref, source_language,
+) -> None:
+    """FD-1 (narrative_thread S2): best-effort promise-ledger producer over a
+    just-generated passage. Gated per-Work on `narrative_thread_enabled` (default
+    OFF → zero cost). NEVER raises into the generate path (advisory, F1). Extracted
+    so the gate + best-effort-swallow wiring is unit-testable (review-impl MED#1)."""
+    if not (work.settings or {}).get("narrative_thread_enabled"):
+        return
+    try:
+        await detect_and_update_threads(
+            llm, repo, user_id=user_id, project_id=project_id,
+            scene_text=scene_text, opened_at_node=opened_at_node,
+            drafter_source=model_source, drafter_ref=str(model_ref),
+            source_language=source_language,
+            max_open=settings.narrative_thread_max_open_per_scene,
+        )
+    except Exception:  # noqa: BLE001 — advisory; must not fail the generate
+        logger.warning("narrative_thread S2 producer failed (advisory)", exc_info=True)
+
+
 async def _persist_chapter_draft(
     book: BookClient, book_id: UUID, chapter_id: UUID, bearer: str,
     text: str, commit_message: str,
@@ -211,6 +236,7 @@ async def generate(
     glossary: GlossaryClient = Depends(get_glossary_client_dep),
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     llm: LLMClient = Depends(get_llm_client_dep),
+    narrative_threads: NarrativeThreadRepo = Depends(get_narrative_thread_repo),
 ) -> Any:  # StreamingResponse (cowrite) | JSONResponse (auto)
     work, node = await _load_work_node(works, outline, user_id, project_id, body.outline_node_id)
 
@@ -381,6 +407,12 @@ async def generate(
             revise_finish = reflect.revise_finish_reason
         except Exception:  # canon reflect must NEVER fail the generate (F1).
             logger.warning("A2-S3b canon reflect failed (advisory) — keeping winner", exc_info=True)
+        # FD-1 (narrative_thread S2): best-effort promise-ledger producer — opens
+        # new promises this scene plants + pays resolved ones (S3 re-injects them).
+        await _maybe_detect_narrative_threads(
+            work, llm=llm, repo=narrative_threads, user_id=user_id, project_id=project_id,
+            scene_text=final_text, opened_at_node=node.id,
+            model_source=body.model_source, model_ref=body.model_ref, source_language=_src_lang)
         total_out = w.metering.output_tokens + revise_out_tokens
         # D-COMP-TRUNCATION-SURFACING: authoritative truncation flag from the
         # drafter's stop reason (the winner draft is the cap-prone generation). A
@@ -480,6 +512,7 @@ async def generate_chapter(
     glossary: GlossaryClient = Depends(get_glossary_client_dep),
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     llm: LLMClient = Depends(get_llm_client_dep),
+    narrative_threads: NarrativeThreadRepo = Depends(get_narrative_thread_repo),
 ) -> Any:
     """B2 chapter single-pass (assembly_mode='chapter'): generate a WHOLE chapter
     in ONE drafter pass from its A3 decompose plan (scene nodes), grounded at the
@@ -626,6 +659,15 @@ async def generate_chapter(
         revise_finish = reflect.revise_finish_reason
     except Exception:  # canon reflect must NEVER fail the generate (F1).
         logger.warning("chapter canon reflect failed (advisory) — keeping draft", exc_info=True)
+
+    # FD-1 (narrative_thread S2): best-effort promise-ledger producer over the
+    # whole-chapter draft. opened_at_node=None — the chapter pass uses a synthetic
+    # in-memory node (never persisted), so the thread is project-scoped (FK nullable).
+    await _maybe_detect_narrative_threads(
+        work, llm=llm, repo=narrative_threads, user_id=user_id, project_id=project_id,
+        scene_text=final_text, opened_at_node=None,
+        model_source=body.model_source, model_ref=body.model_ref,
+        source_language=from_settings(work.settings).source_language)
 
     # MED-2 — best-effort persist of the assembled chapter to the book draft.
     persisted, draft_version, persist_error = False, None, None
