@@ -476,15 +476,20 @@ async def _maybe_judge_translation(
             base_url=settings.provider_registry_internal_url,
             internal_token=settings.internal_service_token,
         )
+        # D-EVAL-JUDGE-PER-USER: bill the BYOK judge to the CONTENT OWNER (the
+        # event's user_id) rather than the operator's env-configured id, so a
+        # multi-tenant batch attributes judge cost to whoever owns the translation.
+        # Fall back to the env id only when the event lacks an owner.
+        user_id = _uuid_or_none(payload.get("user_id"))
+        judge_user_id = str(user_id) if user_id is not None else settings.online_judge_user_id
         verdict = await run_translation_judge(
             client,
             source_text=source_text,
             translated_text=translated_text,
             judge_model=settings.online_judge_model_ref,
             model_source=settings.online_judge_model_source,
-            user_id=settings.online_judge_user_id,
+            user_id=judge_user_id,
         )
-        user_id = _uuid_or_none(payload.get("user_id"))
         if verdict is not None and user_id is not None:
             await persist_translation_judge(
                 pool,

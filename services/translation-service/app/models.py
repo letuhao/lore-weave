@@ -108,6 +108,11 @@ class CreateJobPayload(BaseModel):
     verifier_model_source: Optional[str] = None
     verifier_model_ref: Optional[UUID] = None
     cold_start_mode: Optional[str] = None    # 'single_pass' (default) | 'two_pass' (M4d-2c)
+    # S2 idempotency (G3): by default the job SKIPS chapters that already have a
+    # fresh successful active translation for the target language (declarative
+    # "ensure translated"). Set force_retranslate=true to re-translate regardless
+    # (explicit user request — the 3rd valid re-translate trigger).
+    force_retranslate: bool = False
 
     @field_validator("pipeline_version")
     @classmethod

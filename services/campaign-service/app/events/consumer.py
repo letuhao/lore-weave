@@ -42,6 +42,10 @@ __all__ = ["EVENT_STAGE", "STREAMS", "GROUP_NAME", "handle_event", "ProjectionCo
 EVENT_STAGE = {
     "knowledge.chapter_extracted": "knowledge",
     "chapter.translated": "translation",
+    # S2: translation idempotency emits this when a chapter is already current
+    # (skipped, no re-spend). Same done-signal for the projection so a resumed
+    # campaign converges; statistics-service ignores it (stats-neutral).
+    "chapter.translation_skipped": "translation",
     "translation.quality": "eval",
 }
 

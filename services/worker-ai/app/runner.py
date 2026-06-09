@@ -794,6 +794,7 @@ async def _update_project_status(
 
 async def _enumerate_chapters(
     book_client: BookClient, book_id: UUID | None, cursor: dict | None,
+    scope_range: dict | None = None,
 ) -> list[ChapterInfo]:
     """Get chapters to process, respecting cursor for resume.
 
@@ -822,6 +823,17 @@ async def _enumerate_chapters(
             continue
         gated.append(ch)
     chapters = gated
+
+    # S2 (D-K16.2-02b): honour scope_range.chapter_range = [lo, hi] on sort_order
+    # so a campaign/user can extract a chapter SUBSET. Until now only the cost-
+    # estimate ranged (via book_client.count_chapters); the runner dropped it,
+    # so the actual job processed the whole book. This aligns the two. Applied
+    # BEFORE the resume-cursor filter so resume stays within the range.
+    if scope_range and scope_range.get("chapter_range"):
+        rng = scope_range["chapter_range"]
+        if isinstance(rng, (list, tuple)) and len(rng) == 2:
+            lo, hi = int(rng[0]), int(rng[1])
+            chapters = [ch for ch in chapters if lo <= ch.sort_order <= hi]
 
     # Resume: skip chapters already processed (cursor has last_chapter_id)
     if cursor and cursor.get("last_chapter_id"):
@@ -1215,7 +1227,7 @@ async def process_job(
 
         if job.scope in ("chapters", "all"):
             pre_chapters = await _enumerate_chapters(
-                book_client, book_id, job.current_cursor,
+                book_client, book_id, job.current_cursor, job.scope_range,
             )
         # Canon Model CM3b — coalescing drainer: extract the chapters queued by
         # chapter.published, each at its PINNED revision. Shares the per-chapter

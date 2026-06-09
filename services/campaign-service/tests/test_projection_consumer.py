@@ -23,6 +23,7 @@ def _payload(**over):
     [
         ("knowledge.chapter_extracted", "knowledge"),
         ("chapter.translated", "translation"),
+        ("chapter.translation_skipped", "translation"),  # S2 idempotency skip done-signal
         ("translation.quality", "eval"),
     ],
 )

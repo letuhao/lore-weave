@@ -46,6 +46,9 @@ class InternalDispatchPayload(BaseModel):
     target_language: str | None = None
     model_source: str | None = None
     model_ref: UUID | None = None
+    # S2: default-skip idempotency applies here too (the campaign driver relies
+    # on it — re-dispatching an already-translated chapter must not re-spend).
+    force_retranslate: bool = False
 
 
 class DispatchResponse(BaseModel):
@@ -83,6 +86,7 @@ async def dispatch_job(
             target_language=payload.target_language,
             model_source=model_source,
             model_ref=payload.model_ref,
+            force_retranslate=payload.force_retranslate,
         ),
         user_id,
     )

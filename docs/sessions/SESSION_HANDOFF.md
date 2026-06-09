@@ -1,7 +1,7 @@
 # Session Handoff — Session 105 (eval R&D closed + Production Eval Flywheel track planned)
 
 > **Purpose:** orient the next agent in one read. This file is the single, unversioned handoff — updated in place at the end of each session. (Older `SESSION_PATCH.md` is deprecated → archive later.)
-> **Date:** 2026-06-09 (Auto-Draft Factory **S1 — campaign-service spine** shipped; human-in-loop v2.2).
+> **Date:** 2026-06-09 (Auto-Draft Factory **S1 spine + S2 idempotency/range/eval-per-user** shipped; human-in-loop v2.2).
 > **HEAD:** TBD (post-commit). Branch: `feat/advanced-translation-pipeline`.
 
 ## ▶ NEXT SESSION — start here
@@ -28,7 +28,16 @@
 - **`D-CAMPAIGN-KPROJECT-OWNERSHIP`** (LOW) — `create` doesn't pre-validate the user owns `knowledge_project_id`; fails-closed at dispatch (`ProjectsRepo.get(user_id,…)` → 404 → stage failed). Add an early 400.
 - **`D-K16.2-02b`** → **S2** (promoted) — knowledge runner honours `chapter_range`; S1 starts whole-project extraction, projection tracks per-chapter via events.
 
-**▶ NEXT (S2):** translation **idempotency** (`skip_existing` default ON in `create_job`/dispatch, via `is_glossary_stale` + `active_chapter_translation_versions`) → unlocks Resume/Re-run-failed (G3); knowledge runner **`chapter_range`** (`D-K16.2-02b`/G2); generalize the (chapter,stage) skip to the projection (decision J). Also fold **`D-EVAL-JUDGE-PER-USER`** here. `/loom S2`.
+**✅ S2 DONE — idempotency + range + eval-per-user (XL, one loom, 2026-06-09).** Plan [`docs/plans/2026-06-09-s2-idempotency-range-eval.md`](../plans/2026-06-09-s2-idempotency-range-eval.md). **(A) Translation idempotency (G3):** `_resolve_and_create_job` (shared by public route + S1 internal dispatch) reduces chapters to `{never ∪ stale ∪ failed}` before fan-out — SKIP iff **a completed non-stale version EXISTS** for the language; `force_retranslate` bypasses; all-skipped → completed 0-chapter job. Skipped chapters emit a **distinct `chapter.translation_skipped`** event (NOT `chapter.translated` — statistics logs a row per `chapter.translated`; reuse would double-count) → the S1 campaign projection converges on Resume/Re-run (campaign consumer maps it → translation-done). **(B) Knowledge `chapter_range` (G2/D-K16.2-02b):** worker-ai `_enumerate_chapters` now filters `lo≤sort_order≤hi` from `job.scope_range` (was dropped — only the estimate ranged; now aligned). **(C) `D-EVAL-JUDGE-PER-USER`:** online translation + extraction judges bill the **content owner** (event/run `user_id`), env id is fallback-only; coref already correct. **VERIFY:** learning 132 · translation 522 · worker-ai 112 · campaign 52 — all green (knowledge untouched by S2). **/review-impl: 1 HIGH fixed** — the skip query keyed on the **active** version's staleness, but the worker promotes to active only on first completion (`ON CONFLICT DO NOTHING`), so a stale re-translation never becomes active → the gate would re-spend on every re-run; fixed by gating on *exists-non-stale-completed-version* (loop-free). MED deferred + LOW notes below.
+
+**S2 deferred rows:**
+- **`D-CAMPAIGN-AUTONOMOUS-PUBLISH`** (MED, review-impl) — re-translating an already-active chapter (stale/forced) yields a new version that does **not** auto-become-active (promotion = M6a human-confirm). For the no-human factory the reader keeps the old version until confirm — needs an autonomous-publish policy (promote-on-completion when `unresolved_high_count=0` for campaign jobs). Primary 4000-fresh-chapter path is unaffected (first completion sets active).
+- **`D-S2-IDEMPOTENCY-LIVE-SMOKE`** — real re-run shows skip (0 new spend) + campaign convergence via `chapter.translation_skipped`; also exercises the skip-query WHERE clause (unit tests mock the skip set — SQL correctness is live-only).
+- **G8 amplified by skip events** (→ **S4**) — an all-skipped re-run of a large book emits many `chapter.translation_skipped` on the trimmed (10k) `chapter` stream; dedicated campaign stream in S4.
+
+**Recently cleared:** ✅ **D-K16.2-02b** (knowledge runner honours chapter_range) · ✅ **D-TRANSL-IDEMPOTENCY / D-TRANSL-RESUME** (G3 — declarative skip; Resume/Re-run = re-run with default skip) · ✅ **D-EVAL-JUDGE-PER-USER** (content-owner billing).
+
+**▶ NEXT (S3):** reliability + policy — Redis per-provider rate-limit governor · circuit-breaker → campaign-pause · exponential backoff · campaign budget-cap pause · paced dispatch (fairness) · unified cancel. Also `D-CAMPAIGN-DRIVER-SINGLETON` (claim-based dispatch for HA) belongs here. `/loom S3`.
 
 ### ▶ RAW SEARCH (branch `raw-search/foundation`, off `origin/main`)
 

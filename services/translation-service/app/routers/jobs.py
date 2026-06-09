@@ -1,3 +1,4 @@
+import json
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 import asyncpg
@@ -99,7 +100,42 @@ async def _resolve_and_create_job(
             detail={"code": "TRANSL_NO_MODEL_CONFIGURED", "message": "No model configured. Set a model in Translation Settings before translating."},
         )
 
-    chapter_ids = payload.chapter_ids
+    # ── S2 idempotency gate (G3) ───────────────────────────────────────────
+    # Declarative "ensure translated": reduce the requested chapters to the
+    # to-do set {never-translated ∪ stale ∪ failed} before any fan-out. A
+    # chapter is SKIPPED iff it has a fresh successful active translation for
+    # this language (active version → status='completed' AND not glossary-stale).
+    # force_retranslate bypasses the skip (explicit re-translate request).
+    requested_ids = list(payload.chapter_ids)
+    target_language = eff["target_language"]
+    skipped_ids: list[UUID] = []
+    if payload.force_retranslate:
+        chapter_ids = requested_ids
+    else:
+        # SKIP a chapter iff a completed, non-stale translation EXISTS for this
+        # language — NOT keyed on the *active* version. The worker promotes a
+        # version to active only on the FIRST completion (`ON CONFLICT DO
+        # NOTHING`, chapter_worker.py); a stale re-translation produces a fresh
+        # v2 that never becomes active. Keying the gate on the active row would
+        # therefore re-translate a stale chapter on EVERY re-run (active stays
+        # stale forever) — a re-spend loop. "Exists a fresh completed version"
+        # is the true cost-idempotency question and is loop-free: after the
+        # stale chapter is re-translated once, the new non-stale row makes
+        # subsequent runs skip it (until the next glossary change re-marks it).
+        skip_rows = await db.fetch(
+            """
+            SELECT DISTINCT ct.chapter_id
+            FROM chapter_translations ct
+            WHERE ct.target_language = $1
+              AND ct.chapter_id = ANY($2::uuid[])
+              AND ct.status = 'completed'
+              AND ct.is_glossary_stale = false
+            """,
+            target_language, requested_ids,
+        )
+        skip_set = {r["chapter_id"] for r in skip_rows}
+        chapter_ids = [c for c in requested_ids if c not in skip_set]
+        skipped_ids = [c for c in requested_ids if c in skip_set]
 
     # Insert job + chapter rows in ONE transaction (W7): a mid-loop failure must not
     # leave a job with a partial chapter set + mismatched total_chapters (which would
@@ -149,30 +185,58 @@ async def _resolve_and_create_job(
                     job_id, chapter_id, book_id, uid, eff["target_language"],
                 )
 
-    # Publish job to RabbitMQ — worker fans out chapter messages
-    await publish("translation.job", {
-        "job_id":                  str(job_id),
-        "user_id":                 user_id,
-        "book_id":                 str(book_id),
-        "chapter_ids":             [str(c) for c in chapter_ids],
-        "model_source":            eff["model_source"],
-        "model_ref":               str(eff["model_ref"]),
-        "system_prompt":           eff["system_prompt"],
-        "user_prompt_tpl":         eff["user_prompt_tpl"],
-        "target_language":         eff["target_language"],
-        "compact_model_source":    eff.get("compact_model_source"),
-        "compact_model_ref":       str(eff["compact_model_ref"]) if eff.get("compact_model_ref") else None,
-        "compact_system_prompt":   eff.get("compact_system_prompt", DEFAULT_COMPACT_SYSTEM_PROMPT),
-        "compact_user_prompt_tpl": eff.get("compact_user_prompt_tpl", DEFAULT_COMPACT_USER_PROMPT_TPL),
-        "chunk_size_tokens":       eff.get("chunk_size_tokens", 2000),
-        "invoke_timeout_secs":     eff.get("invoke_timeout_secs", 300),
-        "pipeline_version":        eff.get("pipeline_version", "v2"),
-        "qa_depth":                eff.get("qa_depth", "standard"),
-        "max_qa_rounds":           eff.get("max_qa_rounds", 2),
-        "verifier_model_source":   eff.get("verifier_model_source"),
-        "verifier_model_ref":      str(eff["verifier_model_ref"]) if eff.get("verifier_model_ref") else None,
-        "cold_start_mode":         eff.get("cold_start_mode", "single_pass"),
-    })
+            # S2: emit a per-chapter done-signal for SKIPPED (already-current)
+            # chapters so a resumed campaign's projection converges (decision:
+            # a DISTINCT `chapter.translation_skipped` — NOT `chapter.translated`
+            # — because statistics-service logs a translation_event for every
+            # `chapter.translated`; this stays stats- and billing-neutral). Same
+            # `chapter` aggregate stream the campaign-collector consumes.
+            for cid in skipped_ids:
+                await conn.execute(
+                    """INSERT INTO outbox_events (event_type, aggregate_type, aggregate_id, payload)
+                       VALUES ('chapter.translation_skipped', 'chapter', $1, $2::jsonb)""",
+                    cid,
+                    json.dumps({
+                        "user_id": user_id,
+                        "book_id": str(book_id),
+                        "chapter_id": str(cid),
+                        "target_language": target_language,
+                        "status": "already_current",
+                    }),
+                )
+
+            # All requested chapters already current → no fan-out; finalize now.
+            if not chapter_ids:
+                await conn.execute(
+                    "UPDATE translation_jobs SET status='completed', finished_at=now() WHERE job_id=$1",
+                    job_id,
+                )
+
+    # Publish the job only when there is work to fan out.
+    if chapter_ids:
+        await publish("translation.job", {
+            "job_id":                  str(job_id),
+            "user_id":                 user_id,
+            "book_id":                 str(book_id),
+            "chapter_ids":             [str(c) for c in chapter_ids],
+            "model_source":            eff["model_source"],
+            "model_ref":               str(eff["model_ref"]),
+            "system_prompt":           eff["system_prompt"],
+            "user_prompt_tpl":         eff["user_prompt_tpl"],
+            "target_language":         eff["target_language"],
+            "compact_model_source":    eff.get("compact_model_source"),
+            "compact_model_ref":       str(eff["compact_model_ref"]) if eff.get("compact_model_ref") else None,
+            "compact_system_prompt":   eff.get("compact_system_prompt", DEFAULT_COMPACT_SYSTEM_PROMPT),
+            "compact_user_prompt_tpl": eff.get("compact_user_prompt_tpl", DEFAULT_COMPACT_USER_PROMPT_TPL),
+            "chunk_size_tokens":       eff.get("chunk_size_tokens", 2000),
+            "invoke_timeout_secs":     eff.get("invoke_timeout_secs", 300),
+            "pipeline_version":        eff.get("pipeline_version", "v2"),
+            "qa_depth":                eff.get("qa_depth", "standard"),
+            "max_qa_rounds":           eff.get("max_qa_rounds", 2),
+            "verifier_model_source":   eff.get("verifier_model_source"),
+            "verifier_model_ref":      str(eff["verifier_model_ref"]) if eff.get("verifier_model_ref") else None,
+            "cold_start_mode":         eff.get("cold_start_mode", "single_pass"),
+        })
     await publish_event(user_id, {
         "event":    "job.created",
         "job_id":   str(job_id),
@@ -180,10 +244,15 @@ async def _resolve_and_create_job(
         "payload":  {
             "book_id":        str(book_id),
             "total_chapters": len(chapter_ids),
-            "status":         "pending",
+            "status":         "completed" if not chapter_ids else "pending",
         },
     })
 
+    if not chapter_ids:
+        # Reflect the finalized status in the response (job_row was fetched pending).
+        job_row = await db.fetchrow(
+            "SELECT * FROM translation_jobs WHERE job_id=$1", job_id,
+        )
     return _job_row_to_model(job_row)
 
 
