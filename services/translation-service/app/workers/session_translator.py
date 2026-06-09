@@ -523,7 +523,9 @@ async def _translate_chunk(
             "session_translator: transient retry exhausted for chunk %d (ct=%s) code=%s",
             chunk_idx + 1, chapter_translation_id, exc.underlying_code,
         )
-        raise _TransientError(f"provider_error_{exc.underlying_code}") from exc
+        raise _TransientError(
+            f"provider_error_{exc.underlying_code}", code=exc.underlying_code
+        ) from exc
     except LLMQuotaExceeded as exc:
         # /review-impl HIGH#1 — 402 billing/quota: PERMANENT, no retry
         log.error(
@@ -552,7 +554,9 @@ async def _translate_chunk(
             "session_translator: SDK error for chunk %d (ct=%s): %s",
             chunk_idx + 1, chapter_translation_id, exc,
         )
-        raise _TransientError(f"invoke unreachable: {exc}") from exc
+        raise _TransientError(
+            f"invoke unreachable: {exc}", code=getattr(exc, "code", None)
+        ) from exc
 
     log.debug(
         "session_translator: job ended status=%s for chunk %d (ct=%s)",
@@ -571,8 +575,9 @@ async def _translate_chunk(
             raise _PermanentError("billing_rejected")
         if err_code == "LLM_MODEL_NOT_FOUND":
             raise _PermanentError("model_not_found")
-        # 5xx-class upstream errors → transient (worker retries)
-        raise _TransientError(f"provider_error_{err_code}")
+        # 5xx-class upstream errors → transient (worker retries). S3c-2b: carry
+        # the structured code so circuit-open auto-pause doesn't parse the message.
+        raise _TransientError(f"provider_error_{err_code}", code=err_code)
 
     translated_text, in_tok, out_tok = _parse_sdk_response(sdk_job)
 

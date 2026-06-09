@@ -219,6 +219,43 @@ async def mark_stage_done_by_chapter(
         return 0
 
 
+async def pause_campaigns_for_dispatched_chapter(
+    pool: asyncpg.Pool,
+    *,
+    owner_user_id: UUID,
+    book_id: UUID,
+    chapter_id: UUID,
+    stage: str,
+    reason: str,
+) -> int:
+    """S3c-2b breaker→pause: auto-pause RUNNING campaigns whose in-flight
+    `(chapter, stage)` just hit a provider circuit-open. Precise correlation —
+    only campaigns that actually dispatched THIS chapter for THIS stage pause
+    (not unrelated campaigns on the same book). Returns rows paused. Idempotent
+    (WHERE status='running')."""
+    col = _stage_col(stage)
+    result = await pool.execute(
+        f"""
+        UPDATE campaigns c
+        SET status = 'paused', error_message = $4, updated_at = now()
+        WHERE c.owner_user_id = $1
+          AND c.book_id = $2
+          AND c.status = 'running'
+          AND EXISTS (
+            SELECT 1 FROM campaign_chapters cc
+            WHERE cc.campaign_id = c.campaign_id
+              AND cc.chapter_id = $3
+              AND cc.{col} = 'dispatched'
+          )
+        """,
+        owner_user_id, book_id, chapter_id, reason,
+    )
+    try:
+        return int(result.split()[-1])
+    except (ValueError, IndexError, AttributeError):
+        return 0
+
+
 # ── Saga driver read/write path ───────────────────────────────────────────
 
 

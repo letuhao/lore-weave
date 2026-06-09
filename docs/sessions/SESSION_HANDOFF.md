@@ -1,7 +1,7 @@
 # Session Handoff — Session 105 (eval R&D closed + Production Eval Flywheel track planned)
 
 > **Purpose:** orient the next agent in one read. This file is the single, unversioned handoff — updated in place at the end of each session. (Older `SESSION_PATCH.md` is deprecated → archive later.)
-> **Date:** 2026-06-09 (Auto-Draft Factory **S1 + S2 + S3a + S3b + S3c-foundation + S3c-2a (cancel-prop)** shipped; human-in-loop v2.2).
+> **Date:** 2026-06-09 (Auto-Draft Factory **S1 + S2 + S3a/b + S3c (foundation + 2a cancel + 2b breaker-pause)** shipped; human-in-loop v2.2).
 > **HEAD:** TBD (post-commit). Branch: `feat/advanced-translation-pipeline`.
 
 ## ▶ NEXT SESSION — start here
@@ -66,7 +66,14 @@
 **S3c-2a deferred rows:**
 - **`D-CAMPAIGN-CANCEL-LIVE-SMOKE`** — live: cancel a running campaign → in-flight translation+knowledge jobs flip to cancelled, dispatched chapter-stages terminalize, campaign finalizes cancelled; raced completion preserved.
 
-**▶ NEXT:** **S3c-2b breaker→campaign-pause** (`D-CAMPAIGN-BREAKER-PAUSE`) — worker (translation + worker-ai) emits a per-chapter `*.failed` outbox event carrying the error_code (none today — only success events); campaign consumer counts `LLM_CIRCUIT_OPEN` → auto-pause. Then **S3d**/**S4** (budget-pause + usage→outbox, coupled). `/loom S3c-2b`.
+**✅ S3c-2b DONE — breaker→campaign-pause (XL, 2026-06-09, cross-service). 🏁 S3 reliability arc COMPLETE.** Completes S3a: a provider circuit-open now AUTO-PAUSES the campaign (no churning a down provider). **Pause-only semantic** (PO): the failure event is a provider-health signal — it pauses RUNNING campaigns whose in-flight `(chapter,stage)` hit the circuit but NEVER touches stage-status (so it can't race the worker's internal retry). **translation:** `chapter_worker._emit_chapter_failed_if_circuit_open` emits `chapter.translation_failed{error_code=LLM_CIRCUIT_OPEN}` (best-effort, both failure handlers); code carried structurally on `_TransientError.code` (set at session_translator's 3 provider raise sites — no message-substring fragility). **worker-ai:** `ExtractionResult.error_code` (from `ExtractionError.last_error.code`) → runner emits `knowledge.chapter_failed` on circuit-open. **campaign consumer:** `*.failed{LLM_CIRCUIT_OPEN}` → `pause_campaigns_for_dispatched_chapter` (precise per-chapter+stage correlation; idempotent WHERE running). Resume via `/start` after the breaker recovers. **VERIFY:** campaign **64** · worker-ai **114** · translation **534**. **/review-impl: 1 MED + 1 LOW fixed** (structured `_TransientError.code` vs substring; + handle_chapter_message wiring test). Accept/doc: worker-ai error_code chain + runner emit wiring live-only; over-pause edge (same-chapter different-provider, narrow).
+
+**S3c-2b deferred rows:**
+- **`D-CAMPAIGN-BREAKER-PAUSE-LIVE-SMOKE`** — live: open a provider's circuit → a running campaign using it auto-pauses (both translation + knowledge paths); resume after cooldown succeeds. Also exercises the worker-ai `exc.last_error.code` chain + the runner emit wiring (unit-untested).
+
+**Recently cleared:** ✅ **D-CAMPAIGN-BREAKER-PAUSE** (auto-pause on provider circuit-open).
+
+**▶ NEXT:** **S3d / S4** (coupled) — campaign **budget-cap pause** (G4) + **usage→outbox exactly-once** (decision C) + per-campaign cost aggregation (reuse `estimate.go`) + dedicated `campaign` stream MAXLEN (G8). The budget-pause needs the spend-data the usage→outbox provides, hence coupled. Then **S5/S6** (wizard + monitor FE). `/loom S4` (or `/loom S3d`).
 
 ### ▶ RAW SEARCH (branch `raw-search/foundation`, off `origin/main`)
 

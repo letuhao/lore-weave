@@ -87,5 +87,39 @@ async def test_malformed_uuid_ignored(fake_pool, mocker):
     ) is False
 
 
+# ── S3c-2b breaker → pause ───────────────────────────────────────────────
+
+@pytest.mark.parametrize(
+    "event_type,stage",
+    [("chapter.translation_failed", "translation"), ("knowledge.chapter_failed", "knowledge")],
+)
+async def test_circuit_open_failure_pauses_campaign(fake_pool, mocker, event_type, stage):
+    pause = mocker.patch(
+        "app.events.consumer.repo.pause_campaigns_for_dispatched_chapter",
+        new_callable=AsyncMock, return_value=1)
+    handled = await handle_event(fake_pool, event_type, _payload(error_code="LLM_CIRCUIT_OPEN"))
+    assert handled is True
+    pause.assert_awaited_once()
+    assert pause.call_args.kwargs["stage"] == stage
+    assert pause.call_args.kwargs["chapter_id"] == UUID(CHAP)
+
+
+async def test_non_circuit_failure_does_not_pause(fake_pool, mocker):
+    pause = mocker.patch(
+        "app.events.consumer.repo.pause_campaigns_for_dispatched_chapter", new_callable=AsyncMock)
+    # a normal failure (not circuit-open) is the worker's retry concern, not a pause
+    assert await handle_event(
+        fake_pool, "chapter.translation_failed", _payload(error_code="LLM_BAD_REQUEST")
+    ) is False
+    pause.assert_not_called()
+
+
+async def test_failure_without_error_code_does_not_pause(fake_pool, mocker):
+    pause = mocker.patch(
+        "app.events.consumer.repo.pause_campaigns_for_dispatched_chapter", new_callable=AsyncMock)
+    assert await handle_event(fake_pool, "knowledge.chapter_failed", _payload()) is False
+    pause.assert_not_called()
+
+
 def test_event_stage_map_covers_three_stages():
     assert set(EVENT_STAGE.values()) == {"knowledge", "translation", "eval"}

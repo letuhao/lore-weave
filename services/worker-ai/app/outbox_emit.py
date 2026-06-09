@@ -35,6 +35,9 @@ RUN_COMPLETED_EVENT = "knowledge.extraction_run_completed"
 # knowledge stage. Distinct from the run-telemetry event above (which learning
 # consumes); both ride `loreweave:events:knowledge`.
 CHAPTER_EXTRACTED_EVENT = "knowledge.chapter_extracted"
+# S3c-2b — per-chapter extraction failure carrying the LLM error_code, consumed
+# by campaign-service to auto-pause on LLM_CIRCUIT_OPEN.
+CHAPTER_FAILED_EVENT = "knowledge.chapter_failed"
 
 
 class _Executor(Protocol):
@@ -114,4 +117,44 @@ async def emit_chapter_extracted_best_effort(
             "outbox: failed to emit %s for chapter %s (non-fatal — campaign "
             "projection self-heals)",
             CHAPTER_EXTRACTED_EVENT, chapter_id, exc_info=True,
+        )
+
+
+async def emit_chapter_failed_best_effort(
+    executor: _Executor,
+    *,
+    user_id: str,
+    project_id: str,
+    book_id: str | None,
+    chapter_id: str,
+    error_code: str,
+) -> None:
+    """S3c-2b — emit `knowledge.chapter_failed` (error_code) when a chapter's
+    extraction fails because the provider's S3a circuit is OPEN, so
+    campaign-service auto-pauses. Best-effort: a lost emit just means the campaign
+    keeps churning until the breaker self-heals. The caller emits ONLY on
+    LLM_CIRCUIT_OPEN (the campaign pauses solely on that code)."""
+    try:
+        await executor.execute(
+            """
+            INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
+            VALUES ('knowledge', $1, $2, $3::jsonb)
+            """,
+            uuid.UUID(str(chapter_id)),
+            CHAPTER_FAILED_EVENT,
+            json.dumps(
+                {
+                    "user_id": str(user_id),
+                    "project_id": str(project_id),
+                    "book_id": str(book_id) if book_id else None,
+                    "chapter_id": str(chapter_id),
+                    "error_code": error_code,
+                },
+                default=str,
+            ),
+        )
+    except Exception:
+        logger.warning(
+            "outbox: failed to emit %s for chapter %s (non-fatal)",
+            CHAPTER_FAILED_EVENT, chapter_id, exc_info=True,
         )

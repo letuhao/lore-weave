@@ -42,6 +42,7 @@ async def handle_chapter_message(
     except _TransientError as exc:
         log.warning("chapter %s: transient error — %s", chapter_id, exc)
         await _fail_chapter_idempotent(pool, job_id, chapter_id, f"transient: {exc}")
+        await _emit_chapter_failed_if_circuit_open(pool, msg, chapter_id, exc)
         await _emit_chapter_done(publish_event, user_id, msg, "failed", f"transient: {exc}")
         await _check_job_completion(pool, job_id, user_id, msg, publish_event)
         record_stage("translation.chapter", pipeline=msg.get("pipeline_version", "v2"),
@@ -50,6 +51,7 @@ async def handle_chapter_message(
     except Exception as exc:
         log.exception("chapter %s: unhandled error — %s", chapter_id, exc)
         await _fail_chapter_idempotent(pool, job_id, chapter_id, f"permanent: {exc}")
+        await _emit_chapter_failed_if_circuit_open(pool, msg, chapter_id, exc)
         await _emit_chapter_done(publish_event, user_id, msg, "failed", f"permanent: {exc}")
         await _check_job_completion(pool, job_id, user_id, msg, publish_event)
         record_stage("translation.chapter", pipeline=msg.get("pipeline_version", "v2"),
@@ -426,6 +428,30 @@ async def _insert_outbox_event(
     )
 
 
+async def _emit_chapter_failed_if_circuit_open(pool, msg, chapter_id, exc) -> None:
+    """S3c-2b: when a chapter fails because the provider's S3a circuit is OPEN,
+    emit `chapter.translation_failed` (error_code=LLM_CIRCUIT_OPEN) so
+    campaign-service auto-pauses the campaign. Best-effort + circuit-open-only:
+    the campaign pauses solely on that code, and a lost emit just means the
+    campaign keeps churning until the breaker self-heals + a retry succeeds. The
+    code is carried structurally on `_TransientError.code` (set at the provider
+    raise sites in session_translator), so this never depends on the message
+    format."""
+    if getattr(exc, "code", None) != "LLM_CIRCUIT_OPEN":
+        return
+    try:
+        async with pool.acquire() as db:
+            await _insert_outbox_event(db, "chapter.translation_failed", chapter_id, {
+                "user_id": str(msg["user_id"]),
+                "book_id": str(msg["book_id"]),
+                "chapter_id": str(chapter_id),
+                "target_language": msg.get("target_language"),
+                "error_code": "LLM_CIRCUIT_OPEN",
+            })
+    except Exception:  # noqa: BLE001 — telemetry/control signal, never fail the worker
+        log.warning("S3c-2b: failed to emit chapter.translation_failed (non-fatal)", exc_info=True)
+
+
 async def _emit_translation_quality(
     conn, chapter_translation_id, msg: dict, pipeline_version: str,
     *, source_text: str = "", translated_text: str = "",
@@ -606,7 +632,16 @@ async def _save_chapter_memo(
 
 
 class _TransientError(Exception):
-    """Network blip, service unavailable — safe to retry."""
+    """Network blip, service unavailable — safe to retry.
+
+    `code` (S3c-2b) carries the structured upstream error code (e.g.
+    LLM_CIRCUIT_OPEN) when the failure originated from a provider job, so the
+    circuit-open auto-pause signal doesn't depend on parsing the message string.
+    None for non-provider transients (book-service down, etc.)."""
+
+    def __init__(self, message: str, *, code: str | None = None) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class _PermanentError(Exception):

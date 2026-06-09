@@ -49,6 +49,16 @@ EVENT_STAGE = {
     "translation.quality": "eval",
 }
 
+# S3c-2b breaker→pause: a per-chapter FAILURE event carrying error_code. When a
+# provider's S3a circuit is open, the worker emits one with LLM_CIRCUIT_OPEN →
+# the campaign auto-pauses (provider-health signal only; does NOT touch stage
+# status, so it can't race the worker's internal retry).
+FAILURE_EVENT_STAGE = {
+    "chapter.translation_failed": "translation",
+    "knowledge.chapter_failed": "knowledge",
+}
+CIRCUIT_OPEN_CODE = "LLM_CIRCUIT_OPEN"
+
 STREAMS = [
     "loreweave:events:knowledge",
     "loreweave:events:chapter",
@@ -61,6 +71,12 @@ BLOCK_MS = 5000
 async def handle_event(pool: asyncpg.Pool, event_type: str, payload: dict) -> bool:
     """Advance the projection for one inbound event. Returns True if it mapped to
     a stage and was applied, False if ignored (unknown type / missing ids)."""
+    # S3c-2b: a circuit-open FAILURE event auto-pauses the affected campaign(s).
+    # Provider-health signal only — never touches stage status (no retry race).
+    failure_stage = FAILURE_EVENT_STAGE.get(event_type)
+    if failure_stage is not None:
+        return await _handle_circuit_failure(pool, failure_stage, payload)
+
     stage = EVENT_STAGE.get(event_type)
     if stage is None:
         return False
@@ -89,6 +105,38 @@ async def handle_event(pool: asyncpg.Pool, event_type: str, payload: dict) -> bo
     except (ValueError, TypeError):
         logger.warning("event %s has malformed UUID(s)", event_type)
         return False
+    return True
+
+
+async def _handle_circuit_failure(pool: asyncpg.Pool, stage: str, payload: dict) -> bool:
+    """S3c-2b: pause campaigns whose in-flight (chapter, stage) hit a provider
+    circuit-open. Acts ONLY on LLM_CIRCUIT_OPEN (other error codes are ignored —
+    a normal failure is the worker's own retry concern, not a campaign pause)."""
+    if payload.get("error_code") != CIRCUIT_OPEN_CODE:
+        return False
+    try:
+        user_id = payload["user_id"]
+        book_id = payload["book_id"]
+        chapter_id = payload["chapter_id"]
+    except (KeyError, TypeError):
+        return False
+    if not user_id or not book_id or not chapter_id:
+        return False
+    try:
+        paused = await repo.pause_campaigns_for_dispatched_chapter(
+            pool,
+            owner_user_id=UUID(str(user_id)),
+            book_id=UUID(str(book_id)),
+            chapter_id=UUID(str(chapter_id)),
+            stage=stage,
+            reason="auto-paused: provider circuit open",
+        )
+    except (ValueError, TypeError):
+        return False
+    if paused:
+        logger.warning(
+            "circuit-open auto-paused %d campaign(s) on book=%s stage=%s", paused, book_id, stage,
+        )
     return True
 
 

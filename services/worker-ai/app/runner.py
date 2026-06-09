@@ -50,6 +50,7 @@ from app.clients import (
 from app.llm_client import LLMClient
 from app.outbox_emit import (
     emit_chapter_extracted_best_effort,
+    emit_chapter_failed_best_effort,
     emit_extraction_run,
     emit_extraction_run_best_effort,
 )
@@ -1137,9 +1138,13 @@ async def _extract_and_persist(
         )
     except ExtractionError as exc:
         retryable = exc.stage == "provider_exhausted"
+        # S3c-2b: surface the underlying LLM error code (LLM_CIRCUIT_OPEN) from
+        # the chained cause so the runner can signal a circuit-open for campaign
+        # auto-pause. ExtractionError itself has no `.code`; it's on last_error.
+        error_code = getattr(exc.last_error, "code", None)
         logger.warning(
-            "extract_pass2 failed source_id=%s stage=%s retryable=%s: %s",
-            source_id, exc.stage, retryable, exc,
+            "extract_pass2 failed source_id=%s stage=%s retryable=%s code=%s: %s",
+            source_id, exc.stage, retryable, error_code, exc,
         )
         return ExtractionResult(
             source_id=source_id,
@@ -1149,6 +1154,7 @@ async def _extract_and_persist(
             facts_merged=0,
             retryable=retryable,
             error=f"extraction failed (stage={exc.stage}): {exc}",
+            error_code=error_code,
         ), None
 
     persist_result = await knowledge_client.persist_pass2(
@@ -1412,6 +1418,17 @@ async def process_job(
                 )
 
                 if result.error:
+                    # S3c-2b: a provider circuit-open (retryable or not) signals
+                    # the provider is down → tell campaign-service to auto-pause.
+                    if result.error_code == "LLM_CIRCUIT_OPEN":
+                        await emit_chapter_failed_best_effort(
+                            pool,
+                            user_id=str(job.user_id),
+                            project_id=str(job.project_id),
+                            book_id=str(book_id) if book_id else None,
+                            chapter_id=str(ch.chapter_id),
+                            error_code="LLM_CIRCUIT_OPEN",
+                        )
                     if not result.retryable:
                         await _append_log(
                             pool, job.user_id, job.job_id, "error",
