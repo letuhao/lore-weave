@@ -28,6 +28,12 @@ type Config struct {
 	// timeout (provider-registry VideoGenJobTimeout = 30m) so a normal job
 	// is never swept mid-run. Code default 45m; override via RESERVATION_TTL.
 	ReservationTTL time.Duration
+
+	// S4c — usage audit stream consumer. Active only when RedisURL is set;
+	// consumes the S4b loreweave:events:usage stream → usage_logs audit.
+	RedisURL           string
+	UsageStream        string
+	UsageConsumerGroup string
 }
 
 func Load() (*Config, error) {
@@ -72,6 +78,11 @@ func Load() (*Config, error) {
 		}
 		c.ReservationTTL = d
 	}
+
+	// S4c usage stream consumer (optional; active only when REDIS_URL is set).
+	c.RedisURL = os.Getenv("REDIS_URL")
+	c.UsageStream = getEnv("USAGE_STREAM", "loreweave:events:usage")
+	c.UsageConsumerGroup = getEnv("USAGE_CONSUMER_GROUP", "usage-biller")
 
 	return c, nil
 }

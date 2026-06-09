@@ -357,11 +357,19 @@ services:
       # P5). Generous for the test/UAT environment so it never gates.
       # Same numeric(16,8) ceiling as the guardrail budgets above.
       PLATFORM_FREE_TIER_USD: ${PLATFORM_FREE_TIER_USD:-99000000}
+      # S4c — usage audit stream consumer. Consumes the S4b loreweave:events:usage
+      # stream (provider-registry relay) → usage_logs audit. Unset REDIS_URL = no
+      # consumer (the /record streaming path still works).
+      REDIS_URL: redis://redis:6379
+      USAGE_STREAM: ${USAGE_STREAM:-loreweave:events:usage}
+      USAGE_CONSUMER_GROUP: ${USAGE_CONSUMER_GROUP:-usage-biller}
       # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
 
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8086/health"]
