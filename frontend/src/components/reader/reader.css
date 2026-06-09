@@ -692,3 +692,81 @@
 .content-renderer-compact .block-hr {
   margin: 1.2em auto;
 }
+
+/* wiki-llm M7a — citation trust chip + hover/focus popover */
+.citation-chip-wrap {
+  position: relative;
+  display: inline;
+  white-space: nowrap;
+}
+/* No forced superscript here: in the body the mapper's separate `superscript`
+   mark wraps the chip in <sup>; the References list has none, so the chip renders
+   inline at full size with its "[n] label" text. */
+.citation-chip {
+  color: var(--primary, #6d28d9);
+  background: none;
+  border: none;
+  padding: 0 1px;
+  margin: 0;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+.citation-chip:hover,
+.citation-chip:focus-visible {
+  text-decoration: underline;
+  outline: none;
+}
+.citation-popover {
+  position: absolute;
+  z-index: 50;
+  bottom: 1.4em;
+  left: 0;
+  width: max-content;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--popover, #1f2937);
+  color: var(--popover-foreground, #f3f4f6);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  white-space: normal;
+  text-align: left;
+}
+.citation-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.citation-source {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  opacity: 0.85;
+}
+.citation-source-glossary { color: #34d399; }
+.citation-source-kg { color: #60a5fa; }
+.citation-source-passage { color: #fbbf24; }
+.citation-score {
+  font-size: 0.72rem;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+.citation-snippet {
+  display: block;
+  opacity: 0.95;
+}
+.citation-jump {
+  align-self: flex-start;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #a78bfa;
+  text-decoration: none;
+}
+.citation-jump:hover { text-decoration: underline; }

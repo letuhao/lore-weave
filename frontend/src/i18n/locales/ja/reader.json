@@ -132,5 +132,15 @@
     "pause": "一時停止",
     "play": "添付音声を再生",
     "mismatch": "音声字幕がブロックのテキストと異なります"
+  },
+  "citation": {
+    "aria": "引用 {{n}}",
+    "jump": "出典へ移動",
+    "relevance": "関連度",
+    "source": {
+      "glossary": "用語集",
+      "kg": "知識",
+      "passage": "本文"
+    }
   }
 }

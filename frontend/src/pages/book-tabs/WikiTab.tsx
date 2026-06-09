@@ -10,6 +10,7 @@ import { wikiApi } from '@/features/wiki/api';
 import { glossaryApi } from '@/features/glossary/api';
 import type { WikiArticleListItem, WikiInfoboxAttr } from '@/features/wiki/types';
 import { ContentRenderer } from '@/components/reader/ContentRenderer';
+import { CitationProvider } from '@/components/reader/CitationContext';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { EmptyState } from '@/components/shared';
 import { cn } from '@/lib/utils';
@@ -315,7 +316,9 @@ function WikiArticleView({ bookId, articleId }: { bookId: string; articleId: str
 
           {hasContent ? (
             <div className="wiki-article-body">
-              <ContentRenderer blocks={blocks} mode="full" />
+              <CitationProvider bookId={bookId}>
+                <ContentRenderer blocks={blocks} mode="full" />
+              </CitationProvider>
             </div>
           ) : (
             <p className="text-sm text-muted-foreground italic">{t('noContent')}</p>

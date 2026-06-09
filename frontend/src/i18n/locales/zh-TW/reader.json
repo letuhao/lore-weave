@@ -132,5 +132,15 @@
     "pause": "暫停",
     "play": "播放附加音訊",
     "mismatch": "音訊字幕與區塊文字不符"
+  },
+  "citation": {
+    "aria": "引用 {{n}}",
+    "jump": "跳至來源",
+    "relevance": "相關度",
+    "source": {
+      "glossary": "詞條",
+      "kg": "知識",
+      "passage": "段落"
+    }
   }
 }
