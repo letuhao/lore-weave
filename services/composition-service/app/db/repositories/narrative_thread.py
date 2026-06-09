@@ -103,6 +103,18 @@ class NarrativeThreadRepo:
             rows = await c.fetch(query, user_id, project_id, _OPEN_STATUSES, limit)
         return [_row(r) for r in rows]
 
+    async def count_open(self, user_id: UUID, project_id: UUID) -> int:
+        """TRUE count of the open/progressing set — the unpaid-promise debt
+        (FD-1 S4a §7). A real COUNT, not len(list_open) which caps at its LIMIT
+        and would silently under-report the debt for a large ledger."""
+        query = """
+        SELECT count(*) FROM narrative_thread
+        WHERE user_id = $1 AND project_id = $2 AND NOT is_archived
+          AND status = ANY($3)
+        """
+        async with self._pool.acquire() as c:
+            return await c.fetchval(query, user_id, project_id, _OPEN_STATUSES) or 0
+
     async def list_for_project(
         self, user_id: UUID, project_id: UUID,
     ) -> list[NarrativeThread]:

@@ -190,6 +190,19 @@ async def _maybe_detect_narrative_threads(
         logger.warning("narrative_thread S2 producer failed (advisory)", exc_info=True)
 
 
+async def _open_promise_count(work, *, repo, user_id, project_id) -> int | None:
+    """FD-1 S4a — the advisory unpaid-promise DEBT count (§7) after a generated
+    chapter. None when narrative_thread is off (no read); best-effort — never
+    raises into the generate path. Extracted so the gate/swallow is unit-testable."""
+    if not (work.settings or {}).get("narrative_thread_enabled"):
+        return None
+    try:
+        return await repo.count_open(user_id, project_id)
+    except Exception:  # noqa: BLE001 — advisory; must not fail the generate
+        logger.warning("open_promise_count read failed (advisory)", exc_info=True)
+        return None
+
+
 async def _persist_chapter_draft(
     book: BookClient, book_id: UUID, chapter_id: UUID, bearer: str,
     text: str, commit_message: str,
@@ -671,6 +684,12 @@ async def generate_chapter(
         model_source=body.model_source, model_ref=body.model_ref,
         source_language=from_settings(work.settings).source_language)
 
+    # FD-1 S4a — advisory unpaid-promise DEBT count (§7) at chapter end (the
+    # detector just ran). None when off; best-effort. Uses count_open (a true
+    # COUNT, not a capped list — review-impl MED#1).
+    open_promise_count = await _open_promise_count(
+        work, repo=narrative_threads, user_id=user_id, project_id=project_id)
+
     # MED-2 — best-effort persist of the assembled chapter to the book draft.
     persisted, draft_version, persist_error = False, None, None
     if body.persist:
@@ -693,14 +712,16 @@ async def generate_chapter(
                 "output_tokens": total_out, "measured": winner.metering.measured,
                 "truncated": truncated, "finish_reason": winner.metering.finish_reason,
                 "canon": canon_v, "assembly_mode": "chapter", "chapter_id": str(chapter_id),
-                "persisted": persisted, "draft_version": draft_version})
+                "persisted": persisted, "draft_version": draft_version,
+                "open_promise_count": open_promise_count})
     return JSONResponse({
         "job_id": str(job.id), "mode": "auto", "status": "completed", "text": final_text,
         "truncated": truncated, "finish_reason": winner.metering.finish_reason,
         "canon": canon_v, "grounding_available": pc.grounding_available,
         "reasoning_source": reasoning.source, "reasoning_effort": reasoning.effort,
         "assembly_mode": "chapter", "persisted": persisted, "draft_version": draft_version,
-        "persist_error": persist_error, "max_output_tokens": max_out})
+        "persist_error": persist_error, "max_output_tokens": max_out,
+        "open_promise_count": open_promise_count})  # FD-1 S4a advisory debt flag
 
 
 @router.post("/works/{project_id}/chapters/{chapter_id}/stitch")

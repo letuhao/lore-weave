@@ -30,8 +30,8 @@ from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.logging_config import setup_logging, trace_id_var
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
-    canon, engine, grounding, health, internal_eval, metrics, outline, ping, plan,
-    prose, works,
+    canon, engine, grounding, health, internal_eval, metrics, narrative_threads,
+    outline, ping, plan, prose, works,
 )
 
 logger = logging.getLogger(__name__)
@@ -133,3 +133,4 @@ app.include_router(outline.router)
 app.include_router(plan.router)
 app.include_router(internal_eval.router)
 app.include_router(canon.router)
+app.include_router(narrative_threads.router)
