@@ -73,7 +73,13 @@
 
 **Recently cleared:** ✅ **D-CAMPAIGN-BREAKER-PAUSE** (auto-pause on provider circuit-open).
 
-**▶ NEXT:** **S3d / S4** (coupled) — campaign **budget-cap pause** (G4) + **usage→outbox exactly-once** (decision C) + per-campaign cost aggregation (reuse `estimate.go`) + dedicated `campaign` stream MAXLEN (G8). The budget-pause needs the spend-data the usage→outbox provides, hence coupled. Then **S5/S6** (wizard + monitor FE). `/loom S4` (or `/loom S3d`).
+**▶ NEXT: S4 — needs a DESIGN PASS first (attribution is unsolved).** `/loom S4` reached CLARIFY 2026-06-09; PO chose **stop + design next session** (don't rush a money-feature). **Grounding done (don't re-do):**
+- **No spend-event stream today.** provider-registry `billing.RecordUsage` is **fire-and-forget HTTP** to usage-billing `/internal/model-billing/record` (called from `jobs/worker.go settleBilling` on completion). `UsageRecord` carries **tokens, not cost**; usage-billing recomputes cost (today a flat `$0.000002/token` fallback at `server.go:258` — NOT per-model pricing; real pricing is provider-registry `billing/estimate.go`). Idempotent on `request_id` (UNIQUE in `usage_logs`).
+- **🔴 Attribution chain is BROKEN for campaigns.** `usage_logs.request_id = provider-registry job_id`. The campaign only knows the **translation/knowledge** job_id (S3c-2a), which is a DIFFERENT id — and one translation job spawns MANY provider-registry jobs (per chunk). So the campaign **cannot** sum its own spend by its stored job_ids. A true per-campaign cumulative cap needs a **campaign-correlation id threaded dispatch→job→provider-registry→usage** (new), or a usage→outbox stream tagged with that correlation.
+- **Per-job `max_spend_usd` proxy is only approximate** (knowledge `extraction_jobs` already has `max_spend_usd` + atomic `try_spend` auto-pause at `extraction_jobs.py:638`; translation has NEITHER). It pauses individual jobs at sub-caps, NOT the campaign at a cumulative cap, and gives no campaign-level pause signal. Rejected as the v1 "true" answer.
+- **Decision C (usage→outbox exactly-once)** is the natural vehicle: route usage recording through provider-registry's outbox → relay → usage-billing consumer (idempotent on request_id) AND a campaign-consumable usage event tagged with the campaign-correlation → campaign sums + pauses at cap. Couples S4 budget-pause + decision-C + G8 (dedicated `campaign` stream MAXLEN).
+
+**S4 design-pass scope (next session):** decide the campaign-spend-attribution mechanism (correlation-id threading vs usage→outbox-tagged), the usage→outbox shape (decision C), per-campaign cost aggregation + the cumulative-cap pause trigger, and the cost-source fix (per-model pricing vs the flat fallback). Then build. Then **S5/S6** (wizard + monitor FE).
 
 ### ▶ RAW SEARCH (branch `raw-search/foundation`, off `origin/main`)
 
