@@ -60,7 +60,8 @@
       "label": "モデル",
       "deterministic": "確定的スタブ（LLMなし）",
       "deterministicHint": "用語集の属性から記事の骨組みを作成します — AIなし・費用なし。",
-      "llmHint": "選択したモデルで出典付きの記事を生成します。"
+      "llmHint": "選択したモデルで出典付きの記事を生成します。",
+      "pickRequired": "モデルを選択…"
     },
     "kinds": {
       "label": "種別で絞り込み（任意）",
@@ -89,6 +90,30 @@
       "failed": "生成に失敗しました",
       "complete": "生成完了",
       "cancelled": "キャンセル済み"
+    },
+    "regenerate": "再生成",
+    "regenTitle": "「{{name}}」を再生成",
+    "regenDescription": "この記事をAIで再生成します。人が編集した記事は上書きされず、提案として登録されます。",
+    "regenHint": "再生成するモデルを選択してください。",
+    "confirmRegen": "再生成",
+    "badge": {
+      "generated": "AI",
+      "generatedHint": "AI生成・検証済み。",
+      "needs_review": "要確認",
+      "needs_reviewHint": "AI生成 — 確認のためフラグ付き。",
+      "blocked": "ブロック",
+      "blockedHint": "AI生成 — 検証により公開がブロックされました。"
+    },
+    "flags": {
+      "reviewTitle": "確認のためフラグ付き",
+      "blockedTitle": "公開がブロックされました",
+      "blockedNoDetail": "検証はこの記事をブロックしましたが、具体的なフラグは記録されていません。",
+      "kind": {
+        "injection": "インジェクション",
+        "anachronism": "時代錯誤",
+        "contradiction": "矛盾",
+        "regurgitation": "丸写し"
+      }
     }
   }
 }

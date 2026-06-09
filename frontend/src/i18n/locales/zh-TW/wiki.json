@@ -60,7 +60,8 @@
       "label": "模型",
       "deterministic": "確定式骨架（不使用 LLM）",
       "deterministicHint": "依詞彙表屬性建立文章骨架 — 無 AI、無費用。",
-      "llmHint": "以所選模型生成附引用的文章。"
+      "llmHint": "以所選模型生成附引用的文章。",
+      "pickRequired": "選擇模型…"
     },
     "kinds": {
       "label": "限定類別（選填）",
@@ -89,6 +90,30 @@
       "failed": "生成失敗",
       "complete": "生成完成",
       "cancelled": "已取消"
+    },
+    "regenerate": "重新生成",
+    "regenTitle": "重新生成「{{name}}」",
+    "regenDescription": "以 AI 重新生成此文章。經人工編輯的文章將轉為建議而非被覆寫。",
+    "regenHint": "選擇模型以重新生成此文章。",
+    "confirmRegen": "重新生成",
+    "badge": {
+      "generated": "AI",
+      "generatedHint": "AI 生成，已通過驗證。",
+      "needs_review": "待審",
+      "needs_reviewHint": "AI 生成 — 已標記待審。",
+      "blocked": "已封鎖",
+      "blockedHint": "AI 生成 — 經驗證封鎖發佈。"
+    },
+    "flags": {
+      "reviewTitle": "已標記待審",
+      "blockedTitle": "已封鎖發佈",
+      "blockedNoDetail": "驗證封鎖了此文章，但未記錄具體標記。",
+      "kind": {
+        "injection": "注入",
+        "anachronism": "時代錯置",
+        "contradiction": "矛盾",
+        "regurgitation": "原文照搬"
+      }
     }
   }
 }

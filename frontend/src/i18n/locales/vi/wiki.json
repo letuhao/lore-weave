@@ -60,7 +60,8 @@
       "label": "Mô hình",
       "deterministic": "Khung tất định (không dùng LLM)",
       "deterministicHint": "Dựng khung bài viết từ thuộc tính glossary — không AI, không tốn phí.",
-      "llmHint": "Tạo bài viết có dẫn nguồn bằng mô hình đã chọn."
+      "llmHint": "Tạo bài viết có dẫn nguồn bằng mô hình đã chọn.",
+      "pickRequired": "Chọn một mô hình…"
     },
     "kinds": {
       "label": "Giới hạn theo loại (tùy chọn)",
@@ -89,6 +90,30 @@
       "failed": "Tạo thất bại",
       "complete": "Hoàn tất tạo",
       "cancelled": "Đã hủy"
+    },
+    "regenerate": "Tạo lại",
+    "regenTitle": "Tạo lại “{{name}}”",
+    "regenDescription": "Tạo lại bài viết này bằng AI. Bài viết đã có chỉnh sửa của người sẽ thành đề xuất thay vì bị ghi đè.",
+    "regenHint": "Chọn một mô hình để tạo lại bài viết này.",
+    "confirmRegen": "Tạo lại",
+    "badge": {
+      "generated": "AI",
+      "generatedHint": "Do AI tạo, đã qua kiểm tra.",
+      "needs_review": "Cần duyệt",
+      "needs_reviewHint": "Do AI tạo — bị gắn cờ cần duyệt.",
+      "blocked": "Bị chặn",
+      "blockedHint": "Do AI tạo — bị kiểm tra chặn xuất bản."
+    },
+    "flags": {
+      "reviewTitle": "Bị gắn cờ cần duyệt",
+      "blockedTitle": "Bị chặn xuất bản",
+      "blockedNoDetail": "Trình kiểm tra đã chặn bài viết này nhưng không ghi cờ cụ thể.",
+      "kind": {
+        "injection": "Tiêm nhiễm",
+        "anachronism": "Lỗi thời đại",
+        "contradiction": "Mâu thuẫn",
+        "regurgitation": "Sao chép nguyên văn"
+      }
     }
   }
 }

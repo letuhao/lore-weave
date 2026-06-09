@@ -2,7 +2,7 @@ import { useState, useMemo, useDeferredValue } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Search, BookOpen, Clock, Pencil, Plus, Sparkles } from 'lucide-react';
+import { Search, BookOpen, Clock, Pencil, Plus, Sparkles, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import type { JSONContent } from '@tiptap/react';
 import { useAuth } from '@/auth';
@@ -12,6 +12,8 @@ import type { WikiArticleListItem, WikiInfoboxAttr } from '@/features/wiki/types
 import { useWikiGenJob } from '@/features/wiki/hooks/useWikiGenJob';
 import { GenerateWikiDialog } from '@/features/wiki/components/GenerateWikiDialog';
 import { WikiGenJobBanner } from '@/features/wiki/components/WikiGenJobBanner';
+import { WikiGenBadge } from '@/features/wiki/components/WikiGenBadge';
+import { VerifyFlagsPanel } from '@/features/wiki/components/VerifyFlagsPanel';
 import { ContentRenderer } from '@/components/reader/ContentRenderer';
 import { CitationProvider } from '@/components/reader/CitationContext';
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -220,11 +222,14 @@ function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKind
                 <span className={cn('truncate', selectedId === a.article_id && 'font-medium')}>
                   {a.display_name || 'Untitled'}
                 </span>
-                {a.status === 'draft' && (
-                  <span className="ml-auto shrink-0 rounded-full bg-amber-400/12 px-1.5 py-0.5 text-[9px] font-medium text-amber-400">
-                    {t('draft')}
-                  </span>
-                )}
+                <span className="ml-auto flex shrink-0 items-center gap-1">
+                  <WikiGenBadge status={a.generation_status} subtle />
+                  {a.status === 'draft' && (
+                    <span className="shrink-0 rounded-full bg-amber-400/12 px-1.5 py-0.5 text-[9px] font-medium text-amber-400">
+                      {t('draft')}
+                    </span>
+                  )}
+                </span>
               </button>
             ))}
           </div>
@@ -241,7 +246,11 @@ function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKind
 
 /* ── Article view ────────────────────────────────────────────────────────── */
 
-function WikiArticleView({ bookId, articleId }: { bookId: string; articleId: string }) {
+function WikiArticleView({ bookId, articleId, onRegenerate }: {
+  bookId: string;
+  articleId: string;
+  onRegenerate: (entityId: string, displayName: string) => void;
+}) {
   const { accessToken } = useAuth();
   const { t } = useTranslation('wiki');
   const navigate = useNavigate();
@@ -287,8 +296,18 @@ function WikiArticleView({ bookId, articleId }: { bookId: string; articleId: str
               >
                 {article.kind.name}
               </span>
+              <WikiGenBadge status={article.generation_status} />
             </div>
             <div className="flex gap-1">
+              <button
+                onClick={() => onRegenerate(article.entity_id, article.display_name)}
+                title={t('gen.regenerate')}
+                data-testid="wiki-regenerate"
+                className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium hover:bg-secondary"
+              >
+                <RefreshCw className="h-3 w-3" />
+                {t('gen.regenerate')}
+              </button>
               <button
                 onClick={() => navigate(`/books/${bookId}/wiki/${articleId}/edit`)}
                 className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground hover:brightness-110"
@@ -309,6 +328,10 @@ function WikiArticleView({ bookId, articleId }: { bookId: string; articleId: str
 
         {/* Body */}
         <div className="px-6 pb-6">
+          <VerifyFlagsPanel
+            provenance={article.generation_provenance}
+            blocked={article.generation_status === 'blocked'}
+          />
           {article.infobox.length > 0 && (
             <WikiInfobox
               attrs={article.infobox}
@@ -547,8 +570,17 @@ export function WikiTab({ bookId }: { bookId: string }) {
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [genOpen, setGenOpen] = useState(false);
+  // wiki-llm M7b-2b — set when the dialog is opened to REGENERATE one article
+  // (null = batch generate via the Sparkles button).
+  const [regenTarget, setRegenTarget] = useState<{ entity_id: string; name: string } | null>(null);
   // wiki-llm M7b-2a — the LLM-gen job controller (poll + trigger + resume/cancel).
   const { job, isActive, busy, trigger, resume, cancel } = useWikiGenJob(bookId);
+
+  const openBatchGenerate = () => { setRegenTarget(null); setGenOpen(true); };
+  const openRegenerate = (entity_id: string, name: string) => {
+    setRegenTarget({ entity_id, name });
+    setGenOpen(true);
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ['wiki-articles', bookId, deferredSearch, kindFilter],
@@ -605,7 +637,7 @@ export function WikiTab({ bookId }: { bookId: string }) {
           action={
             <div className="flex gap-2">
               <button
-                onClick={() => setGenOpen(true)}
+                onClick={openBatchGenerate}
                 disabled={isActive}
                 data-testid="wiki-generate-empty"
                 className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:brightness-110 disabled:opacity-50"
@@ -624,7 +656,14 @@ export function WikiTab({ bookId }: { bookId: string }) {
           }
         />
         <CreateArticleDialog bookId={bookId} open={createOpen} onClose={handleCreateClose} />
-        <GenerateWikiDialog open={genOpen} onClose={() => setGenOpen(false)} onTrigger={trigger} busy={busy} />
+        <GenerateWikiDialog
+          open={genOpen}
+          onClose={() => setGenOpen(false)}
+          onTrigger={trigger}
+          busy={busy}
+          entityIds={regenTarget ? [regenTarget.entity_id] : undefined}
+          regenName={regenTarget?.name}
+        />
       </>
     );
   }
@@ -646,7 +685,7 @@ export function WikiTab({ bookId }: { bookId: string }) {
             onSearch={setSearch}
             total={total}
             t={t}
-            onGenerate={() => setGenOpen(true)}
+            onGenerate={openBatchGenerate}
             generating={isActive}
             onCreateOpen={() => setCreateOpen(true)}
           />
@@ -655,7 +694,7 @@ export function WikiTab({ bookId }: { bookId: string }) {
         {/* Article view */}
         <div className="min-w-0 flex-1">
           {effectiveSelected ? (
-            <WikiArticleView bookId={bookId} articleId={effectiveSelected} />
+            <WikiArticleView bookId={bookId} articleId={effectiveSelected} onRegenerate={openRegenerate} />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
               {t('noMatch')}

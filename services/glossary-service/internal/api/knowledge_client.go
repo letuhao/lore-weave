@@ -227,6 +227,64 @@ func (s *Server) wikiGenJobAction(
 	return res.StatusCode, respBody, nil
 }
 
+// badEntityIDError marks an invalid client-supplied entity id so the handler can
+// map it to a 400 (rather than a generic 500).
+type badEntityIDError struct{ id string }
+
+func (e *badEntityIDError) Error() string { return "invalid entity_id: " + e.id }
+
+// parseEntityUUIDs validates client-supplied entity ids are well-formed UUIDs,
+// returning a badEntityIDError (→ 400) on the first malformed one.
+func parseEntityUUIDs(explicit []string) ([]string, error) {
+	ids := make([]string, 0, len(explicit))
+	for _, raw := range explicit {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return nil, &badEntityIDError{id: raw}
+		}
+		ids = append(ids, id.String())
+	}
+	return ids, nil
+}
+
+// resolveDelegateEntityIDs picks the entity ids for an LLM wiki-gen delegate.
+// When the caller supplies explicit ids (single-article REGENERATE, M7b-2b) those
+// are validated AND **scoped to this book** — a client must not regenerate an
+// entity from another book/user. The batch path (resolveWikiGenEntities) is
+// already book-scoped; mirroring it here means the owner gate covers explicit ids
+// too, not just the downstream writeback guard (/review-impl F1). A tampered or
+// foreign id is silently filtered out (→ empty slice → the handler's action:none),
+// not leaked as "exists / not". Otherwise it falls back to resolving by kind.
+func (s *Server) resolveDelegateEntityIDs(
+	ctx context.Context, bookID uuid.UUID, explicit []string, kindCodes []string, limit int,
+) ([]string, error) {
+	if len(explicit) > 0 {
+		parsed, err := parseEntityUUIDs(explicit)
+		if err != nil {
+			return nil, err
+		}
+		rows, err := s.pool.Query(ctx,
+			`SELECT entity_id::text FROM glossary_entities
+			 WHERE book_id=$1 AND entity_id = ANY($2::uuid[])
+			   AND deleted_at IS NULL AND status='active'`,
+			bookID, parsed)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		var ids []string
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				return nil, err
+			}
+			ids = append(ids, id)
+		}
+		return ids, rows.Err()
+	}
+	return s.resolveWikiGenEntities(ctx, bookID, kindCodes, limit)
+}
+
 // resolveWikiGenEntities lists the candidate entity ids for an LLM wiki-gen
 // delegate: active, non-deleted entities in the book, optionally filtered by
 // kind, bounded by limit. The clobber-guard (M5) protects any human-edited

@@ -6,6 +6,10 @@ export interface WikiKindSummary {
   color: string;
 }
 
+/** wiki-llm M7b — AI-generation status: null (human-authored) | 'generated'
+ *  (clean) | 'needs_review' (verify flags) | 'blocked' (publish-blocked). */
+export type WikiGenerationStatus = 'generated' | 'needs_review' | 'blocked';
+
 export interface WikiArticleListItem {
   article_id: string;
   entity_id: string;
@@ -16,6 +20,7 @@ export interface WikiArticleListItem {
   template_code: string | null;
   revision_count: number;
   updated_at: string;
+  generation_status?: WikiGenerationStatus | null;
 }
 
 export interface WikiArticleListResp {
@@ -56,6 +61,25 @@ export interface WikiInfoboxAttr {
   evidences: unknown[];
 }
 
+/** One serialized CanonVerifier flag, from generation_provenance.verify_flags. */
+export interface WikiVerifyFlag {
+  kind: string;
+  dimension: string;
+  evidence: string;
+  severity: string;
+}
+
+/** generation_provenance JSON written by M5 (the subset the FE reads). */
+export interface WikiGenerationProvenance {
+  verify_flags?: WikiVerifyFlag[];
+  publish_blocked?: boolean;
+  model_ref?: string;
+  citations?: unknown[];
+  prompt_version?: string;
+  pipeline_version?: string;
+  [k: string]: unknown;
+}
+
 export interface WikiArticleDetail {
   article_id: string;
   entity_id: string;
@@ -70,6 +94,9 @@ export interface WikiArticleDetail {
   spoiler_chapters: string[];
   infobox: WikiInfoboxAttr[];
   created_at: string;
+  generation_status?: WikiGenerationStatus | null;
+  generation_provenance?: WikiGenerationProvenance | null;
+  generated_at?: string | null;
 }
 
 export interface WikiRevisionListItem {

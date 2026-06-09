@@ -152,6 +152,31 @@ func TestWikiGenJobRoutes_RequireAuth(t *testing.T) {
 	}
 }
 
+// M7b-2b — the explicit-entity-id path (single-article regenerate) validates the
+// UUIDs (pure) then scopes them to the book via the pool (/review-impl F1); the
+// book-scoping query is covered by the cross-service live-smoke. Here we pin the
+// pure validation: well-formed ids canonicalize, a malformed one → 400.
+func TestParseEntityUUIDs_CanonicalizesValid(t *testing.T) {
+	a, b := uuid.New().String(), uuid.New().String()
+	ids, err := parseEntityUUIDs([]string{a, b})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ids) != 2 || ids[0] != a || ids[1] != b {
+		t.Fatalf("want [%s %s], got %v", a, b, ids)
+	}
+}
+
+func TestParseEntityUUIDs_RejectsBadUUID(t *testing.T) {
+	_, err := parseEntityUUIDs([]string{uuid.New().String(), "not-a-uuid"})
+	if err == nil {
+		t.Fatal("expected a badEntityIDError for a malformed id")
+	}
+	if _, ok := err.(*badEntityIDError); !ok {
+		t.Fatalf("want *badEntityIDError (→ 400), got %T", err)
+	}
+}
+
 func TestWikiGenJob_NotConfiguredErrors(t *testing.T) {
 	srv := newJobProxyServer("") // knowledge-service URL unset
 	if _, _, err := srv.getWikiGenJob(context.Background(), uuid.New(), uuid.New()); err == nil {

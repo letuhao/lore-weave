@@ -886,6 +886,11 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 		ModelRef    string   `json:"model_ref"`
 		ModelSource string   `json:"model_source"`
 		MaxSpendUSD *float64 `json:"max_spend_usd"`
+		// wiki-llm M7b-2b — explicit entity ids for single-article REGENERATE.
+		// When present (delegate path only), these are generated directly instead
+		// of resolving by kind — so a "Regenerate" button re-runs exactly one
+		// entity (the clobber-guard still protects any human-edited article).
+		EntityIDs []string `json:"entity_ids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "WIKI_BAD_REQUEST", "invalid JSON body")
@@ -901,8 +906,12 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 	// knowledge-service; propagate its 202/409/404. The deterministic stub path
 	// below is unchanged (the fallback when no model_ref is supplied).
 	if req.ModelRef != "" {
-		entityIDs, err := s.resolveWikiGenEntities(r.Context(), bookID, req.KindCodes, genLimit)
+		entityIDs, err := s.resolveDelegateEntityIDs(r.Context(), bookID, req.EntityIDs, req.KindCodes, genLimit)
 		if err != nil {
+			if verr, ok := err.(*badEntityIDError); ok {
+				writeError(w, http.StatusBadRequest, "WIKI_BAD_REQUEST", verr.Error())
+				return
+			}
 			slog.Error("generateWikiStubs resolve entities (delegate)", "error", err)
 			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
 			return

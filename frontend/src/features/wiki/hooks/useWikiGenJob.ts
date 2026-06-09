@@ -12,6 +12,8 @@ export interface TriggerArgs {
   model_ref?: string;
   model_source?: string;
   kind_codes?: string[];
+  /** Single-article regenerate (M7b-2b): generate exactly these entities. */
+  entity_ids?: string[];
   max_spend_usd?: number;
 }
 
@@ -86,6 +88,7 @@ export function useWikiGenJob(bookId: string) {
           bookId,
           {
             ...(args.kind_codes?.length ? { kind_codes: args.kind_codes } : {}),
+            ...(args.entity_ids?.length ? { entity_ids: args.entity_ids } : {}),
             ...(args.model_ref
               ? {
                   model_ref: args.model_ref,

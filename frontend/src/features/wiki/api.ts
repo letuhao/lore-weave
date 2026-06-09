@@ -76,6 +76,7 @@ export const wikiApi = {
     bookId: string,
     body: {
       kind_codes?: string[];
+      entity_ids?: string[];
       limit?: number;
       model_ref?: string;
       model_source?: string;

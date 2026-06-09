@@ -88,6 +88,32 @@ describe('GenerateWikiDialog', () => {
     expect(screen.queryByTestId('wiki-gen-maxspend')).toBeNull(); // back to deterministic
   });
 
+  it('regen mode requires a model and triggers with entity_ids (not kind_codes)', async () => {
+    const onTrigger = vi.fn().mockResolvedValue({ job_id: 'j1', status: 'pending' });
+    wrap(
+      <GenerateWikiDialog
+        open
+        onClose={() => {}}
+        onTrigger={onTrigger}
+        busy={false}
+        entityIds={['e-42']}
+        regenName="Dracula"
+      />,
+    );
+    await waitFor(() => expect(screen.getByRole('option', { name: /Gemma/ })).toBeTruthy());
+    // no model picked yet → confirm disabled (deterministic regen would be a no-op)
+    expect((screen.getByTestId('wiki-gen-confirm') as HTMLButtonElement).disabled).toBe(true);
+    // the deterministic option is disabled in regen mode
+    const deterministic = screen.getByRole('option', { name: 'gen.model.pickRequired' }) as HTMLOptionElement;
+    expect(deterministic.disabled).toBe(true);
+
+    fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
+    fireEvent.click(screen.getByTestId('wiki-gen-confirm'));
+    await waitFor(() =>
+      expect(onTrigger).toHaveBeenCalledWith({ model_ref: 'm1', entity_ids: ['e-42'] }),
+    );
+  });
+
   it('blocks confirm on an invalid spend cap', async () => {
     const onTrigger = vi.fn();
     wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={onTrigger} busy={false} />);

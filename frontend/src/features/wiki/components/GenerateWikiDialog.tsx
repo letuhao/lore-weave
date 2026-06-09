@@ -22,12 +22,20 @@ export function GenerateWikiDialog({
   onClose,
   onTrigger,
   busy,
+  entityIds,
+  regenName,
 }: {
   open: boolean;
   onClose: () => void;
   /** Resolves on success (dialog closes), rejects on failure (stays open). */
   onTrigger: (args: TriggerArgs) => Promise<unknown>;
   busy: boolean;
+  /** Single-article REGENERATE (M7b-2b): scope generation to these entities. In
+   *  this mode a model is REQUIRED (deterministic stubs skip entities that
+   *  already have an article) and the kind filter is hidden. */
+  entityIds?: string[];
+  /** The article's display name, shown in the regenerate title. */
+  regenName?: string;
 }) {
   const { t } = useTranslation('wiki');
   const { accessToken } = useAuth();
@@ -64,16 +72,20 @@ export function GenerateWikiDialog({
   });
   const kinds = kindsQuery.data ?? [];
 
+  const isRegen = !!entityIds?.length;
   const isLlm = modelRef !== '';
   const maxSpendValid = maxSpend === '' || DECIMAL_RE.test(maxSpend);
-  const canConfirm = !busy && maxSpendValid;
+  // Regenerate needs a model (the deterministic path skips entities that already
+  // have an article, so a deterministic "regenerate" would be a no-op).
+  const canConfirm = !busy && maxSpendValid && (!isRegen || isLlm);
 
   const handleConfirm = async () => {
     if (!canConfirm) return;
     try {
       await onTrigger({
         ...(modelRef ? { model_ref: modelRef } : {}),
-        ...(kindCodes.length ? { kind_codes: kindCodes } : {}),
+        // Regenerate scopes by explicit entity ids; batch scopes by kind.
+        ...(isRegen ? { entity_ids: entityIds } : kindCodes.length ? { kind_codes: kindCodes } : {}),
         ...(isLlm && maxSpend !== '' ? { max_spend_usd: Number(maxSpend) } : {}),
       });
       onClose();
@@ -88,8 +100,8 @@ export function GenerateWikiDialog({
     <FormDialog
       open={open}
       onOpenChange={(o) => !o && onClose()}
-      title={t('gen.title')}
-      description={t('gen.description')}
+      title={isRegen ? t('gen.regenTitle', { name: regenName || '' }) : t('gen.title')}
+      description={isRegen ? t('gen.regenDescription') : t('gen.description')}
       footer={
         <>
           <button
@@ -108,7 +120,13 @@ export function GenerateWikiDialog({
             className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:brightness-110 disabled:opacity-60"
           >
             <Sparkles className="h-3.5 w-3.5" />
-            {busy ? t('gen.starting') : isLlm ? t('gen.confirmLlm') : t('gen.confirmStub')}
+            {busy
+              ? t('gen.starting')
+              : isRegen
+                ? t('gen.confirmRegen')
+                : isLlm
+                  ? t('gen.confirmLlm')
+                  : t('gen.confirmStub')}
           </button>
         </>
       }
@@ -124,7 +142,11 @@ export function GenerateWikiDialog({
             data-testid="wiki-gen-model"
             className="rounded-md border bg-input px-3 py-2 text-sm outline-none focus:border-ring disabled:opacity-60"
           >
-            <option value="">{t('gen.model.deterministic')}</option>
+            {/* Regenerate requires a model (deterministic skips article-having
+                entities); batch generate offers the deterministic default. */}
+            <option value="" disabled={isRegen}>
+              {isRegen ? t('gen.model.pickRequired') : t('gen.model.deterministic')}
+            </option>
             {chatModels.map((m) => (
               <option key={m.user_model_id} value={m.user_model_id}>
                 {m.alias ? `${m.alias} (${m.provider_model_name})` : `${m.provider_kind}/${m.provider_model_name}`}
@@ -132,12 +154,16 @@ export function GenerateWikiDialog({
             ))}
           </select>
           <span className="text-[11px] text-muted-foreground">
-            {isLlm ? t('gen.model.llmHint') : t('gen.model.deterministicHint')}
+            {isRegen
+              ? t('gen.regenHint')
+              : isLlm
+                ? t('gen.model.llmHint')
+                : t('gen.model.deterministicHint')}
           </span>
         </label>
 
-        {/* Optional kind filter */}
-        {kinds.length > 0 && (
+        {/* Optional kind filter — batch generate only (regen is one entity) */}
+        {!isRegen && kinds.length > 0 && (
           <fieldset className="flex flex-col gap-1.5">
             <legend className="text-xs font-medium text-muted-foreground">{t('gen.kinds.label')}</legend>
             <div className="flex flex-wrap gap-1.5">
