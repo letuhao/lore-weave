@@ -123,7 +123,7 @@ def seed_bios(book, ch_ids, cast):
                       {"short_description": bio})
 
 
-def build_work(token, drafter, premise, cast, *, nt_on):
+def build_work(token, drafter, premise, cast, *, nt_on, decompose_ref=None):
     """Build a book + 3 chapters + work + decompose plan; set the narrative_thread
     flag. Returns (proj, scenes-in-order)."""
     book = _req("POST", "/v1/books", token,
@@ -142,7 +142,7 @@ def build_work(token, drafter, premise, cast, *, nt_on):
     generic = next((t for t in tmpls if t["kind"] == "generic"), tmpls[0])
     preview = _req("POST", f"/v1/composition/works/{proj}/outline/decompose", token,
                    {"structure_template_id": generic["id"], "premise": premise,
-                    "model_source": "user_model", "model_ref": drafter})
+                    "model_source": "user_model", "model_ref": decompose_ref or drafter})
     commit = {"arc_title": generic["name"], "chapters": [{
         "chapter_id": c["chapter"]["chapter_id"], "title": c["chapter"]["title"],
         "intent": c["chapter"]["intent"], "beat_role": c["chapter"]["beat_role"],
@@ -245,6 +245,10 @@ def main():
     drafter_override = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--drafter=")), None)
     if drafter_override:
         drafter = drafter_override
+    # --decompose=<id> runs the PLANNER on a different model (e.g. a local model
+    # whose plan-JSON the decompose parser handles) while a frontier --drafter
+    # writes the prose — isolates the drafter as the only change vs the baseline.
+    decompose_ref = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--decompose=")), None)
     print(f"user={user_id} drafter={drafter} judge={judge} disjoint_judge={disjoint} n={n} mode={mode}")
     if not disjoint:
         print("  ⚠ only ONE chat model registered — judge==drafter (self-reinforcement "
@@ -255,12 +259,12 @@ def main():
         print(f"\n[{idx+1}/{n}] {premise[:64]}...")
         t0 = time.time()
         # arm OFF
-        proj_off, sc_off, plan_off, ch_off = build_work(token, drafter, premise, cast, nt_on=False)
+        proj_off, sc_off, plan_off, ch_off = build_work(token, drafter, premise, cast, nt_on=False, decompose_ref=decompose_ref)
         off_text = gen_arc(token, proj_off, sc_off, ch_off, drafter, mode=mode)
         off_open = threads(token, proj_off, "open").get("open_count", 0)
         # arm ON (collect live-smoke on the first premise)
         smoke = {} if idx == 0 else None
-        proj_on, sc_on, _, ch_on = build_work(token, drafter, premise, cast, nt_on=True)
+        proj_on, sc_on, _, ch_on = build_work(token, drafter, premise, cast, nt_on=True, decompose_ref=decompose_ref)
         on_text = gen_arc(token, proj_on, sc_on, ch_on, drafter, smoke=smoke, mode=mode)
         on_all = threads(token, proj_on, "all").get("threads", [])
         paid = sum(1 for t in on_all if t.get("status") == "paid")
