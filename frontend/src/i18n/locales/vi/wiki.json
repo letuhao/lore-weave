@@ -48,5 +48,47 @@
   "statusFailed": "Không thể cập nhật trạng thái",
   "deleteFailed": "Không thể xóa",
   "createFailed": "Không thể tạo bài viết",
-  "generateFailed": "Không thể tạo"
+  "generateFailed": "Không thể tạo",
+  "gen": {
+    "title": "Tạo bài viết Wiki",
+    "description": "Tạo khung bài viết tất định, hoặc chọn một mô hình để tạo bài viết đầy đủ bằng AI.",
+    "cancel": "Hủy",
+    "starting": "Đang bắt đầu…",
+    "confirmStub": "Tạo khung",
+    "confirmLlm": "Tạo bằng AI",
+    "model": {
+      "label": "Mô hình",
+      "deterministic": "Khung tất định (không dùng LLM)",
+      "deterministicHint": "Dựng khung bài viết từ thuộc tính glossary — không AI, không tốn phí.",
+      "llmHint": "Tạo bài viết có dẫn nguồn bằng mô hình đã chọn."
+    },
+    "kinds": {
+      "label": "Giới hạn theo loại (tùy chọn)",
+      "hint": "Để trống để tạo cho mọi loại thực thể."
+    },
+    "maxSpend": {
+      "label": "Chi phí tối đa (USD, tùy chọn)",
+      "hint": "Tạm dừng tác vụ trước khi vượt chi phí ước tính này.",
+      "invalid": "Nhập số tiền hợp lệ (vd: 1.50)."
+    },
+    "started": "Đã bắt đầu tạo",
+    "noEntities": "Không có thực thể phù hợp để tạo",
+    "alreadyRunning": "Đã có tác vụ tạo đang chạy cho sách này",
+    "notIndexed": "Hãy xây dựng đồ thị tri thức cho sách này trước",
+    "resumed": "Đã tiếp tục tạo",
+    "resumeFailed": "Không thể tiếp tục",
+    "cancelled": "Đã hủy tạo",
+    "cancelFailed": "Không thể hủy",
+    "resume": "Tiếp tục",
+    "progress": "{{done}} / {{total}}",
+    "pausedBudget": "Tạm dừng — đã đạt mức chi tối đa. Nhấn Tiếp tục để chạy tiếp.",
+    "status": {
+      "pending": "Đang chờ…",
+      "running": "Đang tạo bài viết…",
+      "paused": "Tạm dừng",
+      "failed": "Tạo thất bại",
+      "complete": "Hoàn tất tạo",
+      "cancelled": "Đã hủy"
+    }
+  }
 }

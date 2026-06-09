@@ -9,6 +9,9 @@ import { useAuth } from '@/auth';
 import { wikiApi } from '@/features/wiki/api';
 import { glossaryApi } from '@/features/glossary/api';
 import type { WikiArticleListItem, WikiInfoboxAttr } from '@/features/wiki/types';
+import { useWikiGenJob } from '@/features/wiki/hooks/useWikiGenJob';
+import { GenerateWikiDialog } from '@/features/wiki/components/GenerateWikiDialog';
+import { WikiGenJobBanner } from '@/features/wiki/components/WikiGenJobBanner';
 import { ContentRenderer } from '@/components/reader/ContentRenderer';
 import { CitationProvider } from '@/components/reader/CitationContext';
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -543,7 +546,9 @@ export function WikiTab({ bookId }: { bookId: string }) {
   const [kindFilter, setKindFilter] = useState('');
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [generating, setGenerating] = useState(false);
+  const [genOpen, setGenOpen] = useState(false);
+  // wiki-llm M7b-2a — the LLM-gen job controller (poll + trigger + resume/cancel).
+  const { job, isActive, busy, trigger, resume, cancel } = useWikiGenJob(bookId);
 
   const { data, isLoading } = useQuery({
     queryKey: ['wiki-articles', bookId, deferredSearch, kindFilter],
@@ -570,24 +575,6 @@ export function WikiTab({ bookId }: { bookId: string }) {
     ? selectedArticleId
     : articles[0]?.article_id ?? null;
 
-  const handleGenerate = async () => {
-    if (!accessToken || generating) return;
-    setGenerating(true);
-    try {
-      const result = await wikiApi.generateStubs(bookId, {}, accessToken);
-      if (result.created > 0) {
-        toast.success(t('generatedCount', { count: result.created }));
-        queryClient.invalidateQueries({ queryKey: ['wiki-articles', bookId] });
-      } else {
-        toast.info(t('generatedNone'));
-      }
-    } catch {
-      toast.error(t('generateFailed'));
-    } finally {
-      setGenerating(false);
-    }
-  };
-
   const handleCreateClose = (articleId?: string) => {
     setCreateOpen(false);
     if (articleId) {
@@ -610,6 +597,7 @@ export function WikiTab({ bookId }: { bookId: string }) {
   if (total === 0 && !search && !kindFilter) {
     return (
       <>
+        <WikiGenJobBanner job={job} onResume={resume} onCancel={cancel} busy={busy} />
         <EmptyState
           icon={BookOpen}
           title={t('noArticles')}
@@ -617,13 +605,13 @@ export function WikiTab({ bookId }: { bookId: string }) {
           action={
             <div className="flex gap-2">
               <button
-                onClick={handleGenerate}
-                disabled={generating}
+                onClick={() => setGenOpen(true)}
+                disabled={isActive}
                 data-testid="wiki-generate-empty"
                 className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:brightness-110 disabled:opacity-50"
               >
                 <Sparkles className="h-3.5 w-3.5" />
-                {generating ? 'Generating...' : t('generateFromGlossary')}
+                {t('generateFromGlossary')}
               </button>
               <button
                 onClick={() => setCreateOpen(true)}
@@ -636,12 +624,14 @@ export function WikiTab({ bookId }: { bookId: string }) {
           }
         />
         <CreateArticleDialog bookId={bookId} open={createOpen} onClose={handleCreateClose} />
+        <GenerateWikiDialog open={genOpen} onClose={() => setGenOpen(false)} onTrigger={trigger} busy={busy} />
       </>
     );
   }
 
   return (
     <>
+      <WikiGenJobBanner job={job} onResume={resume} onCancel={cancel} busy={busy} />
       <div className="flex overflow-hidden rounded-lg border" style={{ minHeight: 500 }}>
         {/* Left sidebar */}
         <div className="w-[220px] shrink-0">
@@ -656,8 +646,8 @@ export function WikiTab({ bookId }: { bookId: string }) {
             onSearch={setSearch}
             total={total}
             t={t}
-            onGenerate={handleGenerate}
-            generating={generating}
+            onGenerate={() => setGenOpen(true)}
+            generating={isActive}
             onCreateOpen={() => setCreateOpen(true)}
           />
         </div>
@@ -674,6 +664,7 @@ export function WikiTab({ bookId }: { bookId: string }) {
         </div>
       </div>
       <CreateArticleDialog bookId={bookId} open={createOpen} onClose={handleCreateClose} />
+      <GenerateWikiDialog open={genOpen} onClose={() => setGenOpen(false)} onTrigger={trigger} busy={busy} />
     </>
   );
 }

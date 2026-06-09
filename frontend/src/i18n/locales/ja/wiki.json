@@ -48,5 +48,47 @@
   "statusFailed": "ステータスの更新に失敗しました",
   "deleteFailed": "削除に失敗しました",
   "createFailed": "記事の作成に失敗しました",
-  "generateFailed": "生成に失敗しました"
+  "generateFailed": "生成に失敗しました",
+  "gen": {
+    "title": "Wiki記事を生成",
+    "description": "確定的なスタブを生成するか、モデルを選んでAIで本格的な記事を生成します。",
+    "cancel": "キャンセル",
+    "starting": "開始中…",
+    "confirmStub": "スタブを生成",
+    "confirmLlm": "AIで生成",
+    "model": {
+      "label": "モデル",
+      "deterministic": "確定的スタブ（LLMなし）",
+      "deterministicHint": "用語集の属性から記事の骨組みを作成します — AIなし・費用なし。",
+      "llmHint": "選択したモデルで出典付きの記事を生成します。"
+    },
+    "kinds": {
+      "label": "種別で絞り込み（任意）",
+      "hint": "空欄ですべてのエンティティ種別を対象にします。"
+    },
+    "maxSpend": {
+      "label": "上限費用（USD・任意）",
+      "hint": "この見積費用を超える前にジョブを一時停止します。",
+      "invalid": "有効な金額を入力してください（例: 1.50）。"
+    },
+    "started": "生成を開始しました",
+    "noEntities": "生成対象のエンティティがありません",
+    "alreadyRunning": "この本の生成ジョブはすでに実行中です",
+    "notIndexed": "先にこの本のナレッジグラフを構築してください",
+    "resumed": "生成を再開しました",
+    "resumeFailed": "再開に失敗しました",
+    "cancelled": "生成をキャンセルしました",
+    "cancelFailed": "キャンセルに失敗しました",
+    "resume": "再開",
+    "progress": "{{done}} / {{total}}",
+    "pausedBudget": "一時停止 — 上限費用に達しました。再開で続行します。",
+    "status": {
+      "pending": "待機中…",
+      "running": "記事を生成中…",
+      "paused": "一時停止",
+      "failed": "生成に失敗しました",
+      "complete": "生成完了",
+      "cancelled": "キャンセル済み"
+    }
+  }
 }

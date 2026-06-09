@@ -112,3 +112,39 @@ export interface WikiSuggestionListResp {
   limit: number;
   offset: number;
 }
+
+/* ── wiki-llm M7b — LLM generation jobs ──────────────────────────────────── */
+
+export type WikiGenJobState =
+  | 'pending'
+  | 'running'
+  | 'paused'
+  | 'complete'
+  | 'failed'
+  | 'cancelled';
+
+/** Poll shape from GET /v1/glossary/books/{id}/wiki/job (knowledge via proxy). */
+export interface WikiGenJobStatus {
+  job_id: string;
+  status: WikiGenJobState;
+  model_source: string;
+  model_ref: string;
+  items_total: number | null;
+  items_processed: number;
+  items_done_count: number;
+  entity_count: number;
+  cost_spent_usd: string | number;
+  max_spend_usd: string | number | null;
+  error_message: string | null;
+}
+
+/**
+ * The generate endpoint is overloaded: with no model it renders deterministic
+ * stubs ({created}); with a model it DELEGATES to the LLM batch generator, which
+ * returns a job ({job_id,status}, 202) or {action:'none'} when no entity matched.
+ * A 409 (active job already running) is thrown by apiJson — caught in the hook.
+ */
+export type WikiGenerateResult =
+  | { created: number; articles: unknown[] }
+  | { job_id: string; status: string }
+  | { action: 'none'; entities: number };

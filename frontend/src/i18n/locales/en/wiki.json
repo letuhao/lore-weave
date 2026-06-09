@@ -48,5 +48,47 @@
   "statusFailed": "Failed to update status",
   "deleteFailed": "Failed to delete",
   "createFailed": "Failed to create article",
-  "generateFailed": "Failed to generate"
+  "generateFailed": "Failed to generate",
+  "gen": {
+    "title": "Generate Wiki Articles",
+    "description": "Render deterministic stubs, or pick a model to generate full articles with AI.",
+    "cancel": "Cancel",
+    "starting": "Starting…",
+    "confirmStub": "Generate stubs",
+    "confirmLlm": "Generate with AI",
+    "model": {
+      "label": "Model",
+      "deterministic": "Deterministic stubs (no LLM)",
+      "deterministicHint": "Builds article skeletons from glossary attributes — no AI, no cost.",
+      "llmHint": "Generates grounded articles with citations via the selected model."
+    },
+    "kinds": {
+      "label": "Limit to kinds (optional)",
+      "hint": "Leave empty to generate for all entity kinds."
+    },
+    "maxSpend": {
+      "label": "Max spend (USD, optional)",
+      "hint": "Pause the job before it exceeds this estimated cost.",
+      "invalid": "Enter a valid amount (e.g. 1.50)."
+    },
+    "started": "Generation started",
+    "noEntities": "No matching entities to generate",
+    "alreadyRunning": "A generation job is already running for this book",
+    "notIndexed": "Build the knowledge graph for this book first",
+    "resumed": "Generation resumed",
+    "resumeFailed": "Failed to resume",
+    "cancelled": "Generation cancelled",
+    "cancelFailed": "Failed to cancel",
+    "resume": "Resume",
+    "progress": "{{done}} / {{total}}",
+    "pausedBudget": "Paused — spend cap reached. Resume to continue.",
+    "status": {
+      "pending": "Queued…",
+      "running": "Generating articles…",
+      "paused": "Paused",
+      "failed": "Generation failed",
+      "complete": "Generation complete",
+      "cancelled": "Cancelled"
+    }
+  }
 }
