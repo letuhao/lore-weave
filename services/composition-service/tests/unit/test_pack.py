@@ -84,22 +84,33 @@ class StubSceneLinks:
         return []
 
 
-def _req(project_id=PROJECT, story_order=5, guide=""):
+def _req(project_id=PROJECT, story_order=5, guide="", settings=None):
     return PackRequest(
         user_id=USER, project_id=project_id, book_id=BOOK,
         node={"id": str(NODE), "chapter_id": str(CHAPTER), "story_order": story_order,
               "present_entity_ids": [], "pov_entity_id": None, "beat_role": "hook",
               "goal": "rescue", "synopsis": "the escape", "title": "Ch1"},
-        bearer="jwt", guide=guide,
+        bearer="jwt", guide=guide, settings=settings or {},
     )
 
 
-async def _pack(req, *, book=None, glossary=None, knowledge=None, canon=None):
+class StubNarrativeThreads:
+    """FD-1 S3 — list_open returns open promise threads for the re-injection lens."""
+    def __init__(self, threads=None):
+        self._t = threads or []
+
+    async def list_open(self, user_id, project_id, *, limit=100):
+        from types import SimpleNamespace
+        return [SimpleNamespace(kind=k, summary=s) for k, s in self._t][:limit]
+
+
+async def _pack(req, *, book=None, glossary=None, knowledge=None, canon=None, narrative_threads=None):
     return await pack(
         req, book=book or StubBook(), glossary=glossary or StubGlossary(),
         knowledge=knowledge or StubKnowledge(), canon_repo=canon or StubCanon(),
         outline_repo=StubOutline(), scene_links_repo=StubSceneLinks(),
         budget_tokens=10_000, counter=_wc,
+        narrative_threads_repo=narrative_threads,
     )
 
 
@@ -118,6 +129,33 @@ async def test_c3a_grounding_unavailable_when_no_knowledge():
     pc = await _pack(_req(), knowledge=StubKnowledge(events=[], hits=[]))
     assert pc.grounding_available is False
     assert any("grounding_unavailable" in w for w in pc.warnings)
+
+
+# ── FD-1 S3: open-promise re-injection gate (review-impl LOW#4) ──
+
+
+async def test_open_promises_reinjected_when_enabled():
+    pc = await _pack(
+        _req(settings={"narrative_thread_enabled": True}),
+        narrative_threads=StubNarrativeThreads([("foreshadow", "a black spear on the wall")]),
+    )
+    assert "<open_promises>" in pc.prompt
+    assert "foreshadow: a black spear on the wall" in pc.prompt
+
+
+async def test_open_promises_absent_when_flag_off():
+    # Flag off (default) → the lens isn't gathered even if a repo is wired.
+    pc = await _pack(
+        _req(settings={}),
+        narrative_threads=StubNarrativeThreads([("foreshadow", "X")]),
+    )
+    assert "<open_promises>" not in pc.prompt
+
+
+async def test_open_promises_absent_when_no_repo():
+    # Flag on but no repo wired → no gather, no block (no crash).
+    pc = await _pack(_req(settings={"narrative_thread_enabled": True}), narrative_threads=None)
+    assert "<open_promises>" not in pc.prompt
 
 
 async def test_chapter_sort_hint_skips_redundant_book_fetch():

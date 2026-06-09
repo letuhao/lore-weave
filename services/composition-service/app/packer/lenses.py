@@ -48,6 +48,10 @@ class LensBundle:
     # filtered timeline + plan), set by pack() only when the raw "story so far"
     # exceeds budget; renders FIRST in the `recent` block (older→immediate order).
     state_summary: str = ""
+    # FD-1 S3 — open promise/foreshadow/MICE threads re-injected so the model
+    # carries + pays them (F2; spec §6 ground→…+open-promises). [{kind, summary}],
+    # priority-ordered + capped. Empty unless the Work opts into narrative_thread.
+    open_promises: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _applies_at(rule: CanonRule, story_order: int | None) -> bool:
@@ -79,6 +83,31 @@ async def gather_canon(
         logger.warning("gather_canon failed", exc_info=True)
         return []
     return [r for r in rules if _applies_at(r, story_order)]
+
+
+async def gather_open_promises(
+    repo, user_id: UUID, project_id: UUID, *, cap: int,
+) -> list[dict[str, Any]]:
+    """FD-1 S3 — the open promise/foreshadow set to re-inject (F2). Returns the
+    top-`cap` open threads (list_open is priority DESC, created ASC) as
+    {kind, summary}. Degrade-safe: any repo failure → [] (re-injection is
+    advisory; it must never fail a pack).
+
+    review-impl LOW#3 (accepted, → S4): the open set is NOT position-filtered, so
+    an OUT-OF-ORDER regenerate (regen an earlier scene while a later scene's
+    promise is open) could re-inject a later-position promise (a forward leak). In
+    normal sequential generation, open promises are all ≤ the current position, so
+    this is an edge case; the spoiler-axis filter (compare opened_at_node position
+    to the scene's story_order) belongs with S4's debt/spoiler work."""
+    try:
+        threads = await repo.list_open(user_id, project_id, limit=cap)
+    except Exception:  # noqa: BLE001 — repo failure degrades the lens
+        logger.warning("gather_open_promises failed", exc_info=True)
+        return []
+    return [
+        {"kind": t.kind, "summary": t.summary}
+        for t in threads if (t.summary or "").strip()
+    ]
 
 
 async def gather_present(

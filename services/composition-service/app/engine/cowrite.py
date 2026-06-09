@@ -81,7 +81,17 @@ def build_messages(
         + lang + voice
     )
     instruction = _OPERATION_INSTRUCTIONS.get(operation, "Write the next passage of the scene.")
-    user = packed_prompt + "\n\n" + instruction + (f"\n\nAuthor guidance: {guide}" if guide else "")
+    # FD-1 S3 — only fires when open promises were re-injected (the <open_promises>
+    # block is present ⇒ narrative_thread is enabled + has open threads). Without a
+    # steer the block is inert context; with it, the model advances/pays promises.
+    # Gated by the block's presence so the default (flag-off) prompt is unchanged.
+    promise_steer = (
+        "\n\nThe <open_promises> are unresolved narrative promises/foreshadows the "
+        "reader is waiting on: advance or pay one off where it fits this scene; do "
+        "NOT silently drop them, and do not contradict canon to force one."
+    ) if "<open_promises>" in packed_prompt else ""
+    user = packed_prompt + "\n\n" + instruction + promise_steer + (
+        f"\n\nAuthor guidance: {guide}" if guide else "")
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 

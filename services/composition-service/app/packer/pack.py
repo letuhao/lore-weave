@@ -36,8 +36,8 @@ from app.packer import budget as B
 from app.packer import profile as profile_mod
 from app.packer import spoiler
 from app.packer.lenses import (
-    LensBundle, gather_canon, gather_lore, gather_present, gather_recent,
-    gather_structural, gather_timeline,
+    LensBundle, gather_canon, gather_lore, gather_open_promises, gather_present,
+    gather_recent, gather_structural, gather_timeline,
 )
 
 logger = logging.getLogger(__name__)
@@ -94,6 +94,7 @@ async def pack(
     budget_tokens: int, counter: B.TokenCounter | None = None,
     jobs_repo: GenerationJobsRepo | None = None,
     compress_fn: Callable[[list[str], list[str], str], Awaitable[str]] | None = None,
+    narrative_threads_repo=None,  # FD-1 S3 — open-promise re-injection (gated)
 ) -> PackedContext:
     # A1: never pack unscoped (knowledge timeline/entities widen cross-project).
     assemble.assert_project_scoped(req.project_id)
@@ -135,7 +136,11 @@ async def pack(
         lo = scene_at_order(scene_sort_order - _window)  # (N - W) × stride
         timeline_after = lo - 1 if lo is not None else None  # strict '>' → include chapter (N-W)
 
-    canon, (present, seen_p), (timeline, seen_t), (beat, threads, planned), recent, (lore, seen_l) = (
+    # FD-1 S3 — re-inject the open-promise ledger only when the Work opts in AND
+    # a repo was wired (engine passes it). Otherwise an empty list (no extra read).
+    nt_enabled = bool((req.settings or {}).get("narrative_thread_enabled")) and narrative_threads_repo is not None
+
+    canon, (present, seen_p), (timeline, seen_t), (beat, threads, planned), recent, (lore, seen_l), open_promises = (
         await asyncio.gather(
             gather_canon(canon_repo, req.user_id, req.project_id, story_order),
             gather_present(glossary, knowledge, book_id=req.book_id, user_id=req.user_id,
@@ -148,6 +153,8 @@ async def pack(
                           jobs_repo=jobs_repo, user_id=req.user_id, project_id=req.project_id,
                           story_order=story_order) if chapter_id else _empty_list(),
             gather_lore(knowledge, req.bearer, req.project_id, query),
+            gather_open_promises(narrative_threads_repo, req.user_id, req.project_id,
+                                 cap=settings.pack_open_promises_cap) if nt_enabled else _empty_list(),
         )
     )
 
@@ -186,6 +193,7 @@ async def pack(
         canon=canon, present=present, timeline=tl_kept, beat=beat, threads=threads,
         planned=planned, recent=recent, lore=l4.kept,
         knowledge_seen=bool(seen_p or seen_t or seen_l),
+        open_promises=open_promises,  # FD-1 S3 — re-injected open-promise ledger
     )
 
     # S2 — when the raw "story so far" is large (long chapter), COMPRESS the older

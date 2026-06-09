@@ -275,6 +275,7 @@ async def generate(
             budget_tokens=settings.pack_token_budget,
             jobs_repo=jobs,  # S1 state-reinjection fallback source (prior generated scenes)
             compress_fn=_compress_fn,  # S2 long-chapter state compression
+            narrative_threads_repo=narrative_threads,  # FD-1 S3 open-promise re-injection
         )
     except OwnershipError:
         raise HTTPException(status_code=404, detail="book not found")
@@ -561,7 +562,8 @@ async def generate_chapter(
             book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
             outline_repo=outline, scene_links_repo=scene_links,
             budget_tokens=settings.pack_token_budget, jobs_repo=jobs,
-            compress_fn=_compress_fn)
+            compress_fn=_compress_fn,
+            narrative_threads_repo=narrative_threads)  # FD-1 S3 open-promise re-injection
     except OwnershipError:
         raise HTTPException(status_code=404, detail="book not found")
     except BookClientError:

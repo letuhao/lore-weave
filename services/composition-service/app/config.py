@@ -82,6 +82,11 @@ class Settings(BaseSettings):
     # passage may open, so a verbose detector can't flood the ledger. The pass
     # itself is per-Work opt-in via `work.settings["narrative_thread_enabled"]`.
     narrative_thread_max_open_per_scene: int = 5
+    # FD-1 / narrative_thread S3 — how many open promises to RE-INJECT into the
+    # generation pack (the F2 lever). list_open is priority-ordered, so this is the
+    # top-N highest-priority open threads; protected in the budget but bounded so a
+    # large ledger can't crowd out canon/beat.
+    pack_open_promises_cap: int = 8
     # Cycle-2 in-flight guard staleness window: the chapter-level generate/stitch
     # guard REJECTS a concurrent job, so a `running` job orphaned by a mid-
     # generation crash/kill would otherwise lock that chapter out forever (no
