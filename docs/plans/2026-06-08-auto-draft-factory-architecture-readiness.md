@@ -109,3 +109,61 @@ Before translating chapter X → language L:
 - **`D-STREAM-MAXLEN-BATCH`** (🟡, G8) — raise/segment the `chapter` stream cap or ensure consumer keeps up under batch load.
 - **`D-K16.2-02b`** (🔴 for this feature, G2) — knowledge runner honour `chapter_range` (existing deferral; promote).
 - Carried: `D-RERANK-NOT-BYOK`, `D-EVAL-JUDGE-PER-USER`, `D-TRANSL-M7D-INLINE-JUDGE`.
+
+---
+
+## Solutions & design decisions (2026-06-08) — covers G1–G10 + A–G
+
+### Core decision ★: a lightweight `campaign-service` (saga orchestrator + projection)
+
+Not a heavyweight workflow engine (Temporal/Cadence — new infra + lock-in, against the "no platform lock-in" rule) and not the gateway (TS proxy — wrong place for stateful sagas). A small **`campaign-service`** (Python/FastAPI, own Postgres DB):
+
+1. **Owns saga state** — `campaigns` + `campaign_chapters(campaign_id, chapter_id, ingest|knowledge|translation|eval status, attempts, last_error, …)`. This *is* the **unified per-chapter cross-pipeline projection** (solves **G7**) and sidesteps cross-DB FK (**D**) — it **projects** state from events, it does not foreign-key into other services' DBs.
+2. **Drives** the EXISTING per-service job APIs (translation `create_job`, knowledge extraction `start`) — paced, with `skip_existing`.
+3. **Advances** by consuming the EXISTING outbox event streams (`loreweave:events:{translation,knowledge,…}`) — the same backbone learning-service already consumes. **No new infra**; campaign-service is "just another consumer" + a driver.
+4. **Crash-resumable** (**D**): a stateless driver + reconcile loop re-derives "what's next" from `campaign_chapters` on restart → idempotent.
+
+One component is the home for **G1** (orchestration), **G7** (projection), **D** (aggregate + cross-DB + self-resume), and the enforcement point for G3/G4/B/E/F.
+
+### Per-concern solutions
+
+| Concern | Solution | Lives in | Slice |
+|---|---|---|---|
+| **G1** orchestration | campaign-service saga: drive APIs + consume events | campaign-service | S1 |
+| **G3** idempotency | `skip_existing` default ON: to-do = `{never} ∪ {stale} ∪ {failed} ∪ {force}`, via `active_chapter_translation_versions` + `is_glossary_stale` | translation `create_job` + campaign | S2 |
+| **B** freshness race | **phase barrier**: knowledge-extract ALL → (glossary stable) → translate. The wizard's "build knowledge first" = this; "cold-start" = the documented lower-quality opt-in | campaign-service | S1/S2 |
+| **G2** range | runner honours `chapter_range` (`D-K16.2-02b`) | knowledge runner | S2 |
+| **A** identity/authz | verify ownership ONCE at campaign-create (book-service projection, like `create_job` already does) → propagate the **verified** `user_id` over internal-token calls. **No minted user-JWTs** (that was a test hack). New service boundary → `/review-impl` mandatory. | campaign-service | S1 |
+| **C** billing exactly-once | route usage recording through the **outbox** (provider-registry → outbox → usage-billing consumer) = at-least-once + idempotent on the existing UNIQUE `request_id` (replaces best-effort fire-and-forget). + periodic reservation sweep/reconcile | provider-registry + usage-billing | S3/S4 |
+| **G4** budget pause | campaign tracks cumulative spend (events/reservations); orchestrator gates each dispatch wave vs the cap; pause gracefully on hit (stop dispatch, let in-flight drain), notify | campaign-service | S3 |
+| **G5** rate-limit governor | global per-provider **Redis token-bucket / concurrency semaphore**; acquire-before-call (bounds cloud rate-limit AND the single local GPU) | shared llm-client SDK | S3 |
+| **G5** circuit-breaker | per-provider failure-rate in Redis; threshold (N 429/5xx in window) → open → campaign **pause + notify**; cooldown auto-retry | llm-client + campaign | S3 |
+| **G6** backoff | exponential backoff on retry (RabbitMQ delayed-message / TTL-ladder retry queue) instead of immediate republish | translation worker | S3 |
+| **E** fairness | campaign **paces dispatch** (bounded in-flight window per campaign) → a 4000-ch batch never dumps 4000 msgs at once or starves interactive jobs; interactive jobs go direct (higher effective priority). Also fixes the enqueue-burst backpressure note. | campaign-service | S3 |
+| **F** cancellation | campaign `status=cancelling` → stop dispatch + propagate cancel to each service's in-flight job + drain. Safe via the per-chapter status guard. | campaign-service | S3 |
+| **G8** stream trim | a dedicated `campaign` stream with adequate `MAXLEN`; campaign consumer keeps up — do NOT piggyback the trimmed `chapter` stream (10k) for progress | worker-infra + campaign | S4 |
+| **G10** BYOK | reranker → adapter-dispatched + per-user; eval judges → per-campaign owner | knowledge / provider-registry / learning | S0 |
+| **G9 / G** capacity | **load-test plan** (post-v1): Neo4j batched writes, embedding index pre-build, glossary upsert already idempotent (`ON CONFLICT`), MinIO read cache, local-GPU serialized by the G5 governor | — | perf slice |
+
+### Locked decisions (★ = PO please confirm the two forks)
+
+- ★ **`campaign-service`** (new, Python/FastAPI, own DB) over gateway-module / Temporal.
+- ★ **Phase-barrier gating** (knowledge-ALL → translate) as the default; cold-start-parallel as the opt-in (already the wizard's two "context strategy" options).
+- **Identity:** verify-once-at-entry + assert-verified-`user_id` over internal-token; no minted user-JWTs.
+- **Billing:** usage recording → outbox (exactly-once via `request_id` dedup) — reuse the proven backbone.
+- **Reliability:** Redis governor + circuit-breaker (→ campaign pause) + backoff; reuse outbox/streams. **No new infra beyond campaign-service + its DB.**
+- **Resume = idempotency** (not a separate engine): re-running a campaign with `skip_existing=ON` naturally processes only missing/stale/failed → Monitor's Resume + Failed→Re-run buttons are thin wrappers over this.
+
+### Revised slicing v2 (solutions baked in)
+
+| Slice | Scope | Closes |
+|---|---|---|
+| **S0** (pre-req) | BYOK: reranker adapter+per-user · eval judges per-campaign-owner | G10 |
+| **S1** | `campaign-service` skeleton: campaign + `campaign_chapters` projection (consume events) · saga driver + reconcile-loop self-resume · ownership verify+propagate (A) · phase-barrier gating (B) | G1, G7, D, A, B |
+| **S2** | Translation idempotency (`skip_existing` + staleness gate) → unlocks Resume/Re-run-failed · knowledge `chapter_range` | G3, G2 |
+| **S3** | Reliability + policy: Redis per-provider governor · circuit-breaker→campaign-pause · backoff · campaign budget-cap pause · paced dispatch (fairness) · unified cancel | G5, G6, G4, E, F |
+| **S4** | Cost + events: usage→outbox exactly-once + reconcile · per-campaign estimate/spend aggregation (reuse `estimate.go`) · dedicated `campaign` stream MAXLEN | C, G8 |
+| **S5 / S6** | Wizard FE · Monitor / Failed&Re-run / Report FE (per `design-drafts/auto-draft-factory.html`) | UX |
+| **Sx** (post-v1) | Capacity load-test + tuning | G9, G |
+
+**Why this ordering is safe:** S1 builds the spine + projection + the two security/consistency decisions (A, B) that are hardest to retrofit. S2 makes the core economic invariant (idempotency) true before any large run. S3 makes it survivable unattended. S4 makes cost exact. FE last.
