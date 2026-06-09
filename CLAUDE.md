@@ -38,11 +38,13 @@ Data: Postgres (per-service DBs), RabbitMQ (job/event bus — translation & extr
 ### Key Rules
 - **Contract-first**: API contract frozen before frontend flow
 - **Gateway invariant**: all external traffic through `api-gateway-bff`
-- **Provider gateway invariant**: NO direct provider SDK calls — all AI calls go through adapter layer
+- **MCP-first invariant (AI agent logic)** — *any* AI **agent** capability (logic where an LLM decides actions, calls tools, or reasons multi-step over tools/data) MUST be exposed and invoked as an **MCP tool-call through `ai-gateway`** — never a bespoke HTTP endpoint driven by a raw prompt. **If the tool doesn't exist, create it** as an MCP tool on the owning domain service (domain owns its tools; `ai-gateway` only federates/routes — see `docs/specs/2026-06-10-glossary-assistant-architecture.md`). Non-agentic LLM *pipelines* (e.g. translation, enrichment) are exempt, but **new** agentic logic is not. Legacy agentic logic still on HTTP/raw-prompt is **tracked for migration in Deferred**, never silently grandfathered.
+- **Provider gateway invariant (ENFORCED)** — NO service imports a provider SDK or calls a provider API directly; every LLM/embedding/image/audio/STT call goes through **`provider-registry-service`** (the only place provider SDKs/HTTP live). Verified held across all AI services 2026-06-10. Any new direct provider SDK import is a defect, not a shortcut.
+- **No hardcoded model names (ENFORCED)** — model names *and pricing* resolve from `provider-registry-service`, never literal in service runtime code (exceptions: provider-registry's own preconfig/pricing, and test fixtures). On a violation: fix now if cheap, else add a Deferred migration row — never leave it untracked.
+- **Provider-rule gate** — the two ENFORCED rules above are checked programmatically by `scripts/ai-provider-gate.py` (cross-platform; provider-SDK imports for Py/TS/Go + hardcoded model literals, with an allowlist + DEFERRED tracking). Wired as a **pre-commit** hook via `git config core.hooksPath .githooks` (run once per checkout); CI/manual: `python scripts/ai-provider-gate.py`. Known-deferred drift is allowlisted (see DEFERRED 065); a genuinely new legacy case must get a DEFERRED row + an explicit allowlist entry, never an untracked bypass.
 - **Language rule**: Go for domain services, Python for AI/LLM services, TypeScript for gateway/BFF
 - Each microservice owns its own Postgres database
 - **No hardcoded secrets** — all secrets via env vars, services fail to start if missing
-- **No hardcoded model names** — model names resolved from provider-registry (user's registered config)
 
 ### Frontend Architecture Rules (React MVC)
 
