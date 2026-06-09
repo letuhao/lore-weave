@@ -148,7 +148,12 @@ def build_work(token, drafter, premise, cast, *, nt_on):
     tree = _req("GET", f"/v1/composition/works/{proj}/outline", token)
     scenes = [n for n in tree["nodes"] if n["kind"] == "scene" and n.get("beat_role")]
     scenes.sort(key=lambda x: (str(x.get("chapter_id")), x.get("story_order") or 0, x.get("rank") or ""))
-    return proj, scenes
+    # plan_text (spec, not prose) — feeds the v2 fixed-promise extraction.
+    plan_text = "\n".join(
+        [f"Chapter: {c['intent']}" for c in commit["chapters"]]
+        + [f"- {s['title']}: {s['synopsis']}" for c in commit["chapters"] for s in c["scenes"]]
+    )
+    return proj, scenes, plan_text, chapters
 
 
 def gen_auto(token, proj, node_id, drafter):
@@ -159,37 +164,63 @@ def gen_auto(token, proj, node_id, drafter):
                  "guide": "", "max_output_tokens": 500})
 
 
+def gen_chapter(token, proj, chapter_id, drafter):
+    """Chapter single-pass (B2) → full response (text + reinjected_promise_count +
+    open_promise_count). Chapter mode reaches the arc's PAYOFF (per_scene+short-tok
+    truncates before it), so the v2 pay-rate can actually discriminate."""
+    return _req("POST", f"/v1/composition/works/{proj}/chapters/{chapter_id}/generate", token,
+                {"model_source": "user_model", "model_ref": drafter, "reasoning": "off",
+                 "max_output_tokens": 2048, "persist": False})
+
+
 def threads(token, proj, status="open"):
     return _req("GET", f"/v1/composition/works/{proj}/narrative-threads?status={status}", token)
 
 
-def gen_arc(token, proj, scenes, drafter, *, smoke=None):
-    """Generate every scene in order; concat the prose. When `smoke` is a dict,
-    record the per-scene reinjected counts for the live-smoke (ON arm only)."""
+def gen_arc(token, proj, scenes, chapters, drafter, *, smoke=None, mode="chapter"):
+    """Generate the full arc; concat prose. mode='chapter' = single-pass per chapter
+    (reaches the payoff → v2 pay-rate can discriminate); 'per_scene' = auto per scene
+    (truncates before payoff). Records reinjected counts + open-after-first-unit for
+    the live-smoke (smoke dict, ON arm only)."""
     parts = []
-    for i, n in enumerate(scenes):
-        r = gen_auto(token, proj, n["id"], drafter)
+    units = list(chapters) if mode == "chapter" else [s["id"] for s in scenes]
+    for i, u in enumerate(units):
+        r = gen_chapter(token, proj, u, drafter) if mode == "chapter" else gen_auto(token, proj, u, drafter)
         parts.append(r.get("text", ""))
         if smoke is not None:
             smoke.setdefault("reinjected", []).append(r.get("reinjected_promise_count", 0))
             if i == 0:
-                smoke["open_after_scene1"] = threads(token, proj, "open").get("open_count", 0)
+                smoke["open_after_first"] = threads(token, proj, "open").get("open_count", 0)
     return "\n\n".join(p for p in parts if p)
 
 
-def audit(user_id, judge, arc_text):
+def audit(user_id, judge, arc_text):  # v1 (dropped-rate, unstable denominator)
     return _internal(COMP_INTERNAL, "/internal/composition/eval/promise-audit",
                      {"user_id": user_id, "model_source": "user_model", "model_ref": judge,
                       "arc_text": arc_text, "source_language": "en"})
 
 
+def extract_promises(user_id, judge, premise, plan_text):  # v2 — fixed set from SPEC
+    return _internal(COMP_INTERNAL, "/internal/composition/eval/promise-extract",
+                     {"user_id": user_id, "model_source": "user_model", "model_ref": judge,
+                      "premise": premise, "plan_text": plan_text, "source_language": "en"}
+                     ).get("promises", [])
+
+
+def coverage(user_id, judge, promises, arc_text):  # v2 — score arc vs the fixed set
+    return _internal(COMP_INTERNAL, "/internal/composition/eval/promise-coverage",
+                     {"user_id": user_id, "model_source": "user_model", "model_ref": judge,
+                      "promises": promises, "arc_text": arc_text, "source_language": "en"})
+
+
 def main():
     pos = [a for a in sys.argv[1:] if not a.startswith("--")]
     n = max(1, min(int(pos[0]) if pos else 3, len(PREMISES)))
+    mode = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--mode=")), "chapter")
     token = login()
     user_id = jwt_sub(token)
     drafter, judge, disjoint = models(token)
-    print(f"user={user_id} drafter={drafter} judge={judge} disjoint_judge={disjoint} n={n}")
+    print(f"user={user_id} drafter={drafter} judge={judge} disjoint_judge={disjoint} n={n} mode={mode}")
     if not disjoint:
         print("  ⚠ only ONE chat model registered — judge==drafter (self-reinforcement "
               "caveat ~4-5pp; register a 2nd model for a clean measure).")
@@ -199,37 +230,44 @@ def main():
         print(f"\n[{idx+1}/{n}] {premise[:64]}...")
         t0 = time.time()
         # arm OFF
-        proj_off, sc_off = build_work(token, drafter, premise, cast, nt_on=False)
-        off_text = gen_arc(token, proj_off, sc_off, drafter)
+        proj_off, sc_off, plan_off, ch_off = build_work(token, drafter, premise, cast, nt_on=False)
+        off_text = gen_arc(token, proj_off, sc_off, ch_off, drafter, mode=mode)
         off_open = threads(token, proj_off, "open").get("open_count", 0)
         # arm ON (collect live-smoke on the first premise)
         smoke = {} if idx == 0 else None
-        proj_on, sc_on = build_work(token, drafter, premise, cast, nt_on=True)
-        on_text = gen_arc(token, proj_on, sc_on, drafter, smoke=smoke)
+        proj_on, sc_on, _, ch_on = build_work(token, drafter, premise, cast, nt_on=True)
+        on_text = gen_arc(token, proj_on, sc_on, ch_on, drafter, smoke=smoke, mode=mode)
         on_all = threads(token, proj_on, "all").get("threads", [])
         paid = sum(1 for t in on_all if t.get("status") == "paid")
         on_open = sum(1 for t in on_all if t.get("status") in ("open", "progressing"))
 
+        # v1 (dropped-rate) — kept for continuity with the prior null result.
         a_off = audit(user_id, judge, off_text)
         a_on = audit(user_id, judge, on_text)
-        rows.append((idx + 1, a_off, a_on, off_open, on_open, paid))
-        dump.append({"premise": premise, "off": off_text, "on": on_text})
-        print(f"    OFF dropped_rate={a_off['dropped_rate']:.2f} "
-              f"({a_off['dropped_count']}/{a_off['introduced_count']}) | "
-              f"ON dropped_rate={a_on['dropped_rate']:.2f} "
-              f"({a_on['dropped_count']}/{a_on['introduced_count']}) | "
+        # v2 — FIXED promise set from the SPEC (premise+plan), scored on both arms.
+        promises = extract_promises(user_id, judge, premise, plan_off)
+        c_off = coverage(user_id, judge, promises, off_text)
+        c_on = coverage(user_id, judge, promises, on_text)
+        rows.append((idx + 1, a_off, a_on, off_open, on_open, paid, c_off, c_on, len(promises)))
+        dump.append({"premise": premise, "off": off_text, "on": on_text, "promises": promises})
+        print(f"    v1 dropped_rate OFF={a_off['dropped_rate']:.2f} ON={a_on['dropped_rate']:.2f} | "
               f"ledger on: {on_open} open / {paid} paid | {time.time()-t0:.0f}s")
+        print(f"    v2 ({len(promises)} tracked) abandon_rate OFF={c_off['abandon_rate']:.2f}"
+              f"({c_off['abandoned_count']}/{c_off['introduced_count']}) "
+              f"ON={c_on['abandon_rate']:.2f}({c_on['abandoned_count']}/{c_on['introduced_count']}) | "
+              f"pay_rate OFF={c_off['pay_rate']:.2f} ON={c_on['pay_rate']:.2f} | "
+              f"sustained OFF={c_off['sustained_rate']:.2f} ON={c_on['sustained_rate']:.2f}")
 
         # ── full-loop live-smoke (premise #1, ON arm) ──
         if smoke is not None:
             reinj = smoke.get("reinjected", [])
-            open1 = smoke.get("open_after_scene1", 0)
-            later_reinj = max(reinj[1:], default=0)  # any scene after the first
+            open1 = smoke.get("open_after_first", 0)
+            later_reinj = max(reinj[1:], default=0)  # any unit after the first
             print("\n  ── FULL-LOOP LIVE-SMOKE (ON arm, premise #1) ──")
-            print(f"    [{'PASS' if open1 > 0 else 'WARN'}] S2 opened on scene 1: open_count={open1}")
-            cond = (later_reinj > 0) if open1 > 0 else True  # only assertable if scene1 opened
-            print(f"    [{'PASS' if cond else 'FAIL'}] S3 re-injected on a later scene: "
-                  f"max reinjected_promise_count={later_reinj} (per-scene {reinj})")
+            print(f"    [{'PASS' if open1 > 0 else 'WARN'}] S2 opened on unit 1: open_count={open1}")
+            cond = (later_reinj > 0) if open1 > 0 else True  # only assertable if unit-1 opened
+            print(f"    [{'PASS' if cond else 'FAIL'}] S3 re-injected on a later unit: "
+                  f"max reinjected_promise_count={later_reinj} (per-unit {reinj})")
             off_ctrl = threads(token, proj_off, "all").get("threads", [])
             print(f"    [{'PASS' if not off_ctrl else 'FAIL'}] control: OFF arm has NO ledger rows "
                   f"({len(off_ctrl)} rows, off_open={off_open})")
@@ -240,19 +278,43 @@ def main():
     print(f"\ndrafts → {DUMP}")
 
     # ── summary ──
-    off_mean = sum(r[1]["dropped_rate"] for r in rows) / len(rows)
-    on_mean = sum(r[2]["dropped_rate"] for r in rows) / len(rows)
-    wins = sum(1 for r in rows if r[2]["dropped_rate"] < r[1]["dropped_rate"])
-    print(f"\n══ DROPPED-PROMISE-RATE (n={len(rows)}, judge {'disjoint' if disjoint else 'SELF'}) ══")
-    print(f"  OFF mean={off_mean:.3f}  ON mean={on_mean:.3f}  "
-          f"Δ={off_mean - on_mean:+.3f} (positive = ledger helps)")
-    print(f"  ON beats OFF on {wins}/{len(rows)} books")
-    print("  CAVEATS (review-impl LOW#2/#3): a tie/ceiling is NOT a pass; (a) the arms use "
-          "SEPARATE decompose plans (per-work flag + 1:1 book:work is structural — can't "
-          "share a plan across two works), so plan variance is noise; (b) re-injection can "
-          "make the ON arm SURFACE more promises into prose → a bigger `introduced` "
-          "denominator that may MASK a real drop-reduction. Read the per-book drops + the "
-          "dump; don't over-claim a lift OR a null.")
+    N = len(rows)
+    jl = "disjoint" if disjoint else "SELF"
+
+    def mean(get):
+        return sum(get(r) for r in rows) / N
+
+    v1_off, v1_on = mean(lambda r: r[1]["dropped_rate"]), mean(lambda r: r[2]["dropped_rate"])
+    v1_wins = sum(1 for r in rows if r[2]["dropped_rate"] < r[1]["dropped_rate"])
+    print(f"\n══ v1 DROPPED-PROMISE-RATE (n={N}, judge {jl}) — UNSTABLE DENOMINATOR ══")
+    print(f"  OFF mean={v1_off:.3f}  ON mean={v1_on:.3f}  Δ={v1_off - v1_on:+.3f}  "
+          f"(ON beats OFF {v1_wins}/{N}) — confounded by introduced-inflation; kept for continuity")
+
+    # v2 — the FIXED-set metric. abandon_rate is the real-drop signal (lower=better);
+    # sustained_rate counts paid+still-live (NOT a drop). Same fixed set both arms.
+    ab_off, ab_on = mean(lambda r: r[6]["abandon_rate"]), mean(lambda r: r[7]["abandon_rate"])
+    pay_off, pay_on = mean(lambda r: r[6]["pay_rate"]), mean(lambda r: r[7]["pay_rate"])
+    sus_off, sus_on = mean(lambda r: r[6]["sustained_rate"]), mean(lambda r: r[7]["sustained_rate"])
+    # paid/TRACKED — the fully-fixed denominator (counts 'absent' against the arm too).
+    # review-impl: pay_rate (paid/introduced) excludes absent → a stricter cross-check.
+    def pt(c):
+        return c["paid_count"] / c["tracked_count"] if c["tracked_count"] else 0.0
+    pt_off, pt_on = mean(lambda r: pt(r[6])), mean(lambda r: pt(r[7]))
+    ab_wins = sum(1 for r in rows if r[7]["abandon_rate"] < r[6]["abandon_rate"])
+    sus_wins = sum(1 for r in rows if r[7]["sustained_rate"] > r[6]["sustained_rate"])
+    print(f"\n══ v2 FIXED-PROMISE-SET COVERAGE (n={N}, judge {jl}) — STABLE DENOMINATOR ══")
+    print(f"  ABANDON-rate (real drop, lower=better): OFF={ab_off:.3f}  ON={ab_on:.3f}  "
+          f"Δ={ab_off - ab_on:+.3f}  (ON better on {ab_wins}/{N})")
+    print(f"  PAY-rate     (paid/introduced, higher=better): OFF={pay_off:.3f}  ON={pay_on:.3f}  "
+          f"Δ={pay_on - pay_off:+.3f}")
+    print(f"  PAID/TRACKED (fully-fixed denom, higher=better): OFF={pt_off:.3f}  ON={pt_on:.3f}  "
+          f"Δ={pt_on - pt_off:+.3f}")
+    print(f"  SUSTAINED    (paid+live, higher=better): OFF={sus_off:.3f}  ON={sus_on:.3f}  "
+          f"Δ={sus_on - sus_off:+.3f}  (ON better on {sus_wins}/{N})")
+    print("  NOTE: v2 fixes a SPEC-derived promise set identical for both arms (kills "
+          "introduced-inflation) + separates ABANDONED (real drop) from PROGRESSING "
+          "(sustained tension at the cutoff). Still directional (n small, LLM variance, "
+          "separate per-arm plans are structural). Read the dump; don't over-claim.")
 
 
 if __name__ == "__main__":

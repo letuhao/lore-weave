@@ -151,3 +151,117 @@ def test_promise_audit_endpoint_happy(monkeypatch):
         assert r.status_code == 200
         assert r.json()["dropped_rate"] == 0.5
     app.dependency_overrides.clear()
+
+
+# ── EVAL v2 — fixed-promise-set coverage ──
+
+def test_parse_coverage_counts_and_rates_with_stable_denominator():
+    promises = ["the locked door", "Kael's vow", "the missing heir", "the curse"]
+    a = promise_audit._parse_coverage(json.dumps({"verdicts": [
+        {"index": 0, "verdict": "paid"},
+        {"index": 1, "verdict": "progressing"},
+        {"index": 2, "verdict": "abandoned"},
+        {"index": 3, "verdict": "absent"},
+    ]}), promises)
+    # introduced = paid+progressing+abandoned = 3 (absent excluded from denominator)
+    assert a["tracked_count"] == 4 and a["introduced_count"] == 3
+    assert a["paid_count"] == 1 and a["progressing_count"] == 1 and a["abandoned_count"] == 1
+    assert a["abandon_rate"] == 1 / 3
+    assert a["pay_rate"] == 1 / 3
+    assert a["sustained_rate"] == 2 / 3  # paid + progressing
+
+
+def test_parse_coverage_missing_or_bad_verdict_defaults_absent():
+    # review-impl-style: a missing index or a bad verdict token must NOT credit a
+    # pay (conservative → 'absent'); index alignment is by the promise list order.
+    promises = ["a", "b", "c"]
+    a = promise_audit._parse_coverage(json.dumps({"verdicts": [
+        {"index": 0, "verdict": "paid"},
+        {"index": 1, "verdict": "garbage"},   # bad token → absent
+        # index 2 missing → absent
+    ]}), promises)
+    assert a["paid_count"] == 1 and a["absent_count"] == 2 and a["introduced_count"] == 1
+
+
+def test_coverage_shape_zero_introduced_no_div_by_zero():
+    a = promise_audit._coverage_shape(["a", "b"], ["absent", "absent"])
+    assert a["introduced_count"] == 0
+    assert a["abandon_rate"] == 0.0 and a["pay_rate"] == 0.0 and a["sustained_rate"] == 0.0
+
+
+def test_parse_coverage_garbage_all_absent():
+    a = promise_audit._parse_coverage("not json", ["a", "b"])
+    assert a["absent_count"] == 2 and a["introduced_count"] == 0
+
+
+async def test_extract_tracked_promises_happy_and_degrade():
+    llm = FakeLLM(content=json.dumps({"promises": ["the vow", "the heir", "  ", 7]}))
+    ps = await promise_audit.extract_tracked_promises(
+        llm, user_id="u", model_source="user_model", model_ref="j",
+        premise="a knight", plan_text="ch1...")
+    assert ps == ["the vow", "the heir"]  # blanks/non-str filtered
+    err = FakeLLM(raises=True)
+    assert await promise_audit.extract_tracked_promises(
+        err, user_id="u", model_source="user_model", model_ref="j",
+        premise="p", plan_text="") == []  # degrade → [] (harness skips the book)
+
+
+async def test_score_coverage_empty_promises_short_circuits():
+    llm = FakeLLM(content="{}")
+    a = await promise_audit.score_promise_coverage(
+        llm, user_id="u", model_source="user_model", model_ref="j",
+        promises=[], arc_text="arc")
+    assert a["error"] == "no_tracked_promises" and llm.calls == 0  # no LLM call on empty set
+
+
+async def test_score_coverage_llm_error_all_absent_not_raise():
+    llm = FakeLLM(raises=True)
+    a = await promise_audit.score_promise_coverage(
+        llm, user_id="u", model_source="user_model", model_ref="j",
+        promises=["a", "b"], arc_text="arc")
+    assert a["error"] == "coverage_unavailable" and a["absent_count"] == 2
+    assert a["abandon_rate"] == 0.0  # no fabricated drop
+
+
+async def test_score_coverage_reasoning_disabled():
+    llm = FakeLLM(content=json.dumps({"verdicts": [{"index": 0, "verdict": "paid"}]}))
+    await promise_audit.score_promise_coverage(
+        llm, user_id="u", model_source="user_model", model_ref="j",
+        promises=["a"], arc_text="arc")
+    assert llm.last_input["reasoning_effort"] == "none"
+
+
+def test_promise_extract_endpoint_happy(monkeypatch):
+    llm = FakeLLM(content=json.dumps({"promises": ["the vow", "the heir"]}))
+    app = _client(monkeypatch, llm)
+    body = {"user_id": str(uuid.uuid4()), "model_source": "user_model",
+            "model_ref": "j", "premise": "a knight retakes a keep", "plan_text": "ch1: exile"}
+    with TestClient(app) as c:
+        r = c.post("/internal/composition/eval/promise-extract", json=body,
+                   headers={"X-Internal-Token": "test_token"})
+        assert r.status_code == 200 and r.json()["promises"] == ["the vow", "the heir"]
+    app.dependency_overrides.clear()
+
+
+def test_promise_coverage_endpoint_happy(monkeypatch):
+    llm = FakeLLM(content=json.dumps({"verdicts": [
+        {"index": 0, "verdict": "paid"}, {"index": 1, "verdict": "abandoned"}]}))
+    app = _client(monkeypatch, llm)
+    body = {"user_id": str(uuid.uuid4()), "model_source": "user_model", "model_ref": "j",
+            "promises": ["the vow", "the heir"], "arc_text": "the arc"}
+    with TestClient(app) as c:
+        r = c.post("/internal/composition/eval/promise-coverage", json=body,
+                   headers={"X-Internal-Token": "test_token"})
+        assert r.status_code == 200
+        b = r.json()
+        assert b["paid_count"] == 1 and b["abandoned_count"] == 1 and b["abandon_rate"] == 0.5
+    app.dependency_overrides.clear()
+
+
+def test_promise_coverage_endpoint_requires_token(monkeypatch):
+    app = _client(monkeypatch, FakeLLM(content="{}"))
+    body = {"user_id": str(uuid.uuid4()), "model_source": "user_model", "model_ref": "j",
+            "promises": ["a"], "arc_text": "x"}
+    with TestClient(app) as c:
+        assert c.post("/internal/composition/eval/promise-coverage", json=body).status_code in (401, 403)
+    app.dependency_overrides.clear()
