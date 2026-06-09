@@ -221,6 +221,23 @@ func decryptWithKey(key []byte, cipherText string) ([]byte, error) {
 	return gcm.Open(nil, nonce, body, nil)
 }
 
+// flatFallbackRateUSDPerToken — the legacy per-token placeholder used ONLY when
+// the gateway didn't send an authoritative per-model cost. It mis-bills (a flat
+// rate under-counts output-heavy cloud models and wrongly charges local $0
+// models), so it is a last resort, not the pricing source of truth.
+const flatFallbackRateUSDPerToken = 0.000002
+
+// recordCostUSD picks the cost for one usage record: the gateway's authoritative
+// per-model cost (input×in_rate + output×out_rate from the model's Pricing) when
+// provided and non-negative, else the flat per-token fallback. A non-nil 0
+// (a local/free model) is honored verbatim — NOT replaced by the flat rate.
+func recordCostUSD(totalTokens int, override *float64) float64 {
+	if override != nil && *override >= 0 {
+		return *override
+	}
+	return float64(totalTokens) * flatFallbackRateUSDPerToken
+}
+
 func (s *Server) recordInvocation(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		RequestID     uuid.UUID      `json:"request_id"`
@@ -234,6 +251,10 @@ func (s *Server) recordInvocation(w http.ResponseWriter, r *http.Request) {
 		OutputPayload map[string]any `json:"output_payload"`
 		RequestStatus string         `json:"request_status"`
 		Purpose       string         `json:"purpose"`
+		// TotalCostUSD — the authoritative per-model cost from the gateway (it owns
+		// the model's per-token Pricing). When present we use it verbatim; when
+		// absent we fall back to the flat per-token placeholder below (back-compat).
+		TotalCostUSD *float64 `json:"total_cost_usd"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "M03_BILLING_RECORD_INVALID", "invalid payload")
@@ -255,7 +276,7 @@ func (s *Server) recordInvocation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	totalTokens := in.InputTokens + in.OutputTokens
-	costUSD := float64(totalTokens) * 0.000002
+	costUSD := recordCostUSD(totalTokens, in.TotalCostUSD)
 	decision := "quota"
 	requestStatus := in.RequestStatus
 	if requestStatus == "" {

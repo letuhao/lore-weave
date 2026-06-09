@@ -141,6 +141,14 @@ func (w *Worker) settleBilling(ctx context.Context, jobID, ownerUserID uuid.UUID
 		return // no job row — nothing to settle or record
 	}
 
+	// Measured per-model cost — resolved ONCE for a completed job (a pricing
+	// lookup + textCost) so the reservation reconcile AND the usage-record audit
+	// row agree. nil when pricing/usage is unresolvable (media, missing pricing).
+	var actual *float64
+	if status == "completed" {
+		actual = w.actualUSD(ctx, ownerUserID, modelSource, modelRef, result)
+	}
+
 	// (1) Spend reservation — only when the job carries one.
 	if resID != nil {
 		if status != "completed" {
@@ -153,7 +161,6 @@ func (w *Worker) settleBilling(ctx context.Context, jobID, ownerUserID uuid.UUID
 			// completed — reconcile. A non-nil actual is the measured
 			// spend; nil tells usage-billing to charge the reservation's
 			// own estimate (media jobs, or usage/pricing unresolved).
-			actual := w.actualUSD(ctx, ownerUserID, modelSource, modelRef, result)
 			if recErr := w.guardrail.Reconcile(ctx, *resID, actual); recErr != nil {
 				w.logger.Warn("guardrail reconcile failed", "job_id", jobID.String(), "err", recErr)
 			}
@@ -173,6 +180,7 @@ func (w *Worker) settleBilling(ctx context.Context, jobID, ownerUserID uuid.UUID
 				Operation:    operation,
 				InputTokens:  tokIn,
 				OutputTokens: tokOut,
+				TotalCostUSD: actual, // authoritative per-model cost (matches reconcile)
 			}); recErr != nil {
 				w.logger.Warn("usage record failed", "job_id", jobID.String(), "err", recErr)
 			}
