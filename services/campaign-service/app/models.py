@@ -7,7 +7,7 @@ from typing import Optional
 from uuid import UUID
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ── Domain vocabulary (mirrors the DB CHECK-free string columns) ──────────
 GATING_MODES = {"phase_barrier", "cold_start"}
@@ -98,6 +98,52 @@ class Campaign(BaseModel):
     updated_at: datetime
     started_at: Optional[datetime]
     finished_at: Optional[datetime]
+
+
+class EstimateModelRef(BaseModel):
+    """A per-role model pick for the cost estimate. Both None = role unset
+    (that stage is skipped / not estimated)."""
+    # `model_*` collides with Pydantic v2's protected namespace; allow it (these
+    # field names mirror the provider-registry + FE picker contract).
+    model_config = ConfigDict(protected_namespaces=())
+
+    model_source: Optional[str] = None
+    model_ref: Optional[UUID] = None
+
+
+class EstimateRequest(BaseModel):
+    """S5a — POST /v1/campaigns/estimate. Describes the PROPOSED campaign so the
+    wizard can show a cost+time review before create/launch. Owner-scoped: the
+    book is ownership-verified exactly like create. `models` maps each pipeline
+    role (extractor/embedding/reranker/translator/verifier/eval_judge) to a pick."""
+    book_id: UUID
+    chapter_from: Optional[int] = None
+    chapter_to: Optional[int] = None
+    target_language: Optional[str] = None
+    models: dict[str, EstimateModelRef] = Field(default_factory=dict)
+
+
+class StageEstimate(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    stage: str
+    role: str
+    model_source: Optional[str]
+    model_ref: Optional[str]
+    status: str          # ok | unpriced | not_found | bad_request | not_estimated
+    estimated_usd: Decimal
+
+
+class EstimateResponse(BaseModel):
+    chapter_count: int
+    currency: str
+    estimated_usd_low: Decimal
+    estimated_usd_high: Decimal
+    estimated_minutes_low: int
+    estimated_minutes_high: int
+    per_stage: list[StageEstimate]
+    notes: list[str]
+    disclaimer: str
 
 
 class CampaignChapter(BaseModel):

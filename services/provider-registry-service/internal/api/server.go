@@ -301,6 +301,9 @@ func (s *Server) Router() http.Handler {
 		r.Post("/embed", s.internalEmbed)
 		r.Post("/rerank", s.internalRerank) // E5B — cross-encoder rerank (platform service)
 
+		// S5a — campaign cost-estimate pricing oracle (token-count → USD).
+		r.Post("/billing/estimate", s.internalBillingEstimate)
+
 		// Phase 1a — service-to-service streaming endpoint.
 		r.Post("/llm/stream", s.internalLlmStream)
 

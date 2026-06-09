@@ -1,8 +1,14 @@
-# Session Handoff — Session 106 (Auto-Draft Factory backend S0–S4 COMPLETE)
+# Session Handoff — Session 107 (Auto-Draft Factory S5a — estimate endpoint)
 
 > **Purpose:** orient the next agent in one read. This file is the single, unversioned handoff — updated in place at the end of each session. (Older `SESSION_PATCH.md` is deprecated → archive later.)
-> **Date:** 2026-06-10 (Auto-Draft Factory **S1 + S2 + S3a/b/c + S4 (design + S4a threading + S4b outbox/relay + S4c audit-consumer/token-retire + S4d budget-cap)** shipped → **backend S0–S4 COMPLETE**; human-in-loop v2.2).
+> **Date:** 2026-06-10 (backend S0–S4 COMPLETE; **S5 epic started → S5a cost/time estimate endpoint shipped**; human-in-loop v2.2).
 > **HEAD:** TBD (post-commit). Branch: `feat/advanced-translation-pipeline`.
+
+## ▶ NEXT: S5b — 6-role model persistence + cross-service plumbing
+S5 (Auto-Draft Factory wizard/monitor) was reframed at CLARIFY into a multi-service epic and **decomposed S5a→S5b→S5c** (PO 2026-06-10; full record + the embedding-safety constraint in [`docs/plans/2026-06-10-s5-auto-draft-factory-fe-epic.md`](../plans/2026-06-10-s5-auto-draft-factory-fe-epic.md)). PO chose **all 6 roles editable incl. embedding**, a real backend estimate, and create+launch→minimal detail.
+- **S5a DONE** (this session) — see block below.
+- **S5b (next)** — schema migration: `campaigns += verifier_model_source/ref + eval_judge_model_source/ref` (extractor+translator already persisted); plumb verifier→translation dispatch (translation jobs already accept `verifier_model_source/ref`, `v3/orchestrator.py:209` — just thread it), eval-judge→learning-service (**cross-service refactor**: judge model is env-only today, `learning-service/config.py:23`); embedding+reranker surfaced from the knowledge project. **⚠ HARD CONSTRAINT:** per-campaign embedding override is only safe on a project with NO embedded passages yet — else reject(409)/re-embed (changing embedding invalidates the vector space). Recommend `/loom S5b` with AMAW (schema + cross-service + billing). v2.2 self-review per prior-slice PO pref.
+- **S5c** — FE wizard (multi-step) + minimal detail page, against the S5a/S5b contracts. i18n ×4.
 
 ## ▶ NEXT SESSION — start here
 
@@ -103,7 +109,15 @@
 - **`D-S4D-LIVE-SMOKE`** — full cross-service e2e: real campaign w/ low `budget_usd` → S4b relay → `:campaign_usage` → consumer accumulates → auto-pauses; PATCH-raise + `/start` resumes; redelivery no dup. (The SQL CASE is now integration-tested; this is the end-to-end flow.)
 - **`D-S4D-CONSUMER-PEL`** — same partial-reclaim residual as S4c (sustained-busy stream defers reclaim to the next idle gap).
 
-**🏁 NEXT: S5/S6 — Auto-Draft Factory FE (wizard + monitor).** Backend S0–S4 is complete + feature-tested. S5/S6 build the setup **wizard** (Model Matrix per-role BYOK picks, chapter-range, cost+time review screen before launch [heuristic→sampling estimate], budget_usd input) and the **monitor** (per-chapter projection from `GET /v1/campaigns/{id}` + spent_usd/budget_usd progress, pause/resume/cancel controls). FE-only (the backend contracts are frozen). Also pending: the deferred **live-smoke** rows across S4a–d (`D-S4A/B/C/D-*-LIVE-SMOKE`) on a real 4-service stack-up + the `D-RERANK-BYOK-LIVE-SMOKE`/earlier rows. All S4 commits (incl S4a–c) are pushed to `origin/feat/advanced-translation-pipeline`; PR `feat/advanced-translation-pipeline → main` when the FE lands or per PO.
+**✅ S5a DONE — campaign cost/time estimate endpoint (L, one loom, cross-service, 2026-06-10).** First slice of the S5 epic. Design [`docs/plans/2026-06-10-s5-auto-draft-factory-fe-epic.md`](../plans/2026-06-10-s5-auto-draft-factory-fe-epic.md). Pre-launch estimate for the wizard's review screen — **no campaign created**. Split: **provider-registry** = a pure USD-per-token oracle (`POST /internal/billing/estimate`, X-Internal-Token; reuses `billing.PriceText`/`PriceEmbedding` = the live guardrail's `textCost`/`embeddingCost` so estimate-vs-reconcile can't drift; **soft per-item** `ok|unpriced|not_found|bad_request` — one bad model never 500s the batch); **campaign-service** = the workload heuristics (`app/estimate.py`: stage→model→op map, byte_size-grounded source tokens, verifier→translator fallback, USD band + per-stage breakdown + rough minutes) behind `POST /v1/campaigns/estimate` (JWT owner-scoped — same book-ownership gate as create; 502 `CAMPAIGN_ESTIMATE_UNAVAILABLE` if the oracle is down). Token counts (not 4000 chapters of text) cross the wire. Heuristics are config knobs (`est_*`). Gateway proxies `/v1/campaigns/estimate` generically (no gw change). **VERIFY:** provider-registry `go build/vet/test ./...` green (7 oracle tests); campaign-service **pytest 92 + 6 skipped** (+12; `create` refactor — shared `_owner_verified_chapters` helper — regression-clean). **/review-impl: 3 LOW fixed** — (1) time now counts stages-with-a-model not oracle-priced-ok; (2) verify/eval input `source+translation_output` (~2.5× source, leans cost UP — safe for a pre-spend screen); (3) `model_source` validated per-item (soft bad_request, not whole-batch 500).
+
+**S5a deferred rows:**
+- **`D-S5A-ESTIMATE-LIVE-SMOKE`** — real 2-service: wizard payload → campaign `/estimate` → provider-registry prices real registered models → band; unpriced model surfaces in `notes` (contract unit-covered both sides; live exercises the HTTP hop + real pricing JSONB).
+- **`D-S5A-RERANK-COST`** — rerank has no per-token price dimension today (Cohere is per-search); surfaced as `not_estimated`. Add a dimension if rerank cost becomes material.
+- **`D-S5A-TARGET-LANG-RATIO`** (review-impl #4) — `target_language` accepted but expansion ratio is a flat 1.5; refine per-language with the sampling estimator.
+- **`D-S5A-SUMMARY-COST`** — knowledge summary-gen LLM spend (the `D-S4-SUMMARY-ATTRIBUTION` hop) not in the stage map; fold in when that attribution lands.
+
+Also pending: deferred **live-smokes** across S4a–d + `D-RERANK-BYOK-LIVE-SMOKE` on a real stack-up. S4 commits pushed to `origin/feat/advanced-translation-pipeline`; **S5a not yet pushed**. PR `→ main` when the FE lands or per PO.
 
 ### ▶ RAW SEARCH (branch `raw-search/foundation`, off `origin/main`)
 

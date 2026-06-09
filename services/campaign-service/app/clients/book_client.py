@@ -27,6 +27,10 @@ class BookNotFound(Exception):
 class ChapterRef:
     chapter_id: str
     sort_order: int
+    # S5a — raw chapter size, used by the cost estimate to size source tokens.
+    # 0 when the book-service projection omits it (estimate falls back to a
+    # configured per-chapter average).
+    byte_size: int = 0
 
 
 class BookClient:
@@ -69,6 +73,10 @@ class BookClient:
             raise BookServiceError(f"chapters {resp.status_code}")
         items = resp.json().get("items", [])
         return [
-            ChapterRef(chapter_id=str(it["chapter_id"]), sort_order=int(it.get("sort_order", 0)))
+            ChapterRef(
+                chapter_id=str(it["chapter_id"]),
+                sort_order=int(it.get("sort_order", 0)),
+                byte_size=int(it.get("byte_size", 0) or 0),
+            )
             for it in items
         ]
