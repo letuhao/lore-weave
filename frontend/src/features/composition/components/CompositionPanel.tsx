@@ -15,6 +15,7 @@ import { PlannerView } from './PlannerView';
 import { GroundingPanel } from './GroundingPanel';
 import { CanonRulesPanel } from './CanonRulesPanel';
 import { QualityPanel } from './QualityPanel';
+import { CompositionSettingsView } from './CompositionSettingsView';
 
 type Props = {
   bookId: string;
@@ -23,7 +24,7 @@ type Props = {
   onAccept: (text: string) => void; // insert accepted prose into the editor
 };
 
-type SubTab = 'compose' | 'assemble' | 'planner' | 'grounding' | 'canon' | 'quality';
+type SubTab = 'compose' | 'assemble' | 'planner' | 'grounding' | 'canon' | 'quality' | 'settings';
 
 export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) {
   const { t } = useTranslation('composition');
@@ -76,9 +77,18 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
   const sceneDone = selectedScene?.status === 'done';
   // Stitch (B3) is the publishable artifact → gated on every scene being done.
   const scenesAllDone = !!scenes.data?.length && scenes.data.every((s) => s.status === 'done');
+  // Session model pick OVERRIDES the persisted per-Work default (Settings tab);
+  // derive (like effectiveScene) so the default applies without a useEffect. Guard
+  // a STALE default that points at a now-deactivated model (initialValues-respect-
+  // dynamic-gates): only honor it while models are still loading or it's in the
+  // active list — else fall back to '' so the selector doesn't show a phantom value
+  // and no hidden stale model_ref reaches generation.
+  const defaultModelRef = typeof work.settings?.default_model_ref === 'string' ? work.settings.default_model_ref : '';
+  const defaultIsAvailable = !models.data || models.data.some((m) => m.user_model_id === defaultModelRef);
+  const effectiveModelRef = modelRef || (defaultIsAvailable ? defaultModelRef : '');
   // The selected model's metadata — hints for the server's auto-reasoning
   // strategy (adaptive pass-through vs our rule-based scorer).
-  const selectedModel = models.data?.find((m) => m.user_model_id === modelRef);
+  const selectedModel = models.data?.find((m) => m.user_model_id === effectiveModelRef);
 
   return (
     <div className="flex h-full flex-col">
@@ -133,7 +143,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
         <select
           data-testid="composition-model-select"
           className="rounded border border-neutral-300 bg-transparent px-2 py-1 dark:border-neutral-600"
-          value={modelRef}
+          value={effectiveModelRef}
           onChange={(e) => setModelRef(e.target.value)}
           aria-label={t('model', { defaultValue: 'Model' })}
         >
@@ -146,7 +156,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
 
       {/* sub-tabs */}
       <div className="flex gap-1 border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700">
-        {(['compose', 'assemble', 'planner', 'grounding', 'canon', 'quality'] as SubTab[]).map((tb) => (
+        {(['compose', 'assemble', 'planner', 'grounding', 'canon', 'quality', 'settings'] as SubTab[]).map((tb) => (
           <button
             key={tb}
             data-testid={`composition-subtab-${tb}`}
@@ -172,7 +182,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
           <ComposeView
             projectId={work.project_id}
             sceneId={effectiveScene}
-            modelRef={modelRef}
+            modelRef={effectiveModelRef}
             modelKind={selectedModel?.provider_kind}
             modelName={selectedModel?.provider_model_name}
             token={token}
@@ -184,7 +194,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
             projectId={work.project_id}
             bookId={bookId}
             chapterId={chapterId}
-            modelRef={modelRef}
+            modelRef={effectiveModelRef}
             modelKind={selectedModel?.provider_kind}
             modelName={selectedModel?.provider_model_name}
             settings={work.settings}
@@ -194,7 +204,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
           />
         </div>
         <div className={tab === 'planner' ? '' : 'hidden'}>
-          <PlannerView projectId={work.project_id} modelRef={modelRef} modelSource="user_model" token={token} />
+          <PlannerView projectId={work.project_id} modelRef={effectiveModelRef} modelSource="user_model" token={token} />
         </div>
         <div className={tab === 'grounding' ? '' : 'hidden'}>
           <GroundingPanel projectId={work.project_id} sceneId={effectiveScene} token={token} />
@@ -204,6 +214,15 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
         </div>
         <div className={tab === 'quality' ? '' : 'hidden'}>
           <QualityPanel projectId={work.project_id} token={token} />
+        </div>
+        <div className={tab === 'settings' ? '' : 'hidden'}>
+          <CompositionSettingsView
+            projectId={work.project_id}
+            bookId={bookId}
+            settings={work.settings}
+            models={models.data ?? []}
+            token={token}
+          />
         </div>
       </div>
     </div>
