@@ -22,6 +22,15 @@ from pydantic import BaseModel
 __all__ = ["WikiGenJob", "ActiveJobExists", "WikiGenJobsRepo"]
 
 
+def _affected(tag: str) -> int:
+    """Rows touched, from an asyncpg command tag ('UPDATE 1'). Robust to the
+    multi-digit case ('UPDATE 21'.endswith('1') would lie)."""
+    try:
+        return int(tag.rsplit(" ", 1)[-1])
+    except (ValueError, IndexError):
+        return 0
+
+
 class ActiveJobExists(Exception):
     """Raised by `create` when an active job already exists for the book (the
     per-book lock). Carries the existing job_id for the 409 response."""
@@ -130,14 +139,33 @@ class WikiGenJobsRepo:
                 book_id)
         return _row_to_job(row) if row else None
 
-    async def mark_running(self, job_id: UUID, *, items_total: int) -> None:
+    async def get_latest_for_book(self, book_id: UUID, user_id: UUID) -> WikiGenJob | None:
+        """The most-recent job for (book, user) regardless of status — drives the
+        FE poll, which must keep seeing the row after it reaches a terminal state
+        (complete/paused/failed/cancelled), unlike ``get_active_for_book``. Scoped
+        to ``user_id`` as defense-in-depth (glossary already gated the owner)."""
         async with self._pool.acquire() as conn:
-            await conn.execute(
+            row = await conn.fetchrow(
+                f"""SELECT {_COLS} FROM wiki_gen_jobs
+                    WHERE book_id=$1 AND user_id=$2
+                    ORDER BY created_at DESC LIMIT 1""",
+                book_id, user_id)
+        return _row_to_job(row) if row else None
+
+    async def mark_running(self, job_id: UUID, *, items_total: int) -> bool:
+        """Claim a job for a run: pending|running → running. The status guard makes
+        this a CLAIM, not a blind write — if a concurrent cancel flipped the job to
+        'cancelled' (or it already completed/failed) between the consumer pulling it
+        and here, this affects 0 rows and the orchestrator aborts rather than
+        resurrecting a cancelled job (M7b /review-impl F1). Returns True iff claimed."""
+        async with self._pool.acquire() as conn:
+            tag = await conn.execute(
                 """UPDATE wiki_gen_jobs
                    SET status='running', started_at=COALESCE(started_at, now()),
                        items_total=$2, updated_at=now()
-                   WHERE job_id=$1""",
+                   WHERE job_id=$1 AND status IN ('pending','running')""",
                 job_id, items_total)
+        return _affected(tag) == 1
 
     async def mark_entity_done(self, job_id: UUID, entity_id: str, *, cost: Decimal) -> None:
         """Append the entity to items_done (skip-on-resume) + bump processed/cost,
@@ -167,6 +195,34 @@ class WikiGenJobsRepo:
                 """UPDATE wiki_gen_jobs SET status='complete', completed_at=now(),
                    updated_at=now() WHERE job_id=$1""",
                 job_id)
+
+    async def resume(self, job_id: UUID) -> bool:
+        """paused → pending so a startup-drain / fresh XADD re-drives it (skip-done
+        handles partial progress). Guarded on ``status='paused'`` so a concurrent
+        cancel/complete can't be clobbered; returns True iff it actually flipped a
+        paused job. Clears the budget pause marker."""
+        async with self._pool.acquire() as conn:
+            tag = await conn.execute(
+                """UPDATE wiki_gen_jobs
+                   SET status='pending', paused_at=NULL, error_message=NULL, updated_at=now()
+                   WHERE job_id=$1 AND status='paused'""",
+                job_id)
+        return _affected(tag) == 1
+
+    async def cancel(self, job_id: UUID) -> bool:
+        """Cancel a not-yet-running job (pending|paused → cancelled), releasing the
+        per-book lock (the partial-unique index excludes 'cancelled'). A *running*
+        job is intentionally NOT cancellable here — the orchestrator doesn't poll
+        status mid-loop, so a cancelled-while-running row would be clobbered by its
+        terminal complete()/pause() write (D-WIKI-M7B-RUNNING-CANCEL). Returns True
+        iff a pending|paused job was cancelled."""
+        async with self._pool.acquire() as conn:
+            tag = await conn.execute(
+                """UPDATE wiki_gen_jobs
+                   SET status='cancelled', completed_at=now(), updated_at=now()
+                   WHERE job_id=$1 AND status IN ('pending','paused')""",
+                job_id)
+        return _affected(tag) == 1
 
     async def fail(self, job_id: UUID, *, error: str) -> None:
         async with self._pool.acquire() as conn:

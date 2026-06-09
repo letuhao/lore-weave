@@ -158,6 +158,75 @@ func (s *Server) triggerWikiGeneration(
 	return res.StatusCode, respBody, nil
 }
 
+// getWikiGenJob fetches the latest wiki-gen job status for (book, user) from
+// knowledge-service. Like the trigger this PROPAGATES the upstream status (200
+// status body / 404 no-job) rather than degrading — the FE poll needs the real
+// code to distinguish "no job yet" (404) from a live job.
+func (s *Server) getWikiGenJob(
+	ctx context.Context, bookID, userID uuid.UUID,
+) (status int, respBody []byte, err error) {
+	base := strings.TrimRight(s.cfg.KnowledgeServiceURL, "/")
+	if base == "" {
+		return 0, nil, fmt.Errorf("knowledge-service not configured")
+	}
+	url := fmt.Sprintf("%s/internal/knowledge/books/%s/wiki/job?user_id=%s",
+		base, bookID.String(), userID.String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return 0, nil, err
+	}
+	if s.cfg.InternalServiceToken != "" {
+		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	}
+	if tid := TraceIDFromContext(ctx); tid != "" {
+		req.Header.Set(traceIDHeader, tid)
+	}
+	res, err := knowledgeHTTPClient.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer res.Body.Close()
+	respBody, _ = io.ReadAll(io.LimitReader(res.Body, 1<<16))
+	return res.StatusCode, respBody, nil
+}
+
+// wikiGenJobAction drives a resume/cancel on a wiki-gen job. ``action`` is the
+// path verb ("resume" | "cancel"); the user_id travels in the body so
+// knowledge-service can re-assert ownership. PROPAGATES the upstream status
+// (202/200 ok · 404 not-owner · 409 wrong-state).
+func (s *Server) wikiGenJobAction(
+	ctx context.Context, bookID, userID, jobID uuid.UUID, action string,
+) (status int, respBody []byte, err error) {
+	base := strings.TrimRight(s.cfg.KnowledgeServiceURL, "/")
+	if base == "" {
+		return 0, nil, fmt.Errorf("knowledge-service not configured")
+	}
+	body, err := json.Marshal(map[string]any{"user_id": userID.String()})
+	if err != nil {
+		return 0, nil, err
+	}
+	url := fmt.Sprintf("%s/internal/knowledge/books/%s/wiki/job/%s/%s",
+		base, bookID.String(), jobID.String(), action)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if s.cfg.InternalServiceToken != "" {
+		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	}
+	if tid := TraceIDFromContext(ctx); tid != "" {
+		req.Header.Set(traceIDHeader, tid)
+	}
+	res, err := knowledgeHTTPClient.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer res.Body.Close()
+	respBody, _ = io.ReadAll(io.LimitReader(res.Body, 1<<16))
+	return res.StatusCode, respBody, nil
+}
+
 // resolveWikiGenEntities lists the candidate entity ids for an LLM wiki-gen
 // delegate: active, non-deleted entities in the book, optionally filtered by
 // kind, bounded by limit. The clobber-guard (M5) protects any human-edited

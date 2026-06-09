@@ -26,6 +26,10 @@ type wikiArticleListItem struct {
 	TemplateCode  *string     `json:"template_code"`
 	RevisionCount int         `json:"revision_count"`
 	UpdatedAt     time.Time   `json:"updated_at"`
+	// wiki-llm M7b — AI-generation badge driver. NULL (human-authored / never
+	// AI-generated) | 'generated' | 'needs_review' | 'blocked'. omitempty so a
+	// plain article carries no badge field.
+	GenerationStatus *string `json:"generation_status,omitempty"`
 }
 
 type wikiArticleListResp struct {
@@ -48,6 +52,12 @@ type wikiArticleDetail struct {
 	// SupersededBy is the winner entity of a merge that archived this article
 	// (Bug-1). Internal — drives the getWikiArticle redirect; not serialized.
 	SupersededBy *uuid.UUID `json:"-"`
+	// wiki-llm M7b — AI-generation provenance for the reader trust layer.
+	// GenerationProvenance carries the C7 build_inputs fingerprint + citations +
+	// verify_flags (the needs_review/blocked driver); GeneratedAt the timestamp.
+	// omitempty so a human-authored article exposes none of these.
+	GenerationProvenance json.RawMessage `json:"generation_provenance,omitempty"`
+	GeneratedAt          *time.Time      `json:"generated_at,omitempty"`
 }
 
 type wikiRevisionListItem struct {
@@ -177,7 +187,7 @@ func (s *Server) listWikiArticles(w http.ResponseWriter, r *http.Request) {
 			ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
 			wa.status, wa.template_code,
 			(SELECT COUNT(*) FROM wiki_revisions wr WHERE wr.article_id = wa.article_id) AS revision_count,
-			wa.updated_at
+			wa.updated_at, wa.generation_status
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
 		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
@@ -209,7 +219,7 @@ func (s *Server) listWikiArticles(w http.ResponseWriter, r *http.Request) {
 			&it.Kind.KindID, &it.Kind.Code, &it.Kind.Name, &it.Kind.Icon, &it.Kind.Color,
 			&it.Status, &it.TemplateCode,
 			&it.RevisionCount,
-			&it.UpdatedAt,
+			&it.UpdatedAt, &it.GenerationStatus,
 		); err != nil {
 			slog.Error("listWikiArticles scan", "error", err)
 			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
@@ -1208,7 +1218,8 @@ func (s *Server) loadWikiArticleDetail(r *http.Request, bookID, articleID uuid.U
 			ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
 			wa.status, wa.template_code,
 			(SELECT COUNT(*) FROM wiki_revisions wr WHERE wr.article_id = wa.article_id) AS revision_count,
-			wa.updated_at, wa.body_json, wa.spoiler_chapters, wa.created_at, wa.superseded_by_entity_id
+			wa.updated_at, wa.body_json, wa.spoiler_chapters, wa.created_at, wa.superseded_by_entity_id,
+			wa.generation_status, wa.generation_provenance, wa.generated_at
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
 		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
@@ -1227,6 +1238,7 @@ func (s *Server) loadWikiArticleDetail(r *http.Request, bookID, articleID uuid.U
 		&d.Status, &d.TemplateCode,
 		&d.RevisionCount,
 		&d.UpdatedAt, &d.BodyJSON, &spoilerChapters, &d.CreatedAt, &d.SupersededBy,
+		&d.GenerationStatus, &d.GenerationProvenance, &d.GeneratedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("loadWikiArticleDetail main: %w", err)

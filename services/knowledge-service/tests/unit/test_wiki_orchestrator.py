@@ -132,6 +132,21 @@ async def test_writeback_failure_not_marked_done():
 
 
 @pytest.mark.asyncio
+async def test_aborts_when_not_claimable():
+    # M7b /review-impl F1 — a concurrent cancel flipped the job to 'cancelled'
+    # before mark_running; the claim returns False → abort WITHOUT running any
+    # entity (no resurrect, no token spend), and don't mark it complete.
+    job, clients, repo = _job(["e1", "e2"]), _clients(), _repo()
+    repo.mark_running = AsyncMock(return_value=False)
+    with _patches():
+        status = await _run(job, clients, repo)
+    assert status == "cancelled"
+    clients.glossary.write_wiki_article.assert_not_awaited()
+    repo.mark_entity_done.assert_not_awaited()
+    repo.complete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_gen_not_ok_skips():
     bad = MagicMock()
     bad.status = "llm_failed"

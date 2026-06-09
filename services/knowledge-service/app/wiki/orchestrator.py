@@ -124,9 +124,16 @@ async def run_wiki_gen_job(
     per-article estimate against the cap, and pauses on budget breach."""
     entity_ids = job.entity_ids
     try:
-        await repo.mark_running(job.job_id, items_total=len(entity_ids))
+        claimed = await repo.mark_running(job.job_id, items_total=len(entity_ids))
     except Exception as exc:  # noqa: BLE001 — a status write failure shouldn't crash the run
         logger.warning("wiki-gen mark_running failed job=%s: %s", job.job_id, exc)
+        claimed = True  # a transient write failure is not a cancel — proceed (skip-done is safe)
+    if not claimed:
+        # The job is no longer claimable (a concurrent cancel flipped it to
+        # 'cancelled', or it already reached a terminal state). Do NOT run — that
+        # would resurrect a cancelled job + spend tokens (M7b /review-impl F1).
+        logger.info("wiki-gen job=%s not claimable (cancelled/terminal) — skipping", job.job_id)
+        return "cancelled"
 
     done = set(job.items_done)
     spent = job.cost_spent_usd
