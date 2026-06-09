@@ -6,6 +6,18 @@
 
 ## ▶ NEXT SESSION — start here
 
+### ▶ GLOSSARY ASSISTANT + `ai-gateway` (branch `feat/glossary-extracting-assistant`) — 2026-06-10
+
+**State: ARCHITECTURE FROZEN** (design + ATAM-lite eval + all 15 holes resolved + **H3 spike proven on real code**). No feature code built yet.
+
+**Decisions (9, all locked):** domain owns its MCP tools + a dedicated **`ai-gateway`** (TS/NestJS) federates them (consumers = chat + composition); **true MCP every hop** — glossary becomes a Go MCP server (official `modelcontextprotocol/go-sdk`), run **stateless + wrapped by our own net/http middleware** that lifts `X-User-Id`→ctx (PROVEN by the H3 spike, pattern in spec §20); `book_id` = LLM arg + **hard ownership** (book-service `verifyBookOwner`, cached, fail-closed); writes split (edit-existing = frontend-propose/Apply, new = draft→AI-suggestions inbox); Tier-S schema = server-minted confirm-token (un-bypassable); gateway also consolidates grounding (mui#3) **with a mandatory `[]`-fallback**. Spec: [`2026-06-10-glossary-assistant-architecture.md`](../specs/2026-06-10-glossary-assistant-architecture.md) — Part I design · II 15-hole eval · III resolutions + INV-1..9 + per-phase DoD.
+
+**Enforcement added this session:** CLAUDE.md **MCP-first invariant** (AI *agent* logic must be MCP tool-calls via ai-gateway, not raw-prompt+HTTP) + strengthened provider-registry rules; programmatic gate `scripts/ai-provider-gate.py` wired as pre-commit (`.githooks/`, `core.hooksPath`); DEFERRED **065** (knowledge model-maps drift), **066** (AI-agent MCP-migration audit).
+
+**NEXT:** build **P0 — `ai-gateway`** (MCP server upstream + MCP client federating knowledge's existing `/mcp`; repoint consumers; knowledge unchanged → zero regression). Then P1 glossary Go MCP **read tools** → ship a read-only assistant; then write tiers P2–P5, grounding P6. `/loom` per phase; `/amaw` for the write path. Verified-feasible: §20 pattern.
+
+**Then — glossary LLM-flow migration (user directive 2026-06-10):** ai-gateway/MCP arrived AFTER the glossary pipeline, so existing glossary flows that drive LLMs **via prompt** (token-wasteful, unoptimized) should migrate to glossary MCP tools once the MCP exists. A full review of those flows is the immediate follow-on to P1 (see DEFERRED 066). *(Review starting this session — findings to be appended.)*
+
 ### ▶ WIKI LLM-BUILDING (branch `wiki/llm-building`, off `main`) — 2026-06-08
 
 **State: DESIGN v3 complete (spec + mockup) + 2 pre-existing data-loss bug fixes BUILT & committed** (first commits on the branch, *before* the feature — `/loom` L, **17 tests green on real Postgres**, /review-impl clear).
