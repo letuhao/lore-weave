@@ -80,6 +80,44 @@ func insertMergedOutboxEvent(
 	return nil
 }
 
+// wikiDeletedEvent (Bug-2 fix) is emitted when a wiki article is destroyed —
+// either by the owner deleting it (deleteWikiArticle) or by a kind-delete purging
+// soft-deleted entities. Emitting it makes the destruction OBSERVABLE (vs the
+// prior silent ON DELETE CASCADE) and lets a future learning-loop capture the
+// article before it is gone. aggregate_id is the article_id.
+const wikiDeletedEvent = "wiki.deleted"
+
+type wikiDeletedPayload struct {
+	BookID    string `json:"book_id"`
+	ArticleID string `json:"article_id"`
+	EntityID  string `json:"entity_id"`
+	Reason    string `json:"reason"` // "user_deleted" | "kind_deleted"
+	EmittedAt string `json:"emitted_at"`
+}
+
+// insertWikiDeletedOutboxEvent writes a wiki.deleted outbox row. Generic over
+// pool/tx via the exec closure; best-effort at the call site (the delete has /
+// will commit; a missed event is tolerable, never blocks the delete).
+func insertWikiDeletedOutboxEvent(
+	ctx context.Context,
+	exec func(ctx context.Context, sql string, args ...any) error,
+	articleID uuid.UUID,
+	payload wikiDeletedPayload,
+) error {
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("wiki.deleted outbox marshal: %w", err)
+	}
+	if err := exec(ctx, `
+		INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
+		VALUES ('glossary', $1, $2, $3)`,
+		articleID, wikiDeletedEvent, payloadJSON,
+	); err != nil {
+		return fmt.Errorf("wiki.deleted outbox insert: %w", err)
+	}
+	return nil
+}
+
 // entityEventPayload is the JSON payload carried by glossary.entity_updated.
 //
 // It is self-sufficient: it carries everything knowledge-service's

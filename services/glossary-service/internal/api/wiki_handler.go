@@ -41,6 +41,13 @@ type wikiArticleDetail struct {
 	SpoilerChapters []string        `json:"spoiler_chapters"`
 	Infobox         []attrValueResp `json:"infobox"`
 	CreatedAt       time.Time       `json:"created_at"`
+	// RedirectedFrom is set (to the requested article_id) when the requested
+	// article was archived by a merge (superseded) and this detail is the winner's
+	// article served in its place (Bug-1 redirect). Omitted on a normal fetch.
+	RedirectedFrom string `json:"redirected_from,omitempty"`
+	// SupersededBy is the winner entity of a merge that archived this article
+	// (Bug-1). Internal — drives the getWikiArticle redirect; not serialized.
+	SupersededBy *uuid.UUID `json:"-"`
 }
 
 type wikiRevisionListItem struct {
@@ -386,6 +393,29 @@ func (s *Server) getWikiArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Bug-1 redirect: if this article was archived by a merge (superseded_by set),
+	// serve the winner's article instead so links to a merged-away entity resolve.
+	// superseded_by comes from the same detail query — no extra round-trip on the
+	// common (non-superseded) path.
+	if detail.SupersededBy != nil {
+		var winnerArticleID uuid.UUID
+		if e := s.pool.QueryRow(r.Context(),
+			`SELECT article_id FROM wiki_articles WHERE entity_id=$1 AND book_id=$2 AND superseded_by_entity_id IS NULL`,
+			*detail.SupersededBy, bookID,
+		).Scan(&winnerArticleID); e == nil {
+			winner, werr := s.loadWikiArticleDetail(r, bookID, winnerArticleID)
+			if werr != nil {
+				slog.Error("getWikiArticle redirect", "error", werr)
+				writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+				return
+			}
+			winner.RedirectedFrom = articleID.String()
+			writeJSON(w, http.StatusOK, winner)
+			return
+		}
+		// winner article missing → fall through and serve the archived article as-is.
+	}
+
 	writeJSON(w, http.StatusOK, detail)
 }
 
@@ -556,9 +586,40 @@ func (s *Server) deleteWikiArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.pool.Exec(r.Context(),
-		`DELETE FROM wiki_articles WHERE article_id=$1`, articleID); err != nil {
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		slog.Error("deleteWikiArticle tx", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	var delEntityID uuid.UUID
+	if err := tx.QueryRow(r.Context(),
+		`DELETE FROM wiki_articles WHERE article_id=$1 RETURNING entity_id`, articleID).Scan(&delEntityID); err != nil {
 		slog.Error("deleteWikiArticle", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	// Bug-2: emit wiki.deleted in the SAME tx (transactional outbox) so delete + event
+	// are atomic — consistent with the kind-delete path; observable destruction.
+	exec := func(ctx context.Context, sql string, args ...any) error {
+		_, e := tx.Exec(ctx, sql, args...)
+		return e
+	}
+	if err := insertWikiDeletedOutboxEvent(r.Context(), exec, articleID, wikiDeletedPayload{
+		BookID:    bookID.String(),
+		ArticleID: articleID.String(),
+		EntityID:  delEntityID.String(),
+		Reason:    "user_deleted",
+		EmittedAt: time.Now().UTC().Format(time.RFC3339),
+	}); err != nil {
+		slog.Error("deleteWikiArticle emit wiki.deleted", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		slog.Error("deleteWikiArticle commit", "error", err)
 		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
 		return
 	}
@@ -1110,7 +1171,7 @@ func (s *Server) loadWikiArticleDetail(r *http.Request, bookID, articleID uuid.U
 			ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
 			wa.status, wa.template_code,
 			(SELECT COUNT(*) FROM wiki_revisions wr WHERE wr.article_id = wa.article_id) AS revision_count,
-			wa.updated_at, wa.body_json, wa.spoiler_chapters, wa.created_at
+			wa.updated_at, wa.body_json, wa.spoiler_chapters, wa.created_at, wa.superseded_by_entity_id
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
 		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
@@ -1128,7 +1189,7 @@ func (s *Server) loadWikiArticleDetail(r *http.Request, bookID, articleID uuid.U
 		&d.Kind.KindID, &d.Kind.Code, &d.Kind.Name, &d.Kind.Icon, &d.Kind.Color,
 		&d.Status, &d.TemplateCode,
 		&d.RevisionCount,
-		&d.UpdatedAt, &d.BodyJSON, &spoilerChapters, &d.CreatedAt,
+		&d.UpdatedAt, &d.BodyJSON, &spoilerChapters, &d.CreatedAt, &d.SupersededBy,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("loadWikiArticleDetail main: %w", err)

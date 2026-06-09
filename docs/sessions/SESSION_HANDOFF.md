@@ -6,6 +6,25 @@
 
 ## ▶ NEXT SESSION — start here
 
+### ▶ WIKI LLM-BUILDING (branch `wiki/llm-building`, off `main`) — 2026-06-08
+
+**State: DESIGN v3 complete (spec + mockup) + 2 pre-existing data-loss bug fixes BUILT & committed** (first commits on the branch, *before* the feature — `/loom` L, **17 tests green on real Postgres**, /review-impl clear).
+
+**Bug fixes (this commit):**
+- **Bug 1** — merge silently abandoned a loser's `wiki_article` when BOTH sides had one (violated merge-spec AC4 "no silent data loss"; composed with Bug 2 into permanent loss). **Fix:** `wiki_articles.superseded_by_entity_id` archive-in-place (revision-preserved) + `getWikiArticle` redirect→winner (`redirected_from`) + `merge_journal.superseded_wiki_article_id` for symmetric un-merge. Bodies NOT auto-merged (deferred to wiki-LLM §5.4).
+- **Bug 2** — kind-delete `ON DELETE CASCADE` silently destroyed articles+revisions+suggestions. **Fix:** entity FK `CASCADE→RESTRICT` + kind-delete deletes articles explicitly + **count in 200** response (was silent 204) + `wiki.deleted` outbox event (both kind-delete & user-delete, atomic in-tx). superseded_by FK `ON DELETE SET NULL` (anti-dangle).
+- Files: `migrate.go` · `merge_handler.go` · `wiki_handler.go` · `kinds_crud.go` · `outbox.go` + tests (`wiki_dataloss_test.go` new, `merge_handler_test.go`/`kind_aliases_test.go`). Plan [`2026-06-08-wiki-dataloss-bugfix.md`](../plans/2026-06-08-wiki-dataloss-bugfix.md).
+- **/review-impl:** 0 HIGH; 1 MED (redirect untested → HTTP test added w/ a **book-service mock harness** — reusable for the LLM feature) + 4 LOW + 1 COSMETIC **all fixed + re-verified**.
+
+**Design (spec v3 [`2026-06-08-wiki-llm-building.md`](../specs/2026-06-08-wiki-llm-building.md) · mockup `-mockup.html`, 5 screens):** wiki = **deferred-sync materialized view** over a versioned knowledge base. Home = **knowledge-service** (Python; glossary stays SSOT front door). LLM contract = **constrained Markdown → IR → deterministic TipTap mapper** (NOT LLM-emits-TipTap). Generate = **bounded multi-pass** (write→deterministic rule-gate→CanonVerifier→1×revise, keep-if-improved). **Change-control:** capture (MVP: `wiki_article_source_usage` + `build_inputs` fingerprint) → defer (DB `wiki_staleness` ledger + sweep, **NOT realtime CDC**) → decide (**user-gated** regen, cost-capped). Locked PO decisions: BookProfile→**move to book-service**; spoiler = capture-horizon + reader-gate; ledger = DB-table+sweep; feedback+eval flywheel in MVP.
+
+**NEXT:** wiki-LLM feature BUILD per spec v3 — **Phase-1 MVP = generation + §5.1 dependency capture**. Prerequisite sub-task: **move BookProfile → book-service** (cross-cutting, touches lore-enrichment — isolate + test first). Then knowledge-service `app/wiki/` module (clone lore-enrichment runner→generate→verify→writeback).
+
+**Deferred (wiki):**
+- **D-WIKI-SEED-ROBUSTNESS** (test-infra, /review-impl COSMETIC-1) — `migrate.Seed` guards on table-empty; on a shared test DB a prior 'unknown' kind makes default-kind seeding skip → merge fixtures lose 'character'. Worked around in the merge fixture (seed-if-missing); root-cause fix = make `migrate.Seed` per-kind idempotent (`ON CONFLICT (code) DO NOTHING`) — separate cleanup task.
+- **D-WIKI-DELETEKIND-CONTRACT** (LOW-4) — kind-delete 204→200 `{deleted_wiki_articles}`; FE `apiJson` tolerates 200+body (verified). Doc only.
+- Design deferrals in spec v3 §11 (BookProfile cross-service home, `compose_cites` first-live smoke, precise KG-edge events, recycle-bin GC must-not-CASCADE).
+
 ### ▶ RAW SEARCH (branch `raw-search/foundation`, off `origin/main`)
 
 **State: Phase-1 + 2 + 3(A,C,D) + P3-EVAL + E5 + E5B + E6 DONE + LIVE-SMOKE PASSED (2026-06-08).** Hybrid (lexical+semantic, RRF) + cross-encoder rerank end-to-end, surfaced in the search UI, with precise jump-to-source for both legs. Branch pushed (origin/raw-search/foundation). New workstream — the missing **raw chapter-text** layer beneath glossary/knowledge/wiki (all lossy derivatives); serves authoring + extraction/trích-lục. Spec [`2026-06-07-raw-search.md`](../specs/2026-06-07-raw-search.md) (PART I design + PART II ATAM-lite eval; 7/7 confirm-at-BUILD resolved). Plan [`2026-06-07-raw-search.md`](../plans/2026-06-07-raw-search.md) (3 phases; ADJ-1..4 PO-acked).
