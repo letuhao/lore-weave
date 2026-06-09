@@ -145,6 +145,45 @@ CREATE INDEX IF NOT EXISTS idx_generation_job_chapter_inflight
 CREATE INDEX IF NOT EXISTS idx_generation_job_active
   ON generation_job(created_at) WHERE status IN ('pending','running');
 
+-- ── narrative_thread: the promise/foreshadow/MICE constraint ledger (cycle 14,
+-- reasoning-engine spec §5.2/§10.2). ADVISORY (spec D4): a flag + a re-injection
+-- signal, NOT a hard commit gate (PAY/DEBT detection is fuzzy). Keyed on
+-- project_id (= the Work id, codebase convention for the spec's `work_id`).
+-- Lifecycle: open → progressing → paid | dropped. The open/progressing set is
+-- the re-injectable "open promises" the reasoning loop carries (F2) + the
+-- arc-end unpaid-debt check (foreshadow-drop §7). MICE = kind='mice_thread'
+-- with LIFO `nesting_depth` (innermost closes first).
+CREATE TABLE IF NOT EXISTS narrative_thread (
+  id             UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id        UUID NOT NULL,
+  project_id     UUID NOT NULL,
+  kind           TEXT NOT NULL CHECK (kind IN ('promise','foreshadow','question','mice_thread')),
+  status         TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','progressing','paid','dropped')),
+  -- in-DB FKs to outline_node (same DB) — the codebase convention for node refs
+  -- (cf. generation_job.outline_node_id). SET NULL on delete so a removed node
+  -- leaves the thread intact but un-anchored, not dangling.
+  opened_at_node UUID REFERENCES outline_node(id) ON DELETE SET NULL,
+  payoff_node    UUID REFERENCES outline_node(id) ON DELETE SET NULL,
+  trigger        TEXT NOT NULL DEFAULT '',
+  nesting_depth  INT NOT NULL DEFAULT 0,
+  priority       SMALLINT NOT NULL DEFAULT 50,
+  summary        TEXT NOT NULL DEFAULT '',
+  version        INT NOT NULL DEFAULT 1,
+  is_archived    BOOLEAN NOT NULL DEFAULT false,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- a payoff_node is only meaningful once the thread is paid.
+  CONSTRAINT narrative_thread_payoff_paid CHECK (payoff_node IS NULL OR status = 'paid')
+);
+CREATE INDEX IF NOT EXISTS idx_narrative_thread_project ON narrative_thread(project_id) WHERE NOT is_archived;
+-- the hot read: the open-set re-injected into every primitive (F2).
+CREATE INDEX IF NOT EXISTS idx_narrative_thread_open
+  ON narrative_thread(project_id, status) WHERE status IN ('open','progressing') AND NOT is_archived;
+
+-- generation_run.state (spec §10.3): persisted ReasoningState for resumable auto
+-- runs + the re-injected open-thread set. `generation_run` IS generation_job here.
+ALTER TABLE generation_job ADD COLUMN IF NOT EXISTS state JSONB;
+
 -- ── generation_correction: the human-gate signal (V1 correction flywheel, §3).
 -- ONE row per author correction on a generation. Only GENUINE-AUTHOR-CHOICE kinds
 -- are captured (accept-as-is is NOT a correction — §2 H2 self-reinforcement guard).

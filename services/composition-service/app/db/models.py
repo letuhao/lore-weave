@@ -53,6 +53,27 @@ class StructureTemplate(BaseModel):
     created_at: datetime | None = None
 
 
+class NarrativeThread(BaseModel):
+    """The promise/foreshadow/MICE constraint ledger row (cycle 14, §5.2/§10.2).
+    ADVISORY — a flag + re-injection signal, not a hard commit gate."""
+
+    id: UUID
+    user_id: UUID
+    project_id: UUID
+    kind: Literal["promise", "foreshadow", "question", "mice_thread"]
+    status: Literal["open", "progressing", "paid", "dropped"] = "open"
+    opened_at_node: UUID | None = None
+    payoff_node: UUID | None = None
+    trigger: str = ""
+    nesting_depth: int = 0
+    priority: int = 50
+    summary: str = ""
+    version: int = 1
+    is_archived: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 class OutlineNode(BaseModel):
     id: UUID
     user_id: UUID

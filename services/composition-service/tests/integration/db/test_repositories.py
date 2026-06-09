@@ -23,6 +23,7 @@ from app.db.repositories import outbox
 from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.generation_corrections import GenerationCorrectionsRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
+from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.structure_templates import StructureTemplatesRepo
@@ -35,8 +36,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 _TABLES = [
-    "outbox_events", "generation_correction", "generation_job", "canon_rule",
-    "scene_link", "outline_node", "structure_template", "composition_work",
+    "outbox_events", "generation_correction", "generation_job", "narrative_thread",
+    "canon_rule", "scene_link", "outline_node", "structure_template", "composition_work",
 ]
 
 
@@ -831,3 +832,78 @@ async def test_correction_stats_cold_start_null_rates(pool):
     stats = await cr.correction_stats(user, project)
     for m in stats.by_mode:
         assert m.generations == 0 and m.accept_rate is None and m.edit_rate is None
+
+
+# ── narrative_thread ledger (cycle 14 §5.2/§10.2) ──────────────────────────────
+
+
+async def _make_node(pool, user, project) -> uuid.UUID:
+    """A minimal arc outline_node so the narrative_thread node FKs resolve."""
+    async with pool.acquire() as c:
+        return await c.fetchval(
+            "INSERT INTO outline_node (user_id, project_id, kind, rank) "
+            "VALUES ($1, $2, 'arc', 'a') RETURNING id",
+            user, project,
+        )
+
+
+async def test_narrative_thread_open_pay_lifecycle(pool):
+    """open → list_open shows it → pay (with payoff_node) → list_open drops it,
+    list_for_project keeps it (paid). Tenant isolation: another user can't pay it."""
+    repo = NarrativeThreadRepo(pool)
+    user, project, _ = _ids()
+    node = await _make_node(pool, user, project)
+    payoff = await _make_node(pool, user, project)
+    t = await repo.open_thread(
+        user, project, kind="promise", summary="a sword is promised",
+        opened_at_node=node, trigger="hand on the hilt", priority=80,
+    )
+    assert t.status == "open" and t.payoff_node is None and t.opened_at_node == node
+
+    assert [x.id for x in await repo.list_open(user, project)] == [t.id]
+
+    # tenant isolation: another user cannot transition it.
+    other = uuid.uuid4()
+    assert await repo.update_status(other, project, t.id, status="paid", payoff_node=payoff) is None
+
+    paid = await repo.update_status(user, project, t.id, status="paid", payoff_node=payoff)
+    assert paid is not None and paid.status == "paid" and paid.payoff_node == payoff and paid.version == 2
+
+    # paid → out of the re-injectable open set; still in the full list.
+    assert await repo.list_open(user, project) == []
+    allt = await repo.list_for_project(user, project)
+    assert len(allt) == 1 and allt[0].status == "paid"
+
+
+async def test_narrative_thread_payoff_only_when_paid(pool):
+    """A payoff_node on a non-paid transition is cleared by the repo, so the
+    table CHECK (payoff_node IS NULL OR status='paid') never trips."""
+    repo = NarrativeThreadRepo(pool)
+    user, project, _ = _ids()
+    node = await _make_node(pool, user, project)
+    t = await repo.open_thread(user, project, kind="foreshadow", summary="a stranger watches")
+    prog = await repo.update_status(user, project, t.id, status="progressing", payoff_node=node)
+    assert prog is not None and prog.status == "progressing" and prog.payoff_node is None
+
+
+async def test_narrative_thread_list_open_ordering(pool):
+    """The F2 re-injection read order: highest priority first, then oldest-first."""
+    repo = NarrativeThreadRepo(pool)
+    user, project, _ = _ids()
+    low = await repo.open_thread(user, project, kind="promise", summary="low", priority=10)
+    high = await repo.open_thread(user, project, kind="promise", summary="high", priority=90)
+    mid = await repo.open_thread(user, project, kind="promise", summary="mid", priority=50)
+    assert [x.id for x in await repo.list_open(user, project)] == [high.id, mid.id, low.id]
+
+
+async def test_narrative_thread_node_delete_sets_null(pool):
+    """ON DELETE SET NULL: removing the anchored outline_node leaves the thread
+    intact but un-anchored (no dangling ref)."""
+    repo = NarrativeThreadRepo(pool)
+    user, project, _ = _ids()
+    node = await _make_node(pool, user, project)
+    t = await repo.open_thread(user, project, kind="promise", summary="anchored", opened_at_node=node)
+    async with pool.acquire() as c:
+        await c.execute("DELETE FROM outline_node WHERE id = $1", node)
+    after = (await repo.list_for_project(user, project))[0]
+    assert after.id == t.id and after.opened_at_node is None
