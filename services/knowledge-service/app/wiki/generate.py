@@ -116,16 +116,19 @@ async def generate_article(
     max_tokens: int = DEFAULT_MAX_TOKENS,
     temperature: float = 0.3,
     max_attempts: int = 2,
+    initial_corrective: str | None = None,
 ) -> GenerateResult:
     """Generate one grounded article IR for ``context``'s entity (bounded retry).
 
     Returns ``status='ok'`` with the gated ``ir`` on success; otherwise a typed
     skip status (``skipped_no_grounding`` / ``empty`` / ``llm_failed``) with the
     last IR (if any) for diagnostics. Never raises. ``max_attempts`` caps the LLM
-    calls (1 generate + up to N-1 corrective re-prompts)."""
+    calls (1 generate + up to N-1 corrective re-prompts). ``initial_corrective``
+    seeds the FIRST prompt with a note (the M4 revise pass uses it to feed the
+    verify flags back into a re-generation)."""
     brief = context.brief
     last = GenerateResult(status="llm_failed")
-    corrective: str | None = None
+    corrective: str | None = initial_corrective
 
     for attempt in range(1, max_attempts + 1):
         messages = build_messages(
