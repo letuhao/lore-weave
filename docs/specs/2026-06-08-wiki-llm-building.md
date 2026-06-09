@@ -132,7 +132,12 @@ wrapper. Wiki worker calls it directly — no HTTP/JWT/`not_indexed`. Params: `m
 ### 4.3 Prompt + output contract 🟡 (✅ closes language open-Q)
 - **BookProfile-shaped** 🟧: interpolate `worldview / voice / era_policy / language` into the prompt;
   `profile.language` decides generation language (Chinese-only renderer was the de-bias bug). Unset →
-  `NEUTRAL_PROFILE`. *Caveat:* profile table lives in lore-enrichment; resolve cross-service in PLAN.
+  `NEUTRAL_PROFILE`. **BookProfile stays in lore-enrichment (AI-domain — the correct boundary: it
+  carries LLM-detected de-bias config + anachronism markers + dimension overrides, NOT book core
+  identity).** knowledge-service reads it via a new internal-token `GET /internal/lore-enrichment/
+  books/{id}/profile` (additive to LE's existing profile API). NOT moved to book-service — that is
+  Go/CRUD and cannot host the LLM detection (`profile_suggest.py`); pushing AI-config there is the
+  wrong boundary (decided after scoping — see §9).
 - **Copyright guard at gen time** 🟧: "**synthesize in your own words; do not copy source phrasing**" — note it
   fights the cite-everything instruction (raises regurgitation LCS); auto-reject wholesale copy only.
 - **Structural cite-enforcement** 🟧: grounded-flag protocol — un-cited claims dropped at parse; zero grounded →
@@ -373,7 +378,10 @@ summary stitch · sub-article checkpoints · auto-reasoning classifier (pass-thr
 
 ## 11. Deferred / watch
 - `compose_cites` first live use → real-passage smoke (VERIFY gate).
-- Cross-service `BookProfile` access (knowledge ↔ lore-enrichment table) — resolve in PLAN.
+- ✅ **BookProfile access RESOLVED (option A, post-scoping)** — knowledge reads it via a LE
+  internal HTTP endpoint; NOT moved to book-service (B would push LLM-config + LLM detection into a
+  Go/CRUD service = wrong boundary; profile is AI-domain config, not book identity). Owner-vs-a-more-
+  neutral-AI-home is a separate, non-urgent refactor — the API read keeps wiki decoupled from it.
 - `D-GROUNDING-COMPOSE-MIGRATE` (063): wiki adopting `GroundingCite` informs the enrichment migration.
 - Precise KG-edge invalidation: only if the §5.2 chapter-proxy sweep proves too coarse → add
   `knowledge.kg_synced` emit (net-new plumbing, follow-up).
