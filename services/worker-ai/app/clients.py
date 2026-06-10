@@ -442,6 +442,43 @@ class KnowledgeClient:
         )
 
 
+# ── ChatClient ───────────────────────────────────────────────────────
+
+
+class ChatClient:
+    """FD-2 — calls chat-service's internal API to fetch a chat turn's text so the
+    extraction worker can build chat→KG knowledge (the chat.turn_completed event
+    carries only ids + lengths, not the prose)."""
+
+    def __init__(self, base_url: str, internal_token: str, timeout_s: float) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._http = httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout_s),
+            headers={"X-Internal-Token": internal_token},
+        )
+
+    async def aclose(self) -> None:
+        await self._http.aclose()
+
+    async def get_turn_text(self, message_id: str | UUID) -> str | None:
+        """GET /internal/chat/turns/{message_id}/text → the joined user+assistant
+        turn text. Returns None on 404 / empty / transport failure (best-effort —
+        the caller degrades to an empty no-op extraction). A transient miss simply
+        skips this turn's extraction (documented LOW; transient-retry is a deferred
+        improvement)."""
+        url = f"{self._base_url}/internal/chat/turns/{message_id}/text"
+        try:
+            resp = await self._http.get(url)
+            if resp.status_code != 200:
+                logger.warning("chat-service turn-text %d for %s", resp.status_code, message_id)
+                return None
+            text = (resp.json().get("text") or "").strip()
+            return text or None
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning("chat-service turn-text failed: %s", exc)
+            return None
+
+
 # ── BookClient ───────────────────────────────────────────────────────
 
 

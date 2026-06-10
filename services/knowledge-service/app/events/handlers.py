@@ -79,7 +79,11 @@ async def handle_chat_turn(event: EventData, *, pool: asyncpg.Pool) -> None:
             project_id=project_id,
             event_id=_uuid(event.aggregate_id) or _uuid(event.message_id),
             event_type=event.event_type,
-            aggregate_type="chat_session",
+            # FD-2: enqueue as 'chat' (matching the chat.turn_completed event's own
+            # aggregate_type AND the worker-ai chat drainer's
+            # `WHERE aggregate_type='chat'`). Previously 'chat_session' → the worker
+            # never consumed these rows, so chat knowledge was never extracted.
+            aggregate_type="chat",
             aggregate_id=_uuid(event.aggregate_id) or project_id,
         ),
     )

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     # Service URLs for HTTP calls.
     knowledge_service_url: str = "http://knowledge-service:8092"
     book_service_url: str = "http://book-service:8082"
+    chat_service_url: str = "http://chat-service:8090"  # FD-2: chat-turn text fetch
     # C12c-a: glossary-service URL for the paginated entity list the
     # scope='glossary_sync' worker branch iterates.
     glossary_service_url: str = "http://glossary-service:8082"
@@ -31,6 +32,7 @@ class Settings(BaseSettings):
     persist_pass2_timeout_s: float = 30.0  # Neo4j writes are seconds, not minutes
     extract_item_timeout_s: float = 120.0  # back-compat — to be removed in Phase 4d
     book_client_timeout_s: float = 10.0
+    chat_client_timeout_s: float = 10.0  # FD-2: chat-turn text fetch (cheap read)
     # C12c-a: glossary list is cheap pagination (no LLM) — shorter
     # timeout than the book client's chapter fetch.
     glossary_client_timeout_s: float = 10.0

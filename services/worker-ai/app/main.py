@@ -14,7 +14,7 @@ import logging
 import asyncpg
 from loreweave_obs import setup_tracing
 
-from app.clients import BookClient, GlossaryClient, KnowledgeClient
+from app.clients import BookClient, ChatClient, GlossaryClient, KnowledgeClient
 from app.config import settings
 from app.llm_client import close_llm_client, get_llm_client
 from app.metrics import start_metrics_server
@@ -72,6 +72,13 @@ async def main() -> None:
         internal_token=settings.internal_service_token,
         timeout_s=settings.book_client_timeout_s,
     )
+    # FD-2 — chat-service client: fetch a chat turn's text so the chat drain branch
+    # extracts real knowledge (was a text="" no-op).
+    chat_client = ChatClient(
+        base_url=settings.chat_service_url,
+        internal_token=settings.internal_service_token,
+        timeout_s=settings.chat_client_timeout_s,
+    )
     # C12c-a: client for the scope='glossary_sync' branch + all-scope tail.
     glossary_client = GlossaryClient(
         base_url=settings.glossary_service_url,
@@ -100,7 +107,7 @@ async def main() -> None:
             try:
                 count = await poll_and_run(
                     pool, knowledge_client, llm_client,
-                    book_client, glossary_client,
+                    book_client, glossary_client, chat_client,
                 )
                 if count > 0:
                     logger.info("Poll cycle: processed %d job(s)", count)
@@ -155,6 +162,7 @@ async def main() -> None:
         await close_llm_client()
         await knowledge_client.aclose()
         await book_client.aclose()
+        await chat_client.aclose()
         await glossary_client.aclose()
         if wake_waiter is not None:
             await wake_waiter.aclose()

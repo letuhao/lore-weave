@@ -42,6 +42,7 @@ from loreweave_extraction.errors import ExtractionError
 from app.clients import (
     BookClient,
     ChapterInfo,
+    ChatClient,
     ExtractionResult,
     GlossaryClient,
     GlossaryEntity,
@@ -302,7 +303,7 @@ def _with_job_span(func):
     span context attribute) so the wrapper can set ERROR status.
     """
     @functools.wraps(func)
-    async def wrapper(pool, knowledge_client, llm_client, book_client, glossary_client, job):
+    async def wrapper(pool, knowledge_client, llm_client, book_client, glossary_client, chat_client, job):
         with tracer.start_as_current_span(
             "worker_ai.process_job",
             attributes={
@@ -315,7 +316,7 @@ def _with_job_span(func):
         ):
             return await func(
                 pool, knowledge_client, llm_client,
-                book_client, glossary_client, job,
+                book_client, glossary_client, chat_client, job,
             )
 
     return wrapper
@@ -1173,6 +1174,7 @@ async def process_job(
     llm_client: LLMClient,
     book_client: BookClient,
     glossary_client: GlossaryClient,
+    chat_client: ChatClient,
     job: JobRow,
 ) -> None:
     """Process all items for a single extraction job.
@@ -1572,15 +1574,13 @@ async def process_job(
                     await _update_project_status(pool, job.user_id, job.project_id, "paused")
                     return
 
-                # Chat turns don't have text in extraction_pending — the
-                # worker would need to fetch from chat-service. For v1,
-                # we pass empty text; loreweave_extraction.extract_pass2
-                # short-circuits to empty Pass2Candidates without calling
-                # the LLM, then persist-pass2 writes the source row for
-                # idempotency. Will be fleshed out when chat-service
-                # exposes a message-text endpoint.
-                # Q4b-feed: chat turns aren't sampled (no source text yet);
-                # candidates ignored.
+                # FD-2: fetch the REAL turn text (user question + assistant answer)
+                # from chat-service by the assistant message id (the event's
+                # aggregate_id). None (404 / empty / transport) → "" → extract_pass2
+                # short-circuits to empty WITHOUT an LLM call, persist-pass2 still
+                # writes the source row for idempotency — the same graceful no-op
+                # the path always had, now with real extraction when text exists.
+                turn_text = await chat_client.get_turn_text(turn["aggregate_id"]) or ""
                 result, _ = await _extract_and_persist(
                     knowledge_client=knowledge_client,
                     llm_client=llm_client,
@@ -1590,7 +1590,7 @@ async def process_job(
                     source_id=str(turn["aggregate_id"]),
                     job_id=job.job_id,
                     model_ref=job.llm_model,
-                    text="",  # placeholder — needs chat-service integration
+                    text=turn_text,
                 )
 
                 if result.error and not result.retryable:
@@ -1816,12 +1816,84 @@ async def _ensure_chapters_pending_jobs(pool: asyncpg.Pool) -> int:
     return created
 
 
+async def _ensure_chat_pending_jobs(pool: asyncpg.Pool) -> int:
+    """FD-2 — create a 'chat' drain job for each project that has unprocessed
+    chat turn pending rows (`aggregate_type='chat'`) AND no active job.
+
+    Mirror of `_ensure_chapters_pending_jobs` for the chat→KG path: without it,
+    `chat.turn_completed` rows accumulate in `extraction_pending` and only drain
+    when the user manually triggers a full extraction — chat knowledge would
+    never extract in near-real-time the way published chapters do. The
+    `scope='chat'` job's turn loop fetches each turn's real text via ChatClient
+    and extracts it. Same guards as the chapter drainer:
+      - skip projects with an active job (one-active-job-per-project unique
+        index makes the INSERT idempotent — 409 swallowed; an active chapter
+        OR chat drain will progress, and the next poll re-arms if rows remain),
+      - reuse the project's last job's models + spend cap (a placeholder model
+        would break extraction; an uncapped auto-drain could spend unbounded),
+      - 1h backoff after a FAILED chat drain (else fail→recreate every poll).
+    A project with no prior job is skipped (a manual /extraction/start
+    bootstraps it; subsequent chat turns then auto-drain).
+    """
+    rows = await pool.fetch(
+        """
+        SELECT DISTINCT p.user_id, ep.project_id
+        FROM extraction_pending ep
+        JOIN knowledge_projects p ON p.project_id = ep.project_id
+        WHERE ep.aggregate_type = 'chat' AND ep.processed_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM extraction_jobs j
+            WHERE j.project_id = ep.project_id
+              AND j.status IN ('pending', 'running', 'paused')
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM extraction_jobs j2
+            WHERE j2.project_id = ep.project_id
+              AND j2.scope = 'chat'
+              AND j2.status = 'failed'
+              AND j2.updated_at > now() - interval '1 hour'
+          )
+        """
+    )
+    created = 0
+    for r in rows:
+        user_id, project_id = r["user_id"], r["project_id"]
+        last = await pool.fetchrow(
+            """
+            SELECT llm_model, embedding_model, max_spend_usd FROM extraction_jobs
+            WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1
+            """,
+            project_id,
+        )
+        if last is None:
+            continue  # no prior job → manual run bootstraps it
+        try:
+            await pool.execute(
+                """
+                INSERT INTO extraction_jobs
+                  (user_id, project_id, scope, status, llm_model, embedding_model,
+                   max_spend_usd, started_at, updated_at)
+                VALUES ($1, $2, 'chat', 'running', $3, $4, $5, now(), now())
+                """,
+                user_id, project_id,
+                last["llm_model"], last["embedding_model"], last["max_spend_usd"],
+            )
+            created += 1
+            logger.info("FD-2: created chat drain job for project=%s", project_id)
+        except asyncpg.UniqueViolationError:
+            # An active job appeared concurrently — it will drain the queue,
+            # and the next poll re-arms a chat drain if rows still remain.
+            pass
+    return created
+
+
 async def poll_and_run(
     pool: asyncpg.Pool,
     knowledge_client: KnowledgeClient,
     llm_client: LLMClient,
     book_client: BookClient,
     glossary_client: GlossaryClient,
+    chat_client: ChatClient,
 ) -> int:
     """One poll cycle: find running jobs and process them.
 
@@ -1836,13 +1908,23 @@ async def poll_and_run(
         logger.warning(
             "CM3b: ensure chapters_pending jobs failed — non-fatal", exc_info=True
         )
+    # FD-2: same for queued chat turns (chat→KG auto-drain). Runs after the
+    # chapter ensurer; the one-active-job-per-project index serializes the two
+    # (chat re-arms next poll if a chapter drain is currently active).
+    try:
+        await _ensure_chat_pending_jobs(pool)
+    except Exception:
+        logger.warning(
+            "FD-2: ensure chat pending jobs failed — non-fatal", exc_info=True
+        )
     jobs = await _get_running_jobs(pool)
     if not jobs:
         return 0
 
     for job in jobs:
         await process_job(
-            pool, knowledge_client, llm_client, book_client, glossary_client, job,
+            pool, knowledge_client, llm_client, book_client, glossary_client,
+            chat_client, job,
         )
 
     return len(jobs)

@@ -70,6 +70,26 @@ async def test_chat_turn_queues_event_with_user_id(mock_gate):
 
 @pytest.mark.asyncio
 @patch("app.events.handlers.should_extract", return_value=True)
+@patch("app.events.handlers.ExtractionPendingRepo")
+async def test_chat_turn_enqueues_aggregate_type_chat(mock_repo_cls, mock_gate):
+    # FD-2 regression: enqueue as aggregate_type='chat' so the worker-ai chat
+    # drainer (WHERE aggregate_type='chat') consumes it. Was 'chat_session' →
+    # never drained → chat knowledge was never extracted.
+    pool, _ = _mock_pool()
+    repo = MagicMock()
+    repo.queue_event = AsyncMock()
+    mock_repo_cls.return_value = repo
+    event = _event(
+        "chat.turn_completed", aggregate_id=str(_USER),
+        payload={"project_id": str(_PROJECT), "user_id": str(_USER)},
+    )
+    await handle_chat_turn(event, pool=pool)
+    req = repo.queue_event.await_args.args[1]
+    assert req.aggregate_type == "chat"
+
+
+@pytest.mark.asyncio
+@patch("app.events.handlers.should_extract", return_value=True)
 async def test_chat_turn_resolves_user_from_db(mock_gate):
     """user_id missing from payload — handler looks up from project."""
     pool, conn = _mock_pool()
