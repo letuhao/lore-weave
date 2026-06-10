@@ -1,7 +1,7 @@
-# Session Handoff — glossary-assistant arc COMPLETE (P0–P6 + EDIT-ATOMIC, browser-live-smoked)
+# Session Handoff — glossary-assistant arc SHIPPED (PR #26 merged) · coverage-campaign architecture LOCKED
 
 > **Purpose:** orient the next agent in one read. This file is the single, unversioned handoff — updated in place at the end of each session. (Older `SESSION_PATCH.md` is deprecated → archive later.)
-> **Date:** 2026-06-10. **HEAD:** `ba1edf93` (pushed). **Branch:** `feat/glossary-extracting-assistant` (in sync with origin).
+> **Date:** 2026-06-10. **PR #26 (glossary-assistant arc P0–P6 + EDIT-ATOMIC) MERGED to `main`** (merge commit `e502a4d8`). **Now on branch `feat/glossary-assistant-coverage`** (off main + 6 design-doc commits, pushed) — the next big workstream: make the assistant cover all scenarios (S1–S26 + S27–S35). Architecture clarified: see the 3 campaign specs + decisions D1–D13 below. **NEXT:** Phase -1 **E0 collaboration epic** CLARIFY, or the **H-C async-delivery spike** (independent, high-risk — do early).
 
 ## ▶ NEXT SESSION — start here
 
