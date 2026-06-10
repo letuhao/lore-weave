@@ -18,6 +18,7 @@ import { useReadingTracker } from '@/hooks/useReadingTracker';
 import { useBlockScroll } from '@/hooks/useBlockScroll';
 import { useTTSShortcuts } from '@/hooks/useTTSShortcuts';
 import { extractSpeakableBlocks } from '@/lib/audio-utils';
+import { BookAssistantDock } from '@/features/chat/BookAssistantDock';
 
 /** CJK Unicode ranges: CJK Unified Ideographs, Hiragana, Katakana, Hangul */
 const CJK_REGEX = /[\u3000-\u9fff\uac00-\ud7af\uff00-\uffef]/;
@@ -355,6 +356,9 @@ export function ReaderPage() {
           localStorage.setItem('lw_reader_tts_scroll', String(v));
         }}
       />
+
+      {/* P5: the book-scoped glossary assistant (floating dock → embedded chat). */}
+      {bookId && <BookAssistantDock bookId={bookId} />}
 
       {/* Reading area — reader theme applied here, chrome stays on app theme */}
       <div ref={scrollRef} className="flex flex-1 justify-center overflow-y-auto" style={{ padding: '64px 24px 120px', background: readerTheme.bg, color: readerTheme.fg, ...readerCssVars as React.CSSProperties }}>

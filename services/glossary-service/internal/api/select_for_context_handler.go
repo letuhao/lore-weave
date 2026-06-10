@@ -109,9 +109,25 @@ func (s *Server) internalSelectForContext(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
 		return
 	}
-	req.Query = strings.TrimSpace(req.Query)
+	resp, err := s.selectGlossaryForContext(r.Context(), bookID, req)
+	if err != nil {
+		SelectForContextTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", err.Error())
+		return
+	}
+	SelectForContextTotal.WithLabelValues(OutcomeOK).Inc()
+	writeJSON(w, http.StatusOK, resp)
+}
 
-	// Clamp budgets.
+// selectGlossaryForContext is the non-HTTP core of the tiered selector
+// (pinned → exact → fts → recent, with per-call entity/token budgets). It trims
+// + clamps the request itself, so the internal HTTP endpoint and the
+// glossary_search MCP tool get identical bounds. The caller is responsible for
+// any ownership check — this layer trusts that book access was authorised
+// upstream (the MCP tool calls checkBookOwnership first; the internal HTTP route
+// is X-Internal-Token gated).
+func (s *Server) selectGlossaryForContext(ctx context.Context, bookID uuid.UUID, req selectForContextRequest) (selectForContextResponse, error) {
+	req.Query = strings.TrimSpace(req.Query)
 	if req.MaxEntities <= 0 {
 		req.MaxEntities = defaultMaxEntities
 	}
@@ -125,26 +141,20 @@ func (s *Server) internalSelectForContext(w http.ResponseWriter, r *http.Request
 		req.MaxTokens = hardMaxTokens
 	}
 
-	// Parse and validate exclude_ids as UUIDs — invalid entries are
-	// silently dropped to stay forgiving with upstream callers that
-	// might pass strings from cache.
+	// Parse exclude_ids as UUIDs — invalid entries are silently dropped to stay
+	// forgiving with callers that might pass strings from a cache.
 	excluded := make([]uuid.UUID, 0, len(req.ExcludeIDs))
-	for _, s := range req.ExcludeIDs {
-		if u, err := uuid.Parse(s); err == nil {
+	for _, e := range req.ExcludeIDs {
+		if u, err := uuid.Parse(e); err == nil {
 			excluded = append(excluded, u)
 		}
 	}
 
-	ctx := r.Context()
-
 	selected := make([]glossaryEntityForContext, 0, req.MaxEntities)
 	seen := make(map[string]struct{}, req.MaxEntities)
-	// `excludedList` mirrors `seen` as a deterministic []uuid.UUID slice
-	// so each tier's NOT-ANY filter sees a stable value (map iteration
-	// order is randomized, which would otherwise churn Postgres's plan
-	// cache). MUST be non-nil — pgx serializes a nil []uuid.UUID as SQL
-	// NULL, and `NOT (entity_id = ANY(NULL))` evaluates to NULL for
-	// every row, filtering out all matches.
+	// `excludedList` MUST be non-nil — pgx serializes a nil []uuid.UUID as SQL
+	// NULL, and `NOT (entity_id = ANY(NULL))` evaluates to NULL for every row,
+	// filtering out all matches.
 	excludedList := make([]uuid.UUID, 0, len(excluded)+req.MaxEntities)
 	excludedList = append(excludedList, excluded...)
 	for _, u := range excluded {
@@ -160,7 +170,7 @@ func (s *Server) internalSelectForContext(w http.ResponseWriter, r *http.Request
 		row.RankScore = rank
 		tokens := estimateEntityTokens(&row)
 		if tokensUsed+tokens > req.MaxTokens && len(selected) > 0 {
-			return false // budget exhausted; stop accumulating
+			return false
 		}
 		seen[row.EntityID] = struct{}{}
 		if u, err := uuid.Parse(row.EntityID); err == nil {
@@ -170,7 +180,6 @@ func (s *Server) internalSelectForContext(w http.ResponseWriter, r *http.Request
 		tokensUsed += tokens
 		return len(selected) < req.MaxEntities
 	}
-
 	remaining := func() int {
 		r := req.MaxEntities - len(selected)
 		if r <= 0 {
@@ -178,73 +187,45 @@ func (s *Server) internalSelectForContext(w http.ResponseWriter, r *http.Request
 		}
 		return r + dedupeCushion
 	}
-
 	budgetExhausted := func() bool {
 		return len(selected) >= req.MaxEntities || tokensUsed >= req.MaxTokens
 	}
+	result := func() selectForContextResponse {
+		return selectForContextResponse{Entities: selected, TotalTokensEstimate: tokensUsed}
+	}
 
-	// ── Tier 0: pinned ─────────────────────────────────────────────────────
 	if err := s.queryPinnedTier(ctx, bookID, excludedList, pinnedCap, add); err != nil {
-		SelectForContextTotal.WithLabelValues(OutcomeQueryFailed).Inc()
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "pinned query failed")
-		return
+		return selectForContextResponse{}, fmt.Errorf("pinned query failed: %w", err)
 	}
 	if budgetExhausted() {
-		SelectForContextTotal.WithLabelValues(OutcomeOK).Inc()
-		s.writeContextResponse(w, selected, tokensUsed)
-		return
+		return result(), nil
 	}
 
-	// ── Tier 1 + Tier 2 only run when there is a query ────────────────────
 	hadQuery := req.Query != ""
 	if hadQuery {
 		if err := s.queryExactTier(ctx, bookID, excludedList, req.Query, remaining(), add); err != nil {
-			SelectForContextTotal.WithLabelValues(OutcomeQueryFailed).Inc()
-			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "exact query failed")
-			return
+			return selectForContextResponse{}, fmt.Errorf("exact query failed: %w", err)
 		}
 		if budgetExhausted() {
-			SelectForContextTotal.WithLabelValues(OutcomeOK).Inc()
-			s.writeContextResponse(w, selected, tokensUsed)
-			return
+			return result(), nil
 		}
-
 		if err := s.queryFTSTier(ctx, bookID, excludedList, req.Query, remaining(), add); err != nil {
-			SelectForContextTotal.WithLabelValues(OutcomeQueryFailed).Inc()
-			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "fts query failed")
-			return
+			return selectForContextResponse{}, fmt.Errorf("fts query failed: %w", err)
 		}
 		if budgetExhausted() {
-			SelectForContextTotal.WithLabelValues(OutcomeOK).Inc()
-			s.writeContextResponse(w, selected, tokensUsed)
-			return
+			return result(), nil
 		}
 	}
 
-	// ── Tier 3: recent fallback. Only runs when:
-	//    (a) no query was given — caller wants a general "what's in this
-	//        book" snapshot (chat with no user turn yet), or
-	//    (b) a query was given but produced zero results — last-resort
-	//        filler to avoid returning an empty context.
-	// Running it unconditionally (earlier behaviour) polluted relevant
-	// query results with random recently-edited entities.
+	// Tier 3 recent fallback: only when no query was given (general snapshot) or
+	// a query produced zero results (avoid an empty context).
 	if !hadQuery || len(selected) == 0 {
 		if err := s.queryRecentTier(ctx, bookID, excludedList, remaining(), add); err != nil {
-			SelectForContextTotal.WithLabelValues(OutcomeQueryFailed).Inc()
-			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "recent query failed")
-			return
+			return selectForContextResponse{}, fmt.Errorf("recent query failed: %w", err)
 		}
 	}
 
-	SelectForContextTotal.WithLabelValues(OutcomeOK).Inc()
-	s.writeContextResponse(w, selected, tokensUsed)
-}
-
-func (s *Server) writeContextResponse(w http.ResponseWriter, selected []glossaryEntityForContext, tokens int) {
-	writeJSON(w, http.StatusOK, selectForContextResponse{
-		Entities:            selected,
-		TotalTokensEstimate: tokens,
-	})
+	return result(), nil
 }
 
 // ── tier queries ────────────────────────────────────────────────────────────

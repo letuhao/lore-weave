@@ -132,22 +132,38 @@ class EditorContext(BaseModel):
     chapter_id: str
 
 
+class BookContext(BaseModel):
+    """Glossary-assistant P3 — present when a book-scoped chat (glossary page,
+    reader) that is NOT the chapter editor sends a message. Signals chat-service
+    to advertise the glossary edit-existing write-back tool
+    (`glossary_propose_entity_edit`). Carries only the book; no chapter."""
+    book_id: str
+
+
 class SendMessageRequest(BaseModel):
     content: str
     edit_from_sequence: int | None = None
     context: str | None = None  # Optional context block (book/chapter/glossary text) injected as system message
     thinking: bool | None = None  # Override session default: true=think, false=fast, None=use session default
     editor_context: EditorContext | None = None  # ARCH-1 C6: editor panel → enable frontend write-back tool
+    book_context: BookContext | None = None  # Glossary-assistant P3: book-scoped chat → enable glossary edit tool
     disable_tools: bool = False  # Editor "Compose" mode: advertise no tools this turn (prose-only; reasoning model drafts, user Applies)
 
 
 class ToolResultRequest(BaseModel):
     """ARCH-1 C6 — the resume request: the FE executed a frontend tool (the
     user reviewed + applied/dismissed the proposed edit) and returns the
-    outcome so the agent can continue."""
+    outcome so the agent can continue.
+
+    Outcomes:
+      propose_edit (prose):  "applied" | "dismissed"
+      glossary_propose_entity_edit (P3, H6 truthful resume):
+        "applied_saved" | "applied_conflict" | "applied_error" | "dismissed"
+    The value is passed through verbatim to the agent as the tool result so it
+    reports the REAL outcome (claim success only on applied_saved)."""
     run_id: str
     tool_call_id: str
-    outcome: str  # "applied" | "dismissed"
+    outcome: str
     applied_text: str | None = None
 
 

@@ -605,17 +605,32 @@ END $$;
 -- CASCADE -> RESTRICT (idempotent, constraint-name-agnostic so it survives a
 -- legacy auto-named constraint). kind-delete now removes articles explicitly,
 -- emits wiki.deleted, and surfaces a count instead of a silent cascade.
+--
+-- Idempotency: scope the drop to the FK on the entity_id COLUMN specifically —
+-- wiki_articles has a SECOND FK to glossary_entities (superseded_by_entity_id,
+-- added just above), so a column-agnostic single-row select could drop the
+-- wrong one and then collide on re-add (the restart bug). Skip entirely when the
+-- RESTRICT-named constraint already exists.
 DO $$
 DECLARE c text;
 BEGIN
-  SELECT conname INTO c FROM pg_constraint
-   WHERE conrelid = 'wiki_articles'::regclass AND contype = 'f'
-     AND confrelid = 'glossary_entities'::regclass;
-  IF c IS NOT NULL THEN EXECUTE format('ALTER TABLE wiki_articles DROP CONSTRAINT %I', c); END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'wiki_articles_entity_id_fkey'
+       AND conrelid = 'wiki_articles'::regclass
+  ) THEN
+    SELECT conname INTO c FROM pg_constraint
+     WHERE conrelid = 'wiki_articles'::regclass AND contype = 'f'
+       AND confrelid = 'glossary_entities'::regclass
+       AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
+             WHERE attrelid = 'wiki_articles'::regclass
+               AND attname = 'entity_id' AND NOT attisdropped)]::smallint[];
+    IF c IS NOT NULL THEN EXECUTE format('ALTER TABLE wiki_articles DROP CONSTRAINT %I', c); END IF;
+    ALTER TABLE wiki_articles
+      ADD CONSTRAINT wiki_articles_entity_id_fkey
+      FOREIGN KEY (entity_id) REFERENCES glossary_entities(entity_id) ON DELETE RESTRICT;
+  END IF;
 END $$;
-ALTER TABLE wiki_articles
-  ADD CONSTRAINT wiki_articles_entity_id_fkey
-  FOREIGN KEY (entity_id) REFERENCES glossary_entities(entity_id) ON DELETE RESTRICT;
 `
 
 func UpWiki(ctx context.Context, pool *pgxpool.Pool) error {
