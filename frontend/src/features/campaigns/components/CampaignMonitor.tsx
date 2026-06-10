@@ -8,6 +8,7 @@ import { StageProgress } from './StageProgress';
 import { ChapterProjectionTable } from './ChapterProjectionTable';
 import { MonitorControls } from './MonitorControls';
 import { CampaignReport } from './CampaignReport';
+import { deriveRunStats } from '../runStats';
 
 const TERMINAL = ['completed', 'failed', 'cancelled'] as const;
 
@@ -26,6 +27,19 @@ export function CampaignMonitor({ campaignId }: { campaignId: string }) {
   const liveStatus = progress.data?.status ?? c.status;
   const spent = progress.data?.spent_usd ?? c.spent_usd;
   const budget = progress.data?.budget_usd ?? c.budget_usd;
+  const terminal = (TERMINAL as readonly string[]).includes(liveStatus);
+
+  // G3 — live run stats (elapsed / throughput / ETA / in-progress), derived from
+  // started_at + the progress counts. Shown for active campaigns (terminal → report).
+  const stats = progress.data
+    ? deriveRunStats({
+        startedAt: c.started_at, finishedAt: c.finished_at, terminal,
+        total: progress.data.total_chapters,
+        translationDone: progress.data.stages.translation?.done ?? 0,
+        inProgress: Object.values(progress.data.stages).reduce((n, s) => n + s.in_progress, 0),
+        nowMs: Date.now(),
+      })
+    : null;
 
   return (
     <div className="flex max-w-3xl flex-col gap-5">
@@ -47,8 +61,23 @@ export function CampaignMonitor({ campaignId }: { campaignId: string }) {
       <MonitorControls campaignId={c.campaign_id} status={liveStatus} budgetUsd={budget} />
 
       {/* G1 — wake-up report once terminal (outcome + spend-vs-estimate + error groups + review CTA). */}
-      {(TERMINAL as readonly string[]).includes(liveStatus) && (
-        <CampaignReport campaignId={c.campaign_id} bookId={c.book_id} />
+      {terminal && <CampaignReport campaignId={c.campaign_id} bookId={c.book_id} />}
+
+      {/* G3 — live run stats for an active campaign. */}
+      {!terminal && stats && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            [stats.elapsed, t('monitor.elapsed', { defaultValue: 'elapsed' })],
+            [stats.throughput, t('monitor.throughput', { defaultValue: 'throughput' })],
+            [stats.eta, t('monitor.eta', { defaultValue: 'ETA (remaining)' })],
+            [String(stats.inProgress), t('monitor.inFlight', { defaultValue: 'in progress' })],
+          ].map(([v, label]) => (
+            <div key={label} className="rounded-md border bg-secondary/40 p-3">
+              <div className="text-lg font-semibold">{v}</div>
+              <div className="text-[11px] text-muted-foreground">{label}</div>
+            </div>
+          ))}
+        </div>
       )}
 
       <SpentBudgetBar spentUsd={spent} budgetUsd={budget} />
