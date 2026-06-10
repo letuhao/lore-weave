@@ -676,3 +676,32 @@ async def reset_stuck_stage(
         return int(result.split()[-1])
     except (ValueError, IndexError, AttributeError):
         return 0
+
+
+async def reset_failed_stages(
+    pool: asyncpg.Pool, campaign_id: UUID, chapter_ids: Optional[list[UUID]] = None,
+) -> int:
+    """G2 (user re-run-failed): reset FAILED knowledge/translation stages to
+    'pending' + zero their attempts + clear last_error, so gating re-dispatches
+    them (the downstream skip-gate prevents re-spend on already-done work). Scoped
+    to `chapter_ids` (None = ALL failed chapters in the campaign). `eval` is OBSERVED
+    (rides translation.quality), so it is not reset here. Returns rows changed."""
+    result = await pool.execute(
+        """
+        UPDATE campaign_chapters
+        SET knowledge_status   = CASE WHEN knowledge_status='failed'   THEN 'pending' ELSE knowledge_status END,
+            knowledge_attempts = CASE WHEN knowledge_status='failed'   THEN 0 ELSE knowledge_attempts END,
+            translation_status = CASE WHEN translation_status='failed' THEN 'pending' ELSE translation_status END,
+            translation_attempts = CASE WHEN translation_status='failed' THEN 0 ELSE translation_attempts END,
+            last_error = NULL,
+            updated_at = now()
+        WHERE campaign_id = $1
+          AND 'failed' IN (knowledge_status, translation_status)
+          AND ($2::uuid[] IS NULL OR chapter_id = ANY($2::uuid[]))
+        """,
+        campaign_id, chapter_ids,
+    )
+    try:
+        return int(result.split()[-1])
+    except (ValueError, IndexError, AttributeError):
+        return 0

@@ -60,6 +60,15 @@ export const campaignsApi = {
     return apiJson<CampaignReport>(`/v1/campaigns/${campaignId}/report`, { token });
   },
 
+  // G2 — re-run failed chapters (null/empty chapterIds = all failed). Re-arms the
+  // campaign to running; the driver re-dispatches the reset stages.
+  rerunFailed(campaignId: string, chapterIds: string[] | null, token: string): Promise<Campaign> {
+    return apiJson<Campaign>(`/v1/campaigns/${campaignId}/rerun-failed`, {
+      token, method: 'POST',
+      body: JSON.stringify(chapterIds && chapterIds.length ? { chapter_ids: chapterIds } : {}),
+    });
+  },
+
   updateBudget(campaignId: string, budgetUsd: string, token: string): Promise<Campaign> {
     return apiJson<Campaign>(`/v1/campaigns/${campaignId}`, {
       token, method: 'PATCH', body: JSON.stringify({ budget_usd: budgetUsd }),

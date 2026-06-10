@@ -82,6 +82,13 @@ class CreateCampaignPayload(BaseModel):
         return v
 
 
+class RerunFailedPayload(BaseModel):
+    """G2 — re-run failed chapters. `chapter_ids` None/omitted = ALL failed chapters
+    in the campaign; otherwise just those. The campaign re-arms to `running` so the
+    driver re-dispatches the reset stages."""
+    chapter_ids: Optional[list[UUID]] = None
+
+
 class UpdateBudgetPayload(BaseModel):
     """S4d — PATCH /campaigns/{id}: raise/lower the budget cap. Lowering below the
     current spend is allowed (bounds new work) but does NOT auto-resume a paused

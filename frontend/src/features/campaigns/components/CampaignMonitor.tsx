@@ -55,7 +55,7 @@ export function CampaignMonitor({ campaignId }: { campaignId: string }) {
 
       {progress.data && <StageProgress stages={progress.data.stages} />}
 
-      <ChapterProjectionTable chapters={c.chapters} />
+      <ChapterProjectionTable chapters={c.chapters} campaignId={c.campaign_id} />
     </div>
   );
 }

@@ -36,6 +36,7 @@ from ..models import (
     ErrorGroup,
     StageCounts,
     UpdateBudgetPayload,
+    RerunFailedPayload,
     EstimateRequest,
     EstimateResponse,
 )
@@ -417,6 +418,43 @@ async def start_campaign(
                     "message": "spent_usd is at/over budget_usd; raise the budget (PATCH) before resuming"},
         )
     await repo.set_campaign_status(db, campaign_id, "running", set_started=True)
+    updated = await repo.get_campaign(db, campaign_id, UUID(user_id))
+    return _campaign_model(updated)
+
+
+@router.post("/{campaign_id}/rerun-failed", response_model=Campaign)
+async def rerun_failed_campaign(
+    campaign_id: UUID,
+    payload: RerunFailedPayload | None = None,
+    user_id: str = Depends(get_current_user),
+    db: asyncpg.Pool = Depends(get_db),
+):
+    """G2 — reset the campaign's failed chapters (or a chosen subset) to `pending`
+    (+ zero attempts, clear last_error) and re-arm the campaign to `running` so the
+    driver re-dispatches them. The downstream skip-gate prevents re-spend on
+    already-completed work. A cancelled/cancelling campaign can't be re-run; the
+    over-budget guard applies (re-running dispatches → spends)."""
+    row = await repo.get_campaign(db, campaign_id, UUID(user_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
+                                                     "message": "campaign not found"})
+    if row["status"] in ("cancelled", "cancelling"):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "CAMPAIGN_NOT_RERUNNABLE",
+                    "message": f"cannot re-run a {row['status']} campaign"},
+        )
+    if row["budget_usd"] is not None and row["spent_usd"] >= row["budget_usd"]:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "CAMPAIGN_OVER_BUDGET",
+                    "message": "spent_usd is at/over budget_usd; raise the budget (PATCH) before re-running"},
+        )
+    ids = payload.chapter_ids if payload else None
+    n = await repo.reset_failed_stages(db, campaign_id, ids)
+    # Re-arm so the driver picks the reset chapters up; no-op if nothing was failed.
+    if n > 0 and row["status"] != "running":
+        await repo.set_campaign_status(db, campaign_id, "running", set_started=True)
     updated = await repo.get_campaign(db, campaign_id, UUID(user_id))
     return _campaign_model(updated)
 

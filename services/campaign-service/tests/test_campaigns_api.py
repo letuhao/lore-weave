@@ -295,6 +295,57 @@ def test_report_404_when_not_owned(client, mocker):
     assert resp.status_code == 404
 
 
+def test_rerun_failed_resets_and_rearms(client, mocker):
+    # G2: re-run resets failed stages and re-arms a terminal campaign to running.
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="completed"))
+    reset = mocker.patch("app.repositories.reset_failed_stages", new_callable=AsyncMock, return_value=3)
+    setst = mocker.patch("app.repositories.set_campaign_status", new_callable=AsyncMock)
+    resp = client.post(f"/v1/campaigns/{CAMP}/rerun-failed", json={})
+    assert resp.status_code == 200, resp.text
+    reset.assert_awaited_once()
+    setst.assert_awaited_once()
+    assert setst.call_args.args[2] == "running"
+
+
+def test_rerun_failed_passes_chapter_ids(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="failed"))
+    reset = mocker.patch("app.repositories.reset_failed_stages", new_callable=AsyncMock, return_value=1)
+    mocker.patch("app.repositories.set_campaign_status", new_callable=AsyncMock)
+    cid = "11111111-1111-1111-1111-111111111111"
+    resp = client.post(f"/v1/campaigns/{CAMP}/rerun-failed", json={"chapter_ids": [cid]})
+    assert resp.status_code == 200, resp.text
+    assert str(reset.call_args.args[2][0]) == cid
+
+
+def test_rerun_failed_nothing_failed_no_rearm(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="completed"))
+    mocker.patch("app.repositories.reset_failed_stages", new_callable=AsyncMock, return_value=0)
+    setst = mocker.patch("app.repositories.set_campaign_status", new_callable=AsyncMock)
+    resp = client.post(f"/v1/campaigns/{CAMP}/rerun-failed", json={})
+    assert resp.status_code == 200
+    setst.assert_not_awaited()  # nothing failed → no re-arm
+
+
+def test_rerun_failed_refuses_cancelled(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="cancelled"))
+    resp = client.post(f"/v1/campaigns/{CAMP}/rerun-failed", json={})
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_NOT_RERUNNABLE"
+
+
+def test_rerun_failed_over_budget(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="failed",
+                                            budget_usd=Decimal("5"), spent_usd=Decimal("5")))
+    resp = client.post(f"/v1/campaigns/{CAMP}/rerun-failed", json={})
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_OVER_BUDGET"
+
+
 def test_progress_404_when_not_owned(client, mocker):
     mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock, return_value=None)
     resp = client.get(f"/v1/campaigns/{CAMP}/progress")

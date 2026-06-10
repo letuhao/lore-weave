@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
+import { useRerunFailed } from '../hooks/useCampaignMutations';
 import type { CampaignChapter } from '../types';
 
 const DONE = new Set(['done', 'skipped']);
@@ -22,17 +24,27 @@ const STATUS_TONE: Record<string, string> = {
 
 /** S6 (view) — per-chapter projection. Defaults to the rows that need attention
  *  (failed + in-progress); a toggle reveals all. Capped at MAX_ROWS (D-S6-CHAPTER-PAGING). */
-export function ChapterProjectionTable({ chapters }: { chapters: CampaignChapter[] }) {
+export function ChapterProjectionTable({ chapters, campaignId }: { chapters: CampaignChapter[]; campaignId?: string }) {
   const { t } = useTranslation('campaigns');
   const [showAll, setShowAll] = useState(false);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+
+  const rerun = useRerunFailed({
+    onSuccess: () => { setSel(new Set()); toast.success(t('monitor.rerunQueued', { defaultValue: 'Re-run queued.' })); },
+    onError: (e) => toast.error(t('monitor.rerunFailed', { defaultValue: 'Re-run failed: {{error}}', error: e.message })),
+  });
 
   const filtered = useMemo(
     () => (showAll ? chapters : chapters.filter((c) => !isDone(c))),
     [chapters, showAll],
   );
   const rows = filtered.slice(0, MAX_ROWS);
+  const anyFailed = useMemo(() => chapters.some(isFailed), [chapters]);
+  const canRerun = !!campaignId && anyFailed;
 
   const cell = (s: string) => <span className={STATUS_TONE[s] ?? ''}>{s}</span>;
+  const toggle = (id: string) =>
+    setSel((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   return (
     <div className="flex flex-col gap-2">
@@ -45,6 +57,21 @@ export function ChapterProjectionTable({ chapters }: { chapters: CampaignChapter
             : t('monitor.showAll', { defaultValue: 'Show all' })}
         </button>
       </div>
+
+      {canRerun && (
+        <div className="flex items-center gap-3">
+          <button type="button" disabled={rerun.isPending}
+            onClick={() => rerun.mutate({ campaignId, chapterIds: null })}
+            className="rounded-md border border-primary/40 bg-primary/5 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/10 disabled:opacity-60">
+            {t('monitor.rerunAll', { defaultValue: 'Re-run all failed' })}
+          </button>
+          <button type="button" disabled={rerun.isPending || sel.size === 0}
+            onClick={() => rerun.mutate({ campaignId, chapterIds: [...sel] })}
+            className="rounded-md border px-3 py-1 text-xs hover:bg-accent disabled:opacity-40">
+            {t('monitor.rerunSelected', { defaultValue: 'Re-run selected ({{n}})', n: sel.size })}
+          </button>
+        </div>
+      )}
       {filtered.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           {t('monitor.allDone', { defaultValue: 'All chapters are done.' })}
@@ -54,6 +81,7 @@ export function ChapterProjectionTable({ chapters }: { chapters: CampaignChapter
           <table className="w-full text-[12px]">
             <thead className="text-muted-foreground">
               <tr className="border-b text-left">
+                {canRerun && <th className="py-1 pr-2" />}
                 <th className="py-1 pr-3">#</th>
                 <th className="py-1 pr-3">{t('monitor.stage.knowledge', { defaultValue: 'Knowledge' })}</th>
                 <th className="py-1 pr-3">{t('monitor.stage.translation', { defaultValue: 'Translation' })}</th>
@@ -65,6 +93,14 @@ export function ChapterProjectionTable({ chapters }: { chapters: CampaignChapter
             <tbody>
               {rows.map((c) => (
                 <tr key={c.chapter_id} className={`border-b ${isFailed(c) ? 'bg-destructive/5' : ''}`}>
+                  {canRerun && (
+                    <td className="py-1 pr-2">
+                      {isFailed(c) && (
+                        <input type="checkbox" aria-label={`select chapter ${c.chapter_sort}`}
+                          checked={sel.has(c.chapter_id)} onChange={() => toggle(c.chapter_id)} />
+                      )}
+                    </td>
+                  )}
                   <td className="py-1 pr-3">{c.chapter_sort}</td>
                   <td className="py-1 pr-3">{cell(c.knowledge_status)}</td>
                   <td className="py-1 pr-3">{cell(c.translation_status)}</td>
