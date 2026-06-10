@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -38,6 +40,15 @@ func (s *Server) mcpHandler() http.Handler {
 		Description: "List the glossary's entity kinds and their attribute definitions " +
 			"(the schema). Use to learn what kinds/attributes exist before reasoning about entities.",
 	}, s.toolListKinds)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "glossary_propose_new_entity",
+		Description: "Propose a NEW entity (character, place, item, concept, …) for a book's " +
+			"glossary. It is created as a DRAFT suggestion in the review inbox — NOT canon — and " +
+			"must be approved by a human. If the name already exists, or was previously rejected, " +
+			"no duplicate is created. Call glossary_search first to confirm it doesn't already exist; " +
+			"call glossary_list_kinds to pick a valid kind.",
+	}, s.toolProposeNewEntity)
 
 	streamable := mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return srv },
@@ -190,4 +201,93 @@ func (s *Server) toolListKinds(ctx context.Context, _ *mcp.CallToolRequest, _ li
 		kinds[i].EntityCount = 0
 	}
 	return nil, listKindsToolOut{Kinds: kinds}, nil
+}
+
+// ── Tier-W: propose a new entity (draft) ─────────────────────────────────────
+
+// tagAssistant marks an assistant-originated suggestion (provenance, H1) alongside
+// the ai-suggested inbox tag — so the review UI can distinguish chat-assistant
+// proposals from background-pipeline discoveries.
+const tagAssistant = "assistant"
+
+type proposeEntityToolIn struct {
+	BookID     string         `json:"book_id" jsonschema:"the book to add the entity to (UUID)"`
+	Kind       string         `json:"kind" jsonschema:"the entity kind code (e.g. character, place) — see glossary_list_kinds"`
+	Name       string         `json:"name" jsonschema:"the entity's name"`
+	Attributes map[string]any `json:"attributes,omitempty" jsonschema:"optional attribute code → value map"`
+}
+type proposeEntityToolOut struct {
+	EntityID string `json:"entity_id"`
+	// Status is created | skipped_exists | skipped_tombstoned.
+	Status string `json:"status"`
+}
+
+func (s *Server) toolProposeNewEntity(ctx context.Context, _ *mcp.CallToolRequest, in proposeEntityToolIn) (*mcp.CallToolResult, proposeEntityToolOut, error) {
+	userID, ok := userIDFromCtx(ctx)
+	if !ok {
+		return nil, proposeEntityToolOut{}, errors.New("missing caller identity")
+	}
+	bookID, err := uuid.Parse(in.BookID)
+	if err != nil {
+		return nil, proposeEntityToolOut{}, errors.New("book_id must be a UUID")
+	}
+	name := strings.TrimSpace(in.Name)
+	if name == "" {
+		return nil, proposeEntityToolOut{}, errors.New("name is required")
+	}
+	if strings.TrimSpace(in.Kind) == "" {
+		return nil, proposeEntityToolOut{}, errors.New("kind is required")
+	}
+	if err := s.checkBookOwnership(ctx, bookID, userID); err != nil {
+		return nil, proposeEntityToolOut{}, uniformOwnershipError(err)
+	}
+	kindMap, err := s.loadKindMap(ctx)
+	if err != nil {
+		return nil, proposeEntityToolOut{}, errors.New("failed to resolve kinds")
+	}
+	kindID, ok := kindMap[in.Kind]
+	if !ok {
+		return nil, proposeEntityToolOut{}, errors.New("unknown kind: " + in.Kind)
+	}
+	entityID, status, err := s.proposeNewEntity(ctx, bookID, kindID, name, in.Attributes)
+	if err != nil {
+		return nil, proposeEntityToolOut{}, errors.New("propose failed")
+	}
+	return nil, proposeEntityToolOut{EntityID: entityID.String(), Status: status}, nil
+}
+
+// proposeNewEntity creates a NEW glossary entity as a DRAFT suggestion, or skips
+// when the name already exists (dedup, H9) or was previously ai-rejected
+// (tombstone, H9). Reuses the pipeline writeback path so a tool-proposed draft is
+// indistinguishable from a pipeline-discovered one (INV-1: draft never reaches
+// canon). The caller must have verified book ownership. Returns the entity id +
+// a status: created | skipped_exists | skipped_tombstoned.
+func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID, name string, attrs map[string]any) (uuid.UUID, string, error) {
+	existingID, err := s.findEntityByNameOrAlias(ctx, bookID, kindID, name)
+	if err != nil {
+		return uuid.Nil, "", fmt.Errorf("entity lookup: %w", err)
+	}
+	if existingID != uuid.Nil {
+		rejected, err := s.entityHasTag(ctx, existingID, tagAIRejected)
+		if err != nil {
+			return uuid.Nil, "", fmt.Errorf("tombstone check: %w", err)
+		}
+		if rejected {
+			return existingID, "skipped_tombstoned", nil
+		}
+		return existingID, "skipped_exists", nil
+	}
+
+	attrDefMap, err := s.loadAttrDefMap(ctx)
+	if err != nil {
+		return uuid.Nil, "", fmt.Errorf("attr defs: %w", err)
+	}
+	ent := extractedEntity{Name: name, Attributes: attrs}
+	// "und" (ISO 639-2 undetermined) for the tool-proposed name's language — the
+	// human can correct it when reviewing the draft in the inbox.
+	entityID, err := s.createExtractedEntity(ctx, bookID, kindID, ent, nil, attrDefMap, "und", []string{tagAISuggested, tagAssistant})
+	if err != nil {
+		return uuid.Nil, "", fmt.Errorf("create draft: %w", err)
+	}
+	return entityID, "created", nil
 }
