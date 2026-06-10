@@ -22,12 +22,16 @@ let cached: AppConfig | undefined;
 
 export function loadConfig(): AppConfig {
   if (cached) return cached;
-  // P0: knowledge is the only provider. Provider #2 (glossary) is added at P1 by
-  // appending here — the federation is provider-count-agnostic.
+  // P0 knowledge + P1 glossary. The federation is provider-count-agnostic; tool
+  // names are provider-prefixed (memory_* / glossary_*) so there is no collision.
   const providers: ProviderConfig[] = [
     {
       name: 'knowledge',
       mcpUrl: process.env.KNOWLEDGE_MCP_URL ?? 'http://knowledge-service:8092/mcp',
+    },
+    {
+      name: 'glossary',
+      mcpUrl: process.env.GLOSSARY_MCP_URL ?? 'http://glossary-service:8088/mcp',
     },
   ];
   cached = {

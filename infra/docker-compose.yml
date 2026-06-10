@@ -598,9 +598,12 @@ services:
       AI_GATEWAY_PORT: "8210"
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       KNOWLEDGE_MCP_URL: http://knowledge-service:8092/mcp
+      GLOSSARY_MCP_URL: http://glossary-service:8088/mcp
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       knowledge-service:
+        condition: service_healthy
+      glossary-service:
         condition: service_healthy
     ports:
       - "8218:8210"

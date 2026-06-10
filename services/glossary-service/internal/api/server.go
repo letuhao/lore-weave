@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -22,6 +23,9 @@ type Server struct {
 	pool   *pgxpool.Pool
 	cfg    *config.Config
 	secret []byte
+	// ownerCache memoizes positive book-ownership checks for the MCP read tools
+	// (INV-8). Keyed "user:book" → ownerCacheEntry; see ownership.go.
+	ownerCache sync.Map
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
@@ -72,6 +76,11 @@ func (s *Server) Router() http.Handler {
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
+
+	// ── MCP server (Tier-R read tools, ai-gateway provider #2) ────────────
+	// Internal-only; the identity middleware (in mcpHandler) validates the
+	// service token and lifts X-User-Id into ctx for the ownership guard.
+	r.Handle("/mcp", s.mcpHandler())
 
 	// ── Internal service-to-service endpoints ─────────────────────────────
 	r.Route("/internal", func(r chi.Router) {
