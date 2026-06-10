@@ -210,7 +210,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
           <GroundingPanel projectId={work.project_id} sceneId={effectiveScene} token={token} />
         </div>
         <div className={tab === 'canon' ? '' : 'hidden'}>
-          <CanonRulesPanel projectId={work.project_id} token={token} />
+          <CanonRulesPanel projectId={work.project_id} bookId={bookId} token={token} />
         </div>
         <div className={tab === 'quality' ? '' : 'hidden'}>
           <QualityPanel projectId={work.project_id} token={token} />
