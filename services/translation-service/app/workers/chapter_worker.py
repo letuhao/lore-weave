@@ -256,19 +256,35 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             )
             # Auto-set active: insert only if no active version exists yet for
             # (chapter_id, target_language). M5b: do NOT auto-publish a version the
-            # verifier flagged with unresolved high-severity issues — leave the slot
-            # empty so the reader sees "not translated" until the user reviews and
+            # verifier flagged with unresolved high-severity issues — the SELECT
+            # WHERE drops it so the slot stays empty until the user reviews and
             # explicitly sets it active (the publish gate). V2 chapters have
             # unresolved_high_count=0 (default) → unchanged behaviour.
+            #
+            # D-CAMPAIGN-AUTONOMOUS-PUBLISH: a CAMPAIGN job is the no-human Auto-Draft
+            # Factory — it PROMOTES the freshly-completed clean version to active even
+            # OVER an existing active one (a re-translation of a stale/failed chapter),
+            # because there is no human to confirm the M6a publish. Still gated on
+            # unresolved_high_count=0 (the SELECT WHERE), so a high-severity-flagged
+            # re-translation never auto-republishes. An interactive (non-campaign) job
+            # keeps DO NOTHING → first-write-wins + an explicit human publish.
+            _on_conflict = (
+                """ON CONFLICT (chapter_id, target_language) DO UPDATE
+                       SET chapter_translation_id = EXCLUDED.chapter_translation_id,
+                           set_by_user_id = EXCLUDED.set_by_user_id,
+                           set_at = now()"""
+                if msg.get("campaign_id")
+                else "ON CONFLICT (chapter_id, target_language) DO NOTHING"
+            )
             await db.execute(
-                """
+                f"""
                 INSERT INTO active_chapter_translation_versions
                   (chapter_id, target_language, chapter_translation_id, set_by_user_id)
                 SELECT $1, ct.target_language, $2, ct.owner_user_id
                 FROM chapter_translations ct
                 WHERE ct.id = $2
                   AND COALESCE(ct.unresolved_high_count, 0) = 0
-                ON CONFLICT (chapter_id, target_language) DO NOTHING
+                {_on_conflict}
                 """,
                 chapter_id, chapter_translation_id,
             )
