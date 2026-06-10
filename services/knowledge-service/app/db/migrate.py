@@ -818,6 +818,45 @@ CREATE TABLE IF NOT EXISTS extraction_run_samples (
 );
 CREATE INDEX IF NOT EXISTS idx_extraction_run_samples_created
   ON extraction_run_samples(created_at);
+
+-- ═══════════════════════════════════════════════════════════════
+-- wiki-llm M6 — wiki_gen_jobs: a batch LLM wiki-generation run over a
+-- book's entities. Mirrors extraction_jobs (state machine + cost-cap)
+-- with wiki specifics: book_id, the entity_ids to generate (empty = all
+-- AI-eligible), items_done for skip-on-resume, and the model the user
+-- picked. The state CHECK matches state_machine.py exactly.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS wiki_gen_jobs (
+  job_id          UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id         UUID NOT NULL,                    -- no FK (cross-DB)
+  project_id      UUID NOT NULL
+    REFERENCES knowledge_projects(project_id) ON DELETE CASCADE,
+  book_id         UUID NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending','running','paused','complete','failed','cancelled')),
+  model_source    TEXT NOT NULL,
+  model_ref       TEXT NOT NULL,
+  entity_ids      JSONB NOT NULL DEFAULT '[]',       -- [] = all AI-eligible entities
+  items_done      JSONB NOT NULL DEFAULT '[]',       -- entity_ids already generated (skip-on-resume)
+  max_spend_usd   NUMERIC(10,4),
+  items_total     INT,
+  items_processed INT NOT NULL DEFAULT 0,
+  cost_spent_usd  NUMERIC(10,4) NOT NULL DEFAULT 0,
+  started_at      TIMESTAMPTZ,
+  paused_at       TIMESTAMPTZ,
+  completed_at    TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  error_message   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_wiki_gen_jobs_project
+  ON wiki_gen_jobs (project_id, created_at DESC);
+-- Per-book lock (risk #13): only ONE active job per book. A 2nd request
+-- conflicts on this partial unique index → the trigger returns 409 + the
+-- existing job_id. Durable (survives restart), unlike a pg advisory lock.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_wiki_gen_jobs_one_active_per_book
+  ON wiki_gen_jobs (book_id)
+  WHERE status IN ('pending','running','paused');
 """
 
 
