@@ -49,6 +49,8 @@ Postgres (per-service DBs) · Redis Streams · MinIO (objects) · RabbitMQ (jobs
 
 ## 3. Services & Databases
 
+> **Superseded:** The authoritative service×database map is [`DATA_ARCHITECTURE.md`](DATA_ARCHITECTURE.md) §4. The table below is retained for historical context only and is **out of date** (missing knowledge, composition, lore-enrichment, learning, events DBs; incorrect DB name `loreweave_books`).
+
 | Service | Lang | DB | Tables | Port |
 |---------|------|----|--------|------|
 | auth-service | Go/Chi | loreweave_auth | 5 (users, sessions, verification, reset, security_prefs) | 8081 |
@@ -62,7 +64,7 @@ Postgres (per-service DBs) · Redis Streams · MinIO (objects) · RabbitMQ (jobs
 | chat-service | Python/FastAPI | loreweave_chat | 3 (sessions, messages, outputs) | 8090 |
 | video-gen-service | Python/FastAPI | Monorepo BFF; ComfyUI + models in **local-image-generator-service** (SD 1.5 / SDXL / Illustrious / Flux / Qwen Image / Wan / LTX Video; game-asset & sheet pipelines) | see sibling repo | 8088 |
 
-**Total: 46 tables, 10 services, 8 databases.**
+**Total: 46 tables, 10 services, 8 databases.** *(Stale — see DATA_ARCHITECTURE.md §4.)*
 
 ---
 

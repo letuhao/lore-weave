@@ -92,7 +92,8 @@ features/<name>/
 
 1. **Read** `docs/sessions/SESSION_HANDOFF.md` — read the **▶ NEXT SESSION** block at the top
 2. **Check** the relevant planning doc in `docs/03_planning/` for whatever module you're working on
-3. If ContextHub MCP is available, optionally call `search_lessons` and `search_code` for prior context
+3. For data layer orientation (SSOT, DB ownership, flows), read `docs/DATA_ARCHITECTURE.md`
+4. If ContextHub MCP is available, optionally call `search_lessons` and `search_code` for prior context
 
 ### Session End
 
