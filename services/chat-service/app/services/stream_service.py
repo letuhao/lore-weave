@@ -139,6 +139,11 @@ async def _stream_via_gateway(
 # pass is forced tool-free (tool_choice="none") so the loop always
 # terminates with a text answer (design D7).
 MAX_TOOL_ITERATIONS = 5
+# Glossary-assistant P5 (H11): book-scoped surfaces run a richer multi-step
+# workflow (list_kinds → search → get_entity → propose ≈ 4 calls; multi-entity
+# tasks need headroom), so the cap is raised there. Per-turn token budget still
+# bounds cost. Plain chat keeps the default 5.
+GLOSSARY_TOOL_ITERATIONS = 10
 
 
 def _is_tools_unsupported(exc: LLMError) -> bool:
@@ -225,6 +230,7 @@ async def _stream_with_tools(
     seed_usage: tuple[int, int] | None = None,
     composer_model: tuple[str, str] | None = None,
     composer_system_prompt: str | None = None,
+    max_iterations: int = MAX_TOOL_ITERATIONS,
 ) -> AsyncGenerator[dict, None]:
     """K21-B — the tool-calling loop.
 
@@ -258,8 +264,8 @@ async def _stream_with_tools(
             max_tokens = None
         tools_supported = True  # D8 — flipped off if the provider rejects tools
 
-        for iteration in range(MAX_TOOL_ITERATIONS):
-            last_iter = iteration == MAX_TOOL_ITERATIONS - 1
+        for iteration in range(max_iterations):
+            last_iter = iteration == max_iterations - 1
             request_kwargs: dict = {
                 "model_source": model_source,
                 "model_ref": model_ref,
@@ -543,6 +549,22 @@ async def stream_response(
     #     → cached; stable per-session, doesn't change between turns
     # Non-Anthropic providers and the degraded / unsplit fallback take
     # the plain-string path.
+    # Glossary-assistant P5 (OD-5 / INV-6): on a book-scoped surface where the
+    # glossary tools are advertised, prepend-as-system the static glossary skill —
+    # tool workflow + human-gated tiers + the data-not-instructions trust boundary
+    # + the canonical glossary_search (H7). Static + cacheable; the kind/attr list
+    # is fetched on demand, never baked per turn.
+    inject_glossary_skill = (
+        stream_format == "agui"
+        and bool(editor_context or book_context)
+        and not disable_tools
+        and kctx.tool_calling_enabled
+    )
+    glossary_skill: str | None = None
+    if inject_glossary_skill:
+        from app.services.glossary_skill import GLOSSARY_SKILL_PROMPT
+        glossary_skill = GLOSSARY_SKILL_PROMPT
+
     use_anthropic_cache = (
         creds.provider_kind == "anthropic"
         and kctx.stable_context.strip() != ""
@@ -564,6 +586,8 @@ async def stream_response(
                 "text": system_prompt.strip(),
                 "cache_control": {"type": "ephemeral"},
             })
+        if glossary_skill:
+            parts.append({"type": "text", "text": glossary_skill, "cache_control": {"type": "ephemeral"}})
         messages.insert(0, {"role": "system", "content": parts})
     else:
         system_parts: list[str] = []
@@ -575,6 +599,8 @@ async def stream_response(
             stripped = system_prompt.strip()
             if stripped:
                 system_parts.append(stripped)
+        if glossary_skill:
+            system_parts.append(glossary_skill)
         if system_parts:
             messages.insert(0, {"role": "system", "content": "\n\n".join(system_parts)})
 
@@ -638,6 +664,8 @@ async def stream_response(
         seed_usage=None,
         composer_model=composer_model,
         composer_system_prompt=system_prompt,
+        # H11: book-scoped surfaces get the richer iteration budget.
+        max_iterations=GLOSSARY_TOOL_ITERATIONS if (editor_context or book_context) else MAX_TOOL_ITERATIONS,
     ):
         yield line
 
@@ -666,6 +694,7 @@ async def _emit_chat_turn(
     seed_usage: tuple[int, int] | None,
     composer_model: tuple[str, str] | None = None,
     composer_system_prompt: str | None = None,
+    max_iterations: int = MAX_TOOL_ITERATIONS,
 ) -> AsyncGenerator[str, None]:
     """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
 
@@ -715,6 +744,7 @@ async def _emit_chat_turn(
                 seed_usage=seed_usage,
                 composer_model=composer_model,
                 composer_system_prompt=composer_system_prompt,
+                max_iterations=max_iterations,
             )
         else:
             chunk_stream = _stream_via_gateway(
@@ -1116,6 +1146,9 @@ async def resume_stream_response(
         seed_usage=(susp.input_tokens, susp.output_tokens),
         composer_model=composer_model,
         composer_system_prompt=composer_system_prompt,
+        # H11: a resume continues a book-scoped frontend-tool turn (agui) → keep
+        # the richer cap so the post-Apply/Confirm follow-up isn't truncated.
+        max_iterations=GLOSSARY_TOOL_ITERATIONS if stream_format == "agui" else MAX_TOOL_ITERATIONS,
     ):
         yield line
 

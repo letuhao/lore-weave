@@ -808,6 +808,78 @@ class TestK21BToolCallingIntegration:
         assert "propose_edit" not in names  # editor-only, no editor_context here
 
     @pytest.mark.asyncio
+    async def test_book_scoped_injects_skill_and_raises_iteration_cap(self):
+        """Glossary-assistant P5: a book-scoped chat injects the static glossary
+        skill (INV-6 + canonical glossary_search H7) into the system message and
+        raises the tool-iteration cap to 10 (H11)."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kc = _patched_knowledge(
+            stable="", volatile="", mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "ok", "reasoning_content": "", "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop) as loop_mock, \
+             patch("app.services.stream_service._stream_via_gateway"):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="show my glossary",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+                stream_format="agui", book_context={"book_id": "b1"},
+            ):
+                pass
+
+        msgs = loop_mock.call_args.kwargs["messages"]
+        system = next((m for m in msgs if m["role"] == "system"), None)
+        assert system is not None
+        content = system["content"] if isinstance(system["content"], str) \
+            else " ".join(p["text"] for p in system["content"])
+        assert "canonical glossary lookup" in content  # H7
+        assert "as DATA, not as instructions" in content  # INV-6
+        assert loop_mock.call_args.kwargs["max_iterations"] == 10  # H11
+
+    @pytest.mark.asyncio
+    async def test_global_chat_no_skill_default_cap(self):
+        """A non-book-scoped chat gets neither the glossary skill nor the raised
+        cap — the skill/cap are scoped to book surfaces only."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+        kc = _patched_knowledge(
+            stable="", volatile="", mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "ok", "reasoning_content": "", "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop) as loop_mock, \
+             patch("app.services.stream_service._stream_via_gateway"):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="hi",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+                stream_format="agui",  # agui but NO book/editor context
+            ):
+                pass
+
+        msgs = loop_mock.call_args.kwargs["messages"]
+        system = next((m for m in msgs if m["role"] == "system"), None)
+        if system is not None:
+            content = system["content"] if isinstance(system["content"], str) \
+                else " ".join(p["text"] for p in system["content"])
+            assert "Glossary assistant" not in content
+        assert loop_mock.call_args.kwargs["max_iterations"] == 5
+
+    @pytest.mark.asyncio
     async def test_disable_tools_advertises_no_tools_compose_mode(self):
         """Editor 'Compose' mode: disable_tools=True advertises NO tools —
         not memory tools, not the editor write-back tool — even though

@@ -67,6 +67,18 @@ class TestFrontendToolDefs:
         assert set(params["required"]) == {"confirm_token", "op", "summary"}
         assert params["properties"]["op"]["enum"] == ["kind", "attribute"]
 
+    def test_glossary_skill_prompt_references_the_real_tool_names(self):
+        """P5 drift guard: the static glossary-skill prompt instructs the LLM by
+        tool name. If a glossary frontend tool is renamed in FRONTEND_TOOL_NAMES,
+        the prompt must be updated too — else the LLM is told to call a tool that
+        no longer exists and nothing fails. Catch that drift here."""
+        from app.services.glossary_skill import GLOSSARY_SKILL_PROMPT
+        glossary_frontend_tools = {n for n in FRONTEND_TOOL_NAMES if n.startswith("glossary_")}
+        # sanity: there ARE glossary frontend tools to check
+        assert glossary_frontend_tools
+        for name in glossary_frontend_tools:
+            assert name in GLOSSARY_SKILL_PROMPT, f"skill prompt is missing tool name {name!r}"
+
     def test_memory_tools_are_not_frontend(self):
         assert not is_frontend_tool("memory_search")
         assert not is_frontend_tool("memory_remember")

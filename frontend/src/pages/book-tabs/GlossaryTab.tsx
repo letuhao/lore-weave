@@ -16,6 +16,7 @@ import { AiSuggestionsPanel } from '@/features/glossary/components/AiSuggestions
 import { MergeCandidatePanel } from '@/features/glossary/components/MergeCandidatePanel';
 import { EntityEditorModal } from '@/components/entity-editor';
 import { ExtractionWizard } from '@/features/extraction/ExtractionWizard';
+import { BookAssistantDock } from '@/features/chat/BookAssistantDock';
 
 type GlossaryView = 'entities' | 'kinds' | 'genres' | 'unknown' | 'ai_suggestions' | 'merge_candidates';
 
@@ -457,6 +458,9 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
         mode="batch"
         onComplete={() => invalidate()}
       />
+
+      {/* P5: the book-scoped glossary assistant (floating dock → embedded chat). */}
+      <BookAssistantDock bookId={bookId} />
     </div>
   );
 }
