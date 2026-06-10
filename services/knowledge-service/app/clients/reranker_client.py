@@ -25,9 +25,8 @@ _client: "RerankerClient | None" = None
 
 
 class RerankerClient:
-    def __init__(self, base_url: str, internal_token: str, model: str, timeout_s: float) -> None:
+    def __init__(self, base_url: str, internal_token: str, timeout_s: float) -> None:
         self._base_url = base_url.rstrip("/")
-        self._model = model
         self._http = httpx.AsyncClient(
             timeout=httpx.Timeout(timeout_s, connect=5.0),
             headers={"X-Internal-Token": internal_token},
@@ -36,12 +35,22 @@ class RerankerClient:
     async def aclose(self) -> None:
         await self._http.aclose()
 
-    async def rerank(self, query: str, documents: list[str]) -> list[dict] | None:
+    async def rerank(
+        self,
+        query: str,
+        documents: list[str],
+        *,
+        user_id: str,
+        model_source: str,
+        model_ref: str,
+    ) -> list[dict] | None:
         """Return [{"index": i, "relevance_score": s}, …] sorted desc, or None.
 
         ``index`` refers to the input ``documents`` list. None on ANY failure
-        (service down, 503 not-configured, cold-load timeout, parse error) →
-        caller keeps the fusion order."""
+        (service down, model-not-found, cold-load timeout, parse error) → caller
+        keeps the fusion order. D-RERANK-NOT-BYOK: the rerank model is the user's
+        BYOK ``model_ref`` (a provider-registry user_model UUID), resolved
+        per-user by provider-registry — no hardcoded model name."""
         if not documents:
             return []
         url = f"{self._base_url}/internal/rerank"
@@ -49,7 +58,13 @@ class RerankerClient:
         try:
             resp = await self._http.post(
                 url,
-                json={"model": self._model, "query": query, "documents": documents},
+                params={"user_id": user_id},
+                json={
+                    "model_source": model_source,
+                    "model_ref": model_ref,
+                    "query": query,
+                    "documents": documents,
+                },
                 headers={"X-Trace-Id": tid} if tid else None,
             )
             if resp.status_code != 200:
@@ -69,7 +84,6 @@ def init_reranker_client() -> RerankerClient:
     _client = RerankerClient(
         base_url=settings.provider_registry_internal_url,
         internal_token=settings.internal_service_token,
-        model=settings.rerank_model,
         timeout_s=settings.rerank_timeout_s,
     )
     return _client

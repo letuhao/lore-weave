@@ -5,7 +5,7 @@ from uuid import UUID
 import httpx
 
 from ..config import settings
-from ..llm_client import LLMClient
+from ..llm_client import LLMClient, set_campaign_id
 from ..metrics import record_stage
 from .session_translator import translate_chapter
 
@@ -37,11 +37,18 @@ async def handle_chapter_message(
     chapter_id = UUID(msg["chapter_id"])
     user_id    = msg["user_id"]
 
+    # S4a: bind the owning campaign (or clear it) for THIS task before any LLM
+    # call, so every provider job submitted while processing this chapter carries
+    # campaign_id in its job_meta. Unconditional set (None for non-campaign work)
+    # prevents a sequential reuse from inheriting a prior chapter's campaign.
+    set_campaign_id(msg.get("campaign_id"))
+
     try:
         await _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event, llm_client)
     except _TransientError as exc:
         log.warning("chapter %s: transient error — %s", chapter_id, exc)
         await _fail_chapter_idempotent(pool, job_id, chapter_id, f"transient: {exc}")
+        await _emit_chapter_failed_if_circuit_open(pool, msg, chapter_id, exc)
         await _emit_chapter_done(publish_event, user_id, msg, "failed", f"transient: {exc}")
         await _check_job_completion(pool, job_id, user_id, msg, publish_event)
         record_stage("translation.chapter", pipeline=msg.get("pipeline_version", "v2"),
@@ -50,6 +57,7 @@ async def handle_chapter_message(
     except Exception as exc:
         log.exception("chapter %s: unhandled error — %s", chapter_id, exc)
         await _fail_chapter_idempotent(pool, job_id, chapter_id, f"permanent: {exc}")
+        await _emit_chapter_failed_if_circuit_open(pool, msg, chapter_id, exc)
         await _emit_chapter_done(publish_event, user_id, msg, "failed", f"permanent: {exc}")
         await _check_job_completion(pool, job_id, user_id, msg, publish_event)
         record_stage("translation.chapter", pipeline=msg.get("pipeline_version", "v2"),
@@ -248,19 +256,35 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             )
             # Auto-set active: insert only if no active version exists yet for
             # (chapter_id, target_language). M5b: do NOT auto-publish a version the
-            # verifier flagged with unresolved high-severity issues — leave the slot
-            # empty so the reader sees "not translated" until the user reviews and
+            # verifier flagged with unresolved high-severity issues — the SELECT
+            # WHERE drops it so the slot stays empty until the user reviews and
             # explicitly sets it active (the publish gate). V2 chapters have
             # unresolved_high_count=0 (default) → unchanged behaviour.
+            #
+            # D-CAMPAIGN-AUTONOMOUS-PUBLISH: a CAMPAIGN job is the no-human Auto-Draft
+            # Factory — it PROMOTES the freshly-completed clean version to active even
+            # OVER an existing active one (a re-translation of a stale/failed chapter),
+            # because there is no human to confirm the M6a publish. Still gated on
+            # unresolved_high_count=0 (the SELECT WHERE), so a high-severity-flagged
+            # re-translation never auto-republishes. An interactive (non-campaign) job
+            # keeps DO NOTHING → first-write-wins + an explicit human publish.
+            _on_conflict = (
+                """ON CONFLICT (chapter_id, target_language) DO UPDATE
+                       SET chapter_translation_id = EXCLUDED.chapter_translation_id,
+                           set_by_user_id = EXCLUDED.set_by_user_id,
+                           set_at = now()"""
+                if msg.get("campaign_id")
+                else "ON CONFLICT (chapter_id, target_language) DO NOTHING"
+            )
             await db.execute(
-                """
+                f"""
                 INSERT INTO active_chapter_translation_versions
                   (chapter_id, target_language, chapter_translation_id, set_by_user_id)
                 SELECT $1, ct.target_language, $2, ct.owner_user_id
                 FROM chapter_translations ct
                 WHERE ct.id = $2
                   AND COALESCE(ct.unresolved_high_count, 0) = 0
-                ON CONFLICT (chapter_id, target_language) DO NOTHING
+                {_on_conflict}
                 """,
                 chapter_id, chapter_translation_id,
             )
@@ -426,6 +450,30 @@ async def _insert_outbox_event(
     )
 
 
+async def _emit_chapter_failed_if_circuit_open(pool, msg, chapter_id, exc) -> None:
+    """S3c-2b: when a chapter fails because the provider's S3a circuit is OPEN,
+    emit `chapter.translation_failed` (error_code=LLM_CIRCUIT_OPEN) so
+    campaign-service auto-pauses the campaign. Best-effort + circuit-open-only:
+    the campaign pauses solely on that code, and a lost emit just means the
+    campaign keeps churning until the breaker self-heals + a retry succeeds. The
+    code is carried structurally on `_TransientError.code` (set at the provider
+    raise sites in session_translator), so this never depends on the message
+    format."""
+    if getattr(exc, "code", None) != "LLM_CIRCUIT_OPEN":
+        return
+    try:
+        async with pool.acquire() as db:
+            await _insert_outbox_event(db, "chapter.translation_failed", chapter_id, {
+                "user_id": str(msg["user_id"]),
+                "book_id": str(msg["book_id"]),
+                "chapter_id": str(chapter_id),
+                "target_language": msg.get("target_language"),
+                "error_code": "LLM_CIRCUIT_OPEN",
+            })
+    except Exception:  # noqa: BLE001 — telemetry/control signal, never fail the worker
+        log.warning("S3c-2b: failed to emit chapter.translation_failed (non-fatal)", exc_info=True)
+
+
 async def _emit_translation_quality(
     conn, chapter_translation_id, msg: dict, pipeline_version: str,
     *, source_text: str = "", translated_text: str = "",
@@ -491,8 +539,17 @@ async def _emit_translation_quality(
     # sample both by the SAME fraction of their own length, with the fraction picked
     # so neither side exceeds the cap. Both samples then cover the same story span
     # AND stay bounded. cap<=0 → skip the feed (don't emit empty strings).
+    # S5b-eval: a campaign-chosen eval-judge model rides the event so learning's
+    # M7d-2 judge uses it. The campaign pick IS the opt-in — when present, force the
+    # text feed for THIS chapter regardless of the service-wide feed flag (otherwise
+    # the judge has no inputs). Non-campaign traffic still honours the flag.
+    eval_judge_ref = msg.get("eval_judge_model_ref")
+    if eval_judge_ref:
+        payload["eval_judge_model_source"] = msg.get("eval_judge_model_source")
+        payload["eval_judge_model_ref"] = eval_judge_ref
     cap = settings.translation_judge_feed_max_chars
-    if settings.translation_judge_feed_enabled and source_text and translated_text and cap > 0:
+    feed_texts = settings.translation_judge_feed_enabled or bool(eval_judge_ref)
+    if feed_texts and source_text and translated_text and cap > 0:
         frac = min(1.0, cap / len(source_text), cap / len(translated_text))
         payload["source_text"] = source_text[: max(1, int(len(source_text) * frac))]
         payload["translated_text"] = translated_text[: max(1, int(len(translated_text) * frac))]
@@ -606,7 +663,16 @@ async def _save_chapter_memo(
 
 
 class _TransientError(Exception):
-    """Network blip, service unavailable — safe to retry."""
+    """Network blip, service unavailable — safe to retry.
+
+    `code` (S3c-2b) carries the structured upstream error code (e.g.
+    LLM_CIRCUIT_OPEN) when the failure originated from a provider job, so the
+    circuit-open auto-pause signal doesn't depend on parsing the message string.
+    None for non-provider transients (book-service down, etc.)."""
+
+    def __init__(self, message: str, *, code: str | None = None) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class _PermanentError(Exception):

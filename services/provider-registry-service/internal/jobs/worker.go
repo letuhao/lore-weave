@@ -20,6 +20,7 @@ import (
 	"github.com/loreweave/provider-registry-service/internal/billing"
 	"github.com/loreweave/provider-registry-service/internal/chunker"
 	"github.com/loreweave/provider-registry-service/internal/provider"
+	"github.com/loreweave/provider-registry-service/internal/ratelimit"
 	"github.com/loreweave/provider-registry-service/internal/storage"
 )
 
@@ -57,12 +58,17 @@ type Worker struct {
 	// that case. b64_json mode works without an audioCache.
 	audioCache *storage.AudioCache
 	// Phase 6a — usage-billing spend-guardrail client. May be nil
-	// (router-only tests, dev without usage-billing); settleBilling then
+	// (router-only tests, dev without usage-billing); settleReservation then
 	// no-ops and the usage-billing sweeper releases any leaked hold.
 	guardrail *billing.GuardrailClient
 	// Phase 6b — transient-retry budget (config JOB_MAX_RETRIES). 0 → a
 	// failed upstream call is not retried.
 	maxRetries int
+	// S3a (G5) — per-provider concurrency governor + circuit-breaker. Both
+	// nil when REDIS_URL is unset → ratelimit.Guard passes calls through
+	// unchanged (governance disabled; existing tests stay Redis-free).
+	gov ratelimit.ConcurrencyGovernor
+	brk ratelimit.CircuitBreaker
 }
 
 func NewWorker(repo *Repo, resolve CredResolver, adapter AdapterFactory, notifier Notifier, logger *slog.Logger, audioCache *storage.AudioCache, guardrail *billing.GuardrailClient, maxRetries int) *Worker {
@@ -73,6 +79,15 @@ func NewWorker(repo *Repo, resolve CredResolver, adapter AdapterFactory, notifie
 		notifier = NoopNotifier{}
 	}
 	return &Worker{repo: repo, resolve: resolve, adapter: adapter, notifier: notifier, logger: logger, audioCache: audioCache, guardrail: guardrail, maxRetries: maxRetries}
+}
+
+// WithGovernance attaches the S3a governor + circuit-breaker (fluent so the
+// existing NewWorker call sites and their tests are untouched). Pass untyped-nil
+// interfaces to disable a layer — never a typed-nil concrete (see ratelimit.Guard).
+func (w *Worker) WithGovernance(gov ratelimit.ConcurrencyGovernor, brk ratelimit.CircuitBreaker) *Worker {
+	w.gov = gov
+	w.brk = brk
+	return w
 }
 
 // finalizeAndNotify is the only path through which the worker ends a
@@ -87,14 +102,51 @@ func (w *Worker) finalizeAndNotify(
 	result any,
 	errorCode, errorMessage, finishReason string,
 ) {
-	rows, err := w.repo.Finalize(ctx, jobID, status, result, errorCode, errorMessage, finishReason)
+	// Resolve billing identity ONCE (reservation + model) for both the usage
+	// outbox (written in the finalize tx) and the reservation settle (after the
+	// notification). w.guardrail nil → billing not wired (dev/test).
+	var resID *uuid.UUID
+	var modelSource string
+	var modelRef uuid.UUID
+	var billingFound bool
+	if w.guardrail != nil {
+		var berr error
+		resID, modelSource, modelRef, billingFound, berr = w.repo.BillingInfo(ctx, jobID)
+		if berr != nil {
+			w.logger.Warn("billing info lookup failed", "job_id", jobID.String(), "err", berr)
+		}
+	}
+
+	// S4b (decision C) — build the usage-outbox payload for a COMPLETED job with
+	// resolvable token usage, computing the real per-model cost ONCE (reused for
+	// the reservation reconcile below). usage stays nil for failed/cancelled or
+	// media/no-token jobs → no outbox row, and a nil cost reconciles at estimate.
+	var usage *UsageOutbox
+	var cost *float64
+	if billingFound && status == "completed" {
+		if tokIn, tokOut, ok := usageTokens(result); ok {
+			cost = w.actualUSD(ctx, ownerUserID, modelSource, modelRef, result)
+			usage = &UsageOutbox{
+				ModelSource:  modelSource,
+				ModelRef:     modelRef,
+				Operation:    operation,
+				InputTokens:  tokIn,
+				OutputTokens: tokOut,
+				CostUSD:      cost,
+			}
+		}
+	}
+
+	// Finalize + write the usage_outbox row in ONE tx (rows>0 ⇒ transition took
+	// effect; a cancel-raced finalize returns 0 and writes nothing — same gate as
+	// before). This REPLACES the fire-and-forget RecordUsage HTTP on the jobs path.
+	rows, err := w.repo.FinalizeWithUsageOutbox(ctx, jobID, ownerUserID, status, result, errorCode, errorMessage, finishReason, usage)
 	if err != nil {
 		w.logger.Error("finalize failed", "job_id", jobID.String(), "err", err)
 		return
 	}
 	if rows == 0 {
-		// Race lost — cancel won. Cancel handler already published.
-		// The cancel handler also releases the spend reservation.
+		// Race lost — cancel won. Cancel handler already published + released.
 		return
 	}
 	var resultJSON json.RawMessage
@@ -115,68 +167,32 @@ func (w *Worker) finalizeAndNotify(
 		// still poll. Log + move on.
 		w.logger.Warn("notifier publish failed", "job_id", jobID.String(), "err", err)
 	}
-	// Phase 6a — settle the spend reservation (reconcile or release). Runs
-	// only on a real transition (rows > 0), so a job whose finalize lost to
-	// a cancel is settled by the cancel handler, not double-counted here.
-	// Ordered AFTER the notification (/review-impl LOW#7) so a slow/hung
-	// usage-billing call cannot delay the terminal event.
-	w.settleBilling(ctx, jobID, ownerUserID, operation, status, result)
+	// Phase 6a — settle the spend reservation (reconcile or release). Runs only
+	// on a real transition (rows > 0). Ordered AFTER the notification
+	// (/review-impl LOW#7) so a slow/hung usage-billing call can't delay the
+	// terminal event. Reuses the cost computed above (no second pricing read).
+	w.settleReservation(ctx, jobID, status, resID, cost)
 }
 
-// settleBilling settles a terminal job's billing — Phase 6a + 6a-β. Two
-// independent best-effort steps: (1) reconcile/release the spend reservation
-// (Subsystem A + B); (2) on a completed job, record model-level usage to the
-// /record audit ledger (the gateway as biller). A usage-billing failure is
-// logged, never propagated.
-func (w *Worker) settleBilling(ctx context.Context, jobID, ownerUserID uuid.UUID, operation, status string, result any) {
-	if w.guardrail == nil {
-		return // billing not wired
+// settleReservation reconciles (completed) or releases (failed) the Phase-6a
+// spend reservation, using the identity already resolved by finalizeAndNotify.
+// The model-level usage RECORD moved to the usage_outbox (S4b decision C) — the
+// jobs path no longer calls RecordUsage. `cost` is the measured spend (nil ⇒
+// usage-billing charges the reservation's stored estimate: media / unpriced).
+func (w *Worker) settleReservation(ctx context.Context, jobID uuid.UUID, status string, resID *uuid.UUID, cost *float64) {
+	if w.guardrail == nil || resID == nil {
+		return // billing not wired, or the job carried no reservation
 	}
-	resID, modelSource, modelRef, found, err := w.repo.BillingInfo(ctx, jobID)
-	if err != nil {
-		w.logger.Warn("billing info lookup failed", "job_id", jobID.String(), "err", err)
+	if status != "completed" {
+		// failed — free the hold, no spend. (Cancellation is settled by the
+		// cancel handler, not the worker.)
+		if relErr := w.guardrail.Release(ctx, *resID); relErr != nil {
+			w.logger.Warn("guardrail release failed", "job_id", jobID.String(), "err", relErr)
+		}
 		return
 	}
-	if !found {
-		return // no job row — nothing to settle or record
-	}
-
-	// (1) Spend reservation — only when the job carries one.
-	if resID != nil {
-		if status != "completed" {
-			// failed — free the hold, record no spend. (Cancellation is
-			// settled by the cancel handler, not the worker.)
-			if relErr := w.guardrail.Release(ctx, *resID); relErr != nil {
-				w.logger.Warn("guardrail release failed", "job_id", jobID.String(), "err", relErr)
-			}
-		} else {
-			// completed — reconcile. A non-nil actual is the measured
-			// spend; nil tells usage-billing to charge the reservation's
-			// own estimate (media jobs, or usage/pricing unresolved).
-			actual := w.actualUSD(ctx, ownerUserID, modelSource, modelRef, result)
-			if recErr := w.guardrail.Reconcile(ctx, *resID, actual); recErr != nil {
-				w.logger.Warn("guardrail reconcile failed", "job_id", jobID.String(), "err", recErr)
-			}
-		}
-	}
-
-	// (2) Phase 6a-β — model-level usage record (gateway as biller). Only on
-	// a completed job with resolvable token usage; request_id = job_id so a
-	// settle retry is idempotent on the usage-billing side.
-	if status == "completed" {
-		if tokIn, tokOut, ok := usageTokens(result); ok {
-			if recErr := w.guardrail.RecordUsage(ctx, billing.UsageRecord{
-				RequestID:    jobID,
-				OwnerUserID:  ownerUserID,
-				ModelSource:  modelSource,
-				ModelRef:     modelRef,
-				Operation:    operation,
-				InputTokens:  tokIn,
-				OutputTokens: tokOut,
-			}); recErr != nil {
-				w.logger.Warn("usage record failed", "job_id", jobID.String(), "err", recErr)
-			}
-		}
+	if recErr := w.guardrail.Reconcile(ctx, *resID, cost); recErr != nil {
+		w.logger.Warn("guardrail reconcile failed", "job_id", jobID.String(), "err", recErr)
 	}
 }
 
@@ -367,17 +383,14 @@ func (w *Worker) Process(
 	// Otherwise we fall through to single-call Phase 2b path unchanged.
 	chunkPieces := w.maybeChunk(inputMap, chunking, logger)
 	if len(chunkPieces) > 1 {
-		if err := w.processChunks(ctx, jobID, agg, adapter, endpointBaseURL, secret, providerModelName, inputMap, chunkPieces, emit, logger); err != nil {
-			errCode := "LLM_UPSTREAM_ERROR"
-			if err == provider.ErrStreamNotSupported {
-				errCode = "LLM_STREAM_NOT_SUPPORTED"
-			}
+		if err := w.processChunks(ctx, jobID, agg, adapter, providerKind, endpointBaseURL, secret, providerModelName, inputMap, chunkPieces, emit, logger); err != nil {
+			errCode := classifyStreamErrorCode(err)
 			w.finalizeAndNotify(ctx, jobID, ownerUserID, operation, "failed", nil, errCode, err.Error(), "")
 			return
 		}
 	} else {
 		// Single-call Phase 2b path with Phase 4a-α Step 0b transient retry.
-		streamErr := w.streamWithRetry(ctx, agg, adapter, endpointBaseURL, secret, providerModelName, inputMap, emit, logger)
+		streamErr := w.streamWithRetry(ctx, agg, adapter, providerKind, endpointBaseURL, secret, providerModelName, inputMap, emit, logger)
 		if streamErr != nil {
 			logger.Error("stream failed", "err", streamErr)
 			errCode := classifyStreamErrorCode(streamErr)
@@ -430,6 +443,7 @@ func (w *Worker) processChunks(
 	jobID uuid.UUID,
 	agg Aggregator,
 	adapter provider.Adapter,
+	providerKind string,
 	endpointBaseURL, secret, providerModelName string,
 	inputMap map[string]any,
 	chunks []string,
@@ -447,7 +461,12 @@ func (w *Worker) processChunks(
 			// StartChunk resets the per-chunk buffer — so a retry after a
 			// partial stream discards that attempt's partial (Phase 6b).
 			agg.StartChunk(i)
-			return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, perChunkInput, emit)
+			// S3a: governor + circuit-breaker wrap the provider call. Inside
+			// retryTransient so each retry re-checks the breaker + re-acquires
+			// a slot, and a transient failure counts toward opening.
+			return ratelimit.Guard(ctx, w.gov, w.brk, providerKind, provider.IsTransientUpstreamError, func() error {
+				return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, perChunkInput, emit)
+			})
 		})
 		if streamErr != nil {
 			// EndChunk is NOT called on failure: the job fails and the
@@ -482,6 +501,7 @@ func (w *Worker) streamWithRetry(
 	ctx context.Context,
 	agg Aggregator,
 	adapter provider.Adapter,
+	providerKind string,
 	endpointBaseURL, secret, providerModelName string,
 	input map[string]any,
 	emit EmitFn,
@@ -489,7 +509,10 @@ func (w *Worker) streamWithRetry(
 ) error {
 	err := retryTransient(ctx, w.maxRetries, logger, func() error {
 		agg.StartChunk(0)
-		return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, input, emit)
+		// S3a: governor + circuit-breaker wrap the provider call (see processChunks).
+		return ratelimit.Guard(ctx, w.gov, w.brk, providerKind, provider.IsTransientUpstreamError, func() error {
+			return adapter.Stream(ctx, endpointBaseURL, secret, providerModelName, input, emit)
+		})
 	})
 	if err != nil {
 		// EndChunk skipped on failure — the failed job's result is
@@ -503,6 +526,9 @@ func (w *Worker) streamWithRetry(
 // classifyStreamErrorCode picks the canonical LLM_* error code for a
 // stream failure so finalizeAndNotify can emit a stable error envelope.
 func classifyStreamErrorCode(err error) string {
+	if errors.Is(err, ratelimit.ErrCircuitOpen) {
+		return "LLM_CIRCUIT_OPEN" // S3a: provider circuit open — failed fast, provider untouched
+	}
 	if err == provider.ErrStreamNotSupported {
 		return "LLM_STREAM_NOT_SUPPORTED"
 	}

@@ -18,11 +18,19 @@ class Settings(BaseSettings):
     # Q4b — online LLM-as-judge. When a sampled run carries items + source text
     # (opted-in projects) AND a rule has a judge panel, the eval-runner judges
     # the extraction via provider-registry. Off by default (needs a judge model).
-    provider_registry_internal_url: str = "http://provider-registry:8208"
+    # In-cluster S2S URL = container DNS name + container port (matches
+    # knowledge-service). The prior default (`provider-registry:8208`) resolved
+    # to nothing — every online LLM judge (translation-fidelity M7d-2 + extraction)
+    # silently no-op'd (verdict None) because the call never reached the gateway.
+    # Caught by D-S5BEVAL-LIVE-SMOKE (2026-06-10).
+    provider_registry_internal_url: str = "http://provider-registry-service:8085"
     online_judge_enabled: bool = False
     online_judge_model_ref: str = ""          # judge model UUID (BYOK user_model)
     online_judge_model_source: str = "user_model"
-    online_judge_user_id: str = ""            # BYOK owner of the judge model
+    # D-EVAL-JUDGE-PER-USER: FALLBACK only. The judge now bills the CONTENT
+    # OWNER (the event/run's user_id); this env id is used solely when an event
+    # carries no owner. Leave empty in multi-tenant deployments.
+    online_judge_user_id: str = ""
     # M7d — online translation-fidelity judge (reuses the judge model above).
     # Off by default; runs only when a translation.quality event carries the
     # source+translated text (the M7d-3 worker feed, itself off by default).

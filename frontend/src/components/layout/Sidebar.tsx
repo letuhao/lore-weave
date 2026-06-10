@@ -5,6 +5,7 @@ import {
   Brain,
   MessageCircle,
   Search,
+  Factory,
   BarChart3,
   Settings,
   LogOut,
@@ -35,6 +36,7 @@ const mainNav: NavItem[] = [
   // `startsWith(to + '/')` match keeps the entry active across all
   // tab sub-routes. The /knowledge path itself redirects to /projects.
   { to: '/knowledge', icon: Brain, labelKey: 'nav.knowledge', auth: true },
+  { to: '/campaigns', icon: Factory, labelKey: 'nav.campaigns', auth: true },
   { to: '/browse', icon: Search, labelKey: 'nav.browse' },
 ];
 

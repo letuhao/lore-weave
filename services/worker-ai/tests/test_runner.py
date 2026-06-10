@@ -200,6 +200,35 @@ def _glossary_sync_ok(entity_id: str) -> GlossarySyncResult:
     )
 
 
+# ── S4a: process_job binds the owning campaign as a contextvar ───────
+
+
+@pytest.mark.asyncio
+@patch("app.runner.set_campaign_id")
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_process_job_binds_campaign_id_contextvar(mock_extract_persist, mock_set):
+    """The campaign on the job row is bound (as str) before any LLM call, so the
+    llm_client merge stamps it onto every provider job_meta. None → cleared."""
+    mock_extract_persist.return_value = _ok_result()
+    camp = uuid4()
+    job = _job(scope="chapters", campaign_id=camp)
+    await process_job(_mock_pool(), _mock_knowledge_client(), _mock_llm_client(),
+                      _mock_book_client(), _mock_glossary_client(), job)
+    mock_set.assert_called_once_with(str(camp))
+
+
+@pytest.mark.asyncio
+@patch("app.runner.set_campaign_id")
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_process_job_clears_campaign_id_when_none(mock_extract_persist, mock_set):
+    """A non-campaign job clears the contextvar (None) so it can't inherit a
+    previous job's campaign on a reused task."""
+    mock_extract_persist.return_value = _ok_result()
+    await process_job(_mock_pool(), _mock_knowledge_client(), _mock_llm_client(),
+                      _mock_book_client(), _mock_glossary_client(), _job(scope="chapters"))
+    mock_set.assert_called_once_with(None)
+
+
 # ── process_job: chapters scope ──────────────────────────────────────
 
 
@@ -1388,6 +1417,7 @@ async def test_get_running_jobs_pulls_embedding_dimension(monkeypatch):
         "max_spend_usd": Decimal("10"), "items_total": 5,
         "items_processed": 0, "current_cursor": None,
         "cost_spent_usd": Decimal("0"),
+        "campaign_id": None,
         "embedding_dimension": 1024,
         "extraction_config": {},
         "genre": "Tiên hiệp",
@@ -1413,6 +1443,7 @@ async def test_get_running_jobs_handles_null_embedding_dimension():
         "max_spend_usd": None, "items_total": None,
         "items_processed": 0, "current_cursor": None,
         "cost_spent_usd": Decimal("0"),
+        "campaign_id": None,
         "embedding_dimension": None,
         "extraction_config": None,
         "genre": None,

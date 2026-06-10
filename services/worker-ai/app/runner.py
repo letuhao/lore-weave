@@ -47,8 +47,14 @@ from app.clients import (
     GlossaryEntity,
     KnowledgeClient,
 )
-from app.llm_client import LLMClient
-from app.outbox_emit import emit_extraction_run, emit_extraction_run_best_effort
+from app.llm_client import LLMClient, set_campaign_id
+from app.outbox_emit import (
+    emit_chapter_extracted,
+    emit_chapter_extracted_best_effort,
+    emit_chapter_failed_best_effort,
+    emit_extraction_run,
+    emit_extraction_run_best_effort,
+)
 from app.sample_emit import persist_run_sample_best_effort
 
 __all__ = ["process_job", "poll_and_run"]
@@ -386,24 +392,32 @@ def _build_run_config(job: JobRow) -> tuple[ResolvedConfig, str, str]:
 
 async def _advance_cursor_and_emit_run(
     pool: asyncpg.Pool, user_id: UUID, job_id: UUID, cursor: dict, payload: dict,
+    *, chapter_extracted: dict | None = None,
 ) -> None:
-    """Advance the cursor + emit the extraction_run ATOMICALLY (B2-A).
+    """Advance the cursor + emit the extraction_run ATOMICALLY (B2-A), and — when
+    `chapter_extracted` is supplied (a chapter's successful extraction) — emit the
+    campaign's `knowledge.chapter_extracted` completion event in the SAME tx
+    (D-CAMPAIGN-BESTEFFORT-EMIT-REDIS).
 
-    Normal case: one transaction → the run row is guaranteed iff the cursor
-    advanced (no silent gaps under normal operation; avoids the §2.4
-    selection-bias the run telemetry exists to prevent).
+    Normal case: one transaction → the run row (and, when given, the chapter
+    completion event) is guaranteed iff the cursor advanced. Folding the chapter
+    event in here closes the prior silent-loss window: it was a standalone
+    best-effort insert AFTER this call, so a failed insert left the cursor advanced
+    with no event → the campaign stalled `dispatched` forever.
 
     Failure case (/review-impl MED-1): if the transaction fails (an infra blip
     on the shared knowledge DB), fall back to a plain best-effort cursor-advance
     so the job still PROGRESSES — the chapter's real work already persisted to
     Neo4j, so we must not re-extract (re-spending LLM) nor fail the job. Run
-    telemetry is NEVER load-bearing for extraction; the rare, random loss here
-    is not systematic and does not bias config-vs-outcome analysis."""
+    telemetry is NEVER load-bearing; on this path we still BEST-EFFORT emit the
+    chapter event (the campaign's stuck-reconcile is the backstop for residual loss)."""
     try:
         async with pool.acquire() as conn:
             async with conn.transaction():
                 await _advance_cursor(conn, user_id, job_id, cursor)
                 await emit_extraction_run(conn, payload)
+                if chapter_extracted is not None:
+                    await emit_chapter_extracted(conn, **chapter_extracted)
     except Exception:
         logger.warning(
             "transactional run-emit failed for job %s; advancing cursor "
@@ -411,6 +425,8 @@ async def _advance_cursor_and_emit_run(
             job_id, exc_info=True,
         )
         await _advance_cursor(pool, user_id, job_id, cursor)
+        if chapter_extracted is not None:
+            await emit_chapter_extracted_best_effort(pool, **chapter_extracted)
 
 
 def _run_payload(
@@ -500,6 +516,10 @@ class JobRow:
     items_processed: int
     current_cursor: dict | None
     cost_spent_usd: Decimal
+    # S4a — Auto-Draft Factory cost attribution: the owning campaign (NULL for
+    # user-initiated jobs). process_job binds it as a contextvar so every
+    # provider job_meta carries it (see app.llm_client.set_campaign_id).
+    campaign_id: UUID | None = None
     # P3 D-P3-EXTRACTION-CALLER-WIRE-UP — sourced from knowledge_projects
     # (extraction_jobs doesn't carry the dimension; the project's
     # embedding_model UUID + dimension are the per-project vector-space
@@ -536,8 +556,8 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
         SELECT j.job_id, j.user_id, j.project_id, j.scope, j.scope_range,
                j.status, j.llm_model, j.embedding_model, j.max_spend_usd,
                j.items_total, j.items_processed, j.current_cursor,
-               j.cost_spent_usd, p.embedding_dimension, p.extraction_config,
-               p.genre, p.save_raw_extraction
+               j.cost_spent_usd, j.campaign_id, p.embedding_dimension,
+               p.extraction_config, p.genre, p.save_raw_extraction
         FROM extraction_jobs j
         LEFT JOIN knowledge_projects p
           ON p.user_id = j.user_id AND p.project_id = j.project_id
@@ -570,6 +590,7 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
             items_processed=r["items_processed"],
             current_cursor=cc,
             cost_spent_usd=r["cost_spent_usd"],
+            campaign_id=r["campaign_id"],
             embedding_dimension=r["embedding_dimension"],
             extraction_config=ec if isinstance(ec, dict) else None,
             genre=r["genre"],
@@ -790,6 +811,7 @@ async def _update_project_status(
 
 async def _enumerate_chapters(
     book_client: BookClient, book_id: UUID | None, cursor: dict | None,
+    scope_range: dict | None = None,
 ) -> list[ChapterInfo]:
     """Get chapters to process, respecting cursor for resume.
 
@@ -818,6 +840,17 @@ async def _enumerate_chapters(
             continue
         gated.append(ch)
     chapters = gated
+
+    # S2 (D-K16.2-02b): honour scope_range.chapter_range = [lo, hi] on sort_order
+    # so a campaign/user can extract a chapter SUBSET. Until now only the cost-
+    # estimate ranged (via book_client.count_chapters); the runner dropped it,
+    # so the actual job processed the whole book. This aligns the two. Applied
+    # BEFORE the resume-cursor filter so resume stays within the range.
+    if scope_range and scope_range.get("chapter_range"):
+        rng = scope_range["chapter_range"]
+        if isinstance(rng, (list, tuple)) and len(rng) == 2:
+            lo, hi = int(rng[0]), int(rng[1])
+            chapters = [ch for ch in chapters if lo <= ch.sort_order <= hi]
 
     # Resume: skip chapters already processed (cursor has last_chapter_id)
     if cursor and cursor.get("last_chapter_id"):
@@ -1121,9 +1154,13 @@ async def _extract_and_persist(
         )
     except ExtractionError as exc:
         retryable = exc.stage == "provider_exhausted"
+        # S3c-2b: surface the underlying LLM error code (LLM_CIRCUIT_OPEN) from
+        # the chained cause so the runner can signal a circuit-open for campaign
+        # auto-pause. ExtractionError itself has no `.code`; it's on last_error.
+        error_code = getattr(exc.last_error, "code", None)
         logger.warning(
-            "extract_pass2 failed source_id=%s stage=%s retryable=%s: %s",
-            source_id, exc.stage, retryable, exc,
+            "extract_pass2 failed source_id=%s stage=%s retryable=%s code=%s: %s",
+            source_id, exc.stage, retryable, error_code, exc,
         )
         return ExtractionResult(
             source_id=source_id,
@@ -1133,6 +1170,7 @@ async def _extract_and_persist(
             facts_merged=0,
             retryable=retryable,
             error=f"extraction failed (stage={exc.stage}): {exc}",
+            error_code=error_code,
         ), None
 
     persist_result = await knowledge_client.persist_pass2(
@@ -1189,6 +1227,13 @@ async def process_job(
         job.items_processed, job.items_total or "?",
     )
 
+    # S4a: bind the owning campaign (or clear it) for this job's task before any
+    # extraction LLM call, so every provider job submitted while processing this
+    # job carries campaign_id in its job_meta. process_job runs as its own task
+    # per job (poll_and_run), so the ContextVar is task-local — concurrent jobs
+    # for different campaigns never cross-contaminate.
+    set_campaign_id(str(job.campaign_id) if job.campaign_id else None)
+
     items_processed = 0
     try:
         # Resolve book_id from project (project_id ≠ book_id)
@@ -1211,7 +1256,7 @@ async def process_job(
 
         if job.scope in ("chapters", "all"):
             pre_chapters = await _enumerate_chapters(
-                book_client, book_id, job.current_cursor,
+                book_client, book_id, job.current_cursor, job.scope_range,
             )
         # Canon Model CM3b — coalescing drainer: extract the chapters queued by
         # chapter.published, each at its PINNED revision. Shares the per-chapter
@@ -1396,6 +1441,17 @@ async def process_job(
                 )
 
                 if result.error:
+                    # S3c-2b: a provider circuit-open (retryable or not) signals
+                    # the provider is down → tell campaign-service to auto-pause.
+                    if result.error_code == "LLM_CIRCUIT_OPEN":
+                        await emit_chapter_failed_best_effort(
+                            pool,
+                            user_id=str(job.user_id),
+                            project_id=str(job.project_id),
+                            book_id=str(book_id) if book_id else None,
+                            chapter_id=str(ch.chapter_id),
+                            error_code="LLM_CIRCUIT_OPEN",
+                        )
                     if not result.retryable:
                         await _append_log(
                             pool, job.user_id, job.job_id, "error",
@@ -1495,10 +1551,21 @@ async def process_job(
                     base_version=run_base_version, outcome="succeeded", result=result,
                     run_id=run_id,
                 )
+                # Auto-Draft Factory S1 (decision H): per-chapter knowledge
+                # completion for campaign-service's projection. Emitted in the SAME
+                # tx as the cursor advance (D-CAMPAIGN-BESTEFFORT-EMIT-REDIS) so a
+                # chapter whose cursor advanced ALWAYS has its completion event —
+                # closing the silent-loss window that stalled campaigns `dispatched`.
                 await _advance_cursor_and_emit_run(
                     pool, job.user_id, job.job_id,
                     {"last_chapter_id": ch.chapter_id, "scope": "chapters"},
                     run_payload,
+                    chapter_extracted={
+                        "user_id": str(job.user_id),
+                        "project_id": str(job.project_id),
+                        "book_id": str(book_id) if book_id else None,
+                        "chapter_id": str(ch.chapter_id),
+                    },
                 )
                 # D-K16.11-01: bump per-project monthly + all-time spend
                 # counters so CostSummary's GET /costs reflects reality.
