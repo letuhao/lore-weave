@@ -7,7 +7,7 @@ from typing import Optional
 from uuid import UUID
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # ── Domain vocabulary (mirrors the DB CHECK-free string columns) ──────────
 GATING_MODES = {"phase_barrier", "cold_start"}
@@ -80,6 +80,18 @@ class CreateCampaignPayload(BaseModel):
         if v >= _BUDGET_USD_MAX:
             raise ValueError("budget_usd exceeds the maximum (numeric(16,8))")
         return v
+
+    @model_validator(mode="after")
+    def _valid_est_band(self):
+        # G1 (review-impl LOW): the persisted estimate band must be sane — non-negative
+        # and low ≤ high — so the report's spent-vs-estimate can't show a garbage band.
+        lo, hi = self.est_usd_low, self.est_usd_high
+        for v in (lo, hi):
+            if v is not None and v < 0:
+                raise ValueError("est_usd_low/high must be >= 0")
+        if lo is not None and hi is not None and lo > hi:
+            raise ValueError("est_usd_low must be <= est_usd_high")
+        return self
 
 
 class RerunFailedPayload(BaseModel):

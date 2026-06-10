@@ -433,7 +433,10 @@ async def rerun_failed_campaign(
     (+ zero attempts, clear last_error) and re-arm the campaign to `running` so the
     driver re-dispatches them. The downstream skip-gate prevents re-spend on
     already-completed work. A cancelled/cancelling campaign can't be re-run; the
-    over-budget guard applies (re-running dispatches → spends)."""
+    over-budget guard applies (re-running dispatches → spends). NOTE: re-arming a
+    *paused* campaign to running also resumes its other pending work (re-run implies
+    "make progress again"); cancel instead if you only wanted the failed chapters
+    inspected (review-impl LOW)."""
     row = await repo.get_campaign(db, campaign_id, UUID(user_id))
     if row is None:
         raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",

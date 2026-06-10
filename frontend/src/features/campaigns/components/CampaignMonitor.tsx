@@ -32,13 +32,20 @@ export function CampaignMonitor({ campaignId }: { campaignId: string }) {
   // G3 — live run stats (elapsed / throughput / ETA / in-progress), derived from
   // started_at + the progress counts. Shown for active campaigns (terminal → report).
   const stats = progress.data
-    ? deriveRunStats({
-        startedAt: c.started_at, finishedAt: c.finished_at, terminal,
-        total: progress.data.total_chapters,
-        translationDone: progress.data.stages.translation?.done ?? 0,
-        inProgress: Object.values(progress.data.stages).reduce((n, s) => n + s.in_progress, 0),
-        nowMs: Date.now(),
-      })
+    ? (() => {
+        const kn = progress.data.stages.knowledge;
+        const tr = progress.data.stages.translation;
+        // Dispatched stages = knowledge + translation (eval is observed). Settled =
+        // done + skipped on each; total units ≈ 2 × chapters.
+        const doneUnits = (kn.done + kn.skipped) + (tr.done + tr.skipped);
+        return deriveRunStats({
+          startedAt: c.started_at, finishedAt: c.finished_at, terminal,
+          totalUnits: progress.data.total_chapters * 2,
+          doneUnits,
+          inProgress: kn.in_progress + tr.in_progress,
+          nowMs: Date.now(),
+        });
+      })()
     : null;
 
   return (

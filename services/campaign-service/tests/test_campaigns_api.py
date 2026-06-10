@@ -144,6 +144,13 @@ def test_create_invalid_gating_mode_422(client, mocker):
     assert resp.status_code == 422
 
 
+def test_create_invalid_est_band_422(client, mocker):
+    # G1 (review-impl LOW): est_usd_low > est_usd_high is rejected at validation.
+    _book_stub(mocker)
+    resp = client.post("/v1/campaigns", json=_payload(est_usd_low="10.00", est_usd_high="5.00"))
+    assert resp.status_code == 422
+
+
 # ── S5b model matrix: verifier + embedding/reranker ──────────────────────────
 
 VER = "77777777-7777-7777-7777-777777777777"

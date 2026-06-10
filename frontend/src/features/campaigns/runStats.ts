@@ -4,9 +4,9 @@
 
 export interface RunStats {
   elapsed: string;     // "3h12m" | "45m" | "—"
-  throughput: string;  // "7.8 ch/min" | "—"
+  throughput: string;  // "7.8/min" | "—"  (stage-completions per minute)
   eta: string;         // remaining time "1h20m" | "—"
-  inProgress: number;  // chapters mid-flight (sum of per-stage in_progress)
+  inProgress: number;  // stage-units mid-flight (sum of per-stage in_progress)
 }
 
 function hms(sec: number): string {
@@ -20,8 +20,8 @@ export function deriveRunStats(a: {
   startedAt: string | null;
   finishedAt: string | null;
   terminal: boolean;
-  total: number;
-  translationDone: number;  // the deliverable unit for throughput/ETA
+  doneUnits: number;   // settled stage-completions so far (knowledge+translation done/skipped)
+  totalUnits: number;  // total dispatched stage-units (≈ stages × chapters)
   inProgress: number;
   nowMs: number;
 }): RunStats {
@@ -31,12 +31,15 @@ export function deriveRunStats(a: {
   const startMs = Date.parse(a.startedAt);
   const endMs = a.finishedAt ? Date.parse(a.finishedAt) : a.nowMs;
   const elapsedSec = Math.max(0, (endMs - startMs) / 1000);
-  const perMin = elapsedSec > 0 ? a.translationDone / (elapsedSec / 60) : 0;
-  const remaining = Math.max(0, a.total - a.translationDone);
+  // Rate over ALL stage-completions (not just translation) so a phase_barrier run —
+  // which finishes every chapter's knowledge before any translation — still shows a
+  // live rate + ETA during the (long) knowledge phase instead of "—".
+  const perMin = elapsedSec > 0 ? a.doneUnits / (elapsedSec / 60) : 0;
+  const remaining = Math.max(0, a.totalUnits - a.doneUnits);
   const etaSec = !a.terminal && perMin > 0 && remaining > 0 ? (remaining / perMin) * 60 : null;
   return {
     elapsed: hms(elapsedSec),
-    throughput: perMin > 0 ? `${perMin.toFixed(1)} ch/min` : '—',
+    throughput: perMin > 0 ? `${perMin.toFixed(1)}/min` : '—',
     eta: a.terminal || etaSec == null ? '—' : hms(etaSec),
     inProgress: a.inProgress,
   };

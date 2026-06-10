@@ -210,15 +210,19 @@ async def get_report_row(
 async def get_failed_error_strings(
     pool: asyncpg.Pool, campaign_id: UUID,
 ) -> list[asyncpg.Record]:
-    """G1 — (last_error, count) for chapters with any FAILED stage, for the report's
-    error grouping. The router buckets each `last_error` via `normalize_error_cause`
-    and sums counts per cause (bucketing is a pure, unit-tested fn)."""
+    """G1 — (last_error, count) for chapters with a FAILED knowledge/translation
+    stage, for the report's error grouping. The router buckets each `last_error` via
+    `normalize_error_cause` and sums counts per cause (bucketing is a pure, unit-
+    tested fn). Scoped to knowledge/translation (NOT eval) to match
+    `reset_failed_stages` — eval is observed (rides translation.quality), not
+    dispatched, so an eval failure is neither actionable nor re-runnable; counting it
+    here would report an "error" that "Re-run all failed" can't clear (review-impl)."""
     return await pool.fetch(
         """
         SELECT last_error, COUNT(*) AS n
         FROM campaign_chapters
         WHERE campaign_id = $1
-          AND 'failed' IN (knowledge_status, translation_status, eval_status)
+          AND 'failed' IN (knowledge_status, translation_status)
         GROUP BY last_error
         """,
         campaign_id,
