@@ -55,7 +55,7 @@ Inherited by ALL tracks — later specs assume these:
 ## New BE work surfaced during design (build-phase)
 
 Design is surfacing real BE additions (PO chose to build, not stub). The build phase must sequence these with their consumers:
-- **knowledge-service** `GET /v1/knowledge/entities/{id}/facts?before_order=` — spoiler-windowed attribute-state ledger over the existing Neo4j fact store. Consumers: **T2.1** Cast codex · **T2.4** Character Arc state band.
+- **knowledge-service** `GET /v1/knowledge/entities/{id}/status?before_order=` — spoiler-windowed `:EntityStatus` (active|gone, A2 axis). **CORRECTED from "facts route" (REVIEW-IMPL HIGH-1)**: `:Fact` is closed-type (decision/preference/milestone/negation), no order axis, ≠ state. Optional `/entities/{id}/facts` = known-facts list. Consumers: **T2.1** Cast codex · **T2.4** Character Arc state band.
 - **composition-service** world-map store — `work.settings.world_map.positions` PATCH + `POST /v1/composition/works/{id}/world-map/backdrop` (image → MinIO public-read UUID key). Consumer: **T2.5** World Map.
 - **composition-service** `/generate` **+ `selection` field** + explicit operation dispatch (rewrite/expand/describe; register + assert per the missing-enum lesson). Consumer: **T3.2** Selection tools.
 - **composition-service** `grounding_prefs` store (table keyed by node_id/block/ref) + packer force-includes pins / drops excludes. Consumer: **T3.4** Grounding pin/exclude.
