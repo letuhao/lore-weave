@@ -773,6 +773,41 @@ class TestK21BToolCallingIntegration:
         gateway_mock.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_book_context_advertises_glossary_edit_not_propose_edit(self):
+        """Glossary-assistant P3: a book-scoped (non-editor) chat sends
+        book_context → stream_response advertises glossary_propose_entity_edit
+        (book-scoped) but NOT propose_edit (editor-only)."""
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = []
+        conn.fetchval.return_value = 1
+
+        kc = _patched_knowledge(
+            stable="", volatile="", mode="static",
+            tool_defs=[{"type": "function", "function": {"name": "memory_search"}}],
+        )
+
+        async def fake_tool_loop(**kwargs):
+            yield {"content": "ok", "reasoning_content": "",
+                   "finish_reason": "stop", "usage": _Usage(1, 1)}
+
+        with patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service._stream_with_tools", side_effect=fake_tool_loop) as loop_mock, \
+             patch("app.services.stream_service._stream_via_gateway"):
+            async for _ in stream_response(
+                session_id=TEST_SESSION_ID, user_message_content="rename Nezha",
+                user_id=TEST_USER_ID, model_source="user_model",
+                model_ref=TEST_MODEL_REF, creds=_make_creds(),
+                pool=pool, billing=AsyncMock(),
+                stream_format="agui",
+                book_context={"book_id": "b1"},
+            ):
+                pass
+
+        names = [t["function"]["name"] for t in loop_mock.call_args.kwargs["tools"]]
+        assert "glossary_propose_entity_edit" in names
+        assert "propose_edit" not in names  # editor-only, no editor_context here
+
+    @pytest.mark.asyncio
     async def test_disable_tools_advertises_no_tools_compose_mode(self):
         """Editor 'Compose' mode: disable_tools=True advertises NO tools —
         not memory tools, not the editor write-back tool — even though

@@ -28,9 +28,13 @@ interface ChatProps {
  * project so the assistant has the book's lore/memory.
  */
 export function Chat({ bookId, editorContext, composeMode, className }: ChatProps) {
+  // Glossary-assistant P3: any book-scoped chat (incl. the editor) advertises the
+  // glossary edit-existing tool. The editor also passes editorContext (chapter
+  // prose tool); a glossary-page/reader chat passes only bookContext.
+  const bookContext = bookId ? { book_id: bookId } : undefined;
   return (
     <ChatSessionProvider embedded>
-      <ChatStreamProvider editorContext={editorContext} composeMode={composeMode}>
+      <ChatStreamProvider editorContext={editorContext} composeMode={composeMode} bookContext={bookContext}>
         <EmbeddedChat bookId={bookId} className={className} />
       </ChatStreamProvider>
     </ChatSessionProvider>

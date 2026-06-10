@@ -261,6 +261,7 @@ async def send_message(
             thinking=body.thinking,
             stream_format=stream_format,
             editor_context=body.editor_context.model_dump() if body.editor_context else None,
+            book_context=body.book_context.model_dump() if body.book_context else None,
             disable_tools=body.disable_tools,
         ),
         media_type="text/event-stream",

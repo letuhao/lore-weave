@@ -441,6 +441,7 @@ async def stream_response(
     thinking: bool | None = None,
     stream_format: str = "legacy",
     editor_context: dict | None = None,
+    book_context: dict | None = None,
     disable_tools: bool = False,
 ) -> AsyncGenerator[str, None]:
     """Async generator that yields chat-turn SSE lines.
@@ -592,13 +593,17 @@ async def stream_response(
     tool_defs: list[dict] = []
     if not disable_tools and kctx.tool_calling_enabled:
         tool_defs = await knowledge_client.get_tool_definitions()
-        # ARCH-1 C6: advertise the editor write-back frontend tool ONLY for the
-        # editor <Chat> panel (agui + editor_context present). Other clients
-        # (standalone chat page, voice) never see it, so the memory_* path is
-        # unaffected.
-        if stream_format == "agui" and editor_context:
+        # Frontend (browser-executed, suspend→Apply) write-back tools, advertised
+        # per surface (agui only — other clients never see them):
+        #   propose_edit                 — chapter editor panel (editor_context)
+        #   glossary_propose_entity_edit — any book-scoped chat (editor OR a
+        #     glossary-page/reader chat carrying book_context) [glossary P3]
+        if stream_format == "agui" and (editor_context or book_context):
             from app.services.frontend_tools import frontend_tool_defs
-            tool_defs = tool_defs + frontend_tool_defs()
+            tool_defs = tool_defs + frontend_tool_defs(
+                editor=bool(editor_context),
+                book_scoped=bool(editor_context or book_context),
+            )
         # A2A phase-2: advertise compose_prose only when a composer model is
         # configured for this session (orchestrator → writer delegation).
         if composer_model is not None:
@@ -1077,7 +1082,9 @@ async def resume_stream_response(
     # runs (caught by C6 live smoke). Going through _stream_with_tools keeps the
     # seed and re-advertises the tool.
     if stream_format == "agui":
-        tool_defs = tool_defs + frontend_tool_defs()
+        # Re-advertise both frontend write-back tools on resume — the agent may
+        # propose again (prose or a glossary edit) after the user's decision.
+        tool_defs = tool_defs + frontend_tool_defs(editor=True, book_scoped=True)
     if composer_model is not None:
         from app.services.composer import compose_prose_defs
         tool_defs = tool_defs + compose_prose_defs()

@@ -21,6 +21,7 @@ from app.db.suspended_runs import SuspendedRun
 from app.models import ProviderCredentials
 from app.services.frontend_tools import (
     FRONTEND_TOOL_NAMES,
+    GLOSSARY_PROPOSE_EDIT_TOOL,
     PROPOSE_EDIT_TOOL,
     frontend_tool_defs,
     is_frontend_tool,
@@ -50,6 +51,10 @@ class TestFrontendToolDefs:
         assert is_frontend_tool("propose_edit")
         assert "propose_edit" in FRONTEND_TOOL_NAMES
 
+    def test_glossary_edit_is_a_frontend_tool(self):
+        assert is_frontend_tool("glossary_propose_entity_edit")
+        assert "glossary_propose_entity_edit" in FRONTEND_TOOL_NAMES
+
     def test_memory_tools_are_not_frontend(self):
         assert not is_frontend_tool("memory_search")
         assert not is_frontend_tool("memory_remember")
@@ -64,8 +69,28 @@ class TestFrontendToolDefs:
         # no non-standard keys leak to the provider
         assert "execution_location" not in d and "execution_location" not in d["function"]
 
-    def test_frontend_tool_defs_returns_propose_edit(self):
-        assert frontend_tool_defs() == [PROPOSE_EDIT_TOOL]
+    def test_glossary_edit_schema_is_wire_standard(self):
+        d = GLOSSARY_PROPOSE_EDIT_TOOL
+        assert d["type"] == "function"
+        assert d["function"]["name"] == "glossary_propose_entity_edit"
+        params = d["function"]["parameters"]
+        assert set(params["required"]) == {
+            "book_id", "entity_id", "base_version", "target",
+            "field_label", "old_value", "new_value",
+        }
+        assert params["properties"]["target"]["enum"] == ["short_description", "attribute"]
+
+    def test_frontend_tool_defs_are_surface_scoped(self):
+        # editor surface → prose write-back only
+        assert frontend_tool_defs(editor=True, book_scoped=False) == [PROPOSE_EDIT_TOOL]
+        # glossary-page surface (book-scoped, not editor) → glossary edit only
+        assert frontend_tool_defs(editor=False, book_scoped=True) == [GLOSSARY_PROPOSE_EDIT_TOOL]
+        # editor chat is also book-scoped → both
+        assert frontend_tool_defs(editor=True, book_scoped=True) == [
+            PROPOSE_EDIT_TOOL, GLOSSARY_PROPOSE_EDIT_TOOL,
+        ]
+        # neither surface → nothing
+        assert frontend_tool_defs() == []
 
 
 # ── the suspend in the tool loop ─────────────────────────────────────────────
@@ -307,3 +332,33 @@ class TestResumeUsageSummed:
         # seed (100/20) + resumed pass (500/30) = 600/50
         assert run_finished["result"]["usage"]["promptTokens"] == 600
         assert run_finished["result"]["usage"]["completionTokens"] == 50
+
+    @pytest.mark.asyncio
+    async def test_resume_feeds_real_glossary_outcome_to_agent(self):
+        """H6 truthful resume: the assistant must see the ACTUAL Apply outcome
+        (e.g. applied_conflict), not merely 'the user clicked Apply'. The resume
+        appends the outcome verbatim as the frontend tool's result, so the next
+        LLM pass can refuse to claim success on a conflict/error."""
+        pool, conn = _make_pool_with_conn()
+        conn.fetchval.return_value = 1
+        pool.fetchrow.return_value = {"generation_params": {}, "project_id": None}
+
+        kc = AsyncMock()
+        kc.get_tool_definitions.return_value = []
+        scripts = [[tok("It changed — let me re-read it."), usage(10, 5), done("stop")]]
+
+        with _patch_client(scripts), \
+             patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service.load_suspended_run",
+                   AsyncMock(return_value=_suspended(1, 1))), \
+             patch("app.services.stream_service.delete_suspended_run", AsyncMock()):
+            await _drain(resume_stream_response(
+                session_id=str(TEST_SESSION_ID), user_id=str(TEST_USER_ID),
+                run_id="run-1", tool_call_id="c1", outcome="applied_conflict",
+                applied_text=None, creds=_creds(), pool=pool, billing=AsyncMock(),
+                stream_format="agui",
+            ))
+
+        msgs = _FakeClient.instances[0].requests[0].messages
+        tool_msg = next(m for m in msgs if m.get("role") == "tool" and m.get("tool_call_id") == "c1")
+        assert json.loads(tool_msg["content"]) == {"outcome": "applied_conflict"}

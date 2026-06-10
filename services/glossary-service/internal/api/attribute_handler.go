@@ -115,6 +115,12 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// H5 optimistic concurrency (opt-in): an attribute edit bumps the parent
+	// entity's `updated_at`, so the entity version is the single token covering
+	// both entity-level and attribute edits. When the assistant-edit Apply sends
+	// If-Match, gate on it (412 on drift). Absent ⇒ unchanged behavior.
+	ifMatch := strings.TrimSpace(r.Header.Get("If-Match"))
+
 	setClauses := []string{}
 	args := []any{}
 	argN := 1
@@ -145,16 +151,45 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 
 	if len(setClauses) > 0 {
 		args = append(args, attrValueID, entityID)
-		// Single CTE keeps both writes atomic — no partial-update window.
-		updateSQL := fmt.Sprintf(`
-			WITH _upd AS (
-				UPDATE entity_attribute_values SET %s WHERE attr_value_id = $%d
-			)
-			UPDATE glossary_entities SET updated_at = now() WHERE entity_id = $%d`,
-			strings.Join(setClauses, ", "), argN, argN+1)
-		if _, err := s.pool.Exec(ctx, updateSQL, args...); err != nil {
-			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "update failed")
-			return
+		if ifMatch != "" {
+			// H5: gate both writes on the entity version in-SQL (no TOCTOU). The
+			// attr UPDATE and the entity bump only fire when updated_at still
+			// equals the read version; otherwise 0 rows ⇒ 412 (existence already
+			// confirmed by verifyAttrValueInEntity above, so it can only be drift).
+			args = append(args, ifMatch)
+			updateSQL := fmt.Sprintf(`
+				WITH guard AS (
+					SELECT updated_at FROM glossary_entities WHERE entity_id = $%d
+				),
+				_upd AS (
+					UPDATE entity_attribute_values SET %s
+					WHERE attr_value_id = $%d AND (SELECT updated_at FROM guard) = $%d::timestamptz
+				)
+				UPDATE glossary_entities SET updated_at = now()
+				WHERE entity_id = $%d AND updated_at = $%d::timestamptz`,
+				argN+1, strings.Join(setClauses, ", "), argN, argN+2, argN+1, argN+2)
+			tag, err := s.pool.Exec(ctx, updateSQL, args...)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "update failed")
+				return
+			}
+			if tag.RowsAffected() == 0 {
+				writeError(w, http.StatusPreconditionFailed, "GLOSS_VERSION_CONFLICT",
+					"entity changed since it was read; re-open and try again")
+				return
+			}
+		} else {
+			// Single CTE keeps both writes atomic — no partial-update window.
+			updateSQL := fmt.Sprintf(`
+				WITH _upd AS (
+					UPDATE entity_attribute_values SET %s WHERE attr_value_id = $%d
+				)
+				UPDATE glossary_entities SET updated_at = now() WHERE entity_id = $%d`,
+				strings.Join(setClauses, ", "), argN, argN+1)
+			if _, err := s.pool.Exec(ctx, updateSQL, args...); err != nil {
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "update failed")
+				return
+			}
 		}
 	}
 

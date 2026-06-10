@@ -17,6 +17,7 @@ import { ThinkingBlock } from './ThinkingBlock';
 import { AudioReplayPlayer } from './AudioReplayPlayer';
 import { ToolCallIndicator } from './ToolCallIndicator';
 import { ProposeEditCard } from './ProposeEditCard';
+import { GlossaryDiffCard } from './GlossaryDiffCard';
 import { useMessageFeedback } from '../hooks/useMessageFeedback';
 import { firePasteToEditor } from '../utils/pasteToEditor';
 import type { ToolCallRecord } from '../types';
@@ -131,14 +132,22 @@ export function AssistantMessage({
           propose_edit (frontend write-back tool) renders as an interactive
           Apply/Dismiss card instead of a passive chip. */}
       {toolCalls && toolCalls.length > 0 && (() => {
-        const proposals = toolCalls.filter((tc) => tc.pending && tc.tool === 'propose_edit');
-        const rest = toolCalls.filter((tc) => !(tc.pending && tc.tool === 'propose_edit'));
+        // H15: route a pending (suspended) frontend tool to its renderer BY NAME.
+        // propose_edit → prose card; glossary_propose_entity_edit → diff card.
+        const isPendingFrontend = (tc: ToolCallRecord) =>
+          tc.pending && (tc.tool === 'propose_edit' || tc.tool === 'glossary_propose_entity_edit');
+        const proposals = toolCalls.filter(isPendingFrontend);
+        const rest = toolCalls.filter((tc) => !isPendingFrontend(tc));
         return (
           <>
             {rest.length > 0 && <ToolCallIndicator toolCalls={rest} />}
-            {proposals.map((tc) => (
-              <ProposeEditCard key={tc.toolCallId ?? tc.tool} record={tc} />
-            ))}
+            {proposals.map((tc) =>
+              tc.tool === 'glossary_propose_entity_edit' ? (
+                <GlossaryDiffCard key={tc.toolCallId ?? tc.tool} record={tc} />
+              ) : (
+                <ProposeEditCard key={tc.toolCallId ?? tc.tool} record={tc} />
+              ),
+            )}
           </>
         );
       })()}
