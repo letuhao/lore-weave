@@ -114,6 +114,26 @@ class FakeProjectsRepo:
         self.seed(proj)
         return proj
 
+    async def create_or_get(
+        self, user_id: UUID, data: ProjectCreate
+    ) -> tuple[Project, bool]:
+        """Mirror the real repo's idempotent book-binding create
+        (D-COMP-POST-WORK-RACE). Delegates to ``create`` so an ``ExplodingRepo``
+        that overrides ``create`` still surfaces its error here. For a
+        ``project_type='book'`` WITH a ``book_id``, return an existing
+        non-archived book project for (user, book) if one is already seeded
+        (created=False); otherwise insert (created=True)."""
+        if data.project_type == "book" and data.book_id is not None:
+            for proj in self._rows.values():
+                if (
+                    proj.user_id == user_id
+                    and proj.project_type == "book"
+                    and proj.book_id == data.book_id
+                    and getattr(proj, "archived_at", None) is None
+                ):
+                    return proj, False
+        return await self.create(user_id, data), True
+
     async def update(
         self,
         user_id: UUID,

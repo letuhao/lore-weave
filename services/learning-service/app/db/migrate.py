@@ -298,6 +298,13 @@ CREATE INDEX IF NOT EXISTS idx_quality_scores_user_metric
 ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS panel_safe BOOLEAN;
 ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS panel_safety_reason TEXT;
 
+-- FD-19/052 — separate the entity description hash from the name/alias
+-- content_hash so the diff classifier's `boundary` (rename signal) doesn't
+-- over-count description-only edits. content_hash stays name/alias-only;
+-- description_hash carries short_description (still privacy-hashed, never raw).
+ALTER TABLE corrections ADD COLUMN IF NOT EXISTS before_description_content_hash TEXT;
+ALTER TABLE corrections ADD COLUMN IF NOT EXISTS after_description_content_hash TEXT;
+
 -- ── online_eval_rule (Q4) ─────────────────────────────────────────────
 -- The (filter + sampling_rate) automation for the eval-runner consumer.
 -- sampling_rate is the local-LLM cost governor (the future LLM-judge path,

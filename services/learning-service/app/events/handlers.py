@@ -88,8 +88,8 @@ async def _persist_correction(
             "user_id/owner — refusing to insert"
         )
 
-    before_structural, before_hash = split_snapshot(target_type, before_snapshot)
-    after_structural, after_hash = split_snapshot(target_type, after_snapshot)
+    before_structural, before_hash, before_desc_hash = split_snapshot(target_type, before_snapshot)
+    after_structural, after_hash, after_desc_hash = split_snapshot(target_type, after_snapshot)
     diff_class = derive_diff_class(
         target_type=target_type,
         op=op,
@@ -104,18 +104,21 @@ async def _persist_correction(
         INSERT INTO corrections (
           user_id, project_id, book_id, target_type, target_id, op,
           before_structural, after_structural, before_content_hash, after_content_hash,
+          before_description_content_hash, after_description_content_hash,
           diff_class, source_extraction_run_id, source_chapter, source_span,
           actor_type, actor_id, origin_service, origin_event_id, origin_event_type, emitted_at
         ) VALUES (
           $1, $2, $3, $4, $5, $6,
           $7::jsonb, $8::jsonb, $9, $10,
-          $11, $12, $13, $14::jsonb,
-          $15, $16, $17, $18, $19, $20
+          $11, $12,
+          $13, $14, $15, $16::jsonb,
+          $17, $18, $19, $20, $21, $22
         )
         ON CONFLICT (origin_service, origin_event_id) DO NOTHING
         """,
         user_id, project_id, book_id, target_type, target_id, op,
         _jsonb(before_structural), _jsonb(after_structural), before_hash, after_hash,
+        before_desc_hash, after_desc_hash,
         diff_class, source_extraction_run_id, source_chapter, _jsonb(source_span),
         actor_type, actor_id, origin_service, origin_event_id, origin_event_type, emitted_at,
     )
@@ -388,6 +391,97 @@ async def handle_chat_feedback(event: EventData, *, pool: asyncpg.Pool) -> None:
     )
 
 
+# Only genuine-author-choice kinds become gold (design §2 / spec H2). accept-as-is
+# is NOT here: composition never emits it (its CorrectionKind Literal excludes it),
+# and mining the reranker's own winner would be self-reinforcement.
+_COMPOSITION_GOLD_KINDS = {"edit", "pick_different", "regenerate", "reject"}
+
+
+def _composition_snapshots(
+    kind: str, payload: dict[str, Any],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Encode the H2-safe preference shape into (before, after) STRUCTURAL dicts.
+
+    Indices / magnitude / booleans only — there is no novel prose on the wire
+    (raw is gated behind composition's per-work opt-in, §5). `reject` returns a
+    None `after` (the whole generation was dropped → derive_diff_class →
+    spurious-drop). `pick_different` is the one direct, non-circular correction on
+    the A1 reranker: before=winner(i), after=chosen(j)."""
+    winner_index = payload.get("winner_index")
+    before: dict[str, Any] = {"role": "winner"}
+    if winner_index is not None:
+        before["index"] = winner_index
+
+    if kind == "pick_different":
+        after: dict[str, Any] | None = {
+            "role": "chosen",
+            "index": payload.get("chosen_candidate_index"),
+            "candidate_count": payload.get("candidate_count"),
+        }
+    elif kind == "edit":
+        after = {
+            "changed_blocks": payload.get("changed_blocks"),
+            "has_guidance": bool(payload.get("has_guidance")),
+            "has_raw_prose": bool(payload.get("has_raw_prose")),
+        }
+    elif kind == "regenerate":
+        after = {
+            "regenerated_to_job_id": payload.get("regenerated_to_job_id"),
+            "has_guidance": bool(payload.get("has_guidance")),
+        }
+    else:  # reject — the generation was discarded wholesale
+        after = None
+    return before, after
+
+
+async def handle_generation_corrected(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`composition.generation_corrected` → a `generation` correction (V1 slice 2).
+
+    The author's human-gate action on a co-write becomes a `corrections` row
+    (target_type=`generation`, op=the kind, origin_service=`composition`). Only
+    edit/pick_different/regenerate/reject persist — `accept`/unknown kinds are
+    ACKed without a row (H2 self-reinforcement guard). The event is structural-
+    only (no prose on the wire); `_persist_correction` requires a non-empty
+    `outbox_id` (dedup) + `user_id` (owner) and raises → DLQ otherwise."""
+    payload = event.payload
+    kind = payload.get("kind")
+    if kind not in _COMPOSITION_GOLD_KINDS:
+        logger.debug(
+            "composition.generation_corrected kind=%r not gold — skipping (id=%s)",
+            kind, event.message_id,
+        )
+        return  # ack, no row — not an error, just not a preference signal
+
+    job_id = payload.get("job_id") or event.aggregate_id
+    user_id = _uuid_or_none(payload.get("user_id"))
+    before_structural, after_structural = _composition_snapshots(kind, payload)
+
+    await _persist_correction(
+        pool,
+        user_id=user_id,  # the author == the work owner
+        project_id=_uuid_or_none(payload.get("project_id")),
+        book_id=_uuid_or_none(payload.get("book_id")),
+        target_type="generation",
+        target_id=str(job_id),
+        op=kind,
+        before_snapshot=before_structural,
+        after_snapshot=after_structural,
+        source_chapter=None,
+        source_span=None,
+        source_extraction_run_id=None,
+        actor_type="user",
+        actor_id=user_id,
+        origin_service="composition",
+        origin_event_id=event.outbox_id,
+        origin_event_type=event.event_type,
+        emitted_at=None,  # composition event carries no emitted_at; created_at suffices
+    )
+    logger.debug(
+        "composition correction persisted: job=%s kind=%s origin=composition:%s",
+        job_id, kind, event.outbox_id,
+    )
+
+
 async def handle_translation_quality(event: EventData, *, pool: asyncpg.Pool) -> None:
     """`translation.quality` → a `source='auto'` quality_score (track M7a, Channel 2
     — the LLM-action log).
@@ -625,8 +719,8 @@ async def handle_translation_corrected(event: EventData, *, pool: asyncpg.Pool) 
 
     before = payload.get("before") or {}
     after = payload.get("after") or {}
-    before_structural, before_hash = split_snapshot("translation", before)
-    after_structural, after_hash = split_snapshot("translation", after)
+    before_structural, before_hash, _ = split_snapshot("translation", before)
+    after_structural, after_hash, _ = split_snapshot("translation", after)
     diff_class = derive_diff_class(
         target_type="translation",
         op="updated",

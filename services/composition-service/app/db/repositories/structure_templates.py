@@ -39,3 +39,15 @@ class StructureTemplatesRepo:
         async with self._pool.acquire() as c:
             rows = await c.fetch(query, user_id)
         return [_row_to_template(r) for r in rows]
+
+    async def get(self, user_id: UUID, template_id: UUID) -> StructureTemplate | None:
+        """One template the user may use: a built-in (owner NULL) OR their own.
+        Returns None for a missing id or another user's custom template (no
+        cross-user leak — the A3 decompose endpoint maps that to 404)."""
+        query = f"""
+        SELECT {_SELECT_COLS} FROM structure_template
+        WHERE id = $1 AND (owner_user_id IS NULL OR owner_user_id = $2)
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(query, template_id, user_id)
+        return _row_to_template(row) if row is not None else None

@@ -314,7 +314,10 @@
     "empty_toast": "本章沒有可發佈的內容——請先寫點東西。",
     "save_first": "發佈前請先儲存",
     "gate_pending": "{{total}} 個場景中有 {{pending}} 個尚未完成",
-    "gate_no_scenes": "建立並完成至少一個場景才能發佈"
+    "gate_no_scenes": "建立並完成至少一個場景才能發佈",
+    "gate_canon_blocked": "{{count}} 個場景存在未解決的正典矛盾",
+    "gate_unchecked": "{{count}} 個場景的正典未驗證",
+    "gate_unchecked_hint": "這些場景有需要檢查的角色，但無法解析閱讀順序位置，因此未驗證正典。仍可發佈——如有可能請檢查。"
   },
   "compare": {
     "open": "比較",

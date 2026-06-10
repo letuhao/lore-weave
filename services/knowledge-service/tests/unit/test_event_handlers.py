@@ -70,6 +70,26 @@ async def test_chat_turn_queues_event_with_user_id(mock_gate):
 
 @pytest.mark.asyncio
 @patch("app.events.handlers.should_extract", return_value=True)
+@patch("app.events.handlers.ExtractionPendingRepo")
+async def test_chat_turn_enqueues_aggregate_type_chat(mock_repo_cls, mock_gate):
+    # FD-2 regression: enqueue as aggregate_type='chat' so the worker-ai chat
+    # drainer (WHERE aggregate_type='chat') consumes it. Was 'chat_session' →
+    # never drained → chat knowledge was never extracted.
+    pool, _ = _mock_pool()
+    repo = MagicMock()
+    repo.queue_event = AsyncMock()
+    mock_repo_cls.return_value = repo
+    event = _event(
+        "chat.turn_completed", aggregate_id=str(_USER),
+        payload={"project_id": str(_PROJECT), "user_id": str(_USER)},
+    )
+    await handle_chat_turn(event, pool=pool)
+    req = repo.queue_event.await_args.args[1]
+    assert req.aggregate_type == "chat"
+
+
+@pytest.mark.asyncio
+@patch("app.events.handlers.should_extract", return_value=True)
 async def test_chat_turn_resolves_user_from_db(mock_gate):
     """user_id missing from payload — handler looks up from project."""
     pool, conn = _mock_pool()
@@ -299,10 +319,20 @@ async def test_chapter_unpublished_retracts_graph_and_passages(monkeypatch):
             yield MagicMock()
 
         remove_mock = AsyncMock(return_value=3)
+        cleanup_mock = AsyncMock(return_value=MagicMock(total=2))
         delete_mock = AsyncMock(return_value=7)
         monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        # CM3b-RETRACT-FIX: handler now retracts via the NATURAL-KEY helper
+        # (hashes the source id) — the raw-id call removed zero edges.
         monkeypatch.setattr(
-            "app.db.neo4j_repos.provenance.remove_evidence_for_source", remove_mock,
+            "app.db.neo4j_repos.provenance.remove_evidence_for_natural_key",
+            remove_mock,
+        )
+        # /review-impl MED: cleanup is deliberately NOT called here (it would
+        # race a concurrent same-project extraction outside the job lock).
+        monkeypatch.setattr(
+            "app.db.neo4j_repos.provenance.cleanup_zero_evidence_nodes",
+            cleanup_mock,
         )
         monkeypatch.setattr(
             "app.db.neo4j_repos.passages.delete_passages_for_source", delete_mock,
@@ -311,7 +341,19 @@ async def test_chapter_unpublished_retracts_graph_and_passages(monkeypatch):
         await handle_chapter_unpublished(_unpublished_event(), pool=pool)
 
     pool.execute.assert_awaited()  # pending row dropped
+    # CM3b-RETRACT-FIX regression-lock: the retract is called with the
+    # NATURAL KEY (user, project, source_type, source_id), so the helper can
+    # hash the right ExtractionSource id. The pre-fix bug passed the raw
+    # chapter_id straight to a hashed-id MATCH → zero edges removed.
     remove_mock.assert_awaited_once()
+    rk = remove_mock.await_args.kwargs
+    assert rk["source_type"] == "chapter"
+    assert rk["source_id"] == str(_CHAPTER)
+    assert rk["user_id"] == str(_USER)
+    assert rk["project_id"] == str(_PROJECT)
+    # /review-impl MED regression-lock: NO orphan sweep in the unpublish path
+    # (races concurrent extraction outside the job lock; reconciler GCs instead).
+    cleanup_mock.assert_not_awaited()
     delete_mock.assert_awaited_once()
     dk = delete_mock.await_args.kwargs
     assert dk["source_type"] == "chapter"
@@ -343,8 +385,10 @@ async def test_chapter_unpublished_passage_retract_independent_of_graph_failure(
         remove_mock = AsyncMock(side_effect=RuntimeError("neo4j transient"))
         delete_mock = AsyncMock(return_value=7)
         monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        # CM3b-RETRACT-FIX: handler retracts via the natural-key helper now.
         monkeypatch.setattr(
-            "app.db.neo4j_repos.provenance.remove_evidence_for_source", remove_mock,
+            "app.db.neo4j_repos.provenance.remove_evidence_for_natural_key",
+            remove_mock,
         )
         monkeypatch.setattr(
             "app.db.neo4j_repos.passages.delete_passages_for_source", delete_mock,

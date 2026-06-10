@@ -18,7 +18,7 @@ from app.packer.lenses import LensBundle
 from app.packer.sanitize import sanitize_guide, sanitize_lore
 
 # Canonical block order for rendering (§2.4).
-_BLOCK_ORDER = ["canon", "present", "threads", "beat", "recent", "memory", "lore", "guide"]
+_BLOCK_ORDER = ["canon", "present", "threads", "beat", "open_promises", "recent", "memory", "lore", "guide"]
 
 
 def assert_project_scoped(project_id: UUID | None) -> None:
@@ -58,9 +58,28 @@ def build_segments(bundle: LensBundle, *, guide: str = "") -> list[Segment]:
         segs.append(Segment("beat", f'planned: {pl.get("title", "")}: {pl.get("synopsis", "")}',
                             B.PRIO_THREADS_STALE))
 
+    # FD-1 S3 — open promises re-injected (F2) so the model carries + pays them.
+    # Protected (a constraint, like beat) but capped upstream so a large ledger
+    # can't crowd canon/beat.
+    for p in bundle.open_promises:
+        # SEC3 — the summary is LLM-detector output DERIVED FROM untrusted book
+        # prose, so neutralize it like <lore>/<guide> (else a crafted passage →
+        # detector summary → forged `</open_promises>` delimiter / injection on
+        # re-injection). review-impl MED#1.
+        summary = sanitize_lore((p.get("summary") or "").strip())
+        if summary:
+            segs.append(Segment("open_promises", f'{p.get("kind", "promise")}: {summary}',
+                                B.PRIO_PROMISES, protected=True))
+
     for t in bundle.threads:
         segs.append(Segment("threads", f'{t.get("kind", "")} {t.get("label", "")} → {t.get("to", "")}'.strip(),
                             B.PRIO_THREADS_STALE))
+
+    # S2 — the compressed state summary (older story-so-far) renders FIRST in the
+    # `recent` block, BEFORE the immediate prose (older→immediate reading order).
+    # Protected: it's the condensed prior state, high value.
+    if bundle.state_summary:
+        segs.append(Segment("recent", bundle.state_summary, B.PRIO_RECENT_IMMEDIATE, protected=True))
 
     # L3 recent: the LAST paragraph is the immediate-preceding prose (protected);
     # earlier paragraphs are droppable.

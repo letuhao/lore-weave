@@ -603,3 +603,47 @@ func TestDoProxyDeprecatedPathsReturn410(t *testing.T) {
 // now in the deny-list and tested as 410-Gone via the audio rows in
 // TestDoProxyDeprecatedPathsReturn410 above. Re-adding any
 // "audio passes through" assertion here would be a regression.
+
+// FD-27 — getInternalModelInfo resolves a user_model_id to its
+// provider_model_name + kind (no secrets) so worker-ai can run the
+// reasoning-model advisory. Gated on TEST_PROVIDER_REGISTRY_DB_URL.
+func TestGetInternalModelInfo(t *testing.T) {
+	srv, pool := integrationServer(t)
+	_, userModelID := seedUserModel(t, srv, pool, "http://upstream.test", "qwen/qwen3.6-35b-a3b", "secret")
+
+	infoReq := func(source, ref string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "/internal/models/"+source+"/"+ref+"/info", nil)
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("model_source", source)
+		rctx.URLParams.Add("model_ref", ref)
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		rr := httptest.NewRecorder()
+		srv.getInternalModelInfo(rr, req)
+		return rr
+	}
+
+	// happy: active user_model → name + kind, NO secret fields.
+	rr := infoReq("user_model", userModelID.String())
+	if rr.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	var out map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out["provider_model_name"] != "qwen/qwen3.6-35b-a3b" || out["provider_kind"] != "openai" {
+		t.Errorf("unexpected info: %+v", out)
+	}
+	if _, leaked := out["secret_ciphertext"]; leaked {
+		t.Error("info endpoint must NOT return secrets")
+	}
+
+	// 404: unknown id.
+	if rr := infoReq("user_model", uuid.New().String()); rr.Code != http.StatusNotFound {
+		t.Errorf("unknown id: want 404, got %d", rr.Code)
+	}
+	// 400: malformed uuid.
+	if rr := infoReq("user_model", "not-a-uuid"); rr.Code != http.StatusBadRequest {
+		t.Errorf("bad uuid: want 400, got %d", rr.Code)
+	}
+}

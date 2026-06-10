@@ -24,6 +24,7 @@ from app.events.dispatcher import EventDispatcher
 from app.events.handlers import (
     handle_chat_feedback,
     handle_config_adjusted,
+    handle_generation_corrected,
     handle_glossary_entity_updated,
     handle_knowledge_corrected,
     handle_name_confirmed,
@@ -49,6 +50,7 @@ def build_dispatcher() -> EventDispatcher:
     dispatcher.register("knowledge.extraction_run_completed", handle_run_completed)
     dispatcher.register("knowledge.config_adjusted", handle_config_adjusted)
     dispatcher.register("chat.message_feedback", handle_chat_feedback)  # Q3
+    dispatcher.register("composition.generation_corrected", handle_generation_corrected)  # V1 slice 2
     dispatcher.register("translation.quality", handle_translation_quality)  # M7a
     dispatcher.register("translation.reviewed", handle_translation_reviewed)  # M7b
     dispatcher.register("translation.corrected", handle_translation_corrected)  # M7c-1

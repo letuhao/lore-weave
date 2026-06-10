@@ -168,6 +168,9 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: INFO
+      # S2 — long-chapter state-compress threshold (chars of raw story-so-far
+      # before the packer compresses the older portion). Default 6000; overridable.
+      PACK_COMPRESS_RECENT_THRESHOLD_CHARS: ${PACK_COMPRESS_RECENT_THRESHOLD_CHARS:-6000}
       # Internal service URLs — consumed by the M3 client wrappers.
       KNOWLEDGE_INTERNAL_URL: http://knowledge-service:8092
       GLOSSARY_INTERNAL_URL: http://glossary-service:8088
@@ -899,7 +902,12 @@ services:
       # Phase B sub-session B: knowledge added so the relay ships KS's new
       # transactional outbox (knowledge.*_corrected, aggregate_type='knowledge')
       # to loreweave:events:knowledge for learning-service.
-      OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book,translation:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_translation,chat:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_chat,glossary:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary,knowledge:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge"
+      # LOOM V1 correction-flywheel slice 1 (D-COMP-OUTBOX-NOT-RELAYED): composition
+      # added so the relay ships its txn outbox (composition.generation_corrected +
+      # the pre-existing M9 scene_committed, aggregate_type='composition') to
+      # loreweave:events:composition. Until now composition wrote outbox rows that
+      # were NEVER relayed (M9 telemetry was emitted-but-unconsumed).
+      OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book,translation:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_translation,chat:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_chat,glossary:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary,knowledge:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge,composition:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_composition"
       # Phase B (§10.1): bumped 7→30 days. glossary now also feeds
       # learning-service's append-only correction log; a longer retention on the
       # source outbox rows + event_log is the replay backstop so a learning-

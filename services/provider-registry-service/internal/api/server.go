@@ -290,6 +290,10 @@ func (s *Server) Router() http.Handler {
 	r.Route("/internal", func(r chi.Router) {
 		r.Use(s.requireInternalToken)
 		r.Get("/credentials/{model_source}/{model_ref}", s.getInternalCredentials)
+		// FD-27 — minimal model metadata (provider_model_name + kind, NO
+		// secrets) so service callers (worker-ai extraction) can run a
+		// reasoning-model capability advisory without holding credentials.
+		r.Get("/models/{model_source}/{model_ref}/info", s.getInternalModelInfo)
 		// Phase 4d: /internal/invoke retired. Service-to-service
 		// callers use /internal/llm/jobs via the loreweave_llm SDK.
 		// Transparent proxy — forwards any content-type (multipart, binary, JSON) to provider
@@ -2306,6 +2310,41 @@ func (s *Server) getModelContextWindow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"context_window": *contextLength})
+}
+
+// getInternalModelInfo resolves a model_ref to its provider_kind +
+// provider_model_name (NO credentials). FD-27: worker-ai uses this to run a
+// best-effort reasoning-model advisory before extraction (a reasoning model
+// with thinking enabled silently swallows the JSON output → 0 entities/events).
+// Mirrors getModelContextWindow's user_model / platform_model resolution.
+func (s *Server) getInternalModelInfo(w http.ResponseWriter, r *http.Request) {
+	modelRef, err := uuid.Parse(chi.URLParam(r, "model_ref"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INTERNAL_VALIDATION_ERROR", "model_ref must be a uuid")
+		return
+	}
+	modelSource := chi.URLParam(r, "model_source")
+
+	var providerKind, providerModelName string
+	if modelSource == "platform_model" {
+		err = s.pool.QueryRow(r.Context(),
+			"SELECT provider_kind, provider_model_name FROM platform_models WHERE platform_model_id=$1 AND status='active'",
+			modelRef,
+		).Scan(&providerKind, &providerModelName)
+	} else { // user_model (default)
+		err = s.pool.QueryRow(r.Context(),
+			"SELECT provider_kind, provider_model_name FROM user_models WHERE user_model_id=$1 AND is_active=true",
+			modelRef,
+		).Scan(&providerKind, &providerModelName)
+	}
+	if err != nil {
+		writeError(w, http.StatusNotFound, "MODEL_NOT_FOUND", "model not found or inactive")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"provider_kind":       providerKind,
+		"provider_model_name": providerModelName,
+	})
 }
 
 func (s *Server) recordInvocation(ctx context.Context, payload map[string]any) (uuid.UUID, string, float64, error) {

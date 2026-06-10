@@ -29,6 +29,8 @@ from prometheus_client import CollectorRegistry, Counter, start_http_server
 __all__ = [
     "registry",
     "worker_ai_filter_reload_total",
+    "worker_ai_extraction_zero_output_total",
+    "worker_ai_extraction_reasoning_model_advised_total",
     "start_metrics_server",
 ]
 
@@ -58,6 +60,33 @@ worker_ai_filter_reload_total = Counter(
 )
 for _out in ("applied", "failed", "startup", "startup_failed"):
     worker_ai_filter_reload_total.labels(outcome=_out)
+
+# FD-27 — silent zero-output extraction guard. Fires when an extraction item
+# had non-empty input text but the LLM produced NOTHING (0 entities + relations
+# + events + facts). The dominant cause is a reasoning model whose JSON output
+# is swallowed by reasoning tokens (qwen3.x-thinking, deepseek-r1) when thinking
+# isn't disabled — but it's cause-agnostic (also catches a bad prompt / model
+# misconfig). Greppable log token `EXTRACTION_ZERO_OUTPUT`. `source_type`
+# cardinality is closed at the extraction source kinds (chapter/chat_message).
+worker_ai_extraction_zero_output_total = Counter(
+    "worker_ai_extraction_zero_output_total",
+    "FD-27 — extraction items that yielded zero candidates on non-empty input "
+    "(silent 'extraction did nothing'). Log token `EXTRACTION_ZERO_OUTPUT`.",
+    ["source_type"],
+    registry=registry,
+)
+
+# FD-27 — reasoning-model advisory. Fires once per job when the configured
+# extraction model's name matches a reasoning-model heuristic (best-effort,
+# name-based — see `_is_likely_reasoning_model`). Recommends reasoning_effort=
+# none / enable_thinking=false. Greppable log token `EXTRACTION_REASONING_MODEL`.
+worker_ai_extraction_reasoning_model_advised_total = Counter(
+    "worker_ai_extraction_reasoning_model_advised_total",
+    "FD-27 — extraction jobs whose configured model looks like a reasoning "
+    "model (advisory; recommend disabling thinking). Log token "
+    "`EXTRACTION_REASONING_MODEL`.",
+    registry=registry,
+)
 
 
 _server_thread: Optional[threading.Thread] = None

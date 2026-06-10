@@ -166,18 +166,24 @@ class KnowledgeClient:
 
     async def timeline(
         self, bearer: str, *, project_id: UUID, before_chronological: int | None = None,
-        before_order: int | None = None, entity_id: str | None = None, limit: int = 50,
+        before_order: int | None = None, after_order: int | None = None,
+        entity_id: str | None = None, limit: int = 50,
     ) -> list[dict[str, Any]]:
         """L1b — in-world events for a project (JWT-forward). `project_id` is
         ALWAYS sent (A1/§12: omitting it widens to ALL the user's projects).
-        `before_chronological` is the true in-world spoiler cutoff. Returns the
-        events list (each carries `chronological_order`/`event_order`/`title`/
-        `summary`/`participants`) or [] on failure."""
+        `before_order` is the dense reading-order spoiler cutoff (event_order);
+        `after_order` is the RECENT-WINDOW lower bound (the endpoint orders
+        event_order ASC + LIMIT, so without it a deep-book query returns the
+        OLDEST prior events — LOOM-32 MED#1). Returns the events list (each carries
+        `chronological_order`/`event_order`/`title`/`summary`/`participants`) or
+        [] on failure."""
         params: dict[str, Any] = {"project_id": str(project_id), "limit": limit}
         if before_chronological is not None:
             params["before_chronological"] = before_chronological
         if before_order is not None:
             params["before_order"] = before_order
+        if after_order is not None:
+            params["after_order"] = after_order
         if entity_id is not None:
             params["entity_id"] = entity_id
         return await self._jwt_get_list(
@@ -215,6 +221,35 @@ class KnowledgeClient:
         return await self._jwt_get_list(
             "/v1/knowledge/drawers/search", params, bearer, key="hits", label="drawers",
         )
+
+    async def fact_for_check(
+        self, *, project_id: UUID, at_order: int,
+        glossary_entity_ids: list[str] | None = None,
+        entity_ids: list[str] | None = None,
+    ) -> dict[str, Any] | None:
+        """A2-S2/S3 — the canon snapshot (status@P + entities + relations +
+        events≤P) for the SCORE symbolic guard. POST /internal/projects/{id}/
+        fact-for-check (X-Internal-Token). The cast is composition's glossary
+        entity ids (resolved server-side via the glossary_entity_id FK).
+        Returns the snapshot dict or None on any failure (the guard degrades to
+        advisory — a knowledge outage must never block a generate, F1)."""
+        if not glossary_entity_ids and not entity_ids:
+            return None
+        url = f"{self._base_url}/internal/projects/{project_id}/fact-for-check"
+        payload: dict[str, Any] = {"at_order": at_order}
+        if glossary_entity_ids:
+            payload["glossary_entity_ids"] = list(glossary_entity_ids)
+        if entity_ids:
+            payload["entity_ids"] = list(entity_ids)
+        try:
+            resp = await self._http.post(url, json=payload, headers=self._internal_headers())
+            if resp.status_code != 200:
+                logger.warning("knowledge fact-for-check → %d", resp.status_code)
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("knowledge fact-for-check unavailable: %s", exc)
+            return None
 
     async def _jwt_get_list(
         self, path: str, params: dict[str, Any], bearer: str, *, key: str, label: str,

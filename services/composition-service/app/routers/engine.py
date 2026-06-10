@@ -11,30 +11,45 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field, StringConstraints
 
 from app.clients.book_client import BookClient, BookClientError
 from app.clients.glossary_client import GlossaryClient
 from app.clients.knowledge_client import KnowledgeClient
 from app.clients.llm_client import LLMClient
 from app.config import settings
+from app.db.repositories import ChapterJobInFlightError, ReferenceViolationError
 from app.db.repositories.canon_rules import CanonRulesRepo
+from app.db.repositories.generation_corrections import (
+    GenerationCorrectionsRepo, count_changed_blocks,
+)
 from app.db.repositories.generation_jobs import GenerationJobsRepo
+from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.works import WorksRepo
 from app.deps import (
-    get_book_client_dep, get_canon_rules_repo, get_generation_jobs_repo,
-    get_glossary_client_dep, get_knowledge_client_dep, get_llm_client_dep,
-    get_outline_repo, get_scene_links_repo, get_works_repo,
+    get_book_client_dep, get_canon_rules_repo, get_generation_corrections_repo,
+    get_generation_jobs_repo, get_glossary_client_dep, get_knowledge_client_dep,
+    get_llm_client_dep, get_narrative_thread_repo, get_outline_repo,
+    get_scene_links_repo, get_works_repo,
 )
+from app.db.models import CorrectionKind
+from app.engine.adaptive_k import adaptive_k
+from app.engine.chapter_gen import build_chapter_pack_node, union_cast
+from app.engine.prose_doc import text_to_tiptap_doc
+from app.engine.stitch import stitch_chapter
+from app.engine.canon_reflect import run_canon_reflect
+from app.engine.narrative_thread import detect_and_update_threads
+from app.engine.compress import compress
 from app.engine.cowrite import build_messages, estimate_prompt_tokens, stream_draft
 from app.engine.critic import judge_prose
+from app.engine.select import diverge, select_draft
 from app.reasoning import ReasoningSignals, score_effort
 from loreweave_llm import infer_reasoning_control, resolve_reasoning
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
@@ -72,6 +87,42 @@ class GenerateBody(BaseModel):
     model_kind: str | None = None
     model_name: str | None = None
     idempotency_key: str | None = None
+    # Chapter-assembly mode override (B1). None → the per-scene endpoint always
+    # assembles per scene; an explicit 'chapter' here 409-redirects to the chapter
+    # endpoint (B2). Literal → a bad value 422s at request validation.
+    assembly_mode: Literal["per_scene", "chapter"] | None = None
+
+
+class GenerateChapterBody(BaseModel):
+    # B2 chapter single-pass: no outline_node_id (chapter-scoped) and no
+    # assembly_mode (this endpoint IS chapter). Mirrors GenerateBody otherwise.
+    model_source: Literal["user_model", "platform_model"]
+    model_ref: UUID
+    operation: str = "draft_chapter"
+    guide: str = ""
+    # None → settings.chapter_gen_max_tokens (a whole chapter is one long pass,
+    # larger than the per-scene default). An explicit value still caps at 8192.
+    max_output_tokens: int | None = Field(default=None, ge=1, le=8192)
+    reasoning: Literal["off", "auto", "low", "medium", "high"] = "auto"
+    model_kind: str | None = None
+    model_name: str | None = None
+    idempotency_key: str | None = None
+    # MED-2: write the assembled chapter to the book-service draft (best-effort).
+    # Eval / dry-run callers set False to get just the generated text.
+    persist: bool = True
+
+
+class StitchBody(BaseModel):
+    # B3 stitch pass: no outline_node_id, no assembly_mode (stitch is the
+    # per_scene+stitch step). Mirrors GenerateChapterBody.
+    model_source: Literal["user_model", "platform_model"]
+    model_ref: UUID
+    max_output_tokens: int | None = Field(default=None, ge=1, le=8192)
+    reasoning: Literal["off", "auto", "low", "medium", "high"] = "auto"
+    model_kind: str | None = None
+    model_name: str | None = None
+    idempotency_key: str | None = None
+    persist: bool = True
 
 
 class CritiqueBody(BaseModel):
@@ -90,6 +141,23 @@ class SuggestCastBody(BaseModel):
     guide: str = ""
 
 
+class CorrectionBody(BaseModel):
+    # The human-gate action (§2). accept-as-is is intentionally NOT a kind — it
+    # is the reranker's own pick, mining it is self-reinforcement (H2).
+    kind: CorrectionKind
+    # pick_different → which candidate the author chose instead of the winner.
+    chosen_candidate_index: int | None = Field(default=None, ge=0)
+    # regenerate → the author's steering text. Stored, never on the wire (§5).
+    # Capped to the row model's _Long bound so an oversized value 422s here
+    # rather than committing the row+event and then 500ing on read-back validation
+    # (/review-impl MED#1).
+    guidance: Annotated[str, StringConstraints(max_length=20000)] | None = None
+    # edit → the author's edited prose (drives the change-magnitude + opt-in raw).
+    edited_text: str | None = None
+    # §8.3 optional chain: the regenerated job that superseded this one (if known).
+    regenerated_to_job_id: UUID | None = None
+
+
 async def _load_work_node(works, outline, user_id, project_id, node_id):
     work = await works.get(user_id, project_id)
     if work is None:
@@ -98,6 +166,72 @@ async def _load_work_node(works, outline, user_id, project_id, node_id):
     if node is None or str(node.project_id) != str(project_id):
         raise HTTPException(status_code=404, detail="scene not found")
     return work, node
+
+
+async def _maybe_detect_narrative_threads(
+    work, *, llm, repo, user_id, project_id, scene_text,
+    opened_at_node, model_source, model_ref, source_language,
+) -> None:
+    """FD-1 (narrative_thread S2): best-effort promise-ledger producer over a
+    just-generated passage. Gated per-Work on `narrative_thread_enabled` (default
+    OFF → zero cost). NEVER raises into the generate path (advisory, F1). Extracted
+    so the gate + best-effort-swallow wiring is unit-testable (review-impl MED#1)."""
+    if not (work.settings or {}).get("narrative_thread_enabled"):
+        return
+    try:
+        await detect_and_update_threads(
+            llm, repo, user_id=user_id, project_id=project_id,
+            scene_text=scene_text, opened_at_node=opened_at_node,
+            drafter_source=model_source, drafter_ref=str(model_ref),
+            source_language=source_language,
+            max_open=settings.narrative_thread_max_open_per_scene,
+        )
+    except Exception:  # noqa: BLE001 — advisory; must not fail the generate
+        logger.warning("narrative_thread S2 producer failed (advisory)", exc_info=True)
+
+
+async def _open_promise_count(work, *, repo, user_id, project_id) -> int | None:
+    """FD-1 S4a — the advisory unpaid-promise DEBT count (§7) after a generated
+    chapter. None when narrative_thread is off (no read); best-effort — never
+    raises into the generate path. Extracted so the gate/swallow is unit-testable."""
+    if not (work.settings or {}).get("narrative_thread_enabled"):
+        return None
+    try:
+        return await repo.count_open(user_id, project_id)
+    except Exception:  # noqa: BLE001 — advisory; must not fail the generate
+        logger.warning("open_promise_count read failed (advisory)", exc_info=True)
+        return None
+
+
+async def _persist_chapter_draft(
+    book: BookClient, book_id: UUID, chapter_id: UUID, bearer: str,
+    text: str, commit_message: str,
+) -> tuple[bool, int | None, str | None]:
+    """B3/MED-2 — BEST-EFFORT write of an AI-assembled chapter into the
+    book-service draft. Returns (persisted, draft_version, error_code) and NEVER
+    raises: a persist failure (concurrent edit 409, outage) must not discard the
+    generated text, which is already durable in generation_job.result (the
+    cross-store best-effort rule). The body is a Tiptap doc built to match
+    book-service's own shape (prose_doc.text_to_tiptap_doc) — book's PATCH stores
+    it verbatim with no text→doc conversion."""
+    try:
+        current = await book.get_draft(book_id, chapter_id, bearer)
+        updated = await book.patch_draft(
+            book_id, chapter_id, bearer,
+            body=text_to_tiptap_doc(text),
+            expected_draft_version=current.get("draft_version"),
+            body_format="json", commit_message=commit_message,
+        )
+        return True, updated.get("draft_version"), None
+    except BookClientError as exc:
+        logger.warning("chapter draft persist failed (best-effort, kept in job): %s", exc)
+        return False, None, exc.code or "BOOK_DRAFT_PERSIST_FAILED"
+    except Exception:  # noqa: BLE001 — /review-impl Cycle-2 #2: honor "NEVER raises".
+        # A non-BookClientError (raw httpx timeout/connect error) must NOT escape:
+        # the text is already durable in generation_job.result, and an escape would
+        # leave the job stuck `running` (feeding the #1 lockout). Best-effort = swallow.
+        logger.warning("chapter draft persist raised (best-effort, kept in job)", exc_info=True)
+        return False, None, "BOOK_DRAFT_PERSIST_FAILED"
 
 
 @router.post("/works/{project_id}/generate")
@@ -115,8 +249,33 @@ async def generate(
     glossary: GlossaryClient = Depends(get_glossary_client_dep),
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     llm: LLMClient = Depends(get_llm_client_dep),
-) -> StreamingResponse:
+    narrative_threads: NarrativeThreadRepo = Depends(get_narrative_thread_repo),
+) -> Any:  # StreamingResponse (cowrite) | JSONResponse (auto)
     work, node = await _load_work_node(works, outline, user_id, project_id, body.outline_node_id)
+
+    # B2 — this is the PER-SCENE endpoint. An explicit assembly_mode='chapter'
+    # override here is a caller mistake (chapter assembly has its own endpoint),
+    # so 409-redirect rather than silently producing a per-scene draft. A work
+    # whose DEFAULT is 'chapter' does NOT block per-scene co-write here: the mode
+    # selects the autonomous entrypoint, not whether co-writing a scene is allowed.
+    if body.assembly_mode == "chapter":
+        raise HTTPException(status_code=409, detail={
+            "code": "USE_CHAPTER_ENDPOINT",
+            "detail": "this work assembles by chapter; "
+                      "POST /v1/composition/works/{project_id}/chapters/{chapter_id}/generate"})
+    assembly_mode = "per_scene"  # echoed below — this endpoint always assembles per scene
+
+    # S2 — bind the compress primitive over the drafter model + the Work's source
+    # language; pack() calls it only when the raw story-so-far exceeds budget.
+    _src_lang = from_settings(work.settings).source_language
+
+    async def _compress_fn(older: list[str], timeline_texts: list[str], plan: str) -> str:
+        return await compress(
+            llm, user_id=str(user_id), model_source=body.model_source,
+            model_ref=str(body.model_ref), prose=older, timeline=timeline_texts,
+            plan=plan, source_language=_src_lang,
+            max_input_chars=settings.compress_max_input_chars,
+        )
 
     # Retrieve (M4 packer) — raises OwnershipError (404) / BookClientError (502).
     try:
@@ -127,6 +286,9 @@ async def generate(
             book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
             outline_repo=outline, scene_links_repo=scene_links,
             budget_tokens=settings.pack_token_budget,
+            jobs_repo=jobs,  # S1 state-reinjection fallback source (prior generated scenes)
+            compress_fn=_compress_fn,  # S2 long-chapter state compression
+            narrative_threads_repo=narrative_threads,  # FD-1 S3 open-promise re-injection
         )
     except OwnershipError:
         raise HTTPException(status_code=404, detail="book not found")
@@ -180,11 +342,135 @@ async def generate(
             if str(active.id) != str(job.id):
                 await jobs.update_status(user_id, active.id, "cancelled")
 
+    # ── AUTO path (V1 A1): diverge→converge, NON-stream, returns the winner. The
+    # co-write STREAM path is below. The rerank judge prefers the work's DISTINCT
+    # critic model (anti-self-reinforcement §4); falls back to the drafter.
+    if body.mode == "auto":
+        if not created:  # idempotent replay → return the existing job, don't re-run
+            r = job.result or {}
+            return JSONResponse({"job_id": str(job.id), "mode": "auto", "replay": True,
+                                 "text": r.get("text", ""), "status": job.status,
+                                 "winner_index": r.get("winner_index"),
+                                 "k": r.get("k"), "candidates": r.get("candidates", []),
+                                 "assembly_mode": assembly_mode})
+        sdict = work.settings or {}
+        c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
+        distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+        try:
+            sel = await select_draft(
+                llm, llm, user_id=str(user_id),
+                drafter_source=body.model_source, drafter_ref=str(body.model_ref),
+                judge_source=str(c_src) if distinct else body.model_source,
+                judge_ref=str(c_ref) if distinct else str(body.model_ref),
+                packed_prompt=pc.prompt, profile=pc.profile, operation=body.operation,
+                # A3 — adaptive K from the scene's structural weight (beat_role +
+                # tension the planner emitted). Hand-authored nodes (no beat_role/
+                # tension) fall back to compose_diverge_k. NOTE: there is no
+                # K-multiplied budget reservation in this path (the only pre-check
+                # is the K-independent prompt-size 413 above; per-call spend is
+                # gateway-side), so design HIGH#1's "compute K before the budget
+                # reservation" is moot — verified against engine.py: just derive
+                # and pass it.
+                guide=body.guide,
+                k=adaptive_k(node.beat_role, node.tension,
+                             k_ceiling=settings.compose_diverge_k,
+                             high_threshold=settings.plan_high_tension_threshold),
+                prompt_est=prompt_estimate,
+                max_tokens=body.max_output_tokens, temperature=settings.compose_diverge_temperature,
+                reasoning_effort=None if reasoning.passthrough else reasoning.effort,
+            )
+        except Exception as exc:  # diverge produced nothing / transport — fail the job, 502
+            logger.warning("auto select failed: %s", exc)
+            await jobs.update_status(user_id, job.id, "failed")
+            raise HTTPException(status_code=502, detail={"code": "GENERATE_FAILED"})
+        w = sel.winner
+        # ── A2-S3b: canon check→revise on the converged winner (D1). The SCORE
+        # symbolic guard + the distinct LLM-judge confirm a `gone` cast member
+        # portrayed as present; reflect repairs ≤N then escalates (hard-gate
+        # signal on the job). Degrades to advisory on any knowledge/judge outage
+        # (CC4/F1) — never blocks the generate.
+        final_text = w.text
+        # Default status=degraded so the except path below (canon reflect raised)
+        # reads as "could not verify", not a false-green.
+        canon = {"violations": [], "resolved": True, "iterations": 0, "status": "degraded"}
+        revise_out_tokens = 0
+        revise_finish: str | None = None
+        try:
+            cast_glossary_ids = [str(e) for e in (node.present_entity_ids or [])]
+            final_text, reflect, revise_out_tokens = await run_canon_reflect(
+                knowledge=knowledge, llm=llm,
+                user_id=user_id, project_id=project_id,
+                cast_glossary_ids=cast_glossary_ids,
+                scene_sort_order=pc.scene_sort_order,
+                draft=w.text, packed_prompt=pc.prompt, profile=pc.profile,
+                drafter_source=body.model_source, drafter_ref=str(body.model_ref),
+                judge_source=str(c_src) if distinct else None,
+                judge_ref=str(c_ref) if distinct else None,
+                prompt_estimate=prompt_estimate, max_output_tokens=body.max_output_tokens,
+                # /review-impl #2 — clamp the per-work setting to a sane ceiling so
+                # a typo'd/abusive reflect_max_iters can't fan out N revise LLM
+                # calls per generate (the §10.1 backtrack budget bound).
+                max_iters=max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),
+                reasoning_effort=None if reasoning.passthrough else reasoning.effort,
+            )
+            canon = {
+                "violations": [v.model_dump() for v in reflect.violations],
+                "resolved": reflect.resolved, "iterations": reflect.iterations,
+                "status": reflect.status,
+            }
+            revise_finish = reflect.revise_finish_reason
+        except Exception:  # canon reflect must NEVER fail the generate (F1).
+            logger.warning("A2-S3b canon reflect failed (advisory) — keeping winner", exc_info=True)
+        # FD-1 (narrative_thread S2): best-effort promise-ledger producer — opens
+        # new promises this scene plants + pays resolved ones (S3 re-injects them).
+        await _maybe_detect_narrative_threads(
+            work, llm=llm, repo=narrative_threads, user_id=user_id, project_id=project_id,
+            scene_text=final_text, opened_at_node=node.id,
+            model_source=body.model_source, model_ref=body.model_ref, source_language=_src_lang)
+        total_out = w.metering.output_tokens + revise_out_tokens
+        # D-COMP-TRUNCATION-SURFACING: authoritative truncation flag from the
+        # drafter's stop reason (the winner draft is the cap-prone generation). A
+        # canon-revise repair can ALSO truncate, so OR in its stop reason (cy16) —
+        # else a cut-off repair is a silent green.
+        truncated = (w.metering.finish_reason == "length") or (revise_finish == "length")
+        await jobs.update_status(
+            user_id, job.id, "completed",
+            result={"text": final_text, "input_tokens": w.metering.input_tokens,
+                    "output_tokens": total_out, "measured": w.metering.measured,
+                    "k": len(sel.candidates), "winner_index": sel.winner_index,
+                    "rerank_reason": sel.rerank_reason, "rerank_measured": sel.rerank_measured,
+                    "candidates": [c.text for c in sel.candidates],
+                    "truncated": truncated, "finish_reason": w.metering.finish_reason,
+                    "canon": canon},
+        )
+        return JSONResponse({
+            "job_id": str(job.id), "mode": "auto", "status": "completed", "text": final_text,
+            "truncated": truncated, "finish_reason": w.metering.finish_reason,
+            "winner_index": sel.winner_index, "k": len(sel.candidates),
+            # The K candidate texts so the FE can show ALL options as cards (the
+            # controlled-auto human gate, slice 3). They're already computed +
+            # persisted in the job result; returning them here saves a GET /jobs.
+            "candidates": [c.text for c in sel.candidates],
+            "rerank_reason": sel.rerank_reason, "rerank_measured": sel.rerank_measured,
+            "grounding_available": pc.grounding_available,
+            # A2-S3b — the canon gate: `resolved=false` + violations means a
+            # confirmed contradiction survived revision (D4 hard-gate signal for
+            # the publish/commit path + the author).
+            "canon": canon,
+            "reasoning_source": reasoning.source, "reasoning_effort": reasoning.effort,
+            "assembly_mode": assembly_mode,
+            # FD-1 S4b — how many open promises S3 re-injected into this draft's
+            # prompt (advisory; 0 when narrative_thread is off). Deterministic S3
+            # fired-signal for the live-smoke.
+            "reinjected_promise_count": pc.reinjected_promise_count,
+        })
+
     async def event_gen():
         yield _sse({"type": "job", "job_id": str(job.id), "created": created,
                     "grounding_available": pc.grounding_available,
                     "reasoning_source": reasoning.source,
-                    "reasoning_effort": reasoning.effort})
+                    "reasoning_effort": reasoning.effort,
+                    "assembly_mode": assembly_mode})
         if not created:
             # Idempotent replay — don't re-stream; report the existing job.
             yield _sse({"type": "done", "job_id": str(job.id), "status": job.status, "replay": True})
@@ -204,20 +490,389 @@ async def generate(
                 yield _sse(ev)
         if final is not None:
             m = final["metering"]
+            # D-COMP-TRUNCATION-SURFACING: "length" ⇒ the model hit its max_tokens
+            # cap. DISTINCT from `capped` (composition's own hard-cap abort, which
+            # breaks BEFORE the DoneEvent so finish_reason stays None). Both mean the
+            # output was cut — a consumer wanting "incomplete?" should treat
+            # (capped OR truncated) as the signal; both are surfaced below.
+            truncated = m.finish_reason == "length"
             await jobs.update_status(
                 user_id, job.id, "completed",
                 result={"text": final["text"], "input_tokens": m.input_tokens,
                         "output_tokens": m.output_tokens, "measured": m.measured,
-                        "capped": final.get("capped", False)},
+                        "capped": final.get("capped", False),
+                        "truncated": truncated, "finish_reason": m.finish_reason},
             )
             yield _sse({"type": "done", "job_id": str(job.id), "status": "completed",
                         "output_tokens": m.output_tokens, "measured": m.measured,
-                        "capped": final.get("capped", False)})
+                        "capped": final.get("capped", False),
+                        "truncated": truncated, "finish_reason": m.finish_reason})
         else:
             await jobs.update_status(user_id, job.id, "failed")
             yield _sse({"type": "done", "job_id": str(job.id), "status": "failed"})
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
+@router.post("/works/{project_id}/chapters/{chapter_id}/generate")
+async def generate_chapter(
+    project_id: UUID,
+    chapter_id: UUID,
+    body: GenerateChapterBody,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+    scene_links: SceneLinksRepo = Depends(get_scene_links_repo),
+    canon: CanonRulesRepo = Depends(get_canon_rules_repo),
+    jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
+    book: BookClient = Depends(get_book_client_dep),
+    glossary: GlossaryClient = Depends(get_glossary_client_dep),
+    knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
+    llm: LLMClient = Depends(get_llm_client_dep),
+    narrative_threads: NarrativeThreadRepo = Depends(get_narrative_thread_repo),
+) -> Any:
+    """B2 chapter single-pass (assembly_mode='chapter'): generate a WHOLE chapter
+    in ONE drafter pass from its A3 decompose plan (scene nodes), grounded at the
+    chapter reading position, then run a chapter-level canon check+reflect over
+    the union cast. Non-stream JSON (like the auto path). The synthetic pack node
+    is in-memory only — never persisted (MED-1)."""
+    work = await works.get(user_id, project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail="work not found")
+
+    scenes = await outline.scenes_for_chapter(user_id, project_id, chapter_id)
+    if not scenes:
+        raise HTTPException(status_code=400, detail={
+            "code": "NO_CHAPTER_PLAN", "detail": "chapter has no scene plan; decompose it first"})
+
+    # Chapter-level intent/title from the kind='chapter' outline node (the scenes'
+    # shared parent). Defensive: empty if absent / not a chapter (hand-authored).
+    chapter_intent, chapter_title = "", ""
+    parent_id = scenes[0].parent_id
+    if parent_id is not None:
+        parent = await outline.get_node(user_id, parent_id)
+        if parent is not None and parent.kind == "chapter":
+            chapter_intent, chapter_title = parent.goal, parent.title
+
+    # Chapter reading position (book sort_order) → story_order (strictly-prior
+    # context) + the canon position. pack() re-resolves it from chapter_id.
+    chapter_sort = (await book.get_chapter_sort_orders([chapter_id])).get(str(chapter_id))
+    pack_node = build_chapter_pack_node(
+        chapter_id=chapter_id, chapter_sort=chapter_sort,
+        chapter_intent=chapter_intent, chapter_title=chapter_title, scenes=scenes)
+
+    _src_lang = from_settings(work.settings).source_language
+
+    async def _compress_fn(older: list[str], timeline_texts: list[str], plan: str) -> str:
+        return await compress(
+            llm, user_id=str(user_id), model_source=body.model_source,
+            model_ref=str(body.model_ref), prose=older, timeline=timeline_texts,
+            plan=plan, source_language=_src_lang,
+            max_input_chars=settings.compress_max_input_chars)
+
+    try:
+        pc = await pack(
+            PackRequest(user_id=user_id, project_id=project_id, book_id=work.book_id,
+                        node=pack_node, bearer=bearer, guide=body.guide,
+                        settings=work.settings, chapter_sort_hint=chapter_sort),
+            book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
+            outline_repo=outline, scene_links_repo=scene_links,
+            budget_tokens=settings.pack_token_budget, jobs_repo=jobs,
+            compress_fn=_compress_fn,
+            narrative_threads_repo=narrative_threads)  # FD-1 S3 open-promise re-injection
+    except OwnershipError:
+        raise HTTPException(status_code=404, detail="book not found")
+    except BookClientError:
+        raise HTTPException(status_code=502, detail={"code": "BOOK_SERVICE_UNAVAILABLE"})
+
+    messages = build_messages(pc.prompt, pc.profile, body.operation, body.guide)
+    prompt_estimate = estimate_prompt_tokens(messages, B.default_counter())
+    prompt_ceiling = settings.pack_token_budget * 2
+    if prompt_estimate > prompt_ceiling:
+        raise HTTPException(status_code=413, detail={
+            "code": "PROMPT_TOO_LARGE", "estimate": prompt_estimate, "ceiling": prompt_ceiling})
+
+    active_rules = await canon.list_active(user_id, project_id)
+    signals = ReasoningSignals(
+        operation=body.operation, n_canon_rules=len(active_rules),
+        n_present_entities=len(pack_node["present_entity_ids"]),
+        has_reveal_gate=any(r.scope == "reveal_gate" for r in active_rules),
+        tension=None, guide=body.guide)
+    control = infer_reasoning_control(body.model_kind, body.model_name)
+    reasoning = resolve_reasoning(
+        user_pref=body.reasoning, model_control=control, auto_effort=score_effort(signals),
+        auto_source=str(work.settings.get("reasoning_engine", "rule_based")))
+
+    # Size the output budget from the plan (scene count) so a multi-scene chapter
+    # gets room instead of a flat cap that silently truncates long-form; clamp to
+    # the ceiling. An explicit body override still wins.
+    max_out = body.max_output_tokens or min(
+        len(scenes) * settings.chapter_gen_per_scene_tokens, settings.chapter_gen_max_tokens)
+
+    # Idempotency keyed on the caller's key (design LOW-1: key on chapter_id +
+    # assembly_mode in the value the caller builds). Chapter jobs aren't
+    # node-scoped, so the per-scene S2 cancel doesn't apply; instead an in-flight
+    # guard (Cycle-2) rejects a concurrent chapter-level job for the same chapter
+    # with 409 — generate and stitch both write this chapter's draft, so two at
+    # once double-spend the LLM and race the persist. Same-key replay is honored.
+    try:
+        job, created = await jobs.create_chapter_job_guarded(
+            user_id, project_id, chapter_id, operation=body.operation,
+            mode="auto", status="running",
+            input={"model_source": body.model_source, "model_ref": str(body.model_ref),
+                   "operation": body.operation, "prompt_estimate": prompt_estimate,
+                   "assembly_mode": "chapter", "chapter_id": str(chapter_id),
+                   "reasoning": reasoning.source, "reasoning_effort": reasoning.effort},
+            idempotency_key=body.idempotency_key,
+            stale_secs=settings.chapter_inflight_stale_secs)
+    except ChapterJobInFlightError as exc:
+        raise HTTPException(status_code=409, detail={
+            "code": "CHAPTER_JOB_IN_FLIGHT", "active_job_id": exc.active_job_id})
+    if not created:  # idempotent replay → return the existing job, don't re-run
+        r = job.result or {}
+        return JSONResponse({"job_id": str(job.id), "mode": "auto", "replay": True,
+                             "text": r.get("text", ""), "status": job.status,
+                             "canon": r.get("canon"), "assembly_mode": "chapter"})
+
+    sdict = work.settings or {}
+    c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
+    distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+    try:
+        cands = await diverge(
+            llm, user_id=str(user_id), model_source=body.model_source,
+            model_ref=str(body.model_ref), packed_prompt=pc.prompt, profile=pc.profile,
+            operation=body.operation, guide=body.guide, k=1, prompt_est=prompt_estimate,
+            max_tokens=max_out, temperature=settings.compose_diverge_temperature,
+            reasoning_effort=None if reasoning.passthrough else reasoning.effort)
+    except Exception as exc:  # no candidate / transport — fail the job, 502
+        logger.warning("chapter draft failed: %s", exc)
+        await jobs.update_status(user_id, job.id, "failed")
+        raise HTTPException(status_code=502, detail={"code": "GENERATE_FAILED"})
+    winner = cands[0]
+
+    # Chapter-level A2 canon check→reflect over the union cast at the chapter
+    # position (the per-scene guard runs at the same at_order for every scene, so
+    # this is equivalent-granularity — plan CANON-SAFETY). Degrades to advisory on
+    # any knowledge/judge outage, never blocks (F1).
+    final_text = winner.text
+    canon_v: dict[str, Any] = {"violations": [], "resolved": True, "iterations": 0,
+                               "status": "degraded"}
+    revise_out_tokens = 0
+    revise_finish: str | None = None
+    try:
+        final_text, reflect, revise_out_tokens = await run_canon_reflect(
+            knowledge=knowledge, llm=llm, user_id=user_id, project_id=project_id,
+            cast_glossary_ids=[str(e) for e in pack_node["present_entity_ids"]],
+            scene_sort_order=pc.scene_sort_order, draft=winner.text,
+            packed_prompt=pc.prompt, profile=pc.profile,
+            drafter_source=body.model_source, drafter_ref=str(body.model_ref),
+            judge_source=str(c_src) if distinct else None,
+            judge_ref=str(c_ref) if distinct else None,
+            prompt_estimate=prompt_estimate, max_output_tokens=max_out,
+            max_iters=max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),
+            reasoning_effort=None if reasoning.passthrough else reasoning.effort)
+        canon_v = {"violations": [v.model_dump() for v in reflect.violations],
+                   "resolved": reflect.resolved, "iterations": reflect.iterations,
+                   "status": reflect.status}
+        revise_finish = reflect.revise_finish_reason
+    except Exception:  # canon reflect must NEVER fail the generate (F1).
+        logger.warning("chapter canon reflect failed (advisory) — keeping draft", exc_info=True)
+
+    # FD-1 (narrative_thread S2): best-effort promise-ledger producer over the
+    # whole-chapter draft. opened_at_node=None — the chapter pass uses a synthetic
+    # in-memory node (never persisted), so the thread is project-scoped (FK nullable).
+    await _maybe_detect_narrative_threads(
+        work, llm=llm, repo=narrative_threads, user_id=user_id, project_id=project_id,
+        scene_text=final_text, opened_at_node=None,
+        model_source=body.model_source, model_ref=body.model_ref,
+        source_language=from_settings(work.settings).source_language)
+
+    # FD-1 S4a — advisory unpaid-promise DEBT count (§7) at chapter end (the
+    # detector just ran). None when off; best-effort. Uses count_open (a true
+    # COUNT, not a capped list — review-impl MED#1).
+    open_promise_count = await _open_promise_count(
+        work, repo=narrative_threads, user_id=user_id, project_id=project_id)
+
+    # MED-2 — best-effort persist of the assembled chapter to the book draft.
+    persisted, draft_version, persist_error = False, None, None
+    if body.persist:
+        persisted, draft_version, persist_error = await _persist_chapter_draft(
+            book, work.book_id, chapter_id, bearer, final_text, "AI chapter draft (chapter mode)")
+
+    # NOTE (D-COMP-TRUNCATION-SURFACING): a reliable "was the output cut at the
+    # cap?" flag needs the gateway's finish_reason — a char_estimate heuristic is
+    # too biased (over-counts EN → false positives ~75% budget, under-counts CJK →
+    # misses) to ship. The plan-sized `max_output_tokens` (returned below) is the
+    # deterministic anti-truncation lever; accurate surfacing is deferred.
+    total_out = winner.metering.output_tokens + revise_out_tokens
+    # D-COMP-TRUNCATION-SURFACING: "length" ⇒ the single-pass chapter draft hit the
+    # cap (the deterministic plan-sized max_out is the prevention; this is the signal).
+    # A canon-revise repair can also truncate → OR in its stop reason (cy16).
+    truncated = (winner.metering.finish_reason == "length") or (revise_finish == "length")
+    await jobs.update_status(
+        user_id, job.id, "completed",
+        result={"text": final_text, "input_tokens": winner.metering.input_tokens,
+                "output_tokens": total_out, "measured": winner.metering.measured,
+                "truncated": truncated, "finish_reason": winner.metering.finish_reason,
+                "canon": canon_v, "assembly_mode": "chapter", "chapter_id": str(chapter_id),
+                "persisted": persisted, "draft_version": draft_version,
+                "open_promise_count": open_promise_count})
+    return JSONResponse({
+        "job_id": str(job.id), "mode": "auto", "status": "completed", "text": final_text,
+        "truncated": truncated, "finish_reason": winner.metering.finish_reason,
+        "canon": canon_v, "grounding_available": pc.grounding_available,
+        "reasoning_source": reasoning.source, "reasoning_effort": reasoning.effort,
+        "assembly_mode": "chapter", "persisted": persisted, "draft_version": draft_version,
+        "persist_error": persist_error, "max_output_tokens": max_out,
+        "open_promise_count": open_promise_count,  # FD-1 S4a advisory debt flag
+        "reinjected_promise_count": pc.reinjected_promise_count})  # FD-1 S4b S3 fired-signal
+
+
+@router.post("/works/{project_id}/chapters/{chapter_id}/stitch")
+async def stitch_chapter_endpoint(
+    project_id: UUID,
+    chapter_id: UUID,
+    body: StitchBody,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+    canon: CanonRulesRepo = Depends(get_canon_rules_repo),
+    jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
+    book: BookClient = Depends(get_book_client_dep),
+    knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
+    llm: LLMClient = Depends(get_llm_client_dep),
+) -> Any:
+    """B3 per_scene+stitch: merge a chapter's done scene drafts into one seamless
+    chapter (ONE LLM pass; degrade→raw concat), re-run the chapter-level canon
+    guard, and best-effort persist to the book draft (MED-2). Gated on all scenes
+    `done` (the publishable artifact). Non-stream JSON."""
+    work = await works.get(user_id, project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail="work not found")
+
+    # Trigger guard: the stitch is the publishable artifact → require all scenes
+    # done (mirrors the publish-gate's done==total). 409 otherwise.
+    gate = await outline.chapter_scene_gate(user_id, project_id, chapter_id)
+    if not (gate["scenes_total"] > 0 and gate["scenes_done"] == gate["scenes_total"]):
+        raise HTTPException(status_code=409, detail={"code": "SCENES_NOT_DONE", "gate": gate})
+
+    drafts = await jobs.chapter_scene_drafts(user_id, project_id, chapter_id)
+    if not drafts:
+        raise HTTPException(status_code=400, detail={
+            "code": "NO_SCENE_DRAFTS", "detail": "no completed scene drafts to stitch"})
+
+    scenes = await outline.scenes_for_chapter(user_id, project_id, chapter_id)
+    chapter_intent = ""
+    if scenes and scenes[0].parent_id is not None:
+        parent = await outline.get_node(user_id, scenes[0].parent_id)
+        if parent is not None and parent.kind == "chapter":
+            chapter_intent = parent.goal
+    profile = from_settings(work.settings)
+
+    active_rules = await canon.list_active(user_id, project_id)
+    signals = ReasoningSignals(
+        operation="stitch_chapter", n_canon_rules=len(active_rules),
+        n_present_entities=len(union_cast(scenes)),
+        has_reveal_gate=any(r.scope == "reveal_gate" for r in active_rules),
+        tension=None, guide="")
+    control = infer_reasoning_control(body.model_kind, body.model_name)
+    reasoning = resolve_reasoning(
+        user_pref=body.reasoning, model_control=control, auto_effort=score_effort(signals),
+        auto_source=str(work.settings.get("reasoning_engine", "rule_based")))
+    # Size from the number of scene drafts being merged (the stitched chapter is
+    # ~their combined length), clamped to the ceiling — long chapters need room.
+    max_out = body.max_output_tokens or min(
+        len(drafts) * settings.chapter_gen_per_scene_tokens, settings.stitch_max_tokens)
+
+    # In-flight guard (Cycle-2): reject a concurrent chapter-level job for this
+    # chapter (a running generate or stitch) with 409 — both write this chapter's
+    # draft. Same-key idempotent replay is honored before the guard.
+    try:
+        job, created = await jobs.create_chapter_job_guarded(
+            user_id, project_id, chapter_id, operation="stitch_chapter",
+            mode="auto", status="running",
+            input={"model_source": body.model_source, "model_ref": str(body.model_ref),
+                   "operation": "stitch_chapter", "assembly_mode": "per_scene_stitch",
+                   "chapter_id": str(chapter_id), "reasoning": reasoning.source,
+                   "reasoning_effort": reasoning.effort},
+            idempotency_key=body.idempotency_key,
+            stale_secs=settings.chapter_inflight_stale_secs)
+    except ChapterJobInFlightError as exc:
+        raise HTTPException(status_code=409, detail={
+            "code": "CHAPTER_JOB_IN_FLIGHT", "active_job_id": exc.active_job_id})
+    if not created:  # idempotent replay
+        r = job.result or {}
+        return JSONResponse({"job_id": str(job.id), "mode": "auto", "replay": True,
+                             "text": r.get("text", ""), "status": job.status,
+                             "canon": r.get("canon"), "assembly_mode": "per_scene_stitch"})
+
+    # Stitch (degrade → raw concat). The raw concat is the safe fallback artifact.
+    stitched, stitch_finish = await stitch_chapter(
+        llm, user_id=str(user_id), model_source=body.model_source, model_ref=str(body.model_ref),
+        scene_drafts=drafts, chapter_intent=chapter_intent, profile=profile,
+        max_tokens=max_out, max_input_chars=settings.stitch_max_input_chars,
+        reasoning_effort=None if reasoning.passthrough else reasoning.effort)
+    degraded = not stitched
+    final_text = stitched or "\n\n".join(drafts)
+    # D-COMP-TRUNCATION-SURFACING: "length" ⇒ the stitch pass hit the cap. Only
+    # meaningful when NOT degraded (a raw concat has no model stop reason).
+    truncated = (not degraded) and stitch_finish == "length"
+
+    # Post-stitch canon re-check over the union cast at the chapter position (a
+    # rewrite can re-introduce a gone character). Degrade-safe, never blocks (F1).
+    chapter_sort = (await book.get_chapter_sort_orders([chapter_id])).get(str(chapter_id))
+    sdict = work.settings or {}
+    c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
+    distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+    canon_v: dict[str, Any] = {"violations": [], "resolved": True, "iterations": 0,
+                               "status": "degraded"}
+    revise_finish: str | None = None
+    try:
+        final_text, reflect, _ = await run_canon_reflect(
+            knowledge=knowledge, llm=llm, user_id=user_id, project_id=project_id,
+            cast_glossary_ids=[str(e) for e in union_cast(scenes)],
+            # A stitch has no single packed prompt — pass the chapter intent as the
+            # revise context so a canon-repair has the chapter's goal to steer by,
+            # not just the violations list (cy16; was "").
+            scene_sort_order=chapter_sort, draft=final_text, packed_prompt=chapter_intent,
+            profile=profile,
+            drafter_source=body.model_source, drafter_ref=str(body.model_ref),
+            judge_source=str(c_src) if distinct else None,
+            judge_ref=str(c_ref) if distinct else None,
+            prompt_estimate=0, max_output_tokens=max_out,
+            max_iters=max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),
+            reasoning_effort=None if reasoning.passthrough else reasoning.effort)
+        canon_v = {"violations": [v.model_dump() for v in reflect.violations],
+                   "resolved": reflect.resolved, "iterations": reflect.iterations,
+                   "status": reflect.status}
+        revise_finish = reflect.revise_finish_reason
+    except Exception:
+        logger.warning("stitch canon reflect failed (advisory) — keeping stitched draft", exc_info=True)
+    # A canon-repair during the post-stitch re-check can itself truncate — OR its
+    # stop reason into the stitch-pass flag so a cut-off repair isn't a silent green.
+    truncated = truncated or (revise_finish == "length")
+
+    persisted, draft_version, persist_error = False, None, None
+    if body.persist:
+        persisted, draft_version, persist_error = await _persist_chapter_draft(
+            book, work.book_id, chapter_id, bearer, final_text, "AI chapter draft (stitch)")
+
+    await jobs.update_status(
+        user_id, job.id, "completed",
+        result={"text": final_text, "canon": canon_v, "assembly_mode": "per_scene_stitch",
+                "stitched": not degraded, "chapter_id": str(chapter_id),
+                "truncated": truncated, "finish_reason": stitch_finish,
+                "persisted": persisted, "draft_version": draft_version})
+    return JSONResponse({
+        "job_id": str(job.id), "mode": "auto", "status": "completed", "text": final_text,
+        "canon": canon_v, "assembly_mode": "per_scene_stitch", "stitched": not degraded,
+        "degraded": degraded, "truncated": truncated, "finish_reason": stitch_finish,
+        "reasoning_source": reasoning.source,
+        "reasoning_effort": reasoning.effort, "persisted": persisted,
+        "draft_version": draft_version, "persist_error": persist_error,
+        "max_output_tokens": max_out})
 
 
 @router.post("/works/{project_id}/scenes/{node_id}/suggest-cast")
@@ -309,3 +964,104 @@ async def dismiss_violation(
     critic["violations"] = violations
     await jobs.update_status(user_id, job_id, job.status, critic=critic)
     return {"critic": critic}
+
+
+@router.post("/jobs/{job_id}/correction", status_code=201)
+async def correction(
+    job_id: UUID, body: CorrectionBody,
+    user_id: UUID = Depends(get_current_user),
+    jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
+    works: WorksRepo = Depends(get_works_repo),
+    corrections: GenerationCorrectionsRepo = Depends(get_generation_corrections_repo),
+) -> dict[str, Any]:
+    """Capture a human-gate correction on a generation (V1 flywheel slice 1, §3).
+
+    Records one of the genuine-author-choice actions (edit / pick_different /
+    regenerate / reject) + emits `composition.generation_corrected` for the
+    learning-service preference store. Verbatim prose is stored only when the
+    work opted into `capture_correction_prose` (§5); the change magnitude +
+    structural shape are always captured. `accept` is deliberately not an action
+    here (H2 — it trains the reranker on its own pick)."""
+    job = await jobs.get(user_id, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    work = await works.get(user_id, job.project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail="work not found")
+
+    result = job.result or {}
+    winner_text: str = result.get("text", "") or ""
+    candidates: list[Any] = result.get("candidates") or []
+
+    chosen_index = body.chosen_candidate_index
+    changed_blocks: int | None = None
+    raw_before: str | None = None
+    raw_after: str | None = None
+
+    if body.kind == "edit":
+        if body.edited_text is None:
+            raise HTTPException(status_code=422, detail="edit requires edited_text")
+        changed_blocks = count_changed_blocks(winner_text, body.edited_text)
+        # A zero-change "edit" is an accept-as-is wearing an edit costume: mining
+        # `edited ≻ winner` when edited==winner trains the reranker on its own pick
+        # = the self-reinforcement §2/H2 forbids. Reject it at the source so the
+        # circular signal never enters the store (/review-impl MED#3).
+        if changed_blocks == 0:
+            raise HTTPException(status_code=422, detail={
+                "code": "EDIT_NO_CHANGE",
+                "reason": "edited_text is identical to the generation (no correction signal)"})
+    elif body.kind == "pick_different":
+        if chosen_index is None:
+            raise HTTPException(status_code=422, detail="pick_different requires chosen_candidate_index")
+        if chosen_index >= len(candidates):
+            # cowrite jobs have no candidate set; an out-of-range index is a bad request.
+            raise HTTPException(status_code=422, detail={
+                "code": "CANDIDATE_INDEX_OUT_OF_RANGE", "k": len(candidates)})
+
+    # Raw-prose capture is OPT-IN per work (§5). Default: structural only.
+    if bool(work.settings.get("capture_correction_prose", False)):
+        if body.kind == "edit":
+            raw_before, raw_after = winner_text, body.edited_text
+        elif body.kind == "pick_different":
+            raw_before = winner_text
+            raw_after = str(candidates[chosen_index])
+        elif body.kind in ("regenerate", "reject"):
+            raw_before = winner_text  # the rejected/regenerated-from prose
+
+    try:
+        corr = await corrections.create(
+            user_id, job.project_id, job_id,
+            kind=body.kind, chosen_candidate_index=chosen_index,
+            guidance=body.guidance, changed_blocks=changed_blocks,
+            raw_before=raw_before, raw_after=raw_after,
+            regenerated_to_job_id=body.regenerated_to_job_id,
+            # event-only (not stored): the job's reranked winner + candidate count,
+            # so slice-2 learning can reconstruct `j ≻ i` from the wire (LOW#4).
+            winner_index=result.get("winner_index"),
+            candidate_count=len(candidates) if candidates else None,
+            book_id=work.book_id,  # owner-scope context for the corrections store
+        )
+    except ReferenceViolationError:
+        # job/project mismatch slipped past the get() (cross-user / cross-project).
+        raise HTTPException(status_code=404, detail="job not found")
+    return corr.model_dump(mode="json")
+
+
+@router.get("/works/{project_id}/correction-stats")
+async def correction_stats(
+    project_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    corrections: GenerationCorrectionsRepo = Depends(get_generation_corrections_repo),
+) -> dict[str, Any]:
+    """The V1 eval-gate dashboard (§6): per-mode correction rates for this Work.
+
+    Replaces the saturating auto-judge coherence-median with human-grounded
+    correction rates (accept-as-is ↑, edit/pick/regenerate/reject ↓). Both modes
+    are always present (zero-filled) for the auto-vs-cowrite A/B; the auto-judge
+    script stays as the cold-start proxy until real corrections accumulate."""
+    work = await works.get(user_id, project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail="work not found")
+    stats = await corrections.correction_stats(user_id, project_id)
+    return stats.model_dump(mode="json")

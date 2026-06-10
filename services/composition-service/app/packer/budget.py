@@ -21,6 +21,7 @@ PRIO_CANON = 100        # protected
 PRIO_PRESENT_CORE = 95  # protected — L1a current state
 PRIO_TIMELINE_WINDOW = 90  # protected — L1b in-window events
 PRIO_BEAT = 85          # protected — L2 beat/goal/POV/synopsis
+PRIO_PROMISES = 84      # protected — L2.5 open-promise re-injection (FD-1 S3, F2)
 PRIO_RECENT_IMMEDIATE = 80  # protected — L3 immediately-preceding prose
 PRIO_TIMELINE_OLDER = 40    # droppable
 PRIO_RELATIONS_2HOP = 35

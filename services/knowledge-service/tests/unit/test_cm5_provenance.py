@@ -41,6 +41,30 @@ def test_provenance_rejects_out_of_vocab_value():
         PersistPass2Request(**_base(provenance="totally_made_up"))
 
 
+# ── FD-4 (066): chapter_index request field (event_order for flat books) ──
+
+
+def test_chapter_index_defaults_to_none():
+    # Omitted (e.g. chat-turn caller) → None → the writer treats the source as
+    # positionless (no event_order), unchanged behaviour.
+    assert PersistPass2Request(**_base()).chapter_index is None
+
+
+def test_chapter_index_accepts_a_sort_order():
+    assert PersistPass2Request(**_base(chapter_index=3)).chapter_index == 3
+
+
+def test_chapter_index_allows_zero_does_not_422():
+    # review-impl LOW#1 — ge=0 (NOT ge=1): this field rides every part-less
+    # persist, so a 0-based sort_order must not 422 the whole request.
+    assert PersistPass2Request(**_base(chapter_index=0)).chapter_index == 0
+
+
+def test_chapter_index_rejects_negative():
+    with pytest.raises(ValidationError):
+        PersistPass2Request(**_base(chapter_index=-1))
+
+
 # ── /review-impl #1: the new `provenances` node property must not break reads ──
 # The read-path converters (`_node_to_*`) validate ALL node properties against
 # the Entity/Event/Fact models, which have NO `provenances` field. This locks

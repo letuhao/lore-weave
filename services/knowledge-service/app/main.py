@@ -25,6 +25,7 @@ from app.routers import (
     health,
     internal_admin,
     internal_backfill,
+    internal_canon,
     internal_benchmark,
     internal_dispatch,
     internal_enrichment,
@@ -674,6 +675,7 @@ app.include_router(context.router)
 app.include_router(coref.router)
 app.include_router(internal_admin.router)
 app.include_router(internal_backfill.router)
+app.include_router(internal_canon.router)
 app.include_router(internal_benchmark.router)
 app.include_router(internal_dispatch.router)
 app.include_router(internal_enrichment.router)

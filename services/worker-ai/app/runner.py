@@ -19,6 +19,7 @@ import functools
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -42,12 +43,18 @@ from loreweave_extraction.errors import ExtractionError
 from app.clients import (
     BookClient,
     ChapterInfo,
+    ChatClient,
     ExtractionResult,
     GlossaryClient,
     GlossaryEntity,
     KnowledgeClient,
+    ProviderRegistryClient,
 )
 from app.llm_client import LLMClient, set_campaign_id
+from app.metrics import (
+    worker_ai_extraction_reasoning_model_advised_total,
+    worker_ai_extraction_zero_output_total,
+)
 from app.outbox_emit import (
     emit_chapter_extracted,
     emit_chapter_extracted_best_effort,
@@ -308,7 +315,7 @@ def _with_job_span(func):
     span context attribute) so the wrapper can set ERROR status.
     """
     @functools.wraps(func)
-    async def wrapper(pool, knowledge_client, llm_client, book_client, glossary_client, job):
+    async def wrapper(pool, knowledge_client, llm_client, book_client, glossary_client, chat_client, provider_client, job):
         with tracer.start_as_current_span(
             "worker_ai.process_job",
             attributes={
@@ -321,7 +328,7 @@ def _with_job_span(func):
         ):
             return await func(
                 pool, knowledge_client, llm_client,
-                book_client, glossary_client, job,
+                book_client, glossary_client, chat_client, provider_client, job,
             )
 
     return wrapper
@@ -339,6 +346,34 @@ _GLOSSARY_SYNC_COST_PER_ITEM = Decimal("0.0")
 # Max retries per item before skipping. Prevents infinite retry loops
 # when a specific item consistently triggers a retryable LLM error.
 _MAX_RETRIES_PER_ITEM = 3
+
+# FD-27 — only warn about zero-output on SUBSTANTIVE input. Extraction on a
+# handful of chars legitimately yielding nothing is not the silent-failure
+# signal; a full chapter (thousands of chars) producing nothing is.
+_MIN_INPUT_CHARS_FOR_ZERO_OUTPUT_WARN = 40
+
+# FD-27 — best-effort reasoning-model name patterns (substring match, lowercased).
+# provider-registry has NO reasoning capability flag, so this is name-based and
+# WILL have false negatives on novel models — it drives an advisory WARNING, never
+# a hard block. Extraction suppresses thinking via a PROMPT preamble (~95% obey),
+# not a hard API param, so a reasoning model still carries elevated empty-output
+# risk worth flagging.
+_REASONING_MODEL_PATTERNS = (
+    "deepseek-r1", "deepseek-reasoner", "qwq", "glm-z", "minimax-m1", "magistral",
+    "thinking", "reasoner", "reasoning", "qwen3",
+)
+
+
+def _is_likely_reasoning_model(name: str | None) -> bool:
+    """Best-effort: does this model NAME look like a reasoning/thinking model?
+    Name heuristics only (no capability flag exists) — advisory, not a gate."""
+    if not name:
+        return False
+    n = name.lower()
+    # OpenAI o-series as a token (o1/o3/o4/o5) without matching e.g. 'gpt-4o'.
+    if re.search(r"(?:^|[^a-z0-9])o[1345](?:-|$|[^a-z0-9])", n):
+        return True
+    return any(p in n for p in _REASONING_MODEL_PATTERNS)
 
 # B2-B-b1 — sentinels distinguishing "caller omitted the arg" (use the module
 # global) from "caller passed None" (override DISABLES the pass). An `is not
@@ -1090,6 +1125,10 @@ async def _extract_and_persist(
     # branch) supplies these to opt into hierarchy MERGE + summary
     # enqueue. chat_turn branch keeps the legacy behaviour.
     hierarchy_paths: dict | None = None,
+    # FD-4 (066 fix): chapter reading-order ordinal (sort_order), threaded
+    # independent of hierarchy_paths so a flat book (no part) still gets a
+    # dense event_order → status_effects/timeline aren't silently dropped.
+    chapter_index: int | None = None,
     book_parts: list[tuple[str, str, str]] | None = None,
     is_last_chapter_of_book: bool = False,
     embedding_model_uuid: str | None = None,
@@ -1173,6 +1212,21 @@ async def _extract_and_persist(
             error_code=error_code,
         ), None
 
+    # FD-27 — silent zero-output guard. Non-empty (substantive) input that the
+    # LLM turned into ZERO candidates is the "extraction did nothing" symptom —
+    # dominant cause is a reasoning model swallowing the JSON in reasoning
+    # tokens, but cause-agnostic. Observability only (warn + metric); the empty
+    # persist below still writes the source row for idempotency.
+    if len(text.strip()) >= _MIN_INPUT_CHARS_FOR_ZERO_OUTPUT_WARN and candidates.is_empty():
+        logger.warning(
+            "EXTRACTION_ZERO_OUTPUT source_type=%s source_id=%s: non-empty input "
+            "(%d chars) produced 0 candidates — if using a reasoning model, set "
+            "reasoning_effort=none / disable thinking (output may be swallowed by "
+            "reasoning tokens).",
+            source_type, source_id, len(text),
+        )
+        worker_ai_extraction_zero_output_total.labels(source_type=source_type).inc()
+
     persist_result = await knowledge_client.persist_pass2(
         user_id=user_id,
         project_id=project_id,
@@ -1187,6 +1241,7 @@ async def _extract_and_persist(
         # P3 — pass-through to the receiving endpoint. When None →
         # endpoint skips hierarchy MERGE + summary enqueue.
         hierarchy_paths=hierarchy_paths,
+        chapter_index=chapter_index,  # FD-4 (066) — event_order for flat books
         book_parts=book_parts,
         is_last_chapter_of_book=is_last_chapter_of_book,
         embedding_model_uuid=embedding_model_uuid,
@@ -1206,6 +1261,8 @@ async def process_job(
     llm_client: LLMClient,
     book_client: BookClient,
     glossary_client: GlossaryClient,
+    chat_client: ChatClient,
+    provider_client: ProviderRegistryClient,
     job: JobRow,
 ) -> None:
     """Process all items for a single extraction job.
@@ -1233,6 +1290,30 @@ async def process_job(
     # per job (poll_and_run), so the ContextVar is task-local — concurrent jobs
     # for different campaigns never cross-contaminate.
     set_campaign_id(str(job.campaign_id) if job.campaign_id else None)
+
+    # FD-27 — reasoning-model advisory (once per job, best-effort). A reasoning
+    # model used for extraction risks empty output (thinking suppression is a
+    # ~95% prompt preamble, not a hard guarantee). None model name (lookup
+    # failed / non-user_model) → silently skip; never blocks the job.
+    # Gated to scopes that actually run LLM extraction — `glossary_sync` is a
+    # pure Neo4j MERGE (no LLM), so the model's reasoning-ness is irrelevant and
+    # warning there would be a false advisory (/review-impl MED).
+    try:
+        if job.scope != "glossary_sync":
+            model_name = await provider_client.get_model_name("user_model", job.llm_model)
+        else:
+            model_name = None
+        if _is_likely_reasoning_model(model_name):
+            logger.warning(
+                "EXTRACTION_REASONING_MODEL job=%s model=%s looks like a reasoning "
+                "model — extraction reliability depends on prompt-level thinking "
+                "suppression (~95%%); prefer a non-reasoning model or "
+                "reasoning_effort=none for extraction.",
+                job.job_id, model_name,
+            )
+            worker_ai_extraction_reasoning_model_advised_total.inc()
+    except Exception:
+        logger.debug("FD-27 reasoning-model advisory skipped (non-fatal)", exc_info=True)
 
     items_processed = 0
     try:
@@ -1342,6 +1423,18 @@ async def process_job(
                             "reason": "text_unavailable",
                         },
                     )
+                    # D-CM3B-DEAD-REVISION-LOOP: for a chapters_pending drain, a
+                    # None text means the PINNED revision is permanently gone (404 —
+                    # the client RAISES on transient errors, so this isn't a blip).
+                    # Mark the pending row processed (revision-guarded) so it stops
+                    # re-arming a fresh drain job on every poll. Without this, an
+                    # orphaned pending row (deleted chapter/revision) loops forever,
+                    # emitting a skipped extraction_run each ~poll. A future
+                    # re-publish re-arms the row at a NEW revision_id.
+                    if ch.pending_id is not None:
+                        await _mark_pending_processed(
+                            pool, job.user_id, ch.pending_id, revision_id=ch.revision_id,
+                        )
                     unavail_payload = _run_payload(
                         job=job, book_id=book_id, chapter_ref=ch.chapter_id,
                         snapshot=run_snapshot, cfg_hash=run_cfg_hash,
@@ -1366,6 +1459,14 @@ async def process_job(
                 p3_is_last = False
                 hierarchy = await book_client.get_chapter_hierarchy(
                     book_id, ch.chapter_id,
+                )
+                # FD-4 (066 fix): capture the chapter's reading-order ordinal
+                # INDEPENDENT of the part gate below. hierarchy.chapter_index is
+                # the book-service sort_order and is present even for a flat book
+                # (no part); without threading it, no-part books got
+                # event_order=None → status_effects + timeline silently dropped.
+                p3_chapter_index: int | None = (
+                    hierarchy.chapter_index if hierarchy is not None else None
                 )
                 if (
                     hierarchy is not None
@@ -1430,6 +1531,7 @@ async def process_job(
                     writer_autocreate=run_snapshot.writer_autocreate,
                     text=text,
                     hierarchy_paths=p3_hierarchy_paths,
+                    chapter_index=p3_chapter_index,  # FD-4 (066) — flat-book event_order
                     book_parts=p3_book_parts,
                     is_last_chapter_of_book=p3_is_last,
                     embedding_model_uuid=(
@@ -1613,15 +1715,13 @@ async def process_job(
                     await _update_project_status(pool, job.user_id, job.project_id, "paused")
                     return
 
-                # Chat turns don't have text in extraction_pending — the
-                # worker would need to fetch from chat-service. For v1,
-                # we pass empty text; loreweave_extraction.extract_pass2
-                # short-circuits to empty Pass2Candidates without calling
-                # the LLM, then persist-pass2 writes the source row for
-                # idempotency. Will be fleshed out when chat-service
-                # exposes a message-text endpoint.
-                # Q4b-feed: chat turns aren't sampled (no source text yet);
-                # candidates ignored.
+                # FD-2: fetch the REAL turn text (user question + assistant answer)
+                # from chat-service by the assistant message id (the event's
+                # aggregate_id). None (404 / empty / transport) → "" → extract_pass2
+                # short-circuits to empty WITHOUT an LLM call, persist-pass2 still
+                # writes the source row for idempotency — the same graceful no-op
+                # the path always had, now with real extraction when text exists.
+                turn_text = await chat_client.get_turn_text(turn["aggregate_id"]) or ""
                 result, _ = await _extract_and_persist(
                     knowledge_client=knowledge_client,
                     llm_client=llm_client,
@@ -1631,7 +1731,7 @@ async def process_job(
                     source_id=str(turn["aggregate_id"]),
                     job_id=job.job_id,
                     model_ref=job.llm_model,
-                    text="",  # placeholder — needs chat-service integration
+                    text=turn_text,
                 )
 
                 if result.error and not result.retryable:
@@ -1857,12 +1957,85 @@ async def _ensure_chapters_pending_jobs(pool: asyncpg.Pool) -> int:
     return created
 
 
+async def _ensure_chat_pending_jobs(pool: asyncpg.Pool) -> int:
+    """FD-2 — create a 'chat' drain job for each project that has unprocessed
+    chat turn pending rows (`aggregate_type='chat'`) AND no active job.
+
+    Mirror of `_ensure_chapters_pending_jobs` for the chat→KG path: without it,
+    `chat.turn_completed` rows accumulate in `extraction_pending` and only drain
+    when the user manually triggers a full extraction — chat knowledge would
+    never extract in near-real-time the way published chapters do. The
+    `scope='chat'` job's turn loop fetches each turn's real text via ChatClient
+    and extracts it. Same guards as the chapter drainer:
+      - skip projects with an active job (one-active-job-per-project unique
+        index makes the INSERT idempotent — 409 swallowed; an active chapter
+        OR chat drain will progress, and the next poll re-arms if rows remain),
+      - reuse the project's last job's models + spend cap (a placeholder model
+        would break extraction; an uncapped auto-drain could spend unbounded),
+      - 1h backoff after a FAILED chat drain (else fail→recreate every poll).
+    A project with no prior job is skipped (a manual /extraction/start
+    bootstraps it; subsequent chat turns then auto-drain).
+    """
+    rows = await pool.fetch(
+        """
+        SELECT DISTINCT p.user_id, ep.project_id
+        FROM extraction_pending ep
+        JOIN knowledge_projects p ON p.project_id = ep.project_id
+        WHERE ep.aggregate_type = 'chat' AND ep.processed_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM extraction_jobs j
+            WHERE j.project_id = ep.project_id
+              AND j.status IN ('pending', 'running', 'paused')
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM extraction_jobs j2
+            WHERE j2.project_id = ep.project_id
+              AND j2.scope = 'chat'
+              AND j2.status = 'failed'
+              AND j2.updated_at > now() - interval '1 hour'
+          )
+        """
+    )
+    created = 0
+    for r in rows:
+        user_id, project_id = r["user_id"], r["project_id"]
+        last = await pool.fetchrow(
+            """
+            SELECT llm_model, embedding_model, max_spend_usd FROM extraction_jobs
+            WHERE project_id = $1 ORDER BY created_at DESC LIMIT 1
+            """,
+            project_id,
+        )
+        if last is None:
+            continue  # no prior job → manual run bootstraps it
+        try:
+            await pool.execute(
+                """
+                INSERT INTO extraction_jobs
+                  (user_id, project_id, scope, status, llm_model, embedding_model,
+                   max_spend_usd, started_at, updated_at)
+                VALUES ($1, $2, 'chat', 'running', $3, $4, $5, now(), now())
+                """,
+                user_id, project_id,
+                last["llm_model"], last["embedding_model"], last["max_spend_usd"],
+            )
+            created += 1
+            logger.info("FD-2: created chat drain job for project=%s", project_id)
+        except asyncpg.UniqueViolationError:
+            # An active job appeared concurrently — it will drain the queue,
+            # and the next poll re-arms a chat drain if rows still remain.
+            pass
+    return created
+
+
 async def poll_and_run(
     pool: asyncpg.Pool,
     knowledge_client: KnowledgeClient,
     llm_client: LLMClient,
     book_client: BookClient,
     glossary_client: GlossaryClient,
+    chat_client: ChatClient,
+    provider_client: ProviderRegistryClient,
 ) -> int:
     """One poll cycle: find running jobs and process them.
 
@@ -1877,13 +2050,23 @@ async def poll_and_run(
         logger.warning(
             "CM3b: ensure chapters_pending jobs failed — non-fatal", exc_info=True
         )
+    # FD-2: same for queued chat turns (chat→KG auto-drain). Runs after the
+    # chapter ensurer; the one-active-job-per-project index serializes the two
+    # (chat re-arms next poll if a chapter drain is currently active).
+    try:
+        await _ensure_chat_pending_jobs(pool)
+    except Exception:
+        logger.warning(
+            "FD-2: ensure chat pending jobs failed — non-fatal", exc_info=True
+        )
     jobs = await _get_running_jobs(pool)
     if not jobs:
         return 0
 
     for job in jobs:
         await process_job(
-            pool, knowledge_client, llm_client, book_client, glossary_client, job,
+            pool, knowledge_client, llm_client, book_client, glossary_client,
+            chat_client, provider_client, job,
         )
 
     return len(jobs)

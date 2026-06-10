@@ -176,7 +176,7 @@ LoreWeave is a hobby project with **no fixed deadline**. This shapes how reviews
 **Bundle v2.3** — default v2.2 human-in-loop + opt-in AMAW v3.0. Full prose in [`agentic-workflow/WORKFLOW.md`](agentic-workflow/WORKFLOW.md) and [`docs/amaw-workflow.md`](docs/amaw-workflow.md). This section captures only what the agent must keep loaded at all times.
 
 **Default mode (v2.2):** human-in-loop with PO checkpoints at CLARIFY end + POST-REVIEW.
-**Opt-in (AMAW v3.0):** type `/amaw` at task start to enable cold-start sub-agent reviews. Pays off for L+ tasks (data migrations, schema changes, security-critical paths). Don't invoke for everyday work — token cost ~$1-5/task.
+**Opt-in (AMAW v3.0) — HUMAN-INITIATED ONLY:** AMAW is an automated sub-agent flow that the agent **never** proposes, announces, or invokes on its own. It activates **only** when the human explicitly types `/amaw` (or asks for it) for a task. Do **not** suggest `/amaw` at CLARIFY, before BUILD, or anywhere else — even for L+ / load-bearing work (data migrations, schema changes, security-critical paths). If the human wants the cold-start sub-agent reviews, they will turn it on; otherwise stay in default v2.2. (Token cost ~$1-5/task is the human's call to make.)
 
 ### 12 phases
 
@@ -315,7 +315,7 @@ NO FIXES WITHOUT ROOT CAUSE.
 | Command | When |
 |---|---|
 | `/review-impl [task-id]` | On-demand deep adversarial review. Invoke when POST-REVIEW needs deeper look, or after COMMIT when something feels off. Default mode. |
-| `/amaw` | Enable AMAW v3.0 for current task only. For data migrations, schema changes, security-critical paths, multi-system contracts. Don't invoke for everyday work. |
+| `/amaw` | **Human-initiated only** — the agent never suggests or invokes this. The human types `/amaw` to enable AMAW v3.0 for the current task (cold-start sub-agent reviews). For data migrations, schema changes, security-critical paths, multi-system contracts — but the decision is always the human's. |
 
 ---
 

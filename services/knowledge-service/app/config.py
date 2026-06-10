@@ -10,6 +10,10 @@ class Settings(BaseSettings):
 
     # Optional with defaults.
     redis_url: str = "redis://redis:6379"
+    # FD-22 — emit a Redis wake signal when an extraction job starts so worker-ai
+    # picks it up immediately instead of waiting for its next poll. Kill-switch;
+    # disabling (or an empty redis_url) cleanly reverts to pure polling.
+    extraction_wake_enabled: bool = True
     log_level: str = "INFO"
     port: int = 8092
 

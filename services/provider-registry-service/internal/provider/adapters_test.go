@@ -126,6 +126,54 @@ func TestForwardOptionalChatFields_SkipsAbsentFields(t *testing.T) {
 	}
 }
 
+func TestOpenAIIsReasoningModel(t *testing.T) {
+	t.Parallel()
+	for _, m := range []string{"o1", "o1-mini", "o3", "o3-mini", "o4-mini", "O1-preview"} {
+		if !openaiIsReasoningModel(m) {
+			t.Errorf("%q should be a reasoning (o-series) model", m)
+		}
+	}
+	for _, m := range []string{"gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4-turbo", ""} {
+		if openaiIsReasoningModel(m) {
+			t.Errorf("%q must NOT be treated as a reasoning model", m)
+		}
+	}
+}
+
+func TestStripDefaultOpenAIUnsupportedFields(t *testing.T) {
+	t.Parallel()
+	// Default endpoint + gpt-4o → strip BOTH reasoning_effort and
+	// chat_template_kwargs (real OpenAI 400s on them).
+	body := map[string]any{"reasoning_effort": "none", "chat_template_kwargs": map[string]any{}, "temperature": 0.7}
+	stripDefaultOpenAIUnsupportedFields(body, "gpt-4o", "")
+	if _, ok := body["reasoning_effort"]; ok {
+		t.Error("reasoning_effort must be stripped for gpt-4o on the default endpoint")
+	}
+	if _, ok := body["chat_template_kwargs"]; ok {
+		t.Error("chat_template_kwargs must be stripped on the default endpoint")
+	}
+	if body["temperature"] != 0.7 {
+		t.Error("unrelated fields must be preserved")
+	}
+
+	// Default endpoint + o-series → KEEP reasoning_effort (the model accepts it).
+	oBody := map[string]any{"reasoning_effort": "high"}
+	stripDefaultOpenAIUnsupportedFields(oBody, "o3-mini", "")
+	if oBody["reasoning_effort"] != "high" {
+		t.Error("reasoning_effort must be kept for an o-series model")
+	}
+
+	// Custom base_url (local OpenAI-compatible) → keep BOTH (used to suppress thinking).
+	cBody := map[string]any{"reasoning_effort": "none", "chat_template_kwargs": map[string]any{"enable_thinking": false}}
+	stripDefaultOpenAIUnsupportedFields(cBody, "gpt-4o", "http://localhost:1234/v1")
+	if _, ok := cBody["reasoning_effort"]; !ok {
+		t.Error("custom base_url must keep reasoning_effort")
+	}
+	if _, ok := cBody["chat_template_kwargs"]; !ok {
+		t.Error("custom base_url must keep chat_template_kwargs")
+	}
+}
+
 func TestToFloat(t *testing.T) {
 	t.Parallel()
 

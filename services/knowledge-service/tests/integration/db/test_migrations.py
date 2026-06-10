@@ -190,6 +190,32 @@ async def test_extraction_jobs_status_check(pool):
 
 
 @pytest.mark.asyncio
+async def test_extraction_jobs_status_check_accepts_full_vocabulary(pool):
+    """Cycle 10 (DEFERRED 065) regression-lock: every status the code actually
+    emits must be ACCEPTED by the constraint. The original M1 ALTER renamed
+    'complete'->'completed' and dropped 'paused'/'cancelled', so finished/paused/
+    cancelled extractions CheckViolated and were misreported as failed. This pins
+    the reconciled vocabulary against re-introducing that drift — the DDL-string
+    unit tests can't catch a live constraint mismatch."""
+    valid = ["pending", "running", "paused", "summarizing", "complete", "failed", "cancelled"]
+    async with pool.acquire() as conn:
+        for status in valid:
+            # A FRESH project per status: idx_extraction_jobs_one_active_per_project
+            # is UNIQUE on project_id alone WHERE status IN (pending,running,paused),
+            # so reusing one project would trip that index (not the CHECK) on the
+            # 2nd active status. Each INSERT must succeed (no CheckViolation).
+            project_id = await _make_project(conn)
+            await conn.execute(
+                """
+                INSERT INTO extraction_jobs
+                  (user_id, project_id, scope, status, llm_model, embedding_model)
+                VALUES (gen_random_uuid(), $1, 'all', $2, 'gpt-4', 'text-embedding-3-small')
+                """,
+                project_id, status,
+            )
+
+
+@pytest.mark.asyncio
 async def test_extraction_jobs_indexes_exist(pool):
     async with pool.acquire() as conn:
         rows = await conn.fetch(

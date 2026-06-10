@@ -18,6 +18,47 @@ export type WorkResolution = {
   book_project_ids: string[];
 };
 
+// ── A3 decompose planner (cycle 13) ──────────────────────────────────────────
+export type StructureTemplate = { id: string; name: string; kind?: string; beats?: unknown[] };
+
+// Preview shape — mirrors composition-service DecomposeResult (dataclasses.asdict).
+// The chapter is nested under `chapter`; scenes carry resolved present_entity_ids
+// PLUS the names the planner could not resolve against the roster.
+export type PlannerScenePreview = {
+  title: string;
+  synopsis: string;
+  tension: number;
+  present_entity_ids: string[];
+  present_entity_names_unresolved: string[];
+  suggested_k: number;
+};
+export type PlannerChapterPreview = {
+  chapter: { chapter_id: string; title: string; sort_order: number; beat_role: string | null; intent: string };
+  scenes: PlannerScenePreview[];
+  warning: string | null;
+};
+export type DecomposePreview = {
+  arc_title: string;
+  chapters: PlannerChapterPreview[];
+  unmapped_beats: string[];
+};
+
+// Editable draft (what the UI mutates) + the commit payload (BE CommitRequest).
+export type PlannerSceneDraft = { title: string; synopsis: string; tension: number | null; present_entity_ids: string[] };
+export type PlannerChapterDraft = {
+  chapter_id: string;
+  title: string;
+  intent: string;
+  beat_role: string | null;
+  scenes: PlannerSceneDraft[];
+};
+export type CommitDecomposePayload = {
+  arc_title: string;
+  chapters: PlannerChapterDraft[];
+  replace: boolean;
+  idempotency_key: string;
+};
+
 export type OutlineNode = {
   id: string;
   project_id: string;
@@ -32,11 +73,18 @@ export type OutlineNode = {
 };
 
 // M9 chapter-gate (OI-1): can this chapter be published? can_publish is true
-// only when every composition scene of the chapter is 'done'.
+// only when every composition scene of the chapter is 'done' AND no scene's
+// latest auto-generation left a CONFIRMED canon contradiction (A2-S3b / D4).
 export type PublishGate = {
   chapter_id: string;
   scenes_total: number;
   scenes_done: number;
+  // A2-S3b/A2-S4b — `canon_blocked` (an unresolved contradiction) is part of
+  // can_publish (a HARD block); `canon_unchecked_scenes` is a NON-blocking
+  // warning (dirty data — cast present but no resolved reading position).
+  canon_blocked: boolean;
+  canon_unresolved_scenes: number;
+  canon_unchecked_scenes: number;
   can_publish: boolean;
 };
 
@@ -86,6 +134,107 @@ export type GenerationJob = {
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   result: { text?: string; measured?: boolean; output_tokens?: number } | null;
   critic: Critic;
+};
+
+// A2-S4 — the canon gate verdict on the converged auto winner (A2-S3b).
+// `confirmed`: true → HARD (a confirmed contradiction survived auto-revision);
+// null → ADVISORY (symbolic-only — the judge was down/not-distinct, unverified).
+// The backend already EXCLUDES judge-cleared (confirmed=false) from `violations`;
+// the FE filters defensively anyway.
+export type CanonViolation = {
+  kind: string;
+  source: string; // "score_symbolic" | "llm_judge"
+  entity_id: string;
+  glossary_entity_id?: string | null;
+  name?: string | null;
+  status: string; // "gone"
+  span?: string;
+  matched?: string;
+  confirmed?: boolean | null;
+  why?: string;
+};
+
+// `status`: checked → canon was verified at the scene's reading position.
+// skipped_no_cast / skipped_no_position / degraded → canon protection did NOT
+// apply (dirty data / knowledge outage) — the FE warns "unchecked", never a
+// false-green. `resolved` = no confirmed-HARD violation remains.
+export type CanonResult = {
+  violations: CanonViolation[];
+  resolved: boolean;
+  iterations: number;
+  status: 'checked' | 'skipped_no_cast' | 'skipped_no_position' | 'degraded' | string;
+};
+
+// V1 slice 3 — controlled-auto (diverge→converge) result. NON-streaming: the
+// auto /generate returns the winner + ALL K candidate texts so the FE shows
+// every option as a card (the human gate).
+export type AutoGeneration = {
+  job_id: string;
+  mode: 'auto';
+  status: string;
+  text: string; // the reranked winner
+  winner_index: number;
+  k: number;
+  candidates: string[]; // the K drafts, winner included
+  rerank_reason?: string;
+  rerank_measured?: boolean;
+  grounding_available?: boolean;
+  reasoning_source?: string;
+  reasoning_effort?: string | null;
+  replay?: boolean;
+  // A2-S4 — the canon gate verdict (absent on an idempotent replay / cowrite).
+  canon?: CanonResult;
+};
+
+// LOOM chapter-assembly-modes — how a chapter's prose is assembled.
+export type AssemblyMode = 'per_scene' | 'chapter';
+
+// Response of the chapter single-pass (B2) + stitch (B3) endpoints. Non-stream
+// JSON (like AutoGeneration) but chapter-scoped: no candidates (single pass).
+export type ChapterGeneration = {
+  job_id: string;
+  status: string;
+  text: string;
+  canon?: CanonResult;
+  assembly_mode: 'chapter' | 'per_scene_stitch';
+  stitched?: boolean; // stitch arm: true = the LLM merge ran; false = raw concat
+  degraded?: boolean; // stitch fell back to the raw concatenation
+  persisted?: boolean; // best-effort write to the book draft (FE uses persist=false)
+  draft_version?: number | null;
+  persist_error?: string | null;
+  reasoning_source?: string;
+  reasoning_effort?: string | null;
+  replay?: boolean;
+};
+
+// The genuine-author-choice actions on the gate (H2: NO 'accept' — accepting the
+// winner as-is is not a correction). Maps 1:1 to the composition correction API.
+export type CorrectionKind = 'edit' | 'pick_different' | 'regenerate' | 'reject';
+
+// V1 slice 5 — the eval-gate dashboard. Per-mode correction rates (auto vs
+// cowrite). Rates are null at cold-start (no generations of that mode).
+export type ModeCorrectionStats = {
+  mode: string;
+  generations: number;
+  corrected_jobs: number;
+  accept_rate: number | null;
+  edit_rate: number | null;
+  pick_different_rate: number | null;
+  regenerate_rate: number | null;
+  reject_rate: number | null;
+  avg_edit_magnitude: number | null;
+};
+
+export type CorrectionStats = {
+  project_id: string;
+  by_mode: ModeCorrectionStats[];
+};
+
+export type CorrectionBody = {
+  kind: CorrectionKind;
+  chosen_candidate_index?: number; // pick_different
+  guidance?: string; // regenerate
+  edited_text?: string; // edit
 };
 
 // One decoded SSE frame from POST /generate.

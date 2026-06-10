@@ -28,6 +28,7 @@ import asyncpg
 # const surface for routers/engine.
 WORK_CREATED = "composition.work_created"
 SCENE_COMMITTED = "composition.scene_committed"
+GENERATION_CORRECTED = "composition.generation_corrected"
 
 
 async def emit(

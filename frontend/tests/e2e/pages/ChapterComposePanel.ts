@@ -19,6 +19,17 @@ export class ChapterComposePanel {
   readonly stop: Locator;
   readonly regenerate: Locator;
   readonly discard: Locator;
+  // slice 3 — controlled-auto K-candidate gate
+  readonly divergeToggle: Locator;
+  readonly candidatesView: Locator;
+  readonly candidateCards: Locator;
+  readonly candidateUse: Locator;
+  readonly candidateEdit: Locator;
+  readonly candidateEditBox: Locator;
+  readonly candidateEditSave: Locator;
+  readonly candidateWinnerBadge: Locator;
+  readonly candidatesRegenerate: Locator;
+  readonly candidatesReject: Locator;
   readonly needScene: Locator;
   readonly needModel: Locator;
   readonly reasoningBadge: Locator;
@@ -56,6 +67,17 @@ export class ChapterComposePanel {
     this.stop = page.getByTestId('compose-stop');
     this.regenerate = page.getByTestId('compose-regenerate');
     this.discard = page.getByTestId('compose-discard');
+    // slice 3 — the diverge toggle is a <label>; the checkbox is its <input>.
+    this.divergeToggle = page.getByTestId('compose-diverge-toggle').locator('input');
+    this.candidatesView = page.getByTestId('candidates-view');
+    this.candidateCards = page.getByTestId('candidate-card');
+    this.candidateUse = page.getByTestId('candidate-use');
+    this.candidateEdit = page.getByTestId('candidate-edit');
+    this.candidateEditBox = page.getByTestId('candidate-edit-box');
+    this.candidateEditSave = page.getByTestId('candidate-edit-save');
+    this.candidateWinnerBadge = page.getByTestId('candidate-winner-badge');
+    this.candidatesRegenerate = page.getByTestId('candidates-regenerate');
+    this.candidatesReject = page.getByTestId('candidates-reject');
     this.needScene = page.getByTestId('compose-need-scene');
     this.needModel = page.getByTestId('compose-need-model');
     this.reasoningBadge = page.getByTestId('compose-reasoning-badge');

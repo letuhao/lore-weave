@@ -7,8 +7,11 @@ in M1–M6. Mirrors knowledge-service house style (ASGI trace middleware, JSON
 logging, OTel-optional, terse 500 envelope).
 """
 
+import asyncio
+import contextlib
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,13 +26,38 @@ from app.clients.llm_client import close_llm_client
 from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool, get_pool
+from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.logging_config import setup_logging, trace_id_var
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
-    canon, engine, grounding, health, metrics, outline, ping, prose, works,
+    canon, engine, grounding, health, internal_eval, metrics, narrative_threads,
+    outline, ping, plan, prose, works,
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def _reap_stale_jobs_loop() -> None:
+    """Periodic backstop for D-COMP-CHAPTER-INFLIGHT-REAPER: every
+    `job_reaper_sweep_secs`, mark jobs orphaned in `running`/`pending` past
+    `chapter_inflight_stale_secs` as failed (a crash/kill leaves no producer to
+    terminate them). The guard reaps per-chapter opportunistically; this catches
+    never-re-requested chapters + per-scene orphans. A transient DB blip is logged
+    and retried next interval — it never kills the loop."""
+    interval = settings.job_reaper_sweep_secs
+    window = settings.chapter_inflight_stale_secs
+    repo = GenerationJobsRepo(get_pool())
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            cutoff = datetime.now(timezone.utc) - timedelta(seconds=window)
+            reaped = await repo.reap_stale_jobs(cutoff)
+            if reaped:
+                logger.info("job reaper: marked %d stale job(s) failed", reaped)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning("job reaper sweep failed (retrying next interval)", exc_info=True)
 
 
 @asynccontextmanager
@@ -43,9 +71,18 @@ async def lifespan(app: FastAPI):
         logger.exception("composition-service startup failed before yield")
         await close_pool()
         raise
+    reaper_task = (
+        asyncio.create_task(_reap_stale_jobs_loop())
+        if settings.job_reaper_sweep_secs > 0
+        else None
+    )
     try:
         yield
     finally:
+        if reaper_task is not None:
+            reaper_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await reaper_task
         await close_knowledge_client()
         await close_book_client()
         await close_glossary_client()
@@ -93,4 +130,7 @@ app.include_router(prose.router)
 app.include_router(grounding.router)
 app.include_router(engine.router)
 app.include_router(outline.router)
+app.include_router(plan.router)
+app.include_router(internal_eval.router)
 app.include_router(canon.router)
+app.include_router(narrative_threads.router)

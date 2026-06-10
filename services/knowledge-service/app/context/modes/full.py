@@ -5,24 +5,23 @@ to a project with ``extraction_enabled=true``. Builds on Mode 2 by
 adding L2 facts (from the Neo4j graph), absence hints, and
 intent-aware CoT instructions.
 
-**Commit 1 scaffold scope:**
+**Pipeline (all live):**
 
   - Uses the K18.2a intent classifier to route.
   - Runs the K18.2 L2 fact selector (1-hop always, 2-hop on
     relational intent, + negations).
-  - Runs K18.5 absence detection (no L3 yet).
+  - Runs the K18.3 L3 semantic passage selector + P3 D5 abstract-query
+    summary blend.
+  - Runs K18.5 absence detection.
   - Emits K18.6 intent-aware instructions.
+  - K18.7 token-budget enforcement trims in reverse priority.
   - Falls back gracefully to a Mode-2-shaped block if Neo4j is
     unavailable or the L2 query fails.
 
-**Out of scope for Commit 1 (handled by later commits):**
-
-  - L3 semantic passage selector (K18.3 → Commit 2).
-  - Final token budget enforcement (K18.7 → Commit 3).
-  - Dispatcher flip (K18.8 → Commit 3). The dispatcher in
-    ``builder.py`` still raises ``NotImplementedError``; this
-    scaffold is callable directly from tests and from Commit 3's
-    router change.
+Mode 3 is **flipped on (K18.8)** and reached in production: ``builder.py``
+dispatches here on ``project.extraction_enabled`` (no ``NotImplementedError``
+remains). ``embedding_client=None`` callers (Track 1 / no-Neo4j) cleanly get an
+empty ``<passages>`` block.
 
 Recent-message count is 20 (down from Mode 2's 50) — the graph
 itself carries the durable memory, so chat history can be tighter.

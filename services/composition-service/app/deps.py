@@ -16,7 +16,9 @@ from app.clients.knowledge_client import KnowledgeClient, get_knowledge_client
 from app.clients.llm_client import LLMClient, get_llm_client
 from app.db.pool import get_pool
 from app.db.repositories.canon_rules import CanonRulesRepo
+from app.db.repositories.generation_corrections import GenerationCorrectionsRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
+from app.db.repositories.narrative_thread import NarrativeThreadRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
 from app.db.repositories.structure_templates import StructureTemplatesRepo
@@ -35,12 +37,22 @@ async def get_scene_links_repo() -> SceneLinksRepo:
     return SceneLinksRepo(get_pool())
 
 
+async def get_narrative_thread_repo() -> NarrativeThreadRepo:
+    """FD-1 — the promise/foreshadow ledger writer (S2 producer). Wired into the
+    auto-generate path when a Work opts into `narrative_thread_enabled`."""
+    return NarrativeThreadRepo(get_pool())
+
+
 async def get_canon_rules_repo() -> CanonRulesRepo:
     return CanonRulesRepo(get_pool())
 
 
 async def get_generation_jobs_repo() -> GenerationJobsRepo:
     return GenerationJobsRepo(get_pool())
+
+
+async def get_generation_corrections_repo() -> GenerationCorrectionsRepo:
+    return GenerationCorrectionsRepo(get_pool())
 
 
 async def get_structure_templates_repo() -> StructureTemplatesRepo:

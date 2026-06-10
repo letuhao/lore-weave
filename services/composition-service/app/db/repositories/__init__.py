@@ -40,6 +40,34 @@ class ReferenceViolationError(Exception):
         self.message = message
 
 
+class AlreadyPlannedError(Exception):
+    """Raised by commit_decomposed_tree when one of the target chapters already
+    has active scenes and the caller did not pass replace=true. Carries the
+    offending chapter_ids so the router can return them in the 409 body. The
+    check + the insert run in ONE transaction (closes the TOCTOU race that a
+    pre-transaction guard left open — D-A3-COMMIT-IDEMPOTENCY)."""
+
+    def __init__(self, chapter_ids: list[Any]) -> None:
+        super().__init__("chapters already planned")
+        self.chapter_ids = chapter_ids
+
+
+class ChapterJobInFlightError(Exception):
+    """Raised by create_chapter_job_guarded when a chapter-level generate/stitch
+    is requested while another active (pending/running) chapter-level job already
+    exists for the SAME chapter. Chapter generate and stitch both write the same
+    book chapter draft, so a concurrent second job would double-spend the LLM and
+    race the persist. A per-(project, chapter) advisory xact lock serializes the
+    check+create (a plain SELECT is not a lock — the Cycle-1 decompose-commit
+    lesson) so even two no-key concurrent submits can't both pass. Carries the
+    active job id so the router can return it in the 409 body (FE shows 'already
+    generating'). Same-key idempotent replay is honored BEFORE this guard fires."""
+
+    def __init__(self, active_job_id: Any) -> None:
+        super().__init__("a chapter-level generation is already in flight")
+        self.active_job_id = active_job_id
+
+
 def rows_changed(status: str) -> int:
     """Parse an asyncpg command tag like 'UPDATE 1' / 'DELETE 0' safely."""
     try:
@@ -48,4 +76,7 @@ def rows_changed(status: str) -> int:
         return 0
 
 
-__all__ = ["VersionMismatchError", "ReferenceViolationError", "rows_changed"]
+__all__ = [
+    "VersionMismatchError", "ReferenceViolationError", "AlreadyPlannedError",
+    "ChapterJobInFlightError", "rows_changed",
+]

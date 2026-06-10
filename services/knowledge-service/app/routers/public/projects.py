@@ -200,9 +200,16 @@ async def list_projects(
     "",
     response_model=Project,
     status_code=status.HTTP_201_CREATED,
+    responses={
+        # Idempotent book-binding path (D-COMP-POST-WORK-RACE): an existing book
+        # project is returned with 200 instead of a duplicate 201. Documented so
+        # the OpenAPI contract matches the runtime override below.
+        status.HTTP_200_OK: {"model": Project, "description": "Existing book project returned (idempotent)"},
+    },
 )
 async def create_project(
     body: ProjectCreate,
+    response: Response,
     user_id: UUID = Depends(get_current_user),
     repo: ProjectsRepo = Depends(get_projects_repo),
 ) -> Project:
@@ -213,12 +220,17 @@ async def create_project(
     # code smell, and any future loosening of the Pydantic caps would
     # crash POST with a 500 instead of a 422.
     try:
-        return await repo.create(user_id, body)
+        # Idempotent for the book-binding path (D-COMP-POST-WORK-RACE): a repeat
+        # or concurrent same-book book-project POST returns the existing project
+        # (200) instead of a duplicate (201).
+        project, created = await repo.create_or_get(user_id, body)
     except asyncpg.CheckViolationError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"value out of bounds: {exc.constraint_name}",
         )
+    response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+    return project
 
 
 @router.get("/{project_id}", response_model=Project)

@@ -3,8 +3,40 @@
 // uses a raw fetch+ReadableStream in useCompositionStream (apiJson can't stream).
 import { apiBase, apiJson } from '../../api';
 import type {
-  CanonRule, GenerationJob, Grounding, OutlineNode, PublishGate, Work, WorkResolution,
+  AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
+  DecomposePreview, GenerationJob, Grounding, OutlineNode, PublishGate, StructureTemplate, Work, WorkResolution,
 } from './types';
+
+// A3 decompose preview request (cycle 13).
+export type DecomposeBody = {
+  structure_template_id: string;
+  premise: string;
+  model_source: 'user_model' | 'platform_model';
+  model_ref: string;
+};
+
+// Params for a chapter-level assembly (B2 chapter single-pass / B3 stitch).
+export type ChapterAssembleParams = {
+  modelRef: string;
+  modelSource?: 'user_model' | 'platform_model';
+  reasoning?: 'off' | 'auto' | 'low' | 'medium' | 'high';
+  modelKind?: string;
+  modelName?: string;
+  persist?: boolean; // FE default false — show + human Accept, don't clobber the draft
+};
+
+// Params for an auto (diverge→converge) generation — mirrors the SSE generate
+// body minus the streaming bits; `mode: 'auto'` is added by the api method.
+export type AutoGenerateParams = {
+  outlineNodeId: string;
+  modelRef: string;
+  modelSource?: 'user_model' | 'platform_model';
+  operation?: string;
+  guide?: string;
+  reasoning?: 'off' | 'auto' | 'low' | 'medium' | 'high';
+  modelKind?: string;
+  modelName?: string;
+};
 
 const BASE = '/v1/composition';
 
@@ -26,6 +58,20 @@ export const compositionApi = {
   patchNode(nodeId: string, patch: Partial<OutlineNode>, token: string): Promise<OutlineNode> {
     return apiJson(`${BASE}/outline/nodes/${nodeId}`, { method: 'PATCH', body: JSON.stringify(patch), token });
   },
+  // A3 decompose planner (cycle 13). listTemplates → built-in + user structure
+  // templates; decomposePreview → the proposed (NOT persisted) arc→chapter→scene
+  // tree; commitDecompose → persist the edited tree (409 CHAPTER_ALREADY_PLANNED
+  // carries .body.detail.chapter_ids → the hook resends with replace=true).
+  listTemplates(token: string): Promise<StructureTemplate[]> {
+    return apiJson<{ templates: StructureTemplate[] }>(`${BASE}/templates`, { token })
+      .then((r) => r.templates);
+  },
+  decomposePreview(projectId: string, body: DecomposeBody, token: string): Promise<DecomposePreview> {
+    return apiJson(`${BASE}/works/${projectId}/outline/decompose`, { method: 'POST', body: JSON.stringify(body), token });
+  },
+  commitDecompose(projectId: string, payload: CommitDecomposePayload, token: string): Promise<unknown> {
+    return apiJson(`${BASE}/works/${projectId}/outline/decompose/commit`, { method: 'POST', body: JSON.stringify(payload), token });
+  },
   // M9 chapter-gate — is the chapter publishable (all scenes done)?
   publishGate(projectId: string, chapterId: string, token: string): Promise<PublishGate> {
     return apiJson(`${BASE}/works/${projectId}/chapters/${chapterId}/publish-gate`, { token });
@@ -38,8 +84,63 @@ export const compositionApi = {
   generateUrl(projectId: string): string {
     return `${apiBase()}${BASE}/works/${projectId}/generate`;
   },
-  getJob(jobId: string, token: string): Promise<GenerationJob> {
-    return apiJson(`${BASE}/jobs/${jobId}`, { token });
+  // V1 slice 3 — auto (diverge→converge): NON-streaming POST that returns the
+  // winner + all K candidate texts (the human-gate cards).
+  generateAuto(projectId: string, params: AutoGenerateParams, token: string): Promise<AutoGeneration> {
+    return apiJson(`${BASE}/works/${projectId}/generate`, {
+      method: 'POST', token,
+      body: JSON.stringify({
+        mode: 'auto',
+        outline_node_id: params.outlineNodeId,
+        model_source: params.modelSource ?? 'user_model',
+        model_ref: params.modelRef,
+        operation: params.operation ?? 'draft_scene',
+        guide: params.guide ?? '',
+        reasoning: params.reasoning ?? 'auto',
+        model_kind: params.modelKind,
+        model_name: params.modelName,
+      }),
+    });
+  },
+  // Patch the Work (LOOM chapter-assembly: set settings.assembly_mode). NOTE the
+  // server REPLACES the whole settings blob — the caller MUST merge the existing
+  // settings (see useChapterAssembly.setAssemblyMode) so it never drops
+  // critic_model_*/reasoning_engine/etc.
+  patchWork(projectId: string, patch: { settings?: Record<string, unknown>; status?: string }, token: string): Promise<Work> {
+    return apiJson(`${BASE}/works/${projectId}`, { method: 'PATCH', body: JSON.stringify(patch), token });
+  },
+  // B2 chapter single-pass — generate a whole chapter from its decompose plan.
+  generateChapter(projectId: string, chapterId: string, params: ChapterAssembleParams, token: string): Promise<ChapterGeneration> {
+    return apiJson(`${BASE}/works/${projectId}/chapters/${chapterId}/generate`, {
+      method: 'POST', token,
+      body: JSON.stringify({
+        model_source: params.modelSource ?? 'user_model', model_ref: params.modelRef,
+        reasoning: params.reasoning ?? 'auto', model_kind: params.modelKind, model_name: params.modelName,
+        persist: params.persist ?? false,
+      }),
+    });
+  },
+  // B3 stitch — merge a chapter's done scene drafts into one seamless chapter.
+  stitchChapter(projectId: string, chapterId: string, params: ChapterAssembleParams, token: string): Promise<ChapterGeneration> {
+    return apiJson(`${BASE}/works/${projectId}/chapters/${chapterId}/stitch`, {
+      method: 'POST', token,
+      body: JSON.stringify({
+        model_source: params.modelSource ?? 'user_model', model_ref: params.modelRef,
+        reasoning: params.reasoning ?? 'auto', model_kind: params.modelKind, model_name: params.modelName,
+        persist: params.persist ?? false,
+      }),
+    });
+  },
+  // V1 slice 3 — capture a human-gate correction (edit/pick_different/regenerate/
+  // reject). 'accept' is intentionally NOT a kind (H2 self-reinforcement guard).
+  submitCorrection(jobId: string, body: CorrectionBody, token: string): Promise<{ id: string }> {
+    return apiJson(`${BASE}/jobs/${jobId}/correction`, {
+      method: 'POST', body: JSON.stringify(body), token,
+    });
+  },
+  // V1 slice 5 — the eval-gate dashboard: per-mode correction rates for this Work.
+  getCorrectionStats(projectId: string, token: string): Promise<CorrectionStats> {
+    return apiJson(`${BASE}/works/${projectId}/correction-stats`, { token });
   },
   critique(jobId: string, passage: string, token: string): Promise<{ critic: GenerationJob['critic']; warning?: string }> {
     return apiJson(`${BASE}/jobs/${jobId}/critique`, {

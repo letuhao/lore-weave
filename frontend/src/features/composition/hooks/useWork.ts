@@ -59,6 +59,23 @@ export function useSetSceneStatus(projectId: string | undefined, token: string |
   });
 }
 
+/**
+ * Merge a partial patch over the work's settings and persist it (the server
+ * REPLACES the whole settings blob, so we MUST merge — same rule as
+ * useSetAssemblyMode, generalized). Invalidates the work query (keyed by bookId)
+ * so every consumer reflects the persisted value. Used by the Settings sub-tab to
+ * toggle narrative_thread_enabled / assembly_mode / default_model_ref without
+ * dropping the other keys.
+ */
+export function useSetWorkSettings(bookId: string | undefined, token: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { projectId: string; currentSettings: Record<string, unknown>; patch: Record<string, unknown> }) =>
+      compositionApi.patchWork(v.projectId, { settings: { ...v.currentSettings, ...v.patch } }, token!),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['composition', 'work', bookId] }),
+  });
+}
+
 export function useGrounding(
   projectId: string | undefined, nodeId: string | undefined, guide: string,
   token: string | null, enabled: boolean,

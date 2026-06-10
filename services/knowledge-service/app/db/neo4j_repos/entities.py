@@ -48,6 +48,8 @@ __all__ = [
     "get_entity",
     "find_entities_by_name",
     "find_entities_by_vector",
+    "set_entity_embedding",
+    "find_entities_needing_embedding",
     "link_to_glossary",
     "get_entity_by_glossary_id",
     "unlink_from_glossary",
@@ -996,6 +998,133 @@ async def find_entities_by_vector(
             )
         )
     return hits
+
+
+# ── K17 entity-embedding WRITE pipeline ────────────────────────────────
+#
+# The read counterpart (find_entities_by_vector, above) expects every
+# anchored :Entity to carry `embedding_{dim}` + `embedding_model`. K17 is the
+# producer that stamps them. Mirrors the passage embedding write
+# (app/db/neo4j_repos/passages.py upsert_passage): dim-validated f-string into
+# the property name (closed-set, no injection), only the dim-matching property
+# written so mixed-model tenants coexist. Unlike passages (chapter-scoped,
+# MERGE-on-ingest), an entity already exists — we MATCH and SET in place.
+
+# `embed_prop` is f-string-substituted; it is validated against the closed
+# SUPPORTED_VECTOR_DIMS set below, so there is no injection surface.
+_SET_ENTITY_EMBEDDING_CYPHER_TEMPLATE = """
+MATCH (e:Entity {{id: $id}})
+WHERE e.user_id = $user_id
+SET e.{embed_prop} = $embedding,
+    e.embedding_model = $embedding_model,
+    e.embedding_version = $embedding_version
+RETURN e.id AS id
+"""
+# NOTE: deliberately does NOT touch `e.updated_at`. Embedding is a DERIVED-data
+# write, not a content edit; bumping the shared `updated_at` would make an
+# embedded entity falsely float to the top of the recency-ordered listing
+# queries (`ORDER BY e.updated_at DESC` — list_entities_filtered etc.) and skew
+# `find_entities_needing_embedding`'s own newest-content-first ordering.
+# `embedding_version` is the embed-freshness tracker (review-impl MED).
+
+
+async def set_entity_embedding(
+    session: CypherSession,
+    *,
+    user_id: str,
+    entity_id: str,
+    embedding: list[float],
+    embedding_dim: int,
+    embedding_model: str,
+    embedding_version: int,
+) -> bool:
+    """Stamp a per-dim embedding on an EXISTING `:Entity` (K17).
+
+    MATCH (not MERGE) — the entity must already exist (created by the Pass-2
+    writer / glossary anchor). Writes only the `embedding_{dim}` property that
+    matches `embedding_dim`; the other dim properties stay untouched so
+    mixed-model tenants (projects on different embedding models) coexist —
+    same invariant as `upsert_passage`. `embedding_version` records the
+    entity's `version` at embed time so the dirty-signal in
+    `find_entities_needing_embedding` can detect content drift. Returns True
+    when a row was updated, False when no entity matched (id/user mismatch)."""
+    if embedding_dim not in SUPPORTED_VECTOR_DIMS:
+        raise ValueError(
+            f"unsupported embedding_dim {embedding_dim}; "
+            f"must be one of {SUPPORTED_VECTOR_DIMS}"
+        )
+    if len(embedding) != embedding_dim:
+        raise ValueError(
+            f"embedding length {len(embedding)} does not match dim {embedding_dim}"
+        )
+    cypher = _SET_ENTITY_EMBEDDING_CYPHER_TEMPLATE.format(
+        embed_prop=f"embedding_{embedding_dim}",
+    )
+    result = await run_write(
+        session,
+        cypher,
+        user_id=user_id,
+        id=entity_id,
+        embedding=embedding,
+        embedding_model=embedding_model,
+        embedding_version=embedding_version,
+    )
+    record = await result.single()
+    return record is not None
+
+
+# Anchored entities whose embedding is MISSING or STALE for the project's
+# current model: never embedded, embedded under a different model, or whose
+# content (version) advanced since the last embed. Scoped to anchored
+# (glossary_entity_id) + active (not archived) entities — exactly the set the
+# read path (find_entities_by_vector) can surface, so we never embed an orphan
+# KG node that would never be returned anyway.
+_FIND_NEEDING_EMBEDDING_CYPHER = """
+MATCH (e:Entity)
+WHERE e.user_id = $user_id
+  AND ($project_id IS NULL OR e.project_id = $project_id)
+  AND e.glossary_entity_id IS NOT NULL
+  AND e.archived_at IS NULL
+  AND (
+    e.embedding_model IS NULL
+    OR e.embedding_model <> $embedding_model
+    OR coalesce(e.embedding_version, -1) < coalesce(e.version, 1)
+  )
+RETURN e
+ORDER BY e.updated_at DESC
+LIMIT $limit
+"""
+
+
+async def find_entities_needing_embedding(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    embedding_model: str,
+    limit: int = 200,
+) -> list[Entity]:
+    """Anchored, active entities that need a (re)embed for `embedding_model`.
+
+    "Need" = never embedded, embedded under a different model, or content
+    advanced (`embedding_version < version`) since the last embed. Newest-first
+    so an incremental run after an extraction touches the just-changed entities
+    first. The producer (`app.extraction.entity_embedder`) drains this with a
+    per-run cap; `limit` bounds one batch."""
+    if limit <= 0:
+        raise ValueError(f"limit must be positive, got {limit}")
+    result = await run_read(
+        session,
+        _FIND_NEEDING_EMBEDDING_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        embedding_model=embedding_model,
+        limit=limit,
+    )
+    out: list[Entity] = []
+    async for record in result:
+        out.append(_node_to_entity(record["e"]))
+    return out
 
 
 # ── link_to_glossary / unlink_from_glossary ───────────────────────────

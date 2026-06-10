@@ -398,6 +398,79 @@ def test_persist_pass2_happy_path_returns_write_counts(
     assert write_kwargs["extraction_model"] == "test-model"
 
 
+@patch("app.db.neo4j_repos.provenance.cleanup_zero_evidence_nodes", new_callable=AsyncMock)
+@patch("app.db.neo4j_repos.provenance.remove_evidence_for_natural_key", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.settings")
+def test_persist_pass2_retract_uses_natural_key_and_sweeps_on_reextract(
+    mock_settings, mock_write, mock_neo4j, mock_anchors, mock_retract, mock_cleanup,
+):
+    """CM3b-RETRACT-FIX regression-lock: persist-pass2 retracts via the
+    NATURAL-KEY helper (so the right hashed ExtractionSource id is targeted),
+    and when the retract removed >0 edges (a re-extract) it sweeps the
+    zero-evidence orphans. The pre-fix bug passed the raw source_id to a
+    hashed-id MATCH → zero edges removed → canon drift on re-publish."""
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_anchors.return_value = []
+    mock_write.return_value = _MOCK_RESULT
+    mock_retract.return_value = 4  # >0 → this is a re-extract
+    mock_cleanup.return_value = MagicMock(total=2)
+
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    uid, pid = str(uuid4()), str(uuid4())
+    body = _persist_body(user_id=uid, project_id=pid, source_type="chapter", source_id="ch-77")
+    resp = _post_persist(_client(), body)
+
+    assert resp.status_code == 200
+    # Retract called with the NATURAL KEY, NOT the raw source_id alone.
+    mock_retract.assert_awaited_once()
+    rk = mock_retract.await_args.kwargs
+    assert rk["user_id"] == uid
+    assert rk["project_id"] == pid
+    assert rk["source_type"] == "chapter"
+    assert rk["source_id"] == "ch-77"
+    # removed=4 (>0) → orphan sweep ran for the same user/project.
+    mock_cleanup.assert_awaited_once()
+    ck = mock_cleanup.await_args.kwargs
+    assert ck["user_id"] == uid
+    assert ck["project_id"] == pid
+
+
+@patch("app.db.neo4j_repos.provenance.cleanup_zero_evidence_nodes", new_callable=AsyncMock)
+@patch("app.db.neo4j_repos.provenance.remove_evidence_for_natural_key", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.settings")
+def test_persist_pass2_first_extract_skips_sweep(
+    mock_settings, mock_write, mock_neo4j, mock_anchors, mock_retract, mock_cleanup,
+):
+    """First-time extraction (retract removed 0 edges) must NOT run the
+    O(project) zero-evidence sweep — there is nothing to sweep, and the
+    gate keeps the common bulk-extraction path cheap."""
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_anchors.return_value = []
+    mock_write.return_value = _MOCK_RESULT
+    mock_retract.return_value = 0  # first-time extract → nothing retracted
+
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    resp = _post_persist(_client(), _persist_body())
+
+    assert resp.status_code == 200
+    mock_retract.assert_awaited_once()
+    mock_cleanup.assert_not_awaited()  # gated on removed > 0
+
+
 @patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
 @patch("app.routers.internal_extraction.neo4j_session")
 @patch("app.routers.internal_extraction.write_pass2_extraction", new_callable=AsyncMock)
