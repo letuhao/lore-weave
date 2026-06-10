@@ -118,6 +118,34 @@ def test_dispatch_forwards_eval_judge_model_to_payload(client, mocker):
     assert str(created_payload.eval_judge_model_ref) == EJ
 
 
+def test_dispatch_defaults_pipeline_v3(client, mocker):
+    """D-FACTORY-V3-PIPELINE: a campaign dispatch defaults to V3 so the verifier +
+    translation.quality emit + S5b-eval judge engage (v2 would skip them all)."""
+    mocker.patch(
+        "app.routers.internal_dispatch._verify_book_owner", new_callable=AsyncMock)
+    core = mocker.patch(
+        "app.routers.internal_dispatch._resolve_and_create_job",
+        new_callable=AsyncMock, return_value=SimpleNamespace(job_id=UUID(JOB)))
+    resp = client.post(
+        "/internal/translation/dispatch-job", json=_body(),  # no pipeline_version
+        headers={"X-Internal-Token": TOKEN})
+    assert resp.status_code == 201, resp.text
+    assert core.call_args.args[2].pipeline_version == "v3"
+
+
+def test_dispatch_pipeline_version_overridable(client, mocker):
+    mocker.patch(
+        "app.routers.internal_dispatch._verify_book_owner", new_callable=AsyncMock)
+    core = mocker.patch(
+        "app.routers.internal_dispatch._resolve_and_create_job",
+        new_callable=AsyncMock, return_value=SimpleNamespace(job_id=UUID(JOB)))
+    resp = client.post(
+        "/internal/translation/dispatch-job", json=_body(pipeline_version="v2"),
+        headers={"X-Internal-Token": TOKEN})
+    assert resp.status_code == 201, resp.text
+    assert core.call_args.args[2].pipeline_version == "v2"
+
+
 def test_dispatch_drops_half_verifier_override(client, mocker):
     """A verifier source with no ref is a half-override → both dropped (the
     CreateJobPayload pairing validator would otherwise 422)."""

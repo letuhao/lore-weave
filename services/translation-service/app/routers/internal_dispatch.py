@@ -56,6 +56,14 @@ class InternalDispatchPayload(BaseModel):
     # fidelity judge uses the campaign's chosen model.
     eval_judge_model_source: str | None = None
     eval_judge_model_ref: UUID | None = None
+    # D-FACTORY-V3-PIPELINE: the Auto-Draft Factory IS the V3 quality pipeline
+    # (Translator→Verifier→Corrector + the M7a `translation.quality` emit that the
+    # eval stage + S5b-eval judge depend on). This endpoint is campaign-only, so it
+    # defaults to 'v3' — without it the job runs the book/user default (usually v2),
+    # the verifier never runs, no `translation.quality` fires, and the campaign's
+    # eval stage + eval_fidelity_score never engage. Overridable if a campaign ever
+    # needs v2.
+    pipeline_version: str | None = "v3"
     # S2: default-skip idempotency applies here too (the campaign driver relies
     # on it — re-dispatching an already-translated chapter must not re-spend).
     force_retranslate: bool = False
@@ -105,6 +113,7 @@ async def dispatch_job(
             verifier_model_ref=payload.verifier_model_ref,
             eval_judge_model_source=eval_judge_model_source,
             eval_judge_model_ref=payload.eval_judge_model_ref,
+            pipeline_version=payload.pipeline_version,  # D-FACTORY-V3-PIPELINE (default 'v3')
             force_retranslate=payload.force_retranslate,
         ),
         user_id,
