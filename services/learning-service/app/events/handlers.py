@@ -88,8 +88,8 @@ async def _persist_correction(
             "user_id/owner — refusing to insert"
         )
 
-    before_structural, before_hash = split_snapshot(target_type, before_snapshot)
-    after_structural, after_hash = split_snapshot(target_type, after_snapshot)
+    before_structural, before_hash, before_desc_hash = split_snapshot(target_type, before_snapshot)
+    after_structural, after_hash, after_desc_hash = split_snapshot(target_type, after_snapshot)
     diff_class = derive_diff_class(
         target_type=target_type,
         op=op,
@@ -104,18 +104,21 @@ async def _persist_correction(
         INSERT INTO corrections (
           user_id, project_id, book_id, target_type, target_id, op,
           before_structural, after_structural, before_content_hash, after_content_hash,
+          before_description_content_hash, after_description_content_hash,
           diff_class, source_extraction_run_id, source_chapter, source_span,
           actor_type, actor_id, origin_service, origin_event_id, origin_event_type, emitted_at
         ) VALUES (
           $1, $2, $3, $4, $5, $6,
           $7::jsonb, $8::jsonb, $9, $10,
-          $11, $12, $13, $14::jsonb,
-          $15, $16, $17, $18, $19, $20
+          $11, $12,
+          $13, $14, $15, $16::jsonb,
+          $17, $18, $19, $20, $21, $22
         )
         ON CONFLICT (origin_service, origin_event_id) DO NOTHING
         """,
         user_id, project_id, book_id, target_type, target_id, op,
         _jsonb(before_structural), _jsonb(after_structural), before_hash, after_hash,
+        before_desc_hash, after_desc_hash,
         diff_class, source_extraction_run_id, source_chapter, _jsonb(source_span),
         actor_type, actor_id, origin_service, origin_event_id, origin_event_type, emitted_at,
     )
@@ -664,8 +667,8 @@ async def handle_translation_corrected(event: EventData, *, pool: asyncpg.Pool) 
 
     before = payload.get("before") or {}
     after = payload.get("after") or {}
-    before_structural, before_hash = split_snapshot("translation", before)
-    after_structural, after_hash = split_snapshot("translation", after)
+    before_structural, before_hash, _ = split_snapshot("translation", before)
+    after_structural, after_hash, _ = split_snapshot("translation", after)
     diff_class = derive_diff_class(
         target_type="translation",
         op="updated",

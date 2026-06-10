@@ -25,10 +25,12 @@ P_TARGET_ID = 4
 P_OP = 5
 P_BEFORE_STRUCTURAL = 6
 P_AFTER_STRUCTURAL = 7
-P_DIFF_CLASS = 10
-P_ACTOR_TYPE = 14
-P_ORIGIN_SERVICE = 16
-P_ORIGIN_EVENT_ID = 17
+# FD-19/052 added before/after_description_content_hash at positions 10,11 →
+# everything from diff_class onward shifts +2.
+P_DIFF_CLASS = 12
+P_ACTOR_TYPE = 16
+P_ORIGIN_SERVICE = 18
+P_ORIGIN_EVENT_ID = 19
 
 
 class FakePool:
