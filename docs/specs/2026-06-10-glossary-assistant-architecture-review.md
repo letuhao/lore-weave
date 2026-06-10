@@ -6,18 +6,25 @@
 
 ---
 
-## CRITICAL — re-decision required
+## CRITICAL — DEFECT to repay (not an architecture hole)
 
-### H-A · Global kind/attribute catalog is platform-shared and mutable by ANY authenticated user (VERIFIED)
+### H-A · Kind/attribute scoping was MIS-IMPLEMENTED: the intended 3-tier model collapsed to one global-mutable catalog (VERIFIED + confirmed by owner)
 
-**Finding.** `services/glossary-service/internal/api/kinds_crud.go` gates create/patch/delete kind + attribute with **`requireUserID` only** — no `owner`, no `user_id`, no tenant, no book scoping. Kinds/attributes are a **single global catalog shared across every user and every book**. Any logged-in user can rename/delete/restructure a kind that **all other users' books depend on**. This is a **pre-existing multi-tenancy defect**, independent of the assistant.
+**Finding.** `services/glossary-service/internal/api/kinds_crud.go` gates create/patch/delete kind + attribute with **`requireUserID` only** — no `owner`, no `user_id`, no tenant, no book scoping. Kinds/attributes are a **single global catalog shared across every user and every book**; any logged-in user can rename/delete/restructure a kind that **all other users' books depend on**.
 
-**Why it's now urgent.** The assistant adds **S2 (create kind)** and **S3 (optimize existing kind)**. With D8 ("keep the global catalog, add a per-book derived layer"), a user asking the assistant to *"optimize the Character kind for my wuxia book"* would **mutate the global Character kind for every user on the platform**. D9's per-book overrides shield the per-book *view*, but a base-catalog edit still leaks globally; and a new kind from S2 pollutes a global namespace shared with strangers.
+**Root cause (owner, 2026-06-10): this is a CODE DEFECT, not a design hole.** The original, intended design is a **3-tier model**:
+1. **System library** — the seeded kinds/attributes; **editable only by the platform owner** (read-only for normal users).
+2. **Per-user library** — each user's own kinds/attributes, shared across **that user's** books (enables series/cross-book reuse, S27).
+3. **Per-book derived** — per-book selection / override / addition (D8/D9) on top of (1)+(2).
 
-**RE-DECIDE D8.** The clean resolution composes *better* with D9: the **global catalog becomes a system-seeded library** (read-mostly; only system/admin or a governed process mutates it), and **all user-created/customized kinds+attributes live in the per-book (or per-user) scope**, never the shared global catalog. So:
-- S2 "new kind for this book" → creates a **book-scoped** kind (+ enabled for that book), not a global one.
-- S3 "optimize kind for this book" → **per-book overrides/additions** on top of the system kind; the system kind is untouched.
-This also removes the governance problem in H-I. **Without this re-decision, S2/S3 are unsafe in a multi-user platform.**
+An early AI-agent implementation collapsed (1)+(2) into a single global-mutable catalog (the `requireUserID`-only path). **This is tech debt to repay** — the fix is to implement the scoping that should have existed, not to re-decide anything.
+
+**FIX (folds into Foundational F3).** Introduce the missing tiers:
+- **System tier:** lock kind/attribute mutation on the seeded catalog to platform-owner/admin (the rest read it).
+- **Per-user tier:** kinds/attributes scoped by `owner_user_id`; a user's customizations live here, never touching system or other users.
+- **Per-book tier (D8/D9):** selection/override/addition referencing system+user definitions.
+- **S2** "new kind" → lands in the **per-user** library (+ enabled for the book); **S3** "optimize for this book" → **per-book** override on top — neither mutates the system tier or other users.
+This **also resolves H-I governance**. **Until repaid, S2/S3 must not be exposed** (they'd mutate shared/system definitions). The repayment is a Foundational prerequisite (see F3, now widened).
 
 ---
 
@@ -69,7 +76,7 @@ Categories the original S1–S26 didn't cover:
 - **S29 — Entity disambiguation at chat time.** User says "edit Lin" but three entities are named Lin. **Every** read/edit scenario silently assumes a unique resolve. Needs a disambiguation UX (the assistant asks which one).
 - **S30 — Structured filter queries.** "list all antagonist characters with power_level > X", "entities tagged faction:Z". `glossary_search` is semantic; no structured/attribute filter tool for the agent (partially S15).
 - **S31 — Entity lifecycle.** `alive` boolean + status exist. "mark X deceased in chapter N", "deprecate this entity" — lifecycle management beyond approve/reject (S12).
-- **S32 — Wiki interplay (scope question).** glossary-service **hosts the wiki** (`wiki_articles`, etc.), but the glossary-assistant ignores it entirely. Is generating/editing wiki from glossary **in scope** for this assistant, or owned by the `wiki/llm-building` track? **Decide the boundary** so they don't collide.
+- **S32 — Wiki interplay → RESOLVED: OUT OF SCOPE (owner, 2026-06-10).** glossary-service hosts the wiki, but the glossary-assistant **does not touch wiki** — generation/editing of wiki is owned by the `wiki/llm-building` track. Clean boundary; no wiki tools in this campaign.
 - **S33 — Provenance / audit (post-E0).** Multi-user → "who changed what, when" matters. Revisions track an actor type; do they track the **user**? Needed once collaborators write.
 - **S34 — Abuse / rate-limit / cost runaway.** An assistant (or a malicious collaborator post-E0) issuing many writes / expensive jobs. Per-user/book rate + cost caps (ties to S21).
 - **S35 — Observability.** No story for "are the assistant's tools being used / erroring in prod?" — metrics/tracing on MCP tool calls (the rerank work noted metrics are deferred platform-wide).
@@ -87,7 +94,7 @@ Categories the original S1–S26 didn't cover:
 
 ## Recommended actions (priority order)
 
-1. **RE-DECIDE D8 (H-A)** — user-created kinds/attributes are **book-scoped**, global catalog is a system library. *Blocks S2/S3 safety; reframes F3.* **← needs your call.**
+1. **REPAY the kind-scoping defect (H-A)** — implement the intended 3-tier model (system / per-user / per-book); the early AI impl collapsed it to global-mutable. *Blocks S2/S3 safety; widens F3.* **Confirmed by owner — it's debt, not a re-decision.**
 2. **Scope E0 with the full cross-service blast radius (H-B)** — enumerate every `verifyBookOwner` site; confirm platform-wide vs glossary-first.
 3. **SPIKE async delivery (H-C)** — prove/disprove server-initiated chat turns *before* Phase-6 design.
 4. **Design per-book schema data model + effective-schema readers (H-E)** and the **change-set confirm mechanism (H-D)** together — they're the same surface.
