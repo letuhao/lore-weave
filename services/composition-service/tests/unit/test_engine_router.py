@@ -78,9 +78,11 @@ def ctx(monkeypatch):
     monkeypatch.setattr("app.main.get_pool", lambda: object())
 
     async def fake_pack(req, **kw):
+        # reinjected_promise_count=2 (non-default) → the response echo (FD-1 S4b)
+        # must carry the pack's value, not a hardcoded 0.
         return PackedContext(blocks={}, prompt="GROUNDING", profile=NEUTRAL, token_count=5,
                              dropped_count=0, l4_dropped_no_position=0, grounding_available=True,
-                             over_budget=False, warnings=[])
+                             over_budget=False, reinjected_promise_count=2, warnings=[])
 
     captured: dict = {}
 
@@ -98,7 +100,8 @@ def ctx(monkeypatch):
     from app.main import app
     from app.deps import (get_book_client_dep, get_canon_rules_repo, get_generation_jobs_repo,
                           get_glossary_client_dep, get_knowledge_client_dep, get_llm_client_dep,
-                          get_outline_repo, get_scene_links_repo, get_works_repo)
+                          get_narrative_thread_repo, get_outline_repo, get_scene_links_repo,
+                          get_works_repo)
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
 
     works, outline, canon, jobs = StubWorks(), StubOutline(), StubCanon(), StubJobs()
@@ -109,6 +112,8 @@ def ctx(monkeypatch):
     app.dependency_overrides[get_canon_rules_repo] = lambda: canon
     app.dependency_overrides[get_generation_jobs_repo] = lambda: jobs
     app.dependency_overrides[get_scene_links_repo] = lambda: object()
+    # FD-1: unused unless work.settings.narrative_thread_enabled (off in these tests).
+    app.dependency_overrides[get_narrative_thread_repo] = lambda: object()
     app.dependency_overrides[get_book_client_dep] = lambda: object()
     app.dependency_overrides[get_glossary_client_dep] = lambda: object()
     app.dependency_overrides[get_knowledge_client_dep] = lambda: object()
@@ -132,6 +137,25 @@ def test_generate_streams_and_completes_job(ctx):
     assert '"type": "job"' in body and '"type": "token"' in body and '"type": "done"' in body
     # the job was completed with the metered tokens
     assert any(s == "completed" for _, s, _ in jobs.updates)
+    # D-COMP-TRUNCATION-SURFACING: a clean stop (fake metering finish_reason None) →
+    # the done frame reports truncated=false (non-default contrast for the test below).
+    assert '"truncated": false' in body
+
+
+def test_generate_done_surfaces_truncated(ctx, monkeypatch):
+    # D-COMP-TRUNCATION-SURFACING: when the stream's terminal metering reports
+    # finish_reason="length", the SSE done frame carries truncated=true.
+    c, *_ = ctx
+
+    async def trunc_stream(sdk, **kw):
+        yield {"type": "token", "delta": "Hello"}
+        yield {"type": "usage", "text": "Hello",
+               "metering": DraftMetering(40, 2, True, finish_reason="length"), "capped": False}
+
+    monkeypatch.setattr("app.routers.engine.stream_draft", trunc_stream)
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate", json=_gen_body())
+    assert r.status_code == 200
+    assert '"truncated": true' in r.text and '"finish_reason": "length"' in r.text
 
 
 def test_generate_reasoning_off_is_user_none(ctx):
@@ -195,6 +219,107 @@ def test_generate_rejects_invalid_model_source(ctx):
     r = c.post(f"/v1/composition/works/{PROJECT}/generate",
                json={**_gen_body(), "model_source": "bogus"})
     assert r.status_code == 422
+
+
+# ── generate mode=auto (V1 A1 diverge→converge) ──
+
+def test_generate_auto_returns_reranked_winner_as_json(ctx, monkeypatch):
+    c, _, _, _, jobs, _, _ = ctx
+    from app.engine.select import Candidate, Selection
+
+    async def fake_select(llm, judge, **kw):
+        cands = [Candidate("draft A", DraftMetering(10, 5, False)),
+                 Candidate("draft B", DraftMetering(10, 6, False))]
+        assert kw["k"] == 3  # config default reached select
+        return Selection(winner=cands[1], winner_index=1, candidates=cands,
+                         rerank_reason="B tightest", rerank_measured=True)
+
+    monkeypatch.setattr("app.routers.engine.select_draft", fake_select)
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "auto"})
+    assert r.status_code == 200
+    body = r.json()  # JSON, NOT an SSE stream
+    assert body["mode"] == "auto" and body["text"] == "draft B"
+    assert body["winner_index"] == 1 and body["k"] == 2 and body["rerank_measured"] is True
+    assert body["reinjected_promise_count"] == 2  # FD-1 S4b — echoes the pack value
+    # slice 3: the K candidate texts are in the response so the FE shows all cards
+    assert body["candidates"] == ["draft A", "draft B"]
+    # the job completed with the winner persisted (incl. the candidates for transparency)
+    completed = [k for _, s, k in jobs.updates if s == "completed"]
+    assert completed and completed[0]["result"]["text"] == "draft B"
+    assert completed[0]["result"]["candidates"] == ["draft A", "draft B"]
+    # D-COMP-TRUNCATION-SURFACING: clean winner (finish_reason None) → truncated false
+    # (non-default contrast for test_generate_auto_surfaces_truncated below).
+    assert body["truncated"] is False
+
+
+def test_generate_auto_surfaces_truncated(ctx, monkeypatch):
+    # D-COMP-TRUNCATION-SURFACING: the auto path derives truncated from the
+    # select_draft winner's metering — a "length" stop → truncated=True.
+    c, *_ = ctx
+    from app.engine.select import Candidate, Selection
+
+    async def trunc_select(llm, judge, **kw):
+        cands = [Candidate("draft A", DraftMetering(10, 9, True, finish_reason="length"))]
+        return Selection(winner=cands[0], winner_index=0, candidates=cands,
+                         rerank_reason="", rerank_measured=False)
+
+    monkeypatch.setattr("app.routers.engine.select_draft", trunc_select)
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "auto"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["truncated"] is True and body["finish_reason"] == "length"
+
+
+def test_generate_auto_uses_adaptive_k_from_node_tension(ctx, monkeypatch):
+    # A3: the auto path must derive K from the node's structural weight, NOT the
+    # fixed compose_diverge_k. A low-tension connective scene (tension 10 on the
+    # 0..100 scale) → K=1. This regression-locks the wiring + the tension SCALE:
+    # with a 1-5 mis-scale, tension 10 would read as "high" → ceiling 3 and fail.
+    c, _, outline, _, _, _, _ = ctx
+    from app.engine.select import Candidate, Selection
+    outline.node = OutlineNode(id=NODE, user_id=USER, project_id=PROJECT, kind="scene",
+                               rank="a0", chapter_id=uuid.uuid4(), goal="walk",
+                               synopsis="a quiet transition", tension=10)
+    seen: dict = {}
+
+    async def fake_select(llm, judge, **kw):
+        seen["k"] = kw["k"]
+        cands = [Candidate("only", DraftMetering(10, 5, False))]
+        return Selection(winner=cands[0], winner_index=0, candidates=cands,
+                         rerank_reason="", rerank_measured=False)
+
+    monkeypatch.setattr("app.routers.engine.select_draft", fake_select)
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "auto"})
+    assert r.status_code == 200
+    assert seen["k"] == 1  # tension 10 (low, 0..100) → K=1, not the fixed default 3
+
+
+def test_generate_auto_select_failure_fails_job_502(ctx, monkeypatch):
+    c, _, _, _, jobs, _, _ = ctx
+
+    async def boom(llm, judge, **kw):
+        raise RuntimeError("diverge produced no candidates")
+
+    monkeypatch.setattr("app.routers.engine.select_draft", boom)
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "auto"})
+    assert r.status_code == 502
+    assert any(s == "failed" for _, s, _ in jobs.updates)
+
+
+def test_generate_auto_idempotent_replay_returns_existing(ctx, monkeypatch):
+    c, _, _, _, jobs, _, _ = ctx
+    jobs.created = False
+    called = {"n": 0}
+
+    async def fake_select(llm, judge, **kw):
+        called["n"] += 1
+        raise AssertionError("must not run on replay")
+
+    monkeypatch.setattr("app.routers.engine.select_draft", fake_select)
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate",
+               json={**_gen_body(), "mode": "auto", "idempotency_key": "k1"})
+    assert r.status_code == 200 and r.json()["replay"] is True
+    assert called["n"] == 0  # short-circuited before select
 
 
 # ── critique ──

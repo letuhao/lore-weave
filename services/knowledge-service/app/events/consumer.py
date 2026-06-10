@@ -46,6 +46,15 @@ STREAMS = [
 GROUP_NAME = "knowledge-extractor"
 MAX_RETRIES = 3
 BLOCK_MS = 5000  # 5s blocking read
+# FD-18 (D-PLATFORM-CONSUMER-RECLAIM-KNOWLEDGE) — periodic PEL reclaim. A handler
+# failure leaves the message pending (not acked); XREADGROUP ">" only returns NEW
+# messages, so without an explicit reclaim a failed chapter/chat/glossary event
+# sits in the PEL until the next restart — its retry counter never advances, so
+# it never reaches the DLQ. XAUTOCLAIM on a timer re-delivers stale-pending
+# messages so the retry→DLQ path works in steady state. Ported from
+# learning-service (the F-A1 fix; knowledge had the identical cloned bug).
+RECLAIM_EVERY_N_LOOPS = 12   # ~ every 60s at BLOCK_MS=5s
+RECLAIM_MIN_IDLE_MS = 30000  # only reclaim messages idle ≥30s
 
 
 class EventConsumer:
@@ -124,8 +133,15 @@ class EventConsumer:
         await self._process_pending(r)
 
         # Then: read new messages
+        loop_count = 0
         while self._running:
             try:
+                # FD-18 — periodically reclaim PEL messages a prior handler
+                # failure left pending (XREADGROUP ">" never returns them).
+                loop_count += 1
+                if loop_count % RECLAIM_EVERY_N_LOOPS == 0:
+                    await self._reclaim_stale_pending(r)
+
                 streams_dict = {s: ">" for s in STREAMS}
                 results = await r.xreadgroup(
                     GROUP_NAME,
@@ -182,6 +198,37 @@ class EventConsumer:
                         await self._handle_message(r, stream_name, msg_id, fields)
             except Exception:
                 logger.exception("Error processing pending messages for %s", stream)
+
+    async def _reclaim_stale_pending(self, r: aioredis.Redis) -> None:
+        """FD-18 — re-deliver messages stuck in the PEL (a prior handler failure
+        left them pending). XREADGROUP ">" never returns these, so without this a
+        failed chapter/chat/glossary event would only retry on restart. XAUTOCLAIM
+        hands stale messages to this consumer; reprocessing advances the retry
+        counter so the retry→DLQ path works in steady state (ported from
+        learning-service's F-A1 fix)."""
+        for stream in STREAMS:
+            try:
+                start = "0-0"
+                while True:
+                    next_start, claimed, _deleted = await r.xautoclaim(
+                        stream, GROUP_NAME, self._consumer_name,
+                        min_idle_time=RECLAIM_MIN_IDLE_MS, start_id=start, count=50,
+                    )
+                    for msg_id, fields in claimed:
+                        # A tombstoned (XDEL'd) message reclaims with empty
+                        # fields — ack it to drain the PEL rather than loop.
+                        if not fields:
+                            await r.xack(stream, GROUP_NAME, msg_id)
+                            continue
+                        await self._handle_message(r, stream, msg_id, fields)
+                    if not next_start or next_start == "0-0":
+                        break
+                    start = next_start
+            except aioredis.ResponseError:
+                # NOGROUP / stream not yet created — nothing to reclaim.
+                pass
+            except Exception:
+                logger.exception("Error reclaiming pending messages for %s", stream)
 
     async def _handle_message(
         self, r: aioredis.Redis, stream: str, msg_id: str, fields: dict[str, str],

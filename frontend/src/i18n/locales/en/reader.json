@@ -132,5 +132,15 @@
     "pause": "Pause",
     "play": "Play attached audio",
     "mismatch": "Audio subtitle differs from block text"
+  },
+  "citation": {
+    "aria": "Citation {{n}}",
+    "jump": "Jump to source",
+    "relevance": "Relevance",
+    "source": {
+      "glossary": "Glossary",
+      "kg": "Knowledge",
+      "passage": "Passage"
+    }
   }
 }

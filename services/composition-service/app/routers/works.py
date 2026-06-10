@@ -17,9 +17,10 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from app.clients.book_client import BookClient, BookClientError
+from app.engine.assembly import ASSEMBLY_MODES
 from app.clients.knowledge_client import KnowledgeClient
 from app.db.models import WorkStatus
 from app.db.repositories import VersionMismatchError
@@ -43,6 +44,16 @@ class WorkPatch(BaseModel):
     active_template_id: UUID | None = None
     status: WorkStatus | None = None
     settings: dict[str, Any] | None = None
+
+    @field_validator("settings")
+    @classmethod
+    def _validate_known_setting_enums(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Settings is a free-form JSONB blob, but a few keys are closed enums the
+        engine keys on — validate them at the PATCH boundary so a bad value 422s
+        here rather than being stored and silently coerced at read time (B1)."""
+        if v is not None and "assembly_mode" in v and v["assembly_mode"] not in ASSEMBLY_MODES:
+            raise ValueError(f"assembly_mode must be one of {list(ASSEMBLY_MODES)}")
+        return v
 
 
 def _serialize_resolution(res: WorkResolution) -> WorkResolutionResponse:
@@ -123,8 +134,11 @@ async def create_work_for_book(
 
     # Get-or-create the composition_work row. The get-then-create is not atomic,
     # so a concurrent same-project POST can lose the PK race — catch the unique
-    # violation and re-get (atomic get-or-create). (The rarer duplicate-knowledge-
-    # project race is tracked as D-COMP-POST-WORK-RACE.)
+    # violation and re-get (atomic get-or-create). (The duplicate-knowledge-project
+    # race — two first-POSTs each creating a book project — was resolved cy6/LOOM-48
+    # knowledge-side: create_project now dedupes via ProjectsRepo.create_or_get under
+    # a per-(user,book) advisory lock, so both POSTs resolve to the SAME project_id
+    # and this unique-violation catch dedupes the work row.)
     existing = await works.get(user_id, project_id)  # type: ignore[arg-type]
     if existing is not None:
         return existing.model_dump(mode="json")

@@ -36,6 +36,10 @@ export interface Project {
   embedding_model: string | null;
   // K12.4: dimension derived from embedding_model server-side.
   embedding_dimension: number | null;
+  // D-RERANK-NOT-BYOK: per-project BYOK rerank model (provider-registry
+  // user_model UUID) + source. null ⇒ raw-search skips the rerank step.
+  rerank_model: string | null;
+  rerank_model_source: string;
   extraction_config: Record<string, unknown>;
   last_extracted_at: string | null;
   estimated_cost_usd: string;
@@ -76,6 +80,10 @@ export interface ProjectUpdatePayload {
   // Omit to leave unchanged; null to clear; a known model name to set.
   // The backend auto-derives embedding_dimension from the model name.
   embedding_model?: string | null;
+  // D-RERANK-NOT-BYOK (S0b): per-project BYOK rerank model — a
+  // provider-registry user_model UUID. Omit to leave unchanged; null to
+  // clear (rerank then skipped in raw-search).
+  rerank_model?: string | null;
   // K21-C (D3): per-project memory-tool opt-out. Omit to leave
   // unchanged. The public PATCH endpoint accepted this since Cycle B.
   tool_calling_enabled?: boolean;

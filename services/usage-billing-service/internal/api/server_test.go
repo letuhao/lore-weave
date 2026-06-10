@@ -130,6 +130,30 @@ func TestScanUsageLogRow(t *testing.T) {
 	}
 }
 
+func TestRecordCostUSD(t *testing.T) {
+	t.Parallel()
+	// nil override → flat per-token fallback (legacy / unpriced).
+	if got, want := recordCostUSD(1000, nil), float64(1000)*flatFallbackRateUSDPerToken; got != want {
+		t.Fatalf("nil override: got %v want %v", got, want)
+	}
+	// authoritative per-model cost (e.g. gpt-4o 2.5/10 on 58777 in + 20457 out)
+	// is used verbatim, NOT the flat rate (which would under-bill ~55%).
+	cost := 0.3515
+	if got := recordCostUSD(79234, &cost); got != 0.3515 {
+		t.Fatalf("override: got %v want 0.3515", got)
+	}
+	// a local/free model sends 0 — honored verbatim, NOT replaced by the flat rate.
+	zero := 0.0
+	if got := recordCostUSD(5000, &zero); got != 0 {
+		t.Fatalf("free model must bill 0, got %v", got)
+	}
+	// a stray negative override is rejected → flat fallback (defensive).
+	neg := -1.0
+	if got, want := recordCostUSD(100, &neg), float64(100)*flatFallbackRateUSDPerToken; got != want {
+		t.Fatalf("negative override must fall back to flat, got %v want %v", got, want)
+	}
+}
+
 func TestRecordInvocationValidation(t *testing.T) {
 	t.Parallel()
 

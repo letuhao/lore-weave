@@ -168,7 +168,7 @@ func TestProcessChunks_PerChunkIndependentBudget(t *testing.T) {
 	emit := func(provider.StreamChunk) error { return nil }
 
 	err := w.processChunks(context.Background(), uuid.New(), agg, adapter,
-		"", "", "", inputMap, []string{"a", "b"}, emit, w.logger)
+		"openai", "", "", "", inputMap, []string{"a", "b"}, emit, w.logger)
 	if err != nil {
 		t.Fatalf("per-chunk budget should let both chunks retry + succeed, got %v", err)
 	}
@@ -209,7 +209,7 @@ func TestStreamWithRetry_RetryDiscardsPartialStream(t *testing.T) {
 	emit := func(c provider.StreamChunk) error { agg.Accept(c); return nil }
 
 	err := w.streamWithRetry(context.Background(), agg, adapter,
-		"", "", "", map[string]any{}, emit, w.logger)
+		"openai", "", "", "", map[string]any{}, emit, w.logger)
 	if err != nil {
 		t.Fatalf("transient-then-success must succeed, got %v", err)
 	}
@@ -238,7 +238,7 @@ func TestProcessChunks_RetryDiscardsPartialChunk(t *testing.T) {
 	emit := func(c provider.StreamChunk) error { agg.Accept(c); return nil }
 
 	err := w.processChunks(context.Background(), uuid.New(), agg, adapter,
-		"", "", "", inputMap, []string{"a"}, emit, w.logger)
+		"openai", "", "", "", inputMap, []string{"a"}, emit, w.logger)
 	if err != nil {
 		t.Fatalf("chunk retry should succeed, got %v", err)
 	}

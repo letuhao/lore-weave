@@ -1,5 +1,8 @@
 export type ProviderKind = 'openai' | 'anthropic' | 'ollama' | 'lm_studio';
-export type BillingDecision = 'quota' | 'credits' | 'rejected';
+// S4c: 'recorded' is the audit-only decision (token-quota deduction retired; USD
+// enforcement is the spend guardrail). 'quota'|'credits'|'rejected' are kept for
+// historical usage_logs rows written before the retirement.
+export type BillingDecision = 'quota' | 'credits' | 'rejected' | 'recorded';
 export type RequestStatus = 'success' | 'provider_error' | 'billing_rejected';
 export type Purpose = 'translation' | 'chat' | 'chunk_edit' | 'image_gen' | 'unknown';
 
@@ -65,13 +68,8 @@ export type UsageSummary = {
   daily: DailyBreakdown[];
 };
 
-export type AccountBalance = {
-  tier_name: string;
-  month_quota_tokens: number;
-  month_quota_remaining_tokens: number;
-  credits_balance: number;
-  billing_policy_version: string;
-};
+// S4c: AccountBalance (deprecated token quota/credits ledger) retired from the FE.
+// The USD wallet is Guardrail + PlatformBalance (below).
 
 export type UsageFilters = {
   provider_kind?: ProviderKind;

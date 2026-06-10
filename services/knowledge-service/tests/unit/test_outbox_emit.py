@@ -70,3 +70,38 @@ async def test_emit_correction_swallows_pool_failure(mock_get_pool):
         event_type=ENTITY_CORRECTED, aggregate_id=_CANON_ID,
         payload={"target_id": _CANON_ID},
     )
+
+
+@pytest.mark.asyncio
+@patch("app.events.outbox_emit.get_knowledge_pool")
+async def test_emit_correction_permanent_failure_surfaced(mock_get_pool):
+    """FD-19/053: a non-UUID-coercible aggregate_id is a PERMANENT failure — it
+    never reaches outbox_events (no replay backstop), so it's counted as
+    `permanent` (ERROR + metric), not hidden behind the best-effort warning."""
+    from app.metrics import correction_emit_failure_total
+    pool = AsyncMock()
+    mock_get_pool.return_value = pool
+    before = correction_emit_failure_total.labels(kind="permanent")._value.get()
+    # uuid.UUID("not-a-uuid") raises ValueError before pool.execute is reached.
+    await emit_correction(event_type=ENTITY_CORRECTED, aggregate_id="not-a-uuid", payload={})
+    after = correction_emit_failure_total.labels(kind="permanent")._value.get()
+    assert after == before + 1
+    pool.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@patch("app.events.outbox_emit.get_knowledge_pool")
+async def test_emit_correction_transient_failure_counted(mock_get_pool):
+    """A PG/connection error is TRANSIENT (the §10.1 replay backstop applies) →
+    counted as `transient`, still swallowed (never fails the committed edit)."""
+    import asyncpg
+    from app.metrics import correction_emit_failure_total
+    pool = AsyncMock()
+    pool.execute = AsyncMock(side_effect=asyncpg.PostgresError("connection reset"))
+    mock_get_pool.return_value = pool
+    before = correction_emit_failure_total.labels(kind="transient")._value.get()
+    await emit_correction(
+        event_type=ENTITY_CORRECTED, aggregate_id=_CANON_ID, payload={"target_id": _CANON_ID},
+    )
+    after = correction_emit_failure_total.labels(kind="transient")._value.get()
+    assert after == before + 1

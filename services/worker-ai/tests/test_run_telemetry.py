@@ -124,6 +124,49 @@ async def test_advance_and_emit_txn_failure_falls_back_does_not_raise():
     assert pool.execute.await_count == 1
 
 
+_CHAP_EXTRACTED = {
+    "user_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "project_id": "99999999-9999-9999-9999-999999999999",
+    "book_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "chapter_id": "11111111-1111-1111-1111-111111111111",
+}
+
+
+async def test_chapter_extracted_emitted_in_same_txn():
+    # D-CAMPAIGN-BESTEFFORT-EMIT-REDIS: the campaign completion event rides the
+    # SAME transaction as cursor-advance + run-emit (3 writes, atomic).
+    pool, conn = _txn_pool()
+    await _advance_cursor_and_emit_run(
+        pool, uuid.uuid4(), uuid.uuid4(), {"k": "v"},
+        {"run_id": str(uuid.uuid4()), "outcome": "succeeded"},
+        chapter_extracted=_CHAP_EXTRACTED,
+    )
+    assert conn.execute.await_count == 3  # cursor UPDATE + run INSERT + chapter INSERT
+
+
+async def test_chapter_extracted_best_effort_on_txn_fallback():
+    # On the tx-failure fallback, the cursor still advances AND we best-effort emit
+    # the chapter event (the campaign's stuck-reconcile is the backstop for loss).
+    pool = AsyncMock()
+    pool.execute = AsyncMock()
+
+    class _Acq:
+        async def __aenter__(self):
+            raise RuntimeError("db blip during txn")
+
+        async def __aexit__(self, *a):
+            return False
+
+    pool.acquire = MagicMock(return_value=_Acq())
+    await _advance_cursor_and_emit_run(
+        pool, uuid.uuid4(), uuid.uuid4(), {"k": "v"},
+        {"run_id": str(uuid.uuid4()), "outcome": "succeeded"},
+        chapter_extracted=_CHAP_EXTRACTED,
+    )
+    # fallback cursor-advance + best-effort chapter emit, both on the pool
+    assert pool.execute.await_count == 2
+
+
 # ── _build_run_config (config snapshot + hash) ───────────────────────
 
 def test_build_run_config_returns_hash_and_base_version():

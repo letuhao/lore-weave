@@ -168,6 +168,9 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: INFO
+      # S2 — long-chapter state-compress threshold (chars of raw story-so-far
+      # before the packer compresses the older portion). Default 6000; overridable.
+      PACK_COMPRESS_RECENT_THRESHOLD_CHARS: ${PACK_COMPRESS_RECENT_THRESHOLD_CHARS:-6000}
       # Internal service URLs — consumed by the M3 client wrappers.
       KNOWLEDGE_INTERNAL_URL: http://knowledge-service:8092
       GLOSSARY_INTERNAL_URL: http://glossary-service:8088
@@ -274,12 +277,9 @@ services:
       MINIO_USE_SSL: "false"
       MINIO_EXTERNAL_URL: http://localhost:9123
       AUDIO_CACHE_BUCKET: loreweave-audio-cache
-      # E5B — external cross-encoder rerank service (raw-search junk-rejection).
-      # Platform service (not BYOK); empty RERANK_URL disables rerank (callers
-      # degrade to fusion order). Runs in its own repo on the host.
-      RERANK_URL: ${RERANK_URL:-http://host.docker.internal:28417}
-      RERANK_SERVICE_TOKEN: ${RERANK_SERVICE_TOKEN:-change-me}
-      RERANK_MODEL: ${RERANK_MODEL:-bge-reranker-v2-m3}
+      # E5B rerank is now BYOK (D-RERANK-NOT-BYOK): /internal/rerank resolves the
+      # user's rerank model from provider-registry like /internal/embed — no
+      # platform RERANK_URL / RERANK_MODEL / RERANK_SERVICE_TOKEN config anymore.
       # Session-61 long-chapter perf fix — per-Read idle timeout on
       # streaming upstreams (see provider/streamer.go). Defense-in-depth
       # against LM Studio auto-evicting a loaded model mid-stream (the
@@ -297,6 +297,20 @@ services:
       # Phase 6b — transient-retry budget for a worker job. Optional; the
       # code default (3) applies when unset.
       JOB_MAX_RETRIES: ${JOB_MAX_RETRIES:-3}
+      # S3a (G5) — per-provider concurrency governor + circuit-breaker on the
+      # jobs-worker path. REDIS_URL enables it (unset = governance off). Tunables
+      # have code defaults; set to override for the autonomous batch.
+      REDIS_URL: redis://redis:6379
+      GOVERNOR_CLOUD_MAX: ${GOVERNOR_CLOUD_MAX:-8}
+      BREAKER_THRESHOLD: ${BREAKER_THRESHOLD:-5}
+      BREAKER_COOLDOWN_S: ${BREAKER_COOLDOWN_S:-30}
+      # S4b (decision C) — usage outbox relay → Redis streams (reuses REDIS_URL).
+      # Streams: campaign-service (S4d) consumes :campaign_usage; usage-billing
+      # (S4c) consumes :usage. MAXLEN bounds each (G8).
+      USAGE_STREAM: ${USAGE_STREAM:-loreweave:events:usage}
+      CAMPAIGN_USAGE_STREAM: ${CAMPAIGN_USAGE_STREAM:-loreweave:events:campaign_usage}
+      USAGE_STREAM_MAXLEN: ${USAGE_STREAM_MAXLEN:-100000}
+      CAMPAIGN_USAGE_STREAM_MAXLEN: ${CAMPAIGN_USAGE_STREAM_MAXLEN:-50000}
       # Phase 6c — OpenTelemetry trace export. Unset = no-op tracer (the
       # service still boots). Set it + bring up the `observability` profile
       # to wire tracing to the collector; see the otel-collector block.
@@ -346,11 +360,19 @@ services:
       # P5). Generous for the test/UAT environment so it never gates.
       # Same numeric(16,8) ceiling as the guardrail budgets above.
       PLATFORM_FREE_TIER_USD: ${PLATFORM_FREE_TIER_USD:-99000000}
+      # S4c — usage audit stream consumer. Consumes the S4b loreweave:events:usage
+      # stream (provider-registry relay) → usage_logs audit. Unset REDIS_URL = no
+      # consumer (the /record streaming path still works).
+      REDIS_URL: redis://redis:6379
+      USAGE_STREAM: ${USAGE_STREAM:-loreweave:events:usage}
+      USAGE_CONSUMER_GROUP: ${USAGE_CONSUMER_GROUP:-usage-biller}
       # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
 
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8086/health"]
@@ -419,6 +441,46 @@ services:
       retries: 3
     ports:
       - "8210:8087"
+
+  campaign-service:
+    # Auto-Draft Factory S1 — saga orchestrator + per-chapter projection.
+    # Context = repo root so the Dockerfile can COPY sdks/python (loreweave_obs)
+    # alongside the service code (same pattern as translation/knowledge).
+    build:
+      context: ..
+      dockerfile: services/campaign-service/Dockerfile
+      labels: *build-labels
+    environment:
+      DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_campaign
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
+      TRANSLATION_SERVICE_INTERNAL_URL: http://translation-service:8087
+      KNOWLEDGE_SERVICE_INTERNAL_URL: http://knowledge-service:8092
+      # Projection consumer reads the existing event spine (chapter/translation/
+      # knowledge streams). Reconnect loop tolerates redis startup races, so
+      # redis is NOT a hard depends_on (matches translation-service).
+      REDIS_URL: redis://redis:6379
+      PORT: "8095"
+      # D-CAMPAIGN-BESTEFFORT-EMIT-REDIS — stuck-`dispatched` self-heal window.
+      # Overridable for live-smokes (default 900s = 15 min).
+      STUCK_DISPATCH_TIMEOUT_S: ${STUCK_DISPATCH_TIMEOUT_S:-900}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      book-service:
+        condition: service_healthy
+      translation-service:
+        condition: service_healthy
+      knowledge-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8095/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    ports:
+      - "8223:8095"
 
   translation-worker:
     # Phase 4c-α: context bumped to repo root for SDK install.
@@ -671,6 +733,12 @@ services:
       # Override ENABLED=true to enable; MAX_PER_CHAPTER tunes the cap.
       KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED: ${KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED:-false}
       KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_MAX_PER_CHAPTER: ${KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_MAX_PER_CHAPTER:-20}
+      # wiki-llm M1 (option A) — read the authored de-bias BookProfile from
+      # lore-enrichment over the internal token to shape the wiki-gen prompt.
+      LORE_ENRICHMENT_SERVICE_URL: http://lore-enrichment-service:8093
+      # wiki-llm M6 — batch wiki-generation consumer. OFF by default (spends
+      # tokens); set true to drain loreweave:events:wiki-gen and generate.
+      WIKI_GEN_ENABLED: ${KNOWLEDGE_WIKI_GEN_ENABLED:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -834,7 +902,12 @@ services:
       # Phase B sub-session B: knowledge added so the relay ships KS's new
       # transactional outbox (knowledge.*_corrected, aggregate_type='knowledge')
       # to loreweave:events:knowledge for learning-service.
-      OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book,translation:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_translation,chat:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_chat,glossary:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary,knowledge:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge"
+      # LOOM V1 correction-flywheel slice 1 (D-COMP-OUTBOX-NOT-RELAYED): composition
+      # added so the relay ships its txn outbox (composition.generation_corrected +
+      # the pre-existing M9 scene_committed, aggregate_type='composition') to
+      # loreweave:events:composition. Until now composition wrote outbox rows that
+      # were NEVER relayed (M9 telemetry was emitted-but-unconsumed).
+      OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book,translation:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_translation,chat:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_chat,glossary:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary,knowledge:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge,composition:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_composition"
       # Phase B (§10.1): bumped 7→30 days. glossary now also feeds
       # learning-service's append-only correction log; a longer retention on the
       # source outbox rows + event_log is the replay backstop so a learning-
@@ -1003,6 +1076,8 @@ services:
       STATISTICS_SERVICE_URL: http://statistics-service:8089
       NOTIFICATION_SERVICE_URL: http://notification-service:8091
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      # Auto-Draft Factory S1 — campaign saga API (/v1/campaigns).
+      CAMPAIGN_SERVICE_URL: http://campaign-service:8095
       LORE_ENRICHMENT_SERVICE_URL: http://lore-enrichment-service:8093
       LEARNING_SERVICE_URL: http://learning-service:8094
       # LOOM M7 — composition-service (co-writer). Same in-cluster pattern.
@@ -1037,6 +1112,10 @@ services:
         condition: service_healthy
       knowledge-service:
         condition: service_healthy
+      campaign-service:
+        # Auto-Draft Factory S1 — start-ordering only (not a hard gate): the
+        # gateway must not wedge the stack if the saga orchestrator is unhealthy.
+        condition: service_started
       lore-enrichment-service:
         # C0 skeleton — start-ordering only, NOT a hard health gate: the gateway
         # must not wedge the whole stack if this nascent service is unhealthy

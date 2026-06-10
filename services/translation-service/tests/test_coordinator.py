@@ -180,6 +180,29 @@ async def test_coordinator_defaults_qa_config_when_absent():
 
 
 @pytest.mark.asyncio
+async def test_coordinator_forwards_campaign_id():
+    """S4a: campaign_id must survive the job→chapter fan-out, or the chapter worker
+    never binds it and the provider job_meta loses attribution. (LOW-5 hop guard.)"""
+    pool, _ = _make_pool()
+    publish = AsyncMock()
+    camp = str(uuid4())
+    msg = {**_job_msg([str(uuid4())]), "campaign_id": camp}
+    from app.workers.coordinator import handle_job_message
+    await handle_job_message(msg, pool, publish, AsyncMock())
+    assert publish.call_args.args[1]["campaign_id"] == camp
+
+
+@pytest.mark.asyncio
+async def test_coordinator_campaign_id_none_when_absent():
+    """A non-campaign job fans out campaign_id=None (no attribution) — no behavior change."""
+    pool, _ = _make_pool()
+    publish = AsyncMock()
+    from app.workers.coordinator import handle_job_message
+    await handle_job_message(_job_msg([str(uuid4())]), pool, publish, AsyncMock())
+    assert publish.call_args.args[1]["campaign_id"] is None
+
+
+@pytest.mark.asyncio
 async def test_coordinator_chapter_id_matches_input():
     pool, _ = _make_pool()
     publish = AsyncMock()

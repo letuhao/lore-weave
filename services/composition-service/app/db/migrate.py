@@ -132,6 +132,82 @@ CREATE TABLE IF NOT EXISTS generation_job (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_generation_job_idem ON generation_job(idempotency_key) WHERE idempotency_key IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_generation_job_project ON generation_job(project_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_generation_job_node    ON generation_job(outline_node_id);
+-- Cycle-2 chapter in-flight guard: the per-(project,chapter) guard scans
+-- chapter-level jobs by input->>'chapter_id'. Partial expression index over only
+-- node-less (chapter-level) jobs keeps it cheap as job history grows (the static
+-- outline_node_id IS NULL predicate is plan-matchable; status is filtered after).
+CREATE INDEX IF NOT EXISTS idx_generation_job_chapter_inflight
+  ON generation_job((input->>'chapter_id')) WHERE outline_node_id IS NULL;
+-- Cycle-6 reaper + cycle-2 guard: both scan only NON-terminal jobs by created_at
+-- (the global sweep marks stale active jobs failed; the in-flight guard filters
+-- active-and-recent). A partial index on the active rows keeps both off a full
+-- scan as completed/failed history accumulates.
+CREATE INDEX IF NOT EXISTS idx_generation_job_active
+  ON generation_job(created_at) WHERE status IN ('pending','running');
+
+-- ── narrative_thread: the promise/foreshadow/MICE constraint ledger (cycle 14,
+-- reasoning-engine spec §5.2/§10.2). ADVISORY (spec D4): a flag + a re-injection
+-- signal, NOT a hard commit gate (PAY/DEBT detection is fuzzy). Keyed on
+-- project_id (= the Work id, codebase convention for the spec's `work_id`).
+-- Lifecycle: open → progressing → paid | dropped. The open/progressing set is
+-- the re-injectable "open promises" the reasoning loop carries (F2) + the
+-- arc-end unpaid-debt check (foreshadow-drop §7). MICE = kind='mice_thread'
+-- with LIFO `nesting_depth` (innermost closes first).
+CREATE TABLE IF NOT EXISTS narrative_thread (
+  id             UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id        UUID NOT NULL,
+  project_id     UUID NOT NULL,
+  kind           TEXT NOT NULL CHECK (kind IN ('promise','foreshadow','question','mice_thread')),
+  status         TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','progressing','paid','dropped')),
+  -- in-DB FKs to outline_node (same DB) — the codebase convention for node refs
+  -- (cf. generation_job.outline_node_id). SET NULL on delete so a removed node
+  -- leaves the thread intact but un-anchored, not dangling.
+  opened_at_node UUID REFERENCES outline_node(id) ON DELETE SET NULL,
+  payoff_node    UUID REFERENCES outline_node(id) ON DELETE SET NULL,
+  trigger        TEXT NOT NULL DEFAULT '',
+  nesting_depth  INT NOT NULL DEFAULT 0,
+  priority       SMALLINT NOT NULL DEFAULT 50,
+  summary        TEXT NOT NULL DEFAULT '',
+  version        INT NOT NULL DEFAULT 1,
+  is_archived    BOOLEAN NOT NULL DEFAULT false,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- a payoff_node is only meaningful once the thread is paid.
+  CONSTRAINT narrative_thread_payoff_paid CHECK (payoff_node IS NULL OR status = 'paid')
+);
+CREATE INDEX IF NOT EXISTS idx_narrative_thread_project ON narrative_thread(project_id) WHERE NOT is_archived;
+-- the hot read: the open-set re-injected into every primitive (F2).
+CREATE INDEX IF NOT EXISTS idx_narrative_thread_open
+  ON narrative_thread(project_id, status) WHERE status IN ('open','progressing') AND NOT is_archived;
+
+-- generation_run.state (spec §10.3): persisted ReasoningState for resumable auto
+-- runs + the re-injected open-thread set. `generation_run` IS generation_job here.
+ALTER TABLE generation_job ADD COLUMN IF NOT EXISTS state JSONB;
+
+-- ── generation_correction: the human-gate signal (V1 correction flywheel, §3).
+-- ONE row per author correction on a generation. Only GENUINE-AUTHOR-CHOICE kinds
+-- are captured (accept-as-is is NOT a correction — §2 H2 self-reinforcement guard).
+-- raw_before/raw_after are NULL unless the work opted into capture_correction_prose
+-- (§5 — structural + change-magnitude is always captured; verbatim prose is gated).
+-- job_id FK is in-DB (same database, §1.4 OK); project_id is cross-DB (no FK).
+CREATE TABLE IF NOT EXISTS generation_correction (
+  id                     UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id                UUID NOT NULL,
+  project_id             UUID NOT NULL,
+  job_id                 UUID NOT NULL REFERENCES generation_job(id) ON DELETE CASCADE,
+  kind                   TEXT NOT NULL CHECK (kind IN ('edit','pick_different','regenerate','reject')),
+  chosen_candidate_index INT,
+  guidance               TEXT,
+  changed_blocks         INT,
+  raw_before             TEXT,
+  raw_after              TEXT,
+  regenerated_to_job_id  UUID REFERENCES generation_job(id) ON DELETE SET NULL,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- pick_different is meaningless without the candidate it points at.
+  CONSTRAINT correction_pick_needs_index CHECK (kind <> 'pick_different' OR chosen_candidate_index IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS idx_generation_correction_job  ON generation_correction(job_id);
+CREATE INDEX IF NOT EXISTS idx_generation_correction_user ON generation_correction(user_id, created_at DESC);
 
 -- ── outbox_events: standard (matches knowledge-service); relayed → loreweave:events:composition
 CREATE TABLE IF NOT EXISTS outbox_events (
@@ -146,6 +222,24 @@ CREATE TABLE IF NOT EXISTS outbox_events (
   last_error     TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_pending ON outbox_events(created_at) WHERE published_at IS NULL;
+
+-- ── decompose_commit: exactly-once ledger for A3 decompose-commit (idempotency).
+-- A client idempotency_key dedups a double-submit / retried commit so the
+-- arc→chapter→scene tree is never persisted twice (D-A3-COMMIT-IDEMPOTENCY). The
+-- stored `result` lets a replay return the original ids without re-inserting.
+-- project_id is cross-DB (no FK); the unique index is the exactly-once guard.
+-- Scope = (user, PROJECT, key): the commit endpoint is per-project, so a key
+-- reused across projects must NOT replay another project's result (/review-impl).
+CREATE TABLE IF NOT EXISTS decompose_commit (
+  id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id         UUID NOT NULL,
+  project_id      UUID NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  arc_id          UUID NOT NULL,
+  result          JSONB NOT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_decompose_commit_idem ON decompose_commit(user_id, project_id, idempotency_key);
 """
 
 # Built-in structure templates (owner_user_id NULL = global). Deterministic ids

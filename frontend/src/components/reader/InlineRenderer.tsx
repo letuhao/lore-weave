@@ -1,4 +1,5 @@
 import type { JSONContent } from '@tiptap/react';
+import { CitationChip, type CitationAttrs } from './CitationChip';
 
 interface InlineRendererProps {
   content?: JSONContent[];
@@ -7,6 +8,12 @@ interface InlineRendererProps {
 /** Wrap text in the appropriate HTML element for a single mark. */
 function wrapMark(children: React.ReactNode, mark: { type: string; attrs?: Record<string, any> }): React.ReactNode {
   switch (mark.type) {
+    case 'citation':
+      // wiki-llm M7a — the interactive trust chip around the cited text. In the
+      // body the mapper also emits a `superscript` mark, which wraps this chip in
+      // <sup> (a superscript chip); the References list has no superscript, so
+      // the chip there renders full-size with its "[n] label" text intact.
+      return <CitationChip attrs={(mark.attrs ?? {}) as CitationAttrs}>{children}</CitationChip>;
     case 'bold':
       return <strong>{children}</strong>;
     case 'italic':

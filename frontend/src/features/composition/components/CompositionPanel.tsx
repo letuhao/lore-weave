@@ -10,8 +10,12 @@ import { aiModelsApi } from '../../ai-models/api';
 import { useChapterScenes, useCreateScene, useCreateWork, useSetSceneStatus, useWorkResolution } from '../hooks/useWork';
 import type { Work } from '../types';
 import { ComposeView } from './ComposeView';
+import { ChapterAssembleView } from './ChapterAssembleView';
+import { PlannerView } from './PlannerView';
 import { GroundingPanel } from './GroundingPanel';
 import { CanonRulesPanel } from './CanonRulesPanel';
+import { QualityPanel } from './QualityPanel';
+import { CompositionSettingsView } from './CompositionSettingsView';
 
 type Props = {
   bookId: string;
@@ -20,7 +24,7 @@ type Props = {
   onAccept: (text: string) => void; // insert accepted prose into the editor
 };
 
-type SubTab = 'compose' | 'grounding' | 'canon';
+type SubTab = 'compose' | 'assemble' | 'planner' | 'grounding' | 'canon' | 'quality' | 'settings';
 
 export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) {
   const { t } = useTranslation('composition');
@@ -71,9 +75,20 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
   const effectiveScene = sceneId || scenes.data?.[0]?.id || '';
   const selectedScene = scenes.data?.find((s) => s.id === effectiveScene);
   const sceneDone = selectedScene?.status === 'done';
+  // Stitch (B3) is the publishable artifact → gated on every scene being done.
+  const scenesAllDone = !!scenes.data?.length && scenes.data.every((s) => s.status === 'done');
+  // Session model pick OVERRIDES the persisted per-Work default (Settings tab);
+  // derive (like effectiveScene) so the default applies without a useEffect. Guard
+  // a STALE default that points at a now-deactivated model (initialValues-respect-
+  // dynamic-gates): only honor it while models are still loading or it's in the
+  // active list — else fall back to '' so the selector doesn't show a phantom value
+  // and no hidden stale model_ref reaches generation.
+  const defaultModelRef = typeof work.settings?.default_model_ref === 'string' ? work.settings.default_model_ref : '';
+  const defaultIsAvailable = !models.data || models.data.some((m) => m.user_model_id === defaultModelRef);
+  const effectiveModelRef = modelRef || (defaultIsAvailable ? defaultModelRef : '');
   // The selected model's metadata — hints for the server's auto-reasoning
   // strategy (adaptive pass-through vs our rule-based scorer).
-  const selectedModel = models.data?.find((m) => m.user_model_id === modelRef);
+  const selectedModel = models.data?.find((m) => m.user_model_id === effectiveModelRef);
 
   return (
     <div className="flex h-full flex-col">
@@ -128,7 +143,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
         <select
           data-testid="composition-model-select"
           className="rounded border border-neutral-300 bg-transparent px-2 py-1 dark:border-neutral-600"
-          value={modelRef}
+          value={effectiveModelRef}
           onChange={(e) => setModelRef(e.target.value)}
           aria-label={t('model', { defaultValue: 'Model' })}
         >
@@ -141,7 +156,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
 
       {/* sub-tabs */}
       <div className="flex gap-1 border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700">
-        {(['compose', 'grounding', 'canon'] as SubTab[]).map((tb) => (
+        {(['compose', 'assemble', 'planner', 'grounding', 'canon', 'quality', 'settings'] as SubTab[]).map((tb) => (
           <button
             key={tb}
             data-testid={`composition-subtab-${tb}`}
@@ -154,21 +169,61 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {tab === 'compose' && (
+        {/* All sub-panels stay MOUNTED, toggled with CSS `hidden`, so in-progress
+            generation/edit state (a co-write draft, a chapter/stitch preview)
+            survives a tab switch — CLAUDE.md "never conditionally unmount stateful
+            components". A ternary here would destroy ComposeView/ChapterAssembleView
+            hook state on every tab change.
+            Trade-off (PO: holistic): the read-only panels now fetch eagerly even if
+            never opened — QualityPanel (correction-stats) + CanonRulesPanel (list).
+            Both are bounded + react-query-cached; GroundingPanel self-guards on an
+            empty sceneId (no eager query). Accepted for uniform state-preservation. */}
+        <div className={tab === 'compose' ? '' : 'hidden'}>
           <ComposeView
             projectId={work.project_id}
             sceneId={effectiveScene}
-            modelRef={modelRef}
+            modelRef={effectiveModelRef}
             modelKind={selectedModel?.provider_kind}
             modelName={selectedModel?.provider_model_name}
             token={token}
             onAccept={onAccept}
           />
-        )}
-        {tab === 'grounding' && (
+        </div>
+        <div className={tab === 'assemble' ? '' : 'hidden'}>
+          <ChapterAssembleView
+            projectId={work.project_id}
+            bookId={bookId}
+            chapterId={chapterId}
+            modelRef={effectiveModelRef}
+            modelKind={selectedModel?.provider_kind}
+            modelName={selectedModel?.provider_model_name}
+            settings={work.settings}
+            scenesAllDone={scenesAllDone}
+            token={token}
+            onAccept={onAccept}
+          />
+        </div>
+        <div className={tab === 'planner' ? '' : 'hidden'}>
+          <PlannerView projectId={work.project_id} bookId={bookId} modelRef={effectiveModelRef} modelSource="user_model" models={models.data ?? []} token={token} />
+        </div>
+        <div className={tab === 'grounding' ? '' : 'hidden'}>
           <GroundingPanel projectId={work.project_id} sceneId={effectiveScene} token={token} />
-        )}
-        {tab === 'canon' && <CanonRulesPanel projectId={work.project_id} token={token} />}
+        </div>
+        <div className={tab === 'canon' ? '' : 'hidden'}>
+          <CanonRulesPanel projectId={work.project_id} bookId={bookId} token={token} />
+        </div>
+        <div className={tab === 'quality' ? '' : 'hidden'}>
+          <QualityPanel projectId={work.project_id} token={token} />
+        </div>
+        <div className={tab === 'settings' ? '' : 'hidden'}>
+          <CompositionSettingsView
+            projectId={work.project_id}
+            bookId={bookId}
+            settings={work.settings}
+            models={models.data ?? []}
+            token={token}
+          />
+        </div>
       </div>
     </div>
   );

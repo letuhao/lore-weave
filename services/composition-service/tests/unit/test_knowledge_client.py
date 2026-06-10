@@ -109,6 +109,24 @@ async def test_timeline_always_sends_project_id_and_cutoff():
 
 
 @respx.mock
+async def test_timeline_forwards_event_order_window():
+    # LOOM-32: the packer drives the timeline on the DENSE event_order axis with a
+    # recent-window — assert both bounds reach the wire (project_id always sent).
+    route = respx.get(f"{BASE}/v1/knowledge/timeline").mock(
+        return_value=httpx.Response(200, json={"events": [], "total": 0})
+    )
+    c = await _client()
+    try:
+        await c.timeline("jwt", project_id=PROJECT, before_order=10_000_000, after_order=4_999_999)
+    finally:
+        await c.aclose()
+    params = route.calls.last.request.url.params
+    assert params["project_id"] == str(PROJECT)
+    assert params["before_order"] == "10000000"
+    assert params["after_order"] == "4999999"
+
+
+@respx.mock
 async def test_get_entity_and_search_drawers():
     respx.get(f"{BASE}/v1/knowledge/entities/e1").mock(
         return_value=httpx.Response(200, json={"entity": {"id": "e1"}, "relations": []})
@@ -139,5 +157,51 @@ async def test_lenses_degrade_to_empty_on_failure():
         assert await c.search_drawers("jwt", project_id=PROJECT, query="q") == []
         assert await c.get_entity("jwt", "e1") is None
         assert await c.build_context(USER, project_id=PROJECT) is None
+    finally:
+        await c.aclose()
+
+
+@respx.mock
+async def test_fact_for_check_uses_internal_token_and_glossary_ids():
+    """A2-S3 — fact_for_check POSTs glossary cast ids with the internal token."""
+    route = respx.post(
+        f"{BASE}/internal/projects/{PROJECT}/fact-for-check"
+    ).mock(return_value=httpx.Response(200, json={
+        "at_order": 5000000,
+        "entities": [{"entity_id": "e1", "glossary_entity_id": "g1", "status": "gone"}],
+        "relations": [], "events": [],
+    }))
+    c = await _client()
+    try:
+        out = await c.fact_for_check(
+            project_id=PROJECT, at_order=5000000, glossary_entity_ids=["g1"])
+    finally:
+        await c.aclose()
+    assert out["entities"][0]["status"] == "gone"
+    req = route.calls.last.request
+    assert req.headers["X-Internal-Token"] == "intok"
+    assert "Authorization" not in req.headers
+    import json as _json
+    body = _json.loads(req.content)
+    assert body["glossary_entity_ids"] == ["g1"] and body["at_order"] == 5000000
+
+
+@respx.mock
+async def test_fact_for_check_degrades_to_none():
+    respx.post(f"{BASE}/internal/projects/{PROJECT}/fact-for-check").mock(
+        return_value=httpx.Response(503))
+    c = await _client()
+    try:
+        out = await c.fact_for_check(
+            project_id=PROJECT, at_order=1, glossary_entity_ids=["g1"])
+    finally:
+        await c.aclose()
+    assert out is None
+
+
+async def test_fact_for_check_no_ids_returns_none_without_call():
+    c = await _client()
+    try:
+        assert await c.fact_for_check(project_id=PROJECT, at_order=1) is None
     finally:
         await c.aclose()

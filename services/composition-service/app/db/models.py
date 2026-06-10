@@ -27,6 +27,9 @@ LinkKind = Literal["setup_payoff", "custom"]
 RuleScope = Literal["world", "entity", "reveal_gate"]
 JobMode = Literal["cowrite", "auto"]
 JobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
+# Only genuine-author-choice actions are corrections (§2). accept-as-is is NOT
+# here — mining the reranker's own winner = self-reinforcement (review H2).
+CorrectionKind = Literal["edit", "pick_different", "regenerate", "reject"]
 
 
 class CompositionWork(BaseModel):
@@ -48,6 +51,27 @@ class StructureTemplate(BaseModel):
     kind: str = "generic"
     beats: list[dict[str, Any]] = Field(default_factory=list)
     created_at: datetime | None = None
+
+
+class NarrativeThread(BaseModel):
+    """The promise/foreshadow/MICE constraint ledger row (cycle 14, §5.2/§10.2).
+    ADVISORY — a flag + re-injection signal, not a hard commit gate."""
+
+    id: UUID
+    user_id: UUID
+    project_id: UUID
+    kind: Literal["promise", "foreshadow", "question", "mice_thread"]
+    status: Literal["open", "progressing", "paid", "dropped"] = "open"
+    opened_at_node: UUID | None = None
+    payoff_node: UUID | None = None
+    trigger: str = ""
+    nesting_depth: int = 0
+    priority: int = 50
+    summary: str = ""
+    version: int = 1
+    is_archived: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class OutlineNode(BaseModel):
@@ -120,6 +144,49 @@ class GenerationJob(BaseModel):
     idempotency_key: Annotated[str, StringConstraints(max_length=200)] | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+class GenerationCorrection(BaseModel):
+    id: UUID
+    user_id: UUID
+    project_id: UUID
+    job_id: UUID
+    kind: CorrectionKind
+    chosen_candidate_index: int | None = None  # required for pick_different
+    guidance: _Long | None = None
+    changed_blocks: int | None = None  # edit-magnitude (# differing blocks)
+    # OPT-IN only (§5 `capture_correction_prose`): verbatim prose, NULL by default.
+    raw_before: str | None = None
+    raw_after: str | None = None
+    regenerated_to_job_id: UUID | None = None  # §8.3 chain (new ≻ old)
+    created_at: datetime | None = None
+
+
+class ModeCorrectionStats(BaseModel):
+    """Correction-rate signal for one generation mode (auto | cowrite), §6.
+
+    `accept_rate` is the H2-safe positive signal — accept-as-is leaves no
+    correction row, so it is derived (generations − corrected_jobs) / generations,
+    NOT mined as a preference. `avg_edit_magnitude` reads `changed_blocks` (the
+    real edit size), not a generic key-diff (D-LEARN-GEN-CHANGE-MAGNITUDE). Rates
+    are None when there are no generations (cold-start)."""
+    mode: str
+    generations: int
+    corrected_jobs: int
+    accept_rate: float | None = None
+    edit_rate: float | None = None
+    pick_different_rate: float | None = None
+    regenerate_rate: float | None = None
+    reject_rate: float | None = None
+    avg_edit_magnitude: float | None = None
+
+
+class CorrectionStats(BaseModel):
+    """Per-Work correction-rate dashboard (the V1 eval-gate, §6). Always carries
+    BOTH modes (zero-filled) so the FE can show the auto-vs-cowrite A/B — within
+    one Work the author is fixed, so the comparison cancels author style."""
+    project_id: UUID
+    by_mode: list[ModeCorrectionStats]
 
 
 class OutboxEvent(BaseModel):

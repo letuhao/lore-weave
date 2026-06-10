@@ -40,6 +40,8 @@ __all__ = [
     "GlossaryPage",
     "GlossarySyncResult",
     "SummarizeMessageResult",
+    "ChatClient",
+    "ProviderRegistryClient",
 ]
 
 logger = logging.getLogger(__name__)
@@ -58,6 +60,10 @@ class ExtractionResult:
     facts_merged: int
     retryable: bool = False
     error: str | None = None
+    # S3c-2b: the underlying LLM error code (e.g. LLM_CIRCUIT_OPEN), surfaced
+    # from ExtractionError.last_error.code so the runner can emit a circuit-open
+    # signal for campaign auto-pause. None when the failure carries no LLM code.
+    error_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -213,6 +219,10 @@ class KnowledgeClient:
         # are supplied, the endpoint MERGEs the hierarchy in the same Tx
         # and enqueues `summary.chapter` (+ part/book on last chapter).
         hierarchy_paths: dict | None = None,
+        # FD-4 (066 fix): chapter reading-order ordinal (sort_order), passed
+        # SEPARATELY from hierarchy_paths so a flat book (no part) still gets a
+        # dense event_order → status_effects/timeline aren't silently dropped.
+        chapter_index: int | None = None,
         book_parts: list[tuple[str, str, str]] | None = None,
         is_last_chapter_of_book: bool = False,
         embedding_model_uuid: str | None = None,
@@ -254,6 +264,8 @@ class KnowledgeClient:
         # Per `feedback_sdk_default_arg_dropped_from_wire` we explicitly
         # check None (not falsy) so an empty book_parts on a single-part
         # book still rides through correctly.
+        if chapter_index is not None:
+            body["chapter_index"] = chapter_index
         if hierarchy_paths is not None:
             body["hierarchy_paths"] = hierarchy_paths
         if book_parts is not None:
@@ -436,6 +448,80 @@ class KnowledgeClient:
         )
 
 
+# ── ChatClient ───────────────────────────────────────────────────────
+
+
+class ChatClient:
+    """FD-2 — calls chat-service's internal API to fetch a chat turn's text so the
+    extraction worker can build chat→KG knowledge (the chat.turn_completed event
+    carries only ids + lengths, not the prose)."""
+
+    def __init__(self, base_url: str, internal_token: str, timeout_s: float) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._http = httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout_s),
+            headers={"X-Internal-Token": internal_token},
+        )
+
+    async def aclose(self) -> None:
+        await self._http.aclose()
+
+    async def get_turn_text(self, message_id: str | UUID) -> str | None:
+        """GET /internal/chat/turns/{message_id}/text → the joined user+assistant
+        turn text. Returns None on 404 / empty / transport failure (best-effort —
+        the caller degrades to an empty no-op extraction). A transient miss simply
+        skips this turn's extraction (documented LOW; transient-retry is a deferred
+        improvement)."""
+        url = f"{self._base_url}/internal/chat/turns/{message_id}/text"
+        try:
+            resp = await self._http.get(url)
+            if resp.status_code != 200:
+                logger.warning("chat-service turn-text %d for %s", resp.status_code, message_id)
+                return None
+            text = (resp.json().get("text") or "").strip()
+            return text or None
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning("chat-service turn-text failed: %s", exc)
+            return None
+
+
+# ── ProviderRegistryClient ───────────────────────────────────────────
+
+
+class ProviderRegistryClient:
+    """FD-27 — fetches a model's provider_model_name (NO secrets) so the
+    extraction worker can run a best-effort reasoning-model advisory. A
+    reasoning model (qwen3.x-thinking, deepseek-r1, o-series, …) with thinking
+    enabled silently burns its budget on reasoning tokens and emits empty JSON
+    → 0 entities/events, with no error. Best-effort: None on any failure (the
+    advisory simply doesn't fire; extraction proceeds)."""
+
+    def __init__(self, base_url: str, internal_token: str, timeout_s: float) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._http = httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout_s),
+            headers={"X-Internal-Token": internal_token},
+        )
+
+    async def aclose(self) -> None:
+        await self._http.aclose()
+
+    async def get_model_name(self, model_source: str, model_ref: str | UUID) -> str | None:
+        """GET /internal/models/{model_source}/{model_ref}/info → provider_model_name.
+        None on 404 / transport / decode failure (advisory degrades to off)."""
+        url = f"{self._base_url}/internal/models/{model_source}/{model_ref}/info"
+        try:
+            resp = await self._http.get(url)
+            if resp.status_code != 200:
+                logger.debug("provider-registry model-info %d for %s", resp.status_code, model_ref)
+                return None
+            name = (resp.json().get("provider_model_name") or "").strip()
+            return name or None
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.debug("provider-registry model-info failed: %s", exc)
+            return None
+
+
 # ── BookClient ───────────────────────────────────────────────────────
 
 
@@ -583,25 +669,30 @@ class BookClient:
 
         Returns the PINNED published revision's plain text (vs the live draft),
         so canon=published graph extraction reads exactly what the author
-        published. Returns None on failure (worker → text-unavailable → skip).
+        published.
+
+        Returns None ONLY when the revision is PERMANENTLY GONE — a 404 (deleted
+        chapter/revision, or IDOR-guarded miss). On a TRANSIENT failure (network
+        error / 5xx) it RAISES so the caller fails+retries the job instead of
+        treating a blip as 'gone'. This distinction is load-bearing: the
+        chapters_pending drain marks the pending row processed on a None (so a
+        dead revision stops re-arming the drain every poll — D-CM3B-DEAD-REVISION-
+        LOOP); marking on a transient blip would silently drop canon.
         """
         url = (
             f"{self._base_url}/internal/books/{book_id}/chapters/{chapter_id}"
             f"/revisions/{revision_id}/text"
         )
-        try:
-            resp = await self._http.get(url)
-            if resp.status_code != 200:
-                logger.warning(
-                    "book-service revision %s/%s: %d",
-                    chapter_id, revision_id, resp.status_code,
-                )
-                return None
-            data = resp.json()
-            return data.get("text_content") or None
-        except (httpx.HTTPError, ValueError, KeyError) as exc:
-            logger.warning("book-service revision text failed: %s", exc)
+        resp = await self._http.get(url)  # network errors propagate → job retries
+        if resp.status_code == 404:
+            logger.warning(
+                "book-service revision %s/%s: 404 (revision gone)",
+                chapter_id, revision_id,
+            )
             return None
+        resp.raise_for_status()  # 5xx / other non-2xx → raise → job fails + retries
+        data = resp.json()
+        return data.get("text_content") or None
 
 
 # ── GlossaryClient ───────────────────────────────────────────────────

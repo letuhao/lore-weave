@@ -97,6 +97,7 @@ app.include_router(proposals.router)
 app.include_router(sources.router)
 app.include_router(sources.books_router)  # de-bias C2 T6 — chapter-selection grounding ingest
 app.include_router(book_profile.router)  # de-bias C3 — per-book profile authoring (GET/PUT/suggest)
+app.include_router(book_profile.internal_router)  # wiki-llm M1 — S2S profile read (knowledge-service)
 app.include_router(templates.router)
 
 # C15 — internal eval-gate status route (P2/P3 gate signal for C16/C17).

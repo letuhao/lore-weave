@@ -4,11 +4,14 @@
 // a ghost preview — it is NOT in the editor doc and is NEVER autosaved until the
 // author clicks Accept (§13 SC4), which calls onAccept() to insert it and then
 // runs an advisory critique.
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCompositionStream } from '../hooks/useCompositionStream';
 import { useCritique } from '../hooks/useCritique';
-import type { Critic } from '../types';
+import { useAutoGenerate, useCorrection } from '../hooks/useAutoGenerate';
+import { CandidatesView } from './CandidatesView';
+import { CanonGatePanel } from './CanonGatePanel';
+import type { CanonViolation, CorrectionBody, Critic } from '../types';
 
 type ReasoningPref = 'off' | 'auto' | 'low' | 'medium' | 'high';
 
@@ -25,19 +28,25 @@ type Props = {
 export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName, token, onAccept }: Props) {
   const { t } = useTranslation('composition');
   const [guide, setGuide] = useState('');
+  const guideRef = useRef<HTMLTextAreaElement>(null);
   // Reasoning preference. "auto" lets the server decide per the selected model
   // (adaptive pass-through vs our rule-based scorer); off/low/medium/high are
   // explicit overrides.
   const [reasoning, setReasoning] = useState<ReasoningPref>('auto');
+  // Diverge = controlled-auto gate (K options). OFF = V0 live token stream.
+  const [diverge, setDiverge] = useState(false);
   const stream = useCompositionStream(token);
+  const auto = useAutoGenerate(token);
+  const correction = useCorrection(token);
   const { critique, dismiss } = useCritique(token);
 
-  const canGenerate = !!sceneId && !!modelRef && !stream.streaming;
-  const generate = () =>
-    stream.start({
-      projectId, outlineNodeId: sceneId, modelSource: 'user_model', modelRef, guide,
-      reasoning, modelKind, modelName,
-    });
+  const busy = stream.streaming || auto.isPending;
+  const canGenerate = !!sceneId && !!modelRef && !busy;
+  const genParams = {
+    projectId, outlineNodeId: sceneId, modelSource: 'user_model' as const, modelRef, guide,
+    reasoning, modelKind, modelName,
+  };
+  const generate = () => (diverge ? auto.mutate(genParams) : stream.start(genParams));
 
   const accept = () => {
     if (!stream.ghost) return;
@@ -46,11 +55,57 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
     stream.clearGhost();
   };
 
+  // ── controlled-auto (diverge) gate handlers ──
+  // Accepting a candidate (winner / picked / edited) inserts it + runs the
+  // advisory critique on the auto job, then clears the cards. Correction capture
+  // is fire-and-forget — it never blocks the insert.
+  const acceptText = (text: string) => {
+    onAccept(text);
+    if (auto.data?.job_id) critique.mutate({ jobId: auto.data.job_id, passage: text });
+    auto.reset();
+  };
+  const correct = (body: CorrectionBody) => {
+    if (auto.data?.job_id) correction.mutate({ jobId: auto.data.job_id, body });
+  };
+  const regenerate = () => {
+    correct({ kind: 'regenerate', guidance: guide });
+    auto.mutate(genParams); // re-run with the same guidance; replaces the cards
+  };
+  const rejectAll = () => { correct({ kind: 'reject' }); auto.reset(); };
+  const toggleDiverge = (on: boolean) => { setDiverge(on); auto.reset(); stream.clearGhost(); };
+
+  // ── A2-S4a: canon Revise — the author steers a re-generate. Pre-fill the guide
+  // with the violation context + focus the box (PO decision: author steers, not a
+  // one-click re-run). Appended (newline-sep) so any existing guidance is kept.
+  const revise = (v: CanonViolation) => {
+    const name = v.name || v.matched || v.entity_id;
+    const line =
+      t('reviseGuide', {
+        defaultValue:
+          'Keep canon consistent: {{name}} is gone from the story by this scene — do not portray them as present or acting.',
+        name,
+      }) + (v.why ? ` (${v.why})` : '');
+    setGuide((prev) => (prev.trim() ? `${prev.trim()}\n${line}` : line));
+    guideRef.current?.focus();
+  };
+
+  // ── V0 cowrite-stream gate capture (slice 5) ──
+  // Accepting the single stream ghost as-is is NOT a correction (H2; the inline
+  // ghost is not editable, so a post-accept editor edit isn't cleanly captured).
+  // Regenerate + Discard ARE genuine dissatisfaction signals → capture them so
+  // the eval-gate dashboard has a real cowrite baseline to compare auto against.
+  const cowriteCorrect = (body: CorrectionBody) => {
+    if (stream.jobId) correction.mutate({ jobId: stream.jobId, body });
+  };
+  const cowriteRegenerate = () => { cowriteCorrect({ kind: 'regenerate', guidance: guide }); generate(); };
+  const cowriteDiscard = () => { cowriteCorrect({ kind: 'reject' }); stream.clearGhost(); };
+
   const critic: Critic = critique.data?.critic ?? null;
 
   return (
     <div className="flex flex-col gap-2 p-3">
       <textarea
+        ref={guideRef}
         className="w-full resize-none rounded border border-neutral-300 bg-transparent p-2 text-sm dark:border-neutral-600"
         rows={2}
         placeholder={t('guidePlaceholder', { defaultValue: 'Optional guidance for the co-writer…' })}
@@ -81,28 +136,53 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
                 : t('reasoningResolved', { defaultValue: '{{source}} → {{effort}}', source: stream.reasoning.source, effort: stream.reasoning.effort ?? '—' })}
           </span>
         )}
-        {!stream.streaming ? (
+        <label data-testid="compose-diverge-toggle" className="flex items-center gap-1 text-xs text-neutral-600 dark:text-neutral-300" title={t('divergeHint', { defaultValue: 'Generate several options and pick/edit the best (non-streaming).' })}>
+          <input type="checkbox" checked={diverge} onChange={(e) => toggleDiverge(e.target.checked)} />
+          {t('diverge', { defaultValue: 'Diverge (K options)' })}
+        </label>
+        {stream.streaming ? (
+          <button data-testid="compose-stop" className="rounded bg-red-600 px-3 py-1.5 text-sm text-white" onClick={stream.stop}>
+            {t('stop', { defaultValue: 'Stop' })}
+          </button>
+        ) : (
           <button
             data-testid="compose-generate"
             className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white disabled:opacity-50"
             disabled={!canGenerate}
             onClick={generate}
           >
-            {t('generate', { defaultValue: 'Generate' })}
-          </button>
-        ) : (
-          <button data-testid="compose-stop" className="rounded bg-red-600 px-3 py-1.5 text-sm text-white" onClick={stream.stop}>
-            {t('stop', { defaultValue: 'Stop' })}
+            {auto.isPending ? t('generating', { defaultValue: 'Generating…' }) : t('generate', { defaultValue: 'Generate' })}
           </button>
         )}
         {!sceneId && <span data-testid="compose-need-scene" className="self-center text-xs text-amber-600">{t('needScene', { defaultValue: 'Pick a scene' })}</span>}
         {sceneId && !modelRef && <span data-testid="compose-need-model" className="self-center text-xs text-amber-600">{t('needModel', { defaultValue: 'Pick a model' })}</span>}
       </div>
 
-      {stream.error && <div className="rounded bg-red-50 p-2 text-xs text-red-700 dark:bg-red-950">{stream.error}</div>}
+      {!diverge && stream.error && <div className="rounded bg-red-50 p-2 text-xs text-red-700 dark:bg-red-950">{stream.error}</div>}
 
-      {/* ghost preview (FE-local, not in the doc, not autosaved) */}
-      {(stream.streaming || stream.ghost) && (
+      {/* controlled-auto gate: all K options as cards (non-streaming). */}
+      {diverge && auto.isError && (
+        <div data-testid="compose-auto-error" className="rounded bg-red-50 p-2 text-xs text-red-700 dark:bg-red-950">
+          {t('generateFailed', { defaultValue: 'Generation failed — try again.' })}
+        </div>
+      )}
+      {/* A2-S4a canon gate verdict on the converged winner (hard/advisory/unchecked). */}
+      {diverge && auto.data?.canon && !auto.isPending && (
+        <CanonGatePanel canon={auto.data.canon} onRevise={revise} />
+      )}
+      {diverge && auto.data && !auto.isPending && (auto.data.candidates?.length ?? 0) > 0 && (
+        <CandidatesView
+          gen={auto.data}
+          busy={correction.isPending}
+          onAcceptText={acceptText}
+          onCorrect={correct}
+          onRegenerate={regenerate}
+          onReject={rejectAll}
+        />
+      )}
+
+      {/* ghost preview (FE-local, not in the doc, not autosaved) — V0 stream only */}
+      {!diverge && (stream.streaming || stream.ghost) && (
         <div className="rounded border border-dashed border-indigo-300 bg-indigo-50/40 p-2 text-sm dark:border-indigo-700 dark:bg-indigo-950/30">
           <div className="mb-1 text-xs uppercase tracking-wide text-indigo-500">
             {t('ghost', { defaultValue: 'Ghost draft' })}{stream.streaming ? '…' : ''}
@@ -113,10 +193,10 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
               <button data-testid="compose-accept" className="rounded bg-emerald-600 px-2.5 py-1 text-xs text-white" onClick={accept}>
                 {t('accept', { defaultValue: 'Accept' })}
               </button>
-              <button data-testid="compose-regenerate" className="rounded border border-neutral-300 px-2.5 py-1 text-xs dark:border-neutral-600" onClick={generate}>
+              <button data-testid="compose-regenerate" className="rounded border border-neutral-300 px-2.5 py-1 text-xs dark:border-neutral-600" onClick={cowriteRegenerate}>
                 {t('regenerate', { defaultValue: 'Regenerate' })}
               </button>
-              <button data-testid="compose-discard" className="rounded border border-neutral-300 px-2.5 py-1 text-xs dark:border-neutral-600" onClick={stream.clearGhost}>
+              <button data-testid="compose-discard" className="rounded border border-neutral-300 px-2.5 py-1 text-xs dark:border-neutral-600" onClick={cowriteDiscard}>
                 {t('discard', { defaultValue: 'Discard' })}
               </button>
             </div>

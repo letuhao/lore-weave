@@ -131,6 +131,73 @@ def test_get_profile_book_not_found_404():
     assert resp.status_code == 404
 
 
+# ── internal (S2S) GET — wiki-llm M1 ────────────────────────────────────────────
+
+class _PopulatedConn:
+    """Returns a populated profile row (jsonb columns as str, like asyncpg)."""
+
+    async def fetchrow(self, _sql, *_a):
+        return {
+            "book_id": _a[0] if _a else None,
+            "worldview": "Shang-Zhou xianxia", "language": "zh",
+            "era_policy": "no firearms", "voice": "epic",
+            "anachronism_markers": json.dumps([{"term": "枪", "reason": "anachronism"}]),
+            "dimension_overrides": json.dumps({}),
+            "profile_source": "manual",
+        }
+
+
+def _internal_app(pool) -> FastAPI:
+    app = FastAPI()
+    app.include_router(bp_api.internal_router)
+    app.dependency_overrides[get_db] = lambda: pool
+    return app
+
+
+def _internal_url(book: UUID) -> str:
+    return f"/internal/lore-enrichment/books/{book}/profile"
+
+
+def test_internal_get_requires_token():
+    # No X-Internal-Token → 401 (no owner/JWT path on the internal route).
+    resp = TestClient(_internal_app(_Pool(_NeutralConn()))).get(_internal_url(uuid4()))
+    assert resp.status_code == 401
+
+
+def test_internal_get_wrong_token():
+    resp = TestClient(_internal_app(_Pool(_NeutralConn()))).get(
+        _internal_url(uuid4()), headers={"X-Internal-Token": "nope"}
+    )
+    assert resp.status_code == 401
+
+
+def test_internal_get_unset_returns_neutral():
+    resp = TestClient(_internal_app(_Pool(_NeutralConn()))).get(
+        _internal_url(uuid4()),
+        headers={"X-Internal-Token": settings.internal_service_token},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["language"] == "auto"
+    assert body["worldview"] == ""
+    assert body["anachronism_enabled"] is False
+
+
+def test_internal_get_populated():
+    resp = TestClient(_internal_app(_Pool(_PopulatedConn()))).get(
+        _internal_url(uuid4()),
+        headers={"X-Internal-Token": settings.internal_service_token},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["worldview"] == "Shang-Zhou xianxia"
+    assert body["language"] == "zh"
+    assert body["era_policy"] == "no firearms"
+    assert body["voice"] == "epic"
+    assert body["anachronism_markers"] == [{"term": "枪", "reason": "anachronism"}]
+    assert body["anachronism_enabled"] is True
+
+
 # ── PUT ───────────────────────────────────────────────────────────────────────
 
 @respx.mock

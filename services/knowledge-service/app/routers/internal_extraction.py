@@ -26,6 +26,7 @@ from app.clients.llm_client import get_llm_client
 from app.config import settings
 from app.db.neo4j import neo4j_session
 from app.db.pool import get_knowledge_pool
+from app.deps import get_projects_repo
 from app.db.repositories.job_logs import JobLogsRepo
 from app.extraction.anchor_loader import Anchor, load_glossary_anchors
 from loreweave_extraction.errors import ExtractionError
@@ -155,6 +156,14 @@ class PersistPass2Request(BaseModel):
     events: list[LLMEventCandidate] = Field(default_factory=list)
     facts: list[LLMFactCandidate] = Field(default_factory=list)
 
+    # FD-4 (066 fix): the chapter's reading-order ordinal (book-service
+    # sort_order), threaded SEPARATELY from hierarchy_paths so a flat book
+    # (chapters, no part) still gets a dense event_order for events/status.
+    # ge=0 (not ge=1 like the part-gated HierarchyPathsPayload.chapter_index):
+    # this field rides on EVERY part-less persist, so a hypothetical 0-based
+    # sort_order must NOT 422 the whole persist — event_order=0*stride+idx is a
+    # perfectly valid dense base (review-impl LOW#1).
+    chapter_index: int | None = Field(default=None, ge=0)
     # P3 — caller supplies these to opt into hierarchy writes + summary enqueue.
     hierarchy_paths: HierarchyPathsPayload | None = None
     # book_parts only consumed when is_last_chapter_of_book=True. Each
@@ -483,6 +492,7 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
         else _WRITER_AUTOCREATE_CONFIG["autocreate_enabled"]
     )
 
+    project_id_str = str(body.project_id) if body.project_id else None
     async with neo4j_session() as session:
         # Canon Model CM3b (B6): retract THIS source's prior evidence BEFORE
         # re-writing. Re-extracting a chapter (e.g. re-publish) must drop facts
@@ -490,14 +500,28 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
         # the writer below re-adds evidence for facts still present. First-time
         # extraction → 0 edges removed (no-op). Safe because the worker persists
         # ONCE per chapter (one source_id per call), not per-chunk.
-        from app.db.neo4j_repos.provenance import remove_evidence_for_source
-        await remove_evidence_for_source(
-            session, user_id=str(body.user_id), source_id=body.source_id,
+        #
+        # CM3b-RETRACT-FIX: use the NATURAL-KEY retract. The prior call passed
+        # the raw `source_id` to `remove_evidence_for_source`, which matches the
+        # HASHED ExtractionSource id — so it removed ZERO edges and the retract
+        # was a silent no-op (canon drifted on every re-publish). The natural-key
+        # helper hashes (user, project, source_type, source_id) the same way
+        # `upsert_extraction_source` did at write time.
+        from app.db.neo4j_repos.provenance import (
+            cleanup_zero_evidence_nodes,
+            remove_evidence_for_natural_key,
+        )
+        removed = await remove_evidence_for_natural_key(
+            session,
+            user_id=str(body.user_id),
+            project_id=project_id_str,
+            source_type=body.source_type,
+            source_id=body.source_id,
         )
         result = await write_pass2_extraction(
             session,
             user_id=str(body.user_id),
-            project_id=str(body.project_id) if body.project_id else None,
+            project_id=project_id_str,
             source_type=body.source_type,
             source_id=body.source_id,
             job_id=str(body.job_id),
@@ -508,10 +532,29 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             extraction_model=body.extraction_model,
             anchors=anchors,
             hierarchy_paths=hierarchy_paths,  # P3 D2a — Tx-bound hierarchy MERGE
+            chapter_index=body.chapter_index,  # FD-4 (066) — event_order for flat books
             autocreate_enabled=autocreate_enabled,
             autocreate_max=_WRITER_AUTOCREATE_CONFIG["autocreate_max"],
             provenance=body.provenance,  # CM5
         )
+        # CM3b-RETRACT-FIX: after re-writing, sweep nodes whose evidence the
+        # retract dropped to zero (disappeared from the new revision) — this
+        # completes retract-before-reextract. Gated on `removed > 0` so a
+        # first-time extraction (nothing retracted) skips the O(project) sweep,
+        # and so the cleanup only runs on genuine re-extractions. Safe per the
+        # one-active-job-per-project invariant (K17.9): the write above already
+        # re-added evidence for every surviving node, so only truly-orphaned
+        # nodes are at zero here.
+        if removed > 0:
+            swept = await cleanup_zero_evidence_nodes(
+                session, user_id=str(body.user_id), project_id=project_id_str,
+            )
+            if swept.total:
+                logger.info(
+                    "CM3b-RETRACT-FIX: persist-pass2 swept zero-evidence orphans "
+                    "source_id=%s entities=%d events=%d facts=%d",
+                    body.source_id, swept.entities, swept.events, swept.facts,
+                )
 
     elapsed = time.perf_counter() - started
 
@@ -554,10 +597,11 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             )
     logger.info(
         "Phase 4b-β: persist-pass2 done source_id=%s "
-        "entities=%d relations=%d events=%d facts=%d in %.1fs",
+        "entities=%d relations=%d events=%d facts=%d statuses=%d in %.1fs",
         body.source_id,
         result.entities_merged, result.relations_created,
-        result.events_merged, result.facts_merged, elapsed,
+        result.events_merged, result.facts_merged,
+        result.statuses_merged, elapsed,
     )
 
     # /review-impl MED#1 — emit pass2_write job_logs event so the
@@ -584,6 +628,7 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
                 "relations_created": result.relations_created,
                 "events_merged": result.events_merged,
                 "facts_merged": result.facts_merged,
+                "statuses_merged": result.statuses_merged,  # A2-S1b
                 "evidence_edges": result.evidence_edges,
                 "duration_ms": int(elapsed * 1000),
             },
@@ -1067,4 +1112,103 @@ async def process_summarize_message_endpoint(
         re_enqueued=result.re_enqueued,
         skipped_retry_exhausted=result.skipped_retry_exhausted,
         summary_id=str(result.summary_id) if result.summary_id else None,
+    )
+
+
+# ── K17 (cycle 12b) — entity-embedding backfill ───────────────────────
+
+# One batch's worth of candidates per producer call; the loop drains.
+_EMBED_BACKFILL_BATCH = 200
+# Safety net: bounds the drain loop even if the producer pathologically keeps
+# reporting a full batch (e.g. a future bug). At 200/iter this caps a single
+# request at 40k entities — far above any real project.
+_EMBED_BACKFILL_MAX_ITER = 200
+
+
+class EmbedBackfillRequest(BaseModel):
+    user_id: UUID
+    project_id: UUID
+    # Per-request safety cap on how many entities to embed (cost guard).
+    max_entities: int = Field(default=2000, ge=1, le=20000)
+
+
+class EmbedBackfillResponse(BaseModel):
+    embedded: int
+    skipped: int
+    iterations: int
+    drained: bool
+    reason: str | None = None
+
+
+@router.post(
+    "/embed-entities-backfill",
+    response_model=EmbedBackfillResponse,
+    summary="K17 — (re)embed a project's anchored entities for semantic glossary search",
+    description=(
+        "Drains `find_entities_needing_embedding` for the project's current "
+        "embedding model: stamps `:Entity.embedding_{dim}` so "
+        "/internal/context/glossary-semantic returns tier=semantic. Idempotent "
+        "(already-embedded entities are not re-found) and cost-bounded "
+        "(`max_entities`). Degrades cleanly (no embedding model / no book → 0 "
+        "embedded, reason set). Behind X-Internal-Token."
+    ),
+)
+async def embed_entities_backfill(
+    body: EmbedBackfillRequest,
+    projects_repo=Depends(get_projects_repo),
+) -> EmbedBackfillResponse:
+    from app.clients.embedding_client import get_embedding_client
+    from app.extraction.entity_embedder import embed_project_entities
+
+    project = await projects_repo.get(body.user_id, body.project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="project not found",
+        )
+    if not project.embedding_model or not project.embedding_dimension:
+        return EmbedBackfillResponse(
+            embedded=0, skipped=0, iterations=0, drained=True,
+            reason="project has no embedding model configured",
+        )
+    if project.book_id is None:
+        return EmbedBackfillResponse(
+            embedded=0, skipped=0, iterations=0, drained=True,
+            reason="project has no book",
+        )
+
+    embedding_client = get_embedding_client()
+    glossary_client = get_glossary_client()
+    embedded = skipped = iterations = 0
+    drained = False
+
+    async with neo4j_session() as session:
+        while iterations < _EMBED_BACKFILL_MAX_ITER and embedded < body.max_entities:
+            res = await embed_project_entities(
+                session,
+                embedding_client,
+                glossary_client,
+                user_id=body.user_id,
+                project_id=body.project_id,
+                book_id=project.book_id,
+                embedding_model=project.embedding_model,
+                embedding_dim=project.embedding_dimension,
+                limit=_EMBED_BACKFILL_BATCH,
+            )
+            embedded += res.embedded
+            skipped += res.skipped
+            iterations += 1
+            if res.candidates < _EMBED_BACKFILL_BATCH:
+                # Fewer candidates than a full batch → the queue is drained.
+                drained = True
+                break
+            if res.embedded == 0:
+                # A FULL batch of candidates but none embedded — the remaining
+                # entities are permanently un-embeddable (empty text / dim
+                # mismatch) or the provider just failed. Re-running would
+                # re-find the same set, so stop to avoid an infinite loop
+                # (the find query returns "still needs embedding" rows).
+                break
+
+    return EmbedBackfillResponse(
+        embedded=embedded, skipped=skipped, iterations=iterations, drained=drained,
     )

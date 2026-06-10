@@ -46,10 +46,12 @@ from app.deps import (
     get_book_client,
     get_extraction_jobs_repo,
     get_extraction_pending_repo,
+    get_extraction_wake,
     get_glossary_client,
     get_projects_repo,
 )
 from app.jobs.budget import can_start_job, check_user_monthly_budget
+from app.jobs.extraction_wake import ExtractionWakeFn
 from app.jobs.state_machine import JobStatus, PauseReason, StateTransitionError, validate_transition
 from app.logging_config import trace_id_var
 from app.middleware.jwt_auth import get_current_user
@@ -348,6 +350,30 @@ async def start_extraction_job(
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
     benchmark_repo: BenchmarkRunsRepo = Depends(get_benchmark_runs_repo),
+    extraction_wake: ExtractionWakeFn = Depends(get_extraction_wake),
+) -> ExtractionJob:
+    """Public route handler. Delegates to the core.
+
+    S4a: `campaign_id` is an INTERNAL-only attribution tag — it is deliberately
+    NOT a parameter here, so the public surface cannot accept it. A user therefore
+    cannot tag their own job to another user's campaign (which would inflate that
+    campaign's spend and trip its budget pause). Only the internal dispatch
+    endpoint (campaign-service, ownership pre-verified) supplies it via the core.
+    """
+    return await _start_extraction_job_core(
+        project_id, body, user_id, projects_repo, jobs_repo, benchmark_repo,
+    )
+
+
+async def _start_extraction_job_core(
+    project_id: UUID,
+    body: StartJobRequest,
+    user_id: UUID,
+    projects_repo: ProjectsRepo,
+    jobs_repo: ExtractionJobsRepo,
+    benchmark_repo: BenchmarkRunsRepo,
+    *,
+    campaign_id: UUID | None = None,
 ) -> ExtractionJob:
     """Create and start an extraction job for a project.
 
@@ -363,8 +389,11 @@ async def start_extraction_job(
     that can't find their own entities — a silent quality
     regression that the benchmark is designed to catch.
 
-    Worker notification (Redis) is deferred to K16.6 — the worker
-    polls for pending/running jobs.
+    Worker pickup (FD-22): worker-ai's poll loop is the source-of-truth
+    (it claims + transitions jobs atomically). After the job is confirmed
+    running we emit a best-effort Redis **wake** (``extraction.wake``) so the
+    worker picks it up immediately instead of waiting for its next poll; a
+    failed/absent wake just falls back to that poll (≤ poll_interval_s).
     """
     # 0. Validate scope_range.chapter_range shape (review-impl MED #2).
     # Raises 422 on malformed payloads so the DB never stores a shape
@@ -501,6 +530,7 @@ async def start_extraction_job(
         max_spend_usd=body.max_spend_usd,
         scope_range=body.scope_range,
         items_total=body.items_total,
+        campaign_id=campaign_id,  # S4a: internal-only (None for public callers)
     )
 
     job_id = await _create_and_start_job(
@@ -519,6 +549,19 @@ async def start_extraction_job(
         "K16.3: extraction job started job_id=%s project_id=%s scope=%s trace_id=%s",
         job_id, project_id, body.scope, trace_id,
     )
+
+    # FD-22: best-effort wake so worker-ai picks the job up now, not on its next
+    # poll. The job is already running, so the wake is pure optimization and must
+    # never fail the 201. The redis fn swallows its own faults; this outer guard
+    # is defense-in-depth so even a misbehaving wake fn can't break job-start.
+    try:
+        await extraction_wake(job_id=job_id, project_id=project_id)
+    except Exception:  # noqa: BLE001 — wake is non-fatal; poll loop is the fallback
+        logger.warning(
+            "FD-22: extraction wake raised (non-fatal) job_id=%s — poll fallback",
+            job_id, exc_info=True,
+        )
+
     return job
 
 

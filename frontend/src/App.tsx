@@ -36,6 +36,9 @@ import { ResetPage } from '@/pages/auth/ResetPage';
 import { HomePage } from '@/pages/HomePage';
 import { UsagePage } from '@/pages/UsagePage';
 import { KnowledgePage } from '@/pages/KnowledgePage';
+import { CampaignsPage } from '@/features/campaigns/pages/CampaignsPage';
+import { CreateCampaignWizardPage } from '@/features/campaigns/pages/CreateCampaignWizardPage';
+import { CampaignDetailPage } from '@/features/campaigns/pages/CampaignDetailPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { BrowsePage } from '@/pages/BrowsePage';
 import { PublicBookDetailPage } from '@/pages/PublicBookDetailPage';
@@ -130,6 +133,11 @@ export function App() {
             {/* Knowledge Service */}
             <Route path="/knowledge" element={<Navigate to="/knowledge/projects" replace />} />
             <Route path="/knowledge/:tab" element={<KnowledgePage />} />
+
+            {/* Auto-Draft Factory (campaigns) */}
+            <Route path="/campaigns" element={<CampaignsPage />} />
+            <Route path="/campaigns/new" element={<CreateCampaignWizardPage />} />
+            <Route path="/campaigns/:campaignId" element={<CampaignDetailPage />} />
 
             {/* Manage */}
             <Route path="/usage" element={<UsagePage />} />

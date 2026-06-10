@@ -65,6 +65,10 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_learning')\
 SELECT 'CREATE DATABASE loreweave_composition'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_composition')\gexec
 
+-- Campaign (Auto-Draft Factory saga orchestrator; tables via campaign-service migrate.py)
+SELECT 'CREATE DATABASE loreweave_campaign'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_campaign')\gexec
+
 -- Knowledge graph orchestration (tables created by knowledge-service migrate.py)
 SELECT 'CREATE DATABASE loreweave_knowledge'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_knowledge')\gexec

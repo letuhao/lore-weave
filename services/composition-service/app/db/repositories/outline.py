@@ -9,13 +9,16 @@ an archived parent. Hard FK CASCADE is reserved for scene_link edges only.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from uuid import UUID
 
 import asyncpg
 
 from app.db.models import OutlineNode
-from app.db.repositories import ReferenceViolationError, VersionMismatchError, outbox
+from app.db.repositories import (
+    AlreadyPlannedError, ReferenceViolationError, VersionMismatchError, outbox,
+)
 from app.db.repositories.rank import rank_after
 
 _SELECT_COLS = """
@@ -23,6 +26,10 @@ _SELECT_COLS = """
   present_entity_ids, goal, beat_role, status, chapter_id, tension,
   story_order, synopsis, version, is_archived, created_at, updated_at
 """
+
+# Namespace key (arg-1) for the per-project decompose-commit advisory xact lock.
+# Distinguishes it from any other pg_advisory_xact_lock(int4, int4) in the service.
+_DECOMPOSE_COMMIT_LOCK_NS = 0x10AF
 
 _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
     {"parent_id", "rank", "title", "pov_entity_id", "present_entity_ids", "goal",
@@ -192,6 +199,233 @@ class OutlineRepo:
                 row = await _do(c)
         return _row_to_node(row)
 
+    async def existing_scene_chapter_ids(
+        self, user_id: UUID, project_id: UUID, chapter_ids: list[UUID],
+    ) -> set[UUID]:
+        """A3 commit replace-guard: which of `chapter_ids` already have ≥1 active
+        scene outline node. The endpoint refuses to re-decompose those unless
+        `replace=true` (don't silently double-plan a chapter)."""
+        if not chapter_ids:
+            return set()
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(
+                """
+                SELECT DISTINCT chapter_id FROM outline_node
+                WHERE user_id = $1 AND project_id = $2 AND kind = 'scene'
+                  AND NOT is_archived AND chapter_id = ANY($3)
+                """,
+                user_id, project_id, chapter_ids,
+            )
+        return {r["chapter_id"] for r in rows}
+
+    async def scenes_for_chapter(
+        self, user_id: UUID, project_id: UUID, chapter_id: UUID,
+    ) -> list[OutlineNode]:
+        """B2 chapter-assembly — the caller's active scene nodes for `chapter_id`
+        in reading order (story_order, then fractional rank as tiebreak). The
+        chapter single-pass path builds its combined synopsis + union cast from
+        these (the A3 decompose plan). story_order NULLS LAST so a legacy scene
+        without a reading-order still sorts deterministically after placed ones."""
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(
+                f"""
+                SELECT {_SELECT_COLS} FROM outline_node
+                WHERE user_id = $1 AND project_id = $2 AND chapter_id = $3
+                  AND kind = 'scene' AND NOT is_archived
+                ORDER BY story_order NULLS LAST, rank COLLATE "C", id
+                """,
+                user_id, project_id, chapter_id,
+            )
+        return [_row_to_node(r) for r in rows]
+
+    async def _insert_decomposed_tree(
+        self, c: asyncpg.Connection, user_id: UUID, project_id: UUID, *,
+        arc_title: str, chapters: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Insert arc→chapter→scene on an open connection (NO Tx of its own — the
+        caller owns the transaction). `beat_role` is stamped on the SCENES (DB
+        CHECK forbids it on chapter); the chapter node carries the beat intent in
+        `goal`. Returns the created node ids (UUIDs)."""
+        arc = await self.create_node(
+            user_id, project_id, kind="arc", title=arc_title, status="outline", conn=c,
+        )
+        chapter_ids: list[UUID] = []
+        scene_ids: list[UUID] = []
+        for ch in chapters:
+            ch_node = await self.create_node(
+                user_id, project_id, kind="chapter", parent_id=arc.id,
+                chapter_id=ch["chapter_id"], title=ch.get("title", ""),
+                goal=ch.get("intent", ""), status="outline", conn=c,
+            )
+            chapter_ids.append(ch_node.id)
+            for sc in ch.get("scenes", []):
+                sn = await self.create_node(
+                    user_id, project_id, kind="scene", parent_id=ch_node.id,
+                    chapter_id=ch["chapter_id"], beat_role=ch.get("beat_role"),
+                    title=sc.get("title", ""), synopsis=sc.get("synopsis", ""),
+                    tension=sc.get("tension"),
+                    present_entity_ids=sc.get("present_entity_ids") or [],
+                    story_order=sc.get("story_order"),  # reading axis (S1 needs it)
+                    status="outline", conn=c,
+                )
+                scene_ids.append(sn.id)
+        return {"arc_id": arc.id, "chapter_ids": chapter_ids, "scene_ids": scene_ids}
+
+    async def create_decomposed_tree(
+        self, user_id: UUID, project_id: UUID, *,
+        arc_title: str, chapters: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """A3 commit — persist an arc→chapter→scene tree ATOMICALLY (one Tx).
+        Low-level inserter (no idempotency/replace guard); prefer
+        `commit_decomposed_tree` from the router. Caller MUST pre-validate
+        (chapter_id ∈ book, present_entity_id ∈ glossary)."""
+        async with self._pool.acquire() as c:
+            async with c.transaction():
+                return await self._insert_decomposed_tree(
+                    c, user_id, project_id, arc_title=arc_title, chapters=chapters,
+                )
+
+    async def commit_decomposed_tree(
+        self, user_id: UUID, project_id: UUID, *,
+        arc_title: str, chapters: list[dict[str, Any]],
+        replace: bool = False, idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Atomic + idempotent A3 commit (D-A3-COMMIT-IDEMPOTENCY/TRUE-REPLACE).
+        In ONE transaction: (1) replay — a committed `idempotency_key` returns its
+        stored result; (2) guard — a target chapter with active scenes + NOT
+        `replace` raises AlreadyPlannedError (in-Tx → closes the TOCTOU race a
+        pre-Tx check left open); (3) replace — `replace=true` soft-archives ONLY
+        the target chapters' existing scenes (book chapters + other plans
+        untouched); (4) insert the tree; (5) ledger the (key→result) for replay.
+        A per-project advisory lock serializes concurrent commits so even a
+        NO-KEY concurrent double-submit can't both pass the guard (the lock — not
+        the plain SELECT — is what closes the TOCTOU); keyed exactly-once is also
+        backed by the ledger unique index. Result ids are strings (JSON-stable)."""
+        affected = [ch["chapter_id"] for ch in chapters]
+
+        async def _replay(c: asyncpg.Connection) -> dict[str, Any] | None:
+            if not idempotency_key:
+                return None
+            row = await c.fetchrow(
+                "SELECT result FROM decompose_commit "
+                "WHERE user_id = $1 AND project_id = $2 AND idempotency_key = $3",
+                user_id, project_id, idempotency_key,
+            )
+            return {**json.loads(row["result"]), "replay": True} if row else None
+
+        async with self._pool.acquire() as c:
+            try:
+                async with c.transaction():
+                    # Serialize commits per (project) — a plain existing-scenes
+                    # SELECT takes no lock, so two concurrent no-key submits would
+                    # both see "empty" and double-insert. The advisory xact lock
+                    # (namespaced, released at Tx end) makes the guard real for the
+                    # no-key path too. Replay is re-checked UNDER the lock so a
+                    # concurrent same-key replays instead of hitting the guard.
+                    await c.execute(
+                        "SELECT pg_advisory_xact_lock($1, hashtext($2))",
+                        _DECOMPOSE_COMMIT_LOCK_NS, str(project_id),
+                    )
+                    replayed = await _replay(c)
+                    if replayed is not None:
+                        return replayed
+                    existing = await c.fetch(
+                        """
+                        SELECT DISTINCT chapter_id FROM outline_node
+                        WHERE user_id = $1 AND project_id = $2 AND kind = 'scene'
+                          AND NOT is_archived AND chapter_id = ANY($3)
+                        """,
+                        user_id, project_id, affected,
+                    )
+                    existing_ids = [r["chapter_id"] for r in existing]
+                    if existing_ids and not replace:
+                        raise AlreadyPlannedError(existing_ids)
+                    if replace:
+                        # true replace — soft-archive the target chapters' prior
+                        # PLAN nodes: BOTH scenes AND their `chapter` nodes
+                        # (D-A3-REPLACE-ORPHAN-ARC-NODES / FD-17). Archiving only
+                        # scenes left every prior `chapter` node (and its `arc`)
+                        # childless-but-active, accumulating orphan structure on
+                        # each re-plan.
+                        #
+                        # Capture the parent arcs of the chapter nodes we're about
+                        # to archive FIRST, so the arc sweep below is SCOPED to the
+                        # arc(s) this replace actually orphans — NOT a project-wide
+                        # "any childless arc" sweep, which would also archive an
+                        # unrelated freshly-created empty arc (a bystander). Arcs
+                        # carry no chapter_id, so they can only be tied to this
+                        # operation through the chapter→arc parent link.
+                        candidate_arcs = await c.fetch(
+                            """
+                            SELECT DISTINCT parent_id FROM outline_node
+                            WHERE user_id = $1 AND project_id = $2 AND kind = 'chapter'
+                              AND NOT is_archived AND chapter_id = ANY($3)
+                              AND parent_id IS NOT NULL
+                            """,
+                            user_id, project_id, affected,
+                        )
+                        candidate_arc_ids = [r["parent_id"] for r in candidate_arcs]
+                        # Archive the prior scene + chapter nodes for the target
+                        # chapters. Keyed on `affected` (all target chapters), NOT
+                        # `existing_ids` (chapters with active scenes), so this also
+                        # reaps chapter nodes whose scenes a prior replace already
+                        # archived. chapter_id ties each row to this re-plan — no
+                        # bystander risk (an unrelated chapter has a different id).
+                        await c.execute(
+                            """
+                            UPDATE outline_node SET is_archived = true, updated_at = now()
+                            WHERE user_id = $1 AND project_id = $2
+                              AND kind IN ('scene', 'chapter')
+                              AND NOT is_archived AND chapter_id = ANY($3)
+                            """,
+                            user_id, project_id, affected,
+                        )
+                        # Archive only THOSE candidate arcs left with NO active
+                        # `chapter` child. The NOT EXISTS guard preserves an arc
+                        # that still spans active chapters OUTSIDE the target set (a
+                        # partial re-plan). Scoped by id, so a bystander empty arc
+                        # is untouched. Runs BEFORE the insert (the fresh tree is
+                        # never matched).
+                        if candidate_arc_ids:
+                            await c.execute(
+                                """
+                                UPDATE outline_node a SET is_archived = true, updated_at = now()
+                                WHERE a.user_id = $1 AND a.kind = 'arc'
+                                  AND NOT a.is_archived AND a.id = ANY($2)
+                                  AND NOT EXISTS (
+                                    SELECT 1 FROM outline_node ch
+                                    WHERE ch.user_id = $1 AND ch.parent_id = a.id
+                                      AND ch.kind = 'chapter' AND NOT ch.is_archived
+                                  )
+                                """,
+                                user_id, candidate_arc_ids,
+                            )
+                    ids = await self._insert_decomposed_tree(
+                        c, user_id, project_id, arc_title=arc_title, chapters=chapters,
+                    )
+                    result = {
+                        "arc_id": str(ids["arc_id"]),
+                        "chapter_ids": [str(x) for x in ids["chapter_ids"]],
+                        "scene_ids": [str(x) for x in ids["scene_ids"]],
+                    }
+                    if idempotency_key:
+                        await c.execute(
+                            """
+                            INSERT INTO decompose_commit
+                              (user_id, project_id, idempotency_key, arc_id, result)
+                            VALUES ($1, $2, $3, $4, $5::jsonb)
+                            """,
+                            user_id, project_id, idempotency_key, ids["arc_id"], json.dumps(result),
+                        )
+                    return result
+            except asyncpg.UniqueViolationError:
+                # a concurrent same-key commit won the ledger race → our Tx rolled
+                # back (no dup tree). Replay the winner's stored result.
+                replayed = await _replay(c)
+                if replayed is not None:
+                    return replayed
+                raise
+
     async def list_tree(
         self, user_id: UUID, project_id: UUID, *, include_archived: bool = False,
     ) -> list[OutlineNode]:
@@ -348,12 +582,54 @@ class OutlineRepo:
                 """,
                 user_id, project_id, chapter_id,
             )
+            # D-A2S3B-PUBLISH-GATE — enforce the D4 hard canon block: a scene
+            # whose LATEST completed auto-generation left a CONFIRMED canon
+            # contradiction (`result.canon.resolved == false`, A2-S3b) must not
+            # be published. Conservative-for-canon: a false-pass ships a
+            # contradiction; a false-block (the author edited the prose to fix it
+            # without re-generating) is recoverable by re-generating. DISTINCT ON
+            # the node → only the most recent job per scene counts.
+            canon_row = await c.fetchrow(
+                """
+                SELECT
+                  count(*) FILTER (
+                    WHERE (latest.result -> 'canon' ->> 'resolved') = 'false'
+                  ) AS unresolved,
+                  count(*) FILTER (
+                    WHERE (latest.result -> 'canon' ->> 'status')
+                          IN ('skipped_no_position', 'degraded')
+                  ) AS unchecked
+                FROM (
+                  SELECT DISTINCT ON (j.outline_node_id) j.result AS result
+                  FROM generation_job j
+                  JOIN outline_node n ON n.id = j.outline_node_id
+                  WHERE j.user_id = $1 AND j.project_id = $2 AND n.chapter_id = $3
+                    AND n.kind = 'scene' AND NOT n.is_archived
+                    AND j.status = 'completed'
+                  ORDER BY j.outline_node_id, j.created_at DESC, j.id DESC
+                ) latest
+                """,
+                user_id, project_id, chapter_id,
+            )
         total, done = int(row["total"]), int(row["done"])
+        canon_unresolved = int(canon_row["unresolved"]) if canon_row else 0
+        # Scenes whose latest auto job had a CAST but could not be verified
+        # (dangling chapter position / knowledge outage). Dirty data is normal in
+        # a real DB, so this is SURFACED, not hard-blocked — false-blocking every
+        # un-positioned scene would be worse; the FE warns + the author can act.
+        canon_unchecked = int(canon_row["unchecked"]) if canon_row else 0
+        canon_blocked = canon_unresolved > 0
         return {
             "chapter_id": str(chapter_id),
             "scenes_total": total,
             "scenes_done": done,
-            "can_publish": total > 0 and done == total,
+            # A2-S3b/D4 — surfaced so the FE (A2-S4) can explain WHY publish is
+            # blocked (an unresolved canon contradiction vs an undone scene), and
+            # warn when canon protection silently did NOT apply (dirty data).
+            "canon_blocked": canon_blocked,
+            "canon_unresolved_scenes": canon_unresolved,
+            "canon_unchecked_scenes": canon_unchecked,
+            "can_publish": total > 0 and done == total and not canon_blocked,
         }
 
     async def archive_node(self, user_id: UUID, node_id: UUID) -> OutlineNode | None:
@@ -364,11 +640,13 @@ class OutlineRepo:
         already archived. Scoped by user_id at the CTE root, so the subtree can
         only contain the caller's nodes.
 
-        UNION (not UNION ALL): a malformed parent_id CYCLE (reachable today —
-        update_node permits reparenting with no cycle guard) would make UNION ALL
-        recurse forever (and hang past the pool command_timeout). UNION dedups,
-        so the walk terminates at the cycle. (Reparent cycle PREVENTION is a
-        router-layer validation, tracked as D-COMP-M2-XREF-OWNERSHIP.)"""
+        UNION (not UNION ALL): defense-in-depth against a malformed parent_id
+        CYCLE — UNION ALL would recurse forever (and hang past the pool
+        command_timeout), UNION dedups so the walk terminates at the cycle. Note
+        that reparent-cycle PREVENTION is already enforced upstream by
+        `_validate_reparent` (via `_descendant_ids`) on every `update_node`
+        reparent (D-COMP-M2-XREF-OWNERSHIP CLEARED, LOOM cycle 5); a cycle is only
+        reachable via raw SQL, which this UNION still tolerates as a backstop."""
         query = f"""
         WITH RECURSIVE subtree AS (
           SELECT id FROM outline_node

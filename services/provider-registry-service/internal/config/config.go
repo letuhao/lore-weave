@@ -48,14 +48,30 @@ type Config struct {
 	// Config-driven (env JOB_MAX_RETRIES), code default 3.
 	JobMaxRetries int
 
-	// E5B — cross-encoder rerank service (raw-search junk-rejection). A single
-	// PLATFORM service (not per-user BYOK), so it's configured here rather than
-	// resolved from a provider_credential. Empty RerankURL ⇒ /internal/rerank
-	// returns 503 RERANK_UNAVAILABLE (the knowledge caller degrades to fusion
-	// order). RerankServiceToken is sent as a Bearer header.
-	RerankURL          string
-	RerankServiceToken string
-	RerankModel        string
+	// S3a (G5) — per-provider concurrency governor + circuit-breaker on the
+	// jobs-worker path. RedisURL empty → governance disabled (Guard passes
+	// calls through). Sized for the autonomous batch: bound cloud concurrency,
+	// serialize local GPU (=1), and auto-pause a flapping provider.
+	RedisURL                 string
+	GovernorCloudMax         int // concurrency cap per cloud provider kind
+	GovernorLeaseMs          int // per-acquisition lease TTL (> max call duration)
+	GovernorAcquireTimeoutMs int // max wait for a slot before a transient error
+	BreakerThreshold         int // windowed failures that trip the breaker
+	BreakerWindowS           int // failure-count decay window
+	BreakerCooldownS         int // open → half-open wait
+
+	// E5B rerank is BYOK (D-RERANK-NOT-BYOK): /internal/rerank resolves the
+	// user's rerank model from provider-registry like /internal/embed — there is
+	// no platform rerank endpoint/model config here anymore.
+
+	// S4b (decision C) — usage outbox relay → Redis streams. Active only when
+	// RedisURL is set (reuses the S3a client). MAXLEN bounds each stream (G8).
+	UsageStream               string
+	CampaignUsageStream       string
+	UsageStreamMaxLen         int
+	CampaignUsageStreamMaxLen int
+	UsageRelayPollMs          int
+	UsageRelayBatch           int
 }
 
 func Load() (*Config, error) {
@@ -73,10 +89,6 @@ func Load() (*Config, error) {
 		MinioUseSSL:      os.Getenv("MINIO_USE_SSL") == "true",
 		MinioExternalURL: os.Getenv("MINIO_EXTERNAL_URL"),
 		AudioCacheBucket: getEnv("AUDIO_CACHE_BUCKET", "loreweave-audio-cache"),
-		// E5B — rerank service (all optional; empty URL disables rerank).
-		RerankURL:          os.Getenv("RERANK_URL"),
-		RerankServiceToken: os.Getenv("RERANK_SERVICE_TOKEN"),
-		RerankModel:        getEnv("RERANK_MODEL", "bge-reranker-v2-m3"),
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
@@ -102,6 +114,45 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	if c.JobMaxRetries, err = getEnvInt("JOB_MAX_RETRIES", 3); err != nil {
+		return nil, err
+	}
+	// S3a governor + breaker (all optional; RedisURL empty disables governance).
+	c.RedisURL = os.Getenv("REDIS_URL")
+	if c.GovernorCloudMax, err = getEnvInt("GOVERNOR_CLOUD_MAX", 8); err != nil {
+		return nil, err
+	}
+	// Lease TTL ≥ the max provider-call duration (invoke_timeout_secs≈300s) so a
+	// long stream's slot isn't reclaimed mid-call (which would over-admit — for a
+	// local GPU, a 2nd concurrent call). A crashed worker's slot still frees when
+	// this elapses.
+	if c.GovernorLeaseMs, err = getEnvInt("GOVERNOR_LEASE_MS", 300000); err != nil {
+		return nil, err
+	}
+	if c.GovernorAcquireTimeoutMs, err = getEnvInt("GOVERNOR_ACQUIRE_TIMEOUT_MS", 30000); err != nil {
+		return nil, err
+	}
+	if c.BreakerThreshold, err = getEnvInt("BREAKER_THRESHOLD", 5); err != nil {
+		return nil, err
+	}
+	if c.BreakerWindowS, err = getEnvInt("BREAKER_WINDOW_S", 60); err != nil {
+		return nil, err
+	}
+	if c.BreakerCooldownS, err = getEnvInt("BREAKER_COOLDOWN_S", 30); err != nil {
+		return nil, err
+	}
+	// S4b usage outbox relay (optional; active only when REDIS_URL is set).
+	c.UsageStream = getEnv("USAGE_STREAM", "loreweave:events:usage")
+	c.CampaignUsageStream = getEnv("CAMPAIGN_USAGE_STREAM", "loreweave:events:campaign_usage")
+	if c.UsageStreamMaxLen, err = getEnvInt("USAGE_STREAM_MAXLEN", 100000); err != nil {
+		return nil, err
+	}
+	if c.CampaignUsageStreamMaxLen, err = getEnvInt("CAMPAIGN_USAGE_STREAM_MAXLEN", 50000); err != nil {
+		return nil, err
+	}
+	if c.UsageRelayPollMs, err = getEnvInt("USAGE_RELAY_POLL_MS", 500); err != nil {
+		return nil, err
+	}
+	if c.UsageRelayBatch, err = getEnvInt("USAGE_RELAY_BATCH", 100); err != nil {
 		return nil, err
 	}
 	return c, nil

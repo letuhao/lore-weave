@@ -114,6 +114,9 @@ func (s *Server) Router() http.Handler {
 		// Per-entity enrichment coverage for the lore-enrichment gap engine (D1
 		// gap-auto-detect): entities + mention_count + promoted-enrichment dims.
 		r.Get("/books/{book_id}/enrichment-coverage", s.internalEnrichmentCoverage)
+		// wiki-llm M5 — knowledge-service writes an AI-generated article here
+		// (clobber-guard: upsert an ai/stub draft, else file a wiki_suggestion).
+		r.Post("/books/{book_id}/wiki/articles", s.internalWriteWikiArticle)
 	})
 
 	r.Route("/v1/glossary", func(r chi.Router) {
@@ -162,6 +165,12 @@ func (s *Server) Router() http.Handler {
 				r.Get("/", s.listWikiArticles)
 				r.Post("/", s.createWikiArticle)
 				r.Post("/generate", s.generateWikiStubs)
+				// wiki-llm M7b — LLM-gen job lifecycle proxy (status + resume/cancel).
+				r.Route("/job", func(r chi.Router) {
+					r.Get("/", s.getWikiGenJobStatus)
+					r.Post("/{job_id}/resume", s.resumeWikiGenJob)
+					r.Post("/{job_id}/cancel", s.cancelWikiGenJob)
+				})
 				r.Get("/suggestions", s.listWikiSuggestions)
 				r.Get("/public", s.publicListWikiArticles)
 				r.Get("/public/{article_id}", s.publicGetWikiArticle)

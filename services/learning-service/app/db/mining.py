@@ -206,6 +206,12 @@ async def get_outcome_recompute(
                 <= er.created_at + ($3 * INTERVAL '1 day')
           AND (c.source_extraction_run_id = er.run_id
                OR c.source_extraction_run_id IS NULL)
+          -- EXTRACTION corrections only. Composition co-write corrections
+          -- (target_type='generation') share the book's knowledge project_id +
+          -- carry source_extraction_run_id IS NULL, so without this filter they
+          -- would be miscounted as extraction corrections and falsely degrade an
+          -- extraction run's recomputed_outcome (/review-impl slice-2 HIGH#1).
+          AND c.target_type IN ('entity', 'relation', 'event')
         WHERE er.user_id = $1
           AND ($2::uuid IS NULL OR er.project_id = $2)
         GROUP BY er.run_id, er.project_id, er.outcome, er.created_at

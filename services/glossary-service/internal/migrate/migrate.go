@@ -631,6 +631,40 @@ BEGIN
       FOREIGN KEY (entity_id) REFERENCES glossary_entities(entity_id) ON DELETE RESTRICT;
   END IF;
 END $$;
+
+-- wiki-llm M5 (C6) — AI-generation columns on the article + the §5.1 source-usage
+-- reverse index. generation_status: NULL (never AI-generated / human-authored) |
+-- 'generated' (clean) | 'needs_review' (verify flags) | 'blocked' (publish-blocked).
+-- generation_provenance carries build_inputs (C7 fingerprint) + citations +
+-- verify_flags. is_knowledge_stale is flipped by the Phase-2 staleness sweep.
+ALTER TABLE wiki_articles
+  ADD COLUMN IF NOT EXISTS generation_status     TEXT,
+  ADD COLUMN IF NOT EXISTS generated_by          TEXT,
+  ADD COLUMN IF NOT EXISTS generation_provenance JSONB,
+  ADD COLUMN IF NOT EXISTS generated_at          TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS spoiler_horizon       INT,
+  ADD COLUMN IF NOT EXISTS is_knowledge_stale    BOOLEAN NOT NULL DEFAULT false;
+
+-- §5.1 reverse index: which sources (entity attrs / KG facts / chapter blocks) an
+-- article was built from, so the Phase-2 staleness sweep can find every article a
+-- changed source affects. CASCADE with the article (it's owned provenance).
+CREATE TABLE IF NOT EXISTS wiki_article_source_usage (
+  article_id     UUID NOT NULL REFERENCES wiki_articles(article_id) ON DELETE CASCADE,
+  source_type    TEXT NOT NULL,         -- 'entity' | 'kg' | 'block'
+  source_id      TEXT NOT NULL,
+  source_version TEXT,                  -- content hash / revision (NULL = unknown)
+  PRIMARY KEY (article_id, source_type, source_id)
+);
+CREATE INDEX IF NOT EXISTS idx_wasu_source ON wiki_article_source_usage(source_type, source_id);
+
+-- risk #4 — the deterministic stub previously wrote its seed revision as
+-- author_type='owner', indistinguishable from a human edit. Migrate legacy stub
+-- revisions to 'system' (detected by the stub's fixed summary) so the M5
+-- clobber-guard may let an AI regen overwrite a stub but NOT a human edit. New
+-- stubs write 'system' directly (generateWikiStubs), so this UPDATE only ever
+-- touches legacy rows once (idempotent thereafter).
+UPDATE wiki_revisions SET author_type = 'system'
+  WHERE author_type = 'owner' AND summary = 'Auto-generated from KG';
 `
 
 func UpWiki(ctx context.Context, pool *pgxpool.Pool) error {

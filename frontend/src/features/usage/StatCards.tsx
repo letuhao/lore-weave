@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { UsageSummary, AccountBalance } from './types';
+import type { UsageSummary } from './types';
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
@@ -60,11 +60,10 @@ function StatCard({ label, value, valueColor, sub, trend }: StatCardProps) {
 
 type Props = {
   summary: UsageSummary | null;
-  balance: AccountBalance | null;
   periodLabel: string;
 };
 
-export function StatCards({ summary, balance, periodLabel }: Props) {
+export function StatCards({ summary, periodLabel }: Props) {
   const { t } = useTranslation('usage');
   if (!summary) {
     return (
@@ -88,13 +87,11 @@ export function StatCards({ summary, balance, periodLabel }: Props) {
         value={formatTokens(summary.total_tokens)}
         valueColor="text-primary"
         trend={{ ...tokenTrend, sentiment: tokenTrend.direction === 'up' ? 'negative' : 'positive' }}
-        sub={balance ? t('stats.quota_remaining', { value: formatTokens(balance.month_quota_remaining_tokens) }) : undefined}
       />
       <StatCard
         label={t('stats.estimated_cost', { period: periodLabel })}
         value={`$${summary.total_cost_usd.toFixed(2)}`}
         trend={{ ...costTrend, sentiment: costTrend.direction === 'up' ? 'negative' : 'positive' }}
-        sub={balance ? t('stats.credits', { value: balance.credits_balance }) : undefined}
       />
       <StatCard
         label={t('stats.api_calls', { period: periodLabel })}

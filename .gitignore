@@ -267,5 +267,9 @@ frontend-game/test-results/
 # the authoritative longitudinal record is the enrichment_eval_runs DB table).
 eval/baselines/enrichment-v1-live.json
 
+# Local-only dev dumps & ad-hoc smoke scripts (underscore-prefixed convention)
+services/**/_*.json
+services/**/scripts/_*.py
+
 # raw-search EVAL-CI run log (append-only, generated)
 services/knowledge-service/eval/rawsearch_eval_runs.jsonl

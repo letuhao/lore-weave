@@ -57,6 +57,7 @@ from pydantic import BaseModel
 
 from app.db.neo4j_helpers import CypherSession
 from app.db.neo4j_repos.canonical import canonicalize_entity_name
+from app.db.neo4j_repos.entity_status import merge_entity_status
 from app.db.neo4j_repos.events import (
     EVENT_ORDER_CHAPTER_STRIDE,
     merge_event,
@@ -74,7 +75,10 @@ from app.extraction.entity_resolver import (
 )
 from app.extraction.hierarchy_writer import HierarchyPaths, upsert_for_chapter
 from app.extraction.injection_defense import neutralize_injection
-from app.metrics import knowledge_extraction_writer_autocreate_total
+from app.metrics import (
+    knowledge_extraction_status_effect_total,
+    knowledge_extraction_writer_autocreate_total,
+)
 from loreweave_extraction.extractors.entity import LLMEntityCandidate
 from loreweave_extraction.extractors.event import LLMEventCandidate
 from loreweave_extraction.extractors.fact import LLMFactCandidate
@@ -142,6 +146,39 @@ def _fold_name(name: str) -> str:
     return canonicalize_entity_name(name).strip().casefold()
 
 
+def _resolve_status_entity_id(
+    entity_ref: str,
+    chapter_entity_by_canonical_name: dict[str, list[tuple[str, str]]],
+    anchor_index: AnchorIndex,
+    project_id: str | None,
+) -> str | None:
+    """A2-S1b — resolve a `status_effect.entity_ref` to a canonical entity id.
+
+    Mirrors the relation endpoint repair (Tier A.1 chapter-local map → Tier A.2
+    glossary anchor), but **never autocreates** — a status whose subject can't
+    be resolved to a real entity is dropped, not invented (we won't mint a
+    `concept` node just to hang a status on). Returns ``None`` when unresolved
+    OR when the chapter map has multiple kind-ambiguous candidates for the fold.
+    """
+    cleaned = _sanitize(entity_ref, project_id)
+    if not cleaned.strip():
+        return None
+    fold = _fold_name(cleaned)
+    if not fold:
+        return None
+    # Tier A.1 — chapter-local entity map (single unambiguous candidate only).
+    candidates = chapter_entity_by_canonical_name.get(fold, [])
+    if len(candidates) == 1:
+        return candidates[0][1]
+    if len(candidates) > 1:
+        return None  # kind-ambiguous — don't guess
+    # Tier A.2 — glossary anchor index (cross-chapter).
+    anchor_hit = _find_anchor_for_autocreate(anchor_index, fold)
+    if anchor_hit is not None:
+        return anchor_hit.canonical_id
+    return None
+
+
 def _bump_autocreate_metric(role: Literal["subject", "object"], outcome: str) -> None:
     """Per-role per-outcome counter increment. Outcomes are pre-seeded
     in `metrics.py` so the labels enum is closed."""
@@ -168,6 +205,8 @@ class Pass2WriteResult(BaseModel):
     facts_merged: int = 0
     evidence_edges: int = 0
     skipped_missing_endpoint: int = 0
+    # A2-S1b — :EntityStatus transitions written from event status_effects.
+    statuses_merged: int = 0
 
 
 def _sanitize(text: str, project_id: str | None) -> str:
@@ -204,6 +243,13 @@ async def write_pass2_extraction(
     # When None: legacy flat-write behavior preserved (chat_turn path +
     # back-compat for callers that don't yet pass hierarchy).
     hierarchy_paths: HierarchyPaths | None = None,
+    # FD-4 (066 fix): the chapter's own reading-order ordinal (book-service
+    # sort_order, 1-based). Used to compute event_order when there is NO part
+    # hierarchy (`hierarchy_paths` is part-gated). A FLAT book (chapters, no
+    # parts) previously got event_order=None → every status_effect was skipped
+    # (skipped_no_event_order) AND the dense timeline axis collapsed. None for
+    # genuinely positionless sources (chat turns).
+    chapter_index: int | None = None,
     # Cycle 73e: writer autocreate gates.
     #   ``autocreate_enabled=False`` (default) → Tier A.1 + A.2 free
     #   repairs run unconditionally (cheap; bug-fixes silent cascade);
@@ -505,22 +551,35 @@ async def write_pass2_extraction(
     # Step 4 — merge events.
     # CM4: assign event_order = chapter sort_order × 1e6 + within-chapter
     # index, so the reading-order (spoiler) axis is dense at chapter
-    # granularity. The chapter ordinal is `hierarchy_paths.chapter_index`
-    # (= book-service sort_order, already threaded for P3). Legacy/chat
-    # callers pass no hierarchy → event_order stays None → the timeline
-    # null-sinks them via coalesce(event_order, INT64_MAX). `idx` advances
-    # only for events actually written (skipped empties leave gaps — fine for
-    # the strict range filter, and keeps the order non-decreasing). The stride
-    # is the SHARED EVENT_ORDER_CHAPTER_STRIDE (events.py) — backfill imports
-    # the same constant so both write on one scale.
+    # granularity. The chapter ordinal is the P3 hierarchy's `chapter_index`
+    # when present, ELSE the chapter's own `chapter_index` (sort_order) param
+    # — both ARE the book-service sort_order, so a FLAT book (chapters, no
+    # parts) gets the same dense event_order instead of None (FD-4/066: without
+    # this fallback, no-part books silently lost status_effects + timeline).
+    # Only a genuinely positionless source (chat turn) has neither → None →
+    # the timeline null-sinks via coalesce(event_order, INT64_MAX). `idx`
+    # advances only for events actually written (skipped empties leave gaps —
+    # fine for the strict range filter, keeps the order non-decreasing). The
+    # stride is the SHARED EVENT_ORDER_CHAPTER_STRIDE (events.py) — backfill
+    # imports the same constant so both write on one scale.
+    _chapter_ordinal = (
+        hierarchy_paths.chapter_index if hierarchy_paths is not None
+        else chapter_index
+    )
     chapter_base = (
-        hierarchy_paths.chapter_index * EVENT_ORDER_CHAPTER_STRIDE
-        if hierarchy_paths is not None
+        _chapter_ordinal * EVENT_ORDER_CHAPTER_STRIDE
+        if _chapter_ordinal is not None
         else None
     )
     events_merged = 0
+    statuses_merged = 0  # A2-S1b — :EntityStatus transitions written
     dated_written = 0  # CM4 debounce: rerank chrono only if a dated event changed
     idx = 0
+    # A2-S1b — chapter handle stamped on each status for retract-by-source +
+    # FE display. Prefer the hierarchy chapter_id; fall back to the source_id.
+    status_source_chapter = (
+        hierarchy_paths.chapter_id if hierarchy_paths is not None else source_id
+    )
     for evt in event_list:
         name_clean = _sanitize(evt.name, project_id)
         summary_clean = _sanitize(evt.summary, project_id)
@@ -571,6 +630,69 @@ async def write_pass2_extraction(
         )
         if ev is not None and ev.created:
             evidence_edges += 1
+
+        # A2-S1b — consume the event's status_effects → :EntityStatus
+        # transitions on the reading axis (from_order = this event's
+        # event_order). Evidence-backed via the chapter source so
+        # retract-before-reextract (CM3b) drops moved/removed transitions.
+        status_effects = getattr(evt, "status_effects", None) or []
+        for eff in status_effects:
+            # M2 — an event with no event_order (legacy/chat, no hierarchy)
+            # has no place on the reading axis. Skip + LOG rather than write a
+            # positionless status the composition packer can't gate on.
+            if event_order is None:
+                logger.warning(
+                    "A2-S1b: status_effect skipped — event %r has no "
+                    "event_order (legacy/chat, no hierarchy) ref=%r status=%r",
+                    name_clean, eff.entity_ref, eff.status,
+                )
+                knowledge_extraction_status_effect_total.labels(
+                    outcome="skipped_no_event_order",
+                ).inc()
+                continue
+            entity_id = _resolve_status_entity_id(
+                eff.entity_ref,
+                chapter_entity_by_canonical_name,
+                anchor_index,
+                project_id,
+            )
+            if entity_id is None:
+                logger.info(
+                    "A2-S1b: status_effect entity unresolved ref=%r "
+                    "status=%r (no chapter-map/anchor match) — skipping",
+                    eff.entity_ref, eff.status,
+                )
+                knowledge_extraction_status_effect_total.labels(
+                    outcome="skipped_unresolved",
+                ).inc()
+                continue
+            status_node = await merge_entity_status(
+                session,
+                user_id=user_id,
+                project_id=project_id,
+                entity_id=entity_id,
+                status=eff.status,
+                from_order=event_order,
+                source_type=source_type,
+                source_chapter=status_source_chapter,
+                provenance=provenance,
+            )
+            statuses_merged += 1
+            knowledge_extraction_status_effect_total.labels(
+                outcome="persisted",
+            ).inc()
+            status_ev = await add_evidence(
+                session,
+                user_id=user_id,
+                target_label="EntityStatus",
+                target_id=status_node.id,
+                source_id=source.id,
+                extraction_model=extraction_model,
+                confidence=evt.confidence,
+                job_id=job_id,
+            )
+            if status_ev is not None and status_ev.created:
+                evidence_edges += 1
 
     # CM4 — recompute chronological_order for the project, but ONLY when this
     # chapter wrote at least one DATED event (debounce: a chat turn or an
@@ -638,4 +760,5 @@ async def write_pass2_extraction(
         facts_merged=facts_merged,
         evidence_edges=evidence_edges,
         skipped_missing_endpoint=skipped,
+        statuses_merged=statuses_merged,
     )

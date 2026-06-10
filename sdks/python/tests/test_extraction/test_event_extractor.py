@@ -690,3 +690,98 @@ async def test_extract_events_via_llm_client_chunking_invariant_for_multi_paragr
     assert call["chunking"].size == 15
     user_msg = call["input"]["messages"][1]
     assert user_msg["content"] == long_text
+
+
+# -- A2-S1b: status_effects (dormant field, full thread, tolerant parse) ----
+
+
+@pytest.mark.asyncio
+async def test_status_effects_thread_through_to_candidate():
+    """A2-S1b — a well-formed status_effects list on the LLM event JSON
+    threads through _LLMEvent -> _postprocess -> LLMEventCandidate."""
+    fake = FakeLLMClient()
+    evt = _event(
+        "Kai falls", "death", participants=["Kai"],
+        summary="Kai is slain at the gate.", confidence=0.95,
+    )
+    evt["status_effects"] = [{"entity_ref": "Kai", "status": "gone"}]
+    fake.queue_job(events=[evt])
+    out = await extract_events(
+        text="Kai is slain.", entities=ENTITIES, known_entities=[],
+        user_id=USER_ID, project_id=PROJECT_ID,
+        model_source="user_model", model_ref="00000000-0000-0000-0000-000000000001",
+        llm_client=_as_client(fake),
+    )
+    assert len(out) == 1
+    assert len(out[0].status_effects) == 1
+    assert out[0].status_effects[0].entity_ref == "Kai"
+    assert out[0].status_effects[0].status == "gone"
+
+
+@pytest.mark.asyncio
+async def test_status_effects_tolerant_filter_keeps_event():
+    """A2-S1b — malformed status_effects entries (non-dict, bad status,
+    empty ref) are DROPPED but the event itself survives (tolerate+filter,
+    never reject)."""
+    fake = FakeLLMClient()
+    evt = _event(
+        "Mixed", "action", participants=["Kai"],
+        summary="Some valid, some junk.", confidence=0.9,
+    )
+    evt["status_effects"] = [
+        {"entity_ref": "Kai", "status": "gone"},      # valid
+        {"entity_ref": "Zhao", "status": "dead"},     # bad status -> drop
+        {"entity_ref": "", "status": "active"},       # empty ref -> drop
+        "not-a-dict",                                  # non-dict -> drop
+        {"status": "active"},                          # missing ref -> drop
+    ]
+    fake.queue_job(events=[evt])
+    out = await extract_events(
+        text="x", entities=ENTITIES, known_entities=[],
+        user_id=USER_ID, project_id=PROJECT_ID,
+        model_source="user_model", model_ref="00000000-0000-0000-0000-000000000001",
+        llm_client=_as_client(fake),
+    )
+    assert len(out) == 1  # event NOT rejected
+    assert [(s.entity_ref, s.status) for s in out[0].status_effects] == [("Kai", "gone")]
+
+
+@pytest.mark.asyncio
+async def test_status_effects_absent_defaults_empty():
+    """A2-S1b — events with no status_effects key (the production case
+    until b2's prompt) default to an empty list, unchanged behaviour."""
+    fake = FakeLLMClient()
+    fake.queue_job(events=[
+        _event("Plain", "action", participants=["Kai"],
+               summary="No status.", confidence=0.9),
+    ])
+    out = await extract_events(
+        text="x", entities=ENTITIES, known_entities=[],
+        user_id=USER_ID, project_id=PROJECT_ID,
+        model_source="user_model", model_ref="00000000-0000-0000-0000-000000000001",
+        llm_client=_as_client(fake),
+    )
+    assert len(out) == 1
+    assert out[0].status_effects == []
+
+
+# -- A2-S1b-2: the Pass-2 event prompt now teaches status_effects ----
+
+
+def test_event_prompt_includes_status_effects_schema_and_rule():
+    """A2-S1b-2 prompt-shape lock: the live event_system prompt must carry the
+    status_effects output field, the coarse active/gone rule, and the extended
+    example — and still render (no stray unescaped braces)."""
+    from loreweave_extraction.prompts import load_prompt
+
+    p = load_prompt("event_system", known_entities='["Kai"]')
+    # schema field
+    assert "status_effects" in p
+    assert '"status": "active | gone"' in p
+    # rule 10 — coarse vocab + the anti-bias guard (do not change other fields' language)
+    assert "Status effects" in p
+    assert "gone" in p and "active" in p
+    assert "do NOT let\n    this rule change the language of any other field" in p
+    # example shows both the empty case and a death
+    assert '"status_effects": []' in p
+    assert '"entity_ref": "Zhao", "status": "gone"' in p

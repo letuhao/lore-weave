@@ -132,5 +132,15 @@
     "pause": "Tạm dừng",
     "play": "Phát âm thanh đính kèm",
     "mismatch": "Phụ đề âm thanh khác với văn bản khối"
+  },
+  "citation": {
+    "aria": "Trích dẫn {{n}}",
+    "jump": "Đến nguồn",
+    "relevance": "Độ liên quan",
+    "source": {
+      "glossary": "Từ điển",
+      "kg": "Tri thức",
+      "passage": "Đoạn văn"
+    }
   }
 }

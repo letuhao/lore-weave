@@ -39,6 +39,7 @@ STREAMS = [
     "loreweave:events:glossary",
     "loreweave:events:knowledge",
     "loreweave:events:chat",  # Q3 — chat.message_feedback (user thumbs/regenerate)
+    "loreweave:events:composition",  # V1 slice 2 — composition.generation_corrected (co-write human gate)
     "loreweave:events:translation",  # M7a — translation.quality (V3 verifier rollup)
 ]
 GROUP_NAME = "learning-collector"

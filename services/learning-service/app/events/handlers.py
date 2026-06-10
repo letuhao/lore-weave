@@ -88,8 +88,8 @@ async def _persist_correction(
             "user_id/owner — refusing to insert"
         )
 
-    before_structural, before_hash = split_snapshot(target_type, before_snapshot)
-    after_structural, after_hash = split_snapshot(target_type, after_snapshot)
+    before_structural, before_hash, before_desc_hash = split_snapshot(target_type, before_snapshot)
+    after_structural, after_hash, after_desc_hash = split_snapshot(target_type, after_snapshot)
     diff_class = derive_diff_class(
         target_type=target_type,
         op=op,
@@ -104,18 +104,21 @@ async def _persist_correction(
         INSERT INTO corrections (
           user_id, project_id, book_id, target_type, target_id, op,
           before_structural, after_structural, before_content_hash, after_content_hash,
+          before_description_content_hash, after_description_content_hash,
           diff_class, source_extraction_run_id, source_chapter, source_span,
           actor_type, actor_id, origin_service, origin_event_id, origin_event_type, emitted_at
         ) VALUES (
           $1, $2, $3, $4, $5, $6,
           $7::jsonb, $8::jsonb, $9, $10,
-          $11, $12, $13, $14::jsonb,
-          $15, $16, $17, $18, $19, $20
+          $11, $12,
+          $13, $14, $15, $16::jsonb,
+          $17, $18, $19, $20, $21, $22
         )
         ON CONFLICT (origin_service, origin_event_id) DO NOTHING
         """,
         user_id, project_id, book_id, target_type, target_id, op,
         _jsonb(before_structural), _jsonb(after_structural), before_hash, after_hash,
+        before_desc_hash, after_desc_hash,
         diff_class, source_extraction_run_id, source_chapter, _jsonb(source_span),
         actor_type, actor_id, origin_service, origin_event_id, origin_event_type, emitted_at,
     )
@@ -388,6 +391,97 @@ async def handle_chat_feedback(event: EventData, *, pool: asyncpg.Pool) -> None:
     )
 
 
+# Only genuine-author-choice kinds become gold (design §2 / spec H2). accept-as-is
+# is NOT here: composition never emits it (its CorrectionKind Literal excludes it),
+# and mining the reranker's own winner would be self-reinforcement.
+_COMPOSITION_GOLD_KINDS = {"edit", "pick_different", "regenerate", "reject"}
+
+
+def _composition_snapshots(
+    kind: str, payload: dict[str, Any],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Encode the H2-safe preference shape into (before, after) STRUCTURAL dicts.
+
+    Indices / magnitude / booleans only — there is no novel prose on the wire
+    (raw is gated behind composition's per-work opt-in, §5). `reject` returns a
+    None `after` (the whole generation was dropped → derive_diff_class →
+    spurious-drop). `pick_different` is the one direct, non-circular correction on
+    the A1 reranker: before=winner(i), after=chosen(j)."""
+    winner_index = payload.get("winner_index")
+    before: dict[str, Any] = {"role": "winner"}
+    if winner_index is not None:
+        before["index"] = winner_index
+
+    if kind == "pick_different":
+        after: dict[str, Any] | None = {
+            "role": "chosen",
+            "index": payload.get("chosen_candidate_index"),
+            "candidate_count": payload.get("candidate_count"),
+        }
+    elif kind == "edit":
+        after = {
+            "changed_blocks": payload.get("changed_blocks"),
+            "has_guidance": bool(payload.get("has_guidance")),
+            "has_raw_prose": bool(payload.get("has_raw_prose")),
+        }
+    elif kind == "regenerate":
+        after = {
+            "regenerated_to_job_id": payload.get("regenerated_to_job_id"),
+            "has_guidance": bool(payload.get("has_guidance")),
+        }
+    else:  # reject — the generation was discarded wholesale
+        after = None
+    return before, after
+
+
+async def handle_generation_corrected(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`composition.generation_corrected` → a `generation` correction (V1 slice 2).
+
+    The author's human-gate action on a co-write becomes a `corrections` row
+    (target_type=`generation`, op=the kind, origin_service=`composition`). Only
+    edit/pick_different/regenerate/reject persist — `accept`/unknown kinds are
+    ACKed without a row (H2 self-reinforcement guard). The event is structural-
+    only (no prose on the wire); `_persist_correction` requires a non-empty
+    `outbox_id` (dedup) + `user_id` (owner) and raises → DLQ otherwise."""
+    payload = event.payload
+    kind = payload.get("kind")
+    if kind not in _COMPOSITION_GOLD_KINDS:
+        logger.debug(
+            "composition.generation_corrected kind=%r not gold — skipping (id=%s)",
+            kind, event.message_id,
+        )
+        return  # ack, no row — not an error, just not a preference signal
+
+    job_id = payload.get("job_id") or event.aggregate_id
+    user_id = _uuid_or_none(payload.get("user_id"))
+    before_structural, after_structural = _composition_snapshots(kind, payload)
+
+    await _persist_correction(
+        pool,
+        user_id=user_id,  # the author == the work owner
+        project_id=_uuid_or_none(payload.get("project_id")),
+        book_id=_uuid_or_none(payload.get("book_id")),
+        target_type="generation",
+        target_id=str(job_id),
+        op=kind,
+        before_snapshot=before_structural,
+        after_snapshot=after_structural,
+        source_chapter=None,
+        source_span=None,
+        source_extraction_run_id=None,
+        actor_type="user",
+        actor_id=user_id,
+        origin_service="composition",
+        origin_event_id=event.outbox_id,
+        origin_event_type=event.event_type,
+        emitted_at=None,  # composition event carries no emitted_at; created_at suffices
+    )
+    logger.debug(
+        "composition correction persisted: job=%s kind=%s origin=composition:%s",
+        job_id, kind, event.outbox_id,
+    )
+
+
 async def handle_translation_quality(event: EventData, *, pool: asyncpg.Pool) -> None:
     """`translation.quality` → a `source='auto'` quality_score (track M7a, Channel 2
     — the LLM-action log).
@@ -453,14 +547,29 @@ async def handle_translation_quality(event: EventData, *, pool: asyncpg.Pool) ->
 async def _maybe_judge_translation(
     event: EventData, payload: dict, ct_id, pool: asyncpg.Pool
 ) -> None:
-    """M7d-2: optional online fidelity judge. Runs ONLY when the judge is enabled,
-    a judge model is configured, and the event carries source+translated text (the
-    M7d-3 worker feed, off by default) — so it is inert until explicitly opted in.
-    Best-effort: a judge/LLM failure never fails the translation.quality handler."""
+    """M7d-2 fidelity judge, now per-campaign capable (S5b-eval).
+
+    Runs when EITHER:
+      * the event carries an `eval_judge_model_ref` — a campaign explicitly chose a
+        judge model; that pick IS the opt-in, so we run regardless of the two
+        service-wide flags (the worker also force-feeds the texts for those chapters); OR
+      * the legacy global opt-in: `online_translation_judge_enabled` + a configured
+        `online_judge_model_ref`.
+    Requires source+translated text on the event either way. Best-effort: a judge/LLM
+    failure never fails the translation.quality handler. On a campaign judge, also emits
+    a best-effort `translation.eval_judged` so the campaign projection can record the score."""
     from app.config import settings
 
-    if not (settings.online_translation_judge_enabled and settings.online_judge_model_ref):
-        return
+    campaign_judge_ref = payload.get("eval_judge_model_ref")
+    if campaign_judge_ref:
+        judge_model = str(campaign_judge_ref)
+        judge_model_source = payload.get("eval_judge_model_source") or "user_model"
+    elif settings.online_translation_judge_enabled and settings.online_judge_model_ref:
+        judge_model = settings.online_judge_model_ref
+        judge_model_source = settings.online_judge_model_source
+    else:
+        return  # neither a campaign pick nor the global opt-in → inert
+
     source_text = payload.get("source_text")
     translated_text = payload.get("translated_text")
     if not source_text or not translated_text:
@@ -476,15 +585,20 @@ async def _maybe_judge_translation(
             base_url=settings.provider_registry_internal_url,
             internal_token=settings.internal_service_token,
         )
+        # D-EVAL-JUDGE-PER-USER: bill the BYOK judge to the CONTENT OWNER (the
+        # event's user_id) rather than the operator's env-configured id, so a
+        # multi-tenant batch attributes judge cost to whoever owns the translation.
+        # Fall back to the env id only when the event lacks an owner.
+        user_id = _uuid_or_none(payload.get("user_id"))
+        judge_user_id = str(user_id) if user_id is not None else settings.online_judge_user_id
         verdict = await run_translation_judge(
             client,
             source_text=source_text,
             translated_text=translated_text,
-            judge_model=settings.online_judge_model_ref,
-            model_source=settings.online_judge_model_source,
-            user_id=settings.online_judge_user_id,
+            judge_model=judge_model,
+            model_source=judge_model_source,
+            user_id=judge_user_id,
         )
-        user_id = _uuid_or_none(payload.get("user_id"))
         if verdict is not None and user_id is not None:
             await persist_translation_judge(
                 pool,
@@ -492,11 +606,43 @@ async def _maybe_judge_translation(
                 user_id=user_id,
                 book_id=_uuid_or_none(payload.get("book_id")),
                 verdict=verdict,
-                judge_model=settings.online_judge_model_ref,
+                judge_model=judge_model,
                 origin_event_id=event.outbox_id,
             )
+            # S5b-eval: surface the verdict to the campaign projection (best-effort —
+            # only for a campaign-chosen judge; the global-config judge stays telemetry-only).
+            if campaign_judge_ref:
+                await _emit_eval_judged(payload, verdict)
     except Exception:  # noqa: BLE001 — the judge is best-effort telemetry
         logger.warning("M7d: online translation judge failed (non-fatal)", exc_info=True)
+
+
+async def _emit_eval_judged(payload: dict, verdict) -> None:
+    """S5b-eval: best-effort XADD `translation.eval_judged` to a dedicated stream the
+    campaign projection consumer reads. learning-service has no transactional outbox
+    (D-S5BEVAL-LEARNING-OUTBOX) — a lost emit just leaves eval_fidelity_score null, which
+    is acceptable for best-effort telemetry. Never raises (caught by the caller)."""
+    import json
+
+    import redis.asyncio as aioredis
+
+    from app.config import settings
+
+    body = {
+        "user_id": payload.get("user_id"),
+        "book_id": payload.get("book_id"),
+        "chapter_id": payload.get("chapter_id"),
+        "target_language": payload.get("target_language"),
+        "score": float(verdict.score),
+    }
+    r = aioredis.from_url(settings.redis_url, decode_responses=True)
+    try:
+        await r.xadd(
+            "loreweave:events:translation_eval",
+            {"event_type": "translation.eval_judged", "payload": json.dumps(body)},
+        )
+    finally:
+        await r.aclose()
 
 
 async def handle_translation_reviewed(event: EventData, *, pool: asyncpg.Pool) -> None:
@@ -573,8 +719,8 @@ async def handle_translation_corrected(event: EventData, *, pool: asyncpg.Pool) 
 
     before = payload.get("before") or {}
     after = payload.get("after") or {}
-    before_structural, before_hash = split_snapshot("translation", before)
-    after_structural, after_hash = split_snapshot("translation", after)
+    before_structural, before_hash, _ = split_snapshot("translation", before)
+    after_structural, after_hash, _ = split_snapshot("translation", after)
     diff_class = derive_diff_class(
         target_type="translation",
         op="updated",

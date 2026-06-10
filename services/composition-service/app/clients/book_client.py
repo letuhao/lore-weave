@@ -178,6 +178,37 @@ class BookClient:
         )
         return self._raise_for_status(resp)
 
+    async def list_chapters(
+        self, book_id: UUID, bearer: str, *, limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        """A3 decompose — the book's ACTIVE chapters in reading order
+        (`sort_order, created_at`), each `{chapter_id, title, sort_order}`. The
+        planner maps the structure template's beats onto these existing chapters
+        (it never mints chapters). `get_chapter_sort_orders` is insufficient — it
+        needs the ids first; this is the enumerate-then-map source.
+
+        404 (book missing / not owned) → `[]` (the endpoint already gated on the
+        Work, so this is effectively "no chapters"); 5xx / transport →
+        BookClientError. `title` may be null (untitled chapter) → coerced to ''.
+        `limit` defaults to 200 (book-service's page max); a book with more
+        chapters than `plan_max_chapters` is refused by the planner, so a single
+        page suffices for A3."""
+        resp = await self._request(
+            "GET", f"/v1/books/{book_id}/chapters", bearer,
+            params={"limit": limit, "lifecycle_state": "active"},
+        )
+        if resp.status_code == 404:
+            return []
+        body = self._raise_for_status(resp)
+        out: list[dict[str, Any]] = []
+        for it in body.get("items", []) or []:
+            out.append({
+                "chapter_id": it.get("chapter_id"),
+                "title": it.get("title") or "",
+                "sort_order": it.get("sort_order"),
+            })
+        return out
+
 
 def init_book_client() -> BookClient:
     global _client

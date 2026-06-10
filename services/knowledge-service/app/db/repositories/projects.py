@@ -15,9 +15,15 @@ from app.context import cache
 from app.db.models import ExtractionStatus, Project, ProjectCreate, ProjectUpdate
 from app.db.repositories import VersionMismatchError
 
+# Advisory-lock namespace for the per-(user, book) book-project get-or-create
+# (create_or_get). Transaction-scoped (released at commit), paired with
+# hashtext("{user}:{book}"). Distinct from the cron jobs' single-key locks.
+_PROJECT_BOOK_LOCK_NS = 0x4B50  # "KP"
+
 _SELECT_COLS = """
   project_id, user_id, name, description, project_type, book_id, instructions,
   extraction_enabled, extraction_status, embedding_model, embedding_dimension,
+  rerank_model, rerank_model_source,
   extraction_config, last_extracted_at, estimated_cost_usd, actual_cost_usd,
   is_archived, tool_calling_enabled, memory_remember_confirm, save_raw_extraction,
   genre, version, created_at, updated_at
@@ -46,7 +52,12 @@ _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
      # embedding_model carries the provider-registry user_model UUID,
      # which is not derivable to a dimension — so the caller (FE picker /
      # config flow) sends embedding_model + embedding_dimension together.
-     "embedding_dimension"}
+     "embedding_dimension",
+     # D-RERANK-NOT-BYOK: per-project BYOK rerank model (user_model UUID) +
+     # source. rerank_model is nullable (clears the selection → raw-search skips
+     # rerank); rerank_model_source is NOT NULL (default 'user_model') so, like
+     # tool_calling_enabled, an explicit None is skipped. FE picker = S0b.
+     "rerank_model", "rerank_model_source"}
 )
 
 # Columns that accept NULL. For everything else, a None value on an
@@ -59,7 +70,9 @@ _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
 # - `embedding_dimension` (D-EMB-MODEL-REF-01): caller-supplied; nullable
 #   so the model selection can be cleared.
 _NULLABLE_UPDATE_COLUMNS: frozenset[str] = frozenset(
-    {"book_id", "embedding_model", "embedding_dimension", "genre"}
+    {"book_id", "embedding_model", "embedding_dimension", "genre",
+     # D-RERANK-NOT-BYOK: None clears the rerank model selection.
+     "rerank_model"}
 )
 
 
@@ -85,24 +98,69 @@ class ProjectsRepo:
         self._pool = pool
 
     async def create(self, user_id: UUID, data: ProjectCreate) -> Project:
+        async with self._pool.acquire() as conn:
+            return _row_to_project(await self._insert(conn, user_id, data))
+
+    async def _insert(
+        self, conn: asyncpg.Connection, user_id: UUID, data: ProjectCreate
+    ) -> asyncpg.Record:
         query = f"""
         INSERT INTO knowledge_projects
           (user_id, name, description, project_type, book_id, instructions, genre)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING {_SELECT_COLS}
         """
+        return await conn.fetchrow(
+            query,
+            user_id,
+            data.name,
+            data.description,
+            data.project_type,
+            data.book_id,
+            data.instructions,
+            data.genre,
+        )
+
+    async def create_or_get(
+        self, user_id: UUID, data: ProjectCreate
+    ) -> tuple[Project, bool]:
+        """Idempotent create for the book-binding path. Returns ``(project, created)``.
+
+        A book has ONE knowledge graph, but two concurrent first-POSTs for the
+        same book (composition's get-or-create-work flow — D-COMP-POST-WORK-RACE)
+        each saw "no project" and each created a DUPLICATE empty book project. For
+        `project_type='book'` WITH a `book_id`, this serialises per-(user, book)
+        with an advisory xact lock and returns the existing non-archived book
+        project if one already exists (created=False), else inserts (created=True).
+
+        Scoped to `project_type='book'`: a general/translation/code project — or a
+        book-typed one with no `book_id` — still always inserts (the FE general-
+        project create UX is unchanged). No UNIQUE(user, book_id) constraint is
+        added (legacy rows may have several projects per book; `resolve_work`
+        already tolerates that by picking the earliest)."""
+        if not (data.project_type == "book" and data.book_id is not None):
+            return await self.create(user_id, data), True
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(
-                query,
-                user_id,
-                data.name,
-                data.description,
-                data.project_type,
-                data.book_id,
-                data.instructions,
-                data.genre,
-            )
-        return _row_to_project(row)
+            async with conn.transaction():
+                # Lock released at Tx commit — there is NO cross-service call held
+                # under it (pure DB), so the window is a single SELECT+INSERT.
+                await conn.execute(
+                    "SELECT pg_advisory_xact_lock($1, hashtext($2))",
+                    _PROJECT_BOOK_LOCK_NS, f"{user_id}:{data.book_id}",
+                )
+                existing = await conn.fetchrow(
+                    f"""
+                    SELECT {_SELECT_COLS} FROM knowledge_projects
+                    WHERE user_id = $1 AND project_type = 'book'
+                      AND book_id = $2 AND NOT is_archived
+                    ORDER BY created_at ASC
+                    LIMIT 1
+                    """,
+                    user_id, data.book_id,
+                )
+                if existing is not None:
+                    return _row_to_project(existing), False
+                return _row_to_project(await self._insert(conn, user_id, data)), True
 
     async def list(
         self,
@@ -372,6 +430,31 @@ class ProjectsRepo:
                     extraction_enabled, extraction_status,
                     embedding_model, embedding_dimension,
                 )
+        return _row_to_project(row) if row else None
+
+    async def set_rerank_model(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        *,
+        rerank_model: str | None,
+        rerank_model_source: str = "user_model",
+    ) -> Project | None:
+        """S5b: set the project's BYOK reranker (campaign override path). Unlike
+        embedding, rerank has no vector-space hazard — it is applied at raw-search
+        time — so no graph delete / confirm is needed. rerank_model NULL clears the
+        selection (rerank skipped); rerank_model_source is NOT NULL (default
+        'user_model'). Owner-scoped; returns None if not owned / not found."""
+        query = f"""
+        UPDATE knowledge_projects
+        SET rerank_model = $3, rerank_model_source = $4, updated_at = now()
+        WHERE user_id = $1 AND project_id = $2
+        RETURNING {_SELECT_COLS}
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(
+                query, user_id, project_id, rerank_model, rerank_model_source,
+            )
         return _row_to_project(row) if row else None
 
     async def archive(
