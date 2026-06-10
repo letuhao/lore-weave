@@ -84,9 +84,6 @@ export const compositionApi = {
   generateUrl(projectId: string): string {
     return `${apiBase()}${BASE}/works/${projectId}/generate`;
   },
-  getJob(jobId: string, token: string): Promise<GenerationJob> {
-    return apiJson(`${BASE}/jobs/${jobId}`, { token });
-  },
   // V1 slice 3 — auto (diverge→converge): NON-streaming POST that returns the
   // winner + all K candidate texts (the human-gate cards).
   generateAuto(projectId: string, params: AutoGenerateParams, token: string): Promise<AutoGeneration> {
