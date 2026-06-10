@@ -8,6 +8,7 @@ import type {
   WikiSuggestionResp,
   WikiGenJobStatus,
   WikiGenerateResult,
+  WikiStalenessListResp,
 } from './types';
 
 const BASE = '/v1/glossary';
@@ -106,6 +107,23 @@ export const wikiApi = {
 
   cancelJob(bookId: string, jobId: string, token: string): Promise<{ job_id: string; status: string }> {
     return apiJson(`${BASE}/books/${bookId}/wiki/job/${jobId}/cancel`, {
+      method: 'POST',
+      token,
+    });
+  },
+
+  /* ── wiki-llm Phase-2 — "Knowledge updates" change-feed (§5.3) ── */
+
+  listStaleness(bookId: string, token: string): Promise<WikiStalenessListResp> {
+    return apiJson<WikiStalenessListResp>(`${BASE}/books/${bookId}/wiki/staleness`, { token });
+  },
+
+  dismissStaleness(
+    bookId: string,
+    stalenessId: string,
+    token: string,
+  ): Promise<{ staleness_id: string; status: string }> {
+    return apiJson(`${BASE}/books/${bookId}/wiki/staleness/${stalenessId}/dismiss`, {
       method: 'POST',
       token,
     });

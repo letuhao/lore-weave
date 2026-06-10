@@ -30,6 +30,9 @@ type wikiArticleListItem struct {
 	// AI-generated) | 'generated' | 'needs_review' | 'blocked'. omitempty so a
 	// plain article carries no badge field.
 	GenerationStatus *string `json:"generation_status,omitempty"`
+	// wiki-llm Phase-2 — a knowledge source the article was built from changed; the
+	// FE shows an "Outdated" badge. Cleared on regenerate (§5.3).
+	IsKnowledgeStale bool `json:"is_knowledge_stale"`
 }
 
 type wikiArticleListResp struct {
@@ -187,7 +190,7 @@ func (s *Server) listWikiArticles(w http.ResponseWriter, r *http.Request) {
 			ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
 			wa.status, wa.template_code,
 			(SELECT COUNT(*) FROM wiki_revisions wr WHERE wr.article_id = wa.article_id) AS revision_count,
-			wa.updated_at, wa.generation_status
+			wa.updated_at, wa.generation_status, wa.is_knowledge_stale
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
 		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
@@ -219,7 +222,7 @@ func (s *Server) listWikiArticles(w http.ResponseWriter, r *http.Request) {
 			&it.Kind.KindID, &it.Kind.Code, &it.Kind.Name, &it.Kind.Icon, &it.Kind.Color,
 			&it.Status, &it.TemplateCode,
 			&it.RevisionCount,
-			&it.UpdatedAt, &it.GenerationStatus,
+			&it.UpdatedAt, &it.GenerationStatus, &it.IsKnowledgeStale,
 		); err != nil {
 			slog.Error("listWikiArticles scan", "error", err)
 			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
@@ -1284,7 +1287,7 @@ func (s *Server) loadWikiArticleDetail(r *http.Request, bookID, articleID uuid.U
 			wa.status, wa.template_code,
 			(SELECT COUNT(*) FROM wiki_revisions wr WHERE wr.article_id = wa.article_id) AS revision_count,
 			wa.updated_at, wa.body_json, wa.spoiler_chapters, wa.created_at, wa.superseded_by_entity_id,
-			wa.generation_status, wa.generation_provenance, wa.generated_at
+			wa.generation_status, wa.generation_provenance, wa.generated_at, wa.is_knowledge_stale
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
 		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
@@ -1303,7 +1306,7 @@ func (s *Server) loadWikiArticleDetail(r *http.Request, bookID, articleID uuid.U
 		&d.Status, &d.TemplateCode,
 		&d.RevisionCount,
 		&d.UpdatedAt, &d.BodyJSON, &spoilerChapters, &d.CreatedAt, &d.SupersededBy,
-		&d.GenerationStatus, &d.GenerationProvenance, &d.GeneratedAt,
+		&d.GenerationStatus, &d.GenerationProvenance, &d.GeneratedAt, &d.IsKnowledgeStale,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("loadWikiArticleDetail main: %w", err)

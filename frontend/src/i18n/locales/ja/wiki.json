@@ -115,5 +115,38 @@
         "regurgitation": "丸写し"
       }
     }
+  },
+  "staleness": {
+    "banner": "ナレッジ更新 — {{count}}件の記事が古い可能性",
+    "banner_other": "ナレッジ更新 — {{count}}件の記事が古い可能性",
+    "title": "ナレッジ更新",
+    "subtitle": "ソース変更により{{count}}件にフラグ。選択するまで再生成されません。",
+    "subtitle_other": "ソース変更により{{count}}件にフラグ。選択するまで再生成されません。",
+    "close": "閉じる",
+    "empty": "古い記事はありません — すべてソースと一致しています。",
+    "outdated": "古い",
+    "dismiss": "無視",
+    "dismissed": "最新として記録",
+    "dismissFailed": "無視に失敗しました",
+    "select": "{{name}}を選択",
+    "selectedCount": "{{count}}件選択",
+    "nArticles": "{{count}}件の記事",
+    "nArticles_other": "{{count}}件の記事",
+    "regenerateSelected": "再生成",
+    "regenerateSelected_other": "再生成（{{count}}）",
+    "reason": {
+      "entity_changed": "用語集の項目が変更",
+      "name_changed": "名前が変更",
+      "enrichment_changed": "補足が変更",
+      "merged": "エンティティが統合",
+      "chapter_regrounded": "章が再公開",
+      "citation_broken": "引用された章が削除",
+      "recipe_drift": "生成レシピが更新"
+    },
+    "severity": {
+      "hard": "破損",
+      "structural": "構造",
+      "content": "内容"
+    }
   }
 }

@@ -115,5 +115,38 @@
         "regurgitation": "Sao chép nguyên văn"
       }
     }
+  },
+  "staleness": {
+    "banner": "Cập nhật tri thức — {{count}} bài có thể đã lỗi thời",
+    "banner_other": "Cập nhật tri thức — {{count}} bài có thể đã lỗi thời",
+    "title": "Cập nhật tri thức",
+    "subtitle": "{{count}} bài bị đánh dấu do nguồn đã thay đổi. Không có gì tự tạo lại cho đến khi bạn chọn.",
+    "subtitle_other": "{{count}} bài bị đánh dấu do nguồn đã thay đổi. Không có gì tự tạo lại cho đến khi bạn chọn.",
+    "close": "Đóng",
+    "empty": "Không có bài lỗi thời — mọi thứ đều khớp với nguồn.",
+    "outdated": "Lỗi thời",
+    "dismiss": "Bỏ qua",
+    "dismissed": "Đã đánh dấu cập nhật",
+    "dismissFailed": "Không thể bỏ qua",
+    "select": "Chọn {{name}}",
+    "selectedCount": "Đã chọn {{count}}",
+    "nArticles": "{{count}} bài",
+    "nArticles_other": "{{count}} bài",
+    "regenerateSelected": "Tạo lại",
+    "regenerateSelected_other": "Tạo lại ({{count}})",
+    "reason": {
+      "entity_changed": "Mục từ điển đã đổi",
+      "name_changed": "Tên đã đổi",
+      "enrichment_changed": "Bổ sung đã đổi",
+      "merged": "Thực thể đã hợp nhất",
+      "chapter_regrounded": "Chương đã đăng lại",
+      "citation_broken": "Chương được trích đã bị xóa",
+      "recipe_drift": "Công thức tạo đã cập nhật"
+    },
+    "severity": {
+      "hard": "Hỏng",
+      "structural": "Cấu trúc",
+      "content": "Nội dung"
+    }
   }
 }

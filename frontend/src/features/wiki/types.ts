@@ -21,6 +21,8 @@ export interface WikiArticleListItem {
   revision_count: number;
   updated_at: string;
   generation_status?: WikiGenerationStatus | null;
+  /** wiki-llm Phase-2 — a knowledge source changed; show an "Outdated" badge. */
+  is_knowledge_stale?: boolean;
 }
 
 export interface WikiArticleListResp {
@@ -97,6 +99,7 @@ export interface WikiArticleDetail {
   generation_status?: WikiGenerationStatus | null;
   generation_provenance?: WikiGenerationProvenance | null;
   generated_at?: string | null;
+  is_knowledge_stale?: boolean;
 }
 
 export interface WikiRevisionListItem {
@@ -138,6 +141,27 @@ export interface WikiSuggestionListResp {
   total: number;
   limit: number;
   offset: number;
+}
+
+/* ── wiki-llm Phase-2 — change-control / "Knowledge updates" ──────────────── */
+
+/** One pending staleness entry in the change-feed (§5.3). */
+export interface WikiStalenessRow {
+  staleness_id: string;
+  article_id: string;
+  entity_id: string;
+  display_name: string;
+  kind: WikiKindSummary;
+  reason_code: string;
+  severity: 'hard' | 'structural' | 'content' | (string & {});
+  source_ref: Record<string, unknown>;
+  generation_status?: WikiGenerationStatus | null;
+  detected_at: string;
+}
+
+export interface WikiStalenessListResp {
+  items: WikiStalenessRow[];
+  total: number;
 }
 
 /* ── wiki-llm M7b — LLM generation jobs ──────────────────────────────────── */

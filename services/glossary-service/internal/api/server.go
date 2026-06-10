@@ -175,6 +175,11 @@ func (s *Server) Router() http.Handler {
 					r.Post("/{job_id}/resume", s.resumeWikiGenJob)
 					r.Post("/{job_id}/cancel", s.cancelWikiGenJob)
 				})
+				// wiki-llm Phase-2b (§5.3) — the "Knowledge updates" change-feed.
+				r.Route("/staleness", func(r chi.Router) {
+					r.Get("/", s.listWikiStaleness)
+					r.Post("/{staleness_id}/dismiss", s.dismissWikiStaleness)
+				})
 				r.Get("/suggestions", s.listWikiSuggestions)
 				r.Get("/public", s.publicListWikiArticles)
 				r.Get("/public/{article_id}", s.publicGetWikiArticle)

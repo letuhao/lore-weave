@@ -115,5 +115,38 @@
         "regurgitation": "原文照搬"
       }
     }
+  },
+  "staleness": {
+    "banner": "知識更新 — {{count}} 篇文章可能已過時",
+    "banner_other": "知識更新 — {{count}} 篇文章可能已過時",
+    "title": "知識更新",
+    "subtitle": "因來源變更，{{count}} 篇被標記。在你選擇前不會重新生成。",
+    "subtitle_other": "因來源變更，{{count}} 篇被標記。在你選擇前不會重新生成。",
+    "close": "關閉",
+    "empty": "沒有過時文章 — 全部與來源一致。",
+    "outdated": "過時",
+    "dismiss": "忽略",
+    "dismissed": "已標記為最新",
+    "dismissFailed": "忽略失敗",
+    "select": "選擇 {{name}}",
+    "selectedCount": "已選 {{count}}",
+    "nArticles": "{{count}} 篇文章",
+    "nArticles_other": "{{count}} 篇文章",
+    "regenerateSelected": "重新生成",
+    "regenerateSelected_other": "重新生成（{{count}}）",
+    "reason": {
+      "entity_changed": "詞彙表項目已變更",
+      "name_changed": "名稱已變更",
+      "enrichment_changed": "補充已變更",
+      "merged": "實體已合併",
+      "chapter_regrounded": "章節已重新發佈",
+      "citation_broken": "引用的章節已移除",
+      "recipe_drift": "生成配方已更新"
+    },
+    "severity": {
+      "hard": "損壞",
+      "structural": "結構",
+      "content": "內容"
+    }
   }
 }

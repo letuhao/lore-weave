@@ -14,6 +14,8 @@ import { GenerateWikiDialog } from '@/features/wiki/components/GenerateWikiDialo
 import { WikiGenJobBanner } from '@/features/wiki/components/WikiGenJobBanner';
 import { WikiGenBadge } from '@/features/wiki/components/WikiGenBadge';
 import { VerifyFlagsPanel } from '@/features/wiki/components/VerifyFlagsPanel';
+import { KnowledgeUpdatesPanel } from '@/features/wiki/components/KnowledgeUpdatesPanel';
+import { useWikiStaleness } from '@/features/wiki/hooks/useWikiStaleness';
 import { ContentRenderer } from '@/components/reader/ContentRenderer';
 import { CitationProvider } from '@/components/reader/CitationContext';
 import { Skeleton } from '@/components/shared/Skeleton';
@@ -223,6 +225,11 @@ function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKind
                   {a.display_name || 'Untitled'}
                 </span>
                 <span className="ml-auto flex shrink-0 items-center gap-1">
+                  {a.is_knowledge_stale && (
+                    <span className="rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[9px] font-medium text-amber-500">
+                      {t('staleness.outdated')}
+                    </span>
+                  )}
                   <WikiGenBadge status={a.generation_status} subtle />
                   {a.status === 'draft' && (
                     <span className="shrink-0 rounded-full bg-amber-400/12 px-1.5 py-0.5 text-[9px] font-medium text-amber-400">
@@ -297,6 +304,11 @@ function WikiArticleView({ bookId, articleId, onRegenerate }: {
                 {article.kind.name}
               </span>
               <WikiGenBadge status={article.generation_status} />
+              {article.is_knowledge_stale && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/15 px-2 py-0.5 text-[10px] font-medium text-amber-500">
+                  {t('staleness.outdated')}
+                </span>
+              )}
             </div>
             <div className="flex gap-1">
               <button
@@ -570,15 +582,23 @@ export function WikiTab({ bookId }: { bookId: string }) {
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [genOpen, setGenOpen] = useState(false);
-  // wiki-llm M7b-2b — set when the dialog is opened to REGENERATE one article
-  // (null = batch generate via the Sparkles button).
-  const [regenTarget, setRegenTarget] = useState<{ entity_id: string; name: string } | null>(null);
+  // wiki-llm M7b-2b/Phase-2b — set when the dialog is opened to REGENERATE
+  // specific entities (single article OR a batch from the change-feed); null =
+  // batch generate-by-kind via the Sparkles button.
+  const [regenTarget, setRegenTarget] = useState<{ entity_ids: string[]; name: string } | null>(null);
+  const [knowledgeOpen, setKnowledgeOpen] = useState(false);
   // wiki-llm M7b-2a — the LLM-gen job controller (poll + trigger + resume/cancel).
   const { job, isActive, busy, trigger, resume, cancel } = useWikiGenJob(bookId);
+  // wiki-llm Phase-2b — the "Knowledge updates" change-feed count (badge).
+  const { count: staleCount } = useWikiStaleness(bookId);
 
   const openBatchGenerate = () => { setRegenTarget(null); setGenOpen(true); };
   const openRegenerate = (entity_id: string, name: string) => {
-    setRegenTarget({ entity_id, name });
+    setRegenTarget({ entity_ids: [entity_id], name });
+    setGenOpen(true);
+  };
+  const openBatchRegenerate = (entity_ids: string[], name: string) => {
+    setRegenTarget({ entity_ids, name });
     setGenOpen(true);
   };
 
@@ -661,7 +681,7 @@ export function WikiTab({ bookId }: { bookId: string }) {
           onClose={() => setGenOpen(false)}
           onTrigger={trigger}
           busy={busy}
-          entityIds={regenTarget ? [regenTarget.entity_id] : undefined}
+          entityIds={regenTarget?.entity_ids}
           regenName={regenTarget?.name}
         />
       </>
@@ -670,6 +690,17 @@ export function WikiTab({ bookId }: { bookId: string }) {
 
   return (
     <>
+      {staleCount > 0 && (
+        <button
+          onClick={() => setKnowledgeOpen(true)}
+          data-testid="wiki-knowledge-updates"
+          className="mb-3 flex w-full items-center gap-2 rounded-lg border border-amber-400/40 bg-amber-400/8 px-4 py-2 text-left text-xs font-medium text-amber-500 hover:bg-amber-400/12"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          {t('staleness.banner', { count: staleCount })}
+          <span className="ml-auto rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px]">{staleCount}</span>
+        </button>
+      )}
       <WikiGenJobBanner job={job} onResume={resume} onCancel={cancel} busy={busy} />
       <div className="flex overflow-hidden rounded-lg border" style={{ minHeight: 500 }}>
         {/* Left sidebar */}
@@ -703,7 +734,20 @@ export function WikiTab({ bookId }: { bookId: string }) {
         </div>
       </div>
       <CreateArticleDialog bookId={bookId} open={createOpen} onClose={handleCreateClose} />
-      <GenerateWikiDialog open={genOpen} onClose={() => setGenOpen(false)} onTrigger={trigger} busy={busy} />
+      <GenerateWikiDialog
+        open={genOpen}
+        onClose={() => setGenOpen(false)}
+        onTrigger={trigger}
+        busy={busy}
+        entityIds={regenTarget?.entity_ids}
+        regenName={regenTarget?.name}
+      />
+      <KnowledgeUpdatesPanel
+        bookId={bookId}
+        open={knowledgeOpen}
+        onClose={() => setKnowledgeOpen(false)}
+        onRegenerate={openBatchRegenerate}
+      />
     </>
   );
 }

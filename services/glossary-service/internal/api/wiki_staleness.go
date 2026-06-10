@@ -5,9 +5,141 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
+
+// wikiStalenessRow is one pending change-feed entry: the stale article + WHY.
+type wikiStalenessRow struct {
+	StalenessID      string          `json:"staleness_id"`
+	ArticleID        string          `json:"article_id"`
+	EntityID         string          `json:"entity_id"`
+	DisplayName      string          `json:"display_name"`
+	Kind             kindSummary     `json:"kind"`
+	ReasonCode       string          `json:"reason_code"`
+	Severity         string          `json:"severity"`
+	SourceRef        json.RawMessage `json:"source_ref"`
+	GenerationStatus *string         `json:"generation_status"`
+	DetectedAt       time.Time       `json:"detected_at"`
+}
+
+// listWikiStaleness — GET /v1/glossary/books/{book_id}/wiki/staleness
+// The §5.3 "Knowledge updates" feed: pending staleness rows for the book, newest
+// + highest-severity first (the FE groups by reason). Owner-gated.
+func (s *Server) listWikiStaleness(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+		return
+	}
+	rows, err := s.pool.Query(r.Context(), `
+		SELECT ws.staleness_id, ws.article_id, wa.entity_id,
+		       COALESCE(dn.original_value, '') AS display_name,
+		       ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
+		       ws.reason_code, ws.severity, ws.source_ref, wa.generation_status, ws.detected_at
+		  FROM wiki_staleness ws
+		  JOIN wiki_articles wa ON wa.article_id = ws.article_id
+		  JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
+		  JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
+		  LEFT JOIN entity_attribute_values dn ON dn.entity_id = ge.entity_id
+		    AND dn.attr_def_id = (
+		      SELECT ad.attr_def_id FROM attribute_definitions ad
+		      WHERE ad.kind_id = ge.kind_id AND ad.code IN ('name','term')
+		      ORDER BY ad.sort_order LIMIT 1)
+		 WHERE wa.book_id = $1 AND ws.status = 'pending'
+		 ORDER BY CASE ws.severity WHEN 'hard' THEN 0 WHEN 'structural' THEN 1 ELSE 2 END,
+		          ws.detected_at DESC`,
+		bookID)
+	if err != nil {
+		slog.Error("listWikiStaleness query", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	defer rows.Close()
+
+	items := []wikiStalenessRow{}
+	for rows.Next() {
+		var it wikiStalenessRow
+		if err := rows.Scan(
+			&it.StalenessID, &it.ArticleID, &it.EntityID, &it.DisplayName,
+			&it.Kind.KindID, &it.Kind.Code, &it.Kind.Name, &it.Kind.Icon, &it.Kind.Color,
+			&it.ReasonCode, &it.Severity, &it.SourceRef, &it.GenerationStatus, &it.DetectedAt,
+		); err != nil {
+			slog.Error("listWikiStaleness scan", "error", err)
+			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+			return
+		}
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		slog.Error("listWikiStaleness rows", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": len(items)})
+}
+
+// dismissWikiStaleness — POST /v1/glossary/books/{book_id}/wiki/staleness/{staleness_id}/dismiss
+// "Accept as-is": resolve a pending row WITHOUT regenerating (no spend). Owner-gated
+// + book-scoped so a user can't dismiss another book's staleness.
+func (s *Server) dismissWikiStaleness(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	stalenessID, ok := parsePathUUID(w, r, "staleness_id")
+	if !ok {
+		return
+	}
+	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+		return
+	}
+	var articleID uuid.UUID
+	err := s.pool.QueryRow(r.Context(), `
+		UPDATE wiki_staleness SET status='dismissed'
+		 WHERE staleness_id=$1 AND status='pending'
+		   AND article_id IN (SELECT article_id FROM wiki_articles WHERE book_id=$2)
+		RETURNING article_id`,
+		stalenessID, bookID).Scan(&articleID)
+	if err == pgx.ErrNoRows {
+		writeError(w, http.StatusNotFound, "WIKI_STALENESS_NOT_FOUND", "no pending staleness row for this book")
+		return
+	}
+	if err != nil {
+		slog.Error("dismissWikiStaleness", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	// Clear the denormalized "outdated" flag once the LAST pending row for the
+	// article is dismissed — otherwise the badge would persist after the user
+	// accepted everything as-is.
+	if _, err := s.pool.Exec(r.Context(), `
+		UPDATE wiki_articles SET is_knowledge_stale=false
+		 WHERE article_id=$1
+		   AND NOT EXISTS (SELECT 1 FROM wiki_staleness
+		                    WHERE article_id=$1 AND status='pending')`,
+		articleID,
+	); err != nil {
+		slog.Error("dismissWikiStaleness clear flag", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"staleness_id": stalenessID.String(), "status": "dismissed"})
+}
 
 // wiki-llm Phase-2 (§5.2 DEFER, pull tier-2) — the version-drift sweep.
 //

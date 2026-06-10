@@ -115,5 +115,38 @@
         "regurgitation": "Regurgitation"
       }
     }
+  },
+  "staleness": {
+    "banner": "Knowledge updates — {{count}} article may be outdated",
+    "banner_other": "Knowledge updates — {{count}} articles may be outdated",
+    "title": "Knowledge updates",
+    "subtitle": "{{count}} article flagged since its sources changed. Nothing regenerates until you choose.",
+    "subtitle_other": "{{count}} articles flagged since their sources changed. Nothing regenerates until you choose.",
+    "close": "Close",
+    "empty": "No outdated articles — everything is up to date with its sources.",
+    "outdated": "Outdated",
+    "dismiss": "Dismiss",
+    "dismissed": "Marked up to date",
+    "dismissFailed": "Failed to dismiss",
+    "select": "Select {{name}}",
+    "selectedCount": "{{count}} selected",
+    "nArticles": "{{count}} article",
+    "nArticles_other": "{{count}} articles",
+    "regenerateSelected": "Regenerate",
+    "regenerateSelected_other": "Regenerate ({{count}})",
+    "reason": {
+      "entity_changed": "Glossary entry changed",
+      "name_changed": "Name changed",
+      "enrichment_changed": "Enrichment changed",
+      "merged": "Entity merged",
+      "chapter_regrounded": "Chapter re-published",
+      "citation_broken": "Cited chapter removed",
+      "recipe_drift": "Generation recipe updated"
+    },
+    "severity": {
+      "hard": "Broken",
+      "structural": "Structural",
+      "content": "Content"
+    }
   }
 }

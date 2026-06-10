@@ -182,6 +182,19 @@ func (s *Server) internalWriteWikiArticle(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
 		return
 	}
+	// wiki-llm Phase-2b (§5.3) — a fresh AI generation supersedes any pending
+	// staleness for this article: resolve the ledger rows (the is_knowledge_stale
+	// flag is already cleared on the UPDATE path above). In-tx so the regen + the
+	// resolution are atomic. Only the WRITE path reaches here — a human-edited
+	// article routes to a suggestion (above) and keeps its staleness.
+	if _, err := tx.Exec(r.Context(),
+		`UPDATE wiki_staleness SET status='regenerated' WHERE article_id=$1 AND status='pending'`,
+		articleID,
+	); err != nil {
+		slog.Error("writeback resolve staleness", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
 	s.finishWriteback(w, r, tx, bookID, articleID, entityID, "written", req.GenerationStatus)
 }
 

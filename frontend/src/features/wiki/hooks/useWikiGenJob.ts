@@ -67,6 +67,9 @@ export function useWikiGenJob(bookId: string) {
     if (job?.status === 'complete' && invalidatedFor.current !== job.job_id) {
       invalidatedFor.current = job.job_id;
       queryClient.invalidateQueries({ queryKey: ['wiki-articles', bookId] });
+      // Phase-2b — a completed (re)generation resolves staleness server-side
+      // (wiki_writeback), so refresh the "Knowledge updates" feed too.
+      queryClient.invalidateQueries({ queryKey: ['wiki-staleness', bookId] });
     }
   }, [job?.status, job?.job_id, bookId, queryClient]);
 
