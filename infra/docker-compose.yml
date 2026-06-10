@@ -613,6 +613,9 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       REDIS_URL: redis://redis:6379
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      # ai-gateway P0: TOOLS (definitions + MCP execute) go through the gateway;
+      # build_context (grounding) still targets KNOWLEDGE_SERVICE_URL above.
+      AI_GATEWAY_URL: http://ai-gateway:8210
       # build_context is a fast read on the chat hot path — 500ms.
       KNOWLEDGE_CLIENT_TIMEOUT_S: "0.5"
       KNOWLEDGE_CLIENT_RETRIES: "1"
@@ -621,10 +624,6 @@ services:
       # 500ms. execute_tool uses this longer per-call timeout instead of
       # the build_context budget above (D-K21B-06 live-smoke finding).
       KNOWLEDGE_TOOL_TIMEOUT_S: "30"
-      # ARCH-2: route memory-tool execution through knowledge-service /mcp
-      # (vs the bespoke /internal/tools path). Flipped to true after
-      # D-ARCH2-MCP-LIVE-SMOKE; set USE_MCP_TOOLS=false to fall back.
-      USE_MCP_TOOLS: ${USE_MCP_TOOLS:-true}
     depends_on:
       postgres:
         condition: service_healthy
@@ -636,6 +635,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+      ai-gateway:
+        condition: service_healthy
     ports:
       - "8212:8090"
     healthcheck:
@@ -643,6 +644,35 @@ services:
       interval: 5s
       timeout: 3s
       start_period: 20s
+      retries: 5
+
+  # ai-gateway P0 — internal MCP federation gateway. MCP server upstream
+  # (chat, composition) + MCP client downstream federating knowledge's /mcp.
+  ai-gateway:
+    build:
+      context: ../services/ai-gateway
+      dockerfile: Dockerfile
+      labels: *build-labels
+    environment:
+      AI_GATEWAY_PORT: "8210"
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      KNOWLEDGE_MCP_URL: http://knowledge-service:8092/mcp
+      GLOSSARY_MCP_URL: http://glossary-service:8088/mcp
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      knowledge-service:
+        condition: service_healthy
+      glossary-service:
+        condition: service_healthy
+    ports:
+      - "8218:8210"
+    healthcheck:
+      # node is always present in the image (wget/curl are not) — a wget probe
+      # left the gateway permanently "unhealthy", blocking dependents' depends_on.
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:8210/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 5s
+      timeout: 3s
+      start_period: 15s
       retries: 5
 
   knowledge-service:

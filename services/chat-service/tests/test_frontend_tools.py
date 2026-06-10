@@ -21,6 +21,8 @@ from app.db.suspended_runs import SuspendedRun
 from app.models import ProviderCredentials
 from app.services.frontend_tools import (
     FRONTEND_TOOL_NAMES,
+    GLOSSARY_CONFIRM_SCHEMA_TOOL,
+    GLOSSARY_PROPOSE_EDIT_TOOL,
     PROPOSE_EDIT_TOOL,
     frontend_tool_defs,
     is_frontend_tool,
@@ -42,14 +44,6 @@ from tests.test_stream_tools import (
 )
 
 
-@pytest.fixture(autouse=True)
-def _bespoke_tool_path(monkeypatch):
-    """Loop tests here assert on the bespoke knowledge_client.execute_tool path;
-    pin USE_MCP_TOOLS False (default flipped to True) so the transport choice —
-    covered by test_mcp_execute_tool — doesn't reroute them to mcp_execute_tool."""
-    monkeypatch.setattr(settings, "use_mcp_tools", False)
-
-
 # ── schema / name set ────────────────────────────────────────────────────────
 
 
@@ -57,6 +51,33 @@ class TestFrontendToolDefs:
     def test_propose_edit_is_a_frontend_tool(self):
         assert is_frontend_tool("propose_edit")
         assert "propose_edit" in FRONTEND_TOOL_NAMES
+
+    def test_glossary_edit_is_a_frontend_tool(self):
+        assert is_frontend_tool("glossary_propose_entity_edit")
+        assert "glossary_propose_entity_edit" in FRONTEND_TOOL_NAMES
+
+    def test_glossary_confirm_schema_is_a_frontend_tool(self):
+        assert is_frontend_tool("glossary_confirm_schema")
+        assert "glossary_confirm_schema" in FRONTEND_TOOL_NAMES
+
+    def test_glossary_confirm_schema_schema_is_wire_standard(self):
+        d = GLOSSARY_CONFIRM_SCHEMA_TOOL
+        assert d["function"]["name"] == "glossary_confirm_schema"
+        params = d["function"]["parameters"]
+        assert set(params["required"]) == {"confirm_token", "op", "summary"}
+        assert params["properties"]["op"]["enum"] == ["kind", "attribute"]
+
+    def test_glossary_skill_prompt_references_the_real_tool_names(self):
+        """P5 drift guard: the static glossary-skill prompt instructs the LLM by
+        tool name. If a glossary frontend tool is renamed in FRONTEND_TOOL_NAMES,
+        the prompt must be updated too — else the LLM is told to call a tool that
+        no longer exists and nothing fails. Catch that drift here."""
+        from app.services.glossary_skill import GLOSSARY_SKILL_PROMPT
+        glossary_frontend_tools = {n for n in FRONTEND_TOOL_NAMES if n.startswith("glossary_")}
+        # sanity: there ARE glossary frontend tools to check
+        assert glossary_frontend_tools
+        for name in glossary_frontend_tools:
+            assert name in GLOSSARY_SKILL_PROMPT, f"skill prompt is missing tool name {name!r}"
 
     def test_memory_tools_are_not_frontend(self):
         assert not is_frontend_tool("memory_search")
@@ -72,8 +93,32 @@ class TestFrontendToolDefs:
         # no non-standard keys leak to the provider
         assert "execution_location" not in d and "execution_location" not in d["function"]
 
-    def test_frontend_tool_defs_returns_propose_edit(self):
-        assert frontend_tool_defs() == [PROPOSE_EDIT_TOOL]
+    def test_glossary_edit_schema_is_wire_standard(self):
+        d = GLOSSARY_PROPOSE_EDIT_TOOL
+        assert d["type"] == "function"
+        assert d["function"]["name"] == "glossary_propose_entity_edit"
+        params = d["function"]["parameters"]
+        # EDIT-ATOMIC: top-level args are the entity + base_version + a changes[] array.
+        assert set(params["required"]) == {"book_id", "entity_id", "base_version", "changes"}
+        changes = params["properties"]["changes"]
+        assert changes["type"] == "array"
+        item = changes["items"]
+        assert set(item["required"]) == {"target", "field_label", "old_value", "new_value"}
+        assert item["properties"]["target"]["enum"] == ["short_description", "attribute"]
+
+    def test_frontend_tool_defs_are_surface_scoped(self):
+        # editor surface → prose write-back only
+        assert frontend_tool_defs(editor=True, book_scoped=False) == [PROPOSE_EDIT_TOOL]
+        # glossary-page surface (book-scoped, not editor) → glossary edit + schema confirm
+        assert frontend_tool_defs(editor=False, book_scoped=True) == [
+            GLOSSARY_PROPOSE_EDIT_TOOL, GLOSSARY_CONFIRM_SCHEMA_TOOL,
+        ]
+        # editor chat is also book-scoped → prose edit + both glossary tools
+        assert frontend_tool_defs(editor=True, book_scoped=True) == [
+            PROPOSE_EDIT_TOOL, GLOSSARY_PROPOSE_EDIT_TOOL, GLOSSARY_CONFIRM_SCHEMA_TOOL,
+        ]
+        # neither surface → nothing
+        assert frontend_tool_defs() == []
 
 
 # ── the suspend in the tool loop ─────────────────────────────────────────────
@@ -97,7 +142,7 @@ class TestSuspendLoop:
                 tools=[{"type": "function", "function": {"name": "propose_edit"}}],
             ))
         # never executed server-side
-        kc.execute_tool.assert_not_awaited()
+        kc.mcp_execute_tool.assert_not_awaited()
         kc.mcp_execute_tool.assert_not_awaited()
         # a single suspend chunk with the pending call + working history
         suspends = [c for c in chunks if "suspend" in c]
@@ -115,7 +160,7 @@ class TestSuspendLoop:
         """A pass with a memory_* tool AND propose_edit: the memory tool runs
         inline (result in working), then the loop suspends on propose_edit."""
         kc = AsyncMock()
-        kc.execute_tool.return_value = _envelope(success=True, result={"hits": []})
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"hits": []})
         scripts = [[
             tool_frag(index=0, id="call_mem", name="memory_search"),
             tool_frag(index=0, arguments_delta='{"query":"Kai"}'),
@@ -131,7 +176,7 @@ class TestSuspendLoop:
                        {"type": "function", "function": {"name": "propose_edit"}}],
             ))
         # memory tool executed once
-        kc.execute_tool.assert_awaited_once()
+        kc.mcp_execute_tool.assert_awaited_once()
         # a tool_call chunk for the memory tool + a suspend for propose_edit
         tool_chunks = [c for c in chunks if "tool_call" in c]
         assert [c["tool_call"]["tool"] for c in tool_chunks] == ["memory_search"]
@@ -146,7 +191,7 @@ class TestSuspendLoop:
         """Regression: a pass with only a memory tool still executes inline and
         loops to a normal text answer (no suspend)."""
         kc = AsyncMock()
-        kc.execute_tool.return_value = _envelope(success=True, result={"hits": []})
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"hits": []})
         scripts = [
             [tool_frag(index=0, id="c1", name="memory_search"),
              tool_frag(index=0, arguments_delta='{"query":"Kai"}'),
@@ -158,7 +203,7 @@ class TestSuspendLoop:
                 scripts, knowledge_client=kc,
                 tools=[{"type": "function", "function": {"name": "memory_search"}}],
             ))
-        kc.execute_tool.assert_awaited_once()
+        kc.mcp_execute_tool.assert_awaited_once()
         assert not [c for c in chunks if "suspend" in c]
         # final text chunk present
         assert any(c.get("content") == "Kai is a knight." for c in chunks)
@@ -315,3 +360,33 @@ class TestResumeUsageSummed:
         # seed (100/20) + resumed pass (500/30) = 600/50
         assert run_finished["result"]["usage"]["promptTokens"] == 600
         assert run_finished["result"]["usage"]["completionTokens"] == 50
+
+    @pytest.mark.asyncio
+    async def test_resume_feeds_real_glossary_outcome_to_agent(self):
+        """H6 truthful resume: the assistant must see the ACTUAL Apply outcome
+        (e.g. applied_conflict), not merely 'the user clicked Apply'. The resume
+        appends the outcome verbatim as the frontend tool's result, so the next
+        LLM pass can refuse to claim success on a conflict/error."""
+        pool, conn = _make_pool_with_conn()
+        conn.fetchval.return_value = 1
+        pool.fetchrow.return_value = {"generation_params": {}, "project_id": None}
+
+        kc = AsyncMock()
+        kc.get_tool_definitions.return_value = []
+        scripts = [[tok("It changed — let me re-read it."), usage(10, 5), done("stop")]]
+
+        with _patch_client(scripts), \
+             patch("app.services.stream_service.get_knowledge_client", return_value=kc), \
+             patch("app.services.stream_service.load_suspended_run",
+                   AsyncMock(return_value=_suspended(1, 1))), \
+             patch("app.services.stream_service.delete_suspended_run", AsyncMock()):
+            await _drain(resume_stream_response(
+                session_id=str(TEST_SESSION_ID), user_id=str(TEST_USER_ID),
+                run_id="run-1", tool_call_id="c1", outcome="applied_conflict",
+                applied_text=None, creds=_creds(), pool=pool, billing=AsyncMock(),
+                stream_format="agui",
+            ))
+
+        msgs = _FakeClient.instances[0].requests[0].messages
+        tool_msg = next(m for m in msgs if m.get("role") == "tool" and m.get("tool_call_id") == "c1")
+        assert json.loads(tool_msg["content"]) == {"outcome": "applied_conflict"}

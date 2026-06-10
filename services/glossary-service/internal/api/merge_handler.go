@@ -302,17 +302,34 @@ func (s *Server) mergeOne(
 	if err != nil {
 		return uuid.Nil, "", err
 	}
-	// wiki: move loser's article only if the winner has none (UNIQUE(entity_id)).
-	wiki, err := scanUUIDs(ctx, tx, `
-		UPDATE wiki_articles SET entity_id = $1
+	// wiki (Bug-1 fix, merge-spec AC4): repoint the loser's article to the winner
+	// when the winner has NONE. When BOTH have an article, the loser's is ARCHIVED
+	// in place (superseded_by_entity_id := winner) — kept, revision-preserved, and
+	// resolvable via redirect — never silently abandoned. Bodies are NOT auto-merged
+	// (the winner's stays canonical; merge-and-regenerate is later wiki-LLM work).
+	var wikiArticle, supersededWiki *uuid.UUID
+	wikiRepoint, err := scanUUIDs(ctx, tx, `
+		UPDATE wiki_articles SET entity_id = $1, updated_at = now()
 		WHERE entity_id = $2 AND NOT EXISTS (SELECT 1 FROM wiki_articles WHERE entity_id = $1)
 		RETURNING article_id`, winnerID, loserID)
 	if err != nil {
 		return uuid.Nil, "", err
 	}
-	var wikiArticle *uuid.UUID
-	if len(wiki) == 1 {
-		wikiArticle = &wiki[0]
+	if len(wikiRepoint) == 1 {
+		wikiArticle = &wikiRepoint[0]
+	} else {
+		// repoint was a no-op → either the loser has no article (nothing to do) or
+		// BOTH have one → archive the loser's in place, pointing at the winner.
+		wikiArchive, aerr := scanUUIDs(ctx, tx, `
+			UPDATE wiki_articles SET superseded_by_entity_id = $1, updated_at = now()
+			WHERE entity_id = $2 AND superseded_by_entity_id IS NULL
+			RETURNING article_id`, winnerID, loserID)
+		if aerr != nil {
+			return uuid.Nil, "", aerr
+		}
+		if len(wikiArchive) == 1 {
+			supersededWiki = &wikiArchive[0]
+		}
 	}
 
 	// 2. Fold loser name + aliases into the winner's aliases (anti-resurrection:
@@ -364,9 +381,9 @@ func (s *Server) mergeOne(
 		INSERT INTO merge_journal
 		  (book_id, winner_entity_id, loser_entity_id, repointed_chapter_link_ids,
 		   repointed_eav_ids, repointed_enrichment_ids, repointed_audit_ids,
-		   repointed_wiki_article_id, winner_aliases_before, merged_by)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING journal_id`,
-		bookID, winnerID, loserID, chLinks, eavs, enrich, audit, wikiArticle, aliasesBefore, actor,
+		   repointed_wiki_article_id, superseded_wiki_article_id, winner_aliases_before, merged_by)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING journal_id`,
+		bookID, winnerID, loserID, chLinks, eavs, enrich, audit, wikiArticle, supersededWiki, aliasesBefore, actor,
 	).Scan(&journalID); err != nil {
 		return uuid.Nil, "", err
 	}
@@ -427,15 +444,16 @@ func (s *Server) revertMergeCore(ctx context.Context, bookID, journalID uuid.UUI
 		chLinks, eavs     []uuid.UUID
 		enrich, audit     []uuid.UUID
 		wikiArticle       *uuid.UUID
+		supersededWiki    *uuid.UUID
 		aliasesBefore     *string
 		status            string
 	)
 	if err := s.pool.QueryRow(ctx, `
 		SELECT book_id, winner_entity_id, loser_entity_id, repointed_chapter_link_ids,
 		       repointed_eav_ids, repointed_enrichment_ids, repointed_audit_ids,
-		       repointed_wiki_article_id, winner_aliases_before, status
+		       repointed_wiki_article_id, superseded_wiki_article_id, winner_aliases_before, status
 		FROM merge_journal WHERE journal_id = $1`, journalID,
-	).Scan(&jBook, &winnerID, &loserID, &chLinks, &eavs, &enrich, &audit, &wikiArticle, &aliasesBefore, &status); err != nil {
+	).Scan(&jBook, &winnerID, &loserID, &chLinks, &eavs, &enrich, &audit, &wikiArticle, &supersededWiki, &aliasesBefore, &status); err != nil {
 		return "not_found", nil
 	}
 	if jBook != bookID {
@@ -476,6 +494,13 @@ func (s *Server) revertMergeCore(ctx context.Context, bookID, journalID uuid.UUI
 	}
 	if wikiArticle != nil {
 		if _, err := tx.Exec(ctx, `UPDATE wiki_articles SET entity_id=$1 WHERE article_id=$2`, loserID, *wikiArticle); err != nil {
+			return "", err
+		}
+	}
+	// Un-archive a superseded loser article (Bug-1 fix): clear the redirect so the
+	// restored loser entity's article is live again.
+	if supersededWiki != nil {
+		if _, err := tx.Exec(ctx, `UPDATE wiki_articles SET superseded_by_entity_id=NULL, updated_at=now() WHERE article_id=$1`, *supersededWiki); err != nil {
 			return "", err
 		}
 	}

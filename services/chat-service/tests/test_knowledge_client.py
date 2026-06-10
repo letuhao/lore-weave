@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 from typing import Callable
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -458,6 +459,92 @@ class TestTraceIdForwarding:
         await client.aclose()
 
 
+# ── P6 grounding port: gateway-first + retained knowledge fallback (H2) ──────
+
+
+def _make_dual_client(handler: Callable[[httpx.Request], httpx.Response]) -> KnowledgeClient:
+    """A client whose grounding gateway (tools_base_url) differs from knowledge
+    (base_url) so the gateway-first → knowledge-fallback path is exercised."""
+    return KnowledgeClient(
+        base_url="http://knowledge-service:8092",
+        tools_base_url="http://ai-gateway:8210",
+        internal_token="t",
+        timeout_s=0.5,
+        retries=1,
+        tool_timeout_s=30.0,
+        transport=httpx.MockTransport(handler),
+    )
+
+
+class TestGroundingGatewayFallback:
+    @pytest.mark.asyncio
+    async def test_gateway_success_does_not_call_knowledge(self):
+        calls: list[str] = []
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            calls.append(str(req.url))
+            return httpx.Response(200, json={"mode": "static", "context": "GW", "recent_message_count": 50, "token_count": 1})
+
+        client = _make_dual_client(handler)
+        result = await client.build_context(user_id="u")
+        assert result.context == "GW"
+        assert all("ai-gateway" in u for u in calls)
+        assert not any("knowledge-service" in u for u in calls)
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_gateway_outage_falls_back_to_knowledge_direct(self):
+        def handler(req: httpx.Request) -> httpx.Response:
+            if "ai-gateway" in str(req.url):
+                return httpx.Response(502, text="gateway grounding upstream unavailable")  # outage
+            return httpx.Response(200, json={"mode": "static", "context": "KN", "recent_message_count": 50, "token_count": 1})
+
+        client = _make_dual_client(handler)
+        result = await client.build_context(user_id="u")
+        assert result.context == "KN"  # H2: degraded context via the retained direct path, not a broken turn
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_gateway_stable_404_degrades_without_fallback(self):
+        calls: list[str] = []
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            calls.append(str(req.url))
+            if "ai-gateway" in str(req.url):
+                return httpx.Response(404, text="project not found")  # stable signal
+            return httpx.Response(200, json={"mode": "static", "context": "KN", "recent_message_count": 50, "token_count": 1})
+
+        client = _make_dual_client(handler)
+        result = await client.build_context(user_id="u")
+        assert result.mode == "degraded"  # no context, but no pointless fallback
+        assert not any("knowledge-service" in u for u in calls)  # knowledge-direct NOT called
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_gateway_auth_reject_falls_back_to_knowledge_direct(self):
+        # A gateway token misconfig (401) is a host-access problem, not a stable
+        # request problem — the direct path uses the same token and is accepted.
+        def handler(req: httpx.Request) -> httpx.Response:
+            if "ai-gateway" in str(req.url):
+                return httpx.Response(401, text="invalid internal token")
+            return httpx.Response(200, json={"mode": "static", "context": "KN", "recent_message_count": 50, "token_count": 1})
+
+        client = _make_dual_client(handler)
+        result = await client.build_context(user_id="u")
+        assert result.context == "KN"  # recovered via the retained direct fallback
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_both_unreachable_degrades(self):
+        def handler(_: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, text="down")
+
+        client = _make_dual_client(handler)
+        result = await client.build_context(user_id="u")
+        assert result.mode == "degraded"  # turn proceeds context-free, never errors
+        await client.aclose()
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # K21-B — execute_tool (POST /internal/tools/execute)
 # ════════════════════════════════════════════════════════════════════════════
@@ -467,186 +554,7 @@ class TestTraceIdForwarding:
 # the tool-calling loop can carry on — it must NEVER raise.
 
 
-class TestExecuteTool:
-    @pytest.mark.asyncio
-    async def test_success_envelope_passthrough(self):
-        """A 200 with a success envelope is returned verbatim."""
-        envelope = {
-            "success": True,
-            "result": {"entities": ["Kai", "Mira"]},
-            "error": None,
-        }
-        client = _make_client(_ok_response(envelope))
-        out = await client.execute_tool(
-            user_id="u",
-            session_id="sess-1",
-            tool_name="memory_search",
-            tool_args={"query": "Kai"},
-        )
-        assert out == envelope
-        await client.aclose()
-
-    @pytest.mark.asyncio
-    async def test_tool_level_failure_envelope_passthrough(self):
-        """A 200 carrying success=False (the tool itself refused) is
-        passed through unchanged — knowledge-service always returns 200
-        for tool-level outcomes."""
-        envelope = {"success": False, "result": None, "error": "entity not found"}
-        client = _make_client(_ok_response(envelope))
-        out = await client.execute_tool(
-            user_id="u",
-            session_id="sess-1",
-            tool_name="memory_get_entity",
-            tool_args={"name": "Ghost"},
-        )
-        assert out == envelope
-        await client.aclose()
-
-    @pytest.mark.asyncio
-    async def test_non_200_synthesises_failure_envelope(self):
-        """A non-200 (e.g. the 503 infra-failure path) → a synthetic
-        success=False envelope, never an exception."""
-        client = _make_client(_status_response(503, "tool backend unavailable"))
-        out = await client.execute_tool(
-            user_id="u",
-            session_id="sess-1",
-            tool_name="memory_search",
-            tool_args={},
-        )
-        assert out["success"] is False
-        assert out["result"] is None
-        assert "503" in out["error"]
-        await client.aclose()
-
-    @pytest.mark.asyncio
-    async def test_transport_error_synthesises_failure_envelope(self):
-        """A transport error (knowledge-service unreachable) → a
-        synthetic success=False envelope, never raises."""
-        client = _make_client(_raise(httpx.ConnectError("refused")))
-        out = await client.execute_tool(
-            user_id="u",
-            session_id="sess-1",
-            tool_name="memory_search",
-            tool_args={},
-        )
-        assert out["success"] is False
-        assert out["result"] is None
-        assert "unavailable" in out["error"]
-        await client.aclose()
-
-    @pytest.mark.asyncio
-    async def test_timeout_synthesises_failure_envelope(self):
-        """A timeout is an httpx.HTTPError subclass → degrades to a
-        success=False envelope."""
-        client = _make_client(_raise(httpx.TimeoutException("slow")))
-        out = await client.execute_tool(
-            user_id="u",
-            session_id="sess-1",
-            tool_name="memory_search",
-            tool_args={},
-        )
-        assert out["success"] is False
-        await client.aclose()
-
-    @pytest.mark.asyncio
-    async def test_malformed_json_synthesises_failure_envelope(self):
-        """A 200 with a body that isn't JSON → a success=False envelope."""
-
-        def handler(_: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                200, content=b"not json", headers={"content-type": "application/json"}
-            )
-
-        client = _make_client(handler)
-        out = await client.execute_tool(
-            user_id="u",
-            session_id="sess-1",
-            tool_name="memory_search",
-            tool_args={},
-        )
-        assert out["success"] is False
-        assert "invalid response" in out["error"]
-        await client.aclose()
-
-    @pytest.mark.asyncio
-    async def test_request_body_shape(self):
-        """The POST body carries user_id / session_id / tool_name /
-        tool_args; project_id is included when supplied."""
-        captured: list = []
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            captured.append(request)
-            return httpx.Response(200, json={"success": True, "result": {}, "error": None})
-
-        client = _make_client(handler)
-        await client.execute_tool(
-            user_id="user-9",
-            session_id="sess-9",
-            tool_name="memory_search",
-            tool_args={"query": "Kai"},
-            project_id="proj-9",
-        )
-        import json as _json
-
-        body = _json.loads(captured[0].content.decode())
-        assert body["user_id"] == "user-9"
-        assert body["session_id"] == "sess-9"
-        assert body["tool_name"] == "memory_search"
-        assert body["tool_args"] == {"query": "Kai"}
-        assert body["project_id"] == "proj-9"
-        # It hits the execute endpoint.
-        assert captured[0].url.path == "/internal/tools/execute"
-        await client.aclose()
-
-    @pytest.mark.asyncio
-    async def test_empty_project_id_omitted_from_body(self):
-        """A no-project chat: project_id=None must be omitted, not sent
-        as a null/empty (the executor handles a null project)."""
-        captured: list = []
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            captured.append(request)
-            return httpx.Response(200, json={"success": True, "result": {}, "error": None})
-
-        client = _make_client(handler)
-        await client.execute_tool(
-            user_id="u",
-            session_id="s",
-            tool_name="memory_search",
-            tool_args={},
-            project_id=None,
-        )
-        import json as _json
-
-        body = _json.loads(captured[0].content.decode())
-        assert "project_id" not in body
-        await client.aclose()
-
-    @pytest.mark.asyncio
-    async def test_execute_tool_uses_the_longer_tool_timeout(self):
-        """D-K21B-06 — execute_tool must override the client-wide
-        build_context budget (0.5s) with the longer tool timeout. A
-        memory tool does real work (memory_remember = injection-
-        neutralisation + a Neo4j write) and ReadTimeouts at 500ms. The
-        17.0 here is deliberately non-default so a dropped override
-        would fall back to the 0.5s client budget and fail this test."""
-        captured: list = []
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            captured.append(request)
-            return httpx.Response(200, json={"success": True, "result": {}, "error": None})
-
-        client = _make_client(handler, tool_timeout_s=17.0)
-        await client.execute_tool(
-            user_id="u",
-            session_id="s",
-            tool_name="memory_remember",
-            tool_args={"fact_text": "x"},
-        )
-        # httpx records the resolved per-request timeout on the request.
-        assert captured[0].extensions["timeout"]["read"] == 17.0
-        await client.aclose()
-
+class TestToolTimeoutScope:
     @pytest.mark.asyncio
     async def test_build_context_keeps_the_short_timeout(self):
         """D-K21B-06 companion — the longer tool timeout is scoped to
@@ -660,151 +568,147 @@ class TestExecuteTool:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# K21-B — get_tool_definitions (GET /internal/tools/definitions, D1)
+# get_tool_definitions — MCP list-tools against the ai-gateway (P0)
 # ════════════════════════════════════════════════════════════════════════════
 #
-# Returns the OpenAI tool schemas, process-cached after the first
-# success. A failure returns [] and is NOT cached — a later turn retries.
+# Fetches the federated catalog via MCP `list-tools` and converts each entry to
+# an OpenAI function schema. Process-cached after the first success; a failure
+# returns [] and is NOT cached — a later turn retries. The transport +
+# ClientSession are module-level symbols in app.client.knowledge_client, so we
+# patch them there (patch-where-it-is-used).
+
+
+def _mcp_tool(name: str, description: str = "", input_schema: dict | None = None) -> MagicMock:
+    t = MagicMock()
+    t.name = name
+    t.description = description
+    t.inputSchema = input_schema if input_schema is not None else {"type": "object"}
+    return t
+
+
+def _patch_list_tools(*, tools=None, list_side_effect=None, transport_side_effect=None):
+    """Wire the async-with transport + ClientSession chain so that
+
+      async with streamablehttp_client(...) as (read, write, _):
+          async with ClientSession(read, write) as s:
+              await s.initialize()
+              listed = await s.list_tools()
+
+    runs against mocks. Returns (transport_patch, session_patch, transport_factory)."""
+    transport_cm = MagicMock()
+    if transport_side_effect is not None:
+        transport_cm.__aenter__ = AsyncMock(side_effect=transport_side_effect)
+    else:
+        transport_cm.__aenter__ = AsyncMock(return_value=(MagicMock(), MagicMock(), None))
+    transport_cm.__aexit__ = AsyncMock(return_value=False)
+    transport_factory = MagicMock(return_value=transport_cm)
+
+    mock_session = AsyncMock()
+    mock_session.initialize = AsyncMock()
+    listed = MagicMock()
+    listed.tools = tools if tools is not None else []
+    if list_side_effect is not None:
+        mock_session.list_tools = AsyncMock(side_effect=list_side_effect)
+    else:
+        mock_session.list_tools = AsyncMock(return_value=listed)
+    session_cm = MagicMock()
+    session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+    session_cm.__aexit__ = AsyncMock(return_value=False)
+    session_factory = MagicMock(return_value=session_cm)
+
+    return (
+        patch("app.client.knowledge_client.streamablehttp_client", transport_factory),
+        patch("app.client.knowledge_client.ClientSession", session_factory),
+        transport_factory,
+    )
 
 
 class TestGetToolDefinitions:
     @pytest.mark.asyncio
-    async def test_success_returns_tools_list(self):
-        tools = [
-            {"type": "function", "function": {"name": "memory_search"}},
-            {"type": "function", "function": {"name": "memory_get_entity"}},
+    async def test_success_converts_mcp_tools_to_openai_shape(self):
+        schema = {"type": "object", "properties": {"query": {"type": "string"}}}
+        tpatch, spatch, _ = _patch_list_tools(tools=[
+            _mcp_tool("memory_search", "search memory", schema),
+            _mcp_tool("memory_forget", "forget a fact"),
+        ])
+        client = _make_client()
+        with tpatch, spatch:
+            out = await client.get_tool_definitions()
+        assert out == [
+            {"type": "function", "function": {
+                "name": "memory_search", "description": "search memory", "parameters": schema}},
+            {"type": "function", "function": {
+                "name": "memory_forget", "description": "forget a fact",
+                # An empty-input tool MUST advertise properties:{} — OpenAI-compatible
+                # providers (LM Studio) 400 the whole request on a missing `properties`
+                # (live-smoke bug: glossary_list_kinds had no properties).
+                "parameters": {"type": "object", "properties": {}}}},
         ]
-        client = _make_client(_ok_response({"tools": tools}))
-        out = await client.get_tool_definitions()
-        assert out == tools
         await client.aclose()
 
     @pytest.mark.asyncio
-    async def test_success_caches_no_refetch_on_second_call(self):
-        """A second call returns the cached list without re-fetching."""
-        call_count = 0
-        tools = [{"type": "function", "function": {"name": "memory_search"}}]
-
-        def handler(_: httpx.Request) -> httpx.Response:
-            nonlocal call_count
-            call_count += 1
-            return httpx.Response(200, json={"tools": tools})
-
-        client = _make_client(handler)
-        first = await client.get_tool_definitions()
-        second = await client.get_tool_definitions()
-        assert first == tools
-        assert second == tools
-        # Cached — the transport was hit exactly once.
-        assert call_count == 1
-        await client.aclose()
-
-    @pytest.mark.asyncio
-    async def test_non_200_returns_empty_and_does_not_cache(self):
-        """A non-200 → []. The failure is NOT cached: a later call
-        retries the fetch (and can then succeed)."""
-        call_count = 0
-        tools = [{"type": "function", "function": {"name": "memory_search"}}]
-
-        def handler(_: httpx.Request) -> httpx.Response:
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return httpx.Response(500, text="down")
-            return httpx.Response(200, json={"tools": tools})
-
-        client = _make_client(handler)
-        first = await client.get_tool_definitions()
-        assert first == []
-        # A later call retries — failure was not cached — and succeeds.
-        second = await client.get_tool_definitions()
-        assert second == tools
-        assert call_count == 2
+    async def test_caches_no_refetch_on_second_call(self):
+        tpatch, spatch, factory = _patch_list_tools(tools=[_mcp_tool("memory_search")])
+        client = _make_client()
+        with tpatch, spatch:
+            first = await client.get_tool_definitions()
+            second = await client.get_tool_definitions()
+        assert first == second
+        assert first[0]["function"]["name"] == "memory_search"
+        # Cached — the MCP transport was opened exactly once.
+        assert factory.call_count == 1
         await client.aclose()
 
     @pytest.mark.asyncio
     async def test_transport_error_returns_empty_and_does_not_cache(self):
-        """A transport failure → []; not cached, so a later call
-        retries."""
-        call_count = 0
-        tools = [{"type": "function", "function": {"name": "memory_search"}}]
-
-        def handler(_: httpx.Request) -> httpx.Response:
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise httpx.ConnectError("refused")
-            return httpx.Response(200, json={"tools": tools})
-
-        client = _make_client(handler)
-        first = await client.get_tool_definitions()
-        assert first == []
-        second = await client.get_tool_definitions()
-        assert second == tools
-        assert call_count == 2
+        # First call: connect fails → []. Second call (success) proves no caching of the failure.
+        client = _make_client()
+        tpatch, spatch, _ = _patch_list_tools(
+            transport_side_effect=httpx.ConnectError("refused")
+        )
+        with tpatch, spatch:
+            assert await client.get_tool_definitions() == []
+        tpatch2, spatch2, _ = _patch_list_tools(tools=[_mcp_tool("memory_search")])
+        with tpatch2, spatch2:
+            second = await client.get_tool_definitions()
+        assert second[0]["function"]["name"] == "memory_search"
         await client.aclose()
 
     @pytest.mark.asyncio
-    async def test_malformed_json_returns_empty(self):
-        """A 200 with a non-JSON body → [] (not cached)."""
-
-        def handler(_: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                200, content=b"<<<", headers={"content-type": "application/json"}
-            )
-
-        client = _make_client(handler)
-        assert await client.get_tool_definitions() == []
-        await client.aclose()
-
-    @pytest.mark.asyncio
-    async def test_unexpected_shape_returns_empty(self):
-        """A 200 whose `tools` is not a list → [] (defensive — the
-        loop would otherwise hand the gateway a non-array)."""
-        client = _make_client(_ok_response({"tools": {"not": "a list"}}))
-        assert await client.get_tool_definitions() == []
-        await client.aclose()
-
-    @pytest.mark.asyncio
-    async def test_missing_tools_key_returns_empty_list(self):
-        """A 200 with no `tools` key → [] (`.get('tools', [])`)."""
-        client = _make_client(_ok_response({}))
-        assert await client.get_tool_definitions() == []
+    async def test_list_tools_error_returns_empty_and_does_not_cache(self):
+        client = _make_client()
+        tpatch, spatch, _ = _patch_list_tools(
+            list_side_effect=RuntimeError("protocol boom")
+        )
+        with tpatch, spatch:
+            assert await client.get_tool_definitions() == []
+        tpatch2, spatch2, _ = _patch_list_tools(tools=[_mcp_tool("memory_search")])
+        with tpatch2, spatch2:
+            assert await client.get_tool_definitions() != []
         await client.aclose()
 
     @pytest.mark.asyncio
     async def test_empty_list_is_cached(self):
-        """A 200 returning an empty `tools` list IS a valid success and
-        gets cached — a process with no tools shouldn't re-fetch every
-        turn. (Distinct from a failure, which returns [] WITHOUT
-        caching.)"""
-        call_count = 0
-
-        def handler(_: httpx.Request) -> httpx.Response:
-            nonlocal call_count
-            call_count += 1
-            return httpx.Response(200, json={"tools": []})
-
-        client = _make_client(handler)
-        assert await client.get_tool_definitions() == []
-        assert await client.get_tool_definitions() == []
-        # Empty list is a cached success — only one fetch.
-        assert call_count == 1
+        """An empty catalog is a valid success and gets cached — a process with
+        no tools shouldn't re-list every turn."""
+        tpatch, spatch, factory = _patch_list_tools(tools=[])
+        client = _make_client()
+        with tpatch, spatch:
+            assert await client.get_tool_definitions() == []
+            assert await client.get_tool_definitions() == []
+        assert factory.call_count == 1
         await client.aclose()
 
     @pytest.mark.asyncio
-    async def test_hits_definitions_endpoint(self):
-        """The GET targets /internal/tools/definitions."""
-        captured: list = []
-
-        def handler(request: httpx.Request) -> httpx.Response:
-            captured.append(request)
-            return httpx.Response(200, json={"tools": []})
-
-        client = _make_client(handler)
-        await client.get_tool_definitions()
-        assert captured[0].url.path == "/internal/tools/definitions"
-        assert captured[0].method == "GET"
+    async def test_targets_gateway_mcp_url_with_internal_token(self):
+        """The MCP transport opens the ai-gateway /mcp URL with the service token."""
+        tpatch, spatch, factory = _patch_list_tools(tools=[])
+        client = _make_client()
+        with tpatch, spatch:
+            await client.get_tool_definitions()
+        # default tools_base_url == base_url in tests (no gateway URL passed)
+        assert factory.call_args.args[0] == "http://knowledge-service:8092/mcp"
+        assert factory.call_args.kwargs["headers"]["X-Internal-Token"] == "unit-test-token"
         await client.aclose()
 
 

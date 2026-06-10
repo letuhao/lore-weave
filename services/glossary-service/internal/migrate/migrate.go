@@ -559,7 +559,7 @@ func UpGenreGroups(ctx context.Context, pool *pgxpool.Pool) error {
 const wikiSQL = `
 CREATE TABLE IF NOT EXISTS wiki_articles (
   article_id       UUID PRIMARY KEY DEFAULT uuidv7(),
-  entity_id        UUID NOT NULL UNIQUE REFERENCES glossary_entities(entity_id) ON DELETE CASCADE,
+  entity_id        UUID NOT NULL UNIQUE REFERENCES glossary_entities(entity_id) ON DELETE RESTRICT,
   book_id          UUID NOT NULL,
   body_json        JSONB NOT NULL DEFAULT '{}',
   status           TEXT NOT NULL DEFAULT 'draft',
@@ -584,6 +584,53 @@ CREATE TABLE IF NOT EXISTS wiki_revisions (
   UNIQUE(article_id, version)
 );
 CREATE INDEX IF NOT EXISTS idx_wr_article ON wiki_revisions(article_id);
+
+-- Bug-1 fix: archive-redirect pointer for a loser article superseded by a merge
+-- winner. The loser's article is kept (revision-preserved) and points at the
+-- winner entity, never silently dropped (merge-spec AC4). NULL = live article.
+ALTER TABLE wiki_articles ADD COLUMN IF NOT EXISTS superseded_by_entity_id UUID DEFAULT NULL;
+CREATE INDEX IF NOT EXISTS idx_wa_superseded ON wiki_articles(superseded_by_entity_id)
+  WHERE superseded_by_entity_id IS NOT NULL;
+-- superseded_by points at the merge winner; ON DELETE SET NULL so a later hard-delete
+-- of the winner (e.g. via kind-delete) clears the redirect instead of dangling.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'wiki_articles_superseded_by_fkey') THEN
+    ALTER TABLE wiki_articles ADD CONSTRAINT wiki_articles_superseded_by_fkey
+      FOREIGN KEY (superseded_by_entity_id) REFERENCES glossary_entities(entity_id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
+-- Bug-2 fix: wiki_articles is a product table — an entity delete must NOT silently
+-- cascade-destroy articles + revisions + suggestions. Swap the entity FK
+-- CASCADE -> RESTRICT (idempotent, constraint-name-agnostic so it survives a
+-- legacy auto-named constraint). kind-delete now removes articles explicitly,
+-- emits wiki.deleted, and surfaces a count instead of a silent cascade.
+--
+-- Idempotency: scope the drop to the FK on the entity_id COLUMN specifically —
+-- wiki_articles has a SECOND FK to glossary_entities (superseded_by_entity_id,
+-- added just above), so a column-agnostic single-row select could drop the
+-- wrong one and then collide on re-add (the restart bug). Skip entirely when the
+-- RESTRICT-named constraint already exists.
+DO $$
+DECLARE c text;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'wiki_articles_entity_id_fkey'
+       AND conrelid = 'wiki_articles'::regclass
+  ) THEN
+    SELECT conname INTO c FROM pg_constraint
+     WHERE conrelid = 'wiki_articles'::regclass AND contype = 'f'
+       AND confrelid = 'glossary_entities'::regclass
+       AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
+             WHERE attrelid = 'wiki_articles'::regclass
+               AND attname = 'entity_id' AND NOT attisdropped)]::smallint[];
+    IF c IS NOT NULL THEN EXECUTE format('ALTER TABLE wiki_articles DROP CONSTRAINT %I', c); END IF;
+    ALTER TABLE wiki_articles
+      ADD CONSTRAINT wiki_articles_entity_id_fkey
+      FOREIGN KEY (entity_id) REFERENCES glossary_entities(entity_id) ON DELETE RESTRICT;
+  END IF;
+END $$;
 `
 
 func UpWiki(ctx context.Context, pool *pgxpool.Pool) error {
@@ -1374,6 +1421,11 @@ CREATE TABLE IF NOT EXISTS merge_journal (
 );
 CREATE INDEX IF NOT EXISTS idx_merge_journal_book  ON merge_journal(book_id);
 CREATE INDEX IF NOT EXISTS idx_merge_journal_loser ON merge_journal(loser_entity_id);
+
+-- Bug-1 fix: when BOTH winner+loser have a wiki_article, the loser's is archived
+-- in place (superseded_by_entity_id := winner) rather than repointed. Record it
+-- so un-merge can clear the archive flag (symmetric with repointed_wiki_article_id).
+ALTER TABLE merge_journal ADD COLUMN IF NOT EXISTS superseded_wiki_article_id UUID DEFAULT NULL;
 `
 
 // UpEntityMerge creates the merge_journal table + merged_into_entity_id column

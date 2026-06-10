@@ -68,3 +68,11 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_composition
 -- Campaign (Auto-Draft Factory saga orchestrator; tables via campaign-service migrate.py)
 SELECT 'CREATE DATABASE loreweave_campaign'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_campaign')\gexec
+
+-- Knowledge graph orchestration (tables created by knowledge-service migrate.py)
+SELECT 'CREATE DATABASE loreweave_knowledge'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_knowledge')\gexec
+
+-- Event log (worker-infra relay; tables created by worker-infra migrate.go)
+SELECT 'CREATE DATABASE loreweave_events'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_events')\gexec

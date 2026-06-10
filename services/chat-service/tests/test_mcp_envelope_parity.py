@@ -39,7 +39,6 @@ import json
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
 import pytest
 
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
@@ -192,25 +191,14 @@ class TestMcpEnvelopeParity:
         await client.aclose()
 
     @pytest.mark.asyncio
-    async def test_empty_success_carries_empty_dict_on_both_transports(self):
-        """Empty-success parity: a memory tool that succeeds with no payload
-        must surface `result == {}` (never None) on BOTH transports.
-
-          - MCP wire: isError=False, content text == "null" (JSON for None).
-            The server's _dispatch already does `result.result or {}`, but a
-            bare "null" can still reach the parser, which coerces None → {}.
-          - Bespoke HTTP: a 200 body {"success": True, "result": None,
-            "error": None} (an older knowledge-service that hasn't coerced
-            server-side) is coerced client-side to result == {}.
-
-        Asserting both here pins the contract that an empty success is the
-        SAME {} on each path — so the LLM never sees a None where the other
-        transport would have shown {}."""
-        # ── MCP path: "null" content → {} ──────────────────────────────────
+    async def test_empty_success_carries_empty_dict(self):
+        """Empty-success: a memory tool that succeeds with no payload must
+        surface `result == {}` (never None). MCP wire: isError=False, content
+        text == "null" (JSON for None); the server's _dispatch already does
+        `result.result or {}`, and the client parser also coerces None → {} so
+        the LLM never sees a None where {} is meant."""
         mcp_client = _make_client()
-        result = _call_tool_result(
-            content=[_text_content("null")], is_error=False
-        )
+        result = _call_tool_result(content=[_text_content("null")], is_error=False)
         tpatch, spatch = _patch_mcp(call_tool_return=result)
         with tpatch, spatch:
             mcp_out = await mcp_client.mcp_execute_tool(
@@ -220,32 +208,4 @@ class TestMcpEnvelopeParity:
                 tool_args={"text": "Kai is a swordsman"},
             )
         await mcp_client.aclose()
-
-        # ── Bespoke path: 200 {success:True, result:None} → {} ─────────────
-        def _handler(_: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                200,
-                json={"success": True, "result": None, "error": None},
-            )
-
-        bespoke_client = KnowledgeClient(
-            base_url="http://knowledge-service:8092",
-            internal_token="unit-test-token",
-            timeout_s=0.5,
-            retries=0,
-            transport=httpx.MockTransport(_handler),
-        )
-        bespoke_out = await bespoke_client.execute_tool(
-            user_id="user-4",
-            session_id="sess-4",
-            tool_name="memory_remember",
-            tool_args={"text": "Kai is a swordsman"},
-        )
-        await bespoke_client.aclose()
-
-        # Both transports now carry {} for an empty success — byte-identical.
         assert mcp_out == {"success": True, "result": {}, "error": None}
-        assert bespoke_out["success"] is True
-        assert bespoke_out["result"] == {}
-        assert bespoke_out["error"] is None
-        assert mcp_out["result"] == bespoke_out["result"]
