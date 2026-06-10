@@ -98,11 +98,13 @@ class TestFrontendToolDefs:
         assert d["type"] == "function"
         assert d["function"]["name"] == "glossary_propose_entity_edit"
         params = d["function"]["parameters"]
-        assert set(params["required"]) == {
-            "book_id", "entity_id", "base_version", "target",
-            "field_label", "old_value", "new_value",
-        }
-        assert params["properties"]["target"]["enum"] == ["short_description", "attribute"]
+        # EDIT-ATOMIC: top-level args are the entity + base_version + a changes[] array.
+        assert set(params["required"]) == {"book_id", "entity_id", "base_version", "changes"}
+        changes = params["properties"]["changes"]
+        assert changes["type"] == "array"
+        item = changes["items"]
+        assert set(item["required"]) == {"target", "field_label", "old_value", "new_value"}
+        assert item["properties"]["target"]["enum"] == ["short_description", "attribute"]
 
     def test_frontend_tool_defs_are_surface_scoped(self):
         # editor surface → prose write-back only

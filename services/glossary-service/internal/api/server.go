@@ -198,6 +198,7 @@ func (s *Server) Router() http.Handler {
 					r.Get("/", s.getEntityDetail)
 					r.Patch("/", s.patchEntity)
 					r.Delete("/", s.deleteEntity)
+					r.Post("/apply-edit", s.applyEntityEdit) // EDIT-ATOMIC: multi-field single-tx edit (assistant diff-card Apply); P3 PATCH endpoints stay for the UI
 					r.Post("/pin", s.pinEntity)
 					r.Delete("/pin", s.unpinEntity)
 					// Kind-resolution epic: move a parked entity onto a real kind.

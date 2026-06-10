@@ -84,20 +84,20 @@ GLOSSARY_PROPOSE_EDIT_TOOL: dict = {
     "function": {
         "name": "glossary_propose_entity_edit",
         "description": (
-            "Propose an edit to an EXISTING glossary entity (correct a name, alias, "
-            "description, or any attribute). The change is shown to the user as a diff "
-            "card with an Apply button and is NOT applied automatically — the user "
-            "reviews it first. BEFORE calling this, call glossary_get_entity to read the "
-            "current value and the entity's `updated_at` (pass it as `base_version`); for "
-            "an attribute edit also read that attribute's `attr_value_id`. PRESERVE the "
-            "existing value's format in `new_value` — if `old_value` is a JSON array "
-            "(e.g. aliases like [\"King\",\"Art\"]) keep it a JSON array; if it is a number "
-            "or a fixed option, keep that shape. After the user "
-            "decides you receive an `outcome`: `applied_saved` (the edit was saved), "
-            "`applied_conflict` (the entity changed since you read it — call "
-            "glossary_get_entity again and propose afresh), `applied_error` (the save "
-            "failed), or `dismissed` (the user declined). State that the change was made "
-            "ONLY when the outcome is `applied_saved`."
+            "Propose ONE OR MORE edits to an EXISTING glossary entity (correct the name, "
+            "an alias, the description, and/or any attribute) — all applied TOGETHER, "
+            "atomically. The changes are shown to the user as a diff card with an Apply "
+            "button and are NOT applied automatically — the user reviews them first. "
+            "BEFORE calling this, call glossary_get_entity to read the current values and "
+            "the entity's `updated_at` (pass it as `base_version`); for an attribute edit "
+            "also read that attribute's `attr_value_id`. PRESERVE each value's format in "
+            "`new_value` — if `old_value` is a JSON array (e.g. aliases like "
+            "[\"King\",\"Art\"]) keep it a JSON array; if it is a number or a fixed option, "
+            "keep that shape. After the user decides you receive an `outcome`: "
+            "`applied_saved` (the edit was saved), `applied_conflict` (the entity changed "
+            "since you read it — call glossary_get_entity again and propose afresh), "
+            "`applied_error` (the save failed), or `dismissed` (the user declined). State "
+            "that the change was made ONLY when the outcome is `applied_saved`."
         ),
         "parameters": {
             "type": "object",
@@ -114,54 +114,55 @@ GLOSSARY_PROPOSE_EDIT_TOOL: dict = {
                     "type": "string",
                     "description": (
                         "The entity's `updated_at` value from glossary_get_entity — used "
-                        "to detect a concurrent change (optimistic concurrency)."
+                        "to detect a concurrent change (optimistic concurrency). One token "
+                        "covers ALL the changes (they apply in a single transaction)."
                     ),
                 },
-                "target": {
-                    "type": "string",
-                    "enum": ["short_description", "attribute"],
+                "changes": {
+                    "type": "array",
                     "description": (
-                        "short_description = edit the entity's summary. attribute = edit "
-                        "one attribute value (name, aliases, or any attribute), identified "
-                        "by attr_value_id."
+                        "One or more field changes to apply together. A single-field edit "
+                        "is just a one-element array."
                     ),
-                },
-                "attr_value_id": {
-                    "type": "string",
-                    "description": (
-                        "Required when target=attribute: the attribute value to change "
-                        "(from glossary_get_entity)."
-                    ),
-                },
-                "field_label": {
-                    "type": "string",
-                    "description": (
-                        "Human-readable label of the field being changed (e.g. 'Name', "
-                        "'Aliases', 'Description'), shown on the diff card."
-                    ),
-                },
-                "old_value": {
-                    "type": "string",
-                    "description": "The current value, for the diff display.",
-                },
-                "new_value": {
-                    "type": "string",
-                    "description": "The proposed new value.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "target": {
+                                "type": "string",
+                                "enum": ["short_description", "attribute"],
+                                "description": (
+                                    "short_description = the entity's summary. attribute = "
+                                    "one attribute value (name, aliases, or any attribute), "
+                                    "identified by attr_value_id."
+                                ),
+                            },
+                            "attr_value_id": {
+                                "type": "string",
+                                "description": (
+                                    "Required when target=attribute: the attribute value to "
+                                    "change (from glossary_get_entity)."
+                                ),
+                            },
+                            "field_label": {
+                                "type": "string",
+                                "description": (
+                                    "Human-readable label of the field (e.g. 'Name', "
+                                    "'Aliases', 'Description'), shown on the diff card."
+                                ),
+                            },
+                            "old_value": {"type": "string", "description": "The current value, for the diff."},
+                            "new_value": {"type": "string", "description": "The proposed new value."},
+                        },
+                        "required": ["target", "field_label", "old_value", "new_value"],
+                        "additionalProperties": False,
+                    },
                 },
                 "rationale": {
                     "type": "string",
                     "description": "Optional one-line explanation shown to the user.",
                 },
             },
-            "required": [
-                "book_id",
-                "entity_id",
-                "base_version",
-                "target",
-                "field_label",
-                "old_value",
-                "new_value",
-            ],
+            "required": ["book_id", "entity_id", "base_version", "changes"],
             "additionalProperties": False,
         },
     },

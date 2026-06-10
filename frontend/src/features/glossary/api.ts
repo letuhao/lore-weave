@@ -66,6 +66,25 @@ export const glossaryApi = {
     });
   },
 
+  // EDIT-ATOMIC: the assistant diff-card Apply — multiple field changes applied
+  // in ONE transaction with ONE version check (base_version → 412 on drift).
+  applyEntityEdit(
+    bookId: string,
+    entityId: string,
+    body: {
+      base_version: string;
+      short_description?: string | null;
+      attributes?: { attr_value_id: string; original_value: string }[];
+    },
+    token: string,
+  ): Promise<unknown> {
+    return apiJson<unknown>(`${BASE}/books/${bookId}/entities/${entityId}/apply-edit`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      token,
+    });
+  },
+
   patchEntity(
     bookId: string,
     entityId: string,

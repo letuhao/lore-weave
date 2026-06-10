@@ -41,6 +41,10 @@ func newVersionFixture(t *testing.T, pool *pgxpool.Pool) *versionFixture {
 	if err := migrate.UpOutbox(ctx, pool); err != nil {
 		t.Fatalf("UpOutbox: %v", err)
 	}
+	// short_description_auto column (entity-level writes set it false).
+	if err := migrate.UpShortDescAuto(ctx, pool); err != nil {
+		t.Fatalf("UpShortDescAuto: %v", err)
+	}
 
 	owner, book := uuid.New(), uuid.New()
 	// book-service projection mock → owner owns book (verifyBookOwner passes).
