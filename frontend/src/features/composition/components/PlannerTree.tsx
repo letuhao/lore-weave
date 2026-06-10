@@ -4,18 +4,20 @@
 // unresolved cast names) come from the original preview, index-aligned.
 import { useTranslation } from 'react-i18next';
 import type { DecomposePreview, PlannerChapterDraft, PlannerSceneDraft } from '../types';
+import type { RosterOption } from '../hooks/useGlossaryRoster';
 import { PlannerSceneRow } from './PlannerSceneRow';
 
 type Props = {
   draft: PlannerChapterDraft[];
   preview: DecomposePreview | null;
+  roster: RosterOption[];
   onEditScene: (ci: number, si: number, patch: Partial<PlannerSceneDraft>) => void;
   onEditChapter: (ci: number, patch: Partial<Pick<PlannerChapterDraft, 'intent' | 'beat_role'>>) => void;
   onAddScene: (ci: number) => void;
   onRemoveScene: (ci: number, si: number) => void;
 };
 
-export function PlannerTree({ draft, preview, onEditScene, onEditChapter, onAddScene, onRemoveScene }: Props) {
+export function PlannerTree({ draft, preview, roster, onEditScene, onEditChapter, onAddScene, onRemoveScene }: Props) {
   const { t } = useTranslation('composition');
   return (
     <div className="space-y-3">
@@ -25,7 +27,14 @@ export function PlannerTree({ draft, preview, onEditScene, onEditChapter, onAddS
           <div key={ch.chapter_id} className="rounded-md border border-border p-2 space-y-2">
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold">{ch.title || t('plan.untitled_chapter')}</span>
-              {ch.beat_role && <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{ch.beat_role}</span>}
+              <input
+                data-testid="planner-beat-role"
+                className="w-28 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground outline-none"
+                value={ch.beat_role ?? ''}
+                onChange={(e) => onEditChapter(ci, { beat_role: e.target.value })}
+                placeholder={t('plan.beat_role')}
+                aria-label={t('plan.beat_role')}
+              />
             </div>
             <input
               className="w-full bg-transparent text-xs text-muted-foreground outline-none"
@@ -42,6 +51,7 @@ export function PlannerTree({ draft, preview, onEditScene, onEditChapter, onAddS
                   scene={sc}
                   index={si}
                   unresolved={preview?.chapters[ci]?.scenes[si]?.present_entity_names_unresolved ?? []}
+                  roster={roster}
                   onEdit={(patch) => onEditScene(ci, si, patch)}
                   onRemove={() => onRemoveScene(ci, si)}
                 />

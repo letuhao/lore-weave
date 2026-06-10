@@ -204,7 +204,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
           />
         </div>
         <div className={tab === 'planner' ? '' : 'hidden'}>
-          <PlannerView projectId={work.project_id} modelRef={effectiveModelRef} modelSource="user_model" token={token} />
+          <PlannerView projectId={work.project_id} bookId={bookId} modelRef={effectiveModelRef} modelSource="user_model" models={models.data ?? []} token={token} />
         </div>
         <div className={tab === 'grounding' ? '' : 'hidden'}>
           <GroundingPanel projectId={work.project_id} sceneId={effectiveScene} token={token} />
