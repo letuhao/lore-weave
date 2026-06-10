@@ -57,6 +57,11 @@ class CreateCampaignPayload(BaseModel):
     # S4d: per-campaign cumulative budget cap (USD). None = uncapped. The campaign
     # auto-pauses once its summed spend reaches this (reactive).
     budget_usd: Optional[Decimal] = None
+    # G1 (wake-up report): the launch-time estimate band (from the wizard's
+    # /estimate call), persisted so the completion report can show spent-vs-estimate.
+    # None when the user launched without estimating.
+    est_usd_low: Optional[Decimal] = None
+    est_usd_high: Optional[Decimal] = None
 
     @field_validator("gating_mode")
     @classmethod
@@ -207,6 +212,31 @@ class CampaignProgress(BaseModel):
     budget_usd: Optional[Decimal]
     total_chapters: int
     stages: dict[str, StageCounts]  # knowledge / translation / eval
+
+
+class ErrorGroup(BaseModel):
+    """G1 — failed chapters bucketed by normalized cause (e.g. rate-limit vs
+    empty-body), for the completion report's error breakdown + remediation hint."""
+    cause: str            # normalized label: rate_limit | empty_body | circuit_open | zero_output | other
+    count: int
+    remediable: bool      # True → a re-run is likely to succeed (transient); False → source/data issue
+
+
+class CampaignReport(BaseModel):
+    """G1 — completion / wake-up report for a terminal (or any) campaign: a one-read
+    summary of outcome, spend-vs-estimate, and failure breakdown."""
+    campaign_id: UUID
+    status: str
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    duration_seconds: Optional[int] = None
+    total_chapters: int
+    stages: dict[str, StageCounts]          # knowledge / translation / eval
+    spent_usd: Decimal
+    budget_usd: Optional[Decimal] = None
+    est_usd_low: Optional[Decimal] = None
+    est_usd_high: Optional[Decimal] = None
+    error_groups: list[ErrorGroup] = []
 
 
 class ErrorResponse(BaseModel):

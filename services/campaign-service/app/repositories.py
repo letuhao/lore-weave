@@ -76,6 +76,8 @@ async def create_campaign(
     verifier_model_ref: Optional[UUID] = None,
     eval_judge_model_source: Optional[str] = None,
     eval_judge_model_ref: Optional[UUID] = None,
+    est_usd_low: Optional[Decimal] = None,
+    est_usd_high: Optional[Decimal] = None,
 ) -> asyncpg.Record:
     return await conn.fetchrow(
         f"""
@@ -85,9 +87,10 @@ async def create_campaign(
           translation_model_source, translation_model_ref,
           verifier_model_source, verifier_model_ref,
           eval_judge_model_source, eval_judge_model_ref,
-          chapter_from, chapter_to, total_chapters, budget_usd
+          chapter_from, chapter_to, total_chapters, budget_usd,
+          est_usd_low, est_usd_high
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
         RETURNING {_CAMPAIGN_COLS}
         """,
         owner_user_id, book_id, name, gating_mode, target_language,
@@ -96,6 +99,7 @@ async def create_campaign(
         verifier_model_source, verifier_model_ref,
         eval_judge_model_source, eval_judge_model_ref,
         chapter_from, chapter_to, total_chapters, budget_usd,
+        est_usd_low, est_usd_high,
     )
 
 
@@ -179,6 +183,43 @@ async def get_campaign_progress(
           COUNT(*) FILTER (WHERE eval_status        = 'skipped') AS ev_skipped
         FROM campaign_chapters
         WHERE campaign_id = $1
+        """,
+        campaign_id,
+    )
+
+
+async def get_report_row(
+    pool: asyncpg.Pool, campaign_id: UUID, owner_user_id: UUID,
+) -> Optional[asyncpg.Record]:
+    """G1 — owner-scoped summary row for the completion report (status, timing,
+    spend, budget, persisted estimate band). Dedicated SELECT so it stays isolated
+    from the Campaign-building endpoints."""
+    return await pool.fetchrow(
+        """
+        SELECT status, total_chapters, spent_usd, budget_usd,
+               est_usd_low, est_usd_high, started_at, finished_at,
+               EXTRACT(EPOCH FROM (COALESCE(finished_at, now()) - started_at))::bigint
+                 AS duration_seconds
+        FROM campaigns
+        WHERE campaign_id = $1 AND owner_user_id = $2
+        """,
+        campaign_id, owner_user_id,
+    )
+
+
+async def get_failed_error_strings(
+    pool: asyncpg.Pool, campaign_id: UUID,
+) -> list[asyncpg.Record]:
+    """G1 — (last_error, count) for chapters with any FAILED stage, for the report's
+    error grouping. The router buckets each `last_error` via `normalize_error_cause`
+    and sums counts per cause (bucketing is a pure, unit-tested fn)."""
+    return await pool.fetch(
+        """
+        SELECT last_error, COUNT(*) AS n
+        FROM campaign_chapters
+        WHERE campaign_id = $1
+          AND 'failed' IN (knowledge_status, translation_status, eval_status)
+        GROUP BY last_error
         """,
         campaign_id,
     )

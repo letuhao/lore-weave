@@ -252,6 +252,49 @@ def test_progress_per_stage_counts(client, mocker):
     assert tr["in_progress"] == 5  # 10 - 4 - 0 - 1
 
 
+def _report_row(**over):
+    base = {
+        "status": "completed", "total_chapters": 10,
+        "spent_usd": Decimal("8.50"), "budget_usd": Decimal("12.00"),
+        "est_usd_low": Decimal("7.00"), "est_usd_high": Decimal("11.00"),
+        "started_at": NOW, "finished_at": NOW, "duration_seconds": 3600,
+    }
+    base.update(over)
+    return FakeRecord(base)
+
+
+def test_report_summary_and_error_groups(client, mocker):
+    # G1: report returns outcome + spent-vs-estimate + error groups bucketed by cause.
+    mocker.patch("app.repositories.get_report_row", new_callable=AsyncMock,
+                 return_value=_report_row())
+    mocker.patch("app.repositories.get_campaign_progress", new_callable=AsyncMock,
+                 return_value=_agg())
+    mocker.patch("app.repositories.get_failed_error_strings", new_callable=AsyncMock,
+                 return_value=[
+                     FakeRecord({"last_error": "HTTP 429 rate limit", "n": 3}),
+                     FakeRecord({"last_error": "provider 429 again", "n": 2}),
+                     FakeRecord({"last_error": "empty body", "n": 1}),
+                 ])
+    resp = client.get(f"/v1/campaigns/{CAMP}/report")
+    assert resp.status_code == 200, resp.text
+    b = resp.json()
+    assert b["status"] == "completed"
+    assert b["duration_seconds"] == 3600
+    assert b["est_usd_low"] == "7.00" and b["spent_usd"] == "8.50"
+    assert b["stages"]["knowledge"]["done"] == 6
+    groups = {g["cause"]: g for g in b["error_groups"]}
+    assert groups["rate_limit"]["count"] == 5 and groups["rate_limit"]["remediable"] is True
+    assert groups["empty_body"]["count"] == 1 and groups["empty_body"]["remediable"] is False
+    # rate_limit (5) sorts before empty_body (1)
+    assert b["error_groups"][0]["cause"] == "rate_limit"
+
+
+def test_report_404_when_not_owned(client, mocker):
+    mocker.patch("app.repositories.get_report_row", new_callable=AsyncMock, return_value=None)
+    resp = client.get(f"/v1/campaigns/{CAMP}/report")
+    assert resp.status_code == 404
+
+
 def test_progress_404_when_not_owned(client, mocker):
     mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock, return_value=None)
     resp = client.get(f"/v1/campaigns/{CAMP}/progress")

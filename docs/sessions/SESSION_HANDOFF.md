@@ -2,6 +2,8 @@
 
 > **Merge note (2026-06-10):** `origin/main` (glossary-assistant arc + new `ai-gateway` service + chat-service MCP) was merged into this branch. **TWO tracks below:** (1) the **Auto-Draft Factory** work on THIS branch (about to PR) — authoritative NEXT for this branch; (2) the **glossary-assistant / ai-gateway** state preserved from main under "▶ (merged from main)". Heads-up: main added an MCP-first provider-gate pre-commit hook (`scripts/ai-provider-gate.py`, `.githooks/`) — our campaign code already routes via adapters, so it's compatible.
 
+> **🔧 GAP-FIX BRANCH `feat/auto-draft-factory-gaps` (2026-06-11, off main after PR #27 merged):** implementing the Factory draft-vs-impl gaps (plan: `docs/plans/2026-06-10-auto-draft-factory-gap-implementation-plan.md`). **G1 wake-up report DONE** — `GET /v1/campaigns/{id}/report` (outcome + spend-vs-estimate + error-group bucketing via a pure cause-normalizer) + FE `CampaignReport` on terminal status + "Review draft" CTA (also closes G4). NEXT in-branch: G2 re-run-failed → G3 monitor stats → polish → PR.
+
 > **Purpose:** orient the next agent in one read. This file is the single, unversioned handoff — updated in place at the end of each session. (Older `SESSION_PATCH.md` is deprecated → archive later.)
 > **Date:** 2026-06-10 (**🏁 Auto-Draft Factory COMPLETE S0–S6** — backend S0–S4 + S5 model-matrix/estimate/wizard + S6 monitor; usable end-to-end; human-in-loop v2.2).
 > **HEAD:** TBD (post-commit). Branch: `feat/advanced-translation-pipeline`.

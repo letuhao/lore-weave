@@ -3,6 +3,7 @@ import type {
   Campaign,
   CampaignDetail,
   CampaignProgress,
+  CampaignReport,
   CreateCampaignPayload,
   EstimateRequest,
   EstimateResponse,
@@ -52,6 +53,11 @@ export const campaignsApi = {
   // S6 — lightweight live-progress poll (per-stage counts, not the full chapters[]).
   progress(campaignId: string, token: string): Promise<CampaignProgress> {
     return apiJson<CampaignProgress>(`/v1/campaigns/${campaignId}/progress`, { token });
+  },
+
+  // G1 — completion / wake-up report (outcome + spend-vs-estimate + error groups).
+  report(campaignId: string, token: string): Promise<CampaignReport> {
+    return apiJson<CampaignReport>(`/v1/campaigns/${campaignId}/report`, { token });
   },
 
   updateBudget(campaignId: string, budgetUsd: string, token: string): Promise<Campaign> {

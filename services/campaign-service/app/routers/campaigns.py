@@ -32,12 +32,15 @@ from ..models import (
     CampaignChapter,
     CampaignDetail,
     CampaignProgress,
+    CampaignReport,
+    ErrorGroup,
     StageCounts,
     UpdateBudgetPayload,
     EstimateRequest,
     EstimateResponse,
 )
 from .. import estimate as est
+from ..cause import normalize_error_cause
 from .. import repositories as repo
 
 router = APIRouter(prefix="/v1/campaigns", tags=["campaigns"])
@@ -195,6 +198,8 @@ async def create_campaign(
                 verifier_model_ref=payload.verifier_model_ref,
                 eval_judge_model_source=payload.eval_judge_model_source,
                 eval_judge_model_ref=payload.eval_judge_model_ref,
+                est_usd_low=payload.est_usd_low,    # G1: persist launch estimate band
+                est_usd_high=payload.est_usd_high,
             )
             await repo.seed_campaign_chapters(
                 conn, row["campaign_id"],
@@ -335,6 +340,54 @@ async def get_campaign_progress_endpoint(
             "translation": _stage("tr"),
             "eval": _stage("ev"),
         },
+    )
+
+
+@router.get("/{campaign_id}/report", response_model=CampaignReport)
+async def get_campaign_report_endpoint(
+    campaign_id: UUID,
+    user_id: str = Depends(get_current_user),
+    db: asyncpg.Pool = Depends(get_db),
+):
+    """G1 — completion / wake-up report: outcome summary + spend-vs-estimate +
+    failure breakdown (grouped by normalized cause). Owner-scoped (404 if not owned).
+    Available for any status; most useful once terminal (completed/failed/cancelled)."""
+    row = await repo.get_report_row(db, campaign_id, UUID(user_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
+                                                     "message": "campaign not found"})
+    agg = await repo.get_campaign_progress(db, campaign_id)
+
+    def _stage(prefix: str) -> StageCounts:
+        total = agg["total"]
+        done, failed, skipped = agg[f"{prefix}_done"], agg[f"{prefix}_failed"], agg[f"{prefix}_skipped"]
+        return StageCounts(total=total, done=done, failed=failed, skipped=skipped,
+                           in_progress=total - done - failed - skipped)
+
+    # Bucket failed chapters by normalized cause (pure fn) and sum counts.
+    buckets: dict[str, dict] = {}
+    for er in await repo.get_failed_error_strings(db, campaign_id):
+        cause, remediable = normalize_error_cause(er["last_error"])
+        b = buckets.setdefault(cause, {"count": 0, "remediable": remediable})
+        b["count"] += er["n"]
+    error_groups = [
+        ErrorGroup(cause=c, count=b["count"], remediable=b["remediable"])
+        for c, b in sorted(buckets.items(), key=lambda kv: kv[1]["count"], reverse=True)
+    ]
+
+    return CampaignReport(
+        campaign_id=campaign_id,
+        status=row["status"],
+        started_at=row["started_at"],
+        finished_at=row["finished_at"],
+        duration_seconds=row["duration_seconds"],
+        total_chapters=row["total_chapters"],
+        stages={"knowledge": _stage("kn"), "translation": _stage("tr"), "eval": _stage("ev")},
+        spent_usd=row["spent_usd"],
+        budget_usd=row["budget_usd"],
+        est_usd_low=row["est_usd_low"],
+        est_usd_high=row["est_usd_high"],
+        error_groups=error_groups,
     )
 
 

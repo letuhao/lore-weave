@@ -36,6 +36,7 @@ export function CampaignWizard() {
             budgetUsd={wiz.form.budgetUsd}
             setBudget={(v) => wiz.setField('budgetUsd', v)}
             onLaunched={(id) => navigate(`/campaigns/${id}`)}
+            onEstimated={(lo, hi) => { wiz.setField('estUsdLow', lo); wiz.setField('estUsdHigh', hi); }}
           />
         )}
       </div>

@@ -15,15 +15,17 @@ interface Props {
   budgetUsd: string;
   setBudget: (v: string) => void;
   onLaunched: (campaignId: string) => void;
+  // G1 — bubble the estimate band up so the wizard persists it on launch (report).
+  onEstimated?: (low: string, high: string) => void;
 }
 
 /** Step 4 (view): budget cap + on-demand cost/time estimate + Launch (create→start). */
-export function ReviewStep({ buildEstimateRequest, buildCreatePayload, budgetUsd, setBudget, onLaunched }: Props) {
+export function ReviewStep({ buildEstimateRequest, buildCreatePayload, budgetUsd, setBudget, onLaunched, onEstimated }: Props) {
   const { t } = useTranslation('campaigns');
   const [estimate, setEstimate] = useState<EstimateResponse | null>(null);
 
   const est = useEstimateCampaign({
-    onSuccess: setEstimate,
+    onSuccess: (r) => { setEstimate(r); onEstimated?.(r.estimated_usd_low, r.estimated_usd_high); },
     onError: (e) => toast.error(t('review.estimateFailed', { defaultValue: 'Estimate failed: {{error}}', error: e.message })),
   });
 

@@ -88,6 +88,12 @@ ALTER TABLE campaign_chapters ADD COLUMN IF NOT EXISTS translation_job_id UUID;
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS budget_usd NUMERIC(16,8);
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS spent_usd  NUMERIC(16,8) NOT NULL DEFAULT 0;
 
+-- G1 (wake-up report): launch-time estimate band (from the wizard /estimate),
+-- persisted so the completion report can show spent-vs-estimate. NULL = launched
+-- without estimating.
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS est_usd_low  NUMERIC(16,8);
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS est_usd_high NUMERIC(16,8);
+
 -- S4d dedup ledger: usage delivery is at-least-once, so this PK makes spend
 -- accumulation exactly-once (the sum-across-a-boundary bug class). request_id is
 -- the provider-registry job_id carried on the usage event.

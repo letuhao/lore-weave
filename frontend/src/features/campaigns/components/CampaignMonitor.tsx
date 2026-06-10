@@ -7,6 +7,9 @@ import { SpentBudgetBar } from './SpentBudgetBar';
 import { StageProgress } from './StageProgress';
 import { ChapterProjectionTable } from './ChapterProjectionTable';
 import { MonitorControls } from './MonitorControls';
+import { CampaignReport } from './CampaignReport';
+
+const TERMINAL = ['completed', 'failed', 'cancelled'] as const;
 
 /** S6 — the live campaign monitor (replaces the S5c read-only detail). The
  *  lightweight progress query drives the header bars (polls 6s while active); the
@@ -42,6 +45,11 @@ export function CampaignMonitor({ campaignId }: { campaignId: string }) {
       )}
 
       <MonitorControls campaignId={c.campaign_id} status={liveStatus} budgetUsd={budget} />
+
+      {/* G1 — wake-up report once terminal (outcome + spend-vs-estimate + error groups + review CTA). */}
+      {(TERMINAL as readonly string[]).includes(liveStatus) && (
+        <CampaignReport campaignId={c.campaign_id} bookId={c.book_id} />
+      )}
 
       <SpentBudgetBar spentUsd={spent} budgetUsd={budget} />
 

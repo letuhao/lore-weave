@@ -40,6 +40,17 @@ export function useCampaignProgress(campaignId?: string) {
   });
 }
 
+/** G1 — completion / wake-up report. Fetched on demand for a terminal campaign
+ *  (no polling); the monitor swaps in the report view once status is terminal. */
+export function useCampaignReport(campaignId?: string, enabled = true) {
+  const { accessToken } = useAuth();
+  return useQuery({
+    queryKey: ['campaign-report', campaignId],
+    queryFn: () => campaignsApi.report(campaignId!, accessToken!),
+    enabled: !!accessToken && !!campaignId && enabled,
+  });
+}
+
 function isActive(status?: CampaignStatus): boolean {
   return !!status && ACTIVE_STATUSES.includes(status);
 }

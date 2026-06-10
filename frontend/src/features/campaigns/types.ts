@@ -116,6 +116,10 @@ export interface CreateCampaignPayload {
   chapter_from?: number | null;
   chapter_to?: number | null;
   budget_usd?: string | null;
+  // G1 — launch-time estimate band (from /estimate), persisted for the report's
+  // spent-vs-estimate. Omitted when launched without estimating.
+  est_usd_low?: string | null;
+  est_usd_high?: string | null;
 }
 
 export interface EstimateRequest {
@@ -151,6 +155,29 @@ export interface CampaignProgress {
   budget_usd: string | null;
   total_chapters: number;
   stages: Record<'knowledge' | 'translation' | 'eval', StageCounts>;
+}
+
+/** G1 — failed chapters bucketed by normalized cause for the report. */
+export interface ErrorGroup {
+  cause: string;        // rate_limit | circuit_open | empty_body | zero_output | attempts_exhausted | other
+  count: number;
+  remediable: boolean;  // true → a re-run is likely to succeed
+}
+
+/** G1 — completion / wake-up report (terminal-campaign summary). */
+export interface CampaignReport {
+  campaign_id: string;
+  status: CampaignStatus;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_seconds: number | null;
+  total_chapters: number;
+  stages: Record<'knowledge' | 'translation' | 'eval', StageCounts>;
+  spent_usd: string;
+  budget_usd: string | null;
+  est_usd_low: string | null;
+  est_usd_high: string | null;
+  error_groups: ErrorGroup[];
 }
 
 /** Statuses that are still progressing → the monitor keeps polling. */
