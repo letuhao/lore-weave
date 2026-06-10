@@ -4,7 +4,7 @@
 > **Audience:** Developers, architects, and AI agents onboarding to the monorepo.
 > **Last updated:** 2026-06-10
 >
-> **Companion docs:** [`ARCHITECTURE.md`](ARCHITECTURE.md) (system/services overview) · [`03_planning/101_DATA_RE_ENGINEERING_PLAN.md`](03_planning/101_DATA_RE_ENGINEERING_PLAN.md) (knowledge re-engineering deep-dive)
+> **Companion docs:** [`ARCHITECTURE.md`](ARCHITECTURE.md) (system/services overview) · [`03_planning/101_DATA_RE_ENGINEERING_PLAN.md`](03_planning/101_DATA_RE_ENGINEERING_PLAN.md) (knowledge re-engineering deep-dive) · **Educational intro (no prior LoreWeave knowledge required):** [blog — AI-Driven Data Architecture](blog/README.md)
 
 ---
 
