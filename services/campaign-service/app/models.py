@@ -213,6 +213,13 @@ class CampaignDetail(Campaign):
     chapters: list[CampaignChapter] = []
 
 
+class CampaignListItem(Campaign):
+    """#2 polish — Campaign + a lightweight progress count for the list's progress
+    bar (translation done+skipped, the deliverable). One aggregate per row in the
+    list query (no per-row extra request)."""
+    progress_done: int = 0
+
+
 class StageCounts(BaseModel):
     """S6 — per-stage chapter tally for the monitor's progress bars."""
     total: int

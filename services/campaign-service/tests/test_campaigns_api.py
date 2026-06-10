@@ -302,6 +302,18 @@ def test_report_404_when_not_owned(client, mocker):
     assert resp.status_code == 404
 
 
+def test_list_includes_progress_done(client, mocker):
+    # #2 polish — the list carries a per-row progress_done (defaults 0 when absent).
+    row_with = FakeRecord({**dict(_campaign_row(total_chapters=5)), "progress_done": 3})
+    mocker.patch("app.repositories.list_campaigns", new_callable=AsyncMock,
+                 return_value=[_campaign_row(total_chapters=10), row_with])
+    resp = client.get("/v1/campaigns")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body[0]["progress_done"] == 0   # no key in the record → default
+    assert body[1]["progress_done"] == 3
+
+
 def test_rerun_failed_resets_and_rearms(client, mocker):
     # G2: re-run resets failed stages and re-arms a terminal campaign to running.
     mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,

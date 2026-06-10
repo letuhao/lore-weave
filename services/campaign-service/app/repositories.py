@@ -138,9 +138,17 @@ async def get_campaign(
 async def list_campaigns(
     pool: asyncpg.Pool, owner_user_id: UUID,
 ) -> list[asyncpg.Record]:
+    # #2 polish — include a lightweight progress count (translation done+skipped) per
+    # row via a correlated subquery, for the list's progress bar (one query total).
     return await pool.fetch(
-        f"SELECT {_CAMPAIGN_COLS} FROM campaigns "
-        f"WHERE owner_user_id = $1 ORDER BY created_at DESC",
+        f"""
+        SELECT {_CAMPAIGN_COLS},
+          (SELECT COUNT(*) FROM campaign_chapters cc
+           WHERE cc.campaign_id = campaigns.campaign_id
+             AND cc.translation_status IN ('done', 'skipped')) AS progress_done
+        FROM campaigns
+        WHERE owner_user_id = $1 ORDER BY created_at DESC
+        """,
         owner_user_id,
     )
 

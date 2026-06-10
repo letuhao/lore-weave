@@ -33,6 +33,9 @@ export interface Campaign {
   updated_at: string;
   started_at: string | null;
   finished_at: string | null;
+  // #2 polish — present only on the list endpoint (translation done+skipped count
+  // for the row's progress bar). Absent on get/detail.
+  progress_done?: number;
 }
 
 export interface CampaignChapter {

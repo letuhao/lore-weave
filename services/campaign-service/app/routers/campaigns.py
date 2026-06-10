@@ -31,6 +31,7 @@ from ..models import (
     Campaign,
     CampaignChapter,
     CampaignDetail,
+    CampaignListItem,
     CampaignProgress,
     CampaignReport,
     ErrorGroup,
@@ -281,13 +282,13 @@ async def update_campaign_budget(
     return _campaign_model(row)
 
 
-@router.get("", response_model=list[Campaign])
+@router.get("", response_model=list[CampaignListItem])
 async def list_campaigns(
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
 ):
     rows = await repo.list_campaigns(db, UUID(user_id))
-    return [_campaign_model(r) for r in rows]
+    return [CampaignListItem(**dict(r)) for r in rows]
 
 
 @router.get("/{campaign_id}", response_model=CampaignDetail)

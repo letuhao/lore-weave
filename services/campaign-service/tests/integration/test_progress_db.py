@@ -61,6 +61,23 @@ async def test_progress_counts_each_stage_by_real_status(pool):
     assert kn_in_progress == 1  # only ch5 knowledge is pending
 
 
+async def test_list_progress_done_counts_translation_settled(pool):
+    # #2 polish — list_campaigns' correlated subquery counts translation done+skipped.
+    owner = await pool.fetchval(
+        "INSERT INTO campaigns (owner_user_id, book_id, name, status) "
+        "VALUES ($1,$2,'list-test','running') RETURNING owner_user_id",
+        __import__('uuid').uuid4(), __import__('uuid').uuid4(),
+    )
+    cid = await pool.fetchval(
+        "SELECT campaign_id FROM campaigns WHERE owner_user_id=$1", owner)
+    await _chapter(pool, cid, 1, kn='done', tr='done', ev='done')      # counts
+    await _chapter(pool, cid, 2, kn='done', tr='skipped', ev='pending')  # counts (skipped)
+    await _chapter(pool, cid, 3, kn='done', tr='dispatched', ev='pending')  # not yet
+    rows = await repo.list_campaigns(pool, owner)
+    assert len(rows) == 1
+    assert rows[0]["progress_done"] == 2
+
+
 async def test_progress_scopes_to_the_campaign(pool):
     a = await _make_campaign(pool)
     b = await _make_campaign(pool)

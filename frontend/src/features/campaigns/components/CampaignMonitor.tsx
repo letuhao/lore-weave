@@ -65,6 +65,15 @@ export function CampaignMonitor({ campaignId }: { campaignId: string }) {
         </p>
       )}
 
+      {/* #3 — paused-state guidance banner (graceful pause: in-flight drained, no partial writes). */}
+      {liveStatus === 'paused' && (
+        <p className="rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-sm text-amber-700 dark:text-amber-400">
+          {t('monitor.pausedBanner', {
+            defaultValue: 'Paused gracefully — no new chapters dispatch and in-flight ones finish (no partial writes, no extra spend). Resume below; if it auto-paused at the budget cap, raise the cap first.',
+          })}
+        </p>
+      )}
+
       <MonitorControls campaignId={c.campaign_id} status={liveStatus} budgetUsd={budget} />
 
       {/* G1 — wake-up report once terminal (outcome + spend-vs-estimate + error groups + review CTA). */}

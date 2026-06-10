@@ -32,12 +32,22 @@ export function CampaignsList() {
             <li key={c.campaign_id}>
               <Link to={`/campaigns/${c.campaign_id}`}
                 className="flex items-center justify-between rounded-lg border p-4 hover:bg-accent">
-                <span className="flex flex-col gap-1">
+                <span className="flex min-w-0 flex-1 flex-col gap-1">
                   <span className="font-medium">{c.name}</span>
                   <span className="text-[12px] text-muted-foreground">
                     {t('list.chapters', { defaultValue: '{{count}} chapters', count: c.total_chapters })}
                     {c.budget_usd ? ` · $${Number(c.spent_usd).toFixed(2)} / $${Number(c.budget_usd).toFixed(2)}` : ` · $${Number(c.spent_usd).toFixed(2)}`}
                   </span>
+                  {/* #2 polish — progress bar (translation done / total). */}
+                  {c.progress_done != null && c.total_chapters > 0 && (
+                    <span className="mt-1 flex items-center gap-2">
+                      <span className="h-1.5 w-40 overflow-hidden rounded-full bg-muted">
+                        <span className="block h-full bg-green-500"
+                          style={{ width: `${Math.min(100, (c.progress_done / c.total_chapters) * 100)}%` }} />
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">{c.progress_done}/{c.total_chapters}</span>
+                    </span>
+                  )}
                 </span>
                 <StatusBadge status={c.status} />
               </Link>
