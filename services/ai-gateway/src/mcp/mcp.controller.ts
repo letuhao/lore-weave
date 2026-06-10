@@ -1,4 +1,4 @@
-import { All, Controller, Req, Res } from '@nestjs/common';
+import { All, Controller, Logger, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { FederationService } from '../federation/federation.service.js';
@@ -14,6 +14,7 @@ import { loadConfig } from '../config/config.js';
 @Controller('mcp')
 export class McpController {
   private readonly cfg = loadConfig();
+  private readonly log = new Logger(McpController.name);
 
   constructor(private readonly federation: FederationService) {}
 
@@ -39,7 +40,20 @@ export class McpController {
       Promise.resolve(transport.close()).catch(() => undefined);
       Promise.resolve(server.close()).catch(() => undefined);
     });
-    await server.connect(transport);
-    await transport.handleRequest(req, res, req.body);
+    // AIGW-LOW1: a throw out of the transport must not become an unhandled
+    // rejection / hung socket — return a clean JSON-RPC error if nothing was sent.
+    try {
+      await server.connect(transport);
+      await transport.handleRequest(req, res, req.body);
+    } catch (e) {
+      this.log.warn(`MCP request handling failed: ${e}`);
+      if (!res.headersSent) {
+        res.status(500).json({
+          jsonrpc: '2.0',
+          error: { code: -32603, message: 'internal gateway error' },
+          id: null,
+        });
+      }
+    }
   }
 }

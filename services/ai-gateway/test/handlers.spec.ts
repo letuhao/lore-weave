@@ -39,20 +39,24 @@ describe('handleListTools', () => {
 });
 
 describe('handleCallTool', () => {
-  it('routes to executeTool with name, args, and envelope; returns the result verbatim', async () => {
+  it('routes to executeTool with name, args, envelope, and _meta; returns the result verbatim', async () => {
     const executeTool = jest.fn().mockResolvedValue({ content: [{ type: 'text', text: 'ok' }] });
     const fed = fakeFederation({ executeTool });
+    const meta = { progressToken: 'p1' };
     const res = await handleCallTool(
       fed,
       'memory_search',
       { query: 'x' },
       { 'x-user-id': 'u1', 'x-session-id': 's1' },
+      meta,
     );
-    expect(executeTool).toHaveBeenCalledWith('memory_search', { query: 'x' }, {
-      userId: 'u1',
-      sessionId: 's1',
-      traceId: undefined,
-    });
+    // AIGW-LOW2: the `_meta` channel is forwarded downstream as the 4th arg.
+    expect(executeTool).toHaveBeenCalledWith(
+      'memory_search',
+      { query: 'x' },
+      { userId: 'u1', sessionId: 's1', traceId: undefined },
+      meta,
+    );
     expect(res).toEqual({ content: [{ type: 'text', text: 'ok' }] });
   });
 

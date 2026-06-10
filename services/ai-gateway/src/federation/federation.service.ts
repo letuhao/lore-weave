@@ -106,6 +106,7 @@ export class FederationService implements OnModuleInit, OnModuleDestroy {
     tool: string,
     args: Record<string, unknown>,
     env: Envelope,
+    meta?: unknown,
   ): Promise<unknown> {
     const p = this.providerFor(tool);
     if (!p) {
@@ -122,7 +123,13 @@ export class FederationService implements OnModuleInit, OnModuleDestroy {
     });
     try {
       await client.connect(transport);
-      return await client.callTool({ name: tool, arguments: args });
+      // Pass the `_meta` channel through when the caller supplied it (AIGW-LOW2).
+      const params: { name: string; arguments: Record<string, unknown>; _meta?: Record<string, unknown> } = {
+        name: tool,
+        arguments: args,
+      };
+      if (meta && typeof meta === 'object') params._meta = meta as Record<string, unknown>;
+      return await client.callTool(params);
     } finally {
       await client.close().catch(() => undefined);
     }

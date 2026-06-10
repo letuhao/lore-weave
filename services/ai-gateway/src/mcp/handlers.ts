@@ -35,10 +35,20 @@ export async function handleCallTool(
   name: string,
   args: Record<string, unknown>,
   headers: Headers,
+  meta?: unknown,
 ): Promise<any> {
   const env = extractEnvelope(headers);
+  // A CallTool with no caller identity is almost always a bug. Per-tool identity
+  // enforcement stays on the PROVIDER (SEC-2 — and some tools, e.g.
+  // glossary_list_kinds, are legitimately global), so the gateway forwards
+  // regardless but logs the anomaly for observability rather than failing blind.
+  if (!env.userId) {
+    log.warn(`tool '${name}' called with no X-User-Id envelope`);
+  }
   try {
-    return await federation.executeTool(name, args, env);
+    // Forward the MCP `_meta` channel downstream (the proven TS→Go alternate to
+    // headers, §20) so a provider that reads req.Params.Meta still receives it.
+    return await federation.executeTool(name, args, env, meta);
   } catch (e) {
     log.warn(`tool '${name}' execution failed: ${e}`);
     return {

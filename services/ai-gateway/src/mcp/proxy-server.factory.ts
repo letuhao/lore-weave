@@ -28,6 +28,7 @@ export function buildProxyServer(federation: FederationService): Server {
       request.params.name,
       (request.params.arguments ?? {}) as Record<string, unknown>,
       headers,
+      request.params._meta,
     );
   });
 

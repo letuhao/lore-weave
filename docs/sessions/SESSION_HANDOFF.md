@@ -51,7 +51,6 @@ new `services/ai-gateway/` (NestJS+MCP SDK, node16): MCP server upstream + MCP c
 - **D-GLOSSARY-MCP-LOW1** — `ownerCache` (sync.Map) never evicts expired entries (TTL-checked on read; tiny entries). Add a periodic sweep if memory grows. LOW.
 - **D-GLOSSARY-MCP-LOW2** — ownership cache 60s positive TTL = up to 60s revocation lag (read-only, ownership rarely changes). LOW.
 - **D-GLOSSARY-MCP-LOW3** — `loadEntityDetail` DB errors (not just not-found) map to the uniform "not accessible" tool error, masking infra faults from logs-via-tool. LOW.
-- **D-AIGW-LOW1/2/3** (P0) — handleRequest try/catch · CallTool `_meta` dropped · no fail-fast on missing X-User-Id. LOW.
 
 **Then — glossary LLM-flow migration (user directive 2026-06-10):** ai-gateway/MCP arrived AFTER the glossary pipeline, so existing glossary flows that drive LLMs **via prompt** (token-wasteful, unoptimized) should migrate to glossary MCP tools once the MCP exists. A full review of those flows is the immediate follow-on to P1 (see DEFERRED 066). *(Review starting this session — findings to be appended.)*
 
