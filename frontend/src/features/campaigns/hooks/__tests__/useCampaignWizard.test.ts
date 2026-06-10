@@ -66,10 +66,22 @@ describe('useCampaignWizard', () => {
     expect(p.translation_model_source).toBe('user_model');
     expect(p.knowledge_model_ref).toBe(EX);      // extractor → knowledge_model
     expect(p.budget_usd).toBe('12.50');
+    expect(p.gating_mode).toBe('phase_barrier');  // D-S5C-GATING default
     // unset roles → null/null (not omitted)
     expect(p.verifier_model_ref).toBeNull();
     expect(p.verifier_model_source).toBeNull();
     expect(p.eval_judge_model_ref).toBeNull();
+  });
+
+  it('gating_mode is user-selectable (D-S5C-GATING)', () => {
+    const { result } = renderHook(() => useCampaignWizard());
+    act(() => {
+      result.current.setField('name', 'r');
+      result.current.setField('bookId', BOOK);
+      result.current.setField('projectId', PROJ);
+      result.current.setField('gatingMode', 'cold_start');
+    });
+    expect(result.current.buildCreatePayload().gating_mode).toBe('cold_start');
   });
 
   it('buildEstimateRequest includes ONLY the roles that were picked', () => {

@@ -17,6 +17,7 @@ export interface WizardForm {
   targetLanguage: string;
   chapterFrom: number | null;
   chapterTo: number | null;
+  gatingMode: 'phase_barrier' | 'cold_start';  // D-S5C-GATING (quality vs speed)
   budgetUsd: string;                 // free-text USD ('' = uncapped)
   picks: Record<ModelRole, string | null>;  // user_model_id per role (null = unset)
   confirmEmbeddingChange: boolean;
@@ -34,6 +35,7 @@ const INITIAL: WizardForm = {
   targetLanguage: '',
   chapterFrom: null,
   chapterTo: null,
+  gatingMode: 'phase_barrier',  // highest quality default (decision B)
   budgetUsd: '',
   picks: { ...EMPTY_PICKS },
   confirmEmbeddingChange: false,
@@ -121,6 +123,7 @@ export function useCampaignWizard() {
       name: form.name.trim(),
       knowledge_project_id: form.projectId!,
       target_language: form.targetLanguage || null,
+      gating_mode: form.gatingMode,  // D-S5C-GATING
       chapter_from: form.chapterFrom,
       chapter_to: form.chapterTo,
       budget_usd: budget ? budget : null,

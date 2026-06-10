@@ -67,6 +67,27 @@ export function ChapterRangeStep({ form, setField }: Props) {
             onChange={(e) => setField('chapterTo', parseNum(e.target.value))} />
         </label>
       </div>
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-medium text-muted-foreground">
+          {t('range.gating', { defaultValue: 'Translation pacing' })}
+        </span>
+        <select
+          className="w-full max-w-md rounded-md border bg-input px-3 py-2 text-sm outline-none focus:border-ring"
+          value={form.gatingMode}
+          onChange={(e) => setField('gatingMode', e.target.value as WizardForm['gatingMode'])}
+        >
+          <option value="phase_barrier">
+            {t('range.gatingPhaseBarrier', {
+              defaultValue: 'Phase barrier — highest quality (finish all knowledge extraction before any translation)',
+            })}
+          </option>
+          <option value="cold_start">
+            {t('range.gatingColdStart', {
+              defaultValue: 'Cold start — faster (translate each chapter as soon as its knowledge is ready)',
+            })}
+          </option>
+        </select>
+      </label>
       {form.chapterFrom !== null && form.chapterTo !== null && form.chapterFrom > form.chapterTo ? (
         <span className="text-[11px] text-destructive">
           {t('range.invalid', { defaultValue: 'From must be ≤ To.' })}
