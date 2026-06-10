@@ -25,9 +25,39 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+import asyncpg
+
 from app.db.pool import get_knowledge_pool
+from app.metrics import correction_emit_failure_total
 
 logger = logging.getLogger(__name__)
+
+# FD-19/053 — transient (pool/conn/PG) errors are best-effort-OK (ops will heal;
+# the §10.1 replay tool is the durability backstop). A PERMANENT error (malformed
+# payload, a non-UUID-coercible aggregate_id, serialization/schema drift) will
+# NEVER self-heal and never reached outbox_events, so it has zero replay
+# durability — surface it loudly (ERROR + metric) instead of a silent warning.
+_TRANSIENT_EMIT_ERRORS = (asyncpg.PostgresError, ConnectionError, OSError, TimeoutError)
+
+
+def _record_emit_failure(event_type: str, aggregate_id: str, exc: Exception) -> None:
+    """Split a swallowed emit failure into transient (warn) vs permanent (error +
+    metric) so a code-level bug can't hide behind the best-effort warning."""
+    if isinstance(exc, _TRANSIENT_EMIT_ERRORS):
+        correction_emit_failure_total.labels(kind="transient").inc()
+        logger.warning(
+            "outbox: TRANSIENT emit failure %s for %s (non-fatal — correction log "
+            "under-counts; graph write already committed; replay backstop applies)",
+            event_type, aggregate_id, exc_info=True,
+        )
+    else:
+        correction_emit_failure_total.labels(kind="permanent").inc()
+        logger.error(
+            "outbox: PERMANENT emit failure %s for %s — correction PERMANENTLY "
+            "LOST (never reached outbox_events, no replay backstop). This is a bug "
+            "to fix (e.g. a non-UUID aggregate_id / malformed payload).",
+            event_type, aggregate_id, exc_info=True,
+        )
 
 # event_type → target_type, kept beside the producer so callers can't drift.
 ENTITY_CORRECTED = "knowledge.entity_corrected"
@@ -67,12 +97,8 @@ async def emit_correction(
             event_type,
             json.dumps(payload, default=str),
         )
-    except Exception:
-        logger.warning(
-            "outbox: failed to emit %s for %s (non-fatal — correction log "
-            "under-counts; graph write already committed)",
-            event_type, aggregate_id, exc_info=True,
-        )
+    except Exception as exc:
+        _record_emit_failure(event_type, aggregate_id, exc)
 
 
 async def emit_config_adjustment(
@@ -97,12 +123,8 @@ async def emit_config_adjustment(
             CONFIG_ADJUSTED,
             json.dumps(payload, default=str),
         )
-    except Exception:
-        logger.warning(
-            "outbox: failed to emit config_adjusted for project %s (non-fatal "
-            "— adjustment log under-counts; the config edit already committed)",
-            aggregate_id, exc_info=True,
-        )
+    except Exception as exc:
+        _record_emit_failure(CONFIG_ADJUSTED, aggregate_id, exc)
 
 
 def config_adjustment_payload(

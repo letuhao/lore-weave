@@ -45,6 +45,7 @@ __all__ = [
     "knowledge_extraction_writer_autocreate_total",
     "knowledge_extraction_filter_reload_total",
     "knowledge_extraction_status_effect_total",
+    "correction_emit_failure_total",
 ]
 
 registry = CollectorRegistry()
@@ -55,6 +56,23 @@ layer_timeout_total = Counter(
     ["layer"],
     registry=registry,
 )
+
+# FD-19/053 — correction outbox emit failures, split by kind. `transient`
+# (pool/conn/PG) is best-effort-OK (replay backstop applies); `permanent`
+# (non-UUID aggregate_id, malformed payload, schema drift) NEVER reached
+# outbox_events → zero replay durability → a bug to fix. A non-zero
+# `permanent` series is an alert.
+correction_emit_failure_total = Counter(
+    "knowledge_correction_emit_failure_total",
+    "Swallowed correction/config outbox emit failures by kind "
+    "(transient = retriable/replayable; permanent = lost, a bug).",
+    ["kind"],
+    registry=registry,
+)
+# Pre-seed both series so a dashboard shows `0` (not absent) before the first
+# failure — a steady 0 on `permanent` is the healthy signal we want visible.
+for _kind in ("transient", "permanent"):
+    correction_emit_failure_total.labels(kind=_kind)
 
 # D-P3-INTENT-CLASSIFIER-GLOSSARY-METRIC. Distinct from the general
 # layer_timeout_total{layer="glossary"} so a dashboard can split
