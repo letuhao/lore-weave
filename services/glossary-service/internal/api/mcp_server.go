@@ -5,10 +5,12 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/loreweave/glossary-service/internal/domain"
@@ -202,7 +204,14 @@ func (s *Server) toolGetEntity(ctx context.Context, _ *mcp.CallToolRequest, in g
 	}
 	detail, err := s.loadEntityDetail(ctx, bookID, entityID)
 	if err != nil {
-		// Not found within this (owned) book → uniform not-accessible.
+		// MCP-LOW3: a genuinely-missing entity (ErrNoRows) collapses to the
+		// uniform "not accessible" (H13 — no existence oracle), but an INFRA
+		// error (DB down, etc.) must not be silently masked — log it so the
+		// fault is visible, while the caller still sees the uniform message.
+		if !errors.Is(err, pgx.ErrNoRows) {
+			slog.Error("glossary_get_entity: loadEntityDetail failed",
+				"error", err.Error(), "book_id", bookID.String(), "entity_id", entityID.String())
+		}
 		return nil, getEntityToolOut{}, errors.New("entity not accessible")
 	}
 	return nil, getEntityToolOut{Entity: detail}, nil

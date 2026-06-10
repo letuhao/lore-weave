@@ -48,9 +48,7 @@ new `services/ai-gateway/` (NestJS+MCP SDK, node16): MCP server upstream + MCP c
 - **D-GLOSSARY-EDIT-LOW1** (P3) — `GlossaryDiffCard` diff shows the LLM-claimed `old_value`, not a re-fetch (If-Match is the real guard; display informational).
 - **D-GLOSSARY-EDIT-LOW2** (P3) — `GlossaryDiffCard.apply()` is inert if required args are missing (schema makes unreachable; Dismiss is the escape hatch).
 - **D-GLOSSARY-EDIT-LOW3** (P3) — `patchEntity` 412-vs-404 existence check swallows a transient DB error → 404 not 500. LOW.
-- **D-GLOSSARY-MCP-LOW1** — `ownerCache` (sync.Map) never evicts expired entries (TTL-checked on read; tiny entries). Add a periodic sweep if memory grows. LOW.
-- **D-GLOSSARY-MCP-LOW2** — ownership cache 60s positive TTL = up to 60s revocation lag (read-only, ownership rarely changes). LOW.
-- **D-GLOSSARY-MCP-LOW3** — `loadEntityDetail` DB errors (not just not-found) map to the uniform "not accessible" tool error, masking infra faults from logs-via-tool. LOW.
+- **Accepted trade-offs (won't-fix, conscious)** — `ownerCache` never evicts expired entries (entries tiny, TTL-checked on read); 60s positive-TTL revocation lag (read-only, ownership rarely changes); `GlossaryDiffCard` shows the LLM-claimed `old_value` (If-Match is the real guard); `BookAssistantDock` unmounts on GlossaryTab sub-views (chat session persists server-side); confirm-token is stateless (replay bounded by code-uniqueness 409).
 
 **Then — glossary LLM-flow migration (user directive 2026-06-10):** ai-gateway/MCP arrived AFTER the glossary pipeline, so existing glossary flows that drive LLMs **via prompt** (token-wasteful, unoptimized) should migrate to glossary MCP tools once the MCP exists. A full review of those flows is the immediate follow-on to P1 (see DEFERRED 066). *(Review starting this session — findings to be appended.)*
 
