@@ -31,7 +31,8 @@
   "tabs": {
     "chapters": "Chương",
     "original": "Bản gốc",
-    "glossary": "Thuật ngữ"
+    "glossary": "Thuật ngữ",
+    "outline": "Dàn ý"
   },
   "chapter_count": "{{count}} chương",
   "chapter_count_other": "{{count}} chương",

@@ -82,6 +82,7 @@ export type OutlineNode = {
   project_id: string;
   parent_id: string | null;
   kind: 'arc' | 'chapter' | 'scene' | 'beat';
+  rank: string; // lexorank — the BE's primary within-parent order (story_order NULLS LAST, then rank)
   title: string;
   chapter_id: string | null;
   story_order: number | null;

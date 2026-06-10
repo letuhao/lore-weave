@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
   Save, PanelLeft, PanelRight, Clock, ChevronRight, ChevronLeft, ChevronRight as ChevronRightNav, SpellCheck,
-  BookOpen, FileText, BookMarked, Pen, Sparkles, Languages, AlertTriangle,
+  BookOpen, FileText, BookMarked, ListTree, Pen, Sparkles, Languages, AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { apiBase } from '@/api';
@@ -32,6 +32,7 @@ import { Chat } from '@/features/chat/Chat';
 import { fireSendToChat } from '@/features/chat/context/sendToChat';
 import { registerEditorTarget } from '@/features/chat/context/editorBridge';
 import { CompositionPanel } from '@/features/composition/components/CompositionPanel';
+import { OutlineTree } from '@/features/composition/components/OutlineTree';
 import { useChapterPublishGate, publishGateMessages } from '@/features/composition/hooks/usePublishGate';
 
 function wordCount(text: string): number {
@@ -176,7 +177,7 @@ export function ChapterEditorPage() {
   const editorElRef = useRef<HTMLElement | null>(null);
 
   // Left sidebar
-  const [leftTab, setLeftTab] = useState<'source' | 'chapters' | 'glossary'>('chapters');
+  const [leftTab, setLeftTab] = useState<'source' | 'chapters' | 'glossary' | 'outline'>('chapters');
   const [originalContent, setOriginalContent] = useState<string | null>(null);
   const [originalLoading, setOriginalLoading] = useState(false);
   const [allChapters, setAllChapters] = useState<Chapter[]>([]);
@@ -707,7 +708,26 @@ export function ChapterEditorPage() {
                   </span>
                 )}
               </button>
+              <button
+                onClick={() => setLeftTab('outline')}
+                className={cn(
+                  'flex flex-1 items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors',
+                  leftTab === 'outline' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <ListTree className="h-3 w-3" />{t('tabs.outline')}
+              </button>
             </div>
+
+            {/* ── Outline tab (T1.1a — committed-outline browser) ───────── */}
+            {leftTab === 'outline' && (
+              <OutlineTree
+                bookId={bookId}
+                token={accessToken}
+                currentChapterId={chapterId}
+                onNavigateChapter={navigateToChapter}
+              />
+            )}
 
             {/* ── Chapters tab ─────────────────────────────────────────── */}
             {leftTab === 'chapters' && (

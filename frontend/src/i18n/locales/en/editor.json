@@ -31,7 +31,8 @@
   "tabs": {
     "chapters": "Chapters",
     "original": "Original",
-    "glossary": "Glossary"
+    "glossary": "Glossary",
+    "outline": "Outline"
   },
   "chapter_count": "{{count}} chapter",
   "chapter_count_other": "{{count}} chapters",

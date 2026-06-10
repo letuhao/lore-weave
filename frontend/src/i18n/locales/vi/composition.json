@@ -176,5 +176,9 @@
   "threadDropped": "đã bỏ",
   "noThreads": "Chưa có mạch nào.",
   "noOpenThreads": "Không còn lời hứa nào chưa trả.",
-  "threadsError": "Không tải được mạch truyện."
+  "threadsError": "Không tải được mạch truyện.",
+  "outline": {
+    "title": "Dàn ý",
+    "empty": "Chưa có dàn ý. Dùng Planner (bảng bên phải) để chia chương thành các cảnh."
+  }
 }

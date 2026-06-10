@@ -176,5 +176,9 @@
   "threadDropped": "dropped",
   "noThreads": "No threads yet.",
   "noOpenThreads": "No open promises — all paid.",
-  "threadsError": "Could not load plot threads."
+  "threadsError": "Could not load plot threads.",
+  "outline": {
+    "title": "Outline",
+    "empty": "No outline yet. Use the Planner (right panel) to decompose chapters into scenes."
+  }
 }

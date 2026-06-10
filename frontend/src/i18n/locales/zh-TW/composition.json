@@ -176,5 +176,9 @@
   "threadDropped": "已放棄",
   "noThreads": "尚無伏筆。",
   "noOpenThreads": "沒有未回收的承諾。",
-  "threadsError": "無法載入情節伏筆。"
+  "threadsError": "無法載入情節伏筆。",
+  "outline": {
+    "title": "大綱",
+    "empty": "尚無大綱。使用 Planner（右側面板）將章節分解為場景。"
+  }
 }

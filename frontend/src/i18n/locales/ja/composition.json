@@ -176,5 +176,9 @@
   "threadDropped": "破棄",
   "noThreads": "伏線はまだありません。",
   "noOpenThreads": "未回収の約束はありません。",
-  "threadsError": "プロット伏線を読み込めませんでした。"
+  "threadsError": "プロット伏線を読み込めませんでした。",
+  "outline": {
+    "title": "アウトライン",
+    "empty": "アウトラインはまだありません。Planner（右パネル）で章をシーンに分解してください。"
+  }
 }
