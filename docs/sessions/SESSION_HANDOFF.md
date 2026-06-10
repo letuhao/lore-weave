@@ -1,15 +1,16 @@
-# Session Handoff — Session 107 (Auto-Draft Factory S5a + S5b + S5b-eval)
+# Session Handoff — Session 107 (Auto-Draft Factory S5 COMPLETE — backend + FE)
 
 > **Purpose:** orient the next agent in one read. This file is the single, unversioned handoff — updated in place at the end of each session. (Older `SESSION_PATCH.md` is deprecated → archive later.)
-> **Date:** 2026-06-10 (backend S0–S4 COMPLETE; **S5 epic: S5a estimate + S5b verifier/embedding/rerank + S5b-eval per-campaign judge shipped → all 6 Model-Matrix roles configurable**; human-in-loop v2.2).
+> **Date:** 2026-06-10 (backend S0–S4 COMPLETE; **S5 epic COMPLETE: S5a estimate + S5b verifier/embedding/rerank + S5b-eval judge + S5c FE wizard** → Auto-Draft Factory usable end-to-end; human-in-loop v2.2).
 > **HEAD:** TBD (post-commit). Branch: `feat/advanced-translation-pipeline`.
 
-## ▶ NEXT: S5c — Auto-Draft Factory FE wizard + minimal detail page
-S5 (Auto-Draft Factory wizard/monitor) was reframed at CLARIFY into a multi-service epic, **decomposed S5a→S5b→S5b-eval→S5c** (PO 2026-06-10; full record + the embedding-safety constraint in [`docs/plans/2026-06-10-s5-auto-draft-factory-fe-epic.md`](../plans/2026-06-10-s5-auto-draft-factory-fe-epic.md)). PO chose **all 6 roles editable incl. embedding**, a real backend estimate, create+launch→minimal detail, build eval-judge now.
+## ▶ NEXT: S6 — Auto-Draft Factory monitor (+ live-smokes / PR)
+S5 (Auto-Draft Factory) was reframed at CLARIFY into a multi-service epic, **decomposed S5a→S5b→S5b-eval→S5c** (PO 2026-06-10; full record + embedding-safety constraint in [`docs/plans/2026-06-10-s5-auto-draft-factory-fe-epic.md`](../plans/2026-06-10-s5-auto-draft-factory-fe-epic.md)). PO chose all 6 roles editable incl. embedding, a real backend estimate, create+launch→minimal detail, build eval-judge now, full-page stepper + core/advanced matrix + read-only+cancel detail.
 - **S5a DONE** (`53b3d630`, pushed) — cost/time estimate endpoint (`POST /v1/campaigns/estimate`).
 - **S5b DONE** (`9d6b53b6`, **not pushed**) — verifier + embedding/reranker per-campaign.
-- **S5b-eval DONE** (this session) — per-campaign translation eval-judge model. See block below. **🏁 all 6 Model-Matrix roles now configurable** (extractor, translator, verifier, embedding, reranker, eval-judge) — backend complete for the wizard.
-- **S5c (NEXT)** — the **FE-only** wizard: a multi-step setup (book + knowledge project → chapter range → Model Matrix [6 BYOK role pickers, mirror `EmbeddingModelPicker`] → budget + `POST /v1/campaigns/estimate` cost/time review → launch=create+`/start`) + a minimal campaign detail/list page (status, spent/budget, chapter_count). Embedding picker must collect `confirm_embedding_change` when the project has a graph (else create 409s `CAMPAIGN_EMBEDDING_CONFLICT`). No stepper component exists — build one. Route `/campaigns` + sidebar nav + i18n ×4 (en/vi/ja/zh-TW). Rich monitor (per-chapter projection, pause/resume/cancel, fidelity scores) = S6.
+- **S5b-eval DONE** (`834d5ac3`, **not pushed**) — per-campaign translation eval-judge model. 🏁 all 6 roles configurable.
+- **S5c DONE** (this session) — the **FE wizard** + list + minimal detail. See block below.
+- **S6 (NEXT)** — the **rich monitor** FE: per-chapter projection from `GET /v1/campaigns/{id}` (`chapters[]` per-stage status + `eval_fidelity_score`), live spent/budget progress, **pause/resume** (`POST /{id}/pause` + `/start`), **budget PATCH** (`PATCH /{id}`), cancel-with-context. Replaces the S5c read-only detail placeholder. Also pending: deferred **live-smokes** across S4/S5 + a `→ main` PR when ready. FE-only (S5 backend contracts frozen).
 
 ## ▶ NEXT SESSION — start here
 
@@ -130,7 +131,11 @@ S5 (Auto-Draft Factory wizard/monitor) was reframed at CLARIFY into a multi-serv
 - **`D-S5BEVAL-LIVE-SMOKE`** — real 3-service: campaign w/ eval_judge model → translation.quality carries model+texts → learning judges with the campaign model → translation.eval_judged → campaign_chapters.eval_fidelity_score set.
 - **`D-S5BEVAL-LEARNING-OUTBOX`** — the eval_judged emit is a best-effort XADD (learning has no transactional outbox); a lost emit drops a fidelity score. Add a real outbox if this telemetry becomes load-bearing.
 
-Also pending: deferred **live-smokes** across S4a–d + `D-RERANK-BYOK-LIVE-SMOKE` + S5a/S5b/S5b-eval smokes on a real stack-up. S4 + S5a pushed to `origin/feat/advanced-translation-pipeline`; **S5b + S5b-eval not yet pushed**. PR `→ main` when the FE lands or per PO.
+**✅ S5c DONE — Auto-Draft Factory FE wizard + list + minimal detail (XL, one loom, FE-only, 2026-06-10). 🏁 S5 epic COMPLETE.** Design in the epic doc. New `frontend/src/features/campaigns/` (MVC): `useCampaignWizard` (controller — owns step + form + payload assembly), `useCampaignQueries`/`useCampaignMutations`, `ModelRolePicker` (one generic BYOK picker driving all 6 roles by `capability` — `chat`×4 / `embedding` / `rerank`), `WizardStepper` + 4 steps (Book+Project → Range → **Model Matrix** core+Advanced-collapsible → **Review** w/ on-demand `POST /v1/campaigns/estimate` band+per-stage+notes), `CampaignsList`, `CampaignDetail` (read-only + Cancel). Launch = create→`/start`→detail; `CAMPAIGN_EMBEDDING_CONFLICT`/`CAMPAIGN_OVER_BUDGET` mapped to clear toasts; embedding-override surfaces the destructive-confirm checkbox only when the project has a graph. Wiring: 3 `/campaigns*` routes + Factory sidebar nav + i18n register + 4 `campaigns.json` (en via inline defaultValue; vi/ja/zh seeded → `D-S5C-I18N`) + `nav.campaigns` ×4 common. **VERIFY:** `tsc --noEmit` clean · vitest **1123** (no regress) + **13** new campaigns tests (wizard gating/payload, ModelRolePicker orphan-guard, `needsEmbeddingConfirm` ×5). **/review-impl: 1 fixed** (extracted+tested `needsEmbeddingConfirm` — the destructive-path decision) + LOWs deferred (budget-validate, project-paging, picker-dedup, range-count, gating, i18n).
+
+**S5c deferred rows:** `D-S5C-LIVE-SMOKE` (browser create+launch+conflict path) · `D-S5C-I18N` (localize) · `D-S5C-PICKER-DEDUP` (4 chat pickers → useQuery) · `D-S5C-RANGE-COUNT` · `D-S5C-GATING` (expose gating_mode) · `D-S5C-BUDGET-VALIDATE` · `D-S5C-PROJECT-PAGING` · `D-S5C-MONITOR` → S6.
+
+Also pending: deferred **live-smokes** across S4a–d + `D-RERANK-BYOK-LIVE-SMOKE` + S5a/S5b/S5b-eval/S5c smokes on a real stack-up. S4 + S5a pushed to `origin/feat/advanced-translation-pipeline`; **S5b + S5b-eval + S5c not yet pushed**. PR `→ main` when ready or per PO.
 
 ### ▶ RAW SEARCH (branch `raw-search/foundation`, off `origin/main`)
 

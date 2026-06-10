@@ -45,7 +45,78 @@ caution (lighter) for reranker. **Do not lose this in S5b.**
 - **S5b** — verifier + embedding/reranker per-campaign (DONE, `9d6b53b6`). FS, migration + cross-service.
 - **S5b-eval** — per-campaign translation eval-judge MODEL (this doc, below). The judge ALREADY exists
   (M7d-2); this threads a per-campaign model + emits the verdict for the monitor.
-- **S5c** — FE wizard (multi-step) + minimal detail page. FE-only against the S5a/S5b(/eval) contracts. i18n ×4.
+- **S5c** — FE wizard (multi-step) + minimal detail page (this doc, below). FE-only against the S5a/S5b(/eval) contracts. i18n ×4.
+
+---
+
+# S5c — Auto-Draft Factory FE wizard
+
+> CLARIFY (2026-06-10): PO chose **full-page route + stepper**, **core+Advanced collapsible**
+> Model Matrix (all 6 editable, defaults so none forced), **read-only detail + Cancel**.
+> FE-only; backend contracts (S5a estimate + S5b/eval campaign fields) are frozen.
+
+## Grounding (verified)
+- Routes in `App.tsx` DashboardLayout/RequireAuth block (direct imports, no lazy). Sidebar
+  `NavItem` in `components/layout/Sidebar.tsx` (lucide icon). i18n: import 4 JSONs + register
+  in `i18n/index.ts` resources (locales `en/vi/ja/zh-TW`).
+- BYOK picker: `aiModelsApi.listUserModels(token, {capability})`; **capabilities**: `'chat'` (the 4
+  LLM roles — extractor/translator/verifier/eval-judge), `'embedding'`, `'rerank'`. Mirror
+  `EmbeddingModelPicker` (native `<select>` of `user_model_id`).
+- No shadcn/stepper/collapsible primitives — native elements + tailwind; `sonner` toast; radix dialog
+  for Cancel confirm. `useAuth().accessToken`; TanStack Query; vitest + RTL (i18n mocked to keys).
+- `listBooks`, `listChapters` (filter `editorial_status==='published'` + `sort_order`), `listProjects`.
+
+## File plan (`frontend/src/features/campaigns/`)
+- `types.ts` — `Campaign`, `CampaignDetail`, `CampaignChapter`, `CreateCampaignPayload`,
+  `EstimateRequest/Response`, `StageEstimate`, `MODEL_ROLES` (6), `CampaignStatus`.
+- `api.ts` — `campaignsApi`: `list`, `get`, `create`, `estimate`, `start`, `cancel` (relative `/v1/campaigns`).
+- `hooks/useCampaigns.ts` (list query), `useCampaign.ts` (detail query), `useCampaignMutations.ts`
+  (create→start, cancel, estimate), `useCampaignWizard.ts` (**controller**: step index + form state + handlers).
+- `components/ModelRolePicker.tsx` (generalized BYOK picker — `capability` prop; reused ×6),
+  `WizardStepper.tsx`, `steps/BookProjectStep.tsx`, `steps/ChapterRangeStep.tsx`,
+  `steps/ModelMatrixStep.tsx` (core + Advanced collapsible), `steps/ReviewStep.tsx` (budget +
+  on-demand estimate + per-stage table + launch), `CampaignsList.tsx`, `CampaignDetail.tsx` (read-only + Cancel).
+- Pages: `CampaignsPage.tsx`, `CreateCampaignWizardPage.tsx`, `CampaignDetailPage.tsx`.
+- `i18n/locales/{en,vi,ja,zh-TW}/campaigns.json` (en authored; vi/ja/zh-TW seeded = en → `D-S5C-I18N`).
+- Wire: `App.tsx` (3 routes), `Sidebar.tsx` (nav), `i18n/index.ts` (register).
+- Tests: `ModelRolePicker`, `useCampaignWizard`, `ReviewStep` (estimate), `CampaignDetail` (cancel).
+
+## Key behaviors
+- Wizard steps: Book+Project → Range → Model Matrix → Review(+budget+estimate) → Launch.
+- Embedding picker surfaces `confirm_embedding_change` (checkbox) when the chosen project has a graph
+  (`extraction_status !== 'disabled'` AND a different embedding picked) → else create 409s
+  `CAMPAIGN_EMBEDDING_CONFLICT` (mutation maps 409 → a clear toast prompting confirm).
+- Defaults: verifier/eval-judge/embedding/rerank optional (null → backend fallback/inherit);
+  required = book, project, name, translator + extractor (or rely on settings? — require translator+extractor model OR allow null=settings fallback; wizard requires at least translator).
+- Review: "Estimate" button → `POST /estimate` with the 6 picks → band + minutes + per-stage table +
+  `notes`/`disclaimer`. Launch → `create` (with all fields + confirm) → `start` → navigate to detail.
+- Detail: status, spent/budget, chapter_count, model picks (read-only) + Cancel (confirm dialog).
+
+## review-impl resolution (2026-06-10)
+- **#1 LOW→MED (destructive-path untested)** → fixed: extracted `needsEmbeddingConfirm(project, pick)`
+  (pure, mirrors knowledge's `extraction_status !== 'disabled'` guard) + 5 unit tests locking the
+  graph-exists+differs→TRUE case (a wrong value would dead-end the user at a 409 with no visible confirm).
+- **#2 LOW (accept) `D-S5C-BUDGET-VALIDATE`** — non-numeric budget → backend 422 → generic toast.
+- **#3 LOW (accept) `D-S5C-PROJECT-PAGING`** — project beyond the 200-row list page → confirm can't compute.
+- No HIGH: role→field mapping unit-tested; estimate `models` keys match backend constants; step-gating
+  makes `review` unreachable without translator+extractor+book (the `!` assertions hold); auth backend-enforced.
+
+## Deferred
+- **`D-S5C-I18N`** — vi/ja/zh-TW seeded from en; localize properly later (en works via inline defaultValue).
+- **`D-S5C-LIVE-SMOKE`** — real browser (test account): wizard create+launch → detail; embedding-conflict
+  confirm path; estimate render. No running stack at dev time.
+- **`D-S5C-PICKER-DEDUP`** — the 4 `chat` ModelRolePickers fetch the same list independently
+  (mirrors EmbeddingModelPicker's useState+useEffect); convert to useQuery to dedupe.
+- **`D-S5C-RANGE-COUNT`** — the range step fetches up to 5000 chapters to count the in-range published set; use a count endpoint when one exists.
+- **`D-S5C-GATING`** — expose `gating_mode` (phase_barrier|cold_start) in the wizard (defaults phase_barrier).
+- **`D-S5C-MONITOR`** → S6 — per-chapter projection, pause/resume, budget PATCH, fidelity scores.
+
+## Test plan
+- `ModelRolePicker`: renders user_models for a capability; orphan-value guard; empty-registry hint.
+- `useCampaignWizard`: step nav + can't-advance-without-required; payload assembly (6 roles → create + estimate shapes).
+- `ReviewStep`: estimate call + band/notes render; 409-on-launch → confirm prompt.
+- `CampaignDetail`: cancel confirm → mutation.
+- VERIFY: `tsc --noEmit` + `vitest` green; i18n parity (4 files same keys).
 
 ---
 
