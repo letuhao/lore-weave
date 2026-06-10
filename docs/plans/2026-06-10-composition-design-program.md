@@ -51,12 +51,15 @@ Inherited by ALL tracks — later specs assume these:
 - **Graph/canvas = hand-rolled SVG (Lead)** — no graph lib added; matches the mockup. `recharts` (already a dep) is the charting primitive for Timeline/Progress.
 - **Right-panel docked features = fixed gated sub-tabs in CompositionPanel (Lead)** until the T5.4 windowing model lands.
 - **Node edits use `If-Match` optimistic concurrency (Lead)** — 412 → refetch + toast.
+- **Spoiler cutoff = `chapter.sort_order × EVENT_ORDER_CHAPTER_STRIDE` (REVIEW-IMPL MED-3)** — the knowledge `before_order`/`event_order` axis is the strided reading axis, NOT raw chapter order; every Track-2 spoiler cutoff (Cast status / Timeline / Character Arc) applies the stride conversion (M4d-1 precedent) + unit-tests it.
+- **Shared `<GraphCanvas>` owner = T1.3 (REVIEW-IMPL LOW-8)** — design the SVG node/edge/drag primitive once in T1.3 Scene Graph; T2.2 + T2.5 consume it (don't re-roll three graphs).
+- **Power-view interim host (REVIEW-IMPL LOW-9)** — the big views build standalone behind a simple route/overlay toggle during P1/P2; the T5.5 overlay + T5.4 windowing graft them last (reachable before windowing lands).
 
 ## New BE work surfaced during design (build-phase)
 
 Design is surfacing real BE additions (PO chose to build, not stub). The build phase must sequence these with their consumers:
 - **knowledge-service** `GET /v1/knowledge/entities/{id}/status?before_order=` — spoiler-windowed `:EntityStatus` (active|gone, A2 axis). **CORRECTED from "facts route" (REVIEW-IMPL HIGH-1)**: `:Fact` is closed-type (decision/preference/milestone/negation), no order axis, ≠ state. Optional `/entities/{id}/facts` = known-facts list. Consumers: **T2.1** Cast codex · **T2.4** Character Arc state band.
-- **composition-service** world-map store — `work.settings.world_map.positions` PATCH + `POST /v1/composition/works/{id}/world-map/backdrop` (image → MinIO public-read UUID key). Consumer: **T2.5** World Map.
+- **composition-service** world-map store — `work.settings.world_map.positions` PATCH (+ `backdrop_url`). **Backdrop upload reuses book-service media** (composition has no object-storage — REVIEW-IMPL MED-5); composition stores only the URL. Consumer: **T2.5** World Map.
 - **composition-service** `/generate` **+ `selection` field** + explicit operation dispatch (rewrite/expand/describe; register + assert per the missing-enum lesson). Consumer: **T3.2** Selection tools.
 - **composition-service** `grounding_prefs` store (table keyed by node_id/block/ref) + packer force-includes pins / drops excludes. Consumer: **T3.4** Grounding pin/exclude.
 - **composition-service** `work.settings.references` + a **sanitized** `<references>` style-hint block in the packer. Consumer: **T3.6** References.
