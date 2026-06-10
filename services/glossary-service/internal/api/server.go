@@ -117,6 +117,10 @@ func (s *Server) Router() http.Handler {
 		// wiki-llm M5 — knowledge-service writes an AI-generated article here
 		// (clobber-guard: upsert an ai/stub draft, else file a wiki_suggestion).
 		r.Post("/books/{book_id}/wiki/articles", s.internalWriteWikiArticle)
+		// wiki-llm Phase-2 (§5.2) — on-demand recipe-drift sweep: flag AI articles
+		// whose stored prompt/pipeline version lags the current one (the caller
+		// supplies the current versions, which live in knowledge's config).
+		r.Post("/books/{book_id}/wiki/staleness-sweep", s.sweepWikiStaleness)
 	})
 
 	r.Route("/v1/glossary", func(r chi.Router) {

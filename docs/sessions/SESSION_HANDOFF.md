@@ -238,7 +238,17 @@ new `services/ai-gateway/` (NestJS+MCP SDK, node16): MCP server upstream + MCP c
 
 **Then — glossary LLM-flow migration (user directive 2026-06-10):** ai-gateway/MCP arrived AFTER the glossary pipeline, so existing glossary flows that drive LLMs **via prompt** (token-wasteful, unoptimized) should migrate to glossary MCP tools once the MCP exists. A full review of those flows is the immediate follow-on to P1 (see DEFERRED 066). *(Review starting this session — findings to be appended.)*
 
-### ▶ WIKI LLM-BUILDING (branch `wiki/llm-gen` off `main`) — M0→M8 + M7a COMPLETE + live-smoke PASSED (2026-06-11; merged `main` in)
+### ▶ WIKI PHASE-2 (branch `wiki/phase2-change-control` off `main`) — change-control capture
+
+**Phase-2a DONE** (glossary-only, /loom XL, **go build/vet clean · events 3/3 + api sweep 2/2 DB-integration on dev Postgres · LIVE-SMOKE PASSED on both streams**, /review-impl 0 HIGH/MED): the **DEFER capture layer** (§5.2). **PO: whole DEFER (consumer + sweep) + glossary Go consumer.** When a knowledge source an AI wiki article was built from changes, it records a `wiki_staleness` row + flips `is_knowledge_stale` — **ZERO LLM work** (regeneration is the user-gated §5.3 DECIDE half). Files: migration (`wiki_staleness` ledger: reason_code/source_ref/severity/status + idempotency partial-unique + feed index); `internal/events/staleness_consumer.go` (`StalenessConsumer` — 2-stream consumer group on `loreweave:events:{glossary,chapter}`, `stalenessRule` routing [entity_updated→entity_changed · entity_merged→merged · chapter.published→chapter_regrounded · chapter.deleted/trashed→citation_broken], `markArticlesStale` joins `wiki_article_source_usage` → ledger + flag; mirrors the proven `revision_consumer`, forward-only `$`, idempotent); `cmd/.../main.go` wiring; `internal/api/wiki_staleness.go` (recipe-drift sweep endpoint `POST /internal/books/{id}/wiki/staleness-sweep` — stored vs current prompt/pipeline version). **/review-impl:** F1 (potential HIGH "are chapter events even relayed?") REFUTED + live-proven (book∈OUTBOX_SOURCES, aggregate_type='chapter' → stream; chapter.deleted→citation_broken live); F2/F4 accepted; F3 tracked (see below). **LIVE-SMOKE:** injected `glossary.entity_updated` → Mina flagged (is_knowledge_stale f→t + entity_changed/content/pending); injected `chapter.deleted` → article flagged citation_broken/hard/pending.
+
+**▶ NEXT (Phase-2 remaining):**
+1. **Phase-2b — §5.3 DECIDE** (the RESOLVE half): the "Knowledge updates" FE surface (stale articles grouped by reason + what-changed + severity) → user batches → cost-estimate → cost-capped regenerate (the M6 path, `force`) → on completion **resolve the ledger rows (`status='regenerated'`) + clear `is_knowledge_stale`** (closes the F3 gap — capture currently only SETS; nothing clears yet). Clobber-guard respected (stale + human-edited → suggestion).
+2. **D-WIKI-P2-KG-SWEEP** — the pull sweep's KG-neighbourhood recompute (GAP A: pipeline KG changes emit no event). Cross-service: needs knowledge's Neo4j neighbourhood hash; the version-drift half is done glossary-local.
+
+---
+
+### ▶ WIKI LLM-BUILDING (branch `wiki/llm-gen` off `main`) — M0→M8 + M7a COMPLETE + live-smoke PASSED + MERGED (PR #28) (2026-06-11)
 
 **State: DESIGN v3 complete (spec + mockup) + 2 pre-existing data-loss bug fixes BUILT & committed** (first commits on the branch, *before* the feature — `/loom` L, **17 tests green on real Postgres**, /review-impl clear).
 

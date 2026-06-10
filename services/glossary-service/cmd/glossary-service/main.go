@@ -198,6 +198,13 @@ func main() {
 		} else if rc != nil {
 			go rc.Run(ctx)
 		}
+		// wiki-llm Phase-2 (§5.2) — wiki change-control capture: flags AI articles
+		// stale (ledger) when a source they were built from changes. Never regenerates.
+		if sc, err := events.NewStalenessConsumer(pool, cfg.RedisURL); err != nil {
+			slog.Warn("staleness-consumer init failed (wiki staleness capture disabled)", "error", err)
+		} else if sc != nil {
+			go sc.Run(ctx)
+		}
 	}
 
 	srv := api.NewServer(pool, cfg)
