@@ -18,7 +18,12 @@ class Settings(BaseSettings):
     # Q4b — online LLM-as-judge. When a sampled run carries items + source text
     # (opted-in projects) AND a rule has a judge panel, the eval-runner judges
     # the extraction via provider-registry. Off by default (needs a judge model).
-    provider_registry_internal_url: str = "http://provider-registry:8208"
+    # In-cluster S2S URL = container DNS name + container port (matches
+    # knowledge-service). The prior default (`provider-registry:8208`) resolved
+    # to nothing — every online LLM judge (translation-fidelity M7d-2 + extraction)
+    # silently no-op'd (verdict None) because the call never reached the gateway.
+    # Caught by D-S5BEVAL-LIVE-SMOKE (2026-06-10).
+    provider_registry_internal_url: str = "http://provider-registry-service:8085"
     online_judge_enabled: bool = False
     online_judge_model_ref: str = ""          # judge model UUID (BYOK user_model)
     online_judge_model_source: str = "user_model"
