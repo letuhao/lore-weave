@@ -430,3 +430,15 @@ Phase 8  Web research (S5, D6) staged: web-search → deep-research; + injection
 ```
 
 Cross-cutting guards (S22 field-types, S23 spoiler, S24 injection, S26 language) are woven into the phases that need them, not separate phases.
+
+### Clarification ledger — campaign-level is CLOSED; remaining questions are phase-scoped
+
+Campaign architecture is fully decided (D1–D13, H-A reframe, S32). The questions below are **deliberately deferred to each phase's CLARIFY** (open them then, not now — they need that phase's context):
+
+- **E0 CLARIFY (Phase -1):** which service owns `book_collaborators` (book-service vs sharing-service vs new)? grant propagation = JWT claims vs per-request permission-check endpoint? role set (just `edit`/`manage`, or more)? revoke semantics + cache lag? can a `manage`-grantee re-grant?
+- **F3 CLARIFY (Phase 0, 3-tier repayment H-A):** per-user library = **copy** system kinds on customize, or **layered reference** (system + user-override)? **migration/attribution of existing global kinds** when per-user scoping is introduced (who owns the kinds an early impl created globally)? is a user's per-user library private, or shareable across a series (S27)?
+- **Phase 5 (translation, S4):** which engine produces suggested names (existing translation-service 2-pass vs an assistant LLM call)? supported target-language set?
+- **Phase 6 (async, post H-C spike):** the delivery mechanism (server-push turn vs poll-on-ask) — decided by the spike; plus job cancellation + result retention/TTL.
+- **Phase 8 (web research, S5/D6):** which provider (Tavily/Brave/SerpAPI/…)? BYOK per-user vs platform-config? does it route via provider-registry (the invariant covers LLM/embedding/image/audio/STT — web-search is not listed) or a new integration? per-request cost ceiling.
+
+**Design-internal (no user clarification needed — resolved during DESIGN):** MCP tool naming/namespacing; the change-set confirm mechanism redesign (H-D); the in-chat Undo affordance (D4); field-type-aware card controls (S22).
