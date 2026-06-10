@@ -182,9 +182,15 @@ class KnowledgeClient:
           * session_id / project_id are omitted when empty/None rather
             than sent as empty strings (which would 422 via UUID
             validation — K5-I1).
-        """
-        url = f"{self._base_url}/internal/context/build"
 
+        P6 grounding port (H2): grounding is fetched via the ai-gateway
+        (the single AI integration layer). On a GATEWAY OUTAGE (transport
+        error / 5xx) it falls back to calling knowledge-service directly,
+        so a gateway outage degrades context but never breaks the turn. A
+        STABLE knowledge signal proxied through the gateway (404 / 501 /
+        4xx) returns degraded WITHOUT the fallback (knowledge-direct would
+        answer the same). Both unreachable → degraded.
+        """
         # Truncate long messages at the client boundary.
         safe_message = message or ""
         if len(safe_message) > MESSAGE_MAX_CHARS:
@@ -209,6 +215,37 @@ class KnowledgeClient:
         tid = current_trace_id()
         call_headers = {"X-Trace-Id": tid} if tid else None
 
+        # Primary = ai-gateway grounding; fallback = knowledge direct (H2).
+        gateway_url = f"{self._tools_base_url}/internal/context/build"
+        ctx = await self._build_context_at(gateway_url, body, call_headers, project_id)
+        if ctx is not None:
+            return ctx
+
+        knowledge_url = f"{self._base_url}/internal/context/build"
+        if knowledge_url != gateway_url:
+            logger.info("grounding via gateway unavailable — falling back to knowledge direct")
+            ctx = await self._build_context_at(knowledge_url, body, call_headers, project_id)
+            if ctx is not None:
+                return ctx
+
+        # Gateway and direct both unreachable → degraded (turn proceeds tool/context-free).
+        return _degraded()
+
+    async def _build_context_at(
+        self,
+        url: str,
+        body: dict,
+        call_headers: dict | None,
+        project_id: str | None,
+    ) -> KnowledgeContext | None:
+        """POST grounding at `url`, with retries.
+
+        Returns a ``KnowledgeContext`` when the host answered — a real context on
+        200, or a degraded context on a STABLE signal (501 Mode-3 / 404
+        project-not-found / other 4xx / decode / validate failure), which the
+        caller must NOT retry elsewhere. Returns ``None`` on an OUTAGE (transport
+        error or 5xx after all retries) — the signal that the caller should try
+        the fallback host (H2)."""
         attempts = self._retries + 1
         last_err_summary: str | None = None
         for _ in range(attempts):
@@ -222,27 +259,37 @@ class KnowledgeClient:
                 continue
 
             # 501 is technically a 5xx but it's the stable "Mode 3 not
-            # implemented yet" signal from K4b/K4c — don't retry.
+            # implemented yet" signal from K4b/K4c — don't retry, don't fall back.
             if resp.status_code == 501:
-                logger.debug("knowledge build_context 501 (Mode 3 not implemented)")
+                logger.debug("build_context 501 (Mode 3 not implemented)")
                 return _degraded()
 
             if resp.status_code >= 500:
+                # Includes the gateway's 502-on-knowledge-outage → treat as OUTAGE
+                # (retry here, then None so the caller falls back).
                 last_err_summary = f"{resp.status_code}"
                 continue
 
+            if resp.status_code in (401, 403):
+                # An auth rejection is a HOST-ACCESS problem (e.g. the gateway's
+                # internal token is misconfigured), not a stable request problem —
+                # the retained direct chat→knowledge path uses the same token and
+                # may be accepted. Treat as an OUTAGE so the caller falls back
+                # (H2). No retry — the token won't change between attempts.
+                logger.warning("build_context %d (auth) at %s — falling back", resp.status_code, url)
+                return None
+
             if resp.status_code == 404:
                 # 404 = project not found (per K4b ProjectNotFound mapping).
-                # Stable request problem — don't retry.
+                # Stable request problem — degraded, no fallback.
                 logger.warning(
-                    "knowledge build_context 404 (project not found) project_id=%s",
-                    project_id,
+                    "build_context 404 (project not found) project_id=%s", project_id,
                 )
                 return _degraded()
 
             if resp.status_code >= 400:
                 logger.warning(
-                    "knowledge build_context %d (no retry) body=%s",
+                    "build_context %d (no retry) body=%s",
                     resp.status_code, resp.text[:200],
                 )
                 return _degraded()
@@ -250,21 +297,22 @@ class KnowledgeClient:
             try:
                 data = resp.json()
             except Exception as exc:
-                logger.warning("knowledge build_context decode failure: %s", exc)
+                logger.warning("build_context decode failure: %s", exc)
                 return _degraded()
 
             try:
                 return KnowledgeContext.model_validate(data)
             except Exception as exc:
-                logger.warning("knowledge build_context validate failure: %s", exc)
+                logger.warning("build_context validate failure: %s", exc)
                 return _degraded()
 
-        # All attempts exhausted — single warning summarising the failure.
+        # All attempts exhausted → OUTAGE (None ⇒ caller falls back). Keep the
+        # "unavailable" keyword the once-per-failure log guard keys on.
         logger.warning(
-            "knowledge build_context unavailable after %d attempts: %s",
-            attempts, last_err_summary or "unknown",
+            "build_context unavailable at %s after %d attempts: %s",
+            url, attempts, last_err_summary or "unknown",
         )
-        return _degraded()
+        return None
 
     async def get_tool_definitions(self) -> list[dict]:
         """Fetch the federated tool catalog from the ai-gateway via MCP

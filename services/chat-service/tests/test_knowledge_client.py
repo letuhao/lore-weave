@@ -459,6 +459,92 @@ class TestTraceIdForwarding:
         await client.aclose()
 
 
+# ── P6 grounding port: gateway-first + retained knowledge fallback (H2) ──────
+
+
+def _make_dual_client(handler: Callable[[httpx.Request], httpx.Response]) -> KnowledgeClient:
+    """A client whose grounding gateway (tools_base_url) differs from knowledge
+    (base_url) so the gateway-first → knowledge-fallback path is exercised."""
+    return KnowledgeClient(
+        base_url="http://knowledge-service:8092",
+        tools_base_url="http://ai-gateway:8210",
+        internal_token="t",
+        timeout_s=0.5,
+        retries=1,
+        tool_timeout_s=30.0,
+        transport=httpx.MockTransport(handler),
+    )
+
+
+class TestGroundingGatewayFallback:
+    @pytest.mark.asyncio
+    async def test_gateway_success_does_not_call_knowledge(self):
+        calls: list[str] = []
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            calls.append(str(req.url))
+            return httpx.Response(200, json={"mode": "static", "context": "GW", "recent_message_count": 50, "token_count": 1})
+
+        client = _make_dual_client(handler)
+        result = await client.build_context(user_id="u")
+        assert result.context == "GW"
+        assert all("ai-gateway" in u for u in calls)
+        assert not any("knowledge-service" in u for u in calls)
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_gateway_outage_falls_back_to_knowledge_direct(self):
+        def handler(req: httpx.Request) -> httpx.Response:
+            if "ai-gateway" in str(req.url):
+                return httpx.Response(502, text="gateway grounding upstream unavailable")  # outage
+            return httpx.Response(200, json={"mode": "static", "context": "KN", "recent_message_count": 50, "token_count": 1})
+
+        client = _make_dual_client(handler)
+        result = await client.build_context(user_id="u")
+        assert result.context == "KN"  # H2: degraded context via the retained direct path, not a broken turn
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_gateway_stable_404_degrades_without_fallback(self):
+        calls: list[str] = []
+
+        def handler(req: httpx.Request) -> httpx.Response:
+            calls.append(str(req.url))
+            if "ai-gateway" in str(req.url):
+                return httpx.Response(404, text="project not found")  # stable signal
+            return httpx.Response(200, json={"mode": "static", "context": "KN", "recent_message_count": 50, "token_count": 1})
+
+        client = _make_dual_client(handler)
+        result = await client.build_context(user_id="u")
+        assert result.mode == "degraded"  # no context, but no pointless fallback
+        assert not any("knowledge-service" in u for u in calls)  # knowledge-direct NOT called
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_gateway_auth_reject_falls_back_to_knowledge_direct(self):
+        # A gateway token misconfig (401) is a host-access problem, not a stable
+        # request problem — the direct path uses the same token and is accepted.
+        def handler(req: httpx.Request) -> httpx.Response:
+            if "ai-gateway" in str(req.url):
+                return httpx.Response(401, text="invalid internal token")
+            return httpx.Response(200, json={"mode": "static", "context": "KN", "recent_message_count": 50, "token_count": 1})
+
+        client = _make_dual_client(handler)
+        result = await client.build_context(user_id="u")
+        assert result.context == "KN"  # recovered via the retained direct fallback
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_both_unreachable_degrades(self):
+        def handler(_: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, text="down")
+
+        client = _make_dual_client(handler)
+        result = await client.build_context(user_id="u")
+        assert result.mode == "degraded"  # turn proceeds context-free, never errors
+        await client.aclose()
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # K21-B — execute_tool (POST /internal/tools/execute)
 # ════════════════════════════════════════════════════════════════════════════

@@ -16,6 +16,12 @@ export interface AppConfig {
   providers: ProviderConfig[];
   /** how often the federated catalog is refreshed from providers (H10) */
   catalogRefreshMs: number;
+  /**
+   * P6 grounding port: knowledge-service HTTP base for the grounding proxy
+   * (`POST /internal/context/build`). Defaults to the knowledge provider's MCP
+   * URL with `/mcp` stripped, so no new env is required; overridable.
+   */
+  groundingUrl: string;
 }
 
 let cached: AppConfig | undefined;
@@ -34,11 +40,19 @@ export function loadConfig(): AppConfig {
       mcpUrl: process.env.GLOSSARY_MCP_URL ?? 'http://glossary-service:8088/mcp',
     },
   ];
+  // P6: grounding proxy target = knowledge HTTP base (strip the `/mcp` suffix
+  // off the knowledge provider's MCP URL), overridable via KNOWLEDGE_SERVICE_URL.
+  const knowledgeMcp = providers.find((p) => p.name === 'knowledge')?.mcpUrl ?? '';
+  const groundingUrl = (
+    process.env.KNOWLEDGE_SERVICE_URL ?? knowledgeMcp.replace(/\/mcp\/?$/, '')
+  ).replace(/\/$/, '');
+
   cached = {
     port: parseInt(process.env.AI_GATEWAY_PORT ?? '8210', 10),
     internalToken: process.env.INTERNAL_SERVICE_TOKEN ?? '',
     providers,
     catalogRefreshMs: parseInt(process.env.AI_GATEWAY_CATALOG_REFRESH_MS ?? '30000', 10),
+    groundingUrl,
   };
   return cached;
 }
