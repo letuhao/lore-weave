@@ -340,16 +340,66 @@ class OutlineRepo:
                     existing_ids = [r["chapter_id"] for r in existing]
                     if existing_ids and not replace:
                         raise AlreadyPlannedError(existing_ids)
-                    if replace and existing_ids:
-                        # true replace — archive ONLY the target chapters' scenes.
+                    if replace:
+                        # true replace — soft-archive the target chapters' prior
+                        # PLAN nodes: BOTH scenes AND their `chapter` nodes
+                        # (D-A3-REPLACE-ORPHAN-ARC-NODES / FD-17). Archiving only
+                        # scenes left every prior `chapter` node (and its `arc`)
+                        # childless-but-active, accumulating orphan structure on
+                        # each re-plan.
+                        #
+                        # Capture the parent arcs of the chapter nodes we're about
+                        # to archive FIRST, so the arc sweep below is SCOPED to the
+                        # arc(s) this replace actually orphans — NOT a project-wide
+                        # "any childless arc" sweep, which would also archive an
+                        # unrelated freshly-created empty arc (a bystander). Arcs
+                        # carry no chapter_id, so they can only be tied to this
+                        # operation through the chapter→arc parent link.
+                        candidate_arcs = await c.fetch(
+                            """
+                            SELECT DISTINCT parent_id FROM outline_node
+                            WHERE user_id = $1 AND project_id = $2 AND kind = 'chapter'
+                              AND NOT is_archived AND chapter_id = ANY($3)
+                              AND parent_id IS NOT NULL
+                            """,
+                            user_id, project_id, affected,
+                        )
+                        candidate_arc_ids = [r["parent_id"] for r in candidate_arcs]
+                        # Archive the prior scene + chapter nodes for the target
+                        # chapters. Keyed on `affected` (all target chapters), NOT
+                        # `existing_ids` (chapters with active scenes), so this also
+                        # reaps chapter nodes whose scenes a prior replace already
+                        # archived. chapter_id ties each row to this re-plan — no
+                        # bystander risk (an unrelated chapter has a different id).
                         await c.execute(
                             """
                             UPDATE outline_node SET is_archived = true, updated_at = now()
-                            WHERE user_id = $1 AND project_id = $2 AND kind = 'scene'
+                            WHERE user_id = $1 AND project_id = $2
+                              AND kind IN ('scene', 'chapter')
                               AND NOT is_archived AND chapter_id = ANY($3)
                             """,
-                            user_id, project_id, existing_ids,
+                            user_id, project_id, affected,
                         )
+                        # Archive only THOSE candidate arcs left with NO active
+                        # `chapter` child. The NOT EXISTS guard preserves an arc
+                        # that still spans active chapters OUTSIDE the target set (a
+                        # partial re-plan). Scoped by id, so a bystander empty arc
+                        # is untouched. Runs BEFORE the insert (the fresh tree is
+                        # never matched).
+                        if candidate_arc_ids:
+                            await c.execute(
+                                """
+                                UPDATE outline_node a SET is_archived = true, updated_at = now()
+                                WHERE a.user_id = $1 AND a.kind = 'arc'
+                                  AND NOT a.is_archived AND a.id = ANY($2)
+                                  AND NOT EXISTS (
+                                    SELECT 1 FROM outline_node ch
+                                    WHERE ch.user_id = $1 AND ch.parent_id = a.id
+                                      AND ch.kind = 'chapter' AND NOT ch.is_archived
+                                  )
+                                """,
+                                user_id, candidate_arc_ids,
+                            )
                     ids = await self._insert_decomposed_tree(
                         c, user_id, project_id, arc_title=arc_title, chapters=chapters,
                     )

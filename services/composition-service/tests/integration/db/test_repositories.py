@@ -192,6 +192,91 @@ async def test_outline_archive_terminates_on_parent_cycle(pool):
     assert {n.id for n in await repo.list_tree(user, project)} == set()
 
 
+def _chapters_payload(*chapter_ids, scenes_per=1):
+    return [
+        {"chapter_id": cid, "title": f"ch-{i}", "intent": "x",
+         "scenes": [{"title": f"s{j}", "synopsis": "y"} for j in range(scenes_per)]}
+        for i, cid in enumerate(chapter_ids)
+    ]
+
+
+async def _active_ids(pool, user, project, kind):
+    async with pool.acquire() as c:
+        rows = await c.fetch(
+            "SELECT id FROM outline_node WHERE user_id=$1 AND project_id=$2 "
+            "AND kind=$3 AND NOT is_archived",
+            user, project, kind,
+        )
+    return {r["id"] for r in rows}
+
+
+async def test_decompose_replace_archives_prior_arc_and_chapter_nodes(pool):
+    """FD-17/069: a replace re-plan must soft-archive the prior arc + chapter
+    nodes, not ONLY their scenes — else orphan arc/chapter nodes accumulate on
+    every re-plan (their scenes archived, a fresh arc/chapters created beside)."""
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    chA = uuid.uuid4()
+    r1 = await repo.commit_decomposed_tree(
+        user, project, arc_title="v1", chapters=_chapters_payload(chA),
+    )
+    r2 = await repo.commit_decomposed_tree(
+        user, project, arc_title="v2", chapters=_chapters_payload(chA), replace=True,
+    )
+    arcs = await _active_ids(pool, user, project, "arc")
+    chaps = await _active_ids(pool, user, project, "chapter")
+    scenes = await _active_ids(pool, user, project, "scene")
+    # exactly the v2 tree is active — no orphan v1 arc/chapter/scene survives.
+    assert arcs == {uuid.UUID(r2["arc_id"])}
+    assert uuid.UUID(r1["arc_id"]) not in arcs
+    assert chaps == {uuid.UUID(x) for x in r2["chapter_ids"]}
+    assert scenes == {uuid.UUID(x) for x in r2["scene_ids"]}
+
+
+async def test_decompose_partial_replace_preserves_arc_with_active_out_of_target_chapter(pool):
+    """The childless-arc sweep must NOT archive an arc that still spans an active
+    chapter OUTSIDE the replaced set (a partial re-plan) — only fully-emptied
+    arcs are reaped."""
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    chA, chB = uuid.uuid4(), uuid.uuid4()
+    r1 = await repo.commit_decomposed_tree(
+        user, project, arc_title="v1", chapters=_chapters_payload(chA, chB),
+    )
+    r2 = await repo.commit_decomposed_tree(
+        user, project, arc_title="v2-chA", chapters=_chapters_payload(chA), replace=True,
+    )
+    arcs = await _active_ids(pool, user, project, "arc")
+    # v1 arc SURVIVES (chB child still active) AND the new v2 arc exists.
+    assert uuid.UUID(r1["arc_id"]) in arcs
+    assert uuid.UUID(r2["arc_id"]) in arcs
+    assert len(arcs) == 2
+    chaps = await _active_ids(pool, user, project, "chapter")
+    assert uuid.UUID(r1["chapter_ids"][0]) not in chaps   # chA prior chapter archived
+    assert uuid.UUID(r1["chapter_ids"][1]) in chaps        # chB chapter preserved
+    assert uuid.UUID(r2["chapter_ids"][0]) in chaps        # chA new chapter active
+
+
+async def test_decompose_replace_does_not_archive_unrelated_empty_arc(pool):
+    """/review-impl HIGH: the childless-arc sweep must be SCOPED to the arc(s)
+    this replace orphans — a freshly-created, not-yet-populated bystander arc
+    (no chapter children) must SURVIVE a decompose replace elsewhere in the
+    project, not be archived as collateral by a project-wide 'any childless
+    arc' sweep."""
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    bystander = await repo.create_node(user, project, kind="arc", title="manual-empty")
+    chA = uuid.uuid4()
+    await repo.commit_decomposed_tree(
+        user, project, arc_title="v1", chapters=_chapters_payload(chA),
+    )
+    await repo.commit_decomposed_tree(
+        user, project, arc_title="v2", chapters=_chapters_payload(chA), replace=True,
+    )
+    arcs = await _active_ids(pool, user, project, "arc")
+    assert bystander.id in arcs   # the unrelated empty arc is NOT archived
+
+
 async def test_outline_reparent_guards(pool):
     """D-COMP-M2-XREF-OWNERSHIP: update_node blocks self-parent, cross-user
     parent, and descendant (cycle) reparents; a valid reparent succeeds."""
