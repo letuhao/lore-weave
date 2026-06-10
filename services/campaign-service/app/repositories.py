@@ -587,3 +587,51 @@ async def mark_stage_failed(
         """,
         campaign_id, UUID(chapter_id), error[:2000],
     )
+
+
+# ── D-CAMPAIGN-BESTEFFORT-EMIT-REDIS: stuck-`dispatched` self-heal ──────────
+
+async def find_stuck_dispatched(
+    pool: asyncpg.Pool, campaign_id: UUID, timeout_s: int,
+) -> list[asyncpg.Record]:
+    """Rows where a stage has sat in `dispatched` longer than `timeout_s` — the
+    completion event was never absorbed (lost best-effort emit, or a relay/consumer
+    drop). `updated_at` is a sound stuck-timer: translation only dispatches after
+    THIS chapter's knowledge is terminal-success (gating), so the two stages never
+    co-occupy `dispatched` on one row, and nothing bumps `updated_at` while the
+    single in-flight stage waits. Returns the per-stage status + translation_job_id
+    so the reconcile can query the right downstream truth (knowledge truth is
+    project-scoped — the project_id comes from the campaign, not the row)."""
+    return await pool.fetch(
+        """
+        SELECT chapter_id, knowledge_status, translation_status, translation_job_id
+        FROM campaign_chapters
+        WHERE campaign_id = $1
+          AND updated_at < now() - make_interval(secs => $2::int)
+          AND 'dispatched' IN (knowledge_status, translation_status)
+        """,
+        campaign_id, timeout_s,
+    )
+
+
+async def reset_stuck_stage(
+    pool: asyncpg.Pool, campaign_id: UUID, chapter_id: str, stage: str, reason: str,
+) -> int:
+    """Reset a stuck stage `dispatched`→'failed' so gating re-dispatches it within
+    the attempt cap. Guarded on the CURRENT status still being `dispatched` — a
+    real completion event that raced in already flipped it to `done`, and this
+    no-ops (returns 0). The downstream skip-gate prevents re-spend on re-dispatch
+    of already-completed work."""
+    col = _stage_col(stage)
+    result = await pool.execute(
+        f"""
+        UPDATE campaign_chapters
+        SET {col} = 'failed', last_error = $3, updated_at = now()
+        WHERE campaign_id = $1 AND chapter_id = $2 AND {col} = 'dispatched'
+        """,
+        campaign_id, UUID(chapter_id), reason[:2000],
+    )
+    try:
+        return int(result.split()[-1])
+    except (ValueError, IndexError, AttributeError):
+        return 0

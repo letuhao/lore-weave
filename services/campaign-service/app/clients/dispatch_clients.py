@@ -81,6 +81,44 @@ class TranslationDispatchClient:
             raise DispatchError(f"translation dispatch {resp.status_code}: {resp.text[:300]}")
         return str(resp.json().get("job_id", ""))
 
+    async def job_status(self, *, user_id: str, job_id: str) -> str:
+        """D-CAMPAIGN-BESTEFFORT-EMIT-REDIS: job-level aliveness for the stuck
+        reconcile — checked ONCE per job so a slow-but-alive batch isn't probed
+        per-chapter every tick. Returns "active" | "terminal"; a 404 → "gone"
+        (safe to re-dispatch). Raises DispatchError on transport/other errors so
+        the caller LEAVES the rows untouched."""
+        url = f"{self._base_url}/internal/translation/jobs/{job_id}/status"
+        try:
+            resp = await self._http.get(url, params={"user_id": user_id})
+        except httpx.RequestError as exc:
+            raise DispatchError(f"translation job_status: {exc}") from exc
+        if resp.status_code == 404:
+            return "gone"
+        if not resp.is_success:
+            raise DispatchError(
+                f"translation job_status {resp.status_code}: {resp.text[:300]}"
+            )
+        return str(resp.json().get("status", ""))
+
+    async def chapter_status(self, *, user_id: str, job_id: str, chapter_id: str) -> str:
+        """D-CAMPAIGN-BESTEFFORT-EMIT-REDIS: ground-truth for the stuck reconcile.
+        Returns the normalized vocab "done" | "failed" | "running" | "gone" for a
+        chapter's translation. A 404 (job not found/owned) → "gone" (safe to
+        re-dispatch). Raises DispatchError on transport/other errors so the caller
+        LEAVES the row untouched (never reset on uncertainty → no re-dispatch loop)."""
+        url = f"{self._base_url}/internal/translation/jobs/{job_id}/chapters/{chapter_id}/status"
+        try:
+            resp = await self._http.get(url, params={"user_id": user_id})
+        except httpx.RequestError as exc:
+            raise DispatchError(f"translation chapter_status: {exc}") from exc
+        if resp.status_code == 404:
+            return "gone"
+        if not resp.is_success:
+            raise DispatchError(
+                f"translation chapter_status {resp.status_code}: {resp.text[:300]}"
+            )
+        return str(resp.json().get("status", ""))
+
     async def cancel_job(self, *, user_id: str, job_id: str) -> None:
         """S3c-2: cancel an in-flight translation job (campaign cancel). Idempotent
         on the translation side; a 404/409 (already terminal) is treated as success."""
@@ -177,6 +215,25 @@ class KnowledgeDispatchClient:
         if not resp.is_success:
             raise DispatchError(
                 f"knowledge set-campaign-models {resp.status_code}: {resp.text[:300]}"
+            )
+        return resp.json()
+
+    async def extraction_status(self, *, user_id: str, project_id: str) -> dict:
+        """D-CAMPAIGN-BESTEFFORT-EMIT-REDIS: ground-truth for the stuck reconcile.
+        Returns `{active: bool, last_outcome: str|None}`. Knowledge runs one job
+        per project over a scope (no per-chapter job), so the truth is project-
+        scoped: `active` → a chapter is legitimately in-flight (leave it); not
+        active + last_outcome=='complete' → the scope finished, so a stuck chapter
+        was extracted but its event was lost (reconcile to done). Raises
+        DispatchError on transport/other errors → caller LEAVES the row untouched."""
+        url = f"{self._base_url}/internal/knowledge/projects/{project_id}/extraction-status"
+        try:
+            resp = await self._http.get(url, params={"user_id": user_id})
+        except httpx.RequestError as exc:
+            raise DispatchError(f"knowledge extraction_status: {exc}") from exc
+        if not resp.is_success:
+            raise DispatchError(
+                f"knowledge extraction_status {resp.status_code}: {resp.text[:300]}"
             )
         return resp.json()
 

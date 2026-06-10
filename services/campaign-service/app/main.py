@@ -63,6 +63,7 @@ async def lifespan(app: FastAPI):
         tick_seconds=settings.driver_tick_seconds,
         max_attempts=settings.max_stage_attempts,
         max_inflight=settings.driver_max_inflight_per_campaign,
+        stuck_timeout_s=settings.stuck_dispatch_timeout_s,
     )
     driver_task = asyncio.create_task(driver.run())
 

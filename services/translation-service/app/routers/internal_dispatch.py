@@ -15,7 +15,7 @@ from __future__ import annotations
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel
 
 from ..config import settings as app_settings
@@ -120,6 +120,108 @@ async def dispatch_job(
         campaign_id=payload.campaign_id,
     )
     return DispatchResponse(job_id=job.job_id)
+
+
+class ChapterStatusResponse(BaseModel):
+    # Normalized truth vocab the campaign reconcile understands (NOT the raw
+    # chapter_translations.status). "done" → mark the campaign row done;
+    # "failed"/"gone" → reset for re-dispatch; "running" → leave (in-flight).
+    status: str  # "done" | "failed" | "running" | "gone"
+
+
+@router.get(
+    "/jobs/{job_id}/chapters/{chapter_id}/status",
+    response_model=ChapterStatusResponse,
+    dependencies=[Depends(require_internal_token)],
+)
+async def dispatch_chapter_status(
+    job_id: UUID,
+    chapter_id: UUID,
+    user_id: UUID = Query(...),
+    db: asyncpg.Pool = Depends(get_db),
+) -> ChapterStatusResponse:
+    """D-CAMPAIGN-BESTEFFORT-EMIT-REDIS: ground-truth for the campaign's
+    stuck-`dispatched` reconcile. Tells whether a chapter's translation actually
+    completed (so a lost `chapter.translated`/`chapter.translation_skipped` event
+    can be reconciled to `done` WITHOUT re-dispatching), is still in-flight (leave),
+    or didn't produce a fresh translation (reset for re-dispatch).
+
+    The "done" truth MIRRORS the S2 idempotency skip-gate (jobs.py): a chapter is
+    done iff a **fresh completed** translation EXISTS for this job's language
+    (status='completed' AND not glossary-stale) — keyed on (language, chapter),
+    NOT on this job. That is load-bearing: a chapter the gate SKIPPED has no
+    per-job row yet still has a fresh version, so a per-job lookup would wrongly
+    report 'failed' → reset → re-dispatch → skip → … → falsely fail a chapter that
+    is in fact translated. A glossary-STALE completed row is intentionally NOT
+    'done' (the gate re-translates it), so it falls through to 'failed' once the
+    job is terminal → re-dispatch refreshes it (loop-free: the refreshed row is
+    non-stale → 'done' next time).
+
+    Owner-scoped via the asserted `user_id`; a not-found/not-owned job → 404 (the
+    caller maps that to a safe re-dispatch)."""
+    job = await db.fetchrow(
+        "SELECT owner_user_id, status, target_language FROM translation_jobs WHERE job_id=$1",
+        job_id,
+    )
+    if not job or str(job["owner_user_id"]) != str(user_id):
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "TRANSL_NOT_FOUND", "message": "Job not found"},
+        )
+
+    lang = job["target_language"]
+    if lang is not None:
+        fresh = await db.fetchval(
+            """
+            SELECT 1 FROM chapter_translations
+            WHERE target_language = $1 AND chapter_id = $2
+              AND status = 'completed' AND is_glossary_stale = false
+            LIMIT 1
+            """,
+            lang, chapter_id,
+        )
+        if fresh:
+            return ChapterStatusResponse(status="done")
+
+    # Not freshly translated. A still-active job may yet produce it (leave); a
+    # terminal job that didn't → re-dispatch (the gate prevents re-spend on a
+    # chapter that DID complete fresh — that path returned 'done' above).
+    if job["status"] in ("pending", "running", "paused"):
+        return ChapterStatusResponse(status="running")
+    return ChapterStatusResponse(status="failed")
+
+
+class JobStatusResponse(BaseModel):
+    # "active" → still pending/running (chapters legitimately in-flight; leave);
+    # "terminal" → completed/failed/cancelled (resolve chapters per-chapter).
+    status: str  # "active" | "terminal"
+
+
+@router.get(
+    "/jobs/{job_id}/status",
+    response_model=JobStatusResponse,
+    dependencies=[Depends(require_internal_token)],
+)
+async def dispatch_job_status(
+    job_id: UUID,
+    user_id: UUID = Query(...),
+    db: asyncpg.Pool = Depends(get_db),
+) -> JobStatusResponse:
+    """D-CAMPAIGN-BESTEFFORT-EMIT-REDIS: a campaign dispatches a chapter batch as
+    ONE job, so the reconcile checks job aliveness ONCE per job (not per chapter)
+    before any per-chapter truth — bounding the truth fan-out for a slow-but-alive
+    job to a single call per tick. Owner-scoped; 404 if not found/owned (the caller
+    maps that to a safe re-dispatch)."""
+    job = await db.fetchrow(
+        "SELECT owner_user_id, status FROM translation_jobs WHERE job_id=$1", job_id
+    )
+    if not job or str(job["owner_user_id"]) != str(user_id):
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "TRANSL_NOT_FOUND", "message": "Job not found"},
+        )
+    active = job["status"] in ("pending", "running")
+    return JobStatusResponse(status="active" if active else "terminal")
 
 
 class InternalCancelPayload(BaseModel):

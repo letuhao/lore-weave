@@ -83,10 +83,12 @@ def patch_repo(mocker):
     return m
 
 
-async def _process(pool, clients, campaign, *, max_attempts=3, max_inflight=20):
+async def _process(pool, clients, campaign, *, max_attempts=3, max_inflight=20,
+                   stuck_timeout_s=900):
     await process_campaign(
         pool, clients, campaign,
         max_attempts=max_attempts, max_inflight=max_inflight,
+        stuck_timeout_s=stuck_timeout_s,
     )
 
 
@@ -236,7 +238,8 @@ async def test_reconcile_claims_not_lists(fake_pool, mocker):
     listed = mocker.patch("app.saga.driver.repo.list_active_campaigns",
                           new_callable=AsyncMock, return_value=[])
     clients, _, _ = _clients()
-    await reconcile_once(fake_pool, clients, driver_id="drv-1", max_attempts=3, max_inflight=20)
+    await reconcile_once(fake_pool, clients, driver_id="drv-1", max_attempts=3,
+                         max_inflight=20, stuck_timeout_s=900)
     claim.assert_awaited_once()
     listed.assert_not_called()
     # claim is owner-scoped (renew own / exclude peers) + leased > tick
@@ -251,7 +254,8 @@ async def test_reconcile_processes_each_claimed_campaign(fake_pool, mocker):
                  new_callable=AsyncMock, return_value=[c1, c2])
     proc = mocker.patch("app.saga.driver.process_campaign", new_callable=AsyncMock)
     clients, _, _ = _clients()
-    await reconcile_once(fake_pool, clients, driver_id="d", max_attempts=3, max_inflight=20)
+    await reconcile_once(fake_pool, clients, driver_id="d", max_attempts=3,
+                         max_inflight=20, stuck_timeout_s=900)
     assert proc.await_count == 2
 
 
@@ -264,3 +268,29 @@ async def test_dispatched_rows_not_redispatched(fake_pool, patch_repo):
     await _process(fake_pool, clients, _campaign())
     tr.dispatch_job.assert_not_called()
     kn.dispatch_extraction.assert_not_called()
+
+
+# ── D-CAMPAIGN-BESTEFFORT-EMIT-REDIS: stuck-reconcile is actually WIRED ──────
+# (nil-tolerant wiring guard: a dropped reconcile_stuck call would silently
+# no-op and every other test would stay green — assert the call site fires.)
+
+async def test_reconcile_stuck_runs_before_gating_on_running(fake_pool, patch_repo, mocker):
+    spy = mocker.patch("app.saga.driver.reconcile_stuck", new_callable=AsyncMock)
+    patch_repo["load_chapter_states"].return_value = [_ch(C1, k="pending")]
+    clients, tr, kn = _clients()
+    await _process(fake_pool, clients, _campaign(), stuck_timeout_s=900)
+    spy.assert_awaited_once()
+    # threaded the configured timeout, and ran BEFORE states were loaded for gating
+    assert spy.call_args.kwargs["timeout_s"] == 900
+    assert spy.await_count == 1
+    assert patch_repo["load_chapter_states"].await_count == 1
+
+
+async def test_reconcile_stuck_skipped_when_cancelling(fake_pool, patch_repo, mocker):
+    # A cancelling campaign is tearing down, not self-healing — reconcile must not run.
+    spy = mocker.patch("app.saga.driver.reconcile_stuck", new_callable=AsyncMock)
+    patch_repo["load_chapter_states"].return_value = [_ch(C1, k="dispatched")]
+    clients, tr, kn = _clients()
+    tr.cancel_job = AsyncMock()
+    await _process(fake_pool, clients, _campaign(status="cancelling"))
+    spy.assert_not_awaited()

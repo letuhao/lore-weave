@@ -187,6 +187,105 @@ def test_empty_chapter_ids_422(client, mocker):
     assert resp.status_code == 422
 
 
+# ── D-CAMPAIGN-BESTEFFORT-EMIT-REDIS: chapter-status truth ────────────────────
+
+def _status_url(job_id=JOB, chapter_id=C1):
+    return f"/internal/translation/jobs/{job_id}/chapters/{chapter_id}/status"
+
+
+def test_chapter_status_rejects_missing_token(client):
+    resp = client.get(_status_url(), params={"user_id": USER})
+    assert resp.status_code == 401
+
+
+def test_chapter_status_fresh_version_is_done(client, fake_pool):
+    # A fresh completed version exists for the language → done (regardless of job).
+    fake_pool.fetchrow.side_effect = [{"owner_user_id": USER, "status": "running",
+                                       "target_language": "vi"}]
+    fake_pool.fetchval.return_value = 1  # fresh-version query hit
+    resp = client.get(_status_url(), params={"user_id": USER},
+                      headers={"X-Internal-Token": TOKEN})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "done"
+
+
+def test_chapter_status_skipped_chapter_is_done_even_without_job_row(client, fake_pool):
+    # REGRESSION (HIGH /review-impl): the S2 skip-gate excludes an already-translated
+    # chapter from the job — it has NO per-job row but DOES have a fresh version.
+    # The truth is keyed on (language, chapter), NOT the job, so it must be 'done'
+    # (a per-job lookup would wrongly say 'failed' → false campaign failure).
+    fake_pool.fetchrow.side_effect = [{"owner_user_id": USER, "status": "completed",
+                                       "target_language": "vi"}]
+    fake_pool.fetchval.return_value = 1  # fresh version exists from a PRIOR job
+    resp = client.get(_status_url(), params={"user_id": USER},
+                      headers={"X-Internal-Token": TOKEN})
+    assert resp.json()["status"] == "done"
+
+
+def test_chapter_status_no_fresh_terminal_job_is_failed(client, fake_pool):
+    # No fresh version + the job is terminal → it didn't produce one → re-dispatch.
+    # (Also the glossary-stale case: a stale completed row is NOT fresh → re-translate.)
+    fake_pool.fetchrow.side_effect = [{"owner_user_id": USER, "status": "completed",
+                                       "target_language": "vi"}]
+    fake_pool.fetchval.return_value = None
+    resp = client.get(_status_url(), params={"user_id": USER},
+                      headers={"X-Internal-Token": TOKEN})
+    assert resp.json()["status"] == "failed"
+
+
+def test_chapter_status_no_fresh_active_job_is_running(client, fake_pool):
+    fake_pool.fetchrow.side_effect = [{"owner_user_id": USER, "status": "running",
+                                       "target_language": "vi"}]
+    fake_pool.fetchval.return_value = None
+    resp = client.get(_status_url(), params={"user_id": USER},
+                      headers={"X-Internal-Token": TOKEN})
+    assert resp.json()["status"] == "running"
+
+
+def test_chapter_status_job_not_found_404(client, fake_pool):
+    fake_pool.fetchrow.side_effect = [None]
+    resp = client.get(_status_url(), params={"user_id": USER},
+                      headers={"X-Internal-Token": TOKEN})
+    assert resp.status_code == 404
+
+
+def test_chapter_status_not_owned_404(client, fake_pool):
+    fake_pool.fetchrow.side_effect = [
+        {"owner_user_id": "ffffffff-ffff-ffff-ffff-ffffffffffff", "status": "running",
+         "target_language": "vi"},
+    ]
+    resp = client.get(_status_url(), params={"user_id": USER},
+                      headers={"X-Internal-Token": TOKEN})
+    assert resp.status_code == 404
+
+
+def _job_status_url(job_id=JOB):
+    return f"/internal/translation/jobs/{job_id}/status"
+
+
+def test_job_status_rejects_missing_token(client):
+    assert client.get(_job_status_url()).status_code == 401
+
+
+@pytest.mark.parametrize("job_st,expected", [
+    ("pending", "active"), ("running", "active"),
+    ("completed", "terminal"), ("failed", "terminal"), ("cancelled", "terminal"),
+])
+def test_job_status_active_vs_terminal(client, fake_pool, job_st, expected):
+    fake_pool.fetchrow.side_effect = [{"owner_user_id": USER, "status": job_st}]
+    resp = client.get(_job_status_url(), params={"user_id": USER},
+                      headers={"X-Internal-Token": TOKEN})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == expected
+
+
+def test_job_status_not_found_404(client, fake_pool):
+    fake_pool.fetchrow.side_effect = [None]
+    resp = client.get(_job_status_url(), params={"user_id": USER},
+                      headers={"X-Internal-Token": TOKEN})
+    assert resp.status_code == 404
+
+
 # ── S3c-2 internal cancel ────────────────────────────────────────────────────
 
 def test_cancel_rejects_missing_token(client):

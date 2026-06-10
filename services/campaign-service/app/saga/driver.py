@@ -36,6 +36,7 @@ from ..clients.dispatch_clients import (
     TranslationDispatchClient,
 )
 from . import gating
+from .reconcile import reconcile_stuck
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ async def process_campaign(
     *,
     max_attempts: int,
     max_inflight: int,
+    stuck_timeout_s: int,
 ) -> None:
     """Drive one campaign one tick. Swallows per-campaign errors at the loop
     boundary (a single sick campaign must not stall the others)."""
@@ -60,13 +62,13 @@ async def process_campaign(
     status: str = campaign["status"]
     stages: list[str] = list(campaign["stages"])
 
-    states = await repo.load_chapter_states(pool, campaign_id)
-
     # ── cancellation (S3c-2): ACTIVELY cancel in-flight jobs, then finalize ──
     # Propagate cancel to the downstream jobs (best-effort), terminalize the
     # still-dispatched stages (cancelled jobs won't emit completion events, so
     # waiting for a passive drain would hang forever), then finalize. A genuine
     # completion that raced in before cancel already flipped its row to `done`.
+    # (Runs before reconcile/state-load — a cancelling campaign is tearing down,
+    # not self-healing.)
     if status == "cancelling":
         await _propagate_cancel(pool, clients, campaign)
         await repo.mark_dispatched_stages_cancelled(pool, campaign_id)
@@ -75,6 +77,15 @@ async def process_campaign(
         )
         logger.info("campaign %s cancelled (propagated + finalized)", campaign_id)
         return
+
+    # ── stuck-`dispatched` self-heal (D-CAMPAIGN-BESTEFFORT-EMIT-REDIS) ───────
+    # BEFORE loading states for gating: a reconcile that marks a stuck row `done`
+    # (its completion event was lost) must be visible to the completion + gating
+    # checks THIS tick, so the campaign can finalize / advance without waiting a
+    # full tick. Mutates campaign_chapters → states are loaded fresh afterwards.
+    await reconcile_stuck(pool, clients, campaign, timeout_s=stuck_timeout_s)
+
+    states = await repo.load_chapter_states(pool, campaign_id)
 
     # ── completion ──────────────────────────────────────────────────────────
     if gating.is_complete(chapters=states, stages=stages, max_attempts=max_attempts):
@@ -227,6 +238,7 @@ async def reconcile_once(
     driver_id: str,
     max_attempts: int,
     max_inflight: int,
+    stuck_timeout_s: int,
     lease_seconds: int = 60,
     claim_limit: int = 100,
 ) -> None:
@@ -243,6 +255,7 @@ async def reconcile_once(
             await process_campaign(
                 pool, clients, c,
                 max_attempts=max_attempts, max_inflight=max_inflight,
+                stuck_timeout_s=stuck_timeout_s,
             )
         except Exception:
             logger.exception("driver: error processing campaign %s", c["campaign_id"])
@@ -259,12 +272,14 @@ class SagaDriver:
         tick_seconds: float,
         max_attempts: int,
         max_inflight: int,
+        stuck_timeout_s: int,
     ) -> None:
         self._pool = pool
         self._clients = clients
         self._tick = tick_seconds
         self._max_attempts = max_attempts
         self._max_inflight = max_inflight
+        self._stuck_timeout_s = stuck_timeout_s
         # Unique per process → owns its leases (renew own, exclude peers). HA-safe.
         self._driver_id = uuid4().hex
         # Lease must outlast a tick so a campaign mid-process isn't re-claimed by
@@ -282,6 +297,7 @@ class SagaDriver:
                     driver_id=self._driver_id,
                     max_attempts=self._max_attempts,
                     max_inflight=self._max_inflight,
+                    stuck_timeout_s=self._stuck_timeout_s,
                     lease_seconds=self._lease_seconds,
                 )
             except asyncio.CancelledError:

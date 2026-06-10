@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     max_stage_attempts: int = 3
     # HTTP timeout for internal dispatch calls.
     dispatch_timeout_s: float = 10.0
+    # D-CAMPAIGN-BESTEFFORT-EMIT-REDIS — stuck-`dispatched` self-heal. A stage that
+    # has sat in `dispatched` longer than this (no completion event arrived — the
+    # best-effort emit was lost, or the relay/consumer dropped it) is reconciled
+    # against downstream ground-truth: marked `done` if the work actually finished,
+    # else reset to `failed` for re-dispatch. Generous default so a genuinely
+    # in-flight per-chapter job is never reconciled mid-flight (15 min ≫ a chapter
+    # extraction or translation).
+    stuck_dispatch_timeout_s: int = 900
 
     # ── S5a cost/time estimate heuristics (the wizard's pre-launch review) ──
     # The estimate is a deliberately rough, upper-leaning BAND — these knobs let

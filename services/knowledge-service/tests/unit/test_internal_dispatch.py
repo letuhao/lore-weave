@@ -16,6 +16,7 @@ from fastapi import HTTPException
 from app.routers.internal_dispatch import (
     dispatch_extraction,
     dispatch_cancel_extraction,
+    dispatch_extraction_status,
     set_campaign_models,
     InternalExtractionPayload,
     InternalCancelPayload,
@@ -122,6 +123,43 @@ async def test_no_model_ref_422(mocker):
         await dispatch_extraction(PROJ, payload, pr, jr, br)
     assert exc.value.status_code == 422
     assert exc.value.detail["code"] == "KNOW_NO_LLM_MODEL"
+
+
+# ── D-CAMPAIGN-BESTEFFORT-EMIT-REDIS: extraction-status truth ──────────────
+
+async def test_extraction_status_project_not_found_404():
+    pr, jr, br = _repos(None)
+    with pytest.raises(HTTPException) as exc:
+        await dispatch_extraction_status(PROJ, USER, pr, jr)
+    assert exc.value.status_code == 404
+
+
+async def test_extraction_status_active_when_job_in_flight():
+    pr, jr, br = _repos(_project())
+    jr.list_active_for_project = AsyncMock(return_value=[SimpleNamespace(status="running")])
+    resp = await dispatch_extraction_status(PROJ, USER, pr, jr)
+    assert resp.active is True
+    assert resp.last_outcome is None
+    # active short-circuits — no need to read history
+    jr.list_for_project.assert_not_called()
+
+
+async def test_extraction_status_complete_when_no_active_and_last_complete():
+    pr, jr, br = _repos(_project())
+    jr.list_active_for_project = AsyncMock(return_value=[])
+    jr.list_for_project = AsyncMock(return_value=[SimpleNamespace(status="complete")])
+    resp = await dispatch_extraction_status(PROJ, USER, pr, jr)
+    assert resp.active is False
+    assert resp.last_outcome == "complete"
+
+
+async def test_extraction_status_none_when_no_jobs_at_all():
+    pr, jr, br = _repos(_project())
+    jr.list_active_for_project = AsyncMock(return_value=[])
+    jr.list_for_project = AsyncMock(return_value=[])
+    resp = await dispatch_extraction_status(PROJ, USER, pr, jr)
+    assert resp.active is False
+    assert resp.last_outcome is None
 
 
 # ── S5b: set-campaign-models ───────────────────────────────────────────────

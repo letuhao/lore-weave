@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from app.db.repositories.benchmark_runs import BenchmarkRunsRepo
@@ -222,6 +222,42 @@ async def set_campaign_models(
         graph_deleted=graph_deleted,
         rerank_model=new_rerank,
     )
+
+
+class ExtractionStatusResponse(BaseModel):
+    # Ground-truth for the campaign's stuck-`dispatched` reconcile.
+    # `active` → an extraction job is still pending/running/paused (the chapter is
+    # legitimately in-flight; leave it). `last_outcome` is the newest job's status
+    # when NOT active: 'complete' → the scope finished, so a chapter still stuck
+    # `dispatched` was extracted but its event was lost (reconcile to done);
+    # 'failed'/'cancelled'/None → reset for re-dispatch.
+    active: bool
+    last_outcome: str | None
+
+
+@router.get("/{project_id}/extraction-status", response_model=ExtractionStatusResponse)
+async def dispatch_extraction_status(
+    project_id: UUID,
+    user_id: UUID = Query(...),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+) -> ExtractionStatusResponse:
+    """D-CAMPAIGN-BESTEFFORT-EMIT-REDIS: ground-truth for the campaign's
+    stuck-`dispatched` reconcile. Knowledge runs one extraction job per project
+    over a scope (no per-chapter job tracking), so the truth granularity is the
+    project's extraction state, not the individual chapter. Owner-scoped via the
+    asserted `user_id` (404 if the project isn't owned)."""
+    project = await projects_repo.get(user_id, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="project not found"
+        )
+    active = await jobs_repo.list_active_for_project(user_id, project_id)
+    if active:
+        return ExtractionStatusResponse(active=True, last_outcome=None)
+    recent = await jobs_repo.list_for_project(user_id, project_id, limit=1)
+    last_outcome = recent[0].status if recent else None
+    return ExtractionStatusResponse(active=False, last_outcome=last_outcome)
 
 
 class InternalCancelPayload(BaseModel):
