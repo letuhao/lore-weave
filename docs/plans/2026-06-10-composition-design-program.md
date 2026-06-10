@@ -55,12 +55,24 @@ Inherited by ALL tracks — later specs assume these:
 - **Shared `<GraphCanvas>` owner = T1.3 (REVIEW-IMPL LOW-8)** — design the SVG node/edge/drag primitive once in T1.3 Scene Graph; T2.2 + T2.5 consume it (don't re-roll three graphs).
 - **Power-view interim host (REVIEW-IMPL LOW-9)** — the big views build standalone behind a simple route/overlay toggle during P1/P2; the T5.5 overlay + T5.4 windowing graft them last (reachable before windowing lands).
 
+## Architecture-review decisions (2026-06-11, LOOM-95)
+
+System-level review ([report](../reports/2026-06-11-composition-architecture-review.md)) — resolve the 2 HIGHs + R1–R7, inherited by the affected specs:
+- **AH-1 (PO): selection edits get a scene-decoupled path.** `/generate` requires `outline_node_id` (engine.py:71) → **T3.2** builds a **selection-scoped** endpoint (`{selection, operation}`, no node); **T3.3** inline-continue resolves **cursor → scene** (scene-scoped `/generate` if the caret is in a decomposed scene) **else chapter-scoped** (`GenerateChapterBody`, exists). The co-writer must work on an undecomposed chapter.
+- **AH-2 (PO): hoist stateful-panel state to a shared owner.** **T5.4** keeps the live state (co-writer stream, chat SSE, Tiptap editor) in a **shared owner** (top-level live-state context / SharedWorker); docked / floated / OS-popped windows are **thin synced views** (BroadcastChannel). The invariant becomes "**the live state never unmounts; views are re-creatable**." Largest FE undertaking — sequence last, behind a flag.
+- **R1 — coordinated empty/bootstrap state (Lead):** one shared "knowledge not ready → run an extraction" component, reused by every read-panel.
+- **R2 — graph-layout positions persist server-side on the work (Lead):** consistent for **both** Scene Graph (T1.3) and World Map (T2.5) — drop the per-device split.
+- **R3 — shared knowledge-degrade boundary (Lead):** a `useKnowledgeQuery` wrapper + error boundary; a knowledge outage degrades read-panels uniformly, never destabilizes the write shell.
+- **R4 — one axis-conversion module (Lead):** `story_order ↔ event_order×EVENT_ORDER_CHAPTER_STRIDE ↔ chapter sort_order ↔ block_index`, unit-tested; every cross-axis feature consumes it (generalises MED-3).
+- **R5 — canonical composition entity id = glossary `entity_id` (Lead):** resolve to knowledge via `glossary_entity_id`; render unanchored/unlinked entities gracefully.
+- **R7 — tolerate-orphan everywhere (Lead):** every stored ref (grounding-prefs, world-map positions, cast selections) tolerates a vanished/merged target + lazy-GCs on delete (covers AH-6 re-extraction churn + AH-7 delete cascades).
+
 ## New BE work surfaced during design (build-phase)
 
 Design is surfacing real BE additions (PO chose to build, not stub). The build phase must sequence these with their consumers:
 - **knowledge-service** `GET /v1/knowledge/entities/{id}/status?before_order=` — spoiler-windowed `:EntityStatus` (active|gone, A2 axis). **CORRECTED from "facts route" (REVIEW-IMPL HIGH-1)**: `:Fact` is closed-type (decision/preference/milestone/negation), no order axis, ≠ state. Optional `/entities/{id}/facts` = known-facts list. Consumers: **T2.1** Cast codex · **T2.4** Character Arc state band.
 - **composition-service** world-map store — `work.settings.world_map.positions` PATCH (+ `backdrop_url`). **Backdrop upload reuses book-service media** (composition has no object-storage — REVIEW-IMPL MED-5); composition stores only the URL. Consumer: **T2.5** World Map.
-- **composition-service** `/generate` **+ `selection` field** + explicit operation dispatch (rewrite/expand/describe; register + assert per the missing-enum lesson). Consumer: **T3.2** Selection tools.
+- **composition-service** `POST …/selection-edit` `{selection, operation, scene_context?}` — a **scene-decoupled** selection-scoped generate (AH-1; NOT `/generate`, which requires `outline_node_id`) + operation dispatch (register + assert, missing-enum lesson). Consumer: **T3.2** Selection tools.
 - **composition-service** `grounding_prefs` store (table keyed by node_id/block/ref) + packer force-includes pins / drops excludes. Consumer: **T3.4** Grounding pin/exclude.
 - **composition-service** `work.settings.references` + a **sanitized** `<references>` style-hint block in the packer. Consumer: **T3.6** References.
 - **composition-service** ensure `work.settings` style keys (voice/tone/density/structure_pref/source_language) are writable (possible allowed-keys widening). Consumer: **T3.5** Style & Voice.

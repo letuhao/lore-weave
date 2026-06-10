@@ -90,4 +90,4 @@ The PO chose **full OS pop-out** (`window.open`). But a React subtree **cannot m
 
 The V1 design is **architecturally sound for the write-surface + structure + canon core**, and the world/knowledge panels are well-specced **once** the four systemic items are addressed. **Two HIGHs (AH-1 co-writer scene-coupling, AH-2 pop-out vs no-unmount) are genuine design decisions** that should be made now — building T3.2/T3.3/T5.4 without them risks a build-time dead-end. The MEDs are mitigations to fold into the relevant specs; the LOWs are documented for the build.
 
-**Recommended before sign-off:** make the AH-1 and AH-2 calls (PO + Lead), fold R1–R7 pointers into the affected specs + the program doc's cross-cutting decisions. Then the design set is build-ready.
+**Decisions made (2026-06-11):** AH-1 → a selection-scoped endpoint (T3.2) + a cursor→scene/chapter resolver (T3.3); AH-2 → hoist live state to a shared owner, OS-popped windows are thin synced views (T5.4). R1–R7 folded into the program's cross-cutting + architecture-review decisions. **The design set is build-ready** (pending PO sign-off).
