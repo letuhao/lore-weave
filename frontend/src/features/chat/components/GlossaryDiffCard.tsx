@@ -54,7 +54,14 @@ export function GlossaryDiffCard({ record }: Props) {
   }
 
   async function apply() {
-    if (busy || state || !accessToken || !book_id || !entity_id || !base_version) return;
+    if (busy || state) return;
+    // EDIT-LOW2: a malformed proposal (schema makes this unreachable, but guard
+    // anyway) must RESOLVE the suspended run, not leave the card inert.
+    if (!accessToken || !book_id || !entity_id || !base_version) {
+      setState('error');
+      await resume('applied_error');
+      return;
+    }
     setBusy(true);
     let outcome: FrontendToolOutcome;
     try {

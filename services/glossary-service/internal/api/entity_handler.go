@@ -842,9 +842,15 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 			// be not-found (the WHERE was entity_id + book_id only).
 			if ifMatch != "" {
 				var exists bool
-				_ = tx.QueryRow(ctx,
+				// EDIT-LOW3: don't swallow a DB error here — a failed existence
+				// check is an INFRA fault, not "entity not found". Surface 500 so
+				// it isn't mislabelled 404.
+				if err := tx.QueryRow(ctx,
 					`SELECT EXISTS(SELECT 1 FROM glossary_entities WHERE entity_id=$1 AND book_id=$2)`,
-					entityID, bookID).Scan(&exists)
+					entityID, bookID).Scan(&exists); err != nil {
+					writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "existence check failed")
+					return
+				}
 				if exists {
 					writeError(w, http.StatusPreconditionFailed, "GLOSS_VERSION_CONFLICT",
 						"entity changed since it was read; re-open and try again")
