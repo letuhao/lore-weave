@@ -391,13 +391,24 @@ All open questions resolved by the user. These are binding for the build campaig
 | **D7 — Permissions (S25)** | **Honor share-grants now** (not owner-only). | Every assistant write-tool's ownership guard (`checkBookOwnership`) must consult **sharing-service** and distinguish **view-grant vs edit-grant** (a viewer must not write/delete). **Foundational, security-critical** — verify the sharing-service contract first; this is a `/review-impl` / AMAW candidate. |
 | **D8 — Kind scope** | **Keep the global kind catalog; add an ADDITIVE per-book *derived* layer** (no breaking changes — "chỉ thêm mới"). | Global kinds remain the shared definition library; each book derives/selects an effective set (+ book-specific additions) **without mutating the global kind for other books**. New additive table (e.g. `book_kind_selections`). **Re-scopes S2/S3:** "optimize kind for this book" = per-book selection/override, NOT a global mutation. |
 
+### Refinements (D9–D12, 2026-06-10 — second-round decisions)
+
+| # | Decision | Implication |
+|---|---|---|
+| **D9 — Per-book derivation depth (refines D8)** | The per-book layer covers **kind enablement AND attributes** — each book selects which kinds are on, which attributes apply, and may **add/hide attributes per-book**. | F3 grows: an "**effective schema for book**" = global kind defs + per-book selections/overrides/additions. "Optimize kind for this book" (S3) **never** mutates the global kind. Touches entity-create attribute seeding + extraction profile (both must read the effective schema, not the raw global kind). |
+| **D10 — Manage-grant tier (refines D7)** | Writes split by grant: **edit-grant** → create/edit; a **separate `manage`/owner grant** → destructive (delete/merge/reassign/purge). | **New cross-service dependency:** sharing-service must expose a `manage` permission tier distinct from `edit`. **Verify the sharing-service contract first — if absent, sharing-service work precedes F1.** The ownership guard returns the grant level; destructive tools assert `manage`. |
+| **D11 — Alias migration = hard cutover (refines D2)** | One-release migration: move aliases `tags`-attribute → first-class table, switch **all** readers/writers together. | **Risk: high** — mandates a *complete* inventory of alias touch-points (`findEntityByNameOrAlias` extraction dedup, `cached_aliases`, entity read/write, search, wiki, translation-glossary) changed in one shot. **Real-PG tests + cross-service live-smoke REQUIRED before merge** (cross-service evidence rule). No compat window → no margin for a missed reader. |
+| **D12 — Branch strategy** | **Merge PR #26 first** (arc P0–P6, done+verified), then open `feat/glossary-assistant-coverage` **from main**. | Campaign is a clean new branch off post-#26 main. The 4 analysis/decision doc commits currently on `feat/glossary-extracting-assistant` ride along with #26. |
+| **D13 — Collaboration epic FIRST (resolves the D7/D10 gap)** | The platform has **no collaborative-permission model** (verified 2026-06-10: book = single `owner_user_id`; sharing-service = visibility only — `private`/`public`/`unlisted`, read-only). Honoring share-grants (D7/D10) requires building that model. **Decision: build the collaboration-permissions epic (E0) BEFORE the glossary Foundational phase.** | **New platform-wide prerequisite epic, not glossary-specific.** Rough shape: a `book_collaborators` table `(book_id, user_id, role ∈ {edit, manage})`; owner-only grant/revoke endpoints; a book-service permission-check (`grant level` for a user×book); ownership-guard + JWT/claims propagation; UI for the owner to invite/grant/revoke. **This gates F1 and therefore the whole campaign** — scope it as its own spec+plan (likely `/loom` L/XL + AMAW, security-critical). |
+
 ### Foundational prerequisites (must precede Group 1)
 
-D2, D7, D8 each introduce a **load-bearing schema/guard change** that Group 1 tools will build on. The campaign therefore starts with a **Foundational phase**, before the cheap Group-1 tooling:
+D2, D7, D8 each introduce a **load-bearing schema/guard change** that Group 1 tools will build on. Per D13, a **platform Collaboration epic (E0) precedes everything**, then a glossary **Foundational phase**, before the cheap Group-1 tooling:
 
-1. **F1 — Share-grant ownership guard (D7):** extend `checkBookOwnership` to consult sharing-service with view/edit granularity; fail-closed. *Security-critical — review hard.*
-2. **F2 — First-class alias model (D2):** alias table + `language`; migrate the `aliases` attribute; rewire `findEntityByNameOrAlias` + extraction dedup + entity read/write.
-3. **F3 — Per-book kind derivation (D8):** additive `book_kind_selections` (or equiv.) + an "effective kinds for book" read; leave the global catalog untouched.
+0. **E0 — Collaboration-permissions epic (D13, platform-wide, gates F1):** `book_collaborators(book_id, user_id, role ∈ {edit, manage})`; owner-only grant/revoke; a book-service permission-check returning a user×book **grant level**; claims/guard propagation; owner UI to invite/grant/revoke. Its own spec+plan; security-critical (AMAW). **Until E0 lands, assistant writes are owner-only by necessity.**
+1. **F1 — Share-grant ownership guard (D7+D10, depends on E0):** extend `checkBookOwnership` to consult E0 and return the **grant level** (`view`/`edit`/`manage`); fail-closed. Edit-tools assert ≥`edit`; destructive tools assert `manage`. *Security-critical — /review-impl or AMAW.*
+2. **F2 — First-class alias model (D2+D11):** alias table + `language`; **hard-cutover** migrate the `aliases` attribute; rewire **every** reader/writer in one release (`findEntityByNameOrAlias` extraction dedup, `cached_aliases`, entity read/write, search, wiki, translation-glossary). **Real-PG + cross-service live-smoke before merge.**
+3. **F3 — Per-book kind+attribute derivation (D8+D9):** additive `book_kind_selections` + per-book attribute selections/overrides/additions + an "**effective schema for book**" read; global catalog untouched. Entity-create seeding + extraction profile must consume the effective schema.
 4. **F4 — Card-family generalization (D4):** destructive variant + multi-row + cost line + field-type-aware controls (S22) — the real Group-1 enabler.
 5. **F5 — Job-handle async pattern (D3):** the `{job_id}` + `*_job_status` + JobProgressCard scaffold on existing infra.
 
@@ -406,6 +417,7 @@ Only F1–F4 gate Group 1; F5 gates the extraction/research/batch scenarios.
 ### Revised build order (full coverage, easy→hard)
 
 ```
+Phase -1 Collaboration:  E0 book_collaborators + roles (edit/manage) + grant/revoke + UI  [PLATFORM EPIC, gates F1]
 Phase 0  Foundational:  F1 share-grants · F2 alias table · F3 per-book kinds · F4 card family
 Phase 1  Group-1 reads: list merge-cands / unknowns / revisions / evidence / chapter-links / ai-suggestions
 Phase 2  Group-1 writes: delete · triage-inbox · merge · reassign · restore · genre · evidence · chapter-link
