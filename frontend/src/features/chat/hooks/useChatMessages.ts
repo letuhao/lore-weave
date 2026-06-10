@@ -38,7 +38,12 @@ export type FrontendToolOutcome =
   | 'dismissed'
   | 'applied_saved'
   | 'applied_conflict'
-  | 'applied_error';
+  | 'applied_error'
+  // Tier-S schema confirm (P4)
+  | 'schema_created'
+  | 'token_expired'
+  | 'schema_error'
+  | 'cancelled';
 
 export function useChatMessages(
   sessionId: string | null,

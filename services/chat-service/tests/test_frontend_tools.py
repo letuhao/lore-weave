@@ -21,6 +21,7 @@ from app.db.suspended_runs import SuspendedRun
 from app.models import ProviderCredentials
 from app.services.frontend_tools import (
     FRONTEND_TOOL_NAMES,
+    GLOSSARY_CONFIRM_SCHEMA_TOOL,
     GLOSSARY_PROPOSE_EDIT_TOOL,
     PROPOSE_EDIT_TOOL,
     frontend_tool_defs,
@@ -55,6 +56,17 @@ class TestFrontendToolDefs:
         assert is_frontend_tool("glossary_propose_entity_edit")
         assert "glossary_propose_entity_edit" in FRONTEND_TOOL_NAMES
 
+    def test_glossary_confirm_schema_is_a_frontend_tool(self):
+        assert is_frontend_tool("glossary_confirm_schema")
+        assert "glossary_confirm_schema" in FRONTEND_TOOL_NAMES
+
+    def test_glossary_confirm_schema_schema_is_wire_standard(self):
+        d = GLOSSARY_CONFIRM_SCHEMA_TOOL
+        assert d["function"]["name"] == "glossary_confirm_schema"
+        params = d["function"]["parameters"]
+        assert set(params["required"]) == {"confirm_token", "op", "summary"}
+        assert params["properties"]["op"]["enum"] == ["kind", "attribute"]
+
     def test_memory_tools_are_not_frontend(self):
         assert not is_frontend_tool("memory_search")
         assert not is_frontend_tool("memory_remember")
@@ -83,11 +95,13 @@ class TestFrontendToolDefs:
     def test_frontend_tool_defs_are_surface_scoped(self):
         # editor surface → prose write-back only
         assert frontend_tool_defs(editor=True, book_scoped=False) == [PROPOSE_EDIT_TOOL]
-        # glossary-page surface (book-scoped, not editor) → glossary edit only
-        assert frontend_tool_defs(editor=False, book_scoped=True) == [GLOSSARY_PROPOSE_EDIT_TOOL]
-        # editor chat is also book-scoped → both
+        # glossary-page surface (book-scoped, not editor) → glossary edit + schema confirm
+        assert frontend_tool_defs(editor=False, book_scoped=True) == [
+            GLOSSARY_PROPOSE_EDIT_TOOL, GLOSSARY_CONFIRM_SCHEMA_TOOL,
+        ]
+        # editor chat is also book-scoped → prose edit + both glossary tools
         assert frontend_tool_defs(editor=True, book_scoped=True) == [
-            PROPOSE_EDIT_TOOL, GLOSSARY_PROPOSE_EDIT_TOOL,
+            PROPOSE_EDIT_TOOL, GLOSSARY_PROPOSE_EDIT_TOOL, GLOSSARY_CONFIRM_SCHEMA_TOOL,
         ]
         # neither surface → nothing
         assert frontend_tool_defs() == []

@@ -50,6 +50,27 @@ func (s *Server) mcpHandler() http.Handler {
 			"call glossary_list_kinds to pick a valid kind.",
 	}, s.toolProposeNewEntity)
 
+	// Tier-S (P4): schema proposals. These MINT a confirm token (no write) — the
+	// actual create is the human-confirmed, JWT-only /v1/glossary/schema/confirm
+	// (there is deliberately NO MCP tool that creates schema — INV-9/H8). After
+	// calling one, pass its confirm_token to the glossary_confirm_schema frontend
+	// tool so the human can review and confirm.
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "glossary_propose_new_kind",
+		Description: "Propose a NEW entity KIND (a schema-level type like 'Power System' that every " +
+			"entity of that kind is described by). This is high-impact — it does NOT create anything; it " +
+			"returns a confirm_token + preview that a human must explicitly confirm. Pass the confirm_token " +
+			"to glossary_confirm_schema. Use sparingly, only when no existing kind (glossary_list_kinds) fits.",
+	}, s.toolProposeNewKind)
+
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "glossary_propose_new_attribute",
+		Description: "Propose a NEW attribute on an existing kind (e.g. add 'cultivation_realm' to the " +
+			"character kind). Schema-level and high-impact — it does NOT write; it returns a confirm_token + " +
+			"preview a human must confirm via glossary_confirm_schema. Call glossary_list_kinds first to pick " +
+			"the kind_code and avoid duplicating an existing attribute.",
+	}, s.toolProposeNewAttribute)
+
 	streamable := mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return srv },
 		&mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true},

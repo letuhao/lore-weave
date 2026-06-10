@@ -120,6 +120,10 @@ func (s *Server) Router() http.Handler {
 		r.Get("/kinds", s.listKinds)
 		r.Post("/kinds", s.createKind)
 		r.Patch("/kinds/reorder", s.reorderKinds)
+		// Tier-S (P4): the ONLY schema-create path for the assistant — JWT-only,
+		// gated on a server-minted confirm token (INV-9/H8). The gateway/MCP side
+		// can mint a token (propose tools) but has no route here.
+		r.Post("/schema/confirm", s.confirmSchema)
 		// Kind-resolution epic: alias table (alias_code → kind) for the unknown-kind review.
 		r.Get("/kind-aliases", s.listKindAliases)
 		r.Post("/kind-aliases", s.createKindAlias)

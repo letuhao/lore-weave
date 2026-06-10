@@ -22,8 +22,12 @@ from __future__ import annotations
 #   glossary_propose_entity_edit  — edit an existing glossary entity (any book-scoped
 #                                   surface); the browser renders a diff card, the user
 #                                   Applies (version-checked PATCH, H5) or Dismisses.
+#   glossary_confirm_schema       — Tier-S two-step confirm of a proposed new
+#                                   kind/attribute (P4); the browser renders a
+#                                   confirm card, the user Confirms (POST to the
+#                                   token-gated /v1 endpoint) or Cancels.
 FRONTEND_TOOL_NAMES: frozenset[str] = frozenset(
-    {"propose_edit", "glossary_propose_entity_edit"}
+    {"propose_edit", "glossary_propose_entity_edit", "glossary_confirm_schema"}
 )
 
 # OpenAI function-calling schema for the editor write-back tool. Wire-standard;
@@ -164,6 +168,56 @@ GLOSSARY_PROPOSE_EDIT_TOOL: dict = {
 }
 
 
+# OpenAI function-calling schema for the Tier-S schema-confirm frontend tool
+# (glossary-assistant P4). The LLM proposes a kind/attribute with the
+# glossary_propose_new_* MCP tools (which MINT a confirm_token, no write), then
+# calls THIS tool to surface the human confirm step. It suspends; the browser
+# renders a confirm card; on Confirm the FE POSTs the token to the glossary
+# /v1/glossary/schema/confirm endpoint (the only schema-create path). H6: the
+# resume reports the real outcome so the agent can't claim a schema change that
+# didn't happen.
+GLOSSARY_CONFIRM_SCHEMA_TOOL: dict = {
+    "type": "function",
+    "function": {
+        "name": "glossary_confirm_schema",
+        "description": (
+            "Ask the user to CONFIRM a schema change (a new kind or a new attribute) that "
+            "you proposed with glossary_propose_new_kind / glossary_propose_new_attribute. "
+            "Pass the `confirm_token` you received from that propose call. The change is "
+            "shown to the user with a Confirm button and is NOT applied automatically — "
+            "schema changes are high-impact and ALWAYS require explicit human confirmation. "
+            "After the user decides you receive an `outcome`: `schema_created` (it was "
+            "created), `token_expired` (the confirmation lapsed — propose again to get a "
+            "fresh token), `schema_error` (the create failed), or `cancelled` (the user "
+            "declined). State that the schema changed ONLY when the outcome is `schema_created`."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "confirm_token": {
+                    "type": "string",
+                    "description": "The confirm_token returned by the propose call.",
+                },
+                "op": {
+                    "type": "string",
+                    "enum": ["kind", "attribute"],
+                    "description": "What is being created — for the confirm card.",
+                },
+                "summary": {
+                    "type": "string",
+                    "description": (
+                        "Human-readable summary of the change (the `preview` from the "
+                        "propose call), shown on the confirm card."
+                    ),
+                },
+            },
+            "required": ["confirm_token", "op", "summary"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
 def frontend_tool_defs(*, editor: bool = False, book_scoped: bool = False) -> list[dict]:
     """Frontend tool schemas to advertise, by surface.
 
@@ -179,6 +233,7 @@ def frontend_tool_defs(*, editor: bool = False, book_scoped: bool = False) -> li
         defs.append(PROPOSE_EDIT_TOOL)
     if book_scoped:
         defs.append(GLOSSARY_PROPOSE_EDIT_TOOL)
+        defs.append(GLOSSARY_CONFIRM_SCHEMA_TOOL)
     return defs
 
 

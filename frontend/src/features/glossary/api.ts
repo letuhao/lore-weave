@@ -55,6 +55,17 @@ export const glossaryApi = {
     return apiJson<GlossaryEntity>(`${BASE}/books/${bookId}/entities/${entityId}`, { token });
   },
 
+  // Tier-S (P4): the token-gated schema-create. The assistant proposed a new
+  // kind/attribute (minting `confirmToken`); this confirms it after the human
+  // clicks Confirm. The endpoint is JWT-only — no gateway/MCP route reaches it.
+  confirmSchema(confirmToken: string, token: string): Promise<unknown> {
+    return apiJson<unknown>(`${BASE}/schema/confirm`, {
+      method: 'POST',
+      body: JSON.stringify({ confirm_token: confirmToken }),
+      token,
+    });
+  },
+
   patchEntity(
     bookId: string,
     entityId: string,
