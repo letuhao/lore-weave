@@ -1,10 +1,11 @@
-# Session Handoff — Session 105 (eval R&D closed + Production Eval Flywheel track planned)
+# Session Handoff — glossary-assistant arc COMPLETE (P0–P6 + EDIT-ATOMIC, browser-live-smoked)
 
 > **Purpose:** orient the next agent in one read. This file is the single, unversioned handoff — updated in place at the end of each session. (Older `SESSION_PATCH.md` is deprecated → archive later.)
-> **Date:** 2026-06-01 (session 105 — closed knowledge R&D arc; designed the production eval+feedback track; human-in-loop v2.2).
-> **HEAD:** TBD (post-commit). Branch: `main`.
+> **Date:** 2026-06-10. **HEAD:** `ba1edf93` (pushed). **Branch:** `feat/glossary-extracting-assistant` (in sync with origin).
 
 ## ▶ NEXT SESSION — start here
+
+**▶ TL;DR (glossary-assistant):** the whole P0–P6 arc + EDIT-ATOMIC is **built, tested (real-PG where it matters), browser-live-smoked, and pushed**; the LOW/MED defer backlog is cleaned; a HIGH tool-schema bug found during the smoke is fixed. **No build/enhancement work is queued.** The remaining choices are: **(A)** open a **PR `feat/glossary-extracting-assistant` → `main`** (the feature is ready to land); **(B)** the small visual residual of the browser smoke (diff-card Apply + schema-confirm card — needs a book with seeded entities; everything under them is verified); **(C)** DEFERRED 066 — composition-service MCP-migration audit (a *different* service/track). 069 (writeback dedup-race) lives on the writeback track. Detail below.
 
 ### ▶ GLOSSARY ASSISTANT + `ai-gateway` (branch `feat/glossary-extracting-assistant`) — 2026-06-10
 
