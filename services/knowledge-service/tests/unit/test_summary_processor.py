@@ -13,12 +13,75 @@ from app.jobs.summary_processor import (
     REENQUEUE_BACKOFF_S,
     RETRY_BUDGET,
     SummaryProcessorDeps,
+    _DefensiveCheckFailed,
+    _load_scene_leaf_texts,
     process_summarize_message,
 )
 
 
 _BOOK_ID = str(uuid4())
 _CHAPTER_ID = str(uuid4())
+
+
+# ── FD-3: _load_scene_leaf_texts loads REAL prose from book-service (not paths) ──
+
+def _book_client(scenes, draft=None):
+    c = MagicMock()
+    c.list_scenes_by_chapter = AsyncMock(return_value=scenes)
+    c.get_chapter_draft_text = AsyncMock(return_value=draft)
+    return c
+
+
+@pytest.mark.asyncio
+async def test_load_scene_leaf_texts_returns_real_prose_ordered():
+    # A P1-decomposed chapter → the ordered scene leaf_texts (REAL prose), NOT the
+    # Neo4j `s.path` strings the old stub returned (FD-3 regression).
+    scenes = [{"leaf_text": "Kael stood at the gate."}, {"leaf_text": "Mira counted the rations."}]
+    client = _book_client(scenes)
+    with patch("app.jobs.summary_processor.get_book_client", return_value=client):
+        out = await _load_scene_leaf_texts(UUID(_BOOK_ID), UUID(_CHAPTER_ID))
+    assert out == ["Kael stood at the gate.", "Mira counted the rations."]
+    client.list_scenes_by_chapter.assert_awaited_once()
+    client.get_chapter_draft_text.assert_not_awaited()  # scenes had text → no fallback
+
+
+@pytest.mark.asyncio
+async def test_load_scene_leaf_texts_legacy_chapter_falls_back_to_draft():
+    # Legacy chapter (empty scenes) → D8 fallback to the chapter draft as one unit
+    # (PO: legacy chapters get a real summary, not abandoned).
+    client = _book_client([], draft="The whole chapter as one draft.")
+    with patch("app.jobs.summary_processor.get_book_client", return_value=client):
+        out = await _load_scene_leaf_texts(UUID(_BOOK_ID), UUID(_CHAPTER_ID))
+    assert out == ["The whole chapter as one draft."]
+    client.get_chapter_draft_text.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_load_scene_leaf_texts_scenes_without_text_fall_back():
+    # Scenes exist but carry no usable leaf_text → still fall back to the draft.
+    client = _book_client([{"leaf_text": ""}, {"leaf_text": "   "}], draft="Draft body.")
+    with patch("app.jobs.summary_processor.get_book_client", return_value=client):
+        out = await _load_scene_leaf_texts(UUID(_BOOK_ID), UUID(_CHAPTER_ID))
+    assert out == ["Draft body."]
+
+
+@pytest.mark.asyncio
+async def test_load_scene_leaf_texts_transport_failure_raises_transient():
+    # None = book-service transport failure → raise (transient) so the caller
+    # re-enqueues; NEVER summarize on missing prose.
+    client = _book_client(None)
+    with patch("app.jobs.summary_processor.get_book_client", return_value=client):
+        with pytest.raises(_DefensiveCheckFailed):
+            await _load_scene_leaf_texts(UUID(_BOOK_ID), UUID(_CHAPTER_ID))
+
+
+@pytest.mark.asyncio
+async def test_load_scene_leaf_texts_truly_empty_returns_empty():
+    # No scenes AND no draft → [] (the caller raises → skipped, not crash).
+    client = _book_client([], draft=None)
+    with patch("app.jobs.summary_processor.get_book_client", return_value=client):
+        out = await _load_scene_leaf_texts(UUID(_BOOK_ID), UUID(_CHAPTER_ID))
+    assert out == []
 _PART_ID = str(uuid4())
 _USER_ID = str(uuid4())
 _PROJECT_ID = str(uuid4())
