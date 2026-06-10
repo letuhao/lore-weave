@@ -49,6 +49,8 @@ export function projectFixture(overrides: Partial<Project> = {}): Project {
     extraction_status: 'ready',
     embedding_model: 'bge-m3',
     embedding_dimension: 1024,
+    rerank_model: null,
+    rerank_model_source: 'user_model',
     extraction_config: {},
     last_extracted_at: '2026-04-20T08:00:00Z',
     estimated_cost_usd: '0.00',

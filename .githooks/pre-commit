@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+# LoreWeave pre-commit — enforce AI provider invariants (CLAUDE.md › Key Rules):
+#   • Provider gateway invariant: no direct provider-SDK usage outside the gateway
+#   • No hardcoded model names in runtime code
+# Checks only STAGED files (fast). Bypass in a true emergency with `git commit --no-verify`.
+#
+# Activate (per checkout):  git config core.hooksPath .githooks
+set -e
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PY=python
+command -v python >/dev/null 2>&1 || PY=python3
+"$PY" "$ROOT/scripts/ai-provider-gate.py" --staged

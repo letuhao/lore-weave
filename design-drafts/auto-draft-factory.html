@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="vi" data-theme="dark">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Auto-Draft Factory — design draft (LoreWeave)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* === LoreWeave dark tokens (copied from frontend/src/index.css :root) === */
+  :root{
+    --background:25 8% 8%; --foreground:40 30% 95%;
+    --card:25 7% 11%; --card-foreground:40 30% 95%;
+    --popover:25 7% 11%;
+    --primary:35 85% 55%; --primary-foreground:25 10% 6%;
+    --secondary:25 6% 16%; --secondary-foreground:40 15% 88%;
+    --muted:25 5% 16%; --muted-foreground:30 8% 62%;
+    --accent:170 40% 45%; --accent-foreground:170 45% 88%;
+    --destructive:0 72% 58%; --destructive-foreground:40 30% 96%;
+    --success:145 60% 48%; --warning:38 92% 55%; --info:215 80% 60%;
+    --border:25 6% 18%; --input:25 6% 14%; --ring:35 80% 55%;
+    --radius:0.5rem;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:hsl(var(--background));color:hsl(var(--foreground));font:13px/1.5 Inter,system-ui,sans-serif}
+  .mono{font-family:"JetBrains Mono",monospace}
+  h1,h2,h3{font-family:Lora,Georgia,serif;margin:0;font-weight:600}
+  a{color:hsl(var(--primary));text-decoration:none}
+  .muted{color:hsl(var(--muted-foreground))}
+  /* shell */
+  .app{display:flex;height:100vh;overflow:hidden}
+  .side{width:240px;flex-shrink:0;border-right:1px solid hsl(var(--border));background:hsl(var(--card));padding:16px 12px;display:flex;flex-direction:column;gap:4px}
+  .side .brand{font-family:Lora,serif;font-size:16px;font-weight:700;padding:6px 8px 14px;display:flex;align-items:center;gap:8px}
+  .side .nav{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;color:hsl(var(--muted-foreground));font-size:13px;cursor:pointer}
+  .side .nav:hover{background:hsl(var(--secondary))}
+  .side .nav.on{background:hsl(var(--primary)/.12);color:hsl(var(--primary));font-weight:600}
+  .main{flex:1;overflow-y:auto}
+  .wrap{max-width:1100px;margin:0 auto;padding:26px 38px 80px}
+  /* page header */
+  .crumb{display:flex;gap:6px;align-items:center;color:hsl(var(--muted-foreground));font-size:12.5px;margin-bottom:8px}
+  .phead{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px}
+  .phead h1{font-size:20px}
+  .phead .sub{color:hsl(var(--muted-foreground));font-size:12px;margin-top:3px}
+  /* view switcher (mockup only) */
+  .vswitch{position:sticky;top:0;z-index:5;background:hsl(var(--background)/.92);backdrop-filter:blur(6px);border-bottom:1px solid hsl(var(--border));padding:8px 38px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .vswitch .lbl{font-size:11px;color:hsl(var(--muted-foreground));margin-right:4px}
+  .vswitch button{background:hsl(var(--secondary));color:hsl(var(--muted-foreground));border:1px solid hsl(var(--border));border-radius:999px;padding:4px 11px;font-size:12px;cursor:pointer}
+  .vswitch button.on{background:hsl(var(--primary));color:hsl(var(--primary-foreground));border-color:hsl(var(--primary));font-weight:600}
+  /* card */
+  .card{background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:var(--radius);padding:16px 18px;margin-bottom:14px}
+  .card h2{font-size:14px;margin-bottom:12px}
+  .card h2 .mini{font-family:Inter;font-weight:400;color:hsl(var(--muted-foreground));font-size:12px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+  /* badge (StatusBadge replica) */
+  .badge{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:500}
+  .b-running{background:hsl(var(--info)/.12);color:hsl(var(--info))}
+  .b-completed,.b-done{background:hsl(var(--success)/.12);color:hsl(var(--success))}
+  .b-failed{background:hsl(var(--destructive)/.12);color:hsl(var(--destructive))}
+  .b-partial,.b-paused{background:hsl(var(--warning)/.12);color:hsl(var(--warning))}
+  .b-pending,.b-queued{background:hsl(var(--secondary));color:hsl(var(--muted-foreground))}
+  .b-local{background:hsl(var(--success)/.12);color:hsl(var(--success))}
+  .b-cloud{background:hsl(var(--info)/.12);color:hsl(var(--info))}
+  /* buttons */
+  .btn{display:inline-flex;align-items:center;gap:6px;border-radius:6px;padding:7px 15px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid transparent;transition:.15s}
+  .btn-primary{background:hsl(var(--primary));color:hsl(var(--primary-foreground))}
+  .btn-primary:hover{background:hsl(var(--primary)/.9)}
+  .btn-primary.glow{box-shadow:0 0 24px hsl(var(--primary)/.18)}
+  .btn-sec{border-color:hsl(var(--border));color:hsl(var(--muted-foreground));background:transparent}
+  .btn-sec:hover{background:hsl(var(--secondary));color:hsl(var(--foreground))}
+  .btn-danger{background:hsl(var(--destructive)/.12);color:hsl(var(--destructive));border-color:hsl(var(--destructive)/.35)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btnrow{display:flex;justify-content:space-between;align-items:center;margin-top:14px}
+  /* progress */
+  .bar{height:6px;border-radius:999px;background:hsl(var(--muted));overflow:hidden}
+  .bar>i{display:block;height:100%;background:hsl(var(--primary))}
+  .bar>i.ok{background:hsl(var(--success))} .bar>i.info{background:hsl(var(--info))} .bar>i.warn{background:hsl(var(--warning))}
+  /* table */
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{text-align:left;padding:8px 8px;border-bottom:1px solid hsl(var(--border))}
+  th{color:hsl(var(--muted-foreground));font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.3px}
+  tr:hover td{background:hsl(var(--secondary)/.4)}
+  td.r,th.r{text-align:right}
+  /* banners */
+  .ban{display:flex;gap:9px;align-items:flex-start;border-radius:6px;padding:10px 12px;margin:10px 0;font-size:12.5px;border:1px solid}
+  .ban-info{background:hsl(var(--info)/.08);border-color:hsl(var(--info)/.3);color:hsl(var(--info))}
+  .ban-ok{background:hsl(var(--success)/.08);border-color:hsl(var(--success)/.3);color:hsl(var(--success))}
+  .ban-warn{background:hsl(var(--warning)/.08);border-color:hsl(var(--warning)/.32);color:hsl(var(--warning))}
+  .ban-bad{background:hsl(var(--destructive)/.08);border-color:hsl(var(--destructive)/.35);color:hsl(var(--destructive))}
+  .ban b{color:hsl(var(--foreground))}
+  /* stat */
+  .stat{background:hsl(var(--secondary)/.45);border:1px solid hsl(var(--border));border-radius:8px;padding:11px 13px}
+  .stat .v{font-size:20px;font-weight:700;font-family:Lora,serif}
+  .stat .k{font-size:11px;color:hsl(var(--muted-foreground));margin-top:2px}
+  /* stage pills */
+  .stages{display:flex;gap:8px;flex-wrap:wrap}
+  .stage{flex:1;min-width:150px;background:hsl(var(--secondary)/.4);border:1px solid hsl(var(--border));border-radius:8px;padding:11px 12px}
+  .stage .t{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;margin-bottom:7px}
+  .stage .c{font-size:11px;color:hsl(var(--muted-foreground))}
+  /* per-chapter heatmap (TranslationTab matrix style) */
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:hsl(var(--muted-foreground));margin:4px 0 10px}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .heat{display:flex;flex-wrap:wrap;gap:3px}
+  .cell{width:13px;height:13px;border-radius:3px;background:hsl(var(--muted))}
+  .cell.done{background:hsl(var(--success)/.85)} .cell.run{background:hsl(var(--info)/.9)}
+  .cell.fail{background:hsl(var(--destructive)/.9)} .cell.q{background:hsl(var(--secondary))}
+  /* select / fields */
+  .sel{display:flex;justify-content:space-between;align-items:center;background:hsl(var(--input));border:1px solid hsl(var(--border));border-radius:6px;padding:7px 10px;font-size:12.5px}
+  .field{margin-bottom:9px} .field>.lab{font-size:11px;color:hsl(var(--muted-foreground));margin-bottom:5px;display:block}
+  .seg{display:inline-flex;border:1px solid hsl(var(--border));border-radius:7px;overflow:hidden}
+  .seg span{padding:5px 11px;font-size:12px;color:hsl(var(--muted-foreground));cursor:pointer}
+  .seg span.on{background:hsl(var(--primary));color:hsl(var(--primary-foreground))}
+  .role{display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px dashed hsl(var(--border))}
+  .role .nm{flex:1;font-size:12.5px} .role .nm small{display:block;color:hsl(var(--muted-foreground));font-size:11px}
+  .role .sel{width:220px}
+  .ic{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;flex-shrink:0;stroke-linecap:round;stroke-linejoin:round}
+  .spin{animation:sp 1s linear infinite} @keyframes sp{to{transform:rotate(360deg)}}
+  .screen{display:none} .screen.on{display:block}
+  .chk{width:13px;height:13px;accent-color:hsl(var(--primary))}
+  .log{font-family:"JetBrains Mono",monospace;font-size:11.5px;line-height:1.7;background:hsl(var(--background));border:1px solid hsl(var(--border));border-radius:8px;padding:11px 13px;max-height:190px;overflow:auto}
+  .log .t{color:hsl(var(--muted-foreground))}
+</style>
+</head>
+<body>
+<svg style="display:none">
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-loader" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></symbol>
+  <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m5 5 14 14"/></symbol>
+  <symbol id="i-redo" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></symbol>
+</svg>
+
+<div class="app">
+  <aside class="side">
+    <div class="brand">📖 LoreWeave</div>
+    <div class="nav">📚 Sách</div>
+    <div class="nav">📕 Glossary</div>
+    <div class="nav">🧠 Knowledge</div>
+    <div class="nav on">⚙️ Auto-Draft</div>
+    <div class="nav">🔍 Raw Search</div>
+    <div class="nav">⚙ Cài đặt</div>
+  </aside>
+
+  <main class="main">
+    <div class="vswitch" id="vs">
+      <span class="lbl">DRAFT — màn hình:</span>
+      <button data-v="list" class="on">Campaigns</button>
+      <button data-v="wizard">Wizard (setup)</button>
+      <button data-v="monitor">Monitor (running)</button>
+      <button data-v="paused">Paused · budget</button>
+      <button data-v="failed">Failed &amp; Re-run</button>
+      <button data-v="report">Report</button>
+    </div>
+
+    <div class="wrap">
+
+    <!-- A · CAMPAIGNS -->
+    <section class="screen on" id="v-list">
+      <div class="phead">
+        <div>
+          <div class="crumb">Auto-Draft Factory</div>
+          <h1>Chiến dịch tự động</h1>
+          <div class="sub">Chạy pipeline đầy đủ (ingest → knowledge → translation → eval) theo lô, không human-in-loop.</div>
+        </div>
+        <button class="btn btn-primary glow"><svg class="ic"><use href="#i-plus"/></svg> Chiến dịch mới</button>
+      </div>
+      <div class="card" style="padding:0">
+        <table>
+          <thead><tr><th>Chiến dịch</th><th>Phạm vi</th><th>Trạng thái</th><th style="width:170px">Tiến độ</th><th class="r">Chi phí</th><th class="r">Thao tác</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><b>Vạn Cổ Thần Đế</b><div class="muted">zh → vi · Run #41</div></td>
+              <td>4,000 ch<div class="muted">cold-start two_pass</div></td>
+              <td><span class="badge b-running"><svg class="ic spin"><use href="#i-loader"/></svg> đang chạy</span></td>
+              <td><div class="bar"><i class="info" style="width:38%"></i></div><div class="muted" style="margin-top:4px">1,520/4,000 · ETA 06:05</div></td>
+              <td class="r">$38.10<div class="muted">/ $120</div></td>
+              <td class="r"><button class="btn btn-sec"><svg class="ic"><use href="#i-eye"/></svg> Xem</button></td>
+            </tr>
+            <tr>
+              <td><b>Phong Thần Diễn Nghĩa</b><div class="muted">zh → en · Run #39</div></td>
+              <td>800 ch</td>
+              <td><span class="badge b-paused"><svg class="ic"><use href="#i-pause"/></svg> tạm dừng (trần)</span></td>
+              <td><div class="bar"><i class="warn" style="width:58%"></i></div><div class="muted" style="margin-top:4px">462/800 · chạm trần</div></td>
+              <td class="r">$60.00<div class="muted">= trần</div></td>
+              <td class="r"><button class="btn btn-sec"><svg class="ic"><use href="#i-play"/></svg> Resume</button></td>
+            </tr>
+            <tr>
+              <td><b>Đấu La Đại Lục</b><div class="muted">zh → vi · Run #36</div></td>
+              <td>1,200 ch</td>
+              <td><span class="badge b-partial">hoàn tất · có lỗi</span></td>
+              <td><div class="bar"><i class="ok" style="width:97%"></i></div><div class="muted" style="margin-top:4px">1,166 xong · 34 lỗi</div></td>
+              <td class="r">$22.40</td>
+              <td class="r"><button class="btn btn-sec"><svg class="ic"><use href="#i-redo"/></svg> Re-run lỗi</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="ban ban-info"><svg class="ic"><use href="#i-spark"/></svg><div>Mỗi chiến dịch tính chi phí vào provider BYOK của <b>chủ sở hữu</b> (multi-tenant). Sản phẩm là bản nháp AI → review/confirm qua flywheel hiện có.</div></div>
+    </section>
+
+    <!-- B · WIZARD -->
+    <section class="screen" id="v-wizard">
+      <div class="phead"><div>
+        <div class="crumb">Auto-Draft <svg class="ic" style="width:13px"><use href="#i-chev"/></svg> Chiến dịch mới</div>
+        <h1>Thiết lập chiến dịch</h1><div class="sub">Hiển thị bước 4–5 (Model Matrix + Chi phí) — phần được hỏi nhiều nhất.</div>
+      </div></div>
+      <div class="stages" style="margin-bottom:14px">
+        <div class="stage"><div class="t">1 · Scope <span class="badge b-done"><svg class="ic"><use href="#i-check"/></svg></span></div><div class="c">4,000 ch · zh→vi</div></div>
+        <div class="stage"><div class="t">2 · Pipelines <span class="badge b-done"><svg class="ic"><use href="#i-check"/></svg></span></div><div class="c">cả 4 · sequential</div></div>
+        <div class="stage"><div class="t">3 · Options <span class="badge b-done"><svg class="ic"><use href="#i-check"/></svg></span></div><div class="c">Balanced</div></div>
+        <div class="stage" style="border-color:hsl(var(--primary))"><div class="t" style="color:hsl(var(--primary))">4 · Models</div><div class="c">BYOK matrix</div></div>
+        <div class="stage"><div class="t">5 · Cost</div><div class="c">giá + giờ</div></div>
+        <div class="stage"><div class="t">6 · Policy</div><div class="c">chạy đêm</div></div>
+        <div class="stage"><div class="t">7 · Confirm</div><div class="c">launch</div></div>
+      </div>
+      <div class="card">
+        <h2>④ Model Matrix <span class="mini">— mỗi vai trò 1 model, tất cả BYOK qua provider-registry</span></h2>
+        <div class="role"><div class="nm">Extractor (entity/relation/event) <small>♻ ghi luôn glossary</small></div><span class="badge b-cloud">cloud</span><div class="sel">gpt-4o-mini <svg class="ic"><use href="#i-chev"/></svg></div></div>
+        <div class="role"><div class="nm">Embedding <small>chiều phải khớp KG cũ</small></div><span class="badge b-cloud">cloud</span><div class="sel">text-embedding-3-small <svg class="ic"><use href="#i-chev"/></svg></div></div>
+        <div class="role"><div class="nm">Reranker <small style="color:hsl(var(--success))">đã chuyển BYOK (fix D-RERANK-NOT-BYOK)</small></div><span class="badge b-local">local</span><div class="sel">bge-reranker-v2-m3 <svg class="ic"><use href="#i-chev"/></svg></div></div>
+        <div class="role"><div class="nm">Translator <small>♻ corrector + bilingual extractor</small></div><span class="badge b-local">local</span><div class="sel">qwen3-235b <svg class="ic"><use href="#i-chev"/></svg></div></div>
+        <div class="role" style="border-bottom:none"><div class="nm">Verifier · Compact · Fidelity judge</div><span class="muted" style="font-size:11.5px">qwen3-235b · qwen3-30b · — tắt —</span></div>
+        <div class="btnrow"><button class="btn btn-sec">← Quay lại</button><button class="btn btn-primary">Tiếp: Chi phí →</button></div>
+      </div>
+      <div class="card">
+        <h2>⑤ Chi phí &amp; Thời gian <span class="mini">— heuristic tức thì → tinh chỉnh bằng 25 chương mẫu</span></h2>
+        <table>
+          <thead><tr><th>Pipeline</th><th>Model</th><th class="r">Tokens (in/out)</th><th class="r">Chi phí</th></tr></thead>
+          <tbody>
+            <tr><td>Knowledge extractor (sinh glossary)</td><td>gpt-4o-mini <span class="badge b-cloud">cloud</span></td><td class="r">31.0M / 3.2M</td><td class="r">$58.10</td></tr>
+            <tr><td class="muted">↳ embeddings</td><td>text-3-small <span class="badge b-cloud">cloud</span></td><td class="r">18.0M / —</td><td class="r">$1.80</td></tr>
+            <tr><td>Translation (+verifier +2-pass)</td><td>qwen3-235b <span class="badge b-local">local</span></td><td class="r">90.0M / 80.1M</td><td class="r" style="color:hsl(var(--success))">$0.00 ⚡</td></tr>
+            <tr><td><b>Tổng kỳ vọng</b></td><td></td><td class="r muted">P10–P90 $71–$108</td><td class="r"><b>~$84.70</b></td></tr>
+          </tbody>
+        </table>
+        <div class="grid2" style="margin-top:8px">
+          <div class="stat"><div class="v">~9h40m</div><div class="k">@ 8 chương song song</div></div>
+          <div class="stat"><div class="v">~06:15</div><div class="k">xong sáng mai (chạy ngay)</div></div>
+        </div>
+        <div class="field" style="margin-top:10px"><span class="lab">💸 Ngân sách trần</span><div class="sel">$120.00 · chạm trần → Tạm dừng &amp; báo <svg class="ic"><use href="#i-chev"/></svg></div></div>
+        <div class="ban ban-info"><svg class="ic"><use href="#i-spark"/></svg><div>Tùy chọn (không ép): chạy <b>mẫu 50 chương</b> (~$1.10) để duyệt chất lượng trước.</div></div>
+        <div class="btnrow"><button class="btn btn-sec">← Quay lại</button><button class="btn btn-primary glow"><svg class="ic"><use href="#i-play"/></svg> Tiếp: Policy → Launch</button></div>
+      </div>
+    </section>
+
+    <!-- C · MONITOR -->
+    <section class="screen" id="v-monitor">
+      <div class="phead">
+        <div>
+          <div class="crumb">Auto-Draft <svg class="ic" style="width:13px"><use href="#i-chev"/></svg> Run #41</div>
+          <h1>Vạn Cổ Thần Đế <span class="badge b-running" style="vertical-align:3px"><svg class="ic spin"><use href="#i-loader"/></svg> đang chạy</span></h1>
+          <div class="sub">zh → vi · bắt đầu 21:40 · ETA 06:05 · 8 chương song song</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sec"><svg class="ic"><use href="#i-pause"/></svg> Tạm dừng</button>
+          <button class="btn btn-danger"><svg class="ic"><use href="#i-ban"/></svg> Hủy</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Tiến độ theo pipeline</h2>
+        <div class="stages">
+          <div class="stage"><div class="t">Ingest <span class="badge b-done"><svg class="ic"><use href="#i-check"/></svg> xong</span></div><div class="bar"><i class="ok" style="width:100%"></i></div><div class="c" style="margin-top:6px">4,000 / 4,000</div></div>
+          <div class="stage"><div class="t">Knowledge <span class="badge b-running"><svg class="ic spin"><use href="#i-loader"/></svg></span></div><div class="bar"><i class="info" style="width:78%"></i></div><div class="c" style="margin-top:6px">3,120 / 4,000 · 2 lỗi</div></div>
+          <div class="stage"><div class="t">Translation <span class="badge b-running"><svg class="ic spin"><use href="#i-loader"/></svg></span></div><div class="bar"><i class="info" style="width:26%"></i></div><div class="c" style="margin-top:6px">1,040 / 4,000</div></div>
+          <div class="stage"><div class="t">Eval <span class="badge b-queued">chờ</span></div><div class="bar"><i style="width:0"></i></div><div class="c" style="margin-top:6px">judge tắt</div></div>
+        </div>
+      </div>
+      <div class="grid4">
+        <div class="stat"><div class="v">$38.10</div><div class="k">đã tiêu / $120 · đúng hướng</div><div class="bar" style="margin-top:6px"><i style="width:32%"></i></div></div>
+        <div class="stat"><div class="v">3h12m</div><div class="k">đã chạy · ETA 06:05</div></div>
+        <div class="stat"><div class="v">~7.8</div><div class="k">chương / phút</div></div>
+        <div class="stat"><div class="v">8</div><div class="k">đang chạy song song</div></div>
+      </div>
+      <div class="card">
+        <h2>Bản đồ chương <span class="mini">— hiển thị 1–240 / 4,000 · click để xem chi tiết</span></h2>
+        <div class="legend">
+          <span><i style="background:hsl(var(--success)/.85)"></i>dịch xong</span>
+          <span><i style="background:hsl(var(--info)/.9)"></i>đang chạy</span>
+          <span><i style="background:hsl(var(--secondary))"></i>trong hàng đợi</span>
+          <span><i style="background:hsl(var(--destructive)/.9)"></i>lỗi</span>
+        </div>
+        <div class="heat" id="heat"></div>
+        <div class="muted" style="font-size:11.5px;margin-top:8px">‹ 1–240 › … 4,000 — phân trang. Mỗi ô = 1 chương; màu theo stage hiện tại.</div>
+      </div>
+      <div class="grid2">
+        <div class="card">
+          <h2>Đang xử lý</h2>
+          <table><tbody>
+            <tr><td>#1041</td><td><span class="badge b-running"><svg class="ic spin"><use href="#i-loader"/></svg> dịch · batch 2/3</span></td></tr>
+            <tr><td>#1042</td><td><span class="badge b-running"><svg class="ic spin"><use href="#i-loader"/></svg> dịch · verify</span></td></tr>
+            <tr><td>#3119</td><td><span class="badge b-running"><svg class="ic spin"><use href="#i-loader"/></svg> knowledge</span></td></tr>
+            <tr><td>#871</td><td><span class="badge b-failed"><svg class="ic"><use href="#i-x"/></svg> 429 · backoff 2/3</span></td></tr>
+          </tbody></table>
+        </div>
+        <div class="card">
+          <h2>Nhật ký gần đây</h2>
+          <div class="log">
+            <div><span class="t">06:51:02</span> ✓ ch#1039 dịch xong (score 92)</div>
+            <div><span class="t">06:51:00</span> ✓ ch#3118 knowledge → glossary +4 entity</div>
+            <div><span class="t">06:50:54</span> ⚠ ch#871 knowledge 429 → backoff</div>
+            <div><span class="t">06:50:41</span> ✓ ch#1038 dịch xong (score 88)</div>
+            <div><span class="t">06:50:30</span> ⏭ ch#1503 body rỗng → dead-letter</div>
+            <div><span class="t">06:50:12</span> ✓ ch#3117 knowledge xong</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- D · PAUSED -->
+    <section class="screen" id="v-paused">
+      <div class="phead">
+        <div>
+          <div class="crumb">Auto-Draft <svg class="ic" style="width:13px"><use href="#i-chev"/></svg> Run #41</div>
+          <h1>Vạn Cổ Thần Đế <span class="badge b-paused" style="vertical-align:3px"><svg class="ic"><use href="#i-pause"/></svg> tạm dừng</span></h1>
+          <div class="sub">Dừng tự động vì chạm trần ngân sách</div>
+        </div>
+        <button class="btn btn-danger"><svg class="ic"><use href="#i-ban"/></svg> Hủy chiến dịch</button>
+      </div>
+      <div class="ban ban-warn"><svg class="ic"><use href="#i-alert"/></svg><div>Chạm trần <b>$120</b> ở chương <b>2,310</b>. Đã <b>dừng êm</b> — chương đang chạy được hoàn tất, không ghi nửa vời, không phát sinh thêm chi phí.</div></div>
+      <div class="grid4">
+        <div class="stat"><div class="v">2,310</div><div class="k">đã dịch</div></div>
+        <div class="stat"><div class="v">1,690</div><div class="k">còn lại</div></div>
+        <div class="stat"><div class="v">$120.00</div><div class="k">đã tiêu (= trần)</div></div>
+        <div class="stat"><div class="v">2h58m</div><div class="k">đã chạy</div></div>
+      </div>
+      <div class="card">
+        <h2>Tiếp tục thế nào?</h2>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <label class="sel"><span><b>Nâng trần &amp; Resume</b> — tiếp chương 2,311, không dịch lại phần đã xong (idempotent)</span> <input type="radio" name="rz" checked></label>
+          <label class="sel"><span><b>Đổi model → local 🟢</b> cho 1,690 chương còn lại ($0, chậm hơn)</span> <input type="radio" name="rz"></label>
+          <label class="sel"><span><b>Dừng &amp; review</b> 2,310 chương đã có</span> <input type="radio" name="rz"></label>
+        </div>
+        <div class="field" style="margin-top:10px"><span class="lab">Trần mới</span><div class="sel">$200.00 <svg class="ic"><use href="#i-chev"/></svg></div></div>
+        <div class="btnrow"><span class="muted" style="font-size:11.5px">Resume không tính lại 2,310 chương đã trả phí.</span><button class="btn btn-primary glow"><svg class="ic"><use href="#i-play"/></svg> Resume</button></div>
+      </div>
+    </section>
+
+    <!-- E · FAILED & RE-RUN -->
+    <section class="screen" id="v-failed">
+      <div class="phead">
+        <div>
+          <div class="crumb">Auto-Draft <svg class="ic" style="width:13px"><use href="#i-chev"/></svg> Run #41 <svg class="ic" style="width:13px"><use href="#i-chev"/></svg> Chương lỗi</div>
+          <h1>Chương lỗi <span class="muted" style="font-family:Inter;font-size:14px;font-weight:400">54 / 4,000</span></h1>
+          <div class="sub">Re-run tạo một lượt chạy con CHỈ cho chương lỗi — không động tới chương đã xong.</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sec"><svg class="ic"><use href="#i-redo"/></svg> Re-run đã chọn (12)</button>
+          <button class="btn btn-primary glow"><svg class="ic"><use href="#i-redo"/></svg> Re-run tất cả lỗi (54)</button>
+        </div>
+      </div>
+      <div class="ban ban-info"><svg class="ic"><use href="#i-spark"/></svg><div>Gom theo nguyên nhân: <b>51</b> rate-limit (lúc ~02:00) → re-run sẽ chạy sạch · <b>3</b> body rỗng → bỏ qua (lỗi dữ liệu nguồn, re-run vô ích).</div></div>
+      <div class="card" style="padding:0">
+        <table>
+          <thead><tr><th style="width:30px"><input type="checkbox" class="chk"></th><th>Chương</th><th>Pipeline</th><th>Nguyên nhân</th><th>Lần thử cuối</th><th class="r">Thao tác</th></tr></thead>
+          <tbody>
+            <tr><td><input type="checkbox" class="chk" checked></td><td>#871</td><td>Knowledge</td><td><span class="badge b-failed"><svg class="ic"><use href="#i-x"/></svg> 429 rate-limit</span></td><td class="muted">02:03 · 3/3 retry</td><td class="r"><button class="btn btn-sec"><svg class="ic"><use href="#i-redo"/></svg></button></td></tr>
+            <tr><td><input type="checkbox" class="chk" checked></td><td>#1455</td><td>Translation</td><td><span class="badge b-failed"><svg class="ic"><use href="#i-x"/></svg> 429 rate-limit</span></td><td class="muted">02:05 · 3/3 retry</td><td class="r"><button class="btn btn-sec"><svg class="ic"><use href="#i-redo"/></svg></button></td></tr>
+            <tr><td><input type="checkbox" class="chk"></td><td>#1503</td><td>Knowledge</td><td><span class="badge b-partial">body rỗng (skip)</span></td><td class="muted">— dead-letter</td><td class="r"><button class="btn btn-sec" disabled>—</button></td></tr>
+            <tr><td><input type="checkbox" class="chk" checked></td><td>#2980</td><td>Translation</td><td><span class="badge b-failed"><svg class="ic"><use href="#i-x"/></svg> 0-output (model)</span></td><td class="muted">02:10 · 1/3</td><td class="r"><button class="btn btn-sec"><svg class="ic"><use href="#i-redo"/></svg></button></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="ban ban-ok"><svg class="ic"><use href="#i-redo"/></svg><div>Re-run #41-r1 sẽ chạy <b>51 chương</b> với cùng cấu hình + model. Ước tính thêm <b>~$1.05</b> · ~6 phút. Theo dõi ở màn Monitor như một run con.</div></div>
+    </section>
+
+    <!-- F · REPORT -->
+    <section class="screen" id="v-report">
+      <div class="phead">
+        <div>
+          <div class="crumb">Auto-Draft <svg class="ic" style="width:13px"><use href="#i-chev"/></svg> Run #41</div>
+          <h1>Báo cáo <span class="badge b-completed" style="vertical-align:3px"><svg class="ic"><use href="#i-check"/></svg> hoàn tất</span></h1>
+          <div class="sub">9h28m · kết thúc 06:08 · bản nháp AI sẵn sàng review</div>
+        </div>
+        <button class="btn btn-sec"><svg class="ic"><use href="#i-down"/></svg> Tải CSV</button>
+      </div>
+      <div class="grid4">
+        <div class="stat"><div class="v" style="color:hsl(var(--success))">3,946</div><div class="k">dịch xong</div></div>
+        <div class="stat"><div class="v" style="color:hsl(var(--warning))">54</div><div class="k">lỗi (cần xem)</div></div>
+        <div class="stat"><div class="v">$81.40</div><div class="k">đã tiêu (&lt; ước tính $84.70)</div></div>
+        <div class="stat"><div class="v">4,000</div><div class="k">glossary + KG</div></div>
+      </div>
+      <div class="card">
+        <h2>Lỗi gom theo nguyên nhân</h2>
+        <table>
+          <thead><tr><th>Nguyên nhân</th><th class="r">Số chương</th><th>Khắc phục</th></tr></thead>
+          <tbody>
+            <tr><td>provider 429 (rate-limit ~02:00)</td><td class="r">51</td><td class="muted">Re-run → chạy sạch</td></tr>
+            <tr><td>body rỗng / chương trống</td><td class="r">3</td><td class="muted">Bỏ qua (dữ liệu nguồn)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="ban ban-ok"><svg class="ic"><use href="#i-check"/></svg><div>Con người review/confirm qua flywheel hiện có: <b>needs-review badge (M5) → confirm-name (M6) → human-edit gold (M7)</b>.</div></div>
+      <div class="btnrow">
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary glow"><svg class="ic"><use href="#i-eye"/></svg> Review bản nháp</button>
+          <button class="btn btn-sec"><svg class="ic"><use href="#i-redo"/></svg> Re-run 54 chương lỗi</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="card" style="background:transparent;border-style:dashed">
+      <div class="muted" style="font-size:11.5px"><b>Lifecycle đã cover:</b> Campaigns list (running/paused/partial) · Wizard (Model Matrix + Cost) · <b>Monitor</b> (stage progress + live stats + per-chapter heatmap + đang-xử-lý + nhật ký + Pause/Cancel) · <b>Paused/budget</b> (raise-cap/local/stop + resume idempotent) · <b>Failed &amp; Re-run</b> (gom nguyên nhân + chọn + re-run con) · Report.<br/>
+      <b>Edge states:</b> chạm-trần pause · rate-limit backoff · 0-output guard · body-rỗng dead-letter · resume không double-spend · reranker BYOK · re-run chỉ chương lỗi.<br/>
+      <b>Theme:</b> dark tokens thật từ index.css · font Lora/Inter · StatusBadge/btn/progress theo convention frontend.</div>
+    </div>
+
+    </div>
+  </main>
+</div>
+
+<script>
+  const vs=document.getElementById('vs');
+  vs.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+    [...vs.querySelectorAll('button')].forEach(x=>x.classList.toggle('on',x===b));
+    document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('on',s.id==='v-'+b.dataset.v));
+    document.querySelector('.main').scrollTo(0,0);
+  });
+  const heat=document.getElementById('heat');let html='';
+  for(let i=0;i<240;i++){let c='q';if(i<62)c='done';else if(i<70)c='run';else if(i===88||i===150)c='fail';html+=`<span class="cell ${c}" title="ch#${i+1}"></span>`;}
+  heat.innerHTML=html;
+</script>
+</body>
+</html>

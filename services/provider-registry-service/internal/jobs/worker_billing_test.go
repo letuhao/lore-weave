@@ -41,13 +41,49 @@ func TestNumField(t *testing.T) {
 	}
 }
 
-func TestSettleBilling_NilGuardrail_IsNoOp(t *testing.T) {
+func TestSettleReservation_NilGuardrail_IsNoOp(t *testing.T) {
 	// A worker built without a guardrail client (router-only tests, dev
-	// without usage-billing) must settle nothing and never panic — even
-	// though repo is also nil here.
+	// without usage-billing) must settle nothing and never panic. Also a
+	// completed/failed job that carried no reservation (resID nil) is a no-op.
 	w := &Worker{}
-	w.settleBilling(context.Background(), uuid.New(), uuid.New(), "chat", "completed", nil)
-	w.settleBilling(context.Background(), uuid.New(), uuid.New(), "chat", "failed", nil)
+	w.settleReservation(context.Background(), uuid.New(), "completed", nil, nil)
+	w.settleReservation(context.Background(), uuid.New(), "failed", nil, nil)
+}
+
+func TestParseJobMetaCampaignID(t *testing.T) {
+	// S4b: the campaign tag is parsed from job_meta inside the finalize tx. It
+	// must be nil-tolerant on EVERY malformed input — a bad tag can never fail a
+	// billing-critical finalize; it just yields an un-attributed usage row.
+	valid := uuid.New()
+	cases := []struct {
+		name string
+		raw  string
+		want *uuid.UUID
+	}{
+		{"valid", `{"campaign_id":"` + valid.String() + `"}`, &valid},
+		{"valid with other keys", `{"attempt":1,"campaign_id":"` + valid.String() + `","x":"y"}`, &valid},
+		{"absent key", `{"attempt":1}`, nil},
+		{"empty string value", `{"campaign_id":""}`, nil},
+		{"non-string value", `{"campaign_id":42}`, nil},
+		{"bad uuid", `{"campaign_id":"not-a-uuid"}`, nil},
+		{"empty bytes", ``, nil},
+		{"null literal", `null`, nil},
+		{"non-object", `"just a string"`, nil},
+		{"malformed json", `{not json`, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := parseJobMetaCampaignID([]byte(tc.raw))
+			switch {
+			case tc.want == nil && got != nil:
+				t.Fatalf("expected nil, got %v", *got)
+			case tc.want != nil && got == nil:
+				t.Fatalf("expected %v, got nil", *tc.want)
+			case tc.want != nil && *got != *tc.want:
+				t.Fatalf("expected %v, got %v", *tc.want, *got)
+			}
+		})
+	}
 }
 
 func TestActualUSD_NoUsageBlock_ReturnsNil(t *testing.T) {

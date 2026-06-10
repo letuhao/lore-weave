@@ -10,10 +10,9 @@ Two surfaces are exercised:
    (a transport failure degrades to success=False, matching the bespoke
    contract).
 
-2. The `USE_MCP_TOOLS` dual-run gate in `_stream_with_tools()` — when
-   `settings.use_mcp_tools` is False the bespoke `execute_tool` path is
-   taken; when True the `mcp_execute_tool` path is taken. Exactly one of
-   the two is awaited per tool call.
+2. The backend-tool path in `_stream_with_tools()` routes through
+   `mcp_execute_tool` — the only tool transport after the ai-gateway hard
+   cutover (the bespoke `execute_tool` path was retired).
 
 `mcp_execute_tool` binds `streamablehttp_client` and `ClientSession` at
 module level in `app.client.knowledge_client`, so the patch targets are
@@ -422,12 +421,12 @@ class TestMcpTransportTimeoutAndTraceId:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# USE_MCP_TOOLS dual-run gate in _stream_with_tools
+# Backend-tool path in _stream_with_tools
 # ════════════════════════════════════════════════════════════════════════════
 #
 # Re-uses the _FakeClient + event-builder scaffolding from test_stream_tools
-# to drive one tool-call pass followed by a text pass, then asserts which of
-# the two execute paths was awaited based on settings.use_mcp_tools.
+# to drive one tool-call pass followed by a text pass, then asserts the call
+# routed through mcp_execute_tool (the only tool transport).
 
 
 from tests.test_stream_tools import (  # noqa: E402
@@ -453,62 +452,34 @@ def _one_tool_then_text_scripts() -> list:
     ]
 
 
-class TestUseMcpToolsGate:
+class TestMcpToolPath:
     @pytest.mark.asyncio
-    async def test_gate_false_uses_bespoke_path(self):
-        """USE_MCP_TOOLS=False → execute_tool awaited, mcp_execute_tool NOT."""
-        from app.services import stream_service
-
+    async def test_backend_tool_routes_through_mcp(self):
+        """A backend (memory) tool call routes through mcp_execute_tool — the
+        only tool transport after the ai-gateway hard cutover."""
         kc = AsyncMock()
-        kc.execute_tool.return_value = _envelope(success=True, result={"hit": 1})
         kc.mcp_execute_tool.return_value = _envelope(success=True, result={"hit": 1})
 
         scripts = _one_tool_then_text_scripts()
-        with patch.object(stream_service.settings, "use_mcp_tools", False), \
-                _patch_client(scripts):
-            await _drain(_run(scripts, knowledge_client=kc))
-
-        kc.execute_tool.assert_awaited_once()
-        kc.mcp_execute_tool.assert_not_awaited()
-        # Scope still rides in kwargs on the bespoke call.
-        assert kc.execute_tool.await_args.kwargs["tool_name"] == "memory_search"
-        assert kc.execute_tool.await_args.kwargs["tool_args"] == {"query": "Kai"}
-
-    @pytest.mark.asyncio
-    async def test_gate_true_uses_mcp_path(self):
-        """USE_MCP_TOOLS=True → mcp_execute_tool awaited, execute_tool NOT."""
-        from app.services import stream_service
-
-        kc = AsyncMock()
-        kc.execute_tool.return_value = _envelope(success=True, result={"hit": 1})
-        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"hit": 1})
-
-        scripts = _one_tool_then_text_scripts()
-        with patch.object(stream_service.settings, "use_mcp_tools", True), \
-                _patch_client(scripts):
+        with _patch_client(scripts):
             await _drain(_run(scripts, knowledge_client=kc))
 
         kc.mcp_execute_tool.assert_awaited_once()
-        kc.execute_tool.assert_not_awaited()
-        # Same kwargs contract as the bespoke path (drop-in).
+        # Scope rides in kwargs; semantic args carry no scope.
         assert kc.mcp_execute_tool.await_args.kwargs["tool_name"] == "memory_search"
         assert kc.mcp_execute_tool.await_args.kwargs["tool_args"] == {"query": "Kai"}
         assert kc.mcp_execute_tool.await_args.kwargs["session_id"] is not None
 
     @pytest.mark.asyncio
     async def test_mcp_path_envelope_drives_tool_call_chunk(self):
-        """When the MCP path is active, its envelope feeds the tool_call
-        chunk exactly like the bespoke path — proving drop-in shape."""
-        from app.services import stream_service
-
+        """The MCP envelope feeds the tool_call chunk."""
         kc = AsyncMock()
         kc.mcp_execute_tool.return_value = _envelope(
             success=True, result={"entities": ["Kai"]}
         )
 
         scripts = _one_tool_then_text_scripts()
-        with patch.object(stream_service.settings, "use_mcp_tools", True), \
-                _patch_client(scripts):
+        with _patch_client(scripts):
             chunks = await _drain(_run(scripts, knowledge_client=kc))
 
         tool_chunks = [c["tool_call"] for c in chunks if "tool_call" in c]

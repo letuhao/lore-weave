@@ -55,16 +55,50 @@ export const glossaryApi = {
     return apiJson<GlossaryEntity>(`${BASE}/books/${bookId}/entities/${entityId}`, { token });
   },
 
+  // Tier-S (P4): the token-gated schema-create. The assistant proposed a new
+  // kind/attribute (minting `confirmToken`); this confirms it after the human
+  // clicks Confirm. The endpoint is JWT-only — no gateway/MCP route reaches it.
+  confirmSchema(confirmToken: string, token: string): Promise<unknown> {
+    return apiJson<unknown>(`${BASE}/schema/confirm`, {
+      method: 'POST',
+      body: JSON.stringify({ confirm_token: confirmToken }),
+      token,
+    });
+  },
+
+  // EDIT-ATOMIC: the assistant diff-card Apply — multiple field changes applied
+  // in ONE transaction with ONE version check (base_version → 412 on drift).
+  applyEntityEdit(
+    bookId: string,
+    entityId: string,
+    body: {
+      base_version: string;
+      short_description?: string | null;
+      attributes?: { attr_value_id: string; original_value: string }[];
+    },
+    token: string,
+  ): Promise<unknown> {
+    return apiJson<unknown>(`${BASE}/books/${bookId}/entities/${entityId}/apply-edit`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      token,
+    });
+  },
+
   patchEntity(
     bookId: string,
     entityId: string,
-    changes: { status?: string; tags?: string[]; alive?: boolean },
+    changes: { status?: string; tags?: string[]; alive?: boolean; short_description?: string | null },
     token: string,
+    // Glossary-assistant P3 (H5): when set, sent as `If-Match` so the PATCH is
+    // optimistic-concurrency checked — 412 if the entity changed since read.
+    opts?: { ifMatch?: string },
   ): Promise<GlossaryEntity> {
     return apiJson<GlossaryEntity>(`${BASE}/books/${bookId}/entities/${entityId}`, {
       method: 'PATCH',
       body: JSON.stringify(changes),
       token,
+      ...(opts?.ifMatch ? { headers: { 'If-Match': opts.ifMatch } } : {}),
     });
   },
 
@@ -292,10 +326,17 @@ export const glossaryApi = {
     attrValueId: string,
     changes: { original_language?: string; original_value?: string },
     token: string,
+    // Glossary-assistant P3 (H5): `If-Match` version guard (412 on drift).
+    opts?: { ifMatch?: string },
   ) {
     return apiJson(
       `${BASE}/books/${bookId}/entities/${entityId}/attributes/${attrValueId}`,
-      { method: 'PATCH', body: JSON.stringify(changes), token },
+      {
+        method: 'PATCH',
+        body: JSON.stringify(changes),
+        token,
+        ...(opts?.ifMatch ? { headers: { 'If-Match': opts.ifMatch } } : {}),
+      },
     );
   },
 

@@ -234,6 +234,13 @@ ALTER TABLE knowledge_projects
 ALTER TABLE knowledge_projects
   DROP COLUMN IF EXISTS embedding_provider_id;
 
+-- D-RERANK-NOT-BYOK — per-project BYOK rerank model (mirrors embedding_model):
+-- the user's provider-registry user_model UUID + source. NULL rerank_model ⇒
+-- raw-search SKIPS the rerank step (rerank is optional, never platform-fixed).
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS rerank_model        TEXT,
+  ADD COLUMN IF NOT EXISTS rerank_model_source TEXT NOT NULL DEFAULT 'user_model';
+
 -- ═══════════════════════════════════════════════════════════════
 -- K10.1 — extraction_pending
 -- Events that arrived while extraction was disabled for their project.
@@ -303,6 +310,13 @@ CREATE TABLE IF NOT EXISTS extraction_jobs (
 
   error_message     TEXT
 );
+
+-- S4a (Auto-Draft Factory cost attribution): the owning campaign for a
+-- campaign-dispatched extraction job. NULL for ordinary user-initiated jobs.
+-- worker-ai reads this from the job row and stamps it onto every provider
+-- job_meta so the campaign's extraction spend is summable (decision C).
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS campaign_id UUID;
 
 CREATE INDEX IF NOT EXISTS idx_extraction_jobs_project
   ON extraction_jobs (project_id, created_at DESC);

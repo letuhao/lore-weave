@@ -87,6 +87,39 @@ describe('useChatMessages — C6 frontend tool (propose_edit)', () => {
     expect(body.editor_context).toEqual({ book_id: 'b1', chapter_id: 'ch1' });
   });
 
+  it('sends book_context (not editor_context) for a glossary-page chat', async () => {
+    // Glossary-assistant P3: a book-scoped, non-editor chat advertises the
+    // glossary edit tool via book_context.
+    const fetchMock = vi.fn().mockResolvedValue(
+      sseResponse([JSON.stringify({ type: 'RUN_FINISHED', result: {} })]),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const { result } = renderHook(() =>
+      useChatMessages('s-1', undefined, undefined, { book_id: 'b1' }),
+    );
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await act(async () => {
+      await result.current.send('rename Nezha');
+    });
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.book_context).toEqual({ book_id: 'b1' });
+    expect(body.editor_context).toBeUndefined();
+  });
+
+  it('submitToolResult forwards the glossary H6 outcome enum verbatim', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      sseResponse([JSON.stringify({ type: 'RUN_FINISHED', result: {} })]),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const { result } = renderHook(() => useChatMessages('s-1'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await act(async () => {
+      await result.current.submitToolResult('r1', 'c1', 'applied_conflict');
+    });
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.outcome).toBe('applied_conflict');
+  });
+
   it('submitToolResult POSTs the resume endpoint with the outcome', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       sseResponse([

@@ -122,6 +122,25 @@ async def test_judge_runs_when_opted_in(monkeypatch):
     pj.assert_awaited_once()
 
 
+async def test_judge_bills_run_owner_not_operator(monkeypatch):
+    # D-EVAL-JUDGE-PER-USER: the BYOK judge bills the extraction OWNER
+    # (run["user_id"]), not the operator's env-configured id ("u").
+    _enable_judge(monkeypatch)
+    rj = AsyncMock(return_value={"overall_precision": 0.8})
+    pj = AsyncMock(return_value=uuid.uuid4())
+    monkeypatch.setattr("app.db.online_judge.run_online_judge", rj)
+    monkeypatch.setattr("app.db.online_judge.persist_online_judge", pj)
+    runner = _runner()
+    monkeypatch.setattr(runner, "_ensure_judge_client", AsyncMock(return_value=object()))
+    run = _run()
+    await runner._maybe_judge(
+        {"judge_panel_id": uuid.uuid4()}, run,
+        {"save_raw_extraction": True, "items": {"entity": [{}]}, "source_text": "x."},
+    )
+    assert rj.call_args.kwargs["user_id"] == str(run["user_id"])
+    assert rj.call_args.kwargs["user_id"] != "u"
+
+
 async def test_judge_inline_items_skipped_without_consent_flag(monkeypatch):
     """/review-impl LOW#2 regression-lock: inline items WITHOUT
     save_raw_extraction are NOT judged — consent gate governs the inline

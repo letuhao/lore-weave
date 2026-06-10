@@ -106,8 +106,10 @@ class Settings(BaseSettings):
     # (off ⇒ pure E5 behavior). `min_rerank_score` 0.30 is data-calibrated on
     # the eval corpus (negatives < 0.30 < real positives). top_n bounds the
     # cross-encoder passes; timeout is load-tolerant for cold-start.
+    # D-RERANK-NOT-BYOK: the rerank MODEL is no longer a hardcoded env name —
+    # it is the per-project `knowledge_projects.rerank_model` (BYOK user_model),
+    # resolved per-user by provider-registry. NULL project model ⇒ rerank skipped.
     rerank_enabled: bool = True
-    rerank_model: str = "bge-reranker-v2-m3"
     rerank_top_n: int = 30
     min_rerank_score: float = 0.30
     # Measured 2026-06-08 (bge-reranker-v2-m3, 30 CJK passages): warm p50 44ms /

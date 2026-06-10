@@ -48,6 +48,11 @@ class Project(BaseModel):
     # D-EMB-MODEL-REF-01: caller-supplied vector dimension; the
     # passage_ingester + L3 selector + benchmark read it at call time.
     embedding_dimension: int | None = None
+    # D-RERANK-NOT-BYOK: per-project BYOK rerank model (provider-registry
+    # user_model UUID) + source. None ⇒ raw-search skips the rerank step
+    # (rerank is optional, never platform-fixed). FE picker = S0b.
+    rerank_model: str | None = None
+    rerank_model_source: str = "user_model"
     extraction_config: dict
     last_extracted_at: datetime | None = None
     estimated_cost_usd: Decimal
@@ -129,6 +134,12 @@ class ProjectUpdate(BaseModel):
     is_archived: bool | None = None
     embedding_model: str | None = None
     embedding_dimension: int | None = None
+    # D-RERANK-NOT-BYOK (S0b): omit to leave unchanged. Set to a provider-registry
+    # user_model UUID to enable BYOK rerank for raw-search; set to None to clear
+    # (rerank then skipped). rerank_model_source is NOT NULL in the DB so an
+    # explicit None is "skip" (same as tool_calling_enabled).
+    rerank_model: str | None = None
+    rerank_model_source: str | None = None
     tool_calling_enabled: bool | None = None
     memory_remember_confirm: bool | None = None
     save_raw_extraction: bool | None = None

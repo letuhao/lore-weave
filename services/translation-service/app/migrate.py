@@ -259,6 +259,13 @@ ALTER TABLE translation_jobs
   ADD COLUMN IF NOT EXISTS qa_depth              TEXT NOT NULL DEFAULT 'standard',
   ADD COLUMN IF NOT EXISTS cold_start_mode       TEXT NOT NULL DEFAULT 'single_pass';
 
+-- S5b-eval: per-campaign translation eval-judge model. Only on translation_jobs
+-- (campaign-supplied via dispatch; NOT a user/book setting). Rides the
+-- translation.quality event to learning-service's M7d-2 fidelity judge.
+ALTER TABLE translation_jobs
+  ADD COLUMN IF NOT EXISTS eval_judge_model_source TEXT,
+  ADD COLUMN IF NOT EXISTS eval_judge_model_ref    UUID;
+
 -- Per-block QA issues — drives targeted re-translate + the future "needs review" UI.
 CREATE TABLE IF NOT EXISTS translation_quality_issues (
   id                     UUID PRIMARY KEY DEFAULT uuidv7(),
@@ -312,6 +319,13 @@ CREATE INDEX IF NOT EXISTS idx_ctgu_entity
 ALTER TABLE chapter_translations
   ADD COLUMN IF NOT EXISTS authored_by TEXT NOT NULL DEFAULT 'llm',
   ADD COLUMN IF NOT EXISTS edited_from_version_id UUID;
+
+-- S4a (Auto-Draft Factory cost attribution): the owning campaign for a
+-- campaign-dispatched job. NULL for ordinary user-initiated translations. Stored
+-- for queryability; the runtime correlation rides through to each provider job's
+-- job_meta via the per-chapter message + a worker-set contextvar (see llm_client).
+ALTER TABLE translation_jobs
+  ADD COLUMN IF NOT EXISTS campaign_id UUID;
 """
 
 

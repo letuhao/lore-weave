@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -148,3 +149,47 @@ async def test_score_out_of_range_rejected():
     with pytest.raises(ScoreValidationError):
         await handle_translation_quality(_quality_event(score=1.5), pool=FakePool(conn))
     assert conn.execs == []
+
+
+# ── S5b-eval: per-campaign judge model + verdict emit ─────────────────────────
+
+async def test_campaign_eval_judge_uses_event_model_and_emits(mocker):
+    """A campaign-chosen eval_judge model on the event runs the judge with THAT
+    model (not the service-wide config) even with both global flags OFF, and emits
+    translation.eval_judged for the campaign projection."""
+    from types import SimpleNamespace
+
+    judge = mocker.patch(
+        "app.db.online_translation_judge.run_translation_judge",
+        new_callable=AsyncMock, return_value=SimpleNamespace(score=0.83, reason="ok"))
+    mocker.patch("app.db.online_translation_judge.persist_translation_judge",
+                 new_callable=AsyncMock)
+    mocker.patch("app.clients.llm_client.build_judge_client", return_value=object())
+    emit = mocker.patch("app.events.handlers._emit_eval_judged", new_callable=AsyncMock)
+
+    CAMPAIGN_MODEL = str(uuid.uuid4())
+    ev = _quality_event()
+    ev.payload["eval_judge_model_source"] = "user_model"
+    ev.payload["eval_judge_model_ref"] = CAMPAIGN_MODEL
+    ev.payload["source_text"] = "原文内容"
+    ev.payload["translated_text"] = "nội dung"
+
+    await handle_translation_quality(ev, pool=FakePool(FakeConn()))
+
+    judge.assert_awaited_once()
+    assert judge.call_args.kwargs["judge_model"] == CAMPAIGN_MODEL  # event model, not global config
+    emit.assert_awaited_once()  # verdict surfaced to the campaign projection
+
+
+async def test_no_campaign_judge_and_flags_off_is_inert(mocker):
+    """Without a campaign model and with the global flags off (default), the judge
+    never runs (today's behavior preserved)."""
+    judge = mocker.patch(
+        "app.db.online_translation_judge.run_translation_judge", new_callable=AsyncMock)
+    emit = mocker.patch("app.events.handlers._emit_eval_judged", new_callable=AsyncMock)
+    ev = _quality_event()
+    ev.payload["source_text"] = "原文"
+    ev.payload["translated_text"] = "dịch"
+    await handle_translation_quality(ev, pool=FakePool(FakeConn()))
+    judge.assert_not_awaited()
+    emit.assert_not_awaited()

@@ -212,6 +212,29 @@ ALTER TABLE platform_models ADD COLUMN IF NOT EXISTS pricing JSONB NOT NULL DEFA
 -- estimate; the worker reconciles/releases it on terminal state. NULL for
 -- jobs created before this migration.
 ALTER TABLE llm_jobs ADD COLUMN IF NOT EXISTS reservation_id UUID;
+
+-- S4b (Auto-Draft Factory, decision C) — transactional usage outbox. On a
+-- COMPLETED job the worker writes one row HERE in the same tx as the llm_jobs
+-- finalize, then a relay XADDs it to loreweave:events:usage (all) +
+-- loreweave:events:campaign_usage (when campaign_id is set) and stamps
+-- published_at. Replaces the fire-and-forget RecordUsage HTTP on the jobs path:
+-- at-least-once delivery, consumers dedup on request_id (= job_id).
+CREATE TABLE IF NOT EXISTS usage_outbox (
+  id             BIGSERIAL PRIMARY KEY,
+  request_id     UUID NOT NULL,
+  owner_user_id  UUID NOT NULL,
+  campaign_id    UUID,
+  model_source   TEXT NOT NULL,
+  model_ref      UUID NOT NULL,
+  operation      TEXT NOT NULL,
+  input_tokens   INT  NOT NULL,
+  output_tokens  INT  NOT NULL,
+  cost_usd       NUMERIC(16,8),
+  published_at   TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_usage_outbox_unpublished
+  ON usage_outbox(id) WHERE published_at IS NULL;
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

@@ -3,34 +3,43 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/loreweave/glossary-service/internal/domain"
 )
 
-// createKind handles POST /v1/glossary/kinds
-func (s *Server) createKind(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireUserID(r); !ok {
-		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
-		return
-	}
-	var in struct {
-		Code        string   `json:"code"`
-		Name        string   `json:"name"`
-		Description *string  `json:"description"`
-		Icon        string   `json:"icon"`
-		Color       string   `json:"color"`
-		GenreTags   []string `json:"genre_tags"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Code == "" || in.Name == "" {
-		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "code and name are required")
-		return
+// kindCreateParams is the create-spec for a new kind — shared by the manual /v1
+// handler and the Tier-S confirm path (P4). Captured inside the confirm token so
+// the confirm step creates exactly what was proposed.
+type kindCreateParams struct {
+	Code        string   `json:"code"`
+	Name        string   `json:"name"`
+	Description *string  `json:"description"`
+	Icon        string   `json:"icon"`
+	Color       string   `json:"color"`
+	GenreTags   []string `json:"genre_tags"`
+}
+
+// createKindFromParams inserts a kind + its seed 'name' attribute in one tx and
+// returns the created kind. A duplicate code surfaces as a unique-violation
+// (isUniqueViolation) so callers can map it to 409. Shared core — the manual
+// handler and the confirm endpoint both call it (one write path, one set of
+// triggers).
+func (s *Server) createKindFromParams(ctx context.Context, in kindCreateParams) (domain.EntityKind, error) {
+	// SCHEMA-LOW1: defense-in-depth — both callers (manual handler + the Tier-S
+	// confirm path) validate upstream, but the core must not create an unnamed
+	// kind if a future caller forgets.
+	if strings.TrimSpace(in.Code) == "" || strings.TrimSpace(in.Name) == "" {
+		return domain.EntityKind{}, errors.New("code and name are required")
 	}
 	if in.Icon == "" {
 		in.Icon = "📝"
@@ -42,15 +51,14 @@ func (s *Server) createKind(w http.ResponseWriter, r *http.Request) {
 		in.GenreTags = []string{"universal"}
 	}
 
-	tx, err := s.pool.Begin(r.Context())
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx begin failed")
-		return
+		return domain.EntityKind{}, err
 	}
-	defer tx.Rollback(r.Context())
+	defer tx.Rollback(ctx)
 
 	var kindID string
-	if err := tx.QueryRow(r.Context(), `
+	if err := tx.QueryRow(ctx, `
 		INSERT INTO entity_kinds(code, name, description, icon, color, is_default, is_hidden, sort_order, genre_tags)
 		VALUES ($1,$2,$3,$4,$5,false,false,
 			COALESCE((SELECT MAX(sort_order)+1 FROM entity_kinds),1),
@@ -58,8 +66,7 @@ func (s *Server) createKind(w http.ResponseWriter, r *http.Request) {
 		RETURNING kind_id`,
 		in.Code, in.Name, in.Description, in.Icon, in.Color, in.GenreTags,
 	).Scan(&kindID); err != nil {
-		writeError(w, http.StatusConflict, "GLOSS_CONFLICT", "kind code already exists")
-		return
+		return domain.EntityKind{}, err
 	}
 
 	// Seed a system 'name' display attribute so the kind is name-capable from creation.
@@ -71,22 +78,20 @@ func (s *Server) createKind(w http.ResponseWriter, r *http.Request) {
 	// schema); is_active / genre_tags / auto_fill_prompt are added by later
 	// migrations with defaults, so omitting them is migration-order-independent.
 	nameAttr := domain.AttrDef{Code: "name", Name: "Name", FieldType: "text", IsRequired: true, IsActive: true, SortOrder: 0, GenreTags: []string{}}
-	if err := tx.QueryRow(r.Context(), `
+	if err := tx.QueryRow(ctx, `
 		INSERT INTO attribute_definitions(kind_id, code, name, field_type, is_required, is_system, sort_order)
 		VALUES ($1,'name','Name','text',true,true,0)
 		RETURNING attr_def_id`,
 		kindID,
 	).Scan(&nameAttr.AttrDefID); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to seed name attribute")
-		return
+		return domain.EntityKind{}, err
 	}
 
-	if err := tx.Commit(r.Context()); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tx commit failed")
-		return
+	if err := tx.Commit(ctx); err != nil {
+		return domain.EntityKind{}, err
 	}
 
-	writeJSON(w, http.StatusCreated, domain.EntityKind{
+	return domain.EntityKind{
 		KindID:      kindID,
 		Code:        in.Code,
 		Name:        in.Name,
@@ -97,7 +102,30 @@ func (s *Server) createKind(w http.ResponseWriter, r *http.Request) {
 		IsHidden:    false,
 		GenreTags:   in.GenreTags,
 		Attributes:  []domain.AttrDef{nameAttr},
-	})
+	}, nil
+}
+
+// createKind handles POST /v1/glossary/kinds
+func (s *Server) createKind(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireUserID(r); !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
+		return
+	}
+	var in kindCreateParams
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Code == "" || in.Name == "" {
+		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "code and name are required")
+		return
+	}
+	k, err := s.createKindFromParams(r.Context(), in)
+	if err != nil {
+		if isUniqueViolation(err) {
+			writeError(w, http.StatusConflict, "GLOSS_CONFLICT", "kind code already exists")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to create kind")
+		return
+	}
+	writeJSON(w, http.StatusCreated, k)
 }
 
 // patchKind handles PATCH /v1/glossary/kinds/{kind_id}
@@ -297,29 +325,30 @@ func (s *Server) deleteKind(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"deleted_wiki_articles": len(deletedArts)})
 }
 
-// createAttrDef handles POST /v1/glossary/kinds/{kind_id}/attributes
-func (s *Server) createAttrDef(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireUserID(r); !ok {
-		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
-		return
-	}
-	kindID := chi.URLParam(r, "kind_id")
+// attrCreateParams is the create-spec for a new attribute definition — shared by
+// the manual /v1 handler and the Tier-S confirm path (P4). KindID is resolved at
+// propose time and carried inside the confirm token.
+type attrCreateParams struct {
+	KindID          string   `json:"kind_id"`
+	Code            string   `json:"code"`
+	Name            string   `json:"name"`
+	Description     *string  `json:"description"`
+	FieldType       string   `json:"field_type"`
+	IsRequired      bool     `json:"is_required"`
+	SortOrder       int      `json:"sort_order"`
+	Options         []string `json:"options"`
+	GenreTags       []string `json:"genre_tags"`
+	AutoFillPrompt  *string  `json:"auto_fill_prompt"`
+	TranslationHint *string  `json:"translation_hint"`
+}
 
-	var in struct {
-		Code            string   `json:"code"`
-		Name            string   `json:"name"`
-		Description     *string  `json:"description"`
-		FieldType       string   `json:"field_type"`
-		IsRequired      bool     `json:"is_required"`
-		SortOrder       int      `json:"sort_order"`
-		Options         []string `json:"options"`
-		GenreTags       []string `json:"genre_tags"`
-		AutoFillPrompt  *string  `json:"auto_fill_prompt"`
-		TranslationHint *string  `json:"translation_hint"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Code == "" || in.Name == "" {
-		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "code and name are required")
-		return
+// createAttrDefFromParams inserts an attribute definition under in.KindID and
+// returns it. A duplicate (kind, code) surfaces as a unique-violation. Shared
+// core for the manual handler + the confirm endpoint.
+func (s *Server) createAttrDefFromParams(ctx context.Context, in attrCreateParams) (domain.AttrDef, error) {
+	// SCHEMA-LOW1: defense-in-depth code/name guard (see createKindFromParams).
+	if strings.TrimSpace(in.Code) == "" || strings.TrimSpace(in.Name) == "" {
+		return domain.AttrDef{}, errors.New("code and name are required")
 	}
 	if in.FieldType == "" {
 		in.FieldType = "text"
@@ -327,20 +356,17 @@ func (s *Server) createAttrDef(w http.ResponseWriter, r *http.Request) {
 	if in.GenreTags == nil {
 		in.GenreTags = []string{}
 	}
-
 	var attrDefID string
-	err := s.pool.QueryRow(r.Context(), `
+	err := s.pool.QueryRow(ctx, `
 		INSERT INTO attribute_definitions(kind_id, code, name, description, field_type, is_required, sort_order, options, genre_tags, auto_fill_prompt, translation_hint)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 		RETURNING attr_def_id`,
-		kindID, in.Code, in.Name, in.Description, in.FieldType, in.IsRequired, in.SortOrder, in.Options, in.GenreTags, in.AutoFillPrompt, in.TranslationHint,
+		in.KindID, in.Code, in.Name, in.Description, in.FieldType, in.IsRequired, in.SortOrder, in.Options, in.GenreTags, in.AutoFillPrompt, in.TranslationHint,
 	).Scan(&attrDefID)
 	if err != nil {
-		writeError(w, http.StatusConflict, "GLOSS_CONFLICT", "attribute code already exists for this kind")
-		return
+		return domain.AttrDef{}, err
 	}
-
-	writeJSON(w, http.StatusCreated, domain.AttrDef{
+	return domain.AttrDef{
 		AttrDefID:       attrDefID,
 		Code:            in.Code,
 		Name:            in.Name,
@@ -353,8 +379,55 @@ func (s *Server) createAttrDef(w http.ResponseWriter, r *http.Request) {
 		GenreTags:       in.GenreTags,
 		AutoFillPrompt:  in.AutoFillPrompt,
 		TranslationHint: in.TranslationHint,
-	})
+	}, nil
 }
+
+// createAttrDef handles POST /v1/glossary/kinds/{kind_id}/attributes
+func (s *Server) createAttrDef(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireUserID(r); !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
+		return
+	}
+	var in attrCreateParams
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.Code == "" || in.Name == "" {
+		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "code and name are required")
+		return
+	}
+	in.KindID = chi.URLParam(r, "kind_id")
+	a, err := s.createAttrDefFromParams(r.Context(), in)
+	if err != nil {
+		if isUniqueViolation(err) {
+			writeError(w, http.StatusConflict, "GLOSS_CONFLICT", "attribute code already exists for this kind")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to create attribute")
+		return
+	}
+	writeJSON(w, http.StatusCreated, a)
+}
+
+// isUniqueViolation reports whether err is a Postgres unique-constraint violation
+// (SQLSTATE 23505) — used to map a duplicate kind/attribute code to 409.
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+// isForeignKeyViolation reports whether err is a Postgres FK violation (23503) —
+// e.g. confirming a new attribute whose kind was deleted between propose and
+// confirm — so the caller can return a clean 422 instead of a 500.
+func isForeignKeyViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23503"
+}
+
+// validFieldTypes is the allowed attribute field_type set (mirrors patchAttrDef).
+var validFieldTypes = map[string]bool{
+	"text": true, "textarea": true, "select": true, "number": true,
+	"date": true, "tags": true, "url": true, "boolean": true,
+}
+
+func isValidFieldType(ft string) bool { return validFieldTypes[ft] }
 
 // patchAttrDef handles PATCH /v1/glossary/kinds/{kind_id}/attributes/{attr_def_id}
 func (s *Server) patchAttrDef(w http.ResponseWriter, r *http.Request) {

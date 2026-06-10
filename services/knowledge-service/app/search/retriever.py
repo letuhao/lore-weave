@@ -115,17 +115,23 @@ async def apply_rerank(
     pool_n: int,
     min_rerank_score: float,
     degraded: dict[str, str],
+    user_id: str,
+    model_source: str,
+    model_ref: str,
 ) -> list[dict[str, Any]]:
     """E5B — cross-encoder rerank the top `pool_n` fused candidates.
 
     Re-sorts by the cross-encoder score (set as each hit's `relevance`) and drops
     hits below `min_rerank_score` — the junk-rejection a global cosine floor
-    couldn't do. Reranker unavailable ⇒ keep the fusion order (degraded marker)."""
+    couldn't do. Reranker unavailable ⇒ keep the fusion order (degraded marker).
+    Routed through the project's BYOK rerank model (D-RERANK-NOT-BYOK)."""
     if not fused:
         return fused
     cand = fused[:pool_n]
     docs = [str(h.get("snippet") or "") for h in cand]
-    scores = await reranker.rerank(q, docs)
+    scores = await reranker.rerank(
+        q, docs, user_id=user_id, model_source=model_source, model_ref=model_ref,
+    )
     if scores is None:
         degraded["rerank"] = "unavailable"
         return fused
@@ -221,7 +227,15 @@ async def run_hybrid_search(
     fused = rrf_fuse([lexical_hits, semantic_hits])
     # E5B: cross-encoder rerank for semantic/hybrid (where junk leaks). Lexical
     # mode is already clean (exact substring) so it skips rerank + stays fast.
-    if rerank and settings.rerank_enabled and mode != "lexical" and fused:
+    # D-RERANK-NOT-BYOK: rerank is OPTIONAL — only when the project has a BYOK
+    # rerank model; no model ⇒ skip the step (keep fusion order, mark degraded).
+    if (
+        rerank
+        and settings.rerank_enabled
+        and mode != "lexical"
+        and fused
+        and project.rerank_model
+    ):
         floor = settings.min_rerank_score if min_rerank_score is None else min_rerank_score
         fused = await apply_rerank(
             q, fused, reranker_client,
@@ -230,7 +244,12 @@ async def run_hybrid_search(
             pool_n=max(settings.rerank_top_n, 2 * limit),
             min_rerank_score=floor,
             degraded=degraded,
+            user_id=str(user_id),
+            model_source=project.rerank_model_source,
+            model_ref=project.rerank_model,
         )
+    elif rerank and settings.rerank_enabled and mode != "lexical" and fused and not project.rerank_model:
+        degraded["rerank"] = "not_configured"
     fused = apply_relevance_floor(fused, min_relevance)
     # chapter mode (cap=1) = one best row per chapter (navigate); block mode
     # lifts the cap (exhaustive mine). cap_per_chapter keys on chapterId alone.

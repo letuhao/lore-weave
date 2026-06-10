@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"path"
 	"strconv"
@@ -22,12 +23,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/loreweave/observability"
 	"github.com/loreweave/provider-registry-service/internal/billing"
 	"github.com/loreweave/provider-registry-service/internal/config"
 	"github.com/loreweave/provider-registry-service/internal/jobs"
 	"github.com/loreweave/provider-registry-service/internal/provider"
+	"github.com/loreweave/provider-registry-service/internal/ratelimit"
 	"github.com/loreweave/provider-registry-service/internal/storage"
 )
 
@@ -97,6 +100,44 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 	if pool != nil {
 		s.jobsRepo = jobs.NewRepo(pool)
 		s.jobsWorker = jobs.NewWorker(s.jobsRepo, s.resolveJobCreds, jobsAdapterFactory(s.invokeClient), notifier, nil, audioCache, s.guardrail, cfg.JobMaxRetries)
+		// S3a (G5) — attach the per-provider governor + circuit-breaker when
+		// REDIS_URL is configured. Untyped-nil interfaces stay in place when it
+		// isn't, so Guard passes calls through (governance disabled).
+		if cfg.RedisURL != "" {
+			if opts, err := redis.ParseURL(cfg.RedisURL); err == nil {
+				rdb := redis.NewClient(opts)
+				gov := ratelimit.NewGovernor(rdb, ratelimit.GovernorConfig{
+					CloudMax:       cfg.GovernorCloudMax,
+					Lease:          time.Duration(cfg.GovernorLeaseMs) * time.Millisecond,
+					AcquireTimeout: time.Duration(cfg.GovernorAcquireTimeoutMs) * time.Millisecond,
+				})
+				brk := ratelimit.NewBreaker(rdb, ratelimit.BreakerConfig{
+					Threshold: cfg.BreakerThreshold,
+					Window:    time.Duration(cfg.BreakerWindowS) * time.Second,
+					Cooldown:  time.Duration(cfg.BreakerCooldownS) * time.Second,
+				})
+				s.jobsWorker.WithGovernance(gov, brk)
+				slog.Info("S3a governance enabled", "cloud_max", cfg.GovernorCloudMax, "breaker_threshold", cfg.BreakerThreshold)
+
+				// S4b (decision C) — start the usage outbox relay on the same
+				// Redis client. Drains usage_outbox → loreweave:events:usage (+
+				// :campaign_usage for tagged rows). context.Background(): the
+				// loop is idempotent/resumable, so process-exit stopping it is
+				// safe (graceful stop → D-S4B-RELAY-SHUTDOWN).
+				relay := jobs.NewUsageRelay(rdb, pool, jobs.RelayConfig{
+					UsageStream:         cfg.UsageStream,
+					CampaignUsageStream: cfg.CampaignUsageStream,
+					UsageMaxLen:         int64(cfg.UsageStreamMaxLen),
+					CampaignMaxLen:      int64(cfg.CampaignUsageStreamMaxLen),
+					PollInterval:        time.Duration(cfg.UsageRelayPollMs) * time.Millisecond,
+					BatchSize:           cfg.UsageRelayBatch,
+				}, nil)
+				go relay.Run(context.Background())
+				slog.Info("S4b usage relay enabled", "usage_stream", cfg.UsageStream, "campaign_stream", cfg.CampaignUsageStream)
+			} else {
+				slog.Warn("S3a: REDIS_URL set but unparseable — governance disabled", "err", err)
+			}
+		}
 	}
 	return s
 }
@@ -259,6 +300,9 @@ func (s *Server) Router() http.Handler {
 		r.HandleFunc("/proxy/*", s.internalProxy)
 		r.Post("/embed", s.internalEmbed)
 		r.Post("/rerank", s.internalRerank) // E5B — cross-encoder rerank (platform service)
+
+		// S5a — campaign cost-estimate pricing oracle (token-count → USD).
+		r.Post("/billing/estimate", s.internalBillingEstimate)
 
 		// Phase 1a — service-to-service streaming endpoint.
 		r.Post("/llm/stream", s.internalLlmStream)
@@ -2296,19 +2340,27 @@ func (s *Server) recordInvocation(ctx context.Context, payload map[string]any) (
 // ── K12.1 — Embedding endpoint ──────────────────────────────────────────────
 
 // internalRerank handles POST /internal/rerank — cross-encoder reranking for
-// raw-search junk-rejection (E5B). The reranker is a single PLATFORM service
-// (config RERANK_URL + RERANK_SERVICE_TOKEN), not a per-user BYOK provider, so
-// there's no credential resolution here. Empty RerankURL ⇒ 503 (the knowledge
-// caller degrades to fusion order — search never fails because rerank is off).
+// raw-search junk-rejection (E5B). BYOK (D-RERANK-NOT-BYOK): the rerank model is
+// resolved per-user from provider-registry credentials exactly like
+// /internal/embed — NO hardcoded model name and NO platform endpoint. The
+// knowledge caller only calls this when the project has a rerank model set, and
+// degrades to fusion order on any non-200, so rerank stays optional.
 func (s *Server) internalRerank(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.RerankURL == "" {
-		writeError(w, http.StatusServiceUnavailable, "RERANK_UNAVAILABLE", "rerank service not configured")
+	userIDStr := r.URL.Query().Get("user_id")
+	if userIDStr == "" {
+		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "user_id query param required")
+		return
+	}
+	userID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "invalid user_id")
 		return
 	}
 	var in struct {
-		Model     string   `json:"model"`
-		Query     string   `json:"query"`
-		Documents []string `json:"documents"`
+		ModelSource string   `json:"model_source"`
+		ModelRef    string   `json:"model_ref"`
+		Query       string   `json:"query"`
+		Documents   []string `json:"documents"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "invalid payload")
@@ -2318,17 +2370,55 @@ func (s *Server) internalRerank(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "query and documents are required")
 		return
 	}
-	model := in.Model
-	if model == "" {
-		model = s.cfg.RerankModel
+	if in.ModelRef == "" {
+		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "model_ref required")
+		return
 	}
-	results, err := provider.Rerank(r.Context(), s.invokeClient, s.cfg.RerankURL, s.cfg.RerankServiceToken, model, in.Query, in.Documents)
+	modelRef, err := uuid.Parse(in.ModelRef)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "invalid model_ref")
+		return
+	}
+
+	// Resolve the user's BYOK rerank credential — same tenant-isolated query as
+	// internalEmbed (owner_user_id=$2 guarantees a user can only use their own model).
+	var providerModelName, endpointBaseURL, secret string
+	if in.ModelSource != "user_model" {
+		writeError(w, http.StatusBadRequest, "RERANK_VALIDATION", "model_source must be user_model")
+		return
+	}
+	var secretCipher string
+	err = s.pool.QueryRow(r.Context(), `
+SELECT um.provider_model_name, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,'')
+FROM user_models um
+JOIN provider_credentials pc ON pc.provider_credential_id = um.provider_credential_id
+WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.status='active'
+`, modelRef, userID).Scan(&providerModelName, &endpointBaseURL, &secretCipher)
+	if err == pgx.ErrNoRows {
+		writeError(w, http.StatusNotFound, "RERANK_MODEL_NOT_FOUND", "rerank model not found or inactive")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "RERANK_MODEL_QUERY_FAILED", "failed to resolve model")
+		return
+	}
+	if secretCipher == "" {
+		writeError(w, http.StatusInternalServerError, "RERANK_MISSING_CREDENTIAL", "user_model has no provider credential ciphertext")
+		return
+	}
+	secret, err = s.decryptSecret(secretCipher)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "RERANK_SECRET_FAILED", "failed to decrypt secret")
+		return
+	}
+
+	results, err := provider.Rerank(r.Context(), s.invokeClient, endpointBaseURL, secret, providerModelName, in.Query, in.Documents)
 	if err != nil {
 		// Upstream rerank failure ⇒ 502 so the caller degrades (not a client bug).
 		writeError(w, http.StatusBadGateway, "RERANK_UPSTREAM_ERROR", "rerank service error")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"model": model, "results": results})
+	writeJSON(w, http.StatusOK, map[string]any{"model": providerModelName, "results": results})
 }
 
 // internalEmbed handles POST /internal/embed.

@@ -135,3 +135,5 @@ How your writing becomes the AI's context:
 - **Ports (dev)**: Frontend `:5173` · Gateway `:3123` · ContextHub MCP `:3000`
 
 See `infra/` for Docker Compose configuration and `contracts/api/` for OpenAPI specs.
+
+**Data layer map:** see [`DATA_ARCHITECTURE.md`](DATA_ARCHITECTURE.md) for SSOT layers, service×database ownership, event flows, and deep-dive index.

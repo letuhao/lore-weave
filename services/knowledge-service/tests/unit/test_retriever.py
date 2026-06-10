@@ -25,12 +25,19 @@ _BOOK = uuid4()
 _PROJECT_ID = uuid4()
 
 
-def _project(embedding_model="bge-m3", embedding_dimension=1024) -> Project:
+def _project(
+    embedding_model="bge-m3",
+    embedding_dimension=1024,
+    rerank_model="33333333-3333-3333-3333-333333333333",
+) -> Project:
+    # rerank_model set by default so the BYOK rerank gate (D-RERANK-NOT-BYOK) runs;
+    # pass rerank_model=None to exercise the skip → degraded['rerank']='not_configured'.
     return Project(
         project_id=_PROJECT_ID, user_id=_USER, name="X", description="",
         project_type="book", book_id=_BOOK, instructions="",
         extraction_enabled=False, extraction_status="disabled",
         embedding_model=embedding_model, embedding_dimension=embedding_dimension,
+        rerank_model=rerank_model, rerank_model_source="user_model",
         extraction_config={}, last_extracted_at=None,
         estimated_cost_usd=Decimal("0"), actual_cost_usd=Decimal("0"),
         is_archived=False, version=1,
@@ -70,7 +77,7 @@ def _clients(lex_hits=None, passage_hits=None, rerank_passthrough=True):
     embed = MagicMock()
     rr = MagicMock()
     if rerank_passthrough:
-        async def _pass(q, docs):
+        async def _pass(q, docs, **kwargs):  # BYOK kwargs: user_id/model_source/model_ref
             return [{"index": i, "relevance_score": 0.9} for i in range(len(docs))]
         rr.rerank = AsyncMock(side_effect=_pass)
     else:
