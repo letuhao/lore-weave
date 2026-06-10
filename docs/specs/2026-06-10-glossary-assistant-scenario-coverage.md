@@ -227,7 +227,11 @@ The backend exists; we only add MCP/frontend tools + cards. Unlocks S1, S9–S14
 
 ---
 
-## Part E — Open questions for the user (CLARIFY)
+## Part E — Open questions — RESOLVED 2026-06-10
+
+> All resolved by the user. See the **LOCKED architecture decisions (D1–D8)** + **revised build order** in the companion doc [`2026-06-10-glossary-assistant-extended-scenarios.md`](2026-06-10-glossary-assistant-extended-scenarios.md). Summary: cover ALL scenarios easy→hard (D1); first-class alias table (D2); Path B async (D3); confirm-card+undo (D4); glossary-SSOT relationships (D5); staged web research (D6); honor share-grants (D7); global kinds + additive per-book derived layer (D8). Foundational phase F1–F5 precedes Group 1.
+
+<details><summary>Original open questions (now answered)</summary>
 
 1. **Priority order:** is the goal "assistant can do everything the UI can" (Group 1 first — cheap, high coverage), or chase the headline features (S2/S5)?
 2. **Per-language aliases (S6):** treat as translations of the `aliases` attribute, or introduce a first-class alias model with a `language` column? (data-model decision, blocks tooling)
@@ -235,6 +239,8 @@ The backend exists; we only add MCP/frontend tools + cards. Unlocks S1, S9–S14
 4. **Schema change-sets (S2/S3):** are you OK with kinds staying **global** (genre_tags = the only book affinity), or do you want a notion of "kind belongs to / is enabled for this book"? (bigger model change)
 5. **Async ops in chat (S7/S8/S19):** acceptable to have the assistant **start a job and report later** (handle pattern), vs. expecting an inline synchronous result?
 6. **Destructive ops via assistant (S9/S10):** how much guard — single confirm card + recycle-bin/undo, or extra friction (typed confirmation)?
+
+</details>
 
 ---
 
