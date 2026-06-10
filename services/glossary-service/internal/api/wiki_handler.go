@@ -543,6 +543,27 @@ func (s *Server) patchWikiArticle(w http.ResponseWriter, r *http.Request) {
 
 	// Create revision if body changed
 	if bodyChanged {
+		// wiki-llm M8 — feedback flywheel: if this owner edit lands on an
+		// AI-authored article (its latest revision BEFORE this edit is 'ai'), the
+		// pair (ai draft → owner edit) is correction gold. Capture the prior state
+		// now, emit wiki.corrected after the new revision lands (all in-tx).
+		var emitCorrected bool
+		var corrEntityID uuid.UUID
+		var corrGenStatus *string
+		var priorAuthor *string
+		if err := tx.QueryRow(r.Context(), `
+			SELECT wa.entity_id, wa.generation_status,
+			       (SELECT wr.author_type FROM wiki_revisions wr
+			        WHERE wr.article_id = wa.article_id ORDER BY wr.version DESC LIMIT 1)
+			FROM wiki_articles wa WHERE wa.article_id=$1`,
+			articleID,
+		).Scan(&corrEntityID, &corrGenStatus, &priorAuthor); err != nil {
+			slog.Error("patchWikiArticle prior-rev lookup", "error", err)
+			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+			return
+		}
+		emitCorrected = priorAuthor != nil && *priorAuthor == "ai"
+
 		summary := ""
 		if req.Summary != nil {
 			summary = *req.Summary
@@ -555,6 +576,41 @@ func (s *Server) patchWikiArticle(w http.ResponseWriter, r *http.Request) {
 			slog.Error("patchWikiArticle revision", "error", err)
 			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
 			return
+		}
+
+		if emitCorrected {
+			exec := func(ctx context.Context, sql string, args ...any) error {
+				_, e := tx.Exec(ctx, sql, args...)
+				return e
+			}
+			prior := ""
+			if corrGenStatus != nil {
+				prior = *corrGenStatus
+			}
+			if err := insertWikiCorrectedOutboxEvent(r.Context(), exec, articleID, wikiCorrectedPayload{
+				BookID:                bookID.String(),
+				ArticleID:             articleID.String(),
+				EntityID:              corrEntityID.String(),
+				PriorGenerationStatus: prior,
+				EmittedAt:             time.Now().UTC().Format(time.RFC3339),
+			}); err != nil {
+				slog.Error("patchWikiArticle emit wiki.corrected", "error", err)
+				writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+				return
+			}
+			// /review-impl F2 — the human now owns this article: clear the AI
+			// markers so a stale needs_review/blocked badge + verify-flags panel
+			// don't persist on a human-corrected article. The prior status is
+			// already captured in the event above; the AI-origin audit lives in
+			// the revision history + the wiki.corrected event.
+			if _, err := tx.Exec(r.Context(),
+				`UPDATE wiki_articles SET generation_status=NULL, generation_provenance=NULL WHERE article_id=$1`,
+				articleID,
+			); err != nil {
+				slog.Error("patchWikiArticle clear gen markers", "error", err)
+				writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+				return
+			}
 		}
 	}
 
@@ -1893,6 +1949,34 @@ func (s *Server) reviewWikiSuggestion(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
 			return
 		}
+	}
+
+	// wiki-llm M8 — emit the review signal for the feedback flywheel (in-tx).
+	// `was_ai_generated` lets the consumer weight a correction of an AI article
+	// differently from a human-authored one.
+	var revGenStatus *string
+	if err := tx.QueryRow(r.Context(),
+		`SELECT generation_status FROM wiki_articles WHERE article_id=$1`, articleID,
+	).Scan(&revGenStatus); err != nil {
+		slog.Error("reviewWikiSuggestion gen-status lookup", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	exec := func(ctx context.Context, sql string, args ...any) error {
+		_, e := tx.Exec(ctx, sql, args...)
+		return e
+	}
+	if err := insertWikiSuggestionReviewedOutboxEvent(r.Context(), exec, articleID, wikiSuggestionReviewedPayload{
+		BookID:         bookID.String(),
+		ArticleID:      articleID.String(),
+		SuggestionID:   sugID.String(),
+		Action:         req.Action,
+		WasAIGenerated: revGenStatus != nil,
+		EmittedAt:      time.Now().UTC().Format(time.RFC3339),
+	}); err != nil {
+		slog.Error("reviewWikiSuggestion emit wiki.suggestion_reviewed", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
 	}
 
 	if err := tx.Commit(r.Context()); err != nil {

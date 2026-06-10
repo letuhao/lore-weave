@@ -155,6 +155,80 @@ func insertWikiGeneratedOutboxEvent(
 	return nil
 }
 
+// ── wiki-llm M8 — feedback flywheel events (MVP = emit) ──────────────────────
+//
+// The learning-service consumes these to build the AI→human correction gold set
+// (`corrections` + `quality_scores`, target_kind='wiki_article'); the actual
+// few-shot consumption is a follow-up. Both are written via the transactional
+// outbox (atomic with the article/suggestion write in the caller's tx).
+
+const wikiCorrectedEvent = "wiki.corrected"
+
+// wikiCorrectedPayload — a human edited an AI-authored article. The (AI-draft →
+// human-edit) gold PAIR lives in `wiki_revisions`; this event is the pointer +
+// the AI quality at correction time so the consumer can grade the correction.
+type wikiCorrectedPayload struct {
+	BookID                string `json:"book_id"`
+	ArticleID             string `json:"article_id"`
+	EntityID              string `json:"entity_id"`
+	PriorGenerationStatus string `json:"prior_generation_status"` // generated | needs_review | blocked
+	EmittedAt             string `json:"emitted_at"`
+}
+
+func insertWikiCorrectedOutboxEvent(
+	ctx context.Context,
+	exec func(ctx context.Context, sql string, args ...any) error,
+	articleID uuid.UUID,
+	payload wikiCorrectedPayload,
+) error {
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("wiki.corrected outbox marshal: %w", err)
+	}
+	if err := exec(ctx, `
+		INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
+		VALUES ('glossary', $1, $2, $3)`,
+		articleID, wikiCorrectedEvent, payloadJSON,
+	); err != nil {
+		return fmt.Errorf("wiki.corrected outbox insert: %w", err)
+	}
+	return nil
+}
+
+const wikiSuggestionReviewedEvent = "wiki.suggestion_reviewed"
+
+// wikiSuggestionReviewedPayload — an owner accepted/rejected a community
+// suggestion. `WasAIGenerated` lets the consumer weight a correction-of-AI vs a
+// correction-of-human article differently.
+type wikiSuggestionReviewedPayload struct {
+	BookID         string `json:"book_id"`
+	ArticleID      string `json:"article_id"`
+	SuggestionID   string `json:"suggestion_id"`
+	Action         string `json:"action"` // "accept" | "reject"
+	WasAIGenerated bool   `json:"was_ai_generated"`
+	EmittedAt      string `json:"emitted_at"`
+}
+
+func insertWikiSuggestionReviewedOutboxEvent(
+	ctx context.Context,
+	exec func(ctx context.Context, sql string, args ...any) error,
+	articleID uuid.UUID,
+	payload wikiSuggestionReviewedPayload,
+) error {
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("wiki.suggestion_reviewed outbox marshal: %w", err)
+	}
+	if err := exec(ctx, `
+		INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
+		VALUES ('glossary', $1, $2, $3)`,
+		articleID, wikiSuggestionReviewedEvent, payloadJSON,
+	); err != nil {
+		return fmt.Errorf("wiki.suggestion_reviewed outbox insert: %w", err)
+	}
+	return nil
+}
+
 // entityEventPayload is the JSON payload carried by glossary.entity_updated.
 //
 // It is self-sufficient: it carries everything knowledge-service's
@@ -177,7 +251,7 @@ type entityEventPayload struct {
 	// flags just that language's chapter translations. Absent (omitempty) for
 	// name/alias/structural changes ⇒ all-language flag (conservative, the prior
 	// behavior — rolling-deploy safe: an old consumer ignores the field).
-	TargetLanguage   string   `json:"target_language,omitempty"`
+	TargetLanguage string `json:"target_language,omitempty"`
 	// Phase B correction-capture enrichment (ADDITIVE — knowledge-service's
 	// glossary_sync consumer ignores these). actor_type distinguishes a USER
 	// correction ("user") from a pipeline write ("pipeline"); before/after
@@ -446,11 +520,11 @@ const nameConfirmedEvent = "glossary.name_confirmed"
 type nameConfirmedPayload struct {
 	BookID           string `json:"book_id"`
 	GlossaryEntityID string `json:"glossary_entity_id"`
-	SourceName       string `json:"source_name"`     // the entity's authored name (source side)
+	SourceName       string `json:"source_name"` // the entity's authored name (source side)
 	Kind             string `json:"kind"`
-	LanguageCode     string `json:"language_code"`   // the confirmed target language
-	Value            string `json:"value"`           // the confirmed target rendering
-	ActorType        string `json:"actor_type"`      // always "user" (these are JWT endpoints)
+	LanguageCode     string `json:"language_code"` // the confirmed target language
+	Value            string `json:"value"`         // the confirmed target rendering
+	ActorType        string `json:"actor_type"`    // always "user" (these are JWT endpoints)
 	ActorID          string `json:"actor_id,omitempty"`
 	EmittedAt        string `json:"emitted_at"`
 }
