@@ -18,6 +18,24 @@ export type WorkResolution = {
   book_project_ids: string[];
 };
 
+// T0.1 — narrative-thread (promise/foreshadow) ledger row. Advisory (D4); the
+// `open` set is the author's unpaid-promise debt. Mirrors composition-service
+// NarrativeThread (app/db/models.py).
+export type ThreadKind = 'promise' | 'foreshadow' | 'question' | 'mice_thread';
+export type ThreadStatus = 'open' | 'progressing' | 'paid' | 'dropped';
+export type NarrativeThread = {
+  id: string;
+  project_id: string;
+  user_id: string;
+  kind: ThreadKind;
+  status: ThreadStatus;
+  opened_at_node: string | null;
+  payoff_node: string | null;
+  priority: number;
+  summary: string;
+  version: number;
+};
+
 // ── A3 decompose planner (cycle 13) ──────────────────────────────────────────
 export type StructureTemplate = { id: string; name: string; kind?: string; beats?: unknown[] };
 

@@ -162,5 +162,19 @@
     "err_too_many_chapters": "Quá nhiều chương để lập cùng lúc.",
     "err_bad_entity": "Một số nhân vật trong cảnh không có trong glossary của sách.",
     "err_bad_chapter": "Một chương trong dàn ý không thuộc sách này."
-  }
+  },
+  "threads": "Mạch truyện",
+  "threadsTitle": "Mạch truyện (lời hứa)",
+  "threadFilterOpen": "Đang mở",
+  "threadFilterAll": "Tất cả",
+  "threadOpenCount": "{{count}} đang mở",
+  "threadKind_promise": "lời hứa",
+  "threadKind_foreshadow": "điềm báo",
+  "threadKind_question": "câu hỏi",
+  "threadKind_mice_thread": "mạch",
+  "threadPaid": "đã trả",
+  "threadDropped": "đã bỏ",
+  "noThreads": "Chưa có mạch nào.",
+  "noOpenThreads": "Không còn lời hứa nào chưa trả.",
+  "threadsError": "Không tải được mạch truyện."
 }

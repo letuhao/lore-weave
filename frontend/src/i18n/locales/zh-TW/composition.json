@@ -162,5 +162,19 @@
     "err_too_many_chapters": "一次規劃的章節過多。",
     "err_bad_entity": "部分場景角色不在本書詞彙表中。",
     "err_bad_chapter": "規劃中的某章節不屬於本書。"
-  }
+  },
+  "threads": "伏筆",
+  "threadsTitle": "情節伏筆",
+  "threadFilterOpen": "未回收",
+  "threadFilterAll": "全部",
+  "threadOpenCount": "{{count}} 個未回收",
+  "threadKind_promise": "承諾",
+  "threadKind_foreshadow": "伏筆",
+  "threadKind_question": "懸念",
+  "threadKind_mice_thread": "線索",
+  "threadPaid": "已回收",
+  "threadDropped": "已放棄",
+  "noThreads": "尚無伏筆。",
+  "noOpenThreads": "沒有未回收的承諾。",
+  "threadsError": "無法載入情節伏筆。"
 }

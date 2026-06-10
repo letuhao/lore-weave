@@ -162,5 +162,19 @@
     "err_too_many_chapters": "一度に計画するには章が多すぎます。",
     "err_bad_entity": "一部のシーン登場人物が本の用語集にありません。",
     "err_bad_chapter": "プラン内の章がこの本に属していません。"
-  }
+  },
+  "threads": "伏線",
+  "threadsTitle": "プロット伏線",
+  "threadFilterOpen": "未回収",
+  "threadFilterAll": "すべて",
+  "threadOpenCount": "未回収 {{count}}件",
+  "threadKind_promise": "約束",
+  "threadKind_foreshadow": "伏線",
+  "threadKind_question": "謎",
+  "threadKind_mice_thread": "筋",
+  "threadPaid": "回収済み",
+  "threadDropped": "破棄",
+  "noThreads": "伏線はまだありません。",
+  "noOpenThreads": "未回収の約束はありません。",
+  "threadsError": "プロット伏線を読み込めませんでした。"
 }

@@ -162,5 +162,19 @@
     "err_too_many_chapters": "Too many chapters to plan at once.",
     "err_bad_entity": "Some scene cast members are not in this book's glossary.",
     "err_bad_chapter": "A chapter in the plan is not part of this book."
-  }
+  },
+  "threads": "Threads",
+  "threadsTitle": "Plot threads",
+  "threadFilterOpen": "Open",
+  "threadFilterAll": "All",
+  "threadOpenCount": "{{count}} open",
+  "threadKind_promise": "promise",
+  "threadKind_foreshadow": "foreshadow",
+  "threadKind_question": "question",
+  "threadKind_mice_thread": "thread",
+  "threadPaid": "paid",
+  "threadDropped": "dropped",
+  "noThreads": "No threads yet.",
+  "noOpenThreads": "No open promises — all paid.",
+  "threadsError": "Could not load plot threads."
 }

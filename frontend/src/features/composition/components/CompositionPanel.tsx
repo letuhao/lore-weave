@@ -14,6 +14,7 @@ import { ChapterAssembleView } from './ChapterAssembleView';
 import { PlannerView } from './PlannerView';
 import { GroundingPanel } from './GroundingPanel';
 import { CanonRulesPanel } from './CanonRulesPanel';
+import { ThreadsPanel } from './ThreadsPanel';
 import { QualityPanel } from './QualityPanel';
 import { CompositionSettingsView } from './CompositionSettingsView';
 
@@ -24,7 +25,7 @@ type Props = {
   onAccept: (text: string) => void; // insert accepted prose into the editor
 };
 
-type SubTab = 'compose' | 'assemble' | 'planner' | 'grounding' | 'canon' | 'quality' | 'settings';
+type SubTab = 'compose' | 'assemble' | 'planner' | 'grounding' | 'canon' | 'threads' | 'quality' | 'settings';
 
 export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) {
   const { t } = useTranslation('composition');
@@ -89,6 +90,9 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
   // The selected model's metadata — hints for the server's auto-reasoning
   // strategy (adaptive pass-through vs our rule-based scorer).
   const selectedModel = models.data?.find((m) => m.user_model_id === effectiveModelRef);
+  // T0.1 — the plot-thread debt panel is opt-in: only surface its sub-tab when
+  // the book has narrative-thread tracking on (same gate as the producer).
+  const threadsEnabled = work.settings?.narrative_thread_enabled === true;
 
   return (
     <div className="flex h-full flex-col">
@@ -156,7 +160,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
 
       {/* sub-tabs */}
       <div className="flex gap-1 border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700">
-        {(['compose', 'assemble', 'planner', 'grounding', 'canon', 'quality', 'settings'] as SubTab[]).map((tb) => (
+        {(['compose', 'assemble', 'planner', 'grounding', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'quality', 'settings'] as SubTab[]).map((tb) => (
           <button
             key={tb}
             data-testid={`composition-subtab-${tb}`}
@@ -212,6 +216,11 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
         <div className={tab === 'canon' ? '' : 'hidden'}>
           <CanonRulesPanel projectId={work.project_id} bookId={bookId} token={token} />
         </div>
+        {threadsEnabled && (
+          <div className={tab === 'threads' ? '' : 'hidden'}>
+            <ThreadsPanel projectId={work.project_id} token={token} enabled={threadsEnabled} />
+          </div>
+        )}
         <div className={tab === 'quality' ? '' : 'hidden'}>
           <QualityPanel projectId={work.project_id} token={token} />
         </div>

@@ -4,7 +4,7 @@
 import { apiBase, apiJson } from '../../api';
 import type {
   AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
-  DecomposePreview, GenerationJob, Grounding, OutlineNode, PublishGate, StructureTemplate, Work, WorkResolution,
+  DecomposePreview, GenerationJob, Grounding, NarrativeThread, OutlineNode, PublishGate, StructureTemplate, Work, WorkResolution,
 } from './types';
 
 // A3 decompose preview request (cycle 13).
@@ -165,5 +165,15 @@ export const compositionApi = {
   },
   deleteCanonRule(ruleId: string, token: string): Promise<CanonRule> {
     return apiJson(`${BASE}/canon-rules/${ruleId}`, { method: 'DELETE', token });
+  },
+  // T0.1 — read the narrative-thread ledger (FD-1 S4a). `open` = the unpaid-promise
+  // debt (priority-ordered); `all` = the full ledger. `open_count` is the true debt
+  // count (not capped by the list LIMIT). Read-only.
+  listNarrativeThreads(
+    projectId: string,
+    status: 'open' | 'all',
+    token: string,
+  ): Promise<{ threads: NarrativeThread[]; open_count: number }> {
+    return apiJson(`${BASE}/works/${projectId}/narrative-threads?status=${status}`, { token });
   },
 };
