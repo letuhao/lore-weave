@@ -107,6 +107,20 @@ def _degraded() -> KnowledgeContext:
     )
 
 
+def _normalize_tool_parameters(input_schema: dict | None) -> dict:
+    """Normalize an MCP tool's inputSchema to a valid OpenAI function-call
+    `parameters` object. OpenAI-compatible providers (e.g. LM Studio) REQUIRE a
+    `properties` object — a tool with an empty input (e.g. glossary_list_kinds,
+    whose Go input struct is empty) yields `{"type":"object"}` with no
+    `properties`, which 400s the WHOLE request. Default the missing keys so an
+    argument-less tool advertises `{"type":"object","properties":{}}`.
+    """
+    params = dict(input_schema) if isinstance(input_schema, dict) else {}
+    params.setdefault("type", "object")
+    params.setdefault("properties", {})
+    return params
+
+
 class KnowledgeClient:
     """Thin async wrapper around httpx.AsyncClient.
 
@@ -355,7 +369,7 @@ class KnowledgeClient:
                 "function": {
                     "name": t.name,
                     "description": t.description or "",
-                    "parameters": t.inputSchema or {"type": "object"},
+                    "parameters": _normalize_tool_parameters(t.inputSchema),
                 },
             }
             for t in listed.tools

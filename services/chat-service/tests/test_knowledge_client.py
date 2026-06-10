@@ -639,7 +639,10 @@ class TestGetToolDefinitions:
                 "name": "memory_search", "description": "search memory", "parameters": schema}},
             {"type": "function", "function": {
                 "name": "memory_forget", "description": "forget a fact",
-                "parameters": {"type": "object"}}},
+                # An empty-input tool MUST advertise properties:{} — OpenAI-compatible
+                # providers (LM Studio) 400 the whole request on a missing `properties`
+                # (live-smoke bug: glossary_list_kinds had no properties).
+                "parameters": {"type": "object", "properties": {}}}},
         ]
         await client.aclose()
 
