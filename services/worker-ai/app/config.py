@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     # C12c-a: glossary list is cheap pagination (no LLM) — shorter
     # timeout than the book client's chapter fetch.
     glossary_client_timeout_s: float = 10.0
+    # FD-27: provider-registry model-info fetch for the reasoning-model
+    # advisory — a tiny metadata read, runs once per job. Best-effort.
+    provider_registry_client_timeout_s: float = 5.0
 
     # Poll interval (seconds) — how often to check for running jobs.
     poll_interval_s: float = 5.0

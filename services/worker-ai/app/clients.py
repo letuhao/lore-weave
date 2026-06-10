@@ -40,6 +40,8 @@ __all__ = [
     "GlossaryPage",
     "GlossarySyncResult",
     "SummarizeMessageResult",
+    "ChatClient",
+    "ProviderRegistryClient",
 ]
 
 logger = logging.getLogger(__name__)
@@ -476,6 +478,43 @@ class ChatClient:
             return text or None
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             logger.warning("chat-service turn-text failed: %s", exc)
+            return None
+
+
+# ── ProviderRegistryClient ───────────────────────────────────────────
+
+
+class ProviderRegistryClient:
+    """FD-27 — fetches a model's provider_model_name (NO secrets) so the
+    extraction worker can run a best-effort reasoning-model advisory. A
+    reasoning model (qwen3.x-thinking, deepseek-r1, o-series, …) with thinking
+    enabled silently burns its budget on reasoning tokens and emits empty JSON
+    → 0 entities/events, with no error. Best-effort: None on any failure (the
+    advisory simply doesn't fire; extraction proceeds)."""
+
+    def __init__(self, base_url: str, internal_token: str, timeout_s: float) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._http = httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout_s),
+            headers={"X-Internal-Token": internal_token},
+        )
+
+    async def aclose(self) -> None:
+        await self._http.aclose()
+
+    async def get_model_name(self, model_source: str, model_ref: str | UUID) -> str | None:
+        """GET /internal/models/{model_source}/{model_ref}/info → provider_model_name.
+        None on 404 / transport / decode failure (advisory degrades to off)."""
+        url = f"{self._base_url}/internal/models/{model_source}/{model_ref}/info"
+        try:
+            resp = await self._http.get(url)
+            if resp.status_code != 200:
+                logger.debug("provider-registry model-info %d for %s", resp.status_code, model_ref)
+                return None
+            name = (resp.json().get("provider_model_name") or "").strip()
+            return name or None
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.debug("provider-registry model-info failed: %s", exc)
             return None
 
 

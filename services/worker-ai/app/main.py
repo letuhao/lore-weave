@@ -14,7 +14,13 @@ import logging
 import asyncpg
 from loreweave_obs import setup_tracing
 
-from app.clients import BookClient, ChatClient, GlossaryClient, KnowledgeClient
+from app.clients import (
+    BookClient,
+    ChatClient,
+    GlossaryClient,
+    KnowledgeClient,
+    ProviderRegistryClient,
+)
 from app.config import settings
 from app.llm_client import close_llm_client, get_llm_client
 from app.metrics import start_metrics_server
@@ -85,6 +91,13 @@ async def main() -> None:
         internal_token=settings.internal_service_token,
         timeout_s=settings.glossary_client_timeout_s,
     )
+    # FD-27 — provider-registry model-info client for the once-per-job
+    # reasoning-model advisory (best-effort; failures degrade the advisory off).
+    provider_client = ProviderRegistryClient(
+        base_url=settings.provider_registry_internal_url,
+        internal_token=settings.internal_service_token,
+        timeout_s=settings.provider_registry_client_timeout_s,
+    )
     # Phase 4b-γ — loreweave_llm SDK wrapper for in-process Pass 2
     # extraction. Touched here so SDK construction errors (bad
     # base_url, missing internal_token) surface at startup rather
@@ -107,7 +120,7 @@ async def main() -> None:
             try:
                 count = await poll_and_run(
                     pool, knowledge_client, llm_client,
-                    book_client, glossary_client, chat_client,
+                    book_client, glossary_client, chat_client, provider_client,
                 )
                 if count > 0:
                     logger.info("Poll cycle: processed %d job(s)", count)
@@ -164,6 +177,7 @@ async def main() -> None:
         await book_client.aclose()
         await chat_client.aclose()
         await glossary_client.aclose()
+        await provider_client.aclose()
         if wake_waiter is not None:
             await wake_waiter.aclose()
         await pool.close()

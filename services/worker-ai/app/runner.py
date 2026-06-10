@@ -19,6 +19,7 @@ import functools
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -47,8 +48,13 @@ from app.clients import (
     GlossaryClient,
     GlossaryEntity,
     KnowledgeClient,
+    ProviderRegistryClient,
 )
 from app.llm_client import LLMClient
+from app.metrics import (
+    worker_ai_extraction_reasoning_model_advised_total,
+    worker_ai_extraction_zero_output_total,
+)
 from app.outbox_emit import emit_extraction_run, emit_extraction_run_best_effort
 from app.sample_emit import persist_run_sample_best_effort
 
@@ -303,7 +309,7 @@ def _with_job_span(func):
     span context attribute) so the wrapper can set ERROR status.
     """
     @functools.wraps(func)
-    async def wrapper(pool, knowledge_client, llm_client, book_client, glossary_client, chat_client, job):
+    async def wrapper(pool, knowledge_client, llm_client, book_client, glossary_client, chat_client, provider_client, job):
         with tracer.start_as_current_span(
             "worker_ai.process_job",
             attributes={
@@ -316,7 +322,7 @@ def _with_job_span(func):
         ):
             return await func(
                 pool, knowledge_client, llm_client,
-                book_client, glossary_client, chat_client, job,
+                book_client, glossary_client, chat_client, provider_client, job,
             )
 
     return wrapper
@@ -334,6 +340,34 @@ _GLOSSARY_SYNC_COST_PER_ITEM = Decimal("0.0")
 # Max retries per item before skipping. Prevents infinite retry loops
 # when a specific item consistently triggers a retryable LLM error.
 _MAX_RETRIES_PER_ITEM = 3
+
+# FD-27 — only warn about zero-output on SUBSTANTIVE input. Extraction on a
+# handful of chars legitimately yielding nothing is not the silent-failure
+# signal; a full chapter (thousands of chars) producing nothing is.
+_MIN_INPUT_CHARS_FOR_ZERO_OUTPUT_WARN = 40
+
+# FD-27 — best-effort reasoning-model name patterns (substring match, lowercased).
+# provider-registry has NO reasoning capability flag, so this is name-based and
+# WILL have false negatives on novel models — it drives an advisory WARNING, never
+# a hard block. Extraction suppresses thinking via a PROMPT preamble (~95% obey),
+# not a hard API param, so a reasoning model still carries elevated empty-output
+# risk worth flagging.
+_REASONING_MODEL_PATTERNS = (
+    "deepseek-r1", "deepseek-reasoner", "qwq", "glm-z", "minimax-m1", "magistral",
+    "thinking", "reasoner", "reasoning", "qwen3",
+)
+
+
+def _is_likely_reasoning_model(name: str | None) -> bool:
+    """Best-effort: does this model NAME look like a reasoning/thinking model?
+    Name heuristics only (no capability flag exists) — advisory, not a gate."""
+    if not name:
+        return False
+    n = name.lower()
+    # OpenAI o-series as a token (o1/o3/o4/o5) without matching e.g. 'gpt-4o'.
+    if re.search(r"(?:^|[^a-z0-9])o[1345](?:-|$|[^a-z0-9])", n):
+        return True
+    return any(p in n for p in _REASONING_MODEL_PATTERNS)
 
 # B2-B-b1 — sentinels distinguishing "caller omitted the arg" (use the module
 # global) from "caller passed None" (override DISABLES the pass). An `is not
@@ -1140,6 +1174,21 @@ async def _extract_and_persist(
             error=f"extraction failed (stage={exc.stage}): {exc}",
         ), None
 
+    # FD-27 — silent zero-output guard. Non-empty (substantive) input that the
+    # LLM turned into ZERO candidates is the "extraction did nothing" symptom —
+    # dominant cause is a reasoning model swallowing the JSON in reasoning
+    # tokens, but cause-agnostic. Observability only (warn + metric); the empty
+    # persist below still writes the source row for idempotency.
+    if len(text.strip()) >= _MIN_INPUT_CHARS_FOR_ZERO_OUTPUT_WARN and candidates.is_empty():
+        logger.warning(
+            "EXTRACTION_ZERO_OUTPUT source_type=%s source_id=%s: non-empty input "
+            "(%d chars) produced 0 candidates — if using a reasoning model, set "
+            "reasoning_effort=none / disable thinking (output may be swallowed by "
+            "reasoning tokens).",
+            source_type, source_id, len(text),
+        )
+        worker_ai_extraction_zero_output_total.labels(source_type=source_type).inc()
+
     persist_result = await knowledge_client.persist_pass2(
         user_id=user_id,
         project_id=project_id,
@@ -1175,6 +1224,7 @@ async def process_job(
     book_client: BookClient,
     glossary_client: GlossaryClient,
     chat_client: ChatClient,
+    provider_client: ProviderRegistryClient,
     job: JobRow,
 ) -> None:
     """Process all items for a single extraction job.
@@ -1195,6 +1245,30 @@ async def process_job(
         job.job_id, job.scope, job.project_id,
         job.items_processed, job.items_total or "?",
     )
+
+    # FD-27 — reasoning-model advisory (once per job, best-effort). A reasoning
+    # model used for extraction risks empty output (thinking suppression is a
+    # ~95% prompt preamble, not a hard guarantee). None model name (lookup
+    # failed / non-user_model) → silently skip; never blocks the job.
+    # Gated to scopes that actually run LLM extraction — `glossary_sync` is a
+    # pure Neo4j MERGE (no LLM), so the model's reasoning-ness is irrelevant and
+    # warning there would be a false advisory (/review-impl MED).
+    try:
+        if job.scope != "glossary_sync":
+            model_name = await provider_client.get_model_name("user_model", job.llm_model)
+        else:
+            model_name = None
+        if _is_likely_reasoning_model(model_name):
+            logger.warning(
+                "EXTRACTION_REASONING_MODEL job=%s model=%s looks like a reasoning "
+                "model — extraction reliability depends on prompt-level thinking "
+                "suppression (~95%%); prefer a non-reasoning model or "
+                "reasoning_effort=none for extraction.",
+                job.job_id, model_name,
+            )
+            worker_ai_extraction_reasoning_model_advised_total.inc()
+    except Exception:
+        logger.debug("FD-27 reasoning-model advisory skipped (non-fatal)", exc_info=True)
 
     items_processed = 0
     try:
@@ -1894,6 +1968,7 @@ async def poll_and_run(
     book_client: BookClient,
     glossary_client: GlossaryClient,
     chat_client: ChatClient,
+    provider_client: ProviderRegistryClient,
 ) -> int:
     """One poll cycle: find running jobs and process them.
 
@@ -1924,7 +1999,7 @@ async def poll_and_run(
     for job in jobs:
         await process_job(
             pool, knowledge_client, llm_client, book_client, glossary_client,
-            chat_client, job,
+            chat_client, provider_client, job,
         )
 
     return len(jobs)
