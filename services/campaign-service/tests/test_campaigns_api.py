@@ -60,6 +60,15 @@ def _book_stub(mocker, *, owner=TEST_USER, chapters=None, owner_exc=None, chapte
         side_effect=chapters_exc)
     inst.aclose = AsyncMock()
     mocker.patch("app.routers.campaigns.BookClient", return_value=inst)
+    # D-CAMPAIGN-KPROJECT-OWNERSHIP: every create now probes project ownership via
+    # KnowledgeDispatchClient.verify_project_owner. Default it to owned=True so the
+    # existing create tests exercise the book-ownership/chapters paths; the
+    # embedding tests re-patch via _knowledge_stub, and the not-owned test overrides.
+    kn = MagicMock()
+    kn.verify_project_owner = AsyncMock(return_value=True)
+    kn.set_campaign_models = AsyncMock(return_value={})
+    kn.aclose = AsyncMock()
+    mocker.patch("app.routers.campaigns.KnowledgeDispatchClient", return_value=kn)
     return inst
 
 
@@ -81,6 +90,17 @@ def test_create_success(client, mocker):
     assert resp.status_code == 201, resp.text
     assert resp.json()["campaign_id"] == CAMP
     assert resp.json()["status"] == "created"
+
+
+def test_create_project_not_owned_400(client, mocker):
+    # D-CAMPAIGN-KPROJECT-OWNERSHIP: a project the user doesn't own → fast 400 at
+    # create, not a fail-closed mid-dispatch.
+    _book_stub(mocker)
+    kn = _knowledge_stub(mocker)
+    kn.verify_project_owner = AsyncMock(return_value=False)
+    resp = client.post("/v1/campaigns", json=_payload())
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_PROJECT_NOT_FOUND"
 
 
 def test_create_requires_knowledge_project(client, mocker):
@@ -133,6 +153,7 @@ EMB = "44444444-4444-4444-4444-444444444444"
 def _knowledge_stub(mocker, *, exc=None):
     from app.clients.dispatch_clients import EmbeddingConflict, DispatchError  # noqa: F401
     inst = MagicMock()
+    inst.verify_project_owner = AsyncMock(return_value=True)  # D-CAMPAIGN-KPROJECT-OWNERSHIP
     inst.set_campaign_models = AsyncMock(return_value={}, side_effect=exc)
     inst.aclose = AsyncMock()
     mocker.patch("app.routers.campaigns.KnowledgeDispatchClient", return_value=inst)

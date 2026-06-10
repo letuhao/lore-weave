@@ -108,6 +108,28 @@ async def create_campaign(
                     "message": "knowledge_project_id is required"},
         )
 
+    # D-CAMPAIGN-KPROJECT-OWNERSHIP: fail fast with a clean 400 if the user doesn't
+    # own the project, instead of fail-closed mid-dispatch (404 → stage failed). A
+    # transient knowledge-service error must NOT block create — the dispatch path is
+    # itself owner-verified, so we only hard-reject a definitive not-found (404).
+    _kc = KnowledgeDispatchClient(
+        settings.knowledge_service_internal_url, settings.internal_service_token,
+        timeout_s=settings.dispatch_timeout_s,
+    )
+    try:
+        owned = await _kc.verify_project_owner(
+            user_id=user_id, project_id=str(payload.knowledge_project_id))
+    except DispatchError:
+        owned = True  # transient — don't block create on a knowledge blip
+    finally:
+        await _kc.aclose()
+    if not owned:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "CAMPAIGN_PROJECT_NOT_FOUND",
+                    "message": "knowledge_project_id not found or not owned by you"},
+        )
+
     # ── verify-once ownership (decision A) + enumerate in-scope chapters ────
     chapters = await _owner_verified_chapters(
         book_id=payload.book_id, user_id=user_id,

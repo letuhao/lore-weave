@@ -218,6 +218,25 @@ class KnowledgeDispatchClient:
             )
         return resp.json()
 
+    async def verify_project_owner(self, *, user_id: str, project_id: str) -> bool:
+        """D-CAMPAIGN-KPROJECT-OWNERSHIP: cheap early ownership probe for campaign
+        create. Reuses the owner-scoped extraction-status endpoint (404 iff the
+        project doesn't exist / isn't owned by user_id). Returns False on 404 (caller
+        → 400); True on 2xx. Raises DispatchError on transport/other errors so create
+        does NOT falsely reject on a transient knowledge-service blip."""
+        url = f"{self._base_url}/internal/knowledge/projects/{project_id}/extraction-status"
+        try:
+            resp = await self._http.get(url, params={"user_id": user_id})
+        except httpx.RequestError as exc:
+            raise DispatchError(f"knowledge verify_project_owner: {exc}") from exc
+        if resp.status_code == 404:
+            return False
+        if not resp.is_success:
+            raise DispatchError(
+                f"knowledge verify_project_owner {resp.status_code}: {resp.text[:300]}"
+            )
+        return True
+
     async def extraction_status(self, *, user_id: str, project_id: str) -> dict:
         """D-CAMPAIGN-BESTEFFORT-EMIT-REDIS: ground-truth for the stuck reconcile.
         Returns `{active: bool, last_outcome: str|None}`. Knowledge runs one job
