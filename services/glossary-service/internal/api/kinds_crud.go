@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -34,6 +35,12 @@ type kindCreateParams struct {
 // handler and the confirm endpoint both call it (one write path, one set of
 // triggers).
 func (s *Server) createKindFromParams(ctx context.Context, in kindCreateParams) (domain.EntityKind, error) {
+	// SCHEMA-LOW1: defense-in-depth — both callers (manual handler + the Tier-S
+	// confirm path) validate upstream, but the core must not create an unnamed
+	// kind if a future caller forgets.
+	if strings.TrimSpace(in.Code) == "" || strings.TrimSpace(in.Name) == "" {
+		return domain.EntityKind{}, errors.New("code and name are required")
+	}
 	if in.Icon == "" {
 		in.Icon = "📝"
 	}
@@ -339,6 +346,10 @@ type attrCreateParams struct {
 // returns it. A duplicate (kind, code) surfaces as a unique-violation. Shared
 // core for the manual handler + the confirm endpoint.
 func (s *Server) createAttrDefFromParams(ctx context.Context, in attrCreateParams) (domain.AttrDef, error) {
+	// SCHEMA-LOW1: defense-in-depth code/name guard (see createKindFromParams).
+	if strings.TrimSpace(in.Code) == "" || strings.TrimSpace(in.Name) == "" {
+		return domain.AttrDef{}, errors.New("code and name are required")
+	}
 	if in.FieldType == "" {
 		in.FieldType = "text"
 	}

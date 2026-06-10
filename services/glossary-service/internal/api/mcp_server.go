@@ -250,6 +250,10 @@ type proposeEntityToolOut struct {
 	EntityID string `json:"entity_id"`
 	// Status is created | skipped_exists | skipped_tombstoned.
 	Status string `json:"status"`
+	// AttributesSkipped (070): attribute codes the caller supplied that don't
+	// exist on the kind and were therefore dropped — surfaced so the LLM knows
+	// they didn't land (mirrors the bulk extract's entityResult.AttributesSkipped).
+	AttributesSkipped []string `json:"attributes_skipped,omitempty"`
 }
 
 func (s *Server) toolProposeNewEntity(ctx context.Context, _ *mcp.CallToolRequest, in proposeEntityToolIn) (*mcp.CallToolResult, proposeEntityToolOut, error) {
@@ -279,11 +283,11 @@ func (s *Server) toolProposeNewEntity(ctx context.Context, _ *mcp.CallToolReques
 	if !ok {
 		return nil, proposeEntityToolOut{}, errors.New("unknown kind: " + in.Kind)
 	}
-	entityID, status, err := s.proposeNewEntity(ctx, bookID, kindID, name, in.Attributes)
+	entityID, status, skipped, err := s.proposeNewEntity(ctx, bookID, kindID, name, in.Attributes)
 	if err != nil {
 		return nil, proposeEntityToolOut{}, errors.New("propose failed")
 	}
-	return nil, proposeEntityToolOut{EntityID: entityID.String(), Status: status}, nil
+	return nil, proposeEntityToolOut{EntityID: entityID.String(), Status: status, AttributesSkipped: skipped}, nil
 }
 
 // proposeNewEntity creates a NEW glossary entity as a DRAFT suggestion, or skips
@@ -292,32 +296,41 @@ func (s *Server) toolProposeNewEntity(ctx context.Context, _ *mcp.CallToolReques
 // indistinguishable from a pipeline-discovered one (INV-1: draft never reaches
 // canon). The caller must have verified book ownership. Returns the entity id +
 // a status: created | skipped_exists | skipped_tombstoned.
-func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID, name string, attrs map[string]any) (uuid.UUID, string, error) {
+func (s *Server) proposeNewEntity(ctx context.Context, bookID, kindID uuid.UUID, name string, attrs map[string]any) (uuid.UUID, string, []string, error) {
 	existingID, err := s.findEntityByNameOrAlias(ctx, bookID, kindID, name)
 	if err != nil {
-		return uuid.Nil, "", fmt.Errorf("entity lookup: %w", err)
+		return uuid.Nil, "", nil, fmt.Errorf("entity lookup: %w", err)
 	}
 	if existingID != uuid.Nil {
 		rejected, err := s.entityHasTag(ctx, existingID, tagAIRejected)
 		if err != nil {
-			return uuid.Nil, "", fmt.Errorf("tombstone check: %w", err)
+			return uuid.Nil, "", nil, fmt.Errorf("tombstone check: %w", err)
 		}
 		if rejected {
-			return existingID, "skipped_tombstoned", nil
+			return existingID, "skipped_tombstoned", nil, nil
 		}
-		return existingID, "skipped_exists", nil
+		return existingID, "skipped_exists", nil, nil
 	}
 
 	attrDefMap, err := s.loadAttrDefMap(ctx)
 	if err != nil {
-		return uuid.Nil, "", fmt.Errorf("attr defs: %w", err)
+		return uuid.Nil, "", nil, fmt.Errorf("attr defs: %w", err)
+	}
+	// 070: report which supplied attribute codes don't exist on the kind and will
+	// be dropped by createExtractedEntity (it silently `continue`s on unknown
+	// codes), so the LLM learns they didn't land.
+	var skipped []string
+	for code := range attrs {
+		if _, ok := attrDefMap[kindID.String()+":"+code]; !ok {
+			skipped = append(skipped, code)
+		}
 	}
 	ent := extractedEntity{Name: name, Attributes: attrs}
 	// "und" (ISO 639-2 undetermined) for the tool-proposed name's language — the
 	// human can correct it when reviewing the draft in the inbox.
 	entityID, err := s.createExtractedEntity(ctx, bookID, kindID, ent, nil, attrDefMap, "und", []string{tagAISuggested, tagAssistant})
 	if err != nil {
-		return uuid.Nil, "", fmt.Errorf("create draft: %w", err)
+		return uuid.Nil, "", nil, fmt.Errorf("create draft: %w", err)
 	}
-	return entityID, "created", nil
+	return entityID, "created", skipped, nil
 }

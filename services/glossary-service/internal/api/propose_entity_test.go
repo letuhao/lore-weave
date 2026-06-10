@@ -74,9 +74,14 @@ func TestProposeNewEntity_CreatesDraftThenDedups(t *testing.T) {
 	})
 	s := &Server{pool: pool}
 
-	id, status, err := s.proposeNewEntity(ctx, book, kindID, "Nezha", nil)
+	// 070: a supplied attribute code that doesn't exist on the kind is reported
+	// as skipped (createExtractedEntity drops it silently).
+	id, status, skipped, err := s.proposeNewEntity(ctx, book, kindID, "Nezha", map[string]any{"no_such_attr": "x"})
 	if err != nil || status != "created" {
 		t.Fatalf("want created, got status=%q err=%v", status, err)
+	}
+	if !slices.Contains(skipped, "no_such_attr") {
+		t.Errorf("want 'no_such_attr' reported in attributes_skipped, got %v", skipped)
 	}
 	var st string
 	var tags []string
@@ -91,7 +96,7 @@ func TestProposeNewEntity_CreatesDraftThenDedups(t *testing.T) {
 	}
 
 	// H9 dedup: a second propose of the same name does not create a duplicate.
-	id2, status2, err := s.proposeNewEntity(ctx, book, kindID, "Nezha", nil)
+	id2, status2, _, err := s.proposeNewEntity(ctx, book, kindID, "Nezha", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +128,7 @@ func TestProposeNewEntity_SkipsTombstoned(t *testing.T) {
 	})
 	s := &Server{pool: pool}
 
-	id, status, err := s.proposeNewEntity(ctx, book, kindID, "Rejected", nil)
+	id, status, _, err := s.proposeNewEntity(ctx, book, kindID, "Rejected", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
