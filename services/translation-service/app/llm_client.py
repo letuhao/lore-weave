@@ -14,6 +14,7 @@ go through `Client.stream(...)` directly.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import logging
 from typing import Any
 
@@ -32,9 +33,29 @@ __all__ = [
     "LLMClient",
     "get_llm_client",
     "close_llm_client",
+    "set_campaign_id",
 ]
 
 logger = logging.getLogger(__name__)
+
+# S4a — Auto-Draft Factory cost attribution. The owning campaign for the work
+# currently running on THIS async task. A worker sets it once at the top of a
+# chapter (set_campaign_id) and submit_and_wait merges it into every provider
+# job's job_meta — so a campaign's spend can be summed from the usage events
+# (decision C) WITHOUT threading the id through every call site. A ContextVar is
+# task-local: concurrent chapters for different campaigns never cross-contaminate
+# (each asyncio Task copies the context). Default None ⇒ non-campaign work is
+# unchanged (no campaign_id key added).
+_campaign_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "translation_campaign_id", default=None,
+)
+
+
+def set_campaign_id(campaign_id: str | None) -> None:
+    """Set the owning campaign for provider jobs submitted on this async task.
+    Call once at the start of processing a unit of work; pass None to clear (a
+    non-campaign message must not inherit a previous campaign's id)."""
+    _campaign_id_ctx.set(campaign_id)
 
 
 class LLMClient:
@@ -72,6 +93,15 @@ class LLMClient:
         cancelled}). Caller inspects Job.status + Job.error to decide
         what to do — this method does NOT raise on Job.status=failed.
         """
+        # S4a: stamp the owning campaign (if any) onto job_meta so the provider
+        # job is attributable to a campaign's cumulative spend. Done centrally
+        # here — the one chokepoint every translation LLM call flows through —
+        # rather than at each call site, so no site can silently drop attribution.
+        # An explicit caller-supplied campaign_id (none today) is left untouched.
+        campaign_id = _campaign_id_ctx.get()
+        if campaign_id and (job_meta is None or "campaign_id" not in job_meta):
+            job_meta = {**(job_meta or {}), "campaign_id": campaign_id}
+
         attempts = 0
         max_attempts = 1 + transient_retry_budget
         while attempts < max_attempts:

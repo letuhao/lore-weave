@@ -60,6 +60,10 @@ class ExtractionResult:
     facts_merged: int
     retryable: bool = False
     error: str | None = None
+    # S3c-2b: the underlying LLM error code (e.g. LLM_CIRCUIT_OPEN), surfaced
+    # from ExtractionError.last_error.code so the runner can emit a circuit-open
+    # signal for campaign auto-pause. None when the failure carries no LLM code.
+    error_code: str | None = None
 
 
 @dataclass(frozen=True)

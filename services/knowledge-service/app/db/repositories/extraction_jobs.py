@@ -148,7 +148,7 @@ _SELECT_COLS = """
   llm_model, embedding_model, max_spend_usd,
   items_total, items_processed, current_cursor, cost_spent_usd,
   started_at, paused_at, completed_at, created_at, updated_at,
-  error_message
+  error_message, campaign_id
 """
 
 
@@ -168,6 +168,9 @@ class ExtractionJob(BaseModel):
     llm_model: str
     embedding_model: str
     max_spend_usd: Decimal | None = None
+    # S4a: the Auto-Draft Factory campaign that owns this job (cost attribution).
+    # None for ordinary user-initiated extractions.
+    campaign_id: UUID | None = None
 
     items_total: int | None = None
     items_processed: int = 0
@@ -216,6 +219,8 @@ class ExtractionJobCreate(BaseModel):
     max_spend_usd: Annotated[Decimal, Field(ge=0)] | None = None
     scope_range: dict[str, Any] | None = None
     items_total: Annotated[int, Field(ge=0)] | None = None
+    # S4a: owning campaign (cost attribution). None for user-initiated jobs.
+    campaign_id: UUID | None = None
 
 
 # ── try_spend outcome ────────────────────────────────────────────────────
@@ -275,8 +280,8 @@ class ExtractionJobsRepo:
         query = f"""
         INSERT INTO extraction_jobs
           (user_id, project_id, scope, scope_range, llm_model,
-           embedding_model, max_spend_usd, items_total)
-        VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8)
+           embedding_model, max_spend_usd, items_total, campaign_id)
+        VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9)
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as conn:
@@ -290,6 +295,7 @@ class ExtractionJobsRepo:
                 data.embedding_model,
                 data.max_spend_usd,
                 data.items_total,
+                data.campaign_id,
             )
         return _row_to_job(row)
 

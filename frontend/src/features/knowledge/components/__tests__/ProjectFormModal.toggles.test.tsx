@@ -16,6 +16,9 @@ vi.mock('sonner', () => ({ toast: toastMocks }));
 vi.mock('../EmbeddingModelPicker', () => ({
   EmbeddingModelPicker: () => <div data-testid="embedding-picker-stub" />,
 }));
+vi.mock('../RerankModelPicker', () => ({
+  RerankModelPicker: () => <div data-testid="rerank-picker-stub" />,
+}));
 
 import { ProjectFormModal } from '../ProjectFormModal';
 

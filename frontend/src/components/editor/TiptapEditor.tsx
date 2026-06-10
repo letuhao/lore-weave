@@ -24,6 +24,7 @@ import Superscript from '@tiptap/extension-superscript';
 import GlobalDragHandle from 'tiptap-extension-global-drag-handle';
 import { GrammarExtension, setGrammarEnabled } from './GrammarPlugin';
 import { GlossaryExtension, setGlossaryEntities, setGlossaryEnabled, getGlossaryCount } from './GlossaryPlugin';
+import { CitationMark } from './CitationMark';
 
 export interface TiptapEditorHandle {
   /** Reset editor content from Tiptap JSON (e.g. revision restore, discard) */
@@ -96,6 +97,8 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
         Highlight.configure({ multicolor: false }),
         Subscript,
         Superscript,
+        CitationMark, // wiki-llm M7a — preserve AI citation provenance through edits
+
         GlobalDragHandle.configure({
           dragHandleWidth: 20,
         }),

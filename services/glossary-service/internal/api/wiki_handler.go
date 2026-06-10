@@ -26,6 +26,10 @@ type wikiArticleListItem struct {
 	TemplateCode  *string     `json:"template_code"`
 	RevisionCount int         `json:"revision_count"`
 	UpdatedAt     time.Time   `json:"updated_at"`
+	// wiki-llm M7b — AI-generation badge driver. NULL (human-authored / never
+	// AI-generated) | 'generated' | 'needs_review' | 'blocked'. omitempty so a
+	// plain article carries no badge field.
+	GenerationStatus *string `json:"generation_status,omitempty"`
 }
 
 type wikiArticleListResp struct {
@@ -41,6 +45,19 @@ type wikiArticleDetail struct {
 	SpoilerChapters []string        `json:"spoiler_chapters"`
 	Infobox         []attrValueResp `json:"infobox"`
 	CreatedAt       time.Time       `json:"created_at"`
+	// RedirectedFrom is set (to the requested article_id) when the requested
+	// article was archived by a merge (superseded) and this detail is the winner's
+	// article served in its place (Bug-1 redirect). Omitted on a normal fetch.
+	RedirectedFrom string `json:"redirected_from,omitempty"`
+	// SupersededBy is the winner entity of a merge that archived this article
+	// (Bug-1). Internal — drives the getWikiArticle redirect; not serialized.
+	SupersededBy *uuid.UUID `json:"-"`
+	// wiki-llm M7b — AI-generation provenance for the reader trust layer.
+	// GenerationProvenance carries the C7 build_inputs fingerprint + citations +
+	// verify_flags (the needs_review/blocked driver); GeneratedAt the timestamp.
+	// omitempty so a human-authored article exposes none of these.
+	GenerationProvenance json.RawMessage `json:"generation_provenance,omitempty"`
+	GeneratedAt          *time.Time      `json:"generated_at,omitempty"`
 }
 
 type wikiRevisionListItem struct {
@@ -170,7 +187,7 @@ func (s *Server) listWikiArticles(w http.ResponseWriter, r *http.Request) {
 			ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
 			wa.status, wa.template_code,
 			(SELECT COUNT(*) FROM wiki_revisions wr WHERE wr.article_id = wa.article_id) AS revision_count,
-			wa.updated_at
+			wa.updated_at, wa.generation_status
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
 		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
@@ -202,7 +219,7 @@ func (s *Server) listWikiArticles(w http.ResponseWriter, r *http.Request) {
 			&it.Kind.KindID, &it.Kind.Code, &it.Kind.Name, &it.Kind.Icon, &it.Kind.Color,
 			&it.Status, &it.TemplateCode,
 			&it.RevisionCount,
-			&it.UpdatedAt,
+			&it.UpdatedAt, &it.GenerationStatus,
 		); err != nil {
 			slog.Error("listWikiArticles scan", "error", err)
 			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
@@ -386,6 +403,29 @@ func (s *Server) getWikiArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Bug-1 redirect: if this article was archived by a merge (superseded_by set),
+	// serve the winner's article instead so links to a merged-away entity resolve.
+	// superseded_by comes from the same detail query — no extra round-trip on the
+	// common (non-superseded) path.
+	if detail.SupersededBy != nil {
+		var winnerArticleID uuid.UUID
+		if e := s.pool.QueryRow(r.Context(),
+			`SELECT article_id FROM wiki_articles WHERE entity_id=$1 AND book_id=$2 AND superseded_by_entity_id IS NULL`,
+			*detail.SupersededBy, bookID,
+		).Scan(&winnerArticleID); e == nil {
+			winner, werr := s.loadWikiArticleDetail(r, bookID, winnerArticleID)
+			if werr != nil {
+				slog.Error("getWikiArticle redirect", "error", werr)
+				writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+				return
+			}
+			winner.RedirectedFrom = articleID.String()
+			writeJSON(w, http.StatusOK, winner)
+			return
+		}
+		// winner article missing → fall through and serve the archived article as-is.
+	}
+
 	writeJSON(w, http.StatusOK, detail)
 }
 
@@ -503,6 +543,27 @@ func (s *Server) patchWikiArticle(w http.ResponseWriter, r *http.Request) {
 
 	// Create revision if body changed
 	if bodyChanged {
+		// wiki-llm M8 — feedback flywheel: if this owner edit lands on an
+		// AI-authored article (its latest revision BEFORE this edit is 'ai'), the
+		// pair (ai draft → owner edit) is correction gold. Capture the prior state
+		// now, emit wiki.corrected after the new revision lands (all in-tx).
+		var emitCorrected bool
+		var corrEntityID uuid.UUID
+		var corrGenStatus *string
+		var priorAuthor *string
+		if err := tx.QueryRow(r.Context(), `
+			SELECT wa.entity_id, wa.generation_status,
+			       (SELECT wr.author_type FROM wiki_revisions wr
+			        WHERE wr.article_id = wa.article_id ORDER BY wr.version DESC LIMIT 1)
+			FROM wiki_articles wa WHERE wa.article_id=$1`,
+			articleID,
+		).Scan(&corrEntityID, &corrGenStatus, &priorAuthor); err != nil {
+			slog.Error("patchWikiArticle prior-rev lookup", "error", err)
+			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+			return
+		}
+		emitCorrected = priorAuthor != nil && *priorAuthor == "ai"
+
 		summary := ""
 		if req.Summary != nil {
 			summary = *req.Summary
@@ -515,6 +576,41 @@ func (s *Server) patchWikiArticle(w http.ResponseWriter, r *http.Request) {
 			slog.Error("patchWikiArticle revision", "error", err)
 			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
 			return
+		}
+
+		if emitCorrected {
+			exec := func(ctx context.Context, sql string, args ...any) error {
+				_, e := tx.Exec(ctx, sql, args...)
+				return e
+			}
+			prior := ""
+			if corrGenStatus != nil {
+				prior = *corrGenStatus
+			}
+			if err := insertWikiCorrectedOutboxEvent(r.Context(), exec, articleID, wikiCorrectedPayload{
+				BookID:                bookID.String(),
+				ArticleID:             articleID.String(),
+				EntityID:              corrEntityID.String(),
+				PriorGenerationStatus: prior,
+				EmittedAt:             time.Now().UTC().Format(time.RFC3339),
+			}); err != nil {
+				slog.Error("patchWikiArticle emit wiki.corrected", "error", err)
+				writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+				return
+			}
+			// /review-impl F2 — the human now owns this article: clear the AI
+			// markers so a stale needs_review/blocked badge + verify-flags panel
+			// don't persist on a human-corrected article. The prior status is
+			// already captured in the event above; the AI-origin audit lives in
+			// the revision history + the wiki.corrected event.
+			if _, err := tx.Exec(r.Context(),
+				`UPDATE wiki_articles SET generation_status=NULL, generation_provenance=NULL WHERE article_id=$1`,
+				articleID,
+			); err != nil {
+				slog.Error("patchWikiArticle clear gen markers", "error", err)
+				writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+				return
+			}
 		}
 	}
 
@@ -556,9 +652,40 @@ func (s *Server) deleteWikiArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.pool.Exec(r.Context(),
-		`DELETE FROM wiki_articles WHERE article_id=$1`, articleID); err != nil {
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		slog.Error("deleteWikiArticle tx", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	var delEntityID uuid.UUID
+	if err := tx.QueryRow(r.Context(),
+		`DELETE FROM wiki_articles WHERE article_id=$1 RETURNING entity_id`, articleID).Scan(&delEntityID); err != nil {
 		slog.Error("deleteWikiArticle", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	// Bug-2: emit wiki.deleted in the SAME tx (transactional outbox) so delete + event
+	// are atomic — consistent with the kind-delete path; observable destruction.
+	exec := func(ctx context.Context, sql string, args ...any) error {
+		_, e := tx.Exec(ctx, sql, args...)
+		return e
+	}
+	if err := insertWikiDeletedOutboxEvent(r.Context(), exec, articleID, wikiDeletedPayload{
+		BookID:    bookID.String(),
+		ArticleID: articleID.String(),
+		EntityID:  delEntityID.String(),
+		Reason:    "user_deleted",
+		EmittedAt: time.Now().UTC().Format(time.RFC3339),
+	}); err != nil {
+		slog.Error("deleteWikiArticle emit wiki.deleted", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		slog.Error("deleteWikiArticle commit", "error", err)
 		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
 		return
 	}
@@ -809,6 +936,17 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		KindCodes []string `json:"kind_codes"`
 		Limit     *int     `json:"limit"`
+		// wiki-llm M6 — when ModelRef is set the request is DELEGATED to
+		// knowledge-service's LLM batch generator instead of the deterministic
+		// stub render. ModelSource defaults to "user_model".
+		ModelRef    string   `json:"model_ref"`
+		ModelSource string   `json:"model_source"`
+		MaxSpendUSD *float64 `json:"max_spend_usd"`
+		// wiki-llm M7b-2b — explicit entity ids for single-article REGENERATE.
+		// When present (delegate path only), these are generated directly instead
+		// of resolving by kind — so a "Regenerate" button re-runs exactly one
+		// entity (the clobber-guard still protects any human-edited article).
+		EntityIDs []string `json:"entity_ids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "WIKI_BAD_REQUEST", "invalid JSON body")
@@ -818,6 +956,41 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 	genLimit := 50
 	if req.Limit != nil && *req.Limit > 0 && *req.Limit <= 200 {
 		genLimit = *req.Limit
+	}
+
+	// wiki-llm M6 — LLM delegate. Resolve the candidate entities + hand off to
+	// knowledge-service; propagate its 202/409/404. The deterministic stub path
+	// below is unchanged (the fallback when no model_ref is supplied).
+	if req.ModelRef != "" {
+		entityIDs, err := s.resolveDelegateEntityIDs(r.Context(), bookID, req.EntityIDs, req.KindCodes, genLimit)
+		if err != nil {
+			if verr, ok := err.(*badEntityIDError); ok {
+				writeError(w, http.StatusBadRequest, "WIKI_BAD_REQUEST", verr.Error())
+				return
+			}
+			slog.Error("generateWikiStubs resolve entities (delegate)", "error", err)
+			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+			return
+		}
+		if len(entityIDs) == 0 {
+			writeJSON(w, http.StatusOK, map[string]any{"action": "none", "entities": 0})
+			return
+		}
+		modelSource := req.ModelSource
+		if modelSource == "" {
+			modelSource = "user_model"
+		}
+		status, body, err := s.triggerWikiGeneration(
+			r.Context(), bookID, userID, modelSource, req.ModelRef, entityIDs, req.MaxSpendUSD)
+		if err != nil {
+			slog.Error("generateWikiStubs delegate", "error", err)
+			writeError(w, http.StatusBadGateway, "WIKI_DELEGATE", "generation service unavailable")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = w.Write(body)
+		return
 	}
 
 	// Find entities without wiki articles.
@@ -960,7 +1133,7 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 
 		if _, err := tx.Exec(r.Context(), `
 			INSERT INTO wiki_revisions (article_id, version, body_json, author_id, author_type, summary)
-			VALUES ($1, 1, $2, $3, 'owner', 'Auto-generated from KG')`,
+			VALUES ($1, 1, $2, $3, 'system', 'Auto-generated from KG')`,
 			aid, rs.body, userID,
 		); err != nil {
 			slog.Error("generateWikiStubs insert revision", "error", err)
@@ -1110,7 +1283,8 @@ func (s *Server) loadWikiArticleDetail(r *http.Request, bookID, articleID uuid.U
 			ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
 			wa.status, wa.template_code,
 			(SELECT COUNT(*) FROM wiki_revisions wr WHERE wr.article_id = wa.article_id) AS revision_count,
-			wa.updated_at, wa.body_json, wa.spoiler_chapters, wa.created_at
+			wa.updated_at, wa.body_json, wa.spoiler_chapters, wa.created_at, wa.superseded_by_entity_id,
+			wa.generation_status, wa.generation_provenance, wa.generated_at
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
 		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
@@ -1128,7 +1302,8 @@ func (s *Server) loadWikiArticleDetail(r *http.Request, bookID, articleID uuid.U
 		&d.Kind.KindID, &d.Kind.Code, &d.Kind.Name, &d.Kind.Icon, &d.Kind.Color,
 		&d.Status, &d.TemplateCode,
 		&d.RevisionCount,
-		&d.UpdatedAt, &d.BodyJSON, &spoilerChapters, &d.CreatedAt,
+		&d.UpdatedAt, &d.BodyJSON, &spoilerChapters, &d.CreatedAt, &d.SupersededBy,
+		&d.GenerationStatus, &d.GenerationProvenance, &d.GeneratedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("loadWikiArticleDetail main: %w", err)
@@ -1774,6 +1949,34 @@ func (s *Server) reviewWikiSuggestion(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
 			return
 		}
+	}
+
+	// wiki-llm M8 — emit the review signal for the feedback flywheel (in-tx).
+	// `was_ai_generated` lets the consumer weight a correction of an AI article
+	// differently from a human-authored one.
+	var revGenStatus *string
+	if err := tx.QueryRow(r.Context(),
+		`SELECT generation_status FROM wiki_articles WHERE article_id=$1`, articleID,
+	).Scan(&revGenStatus); err != nil {
+		slog.Error("reviewWikiSuggestion gen-status lookup", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	exec := func(ctx context.Context, sql string, args ...any) error {
+		_, e := tx.Exec(ctx, sql, args...)
+		return e
+	}
+	if err := insertWikiSuggestionReviewedOutboxEvent(r.Context(), exec, articleID, wikiSuggestionReviewedPayload{
+		BookID:         bookID.String(),
+		ArticleID:      articleID.String(),
+		SuggestionID:   sugID.String(),
+		Action:         req.Action,
+		WasAIGenerated: revGenStatus != nil,
+		EmittedAt:      time.Now().UTC().Format(time.RFC3339),
+	}); err != nil {
+		slog.Error("reviewWikiSuggestion emit wiki.suggestion_reviewed", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
 	}
 
 	if err := tx.Commit(r.Context()); err != nil {

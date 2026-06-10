@@ -56,6 +56,20 @@ func newMergeFixture(t *testing.T, bookSuffix string) *mergeFixture {
 	srv.pool = pool
 	f.srv = srv
 	pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&f.kindID)
+	// migrate.Seed only seeds default kinds when entity_kinds is EMPTY; on a shared
+	// test DB a prior test (e.g. the 'unknown' park kind) makes it skip, leaving
+	// 'character' absent. Seed it order-independently so the fixture is robust.
+	if f.kindID == uuid.Nil {
+		pool.Exec(ctx, `INSERT INTO entity_kinds(code,name,icon,color,is_default,is_hidden,sort_order)
+			SELECT 'character','Character','user','#888888',true,false,0
+			WHERE NOT EXISTS (SELECT 1 FROM entity_kinds WHERE code='character')`)
+		pool.QueryRow(ctx, `SELECT kind_id FROM entity_kinds WHERE code='character' LIMIT 1`).Scan(&f.kindID)
+		for _, a := range []struct{ code, name string }{{"name", "Name"}, {"aliases", "Aliases"}, {"description", "Description"}} {
+			pool.Exec(ctx, `INSERT INTO attribute_definitions(kind_id,code,name,field_type,is_required,is_system,sort_order)
+				SELECT $1,$2,$3,'text',false,true,0
+				WHERE NOT EXISTS (SELECT 1 FROM attribute_definitions WHERE kind_id=$1 AND code=$2)`, f.kindID, a.code, a.name)
+		}
+	}
 	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='name' LIMIT 1`, f.kindID).Scan(&f.nameAttr)
 	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='aliases' LIMIT 1`, f.kindID).Scan(&f.aliasAttr)
 	pool.QueryRow(ctx, `SELECT attr_def_id FROM attribute_definitions WHERE kind_id=$1 AND code='description' LIMIT 1`, f.kindID).Scan(&f.descAttr)

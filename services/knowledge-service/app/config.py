@@ -66,6 +66,28 @@ class Settings(BaseSettings):
     book_service_url: str = "http://book-service:8082"
     book_client_timeout_s: float = 5.0
 
+    # wiki-llm M1 (option A) — lore-enrichment hosts the authored de-bias
+    # BookProfile (worldview/voice/era/language/anachronism). The wiki
+    # generator reads it over the internal token to shape its prompt. The
+    # client caches per book for `book_profile_cache_ttl_s` so a wiki-gen job
+    # over N entities makes ONE call per book, while an edited profile is
+    # still picked up within the TTL (a failed read is NOT cached → retries).
+    lore_enrichment_service_url: str = "http://lore-enrichment-service:8093"
+    lore_enrichment_client_timeout_s: float = 5.0
+    book_profile_cache_ttl_s: float = 60.0
+
+    # wiki-llm M6 — batch wiki-generation orchestrator. `wiki_gen_enabled` gates
+    # the stream consumer (OFF by default: generation costs tokens, so a deploy
+    # never auto-starts generating). cost_per_article is the per-article ESTIMATE
+    # charged against a job's max_spend_usd (the LLMClient meters real tokens via
+    # provider-registry; precise per-job metering is a follow-up). prompt/pipeline
+    # version stamp the C7 build_inputs fingerprint (Phase-2 staleness).
+    wiki_gen_enabled: bool = False
+    wiki_gen_cost_per_article_usd: float = 0.05
+    wiki_gen_passage_limit: int = 8
+    wiki_prompt_version: str = "wiki-v1"
+    wiki_pipeline_version: str = "wiki-m6"
+
     # P1 (2026-05-23) — /internal/parse body size cap. Default 200 MiB
     # matches book-service's maxImportSize at services/book-service/internal/api/import.go.
     # H3 fix: explicit ceiling — without this, a misconfigured caller could
@@ -88,8 +110,10 @@ class Settings(BaseSettings):
     # (off ⇒ pure E5 behavior). `min_rerank_score` 0.30 is data-calibrated on
     # the eval corpus (negatives < 0.30 < real positives). top_n bounds the
     # cross-encoder passes; timeout is load-tolerant for cold-start.
+    # D-RERANK-NOT-BYOK: the rerank MODEL is no longer a hardcoded env name —
+    # it is the per-project `knowledge_projects.rerank_model` (BYOK user_model),
+    # resolved per-user by provider-registry. NULL project model ⇒ rerank skipped.
     rerank_enabled: bool = True
-    rerank_model: str = "bge-reranker-v2-m3"
     rerank_top_n: int = 30
     min_rerank_score: float = 0.30
     # Measured 2026-06-08 (bge-reranker-v2-m3, 30 CJK passages): warm p50 44ms /

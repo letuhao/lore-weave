@@ -352,6 +352,29 @@ async def start_extraction_job(
     benchmark_repo: BenchmarkRunsRepo = Depends(get_benchmark_runs_repo),
     extraction_wake: ExtractionWakeFn = Depends(get_extraction_wake),
 ) -> ExtractionJob:
+    """Public route handler. Delegates to the core.
+
+    S4a: `campaign_id` is an INTERNAL-only attribution tag — it is deliberately
+    NOT a parameter here, so the public surface cannot accept it. A user therefore
+    cannot tag their own job to another user's campaign (which would inflate that
+    campaign's spend and trip its budget pause). Only the internal dispatch
+    endpoint (campaign-service, ownership pre-verified) supplies it via the core.
+    """
+    return await _start_extraction_job_core(
+        project_id, body, user_id, projects_repo, jobs_repo, benchmark_repo,
+    )
+
+
+async def _start_extraction_job_core(
+    project_id: UUID,
+    body: StartJobRequest,
+    user_id: UUID,
+    projects_repo: ProjectsRepo,
+    jobs_repo: ExtractionJobsRepo,
+    benchmark_repo: BenchmarkRunsRepo,
+    *,
+    campaign_id: UUID | None = None,
+) -> ExtractionJob:
     """Create and start an extraction job for a project.
 
     Atomically: creates the job row, updates the project's extraction
@@ -507,6 +530,7 @@ async def start_extraction_job(
         max_spend_usd=body.max_spend_usd,
         scope_range=body.scope_range,
         items_total=body.items_total,
+        campaign_id=campaign_id,  # S4a: internal-only (None for public callers)
     )
 
     job_id = await _create_and_start_job(

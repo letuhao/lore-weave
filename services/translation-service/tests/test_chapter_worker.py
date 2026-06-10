@@ -473,6 +473,60 @@ async def test_block_pipeline_auto_active_gated_on_unresolved_high():
     assert auto_active, "auto-active INSERT must run at completion"
     assert "unresolved_high_count" in auto_active[0].args[0], \
         "auto-active must be gated on the quality rollup (M5b)"
+    # D-CAMPAIGN-AUTONOMOUS-PUBLISH: a NON-campaign (interactive) job keeps the
+    # first-write-wins + human-publish gate → DO NOTHING.
+    assert "DO NOTHING" in auto_active[0].args[0], \
+        "interactive job must not auto-republish over an existing active version"
+
+
+async def _run_completion(msg):
+    """Drive a block-pipeline completion and return the auto-active INSERT SQL."""
+    from app.workers.chapter_worker import handle_chapter_message
+    pool, db = _make_pool()
+    block_body = {
+        "original_language": "en",
+        "body": {"content": [
+            {"type": "paragraph", "content": [{"type": "text", "text": "Hello."}]},
+        ]},
+        "text_content": "Hello.",
+    }
+    book_resp = MagicMock(spec=httpx.Response)
+    book_resp.status_code = 200
+    book_resp.is_success = True
+    book_resp.raise_for_status = MagicMock()
+    book_resp.json.return_value = block_body
+    translated_blocks = [{"type": "paragraph", "content": [{"type": "text", "text": "こんにちは。"}]}]
+    with patch("app.workers.chapter_worker.httpx.AsyncClient") as mock_cls, \
+         patch("app.workers.chapter_worker._get_model_context_window",
+               new_callable=AsyncMock, return_value=8192), \
+         patch("app.workers.session_translator.translate_chapter_blocks",
+               new_callable=AsyncMock,
+               return_value=(translated_blocks, 10, 8, 1, 1, {0: "こんにちは。"})):
+        mock_cls.return_value.__aenter__ = AsyncMock(
+            return_value=_patched_book_http(book_resp=book_resp))
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        await handle_chapter_message(msg, pool, AsyncMock(), MagicMock(), retry_count=0)
+    auto = [c for c in db.execute.call_args_list
+            if "active_chapter_translation_versions" in c.args[0]]
+    assert auto, "auto-active INSERT must run at completion"
+    return auto[0].args[0]
+
+
+@pytest.mark.asyncio
+async def test_campaign_job_autonomous_publish_promotes_over_existing():
+    """D-CAMPAIGN-AUTONOMOUS-PUBLISH: a campaign (no-human) job PROMOTES the clean
+    version to active even over an existing one (DO UPDATE) — still gated on
+    unresolved_high_count=0 (the SELECT WHERE, kept)."""
+    sql = await _run_completion(_chapter_msg(target_language="ja", campaign_id=str(uuid4())))
+    assert "DO UPDATE" in sql, "campaign job must auto-republish (promote-on-completion)"
+    assert "chapter_translation_id = EXCLUDED" in sql
+    assert "unresolved_high_count" in sql, "still gated on the quality rollup"
+
+
+@pytest.mark.asyncio
+async def test_non_campaign_job_keeps_human_publish_gate():
+    sql = await _run_completion(_chapter_msg(target_language="ja"))  # no campaign_id
+    assert "DO NOTHING" in sql and "DO UPDATE" not in sql
 
 
 # ── TD1: cross-chapter memo wiring (M0) ───────────────────────────────────────

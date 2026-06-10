@@ -46,16 +46,6 @@ from app.services.stream_service import (
 from tests.conftest import TEST_MODEL_REF, TEST_SESSION_ID, TEST_USER_ID
 
 
-@pytest.fixture(autouse=True)
-def _bespoke_tool_path(monkeypatch):
-    """These tests exercise the tool-LOOP mechanics via the bespoke
-    knowledge_client.execute_tool path they assert on (assert_awaited_once, etc.).
-    The transport choice (USE_MCP_TOOLS, default flipped to True) is orthogonal
-    and covered by test_mcp_execute_tool — pin it False here so the loop tests
-    stay deterministic regardless of the default."""
-    monkeypatch.setattr(settings, "use_mcp_tools", False)
-
-
 # ── event-builder shorthands ────────────────────────────────────────────────
 
 
@@ -279,7 +269,7 @@ class TestStreamWithToolsNoToolCalls:
         assert len(_FakeClient.instances) == 1
         assert len(_FakeClient.instances[0].requests) == 1
         # No tool was executed.
-        kc.execute_tool.assert_not_called()
+        kc.mcp_execute_tool.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_reasoning_events_yielded(self):
@@ -333,7 +323,7 @@ class TestStreamWithToolsOneToolCall:
         assistant+tool messages, and re-streams; a following no-tool
         pass ends it."""
         kc = AsyncMock()
-        kc.execute_tool.return_value = _envelope(
+        kc.mcp_execute_tool.return_value = _envelope(
             success=True, result={"entities": ["Kai"]}
         )
         scripts = [
@@ -352,8 +342,8 @@ class TestStreamWithToolsOneToolCall:
             chunks = await _drain(_run(scripts, knowledge_client=kc))
 
         # execute_tool was called once with the parsed args.
-        kc.execute_tool.assert_awaited_once()
-        call_kwargs = kc.execute_tool.await_args.kwargs
+        kc.mcp_execute_tool.assert_awaited_once()
+        call_kwargs = kc.mcp_execute_tool.await_args.kwargs
         assert call_kwargs["tool_name"] == "memory_search"
         assert call_kwargs["tool_args"] == {"query": "Kai"}
         assert call_kwargs["user_id"] == TEST_USER_ID
@@ -387,7 +377,7 @@ class TestStreamWithToolsOneToolCall:
         (with tool_calls) and one tool message per call to the working
         list — visible on pass 1's request (design D5)."""
         kc = AsyncMock()
-        kc.execute_tool.return_value = _envelope(success=True, result={"ok": 1})
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={"ok": 1})
         scripts = [
             [
                 tok("preamble"),
@@ -424,7 +414,7 @@ class TestStreamWithToolsOneToolCall:
         """The loop works on a copy — the caller's `messages` list is
         not mutated (design §4 `working = list(messages)`)."""
         kc = AsyncMock()
-        kc.execute_tool.return_value = _envelope(success=True, result={})
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
         original = [{"role": "user", "content": "hi"}]
         scripts = [
             [
@@ -443,7 +433,7 @@ class TestStreamWithToolsOneToolCall:
         """A pass emitting two tool calls at index 0 and 1 → both are
         reassembled and executed, one tool_call chunk each (design D4)."""
         kc = AsyncMock()
-        kc.execute_tool.return_value = _envelope(success=True, result={})
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
         scripts = [
             [
                 tool_frag(index=0, id="c0", name="memory_search"),
@@ -457,10 +447,10 @@ class TestStreamWithToolsOneToolCall:
         with _patch_client(scripts):
             chunks = await _drain(_run(scripts, knowledge_client=kc))
 
-        assert kc.execute_tool.await_count == 2
-        names = [c.kwargs["tool_name"] for c in kc.execute_tool.await_args_list]
+        assert kc.mcp_execute_tool.await_count == 2
+        names = [c.kwargs["tool_name"] for c in kc.mcp_execute_tool.await_args_list]
         assert names == ["memory_search", "memory_get_entity"]
-        args = [c.kwargs["tool_args"] for c in kc.execute_tool.await_args_list]
+        args = [c.kwargs["tool_args"] for c in kc.mcp_execute_tool.await_args_list]
         assert args == [{"query": "a"}, {"name": "b"}]
 
         tool_chunks = [c["tool_call"] for c in chunks if "tool_call" in c]
@@ -474,7 +464,7 @@ class TestToolCallFragmentReassembly:
         arguments_delta only — the concatenated arguments parse
         correctly (design D4)."""
         kc = AsyncMock()
-        kc.execute_tool.return_value = _envelope(success=True, result={})
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
         scripts = [
             [
                 tool_frag(index=0, id="c1", name="memory_search"),
@@ -489,7 +479,7 @@ class TestToolCallFragmentReassembly:
             await _drain(_run(scripts, knowledge_client=kc))
 
         # The four fragments reassembled into a single valid JSON arg dict.
-        assert kc.execute_tool.await_args.kwargs["tool_args"] == {
+        assert kc.mcp_execute_tool.await_args.kwargs["tool_args"] == {
             "query": "Kai Stormblade"
         }
 
@@ -499,7 +489,7 @@ class TestToolCallFragmentReassembly:
         loop must keep them even though later fragments leave them
         None."""
         kc = AsyncMock()
-        kc.execute_tool.return_value = _envelope(success=True, result={})
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
         scripts = [
             [
                 # First fragment: id + name, no args.
@@ -529,7 +519,7 @@ class TestMaxIterationCap:
         pass must be invoked tool-free (no tools, tool_choice unset —
         design D7), and the loop terminates."""
         kc = AsyncMock()
-        kc.execute_tool.return_value = _envelope(success=True, result={})
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
 
         def _tool_pass():
             return [
@@ -570,7 +560,7 @@ class TestMaxIterationCap:
         emit tool calls, so it falls through to the text-answer return
         (not the post-loop defensive chunk)."""
         kc = AsyncMock()
-        kc.execute_tool.return_value = _envelope(success=True, result={})
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
 
         def _tool_pass():
             return [
@@ -618,7 +608,7 @@ class TestCapabilityFallback:
         text = "".join(c["content"] for c in chunks if c.get("content"))
         assert text == "tool-free answer"
         assert chunks[-1]["finish_reason"] == "stop"
-        kc.execute_tool.assert_not_called()
+        kc.mcp_execute_tool.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_tools_unsupported_via_message_not_code(self):
@@ -672,7 +662,7 @@ class TestUsageSumming:
         """Each pass is a separate billed gateway job — the trailing
         usage chunk carries the SUM across all passes (design D10)."""
         kc = AsyncMock()
-        kc.execute_tool.return_value = _envelope(success=True, result={})
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
         scripts = [
             # Pass 0 — tool call, usage 10/4.
             [
@@ -703,7 +693,7 @@ class TestUsageSumming:
         """A pass with no UsageEvent contributes 0 — the sum still
         reflects the passes that did report."""
         kc = AsyncMock()
-        kc.execute_tool.return_value = _envelope(success=True, result={})
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
         scripts = [
             # Pass 0 — tool call, NO usage event.
             [
@@ -727,7 +717,7 @@ class TestToolExecutionFailure:
         does not crash the loop — the error is fed back as the tool
         message and the loop continues to a final text answer."""
         kc = AsyncMock()
-        kc.execute_tool.return_value = _envelope(
+        kc.mcp_execute_tool.return_value = _envelope(
             success=False, result=None, error="entity not found"
         )
         scripts = [
@@ -763,7 +753,7 @@ class TestToolExecutionFailure:
         """When one of several tool calls fails, the loop still feeds
         every result back and continues."""
         kc = AsyncMock()
-        kc.execute_tool.side_effect = [
+        kc.mcp_execute_tool.side_effect = [
             _envelope(success=True, result={"hit": 1}),
             _envelope(success=False, error="boom"),
         ]
@@ -793,7 +783,7 @@ class TestProjectIdPassthrough:
         through to execute_tool (design D9 — the executor handles a
         null project)."""
         kc = AsyncMock()
-        kc.execute_tool.return_value = _envelope(success=True, result={})
+        kc.mcp_execute_tool.return_value = _envelope(success=True, result={})
         scripts = [
             [
                 tool_frag(index=0, id="c", name="memory_search"),
@@ -804,4 +794,4 @@ class TestProjectIdPassthrough:
         ]
         with _patch_client(scripts):
             await _drain(_run(scripts, knowledge_client=kc, project_id=None))
-        assert kc.execute_tool.await_args.kwargs["project_id"] is None
+        assert kc.mcp_execute_tool.await_args.kwargs["project_id"] is None

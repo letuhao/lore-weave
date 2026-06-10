@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -221,41 +222,153 @@ func decryptWithKey(key []byte, cipherText string) ([]byte, error) {
 	return gcm.Open(nil, nonce, body, nil)
 }
 
-// flatFallbackRateUSDPerToken — the legacy per-token placeholder used ONLY when
-// the gateway didn't send an authoritative per-model cost. It mis-bills (a flat
-// rate under-counts output-heavy cloud models and wrongly charges local $0
-// models), so it is a last resort, not the pricing source of truth.
-const flatFallbackRateUSDPerToken = 0.000002
+// flatCostPerToken is the legacy flat price. S4c keeps it ONLY as the fallback
+// when an event carries no real cost_usd (unpriced model) and for the streaming
+// /record path (which has no per-model cost). The real per-model cost arrives on
+// the usage stream (provider-registry actualUSD).
+const flatCostPerToken = 0.000002
 
-// recordCostUSD picks the cost for one usage record: the gateway's authoritative
-// per-model cost (input×in_rate + output×out_rate from the model's Pricing) when
-// provided and non-negative, else the flat per-token fallback. A non-nil 0
-// (a local/free model) is honored verbatim — NOT replaced by the flat rate.
-func recordCostUSD(totalTokens int, override *float64) float64 {
-	if override != nil && *override >= 0 {
-		return *override
+// billingDecisionRecorded is the billing_decision for audit-only rows. The token
+// quota/credits/rejected decisions are retired (S4c) — USD enforcement is the
+// Phase-6a guardrail (pre-flight reserve), not this post-hoc path.
+const billingDecisionRecorded = "recorded"
+
+// usageLogParams is one model-level usage event for writeUsageLog.
+type usageLogParams struct {
+	RequestID     uuid.UUID
+	OwnerUserID   uuid.UUID
+	ProviderKind  string
+	ModelSource   string
+	ModelRef      uuid.UUID
+	InputTokens   int
+	OutputTokens  int
+	CostUSD       float64
+	RequestStatus string
+	Purpose       string
+	// Payloads are nil/empty for the jobs path (the usage stream carries no
+	// payloads — matching the prior jobs-path RecordUsage, which sent none).
+	InputPayload  map[string]any
+	OutputPayload map[string]any
+}
+
+// writeUsageLog writes the audit row (usage_logs + usage_log_details) idempotently
+// on request_id, inside the caller's tx. It is the shared core for the /record HTTP
+// path (streaming) and the usage stream consumer (jobs). S4c: the legacy
+// account_balances token deduction is GONE — USD enforcement is the Phase-6a
+// guardrail's job. billing_decision is the constant "recorded". On a duplicate
+// request_id it re-reads the original cost (idempotent — a redelivered event/retry
+// writes nothing new). Returns the persisted usage_log_id, the effective cost, and
+// whether the insert was fresh.
+func (s *Server) writeUsageLog(ctx context.Context, tx pgx.Tx, p usageLogParams) (uuid.UUID, float64, bool, error) {
+	totalTokens := p.InputTokens + p.OutputTokens
+	costUSD := p.CostUSD
+	requestStatus := p.RequestStatus
+	if requestStatus == "" {
+		requestStatus = "success"
 	}
-	return float64(totalTokens) * flatFallbackRateUSDPerToken
+	purpose := p.Purpose
+	if purpose == "" {
+		purpose = "unknown"
+	}
+	const policyVersion = "m03-v1" // was account_balances.billing_policy_version; token ledger retired
+
+	// One session key encrypts both payloads (single stored key). Empty payloads
+	// (jobs path) encrypt to ciphertext of `{}` so the NOT-NULL columns stay valid.
+	sessionKey := make([]byte, 32)
+	if _, err := rand.Read(sessionKey); err != nil {
+		return uuid.Nil, 0, false, fmt.Errorf("session key: %w", err)
+	}
+	inputPlain, _ := json.Marshal(p.InputPayload)
+	outputPlain, _ := json.Marshal(p.OutputPayload)
+	inputCipher, err := encryptWithKey(sessionKey, inputPlain)
+	if err != nil {
+		return uuid.Nil, 0, false, fmt.Errorf("encrypt input: %w", err)
+	}
+	outputCipher, err := encryptWithKey(sessionKey, outputPlain)
+	if err != nil {
+		return uuid.Nil, 0, false, fmt.Errorf("encrypt output: %w", err)
+	}
+	keyCipherRaw, err := encryptWithKey(s.secretKey, sessionKey)
+	if err != nil {
+		return uuid.Nil, 0, false, fmt.Errorf("encrypt key: %w", err)
+	}
+	keyRef := uuid.New().String()
+
+	// Idempotency gate: ON CONFLICT DO NOTHING RETURNING yields a row only on a
+	// FRESH insert; a duplicate request_id returns no row → re-read + skip details.
+	var usageLogID uuid.UUID
+	err = tx.QueryRow(ctx, `
+INSERT INTO usage_logs(
+  request_id, owner_user_id, provider_kind, model_source, model_ref,
+  input_tokens, output_tokens, total_tokens, total_cost_usd, billing_decision, request_status, policy_version,
+  input_payload_ciphertext, output_payload_ciphertext, payload_encryption_key_ref, payload_encryption_algo, purpose
+) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'AES-256-GCM',$16)
+ON CONFLICT (request_id) DO NOTHING
+RETURNING usage_log_id
+`, p.RequestID, p.OwnerUserID, p.ProviderKind, p.ModelSource, p.ModelRef,
+		p.InputTokens, p.OutputTokens, totalTokens, costUSD, billingDecisionRecorded, requestStatus, policyVersion,
+		inputCipher, outputCipher, keyRef, purpose).Scan(&usageLogID)
+	if err == pgx.ErrNoRows {
+		// Duplicate request_id — already recorded. Re-read so the response/cost is
+		// identical across retries; write no details.
+		if e := tx.QueryRow(ctx, `
+SELECT usage_log_id, total_cost_usd FROM usage_logs WHERE request_id=$1`,
+			p.RequestID).Scan(&usageLogID, &costUSD); e != nil {
+			return uuid.Nil, 0, false, fmt.Errorf("re-read existing: %w", e)
+		}
+		return usageLogID, costUSD, false, nil
+	}
+	if err != nil {
+		return uuid.Nil, 0, false, fmt.Errorf("insert usage log: %w", err)
+	}
+	if _, err = tx.Exec(ctx, `
+INSERT INTO usage_log_details(usage_log_id, payload_encryption_key_ciphertext, input_payload_ciphertext, output_payload_ciphertext)
+VALUES ($1,$2,$3,$4)
+ON CONFLICT (usage_log_id) DO NOTHING
+`, usageLogID, keyCipherRaw, inputCipher, outputCipher); err != nil {
+		return uuid.Nil, 0, false, fmt.Errorf("insert usage log details: %w", err)
+	}
+	return usageLogID, costUSD, true, nil
+}
+
+// recordUsageRequest is the /record HTTP body (the streaming + direct-caller path).
+type recordUsageRequest struct {
+	RequestID     uuid.UUID      `json:"request_id"`
+	OwnerUserID   uuid.UUID      `json:"owner_user_id"`
+	ProviderKind  string         `json:"provider_kind"`
+	ModelSource   string         `json:"model_source"`
+	ModelRef      uuid.UUID      `json:"model_ref"`
+	InputTokens   int            `json:"input_tokens"`
+	OutputTokens  int            `json:"output_tokens"`
+	InputPayload  map[string]any `json:"input_payload"`
+	OutputPayload map[string]any `json:"output_payload"`
+	RequestStatus string         `json:"request_status"`
+	Purpose       string         `json:"purpose"`
+}
+
+// recordUsageParams maps a /record request to the audit params. The cost is the
+// flat estimate — the /record caller (streaming) carries no real per-model cost
+// (jobs flow through the usage stream consumer with the real cost). Pure + tested
+// so a field transposition is caught without a live handler.
+func recordUsageParams(in recordUsageRequest) usageLogParams {
+	return usageLogParams{
+		RequestID:     in.RequestID,
+		OwnerUserID:   in.OwnerUserID,
+		ProviderKind:  in.ProviderKind,
+		ModelSource:   in.ModelSource,
+		ModelRef:      in.ModelRef,
+		InputTokens:   in.InputTokens,
+		OutputTokens:  in.OutputTokens,
+		CostUSD:       float64(in.InputTokens+in.OutputTokens) * flatCostPerToken,
+		RequestStatus: in.RequestStatus,
+		Purpose:       in.Purpose,
+		InputPayload:  in.InputPayload,
+		OutputPayload: in.OutputPayload,
+	}
 }
 
 func (s *Server) recordInvocation(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		RequestID     uuid.UUID      `json:"request_id"`
-		OwnerUserID   uuid.UUID      `json:"owner_user_id"`
-		ProviderKind  string         `json:"provider_kind"`
-		ModelSource   string         `json:"model_source"`
-		ModelRef      uuid.UUID      `json:"model_ref"`
-		InputTokens   int            `json:"input_tokens"`
-		OutputTokens  int            `json:"output_tokens"`
-		InputPayload  map[string]any `json:"input_payload"`
-		OutputPayload map[string]any `json:"output_payload"`
-		RequestStatus string         `json:"request_status"`
-		Purpose       string         `json:"purpose"`
-		// TotalCostUSD — the authoritative per-model cost from the gateway (it owns
-		// the model's per-token Pricing). When present we use it verbatim; when
-		// absent we fall back to the flat per-token placeholder below (back-compat).
-		TotalCostUSD *float64 `json:"total_cost_usd"`
-	}
+	var in recordUsageRequest
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "M03_BILLING_RECORD_INVALID", "invalid payload")
 		return
@@ -271,137 +384,16 @@ func (s *Server) recordInvocation(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 
-	if _, err := tx.Exec(r.Context(), `INSERT INTO account_balances(owner_user_id) VALUES ($1) ON CONFLICT(owner_user_id) DO NOTHING`, in.OwnerUserID); err != nil {
-		writeError(w, http.StatusInternalServerError, "M03_BILLING_BALANCE_FAILED", "failed to ensure balance row")
-		return
-	}
-	totalTokens := in.InputTokens + in.OutputTokens
-	costUSD := recordCostUSD(totalTokens, in.TotalCostUSD)
-	decision := "quota"
-	requestStatus := in.RequestStatus
-	if requestStatus == "" {
-		requestStatus = "success"
-	}
-	purpose := in.Purpose
-	if purpose == "" {
-		purpose = "unknown"
-	}
-	var quotaRemaining int
-	var credits int
-	var policyVersion string
-	err = tx.QueryRow(r.Context(), `
-SELECT month_quota_remaining_tokens, credits_balance, billing_policy_version
-FROM account_balances
-WHERE owner_user_id=$1
-FOR UPDATE
-`, in.OwnerUserID).Scan(&quotaRemaining, &credits, &policyVersion)
+	// S4c: the legacy account_balances token deduction is RETIRED — USD spend
+	// enforcement is the Phase-6a guardrail's job (pre-flight reserve). /record now
+	// only writes the usage audit. The cost here is the flat estimate: /record's
+	// caller is the streaming path, which carries no real cost_usd (jobs flow through
+	// the usage stream consumer with the real per-model cost). Streaming real-cost →
+	// D-S4C-STREAMING-REALCOST.
+	usageLogID, costUSD, _, err := s.writeUsageLog(r.Context(), tx, recordUsageParams(in))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "M03_BILLING_BALANCE_FAILED", "failed to load balance")
-		return
-	}
-	// Phase 6a-β — the balance deduction is the one non-idempotent side
-	// effect. Compute the decision now but DEFER the UPDATE; it runs only if
-	// the usage_logs insert below is fresh (a duplicate request_id must not
-	// double-deduct). applyDeduction is nil for the 'rejected' path.
-	var applyDeduction func() error
-	if quotaRemaining >= totalTokens {
-		applyDeduction = func() error {
-			_, e := tx.Exec(r.Context(), `
-UPDATE account_balances SET month_quota_remaining_tokens = month_quota_remaining_tokens - $2, updated_at=now()
-WHERE owner_user_id=$1
-`, in.OwnerUserID, totalTokens)
-			return e
-		}
-	} else {
-		over := totalTokens - quotaRemaining
-		if credits >= over {
-			decision = "credits"
-			applyDeduction = func() error {
-				_, e := tx.Exec(r.Context(), `
-UPDATE account_balances
-SET month_quota_remaining_tokens = 0, credits_balance = credits_balance - $2, updated_at=now()
-WHERE owner_user_id=$1
-`, in.OwnerUserID, over)
-				return e
-			}
-		} else {
-			decision = "rejected"
-			requestStatus = "billing_rejected"
-		}
-	}
-
-	// Generate one session key for both payloads so decrypt works with single stored key
-	sessionKey := make([]byte, 32)
-	if _, err := rand.Read(sessionKey); err != nil {
-		writeError(w, http.StatusInternalServerError, "M03_ENCRYPTION_FAILED", "failed to generate session key")
-		return
-	}
-	inputPlain, _ := json.Marshal(in.InputPayload)
-	outputPlain, _ := json.Marshal(in.OutputPayload)
-	inputCipher, err := encryptWithKey(sessionKey, inputPlain)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "M03_ENCRYPTION_FAILED", "failed to encrypt input payload")
-		return
-	}
-	outputCipher, err := encryptWithKey(sessionKey, outputPlain)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "M03_ENCRYPTION_FAILED", "failed to encrypt output payload")
-		return
-	}
-	keyCipherRaw, err := encryptWithKey(s.secretKey, sessionKey)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "M03_ENCRYPTION_FAILED", "failed to encrypt session key")
-		return
-	}
-	keyRef := uuid.New().String()
-
-	// The usage_logs insert is the idempotency gate: ON CONFLICT DO NOTHING
-	// RETURNING yields a row only on a FRESH insert. A duplicate request_id
-	// (a retry) returns no row — we then skip the balance deduction + the
-	// detail write and return the already-recorded result (Phase 6a-β).
-	var usageLogID uuid.UUID
-	err = tx.QueryRow(r.Context(), `
-INSERT INTO usage_logs(
-  request_id, owner_user_id, provider_kind, model_source, model_ref,
-  input_tokens, output_tokens, total_tokens, total_cost_usd, billing_decision, request_status, policy_version,
-  input_payload_ciphertext, output_payload_ciphertext, payload_encryption_key_ref, payload_encryption_algo, purpose
-) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'AES-256-GCM',$16)
-ON CONFLICT (request_id) DO NOTHING
-RETURNING usage_log_id
-`, in.RequestID, in.OwnerUserID, in.ProviderKind, in.ModelSource, in.ModelRef,
-		in.InputTokens, in.OutputTokens, totalTokens, costUSD, decision, requestStatus, policyVersion,
-		inputCipher, outputCipher, keyRef, purpose).Scan(&usageLogID)
-	fresh := true
-	if err == pgx.ErrNoRows {
-		// Duplicate request_id — already recorded. Re-read the original
-		// row's outcome so the response is identical across retries.
-		fresh = false
-		if e := tx.QueryRow(r.Context(), `
-SELECT usage_log_id, billing_decision, total_cost_usd FROM usage_logs WHERE request_id=$1`,
-			in.RequestID).Scan(&usageLogID, &decision, &costUSD); e != nil {
-			writeError(w, http.StatusInternalServerError, "M03_BILLING_RECORD_FAILED", "failed to load existing record")
-			return
-		}
-	} else if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_BILLING_RECORD_FAILED", "failed to write usage log")
 		return
-	}
-	if fresh {
-		// Fresh insert → apply the deferred balance deduction exactly once.
-		if applyDeduction != nil {
-			if err := applyDeduction(); err != nil {
-				writeError(w, http.StatusInternalServerError, "M03_BILLING_BALANCE_FAILED", "failed to update balance")
-				return
-			}
-		}
-		if _, err = tx.Exec(r.Context(), `
-INSERT INTO usage_log_details(usage_log_id, payload_encryption_key_ciphertext, input_payload_ciphertext, output_payload_ciphertext)
-VALUES ($1,$2,$3,$4)
-ON CONFLICT (usage_log_id) DO NOTHING
-`, usageLogID, keyCipherRaw, inputCipher, outputCipher); err != nil {
-			writeError(w, http.StatusInternalServerError, "M03_BILLING_RECORD_FAILED", "failed to write usage log details")
-			return
-		}
 	}
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_BILLING_TX_FAILED", "failed to commit")
@@ -409,7 +401,7 @@ ON CONFLICT (usage_log_id) DO NOTHING
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"usage_log_id":   usageLogID,
-		"billing_mode":   decision,
+		"billing_mode":   billingDecisionRecorded,
 		"total_cost_usd": costUSD,
 	})
 }

@@ -697,6 +697,14 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// H5 optimistic concurrency (opt-in): the assistant-edit Apply path sends
+	// If-Match carrying the entity's `updated_at` captured when it was read
+	// (glossary_get_entity). When present, the UPDATE is gated on that version
+	// so a concurrent edit (e.g. the background pipeline) since the read yields
+	// 412 instead of a silent lost update. Absent header ⇒ unchanged behavior
+	// (the /v1 glossary UI does not send it).
+	ifMatch := strings.TrimSpace(r.Header.Get("If-Match"))
+
 	setClauses := []string{}
 	args := []any{}
 	argN := 1
@@ -797,9 +805,14 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 	if len(setClauses) > 0 {
 		setClauses = append(setClauses, "updated_at = now()")
 		args = append(args, entityID, bookID)
+		whereClause := fmt.Sprintf("entity_id = $%d AND book_id = $%d", argN, argN+1)
+		if ifMatch != "" {
+			args = append(args, ifMatch)
+			whereClause += fmt.Sprintf(" AND updated_at = $%d::timestamptz", argN+2)
+		}
 		updateSQL := fmt.Sprintf(
-			"UPDATE glossary_entities SET %s WHERE entity_id = $%d AND book_id = $%d",
-			strings.Join(setClauses, ", "), argN, argN+1)
+			"UPDATE glossary_entities SET %s WHERE %s",
+			strings.Join(setClauses, ", "), whereClause)
 
 		// Phase B: PATCH is now transactional so the before/after snapshot is
 		// captured consistently with the UPDATE (no TOCTOU — design §5 /
@@ -823,6 +836,27 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if tag.RowsAffected() == 0 {
+			// With If-Match, 0 rows can mean the version drifted (entity still
+			// exists) OR the entity is gone — distinguish so the assistant gets a
+			// truthful conflict vs not-found (H5/H6). Without If-Match it can only
+			// be not-found (the WHERE was entity_id + book_id only).
+			if ifMatch != "" {
+				var exists bool
+				// EDIT-LOW3: don't swallow a DB error here — a failed existence
+				// check is an INFRA fault, not "entity not found". Surface 500 so
+				// it isn't mislabelled 404.
+				if err := tx.QueryRow(ctx,
+					`SELECT EXISTS(SELECT 1 FROM glossary_entities WHERE entity_id=$1 AND book_id=$2)`,
+					entityID, bookID).Scan(&exists); err != nil {
+					writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "existence check failed")
+					return
+				}
+				if exists {
+					writeError(w, http.StatusPreconditionFailed, "GLOSS_VERSION_CONFLICT",
+						"entity changed since it was read; re-open and try again")
+					return
+				}
+			}
 			writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "entity not found")
 			return
 		}

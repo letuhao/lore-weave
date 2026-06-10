@@ -10,7 +10,7 @@ import { BudgetPanel } from '@/features/usage/BudgetPanel';
 import { BreakdownPanels } from '@/features/usage/BreakdownPanels';
 import { DailyChart } from '@/features/usage/DailyChart';
 import { RequestLogTable } from '@/features/usage/RequestLogTable';
-import type { UsageSummary, AccountBalance, UsageLog, UsageFilters, Period } from '@/features/usage/types';
+import type { UsageSummary, UsageLog, UsageFilters, Period } from '@/features/usage/types';
 
 const PERIODS: { value: Period; label: string }[] = [
   { value: 'last_24h', label: '24h' },
@@ -46,7 +46,6 @@ export function UsagePage() {
   const { accessToken } = useAuth();
   const [period, setPeriod] = useState<Period>('last_7d');
   const [summary, setSummary] = useState<UsageSummary | null>(null);
-  const [balance, setBalance] = useState<AccountBalance | null>(null);
   const [logs, setLogs] = useState<UsageLog[]>([]);
   const [total, setTotal] = useState(0);
   const [limit, setLimit] = useState(25);
@@ -58,17 +57,14 @@ export function UsagePage() {
 
   const periodLabel = PERIODS.find((p) => p.value === period)?.label ?? '7d';
 
-  // Fetch summary + balance
+  // Fetch summary. (S4c: the deprecated token account-balance is no longer shown;
+  // the USD spend guardrail + platform balance live in the BudgetPanel below.)
   useEffect(() => {
     if (!accessToken) return;
     let cancelled = false;
-    Promise.all([
-      usageApi.getSummary(accessToken, period),
-      usageApi.getBalance(accessToken),
-    ]).then(([s, b]) => {
+    usageApi.getSummary(accessToken, period).then((s) => {
       if (cancelled) return;
       setSummary(s);
-      setBalance(b);
     }).catch(() => {
       if (cancelled) return;
       toast.error(t('page.load_summary_failed'));
@@ -191,7 +187,7 @@ export function UsagePage() {
       </div>
 
       {/* Stat cards */}
-      <StatCards summary={summary} balance={balance} periodLabel={periodLabel} />
+      <StatCards summary={summary} periodLabel={periodLabel} />
 
       {/* Phase 6a-γ — spend guardrail + platform balance */}
       <BudgetPanel />

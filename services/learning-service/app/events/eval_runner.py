@@ -211,8 +211,14 @@ class EvalRunner:
 
         if not (settings.online_judge_enabled and rule.get("judge_panel_id")):
             return
-        if not (settings.online_judge_model_ref and settings.online_judge_user_id):
+        if not settings.online_judge_model_ref:
             return
+        # D-EVAL-JUDGE-PER-USER: bill the BYOK judge to the extraction's OWNER
+        # (run["user_id"]) rather than the operator env id, so a multi-tenant
+        # batch attributes judge cost correctly. Env id is the fallback only.
+        judge_user_id = str(run["user_id"]) if run.get("user_id") else settings.online_judge_user_id
+        if not judge_user_id:
+            return  # no owner and no env fallback → cannot resolve a BYOK model
         items, source_text = await self._resolve_items_source(run, payload)
         if not isinstance(items, dict) or not source_text:
             return  # structural-only
@@ -224,7 +230,7 @@ class EvalRunner:
             items_by_category=items,
             judge_model=settings.online_judge_model_ref,
             model_source=settings.online_judge_model_source,
-            user_id=settings.online_judge_user_id,
+            user_id=judge_user_id,
         )
         await persist_online_judge(
             self._pool,

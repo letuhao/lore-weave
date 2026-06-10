@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -22,6 +23,9 @@ type Server struct {
 	pool   *pgxpool.Pool
 	cfg    *config.Config
 	secret []byte
+	// ownerCache memoizes positive book-ownership checks for the MCP read tools
+	// (INV-8). Keyed "user:book" → ownerCacheEntry; see ownership.go.
+	ownerCache sync.Map
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
@@ -73,6 +77,11 @@ func (s *Server) Router() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 
+	// ── MCP server (Tier-R read tools, ai-gateway provider #2) ────────────
+	// Internal-only; the identity middleware (in mcpHandler) validates the
+	// service token and lifts X-User-Id into ctx for the ownership guard.
+	r.Handle("/mcp", s.mcpHandler())
+
 	// ── Internal service-to-service endpoints ─────────────────────────────
 	r.Route("/internal", func(r chi.Router) {
 		r.Use(s.requireInternalToken)
@@ -105,12 +114,19 @@ func (s *Server) Router() http.Handler {
 		// Per-entity enrichment coverage for the lore-enrichment gap engine (D1
 		// gap-auto-detect): entities + mention_count + promoted-enrichment dims.
 		r.Get("/books/{book_id}/enrichment-coverage", s.internalEnrichmentCoverage)
+		// wiki-llm M5 — knowledge-service writes an AI-generated article here
+		// (clobber-guard: upsert an ai/stub draft, else file a wiki_suggestion).
+		r.Post("/books/{book_id}/wiki/articles", s.internalWriteWikiArticle)
 	})
 
 	r.Route("/v1/glossary", func(r chi.Router) {
 		r.Get("/kinds", s.listKinds)
 		r.Post("/kinds", s.createKind)
 		r.Patch("/kinds/reorder", s.reorderKinds)
+		// Tier-S (P4): the ONLY schema-create path for the assistant — JWT-only,
+		// gated on a server-minted confirm token (INV-9/H8). The gateway/MCP side
+		// can mint a token (propose tools) but has no route here.
+		r.Post("/schema/confirm", s.confirmSchema)
 		// Kind-resolution epic: alias table (alias_code → kind) for the unknown-kind review.
 		r.Get("/kind-aliases", s.listKindAliases)
 		r.Post("/kind-aliases", s.createKindAlias)
@@ -149,6 +165,12 @@ func (s *Server) Router() http.Handler {
 				r.Get("/", s.listWikiArticles)
 				r.Post("/", s.createWikiArticle)
 				r.Post("/generate", s.generateWikiStubs)
+				// wiki-llm M7b — LLM-gen job lifecycle proxy (status + resume/cancel).
+				r.Route("/job", func(r chi.Router) {
+					r.Get("/", s.getWikiGenJobStatus)
+					r.Post("/{job_id}/resume", s.resumeWikiGenJob)
+					r.Post("/{job_id}/cancel", s.cancelWikiGenJob)
+				})
 				r.Get("/suggestions", s.listWikiSuggestions)
 				r.Get("/public", s.publicListWikiArticles)
 				r.Get("/public/{article_id}", s.publicGetWikiArticle)
@@ -185,6 +207,7 @@ func (s *Server) Router() http.Handler {
 					r.Get("/", s.getEntityDetail)
 					r.Patch("/", s.patchEntity)
 					r.Delete("/", s.deleteEntity)
+					r.Post("/apply-edit", s.applyEntityEdit) // EDIT-ATOMIC: multi-field single-tx edit (assistant diff-card Apply); P3 PATCH endpoints stay for the UI
 					r.Post("/pin", s.pinEntity)
 					r.Delete("/pin", s.unpinEntity)
 					// Kind-resolution epic: move a parked entity onto a real kind.

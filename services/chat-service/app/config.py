@@ -30,14 +30,11 @@ class Settings(BaseSettings):
     # per-call timeout so a slow write doesn't ReadTimeout (D-K21B-06).
     knowledge_tool_timeout_s: float = 30.0
 
-    # ARCH-2 — MCP tool execution gate. When true, chat-service routes
-    # execute_tool() calls through the MCP client (mcp.client.streamable_http);
-    # false = legacy bespoke path (/internal/tools/execute). Default flipped to
-    # true (session 104 cont.7) after D-ARCH2-MCP-LIVE-SMOKE validated the real
-    # cross-process /mcp round-trip. DEPLOY PREREQUISITE: knowledge-service must
-    # ship the /mcp build (app/mcp/) or every tool call 404s — set
-    # USE_MCP_TOOLS=false to fall back to the bespoke path if needed.
-    use_mcp_tools: bool = True
+    # ai-gateway P0 (2026-06-10) — TOOLS now go through the ai-gateway (MCP
+    # federation), NOT knowledge directly. Hard cutover: tool definitions + MCP
+    # execution target this URL; build_context (grounding) STAYS on
+    # knowledge_service_url (gateway grounding is P6, not P0).
+    ai_gateway_url: str = "http://ai-gateway:8210"
 
     # ARCH-1 C3 — default stream event format when a request sends no
     # x-loreweave-stream-format header. "legacy" (LoreWeave SSE vocabulary) or

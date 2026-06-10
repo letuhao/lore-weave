@@ -92,6 +92,8 @@ describe('Gateway proxy routing', () => {
       statisticsUrl: urlOf(statisticsServer),
       notificationUrl: urlOf(notificationServer),
       knowledgeUrl: urlOf(knowledgeServer),
+      // S1 — not asserted by these routing tests; a valid URL to satisfy the type.
+      campaignUrl: urlOf(knowledgeServer),
       loreEnrichmentUrl: urlOf(loreEnrichmentServer),
     });
     await app.init();

@@ -64,6 +64,40 @@ async def test_emits_quality_with_translation_aggregate_type():
 
 
 @pytest.mark.asyncio
+async def test_campaign_eval_judge_rides_event_and_forces_feed(monkeypatch):
+    """S5b-eval: when the per-chapter msg carries an eval_judge model, the emit
+    includes eval_judge_model_source/ref AND force-feeds source/translated text even
+    though the service-wide feed flag is OFF (the campaign pick IS the opt-in)."""
+    from app.workers import chapter_worker as cw
+    monkeypatch.setattr(cw.settings, "translation_judge_feed_enabled", False)
+    monkeypatch.setattr(cw.settings, "translation_judge_feed_max_chars", 4000)
+    judge_ref = str(uuid4())
+    msg = {**_MSG, "eval_judge_model_source": "user_model", "eval_judge_model_ref": judge_ref}
+    db = FakeDB({"quality_score": 80, "unresolved_high_count": 0, "qa_rounds_used": 1}, [])
+    await _emit_translation_quality(
+        db, CT, msg, "v3", source_text="原文内容", translated_text="nội dung dịch")
+    payload = json.loads(_outbox_inserts(db)[0][1][3])
+    assert payload["eval_judge_model_source"] == "user_model"
+    assert payload["eval_judge_model_ref"] == judge_ref
+    # texts present despite feed flag OFF (campaign opt-in forced the feed)
+    assert payload["source_text"] and payload["translated_text"]
+
+
+@pytest.mark.asyncio
+async def test_no_eval_judge_no_model_keys_and_no_feed(monkeypatch):
+    """Without a campaign eval_judge and with the feed flag OFF, the payload carries
+    neither the judge model nor the texts (byte-identical to plain M7a)."""
+    from app.workers import chapter_worker as cw
+    monkeypatch.setattr(cw.settings, "translation_judge_feed_enabled", False)
+    db = FakeDB({"quality_score": 80, "unresolved_high_count": 0, "qa_rounds_used": 1}, [])
+    await _emit_translation_quality(
+        db, CT, _MSG, "v3", source_text="原文", translated_text="dịch")
+    payload = json.loads(_outbox_inserts(db)[0][1][3])
+    assert "eval_judge_model_ref" not in payload
+    assert "source_text" not in payload
+
+
+@pytest.mark.asyncio
 async def test_perfect_score_normalises_to_one():
     """A clean chapter scores 100 → must emit 1.0 (NOT 100, which learning rejects)."""
     db = FakeDB({"quality_score": 100, "unresolved_high_count": 0, "qa_rounds_used": 0}, [])

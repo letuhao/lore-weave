@@ -45,7 +45,14 @@ async def handle_job_message(msg: dict, pool, publish, publish_event) -> None:
             "max_qa_rounds":        msg.get("max_qa_rounds", 2),
             "verifier_model_source": msg.get("verifier_model_source"),
             "verifier_model_ref":   msg.get("verifier_model_ref"),
+            # S5b-eval: ride the campaign's eval-judge model to the per-chapter
+            # worker → onto the translation.quality event for learning's judge.
+            "eval_judge_model_source": msg.get("eval_judge_model_source"),
+            "eval_judge_model_ref": msg.get("eval_judge_model_ref"),
             "cold_start_mode":      msg.get("cold_start_mode", "single_pass"),
+            # S4a: propagate the owning campaign to the per-chapter worker, which
+            # sets it as a contextvar so every provider job_meta carries it.
+            "campaign_id":          msg.get("campaign_id"),
         })
 
     log.info("coordinator: job %s — all %d chapter messages published", job_id, n)

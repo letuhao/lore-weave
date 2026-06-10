@@ -24,12 +24,16 @@ _BOOK = uuid4()
 _PROJECT_ID = uuid4()
 
 
-def _project(embedding_model="bge-m3", embedding_dimension=1024) -> Project:
+def _project(
+    embedding_model="bge-m3", embedding_dimension=1024,
+    rerank_model="33333333-3333-3333-3333-333333333333",
+) -> Project:
     return Project(
         project_id=_PROJECT_ID, user_id=_USER, name="X", description="",
         project_type="book", book_id=_BOOK, instructions="",
         extraction_enabled=False, extraction_status="disabled",
         embedding_model=embedding_model, embedding_dimension=embedding_dimension,
+        rerank_model=rerank_model, rerank_model_source="user_model",
         extraction_config={}, last_extracted_at=None,
         estimated_cost_usd=Decimal("0"), actual_cost_usd=Decimal("0"),
         is_archived=False, version=1,
@@ -99,7 +103,7 @@ def _make_client(project=_SENT, lexical=_SENT):
     # Default reranker: passthrough — every doc scored above the floor in input
     # order, so existing tests behave as if rerank is an identity. Rerank tests
     # re-override get_reranker_client with their own mock.
-    async def _passthrough(query, documents):
+    async def _passthrough(query, documents, **kwargs):
         return [{"index": i, "relevance_score": max(0.9 - i * 0.05, 0.4)}
                 for i in range(len(documents))]
     reranker = MagicMock()
@@ -120,9 +124,9 @@ def _url(mode="hybrid", query="duel"):
 # ── happy path ───────────────────────────────────────────────────────
 
 
-@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
-@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_hybrid_fuses_both_legs(mock_embed, mock_find):
     mock_embed.return_value = [0.1] * 1024
     mock_find.return_value = [_passage_hit(0, 0.9)]
@@ -138,9 +142,9 @@ def test_hybrid_fuses_both_legs(mock_embed, mock_find):
     mock_embed.assert_awaited()
 
 
-@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
-@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_mode_semantic_skips_lexical(mock_embed, mock_find):
     mock_embed.return_value = [0.1] * 1024
     mock_find.return_value = [_passage_hit()]
@@ -151,7 +155,7 @@ def test_mode_semantic_skips_lexical(mock_embed, mock_find):
     assert all(h["surface"] == "canon" for h in resp.json()["results"])
 
 
-@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_mode_lexical_skips_semantic(mock_embed):
     client, _, book_client = _make_client()
     resp = client.get(_url("lexical"))
@@ -171,9 +175,9 @@ def test_no_project_returns_404_not_indexed():
     assert resp.json()["detail"] == "not_indexed"
 
 
-@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
-@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_book_service_down_degrades_to_semantic(mock_embed, mock_find):
     mock_embed.return_value = [0.1] * 1024
     mock_find.return_value = [_passage_hit()]
@@ -185,7 +189,7 @@ def test_book_service_down_degrades_to_semantic(mock_embed, mock_find):
     assert {h["surface"] for h in body["results"]} == {"canon"}
 
 
-@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_embed_unavailable_degrades_to_lexical(mock_embed):
     mock_embed.return_value = None  # provider blip
     client, _, _ = _make_client()
@@ -216,9 +220,9 @@ def test_bad_mode_rejected():
     assert client.get(_url("fuzzy")).status_code == 422
 
 
-@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
-@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_dim_mismatch_degrades_to_lexical(mock_embed, mock_find):
     mock_embed.return_value = [0.1] * 1536  # user changed model out-of-band
     mock_find.side_effect = ValueError("query_vector length 1536 does not match dim 1024")
@@ -229,9 +233,9 @@ def test_dim_mismatch_degrades_to_lexical(mock_embed, mock_find):
     assert {h["surface"] for h in resp.json()["results"]} == {"draft"}
 
 
-@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
-@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_semantic_hit_titles_enriched(mock_embed, mock_find):
     cid = uuid4()
     p = Passage(
@@ -274,9 +278,9 @@ def test_bad_granularity_rejected():
     assert client.get(_url("lexical") + "&granularity=page").status_code == 422
 
 
-@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
-@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_explicit_min_relevance_floors_low_hit(mock_embed, mock_find):
     # the floor is OFF by default (compressed cosine → lossy); an explicit
     # min_relevance opt-in drops a low-cosine hit (0.2 < 0.5).
@@ -289,9 +293,9 @@ def test_explicit_min_relevance_floors_low_hit(mock_embed, mock_find):
     assert resp.json()["results"] == []
 
 
-@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
-@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_floor_off_by_default_keeps_low_hit(mock_embed, mock_find):
     # default min_relevance=0.0 → low-cosine hit survives (no global threshold)
     mock_embed.return_value = [0.1] * 1024
@@ -302,9 +306,9 @@ def test_floor_off_by_default_keeps_low_hit(mock_embed, mock_find):
     assert len(resp.json()["results"]) == 1
 
 
-@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
-@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_chapter_mode_caps_across_surfaces(mock_embed, mock_find):
     # MED-2: chapter granularity caps on chapterId ALONE — a chapter with BOTH
     # a lexical(draft) and a semantic(canon) hit collapses to ONE row (navigate
@@ -324,9 +328,9 @@ def test_chapter_mode_caps_across_surfaces(mock_embed, mock_find):
     assert len(rows) == 1  # one row for the chapter despite two surfaces
 
 
-@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
-@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_block_mode_keeps_both_surfaces(mock_embed, mock_find):
     # block granularity lifts the cap → both surfaces of the same chapter surface.
     mock_embed.return_value = [0.1] * 1024
@@ -355,9 +359,9 @@ def _override_reranker(return_value=None, side_effect=None):
     return rr
 
 
-@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
-@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_rerank_floors_and_reorders(mock_embed, mock_find):
     # 2 fused hits; reranker scores idx0=0.2 (< 0.30 floor → dropped),
     # idx1=0.8 (kept). Result = 1 hit, relevance = the cross-encoder score.
@@ -369,13 +373,19 @@ def test_rerank_floors_and_reorders(mock_embed, mock_find):
     ])
     body = client.get(_url("hybrid")).json()
     rr.rerank.assert_awaited()
+    # D-RERANK-NOT-BYOK: the project's BYOK rerank model_ref + owner are threaded
+    # to the reranker (a swap/drop would fail here), not a hardcoded model name.
+    _, kwargs = rr.rerank.await_args
+    assert kwargs["model_ref"] == "33333333-3333-3333-3333-333333333333"
+    assert kwargs["model_source"] == "user_model"
+    assert kwargs["user_id"] == str(_USER)
     assert len(body["results"]) == 1
     assert body["results"][0]["relevance"] == 0.8
 
 
-@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
-@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_rerank_unavailable_degrades(mock_embed, mock_find):
     # reranker None → keep fusion order + degraded marker (never 500).
     mock_embed.return_value = [0.1] * 1024
@@ -395,9 +405,9 @@ def test_lexical_mode_skips_rerank():
     rr.rerank.assert_not_awaited()  # lexical is already clean → no rerank
 
 
-@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
-@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_rerank_false_skips(mock_embed, mock_find):
     mock_embed.return_value = [0.1] * 1024
     mock_find.return_value = [_passage_hit(0, 0.9)]
@@ -408,9 +418,27 @@ def test_rerank_false_skips(mock_embed, mock_find):
     rr.rerank.assert_not_awaited()
 
 
-@patch("app.routers.public.raw_search.find_passages_by_vector", new_callable=AsyncMock)
-@patch("app.routers.public.raw_search.neo4j_session", new=lambda: _noop_session())
-@patch("app.routers.public.raw_search.embed_query_cached", new_callable=AsyncMock)
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
+def test_rerank_skipped_when_project_has_no_rerank_model(mock_embed, mock_find):
+    # D-RERANK-NOT-BYOK: rerank is BYOK + OPTIONAL. A project with no rerank_model
+    # ⇒ skip the rerank step (degraded marker), never call the reranker — no
+    # hardcoded platform fallback. (Patches target retriever — wiki-llm M2 moved
+    # the fusion core to app.search.retriever; raw_search delegates to it.)
+    mock_embed.return_value = [0.1] * 1024
+    mock_find.return_value = [_passage_hit(0, 0.9)]
+    client, _, _ = _make_client(project=_project(rerank_model=None))
+    rr = _override_reranker(return_value=[{"index": 0, "relevance_score": 0.9}])
+    body = client.get(_url("hybrid")).json()
+    rr.rerank.assert_not_awaited()
+    assert body["degraded"].get("rerank") == "not_configured"
+    assert len(body["results"]) == 2  # both legs retained, unreranked
+
+
+@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
+@patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_results_carry_relevance(mock_embed, mock_find):
     mock_embed.return_value = [0.1] * 1024
     mock_find.return_value = [_passage_hit(0, 0.9)]

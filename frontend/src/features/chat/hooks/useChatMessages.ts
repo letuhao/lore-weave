@@ -30,6 +30,21 @@ export type OnMemoryMode = (mode: 'no_project' | 'static' | 'degraded') => void;
  * Unified hook: owns message list + SSE streaming for send/edit/regenerate.
  * Supports reasoning-delta (thinking) and text-delta (content) events.
  */
+/** Outcome posted to the resume endpoint after the user acts on a frontend
+ *  tool. propose_edit (prose) uses applied/dismissed; the glossary edit tool
+ *  reports the REAL Apply result (H6) so the agent can't claim a false success. */
+export type FrontendToolOutcome =
+  | 'applied'
+  | 'dismissed'
+  | 'applied_saved'
+  | 'applied_conflict'
+  | 'applied_error'
+  // Tier-S schema confirm (P4)
+  | 'schema_created'
+  | 'token_expired'
+  | 'schema_error'
+  | 'cancelled';
+
 export function useChatMessages(
   sessionId: string | null,
   editorContext?: { book_id: string; chapter_id: string },
@@ -37,6 +52,9 @@ export function useChatMessages(
    *  tools this turn — the model writes prose to Apply manually (best for a
    *  reasoning model). Tools stay off until the user flips back to Agent. */
   composeMode?: boolean,
+  /** Glossary-assistant P3: book-scoped chat (glossary page / reader) that is
+   *  NOT the chapter editor. Enables the glossary edit-existing frontend tool. */
+  bookContext?: { book_id: string },
 ) {
   const { accessToken } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -152,6 +170,12 @@ export function useChatMessages(
         // carry which chapter the assistant is editing.
         if (editorContext) {
           body.editor_context = editorContext;
+        }
+        // Glossary-assistant P3: book-scoped (non-editor) chat → advertise the
+        // glossary edit-existing frontend tool. The editor panel already carries
+        // editor_context (book_id); a glossary-page chat sends this instead.
+        if (bookContext) {
+          body.book_context = bookContext;
         }
         // Compose mode: prose-only turn, no tool advertising (server-side gate).
         if (composeMode) {
@@ -400,7 +424,7 @@ export function useChatMessages(
         setIsComposing(false);  // never leave the drafting indicator stuck on
       }
     },
-    [accessToken, sessionId, fetchMessages, editorContext, composeMode],
+    [accessToken, sessionId, fetchMessages, editorContext, composeMode, bookContext],
   );
 
   // ── ARCH-1 C6: resume a suspended run after a frontend-tool decision ──────────
@@ -408,7 +432,7 @@ export function useChatMessages(
    *  edit) to the resume endpoint and consume the agent's 2nd pass. Reuses the
    *  full stream consumer via streamPost's override. */
   const submitToolResult = useCallback(
-    (runId: string, toolCallId: string, outcome: 'applied' | 'dismissed', appliedText?: string) => {
+    (runId: string, toolCallId: string, outcome: FrontendToolOutcome, appliedText?: string) => {
       if (!sessionId) return Promise.resolve('');
       return streamPost('', undefined, undefined, {
         url: chatApi.toolResultsUrl(sessionId),

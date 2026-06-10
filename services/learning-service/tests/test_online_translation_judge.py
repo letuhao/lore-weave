@@ -156,3 +156,28 @@ async def test_hook_runs_judge_when_enabled_and_fed(monkeypatch):
     assert ran["run"]["source_text"] == "他来了。"
     assert ran["persist"]["origin_event_id"] == "ob-1"
     assert ran["persist"]["verdict"].score == 0.75
+
+
+async def test_hook_bills_content_owner_not_operator(monkeypatch):
+    # D-EVAL-JUDGE-PER-USER: the BYOK judge is billed to the CONTENT OWNER
+    # (event user_id), not the operator's env-configured id.
+    import app.config as cfg
+    monkeypatch.setattr(cfg.settings, "online_translation_judge_enabled", True)
+    monkeypatch.setattr(cfg.settings, "online_judge_model_ref", "gemma-judge")
+    monkeypatch.setattr(cfg.settings, "online_judge_user_id", "operator-env-id")
+    monkeypatch.setattr("app.clients.llm_client.build_judge_client", lambda **k: object())
+
+    ran = {}
+    async def _fake_run(client, **k):
+        ran["run"] = k
+        return FidelityVerdict(score=0.8, reason="ok")
+    async def _fake_persist(pool, **k):
+        return True
+    monkeypatch.setattr("app.db.online_translation_judge.run_translation_judge", _fake_run)
+    monkeypatch.setattr("app.db.online_translation_judge.persist_translation_judge", _fake_persist)
+
+    owner = str(uuid.uuid4())
+    ev = _quality_event(user_id=owner, source_text="他来了。", translated_text="Anh.")
+    await _maybe_judge_translation(ev, ev.payload, ev.payload["chapter_translation_id"], pool=object())
+    assert ran["run"]["user_id"] == owner
+    assert ran["run"]["user_id"] != "operator-env-id"

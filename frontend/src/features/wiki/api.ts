@@ -6,6 +6,8 @@ import type {
   WikiRevisionDetail,
   WikiSuggestionListResp,
   WikiSuggestionResp,
+  WikiGenJobStatus,
+  WikiGenerateResult,
 } from './types';
 
 const BASE = '/v1/glossary';
@@ -64,14 +66,47 @@ export const wikiApi = {
     });
   },
 
+  /**
+   * Generate wiki articles. With no `model_ref` → deterministic stubs
+   * (`{created}`). With a `model_ref` → DELEGATES to the LLM batch generator,
+   * returning a job (`{job_id,status}`) or `{action:'none'}`; a 409 (active job)
+   * is thrown by apiJson and handled by the caller.
+   */
   generateStubs(
     bookId: string,
-    body: { kind_codes?: string[]; limit?: number },
+    body: {
+      kind_codes?: string[];
+      entity_ids?: string[];
+      limit?: number;
+      model_ref?: string;
+      model_source?: string;
+      max_spend_usd?: number;
+    },
     token: string,
-  ): Promise<{ created: number; articles: unknown[] }> {
+  ): Promise<WikiGenerateResult> {
     return apiJson(`${BASE}/books/${bookId}/wiki/generate`, {
       method: 'POST',
       body: JSON.stringify(body),
+      token,
+    });
+  },
+
+  /* ── wiki-llm M7b — LLM-gen job lifecycle (glossary proxy → knowledge) ── */
+
+  getJob(bookId: string, token: string): Promise<WikiGenJobStatus> {
+    return apiJson<WikiGenJobStatus>(`${BASE}/books/${bookId}/wiki/job`, { token });
+  },
+
+  resumeJob(bookId: string, jobId: string, token: string): Promise<{ job_id: string; status: string }> {
+    return apiJson(`${BASE}/books/${bookId}/wiki/job/${jobId}/resume`, {
+      method: 'POST',
+      token,
+    });
+  },
+
+  cancelJob(bookId: string, jobId: string, token: string): Promise<{ job_id: string; status: string }> {
+    return apiJson(`${BASE}/books/${bookId}/wiki/job/${jobId}/cancel`, {
+      method: 'POST',
       token,
     });
   },

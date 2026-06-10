@@ -133,6 +133,16 @@ ALTER TABLE token_reservations ADD CONSTRAINT token_reservations_model_source_ch
 -- The unupdated copy here makes /record 500 for any other provider_kind
 -- (including the empty string book-service posts) — see PHASE6A_BETA_DESIGN.
 ALTER TABLE usage_logs DROP CONSTRAINT IF EXISTS usage_logs_provider_kind_check;
+
+-- S4c — the usage-audit stream consumer writes billing_decision='recorded' (the
+-- token quota/credits/rejected decisions are retired; USD enforcement moved to the
+-- Phase-6a pre-flight guardrail). The original CHECK predated 'recorded', so EVERY
+-- audit insert violated it (SQLSTATE 23514) and the usage stream backed up with no
+-- audit rows ever written (found by D-S4C-CONSUMER-LIVE-SMOKE, 2026-06-10). Widen
+-- the constraint to allow 'recorded' while keeping the legacy values for old rows.
+ALTER TABLE usage_logs DROP CONSTRAINT IF EXISTS usage_logs_billing_decision_check;
+ALTER TABLE usage_logs ADD CONSTRAINT usage_logs_billing_decision_check
+  CHECK (billing_decision IN ('quota','credits','rejected','recorded'));
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

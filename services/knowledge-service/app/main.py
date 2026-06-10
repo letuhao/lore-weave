@@ -27,6 +27,7 @@ from app.routers import (
     internal_backfill,
     internal_canon,
     internal_benchmark,
+    internal_dispatch,
     internal_enrichment,
     internal_extraction,
     internal_parse,
@@ -331,6 +332,21 @@ async def lifespan(app: FastAPI):
                 exc_info=True,
             )
 
+    # wiki-llm M6 — wiki-gen stream consumer (flag-gated OFF by default: it
+    # spends tokens, so a deploy never auto-starts generating). Cancel-driven
+    # shutdown like the other background loops.
+    wiki_gen_task = None
+    if settings.wiki_gen_enabled:
+        try:
+            from app.jobs.wiki_gen_processor import run_wiki_gen_consumer
+            wiki_gen_task = asyncio.create_task(run_wiki_gen_consumer())
+            logger.info("wiki-llm M6: wiki-gen consumer started as background task")
+        except Exception:
+            logger.warning(
+                "wiki-llm M6: wiki-gen consumer failed to start (non-fatal)",
+                exc_info=True,
+            )
+
     # C14a — reconcile-evidence-count + quarantine-cleanup schedulers.
     # Both wrap existing per-user/global Neo4j functions (K11.9 + K15.10)
     # in periodic sweeps. Gated on neo4j_uri same as summary regen
@@ -505,6 +521,16 @@ async def lifespan(app: FastAPI):
             except Exception:
                 logger.warning("Error stopping anchor-refresh loop", exc_info=True)
 
+        # wiki-llm M6: stop the wiki-gen consumer.
+        if wiki_gen_task is not None:
+            wiki_gen_task.cancel()
+            try:
+                await wiki_gen_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.warning("wiki-llm M6: error stopping wiki-gen consumer", exc_info=True)
+
         # K20.3: stop summary regen loops (project first, then global).
         if summary_regen_task is not None:
             summary_regen_task.cancel()
@@ -651,6 +677,7 @@ app.include_router(internal_admin.router)
 app.include_router(internal_backfill.router)
 app.include_router(internal_canon.router)
 app.include_router(internal_benchmark.router)
+app.include_router(internal_dispatch.router)
 app.include_router(internal_enrichment.router)
 app.include_router(internal_extraction.router)
 app.include_router(internal_parse.router)
