@@ -157,6 +157,33 @@ async def get_campaign_chapters(
     )
 
 
+async def get_campaign_progress(
+    pool: asyncpg.Pool, campaign_id: UUID,
+) -> asyncpg.Record:
+    """S6 — per-stage progress counts for the live monitor. ONE aggregate over
+    campaign_chapters (O(1) payload regardless of chapter count, unlike fetching
+    the full chapters[]). Counts done/failed/skipped per stage; the route derives
+    in_progress = total - done - failed - skipped."""
+    return await pool.fetchrow(
+        """
+        SELECT
+          COUNT(*) AS total,
+          COUNT(*) FILTER (WHERE knowledge_status   = 'done')    AS kn_done,
+          COUNT(*) FILTER (WHERE knowledge_status   = 'failed')  AS kn_failed,
+          COUNT(*) FILTER (WHERE knowledge_status   = 'skipped') AS kn_skipped,
+          COUNT(*) FILTER (WHERE translation_status = 'done')    AS tr_done,
+          COUNT(*) FILTER (WHERE translation_status = 'failed')  AS tr_failed,
+          COUNT(*) FILTER (WHERE translation_status = 'skipped') AS tr_skipped,
+          COUNT(*) FILTER (WHERE eval_status        = 'done')    AS ev_done,
+          COUNT(*) FILTER (WHERE eval_status        = 'failed')  AS ev_failed,
+          COUNT(*) FILTER (WHERE eval_status        = 'skipped') AS ev_skipped
+        FROM campaign_chapters
+        WHERE campaign_id = $1
+        """,
+        campaign_id,
+    )
+
+
 async def set_campaign_status(
     pool: asyncpg.Pool,
     campaign_id: UUID,

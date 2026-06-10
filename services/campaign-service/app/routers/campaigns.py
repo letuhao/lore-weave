@@ -31,6 +31,8 @@ from ..models import (
     Campaign,
     CampaignChapter,
     CampaignDetail,
+    CampaignProgress,
+    StageCounts,
     UpdateBudgetPayload,
     EstimateRequest,
     EstimateResponse,
@@ -274,6 +276,44 @@ async def get_campaign(
     detail = CampaignDetail(**dict(row))
     detail.chapters = [CampaignChapter(**dict(cr)) for cr in chapter_rows]
     return detail
+
+
+@router.get("/{campaign_id}/progress", response_model=CampaignProgress)
+async def get_campaign_progress_endpoint(
+    campaign_id: UUID,
+    user_id: str = Depends(get_current_user),
+    db: asyncpg.Pool = Depends(get_db),
+):
+    """S6 — lightweight live-progress for the monitor poll (per-stage counts, not the
+    full chapters[]). Owner-scoped via get_campaign (404 if not owned)."""
+    row = await repo.get_campaign(db, campaign_id, UUID(user_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
+                                                     "message": "campaign not found"})
+    agg = await repo.get_campaign_progress(db, campaign_id)
+
+    def _stage(prefix: str) -> StageCounts:
+        total = agg["total"]
+        done = agg[f"{prefix}_done"]
+        failed = agg[f"{prefix}_failed"]
+        skipped = agg[f"{prefix}_skipped"]
+        return StageCounts(
+            total=total, done=done, failed=failed, skipped=skipped,
+            in_progress=total - done - failed - skipped,
+        )
+
+    return CampaignProgress(
+        campaign_id=campaign_id,
+        status=row["status"],
+        spent_usd=row["spent_usd"],
+        budget_usd=row["budget_usd"],
+        total_chapters=row["total_chapters"],
+        stages={
+            "knowledge": _stage("kn"),
+            "translation": _stage("tr"),
+            "eval": _stage("ev"),
+        },
+    )
 
 
 @router.post("/{campaign_id}/start", response_model=Campaign)

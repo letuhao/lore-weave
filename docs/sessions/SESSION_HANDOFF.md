@@ -1,16 +1,14 @@
-# Session Handoff — Session 107 (Auto-Draft Factory S5 COMPLETE — backend + FE)
+# Session Handoff — Session 107 (Auto-Draft Factory S0–S6 COMPLETE)
 
 > **Purpose:** orient the next agent in one read. This file is the single, unversioned handoff — updated in place at the end of each session. (Older `SESSION_PATCH.md` is deprecated → archive later.)
-> **Date:** 2026-06-10 (backend S0–S4 COMPLETE; **S5 epic COMPLETE: S5a estimate + S5b verifier/embedding/rerank + S5b-eval judge + S5c FE wizard** → Auto-Draft Factory usable end-to-end; human-in-loop v2.2).
+> **Date:** 2026-06-10 (**🏁 Auto-Draft Factory COMPLETE S0–S6** — backend S0–S4 + S5 model-matrix/estimate/wizard + S6 monitor; usable end-to-end; human-in-loop v2.2).
 > **HEAD:** TBD (post-commit). Branch: `feat/advanced-translation-pipeline`.
 
-## ▶ NEXT: S6 — Auto-Draft Factory monitor (+ live-smokes / PR)
-S5 (Auto-Draft Factory) was reframed at CLARIFY into a multi-service epic, **decomposed S5a→S5b→S5b-eval→S5c** (PO 2026-06-10; full record + embedding-safety constraint in [`docs/plans/2026-06-10-s5-auto-draft-factory-fe-epic.md`](../plans/2026-06-10-s5-auto-draft-factory-fe-epic.md)). PO chose all 6 roles editable incl. embedding, a real backend estimate, create+launch→minimal detail, build eval-judge now, full-page stepper + core/advanced matrix + read-only+cancel detail.
-- **S5a DONE** (`53b3d630`, pushed) — cost/time estimate endpoint (`POST /v1/campaigns/estimate`).
-- **S5b DONE** (`9d6b53b6`, **not pushed**) — verifier + embedding/reranker per-campaign.
-- **S5b-eval DONE** (`834d5ac3`, **not pushed**) — per-campaign translation eval-judge model. 🏁 all 6 roles configurable.
-- **S5c DONE** (this session) — the **FE wizard** + list + minimal detail. See block below.
-- **S6 (NEXT)** — the **rich monitor** FE: per-chapter projection from `GET /v1/campaigns/{id}` (`chapters[]` per-stage status + `eval_fidelity_score`), live spent/budget progress, **pause/resume** (`POST /{id}/pause` + `/start`), **budget PATCH** (`PATCH /{id}`), cancel-with-context. Replaces the S5c read-only detail placeholder. Also pending: deferred **live-smokes** across S4/S5 + a `→ main` PR when ready. FE-only (S5 backend contracts frozen).
+## ▶ NEXT: live-smokes on a real stack-up → then PR `→ main`
+The Auto-Draft Factory is feature-complete end-to-end (wizard create+launch → monitor pause/resume/cancel/budget). The remaining work is **validation + ship**, not features. Full epic record in [`docs/plans/2026-06-10-s5-auto-draft-factory-fe-epic.md`](../plans/2026-06-10-s5-auto-draft-factory-fe-epic.md).
+- **S5a** (`53b3d630`, pushed) · **S5b** (`9d6b53b6`) · **S5b-eval** (`834d5ac3`) · **S5c** (`bf100ff0`) · **S6** (this session) — **S5b/S5b-eval/S5c/S6 NOT pushed.**
+- **NEXT (recommended):** bring up a real stack and run the deferred **live-smokes** — the highest-value of which exercise the cross-service contracts that mocks can't (`D-S6-LIVE-SMOKE`, `D-S5BEVAL-LIVE-SMOKE`, `D-S5B-LIVE-SMOKE`, `D-S5A-ESTIMATE-LIVE-SMOKE`, the S4a–d smokes). Set `TEST_CAMPAIGN_DB_URL` to run the campaign-service real-PG integration suites (S4d budget-cap + S6 progress). Then open a PR `feat/advanced-translation-pipeline → main`.
+- **Possible follow-ups (Track-2, not blocking):** localize the wizard/monitor i18n (`D-S5C-I18N`); server-side chapter paging for the monitor (`D-S6-CHAPTER-PAGING`); expose `gating_mode` in the wizard (`D-S5C-GATING`); the eval-judge transactional outbox (`D-S5BEVAL-LEARNING-OUTBOX`).
 
 ## ▶ NEXT SESSION — start here
 
@@ -135,7 +133,11 @@ S5 (Auto-Draft Factory) was reframed at CLARIFY into a multi-service epic, **dec
 
 **S5c deferred rows:** `D-S5C-LIVE-SMOKE` (browser create+launch+conflict path) · `D-S5C-I18N` (localize) · `D-S5C-PICKER-DEDUP` (4 chat pickers → useQuery) · `D-S5C-RANGE-COUNT` · `D-S5C-GATING` (expose gating_mode) · `D-S5C-BUDGET-VALIDATE` · `D-S5C-PROJECT-PAGING` · `D-S5C-MONITOR` → S6.
 
-Also pending: deferred **live-smokes** across S4a–d + `D-RERANK-BYOK-LIVE-SMOKE` + S5a/S5b/S5b-eval/S5c smokes on a real stack-up. S4 + S5a pushed to `origin/feat/advanced-translation-pipeline`; **S5b + S5b-eval + S5c not yet pushed**. PR `→ main` when ready or per PO.
+**✅ S6 DONE — Auto-Draft Factory monitor (XL, one loom, FS, 2026-06-10). 🏁 Auto-Draft Factory COMPLETE S0–S6.** Design in the epic doc. Replaces the S5c read-only detail with a **live monitor**. **Backend (campaign-service):** `GET /v1/campaigns/{id}/progress` — owner-scoped, ONE `COUNT(*) FILTER` aggregate over `campaign_chapters` (O(1) payload, not the 4000-row chapters[]) → per-stage done/failed/skipped + status/spent/budget (`StageCounts`/`CampaignProgress`). **FE (`features/campaigns/`):** `useCampaignProgress` (6s poll while active) drives the live bars; `useCampaign` slow-polls (15s) the heavy chapters[] for the table; control mutations (pause/resume=`/start`/cancel/budget-PATCH) invalidate both keys. Components: `SpentBudgetBar`, `StageProgress`, `ChapterProjectionTable` (default filter = failed+in-progress, cap 200), `MonitorControls` (status-gated + inline budget), `CampaignMonitor` (orchestrator; old `CampaignDetail` deleted). Controls read the **live** status (auto-pause flips Pause→Resume in 6s). **VERIFY:** campaign pytest **101 +8 skip** (+2 progress mock-tests +2 real-PG integration); FE `tsc` clean + vitest **1134/152** (+6: chapter filter, controls gating). **/review-impl: 1 fixed** (real-PG `test_progress_db.py` — the aggregate SQL was only mock-tested; drift-check clean: in_progress buckets exhaustive incl cancelled) + LOWs deferred.
+
+**S6 deferred rows:** `D-S6-LIVE-SMOKE` (real stack: live progress + control round-trips) · `D-S6-CHAPTER-PAGING` (chapters[] still a full fetch) · `D-S6-BUDGET-VALIDATE`.
+
+All S5/S6 commits on `feat/advanced-translation-pipeline`. **S5b/S5b-eval/S5c/S6 NOT pushed** (S4 + S5a are pushed). See the ▶ NEXT block for live-smokes + PR.
 
 ### ▶ RAW SEARCH (branch `raw-search/foundation`, off `origin/main`)
 

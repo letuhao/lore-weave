@@ -135,6 +135,27 @@ export interface StageEstimate {
   estimated_usd: string;
 }
 
+export interface StageCounts {
+  total: number;
+  done: number;
+  failed: number;
+  skipped: number;
+  in_progress: number;
+}
+
+/** S6 — lightweight live-progress payload (polled while a campaign is active). */
+export interface CampaignProgress {
+  campaign_id: string;
+  status: CampaignStatus;
+  spent_usd: string;
+  budget_usd: string | null;
+  total_chapters: number;
+  stages: Record<'knowledge' | 'translation' | 'eval', StageCounts>;
+}
+
+/** Statuses that are still progressing → the monitor keeps polling. */
+export const ACTIVE_STATUSES: CampaignStatus[] = ['running', 'cancelling'];
+
 export interface EstimateResponse {
   chapter_count: number;
   currency: string;

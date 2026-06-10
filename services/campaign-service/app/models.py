@@ -189,6 +189,26 @@ class CampaignDetail(Campaign):
     chapters: list[CampaignChapter] = []
 
 
+class StageCounts(BaseModel):
+    """S6 — per-stage chapter tally for the monitor's progress bars."""
+    total: int
+    done: int
+    failed: int
+    skipped: int
+    in_progress: int  # total - done - failed - skipped
+
+
+class CampaignProgress(BaseModel):
+    """S6 — lightweight live-progress payload (O(1) vs the full chapters[]). Polled
+    frequently while a campaign is active."""
+    campaign_id: UUID
+    status: str
+    spent_usd: Decimal
+    budget_usd: Optional[Decimal]
+    total_chapters: int
+    stages: dict[str, StageCounts]  # knowledge / translation / eval
+
+
 class ErrorResponse(BaseModel):
     code: str
     message: str

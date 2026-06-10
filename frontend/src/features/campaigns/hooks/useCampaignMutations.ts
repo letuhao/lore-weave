@@ -48,13 +48,50 @@ export function useCancelCampaign(opts?: {
   onSuccess?: (c: Campaign) => void;
   onError?: (err: Error) => void;
 }) {
+  return useCampaignAction((id, token) => campaignsApi.cancel(id, token), opts);
+}
+
+// ── S6 monitor controls ──────────────────────────────────────────────────────
+
+/** Shared shape for the single-arg (campaignId) lifecycle mutations; invalidates
+ *  the campaign + its progress poll so the monitor reflects the new state at once. */
+function useCampaignAction(
+  fn: (id: string, token: string) => Promise<Campaign>,
+  opts?: { onSuccess?: (c: Campaign) => void; onError?: (err: Error) => void },
+) {
   const { accessToken } = useAuth();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (campaignId: string) => campaignsApi.cancel(campaignId, accessToken!),
+    mutationFn: (campaignId: string) => fn(campaignId, accessToken!),
     onSuccess: async (c) => {
       await qc.invalidateQueries({ queryKey: ['campaigns'] });
       await qc.invalidateQueries({ queryKey: ['campaigns', c.campaign_id] });
+      await qc.invalidateQueries({ queryKey: ['campaign-progress', c.campaign_id] });
+      opts?.onSuccess?.(c);
+    },
+    onError: (err) => opts?.onError?.(err as Error),
+  });
+}
+
+export function usePauseCampaign(opts?: { onSuccess?: (c: Campaign) => void; onError?: (err: Error) => void }) {
+  return useCampaignAction((id, token) => campaignsApi.pause(id, token), opts);
+}
+
+/** Resume = POST /start (paused → running); may 409 CAMPAIGN_OVER_BUDGET. */
+export function useResumeCampaign(opts?: { onSuccess?: (c: Campaign) => void; onError?: (err: Error) => void }) {
+  return useCampaignAction((id, token) => campaignsApi.start(id, token), opts);
+}
+
+/** Raise/lower the budget cap (PATCH). Does NOT auto-resume a paused campaign. */
+export function useUpdateBudget(opts?: { onSuccess?: (c: Campaign) => void; onError?: (err: Error) => void }) {
+  const { accessToken } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { campaignId: string; budgetUsd: string }) =>
+      campaignsApi.updateBudget(args.campaignId, args.budgetUsd, accessToken!),
+    onSuccess: async (c) => {
+      await qc.invalidateQueries({ queryKey: ['campaigns', c.campaign_id] });
+      await qc.invalidateQueries({ queryKey: ['campaign-progress', c.campaign_id] });
       opts?.onSuccess?.(c);
     },
     onError: (err) => opts?.onError?.(err as Error),

@@ -201,6 +201,43 @@ def test_create_embedding_conflict_409(client, mocker):
     create.assert_not_called()
 
 
+# ── S6 progress ──────────────────────────────────────────────────────────────
+
+def _agg(**over):
+    base = {
+        "total": 10,
+        "kn_done": 6, "kn_failed": 1, "kn_skipped": 0,
+        "tr_done": 4, "tr_failed": 0, "tr_skipped": 1,
+        "ev_done": 3, "ev_failed": 0, "ev_skipped": 0,
+    }
+    base.update(over)
+    return FakeRecord(base)
+
+
+def test_progress_per_stage_counts(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(total_chapters=10, status="running"))
+    mocker.patch("app.repositories.get_campaign_progress", new_callable=AsyncMock,
+                 return_value=_agg())
+    resp = client.get(f"/v1/campaigns/{CAMP}/progress")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "running"
+    assert body["total_chapters"] == 10
+    kn = body["stages"]["knowledge"]
+    assert kn["done"] == 6 and kn["failed"] == 1 and kn["skipped"] == 0
+    assert kn["in_progress"] == 3  # 10 - 6 - 1 - 0
+    tr = body["stages"]["translation"]
+    assert tr["in_progress"] == 5  # 10 - 4 - 0 - 1
+
+
+def test_progress_404_when_not_owned(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock, return_value=None)
+    resp = client.get(f"/v1/campaigns/{CAMP}/progress")
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_NOT_FOUND"
+
+
 # ── S4d budget cap ───────────────────────────────────────────────────────────
 
 def test_create_with_budget_persists_it(client, mocker):

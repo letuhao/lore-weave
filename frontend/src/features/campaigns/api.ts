@@ -2,6 +2,7 @@ import { apiJson } from '../../api';
 import type {
   Campaign,
   CampaignDetail,
+  CampaignProgress,
   CreateCampaignPayload,
   EstimateRequest,
   EstimateResponse,
@@ -36,9 +37,26 @@ export const campaignsApi = {
     });
   },
 
+  pause(campaignId: string, token: string): Promise<Campaign> {
+    return apiJson<Campaign>(`/v1/campaigns/${campaignId}/pause`, {
+      token, method: 'POST',
+    });
+  },
+
   cancel(campaignId: string, token: string): Promise<Campaign> {
     return apiJson<Campaign>(`/v1/campaigns/${campaignId}/cancel`, {
       token, method: 'POST',
+    });
+  },
+
+  // S6 — lightweight live-progress poll (per-stage counts, not the full chapters[]).
+  progress(campaignId: string, token: string): Promise<CampaignProgress> {
+    return apiJson<CampaignProgress>(`/v1/campaigns/${campaignId}/progress`, { token });
+  },
+
+  updateBudget(campaignId: string, budgetUsd: string, token: string): Promise<Campaign> {
+    return apiJson<Campaign>(`/v1/campaigns/${campaignId}`, {
+      token, method: 'PATCH', body: JSON.stringify({ budget_usd: budgetUsd }),
     });
   },
 };

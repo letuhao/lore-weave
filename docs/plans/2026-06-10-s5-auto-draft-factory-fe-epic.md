@@ -41,6 +41,7 @@ model → reject (409) or force re-embed, never silently corrupt retrieval. Same
 caution (lighter) for reranker. **Do not lose this in S5b.**
 
 ## Slices
+- **S6** — Auto-Draft Factory monitor (this doc, below). FS — a small backend progress endpoint + the FE monitor.
 - **S5a** — cost/time estimate endpoint (DONE, `53b3d630`). FS, cross-service. No schema change.
 - **S5b** — verifier + embedding/reranker per-campaign (DONE, `9d6b53b6`). FS, migration + cross-service.
 - **S5b-eval** — per-campaign translation eval-judge MODEL (this doc, below). The judge ALREADY exists
@@ -441,3 +442,62 @@ pricing dimension applies: `text` (input+output) or `input_only` (embedding).
 - campaign-service route: ownership 403 / book-404 / no-chapters-400 / oracle-502;
   happy path assembles per_stage + band (oracle + BookClient mocked).
 - VERIFY: provider-registry `go build/vet/test ./...`; campaign-service `pytest`. Live-smoke deferred.
+
+---
+
+# S6 — Auto-Draft Factory monitor
+
+> CLARIFY (2026-06-10): PO chose **stage-summary + filtered chapter table** and a **new
+> backend progress endpoint** (poll-lightweight, not the full chapters[] each tick). FS.
+> Replaces the S5c read-only `CampaignDetail`. v2.2 + /review-impl; no AMAW (read-only aggregate).
+
+## Backend (campaign-service)
+- `repositories.get_campaign_progress(pool, campaign_id)` — ONE aggregate over `campaign_chapters`:
+  `COUNT(*) FILTER (WHERE <stage>_status = 'done'/'failed'/'skipped')` for knowledge/translation/eval + total.
+- `models.StageCounts {total, done, failed, skipped, in_progress}` + `CampaignProgress {campaign_id,
+  status, spent_usd, budget_usd, total_chapters, stages: {knowledge, translation, eval}}`.
+- `GET /v1/campaigns/{id}/progress` — owner-scoped (reuse `get_campaign` → 404 if not owned), then aggregate.
+  Gateway proxies `/v1/campaigns/*` generically (no gw change). Tests: per-stage counts + 404.
+
+## FE (`features/campaigns/`)
+- `types.ts` += `CampaignProgress`, `StageCounts`. `api.ts` += `progress`, `pause`, `updateBudget`.
+- `hooks/useCampaignProgress.ts` — `useQuery` with `refetchInterval` = active(status) ? 6s : false.
+- `hooks/useCampaignControls.ts` — pause / resume(`/start`) / cancel / updateBudget mutations
+  (invalidate `['campaigns', id]` + `['campaign-progress', id]`).
+- Components (replace `CampaignDetail` → compose): `SpentBudgetBar`, `StageProgress` (per-stage bars
+  from counts), `ChapterProjectionTable` (the detail `chapters[]`, **default filter = failed + in-progress**,
+  toggle "all", windowed), `MonitorControls` (status-aware pause/resume/cancel + inline budget PATCH),
+  `CampaignMonitor` (orchestrator: progress poll + chapters fetch + composes).
+- Chapters: fetch via `useCampaign` at a SLOWER interval (15s while active) — the lightweight progress
+  poll drives the live bars; the heavy chapters[] refreshes less often (+ a manual refresh).
+
+## Edge cases
+| Case | Handling |
+|---|---|
+| terminal status | progress poll stops (refetchInterval false); controls hide. |
+| pause only when running; resume only when paused | status-gated buttons. |
+| resume over budget (409 CAMPAIGN_OVER_BUDGET) | toast → raise budget first. |
+| budget PATCH below spend | allowed (bounds new work); does not auto-resume. |
+| 4000 chapters | progress endpoint is O(1) payload; table default-filters to failed+in-progress. |
+
+## review-impl resolution (2026-06-10)
+- **#1 LOW→MED (aggregate only mock-tested)** → fixed: added `tests/integration/test_progress_db.py`
+  (real-PG, mirrors S4d) — seeds campaign_chapters across statuses + asserts the actual FILTER counts +
+  kn/tr/ev column mapping + campaign scoping. Catches a status-typo/wrong-column the route's mock test can't.
+- **drift check (clean)** — `mark_dispatched_stages_cancelled` sets `dispatched→'failed'`; STAGE_STATUSES =
+  {pending,dispatched,done,failed,skipped}, so `in_progress = total−done−failed−skipped` (= pending+dispatched)
+  is exhaustive + correct (incl. cancelled campaigns).
+- **#2/#3 LOW (accept)** — resume-409 toast + poll cadence untested (gating/filter/counts ARE); `D-S6-BUDGET-VALIDATE`.
+
+## Deferred
+- **`D-S6-LIVE-SMOKE`** — real stack/browser: launch → monitor shows live per-stage progress + spent/budget;
+  pause/resume/cancel/budget-PATCH round-trip; failed-chapter filter.
+- **`D-S6-CHAPTER-PAGING`** — chapters[] is still a full fetch (slow interval); add a server-side
+  filtered/paged chapter endpoint if the 4000-row fetch bites.
+- **`D-S6-BUDGET-VALIDATE`** — the monitor's budget input is free-text → backend 422 on garbage.
+
+## Test plan
+- backend: `get_campaign_progress` aggregate (done/failed/skipped per stage); `/progress` 404 when not owned.
+- FE: `useCampaignProgress` polls-while-active; `StageProgress` derives in_progress; `ChapterProjectionTable`
+  default filter = failed+in-progress; `MonitorControls` status-gated + 409 toast.
+- VERIFY: campaign pytest + FE tsc/vitest. Live-smoke deferred.
