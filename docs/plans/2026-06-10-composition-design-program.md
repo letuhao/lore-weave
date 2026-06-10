@@ -1,6 +1,6 @@
 # Composition V1 — Design Program (master index + tracker)
 
-**Branch:** `feat/composition-service` · **Created:** 2026-06-10 (LOOM, post LOOM-91) · **Status:** DESIGN phase (no build yet).
+**Branch:** `feat/composition-service` · **Created:** 2026-06-10 (LOOM, post LOOM-91) · **Status:** DESIGN phase — **24/24 specs drafted + decision-complete (2026-06-10)**; next = `/review-impl` over the design set → PO sign-off → build (P0→P1→P2).
 **Supersedes** the Part-A build list in [`2026-06-11-composition-gap-closure-and-e2e.md`](2026-06-11-composition-gap-closure-and-e2e.md) (kept for the Part-B QC/e2e gate).
 **Sources:** coverage [review](../reports/2026-06-10-composition-fe-be-coverage-review.md) · product spec = the v3 studio drafts `docs/specs/composition-studio-mockup-v3.html` + `composition-studio-components.html`.
 
@@ -57,7 +57,14 @@ Inherited by ALL tracks — later specs assume these:
 Design is surfacing real BE additions (PO chose to build, not stub). The build phase must sequence these with their consumers:
 - **knowledge-service** `GET /v1/knowledge/entities/{id}/facts?before_order=` — spoiler-windowed attribute-state ledger over the existing Neo4j fact store. Consumers: **T2.1** Cast codex · **T2.4** Character Arc state band.
 - **composition-service** world-map store — `work.settings.world_map.positions` PATCH + `POST /v1/composition/works/{id}/world-map/backdrop` (image → MinIO public-read UUID key). Consumer: **T2.5** World Map.
-- **FE dep:** add **dnd-kit** (reorder/assign across T1.1 / T1.4 / T1.2).
+- **composition-service** `/generate` **+ `selection` field** + explicit operation dispatch (rewrite/expand/describe; register + assert per the missing-enum lesson). Consumer: **T3.2** Selection tools.
+- **composition-service** `grounding_prefs` store (table keyed by node_id/block/ref) + packer force-includes pins / drops excludes. Consumer: **T3.4** Grounding pin/exclude.
+- **composition-service** `work.settings.references` + a **sanitized** `<references>` style-hint block in the packer. Consumer: **T3.6** References.
+- **composition-service** ensure `work.settings` style keys (voice/tone/density/structure_pref/source_language) are writable (possible allowed-keys widening). Consumer: **T3.5** Style & Voice.
+- **knowledge-service** extend `ExtractionJob` with per-run added counts (entities/relations/events) + new-item refs. Consumer: **T4.1** Flywheel panel.
+- **composition-service** `composition_daily_progress` table + `GET/POST …/works/{id}/progress` + `work.settings.daily_goal`. Consumer: **T4.2** Progress & Stats.
+- **book-service / shared editor schema** — preserve/allowlist the custom `aiProvenance` Tiptap mark in chapter content (so provenance survives save). Consumer: **T5.3** Provenance highlight.
+- **FE dep:** add **dnd-kit** (reorder/assign T1.1/T1.4/T1.2 + windowing dock-rail T5.4). recharts (existing) for Timeline / Progress / Character Arc. **T5.4 OS pop-out** = BroadcastChannel/postMessage (FE, no BE).
 
 ## Tracks & design tasks (6 tracks · 24 tasks)
 
@@ -91,29 +98,29 @@ Legend: **Phase** `P0`/`P1`/`P2` (build priority) · **Cur** PARTIAL/MISSING · 
 ### Track 3 — Write surface & AI co-writer (mockup §C)
 | TID | Feature | Phase | Cur | Type | BE today | Spec |
 |---|---|---|---|---|---|---|
-| T3.1 | AI co-writer chat (conversational brainstorm) | P1 | PARTIAL | FS | `/generate` guide (one-shot only) | [ ] |
-| T3.2 | Selection tools (rewrite / expand / describe) | P1 | PARTIAL | FS | `/generate` (no selection scope) | [ ] |
-| T3.3 | Classic⇄AI inline mode (in-prose ghost + accept-bar) | P1 | PARTIAL | FE | ComposeView side-panel ghost exists | [ ] |
-| T3.4 | Grounding pin/exclude (interactive RAG pack) | P1 | PARTIAL | FS | `/scenes/{node}/grounding` (read-only) | [ ] |
-| T3.5 | Style & Voice (editable voice/structure profile) | P2 | MISSING | FS | profile in settings (read-only) | [ ] |
-| T3.6 | References (comps/influences) — *catalog-LATER, pulled in* | P2 | MISSING | FS | none | [ ] |
+| T3.1 | AI co-writer chat (conversational brainstorm) | P1 | PARTIAL | FS | reuse `features/chat` embed | [x] [spec](../specs/composition-v1-design/T3.1-ai-cowriter-chat.md) |
+| T3.2 | Selection tools (rewrite / expand / describe) | P1 | PARTIAL | FS | `/generate` + selection field (new) | [x] [spec](../specs/composition-v1-design/T3.2-selection-tools.md) |
+| T3.3 | Classic⇄AI inline mode (in-prose ghost + accept-bar) | P1 | PARTIAL | FE | reuse `useCompositionStream` + Tiptap | [x] [spec](../specs/composition-v1-design/T3.3-classic-ai-inline-mode.md) |
+| T3.4 | Grounding pin/exclude (interactive RAG pack) | P1 | PARTIAL | FS | `/grounding` + prefs store + packer (new) | [x] [spec](../specs/composition-v1-design/T3.4-grounding-pin-exclude.md) |
+| T3.5 | Style & Voice (editable voice/structure profile) | P2 | MISSING | FS | `BookProfile`/`work.settings` (editable) | [x] [spec](../specs/composition-v1-design/T3.5-style-and-voice.md) |
+| T3.6 | References (comps/influences) — *catalog-LATER, pulled in* | P2 | MISSING | FS | `work.settings.references` + sanitize (new) | [x] [spec](../specs/composition-v1-design/T3.6-references.md) |
 
 ### Track 4 — Track, Flywheel & Progress (mockup §D)
 | TID | Feature | Phase | Cur | Type | BE today | Spec |
 |---|---|---|---|---|---|---|
-| T4.1 | Flywheel panel ("+N new facts learned") | P1 | MISSING | FE+BE-read | publish→extraction (server-side) | [ ] |
-| T4.2 | Progress & Stats (streak/goals) — *catalog-LATER, pulled in* | P2 | MISSING | FS | word count only | [ ] |
+| T4.1 | Flywheel panel ("+N new facts learned") | P1 | MISSING | FE+BE-read | knowledge `/projects/{id}/extraction/jobs` | [x] [spec](../specs/composition-v1-design/T4.1-flywheel-panel.md) |
+| T4.2 | Progress & Stats (streak/goals) — *catalog-LATER, pulled in* | P2 | MISSING | FS | new daily-progress store | [x] [spec](../specs/composition-v1-design/T4.2-progress-stats.md) |
 
 > Versions & History (§D) already **COVERED** (RevisionHistory) — not a design task.
 
 ### Track 5 — Editor shell, chrome & power-views (v3 shell chrome) — design last (frames the others)
 | TID | Feature | Phase | Cur | Type | Notes | Spec |
 |---|---|---|---|---|---|---|
-| T5.1 | Focus / typewriter mode | P2 | MISSING | FE | editor-shell mode | [ ] |
-| T5.2 | Mention heatmap | P2 | MISSING | FE | over existing mention decoration | [ ] |
-| T5.3 | AI-provenance highlight (mark-reviewed) | P2 | MISSING | FS | track AI vs human spans + reviewed-state | [ ] |
-| T5.4 | Dock/float/pop-out windowing model | P2 | MISSING | FE | replaces the fixed sub-tab strip | [ ] |
-| T5.5 | Story-Map power-view overlay (Scene Graph/Timeline/Beat Sheet full-width) | P2 | MISSING | FE | **depends on T1.3 + T2.3 + T1.2** | [ ] |
+| T5.1 | Focus / typewriter mode | P2 | MISSING | FE | editor-shell mode | [x] [spec](../specs/composition-v1-design/T5.1-focus-typewriter-mode.md) |
+| T5.2 | Mention heatmap | P2 | MISSING | FE | over existing mention decoration | [x] [spec](../specs/composition-v1-design/T5.2-mention-heatmap.md) |
+| T5.3 | AI-provenance highlight (mark-reviewed) | P2 | MISSING | FS | Tiptap mark in chapter content | [x] [spec](../specs/composition-v1-design/T5.3-ai-provenance-highlight.md) |
+| T5.4 | Dock/float/pop-out windowing model | P2 | MISSING | FE | replaces the fixed sub-tab strip | [x] [spec](../specs/composition-v1-design/T5.4-dock-float-windowing.md) |
+| T5.5 | Story-Map power-view overlay (Scene Graph/Timeline/Beat Sheet full-width) | P2 | MISSING | FE | **depends on T1.3 + T2.3 + T1.2** | [x] [spec](../specs/composition-v1-design/T5.5-story-map-power-view.md) |
 
 ---
 
@@ -125,7 +132,7 @@ Legend: **Phase** `P0`/`P1`/`P2` (build priority) · **Cur** PARTIAL/MISSING · 
 
 ## Definition of done — DESIGN phase
 
-- [ ] All 24 spec files written (template-complete) under `docs/specs/composition-v1-design/`.
+- [x] All 24 spec files written (template-complete) under `docs/specs/composition-v1-design/` — **done 2026-06-10**; open questions cleared (Lead + PO forks resolved) per-track.
 - [ ] One `/review-impl` pass over the design set; findings folded.
 - [ ] PO sign-off at POST-REVIEW.
 - [ ] Design-checkpoint commit(s) — docs only, no code.
