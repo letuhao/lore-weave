@@ -6,17 +6,17 @@
 
 ---
 
-## TL;DR verdict
+## TL;DR verdict (PO-corrected 2026-06-10)
 
-The **shipped product is a focused "controlled-auto co-writer"** (V0 complete + V1 reasoning engine), and it **covers its own validated scope end-to-end and is production-ready** (23-spec Playwright sweep already green per the V0 close-out). The **v3 studio mockup is an aspirational full writing-IDE** (dockable/floatable panels, scene-graph canvas, timeline, beat-sheet, style sliders, power-view overlays, focus mode, provenance heatmaps). Most "gaps" vs that mockup are **future roadmap (V1.5/V2), not pre-merge regressions.**
+**The branch is NOT closeable. The v3 studio drafts are the PRODUCT SPEC, not an aspirational mockup** — a feature that "exists but isn't usable" (PARTIAL) is not done, and a drafted feature that's absent (MISSING) is required, not optional. We ship a usable product, not a mockup. (An earlier draft of this verdict wrongly called the branch "closeable" by reframing the drafted features as future roadmap — that framing is retracted.)
 
-**There are exactly 2 genuine, ship-worthy gaps** where the **BE data path is complete but the FE is unwired** — these are the only items that represent "built-but-not-surfaced" debt:
-1. **Plot-thread / promise-debt panel** — `GET /works/{id}/narrative-threads` + the `narrative_thread_enabled` settings toggle exist; **no FE component fetches the endpoint**.
+**Bar to close = every V1 draft feature is BUILT and genuinely usable** — all 8 PARTIAL + 9 MISSING items below. Excluded (the only deferrals): the V2 drafts (`composition-doujin-mockup`, `composition-scene-graph-whatif`) and the components-catalog items the catalog itself tags LATER (Corkboard, Character Arc, World Map, References, Progress/Stats) — to be re-confirmed with PO, not assumed.
+
+The currently-shipped *controlled-auto co-writer core* (10 COVERED) is solid and e2e-swept — but it is the **foundation**, not the finished product. The 8 PARTIAL + 9 MISSING constitute the **mandatory build backlog** (see the companion plan, now a sequenced build program). The closest-to-done are the 2 where the BE is complete but the FE is unwired:
+1. **Plot-thread / promise-debt panel** — `GET /works/{id}/narrative-threads` + the `narrative_thread_enabled` toggle exist; **no FE consumer**.
 2. **`suggest-cast` unwired** — `POST /works/{id}/scenes/{node}/suggest-cast` (engine.py:878) has **zero FE callers**.
 
-Everything else is either COVERED, or an unbuilt aspirational v3-IDE feature (future roadmap), or explicitly V2.
-
-**Conclusion: the branch is closeable.** The shipped co-writer is feature-complete for its scope; the 2 unwired-BE gaps + the v3 aspirational surface are best tracked as a **post-merge V1.5 roadmap** (see the companion plan). No pre-merge blocker.
+**Conclusion: do NOT merge/close yet.** Execute the build program until the V1 product is complete + usable, then run the QC/e2e gate, then close.
 
 ---
 

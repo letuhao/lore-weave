@@ -1,7 +1,7 @@
 # Composition — gap-closure + e2e/QC plan (post-coverage-review)
 
 **Source:** `docs/reports/2026-06-10-composition-fe-be-coverage-review.md`. **Branch:** `feat/composition-service`.
-**Framing:** the shipped *controlled-auto co-writer* (COVERED scope) is production-ready and e2e-swept (V0, 23 specs). The v3 studio mockup is an aspirational IDE — most gaps are future roadmap. This plan = (A) close the real "built-but-unsurfaced" debt + tier the roadmap, and (B) the detailed e2e/QC plan that gates the **shipped** scope to production.
+**Framing (PO-corrected 2026-06-10):** the v3 studio drafts are the PRODUCT SPEC. We ship a usable product, not a mockup — a PARTIAL feature (exists but unusable) or a MISSING one is unfinished work, not "future roadmap." So Part A below is a **mandatory, sequenced build program** that must complete before the branch closes (the earlier "merge now, roadmap later" framing is retracted). Part B is the e2e/QC gate run **after** the product is complete. Excluded only: the V2 drafts (doujin, scene-graph-whatif) + the catalog-LATER items (corkboard/arc/world-map/references/progress) — re-confirm with PO.
 
 ---
 
@@ -21,7 +21,7 @@ Cast & Codex with per-entity story-state (needs a knowledge read for current sta
 ### Tier 2 — V2 (large, aspirational; separate track)
 Scene-Graph canvas + **Story-Map power-view overlay** (Scene Graph / Timeline / Beat Sheet as a full-width opt-in view) · Relationship Map · dock/float/pop-out **windowing model** (replace the fixed sub-tab strip) · mention **heatmap** · AI-**provenance** highlight (mark-reviewed) · **同人/derivative** (doujin draft) · **what-if branch** sandbox + promote-to-canonical (scene-graph-whatif draft).
 
-> Recommendation: **merge PR #19 now** with the COVERED scope production-ready; schedule Tier 0 as the immediate post-merge cycle, Tier 1 as the V1.5 roadmap, Tier 2 as V2.
+> **Execution order (all MANDATORY before close):** Phase 0 (the 2 unwired-BE quick wins) → Phase 1 (finish every PARTIAL into a usable state) → Phase 2 (build the MISSING views). Do NOT merge/close until Phase 0–2 are complete + usable + the Part-B QC gate passes. The catalog-LATER + V2 drafts are the only items deferred (pending PO re-confirm). This is a multi-session program — drive it via `/loom <feature>` one feature at a time, updating SESSION_HANDOFF after each.
 
 ---
 
@@ -59,4 +59,4 @@ Scene-Graph canvas + **Story-Map power-view overlay** (Scene Graph / Timeline / 
 - [ ] No open `MED+` deferral that is a `feat/composition-service` pre-merge blocker (confirmed clear — see DEFERRED.md; remaining opens are other tracks / phase-gated).
 - [ ] PO sign-off at POST-REVIEW.
 
-> The shipped scope already meets most of this; the only QC-gate *additions* are the 2 new e2e specs (#1, #2) for the FE features built this branch. Tier-0 panels add specs #3/#4 once built. Recommend: write #1 + #2 as the final pre-merge (or immediate post-merge) QC task, then merge.
+> This QC gate runs **after** the Part-A build program completes. Every newly-built feature (Phase 0/1/2) adds its own e2e spec to this gate (not just #1–#4 — each feature ships with vitest + a Playwright path + i18n parity). The branch closes only when: Phase 0–2 done + usable · all unit/integration green · the full Playwright suite (V0 net + every new feature spec) green · cross-service live-smokes recorded · PO sign-off. Until then the feature is **not** production-ready and the branch stays open.
