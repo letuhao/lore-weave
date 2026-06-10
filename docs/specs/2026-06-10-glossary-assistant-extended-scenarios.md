@@ -277,6 +277,13 @@ These aren't single features — they're **patterns/guards** that several scenar
 
 **Deps.** Prerequisite for S5, S7, S8, S15, large S19. **Effort: L** (the hardest cross-cutting piece). **Risk: high** (new interaction model; truthful-resume across turns).
 
+**DECISION (2026-06-10) — Path B (application-level job-handle), NOT MCP-native Tasks.**
+- MCP *does* now have a first-class async primitive — **Tasks** (call-now/fetch-later: `tasks/get`/`result`/`list`/`cancel`, durable handle, progressToken), but it landed in the **2025-11-25** spec revision and is **experimental** (SEP-1686 Tasks, SEP-1391 LRO).
+- **Our Go SDK `modelcontextprotocol/go-sdk` v1.6.1 is the LATEST published version and has NO Tasks support** (verified 2026-06-10 against the module cache — no `tasks/*` methods). TS SDK `^1.29.0` has experimental Tasks; Python `mcp>=1.9,<2` unconfirmed. So a version bump can't unblock it — Go simply hasn't shipped it.
+- MCP Tasks would also fight our **federation model**: ai-gateway uses per-call fresh clients (INV-7/H14); a stateful task spanning requests would force task-proxying through the gateway across all three SDKs.
+- We **already have durable async infra** (RabbitMQ + `extraction_jobs` table + WebSocket progress) that is *more* durable than in-protocol Tasks.
+- **Therefore S20 = Path B:** a write-proposal MCP tool returns `{job_id}` immediately (mapping onto the existing job + `extraction_jobs` row); a separate MCP-read `*_job_status` tool polls; chat renders a **JobProgressCard** on the existing WebSocket. Works on all current SDKs, no experimental features, doesn't disturb federation. Conceptually identical to Tasks → cheap to migrate later. See deferred **`D-MCP-TASKS-MIGRATION`**.
+
 ---
 
 ## S21 — Cost confirmation gate
@@ -369,12 +376,45 @@ S22 (field-types), S23 (spoiler), S25 (perms), S26 (lang) = guards woven into th
 
 ---
 
-## Open questions (carried from coverage doc, refined)
+## LOCKED architecture decisions (2026-06-10)
 
-- **Q1 (sequencing):** confirm "Group 1 first" (assistant reaches parity with the UI) vs chasing S5/S2.
-- **Q2 (alias model, S6):** translations-of-aliases vs first-class alias `language` column — **blocks S4/S6 tooling**.
-- **Q3 (async, S20):** is the job-handle "start now, report later" model acceptable as the standard for all expensive ops?
-- **Q4 (destructive, S9/S10/S11):** single confirm card + recycle-bin/revert sufficient, or extra friction?
-- **Q5 (relationships, S18):** which layer is truth — glossary `Relationship` kind or knowledge graph?
-- **Q6 (web research, S5):** in scope this cycle? provider + per-request cost ceiling?
-- **Q7 (permissions, S25):** assistant owner-only, or honor share-grants?
+All open questions resolved by the user. These are binding for the build campaign.
+
+| # | Decision | Implication |
+|---|---|---|
+| **D1 — Sequencing** | **Cover ALL scenarios**, built **easy→hard** (by dependency), not a chosen subset. | The order below (Foundational → Group 1 → batch → schema → translation → async/extraction → web research) is the *path to full coverage*, not a menu. |
+| **D2 — Alias model** | **First-class alias table** with a `language` column (NOT translations-of-the-`aliases`-attribute). | Migration + refactor every alias read/write — incl. extraction dedup `findEntityByNameOrAlias` (today reads the `aliases` *attribute*). **Foundational, touches the writeback path.** |
+| **D3 — Async (S20)** | **Path B** job-handle on existing RabbitMQ/WebSocket infra. MCP-native Tasks deferred (`D-MCP-TASKS-MIGRATION`). | See S20 decision block. Standard for all expensive ops (S5/S7/S8/S15/large-S19). |
+| **D4 — Destructive ops** | **Single confirm card + undo** (recycle-bin / revisions / merge-journal). | Generalize the card family with a destructive variant showing consequences + recoverability. |
+| **D5 — Relationships (S18)** | **Glossary SSOT + KG derived** (two-layer, CLAUDE.md). | Author relationships as glossary `Relationship` entities; knowledge graph is the derived view via the event pipeline. |
+| **D6 — Web research (S5)** | **Staged**: simple web-search MCP tool first → deep-research agent loop later (after async + injection-hardening mature). | Build last. Deep-research depends on D3 (async) + S24 (injection) + S21 (cost gate). |
+| **D7 — Permissions (S25)** | **Honor share-grants now** (not owner-only). | Every assistant write-tool's ownership guard (`checkBookOwnership`) must consult **sharing-service** and distinguish **view-grant vs edit-grant** (a viewer must not write/delete). **Foundational, security-critical** — verify the sharing-service contract first; this is a `/review-impl` / AMAW candidate. |
+| **D8 — Kind scope** | **Keep the global kind catalog; add an ADDITIVE per-book *derived* layer** (no breaking changes — "chỉ thêm mới"). | Global kinds remain the shared definition library; each book derives/selects an effective set (+ book-specific additions) **without mutating the global kind for other books**. New additive table (e.g. `book_kind_selections`). **Re-scopes S2/S3:** "optimize kind for this book" = per-book selection/override, NOT a global mutation. |
+
+### Foundational prerequisites (must precede Group 1)
+
+D2, D7, D8 each introduce a **load-bearing schema/guard change** that Group 1 tools will build on. The campaign therefore starts with a **Foundational phase**, before the cheap Group-1 tooling:
+
+1. **F1 — Share-grant ownership guard (D7):** extend `checkBookOwnership` to consult sharing-service with view/edit granularity; fail-closed. *Security-critical — review hard.*
+2. **F2 — First-class alias model (D2):** alias table + `language`; migrate the `aliases` attribute; rewire `findEntityByNameOrAlias` + extraction dedup + entity read/write.
+3. **F3 — Per-book kind derivation (D8):** additive `book_kind_selections` (or equiv.) + an "effective kinds for book" read; leave the global catalog untouched.
+4. **F4 — Card-family generalization (D4):** destructive variant + multi-row + cost line + field-type-aware controls (S22) — the real Group-1 enabler.
+5. **F5 — Job-handle async pattern (D3):** the `{job_id}` + `*_job_status` + JobProgressCard scaffold on existing infra.
+
+Only F1–F4 gate Group 1; F5 gates the extraction/research/batch scenarios.
+
+### Revised build order (full coverage, easy→hard)
+
+```
+Phase 0  Foundational:  F1 share-grants · F2 alias table · F3 per-book kinds · F4 card family
+Phase 1  Group-1 reads: list merge-cands / unknowns / revisions / evidence / chapter-links / ai-suggestions
+Phase 2  Group-1 writes: delete · triage-inbox · merge · reassign · restore · genre · evidence · chapter-link
+Phase 3  Batch (F-batch, S19) → triage-batch, status-change-batch
+Phase 4  Schema change-set (S2/S3) — bundled kind+attributes, add/edit/remove, per-book (D8)
+Phase 5  Translation tooling (S4/S6) — on the new alias model (D2); batch translate
+Phase 6  Async jobs (F5) → assistant extraction (S7/S8) with fill/overwrite/merge modes
+Phase 7  Audit (S15) · relationships (S18, D5)
+Phase 8  Web research (S5, D6) staged: web-search → deep-research; + injection-hardening (S24) + cost gate (S21)
+```
+
+Cross-cutting guards (S22 field-types, S23 spoiler, S24 injection, S26 language) are woven into the phases that need them, not separate phases.
