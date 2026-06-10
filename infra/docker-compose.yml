@@ -459,6 +459,9 @@ services:
       # redis is NOT a hard depends_on (matches translation-service).
       REDIS_URL: redis://redis:6379
       PORT: "8095"
+      # D-CAMPAIGN-BESTEFFORT-EMIT-REDIS — stuck-`dispatched` self-heal window.
+      # Overridable for live-smokes (default 900s = 15 min).
+      STUCK_DISPATCH_TIMEOUT_S: ${STUCK_DISPATCH_TIMEOUT_S:-900}
     depends_on:
       postgres:
         condition: service_healthy
