@@ -45,6 +45,7 @@ class StubOutline:
         self.create_raises = None
         self.update_raises = None
         self.update_result = _node(version=2)
+        self.last_patch = None
         self.archive_result = _node(is_archived=True)
         self.restore_result = _node(is_archived=False)
         self.reorder_result = _node(version=2)
@@ -56,6 +57,7 @@ class StubOutline:
         if self.create_raises: raise self.create_raises
         return self.node
     async def update_node(self, u, n, patch, **kw):
+        self.last_patch = patch
         if self.update_raises: raise self.update_raises
         return self.update_result
     async def update_node_commit_aware(self, u, n, patch, **kw):
@@ -219,6 +221,17 @@ def test_patch_status_done_routes_through_commit_aware(ctx):
     c, _, outline, _, _ = ctx
     r = c.patch(f"/v1/composition/outline/nodes/{NODE}", json={"status": "done"})
     assert r.status_code == 200 and outline.commit_aware_called is True
+
+
+def test_patch_beat_role_set_and_explicit_null_clear(ctx):
+    """T1.2: assigning a beat (beat_role='k') and CLEARING it (beat_role=null) both
+    reach update_node. An explicit JSON null must survive model_dump(exclude_unset)
+    — the clear path silently breaks if Pydantic dropped it."""
+    c, _, outline, _, _ = ctx
+    c.patch(f"/v1/composition/outline/nodes/{NODE}", json={"beat_role": "catalyst"})
+    assert outline.last_patch == {"beat_role": "catalyst"}
+    c.patch(f"/v1/composition/outline/nodes/{NODE}", json={"beat_role": None})
+    assert outline.last_patch == {"beat_role": None}  # explicit null kept → clears
 
 
 def test_patch_non_done_uses_plain_update(ctx):

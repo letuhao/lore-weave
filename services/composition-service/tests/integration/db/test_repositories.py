@@ -240,6 +240,28 @@ async def test_outline_reorder_reparents_scene_across_chapters(pool):
     assert [s.title for s in src] == ["a2"] and [s.story_order for s in src] == [0]  # re-densified
 
 
+async def test_outline_beat_role_allowed_on_scene_and_chapter_not_arc(pool):
+    """T1.2 Beat Sheet migration: beat_role may live on a scene OR a chapter, but
+    an arc (or beat) still violates outline_beatrole_kind."""
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    arc = await repo.create_node(user, project, kind="arc", title="arc")
+    chap = await repo.create_node(user, project, kind="chapter", parent_id=arc.id, chapter_id=chapter)
+    scene = await repo.create_node(user, project, kind="scene", parent_id=chap.id, chapter_id=chapter)
+
+    s = await repo.update_node(user, scene.id, {"beat_role": "catalyst"})
+    assert s is not None and s.beat_role == "catalyst"
+    c = await repo.update_node(user, chap.id, {"beat_role": "opening_image"})  # NEW: chapter allowed
+    assert c is not None and c.beat_role == "opening_image"
+    # clearing works (nullable)
+    cleared = await repo.update_node(user, chap.id, {"beat_role": None})
+    assert cleared is not None and cleared.beat_role is None
+    # an arc still cannot carry a beat_role
+    with pytest.raises(asyncpg.exceptions.CheckViolationError):
+        await repo.update_node(user, arc.id, {"beat_role": "finale"})
+
+
 async def test_outline_reorder_rejects_cycle(pool):
     """Reparenting a node under its own descendant is a 400 (ReferenceViolationError)
     — the same guard update_node uses, applied before any write."""

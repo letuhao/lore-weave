@@ -37,7 +37,10 @@ export type NarrativeThread = {
 };
 
 // ── A3 decompose planner (cycle 13) ──────────────────────────────────────────
-export type StructureTemplate = { id: string; name: string; kind?: string; beats?: unknown[] };
+// T1.2 Beat Sheet — a template beat: a `key` (joins to node.beat_role) + its
+// structural `purpose`. Mirrors the BE StructureTemplate.beats (plan.py).
+export type Beat = { key: string; purpose: string };
+export type StructureTemplate = { id: string; name: string; kind?: string; beats: Beat[] };
 
 // Preview shape — mirrors composition-service DecomposeResult (dataclasses.asdict).
 // The chapter is nested under `chapter`; scenes carry resolved present_entity_ids
@@ -90,6 +93,7 @@ export type OutlineNode = {
   synopsis: string;
   version: number;
   is_archived: boolean; // T1.1b — archived nodes are hidden unless the tree's "show archived" view is on
+  beat_role: string | null; // T1.2 — the structure-template beat key this node fills (or null)
 };
 
 // M9 chapter-gate (OI-1): can this chapter be published? can_publish is true

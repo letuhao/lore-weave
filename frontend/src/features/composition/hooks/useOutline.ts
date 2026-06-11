@@ -52,6 +52,12 @@ export function useOutlineMutations(projectId: string | undefined, token: string
       compositionApi.patchNode(v.nodeId, { title: v.title, synopsis: v.synopsis }, token!, v.version),
     onSuccess: invalidate,
   });
+  // T1.2 Beat Sheet — assign (or clear, beatRole=null) a node's beat_role.
+  const setBeatRole = useMutation({
+    mutationFn: (v: { nodeId: string; beatRole: string | null; version: number }) =>
+      compositionApi.patchNode(v.nodeId, { beat_role: v.beatRole }, token!, v.version),
+    onSuccess: invalidate,
+  });
   const addChild = useMutation({
     mutationFn: (v: { kind: 'scene' | 'beat'; parent_id: string; chapter_id?: string | null; title: string }) =>
       compositionApi.createNode(
@@ -81,5 +87,5 @@ export function useOutlineMutations(projectId: string | undefined, token: string
     },
   });
 
-  return { rename, setStatus, editCard, addChild, archive, restore, reorder, invalidate };
+  return { rename, setStatus, editCard, setBeatRole, addChild, archive, restore, reorder, invalidate };
 }

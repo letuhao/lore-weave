@@ -10,7 +10,7 @@ import { CompositionPanel } from '../CompositionPanel';
 // edit state survives. We mock each sub-panel to (a) drop a stable testid and
 // (b) bump a per-panel MOUNT counter on mount; a remount (the bug) would bump it.
 
-const mounts = vi.hoisted(() => ({ compose: 0, assemble: 0, planner: 0, grounding: 0, canon: 0, quality: 0, settings: 0 }));
+const mounts = vi.hoisted(() => ({ compose: 0, assemble: 0, planner: 0, beats: 0, grounding: 0, canon: 0, quality: 0, settings: 0 }));
 
 function mockPanel(name: keyof typeof mounts) {
   return function Mock() {
@@ -24,6 +24,7 @@ function mockPanel(name: keyof typeof mounts) {
 vi.mock('../ComposeView', () => ({ ComposeView: mockPanel('compose') }));
 vi.mock('../ChapterAssembleView', () => ({ ChapterAssembleView: mockPanel('assemble') }));
 vi.mock('../PlannerView', () => ({ PlannerView: mockPanel('planner') }));
+vi.mock('../BeatSheetView', () => ({ BeatSheetView: mockPanel('beats') }));
 vi.mock('../GroundingPanel', () => ({ GroundingPanel: mockPanel('grounding') }));
 vi.mock('../CanonRulesPanel', () => ({ CanonRulesPanel: mockPanel('canon') }));
 vi.mock('../QualityPanel', () => ({ QualityPanel: mockPanel('quality') }));
@@ -42,7 +43,7 @@ vi.mock('../../../ai-models/api', () => ({
 }));
 
 beforeEach(() => {
-  mounts.compose = mounts.assemble = mounts.planner = mounts.grounding = mounts.canon = mounts.quality = mounts.settings = 0;
+  mounts.compose = mounts.assemble = mounts.planner = mounts.beats = mounts.grounding = mounts.canon = mounts.quality = mounts.settings = 0;
 });
 
 function renderPanel() {
@@ -57,9 +58,9 @@ function renderPanel() {
 const wrapperOf = (name: string) => screen.getByTestId(`mock-${name}`).parentElement;
 
 describe('CompositionPanel sub-tab CSS-hidden (visibility-transition)', () => {
-  it('mounts ALL seven sub-panels (none ternary-unmounted), only the active one visible', () => {
+  it('mounts ALL eight sub-panels (none ternary-unmounted), only the active one visible', () => {
     renderPanel();
-    for (const name of ['compose', 'assemble', 'planner', 'grounding', 'canon', 'quality', 'settings']) {
+    for (const name of ['compose', 'assemble', 'planner', 'beats', 'grounding', 'canon', 'quality', 'settings']) {
       expect(screen.getByTestId(`mock-${name}`)).toBeInTheDocument();
     }
     // compose is the default tab → visible; the rest (incl. planner) carry `hidden`.
