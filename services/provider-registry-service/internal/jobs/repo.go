@@ -386,6 +386,43 @@ func (r *Repo) ModelPricing(ctx context.Context, modelSource string, ownerUserID
 	return p, true, nil
 }
 
+// EstimateModelInfo reads a model's pricing JSONB AND its provider_kind in a
+// single row — the S5a estimate oracle needs both (price + a cloud/local badge).
+// It mirrors ModelPricing's found-vs-unpriced contract (found=false → 404 at the
+// caller, distinct from found-but-empty-pricing → unpriced). Kept separate from
+// ModelPricing so that method's two other callers (jobs_handler reserve, worker
+// reconcile) are untouched. For a user_model the lookup is owner-scoped.
+func (r *Repo) EstimateModelInfo(ctx context.Context, modelSource string, ownerUserID, modelRef uuid.UUID) (billing.Pricing, string, bool, error) {
+	var raw []byte
+	var providerKind string
+	var err error
+	switch modelSource {
+	case "user_model":
+		err = r.pool.QueryRow(ctx,
+			`SELECT pricing, provider_kind FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2`,
+			modelRef, ownerUserID).Scan(&raw, &providerKind)
+	case "platform_model":
+		err = r.pool.QueryRow(ctx,
+			`SELECT pricing, provider_kind FROM platform_models WHERE platform_model_id=$1`,
+			modelRef).Scan(&raw, &providerKind)
+	default:
+		return billing.Pricing{}, "", false, fmt.Errorf("unknown model_source %q", modelSource)
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return billing.Pricing{}, "", false, nil
+	}
+	if err != nil {
+		return billing.Pricing{}, "", false, fmt.Errorf("model estimate-info lookup: %w", err)
+	}
+	var p billing.Pricing
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return billing.Pricing{}, providerKind, true, fmt.Errorf("decode pricing: %w", err)
+		}
+	}
+	return p, providerKind, true, nil
+}
+
 // ModelContextLength reads a model's registered context window (tokens).
 // Used by the D-EXTRACTION-CONTEXT-FIX-STAGE-4 preflight to reject 400
 // requests whose input + max_tokens would overflow the model's loaded

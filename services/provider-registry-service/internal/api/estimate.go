@@ -27,8 +27,10 @@ import (
 
 // modelPricer is the slice of *jobs.Repo this endpoint needs. Declared as an
 // interface so estimateItems is unit-testable with a fake pricer (no DB).
+// EstimateModelInfo returns pricing + provider_kind in one row (the estimate
+// also surfaces a cloud/local badge — D-FACTORY-EST-PROVIDER-KIND).
 type modelPricer interface {
-	ModelPricing(ctx context.Context, modelSource string, ownerUserID, modelRef uuid.UUID) (billing.Pricing, bool, error)
+	EstimateModelInfo(ctx context.Context, modelSource string, ownerUserID, modelRef uuid.UUID) (billing.Pricing, string, bool, error)
 }
 
 // estimateItem is one model+token request in the batch. dimension selects the
@@ -47,6 +49,11 @@ type estimateResultItem struct {
 	Label        string  `json:"label"`
 	Status       string  `json:"status"` // ok | unpriced | not_found | bad_request
 	EstimatedUSD float64 `json:"estimated_usd"`
+	// D-FACTORY-EST-PROVIDER-KIND — the resolved provider kind + whether it runs
+	// on the user's own hardware (cloud/local badge). Empty/false for a model that
+	// couldn't be resolved (not_found / bad_request).
+	ProviderKind string `json:"provider_kind"`
+	IsLocal      bool   `json:"is_local"`
 }
 
 type estimateRequest struct {
@@ -88,7 +95,7 @@ func estimateItems(ctx context.Context, pricer modelPricer, owner uuid.UUID, ite
 			out = append(out, res)
 			continue
 		}
-		pricing, found, err := pricer.ModelPricing(ctx, it.ModelSource, owner, ref)
+		pricing, providerKind, found, err := pricer.EstimateModelInfo(ctx, it.ModelSource, owner, ref)
 		if err != nil {
 			// Infra error (bad model_source / DB failure) — fail the request so
 			// the caller can 502 rather than silently under-price the estimate.
@@ -99,6 +106,9 @@ func estimateItems(ctx context.Context, pricer modelPricer, owner uuid.UUID, ite
 			out = append(out, res)
 			continue
 		}
+		// Model resolved → surface its kind + cloud/local flag (ok or unpriced).
+		res.ProviderKind = providerKind
+		res.IsLocal = billing.IsLocalKind(providerKind)
 		var usd float64
 		if it.Dimension == "input_only" {
 			usd, err = billing.PriceEmbedding(it.InputTokens, pricing)

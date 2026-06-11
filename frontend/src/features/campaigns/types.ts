@@ -142,6 +142,10 @@ export interface StageEstimate {
   estimated_usd: string;
   input_tokens: number;    // #5 polish — workload the band was priced on
   output_tokens: number;
+  // D-FACTORY-EST-PROVIDER-KIND — cloud/local badge. provider_kind null + is_local
+  // false when no model was resolved for the stage (not_estimated / not_found).
+  provider_kind: string | null;
+  is_local: boolean;
 }
 
 export interface StageCounts {

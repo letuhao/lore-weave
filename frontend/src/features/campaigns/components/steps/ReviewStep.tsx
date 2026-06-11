@@ -91,7 +91,19 @@ export function ReviewStep({ buildEstimateRequest, buildCreatePayload, budgetUsd
             <tbody>
               {estimate.per_stage.map((s) => (
                 <tr key={s.stage} className="border-t">
-                  <td className="py-1 pr-4 capitalize">{s.stage}</td>
+                  <td className="py-1 pr-4">
+                    <span className="capitalize">{s.stage}</span>
+                    {s.provider_kind && (
+                      <span className={`ml-2 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                        s.is_local
+                          ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
+                          : 'bg-sky-500/15 text-sky-700 dark:text-sky-400'}`}>
+                        {s.is_local
+                          ? t('review.localFree', { defaultValue: '🖥 {{kind}} · free', kind: s.provider_kind })
+                          : t('review.cloud', { defaultValue: '☁ {{kind}}', kind: s.provider_kind })}
+                      </span>
+                    )}
+                  </td>
                   <td className="py-1 pr-4 text-muted-foreground">{s.status}</td>
                   <td className="py-1 pr-4 text-muted-foreground">
                     {s.input_tokens || s.output_tokens ? `${tok(s.input_tokens)} / ${tok(s.output_tokens)}` : '—'}

@@ -173,6 +173,10 @@ def assemble_estimate(
             "estimated_usd": round(usd, 8),
             "input_tokens": m.input_tokens,    # #5 polish — workload per stage
             "output_tokens": m.output_tokens,
+            # D-FACTORY-EST-PROVIDER-KIND — cloud/local badge, echoed from the
+            # oracle item (absent → no model resolved → no badge).
+            "provider_kind": (result or {}).get("provider_kind"),
+            "is_local": bool((result or {}).get("is_local", False)),
         })
 
     total_low = total_high * cfg.est_low_factor

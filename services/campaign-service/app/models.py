@@ -181,6 +181,10 @@ class StageEstimate(BaseModel):
     estimated_usd: Decimal
     input_tokens: int = 0   # #5 polish — the workload the band was priced on
     output_tokens: int = 0
+    # D-FACTORY-EST-PROVIDER-KIND — the resolved provider kind + whether it runs
+    # on the user's own hardware ($0 local). None/False for a not-estimated stage.
+    provider_kind: Optional[str] = None
+    is_local: bool = False
 
 
 class EstimateResponse(BaseModel):
