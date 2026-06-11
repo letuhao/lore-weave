@@ -39,6 +39,20 @@
     "starter_stakes": "緊張を高める",
     "starter_sensory": "五感の描写を加える"
   },
+  "sel": {
+    "rewrite": "書き直す",
+    "expand": "膨らませる",
+    "describe": "描写する",
+    "instruction": "例：より簡潔に…",
+    "model": "モデル",
+    "no_model": "モデルなし",
+    "too_long": "選択範囲がAIツールには長すぎます。",
+    "streaming": "生成中…",
+    "accept": "採用",
+    "discard": "破棄",
+    "stop": "停止",
+    "stale": "選択範囲が変わりました — もう一度お試しください。"
+  },
   "beats": "ビート",
   "beatsheet": {
     "title": "ビートシート",

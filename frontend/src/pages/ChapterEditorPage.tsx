@@ -32,6 +32,8 @@ import { Chat } from '@/features/chat/Chat';
 import { fireSendToChat } from '@/features/chat/context/sendToChat';
 import { registerEditorTarget } from '@/features/chat/context/editorBridge';
 import { CompositionPanel } from '@/features/composition/components/CompositionPanel';
+import { SelectionToolbar } from '@/features/composition/components/SelectionToolbar';
+import { useWorkResolution } from '@/features/composition/hooks/useWork';
 import { OutlineTree } from '@/features/composition/components/OutlineTree';
 import { useChapterPublishGate, publishGateMessages } from '@/features/composition/hooks/usePublishGate';
 
@@ -140,6 +142,17 @@ export function ChapterEditorPage() {
   // Panels
   const [rightTab, setRightTab] = useState<'history' | 'ai' | 'compose'>('history');
   const [revKey, setRevKey] = useState(0);
+
+  // T3.2 — resolve the co-writer Work (for the editor Selection Tools' projectId)
+  // + lift the active scene so the toolbar grounds on the compose panel's scene.
+  // useWorkResolution is react-query-cached, so CompositionPanel reuses this fetch.
+  const workResolution = useWorkResolution(bookId, accessToken);
+  const composeWork =
+    workResolution.data?.status === 'found' ? workResolution.data.work
+      : workResolution.data?.status === 'candidates' ? (workResolution.data.candidates[0] ?? null)
+        : null;
+  const composeProjectId = composeWork?.project_id ?? null;
+  const [activeSceneId, setActiveSceneId] = useState('');
 
   // ARCH-1 C5: when the AI panel opens (or the chapter changes while it's
   // open), auto-attach the current chapter as chat context via the existing
@@ -866,6 +879,17 @@ export function ChapterEditorPage() {
               grammarEnabled={grammarEnabled}
               editorMode={editorMode}
               className="flex-1 overflow-y-auto"
+              // T3.2: AI Selection Tools — only when a co-writer Work exists.
+              selectionMenu={composeProjectId
+                ? (editor) => (
+                    <SelectionToolbar
+                      editor={editor}
+                      projectId={composeProjectId}
+                      sceneContext={activeSceneId || null}
+                      token={accessToken}
+                    />
+                  )
+                : undefined}
             />
           )}
 
@@ -971,6 +995,8 @@ export function ChapterEditorPage() {
                   chapterId={chapterId}
                   token={accessToken}
                   onAccept={(text) => tiptapEditorRef.current?.insertAtCursor(text)}
+                  sceneId={activeSceneId}
+                  onSceneChange={setActiveSceneId}
                 />
               )}
             </div>

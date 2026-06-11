@@ -39,6 +39,20 @@
     "starter_stakes": "提高賭注",
     "starter_sensory": "增添感官細節"
   },
+  "sel": {
+    "rewrite": "改寫",
+    "expand": "擴寫",
+    "describe": "描寫",
+    "instruction": "例：更簡潔…",
+    "model": "模型",
+    "no_model": "無模型",
+    "too_long": "選取內容對 AI 工具而言過長。",
+    "streaming": "生成中…",
+    "accept": "採用",
+    "discard": "捨棄",
+    "stop": "停止",
+    "stale": "選取內容已變更 — 請重試。"
+  },
   "beats": "節拍",
   "beatsheet": {
     "title": "節拍表",

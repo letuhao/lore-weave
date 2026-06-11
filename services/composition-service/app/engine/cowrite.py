@@ -103,6 +103,56 @@ def build_messages(
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
+# T3.2 — selection-scoped operations. DISTINCT from _OPERATION_INSTRUCTIONS (scene
+# drafting): these act on a SELECTED passage the author highlighted, not a scene beat.
+# build_selection_messages RAISES on an unregistered op (no draft_scene fallback) —
+# the LOOM-39 dict.get(key, DEFAULT)-hides-a-missing-enum lesson: a typo'd op must
+# NOT silently draft a whole scene over the selection.
+_SELECTION_INSTRUCTIONS = {
+    "rewrite": "Rewrite the SELECTED PASSAGE below, preserving its events and meaning "
+               "but improving the prose. Keep roughly the same length.",
+    "expand": "Expand the SELECTED PASSAGE below with more sensory and interior detail, "
+              "preserving its meaning and continuity. It should grow longer.",
+    "describe": "Enrich the SELECTED PASSAGE below with vivid sensory and scene "
+                "description, keeping its events and meaning intact.",
+}
+
+# Generous backstop cap (chars). The FE disables the tools above this; the request
+# model's Field(max_length=...) 422s a bypass. ~8k chars ≈ a long paragraph or two.
+SELECTION_MAX_CHARS = 8000
+
+
+def build_selection_messages(
+    selection: str, profile: BookProfile, operation: str,
+    guide: str = "", grounding: str = "",
+) -> list[dict[str, str]]:
+    """T3.2 — (system, user) for a SELECTION-scoped edit (rewrite/expand/describe).
+    EXPLICIT dispatch: an unregistered operation RAISES (never falls back to a scene
+    draft — LOOM-39). `grounding` is the packer's structured blocks (canon/lore) when
+    a scene_context was supplied; empty → voice-only. Output is ONLY the revised
+    passage so the FE can replace the selection verbatim."""
+    if operation not in _SELECTION_INSTRUCTIONS:
+        raise ValueError(f"unregistered selection operation: {operation!r}")
+    lang = "" if profile.source_language in ("", "auto") else (
+        f" Write the prose in the language with code '{profile.source_language}'."
+    )
+    voice = f" Match this voice: {profile.voice}." if profile.voice else ""
+    system = (
+        "You are a co-writer editing a specific passage of a novel. Use any provided "
+        "canon, characters, and lore as grounding; never contradict the canon and "
+        "never introduce facts beyond what is given. Output ONLY the revised passage "
+        "— no preamble, no quotation marks, no commentary." + lang + voice
+    )
+    parts: list[str] = []
+    if grounding:
+        parts.append(grounding)
+    parts.append(_SELECTION_INSTRUCTIONS[operation])
+    parts.append("SELECTED PASSAGE:\n" + selection)
+    if guide:
+        parts.append("Author guidance: " + guide)
+    return [{"role": "system", "content": system}, {"role": "user", "content": "\n\n".join(parts)}]
+
+
 def build_revise_messages(
     packed_prompt: str, profile: BookProfile, draft: str,
     violations: list[Any],

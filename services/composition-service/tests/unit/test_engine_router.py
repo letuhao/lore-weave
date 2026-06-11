@@ -127,6 +127,35 @@ def _gen_body():
     return {"outline_node_id": str(NODE), "model_source": "user_model", "model_ref": str(DRAFTER)}
 
 
+# ── T3.2 selection-edit (SSE) ──
+
+def test_selection_edit_does_not_tag_the_scene_node(ctx):
+    """/review-impl HIGH regression-lock: a selection edit must NOT carry
+    outline_node_id — else (DISTINCT ON node, latest completed) it masquerades as
+    the scene's draft in chapter_scene_drafts (stitch), prior_scene_drafts (S1
+    reinjection), and the publish-gate canon count. The scene id is grounding-only,
+    kept in input.scene_context."""
+    c, _, _, _, jobs, _, captured = ctx
+    r = c.post(f"/v1/composition/works/{PROJECT}/selection-edit", json={
+        "operation": "rewrite", "selection": "the gate of ash rose",
+        "scene_context": str(NODE), "model_source": "user_model", "model_ref": str(DRAFTER)})
+    assert r.status_code == 200
+    assert jobs._last_create["outline_node_id"] is None              # NOT the scene node
+    assert jobs._last_create["input"]["scene_context"] == str(NODE)  # traceability only
+    assert jobs._last_create["input"]["selection_edit"] is True
+    assert jobs._last_create["operation"] == "rewrite"
+    # the SELECTED passage reached the drafter (a selection prompt, not a scene draft).
+    assert "the gate of ash rose" in captured["messages"][1]["content"]
+
+
+def test_selection_edit_rejects_unknown_operation(ctx):
+    c, *_ = ctx
+    r = c.post(f"/v1/composition/works/{PROJECT}/selection-edit", json={
+        "operation": "summarize", "selection": "x",
+        "model_source": "user_model", "model_ref": str(DRAFTER)})
+    assert r.status_code == 422  # Literal — no silent fallback at the API boundary
+
+
 # ── generate (SSE) ──
 
 def test_generate_streams_and_completes_job(ctx):

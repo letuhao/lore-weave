@@ -31,16 +31,22 @@ type Props = {
   chapterId: string;
   token: string | null;
   onAccept: (text: string) => void; // insert accepted prose into the editor
+  /** T3.2: the active scene can be lifted to ChapterEditorPage so the editor's
+   *  Selection Tools ground on it. Controlled-or-internal — omitted → own state. */
+  sceneId?: string;
+  onSceneChange?: (id: string) => void;
 };
 
 type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'canon' | 'threads' | 'quality' | 'settings';
 
-export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) {
+export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: sceneIdProp, onSceneChange }: Props) {
   const { t } = useTranslation('composition');
   const resolution = useWorkResolution(bookId, token);
   const createWork = useCreateWork(bookId, token);
   const [tab, setTab] = useState<SubTab>('compose');
-  const [sceneId, setSceneId] = useState<string>('');
+  const [localSceneId, setLocalSceneId] = useState<string>('');
+  const sceneId = sceneIdProp ?? localSceneId;
+  const setSceneId = onSceneChange ?? setLocalSceneId;
   const [modelRef, setModelRef] = useState<string>('');
   // T2.4: the character whose arc is shown — lifted here so the Cast codex (T2.1)
   // can launch the arc tab with a character preselected; the arc's own picker also

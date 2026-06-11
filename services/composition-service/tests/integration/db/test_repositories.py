@@ -1010,6 +1010,25 @@ async def test_correction_stats_rates_by_mode(pool):
     assert all(m.generations == 0 and m.corrected_jobs == 0 for m in other.by_mode)
 
 
+async def test_correction_stats_excludes_selection_edits(pool):
+    """/review-impl: T3.2 selection edits run mode='cowrite' but are NOT part of the
+    draft-correction flywheel (no correction captured) — they must NOT inflate the
+    cowrite `generations` denominator, which would drag its correction rate down and
+    corrupt the cowrite-vs-auto eval signal."""
+    gjr = GenerationJobsRepo(pool)
+    cr = GenerationCorrectionsRepo(pool)
+    user, project, _ = _ids()
+    # one real cowrite scene draft + two selection edits (also mode='cowrite').
+    await gjr.create(user, project, operation="draft_scene", mode="cowrite", status="completed")
+    await gjr.create(user, project, operation="rewrite", mode="cowrite", status="completed",
+                     input={"selection_edit": True})
+    await gjr.create(user, project, operation="expand", mode="cowrite", status="completed",
+                     input={"selection_edit": True})
+    stats = await cr.correction_stats(user, project)
+    cw = next(m for m in stats.by_mode if m.mode == "cowrite")
+    assert cw.generations == 1  # ONLY the real scene draft, not the 2 selection edits
+
+
 async def test_correction_stats_distinct_job_and_completed_only(pool):
     """/review-impl slice-5 MED#1+#2: multiple corrections on ONE job count it
     ONCE (a rate can't exceed 1.0), and a correction on a NON-completed job is

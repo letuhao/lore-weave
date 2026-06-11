@@ -283,3 +283,6 @@ export type StreamEvent =
   | { type: 'capped' }
   | { type: 'error'; error: string }
   | { type: 'done'; job_id: string; status: string; output_tokens?: number; measured?: boolean; capped?: boolean; replay?: boolean };
+
+// T3.2 — selection-scoped AI operations on highlighted prose.
+export type SelectionOperation = 'rewrite' | 'expand' | 'describe';

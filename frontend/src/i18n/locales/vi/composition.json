@@ -39,6 +39,20 @@
     "starter_stakes": "nâng cao thử thách",
     "starter_sensory": "thêm chi tiết giác quan"
   },
+  "sel": {
+    "rewrite": "Viết lại",
+    "expand": "Mở rộng",
+    "describe": "Miêu tả",
+    "instruction": "vd. ngắn gọn hơn…",
+    "model": "Mô hình",
+    "no_model": "Chưa có mô hình",
+    "too_long": "Vùng chọn quá dài cho công cụ AI.",
+    "streaming": "Đang tạo…",
+    "accept": "Chấp nhận",
+    "discard": "Bỏ",
+    "stop": "Dừng",
+    "stale": "Vùng chọn đã thay đổi — hãy thử lại."
+  },
   "beats": "Nhịp",
   "beatsheet": {
     "title": "Bảng nhịp",

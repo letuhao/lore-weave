@@ -130,6 +130,10 @@ export const compositionApi = {
   generateUrl(projectId: string): string {
     return `${apiBase()}${BASE}/works/${projectId}/generate`;
   },
+  // T3.2 — the SSE selection-edit POST (rewrite/expand/describe over a selection).
+  selectionEditUrl(projectId: string): string {
+    return `${apiBase()}${BASE}/works/${projectId}/selection-edit`;
+  },
   // V1 slice 3 — auto (diverge→converge): NON-streaming POST that returns the
   // winner + all K candidate texts (the human-gate cards).
   generateAuto(projectId: string, params: AutoGenerateParams, token: string): Promise<AutoGeneration> {

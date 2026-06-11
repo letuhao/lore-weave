@@ -39,6 +39,20 @@
     "starter_stakes": "raise the stakes",
     "starter_sensory": "add sensory detail"
   },
+  "sel": {
+    "rewrite": "Rewrite",
+    "expand": "Expand",
+    "describe": "Describe",
+    "instruction": "e.g. terser…",
+    "model": "Model",
+    "no_model": "No model",
+    "too_long": "Selection too long for AI tools.",
+    "streaming": "Generating…",
+    "accept": "Accept",
+    "discard": "Discard",
+    "stop": "Stop",
+    "stale": "The selection changed — try again."
+  },
   "beats": "Beats",
   "beatsheet": {
     "title": "Beat Sheet",

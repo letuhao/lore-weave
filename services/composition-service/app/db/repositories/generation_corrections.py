@@ -183,6 +183,12 @@ class GenerationCorrectionsRepo:
             LEFT JOIN generation_correction c
               ON c.job_id = j.id AND c.user_id = j.user_id
             WHERE j.user_id = $1 AND j.project_id = $2
+              -- /review-impl: T3.2 selection edits run mode='cowrite' but are NOT
+              -- part of the draft-correction flywheel (no correction is captured),
+              -- so they'd inflate the cowrite `generations` denominator and drag its
+              -- correction rate down — corrupting the cowrite-vs-auto eval signal.
+              -- Exclude them (audit-shared-table-consumers on a new row-type).
+              AND NOT coalesce((j.input->>'selection_edit')::boolean, false)
             GROUP BY j.mode
             """,
             user_id, project_id,
