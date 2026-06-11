@@ -145,9 +145,16 @@ async def _generate_one(
     await _set_pass(repo, job.job_id, entity_id, "verify")
     verify = await verify_article(gen.ir, context, profile)
     await _set_pass(repo, job.job_id, entity_id, "revise")
+    # W5 — the corrective revise can use a separate model. Paired on revise_model_ref
+    # (set ⇒ use its source, defaulting to 'user_model'); else reuse the prose model.
+    if job.revise_model_ref:
+        revise_source = job.revise_model_source or "user_model"
+        revise_ref = job.revise_model_ref
+    else:
+        revise_source, revise_ref = job.model_source, job.model_ref
     gen, verify = await revise_article(
         gen=gen, verify=verify, context=context, profile=profile, llm=clients.llm,
-        user_id=str(job.user_id), model_source=job.model_source, model_ref=job.model_ref,
+        user_id=str(job.user_id), model_source=revise_source, model_ref=revise_ref,
     )
     if gen.ir is None:
         return EntityResult("skipped", name=name)

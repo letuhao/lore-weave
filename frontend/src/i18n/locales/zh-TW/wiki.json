@@ -70,6 +70,11 @@
       "llmHint": "以所選模型生成附引用的文章。",
       "pickRequired": "選擇模型…"
     },
+    "reviseModel": {
+      "label": "修訂模型（選填）",
+      "same": "與生成模型相同",
+      "hint": "僅用於對 canon 標記文章的修正重新生成。"
+    },
     "kinds": {
       "label": "限定類別（選填）",
       "hint": "留空則生成所有實體類別。"

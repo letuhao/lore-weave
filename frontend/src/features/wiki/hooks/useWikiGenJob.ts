@@ -15,6 +15,9 @@ export interface TriggerArgs {
   /** Single-article regenerate (M7b-2b): generate exactly these entities. */
   entity_ids?: string[];
   max_spend_usd?: number;
+  /** W5 — optional override model for the corrective revise re-gen. */
+  revise_model_ref?: string;
+  revise_model_source?: string;
 }
 
 /**
@@ -97,6 +100,13 @@ export function useWikiGenJob(bookId: string) {
                   model_ref: args.model_ref,
                   model_source: args.model_source || 'user_model',
                   ...(args.max_spend_usd != null ? { max_spend_usd: args.max_spend_usd } : {}),
+                  // W5 — forward the revise-model override only when set (paired).
+                  ...(args.revise_model_ref
+                    ? {
+                        revise_model_ref: args.revise_model_ref,
+                        revise_model_source: args.revise_model_source || 'user_model',
+                      }
+                    : {}),
                 }
               : {}),
           },

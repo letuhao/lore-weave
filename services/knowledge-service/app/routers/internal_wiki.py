@@ -252,6 +252,9 @@ class WikiGenerateRequest(BaseModel):
     #: the selection by kind and passes explicit ids); generate-ALL is a follow-up.
     entity_ids: list[str] = Field(default_factory=list)
     max_spend_usd: Decimal | None = None
+    #: W5 — optional override model for the corrective revise re-gen (null = prose).
+    revise_model_ref: str | None = None
+    revise_model_source: str | None = None
 
 
 @router.post("/books/{book_id}/wiki/generate", status_code=status.HTTP_202_ACCEPTED)
@@ -276,6 +279,7 @@ async def trigger_wiki_generation(
             model_source=req.model_source, model_ref=req.model_ref,
             entity_ids=req.entity_ids, max_spend_usd=req.max_spend_usd,
             items_total=len(req.entity_ids),
+            revise_model_ref=req.revise_model_ref, revise_model_source=req.revise_model_source,
         )
     except ActiveJobExists as exc:
         raise HTTPException(

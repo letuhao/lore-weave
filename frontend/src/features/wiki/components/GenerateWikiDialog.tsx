@@ -51,6 +51,9 @@ export function GenerateWikiDialog({
   // deterministic regenerate is a no-op, so there is no stub choice).
   const [mode, setMode] = useState<'stub' | 'llm'>(isRegen ? 'llm' : 'stub');
   const [modelRef, setModelRef] = useState('');
+  // W5 — optional override model for the corrective revise re-gen ('' = same as
+  // the generation model). Only meaningful on the AI path.
+  const [reviseModelRef, setReviseModelRef] = useState('');
   const [kindCodes, setKindCodes] = useState<string[]>([]);
   const [maxSpend, setMaxSpend] = useState('');
 
@@ -62,6 +65,7 @@ export function GenerateWikiDialog({
     if (open) {
       setMode(isRegen ? 'llm' : 'stub');
       setModelRef('');
+      setReviseModelRef('');
       setKindCodes([]);
       setMaxSpend('');
     }
@@ -73,6 +77,7 @@ export function GenerateWikiDialog({
     setMode(m);
     if (m === 'stub') {
       setModelRef('');
+      setReviseModelRef('');
       setMaxSpend('');
     }
   };
@@ -123,6 +128,8 @@ export function GenerateWikiDialog({
         // Regenerate scopes by explicit entity ids; batch scopes by kind.
         ...(isRegen ? { entity_ids: entityIds } : kindCodes.length ? { kind_codes: kindCodes } : {}),
         ...(isLlm && maxSpend !== '' ? { max_spend_usd: Number(maxSpend) } : {}),
+        // W5 — send the revise-model override only when chosen (the hook pairs the source).
+        ...(isLlm && reviseModelRef ? { revise_model_ref: reviseModelRef } : {}),
       });
       onClose();
     } catch {
@@ -219,6 +226,29 @@ export function GenerateWikiDialog({
               ))}
             </select>
             {isRegen && <span className="text-[11px] text-muted-foreground">{t('gen.regenHint')}</span>}
+          </label>
+        )}
+
+        {/* W5 — optional revise-model override (AI path). '' = same as generation;
+            only used for the corrective re-gen of canon-flagged articles. */}
+        {(isRegen || isLlm) && (
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground">{t('gen.reviseModel.label')}</span>
+            <select
+              value={reviseModelRef}
+              onChange={(e) => setReviseModelRef(e.target.value)}
+              disabled={modelsQuery.isLoading}
+              data-testid="wiki-gen-revise-model"
+              className="rounded-md border bg-input px-3 py-2 text-sm outline-none focus:border-ring disabled:opacity-60"
+            >
+              <option value="">{t('gen.reviseModel.same')}</option>
+              {chatModels.map((m) => (
+                <option key={m.user_model_id} value={m.user_model_id}>
+                  {m.alias ? `${m.alias} (${m.provider_model_name})` : `${m.provider_kind}/${m.provider_model_name}`}
+                </option>
+              ))}
+            </select>
+            <span className="text-[11px] text-muted-foreground">{t('gen.reviseModel.hint')}</span>
           </label>
         )}
 

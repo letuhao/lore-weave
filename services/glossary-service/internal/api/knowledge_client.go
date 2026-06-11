@@ -119,6 +119,7 @@ func (s *Server) fetchWikiNeighborhood(ctx context.Context, ownerUserID, glossar
 func (s *Server) triggerWikiGeneration(
 	ctx context.Context, bookID, userID uuid.UUID,
 	modelSource, modelRef string, entityIDs []string, maxSpendUSD *float64,
+	reviseModelSource, reviseModelRef string,
 ) (status int, respBody []byte, err error) {
 	base := strings.TrimRight(s.cfg.KnowledgeServiceURL, "/")
 	if base == "" {
@@ -132,6 +133,12 @@ func (s *Server) triggerWikiGeneration(
 	}
 	if maxSpendUSD != nil {
 		payload["max_spend_usd"] = *maxSpendUSD
+	}
+	// W5 — forward the optional revise-model override only when set (both keys
+	// together or neither), so knowledge sees null → prose-model fallback.
+	if reviseModelRef != "" {
+		payload["revise_model_ref"] = reviseModelRef
+		payload["revise_model_source"] = reviseModelSource
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

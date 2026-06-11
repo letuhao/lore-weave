@@ -292,3 +292,57 @@ func TestFetchKgHashes_NotConfiguredErrors(t *testing.T) {
 		t.Fatal("fetchKgHashes: expected error when knowledge-service unconfigured")
 	}
 }
+
+// W5 (D-WIKI-PER-STEP-MODEL) — the trigger delegate forwards the optional
+// revise-model override (both keys together) only when a revise ref is given.
+func TestTriggerWikiGeneration_ForwardsReviseModel(t *testing.T) {
+	book, user := uuid.New(), uuid.New()
+	var gotBody map[string]any
+	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &gotBody)
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"job_id":"j1","status":"pending"}`))
+	}))
+	defer stub.Close()
+
+	srv := newJobProxyServer(stub.URL)
+	st, _, err := srv.triggerWikiGeneration(
+		context.Background(), book, user, "user_model", "m1", []string{"e1"}, nil,
+		"user_model", "rm")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if st != http.StatusAccepted {
+		t.Fatalf("want 202, got %d", st)
+	}
+	if gotBody["revise_model_ref"] != "rm" {
+		t.Fatalf("revise_model_ref not forwarded: %v", gotBody["revise_model_ref"])
+	}
+	if gotBody["revise_model_source"] != "user_model" {
+		t.Fatalf("revise_model_source not forwarded: %v", gotBody["revise_model_source"])
+	}
+}
+
+func TestTriggerWikiGeneration_OmitsReviseModelWhenEmpty(t *testing.T) {
+	var gotBody map[string]any
+	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &gotBody)
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer stub.Close()
+
+	srv := newJobProxyServer(stub.URL)
+	if _, _, err := srv.triggerWikiGeneration(
+		context.Background(), uuid.New(), uuid.New(), "user_model", "m1", []string{"e1"}, nil,
+		"", ""); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, present := gotBody["revise_model_ref"]; present {
+		t.Fatal("revise_model_ref should be omitted when no override is given")
+	}
+	if _, present := gotBody["revise_model_source"]; present {
+		t.Fatal("revise_model_source should be omitted when no override is given")
+	}
+}

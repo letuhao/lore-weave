@@ -951,6 +951,10 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 		// of resolving by kind — so a "Regenerate" button re-runs exactly one
 		// entity (the clobber-guard still protects any human-edited article).
 		EntityIDs []string `json:"entity_ids"`
+		// wiki-llm W5 — optional override model for the corrective revise re-gen
+		// (null/empty ⇒ knowledge reuses the prose model). Forwarded as a pair.
+		ReviseModelRef    string `json:"revise_model_ref"`
+		ReviseModelSource string `json:"revise_model_source"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "WIKI_BAD_REQUEST", "invalid JSON body")
@@ -984,8 +988,15 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 		if modelSource == "" {
 			modelSource = "user_model"
 		}
+		// W5 — pair the revise source with its ref (default 'user_model' when a
+		// revise ref is given without an explicit source); empty ref = no override.
+		reviseSource := req.ReviseModelSource
+		if req.ReviseModelRef != "" && reviseSource == "" {
+			reviseSource = "user_model"
+		}
 		status, body, err := s.triggerWikiGeneration(
-			r.Context(), bookID, userID, modelSource, req.ModelRef, entityIDs, req.MaxSpendUSD)
+			r.Context(), bookID, userID, modelSource, req.ModelRef, entityIDs, req.MaxSpendUSD,
+			reviseSource, req.ReviseModelRef)
 		if err != nil {
 			slog.Error("generateWikiStubs delegate", "error", err)
 			writeError(w, http.StatusBadGateway, "WIKI_DELEGATE", "generation service unavailable")

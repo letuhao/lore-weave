@@ -60,12 +60,16 @@ class WikiGenJob(BaseModel):
     results: dict[str, Any] = {}
     current_entity_id: str | None = None
     current_pass: str | None = None
+    # W5 — optional second model for the corrective revise re-gen (null = prose model).
+    revise_model_ref: str | None = None
+    revise_model_source: str | None = None
 
 
 _COLS = (
     "job_id, user_id, project_id, book_id, status, model_source, model_ref, "
     "entity_ids, items_done, max_spend_usd, items_total, items_processed, "
-    "cost_spent_usd, error_message, results, current_entity_id, current_pass"
+    "cost_spent_usd, error_message, results, current_entity_id, current_pass, "
+    "revise_model_ref, revise_model_source"
 )
 
 
@@ -93,6 +97,8 @@ def _row_to_job(row: asyncpg.Record) -> WikiGenJob:
         error_message=row["error_message"],
         results=_parse_obj(row["results"]),
         current_entity_id=row["current_entity_id"], current_pass=row["current_pass"],
+        revise_model_ref=row["revise_model_ref"],
+        revise_model_source=row["revise_model_source"],
     )
 
 
@@ -104,21 +110,26 @@ class WikiGenJobsRepo:
         self, *, user_id: UUID, project_id: UUID, book_id: UUID,
         model_source: str, model_ref: str, entity_ids: list[str],
         max_spend_usd: Decimal | None, items_total: int | None,
+        revise_model_ref: str | None = None, revise_model_source: str | None = None,
     ) -> WikiGenJob:
         """Insert a pending job. The per-book partial-unique index makes a 2nd
-        active job for the book raise UniqueViolation → :class:`ActiveJobExists`."""
+        active job for the book raise UniqueViolation → :class:`ActiveJobExists`.
+        ``revise_model_*`` (W5) is the optional corrective-revise override (null =
+        the revise reuses the prose model)."""
         try:
             async with self._pool.acquire() as conn:
                 row = await conn.fetchrow(
                     f"""
                     INSERT INTO wiki_gen_jobs
                       (user_id, project_id, book_id, model_source, model_ref,
-                       entity_ids, max_spend_usd, items_total)
-                    VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8)
+                       entity_ids, max_spend_usd, items_total,
+                       revise_model_ref, revise_model_source)
+                    VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10)
                     RETURNING {_COLS}
                     """,
                     user_id, project_id, book_id, model_source, model_ref,
                     json.dumps([str(e) for e in entity_ids]), max_spend_usd, items_total,
+                    revise_model_ref or None, revise_model_source or None,
                 )
             return _row_to_job(row)
         except asyncpg.UniqueViolationError:

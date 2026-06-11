@@ -70,6 +70,11 @@
       "llmHint": "Generates grounded articles with citations via the selected model.",
       "pickRequired": "Select a model…"
     },
+    "reviseModel": {
+      "label": "Revise model (optional)",
+      "same": "Same as generation",
+      "hint": "Used only for the corrective re-generation of canon-flagged articles."
+    },
     "kinds": {
       "label": "Limit to kinds (optional)",
       "hint": "Leave empty to generate for all entity kinds."

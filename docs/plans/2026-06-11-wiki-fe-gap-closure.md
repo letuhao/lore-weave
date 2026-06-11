@@ -55,10 +55,10 @@ The richest mockup screen; the banner is a bare strip today. Slice in two:
 - **W4b (FE) · M · ✅ DONE 2026-06-11 (PO at CLARIFY: collapsible panel persists after run + labeled step counter):** new `WikiGenJobDetail.tsx` — a collapsible panel under the banner, one row per `results` entry (outcome icon · name · cites · flags), sorted processing-first; the live entity's row shows a spinner + `Verifying… (3/5)` mapping the 5 BE passes; `expanded = open ?? isActive` (auto-open running → auto-collapse complete, toggle sticks), dismissable, `N queued` footer, `key={job_id}` reset. `types.ts` +`WikiGenPass`/`WikiEntityResult` + extended `WikiGenJobStatus` (the hook needs no change — fields arrive on `job` via the verbatim proxy). `WikiTab` mounts it after both banners. i18n ×4 `gen.results`/`gen.outcome`/`gen.pass`. vitest 7. FE-only.
 - **Acceptance:** during/after a run the FE lists each entity's outcome with citation count + warning flag; matches the audit's screen-③ gap. **✅ met.**
 
-### W5 — Per-step verify model (screen ②) · **cross-service** · M · **OPTIONAL — decision-gated**
-The mockup shows separate prose + verify models; **neither layer supports it** (a never-built design idea, not incomplete work). Only build if the PO wants it.
-- BE: add `verify_model_ref`/`verify_model_source` to `wiki_gen_jobs` + thread into `verify_article`/`revise_article` (fall back to the prose model when null). FE: a second picker in the dialog.
-- Tracked as **DEFERRED `D-WIKI-PER-STEP-MODEL`** until the PO decides; do NOT build by default.
+### W5 — Per-step revise model (screen ②) · **cross-service XL** · ✅ DONE 2026-06-11 (PO greenlit — clears DEFERRED 076)
+The mockup showed separate prose + verify models. Reality: `verify_article` is **rule-based** (CanonVerifier, no LLM) — so the second model drives `revise_article`'s corrective re-gen ("write with A, fix canon-flagged articles with B"); null ⇒ prose model. Named `revise_model_*`. Full spec/plan: [`2026-06-11-wiki-w5-per-step-model.md`](2026-06-11-wiki-w5-per-step-model.md).
+- BE: `wiki_gen_jobs` +`revise_model_ref`/`revise_model_source` (additive nullable) threaded `WikiGenerateRequest`→`create`→orchestrator (paired fallback keyed on the ref). Glossary `triggerWikiGeneration`/`generateWikiStubs` forward both (omit-when-empty). FE: an optional 2nd picker (AI mode, batch + regen, default "Same as generation").
+- **Acceptance:** picking a different revise model + an article that trips a canon flag runs the corrective revise with the override; clean articles unaffected; null ⇒ prose model. **✅ met** (each hop unit-proven; end-to-end → `D-WIKI-W5-LIVE-SMOKE`).
 
 ---
 

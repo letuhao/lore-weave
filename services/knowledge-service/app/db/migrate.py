@@ -883,6 +883,14 @@ ALTER TABLE wiki_gen_jobs
   ADD COLUMN IF NOT EXISTS results            JSONB NOT NULL DEFAULT '{}',
   ADD COLUMN IF NOT EXISTS current_entity_id  TEXT,
   ADD COLUMN IF NOT EXISTS current_pass       TEXT;
+
+-- wiki-llm W5 (D-WIKI-PER-STEP-MODEL) — an OPTIONAL second model for the
+-- corrective revise re-gen ("write with A, fix canon-flagged articles with B").
+-- NULL ⇒ the revise reuses the prose model_ref/model_source (unchanged behavior).
+-- verify_article is rule-based (no LLM), so this only affects revise_article.
+ALTER TABLE wiki_gen_jobs
+  ADD COLUMN IF NOT EXISTS revise_model_ref    TEXT,
+  ADD COLUMN IF NOT EXISTS revise_model_source TEXT;
 """
 
 

@@ -84,6 +84,9 @@ export const wikiApi = {
       model_ref?: string;
       model_source?: string;
       max_spend_usd?: number;
+      // W5 — optional override model for the corrective revise re-gen.
+      revise_model_ref?: string;
+      revise_model_source?: string;
     },
     token: string,
   ): Promise<WikiGenerateResult> {

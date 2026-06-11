@@ -37,7 +37,7 @@ function wrap(ui: React.ReactElement) {
 // W3 — switch the batch dialog into AI mode (the model picker only renders here).
 async function toAiMode() {
   fireEvent.click(screen.getByTestId('wiki-gen-mode-llm'));
-  await waitFor(() => expect(screen.getByRole('option', { name: /Gemma/ })).toBeTruthy());
+  await waitFor(() => expect(screen.getAllByRole('option', { name: /Gemma/ })[0]).toBeTruthy());
 }
 
 beforeEach(() => {
@@ -167,7 +167,7 @@ describe('GenerateWikiDialog', () => {
         regenName="Dracula"
       />,
     );
-    await waitFor(() => expect(screen.getByRole('option', { name: /Gemma/ })).toBeTruthy());
+    await waitFor(() => expect(screen.getAllByRole('option', { name: /Gemma/ })[0]).toBeTruthy());
     // regen is always AI — no mode toggle, picker shown directly
     expect(screen.queryByTestId('wiki-gen-mode-stub')).toBeNull();
     // no model picked yet → confirm disabled (deterministic regen would be a no-op)
@@ -195,7 +195,7 @@ describe('GenerateWikiDialog', () => {
         regenName="Dracula"
       />,
     );
-    await waitFor(() => expect(screen.getByRole('option', { name: /Gemma/ })).toBeTruthy());
+    await waitFor(() => expect(screen.getAllByRole('option', { name: /Gemma/ })[0]).toBeTruthy());
     fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
     // 3 entities × $0.05 ≈ $0.15
     await waitFor(() => {
@@ -223,6 +223,59 @@ describe('GenerateWikiDialog', () => {
     await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-stub')).toBeTruthy());
     expect(screen.queryByTestId('wiki-gen-estimate')).toBeNull();
     expect(getGenConfig).not.toHaveBeenCalled();
+  });
+
+  it('forwards an optional revise model only when chosen (W5)', async () => {
+    const onTrigger = vi.fn().mockResolvedValue({ job_id: 'j1', status: 'pending' });
+    wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={onTrigger} busy={false} />);
+    await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-llm')).toBeTruthy());
+    await toAiMode();
+    fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
+    // the revise picker defaults to "same as generation" (value '') → no override sent
+    expect((screen.getByTestId('wiki-gen-revise-model') as HTMLSelectElement).value).toBe('');
+    fireEvent.change(screen.getByTestId('wiki-gen-revise-model'), { target: { value: 'm1' } });
+    fireEvent.click(screen.getByTestId('wiki-gen-confirm'));
+    await waitFor(() =>
+      expect(onTrigger).toHaveBeenCalledWith({ model_ref: 'm1', revise_model_ref: 'm1' }),
+    );
+  });
+
+  it('regen mode forwards a revise model alongside entity_ids (W5)', async () => {
+    const onTrigger = vi.fn().mockResolvedValue({ job_id: 'j1', status: 'pending' });
+    wrap(
+      <GenerateWikiDialog
+        open
+        onClose={() => {}}
+        onTrigger={onTrigger}
+        busy={false}
+        entityIds={['e-42']}
+        regenName="Dracula"
+      />,
+    );
+    // regen shows both pickers directly (always AI, no toggle)
+    await waitFor(() => expect(screen.getAllByRole('option', { name: /Gemma/ })[0]).toBeTruthy());
+    fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
+    fireEvent.change(screen.getByTestId('wiki-gen-revise-model'), { target: { value: 'm1' } });
+    fireEvent.click(screen.getByTestId('wiki-gen-confirm'));
+    await waitFor(() =>
+      expect(onTrigger).toHaveBeenCalledWith({ model_ref: 'm1', entity_ids: ['e-42'], revise_model_ref: 'm1' }),
+    );
+  });
+
+  it('omits the revise model when left at "same as generation"', async () => {
+    const onTrigger = vi.fn().mockResolvedValue({ job_id: 'j1', status: 'pending' });
+    wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={onTrigger} busy={false} />);
+    await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-llm')).toBeTruthy());
+    await toAiMode();
+    fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
+    fireEvent.click(screen.getByTestId('wiki-gen-confirm'));
+    await waitFor(() => expect(onTrigger).toHaveBeenCalledWith({ model_ref: 'm1' }));
+  });
+
+  it('hides the revise picker in stub mode', async () => {
+    wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={vi.fn()} busy={false} />);
+    await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-stub')).toBeTruthy());
+    expect(screen.queryByTestId('wiki-gen-revise-model')).toBeNull();
   });
 
   it('blocks confirm on an invalid spend cap', async () => {

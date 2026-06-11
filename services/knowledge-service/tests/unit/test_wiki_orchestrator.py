@@ -17,7 +17,8 @@ from app.db.repositories.wiki_gen_jobs import WikiGenJob
 from app.wiki.orchestrator import OrchestratorClients, run_wiki_gen_job
 
 
-def _job(entity_ids, *, items_done=None, max_spend=None, cost_spent="0") -> WikiGenJob:
+def _job(entity_ids, *, items_done=None, max_spend=None, cost_spent="0",
+         revise_model_ref=None, revise_model_source=None) -> WikiGenJob:
     return WikiGenJob(
         job_id=uuid4(), user_id=uuid4(), project_id=uuid4(), book_id=uuid4(),
         status="pending", model_source="user_model", model_ref="m1",
@@ -25,6 +26,7 @@ def _job(entity_ids, *, items_done=None, max_spend=None, cost_spent="0") -> Wiki
         max_spend_usd=Decimal(max_spend) if max_spend else None,
         items_total=len(entity_ids), items_processed=0,
         cost_spent_usd=Decimal(cost_spent),
+        revise_model_ref=revise_model_ref, revise_model_source=revise_model_source,
     )
 
 
@@ -258,3 +260,53 @@ async def test_writeback_failure_is_recorded():
         await _run(job, clients, repo)
     finals = [c.args[2]["outcome"] for c in repo.record_result.await_args_list]
     assert "writeback_failed" in finals  # recorded even though not marked done
+
+
+# ── W5: the corrective revise can use a separate model ────────────────────────
+
+
+def _patched_revise():
+    """A patch.multiple context that exposes the revise_article mock for kwargs asserts."""
+    revise = AsyncMock(side_effect=lambda **k: (_ok_gen(), _verify()))
+    ctx = patch.multiple(
+        "app.wiki.orchestrator",
+        gather_entity_context=AsyncMock(return_value=_ctx()),
+        generate_article=AsyncMock(return_value=_ok_gen()),
+        verify_article=AsyncMock(return_value=_verify()),
+        revise_article=revise,
+        compose_provenance_cites=AsyncMock(return_value=[]),
+        compute_build_inputs=MagicMock(return_value={}),
+        build_writeback_body=MagicMock(return_value={}),
+    )
+    return ctx, revise
+
+
+@pytest.mark.asyncio
+async def test_revise_uses_override_model_when_set():
+    job, clients, repo = _job(["e1"], revise_model_ref="rm", revise_model_source="user_model"), _clients(), _repo()
+    ctx, revise = _patched_revise()
+    with ctx:
+        await _run(job, clients, repo)
+    assert revise.await_args.kwargs["model_ref"] == "rm"
+    assert revise.await_args.kwargs["model_source"] == "user_model"
+
+
+@pytest.mark.asyncio
+async def test_revise_falls_back_to_prose_model_when_unset():
+    job, clients, repo = _job(["e1"]), _clients(), _repo()  # no revise override
+    ctx, revise = _patched_revise()
+    with ctx:
+        await _run(job, clients, repo)
+    # the prose model (m1/user_model) drives the revise when no override is set
+    assert revise.await_args.kwargs["model_ref"] == "m1"
+    assert revise.await_args.kwargs["model_source"] == "user_model"
+
+
+@pytest.mark.asyncio
+async def test_revise_source_defaults_when_ref_set_without_source():
+    job, clients, repo = _job(["e1"], revise_model_ref="rm"), _clients(), _repo()  # ref but no source
+    ctx, revise = _patched_revise()
+    with ctx:
+        await _run(job, clients, repo)
+    assert revise.await_args.kwargs["model_ref"] == "rm"
+    assert revise.await_args.kwargs["model_source"] == "user_model"  # paired default
