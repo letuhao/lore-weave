@@ -1208,6 +1208,11 @@ async def _extract_and_persist(
     is_last_chapter_of_book: bool = False,
     embedding_model_uuid: str | None = None,
     embedding_dimension: int | None = None,
+    # E0-3 Phase 2a-2 — BYOK billing identity forwarded onto the summary
+    # pipeline enqueued by /persist-pass2 (None ⇒ owner-triggered/legacy).
+    billing_user_id: str | None = None,
+    billing_llm_model: str | None = None,
+    billing_embedding_model: str | None = None,
 ) -> tuple[ExtractionResult, "Pass2Candidates | None"]:
     """Phase 4b-γ — replaces the legacy `knowledge_client.extract_item`.
 
@@ -1322,6 +1327,9 @@ async def _extract_and_persist(
         embedding_model_uuid=embedding_model_uuid,
         embedding_dimension=embedding_dimension,
         writer_autocreate=writer_autocreate,
+        billing_user_id=billing_user_id,
+        billing_llm_model=billing_llm_model,
+        billing_embedding_model=billing_embedding_model,
     )
     return persist_result, candidates
 
@@ -1633,6 +1641,15 @@ async def process_job(
                     embedding_dimension=(
                         job.embedding_dimension if p3_hierarchy_paths else None
                     ),
+                    # E0-3 2a-2 — forward the job's billing identity so the
+                    # summary pipeline this persist enqueues bills the caller
+                    # (None on the owner path → legacy). Storage tag stays the
+                    # project's embedding_model above.
+                    billing_user_id=(
+                        str(job.billing_user_id) if job.billing_user_id else None
+                    ),
+                    billing_llm_model=job.billing_llm_model,
+                    billing_embedding_model=job.billing_embedding_model,
                 )
 
                 if result.error:

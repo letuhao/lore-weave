@@ -29,9 +29,15 @@
 7. **Tests:** `eff_*` + `assert_billing_complete` (fail-safe) unit; `submit_and_wait` billing-contextvar override; repo create persists NULL billing; SELECT round-trips the 3 cols.
 
 ## Commit 2a-2 — embedder caller-attribution (separate commit, same slice)
-- `persist-pass2` request gains `billing_user_id`/`billing_embedding_model`; threads to `passage_ingester` (provider call uses billing, `upsert_passage.embedding_model` stays project's).
-- `summary.*` message gains billing fields → `summary_processor.embed` uses billing ref, stores project tag.
-- `entity_embedder.embed` uses billing ref.
+
+**▶ SCOPE CORRECTION (2026-06-11 build, traced triggers).** The design's "3 embedder sites" conflated trigger sources. The ONLY embedding a collaborator's **extraction job** triggers is the **summary pipeline** (`pass2_orchestrator` enqueues `summary.*` → `summary_processor`), which makes **two** provider calls — an LLM `summarize_level` AND an embed. The other two are NOT extraction-triggered:
+- **`passage_ingester` (raw-search passages)** — triggered by **`chapter.updated` events** (`events/handlers.py`), under the event's owner `user_id`. A *collaborator editing a chapter* bills the owner — a real BYOK concern, but on the **chapter-edit→event** path, independent of extraction. → **`D-E0-PASSAGE-EVENT-CALLER-PAYS`** (new row).
+- **`entity_embedder` (`/embed-entities-backfill`)** — no in-repo caller; triggered externally/manually, owner/project-scoped like benchmark. → **`D-E0-ENTITY-BACKFILL-CALLER-PAYS`** (new row) if a collaborator can ever trigger it.
+
+**⇒ 2b route-reopen is coupled to 2a-2 (summary billing) ONLY**, not passage/entity. 2a-2 thread (all additive, NULL=legacy):
+- `SummarizeMessage` (+ redis serde) gains `billing_user_id`/`billing_llm_model`/`billing_embedding_model`; resolvers **gate on billing_user_id** (MED-1 lesson).
+- `pass2_orchestrator.enqueue_chapter_and_maybe_book_summaries` accepts + stamps them on all 3 `SummarizeMessage` (chapter/part/book); `persist_pass2` (worker→knowledge) + `PersistPass2Request` carry them from the job.
+- worker `summary_consumer` forwards the billing fields (redis → `/summarize-message`); `SummarizeMessageRequest` + the endpoint bind `_EmbeddingAdapter(user_id=billing or owner)` + LLM under billing; **storage tag stays `embedding_model_uuid` (project's)** at every upsert/index/cache site.
 
 ## Out of scope (2b / tracked)
 - Route `require_project_principals`, OWNER→EDIT, dimension-guard 409 — **2b**.
