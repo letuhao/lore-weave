@@ -10,6 +10,7 @@ import { aiModelsApi } from '../../ai-models/api';
 import { useChapterScenes, useCreateScene, useCreateWork, useSetSceneStatus, useWorkResolution } from '../hooks/useWork';
 import type { Work } from '../types';
 import { ComposeView } from './ComposeView';
+import { CoWriterChat } from './CoWriterChat';
 import { ChapterAssembleView } from './ChapterAssembleView';
 import { PlannerView } from './PlannerView';
 import { BeatSheetView } from './BeatSheetView';
@@ -32,7 +33,7 @@ type Props = {
   onAccept: (text: string) => void; // insert accepted prose into the editor
 };
 
-type SubTab = 'compose' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'canon' | 'threads' | 'quality' | 'settings';
+type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'canon' | 'threads' | 'quality' | 'settings';
 
 export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) {
   const { t } = useTranslation('composition');
@@ -48,6 +49,9 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
   // T2.5: the Cast search is lifted here so the World Map can "open a place in the
   // codex" by prefilling its name + switching to the cast tab.
   const [castSearch, setCastSearch] = useState('');
+  // T3.1: the compose guide is lifted here so the co-writer chat's "Use as guide"
+  // can pre-fill it (then switch to the compose tab).
+  const [composeGuide, setComposeGuide] = useState('');
 
   const res = resolution.data;
   // 'found' → the marked Work; 'candidates' (rare multi-marked) → the first,
@@ -174,7 +178,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
 
       {/* sub-tabs */}
       <div className="flex gap-1 border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700">
-        {(['compose', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'quality', 'settings'] as SubTab[]).map((tb) => (
+        {(['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'quality', 'settings'] as SubTab[]).map((tb) => (
           <button
             key={tb}
             data-testid={`composition-subtab-${tb}`}
@@ -205,6 +209,15 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
             modelName={selectedModel?.provider_model_name}
             token={token}
             onAccept={onAccept}
+            guide={composeGuide}
+            onGuideChange={setComposeGuide}
+          />
+        </div>
+        <div className={tab === 'cowriter' ? '' : 'hidden'}>
+          <CoWriterChat
+            bookId={bookId}
+            onAccept={onAccept}
+            onUseAsGuide={(text) => { setComposeGuide(text); setTab('compose'); }}
           />
         </div>
         <div className={tab === 'assemble' ? '' : 'hidden'}>

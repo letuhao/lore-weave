@@ -29,6 +29,16 @@
   "model": "Model",
   "pickModel": "Pick a model…",
   "compose": "Compose",
+  "cowriter": "Co-writer",
+  "cw": {
+    "insert": "Insert as draft",
+    "use_as_guide": "Use as guide",
+    "starters_hint": "try:",
+    "starter_next": "brainstorm the next beat",
+    "starter_character": "what would this character do?",
+    "starter_stakes": "raise the stakes",
+    "starter_sensory": "add sensory detail"
+  },
   "beats": "Beats",
   "beatsheet": {
     "title": "Beat Sheet",

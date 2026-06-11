@@ -19,9 +19,13 @@ import { loadVoicePrefs, saveVoicePrefs } from '../voicePrefs';
 
 interface ChatViewProps {
   className?: string;
+  /** Optional host-supplied slot rendered between the message list and the input
+   *  bar (inside the chat providers, so it can read useChatStream/useChatSession).
+   *  T3.1 mounts the co-writer Insert/Use-as-guide bar + starter chips here. */
+  footerSlot?: React.ReactNode;
 }
 
-export function ChatView({ className }: ChatViewProps) {
+export function ChatView({ className, footerSlot }: ChatViewProps) {
   const { t } = useTranslation('chat');
   const { accessToken } = useAuth();
   const {
@@ -161,6 +165,8 @@ export function ChatView({ className }: ChatViewProps) {
         onConfirm={chat.pendingFacts.confirm}
         onReject={chat.pendingFacts.reject}
       />
+
+      {footerSlot}
 
       <ChatInputBar
         onSend={handleSend}

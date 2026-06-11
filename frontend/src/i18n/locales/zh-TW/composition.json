@@ -29,6 +29,16 @@
   "model": "模型",
   "pickModel": "選擇模型…",
   "compose": "撰寫",
+  "cowriter": "共筆",
+  "cw": {
+    "insert": "插入為草稿",
+    "use_as_guide": "用作指引",
+    "starters_hint": "試試：",
+    "starter_next": "構思下一個節拍",
+    "starter_character": "這個角色會怎麼做？",
+    "starter_stakes": "提高賭注",
+    "starter_sensory": "增添感官細節"
+  },
   "beats": "節拍",
   "beatsheet": {
     "title": "節拍表",

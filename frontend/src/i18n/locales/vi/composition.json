@@ -29,6 +29,16 @@
   "model": "Mô hình",
   "pickModel": "Chọn một mô hình…",
   "compose": "Soạn",
+  "cowriter": "Đồng tác giả",
+  "cw": {
+    "insert": "Chèn làm bản nháp",
+    "use_as_guide": "Dùng làm hướng dẫn",
+    "starters_hint": "thử:",
+    "starter_next": "động não nhịp tiếp theo",
+    "starter_character": "nhân vật này sẽ làm gì?",
+    "starter_stakes": "nâng cao thử thách",
+    "starter_sensory": "thêm chi tiết giác quan"
+  },
   "beats": "Nhịp",
   "beatsheet": {
     "title": "Bảng nhịp",

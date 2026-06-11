@@ -29,6 +29,16 @@
   "model": "モデル",
   "pickModel": "モデルを選択…",
   "compose": "執筆",
+  "cowriter": "共筆",
+  "cw": {
+    "insert": "下書きとして挿入",
+    "use_as_guide": "ガイドとして使用",
+    "starters_hint": "例：",
+    "starter_next": "次のビートを発想する",
+    "starter_character": "このキャラクターならどうする？",
+    "starter_stakes": "緊張を高める",
+    "starter_sensory": "五感の描写を加える"
+  },
   "beats": "ビート",
   "beatsheet": {
     "title": "ビートシート",

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ComposeView } from '../ComposeView';
@@ -30,7 +31,14 @@ beforeEach(() => {
   mockAuto.isError = false;
 });
 
-const baseProps = { projectId: 'p', sceneId: 's', modelRef: 'm', token: 'tok' };
+const baseProps = { projectId: 'p', sceneId: 's', modelRef: 'm', token: 'tok', guide: '', onGuideChange: vi.fn() };
+
+// T3.1: `guide` is now a controlled prop (lifted to CompositionPanel). Tests that
+// assert guide MUTATIONS (Revise pre-fill/append) need real state behind it.
+function StatefulComposeView(props: Partial<typeof baseProps> & { onAccept: (t: string) => void }) {
+  const [guide, setGuide] = useState('');
+  return <ComposeView {...baseProps} {...props} guide={guide} onGuideChange={setGuide} />;
+}
 
 describe('ComposeView (ghost / accept — §13 SC4)', () => {
   it('does NOT surface the ghost to onAccept while streaming', () => {
@@ -195,7 +203,7 @@ describe('ComposeView (A2-S4a — canon gate panel + Revise)', () => {
 
   it('Revise pre-fills the guide textarea with the violation context + focuses it', () => {
     mockAuto.data = withCanon();
-    render(<ComposeView {...baseProps} onAccept={vi.fn()} />);
+    render(<StatefulComposeView onAccept={vi.fn()} />);
     fireEvent.click(screen.getByRole('checkbox'));
     const guide = screen.getByPlaceholderText('guidePlaceholder') as HTMLTextAreaElement;
     expect(guide.value).toBe('');
@@ -209,7 +217,7 @@ describe('ComposeView (A2-S4a — canon gate panel + Revise)', () => {
     // /review-impl #2 — the PO intent is "drop the violation context INTO the
     // guide"; author-typed guidance must survive.
     mockAuto.data = withCanon();
-    render(<ComposeView {...baseProps} onAccept={vi.fn()} />);
+    render(<StatefulComposeView onAccept={vi.fn()} />);
     fireEvent.click(screen.getByRole('checkbox'));
     const guide = screen.getByPlaceholderText('guidePlaceholder') as HTMLTextAreaElement;
     fireEvent.change(guide, { target: { value: 'my own guidance' } });
