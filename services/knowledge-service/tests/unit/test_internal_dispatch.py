@@ -94,9 +94,17 @@ async def test_public_route_passes_no_campaign_id(mocker):
         ext, "_start_extraction_job_core",
         new_callable=AsyncMock, return_value=SimpleNamespace(job_id=JOB))
     body = ext.StartJobRequest(scope="chapters", llm_model=str(MODEL), embedding_model="bge-m3")
-    await ext.start_extraction_job(PROJ, body, USER, AsyncMock(), AsyncMock(), AsyncMock())
+    # E0-3 Phase 2b — the dep now yields Principals(owner, caller); owner==caller
+    # here is the owner path (no billing). The public route never sets campaign_id.
+    from app.auth.grant_deps import Principals
+    await ext.start_extraction_job(
+        PROJ, body, Principals(owner=USER, caller=USER),
+        AsyncMock(), AsyncMock(), AsyncMock(),
+    )
     # campaign_id not supplied → core uses its default None
     assert core.call_args.kwargs.get("campaign_id") is None
+    # owner path → caller forwarded as the owner (no billing split downstream)
+    assert core.call_args.kwargs.get("caller") == USER
 
 
 async def test_project_not_found_404(mocker):

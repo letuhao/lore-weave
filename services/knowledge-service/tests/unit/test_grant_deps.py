@@ -19,9 +19,11 @@ from fastapi import HTTPException
 
 from app.auth.grant_deps import (
     GrantLevel,
+    Principals,
     require_book_grant,
     require_job_grant,
     require_project_grant,
+    require_project_principals,
 )
 
 
@@ -43,6 +45,48 @@ async def _call_project(need, *, meta, caller, level):
 async def _call_job(need, *, meta, caller, level):
     dep = require_job_grant(need)
     return await dep(meta=meta, caller=caller, gc=_GC(level))
+
+
+async def _call_principals(need, *, meta, caller, level):
+    dep = require_project_principals(need)
+    return await dep(meta=meta, caller=caller, gc=_GC(level))
+
+
+# ── E0-3 Phase 2b: require_project_principals (same gate, returns both ids) ──
+
+@pytest.mark.asyncio
+async def test_principals_owner_path_owner_equals_caller():
+    owner = uuid4()
+    got = await _call_principals(
+        GrantLevel.EDIT, meta=(owner, uuid4()), caller=owner, level=GrantLevel.NONE,
+    )
+    assert got == Principals(owner=owner, caller=owner)
+    assert got.owner == got.caller  # owner path → no billing split downstream
+
+
+@pytest.mark.asyncio
+async def test_principals_collaborator_returns_distinct_owner_and_caller():
+    owner, caller, book = uuid4(), uuid4(), uuid4()
+    got = await _call_principals(
+        GrantLevel.EDIT, meta=(owner, book), caller=caller, level=GrantLevel.EDIT,
+    )
+    assert got == Principals(owner=owner, caller=caller)
+    assert got.owner != got.caller  # collaborator path → caller-pays billing
+
+
+@pytest.mark.asyncio
+async def test_principals_under_tier_403_non_grantee_404():
+    owner, caller, book = uuid4(), uuid4(), uuid4()
+    with pytest.raises(HTTPException) as ei:
+        await _call_principals(GrantLevel.EDIT, meta=(owner, book), caller=caller, level=GrantLevel.VIEW)
+    assert ei.value.status_code == 403
+    with pytest.raises(HTTPException) as ei:
+        await _call_principals(GrantLevel.EDIT, meta=(owner, book), caller=caller, level=GrantLevel.NONE)
+    assert ei.value.status_code == 404
+    # missing project → 404
+    with pytest.raises(HTTPException) as ei:
+        await _call_principals(GrantLevel.EDIT, meta=None, caller=caller, level=GrantLevel.EDIT)
+    assert ei.value.status_code == 404
 
 
 # ── owner path (caller == project owner) ─────────────────────────────

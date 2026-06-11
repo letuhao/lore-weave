@@ -18,6 +18,7 @@ the required tier gets **403**.
 """
 
 from collections.abc import Awaitable, Callable
+from typing import NamedTuple
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
@@ -30,13 +31,26 @@ from app.middleware.jwt_auth import get_current_user
 
 __all__ = [
     "GrantLevel",
+    "Principals",
     "ProjectMeta",
     "project_meta_dep",
     "job_meta_dep",
     "require_project_grant",
+    "require_project_principals",
     "require_book_grant",
     "require_job_grant",
 ]
+
+
+class Principals(NamedTuple):
+    """E0-3 Phase 2b — the two identities a project-scoped write needs under the
+    BYOK dual-identity model. ``owner`` is the project owner (graph partition,
+    project budget, canonical embedding tag); ``caller`` is the authenticated
+    requester (their key + budget pay for provider calls). ``owner == caller``
+    for an owner-triggered request (legacy single-identity path)."""
+
+    owner: UUID
+    caller: UUID
 
 # (owner_user_id, book_id|None) — the two ids the grant gate needs. None means
 # the project/job does not exist.
@@ -104,6 +118,31 @@ def require_project_grant(need: GrantLevel) -> Callable[..., Awaitable[UUID]]:
             raise _not_found()
         owner, book_id = meta
         return await _resolve_owner(caller, owner, book_id, need, gc)
+
+    return _dep
+
+
+def require_project_principals(
+    need: GrantLevel,
+) -> Callable[..., Awaitable[Principals]]:
+    """E0-3 Phase 2b dependency factory for project writes that must bill the
+    CALLER under BYOK (extraction). Same gate as ``require_project_grant`` (the
+    caller must be owner or hold >= need on the project's book), but returns
+    BOTH identities so the handler can partition graph/budget by the owner while
+    billing provider calls to the caller. Fail-closed (404/403 via the gate)."""
+
+    async def _dep(
+        meta: ProjectMeta | None = Depends(project_meta_dep),
+        caller: UUID = Depends(get_current_user),
+        gc: GrantClient = Depends(get_grant_client),
+    ) -> Principals:
+        if meta is None:
+            raise _not_found()
+        owner, book_id = meta
+        # Reuse the exact gate (raises 404/403); discard the returned owner —
+        # we already have it — and pair it with the caller.
+        await _resolve_owner(caller, owner, book_id, need, gc)
+        return Principals(owner=owner, caller=caller)
 
     return _dep
 

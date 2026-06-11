@@ -54,7 +54,13 @@ from app.jobs.budget import can_start_job, check_user_monthly_budget
 from app.jobs.extraction_wake import ExtractionWakeFn
 from app.jobs.state_machine import JobStatus, PauseReason, StateTransitionError, validate_transition
 from app.logging_config import trace_id_var
-from app.auth.grant_deps import GrantLevel, require_job_grant, require_project_grant
+from app.auth.grant_deps import (
+    GrantLevel,
+    Principals,
+    require_job_grant,
+    require_project_grant,
+    require_project_principals,
+)
 from app.middleware.jwt_auth import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -291,8 +297,10 @@ async def _create_and_start_job(
                     """
                     INSERT INTO extraction_jobs
                       (user_id, project_id, scope, scope_range, llm_model,
-                       embedding_model, max_spend_usd, items_total)
-                    VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8)
+                       embedding_model, max_spend_usd, items_total, campaign_id,
+                       billing_user_id, billing_embedding_model, billing_llm_model)
+                    VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9,
+                            $10, $11, $12)
                     RETURNING job_id
                     """,
                     user_id,
@@ -303,6 +311,15 @@ async def _create_and_start_job(
                     validated.embedding_model,
                     validated.max_spend_usd,
                     validated.items_total,
+                    # E0-3 Phase 2b (LOW-1) — this inline INSERT previously dropped
+                    # campaign_id AND would drop billing_*; both are now persisted
+                    # so the start/rebuild path carries BYOK billing (else a
+                    # collaborator's extraction silently bills the owner) and S4a
+                    # campaign attribution.
+                    validated.campaign_id,
+                    validated.billing_user_id,
+                    validated.billing_embedding_model,
+                    validated.billing_llm_model,
                 )
                 job_id = job_row["job_id"]
 
@@ -347,13 +364,15 @@ async def _create_and_start_job(
 async def start_extraction_job(
     project_id: UUID,
     body: StartJobRequest,
-    # D-E0-3-CALLER-PAYS-EXTRACTION (secure-closure): OWNER-ONLY. Was EDIT, but
-    # under resolve-to-owner an edit-collaborator's extraction ran on the OWNER's
-    # embedding/LLM key + budget — a BYOK breach (only the key owner may cause
-    # their key to be charged). Owner-only closes it now; collaborative
-    # caller-pays extraction (the caller uses their OWN same-model key) lands as
-    # the designed follow-up (docs/plans/2026-06-11-e0-3-caller-pays-extraction-design.md).
-    user_id: UUID = Depends(require_project_grant(GrantLevel.OWNER)),
+    # D-E0-3-CALLER-PAYS-EXTRACTION Phase 2b: re-opened to EDIT collaborators
+    # under BYOK caller-pays. Phase 1 made this OWNER-only to close the breach
+    # where an edit-collaborator's extraction ran on the OWNER's key. Now a
+    # collaborator extracts on THEIR OWN same-model key: require_project_principals
+    # returns (owner, caller) — the core partitions graph/budget/storage-tag by
+    # the owner but bills the embedding+LLM provider calls to the caller (their
+    # billing_user_id + same-model refs), with a dimension guard ensuring the
+    # caller's embedding model shares the project's vector space.
+    principals: Principals = Depends(require_project_principals(GrantLevel.EDIT)),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
     benchmark_repo: BenchmarkRunsRepo = Depends(get_benchmark_runs_repo),
@@ -368,7 +387,8 @@ async def start_extraction_job(
     endpoint (campaign-service, ownership pre-verified) supplies it via the core.
     """
     return await _start_extraction_job_core(
-        project_id, body, user_id, projects_repo, jobs_repo, benchmark_repo,
+        project_id, body, principals.owner, projects_repo, jobs_repo, benchmark_repo,
+        caller=principals.caller,
         extraction_wake=extraction_wake,
     )
 
@@ -382,9 +402,20 @@ async def _start_extraction_job_core(
     benchmark_repo: BenchmarkRunsRepo,
     *,
     campaign_id: UUID | None = None,
+    caller: UUID | None = None,
     extraction_wake: ExtractionWakeFn | None = None,
 ) -> ExtractionJob:
     """Create and start an extraction job for a project.
+
+    E0-3 Phase 2b — BYOK dual identity. ``user_id`` is the project OWNER (graph
+    partition, project budget, canonical embedding tag). ``caller`` is the
+    authenticated requester; when ``caller != user_id`` (a book collaborator),
+    the embedding + LLM provider calls are billed to the caller (their key +
+    monthly budget) via the job's ``billing_*`` columns, and ``body.embedding_model``
+    is the CALLER's same-model ref — dimension-guarded against the project's
+    vector space (409 on mismatch). ``caller is None`` or ``== user_id`` is the
+    owner path (legacy single identity, ``billing_* = NULL``). The campaign
+    dispatch path passes no caller → owner path.
 
     Atomically: creates the job row, updates the project's extraction
     state to 'building', and transitions the job to 'running' — all
@@ -416,6 +447,68 @@ async def _start_extraction_job_core(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="project not found",
         )
+
+    # 1.4. E0-3 Phase 2b — BYOK dual-identity resolution. Default = owner path
+    # (single identity, billing NULL, everything resolves under user_id). On the
+    # collaborator path (caller != owner) the provider calls bill the caller; the
+    # stored embedding_model tag + benchmark stay the project's canonical model.
+    is_collab = caller is not None and caller != user_id
+    billing_user_id: UUID | None = None
+    billing_embedding_model: str | None = None
+    billing_llm_model: str | None = None
+    # The embedding_model value stored on the job row (= the search-filter tag).
+    # Owner: body's (== project's). Collaborator: forced to the project's canonical
+    # model, NOT the caller's ref (which generates compatible vectors but must be
+    # tagged with the project's UUID to stay searchable). Also the benchmark key.
+    storage_embedding_model = body.embedding_model
+    if is_collab:
+        # The collaborator MUST extract under the SAME embedding model (same
+        # vector space) as the project, supplied as THEIR OWN provider-registry
+        # ref. Guard: their ref must resolve AND match the project's dimension.
+        if not project.embedding_model or not project.embedding_dimension:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "error_code": "project_embedding_unconfigured",
+                    "message": (
+                        "the project has no embedding model configured; the "
+                        "owner must run extraction first"
+                    ),
+                },
+            )
+        try:
+            caller_dim = await probe_embedding_dimension(caller, body.embedding_model)
+        except EmbeddingError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "error_code": "embedding_model_unresolved",
+                    "message": (
+                        "your embedding model ref could not be resolved under "
+                        "your provider credentials; register the project's "
+                        "embedding model under your own key"
+                    ),
+                    "required_dimension": project.embedding_dimension,
+                },
+            ) from exc
+        if caller_dim != project.embedding_dimension:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "error_code": "embedding_model_mismatch",
+                    "message": (
+                        "your embedding model's dimension does not match the "
+                        "project's vector space; register the same embedding "
+                        "model the project uses under your own key"
+                    ),
+                    "required_dimension": project.embedding_dimension,
+                    "your_dimension": caller_dim,
+                },
+            )
+        billing_user_id = caller
+        billing_embedding_model = body.embedding_model  # caller's ref (generation)
+        billing_llm_model = body.llm_model              # caller's ref (generation)
+        storage_embedding_model = project.embedding_model  # project's canonical tag
 
     # 1.5. C12c-a /review-impl MED#1 — guard scope='glossary_sync' (or
     # scope='all' explicitly expecting glossary) against projects
@@ -455,8 +548,14 @@ async def _start_extraction_job_core(
     # a "See report" link. Keeping ops commands out of the public API
     # response avoids confusing end users if the 409 surfaces in a
     # toast before the picker's badge logic catches it.
+    # E0-3 Phase 2b — the benchmark gate stays OWNER/PROJECT-scoped: it validates
+    # the project's vector space (owner's user_id + the project's canonical
+    # model). A collaborator inherits it via the dimension match above — no
+    # per-collaborator benchmark is needed. `storage_embedding_model` is the
+    # project's model on the collaborator path and body's (== project's) for the
+    # owner.
     latest_benchmark = await benchmark_repo.get_latest(
-        user_id, project_id, embedding_model=body.embedding_model,
+        user_id, project_id, embedding_model=storage_embedding_model,
     )
     if latest_benchmark is None:
         raise HTTPException(
@@ -465,10 +564,10 @@ async def _start_extraction_job_core(
                 "error_code": "benchmark_missing",
                 "message": (
                     f"no passing benchmark run for embedding_model "
-                    f"{body.embedding_model!r}; run the golden-set "
+                    f"{storage_embedding_model!r}; run the golden-set "
                     "benchmark for this model before enabling extraction"
                 ),
-                "embedding_model": body.embedding_model,
+                "embedding_model": storage_embedding_model,
             },
         )
     if not latest_benchmark.passed:
@@ -481,7 +580,7 @@ async def _start_extraction_job_core(
                     "model did not pass the quality thresholds; "
                     "extraction would produce low-quality results"
                 ),
-                "embedding_model": body.embedding_model,
+                "embedding_model": storage_embedding_model,
                 "run_id": latest_benchmark.run_id,
                 "recall_at_3": latest_benchmark.recall_at_3,
             },
@@ -513,7 +612,12 @@ async def _start_extraction_job_core(
             },
         )
 
-    user_check = await check_user_monthly_budget(pool, user_id, estimated_cost)
+    # E0-3 Phase 2b — the project-budget check above is the OWNER's cap on their
+    # project (unchanged). The USER monthly-budget is the CALLER's wallet — the
+    # collaborator's own monthly budget gates and is debited, because their key
+    # pays. Owner path: billing_user_id is None → falls back to user_id (owner).
+    budget_user_id = billing_user_id or user_id
+    user_check = await check_user_monthly_budget(pool, budget_user_id, estimated_cost)
     if not user_check.allowed:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -535,11 +639,17 @@ async def _start_extraction_job_core(
         project_id=project_id,
         scope=body.scope,
         llm_model=body.llm_model,
-        embedding_model=body.embedding_model,
+        # E0-3 Phase 2b — storage tag (= search filter): the project's canonical
+        # model on the collaborator path, body's (== project's) for the owner.
+        embedding_model=storage_embedding_model,
         max_spend_usd=body.max_spend_usd,
         scope_range=body.scope_range,
         items_total=body.items_total,
         campaign_id=campaign_id,  # S4a: internal-only (None for public callers)
+        # E0-3 Phase 2b — caller's BYOK billing identity (all None on owner path).
+        billing_user_id=billing_user_id,
+        billing_embedding_model=billing_embedding_model,
+        billing_llm_model=billing_llm_model,
     )
 
     job_id = await _create_and_start_job(
