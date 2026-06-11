@@ -29,6 +29,13 @@ def test_gen_config_returns_configured_per_article_cost():
     assert got == Decimal(str(settings.wiki_gen_cost_per_article_usd))
 
 
+def test_gen_config_returns_recipe_versions():
+    # W2 — the glossary rescan proxy sources the CURRENT recipe versions from here.
+    body = _client().get("/internal/knowledge/wiki/gen-config").json()
+    assert body["prompt_version"] == settings.wiki_prompt_version
+    assert body["pipeline_version"] == settings.wiki_pipeline_version
+
+
 def test_gen_config_requires_internal_token():
     # Without the dependency override the real guard runs → 401/403 (no token).
     app = FastAPI()

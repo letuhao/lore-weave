@@ -20,6 +20,7 @@ export function useWikiStaleness(bookId: string) {
   const { t } = useTranslation('wiki');
   const queryClient = useQueryClient();
   const [dismissing, setDismissing] = useState<string | null>(null);
+  const [rescanning, setRescanning] = useState(false);
 
   const query = useQuery<WikiStalenessRow[]>({
     queryKey: ['wiki-staleness', bookId],
@@ -46,5 +47,52 @@ export function useWikiStaleness(bookId: string) {
     [accessToken, bookId, t, queryClient],
   );
 
-  return { rows, count: rows.length, isLoading: query.isLoading, dismiss, dismissing };
+  // W2 — "Bỏ qua đã chọn": dismiss many rows in one call, then refresh the feed +
+  // the sidebar badges (clearing is_knowledge_stale can change article rows).
+  const dismissMany = useCallback(
+    async (stalenessIds: string[]) => {
+      if (!accessToken || stalenessIds.length === 0) return;
+      try {
+        const { dismissed } = await wikiApi.dismissStalenessBatch(bookId, stalenessIds, accessToken);
+        toast.success(t('staleness.dismissedN', { count: dismissed }));
+        queryClient.invalidateQueries({ queryKey: ['wiki-staleness', bookId] });
+        queryClient.invalidateQueries({ queryKey: ['wiki-articles', bookId] });
+      } catch {
+        toast.error(t('staleness.dismissFailed'));
+      }
+    },
+    [accessToken, bookId, t, queryClient],
+  );
+
+  // W2 — owner-triggered rescan: recipe-drift (versions from knowledge) + kg-drift.
+  const rescan = useCallback(async () => {
+    if (!accessToken) return;
+    setRescanning(true);
+    try {
+      const res = await wikiApi.sweepStaleness(bookId, accessToken);
+      const found = res.flagged + res.kg_flagged;
+      toast.success(
+        res.recipe_swept
+          ? t('staleness.rescanDone', { count: found })
+          : t('staleness.rescanPartial', { count: found }),
+      );
+      queryClient.invalidateQueries({ queryKey: ['wiki-staleness', bookId] });
+      queryClient.invalidateQueries({ queryKey: ['wiki-articles', bookId] });
+    } catch {
+      toast.error(t('staleness.rescanFailed'));
+    } finally {
+      setRescanning(false);
+    }
+  }, [accessToken, bookId, t, queryClient]);
+
+  return {
+    rows,
+    count: rows.length,
+    isLoading: query.isLoading,
+    dismiss,
+    dismissing,
+    dismissMany,
+    rescan,
+    rescanning,
+  };
 }

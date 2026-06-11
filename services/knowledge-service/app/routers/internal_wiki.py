@@ -40,7 +40,7 @@ from app.db.neo4j_repos.entities import get_neighborhood_by_glossary_id
 from app.wiki.context import DEFAULT_KG_LIMIT, gather_kg_facts
 from app.wiki.fingerprint import stable_hash
 from app.db.repositories.projects import ProjectsRepo
-from app.db.repositories.wiki_gen_jobs import ActiveJobExists, WikiGenJobsRepo
+from app.db.repositories.wiki_gen_jobs import ActiveJobExists, WikiGenJob, WikiGenJobsRepo
 from app.deps import get_knowledge_pool, get_projects_repo
 from app.jobs.wiki_gen_enqueue import enqueue_wiki_gen
 from app.middleware.internal_auth import require_internal_token
@@ -346,16 +346,25 @@ class WikiGenConfig(BaseModel):
     """Pre-flight cost basis for the FE estimate (D-WIKI-P2B-COST-ESTIMATE) — the
     flat per-article estimate the orchestrator's budget gate charges, so the shown
     estimate and the live ``cost_spent_usd`` agree. Token-precise pricing is the
-    separate D-WIKI-M6-PRECISE-COST follow-up."""
+    separate D-WIKI-M6-PRECISE-COST follow-up.
+
+    W2 (gap-closure) also surfaces the CURRENT recipe versions here so the glossary
+    public ``staleness/sweep`` proxy can run the recipe-drift sweep (stored
+    build_inputs versions vs current) without knowing knowledge's config itself."""
 
     cost_per_article_usd: Decimal
+    prompt_version: str
+    pipeline_version: str
 
 
 @router.get("/wiki/gen-config", response_model=WikiGenConfig)
 async def get_wiki_gen_config() -> WikiGenConfig:
-    """The flat per-article wiki-gen cost estimate (global config; not book-scoped)."""
+    """The flat per-article wiki-gen cost estimate + current recipe versions (global
+    config; not book-scoped)."""
     return WikiGenConfig(
-        cost_per_article_usd=Decimal(str(settings.wiki_gen_cost_per_article_usd))
+        cost_per_article_usd=Decimal(str(settings.wiki_gen_cost_per_article_usd)),
+        prompt_version=settings.wiki_prompt_version,
+        pipeline_version=settings.wiki_pipeline_version,
     )
 
 

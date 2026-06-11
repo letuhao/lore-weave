@@ -23,13 +23,19 @@ The clobber-guard / H0 trust story is invisible today (suggestions show reason t
 - Files: `frontend/src/.../WikiEditorPage.tsx` `SuggestionPanel` (+ a small `WikiDiff` component) · `features/wiki/types.ts` (diff_json shape) · i18n ×4 · vitest.
 - **Acceptance:** an AI-regen suggestion shows the body diff + an AI badge; a community one shows a field diff + community badge; accept/reject unchanged.
 
-### W2 — Change-feed richness (screen ⑤) · **FE-only + 1 small BE** · S–M · value MED
-- Severity-breakdown bar (count `hard`/`structural`/`content` from the feed rows — already present).
-- Batch cost-estimate line (reuse `wiki/gen-config` × selected count) + a **batch "Bỏ qua"** (loop the existing per-row dismiss, or add a batch dismiss endpoint — optional).
-- Deferred-ledger **info banner** + per-change **metadata** (reason label + `source_ref` + `detected_at`, already returned) + a "Xem thay đổi" link where a diff is meaningful.
-- **Rescan-fingerprint button** → needs a **public owner-gated proxy** for the internal sweep (small Go: `POST /v1/glossary/books/{id}/wiki/staleness/sweep` → forward to the internal sweep). The only BE bit in this slice.
-- Files: `features/wiki/components/KnowledgeUpdatesPanel.tsx` · `api.ts`/`types.ts` · glossary `wiki_staleness.go` (+ proxy) + `server.go` route · i18n ×4 · vitest + 1 Go test.
-- **Acceptance:** the batch bar shows severity counts + ~$estimate + dismiss-all; rescan button triggers a sweep and refreshes the feed.
+### W2 — Change-feed richness (screen ⑤) · **cross-service XL** (PO 2026-06-11: include rescan + batch-dismiss endpoint) · value MED
+**Scope wrinkle found at CLARIFY:** the rescan (recipe-drift) sweep needs the CURRENT prompt/pipeline versions, which live in knowledge-service — so a real rescan is cross-service, not "a small proxy". PO chose to include it + a real batch-dismiss endpoint.
+- **FE (pure):** severity-breakdown bar (count `hard`/`structural`/`content`), batch cost-estimate line (reuse `wiki/gen-config` × selected count), deferred-ledger **info banner**, per-change **metadata** (reason label + `source_ref` + `detected_at`, already returned).
+- **Knowledge:** extend `GET /internal/knowledge/wiki/gen-config` (`internal_wiki.py` `WikiGenConfig`) to also return `prompt_version` + `pipeline_version` (from `settings.wiki_prompt_version`/`wiki_pipeline_version`).
+- **Glossary:**
+  - `knowledge_client.go` `getWikiGenConfig` → parse the two new version fields.
+  - `POST /v1/glossary/books/{id}/wiki/staleness/sweep` (NEW, owner-gated) → fetch versions from knowledge gen-config → `sweepRecipeDrift(versions)` + `sweepKgDrift(ownerID)` → `{flagged}`. Knowledge-down degrades to kg-only / 0.
+  - `POST /v1/glossary/books/{id}/wiki/staleness/dismiss-batch` (NEW, owner-gated) `{staleness_ids:[]}` → dismiss all in-tx → clear `is_knowledge_stale` when the last pending row goes.
+  - `server.go` route registration.
+- **FE wiring:** `api.ts` (`sweepStaleness`, `dismissBatch`) · `useWikiStaleness` (`rescan`, `dismissMany`) · `KnowledgeUpdatesPanel.tsx` (rescan button + dismiss-all + the above). i18n ×4.
+- Files: knowledge `internal_wiki.py` · glossary `knowledge_client.go`/`wiki_staleness.go`/`server.go` · FE `api.ts`/`types.ts`/`useWikiStaleness.ts`/`KnowledgeUpdatesPanel.tsx` + i18n ×4 · vitest + Go tests (sweep route + dismiss-batch).
+- **Cross-service ⇒ VERIFY needs a live-smoke token** (or a tracked deferral).
+- **Acceptance:** batch bar shows severity counts + ~$estimate + dismiss-all; rescan triggers a real recipe+kg sweep (versions sourced from knowledge) and refreshes the feed.
 
 ### W3 — Generate dialog + sidebar polish (screens ②①) · **FE-mostly** · S · value LOW–MED
 - Mode **segmented toggle** (Mẫu cố định / AI tạo sinh) replacing the bare dropdown (keep the same underlying state).

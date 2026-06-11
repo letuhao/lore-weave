@@ -7,8 +7,15 @@ vi.mock('react-i18next', () => ({
       o?.count != null ? `${k}:${o.count}` : o?.defaultValue != null ? (o.defaultValue as string) : k,
   }),
 }));
+vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
+// gen-config (cost basis) — return a flat $0.50/article so the batch estimate is deterministic.
+vi.mock('@tanstack/react-query', () => ({
+  useQuery: () => ({ data: { cost_per_article_usd: 0.5 } }),
+}));
 
 const dismiss = vi.fn();
+const dismissMany = vi.fn();
+const rescan = vi.fn();
 const useWikiStalenessMock = vi.fn();
 vi.mock('../../hooks/useWikiStaleness', () => ({
   useWikiStaleness: () => useWikiStalenessMock(),
@@ -26,16 +33,18 @@ function row(over: Partial<WikiStalenessRow>): WikiStalenessRow {
   };
 }
 
+const baseHook = () => ({
+  rows: [
+    row({ staleness_id: 's1', entity_id: 'e1', display_name: 'Mina', reason_code: 'citation_broken', severity: 'hard' }),
+    row({ staleness_id: 's2', entity_id: 'e1', display_name: 'Mina', reason_code: 'entity_changed', severity: 'content' }),
+    row({ staleness_id: 's3', entity_id: 'e2', display_name: 'Lucy', reason_code: 'entity_changed', severity: 'content' }),
+  ],
+  count: 3, isLoading: false, dismiss, dismissing: null, dismissMany, rescan, rescanning: false,
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
-  useWikiStalenessMock.mockReturnValue({
-    rows: [
-      row({ staleness_id: 's1', entity_id: 'e1', display_name: 'Mina', reason_code: 'citation_broken', severity: 'hard' }),
-      row({ staleness_id: 's2', entity_id: 'e1', display_name: 'Mina', reason_code: 'entity_changed', severity: 'content' }),
-      row({ staleness_id: 's3', entity_id: 'e2', display_name: 'Lucy', reason_code: 'entity_changed', severity: 'content' }),
-    ],
-    count: 3, isLoading: false, dismiss, dismissing: null,
-  });
+  useWikiStalenessMock.mockReturnValue(baseHook());
 });
 
 describe('KnowledgeUpdatesPanel', () => {
@@ -47,7 +56,7 @@ describe('KnowledgeUpdatesPanel', () => {
   });
 
   it('shows the empty state when there are no stale rows', () => {
-    useWikiStalenessMock.mockReturnValue({ rows: [], count: 0, isLoading: false, dismiss, dismissing: null });
+    useWikiStalenessMock.mockReturnValue({ ...baseHook(), rows: [], count: 0 });
     render(<KnowledgeUpdatesPanel bookId="b" open onClose={() => {}} onRegenerate={() => {}} />);
     expect(screen.getByTestId('staleness-empty')).toBeTruthy();
   });
@@ -77,5 +86,30 @@ describe('KnowledgeUpdatesPanel', () => {
     render(<KnowledgeUpdatesPanel bookId="b" open onClose={() => {}} onRegenerate={() => {}} />);
     fireEvent.click(screen.getAllByTestId('staleness-dismiss')[0]);
     expect(dismiss).toHaveBeenCalledWith('s1');
+  });
+
+  it('rescan button triggers a sweep', () => {
+    render(<KnowledgeUpdatesPanel bookId="b" open onClose={() => {}} onRegenerate={() => {}} />);
+    fireEvent.click(screen.getByTestId('staleness-rescan'));
+    expect(rescan).toHaveBeenCalledOnce();
+  });
+
+  it('dismiss-selected is disabled until a row is checked, then batch-dismisses the selected ids', () => {
+    render(<KnowledgeUpdatesPanel bookId="b" open onClose={() => {}} onRegenerate={() => {}} />);
+    const btn = screen.getByTestId('staleness-dismiss-all') as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    fireEvent.click(screen.getAllByRole('checkbox')[0]); // s1
+    expect(btn.disabled).toBe(false);
+    fireEvent.click(btn);
+    expect(dismissMany).toHaveBeenCalledWith(['s1']);
+  });
+
+  it('shows a batch cost estimate scaled by the deduped entity count (2 × $0.50 = $1.00)', () => {
+    render(<KnowledgeUpdatesPanel bookId="b" open onClose={() => {}} onRegenerate={() => {}} />);
+    expect(screen.queryByTestId('staleness-cost')).toBeNull(); // hidden until a selection
+    const checks = screen.getAllByRole('checkbox');
+    fireEvent.click(checks[0]); // e1
+    fireEvent.click(checks[2]); // e2 → 2 distinct entities
+    expect(screen.getByTestId('staleness-cost').textContent).toContain('~$1.00');
   });
 });

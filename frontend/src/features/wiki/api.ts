@@ -10,6 +10,7 @@ import type {
   WikiGenerateResult,
   WikiGenConfig,
   WikiStalenessListResp,
+  WikiStalenessSweepResp,
 } from './types';
 
 const BASE = '/v1/glossary';
@@ -131,6 +132,28 @@ export const wikiApi = {
     token: string,
   ): Promise<{ staleness_id: string; status: string }> {
     return apiJson(`${BASE}/books/${bookId}/wiki/staleness/${stalenessId}/dismiss`, {
+      method: 'POST',
+      token,
+    });
+  },
+
+  /** W2 — batch "dismiss selected" (accept-as-is, no spend). */
+  dismissStalenessBatch(
+    bookId: string,
+    stalenessIds: string[],
+    token: string,
+  ): Promise<{ dismissed: number }> {
+    return apiJson(`${BASE}/books/${bookId}/wiki/staleness/dismiss-batch`, {
+      method: 'POST',
+      body: JSON.stringify({ staleness_ids: stalenessIds }),
+      token,
+    });
+  },
+
+  /** W2 — owner-triggered "rescan fingerprint": recipe-drift (versions sourced from
+   *  knowledge) + kg-drift. `recipe_swept=false` when knowledge is unreachable. */
+  sweepStaleness(bookId: string, token: string): Promise<WikiStalenessSweepResp> {
+    return apiJson<WikiStalenessSweepResp>(`${BASE}/books/${bookId}/wiki/staleness/sweep`, {
       method: 'POST',
       token,
     });

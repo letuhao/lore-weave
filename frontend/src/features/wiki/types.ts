@@ -164,6 +164,14 @@ export interface WikiStalenessListResp {
   total: number;
 }
 
+/** W2 — result of an owner-triggered rescan. `recipe_swept=false` ⇒ knowledge was
+ *  unreachable so only the kg-drift half ran. */
+export interface WikiStalenessSweepResp {
+  flagged: number;
+  kg_flagged: number;
+  recipe_swept: boolean;
+}
+
 /* ── wiki-llm M7b — LLM generation jobs ──────────────────────────────────── */
 
 export type WikiGenJobState =

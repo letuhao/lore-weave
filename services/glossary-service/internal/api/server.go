@@ -183,6 +183,8 @@ func (s *Server) Router() http.Handler {
 				// wiki-llm Phase-2b (§5.3) — the "Knowledge updates" change-feed.
 				r.Route("/staleness", func(r chi.Router) {
 					r.Get("/", s.listWikiStaleness)
+					r.Post("/sweep", s.sweepWikiStalenessPublic)
+					r.Post("/dismiss-batch", s.dismissWikiStalenessBatch)
 					r.Post("/{staleness_id}/dismiss", s.dismissWikiStaleness)
 				})
 				r.Get("/suggestions", s.listWikiSuggestions)

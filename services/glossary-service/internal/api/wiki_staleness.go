@@ -142,6 +142,168 @@ func (s *Server) dismissWikiStaleness(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"staleness_id": stalenessID.String(), "status": "dismissed"})
 }
 
+// dismissWikiStalenessBatch — POST /v1/glossary/books/{book_id}/wiki/staleness/dismiss-batch
+// W2 (gap-closure) "Bỏ qua đã chọn": dismiss MANY pending rows at once (owner-gated,
+// book-scoped). One UPDATE for the rows + one to clear the per-article "outdated" flag
+// for any affected article whose last pending row just went, in a tx.
+func (s *Server) dismissWikiStalenessBatch(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+		return
+	}
+	var req struct {
+		StalenessIDs []string `json:"staleness_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "WIKI_BAD_REQUEST", "invalid JSON body")
+		return
+	}
+	const maxDismissBatch = 500 // a sane ceiling — the feed never realistically has more pending
+	if len(req.StalenessIDs) > maxDismissBatch {
+		writeError(w, http.StatusRequestEntityTooLarge, "WIKI_BATCH_TOO_LARGE", "too many staleness_ids")
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(req.StalenessIDs))
+	for _, raw := range req.StalenessIDs {
+		u, perr := uuid.Parse(raw)
+		if perr != nil {
+			writeError(w, http.StatusBadRequest, "WIKI_BAD_REQUEST", "invalid staleness_id")
+			return
+		}
+		ids = append(ids, u)
+	}
+	if len(ids) == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"dismissed": 0})
+		return
+	}
+
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		slog.Error("dismissWikiStalenessBatch begin", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	rows, err := tx.Query(r.Context(), `
+		UPDATE wiki_staleness SET status='dismissed'
+		 WHERE staleness_id = ANY($1) AND status='pending'
+		   AND article_id IN (SELECT article_id FROM wiki_articles WHERE book_id=$2)
+		RETURNING article_id`,
+		ids, bookID)
+	if err != nil {
+		slog.Error("dismissWikiStalenessBatch update", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	affected := map[uuid.UUID]struct{}{}
+	dismissedCount := 0
+	for rows.Next() {
+		var aid uuid.UUID
+		if err := rows.Scan(&aid); err != nil {
+			rows.Close()
+			slog.Error("dismissWikiStalenessBatch scan", "error", err)
+			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+			return
+		}
+		affected[aid] = struct{}{}
+		dismissedCount++
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		slog.Error("dismissWikiStalenessBatch rows", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+
+	if len(affected) > 0 {
+		aids := make([]uuid.UUID, 0, len(affected))
+		for aid := range affected {
+			aids = append(aids, aid)
+		}
+		// Clear the denormalized flag for any affected article with no pending rows left.
+		if _, err := tx.Exec(r.Context(), `
+			UPDATE wiki_articles SET is_knowledge_stale=false
+			 WHERE article_id = ANY($1)
+			   AND NOT EXISTS (SELECT 1 FROM wiki_staleness
+			                    WHERE article_id = wiki_articles.article_id AND status='pending')`,
+			aids,
+		); err != nil {
+			slog.Error("dismissWikiStalenessBatch clear flag", "error", err)
+			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+			return
+		}
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		slog.Error("dismissWikiStalenessBatch commit", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"dismissed": dismissedCount})
+}
+
+// sweepWikiStalenessPublic — POST /v1/glossary/books/{book_id}/wiki/staleness/sweep
+// W2 (gap-closure) the FE "Quét lại fingerprint" button: an owner-gated rescan that
+// sources the CURRENT recipe versions from knowledge gen-config (the FE/glossary don't
+// own them) then runs recipe-drift + kg-drift. Degrades gracefully: knowledge
+// unreachable → recipe-drift skipped (recipe_swept=false), kg-drift self-degrades to 0.
+func (s *Server) sweepWikiStalenessPublic(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+		return
+	}
+
+	// Source the current versions from knowledge (W2: gen-config now carries them).
+	var promptV, pipelineV string
+	if status, body, err := s.getWikiGenConfig(r.Context()); err == nil && status == http.StatusOK {
+		var cfg struct {
+			PromptVersion   string `json:"prompt_version"`
+			PipelineVersion string `json:"pipeline_version"`
+		}
+		if json.Unmarshal(body, &cfg) == nil {
+			promptV, pipelineV = cfg.PromptVersion, cfg.PipelineVersion
+		}
+	}
+
+	recipeSwept := promptV != "" && pipelineV != ""
+	recipeFlagged := 0
+	if recipeSwept {
+		var err error
+		recipeFlagged, err = s.sweepRecipeDrift(r.Context(), bookID, promptV, pipelineV)
+		if err != nil {
+			slog.Error("sweepWikiStalenessPublic recipe", "error", err)
+			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+			return
+		}
+	}
+
+	kgFlagged, err := s.sweepKgDrift(r.Context(), bookID, userID)
+	if err != nil {
+		slog.Error("sweepWikiStalenessPublic kg", "error", err)
+		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"flagged": recipeFlagged, "kg_flagged": kgFlagged, "recipe_swept": recipeSwept,
+	})
+}
+
 // wiki-llm Phase-2 (§5.2 DEFER, pull tier-2) — the version-drift sweep.
 //
 // The push consumer (staleness_consumer.go) catches SOURCE changes (entity/chapter
