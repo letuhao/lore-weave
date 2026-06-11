@@ -99,10 +99,30 @@ Copy-adapt E0-3's `app/clients/grant_client.py` into translation-service, swappi
 
 ---
 
-## E0-4b — campaign-service adopt (NEXT, depends on 4a)
+## E0-4b — campaign-service adopt (NEXT, depends on 4a + E0-3 P2/2b)
+
+> **▶ DECISION LOCKED (2026-06-11, PO): FULL CALLER-PAYS (option C).** Supersedes the original D-E0-4-E "knowledge dispatch owner-paid" line below — that was the pre-2b compromise. **2b shipped caller-pays knowledge extraction** (collaborator extracts into the owner's project on their OWN same-model key, dimension-guarded, billing_user_id=caller, storage tag=project's). So a manage-collaborator's campaign bills the COLLABORATOR for BOTH stages. **XL, 2-service.**
+
+**Identity model (the crux).** A campaign on a shared book has TWO identities:
+- **caller** = the manage-collaborator who created/runs it. `campaigns.owner_user_id = caller`. Drives: campaign CRUD scoping, translation dispatch (E0-4a caller-attributed/caller-paid), and **billing** for the knowledge stage.
+- **book owner** = the knowledge graph/project partition (E0-3 projects are book-owner-only). The knowledge extraction writes into the OWNER's graph (`user_id = book owner`) but **bills the caller** (`billing_user_id = caller`, caller's same-model embedding+LLM refs, storage tag = project's canonical model — exactly 2b's dual identity).
+
+**Build steps:**
+1. **Grant gate.** `_owner_verified_chapters`: replace `owner != user_id → 403` with `require_book_grant`-style resolution. Tiers: read (list/get/progress) → **view**; pause → **edit**; create/start/cancel/budget → **manage** (D-E0-4-D). Add a Python grant_client (or the extracted SDK — `D-E0-4-PY-GRANT-SDK-EXTRACT` now overdue, 4 copies). `_owner_verified_chapters` returns the **book owner** (needed for the knowledge graph partition) alongside the gate result.
+2. **verify_project_owner** — the project is book-owner-only; verify against the **book owner**, not the caller (a manage-collaborator won't own it). Resolve book owner via `book.get_owner_user_id`.
+3. **Knowledge dispatch caller-pays (the 2-service part).** `dispatch_extraction` must send `user_id = book owner` (graph) **+ caller billing fields** (`billing_user_id = caller`, `billing_embedding_model`/`billing_llm_model` = caller's same-model refs from the campaign payload). The knowledge **internal** dispatch endpoint (`/internal/knowledge/projects/{id}/dispatch-extraction` → `_start_extraction_job_core`) currently passes NO `caller` (owner path); 2b wired the `caller` kwarg + dual-identity branch only for the PUBLIC route. **Thread `caller`+billing through the internal dispatch endpoint → `_start_extraction_job_core(caller=...)`** so the campaign path gets 2b's dimension-guard + billing. (LOW-1's `_create_and_start_job` INSERT already persists billing — done in 2b.)
+4. **Translation dispatch** — already caller-attributed/caller-paid (E0-4a); pass the caller. No knowledge-side change.
+5. **Campaign payload** — `knowledge_model_ref`/`embedding_model_ref` must be the CALLER's same-model refs (dimension-guarded knowledge-side). Document for the FE (E0-5).
+6. **Live-smoke (≥3 svc):** manage-collaborator B creates+starts a campaign on A's book → knowledge extraction job has `user_id=A` (graph) + `billing_user_id=B`; translation jobs `owner_user_id=B`; usage billed to B; view-grantee create→403, non-grantee→404. → `D-E0-4B-LIVE-SMOKE`.
+
+**Residual:** the `campaigns.owner_user_id` semantics (caller) vs the book-owner graph partition are now distinct — the consumer's event-correlation key `(book_id, owner_user_id, chapter_id)` stays the caller's campaign; the knowledge graph writes under the book owner. Verify the correlation still matches dispatched jobs (the knowledge job's `campaign_id` tag is the correlation anchor, not user_id — confirm in BUILD).
+
+<details><summary>superseded pre-2b plan</summary>
+
 - `_owner_verified_chapters` → `require_book_grant(manage)` (create/start) per D-E0-4-D; campaign row `owner_user_id = caller`.
-- **Two-resource check:** the knowledge project (`verify_project_owner`) — since campaign create needs the project, and E0-3 made the project book-owner-only, a collaborator won't own it. The campaign's knowledge dispatch runs as the **owner** (E0-3 resolve-to-owner, owner-paid — D-E0-4-E); its translation dispatch runs as the **caller** (4a grant-aware internal dispatch, caller-paid). Campaign resolves both: book-grant for the caller + the project's owner for the knowledge dispatch.
-- Read routes (list/get/progress) → view; pause → edit; create/start/cancel/budget → manage.
+- Two-resource check: knowledge project owner-only → knowledge dispatch runs as the owner (owner-paid, D-E0-4-E); translation as caller (caller-paid). [SUPERSEDED: knowledge now caller-paid via 2b.]
+- Read routes → view; pause → edit; create/start/cancel/budget → manage.
+</details>
 
 ## E0-4c — composition-service adopt (independent)
 - `owns_book` (pack.py SEC2) + `get_book` (works.py) → grant-aware (view for read-pack, edit for prose-gen / create-work / patch-work).
