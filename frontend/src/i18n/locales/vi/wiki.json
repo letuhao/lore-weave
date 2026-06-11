@@ -146,7 +146,8 @@
       "merged": "Thực thể đã hợp nhất",
       "chapter_regrounded": "Chương đã đăng lại",
       "citation_broken": "Chương được trích đã bị xóa",
-      "recipe_drift": "Công thức tạo đã cập nhật"
+      "recipe_drift": "Công thức tạo đã cập nhật",
+      "kg_drift": "Thực thể liên quan đã thay đổi"
     },
     "severity": {
       "hard": "Hỏng",

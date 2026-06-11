@@ -218,6 +218,55 @@ func (s *Server) getWikiGenConfig(ctx context.Context) (status int, respBody []b
 	return res.StatusCode, respBody, nil
 }
 
+// fetchKgHashes asks knowledge-service to recompute the CURRENT kg_neighborhood_hash
+// for each entity (D-WIKI-P2-KG-SWEEP). Knowledge reuses the exact generation render
+// path so the hash compares byte-for-byte with the stored one; entities whose KG is
+// unavailable are OMITTED by knowledge (not empty-hashed). Unlike fetchWikiNeighborhood
+// this does NOT degrade-to-nil silently — it returns an error so the sweep can SKIP
+// the KG half rather than flag false drift (the caller decides; ownerID = Neo4j tenant).
+func (s *Server) fetchKgHashes(
+	ctx context.Context, bookID, ownerID uuid.UUID, entityIDs []string,
+) (map[string]string, error) {
+	base := strings.TrimRight(s.cfg.KnowledgeServiceURL, "/")
+	if base == "" {
+		return nil, fmt.Errorf("knowledge-service not configured")
+	}
+	body, err := json.Marshal(map[string]any{
+		"user_id":    ownerID.String(),
+		"entity_ids": entityIDs,
+	})
+	if err != nil {
+		return nil, err
+	}
+	url := fmt.Sprintf("%s/internal/knowledge/books/%s/wiki/kg-hashes", base, bookID.String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if s.cfg.InternalServiceToken != "" {
+		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	}
+	if tid := TraceIDFromContext(ctx); tid != "" {
+		req.Header.Set(traceIDHeader, tid)
+	}
+	res, err := knowledgeHTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("kg-hashes: knowledge returned %d", res.StatusCode)
+	}
+	var parsed struct {
+		Hashes map[string]string `json:"hashes"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&parsed); err != nil {
+		return nil, err
+	}
+	return parsed.Hashes, nil
+}
+
 // wikiGenJobAction drives a resume/cancel on a wiki-gen job. ``action`` is the
 // path verb ("resume" | "cancel"); the user_id travels in the body so
 // knowledge-service can re-assert ownership. PROPAGATES the upstream status

@@ -37,6 +37,8 @@ from pydantic import BaseModel, Field
 from app.config import settings
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.entities import get_neighborhood_by_glossary_id
+from app.wiki.context import DEFAULT_KG_LIMIT, gather_kg_facts
+from app.wiki.fingerprint import stable_hash
 from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.wiki_gen_jobs import ActiveJobExists, WikiGenJobsRepo
 from app.deps import get_knowledge_pool, get_projects_repo
@@ -176,6 +178,55 @@ async def get_wiki_neighborhood(
         total_relations=detail.total_relations,
         relations_truncated=detail.relations_truncated,
     )
+
+
+# ── wiki-llm Phase-2 (D-WIKI-P2-KG-SWEEP) — current KG-neighbourhood hashes ────
+
+
+class WikiKgHashesRequest(BaseModel):
+    user_id: UUID
+    entity_ids: list[str] = Field(default_factory=list)
+
+
+class WikiKgHashesResponse(BaseModel):
+    hashes: dict[str, str]
+
+
+@router.post("/books/{book_id}/wiki/kg-hashes", response_model=WikiKgHashesResponse)
+async def wiki_kg_hashes(
+    book_id: UUID,
+    req: WikiKgHashesRequest,
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+) -> WikiKgHashesResponse:
+    """Recompute the CURRENT ``kg_neighborhood_hash`` for each entity for the KG-drift
+    sweep (glossary compares it to the stored ``build_inputs.kg_neighborhood_hash``).
+
+    PARITY IS MANDATORY: this reuses the SAME ``gather_kg_facts`` + ``stable_hash``
+    path as generation (``kg_limit=DEFAULT_KG_LIMIT``) so an unchanged neighbourhood
+    hashes identically — a divergent hash would false-flag every article.
+
+    An entity whose KG read is UNAVAILABLE (Neo4j down — the ``degraded`` marker) is
+    OMITTED, never returned as the empty-list hash, so a transient outage can't drive
+    false ``kg_drift``. No project (book not indexed) → an empty map (nothing to sweep).
+    """
+    if not req.entity_ids:
+        return WikiKgHashesResponse(hashes={})
+    projects = await projects_repo.list(req.user_id, book_id=book_id, limit=1)
+    if not projects:
+        return WikiKgHashesResponse(hashes={})
+    project = projects[0]
+
+    hashes: dict[str, str] = {}
+    for eid in req.entity_ids:
+        degraded: dict[str, str] = {}
+        facts = await gather_kg_facts(
+            entity_id=eid, user_id=req.user_id, project=project,
+            kg_limit=DEFAULT_KG_LIMIT, degraded=degraded,
+        )
+        if degraded.get("kg") == "unavailable":
+            continue  # KG unreachable for this entity — omit (don't fabricate a hash)
+        hashes[eid] = stable_hash(sorted(facts))
+    return WikiKgHashesResponse(hashes=hashes)
 
 
 # ── wiki-llm M6 — batch generation trigger ───────────────────────────────────

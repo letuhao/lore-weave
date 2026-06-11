@@ -240,3 +240,55 @@ func TestWikiGenConfigRoute_RequiresAuth(t *testing.T) {
 		t.Fatalf("want 401 (registered+gated), got %d", w.Code)
 	}
 }
+
+// D-WIKI-P2-KG-SWEEP — the kg-hashes client hop: POST entity_ids with the owner
+// user_id + internal token, parse the {hashes} map. Errors on non-200 (so the sweep
+// degrades) and when unconfigured.
+func TestFetchKgHashes_BuildsURLBodyAndParses(t *testing.T) {
+	book, owner := uuid.New(), uuid.New()
+	var gotPath, gotToken string
+	var gotBody map[string]any
+	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotToken = r.URL.Path, r.Header.Get("X-Internal-Token")
+		raw, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(raw, &gotBody)
+		_, _ = w.Write([]byte(`{"hashes":{"e1":"h1"}}`))
+	}))
+	defer stub.Close()
+
+	srv := newJobProxyServer(stub.URL)
+	hashes, err := srv.fetchKgHashes(context.Background(), book, owner, []string{"e1", "e2"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if want := "/internal/knowledge/books/" + book.String() + "/wiki/kg-hashes"; gotPath != want {
+		t.Fatalf("path: want %s, got %s", want, gotPath)
+	}
+	if gotToken != "tok-internal" {
+		t.Fatalf("internal token: want tok-internal, got %q", gotToken)
+	}
+	if gotBody["user_id"] != owner.String() {
+		t.Fatalf("body user_id: want %s, got %v", owner, gotBody["user_id"])
+	}
+	if hashes["e1"] != "h1" {
+		t.Fatalf("hashes not parsed: %v", hashes)
+	}
+}
+
+func TestFetchKgHashes_ErrorsOnNon200(t *testing.T) {
+	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer stub.Close()
+	srv := newJobProxyServer(stub.URL)
+	if _, err := srv.fetchKgHashes(context.Background(), uuid.New(), uuid.New(), []string{"e1"}); err == nil {
+		t.Fatal("fetchKgHashes: expected error on non-200 (so the sweep degrades)")
+	}
+}
+
+func TestFetchKgHashes_NotConfiguredErrors(t *testing.T) {
+	srv := newJobProxyServer("")
+	if _, err := srv.fetchKgHashes(context.Background(), uuid.New(), uuid.New(), []string{"e1"}); err == nil {
+		t.Fatal("fetchKgHashes: expected error when knowledge-service unconfigured")
+	}
+}

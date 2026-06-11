@@ -146,7 +146,8 @@
       "merged": "實體已合併",
       "chapter_regrounded": "章節已重新發佈",
       "citation_broken": "引用的章節已移除",
-      "recipe_drift": "生成配方已更新"
+      "recipe_drift": "生成配方已更新",
+      "kg_drift": "相關實體已變更"
     },
     "severity": {
       "hard": "損壞",

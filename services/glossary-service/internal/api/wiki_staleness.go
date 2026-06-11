@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"maps"
 	"net/http"
 	"time"
 
@@ -163,6 +164,11 @@ func (s *Server) sweepWikiStaleness(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		PromptVersion   string `json:"prompt_version"`
 		PipelineVersion string `json:"pipeline_version"`
+		// Optional: the book owner's id (the Neo4j tenant key). When present the
+		// sweep ALSO runs the KG-neighbourhood drift half (D-WIKI-P2-KG-SWEEP) — it
+		// must come from the caller since this is an internal-token endpoint with no
+		// JWT user. Absent → recipe-drift only.
+		UserID string `json:"user_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "WIKI_BAD_REQUEST", "invalid JSON body")
@@ -179,7 +185,24 @@ func (s *Server) sweepWikiStaleness(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"flagged": flagged})
+
+	kgFlagged := 0
+	if req.UserID != "" {
+		ownerID, perr := uuid.Parse(req.UserID)
+		if perr != nil {
+			writeError(w, http.StatusBadRequest, "WIKI_BAD_REQUEST", "invalid user_id")
+			return
+		}
+		// sweepKgDrift already degrades a knowledge-service outage to (0, nil); a
+		// non-nil error here is a local DB failure.
+		kgFlagged, err = s.sweepKgDrift(r.Context(), bookID, ownerID)
+		if err != nil {
+			slog.Error("sweepWikiStaleness kg", "error", err)
+			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"flagged": flagged, "kg_flagged": kgFlagged})
 }
 
 // sweepRecipeDrift records a pending `recipe_drift` staleness row for every AI
@@ -223,4 +246,111 @@ func (s *Server) sweepRecipeDrift(ctx context.Context, bookID uuid.UUID, promptV
 		return inserted, err
 	}
 	return inserted, nil
+}
+
+// wiki-llm Phase-2 (D-WIKI-P2-KG-SWEEP) — the KG-neighbourhood drift half of the
+// pull sweep. The push consumer + recipe-drift sweep can't see a Neo4j relationship
+// change (GAP A: KG edits emit no event), and the current neighbourhood lives in
+// knowledge-service. This asks knowledge to recompute each article's CURRENT
+// kg_neighborhood_hash — by the SAME render path as generation, so an unchanged
+// neighbourhood matches byte-for-byte — and records a `kg_drift` row for the ones
+// whose stored hash differs. ownerID is the Neo4j tenant key. Idempotent on the
+// ledger's partial-unique (article, reason, drifted-from hash). A knowledge-service
+// failure degrades to (0, nil): a best-effort sweep skips the KG half rather than
+// failing the whole sweep or flagging false drift (PO Q2).
+//
+// Parity couplings (both inherited from the wiki-gen trigger, untested here): the
+// current hash matches the stored one only while (a) the orchestrator gathers KG with
+// DEFAULT_KG_LIMIT (the knowledge endpoint hardcodes the same default) and (b) the
+// book resolves to the SAME project the article was generated under — single project
+// per book/user. A custom kg_limit or a multi-project book could false-flag; see
+// D-WIKI-P2-KG-SWEEP-PROJECT-PARITY.
+func (s *Server) sweepKgDrift(ctx context.Context, bookID, ownerID uuid.UUID) (int, error) {
+	type article struct {
+		articleID  uuid.UUID
+		entityID   string
+		storedHash string
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT wa.article_id, wa.entity_id::text,
+		       COALESCE(wa.generation_provenance->'build_inputs'->>'kg_neighborhood_hash','')
+		  FROM wiki_articles wa
+		 WHERE wa.book_id = $1 AND wa.generation_status IS NOT NULL
+		   AND wa.generation_provenance->'build_inputs' ? 'kg_neighborhood_hash'`,
+		bookID)
+	if err != nil {
+		return 0, err
+	}
+	var arts []article
+	entitySet := make(map[string]struct{})
+	for rows.Next() {
+		var a article
+		if err := rows.Scan(&a.articleID, &a.entityID, &a.storedHash); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		arts = append(arts, a)
+		entitySet[a.entityID] = struct{}{}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if len(arts) == 0 {
+		return 0, nil
+	}
+
+	entityIDs := make([]string, 0, len(entitySet))
+	for id := range entitySet {
+		entityIDs = append(entityIDs, id)
+	}
+	// Fetch current hashes in bounded chunks. The kg-hashes endpoint does one Neo4j
+	// read per entity, so a single huge request can exceed the knowledge client's
+	// timeout and silently skip the WHOLE sweep. Chunking keeps each call bounded and
+	// limits a transient failure's blast radius to one chunk (the rest still flag,
+	// PO Q2 degrade — a failed/absent chunk just leaves those entities unchecked).
+	const kgChunk = 50
+	current := make(map[string]string, len(entityIDs))
+	for start := 0; start < len(entityIDs); start += kgChunk {
+		end := min(start+kgChunk, len(entityIDs))
+		part, err := s.fetchKgHashes(ctx, bookID, ownerID, entityIDs[start:end])
+		if err != nil {
+			slog.Warn("sweepKgDrift: kg-hashes chunk failed, skipping", "error", err)
+			continue
+		}
+		maps.Copy(current, part)
+	}
+
+	flagged := 0
+	for _, a := range arts {
+		cur, ok := current[a.entityID]
+		// A missing current hash (knowledge omitted the entity — KG unavailable — or
+		// its chunk failed), an unchanged hash, or no stored baseline → not drift.
+		// Only a present, DIFFERENT current hash is a genuine KG change.
+		if a.storedHash == "" || !ok || cur == a.storedHash {
+			continue
+		}
+		tag, err := s.pool.Exec(ctx, `
+			INSERT INTO wiki_staleness (article_id, reason_code, source_ref, severity)
+			VALUES ($1, 'kg_drift',
+			        jsonb_build_object('source_type','kg','source_id',$2::text,'current_hash',$3::text),
+			        'content')
+			ON CONFLICT (article_id, reason_code, (source_ref->>'source_id'))
+			  WHERE status = 'pending' DO NOTHING`,
+			a.articleID, a.storedHash, cur)
+		if err != nil {
+			return flagged, err
+		}
+		if tag.RowsAffected() == 1 {
+			flagged++
+		}
+		if _, err := s.pool.Exec(ctx,
+			`UPDATE wiki_articles SET is_knowledge_stale = true
+			  WHERE article_id = $1 AND is_knowledge_stale = false`,
+			a.articleID,
+		); err != nil {
+			return flagged, err
+		}
+	}
+	return flagged, nil
 }

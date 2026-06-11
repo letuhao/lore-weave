@@ -146,7 +146,8 @@
       "merged": "Entity merged",
       "chapter_regrounded": "Chapter re-published",
       "citation_broken": "Cited chapter removed",
-      "recipe_drift": "Generation recipe updated"
+      "recipe_drift": "Generation recipe updated",
+      "kg_drift": "Related entities changed"
     },
     "severity": {
       "hard": "Broken",

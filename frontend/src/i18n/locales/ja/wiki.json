@@ -146,7 +146,8 @@
       "merged": "エンティティが統合",
       "chapter_regrounded": "章が再公開",
       "citation_broken": "引用された章が削除",
-      "recipe_drift": "生成レシピが更新"
+      "recipe_drift": "生成レシピが更新",
+      "kg_drift": "関連エンティティが変更"
     },
     "severity": {
       "hard": "破損",
