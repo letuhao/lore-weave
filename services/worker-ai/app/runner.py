@@ -50,7 +50,7 @@ from app.clients import (
     KnowledgeClient,
     ProviderRegistryClient,
 )
-from app.llm_client import LLMClient, set_campaign_id
+from app.llm_client import LLMClient, set_billing_user_id, set_campaign_id
 from app.metrics import (
     worker_ai_extraction_reasoning_model_advised_total,
     worker_ai_extraction_zero_output_total,
@@ -555,6 +555,15 @@ class JobRow:
     # user-initiated jobs). process_job binds it as a contextvar so every
     # provider job_meta carries it (see app.llm_client.set_campaign_id).
     campaign_id: UUID | None = None
+    # E0-3 Phase 2a — BYOK dual-identity billing. When set (collaborator-
+    # triggered extraction), provider calls (LLM + embeddings) resolve under the
+    # CALLER's key + refs; graph partition (user_id) and the stored
+    # embedding_model search tag stay the project owner's. NULL ⇒ owner-
+    # triggered ⇒ single-identity legacy path. Use eff_billing_user / eff_llm_ref
+    # / eff_embed_ref ONLY at provider-call sites — never for graph/cursor/status.
+    billing_user_id: UUID | None = None
+    billing_embedding_model: str | None = None
+    billing_llm_model: str | None = None
     # P3 D-P3-EXTRACTION-CALLER-WIRE-UP — sourced from knowledge_projects
     # (extraction_jobs doesn't carry the dimension; the project's
     # embedding_model UUID + dimension are the per-project vector-space
@@ -576,6 +585,67 @@ class JobRow:
     save_raw_extraction: bool = False
 
 
+# ── E0-3 Phase 2a — BYOK dual-identity billing resolution ────────────
+#
+# Use these THREE helpers at provider-call sites ONLY (LLM + embeddings). Every
+# graph/cursor/status/telemetry site keeps job.user_id / job.embedding_model —
+# the project owner's identity is the partition key and the canonical search
+# tag, and must never be swapped for the billing identity. NULL billing fields
+# ⇒ the helper returns the owner's value ⇒ the legacy single-identity path.
+
+
+class BillingConfigError(Exception):
+    """Fail-safe (E0-3 Phase 2a §6): a job carries billing_user_id but a billing
+    ref is NULL. The worker MUST fail the job rather than silently fall back to
+    the owner's key (which would charge a key its owner did not authorize)."""
+
+
+def eff_billing_user(job: JobRow) -> UUID:
+    """The user under whom provider calls (key + budget) resolve."""
+    return job.billing_user_id or job.user_id
+
+
+def eff_llm_ref(job: JobRow) -> str:
+    """The LLM model_ref for the provider call (caller's when billing-set).
+
+    Gated on billing_user_id (the IDENTITY), not on billing_llm_model alone:
+    a billing ref is only meaningful paired with the billing user it resolves
+    under (the contextvar that overrides submit_and_wait keys off the same
+    billing_user_id). This keeps the ref and the resolving user coherent even if
+    a row ever carries an orphan ref without a user (review-impl MED-1)."""
+    return job.billing_llm_model if job.billing_user_id else job.llm_model
+
+
+def eff_embed_ref(job: JobRow) -> str:
+    """The embedding model_ref for the provider call (caller's when billing-set).
+    Gated on billing_user_id (see eff_llm_ref). NOTE: the STORED passage tag
+    stays job.embedding_model (the project's canonical UUID — the search
+    filter), never this value."""
+    return job.billing_embedding_model if job.billing_user_id else job.embedding_model
+
+
+def assert_billing_complete(job: JobRow) -> None:
+    """Fail-safe guard: when billing_user_id is set, BOTH billing refs must be
+    present. A partial billing identity would resolve one provider call under the
+    caller and the other under the owner — a BYOK breach. Raise so process_job
+    fails the job before any provider call runs."""
+    if job.billing_user_id is None:
+        return
+    missing = [
+        name
+        for name, val in (
+            ("billing_embedding_model", job.billing_embedding_model),
+            ("billing_llm_model", job.billing_llm_model),
+        )
+        if not val
+    ]
+    if missing:
+        raise BillingConfigError(
+            f"job {job.job_id} has billing_user_id but missing {', '.join(missing)} "
+            "— refusing to fall back to the owner's key (BYOK fail-safe)"
+        )
+
+
 # ── DB helpers ───────────────────────────────────────────────────────
 
 
@@ -591,7 +661,9 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
         SELECT j.job_id, j.user_id, j.project_id, j.scope, j.scope_range,
                j.status, j.llm_model, j.embedding_model, j.max_spend_usd,
                j.items_total, j.items_processed, j.current_cursor,
-               j.cost_spent_usd, j.campaign_id, p.embedding_dimension,
+               j.cost_spent_usd, j.campaign_id,
+               j.billing_user_id, j.billing_embedding_model, j.billing_llm_model,
+               p.embedding_dimension,
                p.extraction_config, p.genre, p.save_raw_extraction
         FROM extraction_jobs j
         LEFT JOIN knowledge_projects p
@@ -626,6 +698,9 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
             current_cursor=cc,
             cost_spent_usd=r["cost_spent_usd"],
             campaign_id=r["campaign_id"],
+            billing_user_id=r["billing_user_id"],
+            billing_embedding_model=r["billing_embedding_model"],
+            billing_llm_model=r["billing_llm_model"],
             embedding_dimension=r["embedding_dimension"],
             extraction_config=ec if isinstance(ec, dict) else None,
             genre=r["genre"],
@@ -1133,6 +1208,11 @@ async def _extract_and_persist(
     is_last_chapter_of_book: bool = False,
     embedding_model_uuid: str | None = None,
     embedding_dimension: int | None = None,
+    # E0-3 Phase 2a-2 — BYOK billing identity forwarded onto the summary
+    # pipeline enqueued by /persist-pass2 (None ⇒ owner-triggered/legacy).
+    billing_user_id: str | None = None,
+    billing_llm_model: str | None = None,
+    billing_embedding_model: str | None = None,
 ) -> tuple[ExtractionResult, "Pass2Candidates | None"]:
     """Phase 4b-γ — replaces the legacy `knowledge_client.extract_item`.
 
@@ -1247,6 +1327,9 @@ async def _extract_and_persist(
         embedding_model_uuid=embedding_model_uuid,
         embedding_dimension=embedding_dimension,
         writer_autocreate=writer_autocreate,
+        billing_user_id=billing_user_id,
+        billing_llm_model=billing_llm_model,
+        billing_embedding_model=billing_embedding_model,
     )
     return persist_result, candidates
 
@@ -1317,6 +1400,16 @@ async def process_job(
 
     items_processed = 0
     try:
+        # E0-3 Phase 2a (BYOK caller-pays): inside the try so the fail-safe
+        # fails the JOB (not the poll loop). assert FIRST — a job with a partial
+        # billing identity must never run (it would resolve one provider call
+        # under the caller and the other under the owner). Then bind the billing
+        # user so every LLM provider call on this task resolves under the
+        # collaborator's key + budget (task-local, like campaign_id). None ⇒
+        # owner-triggered ⇒ legacy single-identity path.
+        assert_billing_complete(job)
+        set_billing_user_id(str(job.billing_user_id) if job.billing_user_id else None)
+
         # Resolve book_id from project (project_id ≠ book_id)
         book_id = await _get_project_book_id(pool, job.user_id, job.project_id)
 
@@ -1524,7 +1617,15 @@ async def process_job(
                     # B2-B-b1 — the job's resolved snapshot drives extraction:
                     # per-project model + filter + recovery overrides (or the
                     # global defaults when the project has no extraction_config).
-                    model_ref=run_snapshot.model_ref,
+                    # E0-3 Phase 2a — a collaborator-triggered job uses the
+                    # CALLER's billing LLM ref (their key); the per-project
+                    # snapshot ref applies only on the owner path. Gated on
+                    # billing_user_id (the identity), not the ref alone, to stay
+                    # coherent with the submit_and_wait contextvar (MED-1).
+                    model_ref=(
+                        job.billing_llm_model if job.billing_user_id
+                        else run_snapshot.model_ref
+                    ),
                     precision_filter=run_snapshot.precision_filter,
                     entity_recovery=run_snapshot.entity_recovery,
                     prompt_overrides=run_snapshot.prompts,
@@ -1540,6 +1641,15 @@ async def process_job(
                     embedding_dimension=(
                         job.embedding_dimension if p3_hierarchy_paths else None
                     ),
+                    # E0-3 2a-2 — forward the job's billing identity so the
+                    # summary pipeline this persist enqueues bills the caller
+                    # (None on the owner path → legacy). Storage tag stays the
+                    # project's embedding_model above.
+                    billing_user_id=(
+                        str(job.billing_user_id) if job.billing_user_id else None
+                    ),
+                    billing_llm_model=job.billing_llm_model,
+                    billing_embedding_model=job.billing_embedding_model,
                 )
 
                 if result.error:
@@ -1730,7 +1840,9 @@ async def process_job(
                     source_type="chat_message",
                     source_id=str(turn["aggregate_id"]),
                     job_id=job.job_id,
-                    model_ref=job.llm_model,
+                    # E0-3 Phase 2a — caller's billing LLM ref on the
+                    # collaborator path; job.llm_model (owner's) when billing NULL.
+                    model_ref=eff_llm_ref(job),
                     text=turn_text,
                 )
 

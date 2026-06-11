@@ -20,6 +20,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/loreweave/grantclient"
 )
 
 type mergeRequest struct {
@@ -111,7 +112,7 @@ func (s *Server) mergeEntities(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantManage) {
 		return
 	}
 
@@ -409,7 +410,7 @@ func (s *Server) revertMerge(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantManage) {
 		return
 	}
 	reason, err := s.revertMergeCore(r.Context(), bookID, journalID)

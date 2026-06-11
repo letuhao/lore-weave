@@ -36,7 +36,9 @@ from app.db.models import (
 from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.projects import ProjectsRepo
-from app.deps import get_projects_repo
+from app.auth.grant_deps import GrantLevel, require_project_grant
+from app.clients.grant_client import GrantClient
+from app.deps import get_grant_client, get_projects_repo
 from app.events.outbox_emit import config_adjustment_payload, emit_config_adjustment
 from app.middleware.jwt_auth import get_current_user
 
@@ -212,7 +214,15 @@ async def create_project(
     response: Response,
     user_id: UUID = Depends(get_current_user),
     repo: ProjectsRepo = Depends(get_projects_repo),
+    grant: GrantClient = Depends(get_grant_client),
 ) -> Project:
+    # E0-3 (decision Q4): creating a knowledge project FOR A BOOK is book-owner-only
+    # — the project's user_id becomes the book owner, which is what makes
+    # GrantOwner==owner-only hold across the project's lifecycle. A non-owner is
+    # denied uniformly (404, no oracle). A book-less project (book_id=None) is a
+    # personal project — any caller, who owns it.
+    if body.book_id is not None and await grant.resolve_grant(body.book_id, user_id) != GrantLevel.OWNER:
+        raise _not_found()
     # K7-review-R3: symmetric with patch_project. Pydantic's
     # ProjectName / ProjectDescription / ProjectInstructions caps gate
     # the public surface today, so the DB CHECK constraints can't fire
@@ -237,7 +247,7 @@ async def create_project(
 async def get_project(
     project_id: UUID,
     response: Response,
-    user_id: UUID = Depends(get_current_user),
+    user_id: UUID = Depends(require_project_grant(GrantLevel.VIEW)),
     repo: ProjectsRepo = Depends(get_projects_repo),
 ) -> Project:
     project = await repo.get(user_id, project_id)
@@ -256,7 +266,7 @@ async def patch_project(
     body: ProjectUpdate,
     response: Response,
     if_match: str | None = Header(default=None, alias="If-Match"),
-    user_id: UUID = Depends(get_current_user),
+    user_id: UUID = Depends(require_project_grant(GrantLevel.EDIT)),
     repo: ProjectsRepo = Depends(get_projects_repo),
 ) -> Project:
     # K-CLEAN-3: PATCH accepts is_archived=false (restore) but
@@ -366,7 +376,7 @@ async def put_extraction_config(
     body: ProjectExtractionConfigUpdate,
     response: Response,
     if_match: str | None = Header(default=None, alias="If-Match"),
-    user_id: UUID = Depends(get_current_user),
+    user_id: UUID = Depends(require_project_grant(GrantLevel.EDIT)),
     repo: ProjectsRepo = Depends(get_projects_repo),
 ) -> Project:
     """B2-B-b1 — replace a project's per-novel extraction tuning (structural
@@ -458,7 +468,7 @@ async def put_extraction_config(
 )
 async def archive_project(
     project_id: UUID,
-    user_id: UUID = Depends(get_current_user),
+    user_id: UUID = Depends(require_project_grant(GrantLevel.OWNER)),
     repo: ProjectsRepo = Depends(get_projects_repo),
 ) -> Project:
     """One-shot archive. Returns 404 if the project does not exist,
@@ -482,7 +492,7 @@ async def archive_project(
 )
 async def delete_project(
     project_id: UUID,
-    user_id: UUID = Depends(get_current_user),
+    user_id: UUID = Depends(require_project_grant(GrantLevel.OWNER)),
     repo: ProjectsRepo = Depends(get_projects_repo),
 ) -> None:
     deleted = await repo.delete(user_id, project_id)

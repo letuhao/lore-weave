@@ -254,6 +254,36 @@ class ProjectsRepo:
             row = await conn.fetchrow(query, user_id, project_id)
         return _row_to_project(row) if row else None
 
+    async def project_meta(self, project_id: UUID) -> tuple[UUID, UUID | None] | None:
+        """E0-3 authorization bootstrap — return ``(owner_user_id, book_id)`` for a
+        project, NOT scoped by user. This is the ONLY non-user-scoped read; it
+        returns just the two ids the grant gate needs (never project content), so a
+        non-grantee still gets a uniform 404 at the access layer (no oracle). Returns
+        None if the project does not exist. ``book_id`` is None for a book-less
+        project (→ owner-only fallback, R1)."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT user_id, book_id FROM knowledge_projects WHERE project_id = $1",
+                project_id,
+            )
+        return (row["user_id"], row["book_id"]) if row else None
+
+    async def get_by_book(self, book_id: UUID) -> Project | None:
+        """E0-3 — the (single, book-owner-owned) active book project for a book,
+        NOT user-scoped. Book-scoped routes (raw-search) call this AFTER a book
+        grant check so a collaborator searches the owner's project. Creation is
+        book-owner-only, so there is at most one 'book' project per book."""
+        query = f"""
+        SELECT {_SELECT_COLS}
+        FROM knowledge_projects
+        WHERE book_id = $1 AND project_type = 'book' AND NOT is_archived
+        ORDER BY created_at
+        LIMIT 1
+        """
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(query, book_id)
+        return _row_to_project(row) if row else None
+
     async def update(
         self,
         user_id: UUID,

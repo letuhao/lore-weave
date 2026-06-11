@@ -35,6 +35,48 @@ async def _collect(sdk, **kw):
     return [e async for e in cowrite.stream_draft(sdk, **params)]
 
 
+# ── T3.2 selection-edit dispatch (the LOOM-39 missing-enum regression-lock) ──
+
+import pytest
+
+
+def _profile(voice: str = "", lang: str = "en") -> BookProfile:
+    return BookProfile(source_language=lang, voice=voice)
+
+
+def test_each_selection_operation_dispatches_its_own_instruction():
+    """rewrite/expand/describe must each get their OWN instruction — a shared
+    default would let a typo'd op silently behave like another (or draft a scene)."""
+    seen = {}
+    for op in ("rewrite", "expand", "describe"):
+        msgs = cowrite.build_selection_messages("the gate of ash", _profile(), op)
+        user = msgs[1]["content"]
+        assert cowrite._SELECTION_INSTRUCTIONS[op] in user
+        assert "the gate of ash" in user  # the SELECTED passage is fed in
+        seen[op] = user
+    # the three instructions are distinct (no accidental aliasing).
+    assert len({cowrite._SELECTION_INSTRUCTIONS[o] for o in ("rewrite", "expand", "describe")}) == 3
+
+
+def test_unregistered_selection_operation_raises_not_falls_back():
+    """An unknown op RAISES — it must NOT fall back to a scene-draft default
+    (dict.get(key, DEFAULT)-hides-a-missing-enum, LOOM-39)."""
+    with pytest.raises(ValueError):
+        cowrite.build_selection_messages("x", _profile(), "draft_scene")
+    with pytest.raises(ValueError):
+        cowrite.build_selection_messages("x", _profile(), "summarize")
+
+
+def test_selection_messages_carry_voice_and_grounding():
+    msgs = cowrite.build_selection_messages(
+        "sel", _profile(voice="terse, noir"), "rewrite", guide="terser", grounding="<canon>X</canon>")
+    system, user = msgs[0]["content"], msgs[1]["content"]
+    assert "terse, noir" in system           # BookProfile voice steers the system prompt
+    assert "Output ONLY the revised passage" in system
+    assert "<canon>X</canon>" in user        # scene grounding precedes the instruction
+    assert "Author guidance: terser" in user
+
+
 # ── reasoning knob ──
 
 async def test_reasoning_effort_threaded_into_stream_request():

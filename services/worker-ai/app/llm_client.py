@@ -33,6 +33,7 @@ __all__ = [
     "LLMClient",
     "get_llm_client",
     "close_llm_client",
+    "set_billing_user_id",
     "set_campaign_id",
 ]
 
@@ -55,6 +56,25 @@ def set_campaign_id(campaign_id: str | None) -> None:
     Call once at the start of processing a job; pass None to clear (a
     non-campaign job must not inherit a previous job's campaign)."""
     _campaign_id_ctx.set(campaign_id)
+
+
+# E0-3 Phase 2a — BYOK caller-pays. When a book collaborator triggers an
+# extraction job, every LLM provider call must resolve under the COLLABORATOR's
+# user_id (their key + budget), not the project owner's. process_job binds this
+# once per job; submit_and_wait overrides the resolving user_id with it. Task-
+# local (each asyncio Task copies the context) so concurrent owner/collaborator
+# jobs don't cross. Default None ⇒ owner-triggered jobs use the per-call user_id
+# unchanged (legacy single-identity path).
+_billing_user_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "worker_ai_billing_user_id", default=None,
+)
+
+
+def set_billing_user_id(billing_user_id: str | None) -> None:
+    """Set the billing user (collaborator) for provider jobs on this async task.
+    Call once at the start of processing a job; pass None to clear (an owner-
+    triggered job must not inherit a previous job's collaborator)."""
+    _billing_user_id_ctx.set(billing_user_id)
 
 
 class LLMClient:
@@ -102,6 +122,15 @@ class LLMClient:
         campaign_id = _campaign_id_ctx.get()
         if campaign_id and (job_meta is None or "campaign_id" not in job_meta):
             job_meta = {**(job_meta or {}), "campaign_id": campaign_id}
+
+        # E0-3 Phase 2a (BYOK caller-pays): when a collaborator triggered this
+        # job, resolve the provider call under THEIR user_id (key + budget), not
+        # the owner's. This is the single chokepoint every extraction LLM call
+        # flows through, so no loreweave_extraction call site can leak the
+        # owner's key. None ⇒ owner-triggered ⇒ per-call user_id unchanged.
+        billing_user_id = _billing_user_id_ctx.get()
+        if billing_user_id:
+            user_id = billing_user_id
 
         attempts = 0
         max_attempts = 1 + transient_retry_budget

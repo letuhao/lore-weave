@@ -6,8 +6,11 @@ RUN apk add --no-cache git
 # github.com/loreweave/observability => ../../sdks/go/observability`
 # directive resolves inside the container. The compose file sets
 # context: .. and dockerfile: services/glossary-service/Dockerfile.
-# Copy the shared module first (separate cache layer), then service files.
+# Copy the shared modules first (separate cache layer), then service files.
+# grantclient (E0-1) is the shared (user,book) grant SDK; its `replace` in
+# go.mod (=> ../../sdks/go/grantclient) must resolve inside the container.
 COPY sdks/go/observability /src/sdks/go/observability
+COPY sdks/go/grantclient /src/sdks/go/grantclient
 COPY services/glossary-service /src/services/glossary-service
 
 WORKDIR /src/services/glossary-service

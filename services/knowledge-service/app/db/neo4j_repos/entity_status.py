@@ -44,6 +44,7 @@ __all__ = [
     "entity_status_id",
     "merge_entity_status",
     "status_at_order",
+    "statuses_detail_at_order",
     "delete_entity_status_with_zero_evidence",
 ]
 
@@ -200,6 +201,52 @@ async def status_at_order(
         min_evidence=min_evidence,
     )
     return {record["entity_id"]: record["status"] async for record in result}
+
+
+# ── statuses_detail_at_order (T2.1) ───────────────────────────────────
+
+# Same window logic as status_at_order, but projects from_order too so the codex
+# can show WHEN the latest transition happened. Kept separate from status_at_order
+# (dict[str,str], used by the A2 canon guard) to avoid changing that return type.
+_STATUS_DETAIL_AT_ORDER_CYPHER = """
+UNWIND $entity_ids AS eid
+OPTIONAL MATCH (s:EntityStatus {user_id: $user_id, entity_id: eid})
+WHERE ($project_id IS NULL OR s.project_id = $project_id)
+  AND s.from_order <= $at_order
+  AND s.evidence_count >= $min_evidence
+WITH eid, s ORDER BY s.from_order DESC
+WITH eid, head(collect(s)) AS latest
+RETURN eid AS entity_id,
+       coalesce(latest.status, 'active') AS status,
+       latest.from_order AS from_order
+"""
+
+
+async def statuses_detail_at_order(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    entity_ids: list[str],
+    at_order: int,
+    min_evidence: int = 1,
+) -> dict[str, dict[str, Any]]:
+    """`{entity_id: {status, from_order}}` — latest EVIDENCED transition with
+    `from_order <= at_order` per entity; none → `{status: 'active', from_order:
+    None}`. Every requested id appears (no silent drop). A restrictive `at_order`
+    (e.g. -1 for a fail-closed window) yields all-`active` with no leak."""
+    if not entity_ids:
+        return {}
+    result = await run_read(
+        session, _STATUS_DETAIL_AT_ORDER_CYPHER,
+        user_id=user_id, project_id=project_id,
+        entity_ids=list(dict.fromkeys(entity_ids)), at_order=at_order,
+        min_evidence=min_evidence,
+    )
+    return {
+        record["entity_id"]: {"status": record["status"], "from_order": record["from_order"]}
+        async for record in result
+    }
 
 
 # ── delete_entity_status_with_zero_evidence ───────────────────────────

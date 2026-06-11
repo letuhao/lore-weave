@@ -7,6 +7,7 @@ import uuid
 import pytest
 
 from app.db.models import CanonRule
+from app.grant_client import GrantLevel
 from app.packer.pack import OwnershipError, PackRequest, pack
 
 USER = uuid.uuid4()
@@ -30,6 +31,17 @@ class StubBook:
         return {"text_content": "first para\nsecond para\nthird para"}
     async def get_chapter_sort_orders(self, chapter_ids):
         return {k: v for k, v in self._sort.items() if k in {str(c) for c in chapter_ids}}
+
+
+class StubGrant:
+    """E0-4c — fake book-grant authority for the pack() SEC2 gate. Defaults to
+    OWNER (gate passes); a NONE level makes authorize_book raise OwnershipError."""
+    def __init__(self, level: GrantLevel = GrantLevel.OWNER):
+        self._level = level
+    async def resolve_grant(self, book_id, user_id):
+        return self._level
+    async def resolve_access(self, book_id, user_id):
+        return self._level, "active"
 
 
 class StubGlossary:
@@ -104,13 +116,21 @@ class StubNarrativeThreads:
         return [SimpleNamespace(kind=k, summary=s) for k, s in self._t][:limit]
 
 
+def _grant_for(book) -> StubGrant:
+    # E0-4c: derive the gate level from the stub book's owns flag — owns=False
+    # → NONE → authorize_book raises OwnershipError (preserves the old test).
+    return StubGrant(GrantLevel.OWNER if getattr(book, "_owns", True) else GrantLevel.NONE)
+
+
 async def _pack(req, *, book=None, glossary=None, knowledge=None, canon=None, narrative_threads=None):
+    bk = book or StubBook()
     return await pack(
-        req, book=book or StubBook(), glossary=glossary or StubGlossary(),
+        req, book=bk, glossary=glossary or StubGlossary(),
         knowledge=knowledge or StubKnowledge(), canon_repo=canon or StubCanon(),
         outline_repo=StubOutline(), scene_links_repo=StubSceneLinks(),
         budget_tokens=10_000, counter=_wc,
         narrative_threads_repo=narrative_threads,
+        grant=_grant_for(bk),
     )
 
 
@@ -193,11 +213,13 @@ async def test_chapter_sort_hint_skips_redundant_book_fetch():
 
 
 async def _pack_with_compress(req, compress_fn, **kw):
+    bk = kw.get("book") or StubBook()
     return await pack(
-        req, book=kw.get("book") or StubBook(), glossary=StubGlossary(),
+        req, book=bk, glossary=StubGlossary(),
         knowledge=kw.get("knowledge") or StubKnowledge(), canon_repo=StubCanon(),
         outline_repo=StubOutline(), scene_links_repo=StubSceneLinks(),
         budget_tokens=10_000, counter=_wc, compress_fn=compress_fn,
+        grant=_grant_for(bk),
     )
 
 

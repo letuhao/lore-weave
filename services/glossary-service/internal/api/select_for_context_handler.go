@@ -124,7 +124,7 @@ func (s *Server) internalSelectForContext(w http.ResponseWriter, r *http.Request
 // + clamps the request itself, so the internal HTTP endpoint and the
 // glossary_search MCP tool get identical bounds. The caller is responsible for
 // any ownership check — this layer trusts that book access was authorised
-// upstream (the MCP tool calls checkBookOwnership first; the internal HTTP route
+// upstream (the MCP tool calls checkGrant first; the internal HTTP route
 // is X-Internal-Token gated).
 func (s *Server) selectGlossaryForContext(ctx context.Context, bookID uuid.UUID, req selectForContextRequest) (selectForContextResponse, error) {
 	req.Query = strings.TrimSpace(req.Query)

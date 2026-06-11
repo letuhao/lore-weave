@@ -86,6 +86,54 @@ async def test_forwards_campaign_id_to_core(mocker):
     assert start.call_args.kwargs["campaign_id"] == camp
 
 
+# ── E0-4b: caller-pays dispatch (manage-collaborator campaign) ─────────
+
+
+async def test_owner_self_dispatch_no_caller_owner_paid(mocker):
+    """billing_user_id == user_id (or None) → owner path: no caller, body uses
+    the project's embedding model (legacy owner-paid)."""
+    start = mocker.patch(
+        "app.routers.internal_dispatch._start_extraction_job_core",
+        new_callable=AsyncMock, return_value=SimpleNamespace(job_id=JOB))
+    pr, jr, br = _repos(_project())
+    payload = InternalExtractionPayload(user_id=USER, model_ref=MODEL, billing_user_id=USER)
+    await dispatch_extraction(PROJ, payload, pr, jr, br)
+    assert start.call_args.kwargs.get("caller") is None
+    assert start.call_args.args[1].embedding_model == "bge-m3"  # project's tag
+
+
+async def test_collaborator_dispatch_bills_caller_with_own_embedding(mocker):
+    """A manage-collaborator's campaign (billing_user_id != owner): user_id stays
+    the book/project OWNER (graph partition), but caller=collaborator drives
+    billing, and body.embedding_model is the CALLER's own same-model ref (2b's
+    core probes + bills it; the stored tag becomes the project's)."""
+    start = mocker.patch(
+        "app.routers.internal_dispatch._start_extraction_job_core",
+        new_callable=AsyncMock, return_value=SimpleNamespace(job_id=JOB))
+    pr, jr, br = _repos(_project())
+    collab = UUID("dddddddd-dddd-dddd-dddd-dddddddddddd")
+    payload = InternalExtractionPayload(
+        user_id=USER, model_ref=MODEL,
+        billing_user_id=collab, billing_embedding_model="collab-bge-m3-ref")
+    await dispatch_extraction(PROJ, payload, pr, jr, br)
+    assert start.call_args.args[2] == USER                       # graph partition = owner
+    assert start.call_args.kwargs["caller"] == collab            # billing = collaborator
+    assert start.call_args.args[1].embedding_model == "collab-bge-m3-ref"  # caller's ref
+
+
+async def test_collaborator_dispatch_missing_billing_embedding_422(mocker):
+    mocker.patch(
+        "app.routers.internal_dispatch._start_extraction_job_core",
+        new_callable=AsyncMock, return_value=SimpleNamespace(job_id=JOB))
+    pr, jr, br = _repos(_project())
+    collab = UUID("dddddddd-dddd-dddd-dddd-dddddddddddd")
+    payload = InternalExtractionPayload(user_id=USER, model_ref=MODEL, billing_user_id=collab)
+    with pytest.raises(HTTPException) as exc:
+        await dispatch_extraction(PROJ, payload, pr, jr, br)
+    assert exc.value.status_code == 422
+    assert exc.value.detail["code"] == "KNOW_NO_BILLING_EMBEDDING"
+
+
 async def test_public_route_passes_no_campaign_id(mocker):
     """S4a guard: the public start route never sets campaign_id (a user cannot
     tag their job to a campaign). The wrapper delegates with the default None."""
@@ -94,9 +142,17 @@ async def test_public_route_passes_no_campaign_id(mocker):
         ext, "_start_extraction_job_core",
         new_callable=AsyncMock, return_value=SimpleNamespace(job_id=JOB))
     body = ext.StartJobRequest(scope="chapters", llm_model=str(MODEL), embedding_model="bge-m3")
-    await ext.start_extraction_job(PROJ, body, USER, AsyncMock(), AsyncMock(), AsyncMock())
+    # E0-3 Phase 2b — the dep now yields Principals(owner, caller); owner==caller
+    # here is the owner path (no billing). The public route never sets campaign_id.
+    from app.auth.grant_deps import Principals
+    await ext.start_extraction_job(
+        PROJ, body, Principals(owner=USER, caller=USER),
+        AsyncMock(), AsyncMock(), AsyncMock(),
+    )
     # campaign_id not supplied → core uses its default None
     assert core.call_args.kwargs.get("campaign_id") is None
+    # owner path → caller forwarded as the owner (no billing split downstream)
+    assert core.call_args.kwargs.get("caller") == USER
 
 
 async def test_project_not_found_404(mocker):

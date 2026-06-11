@@ -26,6 +26,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/loreweave/grantclient"
 )
 
 // ── propose (internal) ──────────────────────────────────────────────────────
@@ -219,7 +220,7 @@ func (s *Server) listMergeCandidates(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 	status := r.URL.Query().Get("status")
@@ -390,7 +391,7 @@ func (s *Server) dismissMergeCandidate(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 	reason, err := s.dismissMergeCandidateCore(r.Context(), bookID, candidateID)

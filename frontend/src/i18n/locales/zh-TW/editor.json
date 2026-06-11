@@ -31,7 +31,8 @@
   "tabs": {
     "chapters": "章節",
     "original": "原文",
-    "glossary": "詞彙表"
+    "glossary": "詞彙表",
+    "outline": "大綱"
   },
   "chapter_count": "{{count}} 章節",
   "chapter_count_other": "{{count}} 章節",

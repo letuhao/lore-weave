@@ -1088,6 +1088,11 @@ async def enqueue_chapter_and_maybe_book_summaries(
     embedding_dimension: int,
     is_last_chapter_of_book: bool,
     book_parts: list[tuple[str, str, str]],
+    # E0-3 Phase 2a-2 — BYOK billing identity forwarded onto every summary
+    # message so summary_processor bills the collaborator (empty ⇒ owner/legacy).
+    billing_user_id: str = "",
+    billing_llm_model: str = "",
+    billing_embedding_model: str = "",
 ) -> None:
     """Always enqueue summary.chapter for this chapter. On is_last_chapter,
     additionally enqueue summary.part per book_parts + summary.book.
@@ -1108,6 +1113,9 @@ async def enqueue_chapter_and_maybe_book_summaries(
         model_ref=model_ref,
         embedding_model_uuid=embedding_model_uuid,
         embedding_dimension=embedding_dimension,
+        billing_user_id=billing_user_id,
+        billing_llm_model=billing_llm_model,
+        billing_embedding_model=billing_embedding_model,
     ))
     if not is_last_chapter_of_book:
         return
@@ -1124,6 +1132,9 @@ async def enqueue_chapter_and_maybe_book_summaries(
             model_ref=model_ref,
             embedding_model_uuid=embedding_model_uuid,
             embedding_dimension=embedding_dimension,
+            billing_user_id=billing_user_id,
+            billing_llm_model=billing_llm_model,
+            billing_embedding_model=billing_embedding_model,
         ))
     # 3. Book summary — last.
     await summary_enqueue(SummarizeMessage(
@@ -1137,6 +1148,9 @@ async def enqueue_chapter_and_maybe_book_summaries(
         model_ref=model_ref,
         embedding_model_uuid=embedding_model_uuid,
         embedding_dimension=embedding_dimension,
+        billing_user_id=billing_user_id,
+        billing_llm_model=billing_llm_model,
+        billing_embedding_model=billing_embedding_model,
     ))
 
 

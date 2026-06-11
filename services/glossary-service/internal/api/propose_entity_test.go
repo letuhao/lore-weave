@@ -49,7 +49,7 @@ func TestToolPropose_OwnershipDenied(t *testing.T) {
 	// book-service returns a projection owned by someone else → not accessible.
 	ts := httptest.NewServer(projection(uuid.New(), uuid.New()))
 	defer ts.Close()
-	s := &Server{cfg: &config.Config{BookServiceURL: ts.URL, InternalServiceToken: "t"}}
+	s := &Server{cfg: &config.Config{BookServiceURL: ts.URL, InternalServiceToken: "t"}, grantClient: buildGrantClient(ts.URL, "t")}
 	_, _, err := s.toolProposeNewEntity(ctxWithUser(uuid.New()), nil,
 		proposeEntityToolIn{BookID: uuid.NewString(), Kind: "character", Name: "X"})
 	if err == nil || !strings.Contains(err.Error(), "not accessible") {

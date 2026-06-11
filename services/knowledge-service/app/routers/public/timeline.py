@@ -30,6 +30,7 @@ from app.db.neo4j_repos.events import (
 )
 from app.deps import get_book_client
 from app.middleware.jwt_auth import get_current_user
+from app.spoiler_window import resolve_before_order
 
 timeline_router = APIRouter(
     prefix="/v1/knowledge",
@@ -121,6 +122,15 @@ async def list_timeline_events(
             "``event_date_iso`` are EXCLUDED when set."
         ),
     ),
+    before_chapter_id: UUID | None = Query(
+        default=None,
+        description=(
+            "T2.1 — spoiler-window the timeline THROUGH this book chapter "
+            "(resolved server-side to a ``before_order`` ceiling). An "
+            "explicit ``before_order`` wins if both are given. Fail-closed: "
+            "an unresolvable chapter yields an empty timeline, never a leak."
+        ),
+    ),
     limit: int = Query(50, ge=1, le=EVENTS_MAX_LIMIT),
     offset: int = Query(0, ge=0),
     user_id: UUID = Depends(get_current_user),
@@ -184,6 +194,11 @@ async def list_timeline_events(
                 f"<= event_date_to ({event_date_to!r})"
             ),
         )
+    # T2.1 — resolve the chapter spoiler-window to a before_order ceiling. An
+    # explicit before_order wins; an unresolvable chapter fails CLOSED (-1 → empty).
+    if before_order is None and before_chapter_id is not None:
+        before_order, _available = await resolve_before_order(book_client, before_chapter_id)
+
     async with neo4j_session() as session:
         # C10 (D-K19e-α-01): resolve entity_id → participant candidates
         # BEFORE the list query so the repo's Cypher can filter in a
