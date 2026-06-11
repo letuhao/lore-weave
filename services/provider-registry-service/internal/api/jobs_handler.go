@@ -226,6 +226,23 @@ func (s *Server) doSubmitJob(w http.ResponseWriter, r *http.Request, userID uuid
 	// spawnJob then layers a NEW cancellable context registered against jobID
 	// so DELETE /v1/llm/jobs/{id} can abort the in-flight call (Phase 0). The
 	// worker gets pf.input — the possibly max_tokens-capped input.
+	// Phase 1 Commit 3 — when the durable queue is enabled, ENQUEUE (the consumer
+	// pool runs it behind a per-kind semaphore = wait-not-fail) instead of
+	// spawning a goroutine directly. A publish failure falls back to the direct
+	// path so a broker blip never drops an already-persisted job.
+	if s.jobQueue != nil {
+		if perr := s.jobQueue.Publish(r.Context(), jobID); perr == nil {
+			writeJSON(w, http.StatusAccepted, map[string]any{
+				"job_id":       jobID.String(),
+				"status":       "pending",
+				"submitted_at": nowRFC3339Nano(),
+			})
+			return
+		} else {
+			slog.Warn("llm job enqueue failed — direct dispatch", "job_id", jobID.String(), "err", perr)
+		}
+	}
+
 	workerCtx := observability.DetachedContext(r.Context())
 	s.spawnJob(workerCtx, jobID, func(ctx context.Context) {
 		s.jobsWorker.Process(ctx, jobID, userID, in.Operation, in.ModelSource, modelRef, pf.input, chunkCfg)

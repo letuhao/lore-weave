@@ -179,6 +179,62 @@ WHERE job_id = $1 AND owner_user_id = $2
 	return job, nil
 }
 
+// JobDispatch is the minimal set of fields the queue consumer needs to (re)run
+// Process from a job_id — no owner scoping (the internal consumer trusts the row
+// the submit handler already owner-verified + persisted).
+type JobDispatch struct {
+	OwnerUserID uuid.UUID
+	Operation   string
+	ModelSource string
+	ModelRef    uuid.UUID
+	Input       json.RawMessage
+	Chunking    json.RawMessage
+	Status      string
+}
+
+// LoadForProcess reads the dispatch fields for a queued job. Used by the Commit-3
+// consumer pool: it loads by job_id (the message carries only the id) and runs
+// Process. Returns pgx.ErrNoRows if the row is gone (consumer acks + drops).
+func (r *Repo) LoadForProcess(ctx context.Context, jobID uuid.UUID) (*JobDispatch, error) {
+	d := &JobDispatch{}
+	err := r.pool.QueryRow(ctx, `
+SELECT owner_user_id, operation, model_source, model_ref, input, chunking, status
+FROM llm_jobs WHERE job_id = $1
+`, jobID).Scan(&d.OwnerUserID, &d.Operation, &d.ModelSource, &d.ModelRef,
+		&d.Input, &d.Chunking, &d.Status)
+	if err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+// ResolveKind reads a model's provider_kind (the queue routing key + governor
+// concurrency class). found=false → model gone (caller 404s). Mirrors
+// EstimateModelInfo's lookup, kind-only (no pricing decode).
+func (r *Repo) ResolveKind(ctx context.Context, modelSource string, ownerUserID, modelRef uuid.UUID) (string, bool, error) {
+	var kind string
+	var err error
+	switch modelSource {
+	case "user_model":
+		err = r.pool.QueryRow(ctx,
+			`SELECT provider_kind FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2`,
+			modelRef, ownerUserID).Scan(&kind)
+	case "platform_model":
+		err = r.pool.QueryRow(ctx,
+			`SELECT provider_kind FROM platform_models WHERE platform_model_id=$1`,
+			modelRef).Scan(&kind)
+	default:
+		return "", false, fmt.Errorf("unknown model_source %q", modelSource)
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("resolve kind: %w", err)
+	}
+	return kind, true, nil
+}
+
 // MarkRunning transitions a pending job to running and stamps started_at.
 // Returns the rows-affected count so callers can detect concurrent
 // transitions (another worker beat us to the row).

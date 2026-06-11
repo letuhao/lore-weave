@@ -86,6 +86,13 @@ type Config struct {
 	// loop + REDIS_URL gate.
 	LLMJobTerminalStream       string
 	LLMJobTerminalStreamMaxLen int
+
+	// LLM re-arch Phase 1 Commit 3 — durable per-kind work queue. When true (AND
+	// RABBITMQ_URL set), submit enqueues to llm.jobs.{kind} and a consumer pool
+	// (size = governor.maxFor(kind)) runs the job — jobs WAIT in the queue instead
+	// of failing acquire. Default false ⇒ today's direct-goroutine dispatch (zero
+	// change). Env LLM_JOB_QUEUE_ENABLED.
+	LLMJobQueueEnabled bool
 }
 
 func Load() (*Config, error) {
@@ -183,6 +190,7 @@ func Load() (*Config, error) {
 	if c.LLMJobTerminalStreamMaxLen, err = getEnvInt("LLM_JOB_TERMINAL_STREAM_MAXLEN", 100000); err != nil {
 		return nil, err
 	}
+	c.LLMJobQueueEnabled = os.Getenv("LLM_JOB_QUEUE_ENABLED") == "true"
 	return c, nil
 }
 

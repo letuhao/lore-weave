@@ -45,6 +45,15 @@ Spec §5.3 wording says "topic exchange" (RabbitMQ). **This plan uses Redis stre
 - **Tests + mandatory live-smoke** (≥2 services): induce >poolsize concurrent local jobs → assert they queue + all complete (none `acquire timeout`); cancel mid-generation → slot frees in one tick (the incident regression).
 - **Risk:** this rewrites the core dispatch path. Behind a config flag (broker configured ⇒ queue path, else today's direct goroutine) so it's reversible and rolls out safely. **This is the commit that lets us REVERT the `GOVERNOR_ACQUIRE_TIMEOUT_MS=600000` band-aid.**
 
+### Commit 3 — precise design (mapped 2026-06-11, ready to build)
+- **`kind` is resolved INSIDE `Process` today** (`worker.go:364 w.resolve(...)` → providerKind; Guard called at :477/:523). For per-kind-queue routing it must be known at **enqueue**. Two options: (a) resolve providerKind at submit (one extra `resolve` lookup in `doSubmitJob`, persist it on the job + use it as the routing kind — also fills the Commit-1 `TerminalOutbox.Kind` gap, threadable via Process→finalizeAndNotify); (b) single `llm.jobs` queue + the consumer resolves kind then routes to a per-kind in-process semaphore. **Recommend (a)** — clean per-kind RabbitMQ queues + prefetch.
+- **Publisher:** reuse the amqp091 conn/channel pattern from `notifier.go:88` (Dial → Channel → declare). Declare durable `llm.jobs.{kind}` queues. `doSubmitJob` (jobs_handler.go:230): when `LLM_JOB_QUEUE_ENABLED` + broker set, publish `{job_id}` to `llm.jobs.{kind}` INSTEAD of `spawnJob`; else keep `spawnJob` (today's path).
+- **Consumer pool:** per kind, `ch.Qos(prefetch=maxFor(kind))` + consume; on delivery → load the `llm_jobs` row (operation/model_source/model_ref/input/chunking) → `spawnJob`(Phase-0 cancellable ctx) → a NEW `Worker.ProcessJob(ctx, jobID)` that reconstructs Process's args from the row → ack on terminal, nack/requeue on consumer crash (= the §5.6 reaper). local kind → prefetch 1 = the single GPU.
+- **Governor** demoted: keep the atomic-Lua Acquire as a safety belt + the REDIS-unset fail-open, but prefetch is now the primary gate → no more `ErrGovernorTimeout` cascade.
+- **Graceful shutdown:** cancel consumers on SIGTERM; in-flight jobs finish or get redelivered.
+- **Tests:** publisher routes by kind; consumer load-and-process reconstructs args; prefetch bounds concurrency. **Live-smoke (mandatory, ≥2 svc):** >poolsize concurrent local jobs → all queue + complete (none `acquire timeout`); cancel mid-gen → slot frees in one tick (the incident regression). → `D-PHASE1-QUEUE-LIVE-SMOKE`.
+- **Smallest safe sub-step first (Commit 3a):** resolve+persist `kind` at submit + thread it into `TerminalOutbox.Kind` (fills the Commit-1 gap, adds the routing key, NO hot-path rewrite) — then Commit 3b adds the queue+pool+flag.
+
 ---
 
 ## Sequencing / checkpoints

@@ -263,6 +263,38 @@ func numField(m map[string]any, key string) (int, bool) {
 	return n, true
 }
 
+// ProcessJob is the queue-consumer entry point (LLM re-arch Phase 1 Commit 3):
+// it loads a job's dispatch fields by id and runs Process. The submit handler
+// persisted everything; the queue message carries only the id (small → cheap
+// redelivery). Idempotent + redelivery-safe: Process's MarkRunning gate
+// (rows==0 ⇒ already cancelled/terminal/claimed) makes a redelivered or
+// already-finished job a no-op, so at-least-once delivery is safe. A vanished
+// row (ErrNoRows) is logged + dropped (the caller acks). NOTE: a job that
+// crashed mid-Process is left `running` and is SKIPPED here (not re-run) — that
+// stuck-`running` case is the truth-sweeper's job (spec §5.6), not redelivery's.
+func (w *Worker) ProcessJob(ctx context.Context, jobID uuid.UUID) {
+	d, err := w.repo.LoadForProcess(ctx, jobID)
+	if err != nil {
+		// Gone or unreadable — nothing to run. Don't finalize (we have no
+		// owner/operation to attribute); the consumer acks + drops.
+		w.logger.Warn("queue: load job failed — dropping", "job_id", jobID.String(), "err", err)
+		return
+	}
+	if d.Status != "pending" {
+		// Redelivery of an already-claimed/terminal job — no-op (Process's
+		// MarkRunning would also catch this, but skip the work up front).
+		w.logger.Info("queue: job not pending — skipping", "job_id", jobID.String(), "status", d.Status)
+		return
+	}
+	chunkCfg, decErr := DecodeChunkConfig(d.Chunking)
+	if decErr != nil {
+		w.finalizeAndNotify(ctx, jobID, d.OwnerUserID, d.Operation, "failed", nil,
+			"LLM_INVALID_REQUEST", "invalid chunking config: "+decErr.Error(), "")
+		return
+	}
+	w.Process(ctx, jobID, d.OwnerUserID, d.Operation, d.ModelSource, d.ModelRef, d.Input, chunkCfg)
+}
+
 // Process runs a single job to completion. Caller passes in the inserted
 // job_id + the original input (so we don't re-read JSONB from DB).
 //
