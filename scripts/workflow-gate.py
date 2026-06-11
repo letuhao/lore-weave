@@ -785,6 +785,24 @@ def cmd_check_stack(args: list[str]) -> None:
     # Advisory: never propagate a non-zero exit.
 
 
+def cmd_slices(args: list[str]) -> None:
+    """Validate a /warp slice manifest's independence invariants before fan-out.
+
+    Thin wrapper over scripts/warp/slice-manifest-validate.py — the pairwise
+    disjoint-write-set guarantee that makes parallel slice execution safe (see
+    docs/specs/2026-06-12-warp-parallel-mode.md §6). Unlike check-stack this is a
+    HARD gate: it propagates the validator's exit code (0 = clean / WARN-only,
+    1 = BLOCK) so /warp can gate the DESIGN→REVIEW (PT-verdict) boundary — a
+    BLOCK means the slicing is unsafe to fan out, fall back to serial /loom."""
+    if not args:
+        fail("Usage: workflow-gate.py slices <manifest.yaml|.json>")
+    script = Path(__file__).resolve().parent / "warp" / "slice-manifest-validate.py"
+    if not script.exists():
+        fail(f"slice-manifest validator not found: {script}")
+    result = subprocess.run([sys.executable, str(script), *args])
+    sys.exit(result.returncode)
+
+
 # ── Main ─────────────────────────────────────────────────────────────
 
 
@@ -794,6 +812,7 @@ COMMANDS = {
     "complete": cmd_complete,
     "check": cmd_check,
     "check-stack": cmd_check_stack,
+    "slices": cmd_slices,
     "skip": cmd_skip,
     "pre-commit": cmd_pre_commit,
     "status": cmd_status,
@@ -807,7 +826,7 @@ COMMANDS = {
 
 def main() -> None:
     if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS:
-        print("Usage: workflow-gate.py {size|phase|complete|check|skip|pre-commit|status|reset|amaw-enable|amaw-pre-commit|pragmatic-stop} [args]")
+        print("Usage: workflow-gate.py {size|phase|complete|check|slices|skip|pre-commit|status|reset|amaw-enable|amaw-pre-commit|pragmatic-stop} [args]")
         print()
         print("Commands:")
         print("  size <XS|S|M|L|XL> <files> <logic> <effects>  Classify task size")
@@ -817,6 +836,7 @@ def main() -> None:
         print("  skip <name> <reason>                           Skip with reason")
         print("  pre-commit                                     Gate check for commits")
         print("  check-stack [--probe-only|--drift-only]        ADVISORY: warn if a running image is stale (F-LIVE-1)")
+        print("  slices <manifest.yaml|.json>                   /warp: assert slice write-sets are disjoint (gate before fan-out)")
         print("  status                                         Show current state")
         print("  reset                                          Reset for new task")
         print()
