@@ -72,6 +72,11 @@
       "hint": "この見積費用を超える前にジョブを一時停止します。",
       "invalid": "有効な金額を入力してください（例: 1.50）。"
     },
+    "estimate": {
+      "loading": "費用を見積もり中…",
+      "forN": "見積費用: ~{{count}} × {{perArticle}} ≈ {{total}}",
+      "perArticle": "見積費用: 1記事あたり ~{{perArticle}}"
+    },
     "started": "生成を開始しました",
     "noEntities": "生成対象のエンティティがありません",
     "alreadyRunning": "この本の生成ジョブはすでに実行中です",

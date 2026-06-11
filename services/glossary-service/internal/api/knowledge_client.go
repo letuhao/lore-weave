@@ -190,6 +190,34 @@ func (s *Server) getWikiGenJob(
 	return res.StatusCode, respBody, nil
 }
 
+// getWikiGenConfig fetches the flat per-article wiki-gen cost estimate from
+// knowledge-service (D-WIKI-P2B-COST-ESTIMATE). PROPAGATES the upstream status+body
+// (a read the FE needs verbatim); errors when knowledge-service is unconfigured.
+func (s *Server) getWikiGenConfig(ctx context.Context) (status int, respBody []byte, err error) {
+	base := strings.TrimRight(s.cfg.KnowledgeServiceURL, "/")
+	if base == "" {
+		return 0, nil, fmt.Errorf("knowledge-service not configured")
+	}
+	url := fmt.Sprintf("%s/internal/knowledge/wiki/gen-config", base)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return 0, nil, err
+	}
+	if s.cfg.InternalServiceToken != "" {
+		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	}
+	if tid := TraceIDFromContext(ctx); tid != "" {
+		req.Header.Set(traceIDHeader, tid)
+	}
+	res, err := knowledgeHTTPClient.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer res.Body.Close()
+	respBody, _ = io.ReadAll(io.LimitReader(res.Body, 1<<16))
+	return res.StatusCode, respBody, nil
+}
+
 // wikiGenJobAction drives a resume/cancel on a wiki-gen job. ``action`` is the
 // path verb ("resume" | "cancel"); the user_id travels in the body so
 // knowledge-service can re-assert ownership. PROPAGATES the upstream status

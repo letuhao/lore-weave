@@ -72,6 +72,11 @@
       "hint": "Tạm dừng tác vụ trước khi vượt chi phí ước tính này.",
       "invalid": "Nhập số tiền hợp lệ (vd: 1.50)."
     },
+    "estimate": {
+      "loading": "Đang ước tính chi phí…",
+      "forN": "Chi phí ước tính: ~{{count}} × {{perArticle}} ≈ {{total}}",
+      "perArticle": "Chi phí ước tính: ~{{perArticle}} mỗi bài"
+    },
     "started": "Đã bắt đầu tạo",
     "noEntities": "Không có thực thể phù hợp để tạo",
     "alreadyRunning": "Đã có tác vụ tạo đang chạy cho sách này",

@@ -72,6 +72,11 @@
       "hint": "在超過此預估費用前暫停作業。",
       "invalid": "請輸入有效金額（例如 1.50）。"
     },
+    "estimate": {
+      "loading": "正在估算費用…",
+      "forN": "預估費用：~{{count}} × {{perArticle}} ≈ {{total}}",
+      "perArticle": "預估費用：每篇約 ~{{perArticle}}"
+    },
     "started": "已開始生成",
     "noEntities": "沒有符合的實體可生成",
     "alreadyRunning": "此書已有生成作業正在執行",

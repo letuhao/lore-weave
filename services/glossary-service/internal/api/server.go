@@ -169,6 +169,8 @@ func (s *Server) Router() http.Handler {
 				r.Get("/", s.listWikiArticles)
 				r.Post("/", s.createWikiArticle)
 				r.Post("/generate", s.generateWikiStubs)
+				// wiki-llm Phase-2b (D-WIKI-P2B-COST-ESTIMATE) — flat per-article cost.
+				r.Get("/gen-config", s.getWikiGenConfigStatus)
 				// wiki-llm M7b — LLM-gen job lifecycle proxy (status + resume/cancel).
 				r.Route("/job", func(r chi.Router) {
 					r.Get("/", s.getWikiGenJobStatus)

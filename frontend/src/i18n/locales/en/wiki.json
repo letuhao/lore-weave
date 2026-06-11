@@ -72,6 +72,11 @@
       "hint": "Pause the job before it exceeds this estimated cost.",
       "invalid": "Enter a valid amount (e.g. 1.50)."
     },
+    "estimate": {
+      "loading": "Estimating cost…",
+      "forN": "Estimated cost: ~{{count}} × {{perArticle}} ≈ {{total}}",
+      "perArticle": "Estimated cost: ~{{perArticle}} per article"
+    },
     "started": "Generation started",
     "noEntities": "No matching entities to generate",
     "alreadyRunning": "A generation job is already running for this book",

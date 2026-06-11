@@ -8,6 +8,7 @@ import type {
   WikiSuggestionResp,
   WikiGenJobStatus,
   WikiGenerateResult,
+  WikiGenConfig,
   WikiStalenessListResp,
 } from './types';
 
@@ -110,6 +111,12 @@ export const wikiApi = {
       method: 'POST',
       token,
     });
+  },
+
+  /** Flat per-article wiki-gen cost estimate (D-WIKI-P2B-COST-ESTIMATE) — the FE
+   *  multiplies by the selected-entity count for a pre-flight estimate. */
+  getGenConfig(bookId: string, token: string): Promise<WikiGenConfig> {
+    return apiJson<WikiGenConfig>(`${BASE}/books/${bookId}/wiki/gen-config`, { token });
   },
 
   /* ── wiki-llm Phase-2 — "Knowledge updates" change-feed (§5.3) ── */

@@ -681,6 +681,7 @@ export function WikiTab({ bookId }: { bookId: string }) {
           onClose={() => setGenOpen(false)}
           onTrigger={trigger}
           busy={busy}
+          bookId={bookId}
           entityIds={regenTarget?.entity_ids}
           regenName={regenTarget?.name}
         />
@@ -739,6 +740,7 @@ export function WikiTab({ bookId }: { bookId: string }) {
         onClose={() => setGenOpen(false)}
         onTrigger={trigger}
         busy={busy}
+        bookId={bookId}
         entityIds={regenTarget?.entity_ids}
         regenName={regenTarget?.name}
       />

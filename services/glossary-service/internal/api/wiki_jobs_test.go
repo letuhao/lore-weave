@@ -186,3 +186,57 @@ func TestWikiGenJob_NotConfiguredErrors(t *testing.T) {
 		t.Fatal("wikiGenJobAction: expected error when knowledge-service unconfigured")
 	}
 }
+
+// D-WIKI-P2B-COST-ESTIMATE — the cost-config client hop: GET the global knowledge
+// endpoint with the internal token and propagate the body verbatim for the FE.
+func TestGetWikiGenConfig_BuildsURLAndPropagates(t *testing.T) {
+	var gotPath, gotToken, gotMethod string
+	stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotToken, gotMethod = r.URL.Path, r.Header.Get("X-Internal-Token"), r.Method
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"cost_per_article_usd":"0.05"}`))
+	}))
+	defer stub.Close()
+
+	srv := newJobProxyServer(stub.URL)
+	status, body, err := srv.getWikiGenConfig(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("status: want 200, got %d", status)
+	}
+	if gotMethod != http.MethodGet {
+		t.Fatalf("method: want GET, got %s", gotMethod)
+	}
+	if gotPath != "/internal/knowledge/wiki/gen-config" {
+		t.Fatalf("path: got %s", gotPath)
+	}
+	if gotToken != "tok-internal" {
+		t.Fatalf("internal token: want tok-internal, got %q", gotToken)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(body, &parsed); err != nil || parsed["cost_per_article_usd"] != "0.05" {
+		t.Fatalf("body not propagated verbatim: %s", body)
+	}
+}
+
+func TestGetWikiGenConfig_NotConfiguredErrors(t *testing.T) {
+	srv := newJobProxyServer("")
+	if _, _, err := srv.getWikiGenConfig(context.Background()); err == nil {
+		t.Fatal("getWikiGenConfig: expected error when knowledge-service unconfigured")
+	}
+}
+
+// Route wiring + auth gate (no DB): unauthenticated → 401 (requireUserID runs
+// before verifyBookOwner touches the pool), proving the route is registered+gated.
+func TestWikiGenConfigRoute_RequiresAuth(t *testing.T) {
+	srv := newJobProxyServer("http://unused")
+	req := httptest.NewRequest(http.MethodGet,
+		"/v1/glossary/books/"+uuid.New().String()+"/wiki/gen-config", nil)
+	w := httptest.NewRecorder()
+	srv.Router().ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401 (registered+gated), got %d", w.Code)
+	}
+}

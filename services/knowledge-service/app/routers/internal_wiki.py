@@ -291,6 +291,23 @@ async def get_wiki_gen_job(book_id: UUID, user_id: UUID) -> WikiGenJobStatus:
     return _to_status(job)
 
 
+class WikiGenConfig(BaseModel):
+    """Pre-flight cost basis for the FE estimate (D-WIKI-P2B-COST-ESTIMATE) — the
+    flat per-article estimate the orchestrator's budget gate charges, so the shown
+    estimate and the live ``cost_spent_usd`` agree. Token-precise pricing is the
+    separate D-WIKI-M6-PRECISE-COST follow-up."""
+
+    cost_per_article_usd: Decimal
+
+
+@router.get("/wiki/gen-config", response_model=WikiGenConfig)
+async def get_wiki_gen_config() -> WikiGenConfig:
+    """The flat per-article wiki-gen cost estimate (global config; not book-scoped)."""
+    return WikiGenConfig(
+        cost_per_article_usd=Decimal(str(settings.wiki_gen_cost_per_article_usd))
+    )
+
+
 class WikiGenJobActionRequest(BaseModel):
     user_id: UUID
 

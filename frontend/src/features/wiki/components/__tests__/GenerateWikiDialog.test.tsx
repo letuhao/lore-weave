@@ -4,7 +4,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { PropsWithChildren } from 'react';
 
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (k: string) => k }),
+  // interpolating stub so estimate assertions can read the {{count}}/{{total}} args
+  useTranslation: () => ({
+    t: (k: string, o?: Record<string, unknown>) => (o ? `${k}:${JSON.stringify(o)}` : k),
+  }),
 }));
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
 
@@ -15,6 +18,10 @@ vi.mock('@/features/ai-models/api', () => ({
 const getKinds = vi.fn();
 vi.mock('@/features/glossary/api', () => ({
   glossaryApi: { getKinds: (...a: unknown[]) => getKinds(...a) },
+}));
+const getGenConfig = vi.fn();
+vi.mock('../../api', () => ({
+  wikiApi: { getGenConfig: (...a: unknown[]) => getGenConfig(...a) },
 }));
 
 import { GenerateWikiDialog } from '../GenerateWikiDialog';
@@ -35,6 +42,7 @@ beforeEach(() => {
     ],
   });
   getKinds.mockResolvedValue([{ kind_id: 'k1', code: 'character', name: 'Character', icon: '🧍', color: '#abc' }]);
+  getGenConfig.mockResolvedValue({ cost_per_article_usd: '0.05' });
 });
 
 describe('GenerateWikiDialog', () => {
@@ -112,6 +120,48 @@ describe('GenerateWikiDialog', () => {
     await waitFor(() =>
       expect(onTrigger).toHaveBeenCalledWith({ model_ref: 'm1', entity_ids: ['e-42'] }),
     );
+  });
+
+  it('shows a precise N × rate estimate in regen mode (D-WIKI-P2B-COST-ESTIMATE)', async () => {
+    wrap(
+      <GenerateWikiDialog
+        open
+        onClose={() => {}}
+        onTrigger={vi.fn()}
+        busy={false}
+        bookId="b1"
+        entityIds={['e1', 'e2', 'e3']}
+        regenName="Dracula"
+      />,
+    );
+    await waitFor(() => expect(screen.getByRole('option', { name: /Gemma/ })).toBeTruthy());
+    fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
+    // 3 entities × $0.05 ≈ $0.15
+    await waitFor(() => {
+      const txt = screen.getByTestId('wiki-gen-estimate').textContent || '';
+      expect(txt).toContain('gen.estimate.forN');
+      expect(txt).toContain('"count":3');
+      expect(txt).toContain('"total":"$0.15"');
+    });
+    expect(getGenConfig).toHaveBeenCalledWith('b1', 'tok');
+  });
+
+  it('shows a per-article rate estimate in batch mode (count unknown pre-flight)', async () => {
+    wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={vi.fn()} busy={false} bookId="b1" />);
+    await waitFor(() => expect(screen.getByRole('option', { name: /Gemma/ })).toBeTruthy());
+    fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
+    await waitFor(() => {
+      const txt = screen.getByTestId('wiki-gen-estimate').textContent || '';
+      expect(txt).toContain('gen.estimate.perArticle');
+      expect(txt).toContain('"perArticle":"$0.05"');
+    });
+  });
+
+  it('shows no estimate on the deterministic (non-LLM) path', async () => {
+    wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={vi.fn()} busy={false} bookId="b1" />);
+    await waitFor(() => expect(screen.getByTestId('wiki-gen-model')).toBeTruthy());
+    expect(screen.queryByTestId('wiki-gen-estimate')).toBeNull();
+    expect(getGenConfig).not.toHaveBeenCalled();
   });
 
   it('blocks confirm on an invalid spend cap', async () => {

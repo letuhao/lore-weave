@@ -7,6 +7,8 @@ import { useAuth } from '@/auth';
 import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
 import { glossaryApi } from '@/features/glossary/api';
 import { cn } from '@/lib/utils';
+import { wikiApi } from '../api';
+import type { WikiGenConfig } from '../types';
 import type { TriggerArgs } from '../hooks/useWikiGenJob';
 
 const DECIMAL_RE = /^\d+(\.\d{1,2})?$/;
@@ -22,6 +24,7 @@ export function GenerateWikiDialog({
   onClose,
   onTrigger,
   busy,
+  bookId,
   entityIds,
   regenName,
 }: {
@@ -30,6 +33,9 @@ export function GenerateWikiDialog({
   /** Resolves on success (dialog closes), rejects on failure (stays open). */
   onTrigger: (args: TriggerArgs) => Promise<unknown>;
   busy: boolean;
+  /** Book context — used to fetch the per-article cost estimate. Optional: the
+   *  estimate line is a non-essential enhancement and is simply omitted without it. */
+  bookId?: string;
   /** Single-article REGENERATE (M7b-2b): scope generation to these entities. In
    *  this mode a model is REQUIRED (deterministic stubs skip entities that
    *  already have an article) and the kind filter is hidden. */
@@ -75,6 +81,19 @@ export function GenerateWikiDialog({
   const isRegen = !!entityIds?.length;
   const isLlm = modelRef !== '';
   const maxSpendValid = maxSpend === '' || DECIMAL_RE.test(maxSpend);
+
+  // Pre-flight cost estimate (D-WIKI-P2B-COST-ESTIMATE) — fetched only when an LLM
+  // model is picked (the deterministic path is free). The per-article rate is the
+  // flat figure the budget gate charges, so the estimate matches the live spend.
+  const configQuery = useQuery<WikiGenConfig>({
+    queryKey: ['wiki-gen-config', bookId],
+    queryFn: () => wikiApi.getGenConfig(bookId!, accessToken!),
+    enabled: open && isLlm && !!accessToken && !!bookId,
+    staleTime: 5 * 60_000,
+  });
+  const rawPerArticle = configQuery.data ? Number(configQuery.data.cost_per_article_usd) : NaN;
+  const perArticle = Number.isFinite(rawPerArticle) ? rawPerArticle : null;
+  const fmtUsd = (n: number) => `$${n.toFixed(2)}`;
   // Regenerate needs a model (the deterministic path skips entities that already
   // have an article, so a deterministic "regenerate" would be a no-op).
   const canConfirm = !busy && maxSpendValid && (!isRegen || isLlm);
@@ -209,6 +228,22 @@ export function GenerateWikiDialog({
             <span className="text-[11px] text-muted-foreground">{t('gen.maxSpend.hint')}</span>
             {!maxSpendValid && <span className="text-[11px] text-destructive">{t('gen.maxSpend.invalid')}</span>}
           </label>
+        )}
+
+        {/* Pre-flight cost estimate — LLM path only. Precise (N × rate) when
+            regenerating a known set; rate-only for batch (count unknown pre-flight). */}
+        {isLlm && bookId && (
+          <p data-testid="wiki-gen-estimate" className="text-[11px] text-muted-foreground">
+            {configQuery.isLoading || perArticle == null
+              ? t('gen.estimate.loading')
+              : isRegen
+                ? t('gen.estimate.forN', {
+                    count: entityIds!.length,
+                    perArticle: fmtUsd(perArticle),
+                    total: fmtUsd(entityIds!.length * perArticle),
+                  })
+                : t('gen.estimate.perArticle', { perArticle: fmtUsd(perArticle) })}
+          </p>
         )}
       </div>
     </FormDialog>

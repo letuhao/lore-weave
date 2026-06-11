@@ -189,6 +189,12 @@ export interface WikiGenJobStatus {
   error_message: string | null;
 }
 
+/** Flat per-article wiki-gen cost (D-WIKI-P2B-COST-ESTIMATE). Decimal serializes
+ *  as a string over JSON. */
+export interface WikiGenConfig {
+  cost_per_article_usd: string | number;
+}
+
 /**
  * The generate endpoint is overloaded: with no model it renders deterministic
  * stubs ({created}); with a model it DELEGATES to the LLM batch generator, which
