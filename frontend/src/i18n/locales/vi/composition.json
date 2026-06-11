@@ -186,6 +186,7 @@
     "archive": "Lưu trữ",
     "archiveConfirm": "Lưu trữ \"{{title}}\" và mọi thứ bên trong nó?",
     "restore": "Khôi phục",
+    "drag": "Kéo để sắp xếp lại",
     "showArchived": "Hiện đã lưu trữ",
     "hideArchived": "Ẩn đã lưu trữ",
     "cycleStatus": "Đổi trạng thái",

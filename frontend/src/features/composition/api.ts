@@ -75,6 +75,21 @@ export const compositionApi = {
   restoreNode(nodeId: string, token: string): Promise<OutlineNode> {
     return apiJson(`${BASE}/outline/nodes/${nodeId}/restore`, { method: 'POST', token });
   },
+  // T1.1c — drag-reorder + reparent. Places the node under `new_parent_id` after
+  // `after_id` (null = first child). The BE computes the fractional rank +
+  // renumbers scene story_order. Optional `version` → If-Match (412 on stale);
+  // 400 BAD_REFERENCE on a reparent cycle / bad parent.
+  reorderNode(
+    nodeId: string,
+    move: { new_parent_id: string | null; after_id: string | null },
+    token: string,
+    version?: number,
+  ): Promise<OutlineNode> {
+    return apiJson(`${BASE}/outline/nodes/${nodeId}/reorder`, {
+      method: 'POST', body: JSON.stringify(move), token,
+      ...(version !== undefined ? { headers: { 'If-Match': String(version) } } : {}),
+    });
+  },
   // A3 decompose planner (cycle 13). listTemplates → built-in + user structure
   // templates; decomposePreview → the proposed (NOT persisted) arc→chapter→scene
   // tree; commitDecompose → persist the edited tree (409 CHAPTER_ALREADY_PLANNED

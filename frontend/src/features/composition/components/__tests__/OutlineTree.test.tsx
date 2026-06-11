@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { OutlineTree, flattenOutline } from '../OutlineTree';
+import { OutlineTree, flattenOutline, computeReorder } from '../OutlineTree';
 import type { OutlineNode } from '../../types';
 
 // Mock the work-resolution + outline read/mutation hooks and the toast. The
@@ -17,6 +17,7 @@ const { workHook, outlineHook, mutations, toastWarn, toastError } = vi.hoisted((
     addChild: { mutate: vi.fn() },
     archive: { mutate: vi.fn() },
     restore: { mutate: vi.fn() },
+    reorder: { mutate: vi.fn() },
     invalidate: vi.fn(),
   },
   toastWarn: vi.fn(),
@@ -49,6 +50,7 @@ beforeEach(() => {
   mutations.addChild.mutate.mockReset();
   mutations.archive.mutate.mockReset();
   mutations.restore.mutate.mockReset();
+  mutations.reorder.mutate.mockReset();
   mutations.invalidate.mockReset();
   toastWarn.mockReset();
   toastError.mockReset();
@@ -285,5 +287,72 @@ describe('OutlineTree archived view + restore (T1.1b / L-1)', () => {
     expect(screen.queryByTestId('outline-action-rename')).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId('outline-action-restore'));
     expect(mutations.restore.mutate).toHaveBeenCalledWith('s1', expect.objectContaining({ onError: expect.any(Function) }));
+  });
+});
+
+describe('computeReorder (T1.1c projection)', () => {
+  // a fixed-depth tree: arc1 > {ch1 > [s1,s2,s3], ch2 > [s4]}
+  const rows = [
+    { node: node({ id: 'arc1', kind: 'arc', parent_id: null }) },
+    { node: node({ id: 'ch1', kind: 'chapter', parent_id: 'arc1' }) },
+    { node: node({ id: 's1', kind: 'scene', parent_id: 'ch1' }) },
+    { node: node({ id: 's2', kind: 'scene', parent_id: 'ch1' }) },
+    { node: node({ id: 's3', kind: 'scene', parent_id: 'ch1' }) },
+    { node: node({ id: 'ch2', kind: 'chapter', parent_id: 'arc1' }) },
+    { node: node({ id: 's4', kind: 'scene', parent_id: 'ch2' }) },
+  ];
+
+  it('reorders a scene within its chapter (drop s1 onto s3 → after s3)', () => {
+    expect(computeReorder(rows, 's1', 's3')).toEqual({ nodeId: 's1', new_parent_id: 'ch1', after_id: 's3' });
+  });
+
+  it('reparents a scene to another chapter (drop s1 onto s4 → under ch2 after s4)', () => {
+    expect(computeReorder(rows, 's1', 's4')).toEqual({ nodeId: 's1', new_parent_id: 'ch2', after_id: 's4' });
+  });
+
+  it('reparents a scene to the head of another chapter (drop onto its first child)', () => {
+    // drop s4 onto s1 (ch1's first scene) → s4 becomes ch1's first child
+    expect(computeReorder(rows, 's4', 's1')).toEqual({ nodeId: 's4', new_parent_id: 'ch1', after_id: null });
+  });
+
+  it('reorders a chapter within its arc (drop ch2 onto ch1 → first chapter)', () => {
+    expect(computeReorder(rows, 'ch2', 'ch1')).toEqual({ nodeId: 'ch2', new_parent_id: 'arc1', after_id: null });
+  });
+
+  it('returns null for a no-op (same node) and an out-of-list id', () => {
+    expect(computeReorder(rows, 's1', 's1')).toBeNull();
+    expect(computeReorder(rows, 's1', 'ghost')).toBeNull();
+  });
+
+  it('returns null when a scene would land with no preceding chapter (invalid kind nesting)', () => {
+    // dropping s1 onto arc1 → it lands right after arc1 with no chapter ancestor → invalid
+    expect(computeReorder(rows, 's1', 'arc1')).toBeNull();
+  });
+
+  it('reorders a beat within its scene (parent-kind = scene)', () => {
+    const r = [
+      { node: node({ id: 'ch', kind: 'chapter', parent_id: 'a' }) },
+      { node: node({ id: 'sc', kind: 'scene', parent_id: 'ch' }) },
+      { node: node({ id: 'b1', kind: 'beat', parent_id: 'sc' }) },
+      { node: node({ id: 'b2', kind: 'beat', parent_id: 'sc' }) },
+    ];
+    expect(computeReorder(r, 'b1', 'b2')).toEqual({ nodeId: 'b1', new_parent_id: 'sc', after_id: 'b2' });
+  });
+
+  it('coerces a cross-kind drop to the nearest valid parent (chapter dropped amid scenes → stays under its arc)', () => {
+    // drop ch2 onto s2 (a scene inside ch1) → ch2 can only parent under an arc → lands after ch1
+    expect(computeReorder(rows, 'ch2', 's2')).toEqual({ nodeId: 'ch2', new_parent_id: 'arc1', after_id: 'ch1' });
+  });
+});
+
+describe('OutlineTree drag wiring (T1.1c)', () => {
+  it('shows a drag handle per row in the default view, but not in the archived view', () => {
+    mountWith([node({ id: 's1', kind: 'scene', parent_id: null, story_order: 0 })]);
+    const { rerender } = render(<OutlineTree bookId="b" token="t" currentChapterId="C1" onNavigateChapter={vi.fn()} />);
+    expect(screen.getByTestId('outline-drag-handle')).toBeInTheDocument();
+    // archived view → reorder disabled → no drag handle
+    fireEvent.click(screen.getByTestId('outline-toggle-archived'));
+    rerender(<OutlineTree bookId="b" token="t" currentChapterId="C1" onNavigateChapter={vi.fn()} />);
+    expect(screen.queryByTestId('outline-drag-handle')).not.toBeInTheDocument();
   });
 });

@@ -186,6 +186,7 @@
     "archive": "Archive",
     "archiveConfirm": "Archive \"{{title}}\" and everything inside it?",
     "restore": "Restore",
+    "drag": "Drag to reorder",
     "showArchived": "Show archived",
     "hideArchived": "Hide archived",
     "cycleStatus": "Cycle status",

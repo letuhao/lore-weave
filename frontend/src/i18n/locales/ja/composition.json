@@ -186,6 +186,7 @@
     "archive": "アーカイブ",
     "archiveConfirm": "「{{title}}」とその中身をすべてアーカイブしますか？",
     "restore": "復元",
+    "drag": "ドラッグして並べ替え",
     "showArchived": "アーカイブを表示",
     "hideArchived": "アーカイブを非表示",
     "cycleStatus": "状態を切り替え",

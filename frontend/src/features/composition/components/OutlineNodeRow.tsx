@@ -7,6 +7,8 @@
 // conditional unmount) so a11y + tests can reach them.
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import type { OutlineNode } from '../types';
 
 const DOT: Record<OutlineNode['status'], string> = {
@@ -20,7 +22,7 @@ const nextStatus = (s: OutlineNode['status']): OutlineNode['status'] =>
   STATUS_CYCLE[(STATUS_CYCLE.indexOf(s) + 1) % STATUS_CYCLE.length];
 
 export function OutlineNodeRow({
-  node, depth, hasChildren, expanded, isCurrent, editing,
+  node, depth, hasChildren, expanded, isCurrent, editing, draggable,
   onToggle, onSelect, onRenameStart, onRenameCommit, onRenameCancel, onAddChild, onArchive, onCycleStatus, onRestore,
 }: {
   node: OutlineNode;
@@ -29,6 +31,7 @@ export function OutlineNodeRow({
   expanded: boolean;
   isCurrent: boolean;
   editing: boolean;
+  draggable: boolean;
   onToggle: () => void;
   onSelect: () => void;
   onRenameStart: () => void;
@@ -41,6 +44,10 @@ export function OutlineNodeRow({
 }) {
   const { t } = useTranslation('composition');
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // T1.1c — sortable wiring. Disabled while renaming or when not draggable
+  // (archived rows / archived view), so the drag grip + transform don't apply.
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: node.id, disabled: !draggable || editing });
   // Idempotency latch: Enter (or blur) commits AND unmounts the input; in real
   // browsers the unmount fires a focusout → onBlur a second time. `done` makes
   // commit/cancel fire-once per edit session; the ref callback resets it each
@@ -64,9 +71,29 @@ export function OutlineNodeRow({
 
   return (
     <div
-      className={'group flex items-center' + (node.is_archived ? ' opacity-45' : '')}
-      style={{ paddingLeft: depth * 14 }}
+      ref={setNodeRef}
+      className={'group flex items-center' + (node.is_archived ? ' opacity-45' : '') + (isDragging ? ' opacity-60' : '')}
+      style={{
+        paddingLeft: depth * 14,
+        transform: CSS.Transform.toString(transform),
+        transition,
+        ...(isDragging ? { zIndex: 1, position: 'relative' as const } : {}),
+      }}
     >
+      {draggable ? (
+        <button
+          type="button"
+          data-testid="outline-drag-handle"
+          aria-label={t('outline.drag', { defaultValue: 'Drag to reorder' })}
+          className="w-3 shrink-0 cursor-grab text-[10px] text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 active:cursor-grabbing"
+          {...attributes}
+          {...listeners}
+        >
+          ⠿
+        </button>
+      ) : (
+        <span className="w-3 shrink-0" />
+      )}
       {hasChildren ? (
         <button
           type="button"

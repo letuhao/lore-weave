@@ -63,6 +63,17 @@ export function useOutlineMutations(projectId: string | undefined, token: string
     mutationFn: (nodeId: string) => compositionApi.restoreNode(nodeId, token!),
     onSuccess: invalidate,
   });
+  const reorder = useMutation({
+    mutationFn: (v: { nodeId: string; new_parent_id: string | null; after_id: string | null; version: number }) =>
+      compositionApi.reorderNode(v.nodeId, { new_parent_id: v.new_parent_id, after_id: v.after_id }, token!, v.version),
+    // Also invalidate the publish-gate: a cross-chapter scene reparent changes
+    // scenes_total for BOTH the source + destination chapters (same rule as
+    // setStatus, which changes scenes_done).
+    onSuccess: () => {
+      invalidate();
+      qc.invalidateQueries({ queryKey: ['composition', 'publish-gate', projectId] });
+    },
+  });
 
-  return { rename, setStatus, addChild, archive, restore, invalidate };
+  return { rename, setStatus, addChild, archive, restore, reorder, invalidate };
 }

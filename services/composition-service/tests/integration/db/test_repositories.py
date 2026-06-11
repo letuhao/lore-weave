@@ -197,6 +197,61 @@ async def test_outline_restore_recurses_subtree(pool):
     assert await repo.restore_node(user, arc.id) is None
 
 
+async def test_outline_reorder_within_siblings_renumbers_story_order(pool):
+    """T1.1c: reordering a scene after a later sibling rewrites its rank AND
+    dense-renumbers the chapter's scene story_order to match (reading order)."""
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    arc = await repo.create_node(user, project, kind="arc", title="arc")
+    chap = await repo.create_node(user, project, kind="chapter", parent_id=arc.id, chapter_id=chapter)
+    s1 = await repo.create_node(user, project, kind="scene", parent_id=chap.id, chapter_id=chapter, title="s1")
+    s2 = await repo.create_node(user, project, kind="scene", parent_id=chap.id, chapter_id=chapter, title="s2")
+    s3 = await repo.create_node(user, project, kind="scene", parent_id=chap.id, chapter_id=chapter, title="s3")
+
+    # move s1 to AFTER s3 → new order s2, s3, s1
+    moved = await repo.reorder_node(user, s1.id, new_parent_id=chap.id, after_id=s3.id)
+    assert moved is not None
+    scenes = await repo.scenes_for_chapter(user, project, chapter)  # ORDER BY story_order, rank
+    assert [s.title for s in scenes] == ["s2", "s3", "s1"]
+    assert [s.story_order for s in scenes] == [0, 1, 2]  # dense, matches rank order
+
+
+async def test_outline_reorder_reparents_scene_across_chapters(pool):
+    """A scene dragged to another chapter inherits the new chapter's chapter_id
+    and is renumbered into the destination's reading order; the source chapter's
+    remaining scenes re-densify."""
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    chA, chB = uuid.uuid4(), uuid.uuid4()
+    arc = await repo.create_node(user, project, kind="arc", title="arc")
+    cA = await repo.create_node(user, project, kind="chapter", parent_id=arc.id, chapter_id=chA)
+    cB = await repo.create_node(user, project, kind="chapter", parent_id=arc.id, chapter_id=chB)
+    a1 = await repo.create_node(user, project, kind="scene", parent_id=cA.id, chapter_id=chA, title="a1")
+    a2 = await repo.create_node(user, project, kind="scene", parent_id=cA.id, chapter_id=chA, title="a2")
+    b1 = await repo.create_node(user, project, kind="scene", parent_id=cB.id, chapter_id=chB, title="b1")
+
+    moved = await repo.reorder_node(user, a1.id, new_parent_id=cB.id, after_id=b1.id)
+    assert moved is not None
+    assert moved.parent_id == cB.id and moved.chapter_id == chB  # inherited new chapter
+    dest = await repo.scenes_for_chapter(user, project, chB)
+    assert [s.title for s in dest] == ["b1", "a1"] and [s.story_order for s in dest] == [0, 1]
+    src = await repo.scenes_for_chapter(user, project, chA)
+    assert [s.title for s in src] == ["a2"] and [s.story_order for s in src] == [0]  # re-densified
+
+
+async def test_outline_reorder_rejects_cycle(pool):
+    """Reparenting a node under its own descendant is a 400 (ReferenceViolationError)
+    — the same guard update_node uses, applied before any write."""
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    arc = await repo.create_node(user, project, kind="arc", title="arc")
+    chap = await repo.create_node(user, project, kind="chapter", parent_id=arc.id, chapter_id=chapter)
+    with pytest.raises(ReferenceViolationError):
+        await repo.reorder_node(user, arc.id, new_parent_id=chap.id, after_id=None)
+
+
 async def test_outline_restore_reconnects_archived_ancestors(pool):
     """Restoring a node whose ancestor is still archived must also un-archive the
     archived ancestor chain — else the restored node orphans out of the tree

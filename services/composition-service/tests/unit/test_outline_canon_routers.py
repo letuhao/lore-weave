@@ -47,6 +47,8 @@ class StubOutline:
         self.update_result = _node(version=2)
         self.archive_result = _node(is_archived=True)
         self.restore_result = _node(is_archived=False)
+        self.reorder_result = _node(version=2)
+        self.reorder_raises = None
         self.gate = {"chapter_id": "c", "scenes_total": 2, "scenes_done": 2, "can_publish": True}
         self.commit_aware_called = False
     async def list_tree(self, u, p, **kw): return self.tree
@@ -63,6 +65,9 @@ class StubOutline:
     async def chapter_scene_gate(self, u, p, ch): return self.gate
     async def archive_node(self, u, n): return self.archive_result
     async def restore_node(self, u, n): return self.restore_result
+    async def reorder_node(self, u, n, **kw):
+        if self.reorder_raises: raise self.reorder_raises
+        return self.reorder_result
 
 
 class StubSceneLinks:
@@ -169,6 +174,25 @@ def test_restore_node_200_and_404(ctx):
     # not archived / not ours → repo returns None → 404
     outline.restore_result = None
     assert c.post(f"/v1/composition/outline/nodes/{NODE}/restore").status_code == 404
+
+
+def test_reorder_node_200_412_400_404(ctx):
+    c, _, outline, _, _ = ctx
+    body = {"new_parent_id": str(uuid.uuid4()), "after_id": str(uuid.uuid4())}
+    r = c.post(f"/v1/composition/outline/nodes/{NODE}/reorder", json=body,
+               headers={"If-Match": "1"})
+    assert r.status_code == 200 and r.json()["version"] == 2
+    # stale If-Match → 412 with current
+    outline.reorder_raises = VersionMismatchError(_node(version=9))
+    r = c.post(f"/v1/composition/outline/nodes/{NODE}/reorder", json=body, headers={"If-Match": "1"})
+    assert r.status_code == 412 and r.json()["detail"]["code"] == "NODE_VERSION_CONFLICT"
+    # reparent cycle / bad ref → 400
+    outline.reorder_raises = ReferenceViolationError("cycle")
+    assert c.post(f"/v1/composition/outline/nodes/{NODE}/reorder", json=body).status_code == 400
+    # node gone → 404
+    outline.reorder_raises = None
+    outline.reorder_result = None
+    assert c.post(f"/v1/composition/outline/nodes/{NODE}/reorder", json=body).status_code == 404
 
 
 # ── M9 chapter-gate + scene_committed routing ──

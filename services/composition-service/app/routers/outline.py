@@ -57,6 +57,11 @@ class NodePatch(BaseModel):
     synopsis: str | None = None
 
 
+class NodeReorder(BaseModel):
+    new_parent_id: UUID | None = None  # None = move to top level (arcs)
+    after_id: UUID | None = None       # the sibling to place AFTER; None = first child
+
+
 class SceneLinkCreate(BaseModel):
     from_node_id: UUID
     to_node_id: UUID
@@ -192,6 +197,36 @@ async def restore_node(
     node = await outline.restore_node(user_id, node_id)
     if node is None:
         raise HTTPException(status_code=404, detail="node not found or not archived")
+    return node.model_dump(mode="json")
+
+
+@router.post("/outline/nodes/{node_id}/reorder")
+async def reorder_node(
+    node_id: UUID,
+    body: NodeReorder,
+    user_id: UUID = Depends(get_current_user),
+    outline: OutlineRepo = Depends(get_outline_repo),
+    if_match: str | None = Header(default=None, alias="If-Match"),
+) -> dict[str, Any]:
+    """T1.1c — drag-reorder + reparent: place `node_id` under `new_parent_id`
+    after `after_id` (None = first child). Computes the fractional rank +
+    renumbers scene story_order server-side (atomic). 412 NODE_VERSION_CONFLICT on
+    a stale If-Match; 400 BAD_REFERENCE on a reparent cycle / cross-scope parent /
+    bad after_id."""
+    expected_version = _parse_if_match(if_match)
+    try:
+        node = await outline.reorder_node(
+            user_id, node_id,
+            new_parent_id=body.new_parent_id, after_id=body.after_id,
+            expected_version=expected_version,
+        )
+    except VersionMismatchError as exc:
+        raise HTTPException(status_code=412, detail={"code": "NODE_VERSION_CONFLICT",
+                                                     "current": exc.current.model_dump(mode="json")})
+    except ReferenceViolationError as exc:
+        raise HTTPException(status_code=400, detail={"code": "BAD_REFERENCE", "detail": exc.message})
+    if node is None:
+        raise HTTPException(status_code=404, detail="node not found")
     return node.model_dump(mode="json")
 
 
