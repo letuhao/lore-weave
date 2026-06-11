@@ -45,6 +45,22 @@
     "state_empty": "空",
     "state_unplaced": "未配置"
   },
+  "graph": "グラフ",
+  "scenegraph": {
+    "title": "シーングラフ",
+    "selectTwo": "2つのシーンをクリックしてリンク ({{n}}/2)",
+    "linkKind": "リンクの種類",
+    "kind_setup_payoff": "伏線 → 回収",
+    "kind_custom": "カスタム",
+    "label": "ラベル（任意）",
+    "addLink": "リンク",
+    "cancel": "キャンセル",
+    "linkExists": "その種類のリンクは既にこれらのシーン間に存在します。",
+    "linkFailed": "リンクを作成できませんでした。",
+    "deleteLink": "リンクを削除",
+    "open": "シーンを開く",
+    "empty": "シーンがまだありません — アウトラインでシーンを計画するとグラフが表示されます。"
+  },
   "grounding": "グラウンディング",
   "canon": "正典",
   "quality": "品質",

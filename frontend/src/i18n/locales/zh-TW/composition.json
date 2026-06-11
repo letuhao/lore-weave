@@ -45,6 +45,22 @@
     "state_empty": "空",
     "state_unplaced": "未放置"
   },
+  "graph": "圖譜",
+  "scenegraph": {
+    "title": "場景圖譜",
+    "selectTwo": "點擊兩個場景以連結 ({{n}}/2)",
+    "linkKind": "連結類型",
+    "kind_setup_payoff": "鋪陳 → 回收",
+    "kind_custom": "自訂",
+    "label": "標籤（選填）",
+    "addLink": "連結",
+    "cancel": "取消",
+    "linkExists": "這兩個場景之間已存在該類型的連結。",
+    "linkFailed": "無法建立連結。",
+    "deleteLink": "刪除連結",
+    "open": "開啟場景",
+    "empty": "尚無場景 — 在大綱中規劃場景即可看到圖譜。"
+  },
   "grounding": "依據",
   "canon": "正典",
   "quality": "品質",

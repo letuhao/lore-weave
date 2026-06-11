@@ -4,7 +4,7 @@
 // Mirrors useCanonRules.
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { compositionApi } from '../api';
-import type { OutlineNode } from '../types';
+import type { OutlineNode, SceneLink, SceneLinkKind } from '../types';
 
 export function useOutline(projectId: string | undefined, token: string | null, includeArchived = false) {
   return useQuery({
@@ -18,6 +18,22 @@ export function useOutline(projectId: string | undefined, token: string | null, 
     // during the swap so the whole panel (header + toggle) doesn't flash "Loading".
     placeholderData: keepPreviousData,
     select: (d): OutlineNode[] => d.nodes,
+  });
+}
+
+/**
+ * T1.3 Scene Graph — read the project's scene edges. Shares the SAME query key as
+ * the default `useOutline(projectId, token)` (includeArchived=false) so react-query
+ * issues ONE `GET /outline` and each consumer applies its own `select` — nodes vs
+ * scene_links. A node mutation invalidating the prefix key refetches both.
+ */
+export function useSceneLinks(projectId: string | undefined, token: string | null) {
+  return useQuery({
+    queryKey: ['composition', 'outline', projectId, false],
+    queryFn: () => compositionApi.getOutline(projectId!, token!, false),
+    enabled: !!projectId && !!token,
+    placeholderData: keepPreviousData,
+    select: (d): SceneLink[] => d.scene_links,
   });
 }
 
@@ -87,5 +103,19 @@ export function useOutlineMutations(projectId: string | undefined, token: string
     },
   });
 
-  return { rename, setStatus, editCard, setBeatRole, addChild, archive, restore, reorder, invalidate };
+  // T1.3 Scene Graph — create/delete a typed scene edge. createSceneLink's caller
+  // passes onError to toast a 409 (SCENE_LINK_EXISTS) without adding a dup edge;
+  // both invalidate the outline key (refetches nodes + scene_links via the shared
+  // GET).
+  const createSceneLink = useMutation({
+    mutationFn: (v: { from_node_id: string; to_node_id: string; kind: SceneLinkKind; label: string }) =>
+      compositionApi.createSceneLink(projectId!, v, token!),
+    onSuccess: invalidate,
+  });
+  const deleteSceneLink = useMutation({
+    mutationFn: (linkId: string) => compositionApi.deleteSceneLink(linkId, token!),
+    onSuccess: invalidate,
+  });
+
+  return { rename, setStatus, editCard, setBeatRole, addChild, archive, restore, reorder, createSceneLink, deleteSceneLink, invalidate };
 }

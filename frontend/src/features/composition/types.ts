@@ -96,6 +96,20 @@ export type OutlineNode = {
   beat_role: string | null; // T1.2 — the structure-template beat key this node fills (or null)
 };
 
+// T1.3 Scene Graph — a non-derivable scene edge (a causal/structural dependency
+// the linear outline can't express). `setup_payoff` is the planted-payoff axis
+// (solid arrow); `custom` is a free author-defined relation (dashed). Mirrors the
+// BE SceneLink (app/db/models.py). Unique on (from,to,kind) → dup create 409s.
+export type SceneLinkKind = 'setup_payoff' | 'custom';
+export type SceneLink = {
+  id: string;
+  project_id: string;
+  from_node_id: string;
+  to_node_id: string;
+  kind: SceneLinkKind;
+  label: string;
+};
+
 // M9 chapter-gate (OI-1): can this chapter be published? can_publish is true
 // only when every composition scene of the chapter is 'done' AND no scene's
 // latest auto-generation left a CONFIRMED canon contradiction (A2-S3b / D4).

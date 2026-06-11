@@ -45,6 +45,22 @@
     "state_empty": "trống",
     "state_unplaced": "chưa đặt"
   },
+  "graph": "Sơ đồ",
+  "scenegraph": {
+    "title": "Sơ đồ cảnh",
+    "selectTwo": "Nhấp hai cảnh để liên kết ({{n}}/2)",
+    "linkKind": "Loại liên kết",
+    "kind_setup_payoff": "gài → trả",
+    "kind_custom": "tùy chỉnh",
+    "label": "nhãn (tùy chọn)",
+    "addLink": "liên kết",
+    "cancel": "Hủy",
+    "linkExists": "Đã có liên kết loại đó giữa hai cảnh này.",
+    "linkFailed": "Không thể tạo liên kết.",
+    "deleteLink": "Xóa liên kết",
+    "open": "Mở cảnh",
+    "empty": "Chưa có cảnh nào — hãy lập kế hoạch cảnh trong dàn ý để xem sơ đồ."
+  },
   "grounding": "Căn cứ",
   "canon": "Canon",
   "quality": "Chất lượng",

@@ -4,7 +4,7 @@
 import { apiBase, apiJson } from '../../api';
 import type {
   AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
-  DecomposePreview, GenerationJob, Grounding, NarrativeThread, OutlineNode, PublishGate, StructureTemplate, Work, WorkResolution,
+  DecomposePreview, GenerationJob, Grounding, NarrativeThread, OutlineNode, PublishGate, SceneLink, SceneLinkKind, StructureTemplate, Work, WorkResolution,
 } from './types';
 
 // A3 decompose preview request (cycle 13).
@@ -47,9 +47,23 @@ export const compositionApi = {
   createWork(bookId: string, token: string): Promise<Work> {
     return apiJson<Work>(`${BASE}/books/${bookId}/work`, { method: 'POST', token });
   },
-  getOutline(projectId: string, token: string, includeArchived = false): Promise<{ nodes: OutlineNode[]; scene_links: unknown[] }> {
+  getOutline(projectId: string, token: string, includeArchived = false): Promise<{ nodes: OutlineNode[]; scene_links: SceneLink[] }> {
     const qs = includeArchived ? '?include_archived=true' : '';
     return apiJson(`${BASE}/works/${projectId}/outline${qs}`, { token });
+  },
+  // T1.3 Scene Graph — create a typed scene edge. 201 → the new link; 409
+  // SCENE_LINK_EXISTS on a duplicate (from,to,kind); 400 BAD_REFERENCE if either
+  // endpoint isn't the caller's node in this project.
+  createSceneLink(
+    projectId: string,
+    body: { from_node_id: string; to_node_id: string; kind: SceneLinkKind; label: string },
+    token: string,
+  ): Promise<SceneLink> {
+    return apiJson(`${BASE}/works/${projectId}/scene-links`, { method: 'POST', body: JSON.stringify(body), token });
+  },
+  // T1.3 — hard-delete a scene edge (edges have no archive; 204 / 404).
+  deleteSceneLink(linkId: string, token: string): Promise<void> {
+    return apiJson(`${BASE}/scene-links/${linkId}`, { method: 'DELETE', token });
   },
   createNode(projectId: string, payload: Partial<OutlineNode> & { kind: string }, token: string): Promise<OutlineNode> {
     return apiJson(`${BASE}/works/${projectId}/outline/nodes`, { method: 'POST', body: JSON.stringify(payload), token });

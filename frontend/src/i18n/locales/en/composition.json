@@ -45,6 +45,22 @@
     "state_empty": "empty",
     "state_unplaced": "unplaced"
   },
+  "graph": "Graph",
+  "scenegraph": {
+    "title": "Scene Graph",
+    "selectTwo": "Click two scenes to link them ({{n}}/2)",
+    "linkKind": "Link kind",
+    "kind_setup_payoff": "setup → payoff",
+    "kind_custom": "custom",
+    "label": "label (optional)",
+    "addLink": "link",
+    "cancel": "Cancel",
+    "linkExists": "A link of that kind already exists between these scenes.",
+    "linkFailed": "Could not create the link.",
+    "deleteLink": "Delete link",
+    "open": "Open scene",
+    "empty": "No scenes yet — plan some scenes in the outline to see the graph."
+  },
   "grounding": "Grounding",
   "canon": "Canon",
   "quality": "Quality",
