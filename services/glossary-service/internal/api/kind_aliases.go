@@ -235,9 +235,13 @@ func (s *Server) reassignEntityKind(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// reassign-kind reclassifies an entity (kind-specific attributes can be
-	// orphaned) — a structural op, gated at manage (/review-impl HIGH IDOR fix).
-	if !s.requireGrant(w, r.Context(), bookUUID, userID, grantclient.GrantManage) {
+	// reassign-kind is the core action of the unknown-kind REVIEW queue (editorial
+	// curation), so it's an EDIT op — gating it at manage would lock editors out of
+	// the review workflow. Incompatible-code attrs are dropped on rekey, but the
+	// prior revision snapshot preserves them (recoverable via restore), making this
+	// less destructive than the edit-tier child-deletes. (D-E0-1-NEEDMAP-REVIEW;
+	// the lifecycle gate still requires an active book.)
+	if !s.requireGrant(w, r.Context(), bookUUID, userID, grantclient.GrantEdit) {
 		return
 	}
 	bookID := chi.URLParam(r, "book_id")

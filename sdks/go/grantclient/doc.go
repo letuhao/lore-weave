@@ -15,9 +15,9 @@
 //   - A freshly granted user is never denied for the TTL window (none is never
 //     cached, so the next call re-fetches and sees the new grant immediately).
 //   - A revoked or downgraded grant takes effect within the TTL (positives
-//     expire; the next call re-fetches the lower level). v1 TTL is 60s, which
-//     satisfies AC4 (revoke effective ≤60s). Instant-revoke (Redis invalidate)
-//     is deferred to v1.1.
+//     expire; the next call re-fetches the lower level). v1 TTL is 45s, which
+//     keeps the worst-case revoke→deny wall-clock under AC4's ≤60s even with
+//     request/poll overhead. Instant-revoke (Redis invalidate) is deferred to v1.1.
 //
 // # Fail-closed
 //

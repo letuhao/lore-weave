@@ -23,8 +23,11 @@ var (
 	ErrUnavailable = errors.New("grant: authority unavailable")
 )
 
-// DefaultCacheTTL is the positive-grant cache lifetime (AC4: revoke ≤60s).
-const DefaultCacheTTL = 60 * time.Second
+// DefaultCacheTTL is the positive-grant cache lifetime. 45s (not 60s) so the
+// worst-case revoke→deny wall-clock — TTL plus request/poll overhead — stays
+// comfortably under the AC4 ≤60s bound (a live-smoke measured ~66s at a 60s TTL;
+// D-E0-CACHE-TTL-TUNE).
+const DefaultCacheTTL = 45 * time.Second
 
 // Options configures NewClient.
 type Options struct {

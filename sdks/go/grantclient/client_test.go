@@ -171,17 +171,17 @@ func TestResolveGrant_PositiveExpires(t *testing.T) {
 	c.now = func() time.Time { return base }
 	book, user := uuid.New(), uuid.New()
 
-	if _, err := c.ResolveGrant(context.Background(), book, user); err != nil { // miss → store exp=base+60s
+	if _, err := c.ResolveGrant(context.Background(), book, user); err != nil { // miss → store exp=base+ttl
 		t.Fatal(err)
 	}
-	c.now = func() time.Time { return base.Add(59 * time.Second) } // still valid
+	c.now = func() time.Time { return base.Add(c.ttl - time.Second) } // still valid (TTL-relative)
 	if _, err := c.ResolveGrant(context.Background(), book, user); err != nil {
 		t.Fatal(err)
 	}
 	if got := atomic.LoadInt64(hits); got != 1 {
 		t.Fatalf("within TTL hit %d times, want 1", got)
 	}
-	c.now = func() time.Time { return base.Add(61 * time.Second) } // expired
+	c.now = func() time.Time { return base.Add(c.ttl + time.Second) } // expired
 	if _, err := c.ResolveGrant(context.Background(), book, user); err != nil {
 		t.Fatal(err)
 	}
