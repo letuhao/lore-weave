@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/loreweave/grantclient"
 	"net/http"
 	"strconv"
 	"time"
@@ -54,7 +55,7 @@ func (s *Server) listEntityTrash(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 
@@ -146,7 +147,7 @@ func (s *Server) restoreEntity(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 
@@ -187,7 +188,7 @@ func (s *Server) purgeEntity(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantManage) {
 		return
 	}
 

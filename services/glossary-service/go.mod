@@ -7,12 +7,15 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.6.0
+	github.com/loreweave/grantclient v0.1.0
 	github.com/loreweave/observability v0.1.0
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/redis/go-redis/v9 v9.7.3
 	golang.org/x/text v0.35.0
 )
+
+replace github.com/loreweave/grantclient => ../../sdks/go/grantclient
 
 replace github.com/loreweave/observability => ../../sdks/go/observability
 

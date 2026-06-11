@@ -57,6 +57,8 @@ from app.reasoning import ReasoningSignals, score_effort
 from loreweave_llm import infer_reasoning_control, resolve_reasoning
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.packer import budget as B
+from app.grant_client import GrantLevel
+from app.grant_deps import InsufficientGrant
 from app.packer.pack import OwnershipError, PackRequest, pack
 from app.packer.profile import from_settings
 
@@ -311,9 +313,12 @@ async def generate(
             jobs_repo=jobs,  # S1 state-reinjection fallback source (prior generated scenes)
             compress_fn=_compress_fn,  # S2 long-chapter state compression
             narrative_threads_repo=narrative_threads,  # FD-1 S3 open-promise re-injection
+            need=GrantLevel.EDIT,  # E0-4c: prose-gen is a write/spend → EDIT tier
         )
     except OwnershipError:
         raise HTTPException(status_code=404, detail="book not found")
+    except InsufficientGrant:
+        raise HTTPException(status_code=403, detail="insufficient access")
     except BookClientError:
         raise HTTPException(status_code=502, detail={"code": "BOOK_SERVICE_UNAVAILABLE"})
 
@@ -732,9 +737,12 @@ async def generate_chapter(
             outline_repo=outline, scene_links_repo=scene_links,
             budget_tokens=settings.pack_token_budget, jobs_repo=jobs,
             compress_fn=_compress_fn,
-            narrative_threads_repo=narrative_threads)  # FD-1 S3 open-promise re-injection
+            narrative_threads_repo=narrative_threads,  # FD-1 S3 open-promise re-injection
+            need=GrantLevel.EDIT)  # E0-4c: prose-gen is a write/spend → EDIT tier
     except OwnershipError:
         raise HTTPException(status_code=404, detail="book not found")
+    except InsufficientGrant:
+        raise HTTPException(status_code=403, detail="insufficient access")
     except BookClientError:
         raise HTTPException(status_code=502, detail={"code": "BOOK_SERVICE_UNAVAILABLE"})
 

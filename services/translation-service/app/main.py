@@ -10,6 +10,7 @@ from .llm_client import close_llm_client, get_llm_client
 from .migrate import run_migrations
 from .broker import connect_broker, close_broker
 from .events.glossary_consumer import GlossaryStaleConsumer
+from .grant_client import init_grant_client, close_grant_client
 
 log = logging.getLogger(__name__)
 from .routers import settings as settings_router
@@ -42,6 +43,10 @@ async def lifespan(app: FastAPI):
     # workers to use this client.
     get_llm_client()
 
+    # E0-4a: the grant client (book-service /access authority). Constructed at
+    # startup so its httpx client shares the app lifecycle.
+    init_grant_client()
+
     # M5c: consume glossary change events → flag stale translations. Best-effort
     # background task; a Redis hiccup must never take down the API.
     consumer = GlossaryStaleConsumer(settings.redis_url, pool)
@@ -55,6 +60,7 @@ async def lifespan(app: FastAPI):
         await consumer_task
     await consumer.close()
     await close_llm_client()
+    await close_grant_client()
     await close_broker()
     await close_pool()
 

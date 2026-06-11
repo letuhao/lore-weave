@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/loreweave/grantclient"
 )
 
 // ── response types ────────────────────────────────────────────────────────────
@@ -131,24 +132,6 @@ func splitNonEmpty(s, sep string) []string {
 		}
 	}
 	return out
-}
-
-// verifyBookOwner fetches the book projection and checks that userID is the owner.
-// Returns false and writes an appropriate error response on failure.
-func (s *Server) verifyBookOwner(w http.ResponseWriter, ctx context.Context, bookID, userID uuid.UUID) bool {
-	proj, status := s.fetchBookProjection(ctx, bookID)
-	switch {
-	case status == http.StatusNotFound:
-		writeError(w, http.StatusNotFound, "GLOSS_BOOK_NOT_FOUND", "book not found")
-		return false
-	case status != http.StatusOK:
-		writeError(w, http.StatusServiceUnavailable, "GLOSS_UPSTREAM_UNAVAILABLE", "book service unavailable")
-		return false
-	case proj.OwnerUserID != userID:
-		writeError(w, http.StatusForbidden, "GLOSS_FORBIDDEN", "forbidden")
-		return false
-	}
-	return true
 }
 
 // ── loadEntityDetail ──────────────────────────────────────────────────────────
@@ -337,7 +320,7 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 
@@ -430,8 +413,8 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 			name, kind, aliases, shortDesc = "", "", []string{}, ""
 		}
 		// Phase B: a user-created entity is a "missing-add" correction
-		// (before=nil). The creator is the book owner (verifyBookOwner above),
-		// so actor_id = userID.
+		// (before=nil). The creator holds an edit grant (requireGrant above —
+		// owner or collaborator), so actor_id = userID.
 		payload := buildEntityEventPayload(
 			bookID.String(), entityIDStr, name, kind, aliases, shortDesc, "created",
 			"user", userID.String(), nil,
@@ -468,7 +451,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 
@@ -654,7 +637,7 @@ func (s *Server) getEntityDetail(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 
@@ -687,7 +670,7 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 
@@ -862,7 +845,7 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Capture AFTER in-tx and emit transactionally. A user PATCH is a
-		// correction by construction (verifyBookOwner above → actor = owner).
+		// correction by construction (requireGrant edit above → actor = userID).
 		afterName, afterKind, afterAliases, afterShortDesc, _ :=
 			loadEntityEventFields(ctx, tx, entityID)
 		var before *EntitySnapshot
@@ -922,7 +905,7 @@ func (s *Server) setEntityPinned(w http.ResponseWriter, r *http.Request, pinned 
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 
@@ -973,7 +956,7 @@ func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantManage) {
 		return
 	}
 
@@ -1008,7 +991,7 @@ func (s *Server) listEntityNames(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 

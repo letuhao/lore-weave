@@ -229,7 +229,8 @@ async def test_process_job_binds_campaign_id_contextvar(mock_extract_persist, mo
     camp = uuid4()
     job = _job(scope="chapters", campaign_id=camp)
     await process_job(_mock_pool(), _mock_knowledge_client(), _mock_llm_client(),
-                      _mock_book_client(), _mock_glossary_client(), job)
+                      _mock_book_client(), _mock_glossary_client(),
+                      _mock_chat_client(), _mock_provider_client(), job)
     mock_set.assert_called_once_with(str(camp))
 
 
@@ -241,8 +242,56 @@ async def test_process_job_clears_campaign_id_when_none(mock_extract_persist, mo
     previous job's campaign on a reused task."""
     mock_extract_persist.return_value = _ok_result()
     await process_job(_mock_pool(), _mock_knowledge_client(), _mock_llm_client(),
-                      _mock_book_client(), _mock_glossary_client(), _job(scope="chapters"))
+                      _mock_book_client(), _mock_glossary_client(),
+                      _mock_chat_client(), _mock_provider_client(), _job(scope="chapters"))
     mock_set.assert_called_once_with(None)
+
+
+# ── E0-3 Phase 2a: fail-safe wiring into process_job (review-impl MED-2) ──
+
+
+@pytest.mark.asyncio
+@patch("app.runner._fail_job", new_callable=AsyncMock)
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_process_job_fails_job_on_partial_billing_identity(
+    mock_extract_persist, mock_fail_job
+):
+    """A job with billing_user_id but a missing billing ref must be FAILED (not
+    crash the poll loop, not silently run on the owner's key). Proves the
+    assert_billing_complete fail-safe is wired INSIDE process_job's try so the
+    existing except→_fail_job handler catches it — and that no extraction (no
+    provider call) happens first."""
+    job = _job(
+        scope="chapters",
+        billing_user_id=uuid4(),
+        billing_llm_model=None,  # partial → fail-safe must trip
+        billing_embedding_model="collab-emb",
+    )
+    await process_job(_mock_pool(), _mock_knowledge_client(), _mock_llm_client(),
+                      _mock_book_client(), _mock_glossary_client(),
+                      _mock_chat_client(), _mock_provider_client(), job)
+    # Job failed via the fail-safe; no provider call was made.
+    mock_fail_job.assert_awaited_once()
+    assert job.job_id in mock_fail_job.call_args.args
+    mock_extract_persist.assert_not_called()
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_process_job_runs_normally_with_complete_billing(mock_extract_persist):
+    """The mirror: a complete billing identity passes the fail-safe and proceeds
+    to extraction (the collaborator path actually runs)."""
+    mock_extract_persist.return_value = _ok_result()
+    job = _job(
+        scope="chapters",
+        billing_user_id=uuid4(),
+        billing_llm_model="collab-llm",
+        billing_embedding_model="collab-emb",
+    )
+    await process_job(_mock_pool(), _mock_knowledge_client(), _mock_llm_client(),
+                      _mock_book_client(), _mock_glossary_client(),
+                      _mock_chat_client(), _mock_provider_client(), job)
+    mock_extract_persist.assert_called_once()
 
 
 # ── process_job: chapters scope ──────────────────────────────────────
@@ -1504,6 +1553,9 @@ async def test_get_running_jobs_pulls_embedding_dimension(monkeypatch):
         "items_processed": 0, "current_cursor": None,
         "cost_spent_usd": Decimal("0"),
         "campaign_id": None,
+        "billing_user_id": None,
+        "billing_embedding_model": None,
+        "billing_llm_model": None,
         "embedding_dimension": 1024,
         "extraction_config": {},
         "genre": "Tiên hiệp",
@@ -1516,6 +1568,7 @@ async def test_get_running_jobs_pulls_embedding_dimension(monkeypatch):
     assert jobs[0].embedding_dimension == 1024
     assert jobs[0].genre == "Tiên hiệp"
     assert jobs[0].save_raw_extraction is True  # Q4b-feed: threaded onto JobRow
+    assert jobs[0].billing_user_id is None  # E0-3 2a: owner-triggered ⇒ NULL
 
 
 @pytest.mark.asyncio
@@ -1530,6 +1583,9 @@ async def test_get_running_jobs_handles_null_embedding_dimension():
         "items_processed": 0, "current_cursor": None,
         "cost_spent_usd": Decimal("0"),
         "campaign_id": None,
+        "billing_user_id": None,
+        "billing_embedding_model": None,
+        "billing_llm_model": None,
         "embedding_dimension": None,
         "extraction_config": None,
         "genre": None,
@@ -1540,6 +1596,36 @@ async def test_get_running_jobs_handles_null_embedding_dimension():
     jobs = await _get_running_jobs(pool)
     assert jobs[0].embedding_dimension is None
     assert jobs[0].save_raw_extraction is False  # Q4b-feed: default OFF
+
+
+@pytest.mark.asyncio
+async def test_get_running_jobs_threads_billing_identity():
+    """E0-3 Phase 2a: a collaborator-triggered job's billing identity is read
+    from the SELECT onto JobRow so process_job can bill the caller's key."""
+    from app.runner import _get_running_jobs
+    collab = uuid4()
+    fake_row = {
+        "job_id": uuid4(), "user_id": uuid4(), "project_id": uuid4(),
+        "scope": "chapters", "scope_range": None, "status": "running",
+        "llm_model": "owner-llm", "embedding_model": "owner-emb",
+        "max_spend_usd": None, "items_total": None,
+        "items_processed": 0, "current_cursor": None,
+        "cost_spent_usd": Decimal("0"),
+        "campaign_id": None,
+        "billing_user_id": collab,
+        "billing_embedding_model": "collab-emb",
+        "billing_llm_model": "collab-llm",
+        "embedding_dimension": 1024,
+        "extraction_config": None,
+        "genre": None,
+        "save_raw_extraction": False,
+    }
+    pool = AsyncMock()
+    pool.fetch = AsyncMock(return_value=[fake_row])
+    jobs = await _get_running_jobs(pool)
+    assert jobs[0].billing_user_id == collab
+    assert jobs[0].billing_embedding_model == "collab-emb"
+    assert jobs[0].billing_llm_model == "collab-llm"
 
 
 # ── D-PHASE6C-WORKERAI-JOB-SPAN: parent span per process_job call ───

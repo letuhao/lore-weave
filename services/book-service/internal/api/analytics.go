@@ -204,12 +204,13 @@ func (s *Server) recordBookView(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getBookStats(w http.ResponseWriter, r *http.Request) {
 	// Deprecated: book stats now served by statistics-service at /v1/stats/books/{book_id}
-	if _, ok := s.requireUserID(r); !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
+		return
+	}
+	// E0-2: gate the aggregate read on ≥view (previously had NO ownership check —
+	// any authenticated user could read any book's stats). PO-locked to view.
+	if _, _, _, ok := s.authBook(w, r, bookID, GrantView); !ok {
 		return
 	}
 

@@ -20,6 +20,12 @@ from pydantic import BaseModel
 from ..broker import publish, publish_event
 from ..config import settings as app_settings
 from ..deps import get_current_user, get_db
+from ..grant_deps import (
+    GrantLevel,
+    authorize_book,
+    get_grant_client_dep,
+    require_book_grant,
+)
 from ..workers.extraction_prompt import estimate_extraction_cost
 from ..workers.glossary_client import fetch_extraction_profile
 
@@ -45,11 +51,16 @@ async def create_extraction_job(
     book_id: UUID,
     payload: CreateExtractionJobPayload,
     user_id: str = Depends(get_current_user),
+    # E0-4a edit gate (book grant). Caller-pays: the model below resolves from the
+    # CALLER's translation preferences and the worker runs on the caller's key.
+    _grant: UUID = Depends(require_book_grant(GrantLevel.EDIT)),
     db: asyncpg.Pool = Depends(get_db),
 ):
     uid = UUID(user_id)
 
-    # Verify book ownership via book-service
+    # The grant gate already authorized + proved the book exists (a missing book
+    # resolves to `none` → 404). Fetch the projection only for source_language
+    # (original_language); ownership is no longer decided here.
     async with httpx.AsyncClient(timeout=10) as client:
         try:
             r = await client.get(
@@ -65,9 +76,6 @@ async def create_extraction_job(
         raise HTTPException(status_code=502, detail={"code": "EXTRACT_BOOK_SERVICE_ERROR", "message": "Book service error"})
 
     projection = r.json()
-    if str(projection.get("owner_user_id")) != user_id:
-        raise HTTPException(status_code=403, detail={"code": "EXTRACT_FORBIDDEN", "message": "Not your book"})
-
     source_language = projection.get("original_language", "zh") or "zh"
 
     # Resolve model — use payload model_ref or fall back to user's translation settings
@@ -154,18 +162,17 @@ async def create_extraction_job(
 async def cancel_extraction_job(
     job_id: UUID,
     user_id: str = Depends(get_current_user),
+    gc=Depends(get_grant_client_dep),
     db: asyncpg.Pool = Depends(get_db),
 ):
-    """Cancel a running extraction job. Ownership check per design S3."""
-    uid = UUID(user_id)
+    """Cancel a running extraction job. E0-4a edit gate (job→book grant)."""
     row = await db.fetchrow(
-        "SELECT status, owner_user_id FROM extraction_jobs WHERE job_id=$1", job_id
+        "SELECT status, book_id FROM extraction_jobs WHERE job_id=$1", job_id
     )
     if not row:
         raise HTTPException(status_code=404, detail={"code": "EXTRACT_JOB_NOT_FOUND", "message": "Job not found"})
-
-    if row["owner_user_id"] != uid:
-        raise HTTPException(status_code=403, detail={"code": "EXTRACT_FORBIDDEN", "message": "Not your job"})
+    # Non-grantee → 404 (uniform with missing job, anti-oracle).
+    await authorize_book(gc, row["book_id"], UUID(user_id), GrantLevel.EDIT)
 
     if row["status"] not in ("pending", "running"):
         raise HTTPException(status_code=409, detail={"code": "EXTRACT_JOB_NOT_CANCELLABLE", "message": f"Job is {row['status']}"})
@@ -181,16 +188,15 @@ async def cancel_extraction_job(
 async def get_extraction_job(
     job_id: UUID,
     user_id: str = Depends(get_current_user),
+    gc=Depends(get_grant_client_dep),
     db: asyncpg.Pool = Depends(get_db),
 ):
-    """Get extraction job status with chapter results."""
-    uid = UUID(user_id)
+    """Get extraction job status with chapter results. E0-4a view gate (job→book)."""
     row = await db.fetchrow("SELECT * FROM extraction_jobs WHERE job_id=$1", job_id)
     if not row:
         raise HTTPException(status_code=404, detail={"code": "EXTRACT_JOB_NOT_FOUND", "message": "Job not found"})
-
-    if row["owner_user_id"] != uid:
-        raise HTTPException(status_code=403, detail={"code": "EXTRACT_FORBIDDEN", "message": "Not your job"})
+    # Non-grantee → 404 (uniform with missing job, anti-oracle).
+    await authorize_book(gc, row["book_id"], UUID(user_id), GrantLevel.VIEW)
 
     chapter_rows = await db.fetch(
         "SELECT * FROM extraction_chapter_results WHERE job_id=$1 ORDER BY created_at",

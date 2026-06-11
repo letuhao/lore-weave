@@ -2,13 +2,13 @@ import json
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 import asyncpg
-import httpx
 
 from ..deps import get_current_user, get_db
-from ..config import settings as app_settings, DEFAULT_COMPACT_SYSTEM_PROMPT, DEFAULT_COMPACT_USER_PROMPT_TPL
+from ..config import DEFAULT_COMPACT_SYSTEM_PROMPT, DEFAULT_COMPACT_USER_PROMPT_TPL
 from ..models import CreateJobPayload, TranslationJob, ChapterTranslation, ErrorResponse
 from ..broker import publish, publish_event
 from ..effective_settings import resolve_effective_settings
+from ..grant_deps import GrantLevel, require_book_grant, authorize_book, get_grant_client_dep
 
 router = APIRouter(prefix="/v1/translation", tags=["translation-jobs"])
 
@@ -23,28 +23,6 @@ def _job_row_to_model(row, chapter_rows=None) -> TranslationJob:
 # ── Create job ────────────────────────────────────────────────────────────────
 
 
-async def _verify_book_owner(book_id: UUID, user_id: str) -> None:
-    """Verify `user_id` owns `book_id` via book-service. Raises HTTPException on
-    not-found (404) / not-owner (403) / book-service error (502)."""
-    async with httpx.AsyncClient(timeout=10) as client:
-        try:
-            r = await client.get(
-                f"{app_settings.book_service_internal_url}/internal/books/{book_id}/projection",
-                headers={"X-Internal-Token": app_settings.internal_service_token},
-            )
-        except httpx.RequestError:
-            raise HTTPException(status_code=502, detail={"code": "TRANSL_BOOK_SERVICE_UNAVAILABLE", "message": "Book service unavailable"})
-
-    if r.status_code == 404:
-        raise HTTPException(status_code=404, detail={"code": "TRANSL_BOOK_NOT_FOUND", "message": "Book not found"})
-    if not r.is_success:
-        raise HTTPException(status_code=502, detail={"code": "TRANSL_BOOK_SERVICE_ERROR", "message": "Book service error"})
-
-    projection = r.json()
-    if str(projection.get("owner_user_id")) != user_id:
-        raise HTTPException(status_code=403, detail={"code": "TRANSL_FORBIDDEN", "message": "Not your book"})
-
-
 @router.post(
     "/books/{book_id}/jobs",
     response_model=TranslationJob,
@@ -54,9 +32,13 @@ async def create_job(
     book_id: UUID,
     payload: CreateJobPayload,
     user_id: str = Depends(get_current_user),
+    # E0-4a: book-grant gate (edit). Replaces the old owner-only book-projection
+    # check. Caller-attributed + caller-pays: the job is created under `user_id`
+    # (the caller) and the worker resolves the caller's own BYOK model — a
+    # collaborator translates on their own key, never the owner's.
+    _grant: UUID = Depends(require_book_grant(GrantLevel.EDIT)),
     db: asyncpg.Pool = Depends(get_db),
 ):
-    await _verify_book_owner(book_id, user_id)
     # S4a: campaign_id is NOT taken from the public body — a user must not be able
     # to tag their job to another user's campaign (which would inflate that
     # campaign's spend and trip its budget pause). Only the internal dispatch
@@ -282,14 +264,17 @@ async def list_jobs(
     book_id: UUID,
     limit: int = 5,
     offset: int = 0,
-    user_id: str = Depends(get_current_user),
+    # E0-4a view gate + D-E0-4-F shared per-book view: drop the owner_user_id
+    # predicate so every grantee sees ALL of the book's translation jobs (book_id
+    # still scopes → IDOR-safe). Writes stay caller-attributed.
+    _grant: UUID = Depends(require_book_grant(GrantLevel.VIEW)),
     db: asyncpg.Pool = Depends(get_db),
 ):
     rows = await db.fetch(
         """SELECT * FROM translation_jobs
-           WHERE book_id=$1 AND owner_user_id=$2
-           ORDER BY created_at DESC LIMIT $3 OFFSET $4""",
-        book_id, UUID(user_id), limit, offset,
+           WHERE book_id=$1
+           ORDER BY created_at DESC LIMIT $2 OFFSET $3""",
+        book_id, limit, offset,
     )
     return [_job_row_to_model(r) for r in rows]
 
@@ -300,11 +285,16 @@ async def list_jobs(
 async def get_job(
     job_id: UUID,
     user_id: str = Depends(get_current_user),
+    gc=Depends(get_grant_client_dep),
     db: asyncpg.Pool = Depends(get_db),
 ):
     row = await db.fetchrow("SELECT * FROM translation_jobs WHERE job_id=$1", job_id)
-    if not row or str(row["owner_user_id"]) != user_id:
+    if not row:
         raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Job not found"})
+    # E0-4a view gate (job→book grant). authorize_book raises 404 for a non-grantee
+    # — uniform with the missing-job 404 above (no existence oracle). Inline (reuses
+    # the row's book_id) rather than a pre-fetch dep.
+    await authorize_book(gc, row["book_id"], UUID(user_id), GrantLevel.VIEW)
 
     chapter_rows = await db.fetch(
         "SELECT * FROM chapter_translations WHERE job_id=$1 ORDER BY created_at",
@@ -320,20 +310,17 @@ async def get_chapter_translation(
     job_id: UUID,
     chapter_id: UUID,
     user_id: str = Depends(get_current_user),
+    gc=Depends(get_grant_client_dep),
     db: asyncpg.Pool = Depends(get_db),
 ):
-    job = await db.fetchrow(
-        "SELECT owner_user_id FROM translation_jobs WHERE job_id=$1", job_id
-    )
-    if not job or str(job["owner_user_id"]) != user_id:
-        raise HTTPException(status_code=403, detail={"code": "TRANSL_FORBIDDEN", "message": "Access denied"})
-
     row = await db.fetchrow(
         "SELECT * FROM chapter_translations WHERE job_id=$1 AND chapter_id=$2",
         job_id, chapter_id,
     )
     if not row:
         raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Chapter translation not found"})
+    # E0-4a view gate (chapter→book grant); non-grantee → 404 (uniform anti-oracle).
+    await authorize_book(gc, row["book_id"], UUID(user_id), GrantLevel.VIEW)
 
     return ChapterTranslation(**dict(row))
 
@@ -341,20 +328,28 @@ async def get_chapter_translation(
 # ── Cancel job ────────────────────────────────────────────────────────────────
 
 async def _cancel_job_core(db: asyncpg.Pool, job_id: UUID, user_id: str) -> None:
-    """Cancel core (shared by the public route + the S3c-2 internal endpoint).
-    Owner-scoped (404 if not found / not owned), 409 if already terminal."""
+    """Owner-scoped cancel — used by the S3c-2 INTERNAL dispatch endpoint, which
+    asserts a `user_id` (the campaign's verified caller). 404 if not found / not
+    owned, 409 if already terminal. (The PUBLIC route authorizes via the E0-4a
+    grant gate instead — see `cancel_job` + `_cancel_job_transition`.)"""
     row = await db.fetchrow(
         "SELECT owner_user_id, status FROM translation_jobs WHERE job_id=$1", job_id
     )
     if not row or str(row["owner_user_id"]) != user_id:
         raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Job not found"})
+    _assert_cancellable(row["status"])
+    await _do_cancel(db, job_id)
 
-    if row["status"] not in ("pending", "running"):
+
+def _assert_cancellable(job_status: str) -> None:
+    if job_status not in ("pending", "running"):
         raise HTTPException(
             status_code=409,
-            detail={"code": "TRANSL_CANNOT_CANCEL", "message": f"Job is already {row['status']}"},
+            detail={"code": "TRANSL_CANNOT_CANCEL", "message": f"Job is already {job_status}"},
         )
 
+
+async def _do_cancel(db: asyncpg.Pool, job_id: UUID) -> None:
     await db.execute(
         "UPDATE translation_jobs SET status='cancelled', finished_at=now() WHERE job_id=$1",
         job_id,
@@ -365,6 +360,17 @@ async def _cancel_job_core(db: asyncpg.Pool, job_id: UUID, user_id: str) -> None
 async def cancel_job(
     job_id: UUID,
     user_id: str = Depends(get_current_user),
+    gc=Depends(get_grant_client_dep),
     db: asyncpg.Pool = Depends(get_db),
 ):
-    await _cancel_job_core(db, job_id, user_id)
+    # E0-4a edit gate (job→book grant): a collaborator with edit can cancel a job on
+    # the shared book (shared management). Inline authorize on the row's book_id —
+    # a non-grantee gets 404 (uniform anti-oracle), NOT the old owner check.
+    row = await db.fetchrow(
+        "SELECT book_id, status FROM translation_jobs WHERE job_id=$1", job_id
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Job not found"})
+    await authorize_book(gc, row["book_id"], UUID(user_id), GrantLevel.EDIT)
+    _assert_cancellable(row["status"])
+    await _do_cancel(db, job_id)

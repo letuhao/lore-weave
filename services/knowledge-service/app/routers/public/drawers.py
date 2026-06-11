@@ -39,6 +39,7 @@ from app.db.neo4j_repos.passages import (
 DrawerSourceType = Literal["chapter", "chat", "glossary"]
 from app.db.repositories.projects import ProjectsRepo
 from app.deps import get_embedding_client, get_projects_repo
+from app.auth.grant_deps import GrantLevel, require_project_grant
 from app.middleware.jwt_auth import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -116,7 +117,7 @@ async def search_drawers(
             "FastAPI 422s anything outside the Literal enum."
         ),
     ),
-    user_id: UUID = Depends(get_current_user),
+    user_id: UUID = Depends(require_project_grant(GrantLevel.VIEW)),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     embedding_client: EmbeddingClient = Depends(get_embedding_client),
 ) -> DrawerSearchResponse:

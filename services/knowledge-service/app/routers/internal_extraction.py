@@ -186,6 +186,14 @@ class PersistPass2Request(BaseModel):
     # node accumulates the deduped set of origins (`provenances`).
     provenance: Literal["human_authored", "ai_assisted", "enrichment"] = "human_authored"
 
+    # E0-3 Phase 2a-2 — BYOK billing identity for the SUMMARY pipeline this
+    # persist enqueues (the summary LLM + embed bill the collaborator). Empty ⇒
+    # owner-triggered (legacy). The stored embedding_model_uuid tag stays the
+    # project's; only the summary GENERATION refs/user swap to billing.
+    billing_user_id: str = ""
+    billing_llm_model: str = ""
+    billing_embedding_model: str = ""
+
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -583,6 +591,9 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
                 embedding_dimension=body.embedding_dimension,
                 is_last_chapter_of_book=body.is_last_chapter_of_book,
                 book_parts=list(body.book_parts),
+                billing_user_id=body.billing_user_id,
+                billing_llm_model=body.billing_llm_model,
+                billing_embedding_model=body.billing_embedding_model,
             )
             logger.info(
                 "P3: enqueued summaries for chapter source_id=%s "
@@ -973,6 +984,12 @@ class SummarizeMessageRequest(BaseModel):
     embedding_dimension: int = Field(ge=1)
     retry_at_epoch: float = 0.0
     retried_n: int = 0
+    # E0-3 Phase 2a-2 — BYOK caller-pays. Empty ⇒ owner-triggered (legacy). When
+    # set, the summary LLM + embed resolve under the caller; the stored
+    # embedding_model_uuid tag stays the project's.
+    billing_user_id: str = ""
+    billing_llm_model: str = ""
+    billing_embedding_model: str = ""
 
 
 class SummarizeMessageResponse(BaseModel):
@@ -1077,6 +1094,9 @@ async def process_summarize_message_endpoint(
         embedding_dimension=req.embedding_dimension,
         retry_at_epoch=req.retry_at_epoch,
         retried_n=req.retried_n,
+        billing_user_id=req.billing_user_id,
+        billing_llm_model=req.billing_llm_model,
+        billing_embedding_model=req.billing_embedding_model,
     )
 
     try:
@@ -1097,8 +1117,13 @@ async def process_summarize_message_endpoint(
             knowledge_pool=pool,
             neo4j_session=session,
             llm_client=get_llm_client(),
+            # E0-3 2a-2: bind the embed provider call to the billing user when a
+            # collaborator triggered the extraction (gated on billing_user_id —
+            # the identity, not a ref alone). summary_processor passes the
+            # billing embedding ref as model_uuid; the two stay coherent.
             embedding_client=_EmbeddingAdapter(
-                get_embedding_client(), user_id=UUID(req.user_id),
+                get_embedding_client(),
+                user_id=UUID(req.billing_user_id or req.user_id),
             ),
             summary_enqueue=_get_summary_enqueue(),
         )
