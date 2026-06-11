@@ -24,6 +24,10 @@ const (
 	GrantOwner  GrantLevel = 4
 )
 
+// AtLeast reports whether g satisfies the required level (e.g. edit satisfies
+// view+edit but not manage). Ordered: none<view<edit<manage<owner.
+func (g GrantLevel) AtLeast(need GrantLevel) bool { return g >= need }
+
 func (g GrantLevel) String() string {
 	switch g {
 	case GrantOwner:
@@ -60,62 +64,104 @@ func validCollaboratorRole(role string) bool {
 	return role == "view" || role == "edit" || role == "manage"
 }
 
-// resolveGrant resolves the caller's permission on a book, locally (book-service
-// owns both `books` and `book_collaborators`). Owner is implicit via
-// owner_user_id; otherwise the stored role; else none. A MISSING book yields
-// (GrantNone, nil) — never an error and never a 404 — so callers cannot use it
-// as an existence oracle (DESIGN R4 / INV-8 / H13).
-func (s *Server) resolveGrant(ctx context.Context, bookID, userID uuid.UUID) (GrantLevel, error) {
-	var owner uuid.UUID
-	err := s.pool.QueryRow(ctx, `SELECT owner_user_id FROM books WHERE id=$1`, bookID).Scan(&owner)
+// resolveBookAuth is the single local grant resolver (book-service owns both
+// `books` and `book_collaborators`; no self-RPC). It returns the caller's grant
+// level, the book's OWNER (needed for quota attribution — E0-2 §3d, content always
+// bills the owner not an editing collaborator), and the book's lifecycle.
+//
+// A MISSING book yields (GrantNone, uuid.Nil, "", nil) — never an error, never a
+// 404 — so it can't be used as an existence oracle (DESIGN R4 / INV-8 / H13). A
+// book that EXISTS but the caller has no grant on yields (GrantNone, owner,
+// lifecycle, nil): the owner is known to the resolver but callers collapse `none`
+// to a uniform deny, so nothing leaks.
+func (s *Server) resolveBookAuth(ctx context.Context, bookID, userID uuid.UUID) (lvl GrantLevel, owner uuid.UUID, lifecycle string, err error) {
+	err = s.pool.QueryRow(ctx, `SELECT owner_user_id, lifecycle_state FROM books WHERE id=$1`, bookID).Scan(&owner, &lifecycle)
 	if err == pgx.ErrNoRows {
-		return GrantNone, nil
+		return GrantNone, uuid.Nil, "", nil
 	}
 	if err != nil {
-		return GrantNone, err
+		return GrantNone, uuid.Nil, "", err
 	}
 	if owner == userID {
-		return GrantOwner, nil
+		return GrantOwner, owner, lifecycle, nil
 	}
 	var role string
 	err = s.pool.QueryRow(ctx, `SELECT role FROM book_collaborators WHERE book_id=$1 AND user_id=$2`, bookID, userID).Scan(&role)
 	if err == pgx.ErrNoRows {
-		return GrantNone, nil
+		return GrantNone, owner, lifecycle, nil
 	}
 	if err != nil {
-		return GrantNone, err
+		return GrantNone, owner, "", err
 	}
-	return roleToLevel(role), nil
+	return roleToLevel(role), owner, lifecycle, nil
 }
 
-// resolveAccess resolves both the caller's grant AND the book's lifecycle in one
-// query, for the /access authority (E0-1 consumers gate edit/manage on lifecycle).
-// A MISSING book yields (GrantNone, "", nil) — never an error, never a 404 (R4):
-// grant is `none` and lifecycle is "" (absent), so it's still no existence oracle.
+// resolve dispatches to the injected grant resolver (tests stub it) or, when
+// unset, the real local resolver. The nil fallback keeps a struct-literal
+// Server (e.g. `&Server{pool: …}` in a future integration test) from panicking
+// in this auth chokepoint — production always wires resolveBook via NewServer.
+func (s *Server) resolve(ctx context.Context, bookID, userID uuid.UUID) (GrantLevel, uuid.UUID, string, error) {
+	if s.resolveBook != nil {
+		return s.resolveBook(ctx, bookID, userID)
+	}
+	return s.resolveBookAuth(ctx, bookID, userID)
+}
+
+// resolveGrant resolves just the caller's permission on a book (see
+// resolveBookAuth). A MISSING book yields (GrantNone, nil) — no existence oracle.
+func (s *Server) resolveGrant(ctx context.Context, bookID, userID uuid.UUID) (GrantLevel, error) {
+	lvl, _, _, err := s.resolve(ctx, bookID, userID)
+	return lvl, err
+}
+
+// resolveAccess resolves the caller's grant AND the book's lifecycle, for the
+// /access authority (E0-1 consumers gate edit/manage on lifecycle). On NO grant
+// (missing book or no role) it returns an EMPTY lifecycle — same as a missing
+// book — so /access can't distinguish exists-but-no-access from missing (R4).
 func (s *Server) resolveAccess(ctx context.Context, bookID, userID uuid.UUID) (GrantLevel, string, error) {
-	var owner uuid.UUID
-	var lifecycle string
-	err := s.pool.QueryRow(ctx, `SELECT owner_user_id, lifecycle_state FROM books WHERE id=$1`, bookID).Scan(&owner, &lifecycle)
-	if err == pgx.ErrNoRows {
-		return GrantNone, "", nil
-	}
+	lvl, _, lifecycle, err := s.resolve(ctx, bookID, userID)
 	if err != nil {
 		return GrantNone, "", err
 	}
-	if owner == userID {
-		return GrantOwner, lifecycle, nil
-	}
-	var role string
-	err = s.pool.QueryRow(ctx, `SELECT role FROM book_collaborators WHERE book_id=$1 AND user_id=$2`, bookID, userID).Scan(&role)
-	if err == pgx.ErrNoRows {
-		// No grant → return EMPTY lifecycle (same as a missing book), so /access
-		// can't be used to distinguish exists-but-no-access from missing (R4).
+	if lvl == GrantNone {
 		return GrantNone, "", nil
 	}
-	if err != nil {
-		return GrantNone, "", err
+	return lvl, lifecycle, nil
+}
+
+// authBook is the E0-2 grant chokepoint for book-service's OWN per-book routes.
+// It authenticates the caller, resolves their grant locally, and enforces `need`,
+// writing the uniform HTTP error + returning ok=false on any failure:
+//
+//	401 — no/invalid token
+//	404 — grant `none` (missing book OR no grant: no existence oracle, INV-8/H13)
+//	403 — caller has access but below `need` (they already know it exists)
+//	503 — DB error resolving the grant (fail-closed)
+//
+// It does NOT gate on lifecycle — book-service handlers carry their own precise
+// per-state checks (patchBook 409 on non-active, transition handlers validate
+// bState/cState). The returned `owner` is the book's owner (for quota
+// attribution, §3d); `lifecycle` is the book's state if the caller wants it.
+func (s *Server) authBook(w http.ResponseWriter, r *http.Request, bookID uuid.UUID, need GrantLevel) (caller, owner uuid.UUID, lifecycle string, ok bool) {
+	caller, authed := s.requireUserID(r)
+	if !authed {
+		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
+		return uuid.Nil, uuid.Nil, "", false
 	}
-	return roleToLevel(role), lifecycle, nil
+	lvl, owner, lc, err := s.resolve(r.Context(), bookID, caller)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "RESOLVE_FAILED", "grant resolution failed")
+		return uuid.Nil, uuid.Nil, "", false
+	}
+	if lvl == GrantNone {
+		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
+		return uuid.Nil, uuid.Nil, "", false
+	}
+	if !lvl.AtLeast(need) {
+		writeError(w, http.StatusForbidden, "BOOK_FORBIDDEN", "insufficient access")
+		return uuid.Nil, uuid.Nil, "", false
+	}
+	return caller, owner, lc, true
 }
 
 // getBookAccess (internal) — the single authority every service calls to resolve

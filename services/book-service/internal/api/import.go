@@ -29,23 +29,18 @@ var allowedImportFormats = map[string]string{
 // It saves the uploaded file to MinIO, creates an import_jobs record,
 // and writes an outbox event for the worker-infra import-processor task.
 func (s *Server) startImport(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
 	}
 
-	// Verify book ownership
-	var lifecycle string
-	err := s.pool.QueryRow(r.Context(),
-		`SELECT lifecycle_state FROM books WHERE id=$1 AND owner_user_id=$2`, bookID, ownerID,
-	).Scan(&lifecycle)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
+	// E0-2: edit grant required. The import job is attributed to the book OWNER
+	// (`ownerID`) so the async worker bills the owner's storage quota — preserving
+	// pre-E0 behavior; an editing collaborator must not be charged for the owner's
+	// book. (Editor-as-author attribution for imports is deferred,
+	// D-E0-2-IMPORT-ATTRIBUTION.)
+	_, ownerID, lifecycle, ok := s.authBook(w, r, bookID, GrantEdit)
+	if !ok {
 		return
 	}
 	if lifecycle != "active" {
@@ -163,11 +158,6 @@ VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
 
 // getImportJob handles GET /v1/books/{book_id}/imports/{import_id}
 func (s *Server) getImportJob(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
@@ -175,6 +165,9 @@ func (s *Server) getImportJob(w http.ResponseWriter, r *http.Request) {
 	importID, err := uuid.Parse(chi.URLParam(r, "import_id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_ID", "invalid import_id")
+		return
+	}
+	if _, _, _, ok := s.authBook(w, r, bookID, GrantView); !ok {
 		return
 	}
 
@@ -196,8 +189,8 @@ SELECT id, book_id, status, filename, file_format, file_size, chapters_created, 
        created_at::text, updated_at::text,
        CASE WHEN completed_at IS NOT NULL THEN completed_at::text END
 FROM import_jobs
-WHERE id=$1 AND book_id=$2 AND user_id=$3
-`, importID, bookID, ownerID).Scan(
+WHERE id=$1 AND book_id=$2
+`, importID, bookID).Scan(
 		&job.ID, &job.BookID, &job.Status, &job.Filename, &job.FileFormat,
 		&job.FileSize, &job.ChaptersCreated, &job.Error,
 		&job.CreatedAt, &job.UpdatedAt, &job.CompletedAt,
@@ -216,13 +209,11 @@ WHERE id=$1 AND book_id=$2 AND user_id=$3
 
 // listImportJobs handles GET /v1/books/{book_id}/imports
 func (s *Server) listImportJobs(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
+		return
+	}
+	if _, _, _, ok := s.authBook(w, r, bookID, GrantView); !ok {
 		return
 	}
 
@@ -231,10 +222,10 @@ SELECT id, status, filename, file_format, file_size, chapters_created, error,
        created_at::text, updated_at::text,
        CASE WHEN completed_at IS NOT NULL THEN completed_at::text END
 FROM import_jobs
-WHERE book_id=$1 AND user_id=$2
+WHERE book_id=$1
 ORDER BY created_at DESC
 LIMIT 20
-`, bookID, ownerID)
+`, bookID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", "internal error")
 		return

@@ -51,10 +51,15 @@ type Server struct {
 	minio          *minio.Client
 	llmgw          imageGenerator // Phase 5e-β.1; nil if config missing — handler checks
 	audioGenClient audioGenerator // Phase 5e-β.2; satisfied by same *llmgw.Client
+	// resolveBook is the E0-2 local grant resolver. Production wires it to
+	// (*Server).resolveBookAuth in NewServer; tests override it to exercise the
+	// route→need mapping (the grant chokepoint) without a real DB.
+	resolveBook func(ctx context.Context, bookID, userID uuid.UUID) (GrantLevel, uuid.UUID, string, error)
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
 	s := &Server{pool: pool, cfg: cfg, secret: []byte(cfg.JWTSecret)}
+	s.resolveBook = s.resolveBookAuth
 	if cfg.MinioEndpoint != "" && cfg.MinioSecretKey != "" {
 		mc, err := minio.New(cfg.MinioEndpoint, &minio.Options{
 			Creds:  credentials.NewStaticV4(cfg.MinioAccessKey, cfg.MinioSecretKey, ""),
@@ -303,17 +308,6 @@ func parseUUIDParam(w http.ResponseWriter, r *http.Request, name string) (uuid.U
 	return id, true
 }
 
-func (s *Server) ensureOwnerBook(ctx context.Context, bookID, ownerID uuid.UUID) (lifecycle string, ok bool, status int) {
-	err := s.pool.QueryRow(ctx, `SELECT lifecycle_state FROM books WHERE id=$1 AND owner_user_id=$2`, bookID, ownerID).Scan(&lifecycle)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", false, http.StatusNotFound
-	}
-	if err != nil {
-		return "", false, http.StatusInternalServerError
-	}
-	return lifecycle, true, http.StatusOK
-}
-
 func (s *Server) fetchSharingVisibility(ctx context.Context, bookID uuid.UUID) string {
 	if strings.TrimSpace(s.cfg.SharingInternalURL) == "" {
 		return "private"
@@ -536,15 +530,19 @@ RETURNING id
 	s.getBookByID(w, ctx, bookID, ownerID, http.StatusCreated)
 }
 
+// listBooks — "my library": owned AND collaborated (E0-2/R2). UNION resolved
+// locally (book-service owns both tables → no N+1 /access calls).
 func (s *Server) listBooks(w http.ResponseWriter, r *http.Request) {
-	s.listBooksByLifecycle(w, r, "active")
+	s.listBooksByLifecycle(w, r, "active", true)
 }
 
+// listTrashedBooks stays OWNER-ONLY — a collaborator never sees the owner's
+// trash. (Book-level lifecycle is owner-only across E0-2.)
 func (s *Server) listTrashedBooks(w http.ResponseWriter, r *http.Request) {
-	s.listBooksByLifecycle(w, r, "trashed")
+	s.listBooksByLifecycle(w, r, "trashed", false)
 }
 
-func (s *Server) listBooksByLifecycle(w http.ResponseWriter, r *http.Request, lifecycle string) {
+func (s *Server) listBooksByLifecycle(w http.ResponseWriter, r *http.Request, lifecycle string, includeShared bool) {
 	ownerID, ok := s.requireUserID(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
@@ -552,13 +550,21 @@ func (s *Server) listBooksByLifecycle(w http.ResponseWriter, r *http.Request, li
 	}
 	limit, offset := parseLimitOffset(r)
 	ctx := r.Context()
+	// accessFilter selects owned rows, plus collaborated rows when includeShared.
+	// access_level is computed per row so the FE can distinguish owned vs shared.
+	accessFilter := "b.owner_user_id=$1"
+	if includeShared {
+		accessFilter = "(b.owner_user_id=$1 OR EXISTS(SELECT 1 FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1))"
+	}
 	rows, err := s.pool.Query(ctx, `
 SELECT b.id,b.owner_user_id,b.title,b.description,b.original_language,b.summary,b.lifecycle_state,b.trashed_at,b.purge_eligible_at,b.created_at,b.updated_at,
   COALESCE((SELECT COUNT(*) FROM chapters c WHERE c.book_id=b.id AND c.lifecycle_state='active'),0) AS chapter_count,
   EXISTS(SELECT 1 FROM book_cover_assets a WHERE a.book_id=b.id) AS has_cover,
-  b.genre_tags
+  b.genre_tags,
+  CASE WHEN b.owner_user_id=$1 THEN 'owner'
+       ELSE COALESCE((SELECT role FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$1),'none') END AS access_level
 FROM books b
-WHERE b.owner_user_id=$1 AND b.lifecycle_state=$2
+WHERE `+accessFilter+` AND b.lifecycle_state=$2
 ORDER BY b.created_at DESC
 LIMIT $3 OFFSET $4
 `, ownerID, lifecycle, limit, offset)
@@ -570,13 +576,13 @@ LIMIT $3 OFFSET $4
 	items := make([]map[string]any, 0)
 	for rows.Next() {
 		var id, owner uuid.UUID
-		var title, state string
+		var title, state, accessLevel string
 		var desc, lang, summary *string
 		var trashedAt, purgeAt, createdAt, updatedAt *time.Time
 		var chapterCount int
 		var hasCover bool
 		var genreTags []string
-		if err := rows.Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &chapterCount, &hasCover, &genreTags); err == nil {
+		if err := rows.Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &chapterCount, &hasCover, &genreTags, &accessLevel); err == nil {
 			if genreTags == nil {
 				genreTags = []string{}
 			}
@@ -584,6 +590,7 @@ LIMIT $3 OFFSET $4
 			items = append(items, map[string]any{
 				"book_id":           id,
 				"owner_user_id":     owner,
+				"access_level":      accessLevel,
 				"title":             title,
 				"description":       desc,
 				"original_language": lang,
@@ -601,7 +608,7 @@ LIMIT $3 OFFSET $4
 		}
 	}
 	var total int
-	_ = s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM books WHERE owner_user_id=$1 AND lifecycle_state=$2`, ownerID, lifecycle).Scan(&total)
+	_ = s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM books b WHERE `+accessFilter+` AND b.lifecycle_state=$2`, ownerID, lifecycle).Scan(&total)
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
 }
 
@@ -613,21 +620,24 @@ func nullableString(s string) any {
 }
 
 func (s *Server) getBook(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
 	}
-	s.getBookByID(w, r.Context(), bookID, ownerID, http.StatusOK)
+	caller, _, _, ok := s.authBook(w, r, bookID, GrantView)
+	if !ok {
+		return
+	}
+	s.getBookByID(w, r.Context(), bookID, caller, http.StatusOK)
 }
 
-func (s *Server) getBookByID(w http.ResponseWriter, ctx context.Context, bookID, ownerID uuid.UUID, status int) {
+// getBookByID is a response-builder; it does NOT authorize — every caller MUST
+// pre-check the grant (authBook) first. E0-2 dropped the owner filter (the
+// query is keyed by id) so a collaborator's GET returns the book; access_level
+// is computed for `caller` (owner|manage|edit|view|none) for the FE.
+func (s *Server) getBookByID(w http.ResponseWriter, ctx context.Context, bookID, caller uuid.UUID, status int) {
 	var id, owner uuid.UUID
-	var title, state string
+	var title, state, accessLevel string
 	var desc, lang, summary *string
 	var trashedAt, purgeAt, createdAt, updatedAt *time.Time
 	var chapterCount int
@@ -637,10 +647,12 @@ func (s *Server) getBookByID(w http.ResponseWriter, ctx context.Context, bookID,
 	err := s.pool.QueryRow(ctx, `
 SELECT b.id,b.owner_user_id,b.title,b.description,b.original_language,b.summary,b.lifecycle_state,b.trashed_at,b.purge_eligible_at,b.created_at,b.updated_at,
   COALESCE((SELECT COUNT(*) FROM chapters c WHERE c.book_id=b.id AND c.lifecycle_state='active'),0) AS chapter_count,
-  b.genre_tags, b.wiki_settings, b.extraction_profile
+  b.genre_tags, b.wiki_settings, b.extraction_profile,
+  CASE WHEN b.owner_user_id=$2 THEN 'owner'
+       ELSE COALESCE((SELECT role FROM book_collaborators bc WHERE bc.book_id=b.id AND bc.user_id=$2),'none') END AS access_level
 FROM books b
-WHERE b.id=$1 AND b.owner_user_id=$2
-`, bookID, ownerID).Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &chapterCount, &genreTags, &wikiSettings, &extractionProfile)
+WHERE b.id=$1
+`, bookID, caller).Scan(&id, &owner, &title, &desc, &lang, &summary, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &chapterCount, &genreTags, &wikiSettings, &extractionProfile, &accessLevel)
 	if errors.Is(err, pgx.ErrNoRows) || state == "purge_pending" {
 		writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
 		return
@@ -667,6 +679,7 @@ WHERE b.id=$1 AND b.owner_user_id=$2
 	writeJSON(w, status, map[string]any{
 		"book_id":            id,
 		"owner_user_id":      owner,
+		"access_level":       accessLevel,
 		"title":              title,
 		"description":        desc,
 		"original_language":  lang,
@@ -686,22 +699,12 @@ WHERE b.id=$1 AND b.owner_user_id=$2
 }
 
 func (s *Server) patchBook(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
 	}
-	lifecycle, okBook, status := s.ensureOwnerBook(r.Context(), bookID, ownerID)
-	if !okBook {
-		if status == http.StatusNotFound {
-			writeError(w, status, "BOOK_NOT_FOUND", "book not found")
-		} else {
-			writeError(w, status, "BOOK_CONFLICT", "failed to read book")
-		}
+	caller, _, lifecycle, ok := s.authBook(w, r, bookID, GrantEdit)
+	if !ok {
 		return
 	}
 	if lifecycle != "active" {
@@ -715,9 +718,10 @@ func (s *Server) patchBook(w http.ResponseWriter, r *http.Request) {
 	}
 	// Build dynamic UPDATE — only set fields that were explicitly provided in the payload.
 	// This allows sending null to clear a field (vs omitting to keep it unchanged).
+	// Authorization is the authBook(edit) pre-check above; the query is keyed by id.
 	setClauses := []string{"updated_at=now()"}
-	args := []any{bookID, ownerID}
-	paramIdx := 3
+	args := []any{bookID}
+	paramIdx := 2
 	if _, ok := in["title"]; ok {
 		setClauses = append(setClauses, fmt.Sprintf("title=COALESCE($%d,title)", paramIdx))
 		args = append(args, stringFromAny(in["title"]))
@@ -776,13 +780,13 @@ func (s *Server) patchBook(w http.ResponseWriter, r *http.Request) {
 		}
 		paramIdx++
 	}
-	query := fmt.Sprintf("UPDATE books SET %s WHERE id=$1 AND owner_user_id=$2", strings.Join(setClauses, ", "))
+	query := fmt.Sprintf("UPDATE books SET %s WHERE id=$1", strings.Join(setClauses, ", "))
 	_, err := s.pool.Exec(r.Context(), query, args...)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to patch book")
 		return
 	}
-	s.getBookByID(w, r.Context(), bookID, ownerID, http.StatusOK)
+	s.getBookByID(w, r.Context(), bookID, caller, http.StatusOK)
 }
 
 func stringFromAny(v any) *string {
@@ -807,23 +811,16 @@ func (s *Server) purgeBook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) transitionBookLifecycle(w http.ResponseWriter, r *http.Request, target string) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
 	}
 	ctx := r.Context()
-	lifecycle, okBook, status := s.ensureOwnerBook(ctx, bookID, ownerID)
-	if !okBook {
-		if status == http.StatusNotFound {
-			writeError(w, status, "BOOK_NOT_FOUND", "book not found")
-		} else {
-			writeError(w, status, "BOOK_CONFLICT", "failed to read book")
-		}
+	// Book-level lifecycle (trash/restore/purge the whole book) stays OWNER-ONLY
+	// — a manage collaborator can delete content WITHIN the book but not the book
+	// itself (E0-2 / R-book-destructive). authBook(owner) returns the lifecycle.
+	ownerID, _, lifecycle, ok := s.authBook(w, r, bookID, GrantOwner)
+	if !ok {
 		return
 	}
 	switch target {
@@ -857,18 +854,12 @@ func (s *Server) transitionBookLifecycle(w http.ResponseWriter, r *http.Request,
 }
 
 func (s *Server) uploadCover(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
 	}
-	lifecycle, okBook, status := s.ensureOwnerBook(r.Context(), bookID, ownerID)
-	if !okBook {
-		writeError(w, status, "BOOK_NOT_FOUND", "book not found")
+	caller, ownerID, lifecycle, ok := s.authBook(w, r, bookID, GrantEdit)
+	if !ok {
 		return
 	}
 	if lifecycle != "active" {
@@ -906,36 +897,34 @@ ON CONFLICT(book_id) DO UPDATE SET content_type=EXCLUDED.content_type, byte_size
 		return
 	}
 	_ = s.recalcQuota(ctx, ownerID)
-	s.getBookByID(w, ctx, bookID, ownerID, http.StatusOK)
+	s.getBookByID(w, ctx, bookID, caller, http.StatusOK)
 }
 
 func (s *Server) deleteCover(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
 	}
-	_, err := s.pool.Exec(r.Context(), `DELETE FROM book_cover_assets WHERE book_id=$1 AND EXISTS (SELECT 1 FROM books WHERE id=$1 AND owner_user_id=$2)`, bookID, ownerID)
+	caller, ownerID, _, ok := s.authBook(w, r, bookID, GrantEdit)
+	if !ok {
+		return
+	}
+	// authBook(edit) authorized; the delete is keyed by id (owner-EXISTS guard dropped).
+	_, err := s.pool.Exec(r.Context(), `DELETE FROM book_cover_assets WHERE book_id=$1`, bookID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to delete cover")
 		return
 	}
-	_ = s.recalcQuota(r.Context(), ownerID)
-	s.getBookByID(w, r.Context(), bookID, ownerID, http.StatusOK)
+	_ = s.recalcQuota(r.Context(), ownerID) // quota bills the book owner, not the editor
+	s.getBookByID(w, r.Context(), bookID, caller, http.StatusOK)
 }
 
 func (s *Server) getCover(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
+		return
+	}
+	if _, _, _, ok := s.authBook(w, r, bookID, GrantView); !ok {
 		return
 	}
 	var contentType string
@@ -943,9 +932,8 @@ func (s *Server) getCover(w http.ResponseWriter, r *http.Request) {
 	err := s.pool.QueryRow(r.Context(), `
 SELECT a.content_type, a.data
 FROM book_cover_assets a
-JOIN books b ON b.id=a.book_id
-WHERE a.book_id=$1 AND b.owner_user_id=$2
-`, bookID, ownerID).Scan(&contentType, &data)
+WHERE a.book_id=$1
+`, bookID).Scan(&contentType, &data)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "COVER_NOT_FOUND", "cover not found")
 		return
@@ -956,18 +944,12 @@ WHERE a.book_id=$1 AND b.owner_user_id=$2
 }
 
 func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
 	}
-	state, okBook, status := s.ensureOwnerBook(r.Context(), bookID, ownerID)
-	if !okBook {
-		writeError(w, status, "BOOK_NOT_FOUND", "book not found")
+	_, _, state, ok := s.authBook(w, r, bookID, GrantView)
+	if !ok {
 		return
 	}
 	lifecycle := r.URL.Query().Get("lifecycle_state")
@@ -1037,18 +1019,12 @@ func (s *Server) listChapters(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) createChapter(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
 	}
-	lifecycle, okBook, status := s.ensureOwnerBook(r.Context(), bookID, ownerID)
-	if !okBook {
-		writeError(w, status, "BOOK_NOT_FOUND", "book not found")
+	caller, owner, lifecycle, ok := s.authBook(w, r, bookID, GrantEdit)
+	if !ok {
 		return
 	}
 	if lifecycle != "active" {
@@ -1073,7 +1049,7 @@ func (s *Server) createChapter(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		filename := fmt.Sprintf("editor-%s.txt", uuid.NewString())
-		s.createChapterRecord(w, r.Context(), ownerID, bookID, in.Title, filename, in.OriginalLanguage, in.SortOrder, in.Body, "seed from editor", true)
+		s.createChapterRecord(w, r.Context(), caller, owner, bookID, in.Title, filename, in.OriginalLanguage, in.SortOrder, in.Body, "seed from editor", true)
 		return
 	default:
 		if err := r.ParseMultipartForm(50 << 20); err != nil {
@@ -1101,14 +1077,18 @@ func (s *Server) createChapter(w http.ResponseWriter, r *http.Request) {
 		if v := r.FormValue("sort_order"); v != "" {
 			sortOrder, _ = strconv.Atoi(v)
 		}
-		s.createChapterRecord(w, r.Context(), ownerID, bookID, title, fh.Filename, lang, sortOrder, string(data), "seed from upload", true)
+		s.createChapterRecord(w, r.Context(), caller, owner, bookID, title, fh.Filename, lang, sortOrder, string(data), "seed from upload", true)
 	}
 }
 
+// createChapterRecord — E0-2: `caller` is the author (revision attribution);
+// `owner` is the book owner whose storage quota the content bills (an editing
+// collaborator must NOT be charged, and the owner's quota is the real ceiling).
 func (s *Server) createChapterRecord(
 	w http.ResponseWriter,
 	ctx context.Context,
-	ownerID uuid.UUID,
+	caller uuid.UUID,
+	owner uuid.UUID,
 	bookID uuid.UUID,
 	title string,
 	originalFilename string,
@@ -1121,10 +1101,10 @@ func (s *Server) createChapterRecord(
 	if sortOrder == 0 {
 		_ = s.pool.QueryRow(ctx, `SELECT COALESCE(MAX(sort_order),0)+1 FROM chapters WHERE book_id=$1`, bookID).Scan(&sortOrder)
 	}
-	_ = s.ensureQuotaRow(ctx, ownerID)
+	_ = s.ensureQuotaRow(ctx, owner)
 	var used, quota int64
-	_ = s.recalcQuota(ctx, ownerID)
-	_ = s.pool.QueryRow(ctx, `SELECT used_bytes, quota_bytes FROM user_storage_quota WHERE owner_user_id=$1`, ownerID).Scan(&used, &quota)
+	_ = s.recalcQuota(ctx, owner)
+	_ = s.pool.QueryRow(ctx, `SELECT used_bytes, quota_bytes FROM user_storage_quota WHERE owner_user_id=$1`, owner).Scan(&used, &quota)
 	if used+int64(len(body)) > quota {
 		writeError(w, http.StatusInsufficientStorage, "STORAGE_QUOTA_EXCEEDED", "quota exceeded")
 		return
@@ -1151,7 +1131,7 @@ RETURNING id
 		_, _ = tx.Exec(ctx, `INSERT INTO chapter_raw_objects(chapter_id, body_text) VALUES($1,$2)`, chapterID, body)
 	}
 	_, _ = tx.Exec(ctx, `INSERT INTO chapter_drafts(chapter_id, body, draft_format, draft_updated_at, draft_version) VALUES($1,$2,'json',now(),1)`, chapterID, jsonBody)
-	_, _ = tx.Exec(ctx, `INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,$3,$4,$5)`, chapterID, jsonBody, "json", revisionMessage, ownerID)
+	_, _ = tx.Exec(ctx, `INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,$3,$4,$5)`, chapterID, jsonBody, "json", revisionMessage, caller)
 	_, _ = tx.Exec(ctx, `UPDATE chapters SET draft_revision_count=1 WHERE id=$1`, chapterID)
 	if err := insertOutboxEvent(ctx, tx, "chapter.created", chapterID, map[string]any{"book_id": bookID}); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to commit chapter")
@@ -1161,8 +1141,8 @@ RETURNING id
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to commit chapter")
 		return
 	}
-	_ = s.recalcQuota(ctx, ownerID)
-	s.getChapterByID(w, ctx, bookID, chapterID, ownerID, http.StatusCreated)
+	_ = s.recalcQuota(ctx, owner)
+	s.getChapterByID(w, ctx, bookID, chapterID, caller, http.StatusCreated)
 }
 
 func nullIfEmpty(v string) any {
@@ -1173,11 +1153,6 @@ func nullIfEmpty(v string) any {
 }
 
 func (s *Server) getChapter(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
@@ -1186,10 +1161,19 @@ func (s *Server) getChapter(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.getChapterByID(w, r.Context(), bookID, chID, ownerID, http.StatusOK)
+	caller, _, _, ok := s.authBook(w, r, bookID, GrantView)
+	if !ok {
+		return
+	}
+	s.getChapterByID(w, r.Context(), bookID, chID, caller, http.StatusOK)
 }
 
-func (s *Server) getChapterByID(w http.ResponseWriter, ctx context.Context, bookID, chapterID, ownerID uuid.UUID, status int) {
+// getChapterByID is a response-builder; callers MUST pre-check the grant
+// (authBook). E0-2 dropped the owner filter — the query is keyed by chapter+book
+// id, which still scopes to the authorized book. `caller` is unused in the query
+// now but kept in the signature for call-site symmetry / future per-caller fields.
+func (s *Server) getChapterByID(w http.ResponseWriter, ctx context.Context, bookID, chapterID, caller uuid.UUID, status int) {
+	_ = caller
 	var id, bid uuid.UUID
 	var title, fn, lang, ctype, state, editorialStatus string
 	var size int64
@@ -1199,9 +1183,8 @@ func (s *Server) getChapterByID(w http.ResponseWriter, ctx context.Context, book
 	err := s.pool.QueryRow(ctx, `
 SELECT c.id,c.book_id,c.title,c.original_filename,c.original_language,c.content_type,c.byte_size,c.sort_order,c.draft_updated_at,c.draft_revision_count,c.lifecycle_state,c.trashed_at,c.purge_eligible_at,c.created_at,c.updated_at,c.editorial_status,c.published_revision_id
 FROM chapters c
-JOIN books b ON b.id=c.book_id
-WHERE c.id=$1 AND c.book_id=$2 AND b.owner_user_id=$3
-`, chapterID, bookID, ownerID).Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &editorialStatus, &publishedRevID)
+WHERE c.id=$1 AND c.book_id=$2
+`, chapterID, bookID).Scan(&id, &bid, &title, &fn, &lang, &ctype, &size, &order, &draftUpdated, &revCount, &state, &trashedAt, &purgeAt, &createdAt, &updatedAt, &editorialStatus, &publishedRevID)
 	if errors.Is(err, pgx.ErrNoRows) || state == "purge_pending" {
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
 		return
@@ -1232,16 +1215,15 @@ WHERE c.id=$1 AND c.book_id=$2 AND b.owner_user_id=$3
 }
 
 func (s *Server) patchChapter(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
 	}
 	chID, ok := parseUUIDParam(w, r, "chapter_id")
+	if !ok {
+		return
+	}
+	caller, _, _, ok := s.authBook(w, r, bookID, GrantEdit)
 	if !ok {
 		return
 	}
@@ -1254,8 +1236,8 @@ func (s *Server) patchChapter(w http.ResponseWriter, r *http.Request) {
 	err := s.pool.QueryRow(r.Context(), `
 SELECT b.lifecycle_state,c.lifecycle_state
 FROM books b JOIN chapters c ON c.book_id=b.id
-WHERE b.id=$1 AND c.id=$2 AND b.owner_user_id=$3
-`, bookID, chID, ownerID).Scan(&bState, &cState)
+WHERE b.id=$1 AND c.id=$2
+`, bookID, chID).Scan(&bState, &cState)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
 		return
@@ -1280,7 +1262,7 @@ WHERE id=$1 AND book_id=$2
 		writeError(w, http.StatusConflict, "BOOK_CONFLICT", "failed to patch chapter")
 		return
 	}
-	s.getChapterByID(w, r.Context(), bookID, chID, ownerID, http.StatusOK)
+	s.getChapterByID(w, r.Context(), bookID, chID, caller, http.StatusOK)
 }
 
 func intFromAny(v any) any {
@@ -1304,11 +1286,6 @@ func (s *Server) purgeChapter(w http.ResponseWriter, r *http.Request) {
 	s.transitionChapterLifecycle(w, r, "purge_pending")
 }
 func (s *Server) transitionChapterLifecycle(w http.ResponseWriter, r *http.Request, target string) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
@@ -1317,11 +1294,21 @@ func (s *Server) transitionChapterLifecycle(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
+	// Chapter trash/restore are reversible content edits → edit; purge is
+	// irreversible whole-chapter removal → manage (PO-locked CLARIFY 2026-06-11).
+	need := GrantEdit
+	if target == "purge_pending" {
+		need = GrantManage
+	}
+	caller, _, _, ok := s.authBook(w, r, bookID, need)
+	if !ok {
+		return
+	}
 	var bState, cState string
 	err := s.pool.QueryRow(r.Context(), `
 SELECT b.lifecycle_state,c.lifecycle_state FROM books b JOIN chapters c ON c.book_id=b.id
-WHERE b.id=$1 AND c.id=$2 AND b.owner_user_id=$3
-`, bookID, chID, ownerID).Scan(&bState, &cState)
+WHERE b.id=$1 AND c.id=$2
+`, bookID, chID).Scan(&bState, &cState)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
 		return
@@ -1358,7 +1345,7 @@ WHERE b.id=$1 AND c.id=$2 AND b.owner_user_id=$3
 			return
 		}
 		_, _ = s.pool.Exec(r.Context(), `UPDATE chapters SET lifecycle_state='active', trashed_at=NULL, purge_eligible_at=NULL, updated_at=now() WHERE id=$1`, chID)
-		s.getChapterByID(w, r.Context(), bookID, chID, ownerID, http.StatusOK)
+		s.getChapterByID(w, r.Context(), bookID, chID, caller, http.StatusOK)
 	case "purge_pending":
 		if cState != "trashed" {
 			writeError(w, http.StatusConflict, "CHAPTER_INVALID_LIFECYCLE", "chapter must be trashed before purge")
@@ -1384,11 +1371,6 @@ WHERE b.id=$1 AND c.id=$2 AND b.owner_user_id=$3
 }
 
 func (s *Server) getChapterContent(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
@@ -1397,14 +1379,16 @@ func (s *Server) getChapterContent(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if _, _, _, ok := s.authBook(w, r, bookID, GrantView); !ok {
+		return
+	}
 	var body string
 	err := s.pool.QueryRow(r.Context(), `
 SELECT ro.body_text
 FROM chapter_raw_objects ro
 JOIN chapters c ON c.id=ro.chapter_id
-JOIN books b ON b.id=c.book_id
-WHERE c.id=$1 AND c.book_id=$2 AND b.owner_user_id=$3
-`, chID, bookID, ownerID).Scan(&body)
+WHERE c.id=$1 AND c.book_id=$2
+`, chID, bookID).Scan(&body)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
 		return
@@ -1419,11 +1403,6 @@ WHERE c.id=$1 AND c.book_id=$2 AND b.owner_user_id=$3
 }
 
 func (s *Server) exportChapter(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
@@ -1432,14 +1411,16 @@ func (s *Server) exportChapter(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if _, _, _, ok := s.authBook(w, r, bookID, GrantView); !ok {
+		return
+	}
 	var originalFilename string
 	var title *string
 	err := s.pool.QueryRow(r.Context(), `
 SELECT c.title, c.original_filename
 FROM chapters c
-JOIN books b ON b.id=c.book_id
-WHERE c.id=$1 AND c.book_id=$2 AND b.owner_user_id=$3
-`, chID, bookID, ownerID).Scan(&title, &originalFilename)
+WHERE c.id=$1 AND c.book_id=$2
+`, chID, bookID).Scan(&title, &originalFilename)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
 		return
@@ -1476,17 +1457,15 @@ FROM chapter_blocks WHERE chapter_id=$1
 }
 
 func (s *Server) getDraft(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
 	}
 	chID, ok := parseUUIDParam(w, r, "chapter_id")
 	if !ok {
+		return
+	}
+	if _, _, _, ok := s.authBook(w, r, bookID, GrantView); !ok {
 		return
 	}
 	var chapterID uuid.UUID
@@ -1498,9 +1477,8 @@ func (s *Server) getDraft(w http.ResponseWriter, r *http.Request) {
 SELECT d.chapter_id,d.body,d.draft_format,d.draft_updated_at,d.draft_version
 FROM chapter_drafts d
 JOIN chapters c ON c.id=d.chapter_id
-JOIN books b ON b.id=c.book_id
-WHERE d.chapter_id=$1 AND c.book_id=$2 AND b.owner_user_id=$3
-`, chID, bookID, ownerID).Scan(&chapterID, &body, &format, &updated, &version)
+WHERE d.chapter_id=$1 AND c.book_id=$2
+`, chID, bookID).Scan(&chapterID, &body, &format, &updated, &version)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "draft not found")
 		return
@@ -1525,16 +1503,15 @@ FROM chapter_blocks WHERE chapter_id=$1
 }
 
 func (s *Server) patchDraft(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
 	}
 	chID, ok := parseUUIDParam(w, r, "chapter_id")
+	if !ok {
+		return
+	}
+	caller, _, _, ok := s.authBook(w, r, bookID, GrantEdit)
 	if !ok {
 		return
 	}
@@ -1566,9 +1543,8 @@ func (s *Server) patchDraft(w http.ResponseWriter, r *http.Request) {
 SELECT d.draft_version
 FROM chapter_drafts d
 JOIN chapters c ON c.id=d.chapter_id
-JOIN books b ON b.id=c.book_id
-WHERE d.chapter_id=$1 AND c.book_id=$2 AND b.owner_user_id=$3
-`, chID, bookID, ownerID).Scan(&curr)
+WHERE d.chapter_id=$1 AND c.book_id=$2
+`, chID, bookID).Scan(&curr)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "draft not found")
 		return
@@ -1582,7 +1558,7 @@ WHERE d.chapter_id=$1 AND c.book_id=$2 AND b.owner_user_id=$3
 		return
 	}
 	_, _ = tx.Exec(r.Context(), `UPDATE chapter_drafts SET body=$2,draft_format=$3,draft_updated_at=now(),draft_version=draft_version+1 WHERE chapter_id=$1`, chID, in.Body, in.BodyFormat)
-	_, _ = tx.Exec(r.Context(), `INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,$3,$4,$5)`, chID, in.Body, in.BodyFormat, nullIfEmpty(in.CommitMessage), ownerID)
+	_, _ = tx.Exec(r.Context(), `INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,$3,$4,$5)`, chID, in.Body, in.BodyFormat, nullIfEmpty(in.CommitMessage), caller)
 	_, _ = tx.Exec(r.Context(), `UPDATE chapters SET draft_updated_at=now(), draft_revision_count=draft_revision_count+1, updated_at=now() WHERE id=$1`, chID)
 	if err := insertOutboxEvent(r.Context(), tx, "chapter.saved", chID, map[string]any{"book_id": bookID}); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to patch draft")
@@ -1601,16 +1577,15 @@ WHERE d.chapter_id=$1 AND c.book_id=$2 AND b.owner_user_id=$3
 // is the canonization gate: only published content is extracted into the KG
 // (CM3). Owner-only; optimistic-concurrency via expected_draft_version → 409.
 func (s *Server) publishChapter(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
 	}
 	chID, ok := parseUUIDParam(w, r, "chapter_id")
+	if !ok {
+		return
+	}
+	caller, _, _, ok := s.authBook(w, r, bookID, GrantEdit)
 	if !ok {
 		return
 	}
@@ -1634,10 +1609,9 @@ func (s *Server) publishChapter(w http.ResponseWriter, r *http.Request) {
 SELECT d.draft_version, d.body, d.draft_format
 FROM chapter_drafts d
 JOIN chapters c ON c.id=d.chapter_id
-JOIN books b ON b.id=c.book_id
-WHERE d.chapter_id=$1 AND c.book_id=$2 AND b.owner_user_id=$3 AND c.lifecycle_state='active'
+WHERE d.chapter_id=$1 AND c.book_id=$2 AND c.lifecycle_state='active'
 FOR UPDATE OF d
-`, chID, bookID, ownerID).Scan(&curr, &body, &format)
+`, chID, bookID).Scan(&curr, &body, &format)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// No draft (or not owner / not active) → nothing to publish.
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "draft not found")
@@ -1675,7 +1649,7 @@ FROM jsonb_path_query(($1)::jsonb, '$.content[*]._text') WITH ORDINALITY AS x(t,
 	err = tx.QueryRow(r.Context(), `
 INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id)
 VALUES($1,$2,$3,'publish',$4) RETURNING id
-`, chID, body, format, ownerID).Scan(&revID)
+`, chID, body, format, caller).Scan(&revID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to snapshot revision")
 		return
@@ -1696,7 +1670,7 @@ WHERE id=$1`, chID, revID); err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to publish")
 		return
 	}
-	s.getChapterByID(w, r.Context(), bookID, chID, ownerID, http.StatusOK)
+	s.getChapterByID(w, r.Context(), bookID, chID, caller, http.StatusOK)
 }
 
 // unpublishChapter — Canon Model CM1. Reverts a chapter to 'draft' and clears
@@ -1705,16 +1679,15 @@ WHERE id=$1`, chID, revID); err != nil {
 // remove_evidence_for_source on chapter.unpublished); until then stale KG facts
 // linger. Owner-only.
 func (s *Server) unpublishChapter(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
 	}
 	chID, ok := parseUUIDParam(w, r, "chapter_id")
+	if !ok {
+		return
+	}
+	caller, _, _, ok := s.authBook(w, r, bookID, GrantEdit)
 	if !ok {
 		return
 	}
@@ -1725,11 +1698,11 @@ func (s *Server) unpublishChapter(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 
+	// authBook(edit) authorized; the update is keyed by id (owner subquery dropped).
 	ct, err := tx.Exec(r.Context(), `
 UPDATE chapters SET editorial_status='draft', published_revision_id=NULL, updated_at=now()
 WHERE id=$1 AND book_id=$2 AND lifecycle_state='active'
-  AND book_id IN (SELECT id FROM books WHERE id=$2 AND owner_user_id=$3)
-`, chID, bookID, ownerID)
+`, chID, bookID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to unpublish")
 		return
@@ -1747,15 +1720,10 @@ WHERE id=$1 AND book_id=$2 AND lifecycle_state='active'
 		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to unpublish")
 		return
 	}
-	s.getChapterByID(w, r.Context(), bookID, chID, ownerID, http.StatusOK)
+	s.getChapterByID(w, r.Context(), bookID, chID, caller, http.StatusOK)
 }
 
 func (s *Server) listRevisions(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
@@ -1764,16 +1732,18 @@ func (s *Server) listRevisions(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if _, _, _, ok := s.authBook(w, r, bookID, GrantView); !ok {
+		return
+	}
 	limit, offset := parseLimitOffset(r)
 	rows, err := s.pool.Query(r.Context(), `
 SELECT rv.id,rv.chapter_id,rv.created_at,rv.author_user_id,rv.message,octet_length(rv.body::text)
 FROM chapter_revisions rv
 JOIN chapters c ON c.id=rv.chapter_id
-JOIN books b ON b.id=c.book_id
-WHERE rv.chapter_id=$1 AND c.book_id=$2 AND b.owner_user_id=$3
+WHERE rv.chapter_id=$1 AND c.book_id=$2
 ORDER BY rv.created_at DESC
-LIMIT $4 OFFSET $5
-`, chID, bookID, ownerID, limit, offset)
+LIMIT $3 OFFSET $4
+`, chID, bookID, limit, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "REVISION_NOT_FOUND", "failed to list revisions")
 		return
@@ -1802,11 +1772,6 @@ LIMIT $4 OFFSET $5
 }
 
 func (s *Server) getRevision(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
@@ -1819,6 +1784,9 @@ func (s *Server) getRevision(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if _, _, _, ok := s.authBook(w, r, bookID, GrantView); !ok {
+		return
+	}
 	var rid, cid uuid.UUID
 	var at time.Time
 	var uid *uuid.UUID
@@ -1829,9 +1797,8 @@ func (s *Server) getRevision(w http.ResponseWriter, r *http.Request) {
 SELECT rv.id,rv.chapter_id,rv.created_at,rv.author_user_id,rv.message,rv.body,COALESCE(rv.body_format,'plain')
 FROM chapter_revisions rv
 JOIN chapters c ON c.id=rv.chapter_id
-JOIN books b ON b.id=c.book_id
-WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3 AND b.owner_user_id=$4
-`, revID, chID, bookID, ownerID).Scan(&rid, &cid, &at, &uid, &msg, &body, &bodyFormat)
+WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3
+`, revID, chID, bookID).Scan(&rid, &cid, &at, &uid, &msg, &body, &bodyFormat)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "REVISION_NOT_FOUND", "revision not found")
 		return
@@ -1872,16 +1839,18 @@ type compareSide struct {
 	TextContent  *string         `json:"text_content"`
 }
 
+// revisionForCompare fetches one revision keyed by (rev, chapter, book). The
+// caller (compareRevisions) authorizes the book via authBook(view) first, so no
+// owner predicate is needed here (E0-2).
 func (s *Server) revisionForCompare(
-	r *http.Request, revID, chID, bookID, ownerID uuid.UUID,
+	r *http.Request, revID, chID, bookID uuid.UUID,
 ) (side compareSide, ok bool, dbErr error) {
 	err := s.pool.QueryRow(r.Context(), `
 SELECT rv.id,rv.chapter_id,rv.created_at,rv.author_user_id,rv.message,rv.body,COALESCE(rv.body_format,'plain')
 FROM chapter_revisions rv
 JOIN chapters c ON c.id=rv.chapter_id
-JOIN books b ON b.id=c.book_id
-WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3 AND b.owner_user_id=$4
-`, revID, chID, bookID, ownerID).Scan(
+WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3
+`, revID, chID, bookID).Scan(
 		&side.RevisionID, &side.ChapterID, &side.CreatedAt, &side.AuthorUserID,
 		&side.Message, &side.Body, &side.BodyFormat,
 	)
@@ -1907,8 +1876,9 @@ FROM jsonb_path_query(($1)::jsonb, '$.content[*]._text') WITH ORDINALITY AS x(t,
 // JWT + ownership enforced; the diff lives server-side so the algorithm is
 // tested once and the FE only renders (word-level highlight is an FE concern).
 func (s *Server) compareRevisions(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
+	// Auth (401) before param validation (400) before the grant/DB check — the
+	// established order for this read. authBook below re-resolves the grant.
+	if _, ok := s.requireUserID(r); !ok {
 		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
 		return
 	}
@@ -1930,7 +1900,10 @@ func (s *Server) compareRevisions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "COMPARE_BAD_PARAM", "right must be a revision id")
 		return
 	}
-	left, ok, dbErr := s.revisionForCompare(r, leftID, chID, bookID, ownerID)
+	if _, _, _, ok := s.authBook(w, r, bookID, GrantView); !ok {
+		return
+	}
+	left, ok, dbErr := s.revisionForCompare(r, leftID, chID, bookID)
 	if dbErr != nil {
 		writeError(w, http.StatusInternalServerError, "REVISION_NOT_FOUND", "failed to load left revision")
 		return
@@ -1939,7 +1912,7 @@ func (s *Server) compareRevisions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "REVISION_NOT_FOUND", "left revision not found")
 		return
 	}
-	right, ok, dbErr := s.revisionForCompare(r, rightID, chID, bookID, ownerID)
+	right, ok, dbErr := s.revisionForCompare(r, rightID, chID, bookID)
 	if dbErr != nil {
 		writeError(w, http.StatusInternalServerError, "REVISION_NOT_FOUND", "failed to load right revision")
 		return
@@ -1965,11 +1938,6 @@ func deref(s *string) string {
 }
 
 func (s *Server) restoreRevision(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
@@ -1979,6 +1947,10 @@ func (s *Server) restoreRevision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	revID, ok := parseUUIDParam(w, r, "revision_id")
+	if !ok {
+		return
+	}
+	caller, _, _, ok := s.authBook(w, r, bookID, GrantEdit)
 	if !ok {
 		return
 	}
@@ -2000,9 +1972,8 @@ func (s *Server) restoreRevision(w http.ResponseWriter, r *http.Request) {
 SELECT rv.body,COALESCE(rv.body_format,'plain')
 FROM chapter_revisions rv
 JOIN chapters c ON c.id=rv.chapter_id
-JOIN books b ON b.id=c.book_id
-WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3 AND b.owner_user_id=$4
-`, revID, chID, bookID, ownerID).Scan(&body, &bodyFormat)
+WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3
+`, revID, chID, bookID).Scan(&body, &bodyFormat)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "REVISION_NOT_FOUND", "revision not found")
 		return
@@ -2011,7 +1982,7 @@ WHERE rv.id=$1 AND rv.chapter_id=$2 AND c.book_id=$3 AND b.owner_user_id=$4
 		writeError(w, http.StatusInternalServerError, "REVISION_NOT_FOUND", "failed to restore revision")
 		return
 	}
-	_, _ = tx.Exec(r.Context(), `INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,$3,$4,$5)`, chID, currentBody, currentFormat, "before restore", ownerID)
+	_, _ = tx.Exec(r.Context(), `INSERT INTO chapter_revisions(chapter_id, body, body_format, message, author_user_id) VALUES($1,$2,$3,$4,$5)`, chID, currentBody, currentFormat, "before restore", caller)
 	_, _ = tx.Exec(r.Context(), `UPDATE chapter_drafts SET body=$2,draft_format=$3,draft_updated_at=now(),draft_version=draft_version+1 WHERE chapter_id=$1`, chID, body, bodyFormat)
 	_, _ = tx.Exec(r.Context(), `UPDATE chapters SET draft_updated_at=now(),draft_revision_count=draft_revision_count+1,updated_at=now() WHERE id=$1`, chID)
 	if err := insertOutboxEvent(r.Context(), tx, "chapter.saved", chID, map[string]any{"book_id": bookID}); err != nil {
