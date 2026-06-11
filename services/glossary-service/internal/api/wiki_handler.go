@@ -1924,6 +1924,33 @@ func (s *Server) reviewWikiSuggestion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Action == "accept" {
+		// An AI regeneration that the clobber-guard filed as a suggestion (because the
+		// article had human edits) stores an ENVELOPE in diff_json —
+		// {body_json, generation_status, generation_provenance} — NOT a raw body. A
+		// human community suggestion stores the TipTap doc directly. Discriminate on
+		// the envelope's two server-set keys (body_json + a validated generation_status)
+		// — a TipTap doc, {"type":"doc",...}, carries neither, so a client-crafted diff
+		// can't masquerade as a regen. For an AI regen we unwrap the real body and
+		// restore the generation metadata, so the accepted article reflects the new AI
+		// generation (badges/provenance correct) and is logged as an 'ai' revision —
+		// future regens then overwrite it freely instead of re-filing suggestions.
+		var env struct {
+			BodyJSON             json.RawMessage `json:"body_json"`
+			GenerationStatus     *string         `json:"generation_status"`
+			GenerationProvenance json.RawMessage `json:"generation_provenance"`
+		}
+		_ = json.Unmarshal(diffJSON, &env)
+		isAIRegen := env.BodyJSON != nil && env.GenerationStatus != nil
+
+		applyBody := diffJSON
+		authorType := "community"
+		summary := "Community suggestion accepted"
+		if isAIRegen {
+			applyBody = env.BodyJSON
+			authorType = "ai"
+			summary = "AI regeneration accepted"
+		}
+
 		// Lock article for revision version safety
 		if _, err := tx.Exec(r.Context(),
 			`SELECT 1 FROM wiki_articles WHERE article_id=$1 FOR UPDATE`, articleID); err != nil {
@@ -1932,23 +1959,57 @@ func (s *Server) reviewWikiSuggestion(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Apply diff_json to article body
-		if _, err := tx.Exec(r.Context(),
+		// Apply the accepted body. An AI regen also restores its generation metadata.
+		if isAIRegen {
+			if _, err := tx.Exec(r.Context(), `
+				UPDATE wiki_articles
+				   SET body_json=$1, generation_status=$2, generation_provenance=$3,
+				       generated_at=now(), updated_at=now()
+				 WHERE article_id=$4`,
+				applyBody, env.GenerationStatus, env.GenerationProvenance, articleID,
+			); err != nil {
+				slog.Error("reviewWikiSuggestion apply", "error", err)
+				writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+				return
+			}
+		} else if _, err := tx.Exec(r.Context(),
 			`UPDATE wiki_articles SET body_json=$1, updated_at=now() WHERE article_id=$2`,
-			diffJSON, articleID,
+			applyBody, articleID,
 		); err != nil {
 			slog.Error("reviewWikiSuggestion apply", "error", err)
 			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
 			return
 		}
 
-		// Create community revision
+		// Create the revision: 'community' for a human suggestion, 'ai' for a regen.
 		if _, err := tx.Exec(r.Context(), `
 			INSERT INTO wiki_revisions (article_id, version, body_json, author_id, author_type, summary)
-			VALUES ($1, COALESCE((SELECT MAX(version) FROM wiki_revisions WHERE article_id=$1), 0) + 1, $2, $3, 'community', $4)`,
-			articleID, diffJSON, sugUserID, "Community suggestion accepted",
+			VALUES ($1, COALESCE((SELECT MAX(version) FROM wiki_revisions WHERE article_id=$1), 0) + 1, $2, $3, $4, $5)`,
+			articleID, applyBody, sugUserID, authorType, summary,
 		); err != nil {
 			slog.Error("reviewWikiSuggestion revision", "error", err)
+			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+			return
+		}
+
+		// wiki-llm Phase-2b (D-WIKI-P2B-SUGGESTION-RESOLVE) — accepting a suggestion
+		// brings the article up to date, so resolve its pending staleness ledger rows
+		// and clear the denormalized "Outdated" flag (symmetric with the direct-write
+		// resolve in wiki_writeback.go). A REJECT intentionally leaves the staleness
+		// pending — the changed source is still unaddressed.
+		if _, err := tx.Exec(r.Context(),
+			`UPDATE wiki_staleness SET status='regenerated' WHERE article_id=$1 AND status='pending'`,
+			articleID,
+		); err != nil {
+			slog.Error("reviewWikiSuggestion resolve staleness", "error", err)
+			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+			return
+		}
+		if _, err := tx.Exec(r.Context(),
+			`UPDATE wiki_articles SET is_knowledge_stale=false WHERE article_id=$1`,
+			articleID,
+		); err != nil {
+			slog.Error("reviewWikiSuggestion clear stale flag", "error", err)
 			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
 			return
 		}
