@@ -101,20 +101,48 @@ class RerunFailedPayload(BaseModel):
     chapter_ids: Optional[list[UUID]] = None
 
 
-class UpdateBudgetPayload(BaseModel):
-    """S4d — PATCH /campaigns/{id}: raise/lower the budget cap. Lowering below the
-    current spend is allowed (bounds new work) but does NOT auto-resume a paused
-    campaign — resume via /start once the budget is above spent_usd."""
-    budget_usd: Decimal
+class UpdateCampaignPayload(BaseModel):
+    """PATCH /campaigns/{id}: a partial update. Only fields explicitly present in the
+    body are applied (Pydantic `model_fields_set`); an absent field is left untouched.
+
+    - `budget_usd` (S4d): raise/lower the budget cap (any non-terminal status). Lowering
+      below current spend bounds new work but does NOT auto-resume — resume via /start.
+    - The four switchable LLM models (D-FACTORY-SWITCH-MODEL-RESUME): re-pick a paused
+      campaign's translation/knowledge/verifier/eval-judge model, then resume so the
+      remaining chapters run on the new model. Gated to created/paused at the router
+      (no mid-run swap). Embedding/rerank are excluded (knowledge-project SSOT)."""
+    model_config = ConfigDict(protected_namespaces=())
+
+    budget_usd: Optional[Decimal] = None
+    translation_model_source: Optional[str] = None
+    translation_model_ref: Optional[UUID] = None
+    knowledge_model_source: Optional[str] = None
+    knowledge_model_ref: Optional[UUID] = None
+    verifier_model_source: Optional[str] = None
+    verifier_model_ref: Optional[UUID] = None
+    eval_judge_model_source: Optional[str] = None
+    eval_judge_model_ref: Optional[UUID] = None
 
     @field_validator("budget_usd")
     @classmethod
-    def _positive(cls, v: Decimal) -> Decimal:
+    def _positive(cls, v: Optional[Decimal]) -> Optional[Decimal]:
+        if v is None:
+            return v
         if v <= 0:
             raise ValueError("budget_usd must be > 0")
         if v >= _BUDGET_USD_MAX:
             raise ValueError("budget_usd exceeds the maximum (numeric(16,8))")
         return v
+
+
+# The model-only fields of UpdateCampaignPayload — a PATCH touching any of these is
+# a model switch (gated to created/paused). budget_usd is editable in any status.
+MODEL_PATCH_FIELDS = frozenset({
+    "translation_model_source", "translation_model_ref",
+    "knowledge_model_source", "knowledge_model_ref",
+    "verifier_model_source", "verifier_model_ref",
+    "eval_judge_model_source", "eval_judge_model_ref",
+})
 
 
 class Campaign(BaseModel):

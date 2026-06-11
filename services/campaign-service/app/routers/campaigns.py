@@ -37,7 +37,8 @@ from ..models import (
     CampaignReport,
     ErrorGroup,
     StageCounts,
-    UpdateBudgetPayload,
+    UpdateCampaignPayload,
+    MODEL_PATCH_FIELDS,
     RerunFailedPayload,
     EstimateRequest,
     EstimateResponse,
@@ -266,21 +267,46 @@ async def estimate_campaign(
 
 
 @router.patch("/{campaign_id}", response_model=Campaign)
-async def update_campaign_budget(
+async def update_campaign(
     campaign_id: UUID,
-    payload: UpdateBudgetPayload,
+    payload: UpdateCampaignPayload,
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
 ):
-    """S4d — raise/lower the budget cap (owner-scoped). Does NOT auto-resume a
-    paused campaign; resume via POST /{id}/start once budget_usd > spent_usd."""
-    row = await repo.update_budget(db, campaign_id, UUID(user_id), payload.budget_usd)
+    """PATCH a campaign (owner-scoped, partial). `budget_usd` raises/lowers the cap in
+    any non-terminal status (does NOT auto-resume — /start once budget > spent). The
+    four LLM models (translation/knowledge/verifier/eval-judge) can be re-picked only
+    while created/paused (D-FACTORY-SWITCH-MODEL-RESUME — switch to a local model, then
+    resume); a model change on a running/terminal campaign is 409. Only fields present
+    in the body are applied."""
+    provided = payload.model_fields_set
+    if not provided:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "CAMPAIGN_PATCH_EMPTY", "message": "no fields to update"},
+        )
+    # A model switch is gated to created/paused — load the campaign to check status
+    # (also gives the owner-scoped 404). Only the explicitly-provided fields update.
+    row = await repo.get_campaign(db, campaign_id, UUID(user_id))
     if row is None:
         raise HTTPException(
             status_code=404,
             detail={"code": "CAMPAIGN_NOT_FOUND", "message": "campaign not found"},
         )
-    return _campaign_model(row)
+    if provided & MODEL_PATCH_FIELDS and row["status"] not in ("created", "paused"):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "CAMPAIGN_MODELS_LOCKED",
+                    "message": f"models can only be changed while created/paused (status is {row['status']}); pause first"},
+        )
+    fields = payload.model_dump(include=provided)
+    updated = await repo.update_campaign_fields(db, campaign_id, UUID(user_id), fields)
+    if updated is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "CAMPAIGN_NOT_FOUND", "message": "campaign not found"},
+        )
+    return _campaign_model(updated)
 
 
 @router.get("", response_model=list[CampaignListItem])

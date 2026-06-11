@@ -36,7 +36,8 @@ async def test_accumulate_duplicate_is_noop(fake_pool):
 
 async def test_update_budget_is_owner_scoped(fake_pool):
     fake_pool.fetchrow.return_value = FakeRecord({"campaign_id": UUID(CAMP)})
-    row = await repo.update_budget(fake_pool, UUID(CAMP), UUID(TEST_USER), Decimal("9"))
+    row = await repo.update_campaign_fields(
+        fake_pool, UUID(CAMP), UUID(TEST_USER), {"budget_usd": Decimal("9")})
     assert row is not None
     sql = fake_pool.fetchrow.call_args.args[0]
     assert "owner_user_id = $2" in sql and "budget_usd = $3" in sql

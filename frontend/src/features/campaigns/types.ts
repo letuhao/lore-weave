@@ -125,6 +125,21 @@ export interface CreateCampaignPayload {
   est_usd_high?: string | null;
 }
 
+/** PATCH /campaigns/{id} — partial update. budget_usd is editable any time; the
+ *  four LLM models (D-FACTORY-SWITCH-MODEL-RESUME) only while created/paused. Only
+ *  the keys present are applied. */
+export interface UpdateCampaignPayload {
+  budget_usd?: string;
+  translation_model_source?: string | null;
+  translation_model_ref?: string | null;
+  knowledge_model_source?: string | null;
+  knowledge_model_ref?: string | null;
+  verifier_model_source?: string | null;
+  verifier_model_ref?: string | null;
+  eval_judge_model_source?: string | null;
+  eval_judge_model_ref?: string | null;
+}
+
 export interface EstimateRequest {
   book_id: string;
   chapter_from?: number | null;

@@ -360,20 +360,40 @@ async def accumulate_and_maybe_pause(
             return True
 
 
-async def update_budget(
-    pool: asyncpg.Pool, campaign_id: UUID, owner_user_id: UUID, budget_usd: Decimal,
+# D-FACTORY-SWITCH-MODEL-RESUME — columns a PATCH may update. A whitelist so a
+# rogue key can never reach the SET clause (the field name is interpolated only
+# after this membership check; values stay parameterized). Embedding/rerank are
+# NOT here (knowledge-project SSOT; embedding change is destructive to the graph).
+_UPDATABLE_COLS = (
+    "budget_usd",
+    "translation_model_source", "translation_model_ref",
+    "knowledge_model_source", "knowledge_model_ref",
+    "verifier_model_source", "verifier_model_ref",
+    "eval_judge_model_source", "eval_judge_model_ref",
+)
+
+
+async def update_campaign_fields(
+    pool: asyncpg.Pool, campaign_id: UUID, owner_user_id: UUID, fields: dict,
 ) -> Optional[asyncpg.Record]:
-    """Owner-scoped budget update (PATCH). Returns the updated row, or None when the
-    campaign isn't found / not owned (→ 404). Does NOT change status — a paused
-    campaign stays paused; resume via /start once budget_usd is above spent_usd."""
+    """Owner-scoped partial update (PATCH) of whitelisted campaign columns (budget +
+    the four switchable LLM models). Only keys in `_UPDATABLE_COLS` are applied — the
+    column name is interpolated solely from that whitelist, values stay parameterized.
+    Returns the updated row, or None when no valid field is given / the campaign isn't
+    found or owned (→ 404). Status is unchanged (resume via /start)."""
+    cols = [c for c in _UPDATABLE_COLS if c in fields]
+    if not cols:
+        return None
+    set_frag = ", ".join(f"{c} = ${i + 3}" for i, c in enumerate(cols))
+    values = [fields[c] for c in cols]
     return await pool.fetchrow(
         f"""
         UPDATE campaigns
-        SET budget_usd = $3, updated_at = now()
+        SET {set_frag}, updated_at = now()
         WHERE campaign_id = $1 AND owner_user_id = $2
         RETURNING {_CAMPAIGN_COLS}
         """,
-        campaign_id, owner_user_id, budget_usd,
+        campaign_id, owner_user_id, *values,
     )
 
 

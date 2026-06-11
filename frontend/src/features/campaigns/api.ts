@@ -9,6 +9,7 @@ import type {
   CreateCampaignPayload,
   EstimateRequest,
   EstimateResponse,
+  UpdateCampaignPayload,
 } from './types';
 
 // Gateway proxies /v1/campaigns/* generically (no per-route config). Relative
@@ -82,8 +83,14 @@ export const campaignsApi = {
   },
 
   updateBudget(campaignId: string, budgetUsd: string, token: string): Promise<Campaign> {
+    return this.updateCampaign(campaignId, { budget_usd: budgetUsd }, token);
+  },
+
+  // D-FACTORY-SWITCH-MODEL-RESUME — partial PATCH (budget and/or the switchable
+  // models). Only the keys present in `patch` are sent → only those are updated.
+  updateCampaign(campaignId: string, patch: UpdateCampaignPayload, token: string): Promise<Campaign> {
     return apiJson<Campaign>(`/v1/campaigns/${campaignId}`, {
-      token, method: 'PATCH', body: JSON.stringify({ budget_usd: budgetUsd }),
+      token, method: 'PATCH', body: JSON.stringify(patch),
     });
   },
 };

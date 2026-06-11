@@ -7,6 +7,7 @@ import { SpentBudgetBar } from './SpentBudgetBar';
 import { StageProgress } from './StageProgress';
 import { ChapterProjectionTable } from './ChapterProjectionTable';
 import { InFlightPanel } from './InFlightPanel';
+import { SwitchModelControl } from './SwitchModelControl';
 import { MonitorControls } from './MonitorControls';
 import { CampaignReport } from './CampaignReport';
 import { deriveRunStats } from '../runStats';
@@ -76,6 +77,9 @@ export function CampaignMonitor({ campaignId }: { campaignId: string }) {
       )}
 
       <MonitorControls campaignId={c.campaign_id} status={liveStatus} budgetUsd={budget} />
+
+      {/* D-FACTORY-SWITCH-MODEL-RESUME — re-pick the LLM on a paused campaign, then resume. */}
+      {liveStatus === 'paused' && <SwitchModelControl campaign={c} />}
 
       {/* G1 — wake-up report once terminal (outcome + spend-vs-estimate + error groups + review CTA). */}
       {terminal && <CampaignReport campaignId={c.campaign_id} bookId={c.book_id} />}

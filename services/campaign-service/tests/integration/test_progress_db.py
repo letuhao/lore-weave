@@ -116,6 +116,33 @@ async def test_chapters_page_inflight_filter(pool):
     assert att_total == 3 and 4 in [r["chapter_sort"] for r in att]
 
 
+async def test_update_campaign_fields_partial_and_scoped(pool):
+    # D-FACTORY-SWITCH-MODEL-RESUME — update_campaign_fields sets ONLY the given
+    # columns (leaves others intact) and is owner-scoped.
+    owner = uuid4()
+    cid = await pool.fetchval(
+        "INSERT INTO campaigns (owner_user_id, book_id, name, status, "
+        "translation_model_source, translation_model_ref, budget_usd) "
+        "VALUES ($1,$2,'switch-test','paused','user_model',$3,$4) RETURNING campaign_id",
+        owner, uuid4(), uuid4(), __import__('decimal').Decimal("10"),
+    )
+    new_model = uuid4()
+    # switch only the translation model — budget must be untouched
+    row = await repo.update_campaign_fields(
+        pool, cid, owner, {"translation_model_ref": new_model})
+    assert row is not None
+    assert row["translation_model_ref"] == new_model
+    assert row["budget_usd"] == __import__('decimal').Decimal("10")  # left intact
+
+    # wrong owner → None (not updated)
+    assert await repo.update_campaign_fields(pool, cid, uuid4(), {"translation_model_ref": uuid4()}) is None
+    # no valid field → None
+    assert await repo.update_campaign_fields(pool, cid, owner, {"bogus": 1}) is None
+    # the wrong-owner attempt did not change the model
+    check = await pool.fetchval("SELECT translation_model_ref FROM campaigns WHERE campaign_id=$1", cid)
+    assert check == new_model
+
+
 async def test_progress_scopes_to_the_campaign(pool):
     a = await _make_campaign(pool)
     b = await _make_campaign(pool)

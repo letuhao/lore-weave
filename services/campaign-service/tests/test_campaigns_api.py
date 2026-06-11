@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -346,6 +346,59 @@ def test_chapters_page_404_when_not_owned(client, mocker):
     assert resp.status_code == 404
 
 
+def test_patch_budget_only_still_works(client, mocker):
+    # backward-compat: a budget-only PATCH applies without touching models.
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="running"))
+    upd = mocker.patch("app.repositories.update_campaign_fields", new_callable=AsyncMock,
+                       return_value=_campaign_row(status="running", budget_usd=Decimal("5")))
+    resp = client.patch(f"/v1/campaigns/{CAMP}", json={"budget_usd": "5"})
+    assert resp.status_code == 200, resp.text
+    # only budget_usd forwarded (no model keys)
+    assert set(upd.call_args.args[3].keys()) == {"budget_usd"}
+
+
+def test_patch_switch_model_on_paused(client, mocker):
+    # D-FACTORY-SWITCH-MODEL-RESUME — a paused campaign accepts a model switch.
+    new_ref = str(uuid4())
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="paused"))
+    upd = mocker.patch("app.repositories.update_campaign_fields", new_callable=AsyncMock,
+                       return_value=_campaign_row(status="paused"))
+    resp = client.patch(f"/v1/campaigns/{CAMP}",
+                        json={"translation_model_source": "user_model", "translation_model_ref": new_ref})
+    assert resp.status_code == 200, resp.text
+    fields = upd.call_args.args[3]
+    assert fields["translation_model_source"] == "user_model"
+    assert str(fields["translation_model_ref"]) == new_ref
+
+
+def test_patch_switch_model_on_running_is_409(client, mocker):
+    # a model change on a RUNNING campaign is rejected (pause first).
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="running"))
+    upd = mocker.patch("app.repositories.update_campaign_fields", new_callable=AsyncMock)
+    resp = client.patch(f"/v1/campaigns/{CAMP}",
+                        json={"translation_model_ref": str(uuid4())})
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_MODELS_LOCKED"
+    upd.assert_not_called()  # blocked before the write
+
+
+def test_patch_empty_body_is_400(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="paused"))
+    resp = client.patch(f"/v1/campaigns/{CAMP}", json={})
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "CAMPAIGN_PATCH_EMPTY"
+
+
+def test_patch_404_when_not_owned(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock, return_value=None)
+    resp = client.patch(f"/v1/campaigns/{CAMP}", json={"budget_usd": "5"})
+    assert resp.status_code == 404
+
+
 def test_chapters_page_accepts_inflight_status(client, mocker):
     # D-FACTORY-INFLIGHT-PANEL — 'inflight' is a valid status (not clamped to attention)
     # and is threaded to the repo for the "Now processing" panel.
@@ -447,7 +500,9 @@ def test_create_rejects_nonpositive_budget_422(client, mocker):
 
 
 def test_patch_budget_updates(client, mocker):
-    mocker.patch("app.repositories.update_budget", new_callable=AsyncMock,
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="running"))
+    mocker.patch("app.repositories.update_campaign_fields", new_callable=AsyncMock,
                  return_value=_campaign_row(budget_usd=Decimal("10.00")))
     resp = client.patch(f"/v1/campaigns/{CAMP}", json={"budget_usd": "10.00"})
     assert resp.status_code == 200, resp.text
@@ -455,7 +510,7 @@ def test_patch_budget_updates(client, mocker):
 
 
 def test_patch_budget_not_found_404(client, mocker):
-    mocker.patch("app.repositories.update_budget", new_callable=AsyncMock, return_value=None)
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock, return_value=None)
     resp = client.patch(f"/v1/campaigns/{CAMP}", json={"budget_usd": "10.00"})
     assert resp.status_code == 404
     assert resp.json()["detail"]["code"] == "CAMPAIGN_NOT_FOUND"
