@@ -116,7 +116,13 @@ ALTER TABLE chapter_translations
 -- serialized in-memory — that's what makes the decouple tractable.
 ALTER TABLE chapter_translations
   ADD COLUMN IF NOT EXISTS pipeline_stage  TEXT,
-  ADD COLUMN IF NOT EXISTS provider_job_id UUID;
+  ADD COLUMN IF NOT EXISTS provider_job_id UUID,
+  -- 2b-T2: the explicit resume blob for the decoupled translate loop
+  -- {chunks, chunk_idx, session_history, compact_memo, translated_parts,
+  --  total_input, total_output, awaiting}. Persisting the running state (vs
+  --  replaying compaction, which is itself an LLM call whose memo output isn't
+  --  recoverable from chunk rows) keeps the resume correct + simple.
+  ADD COLUMN IF NOT EXISTS resume_state    JSONB;
 -- Resume index: find the chapter awaiting a given in-flight LLM job in O(1).
 CREATE INDEX IF NOT EXISTS idx_ct_provider_job
   ON chapter_translations(provider_job_id) WHERE provider_job_id IS NOT NULL;
