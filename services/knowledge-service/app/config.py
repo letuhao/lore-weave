@@ -88,6 +88,18 @@ class Settings(BaseSettings):
     wiki_prompt_version: str = "wiki-v1"
     wiki_pipeline_version: str = "wiki-m6"
 
+    # D-WIKI-M8-EVAL-PLUS Phase 2 — automatic-sampled groundedness judge. After a wiki
+    # article generates, with probability `sample_rate` it is judged via the learning
+    # service's on-demand judge endpoint (the SAME Phase-1 endpoint, reusing the fresh
+    # article + FULL context sources). OFF by default + rate 0.0 = zero cost; both an
+    # enable flag AND a positive rate AND a model are required to sample. Best-effort:
+    # a judge call never blocks or fails generation.
+    wiki_llm_judge_enabled: bool = False
+    wiki_llm_judge_sample_rate: float = 0.0          # P(judge) per generated article, [0,1]
+    wiki_llm_judge_model_ref: str = ""               # judge model UUID (BYOK user_model)
+    wiki_llm_judge_model_source: str = "user_model"
+    learning_internal_url: str = "http://learning-service:8094"
+
     # P1 (2026-05-23) — /internal/parse body size cap. Default 200 MiB
     # matches book-service's maxImportSize at services/book-service/internal/api/import.go.
     # H3 fix: explicit ceiling — without this, a misconfigured caller could

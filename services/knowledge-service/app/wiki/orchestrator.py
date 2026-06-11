@@ -21,19 +21,23 @@ follow-up — D-WIKI-M6-PRECISE-COST).
 from __future__ import annotations
 
 import logging
+import random
 from decimal import Decimal
 
 from app.clients.book_client import BookClient
 from app.clients.book_profile_client import BookProfileClient
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.glossary_client import GlossaryClient
+from app.clients.learning_client import post_wiki_judge
 from app.clients.llm_client import LLMClient
 from app.clients.reranker_client import RerankerClient
+from app.config import settings
 from app.db.models import Project
 from app.db.repositories.wiki_gen_jobs import WikiGenJob, WikiGenJobsRepo
 from app.wiki.context import gather_entity_context
 from app.wiki.fingerprint import compute_build_inputs
 from app.wiki.generate import generate_article
+from app.wiki.mappers import ir_to_plaintext
 from app.wiki.revise import revise_article
 from app.wiki.cite import compose_provenance_cites
 from app.wiki.verify import verify_article
@@ -105,7 +109,48 @@ async def _generate_one(
     result = await clients.glossary.write_wiki_article(job.book_id, body=body)
     if result is None:
         return "writeback_failed"
-    return str(result.get("action") or "written")
+    action = str(result.get("action") or "written")
+    await _maybe_judge(
+        job=job, context=context, ir=gen.ir, article_id=result.get("article_id"), action=action)
+    return action
+
+
+def _sampled(rate: float) -> bool:
+    """Sampling decision. Deterministic at the bounds (1.0 always / ≤0 never) so the
+    auto-judge is testable; random in between."""
+    if rate >= 1.0:
+        return True
+    if rate <= 0.0:
+        return False
+    return random.random() < rate
+
+
+async def _maybe_judge(*, job: WikiGenJob, context, ir, article_id, action: str) -> None:
+    """D-WIKI-M8-EVAL-PLUS Phase 2 — automatic-sampled groundedness judge. With
+    probability `wiki_llm_judge_sample_rate`, post the fresh article + its FULL context
+    sources to the learning judge endpoint. Gated OFF (flag + rate 0 + no model = no
+    call). Best-effort: never blocks or fails generation.
+
+    Only a DIRECT write is judged: when the AI body was clobber-guarded into a
+    suggestion (``action='suggestion'`` — the article had human edits), ``gen.ir`` is
+    NOT the live article, so scoring it against this article_id would misattribute the
+    suggestion's groundedness to the human article."""
+    try:
+        if action != "written":
+            return
+        if not (settings.wiki_llm_judge_enabled and settings.wiki_llm_judge_model_ref and article_id):
+            return
+        if not _sampled(settings.wiki_llm_judge_sample_rate):
+            return
+        sources = [it.text for it in context.items if it.text]
+        await post_wiki_judge(
+            article_id=article_id, book_id=job.book_id, user_id=job.user_id,
+            article_text=ir_to_plaintext(ir), sources=sources,
+            judge_model=settings.wiki_llm_judge_model_ref,
+            model_source=settings.wiki_llm_judge_model_source,
+        )
+    except Exception:  # noqa: BLE001 — the auto-judge is best-effort telemetry
+        logger.warning("wiki auto-judge failed (non-fatal)", exc_info=True)
 
 
 async def run_wiki_gen_job(
