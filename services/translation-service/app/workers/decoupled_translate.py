@@ -147,30 +147,34 @@ async def start_chapter(
     *, pool, llm_client: LLMClient, chapter_translation_id: UUID,
     chapter_text: str, source_lang: str, msg: dict, context_window: int,
 ) -> None:
-    """Seed resume_state + submit the first chunk. Returns immediately (released)."""
+    """Seed resume_state + submit the first chunk. Returns immediately (released).
+    The full `msg` + `context_window` are stored IN resume_state so the consumer
+    (which only sees a job_id) can resume without re-deriving the job config."""
     chunk_size = max(min(int(msg.get("chunk_size_tokens") or 2000), context_window // 4), 100)
     chunks = split_chapter(chapter_text, chunk_size)
     rs = new_resume_state(chunks, source_lang)
+    rs["msg"] = msg
+    rs["context_window"] = context_window
     await _submit_next(pool=pool, llm_client=llm_client,
-                       chapter_translation_id=chapter_translation_id,
-                       rs=rs, msg=msg, context_window=context_window)
+                       chapter_translation_id=chapter_translation_id, rs=rs)
 
 
 async def resume(
-    *, pool, llm_client: LLMClient, publish_event, job, msg: dict, context_window: int,
-    chapter_translation_id: UUID, finalize_cb,
+    *, pool, llm_client: LLMClient, job, chapter_translation_id: UUID, finalize_cb,
 ) -> None:
     """Consumer entry: a terminal event for this chapter's in-flight job arrived.
     Fold the result into resume_state, then submit the next step or finalize.
 
     `job` is the SDK Job (status + result). `finalize_cb(translated_body, in, out)`
     is the caller-supplied hook that runs the post-translate pipeline
-    (verify/correct/finalize/emit) — kept in the existing flow for this increment.
-    """
+    (finalize/emit) — kept in the existing flow for this increment. `msg` +
+    `context_window` are read from the persisted resume_state (self-contained)."""
     rs = await _load_resume_state(pool, chapter_translation_id)
     if rs is None:
         log.warning("decoupled resume: no resume_state for ct=%s — dropping", chapter_translation_id)
         return
+    msg = rs["msg"]
+    context_window = rs["context_window"]
 
     if job.status != "completed":
         # Best-effort for compaction (keep old memo, continue); hard for translate.
@@ -195,16 +199,17 @@ async def resume(
         await finalize_cb(body, rs["total_input"], rs["total_output"])
         return
     await _submit_next(pool=pool, llm_client=llm_client,
-                       chapter_translation_id=chapter_translation_id,
-                       rs=rs, msg=msg, context_window=context_window)
+                       chapter_translation_id=chapter_translation_id, rs=rs)
 
 
 async def _submit_next(
-    *, pool, llm_client: LLMClient, chapter_translation_id: UUID,
-    rs: dict, msg: dict, context_window: int,
+    *, pool, llm_client: LLMClient, chapter_translation_id: UUID, rs: dict,
 ) -> None:
     """Submit the next step (translate or compact) WITHOUT waiting; persist the
-    in-flight provider_job_id + the updated resume_state, then return."""
+    in-flight provider_job_id + the updated resume_state, then return. `msg` +
+    `context_window` come from rs (self-contained)."""
+    msg = rs["msg"]
+    context_window = rs["context_window"]
     action = decide_next_action(rs, context_window)
     if action[0] == "compact":
         rs = dict(rs, awaiting="compact")
