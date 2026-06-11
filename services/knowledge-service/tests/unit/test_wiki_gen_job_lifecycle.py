@@ -66,6 +66,25 @@ async def test_get_job_status_projects_counts():
 
 
 @pytest.mark.asyncio
+async def test_get_job_status_projects_results_and_live_pass():
+    # W4a — the screen-③ table data + live sub-step pointer flow through the poll.
+    book, user = uuid4(), uuid4()
+    job = _job(book_id=book, user_id=user, status="running")
+    job.results = {
+        "e1": {"outcome": "written", "citations": 2, "flags": 0, "name": "Mina"},
+        "e2": {"outcome": "processing", "citations": 0, "flags": 0, "name": "Count"},
+    }
+    job.current_entity_id = "e2"
+    job.current_pass = "verify"
+    with _patch_repo(_repo(get_latest=job)):
+        out = await iw.get_wiki_gen_job(book, user)
+    assert out.results["e1"]["outcome"] == "written"
+    assert out.results["e1"]["citations"] == 2
+    assert out.current_entity_id == "e2"
+    assert out.current_pass == "verify"
+
+
+@pytest.mark.asyncio
 async def test_get_job_status_404_when_no_job():
     with _patch_repo(_repo(get_latest=None)):
         with pytest.raises(HTTPException) as exc:

@@ -871,6 +871,18 @@ CREATE INDEX IF NOT EXISTS idx_wiki_gen_jobs_project
 CREATE UNIQUE INDEX IF NOT EXISTS idx_wiki_gen_jobs_one_active_per_book
   ON wiki_gen_jobs (book_id)
   WHERE status IN ('pending','running','paused');
+
+-- wiki-llm W4a — per-entity result detail + live sub-step progress (the FE
+-- screen-③ results table). `results` is an OBJECT keyed by entity_id →
+-- {outcome, citations, flags, name}; it carries both the in-flight ('processing')
+-- and finished rows (cheap idempotent upsert via `|| jsonb_build_object`, so a
+-- resume/retry overwrites). `current_entity_id`/`current_pass` point at the one
+-- in-flight entity + its pipeline pass (context|generate|verify|revise|writeback);
+-- both are NULL when no entity is processing (cleared at complete/pause/fail).
+ALTER TABLE wiki_gen_jobs
+  ADD COLUMN IF NOT EXISTS results            JSONB NOT NULL DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS current_entity_id  TEXT,
+  ADD COLUMN IF NOT EXISTS current_pass       TEXT;
 """
 
 

@@ -46,6 +46,9 @@ def _repo():
     r.pause = AsyncMock()
     r.complete = AsyncMock()
     r.fail = AsyncMock()
+    # W4a — per-entity result + live-progress writes the orchestrator now drives.
+    r.record_result = AsyncMock()
+    r.set_progress = AsyncMock()
     return r
 
 
@@ -56,14 +59,32 @@ def _ok_gen():
     return g
 
 
-def _patches(*, context=MagicMock(), gen=None):
+_UNSET = object()
+
+
+def _ctx(name="Mina"):
+    """A context mock with a real string ``brief.name`` (the result-name source)."""
+    c = MagicMock()
+    c.brief.name = name
+    return c
+
+
+def _verify(flags=0):
+    v = MagicMock()
+    v.flag_count = flags
+    return v
+
+
+def _patches(*, context=_UNSET, gen=None):
     gen = gen or _ok_gen()
+    ctx = _ctx() if context is _UNSET else context
+    verify = _verify()
     return patch.multiple(
         "app.wiki.orchestrator",
-        gather_entity_context=AsyncMock(return_value=context),
+        gather_entity_context=AsyncMock(return_value=ctx),
         generate_article=AsyncMock(return_value=gen),
-        verify_article=AsyncMock(return_value=MagicMock()),
-        revise_article=AsyncMock(return_value=(gen, MagicMock())),
+        verify_article=AsyncMock(return_value=verify),
+        revise_article=AsyncMock(return_value=(gen, verify)),
         compose_provenance_cites=AsyncMock(return_value=[]),
         compute_build_inputs=MagicMock(return_value={}),
         build_writeback_body=MagicMock(return_value={}),
@@ -163,10 +184,10 @@ async def test_entity_error_does_not_crash_batch():
     job, clients, repo = _job(["e1", "e2"]), _clients(), _repo()
     with patch.multiple(
         "app.wiki.orchestrator",
-        gather_entity_context=AsyncMock(side_effect=[RuntimeError("boom"), MagicMock()]),
+        gather_entity_context=AsyncMock(side_effect=[RuntimeError("boom"), _ctx()]),
         generate_article=AsyncMock(return_value=_ok_gen()),
-        verify_article=AsyncMock(return_value=MagicMock()),
-        revise_article=AsyncMock(side_effect=lambda **k: (_ok_gen(), MagicMock())),
+        verify_article=AsyncMock(return_value=_verify()),
+        revise_article=AsyncMock(side_effect=lambda **k: (_ok_gen(), _verify())),
         compose_provenance_cites=AsyncMock(return_value=[]),
         compute_build_inputs=MagicMock(return_value={}),
         build_writeback_body=MagicMock(return_value={}),
@@ -174,3 +195,66 @@ async def test_entity_error_does_not_crash_batch():
         status = await _run(job, clients, repo)
     assert status == "complete"  # e1 errored, e2 still processed
     assert clients.glossary.write_wiki_article.await_count == 1
+    # the errored entity is recorded so the table shows it (not silently absent)
+    err = [c.args[2]["outcome"] for c in repo.record_result.await_args_list]
+    assert "error" in err
+
+
+# ── W4a: per-entity results + live sub-step progress ──────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_records_results_and_advances_passes():
+    job, clients, repo = _job(["e1", "e2"]), _clients(), _repo()
+    with _patches():
+        await _run(job, clients, repo)
+    outcomes = [c.args[2]["outcome"] for c in repo.record_result.await_args_list]
+    # one preliminary 'processing' + one final 'written' per entity
+    assert outcomes.count("processing") == 2
+    assert outcomes.count("written") == 2
+    # final rows carry the entity name (the table title)
+    finals = [c.args[2] for c in repo.record_result.await_args_list if c.args[2]["outcome"] == "written"]
+    assert all(f["name"] == "Mina" for f in finals)
+    # the live pass pointer advanced through the whole pipeline for the first entity
+    passes = [c.args[2] for c in repo.set_progress.await_args_list]
+    assert passes[:5] == ["context", "generate", "verify", "revise", "writeback"]
+
+
+@pytest.mark.asyncio
+async def test_records_citation_and_flag_counts():
+    # /review-impl #4 — pin the capture: citations = len(cites), flags = verify.flag_count.
+    job, clients, repo = _job(["e1"]), _clients(), _repo()
+    verify = _verify(flags=2)
+    with patch.multiple(
+        "app.wiki.orchestrator",
+        gather_entity_context=AsyncMock(return_value=_ctx()),
+        generate_article=AsyncMock(return_value=_ok_gen()),
+        verify_article=AsyncMock(return_value=verify),
+        revise_article=AsyncMock(return_value=(_ok_gen(), verify)),
+        compose_provenance_cites=AsyncMock(return_value=["c1", "c2", "c3"]),
+        compute_build_inputs=MagicMock(return_value={}),
+        build_writeback_body=MagicMock(return_value={}),
+    ):
+        await _run(job, clients, repo)
+    written = [c.args[2] for c in repo.record_result.await_args_list if c.args[2]["outcome"] == "written"]
+    assert len(written) == 1
+    assert written[0]["citations"] == 3
+    assert written[0]["flags"] == 2
+
+
+@pytest.mark.asyncio
+async def test_skip_no_context_records_skipped_without_processing():
+    job, clients, repo = _job(["e1"]), _clients(), _repo()
+    with _patches(context=None):  # no grounding → no name, no preliminary row
+        await _run(job, clients, repo)
+    outcomes = [c.args[2]["outcome"] for c in repo.record_result.await_args_list]
+    assert outcomes == ["skipped"]
+
+
+@pytest.mark.asyncio
+async def test_writeback_failure_is_recorded():
+    job, clients, repo = _job(["e1"]), _clients(write_action=None), _repo()
+    with _patches():
+        await _run(job, clients, repo)
+    finals = [c.args[2]["outcome"] for c in repo.record_result.await_args_list]
+    assert "writeback_failed" in finals  # recorded even though not marked done

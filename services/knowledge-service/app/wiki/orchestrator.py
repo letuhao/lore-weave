@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import random
+from dataclasses import dataclass
 from decimal import Decimal
 
 from app.clients.book_client import BookClient
@@ -48,6 +49,50 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["run_wiki_gen_job", "OrchestratorClients"]
 
+# W4a — the per-entity pipeline passes the FE renders as a live indicator. Ordered
+# as the orchestrator runs them; `set_progress` writes the current one before each.
+_NAME_MAX = 60  # keep the stored result name compact (the proxy body is 64KB-capped)
+
+
+@dataclass
+class EntityResult:
+    """One entity's outcome + the detail the screen-③ table shows. ``outcome`` is
+    the writeback action token ('written'|'suggestion'), or 'skipped' (no grounding /
+    empty), 'writeback_failed' (transient — retried on resume), or 'error'."""
+
+    outcome: str
+    citations: int = 0
+    flags: int = 0
+    name: str | None = None
+
+    def as_detail(self) -> dict:
+        return {"outcome": self.outcome, "citations": self.citations,
+                "flags": self.flags, "name": self.name}
+
+
+def _short_name(name: str | None) -> str | None:
+    if not name:
+        return None
+    return name if len(name) <= _NAME_MAX else name[:_NAME_MAX].rstrip() + "…"
+
+
+async def _set_pass(repo: WikiGenJobsRepo, job_id, entity_id: str, pass_name: str) -> None:
+    """Best-effort live-progress write — a progress marker must never crash the run."""
+    try:
+        await repo.set_progress(job_id, entity_id, pass_name)
+    except Exception:  # noqa: BLE001 — progress is telemetry, not correctness
+        logger.debug("wiki-gen set_progress failed job=%s entity=%s pass=%s",
+                     job_id, entity_id, pass_name, exc_info=True)
+
+
+async def _record(repo: WikiGenJobsRepo, job_id, entity_id: str, detail: dict) -> None:
+    """Best-effort per-entity result upsert — telemetry, never crashes the run."""
+    try:
+        await repo.record_result(job_id, entity_id, detail)
+    except Exception:  # noqa: BLE001
+        logger.debug("wiki-gen record_result failed job=%s entity=%s",
+                     job_id, entity_id, exc_info=True)
+
 
 class OrchestratorClients:
     """The seam-injected clients the orchestrator drives (so a test passes mocks)."""
@@ -67,35 +112,45 @@ class OrchestratorClients:
 
 async def _generate_one(
     *, entity_id: str, job: WikiGenJob, project: Project, profile,
-    clients: OrchestratorClients, retrieval_params: dict,
+    clients: OrchestratorClients, repo: WikiGenJobsRepo, retrieval_params: dict,
     prompt_version: str, pipeline_version: str,
     exemplars: list[tuple[str, str]] | None = None,
-) -> str:
-    """Run the full pipeline for ONE entity. Returns an outcome token
-    ('written' | 'suggestion' | 'skipped' | 'writeback_failed'). Never raises."""
+) -> EntityResult:
+    """Run the full pipeline for ONE entity, returning its :class:`EntityResult`.
+    Writes the live pass pointer (`set_progress`) before each step and, once the
+    entity name is known, a preliminary 'processing' result so the FE live row is
+    nameable. Never raises."""
+    await _set_pass(repo, job.job_id, entity_id, "context")
     context = await gather_entity_context(
         entity_id=entity_id, book_id=job.book_id, user_id=job.user_id, project=project,
         glossary_client=clients.glossary, book_client=clients.book,
         embedding_client=clients.embedding, reranker_client=clients.reranker,
     )
     if context is None:
-        return "skipped"
+        return EntityResult("skipped")  # no grounding → no name to show
+    name = _short_name(context.brief.name)
+    # Preliminary row so a poll mid-flight shows this entity as 'processing' WITH a
+    # name (the final outcome overwrites it). current_pass tells which step it's on.
+    await _record(repo, job.job_id, entity_id, EntityResult("processing", name=name).as_detail())
 
+    await _set_pass(repo, job.job_id, entity_id, "generate")
     gen = await generate_article(
         context=context, profile=profile, llm=clients.llm, user_id=str(job.user_id),
         model_source=job.model_source, model_ref=job.model_ref, exemplars=exemplars,
     )
     if gen.status != "ok" or gen.ir is None:
         logger.info("wiki-gen skip entity=%s status=%s", entity_id, gen.status)
-        return "skipped"
+        return EntityResult("skipped", name=name)
 
+    await _set_pass(repo, job.job_id, entity_id, "verify")
     verify = await verify_article(gen.ir, context, profile)
+    await _set_pass(repo, job.job_id, entity_id, "revise")
     gen, verify = await revise_article(
         gen=gen, verify=verify, context=context, profile=profile, llm=clients.llm,
         user_id=str(job.user_id), model_source=job.model_source, model_ref=job.model_ref,
     )
     if gen.ir is None:
-        return "skipped"
+        return EntityResult("skipped", name=name)
 
     cites = await compose_provenance_cites(gen.ir)
     build_inputs = compute_build_inputs(
@@ -108,13 +163,15 @@ async def _generate_one(
         model_ref=job.model_ref, user_id=job.user_id, grounding_params=retrieval_params,
         prompt_version=prompt_version, pipeline_version=pipeline_version,
     )
+    citations, flags = len(cites), verify.flag_count
+    await _set_pass(repo, job.job_id, entity_id, "writeback")
     result = await clients.glossary.write_wiki_article(job.book_id, body=body)
     if result is None:
-        return "writeback_failed"
+        return EntityResult("writeback_failed", citations, flags, name)
     action = str(result.get("action") or "written")
     await _maybe_judge(
         job=job, context=context, ir=gen.ir, article_id=result.get("article_id"), action=action)
-    return action
+    return EntityResult(action, citations, flags, name)
 
 
 async def _fetch_exemplars(job: WikiGenJob, clients: OrchestratorClients) -> list[tuple[str, str]]:
@@ -227,21 +284,26 @@ async def run_wiki_gen_job(
                         job.job_id, spent, cap)
             return "paused"
         try:
-            outcome = await _generate_one(
+            res = await _generate_one(
                 entity_id=entity_id, job=job, project=project, profile=profile,
-                clients=clients, retrieval_params=retrieval_params,
+                clients=clients, repo=repo, retrieval_params=retrieval_params,
                 prompt_version=prompt_version, pipeline_version=pipeline_version,
                 exemplars=exemplars,
             )
         except Exception as exc:  # noqa: BLE001 — one entity must not crash the batch
             logger.warning("wiki-gen entity failed job=%s entity=%s: %s",
                            job.job_id, entity_id, exc)
+            await _record(repo, job.job_id, entity_id, EntityResult("error").as_detail())
             continue
-        if outcome == "writeback_failed":
+        # Record the final per-entity result (overwrites the 'processing' row) for
+        # EVERY outcome — including skipped/writeback_failed — so the table explains
+        # why an entity produced no article.
+        await _record(repo, job.job_id, entity_id, res.as_detail())
+        if res.outcome == "writeback_failed":
             # leave the entity NOT done so a resume retries it; don't charge.
             writeback_failures += 1
             continue
-        charge = cost_per_article_usd if outcome in ("written", "suggestion") else Decimal("0")
+        charge = cost_per_article_usd if res.outcome in ("written", "suggestion") else Decimal("0")
         spent += charge
         await repo.mark_entity_done(job.job_id, entity_id, cost=charge)
 

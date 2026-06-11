@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 import redis.asyncio as aioredis
@@ -307,6 +308,11 @@ class WikiGenJobStatus(BaseModel):
     cost_spent_usd: Decimal = Decimal("0")
     max_spend_usd: Decimal | None = None
     error_message: str | None = None
+    # W4a — the screen-③ results table: per-entity detail (entity_id →
+    # {outcome, citations, flags, name}) + the live sub-step pointer.
+    results: dict[str, Any] = Field(default_factory=dict)
+    current_entity_id: str | None = None
+    current_pass: str | None = None
 
 
 def _to_status(job: WikiGenJob) -> WikiGenJobStatus:
@@ -316,6 +322,8 @@ def _to_status(job: WikiGenJob) -> WikiGenJobStatus:
         items_processed=job.items_processed, items_done_count=len(job.items_done),
         entity_count=len(job.entity_ids), cost_spent_usd=job.cost_spent_usd,
         max_spend_usd=job.max_spend_usd, error_message=job.error_message,
+        results=job.results, current_entity_id=job.current_entity_id,
+        current_pass=job.current_pass,
     )
 
 
