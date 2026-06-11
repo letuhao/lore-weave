@@ -6,18 +6,29 @@ ported off bash: Windows pyenv-win shim + path issues). Supersedes the
 narrower `lint-no-direct-llm-imports.sh` (which only caught Python
 litellm/openai/anthropic imports).
 
-Enforces two ENFORCED rules from CLAUDE.md › Key Rules:
+Enforces three ENFORCED rules from CLAUDE.md › Key Rules:
 
   1. Provider gateway invariant — NO service imports a provider SDK or
-     calls a provider API directly. Every LLM/embedding/image/audio/STT
-     call goes through provider-registry-service. The ONLY place provider
-     SDKs live is the gateway itself (+ the loreweave_llm SDK).
+     calls a provider API directly. Every LLM/embedding/rerank/image/
+     audio/STT call goes through provider-registry-service. The ONLY
+     place provider SDKs live is the gateway itself (+ the loreweave_llm
+     SDK).
+
+  1b. Local model backends are NOT an exception — a sibling local model
+     service (rerank/embed/stt/tts/ollama/lm_studio/…) is reached ONLY as
+     a BYOK provider credential through provider-registry, never wired
+     into a consuming service as platform config via a per-service env
+     var (RERANK_URL / RERANK_MODEL / RERANK_SERVICE_TOKEN — the exact
+     `D-RERANK-NOT-BYOK` mistake). We detect a model-backend-capability
+     env-var ACCESS (os.getenv / process.env / os.Getenv) outside the
+     gateway: a capability prefix (RERANK/EMBED/STT/TTS/OLLAMA/…) + a
+     model-config suffix (_URL/_MODEL/_ENDPOINT/_SERVICE_TOKEN/…).
 
   2. No hardcoded model names — model names resolve from
      provider-registry, never as literals in service runtime code.
 
-(The third rule — MCP-first for AI *agent* logic — is semantic, not
-grep-detectable, so it stays doc-enforced + tracked via DEFERRED 066.)
+(The MCP-first rule for AI *agent* logic is semantic, not grep-detectable,
+so it stays doc-enforced + tracked via DEFERRED 066.)
 
 Allowlist (where the above are LEGITIMATE):
   - services/provider-registry-service/  — the gateway: provider SDKs +
@@ -96,6 +107,44 @@ MODEL_NAME = re.compile(
     r""")['"`]"""
 )
 
+# Rule 1b — a model-backend wired as per-service platform config (env var)
+# instead of a BYOK provider-registry credential. Two-step, deliberately
+# narrow to avoid the false-positive flood from legit infra env vars
+# (INTERNAL_SERVICE_TOKEN, *_SERVICE_URL, *_DB_URL, OTEL_*, MINIO_*):
+#
+#   (a) ENV_ACCESS — the name must be READ as an env var (so a DB column
+#       named EMBEDDING_MODEL, a log token EXTRACTION_REASONING_MODEL, or a
+#       module constant OLLAMA_URL = "..." do NOT match), and
+#   (b) MODEL_BACKEND_ENV — the name must be a model-backend CAPABILITY
+#       prefix + a model-config suffix (so BOOK_SERVICE_URL, a plain
+#       service URL, does NOT match — its prefix is a service, not a model
+#       capability).
+ENV_ACCESS = re.compile(
+    r"""(?:os\.getenv|os\.environ\.get|os\.environ|getenv|Getenv|GetEnv"""
+    r"""|EnvOr|env\.Get|Env\.Get)\s*[(\[]\s*['"]([A-Z][A-Z0-9_]*)['"]"""
+    r"""|process\.env\.([A-Z][A-Z0-9_]+)"""
+    r"""|process\.env\[\s*['"]([A-Z][A-Z0-9_]*)['"]"""
+)
+MODEL_BACKEND_ENV = re.compile(
+    r"^(?:RERANK|RERANKER|EMBED|EMBEDDING|EMBEDDINGS|STT|ASR|WHISPER"
+    r"|TTS|KOKORO|OLLAMA|LM_?STUDIO|VLLM|LLAMA_?CPP|TEI"
+    r"|LOCAL_(?:RERANK|EMBED|STT|TTS|LLM|MODEL))"
+    r"[A-Z0-9_]*"
+    r"_(?:URL|BASE_URL|ENDPOINT|MODEL|MODELS|SERVICE_TOKEN|TOKEN"
+    r"|API_KEY|KEY|HOST|PORT)$"
+)
+
+
+def model_backend_env_names(line: str) -> list[str]:
+    """Env-var names READ in `line` that look like a model-backend wired as
+    platform config (Rule 1b). Empty when none — used by scan + tested."""
+    hits: list[str] = []
+    for m in ENV_ACCESS.finditer(line):
+        name = m.group(1) or m.group(2) or m.group(3)
+        if name and MODEL_BACKEND_ENV.match(name):
+            hits.append(name)
+    return hits
+
 
 def is_test_file(rel: str) -> bool:
     """Test / story / fixture files — example model names + SDK refs are
@@ -143,6 +192,8 @@ def scan_file(path: str, rel: str) -> list[tuple[str, int, str, str]]:
                     out.append(("provider-sdk", n, rel, line.rstrip()))
                 if MODEL_NAME.search(line):
                     out.append(("model-name", n, rel, line.rstrip()))
+                if model_backend_env_names(line):
+                    out.append(("model-backend-env", n, rel, line.rstrip()))
     except OSError:
         pass
     return out
@@ -200,6 +251,7 @@ def main() -> int:
 
     sdk_hits = [v for v in violations if v[0] == "provider-sdk"]
     model_hits = [v for v in violations if v[0] == "model-name"]
+    backend_hits = [v for v in violations if v[0] == "model-backend-env"]
 
     print("ai-provider-gate: FAIL\n")
     if sdk_hits:
@@ -213,6 +265,14 @@ def main() -> int:
         print("[No hardcoded model names] resolve model ids from provider-registry, not literals")
         print("  → use the user's registered provider config; do NOT bake model strings into runtime code.\n")
         for _, n, rel, line in model_hits:
+            print(f"  {rel}:{n}: {line.strip()}")
+        print()
+    if backend_hits:
+        print("[Local model backend must be BYOK] a model-backend env var is platform config")
+        print("  → register the local/self-hosted backend as a provider-registry credential")
+        print("    (+ a user_models row) and resolve it via an /internal/* route — do NOT add a")
+        print("    per-service *_URL/*_MODEL/*_SERVICE_TOKEN env var (the D-RERANK-NOT-BYOK mistake).\n")
+        for _, n, rel, line in backend_hits:
             print(f"  {rel}:{n}: {line.strip()}")
         print()
     print("If this is genuine legacy that needs a migration plan, add a row to")
