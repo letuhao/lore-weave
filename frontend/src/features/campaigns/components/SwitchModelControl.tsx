@@ -6,15 +6,31 @@ import { useUpdateCampaign, useResumeCampaign } from '../hooks/useCampaignMutati
 import { ModelRolePicker } from './ModelRolePicker';
 import type { CampaignDetail, UpdateCampaignPayload } from '../types';
 
-/** D-FACTORY-SWITCH-MODEL-RESUME (view + control) — on a PAUSED campaign, re-pick the
- *  translation / knowledge LLM (e.g. cloud rate-limited overnight → switch to a local
- *  model) and resume; the remaining pending/failed chapters dispatch on the new model
- *  (already-done chapters keep their version). Collapsed by default. */
+/** The switchable LLM roles + their campaign columns. Embedding/rerank are NOT here
+ *  (knowledge-project SSOT; embedding change is destructive). All are `chat` capability. */
+const SWITCHABLE_ROLES = [
+  { key: 'translation', srcCol: 'translation_model_source', refCol: 'translation_model_ref', labelKey: 'monitor.translationModel', labelDefault: 'Translation model' },
+  { key: 'knowledge', srcCol: 'knowledge_model_source', refCol: 'knowledge_model_ref', labelKey: 'monitor.knowledgeModel', labelDefault: 'Knowledge model' },
+  { key: 'verifier', srcCol: 'verifier_model_source', refCol: 'verifier_model_ref', labelKey: 'monitor.verifierModel', labelDefault: 'Verifier model (blank = follow translation)' },
+  { key: 'eval_judge', srcCol: 'eval_judge_model_source', refCol: 'eval_judge_model_ref', labelKey: 'monitor.evalJudgeModel', labelDefault: 'Eval-judge model (optional)' },
+] as const satisfies ReadonlyArray<{
+  key: string;
+  srcCol: keyof UpdateCampaignPayload;
+  refCol: keyof UpdateCampaignPayload;
+  labelKey: string;
+  labelDefault: string;
+}>;
+
+/** D-FACTORY-SWITCH-MODEL-RESUME / D-FACTORY-SWITCH-VERIFIER-EVAL-UI (view + control) —
+ *  on a PAUSED campaign, re-pick any of the four LLM roles (e.g. cloud rate-limited
+ *  overnight → switch to a local model) and resume; the remaining pending/failed
+ *  chapters dispatch on the new model (already-done chapters keep their version).
+ *  Collapsed by default. */
 export function SwitchModelControl({ campaign }: { campaign: CampaignDetail }) {
   const { t } = useTranslation('campaigns');
   const [open, setOpen] = useState(false);
-  const [translationRef, setTranslationRef] = useState<string | null>(campaign.translation_model_ref);
-  const [knowledgeRef, setKnowledgeRef] = useState<string | null>(campaign.knowledge_model_ref);
+  const [refs, setRefs] = useState<Record<string, string | null>>(() =>
+    Object.fromEntries(SWITCHABLE_ROLES.map((r) => [r.key, campaign[r.refCol] as string | null])));
 
   const resume = useResumeCampaign({
     onSuccess: () => toast.success(t('monitor.switchedResumed', { defaultValue: 'Model switched — resuming.' })),
@@ -27,18 +43,18 @@ export function SwitchModelControl({ campaign }: { campaign: CampaignDetail }) {
     onError: (e) => toast.error(t('monitor.switchFailed', { defaultValue: 'Could not switch model: {{error}}', error: e.message })),
   });
 
-  // user_model picks: a ref implies source 'user_model'; clearing sets both null.
-  const pick = (ref: string | null): { source: string | null; ref: string | null } =>
-    ({ source: ref ? 'user_model' : null, ref });
+  const setRef = (key: string) => (ref: string | null) => setRefs((prev) => ({ ...prev, [key]: ref }));
 
   const onSwitchAndResume = () => {
-    const tr = pick(translationRef);
-    const kn = pick(knowledgeRef);
-    const patch: UpdateCampaignPayload = {
-      translation_model_source: tr.source, translation_model_ref: tr.ref,
-      knowledge_model_source: kn.source, knowledge_model_ref: kn.ref,
-    };
-    update.mutate({ campaignId: campaign.campaign_id, patch });
+    // For each role: a ref implies source 'user_model'; cleared sets both null (verifier
+    // null → follows the translator; eval-judge null → service-wide fallback).
+    const patch: Record<string, string | null> = {};
+    for (const r of SWITCHABLE_ROLES) {
+      const ref = refs[r.key];
+      patch[r.srcCol] = ref ? 'user_model' : null;
+      patch[r.refCol] = ref;
+    }
+    update.mutate({ campaignId: campaign.campaign_id, patch: patch as UpdateCampaignPayload });
   };
 
   const busy = update.isPending || resume.isPending;
@@ -56,12 +72,11 @@ export function SwitchModelControl({ campaign }: { campaign: CampaignDetail }) {
               defaultValue: 'Re-pick the LLM for the remaining chapters (e.g. switch to a local model if a cloud provider is rate-limited). Already-completed chapters keep their version.',
             })}
           </p>
-          <ModelRolePicker capability="chat"
-            label={t('monitor.translationModel', { defaultValue: 'Translation model' })}
-            value={translationRef} onChange={setTranslationRef} disabled={busy} />
-          <ModelRolePicker capability="chat"
-            label={t('monitor.knowledgeModel', { defaultValue: 'Knowledge model' })}
-            value={knowledgeRef} onChange={setKnowledgeRef} disabled={busy} />
+          {SWITCHABLE_ROLES.map((r) => (
+            <ModelRolePicker key={r.key} capability="chat"
+              label={t(r.labelKey, { defaultValue: r.labelDefault })}
+              value={refs[r.key]} onChange={setRef(r.key)} disabled={busy} />
+          ))}
           <button type="button" onClick={onSwitchAndResume} disabled={busy}
             className="self-start rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
             {busy

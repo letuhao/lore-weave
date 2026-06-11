@@ -31,18 +31,22 @@ const campaign = {
   campaign_id: 'cmp1',
   translation_model_ref: 'tr-old',
   knowledge_model_ref: 'kn-old',
+  verifier_model_ref: 'vf-old',
+  eval_judge_model_ref: null,
 } as CampaignDetail;
 
 describe('SwitchModelControl', () => {
   beforeEach(() => { h.updateMutate.mockReset(); h.resumeMutate.mockReset(); });
 
-  it('reveals the pickers (pre-filled) when expanded', async () => {
+  it('reveals all four role pickers (pre-filled) when expanded', async () => {
     render(<SwitchModelControl campaign={campaign} />);
     // collapsed: pickers hidden
     expect(screen.queryByText(/monitor.translationModel/)).not.toBeInTheDocument();
     await userEvent.click(screen.getByText('monitor.switchModel'));
     expect(screen.getByText('monitor.translationModel=tr-old')).toBeInTheDocument();
     expect(screen.getByText('monitor.knowledgeModel=kn-old')).toBeInTheDocument();
+    expect(screen.getByText('monitor.verifierModel=vf-old')).toBeInTheDocument();
+    expect(screen.getByText('monitor.evalJudgeModel=none')).toBeInTheDocument();
   });
 
   it('PATCHes the picked models then chains resume on success', async () => {
@@ -55,10 +59,15 @@ describe('SwitchModelControl', () => {
     expect(h.updateMutate).toHaveBeenCalledTimes(1);
     const arg = h.updateMutate.mock.calls[0][0];
     expect(arg.campaignId).toBe('cmp1');
-    // translation switched to the new pick (user_model source), knowledge unchanged
+    // translation switched to the new pick (user_model source), others unchanged
     expect(arg.patch.translation_model_ref).toBe('new-monitor.translationModel');
     expect(arg.patch.translation_model_source).toBe('user_model');
     expect(arg.patch.knowledge_model_ref).toBe('kn-old');
+    // verifier + eval-judge are now part of the patch (D-FACTORY-SWITCH-VERIFIER-EVAL-UI)
+    expect(arg.patch.verifier_model_ref).toBe('vf-old');
+    expect(arg.patch.verifier_model_source).toBe('user_model');
+    expect(arg.patch.eval_judge_model_ref).toBe(null);   // was null → cleared (source null too)
+    expect(arg.patch.eval_judge_model_source).toBe(null);
 
     // the update's onSuccess chains a resume
     h.captured.onSuccess?.({ campaign_id: 'cmp1' });
