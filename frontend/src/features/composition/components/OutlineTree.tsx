@@ -20,6 +20,7 @@ import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrate
 import { useWorkResolution } from '../hooks/useWork';
 import { useOutline, useOutlineMutations } from '../hooks/useOutline';
 import { OutlineNodeRow } from './OutlineNodeRow';
+import { Corkboard, type CardMove } from './Corkboard';
 import type { OutlineNode } from '../types';
 
 // kind → the kind a node of this kind must be parented under (fixed-depth tree).
@@ -116,7 +117,9 @@ export function OutlineTree(
   const res = resolution.data;
   const work = res?.status === 'found' ? res.work : res?.status === 'candidates' ? (res.candidates[0] ?? null) : null;
   const [showArchived, setShowArchived] = useState(false);
-  const q = useOutline(work?.project_id, token, showArchived);
+  const [viewMode, setViewMode] = useState<'tree' | 'cards'>('tree');
+  // Cards (Corkboard) read only active scenes; the archived view is tree-only.
+  const q = useOutline(work?.project_id, token, showArchived && viewMode === 'tree');
   const m = useOutlineMutations(work?.project_id, token);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -184,6 +187,19 @@ export function OutlineTree(
     m.archive.mutate(node.id, { onError });
   };
   const restore = (node: OutlineNode) => m.restore.mutate(node.id, { onError });
+  // T1.1d Corkboard handlers (over the same nodes + mutations as the tree).
+  const editCard = (scene: OutlineNode, title: string, synopsis: string) => {
+    setEditingId(null);
+    m.editCard.mutate({ nodeId: scene.id, title, synopsis, version: scene.version }, { onError });
+  };
+  const reorderCard = (move: CardMove) => {
+    const node = (q.data ?? []).find((n) => n.id === move.nodeId);
+    if (!node) return;
+    m.reorder.mutate(
+      { nodeId: move.nodeId, new_parent_id: move.new_parent_id, after_id: move.after_id, version: node.version },
+      { onError },
+    );
+  };
 
   // T1.1c — drag sensors. A 5px activation distance keeps a click (select/nav)
   // from starting a drag; the keyboard sensor makes reorder a11y-operable.
@@ -216,19 +232,48 @@ export function OutlineTree(
     <div className="flex flex-1 flex-col overflow-hidden" data-testid="composition-outline">
       <div className="flex flex-shrink-0 items-center justify-between border-b px-3 py-2 text-[10px] text-muted-foreground">
         <span>{t('outline.title', { defaultValue: 'Outline' })}</span>
-        <button
-          type="button"
-          data-testid="outline-toggle-archived"
-          aria-pressed={showArchived}
-          className={'rounded px-1.5 py-0.5 hover:text-foreground ' + (showArchived ? 'text-foreground' : '')}
-          onClick={() => setShowArchived((v) => !v)}
-        >
-          {showArchived
-            ? t('outline.hideArchived', { defaultValue: 'Hide archived' })
-            : t('outline.showArchived', { defaultValue: 'Show archived' })}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            data-testid="outline-toggle-view"
+            aria-pressed={viewMode === 'cards'}
+            className="rounded px-1.5 py-0.5 hover:text-foreground"
+            onClick={() => setViewMode((v) => (v === 'tree' ? 'cards' : 'tree'))}
+          >
+            {viewMode === 'tree'
+              ? t('outline.viewCards', { defaultValue: 'Cards' })
+              : t('outline.viewTree', { defaultValue: 'Tree' })}
+          </button>
+          {viewMode === 'tree' && (
+            <button
+              type="button"
+              data-testid="outline-toggle-archived"
+              aria-pressed={showArchived}
+              className={'rounded px-1.5 py-0.5 hover:text-foreground ' + (showArchived ? 'text-foreground' : '')}
+              onClick={() => setShowArchived((v) => !v)}
+            >
+              {showArchived
+                ? t('outline.hideArchived', { defaultValue: 'Hide archived' })
+                : t('outline.showArchived', { defaultValue: 'Show archived' })}
+            </button>
+          )}
+        </div>
       </div>
-      {rows.length === 0 ? (
+      {viewMode === 'cards' ? (
+        <Corkboard
+          nodes={q.data ?? []}
+          editingId={editingId}
+          draggable
+          onSelect={select}
+          onAddCard={(chapter) => addChild(chapter, 'scene')}
+          onEditStart={(id) => setEditingId(id)}
+          onEditCommit={editCard}
+          onEditCancel={() => setEditingId(null)}
+          onArchive={(scene) => archive(scene, (q.data ?? []).some((n) => n.parent_id === scene.id && !n.is_archived))}
+          onCycleStatus={cycleStatus}
+          onReorder={reorderCard}
+        />
+      ) : rows.length === 0 ? (
         <div data-testid="outline-empty" className="p-3 text-xs text-muted-foreground">
           {t('outline.empty', { defaultValue: 'No outline yet. Use the Planner (right panel) to decompose chapters into scenes.' })}
         </div>

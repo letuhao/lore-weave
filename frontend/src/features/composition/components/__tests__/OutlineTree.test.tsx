@@ -14,6 +14,7 @@ const { workHook, outlineHook, mutations, toastWarn, toastError } = vi.hoisted((
   mutations: {
     rename: { mutate: vi.fn() },
     setStatus: { mutate: vi.fn() },
+    editCard: { mutate: vi.fn() },
     addChild: { mutate: vi.fn() },
     archive: { mutate: vi.fn() },
     restore: { mutate: vi.fn() },
@@ -51,6 +52,7 @@ beforeEach(() => {
   mutations.archive.mutate.mockReset();
   mutations.restore.mutate.mockReset();
   mutations.reorder.mutate.mockReset();
+  mutations.editCard.mutate.mockReset();
   mutations.invalidate.mockReset();
   toastWarn.mockReset();
   toastError.mockReset();
@@ -354,5 +356,21 @@ describe('OutlineTree drag wiring (T1.1c)', () => {
     fireEvent.click(screen.getByTestId('outline-toggle-archived'));
     rerender(<OutlineTree bookId="b" token="t" currentChapterId="C1" onNavigateChapter={vi.fn()} />);
     expect(screen.queryByTestId('outline-drag-handle')).not.toBeInTheDocument();
+  });
+});
+
+describe('OutlineTree cards⇄tree toggle (T1.1d)', () => {
+  it('switches to the Corkboard and hides the archived toggle in cards mode', () => {
+    mountWith([
+      node({ id: 'ch1', kind: 'chapter', parent_id: null, chapter_id: 'C1', title: 'Ch One', story_order: 0 }),
+      node({ id: 's1', kind: 'scene', parent_id: 'ch1', chapter_id: 'C1', story_order: 0, title: 'Sc' }),
+    ]);
+    render(<OutlineTree bookId="b" token="t" currentChapterId="C1" onNavigateChapter={vi.fn()} />);
+    expect(screen.getByTestId('composition-outline')).toBeInTheDocument();
+    expect(screen.getByTestId('outline-toggle-archived')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('outline-toggle-view'));
+    expect(screen.getByTestId('composition-corkboard')).toBeInTheDocument();
+    expect(screen.getByTestId('corkboard-card')).toBeInTheDocument(); // the scene as a card
+    expect(screen.queryByTestId('outline-toggle-archived')).not.toBeInTheDocument(); // tree-only
   });
 });

@@ -190,6 +190,17 @@
     "showArchived": "Show archived",
     "hideArchived": "Hide archived",
     "cycleStatus": "Cycle status",
-    "conflict": "This node was edited elsewhere — refreshed."
+    "conflict": "This node was edited elsewhere — refreshed.",
+    "viewCards": "Cards",
+    "viewTree": "Tree"
+  },
+  "corkboard": {
+    "addCard": "Add card",
+    "empty": "No chapters yet. Plan chapters first, then add scene cards.",
+    "emptyBand": "No scenes in {{chapter}} — add a card.",
+    "untitledChapter": "Untitled chapter",
+    "editTitle": "Card title",
+    "editSynopsis": "Card synopsis",
+    "noSynopsis": "No synopsis"
   }
 }

@@ -190,6 +190,17 @@
     "showArchived": "アーカイブを表示",
     "hideArchived": "アーカイブを非表示",
     "cycleStatus": "状態を切り替え",
-    "conflict": "このノードは別の場所で編集されました — 更新しました。"
+    "conflict": "このノードは別の場所で編集されました — 更新しました。",
+    "viewCards": "カード",
+    "viewTree": "ツリー"
+  },
+  "corkboard": {
+    "addCard": "カードを追加",
+    "empty": "まだ章がありません。先に章を計画してからシーンカードを追加してください。",
+    "emptyBand": "{{chapter}} にシーンがありません — カードを追加。",
+    "untitledChapter": "無題の章",
+    "editTitle": "カードのタイトル",
+    "editSynopsis": "カードの概要",
+    "noSynopsis": "概要なし"
   }
 }

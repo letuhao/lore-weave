@@ -46,6 +46,12 @@ export function useOutlineMutations(projectId: string | undefined, token: string
       qc.invalidateQueries({ queryKey: ['composition', 'publish-gate', projectId] });
     },
   });
+  // T1.1d — edit a card's text (title + synopsis) in one patch, If-Match guarded.
+  const editCard = useMutation({
+    mutationFn: (v: { nodeId: string; title: string; synopsis: string; version: number }) =>
+      compositionApi.patchNode(v.nodeId, { title: v.title, synopsis: v.synopsis }, token!, v.version),
+    onSuccess: invalidate,
+  });
   const addChild = useMutation({
     mutationFn: (v: { kind: 'scene' | 'beat'; parent_id: string; chapter_id?: string | null; title: string }) =>
       compositionApi.createNode(
@@ -75,5 +81,5 @@ export function useOutlineMutations(projectId: string | undefined, token: string
     },
   });
 
-  return { rename, setStatus, addChild, archive, restore, reorder, invalidate };
+  return { rename, setStatus, editCard, addChild, archive, restore, reorder, invalidate };
 }

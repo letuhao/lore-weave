@@ -190,6 +190,17 @@
     "showArchived": "顯示已封存",
     "hideArchived": "隱藏已封存",
     "cycleStatus": "切換狀態",
-    "conflict": "此節點已在他處被編輯 — 已重新整理。"
+    "conflict": "此節點已在他處被編輯 — 已重新整理。",
+    "viewCards": "卡片",
+    "viewTree": "樹狀"
+  },
+  "corkboard": {
+    "addCard": "新增卡片",
+    "empty": "尚無章節。請先規劃章節，再新增場景卡片。",
+    "emptyBand": "{{chapter}} 沒有場景 — 新增一張卡片。",
+    "untitledChapter": "未命名章節",
+    "editTitle": "卡片標題",
+    "editSynopsis": "卡片概要",
+    "noSynopsis": "尚無概要"
   }
 }
