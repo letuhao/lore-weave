@@ -89,6 +89,7 @@ export type OutlineNode = {
   status: 'empty' | 'outline' | 'drafting' | 'done';
   synopsis: string;
   version: number;
+  is_archived: boolean; // T1.1b — archived nodes are hidden unless the tree's "show archived" view is on
 };
 
 // M9 chapter-gate (OI-1): can this chapter be published? can_publish is true

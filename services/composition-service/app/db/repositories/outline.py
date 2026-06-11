@@ -665,3 +665,43 @@ class OutlineRepo:
             rows = await c.fetch(query, user_id, node_id)
         target = next((r for r in rows if r["id"] == node_id), None)
         return _row_to_node(target) if target else None
+
+    async def restore_node(self, user_id: UUID, node_id: UUID) -> OutlineNode | None:
+        """Un-archive a node — the inverse of `archive_node` (T1.1b restore). Two
+        recursive walks over ARCHIVED rows only:
+          - `subtree` walks parent_id DOWN → restores the node's archived
+            descendants (symmetric with the archive cascade);
+          - `ancestors` walks parent_id UP → restores the archived ancestor chain
+            so the restored node always reconnects to a visible root (else a node
+            whose parent is still archived would orphan out of the tree).
+        Sibling branches stay archived (only the direct ancestor chain is walked).
+        Returns the target (restored) or None if it doesn't exist / isn't ours /
+        wasn't archived. UNION (not UNION ALL) so a malformed parent_id cycle
+        terminates instead of hanging (same backstop as archive_node)."""
+        query = f"""
+        WITH RECURSIVE ancestors AS (
+          SELECT id, parent_id FROM outline_node
+          WHERE user_id = $1 AND id = $2 AND is_archived
+          UNION
+          SELECT p.id, p.parent_id FROM outline_node p
+          JOIN ancestors a ON p.id = a.parent_id
+          WHERE p.user_id = $1 AND p.is_archived
+        ),
+        subtree AS (
+          SELECT id FROM outline_node
+          WHERE user_id = $1 AND id = $2 AND is_archived
+          UNION
+          SELECT n.id FROM outline_node n
+          JOIN subtree s ON n.parent_id = s.id
+          WHERE n.user_id = $1 AND n.is_archived
+        )
+        UPDATE outline_node
+        SET is_archived = false, updated_at = now()
+        WHERE user_id = $1
+          AND (id IN (SELECT id FROM ancestors) OR id IN (SELECT id FROM subtree))
+        RETURNING {_SELECT_COLS}
+        """
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(query, user_id, node_id)
+        target = next((r for r in rows if r["id"] == node_id), None)
+        return _row_to_node(target) if target else None

@@ -47,16 +47,33 @@ export const compositionApi = {
   createWork(bookId: string, token: string): Promise<Work> {
     return apiJson<Work>(`${BASE}/books/${bookId}/work`, { method: 'POST', token });
   },
-  getOutline(projectId: string, token: string): Promise<{ nodes: OutlineNode[]; scene_links: unknown[] }> {
-    return apiJson(`${BASE}/works/${projectId}/outline`, { token });
+  getOutline(projectId: string, token: string, includeArchived = false): Promise<{ nodes: OutlineNode[]; scene_links: unknown[] }> {
+    const qs = includeArchived ? '?include_archived=true' : '';
+    return apiJson(`${BASE}/works/${projectId}/outline${qs}`, { token });
   },
   createNode(projectId: string, payload: Partial<OutlineNode> & { kind: string }, token: string): Promise<OutlineNode> {
     return apiJson(`${BASE}/works/${projectId}/outline/nodes`, { method: 'POST', body: JSON.stringify(payload), token });
   },
   // Patch an outline node (M9: set a scene's status — 'done' commits it for the
-  // chapter-gate + emits composition.scene_committed server-side).
-  patchNode(nodeId: string, patch: Partial<OutlineNode>, token: string): Promise<OutlineNode> {
-    return apiJson(`${BASE}/outline/nodes/${nodeId}`, { method: 'PATCH', body: JSON.stringify(patch), token });
+  // chapter-gate + emits composition.scene_committed server-side). T1.1b: pass
+  // `version` to send If-Match → the BE 412s with NODE_VERSION_CONFLICT (carrying
+  // .body.detail.current) on a stale edit. Omitting `version` keeps the legacy
+  // self-acquiring behaviour (M9 useSetSceneStatus) — backward-compatible.
+  patchNode(nodeId: string, patch: Partial<OutlineNode>, token: string, version?: number): Promise<OutlineNode> {
+    return apiJson(`${BASE}/outline/nodes/${nodeId}`, {
+      method: 'PATCH', body: JSON.stringify(patch), token,
+      ...(version !== undefined ? { headers: { 'If-Match': String(version) } } : {}),
+    });
+  },
+  // T1.1b — soft-archive an outline node (DELETE = archive, returns the archived
+  // node; unconditional, no If-Match). Children are archived by the BE closure.
+  archiveNode(nodeId: string, token: string): Promise<OutlineNode> {
+    return apiJson(`${BASE}/outline/nodes/${nodeId}`, { method: 'DELETE', token });
+  },
+  // T1.1b — un-archive a node (inverse of DELETE). The BE restores the archived
+  // subtree + archived ancestor chain so it reconnects to a visible root.
+  restoreNode(nodeId: string, token: string): Promise<OutlineNode> {
+    return apiJson(`${BASE}/outline/nodes/${nodeId}/restore`, { method: 'POST', token });
   },
   // A3 decompose planner (cycle 13). listTemplates → built-in + user structure
   // templates; decomposePreview → the proposed (NOT persisted) arc→chapter→scene

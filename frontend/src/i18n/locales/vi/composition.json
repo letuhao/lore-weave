@@ -179,6 +179,16 @@
   "threadsError": "Không tải được mạch truyện.",
   "outline": {
     "title": "Dàn ý",
-    "empty": "Chưa có dàn ý. Dùng Planner (bảng bên phải) để chia chương thành các cảnh."
+    "empty": "Chưa có dàn ý. Dùng Planner (bảng bên phải) để chia chương thành các cảnh.",
+    "rename": "Đổi tên",
+    "addScene": "Thêm cảnh",
+    "addBeat": "Thêm nhịp",
+    "archive": "Lưu trữ",
+    "archiveConfirm": "Lưu trữ \"{{title}}\" và mọi thứ bên trong nó?",
+    "restore": "Khôi phục",
+    "showArchived": "Hiện đã lưu trữ",
+    "hideArchived": "Ẩn đã lưu trữ",
+    "cycleStatus": "Đổi trạng thái",
+    "conflict": "Nút này đã được chỉnh sửa ở nơi khác — đã làm mới."
   }
 }

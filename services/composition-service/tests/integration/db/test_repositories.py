@@ -174,6 +174,52 @@ async def test_outline_archive_recurses_subtree(pool):
     assert await repo.archive_node(user, arc.id) is None
 
 
+async def test_outline_restore_recurses_subtree(pool):
+    """T1.1b restore = inverse of archive: un-archives the node + its archived
+    descendants (the whole cascade comes back)."""
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    arc = await repo.create_node(user, project, kind="arc", title="arc")
+    chap = await repo.create_node(
+        user, project, kind="chapter", parent_id=arc.id, chapter_id=chapter,
+    )
+    scene = await repo.create_node(
+        user, project, kind="scene", parent_id=chap.id, chapter_id=chapter,
+    )
+    await repo.archive_node(user, arc.id)  # archives arc+chap+scene
+
+    restored = await repo.restore_node(user, arc.id)
+    assert restored is not None and restored.is_archived is False
+    visible = {n.id for n in await repo.list_tree(user, project)}
+    assert {arc.id, chap.id, scene.id} <= visible  # whole subtree back
+    # restoring again → nothing archived → None
+    assert await repo.restore_node(user, arc.id) is None
+
+
+async def test_outline_restore_reconnects_archived_ancestors(pool):
+    """Restoring a node whose ancestor is still archived must also un-archive the
+    archived ancestor chain — else the restored node orphans out of the tree
+    (its parent_id points at an archived, invisible row)."""
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    arc = await repo.create_node(user, project, kind="arc", title="arc")
+    chap = await repo.create_node(
+        user, project, kind="chapter", parent_id=arc.id, chapter_id=chapter,
+    )
+    scene = await repo.create_node(
+        user, project, kind="scene", parent_id=chap.id, chapter_id=chapter,
+    )
+    await repo.archive_node(user, arc.id)  # archives arc+chap+scene
+
+    # restore only the SCENE → ancestor chain (chap, arc) restored too
+    restored = await repo.restore_node(user, scene.id)
+    assert restored is not None and restored.is_archived is False
+    visible = {n.id for n in await repo.list_tree(user, project)}
+    assert {arc.id, chap.id, scene.id} <= visible  # reconnected to a visible root
+
+
 async def test_outline_archive_terminates_on_parent_cycle(pool):
     """FINDING-3 backstop: archive_node's recursive CTE must not loop forever on
     a stray parent cycle. The repo now BLOCKS reparent-cycles (see

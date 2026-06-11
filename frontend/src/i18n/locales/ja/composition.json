@@ -179,6 +179,16 @@
   "threadsError": "プロット伏線を読み込めませんでした。",
   "outline": {
     "title": "アウトライン",
-    "empty": "アウトラインはまだありません。Planner（右パネル）で章をシーンに分解してください。"
+    "empty": "アウトラインはまだありません。Planner（右パネル）で章をシーンに分解してください。",
+    "rename": "名前を変更",
+    "addScene": "シーンを追加",
+    "addBeat": "ビートを追加",
+    "archive": "アーカイブ",
+    "archiveConfirm": "「{{title}}」とその中身をすべてアーカイブしますか？",
+    "restore": "復元",
+    "showArchived": "アーカイブを表示",
+    "hideArchived": "アーカイブを非表示",
+    "cycleStatus": "状態を切り替え",
+    "conflict": "このノードは別の場所で編集されました — 更新しました。"
   }
 }

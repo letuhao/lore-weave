@@ -179,6 +179,16 @@
   "threadsError": "無法載入情節伏筆。",
   "outline": {
     "title": "大綱",
-    "empty": "尚無大綱。使用 Planner（右側面板）將章節分解為場景。"
+    "empty": "尚無大綱。使用 Planner（右側面板）將章節分解為場景。",
+    "rename": "重新命名",
+    "addScene": "新增場景",
+    "addBeat": "新增節拍",
+    "archive": "封存",
+    "archiveConfirm": "封存「{{title}}」及其所有內容？",
+    "restore": "還原",
+    "showArchived": "顯示已封存",
+    "hideArchived": "隱藏已封存",
+    "cycleStatus": "切換狀態",
+    "conflict": "此節點已在他處被編輯 — 已重新整理。"
   }
 }

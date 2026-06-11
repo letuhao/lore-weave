@@ -180,6 +180,21 @@ async def delete_node(
     return node.model_dump(mode="json")
 
 
+@router.post("/outline/nodes/{node_id}/restore", status_code=200)
+async def restore_node(
+    node_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    outline: OutlineRepo = Depends(get_outline_repo),
+) -> dict[str, Any]:
+    """T1.1b — un-archive a node (inverse of DELETE). Restores the node's archived
+    subtree + archived ancestor chain so it reconnects to a visible root. 404 if
+    the node doesn't exist / isn't ours / wasn't archived."""
+    node = await outline.restore_node(user_id, node_id)
+    if node is None:
+        raise HTTPException(status_code=404, detail="node not found or not archived")
+    return node.model_dump(mode="json")
+
+
 @router.post("/works/{project_id}/scene-links", status_code=201)
 async def create_scene_link(
     project_id: UUID,

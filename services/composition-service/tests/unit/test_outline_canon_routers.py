@@ -46,6 +46,7 @@ class StubOutline:
         self.update_raises = None
         self.update_result = _node(version=2)
         self.archive_result = _node(is_archived=True)
+        self.restore_result = _node(is_archived=False)
         self.gate = {"chapter_id": "c", "scenes_total": 2, "scenes_done": 2, "can_publish": True}
         self.commit_aware_called = False
     async def list_tree(self, u, p, **kw): return self.tree
@@ -61,6 +62,7 @@ class StubOutline:
         return self.update_result
     async def chapter_scene_gate(self, u, p, ch): return self.gate
     async def archive_node(self, u, n): return self.archive_result
+    async def restore_node(self, u, n): return self.restore_result
 
 
 class StubSceneLinks:
@@ -158,6 +160,15 @@ def test_delete_node_archives(ctx):
     c, _, _, _, _ = ctx
     r = c.delete(f"/v1/composition/outline/nodes/{NODE}")
     assert r.status_code == 200 and r.json()["is_archived"] is True
+
+
+def test_restore_node_200_and_404(ctx):
+    c, _, outline, _, _ = ctx
+    r = c.post(f"/v1/composition/outline/nodes/{NODE}/restore")
+    assert r.status_code == 200 and r.json()["is_archived"] is False
+    # not archived / not ours → repo returns None → 404
+    outline.restore_result = None
+    assert c.post(f"/v1/composition/outline/nodes/{NODE}/restore").status_code == 404
 
 
 # ── M9 chapter-gate + scene_committed routing ──
