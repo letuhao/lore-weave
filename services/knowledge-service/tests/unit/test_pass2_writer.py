@@ -396,13 +396,17 @@ async def test_facts_merged_with_evidence(
 
     assert result.facts_merged == 1
     assert result.evidence_edges == 1
-    # Intentional drop: ``subject``, ``subject_id`` and the candidate's
-    # own ``fact_id`` are not forwarded to merge_fact (K11.7 derives its
-    # own ID from sanitized content; subject params tracked for K18+).
+    # K11.7: merge_fact derives its own ID from sanitized content, so the raw
+    # ``subject`` name and the candidate's own ``fact_id`` are NOT forwarded.
+    # T2.1 (LOOM-103): a RESOLVED ``subject_id`` IS now forwarded so merge_fact can
+    # MATCH the fact's :ABOUT-> subject entity. Here it resolves to None — the name
+    # "Kai" isn't in the (empty) chapter map and the candidate's "eid-kai" isn't in
+    # merged_entity_ids, so the fact is kept but unlinked (the unresolved-but-kept
+    # path). Subject-resolution coverage lives in test_pass2_writer_facts.py.
     kwargs = mock_merge_fact.call_args.kwargs
     assert "subject" not in kwargs
-    assert "subject_id" not in kwargs
     assert "fact_id" not in kwargs
+    assert kwargs["subject_id"] is None
 
 
 # ── K17.9 Injection defense regressions ────────────────────────
