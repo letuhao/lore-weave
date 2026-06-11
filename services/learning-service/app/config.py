@@ -50,6 +50,16 @@ class Settings(BaseSettings):
     # replayable); flipping it back on resumes collection from new events only.
     wiki_learning_enabled: bool = True
 
+    # D-WIKI-M8-EVAL-PLUS — wiki-article groundedness LLM-judge. OFF by default (an LLM
+    # call per article = cost). When ON (+ a model), the on-demand judge endpoint
+    # (POST /internal/learning/wiki/judge, driven by `run_wiki_eval --judge`) scores
+    # groundedness via provider-registry. An explicit model in the request opts in even
+    # when the global flag is off (the human-controlled audit plan).
+    wiki_llm_judge_enabled: bool = False
+    wiki_llm_judge_model_ref: str = ""           # judge model UUID (BYOK user_model)
+    wiki_llm_judge_model_source: str = "user_model"
+    wiki_llm_judge_user_id: str = ""             # fallback owner when an article carries none
+
     class Config:
         env_file = ".env"
 

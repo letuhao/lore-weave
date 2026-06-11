@@ -72,6 +72,8 @@ __all__ = [
     "run_dump_judge",
     "FidelityVerdict",
     "judge_translation_fidelity",
+    "GroundednessVerdict",
+    "judge_wiki_groundedness",
 ]
 
 
@@ -824,3 +826,65 @@ async def judge_translation_fidelity(
     if not (0.0 <= score <= 1.0):
         return None
     return FidelityVerdict(score=score, reason=str(parsed.get("reason", "")))
+
+
+# ── D-WIKI-M8-EVAL-PLUS: wiki-article groundedness judge ───────────────
+# Rate how well an AI-generated wiki article's claims are SUPPORTED by the source
+# material it was built from — a single [0,1] groundedness score, no gold needed.
+# Distinct from CanonVerifier's rule-based flags: this is a semantic claim-vs-source
+# judgment. Best-effort (None on any non-usable outcome) so one judge hiccup never
+# aborts a batch eval.
+
+_GROUNDEDNESS_SYSTEM = _NO_THINK_PREFIX + (
+    "You are a groundedness judge for an encyclopedia. You are given an ARTICLE and the "
+    "SOURCES it was supposed to be built from. Rate how well the article's factual claims "
+    "are SUPPORTED by the sources on a 0.0-1.0 scale: 1.0 = every claim is supported by "
+    "the sources (no hallucination or unsupported inference); 0.5 = some claims are "
+    "unsupported or extrapolated; 0.0 = largely fabricated / unrelated to the sources. "
+    "Judge claim-to-source SUPPORT only — do NOT reward or penalise writing style, "
+    "completeness, or coverage. "
+    'Return ONLY a JSON object: {"score": <number 0.0-1.0>, "reason": "<=15 words"}.'
+)
+
+
+@dataclass
+class GroundednessVerdict:
+    """One wiki-article groundedness judgment: a [0,1] score + a short rationale."""
+
+    score: float
+    reason: str
+
+
+async def judge_wiki_groundedness(
+    client: JudgeLLMClient,
+    *,
+    judge_model: str,
+    user_id: str,
+    model_source: str,
+    article_text: str,
+    sources: list[str],
+) -> "GroundednessVerdict | None":
+    """One LLM call rating wiki-article groundedness in [0,1]. Returns None on any
+    non-usable outcome (empty article/sources / failed call / unparseable / out-of-
+    range) so the caller treats it as 'unjudged' rather than aborting."""
+    src = "\n".join(s for s in (t.strip() for t in sources) if s)
+    if not article_text.strip() or not src:
+        return None
+    user = f"ARTICLE:\n{article_text}\n\nSOURCES:\n{src}"
+    try:
+        raw = await _call_judge(
+            client,
+            judge_model=judge_model,
+            user_id=user_id,
+            model_source=model_source,
+            system=_GROUNDEDNESS_SYSTEM,
+            user=user,
+            n_items=1,
+        )
+        parsed = _extract_json_object(raw)
+        score = float(parsed.get("score"))
+    except (ValueError, KeyError, TypeError):
+        return None
+    if not (0.0 <= score <= 1.0):
+        return None
+    return GroundednessVerdict(score=score, reason=str(parsed.get("reason", "")))

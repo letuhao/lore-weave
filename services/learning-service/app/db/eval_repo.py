@@ -88,6 +88,11 @@ SCORE_CONFIG_SEED: list[dict[str, Any]] = [
                     "the article was mutated/corrected, NOT that the AI output was approved. Do "
                     "NOT average this as an AI-quality score (opposite sense to "
                     "translation_human_accept); it is a community-adoption signal."},
+    {"name": "wiki_llm_judge_groundedness", "data_type": "numeric", "min_value": 0.0, "max_value": 1.0,
+     "description": "D-WIKI-M8-EVAL-PLUS: online LLM-judge groundedness of an AI wiki article "
+                    "vs its source material [0,1] (source=auto, panel_safe=false — a single "
+                    "online judge). 1.0 = every claim supported by sources. Reason + judge model "
+                    "in the comment."},
 ]
 
 

@@ -36,7 +36,7 @@ from app.events.handlers import (
     handle_wiki_suggestion_reviewed,
 )
 from app.middleware.trace_id import TraceIdMiddleware
-from app.routers import corrections, eval as eval_routes, mining
+from app.routers import corrections, eval as eval_routes, mining, wiki_judge
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -113,6 +113,7 @@ app.add_middleware(
 app.include_router(corrections.router)
 app.include_router(mining.router)
 app.include_router(eval_routes.router)
+app.include_router(wiki_judge.router)  # D-WIKI-M8-EVAL-PLUS — internal groundedness judge
 
 
 @app.get("/health", response_class=PlainTextResponse)
