@@ -161,18 +161,20 @@ test.describe('Auto-Draft Factory — real create + report/activity/chapters [fi
       }
       expect(Array.isArray(rep.error_groups)).toBeTruthy();
 
-      // L6 activity keyset page shape.
+      // L6 activity keyset page shape: {items, next_before}.
       const act = await getActivity(request, token, c.campaign_id, '?limit=10');
       expect(act.ok()).toBeTruthy();
-      expect((await act.json())).toHaveProperty('rows');
+      const ap = (await act.json()) as { items: unknown[]; next_before: number | null };
+      expect(Array.isArray(ap.items)).toBeTruthy();
+      expect(ap).toHaveProperty('next_before');
 
-      // L7 in-flight filter + J7 paging shape (created campaign → all pending).
+      // L7 in-flight filter + J7 paging shape: {items, total} (created → all pending).
       const inflight = await getChapters(request, token, c.campaign_id, '?status=inflight');
       expect(inflight.ok()).toBeTruthy();
       const pageAll = await getChapters(request, token, c.campaign_id, '?status=all&limit=50&offset=0');
       expect(pageAll.ok()).toBeTruthy();
-      const pa = (await pageAll.json()) as { rows: unknown[]; total: number };
-      expect(Array.isArray(pa.rows)).toBeTruthy();
+      const pa = (await pageAll.json()) as { items: unknown[]; total: number };
+      expect(Array.isArray(pa.items)).toBeTruthy();
       expect(typeof pa.total).toBe('number');
 
       // C4/C5 switch-model: allowed while `created`. Empty body → 400.

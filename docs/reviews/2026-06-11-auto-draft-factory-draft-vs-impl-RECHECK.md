@@ -83,6 +83,26 @@ Legend: **BE** = backend route/logic · **FE** = component · **T** = test provi
 - **⚪ Vision-beyond-MVP** (track-only, unchanged): 7-step wizard Pipelines/Options/Policy-scheduling steps, optional 50-chapter sample run, sub-run child campaigns, CSV export, heatmap (the paginated table is the MVP substitute), compact-model role exposure.
 - **Live-only smokes** (need a real stack / fault-injection / JSON-clean judge model — tracked in `docs/sessions/SESSION_HANDOFF.md`): `D-S3A/B-*-LIVE-SMOKE` [HARNESS], `D-S5BEVAL-LIVE-SMOKE`/`D-LEARNING-JUDGE-EMPTY-CONTENT` [MODEL].
 
+## Live verification pass (2026-06-11) — screenshots + 1 real bug found & fixed
+
+Brought up the real stack (rebuilt **2 stale images** first — `campaign-service` predated the activity-log migration, `api-gateway-bff` predated the `/v1/campaigns` proxy → both rebuilt; exactly the stale-image trap CLAUDE.md warns about), served the FE via vite dev, logged in as `claude-test`, and drove the screens with Playwright MCP.
+
+**🐛 Bug found & fixed (the live pass earned its keep):** the wizard called `knowledgeApi.listProjects({ limit: 200 })` but the knowledge `/v1/knowledge/projects` endpoint caps `limit ≤ 100` → **422 → the project dropdown was always empty → the wizard was unusable (Next never enabled)**. Mocks missed it (they didn't enforce the limit contract). Fixed in both callers ([BookProjectStep.tsx:26](../../frontend/src/features/campaigns/components/steps/BookProjectStep.tsx#L26), [ModelMatrixStep.tsx:27](../../frontend/src/features/campaigns/components/steps/ModelMatrixStep.tsx#L27)) → 42 projects now populate, 0 console errors. Also fixed a contract bug in the new e2e spec found against real responses (activity/chapters use `items`, not `rows`).
+
+**Screenshots** (`docs/reviews/screenshots/2026-06-11-factory/`):
+| # | Screen | Proves |
+|---|---|---|
+| 01 | Campaigns list | progress bars + spent/budget + status badges (L5) |
+| 02 | Completion report | G1 results grid, G4 "Review draft" CTA, ingest-precondition row, paginated table |
+| 03–04 | Wizard step 1 (before/after fix) | project dropdown bug → fixed (42 projects) |
+| 05 | Wizard step 2 | Translation-pacing gating selector (D-S5C-GATING) |
+| 06 | Wizard step 3 | BYOK model matrix (+ advanced: verifier/eval/embedding/reranker; shows the registered local reranker) |
+| 07 | Live monitor (running) | G3 stats (elapsed/throughput/ETA/in-progress), "Now processing (5)" in-flight panel (L7), "Recent activity" log (L6 — AFTER-UPDATE trigger live), stage progress, controls |
+| 08 | Paused | graceful-pause banner + Resume + "Switch model & resume" |
+| 09 | Switch-model control | 4-role pickers (translation/knowledge/verifier/eval-judge) + orphan-model handling |
+
+Verified live on a real 5-chapter campaign (book 封神演義, project 019e7850-aa1c, local Qwen3-35B): create → start → all 5 dispatched (in-flight panel + activity log populated by the trigger) → pause (banner + switch-model) → cancel. Not captured visually: the **estimate screen** token-columns/cloud-local badge — no wizard-listed book currently has published chapters, and 封神演義 isn't in the user's book list; the estimate feature itself is contract-evidenced (estimate.go:55) + previously live-cleared (`D-S5A-ESTIMATE-LIVE-SMOKE`).
+
 ## Conclusion
 
 The draft-vs-impl gap surface identified on 2026-06-10 is **closed**. Every previously-flagged 🔴/🟡 item has implementation + test evidence above. The QC bar for this branch is now the **E2E coverage pass** in `docs/specs/2026-06-10-auto-draft-factory-e2e-scenarios.md` (the previously `[GAP:Gx]`-tagged scenarios are re-tagged `[NOW]` there) and the runnable `frontend/tests/e2e/specs/campaign-factory.spec.ts`.
