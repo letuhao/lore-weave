@@ -45,21 +45,37 @@ export function GenerateWikiDialog({
 }) {
   const { t } = useTranslation('wiki');
   const { accessToken } = useAuth();
+  const isRegen = !!entityIds?.length;
+  // W3 — explicit generation mode replaces the old ''-vs-model overload. The
+  // segmented toggle drives this; in regen mode it is forced to 'llm' (a
+  // deterministic regenerate is a no-op, so there is no stub choice).
+  const [mode, setMode] = useState<'stub' | 'llm'>(isRegen ? 'llm' : 'stub');
   const [modelRef, setModelRef] = useState('');
   const [kindCodes, setKindCodes] = useState<string[]>([]);
   const [maxSpend, setMaxSpend] = useState('');
 
   // Reset to the safe defaults whenever the dialog (re)opens. The dialog stays
   // mounted between opens (no conditional unmount), so without this a prior LLM
-  // selection persists — defeating the "Deterministic stubs" default and risking
-  // an unintended token-spend on the next confirm (/review-impl F1).
+  // selection persists — defeating the deterministic default and risking an
+  // unintended token-spend on the next confirm (/review-impl F1).
   useEffect(() => {
     if (open) {
+      setMode(isRegen ? 'llm' : 'stub');
       setModelRef('');
       setKindCodes([]);
       setMaxSpend('');
     }
-  }, [open]);
+  }, [open, isRegen]);
+
+  // Switching back to the stub path clears any picked model + spend cap so a
+  // stale LLM selection can't leak into a "deterministic" run (token-spend trap).
+  const selectMode = (m: 'stub' | 'llm') => {
+    setMode(m);
+    if (m === 'stub') {
+      setModelRef('');
+      setMaxSpend('');
+    }
+  };
 
   const modelsQuery = useQuery<{ items: UserModel[] }>({
     queryKey: ['ai-models', 'chat'],
@@ -78,13 +94,13 @@ export function GenerateWikiDialog({
   });
   const kinds = kindsQuery.data ?? [];
 
-  const isRegen = !!entityIds?.length;
-  const isLlm = modelRef !== '';
+  const isLlm = mode === 'llm';
   const maxSpendValid = maxSpend === '' || DECIMAL_RE.test(maxSpend);
 
-  // Pre-flight cost estimate (D-WIKI-P2B-COST-ESTIMATE) — fetched only when an LLM
-  // model is picked (the deterministic path is free). The per-article rate is the
-  // flat figure the budget gate charges, so the estimate matches the live spend.
+  // Pre-flight cost estimate (D-WIKI-P2B-COST-ESTIMATE) — fetched in AI mode only
+  // (the deterministic path is free). The rate is book-level (model-independent),
+  // so it can show before a model is picked; it is the flat figure the budget gate
+  // charges, so the estimate matches the live spend.
   const configQuery = useQuery<WikiGenConfig>({
     queryKey: ['wiki-gen-config', bookId],
     queryFn: () => wikiApi.getGenConfig(bookId!, accessToken!),
@@ -94,9 +110,10 @@ export function GenerateWikiDialog({
   const rawPerArticle = configQuery.data ? Number(configQuery.data.cost_per_article_usd) : NaN;
   const perArticle = Number.isFinite(rawPerArticle) ? rawPerArticle : null;
   const fmtUsd = (n: number) => `$${n.toFixed(2)}`;
-  // Regenerate needs a model (the deterministic path skips entities that already
-  // have an article, so a deterministic "regenerate" would be a no-op).
-  const canConfirm = !busy && maxSpendValid && (!isRegen || isLlm);
+  // In AI mode a model must be picked before confirming (the empty placeholder
+  // would otherwise trigger an unintended deterministic/no-op run). The stub
+  // path needs nothing. Regen is always 'llm', so it inherits the model gate.
+  const canConfirm = !busy && maxSpendValid && (mode === 'stub' || modelRef !== '');
 
   const handleConfirm = async () => {
     if (!canConfirm) return;
@@ -151,35 +168,59 @@ export function GenerateWikiDialog({
       }
     >
       <div className="flex flex-col gap-4">
-        {/* Model picker — '' = deterministic stubs */}
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted-foreground">{t('gen.model.label')}</span>
-          <select
-            value={modelRef}
-            onChange={(e) => setModelRef(e.target.value)}
-            disabled={modelsQuery.isLoading}
-            data-testid="wiki-gen-model"
-            className="rounded-md border bg-input px-3 py-2 text-sm outline-none focus:border-ring disabled:opacity-60"
-          >
-            {/* Regenerate requires a model (deterministic skips article-having
-                entities); batch generate offers the deterministic default. */}
-            <option value="" disabled={isRegen}>
-              {isRegen ? t('gen.model.pickRequired') : t('gen.model.deterministic')}
-            </option>
-            {chatModels.map((m) => (
-              <option key={m.user_model_id} value={m.user_model_id}>
-                {m.alias ? `${m.alias} (${m.provider_model_name})` : `${m.provider_kind}/${m.provider_model_name}`}
+        {/* Generation-mode toggle — batch only (regen is always AI). Replaces the
+            old ''-vs-model dropdown overload with an explicit segmented control. */}
+        {!isRegen && (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground">{t('gen.mode.label')}</span>
+            <div className="inline-flex rounded-md border p-0.5" role="radiogroup" aria-label={t('gen.mode.label')}>
+              {(['stub', 'llm'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="radio"
+                  aria-checked={mode === m}
+                  onClick={() => selectMode(m)}
+                  data-testid={`wiki-gen-mode-${m}`}
+                  className={cn(
+                    'flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors',
+                    mode === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {t(`gen.mode.${m}`)}
+                </button>
+              ))}
+            </div>
+            <span className="text-[11px] text-muted-foreground">
+              {isLlm ? t('gen.model.llmHint') : t('gen.model.deterministicHint')}
+            </span>
+          </div>
+        )}
+
+        {/* Model picker — AI mode (batch) or regen (always AI). The empty option
+            is a disabled placeholder; a real model must be chosen to confirm. */}
+        {(isRegen || isLlm) && (
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground">{t('gen.model.label')}</span>
+            <select
+              value={modelRef}
+              onChange={(e) => setModelRef(e.target.value)}
+              disabled={modelsQuery.isLoading}
+              data-testid="wiki-gen-model"
+              className="rounded-md border bg-input px-3 py-2 text-sm outline-none focus:border-ring disabled:opacity-60"
+            >
+              <option value="" disabled>
+                {t('gen.model.pickRequired')}
               </option>
-            ))}
-          </select>
-          <span className="text-[11px] text-muted-foreground">
-            {isRegen
-              ? t('gen.regenHint')
-              : isLlm
-                ? t('gen.model.llmHint')
-                : t('gen.model.deterministicHint')}
-          </span>
-        </label>
+              {chatModels.map((m) => (
+                <option key={m.user_model_id} value={m.user_model_id}>
+                  {m.alias ? `${m.alias} (${m.provider_model_name})` : `${m.provider_kind}/${m.provider_model_name}`}
+                </option>
+              ))}
+            </select>
+            {isRegen && <span className="text-[11px] text-muted-foreground">{t('gen.regenHint')}</span>}
+          </label>
+        )}
 
         {/* Optional kind filter — batch generate only (regen is one entity) */}
         {!isRegen && kinds.length > 0 && (

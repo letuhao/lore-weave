@@ -102,7 +102,7 @@ function WikiToC({ headings }: { headings: { text: string; level: number; id: st
 
 /* ── Sidebar article list ────────────────────────────────────────────────── */
 
-function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKindFilter, search, onSearch, total, t, onGenerate, generating, onCreateOpen }: {
+export function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKindFilter, search, onSearch, t, onGenerate, generating, onCreateOpen }: {
   articles: WikiArticleListItem[];
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -111,7 +111,6 @@ function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKind
   onKindFilter: (k: string) => void;
   search: string;
   onSearch: (s: string) => void;
-  total: number;
   t: (key: string, opts?: Record<string, unknown>) => string;
   onGenerate?: () => void;
   generating?: boolean;
@@ -126,6 +125,13 @@ function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKind
     }
     return groups;
   }, [articles]);
+
+  // W3 — "N articles · M by AI" split. M counts AI-authored articles
+  // (generation_status set) within the loaded list, so it is always ≤ N.
+  const aiCount = useMemo(
+    () => articles.filter(a => a.generation_status != null).length,
+    [articles],
+  );
 
   return (
     <div className="flex h-full flex-col rounded-l-lg border-r bg-card">
@@ -158,7 +164,8 @@ function WikiSidebar({ articles, selectedId, onSelect, kinds, kindFilter, onKind
           </div>
         </div>
         <span className="text-[10px] text-muted-foreground">
-          {t('articles', { count: total })}
+          {t('articles', { count: articles.length })}
+          {aiCount > 0 && <> &middot; {t('aiSplit', { count: aiCount })}</>}
         </span>
         <div className="relative mt-2">
           <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
@@ -774,7 +781,6 @@ export function WikiTab({ bookId }: { bookId: string }) {
             onKindFilter={setKindFilter}
             search={search}
             onSearch={setSearch}
-            total={total}
             t={t}
             onGenerate={openBatchGenerate}
             generating={isActive}

@@ -7,6 +7,8 @@
   "noMatch": "Không có bài nào phù hợp với bộ lọc",
   "articles": "{{count}} bài",
   "articles_other": "{{count}} bài",
+  "aiSplit": "{{count}} do AI sinh",
+  "aiSplit_other": "{{count}} do AI sinh",
   "revisions": "{{count}} phiên bản",
   "revisions_other": "{{count}} phiên bản",
   "allKinds": "Tất cả",
@@ -52,6 +54,11 @@
   "gen": {
     "title": "Tạo bài viết Wiki",
     "description": "Tạo khung bài viết tất định, hoặc chọn một mô hình để tạo bài viết đầy đủ bằng AI.",
+    "mode": {
+      "label": "Chế độ",
+      "stub": "Mẫu cố định",
+      "llm": "AI tạo sinh"
+    },
     "cancel": "Hủy",
     "starting": "Đang bắt đầu…",
     "confirmStub": "Tạo khung",

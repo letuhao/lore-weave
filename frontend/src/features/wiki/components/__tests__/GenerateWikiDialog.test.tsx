@@ -34,6 +34,12 @@ function wrap(ui: React.ReactElement) {
   return render(ui, { wrapper: Wrapper });
 }
 
+// W3 — switch the batch dialog into AI mode (the model picker only renders here).
+async function toAiMode() {
+  fireEvent.click(screen.getByTestId('wiki-gen-mode-llm'));
+  await waitFor(() => expect(screen.getByRole('option', { name: /Gemma/ })).toBeTruthy());
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   listUserModels.mockResolvedValue({
@@ -53,19 +59,56 @@ describe('GenerateWikiDialog', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('defaults to the deterministic-stub action (no model selected)', async () => {
+  it('defaults to the deterministic-stub mode (toggle on stub, no model picker)', async () => {
     wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={vi.fn()} busy={false} />);
-    await waitFor(() => expect(screen.getByTestId('wiki-gen-model')).toBeTruthy());
-    // confirm label = stub, no spend cap field
-    expect(screen.getByTestId('wiki-gen-confirm').textContent).toContain('gen.confirmStub');
+    await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-stub')).toBeTruthy());
+    // stub segment selected, no model picker, no spend cap, stub confirm label
+    expect(screen.getByTestId('wiki-gen-mode-stub').getAttribute('aria-checked')).toBe('true');
+    expect(screen.queryByTestId('wiki-gen-model')).toBeNull();
     expect(screen.queryByTestId('wiki-gen-maxspend')).toBeNull();
+    expect(screen.getByTestId('wiki-gen-confirm').textContent).toContain('gen.confirmStub');
   });
 
-  it('switching to a model reveals the spend cap and the AI action, and triggers with model_ref', async () => {
+  it('stub mode triggers a deterministic run (no model_ref)', async () => {
     const onTrigger = vi.fn().mockResolvedValue({ job_id: 'j1', status: 'pending' });
     const onClose = vi.fn();
     wrap(<GenerateWikiDialog open onClose={onClose} onTrigger={onTrigger} busy={false} />);
-    await waitFor(() => expect(screen.getByRole('option', { name: /Gemma/ })).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-stub')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('wiki-gen-confirm'));
+    await waitFor(() => expect(onTrigger).toHaveBeenCalledWith({}));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it('stub mode passes selected kind_codes (deterministic generation by kind)', async () => {
+    const onTrigger = vi.fn().mockResolvedValue({ job_id: 'j1', status: 'pending' });
+    wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={onTrigger} busy={false} />);
+    // kind chips load from getKinds and render in batch mode (both modes)
+    const chip = await screen.findByRole('button', { name: /Character/ });
+    fireEvent.click(chip);
+    fireEvent.click(screen.getByTestId('wiki-gen-confirm'));
+    // stub mode → no model_ref, but the kind filter still scopes the run
+    await waitFor(() => expect(onTrigger).toHaveBeenCalledWith({ kind_codes: ['character'] }));
+  });
+
+  it('AI mode with no model picked keeps confirm disabled', async () => {
+    const onTrigger = vi.fn();
+    wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={onTrigger} busy={false} />);
+    await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-llm')).toBeTruthy());
+    await toAiMode();
+    // picker present but empty → confirm disabled, AI confirm label
+    expect((screen.getByTestId('wiki-gen-model') as HTMLSelectElement).value).toBe('');
+    expect((screen.getByTestId('wiki-gen-confirm') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('wiki-gen-confirm').textContent).toContain('gen.confirmLlm');
+    fireEvent.click(screen.getByTestId('wiki-gen-confirm'));
+    expect(onTrigger).not.toHaveBeenCalled();
+  });
+
+  it('AI mode + model reveals the spend cap and triggers with model_ref', async () => {
+    const onTrigger = vi.fn().mockResolvedValue({ job_id: 'j1', status: 'pending' });
+    const onClose = vi.fn();
+    wrap(<GenerateWikiDialog open onClose={onClose} onTrigger={onTrigger} busy={false} />);
+    await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-llm')).toBeTruthy());
+    await toAiMode();
 
     fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
     expect(screen.getByTestId('wiki-gen-confirm').textContent).toContain('gen.confirmLlm');
@@ -79,24 +122,40 @@ describe('GenerateWikiDialog', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled()); // closes on success
   });
 
-  it('resets to the deterministic default when reopened (/review-impl F1)', async () => {
+  it('switching AI → stub clears the picked model + spend (no token-spend leak)', async () => {
+    const onTrigger = vi.fn().mockResolvedValue({ job_id: 'j1', status: 'pending' });
+    wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={onTrigger} busy={false} />);
+    await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-llm')).toBeTruthy());
+    await toAiMode();
+    fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
+    fireEvent.change(screen.getByTestId('wiki-gen-maxspend'), { target: { value: '5.00' } });
+    // back to stub — picker + spend gone, and a confirm runs deterministic
+    fireEvent.click(screen.getByTestId('wiki-gen-mode-stub'));
+    expect(screen.queryByTestId('wiki-gen-model')).toBeNull();
+    expect(screen.queryByTestId('wiki-gen-maxspend')).toBeNull();
+    fireEvent.click(screen.getByTestId('wiki-gen-confirm'));
+    await waitFor(() => expect(onTrigger).toHaveBeenCalledWith({}));
+  });
+
+  it('resets to the stub default when reopened (/review-impl F1)', async () => {
     const { rerender } = wrap(
       <GenerateWikiDialog open onClose={() => {}} onTrigger={vi.fn()} busy={false} />,
     );
-    await waitFor(() => expect(screen.getByRole('option', { name: /Gemma/ })).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-llm')).toBeTruthy());
+    await toAiMode();
     fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
     expect((screen.getByTestId('wiki-gen-model') as HTMLSelectElement).value).toBe('m1');
     // close then reopen — the dialog stays mounted, so without the reset the
-    // model selection would persist
+    // AI selection would persist
     rerender(<GenerateWikiDialog open={false} onClose={() => {}} onTrigger={vi.fn()} busy={false} />);
     rerender(<GenerateWikiDialog open onClose={() => {}} onTrigger={vi.fn()} busy={false} />);
     await waitFor(() =>
-      expect((screen.getByTestId('wiki-gen-model') as HTMLSelectElement).value).toBe(''),
+      expect(screen.getByTestId('wiki-gen-mode-stub').getAttribute('aria-checked')).toBe('true'),
     );
-    expect(screen.queryByTestId('wiki-gen-maxspend')).toBeNull(); // back to deterministic
+    expect(screen.queryByTestId('wiki-gen-model')).toBeNull(); // back to deterministic
   });
 
-  it('regen mode requires a model and triggers with entity_ids (not kind_codes)', async () => {
+  it('regen mode has no toggle, requires a model, triggers with entity_ids', async () => {
     const onTrigger = vi.fn().mockResolvedValue({ job_id: 'j1', status: 'pending' });
     wrap(
       <GenerateWikiDialog
@@ -109,11 +168,13 @@ describe('GenerateWikiDialog', () => {
       />,
     );
     await waitFor(() => expect(screen.getByRole('option', { name: /Gemma/ })).toBeTruthy());
+    // regen is always AI — no mode toggle, picker shown directly
+    expect(screen.queryByTestId('wiki-gen-mode-stub')).toBeNull();
     // no model picked yet → confirm disabled (deterministic regen would be a no-op)
     expect((screen.getByTestId('wiki-gen-confirm') as HTMLButtonElement).disabled).toBe(true);
-    // the deterministic option is disabled in regen mode
-    const deterministic = screen.getByRole('option', { name: 'gen.model.pickRequired' }) as HTMLOptionElement;
-    expect(deterministic.disabled).toBe(true);
+    // the placeholder option is disabled
+    const placeholder = screen.getByRole('option', { name: 'gen.model.pickRequired' }) as HTMLOptionElement;
+    expect(placeholder.disabled).toBe(true);
 
     fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
     fireEvent.click(screen.getByTestId('wiki-gen-confirm'));
@@ -146,10 +207,10 @@ describe('GenerateWikiDialog', () => {
     expect(getGenConfig).toHaveBeenCalledWith('b1', 'tok');
   });
 
-  it('shows a per-article rate estimate in batch mode (count unknown pre-flight)', async () => {
+  it('shows a per-article rate estimate in batch AI mode (count unknown pre-flight)', async () => {
     wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={vi.fn()} busy={false} bookId="b1" />);
-    await waitFor(() => expect(screen.getByRole('option', { name: /Gemma/ })).toBeTruthy());
-    fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
+    await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-llm')).toBeTruthy());
+    await toAiMode();
     await waitFor(() => {
       const txt = screen.getByTestId('wiki-gen-estimate').textContent || '';
       expect(txt).toContain('gen.estimate.perArticle');
@@ -157,9 +218,9 @@ describe('GenerateWikiDialog', () => {
     });
   });
 
-  it('shows no estimate on the deterministic (non-LLM) path', async () => {
+  it('shows no estimate in the deterministic (stub) mode', async () => {
     wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={vi.fn()} busy={false} bookId="b1" />);
-    await waitFor(() => expect(screen.getByTestId('wiki-gen-model')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-stub')).toBeTruthy());
     expect(screen.queryByTestId('wiki-gen-estimate')).toBeNull();
     expect(getGenConfig).not.toHaveBeenCalled();
   });
@@ -167,8 +228,8 @@ describe('GenerateWikiDialog', () => {
   it('blocks confirm on an invalid spend cap', async () => {
     const onTrigger = vi.fn();
     wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={onTrigger} busy={false} />);
-    // wait for the model OPTION (not just the select) so the value actually sticks
-    await waitFor(() => expect(screen.getByRole('option', { name: /Gemma/ })).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('wiki-gen-mode-llm')).toBeTruthy());
+    await toAiMode();
     fireEvent.change(screen.getByTestId('wiki-gen-model'), { target: { value: 'm1' } });
     fireEvent.change(screen.getByTestId('wiki-gen-maxspend'), { target: { value: 'abc' } });
     expect((screen.getByTestId('wiki-gen-confirm') as HTMLButtonElement).disabled).toBe(true);

@@ -37,7 +37,7 @@ The clobber-guard / H0 trust story is invisible today (suggestions show reason t
 - **Cross-service ⇒ VERIFY needs a live-smoke token** (or a tracked deferral).
 - **Acceptance:** batch bar shows severity counts + ~$estimate + dismiss-all; rescan triggers a real recipe+kg sweep (versions sourced from knowledge) and refreshes the feed.
 
-### W3 — Generate dialog + sidebar polish (screens ②①) · **FE-mostly** · S · value LOW–MED
+### W3 — Generate dialog + sidebar polish (screens ②①) · **FE-only** · M (reclassified from S) · value LOW–MED · ✅ DONE 2026-06-11
 - Mode **segmented toggle** (Mẫu cố định / AI tạo sinh) replacing the bare dropdown (keep the same underlying state).
 - Sidebar **"N bài · M do AI sinh"** count (compute M from `generation_status != null` in the list).
 - (Optional, needs a signal) **grounding-status line** ("Sách đã lập chỉ mục") — needs an "is this book indexed" read; defer if no cheap signal. **Language picker** — display-only from BookProfile (advisory). **Budget/used** on the cost line — needs usage-billing data → **defer to a phase-2** of this slice.

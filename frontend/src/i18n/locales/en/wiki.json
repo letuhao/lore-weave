@@ -7,6 +7,8 @@
   "noMatch": "No articles match your filters",
   "articles": "{{count}} article",
   "articles_other": "{{count}} articles",
+  "aiSplit": "{{count}} by AI",
+  "aiSplit_other": "{{count}} by AI",
   "revisions": "{{count}} revision",
   "revisions_other": "{{count}} revisions",
   "allKinds": "All",
@@ -52,6 +54,11 @@
   "gen": {
     "title": "Generate Wiki Articles",
     "description": "Render deterministic stubs, or pick a model to generate full articles with AI.",
+    "mode": {
+      "label": "Mode",
+      "stub": "Deterministic",
+      "llm": "AI generated"
+    },
     "cancel": "Cancel",
     "starting": "Starting…",
     "confirmStub": "Generate stubs",
