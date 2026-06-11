@@ -56,16 +56,19 @@ def _msg() -> dict:
 
 
 @pytest.mark.asyncio
-async def test_finalize_idempotent_on_duplicate_skips_counter_and_emits():
+async def test_finalize_idempotent_on_duplicate_skips_counter_but_finalizes_job():
     """(A) UPDATE 0 ⇒ already finalized ⇒ no counter increment, no active-version
-    insert, no outbox event, and the post-commit emits are skipped."""
+    insert, no outbox event, no per-chapter telemetry (quality/memo) — BUT the
+    job-level finalization STILL runs (review-impl finding 1): if the first delivery
+    crashed after the status commit but before _check_job_completion, the redelivery
+    must finalize the job, not leave it stuck 'running'."""
     pool, db = _make_db("UPDATE 0")
     publish_event = AsyncMock()
     with patch.object(chapter_worker, "_insert_outbox_event", new=AsyncMock()) as outbox, \
          patch.object(chapter_worker, "_emit_chapter_done", new=AsyncMock()) as done, \
          patch.object(chapter_worker, "_check_job_completion", new=AsyncMock()) as check, \
-         patch.object(chapter_worker, "_save_chapter_memo", new=AsyncMock()), \
-         patch.object(chapter_worker, "_emit_translation_quality", new=AsyncMock()):
+         patch.object(chapter_worker, "_save_chapter_memo", new=AsyncMock()) as memo, \
+         patch.object(chapter_worker, "_emit_translation_quality", new=AsyncMock()) as quality:
         m = _msg()
         await chapter_worker._finalize_chapter(
             pool=pool, publish_event=publish_event, msg=m,
@@ -79,8 +82,12 @@ async def test_finalize_idempotent_on_duplicate_skips_counter_and_emits():
     # exactly ONE execute (the guarded UPDATE) — counter/active inserts skipped
     assert db.execute.await_count == 1
     outbox.assert_not_awaited()
-    done.assert_not_awaited()
-    check.assert_not_awaited()
+    # per-chapter telemetry skipped on a duplicate (no double-emit)
+    quality.assert_not_awaited()
+    memo.assert_not_awaited()
+    # job-level finalization runs ALWAYS (idempotent) — closes the crash-stall gap
+    done.assert_awaited_once()
+    check.assert_awaited_once()
 
 
 @pytest.mark.asyncio

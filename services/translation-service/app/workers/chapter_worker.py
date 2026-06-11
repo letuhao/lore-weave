@@ -368,36 +368,43 @@ async def _finalize_chapter(
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
                 })
-    if already_done:
-        return
-    log.info("chapter %s: DB persist complete", chapter_id)
+    # Per-chapter telemetry (quality / memo / metric) fires ONCE — skipped on a
+    # duplicate delivery to avoid double-emitting. All best-effort.
+    if not already_done:
+        log.info("chapter %s: DB persist complete", chapter_id)
 
-    # M7a: emit the V3 quality rollup → learning-service (feedback flywheel).
-    # POST-commit + best-effort (review-impl MED): a feedback-log failure must
-    # never roll back a successful translation. Outbox-atomicity is traded for
-    # safety — losing one telemetry event is fine; losing the translation is not.
-    try:
-        await _emit_translation_quality(
-            pool, chapter_translation_id, msg, pipeline_version,
-            # M7d-3: feed the judge its inputs (attached only when the feed flag is
-            # on). `memo_text` is the translated-only text for BOTH pipelines; for a
-            # block chapter `chapter_text` may be empty → the emit skips the feed.
-            source_text=chapter_text, translated_text=memo_text,
+        # M7a: emit the V3 quality rollup → learning-service (feedback flywheel).
+        # POST-commit + best-effort (review-impl MED): a feedback-log failure must
+        # never roll back a successful translation. Outbox-atomicity is traded for
+        # safety — losing one telemetry event is fine; losing the translation is not.
+        try:
+            await _emit_translation_quality(
+                pool, chapter_translation_id, msg, pipeline_version,
+                # M7d-3: feed the judge its inputs (attached only when the feed flag
+                # is on). `memo_text` is the translated-only text for BOTH pipelines;
+                # for a block chapter `chapter_text` may be empty → the emit skips it.
+                source_text=chapter_text, translated_text=memo_text,
+            )
+        except Exception:  # noqa: BLE001 — telemetry must not break the worker
+            log.warning("M7a: failed to emit translation quality (non-fatal)", exc_info=True)
+
+        # V2: Save chapter memo for next chapter's context (TD1: now also populated
+        # for the block pipeline via memo_text derived above).
+        await _save_chapter_memo(
+            pool, msg["book_id"], chapter_index, target_language, memo_text,
         )
-    except Exception:  # noqa: BLE001 — telemetry must not break the worker
-        log.warning("M7a: failed to emit translation quality (non-fatal)", exc_info=True)
 
-    # V2: Save chapter memo for next chapter's context (TD1: now also populated
-    # for the block pipeline via memo_text derived above).
-    await _save_chapter_memo(
-        pool, msg["book_id"], chapter_index, target_language, memo_text,
-    )
+        record_stage(
+            "translation.chapter", pipeline=pipeline_version, status="completed",
+            chapter_id=str(chapter_id), in_tokens=input_tokens or 0, out_tokens=output_tokens or 0,
+        )
 
-    record_stage(
-        "translation.chapter", pipeline=pipeline_version, status="completed",
-        chapter_id=str(chapter_id), in_tokens=input_tokens or 0, out_tokens=output_tokens or 0,
-    )
-
+    # Job-level finalization runs ALWAYS — even on a duplicate (review-impl finding 1).
+    # If the FIRST delivery committed the status transaction but crashed BEFORE these,
+    # the redelivery's idempotency guard (already_done) would otherwise skip them and
+    # the JOB would stay 'running' forever (no recovery for a non-campaign job).
+    # `_check_job_completion` re-counts (idempotent); `_emit_chapter_done` is a
+    # harmless SSE re-emit. Both are cheap and safe to repeat.
     await _emit_chapter_done(publish_event, user_id, msg, "completed", None)
     log.info("chapter %s: chapter_done event emitted", chapter_id)
     await _check_job_completion(pool, job_id, user_id, msg, publish_event)
