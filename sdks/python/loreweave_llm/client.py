@@ -466,6 +466,42 @@ class Client:
                 await asyncio.sleep(interval)
                 interval = min(interval * poll_backoff, max_poll_interval_s)
 
+    async def await_job_event(
+        self,
+        job_id: str | UUID,
+        *,
+        user_id: str | None = None,
+        timeout_s: float | None = None,
+    ) -> Job:
+        """Wait for a job's terminal event, with an optional overall deadline.
+
+        Explicit event-resume API (LLM re-arch Phase 1 §5.4) for callers that
+        prefer "submit then await the event" + a wall-clock cap over the
+        unbounded ``wait_terminal``. Event-driven when ``event_redis_url`` is
+        configured (XREAD wakes the wait the instant the terminal event lands),
+        poll-fallback otherwise — so it's correct with or without a broker.
+        Raises ``asyncio.TimeoutError`` if ``timeout_s`` elapses first.
+        """
+        coro = self.wait_terminal(job_id, user_id=user_id)
+        if timeout_s is None:
+            return await coro
+        return await asyncio.wait_for(coro, timeout=timeout_s)
+
+    async def submit_and_await_event(
+        self,
+        request: SubmitJobRequest,
+        *,
+        user_id: str | None = None,
+        timeout_s: float | None = None,
+    ) -> Job:
+        """Submit a job and await its terminal event. The coroutine-releasing
+        win (submit → persist job_id → return → resume in a separate consumer)
+        is the caller's to take; this convenience binds submit + await for the
+        common in-line case while still resuming on the event, not a tight poll.
+        """
+        resp = await self.submit_job(request, user_id=user_id)
+        return await self.await_job_event(resp.job_id, user_id=user_id, timeout_s=timeout_s)
+
     async def transcribe(
         self,
         audio: str | bytes | bytearray | memoryview,

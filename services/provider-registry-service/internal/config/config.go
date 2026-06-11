@@ -93,6 +93,14 @@ type Config struct {
 	// of failing acquire. Default false ⇒ today's direct-goroutine dispatch (zero
 	// change). Env LLM_JOB_QUEUE_ENABLED.
 	LLMJobQueueEnabled bool
+
+	// LLM re-arch Phase 1 (§5.6) — stuck-`running` truth-sweeper. A job that
+	// crashed mid-Process is left running (queue redelivery can't re-run it); this
+	// periodic sweep bulk-fails any running job with no progress past the timeout.
+	// Timeout generous (a legit long multi-chunk job keeps bumping last_progress_at).
+	// 0 = disabled. Env LLM_RUNNING_SWEEP_TIMEOUT_S / LLM_RUNNING_SWEEP_INTERVAL_S.
+	LLMRunningSweepTimeoutS  int
+	LLMRunningSweepIntervalS int
 }
 
 func Load() (*Config, error) {
@@ -191,6 +199,20 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	c.LLMJobQueueEnabled = os.Getenv("LLM_JOB_QUEUE_ENABLED") == "true"
+	// §5.6 stuck-running sweeper. Default 30min timeout / 60s interval; read
+	// directly so 0 (disabled) is allowed (getEnvInt rejects 0).
+	if v := os.Getenv("LLM_RUNNING_SWEEP_TIMEOUT_S"); v != "" {
+		n, convErr := strconv.Atoi(v)
+		if convErr != nil || n < 0 {
+			return nil, fmt.Errorf("LLM_RUNNING_SWEEP_TIMEOUT_S must be a non-negative integer")
+		}
+		c.LLMRunningSweepTimeoutS = n
+	} else {
+		c.LLMRunningSweepTimeoutS = 1800
+	}
+	if c.LLMRunningSweepIntervalS, err = getEnvInt("LLM_RUNNING_SWEEP_INTERVAL_S", 60); err != nil {
+		return nil, err
+	}
 	return c, nil
 }
 

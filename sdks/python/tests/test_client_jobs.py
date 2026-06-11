@@ -251,6 +251,40 @@ async def test_wait_terminal_polls_until_completed():
     assert state["polls"] == 3
 
 
+@pytest.mark.asyncio
+async def test_await_job_event_returns_terminal():
+    # Explicit event-resume API resolves to the terminal Job (poll path here).
+    state = {"polls": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        state["polls"] += 1
+        status = "completed" if state["polls"] >= 2 else "running"
+        return httpx.Response(200, json={
+            "job_id": JOB_UUID, "operation": "chat", "status": status,
+            "submitted_at": "2026-04-26T00:00:00Z",
+        })
+
+    client = _make_client(handler)
+    job = await client.await_job_event(JOB_UUID, timeout_s=5.0)
+    assert job.status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_await_job_event_times_out():
+    # A job that never terminates → await_job_event raises TimeoutError once the
+    # deadline elapses (unbounded wait_terminal would hang forever).
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "job_id": JOB_UUID, "operation": "chat", "status": "running",
+            "submitted_at": "2026-04-26T00:00:00Z",
+        })
+
+    client = _make_client(handler)
+    import asyncio as _asyncio
+    with pytest.raises((_asyncio.TimeoutError, TimeoutError)):
+        await client.await_job_event(JOB_UUID, timeout_s=0.05)
+
+
 class _FakeEventRedis:
     """Minimal stand-in for redis.asyncio: xread returns one terminal event for
     the target job on the first call, then nothing (block elapses)."""

@@ -157,6 +157,29 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 			}
 		}
 
+		// Phase 1 §5.6 — stuck-`running` truth-sweeper. Periodically bulk-fails
+		// jobs that crashed mid-Process (left running, no progress past the
+		// timeout) + emits their terminal event so the caller resumes. Timeout 0
+		// = disabled. Independent of Redis (the DB transition stands even if the
+		// relay isn't shipping events).
+		if cfg.LLMRunningSweepTimeoutS > 0 {
+			timeout := time.Duration(cfg.LLMRunningSweepTimeoutS) * time.Second
+			interval := time.Duration(cfg.LLMRunningSweepIntervalS) * time.Second
+			repo := s.jobsRepo
+			go func() {
+				t := time.NewTicker(interval)
+				defer t.Stop()
+				for range t.C {
+					if n, serr := repo.SweepStuckRunning(context.Background(), timeout); serr != nil {
+						slog.Warn("stuck-running sweep failed", "err", serr)
+					} else if n > 0 {
+						slog.Info("stuck-running sweep", "swept", n)
+					}
+				}
+			}()
+			slog.Info("stuck-running sweeper enabled", "timeout_s", cfg.LLMRunningSweepTimeoutS, "interval_s", cfg.LLMRunningSweepIntervalS)
+		}
+
 		// Phase 1 Commit 3 — durable work queue. When enabled (+ broker set),
 		// submit enqueues and this consumer pool runs jobs behind a per-kind
 		// semaphore (= governor.MaxFor), so a slow local job DELAYS the queue

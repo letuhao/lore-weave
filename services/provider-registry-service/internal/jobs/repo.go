@@ -498,6 +498,66 @@ RETURNING operation, job_meta
 	return 1, nil
 }
 
+// SweepStuckRunning is the §5.6 truth-sweeper backstop (D-PHASE1-RUNNING-SWEEPER):
+// a job that crashed mid-Process is left `running` and is NOT recovered by queue
+// redelivery (Process's pending-only gate). This bulk-fails any `running` job
+// whose last_progress_at is older than olderThan — a job that's actively
+// streaming bumps last_progress_at per chunk, so only a genuinely STALLED job is
+// swept (a legit long multi-chunk job keeps progressing). Each swept job gets a
+// durable terminal-event row in the SAME tx so its caller (campaign) resumes and
+// can rerun-failed. Returns the count swept.
+func (r *Repo) SweepStuckRunning(ctx context.Context, olderThan time.Duration) (int, error) {
+	cutoff := -olderThan.Seconds() // negative → "now() + (-secs) = now() - secs"
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("sweep: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	rows, err := tx.Query(ctx, `
+UPDATE llm_jobs
+SET status='failed', completed_at=now(),
+    error_code='LLM_STUCK_TIMEOUT',
+    error_message='job stalled in running with no progress past the sweep threshold'
+WHERE status='running'
+  AND COALESCE(last_progress_at, started_at) < now() + make_interval(secs => $1)
+RETURNING job_id, owner_user_id, operation, job_meta
+`, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("sweep: update: %w", err)
+	}
+	type swept struct {
+		jobID, owner uuid.UUID
+		operation    string
+		campaignID   *uuid.UUID
+	}
+	var batch []swept
+	for rows.Next() {
+		var s swept
+		var jobMeta []byte
+		if err := rows.Scan(&s.jobID, &s.owner, &s.operation, &jobMeta); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("sweep: scan: %w", err)
+		}
+		s.campaignID = parseJobMetaCampaignID(jobMeta)
+		batch = append(batch, s)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("sweep: rows: %w", err)
+	}
+	for _, s := range batch {
+		if err := insertJobEventOutbox(ctx, tx, s.jobID, s.owner, s.operation, "failed",
+			"", nil, "LLM_STUCK_TIMEOUT", "swept: stalled in running", s.campaignID, ""); err != nil {
+			return 0, fmt.Errorf("sweep: insert job_event: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("sweep: commit: %w", err)
+	}
+	return len(batch), nil
+}
+
 // ModelPricing reads a model's pricing JSONB. For a user_model the lookup is
 // scoped to ownerUserID. found=false means no such model exists — the caller
 // treats that as a 404, distinct from a found-but-unpriced model (whose empty

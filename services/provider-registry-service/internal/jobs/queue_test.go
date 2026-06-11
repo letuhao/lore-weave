@@ -9,6 +9,7 @@ import (
 	"context"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pashagolub/pgxmock/v4"
@@ -98,6 +99,55 @@ func TestProcessJob_NotPendingSkips(t *testing.T) {
 
 	w.ProcessJob(context.Background(), uuid.New())
 
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+func TestSweepStuckRunning_FailsAndEmits(t *testing.T) {
+	// Two stalled `running` jobs → bulk UPDATE…RETURNING → a job_event_outbox
+	// INSERT per swept job → commit, returns 2.
+	mock, _ := pgxmock.NewPool()
+	defer mock.Close()
+	repo := &Repo{pool: mock}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(1)...).
+		WillReturnRows(pgxmock.NewRows([]string{"job_id", "owner_user_id", "operation", "job_meta"}).
+			AddRow(uuid.New(), uuid.New(), "entity_extraction", []byte(`{}`)).
+			AddRow(uuid.New(), uuid.New(), "chat", []byte(`{}`)))
+	mock.ExpectExec("INSERT INTO job_event_outbox").WithArgs(anyArgs(10)...).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mock.ExpectExec("INSERT INTO job_event_outbox").WithArgs(anyArgs(10)...).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mock.ExpectCommit()
+
+	n, err := repo.SweepStuckRunning(context.Background(), 30*time.Minute)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("swept=%d want 2", n)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+func TestSweepStuckRunning_NoneSwept(t *testing.T) {
+	mock, _ := pgxmock.NewPool()
+	defer mock.Close()
+	repo := &Repo{pool: mock}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(1)...).
+		WillReturnRows(pgxmock.NewRows([]string{"job_id", "owner_user_id", "operation", "job_meta"})) // none
+	mock.ExpectCommit()
+
+	n, err := repo.SweepStuckRunning(context.Background(), 30*time.Minute)
+	if err != nil || n != 0 {
+		t.Fatalf("got n=%d err=%v want 0,nil", n, err)
+	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("expectations: %v", err)
 	}
