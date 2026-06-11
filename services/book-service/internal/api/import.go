@@ -34,12 +34,12 @@ func (s *Server) startImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// E0-2: edit grant required. The import job is attributed to the book OWNER
-	// (`ownerID`) so the async worker bills the owner's storage quota — preserving
-	// pre-E0 behavior; an editing collaborator must not be charged for the owner's
-	// book. (Editor-as-author attribution for imports is deferred,
-	// D-E0-2-IMPORT-ATTRIBUTION.)
-	_, ownerID, lifecycle, ok := s.authBook(w, r, bookID, GrantEdit)
+	// E0-2: edit grant required. The import is attributed to the CALLER (the
+	// editor who initiated it) — import_jobs.user_id drives both author_user_id
+	// and the WS progress notification in the worker, both of which belong to the
+	// initiator. The book `owner` is needed only for storage-quota billing on the
+	// synchronous .txt path (the async worker charges no quota). (D-E0-2-IMPORT-ATTRIBUTION)
+	caller, ownerID, lifecycle, ok := s.authBook(w, r, bookID, GrantEdit)
 	if !ok {
 		return
 	}
@@ -81,7 +81,7 @@ func (s *Server) startImport(w http.ResponseWriter, r *http.Request) {
 		if lang == "" {
 			lang = "auto"
 		}
-		s.processTxtImport(w, r, ownerID, bookID, fh.Filename, string(data), lang)
+		s.processTxtImport(w, r, caller, ownerID, bookID, fh.Filename, string(data), lang)
 		return
 	}
 
@@ -122,17 +122,18 @@ func (s *Server) startImport(w http.ResponseWriter, r *http.Request) {
 	_, err = tx.Exec(r.Context(), `
 INSERT INTO import_jobs (id, book_id, user_id, status, filename, file_format, file_size, file_storage_key)
 VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
-`, jobID, bookID, ownerID, fh.Filename, fileFormat, int64(len(data)), storageKey)
+`, jobID, bookID, caller, fh.Filename, fileFormat, int64(len(data)), storageKey)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", "failed to create import job")
 		return
 	}
 
-	// Outbox event for worker-infra to pick up
+	// Outbox event for worker-infra to pick up. user_id = the initiating caller
+	// (drives chapter author_user_id + the WS progress notification in the worker).
 	if err := insertOutboxEvent(r.Context(), tx, "import.requested", jobID, map[string]any{
 		"job_id":            jobID,
 		"book_id":           bookID,
-		"user_id":           ownerID,
+		"user_id":           caller,
 		"file_format":       fileFormat,
 		"file_storage_key":  storageKey,
 		"original_language": r.FormValue("original_language"),

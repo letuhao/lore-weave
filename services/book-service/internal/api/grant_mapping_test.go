@@ -156,6 +156,22 @@ func TestGrantMapping_MutatingRoutesDenyUnderTier(t *testing.T) {
 	}
 }
 
+// TestFavorites_AddDeniesNonGranteePrivateBook closes D-FAVORITES-METADATA-LEAK
+// at the entry: a non-grantee cannot favorite a book they can't see. denyServer
+// has no grant and no SharingInternalURL (→ fetchSharingVisibility = "private"),
+// so canViewOrPublic is false → 404 before any INSERT (nil pool never reached).
+func TestFavorites_AddDeniesNonGranteePrivateBook(t *testing.T) {
+	t.Parallel()
+	s := denyServer(GrantNone)
+	req := httptest.NewRequest(http.MethodPost, "/v1/books/"+uuid.NewString()+"/favorite", nil)
+	req.Header.Set("Authorization", "Bearer "+grantMapJWT(t))
+	rr := httptest.NewRecorder()
+	s.Router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("non-grantee favoriting a private book: got %d want 404\n%s", rr.Code, rr.Body.String())
+	}
+}
+
 // TestGrantMapping_ReadRoutesDenyNonGrantee asserts a non-grantee (none) gets
 // 404 on every read route — uniform with a missing book (no existence oracle).
 func TestGrantMapping_ReadRoutesDenyNonGrantee(t *testing.T) {
