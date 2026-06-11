@@ -32,6 +32,7 @@ from app.clients.learning_client import post_wiki_judge
 from app.clients.llm_client import LLMClient
 from app.clients.reranker_client import RerankerClient
 from app.config import settings
+from app.extraction.injection_defense import neutralize_injection
 from app.db.models import Project
 from app.db.repositories.wiki_gen_jobs import WikiGenJob, WikiGenJobsRepo
 from app.wiki.context import gather_entity_context
@@ -68,6 +69,7 @@ async def _generate_one(
     *, entity_id: str, job: WikiGenJob, project: Project, profile,
     clients: OrchestratorClients, retrieval_params: dict,
     prompt_version: str, pipeline_version: str,
+    exemplars: list[tuple[str, str]] | None = None,
 ) -> str:
     """Run the full pipeline for ONE entity. Returns an outcome token
     ('written' | 'suggestion' | 'skipped' | 'writeback_failed'). Never raises."""
@@ -81,7 +83,7 @@ async def _generate_one(
 
     gen = await generate_article(
         context=context, profile=profile, llm=clients.llm, user_id=str(job.user_id),
-        model_source=job.model_source, model_ref=job.model_ref,
+        model_source=job.model_source, model_ref=job.model_ref, exemplars=exemplars,
     )
     if gen.status != "ok" or gen.ir is None:
         logger.info("wiki-gen skip entity=%s status=%s", entity_id, gen.status)
@@ -113,6 +115,34 @@ async def _generate_one(
     await _maybe_judge(
         job=job, context=context, ir=gen.ir, article_id=result.get("article_id"), action=action)
     return action
+
+
+async def _fetch_exemplars(job: WikiGenJob, clients: OrchestratorClients) -> list[tuple[str, str]]:
+    """D-WIKI-M8-FEWSHOT — fetch the book's gold AI→human pairs ONCE per job (gated
+    OFF by default). Best-effort: any failure / empty → [] (generation runs exactly as
+    before, no exemplars). Each pair is (ai_text, human_text); the glossary endpoint
+    has already flattened + truncated the bodies.
+
+    /review-impl F1: exemplar bodies are UNTRUSTED text (an owner edit, or the model's
+    own prior draft) and they land in the higher-trust SYSTEM role — so they get the
+    SAME tag-don't-delete injection defense (`neutralize_injection`) that M2 applies to
+    context sources, closing the asymmetry where sources were sanitized but exemplars
+    weren't."""
+    if not settings.wiki_fewshot_enabled:
+        return []
+    try:
+        pairs = await clients.glossary.fetch_wiki_gold_pairs(
+            job.book_id, limit=settings.wiki_fewshot_max_examples)
+        out: list[tuple[str, str]] = []
+        for p in pairs:
+            ai = neutralize_injection(p.get("ai_text") or "")[0]
+            human = neutralize_injection(p.get("human_text") or "")[0]
+            if ai and human:
+                out.append((ai, human))
+        return out
+    except Exception:  # noqa: BLE001 — exemplars are an optional enhancement
+        logger.warning("wiki few-shot exemplar fetch failed (non-fatal)", exc_info=True)
+        return []
 
 
 def _sampled(rate: float) -> bool:
@@ -185,6 +215,7 @@ async def run_wiki_gen_job(
     cap = job.max_spend_usd
     writeback_failures = 0
     profile = await clients.book_profile.get_profile(job.book_id)
+    exemplars = await _fetch_exemplars(job, clients)  # D-WIKI-M8-FEWSHOT (book-level, once)
 
     for entity_id in entity_ids:
         if entity_id in done:
@@ -200,6 +231,7 @@ async def run_wiki_gen_job(
                 entity_id=entity_id, job=job, project=project, profile=profile,
                 clients=clients, retrieval_params=retrieval_params,
                 prompt_version=prompt_version, pipeline_version=pipeline_version,
+                exemplars=exemplars,
             )
         except Exception as exc:  # noqa: BLE001 — one entity must not crash the batch
             logger.warning("wiki-gen entity failed job=%s entity=%s: %s",

@@ -121,6 +121,9 @@ func (s *Server) Router() http.Handler {
 		// whose stored prompt/pipeline version lags the current one (the caller
 		// supplies the current versions, which live in knowledge's config).
 		r.Post("/books/{book_id}/wiki/staleness-sweep", s.sweepWikiStaleness)
+		// wiki-llm M8 (D-WIKI-M8-FEWSHOT) — gold AI→human revision pairs (plaintext,
+		// truncated) for few-shot generation in knowledge-service.
+		r.Get("/books/{book_id}/wiki/gold-pairs", s.listWikiGoldPairs)
 	})
 
 	r.Route("/v1/glossary", func(r chi.Router) {

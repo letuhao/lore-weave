@@ -100,6 +100,14 @@ class Settings(BaseSettings):
     wiki_llm_judge_model_source: str = "user_model"
     learning_internal_url: str = "http://learning-service:8094"
 
+    # D-WIKI-M8-FEWSHOT — inject gold AI-draft→human-edit pairs as few-shot exemplars
+    # into wiki generation (the model learns the editorial style humans apply). OFF by
+    # default (adds tokens to every prompt). max_examples bounds the count fetched once
+    # per job; the glossary gold-pairs endpoint truncates each body server-side AND
+    # hard-caps the count at 5 (goldPairsMaxLimit) — a value above 5 here is clamped.
+    wiki_fewshot_enabled: bool = False
+    wiki_fewshot_max_examples: int = 3
+
     # P1 (2026-05-23) — /internal/parse body size cap. Default 200 MiB
     # matches book-service's maxImportSize at services/book-service/internal/api/import.go.
     # H3 fix: explicit ceiling — without this, a misconfigured caller could
