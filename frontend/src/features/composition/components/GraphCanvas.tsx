@@ -18,7 +18,7 @@ type DragState = { id: string; startX: number; startY: number; origX: number; or
 
 export function GraphCanvas<E>({
   positions, nodeIds, edges, edgeEndpoints, edgeKey, renderNode, renderEdge, nodeSize,
-  onNodeClick, onNodeDrag, onNodeDragEnd, onBackgroundClick, defs,
+  onNodeClick, onNodeDrag, onNodeDragEnd, onBackgroundClick, defs, background,
   minWidth = 360, minHeight = 220, testid = 'graph-canvas',
 }: {
   positions: Record<string, Pos>;
@@ -34,6 +34,10 @@ export function GraphCanvas<E>({
   onNodeDragEnd?: (id: string, pos: Pos) => void;
   onBackgroundClick?: () => void;
   defs?: React.ReactNode;
+  /** Optional layer painted BEHIND edges/nodes (T2.5 World Map backdrop). It sits
+   *  under the transparent background-click rect, so it must be `pointer-events:none`
+   *  to let background clicks through. Default: nothing (T1.3/T2.2 unaffected). */
+  background?: React.ReactNode;
   minWidth?: number;
   minHeight?: number;
   testid?: string;
@@ -71,6 +75,8 @@ export function GraphCanvas<E>({
     <div className="min-h-0 flex-1 overflow-auto">
       <svg ref={svgRef} width={w} height={h} data-testid={testid} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
         {defs && <defs>{defs}</defs>}
+        {/* optional backdrop layer, painted behind everything (under the click rect) */}
+        {background}
         {/* background: a press on empty space clears the consumer's selection */}
         <rect data-testid={`${testid}-bg`} width={w} height={h} fill="transparent" onPointerDown={onBackgroundClick} />
         {edges.map((e, i) => {

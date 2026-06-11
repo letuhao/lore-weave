@@ -35,6 +35,7 @@ from app.db.neo4j_repos.entities import (
     list_entities_filtered,
     list_user_entities,
     merge_entities,
+    merge_entity,
     unlock_entity_user_edited,
     update_entity_fields,
 )
@@ -442,6 +443,71 @@ class EntityUpdate(BaseModel):
                 if len(alias) > 200:
                     raise ValueError("each alias must be ≤200 chars")
         return self
+
+
+# ── T2.5 World Map — manual entity authoring ──────────────────────────
+
+# Closed set of entity kinds the manual-create path accepts. The graph is
+# otherwise extraction-built; this gate keeps user authoring (T2.5 "+ add
+# place" sends kind='location') from minting arbitrary kind strings.
+_AUTHORABLE_KINDS = {"character", "location", "faction", "concept"}
+
+
+class CreateEntityRequest(BaseModel):
+    """T2.5 — create a user-authored entity (e.g. a World Map place). Idempotent:
+    re-creating the same (name, kind) in a project returns the existing node
+    (``merge_entity`` dedups on a canonical_id hash), so a later extraction of
+    the same place converges on this node rather than duplicating it."""
+
+    project_id: UUID
+    name: str = Field(min_length=1, max_length=200)
+    kind: str = Field(min_length=1, max_length=50)
+
+    @model_validator(mode="after")
+    def _validate(self) -> "CreateEntityRequest":
+        if not self.name.strip():
+            raise ValueError("name must not be blank")
+        if self.kind not in _AUTHORABLE_KINDS:
+            raise ValueError(
+                f"kind must be one of {sorted(_AUTHORABLE_KINDS)}"
+            )
+        return self
+
+
+@entities_router.post(
+    "/entities",
+    response_model=Entity,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_entity_endpoint(
+    body: CreateEntityRequest,
+    user_id: UUID = Depends(get_current_user),
+) -> Entity:
+    """T2.5 — create a user-authored entity (World Map "+ add place").
+
+    Multi-tenant: the node is written under the JWT ``user_id`` (threaded into
+    ``merge_entity``'s Cypher), so a caller can only ever create entities in
+    their own scope — ``project_id`` is just a tag on the user's own node, never
+    a cross-tenant handle. Idempotent: the same (name, kind) in the same project
+    returns the same node (no duplicate places). ``source_type='manual'`` +
+    confidence 1.0 mark it user-asserted.
+    """
+    async with neo4j_session() as session:
+        entity = await merge_entity(
+            session,
+            user_id=str(user_id),
+            project_id=str(body.project_id),
+            name=body.name.strip(),
+            kind=body.kind,
+            source_type="manual",
+            confidence=1.0,
+            provenance="human_authored",
+        )
+    logger.info(
+        "T2.5: user created entity user_id=%s project_id=%s kind=%s id=%s",
+        user_id, body.project_id, body.kind, entity.id,
+    )
+    return entity
 
 
 @entities_router.patch(

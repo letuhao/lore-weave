@@ -385,6 +385,25 @@ export interface EntityUpdatePayload {
   aliases?: string[];
 }
 
+// ── T2.5 World Map — manual entity / relation authoring ──────────────
+
+/** Create a user-authored entity (World Map "+ add place"). `kind` is one of
+ *  character|location|faction|concept (BE-enforced). Idempotent on (name, kind)
+ *  within the project. */
+export interface CreateEntityPayload {
+  project_id: string;
+  name: string;
+  kind: string;
+}
+
+/** Create a user-authored relation (World Map "link places"). 409 if either
+ *  endpoint isn't the caller's entity; 422 on a self-loop. */
+export interface CreateRelationPayload {
+  subject_id: string;
+  object_id: string;
+  predicate: string;
+}
+
 // ── K19d γ-b — POST /entities/{id}/merge-into/{other} ────────────────
 
 export interface EntityMergeResponse {
@@ -1155,6 +1174,27 @@ export const knowledgeApi = {
       `${BASE}/entities/${encodeURIComponent(entityId)}`,
       { token },
     );
+  },
+
+  // ── T2.5 World Map — manual authoring ────────────────────────────────
+
+  /** Create a user-authored entity (e.g. a World Map place). 201. */
+  createEntity(payload: CreateEntityPayload, token: string): Promise<Entity> {
+    return apiJson<Entity>(`${BASE}/entities`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      token,
+    });
+  },
+
+  /** Create a user-authored relation between two of the caller's entities. 201;
+   *  409 if an endpoint isn't the caller's; 422 on a self-loop. */
+  createRelation(payload: CreateRelationPayload, token: string): Promise<EntityRelation> {
+    return apiJson<EntityRelation>(`${BASE}/relations`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      token,
+    });
   },
 
   // ── K19d γ-a — PATCH /entities/{id} ──────────────────────────────────

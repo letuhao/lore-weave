@@ -18,6 +18,7 @@ import { CastCodexPanel } from './CastCodexPanel';
 import { RelationshipMap } from './RelationshipMap';
 import { TimelineView } from './TimelineView';
 import { CharacterArcView } from './CharacterArcView';
+import { WorldMap } from './WorldMap';
 import { GroundingPanel } from './GroundingPanel';
 import { CanonRulesPanel } from './CanonRulesPanel';
 import { ThreadsPanel } from './ThreadsPanel';
@@ -31,7 +32,7 @@ type Props = {
   onAccept: (text: string) => void; // insert accepted prose into the editor
 };
 
-type SubTab = 'compose' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'grounding' | 'canon' | 'threads' | 'quality' | 'settings';
+type SubTab = 'compose' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'canon' | 'threads' | 'quality' | 'settings';
 
 export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) {
   const { t } = useTranslation('composition');
@@ -44,6 +45,9 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
   // can launch the arc tab with a character preselected; the arc's own picker also
   // writes back through setArcEntityId.
   const [arcEntityId, setArcEntityId] = useState<string | null>(null);
+  // T2.5: the Cast search is lifted here so the World Map can "open a place in the
+  // codex" by prefilling its name + switching to the cast tab.
+  const [castSearch, setCastSearch] = useState('');
 
   const res = resolution.data;
   // 'found' → the marked Work; 'candidates' (rare multi-marked) → the first,
@@ -170,7 +174,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
 
       {/* sub-tabs */}
       <div className="flex gap-1 border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700">
-        {(['compose', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'grounding', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'quality', 'settings'] as SubTab[]).map((tb) => (
+        {(['compose', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'quality', 'settings'] as SubTab[]).map((tb) => (
           <button
             key={tb}
             data-testid={`composition-subtab-${tb}`}
@@ -232,6 +236,8 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
             chapterId={chapterId}
             token={token}
             onViewArc={(id) => { setArcEntityId(id); setTab('arc'); }}
+            search={castSearch}
+            onSearchChange={setCastSearch}
           />
         </div>
         <div className={tab === 'relmap' ? '' : 'hidden'}>
@@ -247,6 +253,15 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
             token={token}
             entityId={arcEntityId}
             onEntityChange={setArcEntityId}
+          />
+        </div>
+        <div className={tab === 'worldmap' ? '' : 'hidden'}>
+          <WorldMap
+            work={work}
+            bookId={bookId}
+            chapterId={chapterId}
+            token={token}
+            onViewCast={(name) => { setCastSearch(name); setTab('cast'); }}
           />
         </div>
         <div className={tab === 'grounding' ? '' : 'hidden'}>

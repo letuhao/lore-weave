@@ -29,18 +29,24 @@ export function groupCast(
 }
 
 export function CastCodexPanel({
-  bookId, chapterId, token, onViewArc,
+  bookId, chapterId, token, onViewArc, search: searchProp, onSearchChange,
 }: {
   bookId: string;
   chapterId: string;
   token: string | null;
   /** T2.4: launch the Character Arc tab for this entity (set by CompositionPanel). */
   onViewArc?: (entityId: string) => void;
+  /** T2.5: optionally control the search from the parent (World Map click → prefill
+   *  this place's name). Omitted → the panel keeps its own internal search state. */
+  search?: string;
+  onSearchChange?: (v: string) => void;
 }) {
   const { t } = useTranslation('composition');
   const projectQ = useKnowledgeProjectId(bookId, token);
   const projectId = projectQ.data;
-  const [search, setSearch] = useState('');
+  const [localSearch, setLocalSearch] = useState('');
+  const search = searchProp ?? localSearch;
+  const setSearch = onSearchChange ?? setLocalSearch;
   const { entities, statuses } = useCast(projectId, token, { search, beforeChapterId: chapterId });
 
   const groups = useMemo(
