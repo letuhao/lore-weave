@@ -96,6 +96,18 @@ def test_source_usage_captures_source_text_per_type():
     assert "封神台点将" in by_type["block"]["source_text"]
 
 
+def test_source_texts_keyed_map_matches_capture():
+    # W6b-2b — source_texts() is the shared before/after extraction; its values must
+    # equal what build_source_usage stores (so the diff shows real changes, not drift).
+    from app.wiki.writeback import source_texts
+    ctx = _ctx()
+    texts = source_texts(ctx)
+    assert set(texts) == {"entity:e1", "kg:e1", "block:ch1"}
+    usage = {f"{u['source_type']}:{u['source_id']}": u["source_text"]
+             for u in build_source_usage(ctx, _build_inputs())}
+    assert usage == texts
+
+
 def test_source_text_is_capped():
     big = "字" * 5000
     ctx = GenerationContext(brief=EntityBrief(entity_id="e1", name="X", short_description=big), items=[])

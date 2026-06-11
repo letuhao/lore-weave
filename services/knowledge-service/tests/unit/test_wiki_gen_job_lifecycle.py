@@ -84,6 +84,39 @@ async def test_get_job_status_projects_results_and_live_pass():
     assert out.current_pass == "verify"
 
 
+# ── W6b-2b: current source text (the diff "after") ───────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_source_text_returns_only_requested_current_texts():
+    repo = MagicMock()
+    repo.list = AsyncMock(return_value=[MagicMock(project_id=uuid4())])
+    with patch.multiple(
+        iw,
+        gather_entity_context=AsyncMock(return_value=MagicMock()),
+        source_texts=MagicMock(return_value={
+            "entity:e1": "name\ndesc", "kg:e1": "facts", "block:c1": "passage"}),
+        get_glossary_client=MagicMock(), get_book_client=MagicMock(),
+        get_embedding_client=MagicMock(), get_reranker_client=MagicMock(),
+    ):
+        req = iw.WikiSourceTextRequest(
+            user_id=uuid4(), entity_id="e1",
+            sources=[iw.WikiSourceRef(source_type="entity", source_id="e1")])
+        out = await iw.wiki_source_text(uuid4(), req, projects_repo=repo)
+    assert out.texts == {"entity:e1": "name\ndesc"}  # only the requested source
+
+
+@pytest.mark.asyncio
+async def test_source_text_empty_when_not_indexed():
+    repo = MagicMock()
+    repo.list = AsyncMock(return_value=[])  # no project → not indexed
+    req = iw.WikiSourceTextRequest(
+        user_id=uuid4(), entity_id="e1",
+        sources=[iw.WikiSourceRef(source_type="entity", source_id="e1")])
+    out = await iw.wiki_source_text(uuid4(), req, projects_repo=repo)
+    assert out.texts == {}
+
+
 @pytest.mark.asyncio
 async def test_get_job_status_404_when_no_job():
     with _patch_repo(_repo(get_latest=None)):

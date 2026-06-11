@@ -23,7 +23,7 @@ from app.wiki.ir import WikiArticleIR
 from app.wiki.mappers import ir_to_tiptap
 from app.wiki.verify import WikiVerifyResult
 
-__all__ = ["generation_status_for", "build_source_usage", "build_writeback_body"]
+__all__ = ["generation_status_for", "source_texts", "build_source_usage", "build_writeback_body"]
 
 
 def generation_status_for(verify: WikiVerifyResult) -> str:
@@ -58,6 +58,27 @@ def _brief_text(brief) -> str:
     return "\n".join(p for p in parts if p)
 
 
+def source_texts(context: GenerationContext) -> dict[str, str]:
+    """The capped source text per source, keyed ``f"{source_type}:{source_id}"``.
+
+    The SINGLE source of truth for the W6b-2 diff: ``build_source_usage`` uses it to
+    capture the "before" at generation time, and the source-text endpoint uses it to
+    produce the "after" from a live re-gather — so both halves are formatted
+    identically and a diff shows only real content changes, not format drift."""
+    brief = context.brief
+    out: dict[str, str] = {f"entity:{brief.entity_id}": _cap(_brief_text(brief))}
+    kg_texts = [it.text for it in context.items if it.source.kind == "kg"]
+    if kg_texts:
+        out[f"kg:{brief.entity_id}"] = _cap("\n".join(kg_texts))
+    by_chapter: dict[str, list[str]] = {}
+    for it in context.items:
+        if it.source.kind == "passage" and it.source.chapter_id:
+            by_chapter.setdefault(it.source.chapter_id, []).append(it.text)
+    for chapter_id, texts in by_chapter.items():
+        out[f"block:{chapter_id}"] = _cap("\n".join(texts))
+    return out
+
+
 def build_source_usage(
     context: GenerationContext, build_inputs: dict[str, Any],
 ) -> list[dict[str, str]]:
@@ -66,35 +87,35 @@ def build_source_usage(
     ``block`` row per distinct cited CHAPTER (the granularity of a chapter-edit
     event), each versioned by a content hash so a no-op change is distinguishable.
 
-    W6b-2: each row also carries the ``source_text`` it was built from (capped), the
-    "before" half of the future-only change diff (the "after" re-gathers live)."""
+    W6b-2: each row also carries the ``source_text`` it was built from (capped, via
+    :func:`source_texts`), the "before" half of the future-only change diff."""
     brief = context.brief
+    texts = source_texts(context)
     usage: list[dict[str, str]] = [
         {
             "source_type": "entity",
             "source_id": brief.entity_id,
             "source_version": build_inputs["entity_content_hash"],
-            "source_text": _cap(_brief_text(brief)),
+            "source_text": texts.get(f"entity:{brief.entity_id}", ""),
         }
     ]
-    kg_texts = [it.text for it in context.items if it.source.kind == "kg"]
-    if kg_texts:
+    if f"kg:{brief.entity_id}" in texts:
         usage.append({
             "source_type": "kg",
             "source_id": brief.entity_id,
             "source_version": build_inputs["kg_neighborhood_hash"],
-            "source_text": _cap("\n".join(kg_texts)),
+            "source_text": texts[f"kg:{brief.entity_id}"],
         })
     by_chapter: dict[str, list[str]] = {}
     for it in context.items:
         if it.source.kind == "passage" and it.source.chapter_id:
             by_chapter.setdefault(it.source.chapter_id, []).append(it.text)
-    for chapter_id, texts in by_chapter.items():
+    for chapter_id in by_chapter:
         usage.append({
             "source_type": "block",
             "source_id": chapter_id,
-            "source_version": stable_hash(sorted(texts)),
-            "source_text": _cap("\n".join(texts)),
+            "source_version": stable_hash(sorted(by_chapter[chapter_id])),
+            "source_text": texts.get(f"block:{chapter_id}", ""),
         })
     return usage
 

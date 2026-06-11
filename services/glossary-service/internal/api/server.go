@@ -185,6 +185,7 @@ func (s *Server) Router() http.Handler {
 					r.Get("/", s.listWikiStaleness)
 					r.Post("/sweep", s.sweepWikiStalenessPublic)
 					r.Post("/dismiss-batch", s.dismissWikiStalenessBatch)
+					r.Get("/{staleness_id}/diff", s.getWikiStalenessDiff)
 					r.Post("/{staleness_id}/dismiss", s.dismissWikiStaleness)
 				})
 				r.Get("/suggestions", s.listWikiSuggestions)

@@ -11,6 +11,7 @@ import type {
   WikiGenConfig,
   WikiStalenessListResp,
   WikiStalenessSweepResp,
+  WikiStalenessDiff,
 } from './types';
 
 const BASE = '/v1/glossary';
@@ -160,6 +161,13 @@ export const wikiApi = {
       method: 'POST',
       token,
     });
+  },
+
+  /** W6b-2b — the source change diff for one staleness row (before snapshot vs the
+   *  current source). `available:false` ⇒ no snapshot / no "after" → use the jump. */
+  getStalenessDiff(bookId: string, stalenessId: string, token: string): Promise<WikiStalenessDiff> {
+    return apiJson<WikiStalenessDiff>(
+      `${BASE}/books/${bookId}/wiki/staleness/${stalenessId}/diff`, { token });
   },
 
   /* ── Revisions ── */

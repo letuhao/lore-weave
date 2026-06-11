@@ -2,13 +2,14 @@ import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { RefreshCw, X, Check, AlertTriangle, ShieldAlert, Clock, Info, ScanSearch, ExternalLink } from 'lucide-react';
+import { RefreshCw, X, Check, AlertTriangle, ShieldAlert, Clock, Info, ScanSearch, ExternalLink, GitCompare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
 import { wikiApi } from '../api';
 import { useWikiStaleness } from '../hooks/useWikiStaleness';
 import { sourceJumpUrl } from '../lib/stalenessSource';
-import type { WikiStalenessRow, WikiGenConfig } from '../types';
+import { diffLines } from '../lib/wikiDiff';
+import type { WikiStalenessRow, WikiGenConfig, WikiStalenessDiff } from '../types';
 
 /**
  * wiki-llm Phase-2b + W2 — the "Knowledge updates" change-feed (§5.3 DECIDE).
@@ -30,6 +31,46 @@ function severityCls(sev: string) {
   return 'bg-primary/10 text-primary';
 }
 
+/* ── W6b-2b — the inline source diff under a row ──────────────────────────── */
+
+function StalenessDiffBlock({ diff, loading, t }: {
+  diff: WikiStalenessDiff | null;
+  loading: boolean;
+  t: (key: string, opts?: Record<string, unknown>) => string;
+}) {
+  if (loading) {
+    return <div data-testid="staleness-diff" className="px-3 pb-2 text-[10px] text-muted-foreground">{t('staleness.diffLoading')}</div>;
+  }
+  if (!diff || !diff.available) {
+    // No snapshot (pre-W6b-2 article) or the "after" couldn't be fetched → use the jump.
+    return <div data-testid="staleness-diff" className="px-3 pb-2 text-[10px] text-muted-foreground">{t('staleness.noDiff')}</div>;
+  }
+  const rows = diffLines((diff.before ?? '').split('\n'), (diff.after ?? '').split('\n'));
+  return (
+    <div data-testid="staleness-diff" className="px-3 pb-2">
+      {diff.approximate && (
+        <p className="mb-1 text-[10px] text-amber-500">{t('staleness.diffApproximate')}</p>
+      )}
+      <div className="max-h-48 overflow-y-auto rounded border font-mono text-[11px]">
+        {rows.map((row, i) => (
+          <div
+            key={i}
+            className={cn(
+              'whitespace-pre-wrap px-2 py-0.5',
+              row.type === 'del' ? 'bg-destructive/10 text-destructive'
+                : row.type === 'add' ? 'bg-emerald-500/10 text-emerald-600'
+                  : 'text-muted-foreground',
+            )}
+          >
+            <span className="select-none opacity-60">{row.type === 'del' ? '- ' : row.type === 'add' ? '+ ' : '  '}</span>
+            {row.text}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function KnowledgeUpdatesPanel({
   bookId,
   open,
@@ -46,6 +87,26 @@ export function KnowledgeUpdatesPanel({
   const { accessToken } = useAuth();
   const { rows, dismiss, dismissing, dismissMany, rescan, rescanning } = useWikiStaleness(bookId);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // W6b-2b — on-demand source diff (before snapshot vs current source). Imperative
+  // (not useQuery) so it's a one-shot per click and doesn't fight the panel's other
+  // queries. diffFor toggles the inline diff under a row.
+  const [diffFor, setDiffFor] = useState<string | null>(null);
+  const [diff, setDiff] = useState<WikiStalenessDiff | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
+  const openDiff = async (id: string) => {
+    if (diffFor === id) { setDiffFor(null); return; }
+    setDiffFor(id);
+    setDiff(null);
+    setDiffLoading(true);
+    try {
+      setDiff(await wikiApi.getStalenessDiff(bookId, id, accessToken!));
+    } catch {
+      setDiff({ available: false });
+    } finally {
+      setDiffLoading(false);
+    }
+  };
 
   // Flat per-article cost (same figure the budget gate charges) for the batch estimate.
   const configQuery = useQuery<WikiGenConfig>({
@@ -150,11 +211,14 @@ export function KnowledgeUpdatesPanel({
                   // W6b-1 — jump to the CURRENT source that changed (entity → glossary,
                   // chapter → reader); null for recipe/KG drift (no single source).
                   const jump = sourceJumpUrl(bookId, r.source_ref);
+                  // W6b-2b — a row has a diffable source when source_ref names one.
+                  const sr = (r.source_ref ?? {}) as { source_type?: string; source_id?: string };
+                  const diffable = !!(sr.source_type && sr.source_id);
                   return (
+                    <div key={r.staleness_id} className="border-b border-border last:border-b-0">
                     <div
-                      key={r.staleness_id}
                       data-testid="staleness-row"
-                      className="flex items-center gap-2 border-b border-border px-3 py-2 last:border-b-0"
+                      className="flex items-center gap-2 px-3 py-2"
                     >
                       <input
                         type="checkbox"
@@ -169,6 +233,17 @@ export function KnowledgeUpdatesPanel({
                         <Icon className="h-2.5 w-2.5" />
                         {t(`staleness.severity.${r.severity}`, { defaultValue: r.severity })}
                       </span>
+                      {diffable && (
+                        <button
+                          onClick={() => openDiff(r.staleness_id)}
+                          data-testid="staleness-diff-toggle"
+                          title={t('staleness.viewDiff')}
+                          className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-secondary hover:text-foreground"
+                        >
+                          <GitCompare className="h-3 w-3" />
+                          {t('staleness.viewDiff')}
+                        </button>
+                      )}
                       {jump && (
                         <Link
                           to={jump}
@@ -191,6 +266,10 @@ export function KnowledgeUpdatesPanel({
                         <Check className="h-3 w-3" />
                         {t('staleness.dismiss')}
                       </button>
+                    </div>
+                    {diffFor === r.staleness_id && (
+                      <StalenessDiffBlock diff={diff} loading={diffLoading} t={t} />
+                    )}
                     </div>
                   );
                 })}

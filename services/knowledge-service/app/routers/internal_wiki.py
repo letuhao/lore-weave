@@ -38,8 +38,13 @@ from pydantic import BaseModel, Field
 from app.config import settings
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.entities import get_neighborhood_by_glossary_id
-from app.wiki.context import DEFAULT_KG_LIMIT, gather_kg_facts
+from app.wiki.context import DEFAULT_KG_LIMIT, gather_entity_context, gather_kg_facts
 from app.wiki.fingerprint import stable_hash
+from app.wiki.writeback import source_texts
+from app.clients.book_client import get_book_client
+from app.clients.embedding_client import get_embedding_client
+from app.clients.glossary_client import get_glossary_client
+from app.clients.reranker_client import get_reranker_client
 from app.db.repositories.projects import ProjectsRepo
 from app.db.repositories.wiki_gen_jobs import ActiveJobExists, WikiGenJob, WikiGenJobsRepo
 from app.deps import get_knowledge_pool, get_projects_repo
@@ -228,6 +233,54 @@ async def wiki_kg_hashes(
             continue  # KG unreachable for this entity — omit (don't fabricate a hash)
         hashes[eid] = stable_hash(sorted(facts))
     return WikiKgHashesResponse(hashes=hashes)
+
+
+# ── wiki-llm W6b-2b — current source text (the change-diff "after") ───────────
+
+
+class WikiSourceRef(BaseModel):
+    source_type: str
+    source_id: str
+
+
+class WikiSourceTextRequest(BaseModel):
+    user_id: UUID
+    entity_id: str
+    sources: list[WikiSourceRef] = Field(default_factory=list)
+
+
+class WikiSourceTextResponse(BaseModel):
+    texts: dict[str, str]
+
+
+@router.post("/books/{book_id}/wiki/source-text", response_model=WikiSourceTextResponse)
+async def wiki_source_text(
+    book_id: UUID,
+    req: WikiSourceTextRequest,
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+) -> WikiSourceTextResponse:
+    """The CURRENT source text for each requested source (the W6b-2 diff "after"),
+    keyed ``f"{source_type}:{source_id}"``. Re-gathers through the SAME context path
+    as generation (``gather_entity_context`` → :func:`source_texts`) so the before
+    (captured at gen time) and after are formatted identically — a diff then shows
+    only real content changes. Empty when the book isn't indexed or the entity can't
+    be gathered (the caller degrades to no-diff). NOTE: a ``block`` source is a
+    retrieval result, so its "after" is APPROXIMATE (re-retrieval may differ)."""
+    if not req.sources:
+        return WikiSourceTextResponse(texts={})
+    projects = await projects_repo.list(req.user_id, book_id=book_id, limit=1)
+    if not projects:
+        return WikiSourceTextResponse(texts={})
+    context = await gather_entity_context(
+        entity_id=req.entity_id, book_id=book_id, user_id=req.user_id, project=projects[0],
+        glossary_client=get_glossary_client(), book_client=get_book_client(),
+        embedding_client=get_embedding_client(), reranker_client=get_reranker_client(),
+    )
+    if context is None:
+        return WikiSourceTextResponse(texts={})
+    all_texts = source_texts(context)
+    wanted = {f"{s.source_type}:{s.source_id}" for s in req.sources}
+    return WikiSourceTextResponse(texts={k: v for k, v in all_texts.items() if k in wanted})
 
 
 # ── wiki-llm M6 — batch generation trigger ───────────────────────────────────

@@ -250,6 +250,82 @@ func (s *Server) dismissWikiStalenessBatch(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, map[string]any{"dismissed": dismissedCount})
 }
 
+// getWikiStalenessDiff — GET /v1/glossary/books/{book_id}/wiki/staleness/{staleness_id}/diff
+// W6b-2b — the source change diff for one row: before (the source text captured at
+// generation, W6b-2a) vs after (the current source, re-gathered by knowledge through
+// the same path → format parity). Owner-gated. {available:false} when there is no
+// snapshot (a pre-W6b-2 article) or knowledge can't supply the "after" right now (the
+// FE then falls back to the W6b-1 "view source" jump). `block` diffs are approximate
+// (their source is a retrieval result). An `after` of "" is a genuine removal.
+func (s *Server) getWikiStalenessDiff(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	stalenessID, ok := parsePathUUID(w, r, "staleness_id")
+	if !ok {
+		return
+	}
+	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+		return
+	}
+
+	// Load the row (scoped to the book) → article, its entity, the changed source.
+	var articleID, entityID string
+	var srcRef []byte
+	if err := s.pool.QueryRow(r.Context(), `
+		SELECT ws.article_id, wa.entity_id, ws.source_ref
+		  FROM wiki_staleness ws JOIN wiki_articles wa ON wa.article_id = ws.article_id
+		 WHERE ws.staleness_id = $1 AND wa.book_id = $2`,
+		stalenessID, bookID).Scan(&articleID, &entityID, &srcRef); err != nil {
+		writeError(w, http.StatusNotFound, "WIKI_NOT_FOUND", "staleness row not found")
+		return
+	}
+	var ref struct {
+		SourceType string `json:"source_type"`
+		SourceID   string `json:"source_id"`
+	}
+	_ = json.Unmarshal(srcRef, &ref)
+	if ref.SourceType == "" || ref.SourceID == "" {
+		writeJSON(w, http.StatusOK, map[string]any{"available": false})
+		return
+	}
+
+	// before = the captured snapshot. NULL/empty (pre-W6b-2) → no diff.
+	var before *string
+	_ = s.pool.QueryRow(r.Context(), `
+		SELECT source_text FROM wiki_article_source_usage
+		 WHERE article_id = $1 AND source_type = $2 AND source_id = $3`,
+		articleID, ref.SourceType, ref.SourceID).Scan(&before)
+	if before == nil || *before == "" {
+		writeJSON(w, http.StatusOK, map[string]any{"available": false})
+		return
+	}
+
+	// after = knowledge re-gather. A transient failure → no diff (degrade to jump);
+	// a successful-but-absent key means the source was genuinely removed (after="").
+	texts, err := s.fetchWikiSourceText(r.Context(), bookID, userID, entityID,
+		[]map[string]string{{"source_type": ref.SourceType, "source_id": ref.SourceID}})
+	if err != nil {
+		slog.Error("getWikiStalenessDiff after", "error", err)
+		writeJSON(w, http.StatusOK, map[string]any{"available": false})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"available":   true,
+		"source_type": ref.SourceType,
+		"before":      *before,
+		"after":       texts[ref.SourceType+":"+ref.SourceID],
+		"approximate": ref.SourceType == "block",
+	})
+}
+
 // sweepWikiStalenessPublic — POST /v1/glossary/books/{book_id}/wiki/staleness/sweep
 // W2 (gap-closure) the FE "Quét lại fingerprint" button: an owner-gated rescan that
 // sources the CURRENT recipe versions from knowledge gen-config (the FE/glossary don't

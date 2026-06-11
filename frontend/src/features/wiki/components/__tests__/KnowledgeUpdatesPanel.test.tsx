@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -26,6 +26,11 @@ const useWikiStalenessMock = vi.fn();
 vi.mock('../../hooks/useWikiStaleness', () => ({
   useWikiStaleness: () => useWikiStalenessMock(),
 }));
+// W6b-2b — the per-row source diff is an imperative wikiApi call.
+const getStalenessDiff = vi.fn();
+vi.mock('../../api', () => ({
+  wikiApi: { getStalenessDiff: (...a: unknown[]) => getStalenessDiff(...a), getGenConfig: vi.fn() },
+}));
 
 import { KnowledgeUpdatesPanel } from '../KnowledgeUpdatesPanel';
 import type { WikiStalenessRow } from '../../types';
@@ -51,6 +56,9 @@ const baseHook = () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   useWikiStalenessMock.mockReturnValue(baseHook());
+  getStalenessDiff.mockResolvedValue({
+    available: true, source_type: 'entity', before: 'old line\nshared', after: 'new line\nshared',
+  });
 });
 
 describe('KnowledgeUpdatesPanel', () => {
@@ -137,5 +145,41 @@ describe('KnowledgeUpdatesPanel', () => {
     expect(jumps[1].getAttribute('href')).toBe('/books/b/chapters/ch7/read');
     fireEvent.click(jumps[0]);
     expect(onClose).toHaveBeenCalled();
+  });
+
+  // W6b-2b — the on-demand source diff.
+  it('opens the source diff for a row and renders red/green changes', async () => {
+    useWikiStalenessMock.mockReturnValue({
+      ...baseHook(),
+      rows: [row({ staleness_id: 's1', source_ref: { source_type: 'entity', source_id: 'e9' } })],
+    });
+    render(<KnowledgeUpdatesPanel bookId="b" open onClose={() => {}} onRegenerate={() => {}} />);
+    fireEvent.click(screen.getByTestId('staleness-diff-toggle'));
+    await waitFor(() => expect(getStalenessDiff).toHaveBeenCalledWith('b', 's1', 'tok'));
+    // the loading block shares the testid → wait for the resolved diff content
+    await waitFor(() => expect(screen.getByTestId('staleness-diff').textContent).toContain('old line'));
+    const diff = screen.getByTestId('staleness-diff');
+    expect(diff.textContent).toContain('new line'); // addition
+    expect(diff.textContent).toContain('shared');   // context
+  });
+
+  it('shows the "no diff" hint when no snapshot is available', async () => {
+    getStalenessDiff.mockResolvedValue({ available: false });
+    useWikiStalenessMock.mockReturnValue({
+      ...baseHook(),
+      rows: [row({ staleness_id: 's1', source_ref: { source_type: 'entity', source_id: 'e9' } })],
+    });
+    render(<KnowledgeUpdatesPanel bookId="b" open onClose={() => {}} onRegenerate={() => {}} />);
+    fireEvent.click(screen.getByTestId('staleness-diff-toggle'));
+    await waitFor(() => expect(screen.getByTestId('staleness-diff').textContent).toContain('staleness.noDiff'));
+  });
+
+  it('shows no diff toggle for a sourceless (recipe) row', () => {
+    useWikiStalenessMock.mockReturnValue({
+      ...baseHook(),
+      rows: [row({ staleness_id: 's1', reason_code: 'recipe_drift', source_ref: { source_type: 'recipe' } })],
+    });
+    render(<KnowledgeUpdatesPanel bookId="b" open onClose={() => {}} onRegenerate={() => {}} />);
+    expect(screen.queryByTestId('staleness-diff-toggle')).toBeNull();
   });
 });

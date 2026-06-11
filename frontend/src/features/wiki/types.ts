@@ -172,6 +172,17 @@ export interface WikiStalenessSweepResp {
   recipe_swept: boolean;
 }
 
+/** W6b-2b — the source change diff for one staleness row. `available:false` when no
+ *  snapshot exists (pre-W6b-2 article) or knowledge couldn't supply the "after".
+ *  `approximate` for a block (chapter) source — its "after" re-retrieves. */
+export interface WikiStalenessDiff {
+  available: boolean;
+  source_type?: string;
+  before?: string;
+  after?: string;
+  approximate?: boolean;
+}
+
 /* ── wiki-llm M7b — LLM generation jobs ──────────────────────────────────── */
 
 export type WikiGenJobState =

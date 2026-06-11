@@ -311,6 +311,52 @@ func (s *Server) wikiGenJobAction(
 	return res.StatusCode, respBody, nil
 }
 
+// fetchWikiSourceText (W6b-2b) — the CURRENT source text per source (the change-diff
+// "after"), re-gathered by knowledge through the same context path as generation.
+// Returns the {key→text} map; errors when knowledge is unconfigured/unreachable or
+// returns non-200 (the caller then degrades to no-diff).
+func (s *Server) fetchWikiSourceText(
+	ctx context.Context, bookID, userID uuid.UUID, entityID string, sources []map[string]string,
+) (map[string]string, error) {
+	base := strings.TrimRight(s.cfg.KnowledgeServiceURL, "/")
+	if base == "" {
+		return nil, fmt.Errorf("knowledge-service not configured")
+	}
+	body, err := json.Marshal(map[string]any{
+		"user_id": userID.String(), "entity_id": entityID, "sources": sources,
+	})
+	if err != nil {
+		return nil, err
+	}
+	url := fmt.Sprintf("%s/internal/knowledge/books/%s/wiki/source-text", base, bookID.String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if s.cfg.InternalServiceToken != "" {
+		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	}
+	if tid := TraceIDFromContext(ctx); tid != "" {
+		req.Header.Set(traceIDHeader, tid)
+	}
+	res, err := knowledgeHTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("source-text upstream %d", res.StatusCode)
+	}
+	var out struct {
+		Texts map[string]string `json:"texts"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return out.Texts, nil
+}
+
 // badEntityIDError marks an invalid client-supplied entity id so the handler can
 // map it to a 400 (rather than a generic 500).
 type badEntityIDError struct{ id string }
