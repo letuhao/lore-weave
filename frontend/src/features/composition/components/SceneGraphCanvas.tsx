@@ -11,12 +11,11 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useOutline, useOutlineMutations, useSceneLinks } from '../hooks/useOutline';
 import { useSetWorkSettings } from '../hooks/useWork';
-import type { OutlineNode, SceneLinkKind, Work } from '../types';
+import type { OutlineNode, SceneLink, SceneLinkKind, Work } from '../types';
 import { SceneNode } from './SceneNode';
 import { SceneEdge } from './SceneEdge';
+import { GraphCanvas } from './GraphCanvas';
 import { autoLayout, NODE_H, NODE_W, PAD, type Pos } from './sceneGraphLayout';
-
-type DragState = { id: string; startX: number; startY: number; origX: number; origY: number; moved: boolean };
 
 export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: string; token: string | null }) {
   const { t } = useTranslation('composition');
@@ -46,33 +45,10 @@ export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: 
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
   const [kind, setKind] = useState<SceneLinkKind>('setup_payoff');
   const [label, setLabel] = useState('');
-  const drag = useRef<DragState | null>(null);
-  const svgRef = useRef<SVGSVGElement>(null);
 
   const persist = (positions: Record<string, Pos>) => {
     const sg = (work.settings.scene_graph as Record<string, unknown> | undefined) ?? {};
     setSettings.mutate({ projectId, currentSettings: work.settings, patch: { scene_graph: { ...sg, positions } } });
-  };
-
-  const onNodePointerDown = (id: string) => (e: React.PointerEvent) => {
-    const p = posOf(id);
-    drag.current = { id, startX: e.clientX, startY: e.clientY, origX: p.x, origY: p.y, moved: false };
-    try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch { /* jsdom no-op */ }
-  };
-  const onPointerMove = (e: React.PointerEvent) => {
-    const d = drag.current;
-    if (!d) return;
-    const dx = e.clientX - d.startX;
-    const dy = e.clientY - d.startY;
-    if (!d.moved && Math.abs(dx) + Math.abs(dy) > 5) d.moved = true; // 5px = drag, else click
-    if (d.moved) applyLocal({ ...localRef.current, [d.id]: { x: Math.max(0, d.origX + dx), y: Math.max(0, d.origY + dy) } });
-  };
-  const onPointerUp = () => {
-    const d = drag.current;
-    drag.current = null;
-    if (!d) return;
-    if (d.moved) persist(localRef.current); // commit the dragged position (shared via work.settings)
-    else toggleSelect(d.id);               // a click, not a drag → (de)select for link-create
   };
 
   const toggleSelect = (id: string) => {
@@ -106,8 +82,8 @@ export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: 
   // would render nowhere — acceptable since no other surface authors such links).
   const inGraph = new Set(scenes.map((s) => s.id));
   const links = (linksQ.data ?? []).filter((l) => inGraph.has(l.from_node_id) && inGraph.has(l.to_node_id));
-  const w = Math.max(360, ...scenes.map((s) => posOf(s.id).x + NODE_W + PAD));
-  const h = Math.max(220, ...scenes.map((s) => posOf(s.id).y + NODE_H + PAD));
+  const byId = useMemo(() => new Map(scenes.map((s) => [s.id, s])), [scenes]);
+  const positions: Record<string, Pos> = Object.fromEntries(scenes.map((s) => [s.id, posOf(s.id)]));
 
   return (
     <div className="flex h-full flex-col" data-testid="composition-graph">
@@ -151,34 +127,41 @@ export function SceneGraphCanvas({ work, bookId, token }: { work: Work; bookId: 
           {t('scenegraph.empty', { defaultValue: 'No scenes yet — plan some scenes in the outline to see the graph.' })}
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto">
-          <svg
-            ref={svgRef} width={w} height={h} data-testid="scenegraph-svg"
-            onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-          >
-            <defs>
-              <marker id="scene-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-                <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8" />
-              </marker>
-            </defs>
-            {/* background: clicking empty space clears any selection */}
-            <rect data-testid="scenegraph-bg" width={w} height={h} fill="transparent" onPointerDown={clearSelection} />
-            {links.map((l) => (
-              <SceneEdge
-                key={l.id} link={l} from={posOf(l.from_node_id)} to={posOf(l.to_node_id)}
-                selected={selectedEdge === l.id}
-                onSelect={() => { setSelected([]); setSelectedEdge(l.id); }}
-                onDelete={() => deleteEdge(l.id)}
-              />
-            ))}
-            {scenes.map((n) => (
+        <GraphCanvas<SceneLink>
+          testid="scenegraph-svg"
+          positions={positions}
+          nodeIds={scenes.map((s) => s.id)}
+          edges={links}
+          edgeEndpoints={(l) => ({ from: l.from_node_id, to: l.to_node_id })}
+          edgeKey={(l) => l.id}
+          nodeSize={{ w: NODE_W, h: NODE_H }}
+          onNodeClick={toggleSelect}
+          onNodeDrag={(id, pos) => applyLocal({ ...localRef.current, [id]: pos })}
+          onNodeDragEnd={() => persist(localRef.current)}
+          onBackgroundClick={clearSelection}
+          defs={(
+            <marker id="scene-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8" />
+            </marker>
+          )}
+          renderEdge={(l, from, to) => (
+            <SceneEdge
+              link={l} from={from} to={to}
+              selected={selectedEdge === l.id}
+              onSelect={() => { setSelected([]); setSelectedEdge(l.id); }}
+              onDelete={() => deleteEdge(l.id)}
+            />
+          )}
+          renderNode={(id, h) => {
+            const n = byId.get(id)!;
+            return (
               <SceneNode
-                key={n.id} node={n} pos={posOf(n.id)} selected={selected.includes(n.id)}
-                onPointerDown={onNodePointerDown(n.id)} onSelect={() => toggleSelect(n.id)} onOpen={() => openScene(n)}
+                node={n} pos={positions[id]} selected={selected.includes(id)}
+                onPointerDown={h.onPointerDown} onSelect={() => toggleSelect(id)} onOpen={() => openScene(n)}
               />
-            ))}
-          </svg>
-        </div>
+            );
+          }}
+        />
       )}
     </div>
   );

@@ -84,6 +84,17 @@
     "kind_faction": "勢力",
     "kind_concept": "概念"
   },
+  "relmap": "関係",
+  "relations": {
+    "title": "関係マップ",
+    "focus": "フォーカス",
+    "expand": "展開",
+    "collapse": "折りたたむ",
+    "truncated": "最初の{{n}}ノードを表示中",
+    "loading": "関係マップを読み込み中…",
+    "noProject": "ナレッジグラフがまだありません — この本を抽出して関係をマップしてください。",
+    "noRelations": "このエンティティにはまだ関係がありません。"
+  },
   "grounding": "グラウンディング",
   "canon": "正典",
   "quality": "品質",

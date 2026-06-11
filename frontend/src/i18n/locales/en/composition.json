@@ -84,6 +84,17 @@
     "kind_faction": "Factions",
     "kind_concept": "Concepts"
   },
+  "relmap": "Relations",
+  "relations": {
+    "title": "Relationship Map",
+    "focus": "Focus",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "truncated": "showing the first {{n}} nodes",
+    "loading": "Loading relationship map…",
+    "noProject": "No knowledge graph yet — extract this book to map relationships.",
+    "noRelations": "This entity has no relations yet."
+  },
   "grounding": "Grounding",
   "canon": "Canon",
   "quality": "Quality",

@@ -84,6 +84,17 @@
     "kind_faction": "派系",
     "kind_concept": "概念"
   },
+  "relmap": "關係",
+  "relations": {
+    "title": "關係圖",
+    "focus": "焦點",
+    "expand": "展開",
+    "collapse": "收合",
+    "truncated": "顯示前 {{n}} 個節點",
+    "loading": "載入關係圖中…",
+    "noProject": "尚無知識圖譜 — 擷取本書以建立關係圖。",
+    "noRelations": "此實體尚無任何關係。"
+  },
   "grounding": "依據",
   "canon": "正典",
   "quality": "品質",
