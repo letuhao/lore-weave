@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     # event-bus payload — a head-sample is enough for a fidelity judgment.
     translation_judge_feed_enabled: bool = False
     translation_judge_feed_max_chars: int = 2000
+    # LLM re-arch Phase 2b-T2: opt-in event-driven decouple of the v2 TEXT path.
+    # OFF ⇒ the synchronous session_translator path is unchanged. ON ⇒ the worker
+    # submits the first chunk + releases; the llm_terminal_consumer resumes on each
+    # `loreweave:events:llm_job_terminal` and finalizes (so a worker coroutine isn't
+    # pinned for the whole chapter). Block + V3 decouple = 2b-T3 (still synchronous
+    # under this flag for now).
+    translation_decouple_enabled: bool = False
 
     class Config:
         env_file = ".env"

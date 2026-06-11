@@ -207,6 +207,21 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             chapter_id, len(translated_blocks), translated_count, translatable_count,
             input_tokens, output_tokens,
         )
+    elif settings.translation_decouple_enabled and pipeline_version == "v2":
+        # LLM re-arch Phase 2b-T2: event-driven decouple of the v2 TEXT path.
+        # Submit the first chunk + RELEASE this worker coroutine; the
+        # llm_terminal_consumer resumes on each `loreweave:events:llm_job_terminal`
+        # and finalizes via _finalize_chapter. So a worker isn't pinned for the
+        # whole chapter. (Block + V3 decouple is 2b-T3 — still synchronous here.)
+        log.info("chapter %s: using DECOUPLED TEXT pipeline (decouple flag on)", chapter_id)
+        from .decoupled_translate import start_chapter as _decoupled_start
+        await _decoupled_start(
+            pool=pool, llm_client=llm_client,
+            chapter_translation_id=chapter_translation_id,
+            chapter_text=chapter_text, source_lang=source_lang,
+            msg=msg, context_window=context_window,
+        )
+        return  # released — the consumer finalizes when the terminal event arrives
     else:
         log.info(
             "chapter %s: using TEXT pipeline (model=%s/%s)",
@@ -229,11 +244,41 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             chapter_id, len(translated_body_text or ""), input_tokens, output_tokens,
         )
 
+    await _finalize_chapter(
+        pool=pool, publish_event=publish_event, msg=msg,
+        job_id=job_id, chapter_id=chapter_id, user_id=user_id,
+        chapter_translation_id=chapter_translation_id,
+        pipeline_version=pipeline_version, chapter_index=chapter_index,
+        target_language=target_language, source_lang=source_lang,
+        chapter_text=chapter_text,
+        translated_body_text=translated_body_text,
+        translated_body_json=translated_body_json,
+        translated_body_format=translated_body_format,
+        memo_text=memo_text, input_tokens=input_tokens, output_tokens=output_tokens,
+    )
+
+
+async def _finalize_chapter(
+    *, pool, publish_event, msg, job_id, chapter_id, user_id,
+    chapter_translation_id, pipeline_version, chapter_index, target_language,
+    source_lang, chapter_text,
+    translated_body_text, translated_body_json, translated_body_format,
+    memo_text, input_tokens, output_tokens,
+) -> None:
+    """Persist + emit the completed-chapter result. Shared by the synchronous
+    pipelines (block + text) and the 2b-T2 decoupled consumer's finalize hook.
+
+    Idempotent for at-least-once delivery: the terminal-event relay may deliver a
+    chapter's final event twice. The transactional UPDATE is guarded on
+    ``status <> 'completed'``; a duplicate sees ``UPDATE 0`` → skips the counter
+    increment, the active-version insert, the outbox event AND the post-commit
+    emits. (The synchronous path re-marks status='running' upstream before re-entry,
+    so the guard is a no-op there — neutral.)"""
     # Persist final result — all writes in one transaction for outbox atomicity
     log.info("chapter %s: persisting completed result to DB", chapter_id)
     async with pool.acquire() as db:
         async with db.transaction():
-            await db.execute(
+            res = await db.execute(
                 """UPDATE chapter_translations SET
                      status='completed',
                      translated_body=$1,
@@ -243,61 +288,71 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
                      input_tokens=$5,
                      output_tokens=$6,
                      finished_at=now()
-                   WHERE job_id=$7 AND chapter_id=$8""",
+                   WHERE job_id=$7 AND chapter_id=$8 AND status <> 'completed'""",
                 translated_body_text, translated_body_json, translated_body_format,
                 source_lang,
                 input_tokens or None, output_tokens or None,
                 job_id, chapter_id,
             )
-            log.info("chapter %s: chapter_translations updated, incrementing job counter", chapter_id)
-            await db.execute(
-                "UPDATE translation_jobs SET completed_chapters=completed_chapters+1 WHERE job_id=$1",
-                job_id,
-            )
-            # Auto-set active: insert only if no active version exists yet for
-            # (chapter_id, target_language). M5b: do NOT auto-publish a version the
-            # verifier flagged with unresolved high-severity issues — the SELECT
-            # WHERE drops it so the slot stays empty until the user reviews and
-            # explicitly sets it active (the publish gate). V2 chapters have
-            # unresolved_high_count=0 (default) → unchanged behaviour.
-            #
-            # D-CAMPAIGN-AUTONOMOUS-PUBLISH: a CAMPAIGN job is the no-human Auto-Draft
-            # Factory — it PROMOTES the freshly-completed clean version to active even
-            # OVER an existing active one (a re-translation of a stale/failed chapter),
-            # because there is no human to confirm the M6a publish. Still gated on
-            # unresolved_high_count=0 (the SELECT WHERE), so a high-severity-flagged
-            # re-translation never auto-republishes. An interactive (non-campaign) job
-            # keeps DO NOTHING → first-write-wins + an explicit human publish.
-            _on_conflict = (
-                """ON CONFLICT (chapter_id, target_language) DO UPDATE
-                       SET chapter_translation_id = EXCLUDED.chapter_translation_id,
-                           set_by_user_id = EXCLUDED.set_by_user_id,
-                           set_at = now()"""
-                if msg.get("campaign_id")
-                else "ON CONFLICT (chapter_id, target_language) DO NOTHING"
-            )
-            await db.execute(
-                f"""
-                INSERT INTO active_chapter_translation_versions
-                  (chapter_id, target_language, chapter_translation_id, set_by_user_id)
-                SELECT $1, ct.target_language, $2, ct.owner_user_id
-                FROM chapter_translations ct
-                WHERE ct.id = $2
-                  AND COALESCE(ct.unresolved_high_count, 0) = 0
-                {_on_conflict}
-                """,
-                chapter_id, chapter_translation_id,
-            )
-            # Emit outbox event for statistics-service
-            await _insert_outbox_event(db, "chapter.translated", chapter_id, {
-                "user_id": str(msg["user_id"]),
-                "book_id": str(msg["book_id"]),
-                "chapter_id": str(chapter_id),
-                "target_language": msg["target_language"],
-                "status": "completed",
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-            })
+            # asyncpg command tag → "UPDATE 0" means the row was already 'completed'
+            # (a duplicate terminal-event delivery). Skip the non-idempotent steps.
+            # isinstance guard: only a real command-tag str triggers the skip — a
+            # non-str (test mock) defaults to "proceed" (the synchronous behaviour).
+            already_done = isinstance(res, str) and res.endswith(" 0")
+            if already_done:
+                log.info("chapter %s: already finalized (duplicate delivery) — skipping", chapter_id)
+            else:
+                log.info("chapter %s: chapter_translations updated, incrementing job counter", chapter_id)
+                await db.execute(
+                    "UPDATE translation_jobs SET completed_chapters=completed_chapters+1 WHERE job_id=$1",
+                    job_id,
+                )
+                # Auto-set active: insert only if no active version exists yet for
+                # (chapter_id, target_language). M5b: do NOT auto-publish a version the
+                # verifier flagged with unresolved high-severity issues — the SELECT
+                # WHERE drops it so the slot stays empty until the user reviews and
+                # explicitly sets it active (the publish gate). V2 chapters have
+                # unresolved_high_count=0 (default) → unchanged behaviour.
+                #
+                # D-CAMPAIGN-AUTONOMOUS-PUBLISH: a CAMPAIGN job is the no-human Auto-Draft
+                # Factory — it PROMOTES the freshly-completed clean version to active even
+                # OVER an existing active one (a re-translation of a stale/failed chapter),
+                # because there is no human to confirm the M6a publish. Still gated on
+                # unresolved_high_count=0 (the SELECT WHERE), so a high-severity-flagged
+                # re-translation never auto-republishes. An interactive (non-campaign) job
+                # keeps DO NOTHING → first-write-wins + an explicit human publish.
+                _on_conflict = (
+                    """ON CONFLICT (chapter_id, target_language) DO UPDATE
+                           SET chapter_translation_id = EXCLUDED.chapter_translation_id,
+                               set_by_user_id = EXCLUDED.set_by_user_id,
+                               set_at = now()"""
+                    if msg.get("campaign_id")
+                    else "ON CONFLICT (chapter_id, target_language) DO NOTHING"
+                )
+                await db.execute(
+                    f"""
+                    INSERT INTO active_chapter_translation_versions
+                      (chapter_id, target_language, chapter_translation_id, set_by_user_id)
+                    SELECT $1, ct.target_language, $2, ct.owner_user_id
+                    FROM chapter_translations ct
+                    WHERE ct.id = $2
+                      AND COALESCE(ct.unresolved_high_count, 0) = 0
+                    {_on_conflict}
+                    """,
+                    chapter_id, chapter_translation_id,
+                )
+                # Emit outbox event for statistics-service
+                await _insert_outbox_event(db, "chapter.translated", chapter_id, {
+                    "user_id": str(msg["user_id"]),
+                    "book_id": str(msg["book_id"]),
+                    "chapter_id": str(chapter_id),
+                    "target_language": msg["target_language"],
+                    "status": "completed",
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                })
+    if already_done:
+        return
     log.info("chapter %s: DB persist complete", chapter_id)
 
     # M7a: emit the V3 quality rollup → learning-service (feedback flywheel).

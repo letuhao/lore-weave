@@ -10,6 +10,8 @@ from .llm_client import close_llm_client, get_llm_client
 from .migrate import run_migrations
 from .broker import connect_broker, close_broker
 from .events.glossary_consumer import GlossaryStaleConsumer
+from .events.llm_terminal_consumer import LLMTerminalConsumer
+from .broker import publish_event
 from .grant_client import init_grant_client, close_grant_client
 
 log = logging.getLogger(__name__)
@@ -52,6 +54,17 @@ async def lifespan(app: FastAPI):
     consumer = GlossaryStaleConsumer(settings.redis_url, pool)
     consumer_task = asyncio.create_task(consumer.run())
 
+    # LLM re-arch Phase 2b-T2: resume decoupled TEXT translations off the durable
+    # terminal-event stream. Started only when the decouple flag is on (inert
+    # otherwise — no decoupled chapters exist so every event would just ack+ignore).
+    llm_consumer = None
+    llm_consumer_task = None
+    if settings.translation_decouple_enabled:
+        llm_consumer = LLMTerminalConsumer(
+            settings.redis_url, pool, get_llm_client(), publish_event,
+        )
+        llm_consumer_task = asyncio.create_task(llm_consumer.run())
+
     yield
 
     await consumer.stop()
@@ -59,6 +72,12 @@ async def lifespan(app: FastAPI):
     with suppress(asyncio.CancelledError, Exception):
         await consumer_task
     await consumer.close()
+    if llm_consumer is not None:
+        await llm_consumer.stop()
+        llm_consumer_task.cancel()
+        with suppress(asyncio.CancelledError, Exception):
+            await llm_consumer_task
+        await llm_consumer.close()
     await close_llm_client()
     await close_grant_client()
     await close_broker()

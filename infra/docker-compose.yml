@@ -430,6 +430,10 @@ services:
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       # M5c: consume glossary change events (Redis Stream) to flag stale translations.
       REDIS_URL: redis://redis:6379
+      # LLM re-arch Phase 2b-T2: event-driven decouple of the v2 TEXT path. ON ⇒
+      # this API runs the llm-terminal-resume consumer + the worker takes the
+      # submit-and-release branch. Default off (synchronous path unchanged).
+      TRANSLATION_DECOUPLE_ENABLED: ${TRANSLATION_DECOUPLE_ENABLED:-false}
       PORT: "8087"
     depends_on:
       postgres:
@@ -513,6 +517,10 @@ services:
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      REDIS_URL: redis://redis:6379
+      # LLM re-arch Phase 2b-T2: must match the API's flag — the worker takes the
+      # submit-and-release branch only when this is on (default off).
+      TRANSLATION_DECOUPLE_ENABLED: ${TRANSLATION_DECOUPLE_ENABLED:-false}
     depends_on:
       postgres:
         condition: service_healthy

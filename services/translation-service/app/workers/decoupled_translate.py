@@ -155,6 +155,11 @@ async def start_chapter(
     rs = new_resume_state(chunks, source_lang)
     rs["msg"] = msg
     rs["context_window"] = context_window
+    # Stored so the consumer (which only sees a job_id) can pass the ORIGINAL text
+    # as the quality-feed source_text at finalize — keeps M7d fidelity-judge parity
+    # with the synchronous path. Redundant with `chunks` (a split of this) but the
+    # split isn't guaranteed byte-lossless, and the storage cost is trivial.
+    rs["chapter_text"] = chapter_text
     await _submit_next(pool=pool, llm_client=llm_client,
                        chapter_translation_id=chapter_translation_id, rs=rs)
 
@@ -195,8 +200,16 @@ async def resume(
     action = decide_next_action(rs, context_window)
     if action[0] == "finalize":
         body = "\n\n".join(rs["translated_parts"])
-        await _clear_resume_state(pool, chapter_translation_id)
+        # Finalize-FIRST, then clear — crash-safe under at-least-once delivery.
+        # finalize_cb sets status='completed' (idempotent via its status guard);
+        # only after it commits do we clear provider_job_id. If we crash between
+        # the two, the terminal event redelivers, finds the row still pointing at
+        # this job, re-folds from the (pre-fold) persisted resume_state — yielding
+        # the SAME body — and finalize_cb's guard absorbs the duplicate. Clearing
+        # first would instead lose the row on redelivery → a translated chapter
+        # stuck 'running' until the 2h sweeper marks it failed.
         await finalize_cb(body, rs["total_input"], rs["total_output"])
+        await _clear_resume_state(pool, chapter_translation_id)
         return
     await _submit_next(pool=pool, llm_client=llm_client,
                        chapter_translation_id=chapter_translation_id, rs=rs)
