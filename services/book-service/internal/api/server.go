@@ -146,6 +146,9 @@ func (s *Server) Router() http.Handler {
 	r.Route("/internal", func(r chi.Router) {
 		r.Use(s.requireInternalToken)
 		r.Get("/books/{book_id}/projection", s.getBookProjection)
+		// E0 — the single grant-resolution authority every service calls.
+		// Always 200 {grant_level}; `none` for missing/forbidden (no oracle, R4).
+		r.Get("/books/{book_id}/access", s.getBookAccess)
 		r.Get("/books/{book_id}/lexical-search", s.searchChapterTextInternal) // raw-search Phase 2 (lexical leg for the knowledge orchestrator)
 		r.Get("/books/{book_id}/chapters", s.getInternalBookChapters)
 		r.Get("/books/{book_id}/chapters/{chapter_id}", s.getInternalBookChapter)
@@ -194,6 +197,11 @@ func (s *Server) Router() http.Handler {
 			r.Get("/cover", s.getCover)
 			r.Post("/cover", s.uploadCover)
 			r.Delete("/cover", s.deleteCover)
+
+			// E0 — owner-only collaborator management (grant/revoke share-access).
+			r.Get("/collaborators", s.listCollaborators)
+			r.Put("/collaborators/{user_id}", s.putCollaborator)
+			r.Delete("/collaborators/{user_id}", s.deleteCollaborator)
 
 			r.Get("/chapters", s.listChapters)
 			r.Post("/chapters", s.createChapter)
