@@ -21,6 +21,8 @@ from app.clients.glossary_client import GlossaryClient
 from app.clients.reranker_client import RerankerClient
 from app.clients.reranker_client import get_reranker_client as _get_reranker_client_singleton
 from app.clients.glossary_client import get_glossary_client as _get_glossary_client_singleton
+from app.clients.grant_client import GrantClient
+from app.clients.grant_client import get_grant_client as _get_grant_client_singleton
 from app.clients.llm_client import LLMClient
 from app.clients.llm_client import get_llm_client as _get_llm_client_singleton
 from app.db.pool import get_knowledge_pool
@@ -122,6 +124,11 @@ async def get_glossary_client() -> GlossaryClient:
 
 async def get_book_client() -> BookClient:
     return _get_book_client_singleton()
+
+
+async def get_grant_client() -> GrantClient:
+    """E0 collaboration grant client (book-service /access). Singleton per worker."""
+    return _get_grant_client_singleton()
 
 
 async def get_embedding_client() -> EmbeddingClient:

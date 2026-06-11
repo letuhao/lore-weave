@@ -54,6 +54,7 @@ from app.jobs.budget import can_start_job, check_user_monthly_budget
 from app.jobs.extraction_wake import ExtractionWakeFn
 from app.jobs.state_machine import JobStatus, PauseReason, StateTransitionError, validate_transition
 from app.logging_config import trace_id_var
+from app.auth.grant_deps import GrantLevel, require_job_grant, require_project_grant
 from app.middleware.jwt_auth import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -191,7 +192,7 @@ class EstimateResponse(BaseModel):
 async def estimate_extraction_cost(
     project_id: UUID,
     body: EstimateRequest,
-    user_id: UUID = Depends(get_current_user),
+    user_id: UUID = Depends(require_project_grant(GrantLevel.VIEW)),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     pending_repo: ExtractionPendingRepo = Depends(get_extraction_pending_repo),
     book_client: BookClient = Depends(get_book_client),
@@ -346,7 +347,7 @@ async def _create_and_start_job(
 async def start_extraction_job(
     project_id: UUID,
     body: StartJobRequest,
-    user_id: UUID = Depends(get_current_user),
+    user_id: UUID = Depends(require_project_grant(GrantLevel.EDIT)),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
     benchmark_repo: BenchmarkRunsRepo = Depends(get_benchmark_runs_repo),
@@ -362,6 +363,7 @@ async def start_extraction_job(
     """
     return await _start_extraction_job_core(
         project_id, body, user_id, projects_repo, jobs_repo, benchmark_repo,
+        extraction_wake=extraction_wake,
     )
 
 
@@ -374,6 +376,7 @@ async def _start_extraction_job_core(
     benchmark_repo: BenchmarkRunsRepo,
     *,
     campaign_id: UUID | None = None,
+    extraction_wake: ExtractionWakeFn | None = None,
 ) -> ExtractionJob:
     """Create and start an extraction job for a project.
 
@@ -555,7 +558,8 @@ async def _start_extraction_job_core(
     # never fail the 201. The redis fn swallows its own faults; this outer guard
     # is defense-in-depth so even a misbehaving wake fn can't break job-start.
     try:
-        await extraction_wake(job_id=job_id, project_id=project_id)
+        if extraction_wake is not None:
+            await extraction_wake(job_id=job_id, project_id=project_id)
     except Exception:  # noqa: BLE001 — wake is non-fatal; poll loop is the fallback
         logger.warning(
             "FD-22: extraction wake raised (non-fatal) job_id=%s — poll fallback",
@@ -618,7 +622,7 @@ async def _get_active_job_for_project(
 )
 async def pause_extraction_job(
     project_id: UUID,
-    user_id: UUID = Depends(get_current_user),
+    user_id: UUID = Depends(require_project_grant(GrantLevel.MANAGE)),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
 ) -> ExtractionJob:
@@ -655,7 +659,7 @@ async def pause_extraction_job(
 )
 async def resume_extraction_job(
     project_id: UUID,
-    user_id: UUID = Depends(get_current_user),
+    user_id: UUID = Depends(require_project_grant(GrantLevel.MANAGE)),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
 ) -> ExtractionJob:
@@ -691,7 +695,7 @@ async def resume_extraction_job(
 )
 async def cancel_extraction_job(
     project_id: UUID,
-    user_id: UUID = Depends(get_current_user),
+    user_id: UUID = Depends(require_project_grant(GrantLevel.MANAGE)),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
 ) -> ExtractionJob:
@@ -765,7 +769,7 @@ async def _delete_project_graph(user_id: UUID, project_id: UUID) -> int:
 )
 async def delete_extraction_graph(
     project_id: UUID,
-    user_id: UUID = Depends(get_current_user),
+    user_id: UUID = Depends(require_project_grant(GrantLevel.OWNER)),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
 ) -> dict:
@@ -831,7 +835,7 @@ async def delete_extraction_graph(
 )
 async def disable_extraction(
     project_id: UUID,
-    user_id: UUID = Depends(get_current_user),
+    user_id: UUID = Depends(require_project_grant(GrantLevel.MANAGE)),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
 ) -> dict:
@@ -923,7 +927,7 @@ class RebuildRequest(BaseModel):
 async def rebuild_extraction(
     project_id: UUID,
     body: RebuildRequest,
-    user_id: UUID = Depends(get_current_user),
+    user_id: UUID = Depends(require_project_grant(GrantLevel.OWNER)),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
 ) -> ExtractionJob:
@@ -1002,7 +1006,7 @@ async def change_embedding_model(
     project_id: UUID,
     body: ChangeEmbeddingModelRequest,
     confirm: bool = False,
-    user_id: UUID = Depends(get_current_user),
+    user_id: UUID = Depends(require_project_grant(GrantLevel.OWNER)),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
 ) -> dict:
@@ -1220,7 +1224,7 @@ async def list_all_user_jobs(
 )
 async def get_extraction_job(
     job_id: UUID,
-    user_id: UUID = Depends(get_current_user),
+    user_id: UUID = Depends(require_job_grant(GrantLevel.VIEW)),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
     book_client: BookClient = Depends(get_book_client),
     if_none_match: str | None = Header(default=None, alias="If-None-Match"),
@@ -1259,7 +1263,7 @@ async def get_extraction_job(
 )
 async def list_extraction_jobs(
     project_id: UUID,
-    user_id: UUID = Depends(get_current_user),
+    user_id: UUID = Depends(require_project_grant(GrantLevel.VIEW)),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
     book_client: BookClient = Depends(get_book_client),
@@ -1287,7 +1291,7 @@ async def list_extraction_jobs(
 async def get_project_benchmark_status(
     project_id: UUID,
     embedding_model: str | None = None,
-    user_id: UUID = Depends(get_current_user),
+    user_id: UUID = Depends(require_project_grant(GrantLevel.VIEW)),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     benchmark_repo: BenchmarkRunsRepo = Depends(get_benchmark_runs_repo),
 ) -> BenchmarkStatusResponse:
@@ -1369,7 +1373,7 @@ class BenchmarkRunResponse(BaseModel):
 async def run_project_benchmark_endpoint(
     project_id: UUID,
     body: BenchmarkRunRequest | None = None,
-    user_id: UUID = Depends(get_current_user),
+    user_id: UUID = Depends(require_project_grant(GrantLevel.EDIT)),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
 ) -> BenchmarkRunResponse:
     """C12b-a — run the K17.9 benchmark against a dedicated project.
@@ -1510,7 +1514,7 @@ RETURN sum(entity_count) AS entity_count, sum(fact_count) AS fact_count,
 )
 async def get_project_graph_stats(
     project_id: UUID,
-    user_id: UUID = Depends(get_current_user),
+    user_id: UUID = Depends(require_project_grant(GrantLevel.VIEW)),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
 ) -> GraphStatsResponse:
     """K19a.4 — count :Entity/:Fact/:Event/:Passage nodes scoped to the

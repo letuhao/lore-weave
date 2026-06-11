@@ -311,6 +311,16 @@ class ExtractionJobsRepo:
             row = await conn.fetchrow(query, user_id, job_id)
         return _row_to_job(row) if row else None
 
+    async def project_for_job(self, job_id: UUID) -> UUID | None:
+        """E0-3 authz bootstrap — return a job's ``project_id`` (NOT user-scoped) so
+        the access layer can resolve the project's book grant. Returns only the id,
+        never job content; a non-grantee still gets a uniform 404. None if missing."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT project_id FROM extraction_jobs WHERE job_id = $1", job_id
+            )
+        return row["project_id"] if row else None
+
     async def list_for_project(
         self, user_id: UUID, project_id: UUID, *, limit: int = 50
     ) -> list[ExtractionJob]:
