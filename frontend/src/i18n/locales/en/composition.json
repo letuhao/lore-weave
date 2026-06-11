@@ -79,6 +79,7 @@
     "noProject": "No knowledge graph yet — extract this book to populate the codex.",
     "noMatch": "No cast members match your search.",
     "empty": "No extracted entities yet — publish/extract to populate the codex.",
+    "viewArc": "View character arc",
     "kind_character": "Characters",
     "kind_location": "Places",
     "kind_faction": "Factions",
@@ -114,6 +115,18 @@
     "prev": "Prev",
     "next": "Next",
     "page": "{{page}} / {{total}}"
+  },
+  "arc": "Arc",
+  "chararc": {
+    "title": "Character Arc",
+    "pick_character": "Pick a character",
+    "relations_now": "relations now",
+    "no_relations": "none",
+    "active": "active",
+    "gone": "gone",
+    "loading": "Loading character arc…",
+    "noProject": "No knowledge graph yet — extract this book to chart character arcs.",
+    "empty": "This character has no events yet."
   },
   "grounding": "Grounding",
   "canon": "Canon",

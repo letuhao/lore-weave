@@ -79,6 +79,7 @@
     "noProject": "尚無知識圖譜 — 擷取本書以建立典籍。",
     "noMatch": "沒有符合搜尋的角色。",
     "empty": "尚未擷取任何實體 — 發布/擷取以建立典籍。",
+    "viewArc": "檢視角色弧",
     "kind_character": "角色",
     "kind_location": "地點",
     "kind_faction": "派系",
@@ -114,6 +115,18 @@
     "prev": "上一頁",
     "next": "下一頁",
     "page": "{{page}} / {{total}}"
+  },
+  "arc": "角色弧",
+  "chararc": {
+    "title": "角色弧",
+    "pick_character": "選擇角色",
+    "relations_now": "目前關係",
+    "no_relations": "無",
+    "active": "在場",
+    "gone": "已離場",
+    "loading": "載入角色弧中…",
+    "noProject": "尚無知識圖譜 — 擷取本書以繪製角色弧。",
+    "empty": "此角色尚無事件。"
   },
   "grounding": "依據",
   "canon": "正典",

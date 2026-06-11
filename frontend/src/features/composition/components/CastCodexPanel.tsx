@@ -29,11 +29,13 @@ export function groupCast(
 }
 
 export function CastCodexPanel({
-  bookId, chapterId, token,
+  bookId, chapterId, token, onViewArc,
 }: {
   bookId: string;
   chapterId: string;
   token: string | null;
+  /** T2.4: launch the Character Arc tab for this entity (set by CompositionPanel). */
+  onViewArc?: (entityId: string) => void;
 }) {
   const { t } = useTranslation('composition');
   const projectQ = useKnowledgeProjectId(bookId, token);
@@ -87,7 +89,7 @@ export function CastCodexPanel({
                 </div>
                 <div className="flex flex-col gap-1">
                   {g.rows.map((row) => (
-                    <CastEntityRow key={row.id} row={row} bookId={bookId} chapterId={chapterId} token={token} />
+                    <CastEntityRow key={row.id} row={row} bookId={bookId} chapterId={chapterId} token={token} onViewArc={onViewArc} />
                   ))}
                 </div>
               </div>
