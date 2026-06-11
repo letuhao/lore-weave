@@ -49,6 +49,27 @@ class FakeRecord(dict):
     pass
 
 
+class _GrantStub:
+    """E0-4a test seam: stands in for the book-service grant client. Default OWNER
+    so existing router tests (which run as the row owner) pass the gate unchanged;
+    a test can set ``.level`` to drive a deny (NONE → 404, under-tier → 403)."""
+
+    def __init__(self, level):
+        self.level = level
+
+    async def resolve_grant(self, book_id, user_id):
+        return self.level
+
+    async def resolve_access(self, book_id, user_id):
+        return self.level, "active"
+
+
+@pytest.fixture
+def grant_stub():
+    from app.grant_client import GrantLevel
+    return _GrantStub(GrantLevel.OWNER)
+
+
 @pytest.fixture
 def fake_pool():
     """AsyncMock that mimics asyncpg.Pool's common methods."""
@@ -77,10 +98,13 @@ def fake_pool():
 
 
 @pytest.fixture
-def client(fake_pool):
+def client(fake_pool, grant_stub):
     """
     FastAPI TestClient with DB pool + lifespan fully mocked.
     Each test can customise fake_pool.fetchrow etc. before making requests.
+
+    E0-4a: the book-grant client dep is overridden with ``grant_stub`` (default
+    OWNER) so existing tests pass-through; a deny test sets ``grant_stub.level``.
     """
     from fastapi.testclient import TestClient
 
@@ -115,6 +139,9 @@ def client(fake_pool):
 
         app.dependency_overrides[get_current_user] = _user
         app.dependency_overrides[get_db] = _db
+        # E0-4a: route the book-grant gate to the stub (default OWNER → pass).
+        from app.grant_deps import get_grant_client_dep
+        app.dependency_overrides[get_grant_client_dep] = lambda: grant_stub
 
         with TestClient(app, raise_server_exceptions=True) as c:
             yield c

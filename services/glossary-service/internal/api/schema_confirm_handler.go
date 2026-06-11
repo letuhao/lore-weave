@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/loreweave/grantclient"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -64,7 +65,7 @@ func (s *Server) toolProposeNewKind(ctx context.Context, _ *mcp.CallToolRequest,
 	if code == "" || name == "" {
 		return nil, proposeSchemaToolOut{}, errors.New("code and name are required")
 	}
-	if err := s.checkBookOwnership(ctx, bookID, userID); err != nil {
+	if err := s.checkGrant(ctx, bookID, userID, grantclient.GrantManage); err != nil {
 		return nil, proposeSchemaToolOut{}, uniformOwnershipError(err)
 	}
 	var desc *string
@@ -95,7 +96,7 @@ func (s *Server) toolProposeNewAttribute(ctx context.Context, _ *mcp.CallToolReq
 		return nil, proposeSchemaToolOut{}, errors.New("invalid field_type: " + in.FieldType +
 			" (text|textarea|select|number|date|tags|url|boolean)")
 	}
-	if err := s.checkBookOwnership(ctx, bookID, userID); err != nil {
+	if err := s.checkGrant(ctx, bookID, userID, grantclient.GrantManage); err != nil {
 		return nil, proposeSchemaToolOut{}, uniformOwnershipError(err)
 	}
 	kindMap, err := s.loadKindMap(ctx)
@@ -174,9 +175,9 @@ func (s *Server) confirmSchema(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "GLOSS_FORBIDDEN", "confirmation not valid for this user")
 		return
 	}
-	// Defense-in-depth: re-check book ownership at confirm time (ownership may have
-	// changed since propose). verifyBookOwner writes the error response on failure.
-	if !s.verifyBookOwner(w, r.Context(), claims.BookID, userID) {
+	// Defense-in-depth: re-check the manage grant at confirm time (the grant may
+	// have changed since propose). requireGrant writes the error response on failure.
+	if !s.requireGrant(w, r.Context(), claims.BookID, userID, grantclient.GrantManage) {
 		return
 	}
 

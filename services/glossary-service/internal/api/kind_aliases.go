@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/loreweave/grantclient"
 )
 
 // Kind-alias + unknown-bucket review endpoints (kind-resolution epic).
@@ -34,8 +35,16 @@ type unknownEntityOut struct {
 
 // listUnknownEntities handles GET /v1/glossary/books/{book_id}/unknown-entities
 func (s *Server) listUnknownEntities(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireUserID(r); !ok {
+	userID, ok := s.requireUserID(r)
+	if !ok {
 		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
+		return
+	}
+	bookUUID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	if !s.requireGrant(w, r.Context(), bookUUID, userID, grantclient.GrantView) {
 		return
 	}
 	bookID := chi.URLParam(r, "book_id")
@@ -217,8 +226,22 @@ func (s *Server) createKindAlias(w http.ResponseWriter, r *http.Request) {
 // reassignEntityKind handles POST /v1/glossary/books/{book_id}/entities/{entity_id}/reassign-kind
 // Body: {kind_id}. Moves one entity onto the target kind, re-keying its attributes.
 func (s *Server) reassignEntityKind(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireUserID(r); !ok {
+	userID, ok := s.requireUserID(r)
+	if !ok {
 		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
+		return
+	}
+	bookUUID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	// reassign-kind is the core action of the unknown-kind REVIEW queue (editorial
+	// curation), so it's an EDIT op — gating it at manage would lock editors out of
+	// the review workflow. Incompatible-code attrs are dropped on rekey, but the
+	// prior revision snapshot preserves them (recoverable via restore), making this
+	// less destructive than the edit-tier child-deletes. (D-E0-1-NEEDMAP-REVIEW;
+	// the lifecycle gate still requires an active book.)
+	if !s.requireGrant(w, r.Context(), bookUUID, userID, grantclient.GrantEdit) {
 		return
 	}
 	bookID := chi.URLParam(r, "book_id")

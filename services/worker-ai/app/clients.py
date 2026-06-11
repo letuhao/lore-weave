@@ -231,6 +231,11 @@ class KnowledgeClient:
         # None = caller didn't resolve it (endpoint falls back to the env
         # default); True/False = explicit per-project setting.
         writer_autocreate: bool | None = None,
+        # E0-3 Phase 2a-2 — BYOK billing identity forwarded onto the SUMMARY
+        # pipeline this persist enqueues (None ⇒ owner-triggered/legacy).
+        billing_user_id: str | None = None,
+        billing_llm_model: str | None = None,
+        billing_embedding_model: str | None = None,
     ) -> ExtractionResult:
         """Phase 4b-γ — POST /internal/extraction/persist-pass2.
 
@@ -281,6 +286,14 @@ class KnowledgeClient:
         # endpoint can distinguish "use env default" from an explicit toggle.
         if writer_autocreate is not None:
             body["writer_autocreate"] = writer_autocreate
+        # E0-3 2a-2 — only include billing when set (collaborator path); the
+        # endpoint defaults to "" ⇒ owner-triggered. Storage tag stays project's.
+        if billing_user_id:
+            body["billing_user_id"] = billing_user_id
+        if billing_llm_model:
+            body["billing_llm_model"] = billing_llm_model
+        if billing_embedding_model:
+            body["billing_embedding_model"] = billing_embedding_model
 
         try:
             resp = await self._http.post(url, json=body)
@@ -327,6 +340,11 @@ class KnowledgeClient:
         embedding_dimension: int,
         retry_at_epoch: float = 0.0,
         retried_n: int = 0,
+        # E0-3 Phase 2a-2 — BYOK billing identity forwarded from the redis
+        # message ("" ⇒ owner-triggered/legacy).
+        billing_user_id: str = "",
+        billing_llm_model: str = "",
+        billing_embedding_model: str = "",
     ) -> SummarizeMessageResult:
         """P3 D-P3-WORKER-AI-CONSUMER-WIRING — POST one extraction.summarize
         message to knowledge-service for processing.
@@ -352,6 +370,9 @@ class KnowledgeClient:
             "embedding_dimension": embedding_dimension,
             "retry_at_epoch": retry_at_epoch,
             "retried_n": retried_n,
+            "billing_user_id": billing_user_id,
+            "billing_llm_model": billing_llm_model,
+            "billing_embedding_model": billing_embedding_model,
         }
         try:
             resp = await self._summarize_http.post(url, json=body)

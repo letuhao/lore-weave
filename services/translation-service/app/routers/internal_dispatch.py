@@ -20,10 +20,21 @@ from pydantic import BaseModel
 
 from ..config import settings as app_settings
 from ..deps import get_db
+from ..grant_deps import GrantLevel, authorize_book
+from ..grant_client import get_grant_client
 from ..models import CreateJobPayload
-from .jobs import _verify_book_owner, _resolve_and_create_job, _cancel_job_core
+from .jobs import _resolve_and_create_job, _cancel_job_core
 
 router = APIRouter(prefix="/internal/translation", tags=["internal"])
+
+
+async def _verify_book_owner(book_id: UUID, user_id: str) -> None:
+    """E0-4a: re-verify the asserted `user_id` has at least EDIT on `book_id`
+    (defense in depth — the internal token authenticates the SERVICE; this
+    confirms the USER claim). Was an owner-only book-projection check; now a
+    book-grant check so a collaborator dispatched by a campaign (4b) is honored.
+    Raises 404 (no grant — anti-oracle) / 403 (under edit)."""
+    await authorize_book(get_grant_client(), book_id, UUID(user_id), GrantLevel.EDIT)
 
 
 async def require_internal_token(

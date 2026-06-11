@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 import asyncpg
 
 from ..deps import get_current_user, get_db
+from ..grant_deps import GrantLevel, require_book_grant
 from ..config import settings as app_settings, DEFAULT_SYSTEM_PROMPT, DEFAULT_USER_PROMPT_TPL
 from ..models import (
     PreferencesPayload,
@@ -94,6 +95,10 @@ async def put_preferences(
 async def get_book_settings(
     book_id: UUID,
     user_id: str = Depends(get_current_user),
+    # E0-4a view gate. Settings stay PER-USER (effective_settings resolves the
+    # caller's own model — a collaborator gets their own config, not the owner's,
+    # because the owner's model_ref won't resolve under the caller's BYOK).
+    _grant: UUID = Depends(require_book_grant(GrantLevel.VIEW)),
     db: asyncpg.Pool = Depends(get_db),
 ):
     import datetime
@@ -114,6 +119,11 @@ async def put_book_settings(
     book_id: UUID,
     payload: BookSettingsPayload,
     user_id: str = Depends(get_current_user),
+    # E0-4a edit gate. NOTE: book_translation_settings.book_id is the PK (one row/
+    # book) so a collaborator's PUT overwrites the shared row — tracked as
+    # D-E0-4A-SETTINGS-PERUSER (composite PK so each keeps their own config). v1: a
+    # collaborator normally uses their user-prefs model; book-settings PUT is rare.
+    _grant: UUID = Depends(require_book_grant(GrantLevel.EDIT)),
     db: asyncpg.Pool = Depends(get_db),
 ):
     uid = UUID(user_id)

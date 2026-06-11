@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/loreweave/grantclient"
 )
 
 // ── response types ───────────────────────────────────────────────────────────
@@ -120,7 +121,7 @@ func (s *Server) listWikiArticles(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 
@@ -253,7 +254,7 @@ func (s *Server) createWikiArticle(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 
@@ -385,7 +386,7 @@ func (s *Server) getWikiArticle(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 	articleID, ok := parsePathUUID(w, r, "article_id")
@@ -441,7 +442,7 @@ func (s *Server) patchWikiArticle(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 	articleID, ok := parsePathUUID(w, r, "article_id")
@@ -641,7 +642,7 @@ func (s *Server) deleteWikiArticle(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantManage) {
 		return
 	}
 	articleID, ok := parsePathUUID(w, r, "article_id")
@@ -705,7 +706,7 @@ func (s *Server) listWikiRevisions(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 	articleID, ok := parsePathUUID(w, r, "article_id")
@@ -787,7 +788,7 @@ func (s *Server) getWikiRevision(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 	articleID, ok := parsePathUUID(w, r, "article_id")
@@ -835,7 +836,7 @@ func (s *Server) restoreWikiRevision(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 	articleID, ok := parsePathUUID(w, r, "article_id")
@@ -929,7 +930,7 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 
@@ -1741,7 +1742,7 @@ func (s *Server) listWikiSuggestions(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 
@@ -1850,7 +1851,7 @@ func (s *Server) reviewWikiSuggestion(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 	articleID, ok := parsePathUUID(w, r, "article_id")

@@ -7,10 +7,8 @@ projection converges. Tested via the public route (mirrors test_jobs.py).
 """
 
 import datetime
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
-
-import httpx
 
 from tests.conftest import FakeRecord
 
@@ -42,23 +40,12 @@ def _job_row(status="pending", total=1):
     })
 
 
-def _book_resp(owner=USER_ID, code=200):
-    r = MagicMock(spec=httpx.Response)
-    r.status_code = code
-    r.is_success = code < 400
-    r.json.return_value = {"owner_user_id": owner, "lifecycle_state": "active"}
-    return r
-
-
 def _post(client, body):
+    # E0-4a: book authz is the conftest grant_stub (default OWNER); no httpx mock.
     with (
-        patch("app.routers.jobs.httpx.AsyncClient") as mock_cls,
         patch("app.routers.jobs.publish", new_callable=AsyncMock) as pub,
         patch("app.routers.jobs.publish_event", new_callable=AsyncMock),
     ):
-        http = AsyncMock()
-        mock_cls.return_value.__aenter__.return_value = http
-        http.get.return_value = _book_resp()
         resp = client.post(f"/v1/translation/books/{BOOK_ID}/jobs", json=body)
     return resp, pub
 

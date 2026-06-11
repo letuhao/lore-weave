@@ -14,6 +14,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/loreweave/glossary-service/internal/domain"
+	"github.com/loreweave/grantclient"
 )
 
 // mcpHandler builds the glossary MCP server (Tier-R read tools) wrapped in the
@@ -123,6 +124,9 @@ func uniformOwnershipError(err error) error {
 	if errors.Is(err, ErrBookUnavailable) {
 		return errors.New("book ownership check unavailable, try again")
 	}
+	if errors.Is(err, ErrBookInactive) {
+		return errors.New("book is not in an editable state")
+	}
 	return errors.New("book not accessible")
 }
 
@@ -166,7 +170,7 @@ func (s *Server) toolSearch(ctx context.Context, _ *mcp.CallToolRequest, in sear
 	if err != nil {
 		return nil, searchToolOut{}, errors.New("book_id must be a UUID")
 	}
-	if err := s.checkBookOwnership(ctx, bookID, userID); err != nil {
+	if err := s.checkGrant(ctx, bookID, userID, grantclient.GrantView); err != nil {
 		return nil, searchToolOut{}, uniformOwnershipError(err)
 	}
 	limit := in.Limit
@@ -199,7 +203,7 @@ func (s *Server) toolGetEntity(ctx context.Context, _ *mcp.CallToolRequest, in g
 	if err != nil {
 		return nil, getEntityToolOut{}, errors.New("entity_id must be a UUID")
 	}
-	if err := s.checkBookOwnership(ctx, bookID, userID); err != nil {
+	if err := s.checkGrant(ctx, bookID, userID, grantclient.GrantView); err != nil {
 		return nil, getEntityToolOut{}, uniformOwnershipError(err)
 	}
 	detail, err := s.loadEntityDetail(ctx, bookID, entityID)
@@ -272,7 +276,7 @@ func (s *Server) toolProposeNewEntity(ctx context.Context, _ *mcp.CallToolReques
 	if strings.TrimSpace(in.Kind) == "" {
 		return nil, proposeEntityToolOut{}, errors.New("kind is required")
 	}
-	if err := s.checkBookOwnership(ctx, bookID, userID); err != nil {
+	if err := s.checkGrant(ctx, bookID, userID, grantclient.GrantEdit); err != nil {
 		return nil, proposeEntityToolOut{}, uniformOwnershipError(err)
 	}
 	kindMap, err := s.loadKindMap(ctx)

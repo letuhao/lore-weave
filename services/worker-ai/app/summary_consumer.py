@@ -97,6 +97,12 @@ async def _dispatch_one_message(
         payload["project_id"] = (
             _decode_field(project_id_raw) if project_id_raw is not None else ""
         )
+        # E0-3 2a-2 — optional BYOK billing identity. Forward redis → HTTP so
+        # the /summarize-message endpoint bills the collaborator's key. Absent
+        # (old messages / owner-triggered) → "" ⇒ legacy owner path.
+        for _bk in ("billing_user_id", "billing_llm_model", "billing_embedding_model"):
+            _bv = _get_field(fields, _bk)
+            payload[_bk] = _decode_field(_bv) if _bv is not None else ""
         # Numeric fields — tolerate missing/empty.
         payload["embedding_dimension"] = int(payload["embedding_dimension"] or "0")
         payload["retry_at_epoch"] = float(

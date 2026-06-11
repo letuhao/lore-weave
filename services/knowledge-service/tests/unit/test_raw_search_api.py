@@ -93,6 +93,9 @@ def _make_client(project=_SENT, lexical=_SENT):
     projects_repo.list = AsyncMock(
         return_value=[project] if project is not None else []
     )
+    # E0-3: raw-search now resolves the book's project via get_by_book (after a
+    # book-grant check) and runs as the project owner.
+    projects_repo.get_by_book = AsyncMock(return_value=project)
     book_client = MagicMock()
     book_client.lexical_search = AsyncMock(
         return_value=([_lex_hit()] if lexical is _SENT else lexical)

@@ -111,8 +111,22 @@ def ctx(monkeypatch):
     monkeypatch.setattr("app.main.close_pool", AsyncMock())
     monkeypatch.setattr("app.main.get_pool", lambda: object())
     from app.main import app
-    from app.deps import get_book_client_dep, get_knowledge_client_dep, get_works_repo
+    from app.deps import (
+        get_book_client_dep,
+        get_grant_client_dep,
+        get_knowledge_client_dep,
+        get_works_repo,
+    )
+    from app.grant_client import GrantLevel
     from app.middleware.jwt_auth import get_bearer_token, get_current_user
+
+    # E0-4c: stub the book-grant authority at OWNER so the collaboration gate
+    # passes; the gate's deny paths (404/403) are covered in test_grant_gate.
+    class _StubGrant:
+        async def resolve_grant(self, book_id, user_id):
+            return GrantLevel.OWNER
+        async def resolve_access(self, book_id, user_id):
+            return GrantLevel.OWNER, "active"
 
     works, knowledge, book = StubWorks(), StubKnowledge(), StubBook()
     app.dependency_overrides[get_current_user] = lambda: USER
@@ -120,6 +134,7 @@ def ctx(monkeypatch):
     app.dependency_overrides[get_works_repo] = lambda: works
     app.dependency_overrides[get_knowledge_client_dep] = lambda: knowledge
     app.dependency_overrides[get_book_client_dep] = lambda: book
+    app.dependency_overrides[get_grant_client_dep] = lambda: _StubGrant()
     with TestClient(app) as c:
         yield c, works, knowledge, book
     app.dependency_overrides.clear()
@@ -215,6 +230,7 @@ def test_get_work_404(ctx):
 
 def test_patch_work_ifmatch_412(ctx):
     c, works, _, _ = ctx
+    works.work = _work()  # E0-4c: patch_work fetches the work first to gate on its book
     works.update_raises = VersionMismatchError(_work(version=3))
     r = c.patch(f"/v1/composition/works/{PROJECT}", json={"status": "archived"}, headers={"If-Match": "1"})
     assert r.status_code == 412
@@ -223,6 +239,7 @@ def test_patch_work_ifmatch_412(ctx):
 
 def test_patch_work_success(ctx):
     c, works, _, _ = ctx
+    works.work = _work()  # E0-4c: must exist for the EDIT-gate fetch
     works.update_result = _work(version=2)
     r = c.patch(f"/v1/composition/works/{PROJECT}", json={"settings": {"voice": "wry"}})
     assert r.status_code == 200 and r.json()["version"] == 2

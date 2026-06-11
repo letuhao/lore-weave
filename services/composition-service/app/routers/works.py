@@ -25,8 +25,16 @@ from app.clients.knowledge_client import KnowledgeClient
 from app.db.models import WorkStatus
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.works import WorksRepo
-from app.deps import get_book_client_dep, get_knowledge_client_dep, get_works_repo
+from app.deps import (
+    get_book_client_dep,
+    get_grant_client_dep,
+    get_knowledge_client_dep,
+    get_works_repo,
+)
+from app.grant_client import GrantClient, GrantLevel
+from app.grant_deps import InsufficientGrant, authorize_book
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
+from app.packer.pack import OwnershipError
 from app.work_resolution import WorkResolution, resolve_work
 
 router = APIRouter(prefix="/v1/composition")
@@ -66,6 +74,18 @@ def _serialize_resolution(res: WorkResolution) -> WorkResolutionResponse:
     )
 
 
+async def _gate_book(grant: GrantClient, book_id: UUID, caller: UUID, need: GrantLevel) -> None:
+    """E0-4c book-grant chokepoint → HTTP. none→404 (no oracle), under→403.
+    composition_work stays per-user; this gates whether the caller may use
+    composition on the book at the operation's tier."""
+    try:
+        await authorize_book(grant, book_id, caller, need)
+    except OwnershipError:
+        raise HTTPException(status_code=404, detail="book not found")
+    except InsufficientGrant:
+        raise HTTPException(status_code=403, detail="insufficient access")
+
+
 def _parse_if_match(if_match: str | None) -> int | None:
     if if_match is None:
         return None
@@ -82,7 +102,10 @@ async def get_work_for_book(
     bearer: str = Depends(get_bearer_token),
     works: WorksRepo = Depends(get_works_repo),
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> WorkResolutionResponse:
+    # E0-4c: read-pack tier → VIEW grant on the book.
+    await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
     res = await resolve_work(
         user_id, book_id, bearer=bearer, works_repo=works, knowledge_client=knowledge,
     )
@@ -97,11 +120,15 @@ async def create_work_for_book(
     works: WorksRepo = Depends(get_works_repo),
     knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
     book: BookClient = Depends(get_book_client_dep),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
     """Confirm-create a Work (idempotent). Ensures a book-typed knowledge
     project exists (resolve, else ProjectCreate), then get-or-creates the
     composition_work row. Returns the Work."""
-    # Ownership gate + the project name (book title) in one call.
+    # E0-4c: creating a work is an authoring (write) action → EDIT grant. Then
+    # fetch the book for its title (get_book returns the row for any grantee
+    # post-E0-2). composition_work itself is per-user (caller-keyed below).
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
     try:
         book_obj = await book.get_book(book_id, bearer)
     except BookClientError:
@@ -157,10 +184,14 @@ async def get_work(
     project_id: UUID,
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
 ) -> dict[str, Any]:
     work = await works.get(user_id, project_id)
     if work is None:
         raise HTTPException(status_code=404, detail="work not found")
+    # E0-4c: the work row is the caller's own (per-user predicate above); still
+    # require VIEW on its book so a revoked collaborator can't read stale work.
+    await _gate_book(grant, work.book_id, user_id, GrantLevel.VIEW)
     return work.model_dump(mode="json")
 
 
@@ -170,8 +201,15 @@ async def patch_work(
     patch: WorkPatch,
     user_id: UUID = Depends(get_current_user),
     works: WorksRepo = Depends(get_works_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
     if_match: str | None = Header(default=None, alias="If-Match"),
 ) -> dict[str, Any]:
+    # E0-4c: patching the authoring context is a write → EDIT on the work's book.
+    # Resolve the caller's own work first (per-user) to get its book_id.
+    existing = await works.get(user_id, project_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="work not found")
+    await _gate_book(grant, existing.book_id, user_id, GrantLevel.EDIT)
     expected_version = _parse_if_match(if_match)
     patch_dict = patch.model_dump(exclude_unset=True)
     try:

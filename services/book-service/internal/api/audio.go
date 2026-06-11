@@ -55,11 +55,6 @@ type audioSegmentDetail struct {
 // ── List segments ──────────────────────────────────────────────────────────────
 
 func (s *Server) listAudioSegments(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
@@ -68,8 +63,7 @@ func (s *Server) listAudioSegments(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, okBook, st := s.ensureOwnerBook(r.Context(), bookID, ownerID); !okBook {
-		writeError(w, st, "BOOK_NOT_FOUND", "book not found")
+	if _, _, _, ok := s.authBook(w, r, bookID, GrantView); !ok {
 		return
 	}
 
@@ -109,11 +103,6 @@ func (s *Server) listAudioSegments(w http.ResponseWriter, r *http.Request) {
 // ── Get single segment ─────────────────────────────────────────────────────────
 
 func (s *Server) getAudioSegment(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
@@ -126,8 +115,7 @@ func (s *Server) getAudioSegment(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, okBook, st := s.ensureOwnerBook(r.Context(), bookID, ownerID); !okBook {
-		writeError(w, st, "BOOK_NOT_FOUND", "book not found")
+	if _, _, _, ok := s.authBook(w, r, bookID, GrantView); !ok {
 		return
 	}
 
@@ -151,11 +139,6 @@ func (s *Server) getAudioSegment(w http.ResponseWriter, r *http.Request) {
 // ── Delete segments ────────────────────────────────────────────────────────────
 
 func (s *Server) deleteAudioSegments(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
@@ -164,8 +147,8 @@ func (s *Server) deleteAudioSegments(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, okBook, st := s.ensureOwnerBook(r.Context(), bookID, ownerID); !okBook {
-		writeError(w, st, "BOOK_NOT_FOUND", "book not found")
+	// Asset deletion is content-destructive → manage (PO-locked CLARIFY 2026-06-11).
+	if _, _, _, ok := s.authBook(w, r, bookID, GrantManage); !ok {
 		return
 	}
 
@@ -272,23 +255,6 @@ func writeAudioGenError(w http.ResponseWriter, err error) {
 }
 
 func (s *Server) generateAudio(w http.ResponseWriter, r *http.Request) {
-	if s.minio == nil {
-		writeError(w, http.StatusServiceUnavailable, "MEDIA_UNAVAILABLE", "media storage not configured")
-		return
-	}
-	// Phase 5e-β.2 — unified gateway audio_gen replaces direct credential
-	// resolve + per-block TTS POST. s.audioGenClient is nil only when
-	// LLM_GATEWAY_INTERNAL_URL or INTERNAL_SERVICE_TOKEN missing at startup.
-	if s.audioGenClient == nil {
-		writeError(w, http.StatusServiceUnavailable, "GENERATION_UNAVAILABLE", "AI generation not configured")
-		return
-	}
-
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
@@ -298,13 +264,25 @@ func (s *Server) generateAudio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	lifecycle, okBook, st := s.ensureOwnerBook(r.Context(), bookID, ownerID)
-	if !okBook {
-		writeError(w, st, "BOOK_NOT_FOUND", "book not found")
+	// E0-2: authorize BEFORE revealing infra state. Edit grant; TTS bills the
+	// CALLER's BYOK, owner recorded for attribution.
+	caller, ownerID, lifecycle, ok := s.authBook(w, r, bookID, GrantEdit)
+	if !ok {
 		return
 	}
 	if lifecycle != "active" {
 		writeError(w, http.StatusConflict, "BOOK_INVALID_LIFECYCLE", "book not active")
+		return
+	}
+	if s.minio == nil {
+		writeError(w, http.StatusServiceUnavailable, "MEDIA_UNAVAILABLE", "media storage not configured")
+		return
+	}
+	// Phase 5e-β.2 — unified gateway audio_gen replaces direct credential
+	// resolve + per-block TTS POST. s.audioGenClient is nil only when
+	// LLM_GATEWAY_INTERNAL_URL or INTERNAL_SERVICE_TOKEN missing at startup.
+	if s.audioGenClient == nil {
+		writeError(w, http.StatusServiceUnavailable, "GENERATION_UNAVAILABLE", "AI generation not configured")
 		return
 	}
 
@@ -398,7 +376,7 @@ func (s *Server) generateAudio(w http.ResponseWriter, r *http.Request) {
 		Voice:          &voice,
 		Format:         &format,
 		ResponseFormat: &responseFormat,
-		UserID:         ownerID.String(),
+		UserID:         caller.String(),
 	})
 	if err != nil {
 		writeAudioGenError(w, err)
@@ -551,16 +529,6 @@ func (s *Server) generateAudio(w http.ResponseWriter, r *http.Request) {
 // ── Upload block audio ─────────────────────────────────────────────────────────
 
 func (s *Server) uploadBlockAudio(w http.ResponseWriter, r *http.Request) {
-	if s.minio == nil {
-		writeError(w, http.StatusServiceUnavailable, "MEDIA_UNAVAILABLE", "media storage not configured")
-		return
-	}
-
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
@@ -571,13 +539,16 @@ func (s *Server) uploadBlockAudio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	lifecycle, okBook, st := s.ensureOwnerBook(r.Context(), bookID, ownerID)
-	if !okBook {
-		writeError(w, st, "BOOK_NOT_FOUND", "book not found")
+	_, _, lifecycle, ok := s.authBook(w, r, bookID, GrantEdit)
+	if !ok {
 		return
 	}
 	if lifecycle != "active" {
 		writeError(w, http.StatusConflict, "BOOK_INVALID_LIFECYCLE", "book not active")
+		return
+	}
+	if s.minio == nil {
+		writeError(w, http.StatusServiceUnavailable, "MEDIA_UNAVAILABLE", "media storage not configured")
 		return
 	}
 

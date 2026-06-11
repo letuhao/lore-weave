@@ -455,29 +455,17 @@ _JOB_ROW = FakeRecord({
 
 def test_create_job_snapshots_compact_prompt_fields(client, fake_pool):
     """POST /books/{id}/jobs must snapshot compact prompt fields into translation_jobs."""
-    import httpx as _httpx
-    from unittest.mock import AsyncMock
-
-    _book_resp = MagicMock(spec=_httpx.Response)
-    _book_resp.status_code = 200
-    _book_resp.is_success = True
-    _book_resp.json.return_value = {"owner_user_id": USER_ID}
-
+    # E0-4a: book authz is the conftest grant_stub (default OWNER); no httpx mock.
     fake_pool.fetchrow.side_effect = [
         _BOOK_SETTINGS_W_COMPACT,  # _resolve_effective_settings → book settings
         _JOB_ROW,                  # INSERT INTO translation_jobs RETURNING *
     ]
     fake_pool.execute.return_value = None
 
-    with patch("app.routers.jobs.httpx.AsyncClient") as mock_http:
-        mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_http.return_value)
-        mock_http.return_value.__aexit__  = AsyncMock(return_value=False)
-        mock_http.return_value.get = AsyncMock(return_value=_book_resp)
-
-        resp = client.post(
-            f"/v1/translation/books/{BOOK_ID}/jobs",
-            json={"chapter_ids": [str(uuid4())]},
-        )
+    resp = client.post(
+        f"/v1/translation/books/{BOOK_ID}/jobs",
+        json={"chapter_ids": [str(uuid4())]},
+    )
 
     assert resp.status_code == 201
     data = resp.json()
@@ -493,14 +481,7 @@ def test_create_job_snapshots_compact_prompt_fields(client, fake_pool):
 
 def test_create_job_publish_includes_compact_prompt_fields(client, fake_pool):
     """The RabbitMQ publish payload must include compact_system_prompt."""
-    import httpx as _httpx
-    from unittest.mock import AsyncMock, patch as _patch
-
-    _book_resp = MagicMock(spec=_httpx.Response)
-    _book_resp.status_code = 200
-    _book_resp.is_success = True
-    _book_resp.json.return_value = {"owner_user_id": USER_ID}
-
+    # E0-4a: book authz is the conftest grant_stub (default OWNER); no httpx mock.
     fake_pool.fetchrow.side_effect = [
         _BOOK_SETTINGS_W_COMPACT,
         _JOB_ROW,
@@ -512,12 +493,7 @@ def test_create_job_publish_includes_compact_prompt_fields(client, fake_pool):
     async def _fake_publish(routing_key, payload):
         published_payloads.append(payload)
 
-    with patch("app.routers.jobs.httpx.AsyncClient") as mock_http, \
-         patch("app.routers.jobs.publish", side_effect=_fake_publish):
-        mock_http.return_value.__aenter__ = AsyncMock(return_value=mock_http.return_value)
-        mock_http.return_value.__aexit__  = AsyncMock(return_value=False)
-        mock_http.return_value.get = AsyncMock(return_value=_book_resp)
-
+    with patch("app.routers.jobs.publish", side_effect=_fake_publish):
         resp = client.post(
             f"/v1/translation/books/{BOOK_ID}/jobs",
             json={"chapter_ids": [str(uuid4())]},

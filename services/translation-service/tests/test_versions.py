@@ -123,6 +123,7 @@ def test_list_versions_groups_rows_by_language(client, fake_pool):
         is_active=False,
         version_num=1,
     )
+    fake_pool.fetchval.return_value = UUID(BOOK_ID)  # E0-4a book_for_chapter bootstrap
     fake_pool.fetch.return_value = [row_vi, row_zh]
     resp = client.get(f"/v1/translation/chapters/{CHAPTER_ID}/versions")
     assert resp.status_code == 200
@@ -131,6 +132,7 @@ def test_list_versions_groups_rows_by_language(client, fake_pool):
 
 
 def test_list_versions_marks_is_active_true_for_active_version(client, fake_pool):
+    fake_pool.fetchval.return_value = UUID(BOOK_ID)
     fake_pool.fetch.return_value = [_list_row(is_active=True, active_ct_id=_CT_ID)]
     resp = client.get(f"/v1/translation/chapters/{CHAPTER_ID}/versions")
     assert resp.status_code == 200
@@ -140,6 +142,7 @@ def test_list_versions_marks_is_active_true_for_active_version(client, fake_pool
 
 
 def test_list_versions_marks_is_active_false_when_no_active_set(client, fake_pool):
+    fake_pool.fetchval.return_value = UUID(BOOK_ID)
     fake_pool.fetch.return_value = [_list_row(is_active=False, active_ct_id=None)]
     resp = client.get(f"/v1/translation/chapters/{CHAPTER_ID}/versions")
     assert resp.status_code == 200
@@ -149,6 +152,7 @@ def test_list_versions_marks_is_active_false_when_no_active_set(client, fake_poo
 
 
 def test_list_versions_includes_version_num(client, fake_pool):
+    fake_pool.fetchval.return_value = UUID(BOOK_ID)
     fake_pool.fetch.return_value = [_list_row(version_num=3)]
     resp = client.get(f"/v1/translation/chapters/{CHAPTER_ID}/versions")
     assert resp.status_code == 200
@@ -160,6 +164,7 @@ def test_list_versions_multiple_versions_same_language(client, fake_pool):
     v2_id = uuid4()
     row_v2 = _list_row(id=v2_id, version_num=2, is_active=False)
     row_v1 = _list_row(id=_CT_ID, version_num=1, is_active=True)
+    fake_pool.fetchval.return_value = UUID(BOOK_ID)
     fake_pool.fetch.return_value = [row_v2, row_v1]
     resp = client.get(f"/v1/translation/chapters/{CHAPTER_ID}/versions")
     assert resp.status_code == 200
@@ -189,11 +194,14 @@ def test_get_version_returns_404_when_not_found(client, fake_pool):
     assert resp.json()["detail"]["code"] == "TRANSL_NOT_FOUND"
 
 
-def test_get_version_returns_403_when_not_owned(client, fake_pool):
-    fake_pool.fetchrow.return_value = _get_row(owner_user_id=UUID(OTHER_USER_ID))
+def test_get_version_returns_404_when_no_grant(client, fake_pool, grant_stub):
+    # E0-4a: the version exists but the caller has no grant on its book → 404.
+    from app.grant_client import GrantLevel
+    grant_stub.level = GrantLevel.NONE
+    fake_pool.fetchrow.return_value = _get_row()
     resp = client.get(f"/v1/translation/chapters/{CHAPTER_ID}/versions/{VERSION_ID}")
-    assert resp.status_code == 403
-    assert resp.json()["detail"]["code"] == "TRANSL_FORBIDDEN"
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["code"] == "TRANSL_NOT_FOUND"
 
 
 # ── PUT /v1/translation/chapters/{chapter_id}/versions/{version_id}/active ────
@@ -217,8 +225,21 @@ def test_set_active_version_returns_404_when_not_found(client, fake_pool):
     assert resp.json()["detail"]["code"] == "TRANSL_NOT_FOUND"
 
 
-def test_set_active_version_returns_403_when_not_owned(client, fake_pool):
-    fake_pool.fetchrow.return_value = _active_row(owner_user_id=UUID(OTHER_USER_ID))
+def test_set_active_version_returns_404_when_no_grant(client, fake_pool, grant_stub):
+    # E0-4a: no grant on the version's book → 404 (anti-oracle).
+    from app.grant_client import GrantLevel
+    grant_stub.level = GrantLevel.NONE
+    fake_pool.fetchrow.return_value = _active_row()
+    resp = client.put(f"/v1/translation/chapters/{CHAPTER_ID}/versions/{VERSION_ID}/active")
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["code"] == "TRANSL_NOT_FOUND"
+
+
+def test_set_active_version_returns_403_when_view_grantee(client, fake_pool, grant_stub):
+    # A view-grantee cannot publish (set active) — needs edit → 403.
+    from app.grant_client import GrantLevel
+    grant_stub.level = GrantLevel.VIEW
+    fake_pool.fetchrow.return_value = _active_row()
     resp = client.put(f"/v1/translation/chapters/{CHAPTER_ID}/versions/{VERSION_ID}/active")
     assert resp.status_code == 403
     assert resp.json()["detail"]["code"] == "TRANSL_FORBIDDEN"
@@ -352,10 +373,26 @@ def test_save_edited_404_when_source_missing(client, fake_pool):
     assert _corrected_emits(fake_pool) == []
 
 
-def test_save_edited_403_when_not_owned(client, fake_pool):
-    fake_pool.fetchrow.return_value = _get_row(owner_user_id=UUID(OTHER_USER_ID))
+def test_save_edited_attributes_to_caller_not_source_owner(client, fake_pool):
+    # review-impl MED-1: caller-attribution — the human edit is owned by the CALLER
+    # (the editing collaborator), NOT the source version's owner. Source is owned by
+    # OTHER; the INSERT's owner_user_id ($7, last positional) must be the caller.
+    src = _get_row(owner_user_id=UUID(OTHER_USER_ID), translated_body="LLM draft")
+    new = _get_row(id=uuid4(), authored_by="human")
+    fake_pool.fetchrow.side_effect = [src, new]
     resp = client.post(f"/v1/translation/chapters/{CHAPTER_ID}/versions/edit", json=_edit_body())
-    assert resp.status_code == 403
+    assert resp.status_code == 201
+    insert_args = fake_pool.fetchrow.call_args_list[1].args
+    assert insert_args[-1] == UUID(USER_ID)  # caller, not OTHER_USER_ID (the source owner)
+
+
+def test_save_edited_404_when_no_grant(client, fake_pool, grant_stub):
+    # E0-4a: no grant on the source version's book → 404 (anti-oracle).
+    from app.grant_client import GrantLevel
+    grant_stub.level = GrantLevel.NONE
+    fake_pool.fetchrow.return_value = _get_row()
+    resp = client.post(f"/v1/translation/chapters/{CHAPTER_ID}/versions/edit", json=_edit_body())
+    assert resp.status_code == 404
 
 
 def test_save_edited_422_on_language_mismatch(client, fake_pool):

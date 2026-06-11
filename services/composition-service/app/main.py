@@ -23,6 +23,7 @@ from app.clients.book_client import close_book_client
 from app.clients.glossary_client import close_glossary_client
 from app.clients.knowledge_client import close_knowledge_client
 from app.clients.llm_client import close_llm_client
+from app.grant_client import close_grant_client
 from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool, get_pool
@@ -87,6 +88,7 @@ async def lifespan(app: FastAPI):
         await close_book_client()
         await close_glossary_client()
         await close_llm_client()
+        await close_grant_client()  # E0-4c
         await close_pool()
 
 

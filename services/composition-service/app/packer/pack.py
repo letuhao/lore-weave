@@ -28,6 +28,10 @@ from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.outline import OutlineRepo
 from app.db.repositories.scene_links import SceneLinksRepo
+# E0-4c — grant-aware book gate. grant_client imports only app.config (no cycle
+# into the packer); authorize_book is imported lazily inside pack() (it imports
+# OwnershipError from this module → would cycle at top level).
+from app.grant_client import GrantClient, GrantLevel
 # scene_at_order / EVENT_ORDER_CHAPTER_STRIDE — the reading-axis cutoff contract
 # (canon_check is pure, no app imports → no cycle into the packer).
 from app.engine.canon_check import scene_at_order
@@ -101,12 +105,21 @@ async def pack(
     jobs_repo: GenerationJobsRepo | None = None,
     compress_fn: Callable[[list[str], list[str], str], Awaitable[str]] | None = None,
     narrative_threads_repo=None,  # FD-1 S3 — open-promise re-injection (gated)
+    grant: "GrantClient | None" = None,
+    need: "GrantLevel | None" = None,
 ) -> PackedContext:
     # A1: never pack unscoped (knowledge timeline/entities widen cross-project).
     assemble.assert_project_scoped(req.project_id)
-    # SEC2: verify book ownership BEFORE any internal (token-trust) read.
-    if not await book.owns_book(req.book_id, req.bearer):
-        raise OwnershipError("caller does not own the book")
+    # SEC2 (E0-4c): grant-aware book chokepoint BEFORE any internal (token-trust)
+    # read. Was owns_book (owner-only bool); now resolves the caller's book grant
+    # and gates by the operation's tier — read-pack=VIEW (default), prose-gen=EDIT
+    # (the engine passes it). none → OwnershipError (404, no oracle); under-tier →
+    # InsufficientGrant (403). Lazy import breaks the pack↔grant_deps cycle.
+    from app.grant_client import get_grant_client
+    from app.grant_deps import authorize_book
+    await authorize_book(
+        grant or get_grant_client(), req.book_id, req.user_id, need or GrantLevel.VIEW,
+    )
 
     profile = profile_mod.from_settings(req.settings)
     node = req.node

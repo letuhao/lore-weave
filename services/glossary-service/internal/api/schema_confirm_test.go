@@ -103,7 +103,7 @@ func TestToolProposeNewAttribute_RejectsBadFieldType(t *testing.T) {
 func TestToolProposeNewKind_OwnershipDenied(t *testing.T) {
 	ts := httptest.NewServer(projection(uuid.New(), uuid.New())) // owned by someone else
 	defer ts.Close()
-	s := &Server{cfg: &config.Config{BookServiceURL: ts.URL, InternalServiceToken: "t", JWTSecret: "test_jwt_secret_at_least_32_characters_long"}}
+	s := &Server{cfg: &config.Config{BookServiceURL: ts.URL, InternalServiceToken: "t", JWTSecret: "test_jwt_secret_at_least_32_characters_long"}, grantClient: buildGrantClient(ts.URL, "t")}
 	_, _, err := s.toolProposeNewKind(ctxWithUser(uuid.New()), nil,
 		proposeKindToolIn{BookID: uuid.NewString(), Code: "x", Name: "X"})
 	if err == nil || !strings.Contains(err.Error(), "not accessible") {

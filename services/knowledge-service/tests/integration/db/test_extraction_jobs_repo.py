@@ -87,6 +87,44 @@ async def test_k10_4_create_defaults(pool):
     assert job.paused_at is None
     assert job.completed_at is None
     assert job.error_message is None
+    # E0-3 Phase 2a: owner-triggered job ⇒ billing identity NULL (legacy path).
+    assert job.billing_user_id is None
+    assert job.billing_embedding_model is None
+    assert job.billing_llm_model is None
+
+
+@pytest.mark.asyncio
+async def test_e0_3_create_persists_billing_identity(pool):
+    """E0-3 Phase 2a: a collaborator-triggered job stores the caller's billing
+    identity; the owner identity (partition + canonical embedding tag) is
+    untouched. Round-trips through INSERT RETURNING and a fresh repo.get."""
+    repo = ExtractionJobsRepo(pool)
+    owner = uuid4()
+    collaborator = uuid4()
+    project_id = await _make_project(pool, owner)
+
+    payload = _job_payload(project_id)
+    payload = payload.model_copy(
+        update=dict(
+            billing_user_id=collaborator,
+            billing_embedding_model="collab-emb-ref",
+            billing_llm_model="collab-llm-ref",
+        )
+    )
+    created = await repo.create(owner, payload)
+    # INSERT RETURNING reflects billing.
+    assert created.billing_user_id == collaborator
+    assert created.billing_embedding_model == "collab-emb-ref"
+    assert created.billing_llm_model == "collab-llm-ref"
+    # Partition + storage tag stay the owner's.
+    assert created.user_id == owner
+    assert created.embedding_model == "test-embed"
+
+    # Fresh read via _SELECT_COLS round-trips the same billing identity.
+    got = await repo.get(owner, created.job_id)
+    assert got is not None
+    assert got.billing_user_id == collaborator
+    assert got.billing_llm_model == "collab-llm-ref"
 
 
 @pytest.mark.asyncio
