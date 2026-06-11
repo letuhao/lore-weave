@@ -55,9 +55,7 @@ def new_extract_state(
         # trio fan-in: {op: provider_job_id} submitted, [op,...] folded
         "trio_jobs": {},
         "trio_folded": [],
-        # filter sub-loop
-        "filter_idx": 0,
-        "filter_n": 0,
+        # recovery + filter fan-out sets are seeded by begin_recovery / begin_filter
     }
 
 
@@ -118,49 +116,95 @@ def _after_trio(rs: dict[str, Any]) -> str:
     return PERSIST
 
 
-# ── recovery ──────────────────────────────────────────────────────────────────
+# ── recovery (FAN-OUT over Tier-3 classifier batches) ──────────────────────────
+# WX-T2c discovery: recovery isn't a single call — Tier-1+2 (glossary, no LLM) runs
+# inline in the shell (prepare_recovery), then the remaining names are classified in
+# N Tier-3 batches. Those fan out like the trio. The shell applies each batch's
+# verdicts (apply_recovery_batch) into the rs accumulators; the SM only tracks
+# completion + the stage advance. After all fold → the shell finalize_recovery's.
 
-def apply_recovery_result(
-    rs: dict[str, Any], entities: list, relations: list,
+def begin_recovery(rs: dict[str, Any], recovery_jobs: dict[str, str]) -> dict[str, Any]:
+    """Enter recovery as a fan-out of {batch_key: provider_job_id}. Empty (no Tier-3
+    names — all resolved by Tier-1+2 inline) ⇒ skip to filter/persist."""
+    out = dict(rs)
+    out["recovery_jobs"] = dict(recovery_jobs)
+    out["recovery_folded"] = []
+    if not recovery_jobs:
+        out["stage"] = FILTER if rs["has_filter"] else PERSIST
+    return out
+
+
+def recovery_task_for_job(rs: dict[str, Any], provider_job_id: str) -> str | None:
+    for key, jid in rs.get("recovery_jobs", {}).items():
+        if str(jid) == str(provider_job_id):
+            return key
+    return None
+
+
+def fold_recovery_task(
+    rs: dict[str, Any], task_key: str, *, entities: list, relations: list,
 ) -> dict[str, Any]:
-    """Fold the recovery stage (the shell applies verdicts → updated entities +
-    pruned relations via the SDK's apply step). Advance to filter or persist."""
+    """Fold one recovery batch — the shell has applied its verdicts into the running
+    entities/relations (promote + abstract-drop). Idempotent on a dup. Advance to
+    filter/persist when all batches folded."""
+    if task_key not in rs.get("recovery_jobs", {}) or task_key in rs["recovery_folded"]:
+        return rs
     out = dict(rs)
     out["entities"] = list(entities)
     out["relations"] = list(relations)
-    out["stage"] = FILTER if rs["has_filter"] else PERSIST
+    out["recovery_folded"] = [*rs["recovery_folded"], task_key]
+    if set(out["recovery_folded"]) >= set(rs["recovery_jobs"].keys()):
+        out["stage"] = FILTER if rs["has_filter"] else PERSIST
     return out
 
 
-# ── filter sub-loop ───────────────────────────────────────────────────────────
+def recovery_complete(rs: dict[str, Any]) -> bool:
+    return set(rs.get("recovery_folded", [])) >= set(rs.get("recovery_jobs", {}).keys())
 
-def begin_filter(rs: dict[str, Any], n_batches: int) -> dict[str, Any]:
-    """Enter the filter stage with `n_batches` sequential LLM batches to run."""
+
+# ── filter (FAN-OUT over category × batch tasks) ───────────────────────────────
+# WX-T2c discovery: filter is concurrent-category × sequential-batch. The decoupled
+# stage fans out ALL (category, batch) tasks at once; each folds its per-item
+# verdicts into a {category: {global_idx: verdict}} accumulator; when all fold, the
+# shell computes kept-sets (compute_filter_kept) + stitches the filtered lists.
+
+def begin_filter(rs: dict[str, Any], filter_jobs: dict[str, str]) -> dict[str, Any]:
+    """Enter filter as a fan-out of {task_key: provider_job_id} (task_key encodes
+    category+batch). Empty ⇒ persist."""
     out = dict(rs)
-    out["filter_n"] = n_batches
-    out["filter_idx"] = 0
-    out["stage"] = FILTER if n_batches > 0 else PERSIST
+    out["filter_jobs"] = dict(filter_jobs)
+    out["filter_folded"] = []
+    out["filter_verdicts"] = {}  # {category: {global_idx: verdict}}
+    out["stage"] = FILTER if filter_jobs else PERSIST
     return out
 
 
-def apply_filter_batch(
-    rs: dict[str, Any], kept: dict[str, list],
+def filter_task_for_job(rs: dict[str, Any], provider_job_id: str) -> str | None:
+    for key, jid in rs.get("filter_jobs", {}).items():
+        if str(jid) == str(provider_job_id):
+            return key
+    return None
+
+
+def fold_filter_task(
+    rs: dict[str, Any], task_key: str, category: str, verdicts: dict,
 ) -> dict[str, Any]:
-    """Fold one filter batch's kept items (the shell applies verdicts via the SDK).
-    `kept` may overwrite any of entities/relations/events/facts. Advance the batch
-    cursor; the last batch → persist."""
+    """Fold one filter task's verdicts (global_idx → verdict) into the category
+    accumulator. Idempotent on a dup. Advance to persist when all tasks folded."""
+    if task_key not in rs.get("filter_jobs", {}) or task_key in rs["filter_folded"]:
+        return rs
     out = dict(rs)
-    for key in ("entities", "relations", "events", "facts"):
-        if key in kept:
-            out[key] = list(kept[key])
-    out["filter_idx"] = rs["filter_idx"] + 1
-    if out["filter_idx"] >= rs["filter_n"]:
+    fv = {k: dict(v) for k, v in rs["filter_verdicts"].items()}
+    fv.setdefault(category, {}).update({str(k): v for k, v in verdicts.items()})
+    out["filter_verdicts"] = fv
+    out["filter_folded"] = [*rs["filter_folded"], task_key]
+    if set(out["filter_folded"]) >= set(rs["filter_jobs"].keys()):
         out["stage"] = PERSIST
     return out
 
 
-def filter_done(rs: dict[str, Any]) -> bool:
-    return rs.get("filter_idx", 0) >= rs.get("filter_n", 0)
+def filter_complete(rs: dict[str, Any]) -> bool:
+    return set(rs.get("filter_folded", [])) >= set(rs.get("filter_jobs", {}).keys())
 
 
 # ── candidates view ───────────────────────────────────────────────────────────

@@ -17,7 +17,7 @@ def test_new_state_defaults():
     rs = _rs()
     assert rs["stage"] == d.ENTITY
     assert rs["entities"] == [] and rs["trio_folded"] == []
-    assert rs["filter_idx"] == 0 and rs["filter_n"] == 0
+    assert rs["trio_jobs"] == {}
 
 
 def test_entity_with_results_goes_to_trio():
@@ -76,31 +76,61 @@ def test_after_trio_gates_on_recovery_then_filter():
     assert rs2["stage"] == d.FILTER
 
 
-def test_recovery_advances_to_filter_or_persist():
+def test_recovery_fanout_folds_each_batch_then_advances():
     rs = _rs(has_recovery=True, has_filter=True)
     rs["stage"] = d.RECOVERY
-    out = d.apply_recovery_result(rs, entities=["e1", "e2"], relations=["r1"])
-    assert out["stage"] == d.FILTER and out["entities"] == ["e1", "e2"]
+    rs = d.begin_recovery(rs, {"b0": "j0", "b1": "j1"})
+    assert d.recovery_task_for_job(rs, "j1") == "b1"
+    rs = d.fold_recovery_task(rs, "b0", entities=["e1"], relations=["r1"])
+    assert not d.recovery_complete(rs) and rs["stage"] == d.RECOVERY
+    rs = d.fold_recovery_task(rs, "b1", entities=["e1", "e2"], relations=[])
+    assert d.recovery_complete(rs)
+    assert rs["entities"] == ["e1", "e2"] and rs["relations"] == []
+    assert rs["stage"] == d.FILTER  # has_filter
 
-    rs2 = _rs(has_recovery=True, has_filter=False)
-    rs2["stage"] = d.RECOVERY
-    out2 = d.apply_recovery_result(rs2, entities=["e1"], relations=[])
-    assert out2["stage"] == d.PERSIST
-
-
-def test_filter_subloop_runs_each_batch_then_persists():
-    rs = _rs(has_filter=True)
-    rs = d.begin_filter(rs, n_batches=2)
-    assert rs["stage"] == d.FILTER and rs["filter_n"] == 2
-    rs = d.apply_filter_batch(rs, {"entities": ["e1"]})
-    assert rs["filter_idx"] == 1 and rs["stage"] == d.FILTER and not d.filter_done(rs)
-    rs = d.apply_filter_batch(rs, {"relations": ["r1"]})
-    assert rs["filter_idx"] == 2 and d.filter_done(rs) and rs["stage"] == d.PERSIST
-    assert rs["entities"] == ["e1"] and rs["relations"] == ["r1"]
+    # recovery-only (no filter) → persist
+    rs2 = d.begin_recovery({**_rs(has_recovery=True), "stage": d.RECOVERY}, {"b0": "j0"})
+    rs2 = d.fold_recovery_task(rs2, "b0", entities=["e"], relations=[])
+    assert rs2["stage"] == d.PERSIST
 
 
-def test_begin_filter_zero_batches_goes_straight_to_persist():
-    rs = d.begin_filter(_rs(has_filter=True), n_batches=0)
+def test_begin_recovery_empty_skips_to_filter_or_persist():
+    rs = d.begin_recovery({**_rs(has_recovery=True, has_filter=True), "stage": d.RECOVERY}, {})
+    assert rs["stage"] == d.FILTER
+    rs2 = d.begin_recovery({**_rs(has_recovery=True), "stage": d.RECOVERY}, {})
+    assert rs2["stage"] == d.PERSIST
+
+
+def test_recovery_fold_idempotent_on_duplicate():
+    rs = d.begin_recovery({**_rs(has_recovery=True), "stage": d.RECOVERY}, {"b0": "j0"})
+    rs = d.fold_recovery_task(rs, "b0", entities=["e"], relations=[])
+    again = d.fold_recovery_task(rs, "b0", entities=["DUP"], relations=[])
+    assert again["entities"] == ["e"] and again["recovery_folded"] == ["b0"]
+
+
+def test_filter_fanout_folds_tasks_accumulates_verdicts_then_persists():
+    rs = d.begin_filter(_rs(has_filter=True),
+                        {"entity:0": "je", "relation:0": "jr"})
+    assert rs["stage"] == d.FILTER and d.filter_task_for_job(rs, "jr") == "relation:0"
+    rs = d.fold_filter_task(rs, "entity:0", "entity", {0: "supported", 1: "unsupported"})
+    assert not d.filter_complete(rs) and rs["stage"] == d.FILTER
+    rs = d.fold_filter_task(rs, "relation:0", "relation", {0: "supported"})
+    assert d.filter_complete(rs) and rs["stage"] == d.PERSIST
+    # verdicts accumulated per category (idx keys stringified for JSON)
+    assert rs["filter_verdicts"]["entity"] == {"0": "supported", "1": "unsupported"}
+    assert rs["filter_verdicts"]["relation"] == {"0": "supported"}
+
+
+def test_filter_fold_idempotent_on_duplicate_task():
+    rs = d.begin_filter(_rs(has_filter=True), {"entity:0": "je"})
+    rs = d.fold_filter_task(rs, "entity:0", "entity", {0: "supported"})
+    again = d.fold_filter_task(rs, "entity:0", "entity", {0: "unsupported"})
+    assert again["filter_verdicts"]["entity"] == {"0": "supported"}  # unchanged
+    assert again["filter_folded"] == ["entity:0"]
+
+
+def test_begin_filter_empty_goes_straight_to_persist():
+    rs = d.begin_filter(_rs(has_filter=True), {})
     assert rs["stage"] == d.PERSIST
 
 
