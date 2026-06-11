@@ -302,6 +302,15 @@ services:
       # have code defaults; set to override for the autonomous batch.
       REDIS_URL: redis://redis:6379
       GOVERNOR_CLOUD_MAX: ${GOVERNOR_CLOUD_MAX:-8}
+      # Single local GPU serialises to 1 slot, so a chapter's 4 concurrent
+      # extraction ops (entity/event/relation/fact) queue behind it. The 30s
+      # code default makes the 3 that don't win the slot fail with
+      # "governor: acquire timeout" → the whole extraction job dies (the
+      # acquire-or-die brittleness tracked in the event-driven re-arch spec).
+      # Until the queue path (Phase 1) lands, give waiters a generous ceiling
+      # so they serialise instead of dying. Backstop only — a healthy op runs
+      # well under this.
+      GOVERNOR_ACQUIRE_TIMEOUT_MS: ${GOVERNOR_ACQUIRE_TIMEOUT_MS:-600000}
       BREAKER_THRESHOLD: ${BREAKER_THRESHOLD:-5}
       BREAKER_COOLDOWN_S: ${BREAKER_COOLDOWN_S:-30}
       # S4b (decision C) — usage outbox relay → Redis streams (reuses REDIS_URL).

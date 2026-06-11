@@ -139,6 +139,8 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 					CampaignUsageStream: cfg.CampaignUsageStream,
 					UsageMaxLen:         int64(cfg.UsageStreamMaxLen),
 					CampaignMaxLen:      int64(cfg.CampaignUsageStreamMaxLen),
+					TerminalStream:      cfg.LLMJobTerminalStream,
+					TerminalMaxLen:      int64(cfg.LLMJobTerminalStreamMaxLen),
 					PollInterval:        time.Duration(cfg.UsageRelayPollMs) * time.Millisecond,
 					BatchSize:           cfg.UsageRelayBatch,
 				}, nil)

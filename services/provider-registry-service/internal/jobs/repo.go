@@ -228,6 +228,51 @@ type UsageOutbox struct {
 	CostUSD      *float64 // nil → cost unresolvable (stored NULL)
 }
 
+// TerminalOutbox is the LLM re-arch Phase 1 terminal-event payload written to
+// job_event_outbox in the SAME tx as a terminal transition (completed | failed |
+// cancelled). The relay XADDs it to loreweave:events:llm_job_terminal so a caller
+// resumes on it. job_id / owner / status / campaign_id are known in the finalize
+// tx; this carries only the extra correlation + summary fields. Kind is
+// best-effort (provider kind, used by the Commit-3 queue for routing) — empty is
+// fine for Commit 1 since consumers key on job_id, not kind.
+type TerminalOutbox struct {
+	Operation     string
+	Kind          string
+	CostUSD       *float64 // nil → unresolvable / non-completed (stored NULL)
+	ErrorCode     string
+	ErrorMessage  string
+	CorrelationID string
+}
+
+// insertJobEventOutbox writes one job_event_outbox row inside the caller's tx.
+// Shared by FinalizeWithUsageOutbox (worker terminal path) and Cancel (cancel
+// handler) so both emit the same durable, per-job-correlated terminal event.
+func insertJobEventOutbox(
+	ctx context.Context, tx pgx.Tx,
+	jobID, ownerUserID uuid.UUID, operation, status, kind string,
+	costUSD *float64, errorCode, errorMessage string,
+	campaignID *uuid.UUID, correlationID string,
+) error {
+	var ec, em, corr *string
+	if errorCode != "" {
+		ec = &errorCode
+	}
+	if errorMessage != "" {
+		em = &errorMessage
+	}
+	if correlationID != "" {
+		corr = &correlationID
+	}
+	_, err := tx.Exec(ctx, `
+INSERT INTO job_event_outbox
+  (job_id, owner_user_id, operation, status, kind,
+   cost_usd, error_code, error_message, campaign_id, correlation_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+`, jobID, ownerUserID, operation, status, kind,
+		costUSD, ec, em, campaignID, corr)
+	return err
+}
+
 // FinalizeWithUsageOutbox is the worker's terminal-path finalize (S4b, decision
 // C). It does the same status transition as Finalize AND — only when the
 // transition actually takes effect (rows=1) on a COMPLETED job with a non-nil
@@ -245,6 +290,7 @@ func (r *Repo) FinalizeWithUsageOutbox(
 	result any,
 	errorCode, errorMessage, finishReason string,
 	usage *UsageOutbox,
+	term *TerminalOutbox,
 ) (int64, error) {
 	if status != "completed" && status != "failed" && status != "cancelled" {
 		return 0, fmt.Errorf("invalid terminal status: %q", status)
@@ -294,8 +340,10 @@ RETURNING job_meta
 		return 0, fmt.Errorf("finalize+outbox: update: %w", err)
 	}
 
+	// campaign_id (the S4a correlation tag) stamps BOTH outbox rows; parse once.
+	campaignID := parseJobMetaCampaignID(jobMeta)
+
 	if status == "completed" && usage != nil {
-		campaignID := parseJobMetaCampaignID(jobMeta)
 		if _, err := tx.Exec(ctx, `
 INSERT INTO usage_outbox
   (request_id, owner_user_id, campaign_id, model_source, model_ref,
@@ -304,6 +352,16 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 `, jobID, ownerUserID, campaignID, usage.ModelSource, usage.ModelRef,
 			usage.Operation, usage.InputTokens, usage.OutputTokens, usage.CostUSD); err != nil {
 			return 0, fmt.Errorf("finalize+outbox: insert outbox: %w", err)
+		}
+	}
+
+	// LLM re-arch Phase 1 — durable terminal event on EVERY transition (not just
+	// completed+usage), in the same tx, so a caller resumes on it via the relay.
+	if term != nil {
+		if err := insertJobEventOutbox(ctx, tx, jobID, ownerUserID,
+			term.Operation, status, term.Kind, term.CostUSD,
+			term.ErrorCode, term.ErrorMessage, campaignID, term.CorrelationID); err != nil {
+			return 0, fmt.Errorf("finalize+outbox: insert job_event: %w", err)
 		}
 	}
 
@@ -339,17 +397,49 @@ func parseJobMetaCampaignID(jobMeta []byte) *uuid.UUID {
 // Cancel transitions a pre-terminal job to cancelled and stamps
 // completed_at. Returns rows-affected so caller can distinguish "already
 // terminal" (0) from "actually cancelled" (1).
+//
+// LLM re-arch Phase 1: on a real transition it ALSO writes the durable
+// terminal-event outbox row in the SAME tx (RETURNING operation + job_meta so
+// the event carries the operation + campaign_id), so a cancel emits the same
+// canonical llm.job_terminal event a normal finalize does. kind is left empty
+// (best-effort; consumers key on job_id).
 func (r *Repo) Cancel(ctx context.Context, jobID, ownerUserID uuid.UUID) (int64, error) {
-	tag, err := r.pool.Exec(ctx, `
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("cancel: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var operation string
+	var jobMeta []byte
+	err = tx.QueryRow(ctx, `
 UPDATE llm_jobs
 SET status = 'cancelled', completed_at = now()
 WHERE job_id = $1 AND owner_user_id = $2
   AND status IN ('pending','running')
-`, jobID, ownerUserID)
+RETURNING operation, job_meta
+`, jobID, ownerUserID).Scan(&operation, &jobMeta)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Not found OR already terminal — no transition, no event.
+		if cerr := tx.Commit(ctx); cerr != nil {
+			return 0, fmt.Errorf("cancel: commit (no-op): %w", cerr)
+		}
+		return 0, nil
+	}
 	if err != nil {
 		return 0, fmt.Errorf("cancel: %w", err)
 	}
-	return tag.RowsAffected(), nil
+
+	campaignID := parseJobMetaCampaignID(jobMeta)
+	if err := insertJobEventOutbox(ctx, tx, jobID, ownerUserID,
+		operation, "cancelled", "", nil, "", "", campaignID, ""); err != nil {
+		return 0, fmt.Errorf("cancel: insert job_event: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("cancel: commit: %w", err)
+	}
+	return 1, nil
 }
 
 // ModelPricing reads a model's pricing JSONB. For a user_model the lookup is

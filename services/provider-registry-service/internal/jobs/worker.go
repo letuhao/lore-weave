@@ -140,7 +140,17 @@ func (w *Worker) finalizeAndNotify(
 	// Finalize + write the usage_outbox row in ONE tx (rows>0 ⇒ transition took
 	// effect; a cancel-raced finalize returns 0 and writes nothing — same gate as
 	// before). This REPLACES the fire-and-forget RecordUsage HTTP on the jobs path.
-	rows, err := w.repo.FinalizeWithUsageOutbox(ctx, jobID, ownerUserID, status, result, errorCode, errorMessage, finishReason, usage)
+	// LLM re-arch Phase 1 — durable, per-job terminal event written in the same
+	// finalize tx (relay → loreweave:events:llm_job_terminal). Fires on EVERY
+	// terminal status (cost only meaningful for completed). Kind is best-effort
+	// (empty here; the Commit-3 queue populates provider kind for routing).
+	term := &TerminalOutbox{
+		Operation:    operation,
+		CostUSD:      cost,
+		ErrorCode:    errorCode,
+		ErrorMessage: errorMessage,
+	}
+	rows, err := w.repo.FinalizeWithUsageOutbox(ctx, jobID, ownerUserID, status, result, errorCode, errorMessage, finishReason, usage, term)
 	if err != nil {
 		w.logger.Error("finalize failed", "job_id", jobID.String(), "err", err)
 		return

@@ -80,6 +80,12 @@ type Config struct {
 	CampaignUsageStreamMaxLen int
 	UsageRelayPollMs          int
 	UsageRelayBatch           int
+
+	// LLM re-arch Phase 1 — durable terminal-event stream (job_event_outbox →
+	// relay → here). A caller resumes on it keyed by job_id. Shares the S4b relay
+	// loop + REDIS_URL gate.
+	LLMJobTerminalStream       string
+	LLMJobTerminalStreamMaxLen int
 }
 
 func Load() (*Config, error) {
@@ -170,6 +176,11 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	if c.UsageRelayBatch, err = getEnvInt("USAGE_RELAY_BATCH", 100); err != nil {
+		return nil, err
+	}
+	// LLM re-arch Phase 1 — terminal-event stream (shares the S4b relay).
+	c.LLMJobTerminalStream = getEnv("LLM_JOB_TERMINAL_STREAM", "loreweave:events:llm_job_terminal")
+	if c.LLMJobTerminalStreamMaxLen, err = getEnvInt("LLM_JOB_TERMINAL_STREAM_MAXLEN", 100000); err != nil {
 		return nil, err
 	}
 	return c, nil
