@@ -78,6 +78,28 @@ async def test_list_progress_done_counts_translation_settled(pool):
     assert rows[0]["progress_done"] == 2
 
 
+async def test_chapters_page_attention_filter_and_paging(pool):
+    # D-S6-CHAPTER-PAGING — attention filter excludes fully-settled rows; total +
+    # LIMIT/OFFSET behave.
+    cid = await _make_campaign(pool)
+    await _chapter(pool, cid, 1, kn='done', tr='done', ev='done')        # settled → excluded
+    await _chapter(pool, cid, 2, kn='done', tr='failed', ev='pending')   # attention
+    await _chapter(pool, cid, 3, kn='failed', tr='pending', ev='pending')  # attention
+    await _chapter(pool, cid, 4, kn='done', tr='dispatched', ev='pending')  # attention (in-progress)
+
+    rows, total = await repo.get_campaign_chapters_page(pool, cid, status='attention', limit=10, offset=0)
+    assert total == 3 and len(rows) == 3
+    assert [r["chapter_sort"] for r in rows] == [2, 3, 4]
+
+    # 'all' includes the settled one
+    _, total_all = await repo.get_campaign_chapters_page(pool, cid, status='all', limit=10, offset=0)
+    assert total_all == 4
+
+    # paging: limit 2 offset 1 over the attention set → chapters 3, 4
+    page2, total2 = await repo.get_campaign_chapters_page(pool, cid, status='attention', limit=2, offset=1)
+    assert total2 == 3 and [r["chapter_sort"] for r in page2] == [3, 4]
+
+
 async def test_progress_scopes_to_the_campaign(pool):
     a = await _make_campaign(pool)
     b = await _make_campaign(pool)

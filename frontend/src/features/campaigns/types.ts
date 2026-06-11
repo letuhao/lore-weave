@@ -150,6 +150,12 @@ export interface StageCounts {
   in_progress: number;
 }
 
+/** D-S6-CHAPTER-PAGING — one server-side page of the per-chapter projection. */
+export interface ChapterPage {
+  items: CampaignChapter[];
+  total: number;
+}
+
 /** S6 — lightweight live-progress payload (polled while a campaign is active). */
 export interface CampaignProgress {
   campaign_id: string;

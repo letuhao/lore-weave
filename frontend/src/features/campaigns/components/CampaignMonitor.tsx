@@ -100,7 +100,14 @@ export function CampaignMonitor({ campaignId }: { campaignId: string }) {
 
       {progress.data && <StageProgress stages={progress.data.stages} />}
 
-      <ChapterProjectionTable chapters={c.chapters} campaignId={c.campaign_id} />
+      <ChapterProjectionTable
+        campaignId={c.campaign_id}
+        active={!terminal}
+        hasFailures={
+          !!progress.data &&
+          Object.values(progress.data.stages).some((s) => s.failed > 0)
+        }
+      />
     </div>
   );
 }

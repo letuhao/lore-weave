@@ -40,6 +40,24 @@ export function useCampaignProgress(campaignId?: string) {
   });
 }
 
+/** D-S6-CHAPTER-PAGING — one server-side page of the per-chapter projection. Polls
+ *  15s while the campaign is active; keeps the prior page visible during a page
+ *  change / refetch (no flicker). */
+export function useCampaignChapters(
+  campaignId: string | undefined,
+  opts: { status: 'attention' | 'all'; limit: number; offset: number; active: boolean },
+) {
+  const { accessToken } = useAuth();
+  return useQuery({
+    queryKey: ['campaign-chapters', campaignId, opts.status, opts.limit, opts.offset],
+    queryFn: () => campaignsApi.chapters(
+      campaignId!, { status: opts.status, limit: opts.limit, offset: opts.offset }, accessToken!),
+    enabled: !!accessToken && !!campaignId,
+    refetchInterval: opts.active ? 15000 : false,
+    placeholderData: (prev) => prev,
+  });
+}
+
 /** G1 — completion / wake-up report. Fetched on demand for a terminal campaign
  *  (no polling); the monitor swaps in the report view once status is terminal. */
 export function useCampaignReport(campaignId?: string, enabled = true) {

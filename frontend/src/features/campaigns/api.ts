@@ -4,6 +4,7 @@ import type {
   CampaignDetail,
   CampaignProgress,
   CampaignReport,
+  ChapterPage,
   CreateCampaignPayload,
   EstimateRequest,
   EstimateResponse,
@@ -58,6 +59,16 @@ export const campaignsApi = {
   // G1 — completion / wake-up report (outcome + spend-vs-estimate + error groups).
   report(campaignId: string, token: string): Promise<CampaignReport> {
     return apiJson<CampaignReport>(`/v1/campaigns/${campaignId}/report`, { token });
+  },
+
+  // D-S6-CHAPTER-PAGING — one server-side page of the per-chapter projection.
+  chapters(
+    campaignId: string,
+    opts: { status: 'attention' | 'all'; limit: number; offset: number },
+    token: string,
+  ): Promise<ChapterPage> {
+    const q = `status=${opts.status}&limit=${opts.limit}&offset=${opts.offset}`;
+    return apiJson<ChapterPage>(`/v1/campaigns/${campaignId}/chapters?${q}`, { token });
   },
 
   // G2 — re-run failed chapters (null/empty chapterIds = all failed). Re-arms the

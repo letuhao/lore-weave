@@ -169,6 +169,42 @@ async def get_campaign_chapters(
     )
 
 
+_ATTENTION_FILTER = (
+    "AND NOT (knowledge_status IN ('done','skipped') "
+    "AND translation_status IN ('done','skipped') "
+    "AND eval_status IN ('done','skipped'))"
+)
+
+
+async def get_campaign_chapters_page(
+    pool: asyncpg.Pool, campaign_id: UUID, *,
+    status: str = "attention", limit: int = 200, offset: int = 0,
+) -> tuple[list[asyncpg.Record], int]:
+    """D-S6-CHAPTER-PAGING — one page of the per-chapter projection + the total
+    (server-side, so a 4000-chapter campaign doesn't ship every row to the monitor).
+    `status='attention'` filters to rows that aren't fully settled (failed or
+    in-progress) — the table's default; `'all'` returns everything. The filter is a
+    fixed literal chosen by a whitelisted `status` (never raw-interpolated)."""
+    where = _ATTENTION_FILTER if status == "attention" else ""
+    total = await pool.fetchval(
+        f"SELECT COUNT(*) FROM campaign_chapters WHERE campaign_id = $1 {where}",
+        campaign_id,
+    )
+    rows = await pool.fetch(
+        f"""
+        SELECT chapter_id, chapter_sort, ingest_status, knowledge_status,
+               translation_status, eval_status, knowledge_attempts,
+               translation_attempts, last_error, eval_fidelity_score
+        FROM campaign_chapters
+        WHERE campaign_id = $1 {where}
+        ORDER BY chapter_sort ASC
+        LIMIT $2 OFFSET $3
+        """,
+        campaign_id, limit, offset,
+    )
+    return rows, int(total or 0)
+
+
 async def get_campaign_progress(
     pool: asyncpg.Pool, campaign_id: UUID,
 ) -> asyncpg.Record:

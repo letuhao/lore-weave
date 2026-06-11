@@ -302,6 +302,50 @@ def test_report_404_when_not_owned(client, mocker):
     assert resp.status_code == 404
 
 
+def _chap_row(sort, **over):
+    base = {
+        "chapter_id": "11111111-1111-1111-1111-111111111111", "chapter_sort": sort,
+        "ingest_status": "done", "knowledge_status": "done", "translation_status": "failed",
+        "eval_status": "pending", "knowledge_attempts": 0, "translation_attempts": 1,
+        "last_error": "boom", "eval_fidelity_score": None,
+    }
+    base.update(over)
+    return FakeRecord(base)
+
+
+def test_chapters_page_returns_items_and_total(client, mocker):
+    # D-S6-CHAPTER-PAGING — paginated endpoint returns {items, total}, owner-scoped.
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="running"))
+    page = mocker.patch("app.repositories.get_campaign_chapters_page",
+                        new_callable=AsyncMock, return_value=([_chap_row(1), _chap_row(2)], 57))
+    resp = client.get(f"/v1/campaigns/{CAMP}/chapters?status=all&limit=2&offset=4")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["total"] == 57 and len(body["items"]) == 2
+    # params threaded through
+    assert page.call_args.kwargs["status"] == "all"
+    assert page.call_args.kwargs["limit"] == 2 and page.call_args.kwargs["offset"] == 4
+
+
+def test_chapters_page_clamps_and_defaults(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row())
+    page = mocker.patch("app.repositories.get_campaign_chapters_page",
+                        new_callable=AsyncMock, return_value=([], 0))
+    # bogus status → 'attention'; limit over cap → 500; negative offset → 0
+    resp = client.get(f"/v1/campaigns/{CAMP}/chapters?status=bogus&limit=9999&offset=-5")
+    assert resp.status_code == 200
+    assert page.call_args.kwargs["status"] == "attention"
+    assert page.call_args.kwargs["limit"] == 500 and page.call_args.kwargs["offset"] == 0
+
+
+def test_chapters_page_404_when_not_owned(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock, return_value=None)
+    resp = client.get(f"/v1/campaigns/{CAMP}/chapters")
+    assert resp.status_code == 404
+
+
 def test_list_includes_progress_done(client, mocker):
     # #2 polish — the list carries a per-row progress_done (defaults 0 when absent).
     row_with = FakeRecord({**dict(_campaign_row(total_chapters=5)), "progress_done": 3})
@@ -451,21 +495,15 @@ def test_get_not_found(client, mocker):
     assert resp.status_code == 404
 
 
-def test_get_returns_projection(client, mocker):
+def test_get_returns_lightweight_detail(client, mocker):
+    # D-S6-CHAPTER-PAGING — the detail no longer embeds chapters (the table fetches
+    # them paginated via GET /{id}/chapters); chapters is an empty list here.
     mocker.patch("app.repositories.get_campaign",
                  new_callable=AsyncMock, return_value=_campaign_row())
-    mocker.patch("app.repositories.get_campaign_chapters", new_callable=AsyncMock,
-                 return_value=[FakeRecord({
-                     "chapter_id": UUID(C1), "chapter_sort": 0,
-                     "ingest_status": "done", "knowledge_status": "pending",
-                     "translation_status": "pending", "eval_status": "pending",
-                     "knowledge_attempts": 0, "translation_attempts": 0,
-                     "last_error": None,
-                 })])
     resp = client.get(f"/v1/campaigns/{CAMP}")
     assert resp.status_code == 200
-    assert len(resp.json()["chapters"]) == 1
-    assert resp.json()["chapters"][0]["chapter_id"] == C1
+    assert resp.json()["campaign_id"] == CAMP
+    assert resp.json()["chapters"] == []
 
 
 # ── start / cancel ───────────────────────────────────────────────────────────

@@ -32,6 +32,7 @@ from ..models import (
     CampaignChapter,
     CampaignDetail,
     CampaignListItem,
+    ChapterPage,
     CampaignProgress,
     CampaignReport,
     ErrorGroup,
@@ -301,10 +302,35 @@ async def get_campaign(
     if row is None:
         raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
                                                      "message": "campaign not found"})
-    chapter_rows = await repo.get_campaign_chapters(db, campaign_id)
-    detail = CampaignDetail(**dict(row))
-    detail.chapters = [CampaignChapter(**dict(cr)) for cr in chapter_rows]
-    return detail
+    # D-S6-CHAPTER-PAGING: chapters are no longer embedded here (a 4000-chapter
+    # campaign would ship every row each poll) — the monitor fetches them paginated
+    # via GET /{id}/chapters. The detail stays lightweight metadata.
+    return CampaignDetail(**dict(row))
+
+
+@router.get("/{campaign_id}/chapters", response_model=ChapterPage)
+async def get_campaign_chapters_endpoint(
+    campaign_id: UUID,
+    status: str = "attention",
+    limit: int = 200,
+    offset: int = 0,
+    user_id: str = Depends(get_current_user),
+    db: asyncpg.Pool = Depends(get_db),
+):
+    """D-S6-CHAPTER-PAGING — one server-side page of the per-chapter projection +
+    total. `status=attention` (default) = rows that aren't fully settled (failed /
+    in-progress); `status=all` = everything. Owner-scoped (404 if not owned)."""
+    row = await repo.get_campaign(db, campaign_id, UUID(user_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
+                                                     "message": "campaign not found"})
+    status = status if status in ("attention", "all") else "attention"
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
+    rows, total = await repo.get_campaign_chapters_page(
+        db, campaign_id, status=status, limit=limit, offset=offset,
+    )
+    return ChapterPage(items=[CampaignChapter(**dict(r)) for r in rows], total=total)
 
 
 @router.get("/{campaign_id}/progress", response_model=CampaignProgress)

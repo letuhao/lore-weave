@@ -208,8 +208,16 @@ class CampaignChapter(BaseModel):
     eval_fidelity_score: Optional[Decimal] = None
 
 
+class ChapterPage(BaseModel):
+    """D-S6-CHAPTER-PAGING — one server-side page of the per-chapter projection."""
+    items: list[CampaignChapter] = []
+    total: int = 0
+
+
 class CampaignDetail(Campaign):
-    """Campaign + its per-chapter projection (the Monitor's data source)."""
+    """Campaign metadata for the Monitor. `chapters` is no longer embedded
+    (D-S6-CHAPTER-PAGING — the table fetches `GET /{id}/chapters` paginated); kept
+    in the schema, defaults []."""
     chapters: list[CampaignChapter] = []
 
 
