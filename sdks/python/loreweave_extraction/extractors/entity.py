@@ -224,47 +224,13 @@ async def _extract_via_llm_client(
     omitted (legacy callers + tests), falls back to the original
     hardcoded ``size=15``.
     """
-    if context_budget is not None:
-        sys_tokens = estimate_text_tokens(system_prompt)
-        chunk_size = context_budget.max_paragraphs_per_chunk(
-            system_prompt_tokens=sys_tokens,
-            lang="auto",
-        )
-    else:
-        chunk_size = 15
+    kwargs = build_entity_submit_kwargs(
+        system_prompt=system_prompt, text=text, model_source=model_source,
+        model_ref=model_ref, project_id=project_id, context_budget=context_budget,
+    )
     try:
         job = await llm_client.submit_and_wait(
-            user_id=user_id,
-            operation="entity_extraction",
-            model_source=model_source,
-            model_ref=model_ref,
-            input={
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": text},
-                ],
-                "response_format": {"type": "text"},
-                "temperature": 0.0,
-                # Cap output so LM Studio (+ similar slot-based servers)
-                # doesn't reserve the full context window per slot. Without
-                # this, parallel R+E+F gather (3 concurrent jobs) made
-                # llama.cpp reserve ~3×model_ctx of KV cache → GPU OOM
-                # "failed to find a memory slot for batch" / slot-purge
-                # warnings. 4096 fits a generous JSON envelope for 15-
-                # paragraph chunks (observed usage ~700 content tokens
-                # + ~600 reasoning on a thinking-capable model).
-                "max_tokens": (
-                    context_budget.max_output_tokens
-                    if context_budget is not None
-                    else 4096
-                ),
-            },
-            chunking=ChunkingConfig(strategy="paragraphs", size=chunk_size),
-            job_meta={
-                "extractor": "entity",
-                "project_id": project_id or "",
-            },
-            transient_retry_budget=1,
+            user_id=user_id, transient_retry_budget=1, **kwargs,
         )
     except LLMTransientRetryNeededError as exc:
         raise ExtractionError(
@@ -279,15 +245,76 @@ async def _extract_via_llm_client(
             last_error=exc,
         ) from exc
 
+    return parse_entity_job(job, on_dropped=on_dropped)
+
+
+# ── Decouple seams (LLM re-arch Phase 2b WX-T2) ─────────────────────
+# The submit-request build + the terminal-Job parse are split into pure functions
+# so the SYNCHRONOUS path above and the DECOUPLED orchestrator (worker-ai WX-T3)
+# build/parse identically — the decoupled path uses submit_job (fire-and-forget)
+# + parse_entity_job on the terminal event. No behavior change for the sync path.
+
+
+def build_entity_submit_kwargs(
+    *,
+    system_prompt: str,
+    text: str,
+    model_source: Literal["user_model", "platform_model"],
+    model_ref: str,
+    project_id: str | None,
+    context_budget: ContextBudget | None = None,
+) -> dict[str, Any]:
+    """Pure: the submit_and_wait / submit_job kwargs for an entity_extraction job
+    (operation/model/input/chunking/job_meta — NOT user_id, which is per-call)."""
+    if context_budget is not None:
+        sys_tokens = estimate_text_tokens(system_prompt)
+        chunk_size = context_budget.max_paragraphs_per_chunk(
+            system_prompt_tokens=sys_tokens,
+            lang="auto",
+        )
+    else:
+        chunk_size = 15
+    return dict(
+        operation="entity_extraction",
+        model_source=model_source,
+        model_ref=model_ref,
+        input={
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": text},
+            ],
+            "response_format": {"type": "text"},
+            "temperature": 0.0,
+            # Cap output so LM Studio (+ similar slot-based servers) doesn't
+            # reserve the full context window per slot. Without this, the parallel
+            # R+E+F gather (3 concurrent jobs) made llama.cpp reserve ~3×model_ctx
+            # of KV cache → GPU OOM. 4096 fits a generous JSON envelope for
+            # 15-paragraph chunks.
+            "max_tokens": (
+                context_budget.max_output_tokens
+                if context_budget is not None
+                else 4096
+            ),
+        },
+        chunking=ChunkingConfig(strategy="paragraphs", size=chunk_size),
+        job_meta={
+            "extractor": "entity",
+            "project_id": project_id or "",
+        },
+    )
+
+
+def parse_entity_job(
+    job: Any, *, on_dropped: DroppedHandler | None,
+) -> list["_LLMEntity"]:
+    """Pure: validate the terminal Job + tolerant-parse `result.entities`. Cancelled
+    / non-completed surface as ExtractionError (so the caller flips job status
+    correctly rather than reporting a false '0 entities found')."""
     if job.status == "cancelled":
-        # Cancelled job MUST surface as a distinct terminal so caller
-        # can flip job status correctly, NOT collapse to "0 entities
-        # found" which would lie to the user about cancel result.
         raise ExtractionError(
             f"entity_extraction job cancelled (job_id={job.job_id})",
             stage="cancelled",  # type: ignore[arg-type]
         )
-
     if job.status != "completed":
         err_code = job.error.code if job.error else "LLM_UNKNOWN_ERROR"
         err_msg = job.error.message if job.error else ""
@@ -295,13 +322,11 @@ async def _extract_via_llm_client(
             f"entity_extraction job ended status={job.status} code={err_code}: {err_msg}",
             stage="provider",
         )
-
     raw_items: list[Any] = []
     if job.result is not None:
         items = job.result.get("entities", [])
         if isinstance(items, list):
             raw_items = items
-
     return _tolerant_parse_entities(raw_items, on_dropped=on_dropped)
 
 
