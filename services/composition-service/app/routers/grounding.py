@@ -29,6 +29,7 @@ from app.deps import (
     get_scene_links_repo, get_works_repo,
 )
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
+from app.grant_deps import InsufficientGrant
 from app.packer.pack import OwnershipError, PackRequest, pack
 
 router = APIRouter(prefix="/v1/composition")
@@ -70,8 +71,12 @@ async def get_grounding(
         )
     except OwnershipError:
         raise HTTPException(status_code=404, detail="book not found")
+    except InsufficientGrant:
+        # E0-4c: a grantee below VIEW shouldn't reach here (VIEW is the floor),
+        # but map defensively for uniformity with the write routers.
+        raise HTTPException(status_code=403, detail="insufficient access")
     except BookClientError:
-        # book-service unreachable during the SEC2 owns_book check (or sort-order
+        # book-service unreachable during the SEC2 grant check (or sort-order
         # resolve) → upstream-down, not our bug.
         raise HTTPException(status_code=502, detail={"code": "BOOK_SERVICE_UNAVAILABLE"})
 

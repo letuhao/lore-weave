@@ -67,6 +67,13 @@ async def get_book_client_dep() -> BookClient:
     return get_book_client()
 
 
+async def get_grant_client_dep():
+    """E0-4c — the book-grant authority for the collaboration gate. Overridable
+    in tests."""
+    from app.grant_client import get_grant_client
+    return get_grant_client()
+
+
 async def get_glossary_client_dep() -> GlossaryClient:
     """Wired for the M4 packer L0 lens (built in M3)."""
     return get_glossary_client()
