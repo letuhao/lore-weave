@@ -44,6 +44,9 @@ export function ReviewStep({ buildEstimateRequest, buildCreatePayload, budgetUsd
   });
 
   const money = (v: string) => `$${Number(v).toFixed(4)}`;
+  // #5 polish — compact token count (31.0M / 3.2K / 0).
+  const tok = (n: number) =>
+    n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : String(n);
   const fieldCls = 'w-40 rounded-md border bg-input px-3 py-2 text-sm outline-none focus:border-ring';
 
   return (
@@ -77,11 +80,22 @@ export function ReviewStep({ buildEstimateRequest, buildCreatePayload, budgetUsd
             <span><strong>{t('review.chapters', { defaultValue: 'Chapters' })}:</strong> {estimate.chapter_count}</span>
           </div>
           <table className="text-[12px]">
+            <thead className="text-muted-foreground">
+              <tr className="text-left">
+                <th className="py-1 pr-4 font-medium">{t('review.stage', { defaultValue: 'Stage' })}</th>
+                <th className="py-1 pr-4 font-medium">{t('review.status', { defaultValue: 'Status' })}</th>
+                <th className="py-1 pr-4 font-medium">{t('review.tokens', { defaultValue: 'Tokens (in/out)' })}</th>
+                <th className="py-1 text-right font-medium">{t('review.usd', { defaultValue: 'USD' })}</th>
+              </tr>
+            </thead>
             <tbody>
               {estimate.per_stage.map((s) => (
                 <tr key={s.stage} className="border-t">
                   <td className="py-1 pr-4 capitalize">{s.stage}</td>
                   <td className="py-1 pr-4 text-muted-foreground">{s.status}</td>
+                  <td className="py-1 pr-4 text-muted-foreground">
+                    {s.input_tokens || s.output_tokens ? `${tok(s.input_tokens)} / ${tok(s.output_tokens)}` : '—'}
+                  </td>
                   <td className="py-1 text-right">{s.status === 'ok' ? money(s.estimated_usd) : '—'}</td>
                 </tr>
               ))}

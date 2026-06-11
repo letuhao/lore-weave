@@ -41,6 +41,10 @@ class StageMeta:
     model_source: Optional[str]
     model_ref: Optional[str]
     not_estimated_reason: Optional[str] = None  # set when no oracle item is sent
+    # #5 polish — the workload the band was priced on (surfaced per stage so the
+    # cost screen shows tokens, not just $). 0 for a not-estimated stage.
+    input_tokens: int = 0
+    output_tokens: int = 0
 
 
 def source_tokens_for(byte_sizes: list[int], cfg: Settings) -> int:
@@ -102,7 +106,7 @@ def build_pricing_items(
             "input_tokens": int(tok_in),
             "output_tokens": int(tok_out),
         })
-        metas.append(StageMeta(stage, role, src, ref, None))
+        metas.append(StageMeta(stage, role, src, ref, None, int(tok_in), int(tok_out)))
 
     # Reranker: surfaced in the breakdown but not token-priced (D-S5A-RERANK-COST).
     rr = models.get(ROLE_RERANKER)
@@ -167,6 +171,8 @@ def assemble_estimate(
             "model_ref": m.model_ref,
             "status": status,
             "estimated_usd": round(usd, 8),
+            "input_tokens": m.input_tokens,    # #5 polish — workload per stage
+            "output_tokens": m.output_tokens,
         })
 
     total_low = total_high * cfg.est_low_factor

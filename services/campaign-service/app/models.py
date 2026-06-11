@@ -179,6 +179,8 @@ class StageEstimate(BaseModel):
     model_ref: Optional[str]
     status: str          # ok | unpriced | not_found | bad_request | not_estimated
     estimated_usd: Decimal
+    input_tokens: int = 0   # #5 polish — the workload the band was priced on
+    output_tokens: int = 0
 
 
 class EstimateResponse(BaseModel):

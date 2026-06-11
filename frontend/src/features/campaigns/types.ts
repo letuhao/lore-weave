@@ -140,6 +140,8 @@ export interface StageEstimate {
   model_ref: string | null;
   status: string;          // ok | unpriced | not_found | bad_request | not_estimated
   estimated_usd: string;
+  input_tokens: number;    // #5 polish — workload the band was priced on
+  output_tokens: number;
 }
 
 export interface StageCounts {

@@ -90,6 +90,13 @@ def test_assemble_band_and_time():
     assert out["estimated_minutes_high"] > 0
     assert out["estimated_minutes_low"] <= out["estimated_minutes_high"]
     assert out["currency"] == "USD"
+    # #5 polish — per_stage carries the priced workload (tokens), not just $.
+    tr = next(s for s in out["per_stage"] if s["stage"] == "translation")
+    assert tr["input_tokens"] == 1000  # source_tokens
+    assert tr["output_tokens"] > 0     # source × translation_output_ratio
+    # a not-estimated stage (no model) has zero tokens
+    ex = next(s for s in out["per_stage"] if s["stage"] == "extraction")
+    assert ex["input_tokens"] == 0 and ex["output_tokens"] == 0
 
 
 def test_assemble_unpriced_makes_band_a_floor():
