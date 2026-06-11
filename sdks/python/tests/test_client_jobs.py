@@ -251,6 +251,79 @@ async def test_wait_terminal_polls_until_completed():
     assert state["polls"] == 3
 
 
+class _FakeEventRedis:
+    """Minimal stand-in for redis.asyncio: xread returns one terminal event for
+    the target job on the first call, then nothing (block elapses)."""
+
+    def __init__(self, job_id: str):
+        self._job_id = job_id
+        self.xread_calls = 0
+
+    async def xread(self, streams, block, count):
+        self.xread_calls += 1
+        if self.xread_calls == 1:
+            return [(b"loreweave:events:llm_job_terminal",
+                     [(b"1-0", {b"job_id": self._job_id.encode(), b"status": b"completed"})])]
+        return []
+
+    async def aclose(self):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_wait_terminal_event_driven_wakes_poll():
+    # LLM re-arch Phase 1 Commit 2: with an event source, the XREAD wakes the
+    # poll the instant THIS job's terminal event lands (no long sleep). get_job
+    # is the source of truth: running → event wakes → completed.
+    state = {"polls": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        state["polls"] += 1
+        status = "completed" if state["polls"] >= 2 else "running"
+        return httpx.Response(200, json={
+            "job_id": JOB_UUID, "operation": "chat", "status": status,
+            "submitted_at": "2026-04-26T00:00:00Z",
+        })
+
+    client = _make_client(handler)
+    # Opt into the event path + inject the fake redis (skip the lazy from_url).
+    client._event_redis_url = "redis://test"
+    client._event_redis = _FakeEventRedis(JOB_UUID)
+    job = await client.wait_terminal(JOB_UUID)  # default 0.25s poll floor irrelevant — event wakes it
+    assert job.status == "completed"
+    assert state["polls"] == 2
+    assert client._event_redis.xread_calls >= 1  # the event path was exercised
+
+
+@pytest.mark.asyncio
+async def test_wait_terminal_event_redis_fault_falls_back_to_poll():
+    # A Redis fault in the event wait must degrade to a sleep+poll, never crash
+    # the wait (defense in depth, mirrors worker-ai wake.py).
+    state = {"polls": 0}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        state["polls"] += 1
+        status = "completed" if state["polls"] >= 2 else "running"
+        return httpx.Response(200, json={
+            "job_id": JOB_UUID, "operation": "chat", "status": status,
+            "submitted_at": "2026-04-26T00:00:00Z",
+        })
+
+    class _BoomRedis:
+        async def xread(self, *a, **k):
+            raise RuntimeError("redis down")
+        async def aclose(self):
+            pass
+
+    client = _make_client(handler)
+    client._event_redis_url = "redis://test"
+    client._event_redis = _BoomRedis()
+    # Tiny poll interval so the fallback sleep is fast.
+    job = await client.wait_terminal(JOB_UUID, poll_interval_s=0.001, max_poll_interval_s=0.001)
+    assert job.status == "completed"
+    assert state["polls"] == 2
+
+
 @pytest.mark.asyncio
 async def test_wait_terminal_raises_transient_retry_on_failed_with_transient_code():
     # ADR §3.3 D3c — caller-side retry budget bridge.
