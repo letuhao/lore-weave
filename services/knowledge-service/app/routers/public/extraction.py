@@ -347,7 +347,13 @@ async def _create_and_start_job(
 async def start_extraction_job(
     project_id: UUID,
     body: StartJobRequest,
-    user_id: UUID = Depends(require_project_grant(GrantLevel.EDIT)),
+    # D-E0-3-CALLER-PAYS-EXTRACTION (secure-closure): OWNER-ONLY. Was EDIT, but
+    # under resolve-to-owner an edit-collaborator's extraction ran on the OWNER's
+    # embedding/LLM key + budget — a BYOK breach (only the key owner may cause
+    # their key to be charged). Owner-only closes it now; collaborative
+    # caller-pays extraction (the caller uses their OWN same-model key) lands as
+    # the designed follow-up (docs/plans/2026-06-11-e0-3-caller-pays-extraction-design.md).
+    user_id: UUID = Depends(require_project_grant(GrantLevel.OWNER)),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
     benchmark_repo: BenchmarkRunsRepo = Depends(get_benchmark_runs_repo),
@@ -1373,7 +1379,12 @@ class BenchmarkRunResponse(BaseModel):
 async def run_project_benchmark_endpoint(
     project_id: UUID,
     body: BenchmarkRunRequest | None = None,
-    user_id: UUID = Depends(require_project_grant(GrantLevel.EDIT)),
+    # D-E0-3-CALLER-PAYS-EXTRACTION (secure-closure): OWNER-ONLY (was EDIT). The
+    # benchmark spends embedding-provider calls on the project's model; under
+    # resolve-to-owner a collaborator's run billed the OWNER's key. Owner-only
+    # closes it; a collaborator inherits the owner's passing benchmark via the
+    # vector-space (dimension) match in the caller-pays follow-up.
+    user_id: UUID = Depends(require_project_grant(GrantLevel.OWNER)),
     projects_repo: ProjectsRepo = Depends(get_projects_repo),
 ) -> BenchmarkRunResponse:
     """C12b-a — run the K17.9 benchmark against a dedicated project.
