@@ -218,7 +218,7 @@ func (s *Server) applyEntityEdit(w http.ResponseWriter, r *http.Request) {
 	// K3.3b parity: if the description attr changed and short_description is still
 	// auto, regenerate it (best-effort, post-commit, never fails the request).
 	if descriptionChanged {
-		if err := s.regenerateAutoShortDescription(ctx, entityID); err != nil {
+		if err := s.regenerateAutoShortDescription(ctx, s.pool, entityID); err != nil {
 			slog.Warn("apply-edit: regenerate short_description failed",
 				"entity_id", entityID.String(), "error", err.Error())
 		}
