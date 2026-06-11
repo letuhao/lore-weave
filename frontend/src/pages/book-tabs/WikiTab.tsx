@@ -2,7 +2,7 @@ import { useState, useMemo, useDeferredValue } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Search, BookOpen, Clock, Pencil, Plus, Sparkles, RefreshCw } from 'lucide-react';
+import { Search, BookOpen, Clock, Pencil, Plus, Sparkles, RefreshCw, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
 import type { JSONContent } from '@tiptap/react';
 import { useAuth } from '@/auth';
@@ -14,6 +14,7 @@ import { GenerateWikiDialog } from '@/features/wiki/components/GenerateWikiDialo
 import { WikiGenJobBanner } from '@/features/wiki/components/WikiGenJobBanner';
 import { WikiGenBadge } from '@/features/wiki/components/WikiGenBadge';
 import { VerifyFlagsPanel } from '@/features/wiki/components/VerifyFlagsPanel';
+import { WikiSuggestionReview } from '@/features/wiki/components/WikiSuggestionReview';
 import { KnowledgeUpdatesPanel } from '@/features/wiki/components/KnowledgeUpdatesPanel';
 import { useWikiStaleness } from '@/features/wiki/hooks/useWikiStaleness';
 import { ContentRenderer } from '@/components/reader/ContentRenderer';
@@ -261,12 +262,42 @@ function WikiArticleView({ bookId, articleId, onRegenerate }: {
   const { accessToken } = useAuth();
   const { t } = useTranslation('wiki');
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [showSugs, setShowSugs] = useState(false);
 
   const { data: article, isLoading } = useQuery({
     queryKey: ['wiki-article', bookId, articleId],
     queryFn: () => wikiApi.getArticle(bookId, articleId, accessToken!),
     enabled: !!accessToken && !!articleId,
   });
+
+  // W1 — pending suggestions for THIS article (the AI-regen clobber-guard files them).
+  const { data: sugData } = useQuery({
+    queryKey: ['wiki-suggestions', bookId, 'pending'],
+    queryFn: () => wikiApi.listSuggestions(bookId, { status: 'pending', limit: 50 }, accessToken!),
+    enabled: !!accessToken,
+  });
+  const articleSugs = (sugData?.items ?? []).filter((s) => s.article_id === articleId);
+
+  const handleReviewSug = async (sugId: string, sugArticleId: string, action: 'accept' | 'reject') => {
+    if (!accessToken) return;
+    try {
+      await wikiApi.reviewSuggestion(bookId, sugArticleId, sugId, { action }, accessToken);
+      toast.success(action === 'accept' ? t('suggestionAccepted') : t('suggestionRejected'));
+      queryClient.invalidateQueries({ queryKey: ['wiki-suggestions', bookId] });
+      if (action === 'accept') {
+        queryClient.invalidateQueries({ queryKey: ['wiki-article', bookId, sugArticleId] });
+        queryClient.invalidateQueries({ queryKey: ['wiki-revisions', bookId, sugArticleId] });
+        // /review-impl F1: accepting an AI-regen resolves staleness server-side
+        // (status→regenerated + clears is_knowledge_stale) and changes the article's
+        // generation_status — refresh the feed + sidebar badges so they don't go stale.
+        queryClient.invalidateQueries({ queryKey: ['wiki-staleness', bookId] });
+        queryClient.invalidateQueries({ queryKey: ['wiki-articles', bookId] });
+      }
+    } catch {
+      toast.error(t('reviewFailed'));
+    }
+  };
 
   if (isLoading) {
     return (
@@ -309,6 +340,16 @@ function WikiArticleView({ bookId, articleId, onRegenerate }: {
                   {t('staleness.outdated')}
                 </span>
               )}
+              {articleSugs.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowSugs((v) => !v)}
+                  className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary hover:brightness-110"
+                >
+                  <MessageSquare className="h-3 w-3" />
+                  {t('suggestions.pendingChip', { count: articleSugs.length })}
+                </button>
+              )}
             </div>
             <div className="flex gap-1">
               <button
@@ -336,6 +377,24 @@ function WikiArticleView({ bookId, articleId, onRegenerate }: {
           <p className="mb-4 text-[11px] text-muted-foreground">
             {t('lastEdited')} {updatedDate} &middot; {t('revisions', { count: article.revision_count })}
           </p>
+
+          {showSugs && articleSugs.length > 0 && (
+            <div className="mb-4 rounded-lg border">
+              <div className="border-b px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {t('suggestions.pendingTitle', { count: articleSugs.length })}
+              </div>
+              {articleSugs.map((sug) => (
+                <WikiSuggestionReview
+                  key={sug.suggestion_id}
+                  suggestion={sug}
+                  currentBodyJson={article.body_json}
+                  bookId={bookId}
+                  onAccept={() => handleReviewSug(sug.suggestion_id, sug.article_id, 'accept')}
+                  onReject={() => handleReviewSug(sug.suggestion_id, sug.article_id, 'reject')}
+                />
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Body */}

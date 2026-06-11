@@ -154,5 +154,19 @@
       "structural": "Cấu trúc",
       "content": "Nội dung"
     }
+  },
+  "suggestions": {
+    "aiRegen": "AI tái tạo (grounded)",
+    "community": "Cộng đồng",
+    "humanEditedNote": "Bài này đã có chỉnh sửa của người → bản AI thành đề xuất, không ghi đè.",
+    "preview": "Bản đề xuất",
+    "showDiff": "Xem khác biệt",
+    "hideDiff": "Ẩn khác biệt",
+    "accept": "Chấp nhận",
+    "reject": "Từ chối",
+    "pendingChip": "{{count}} đề xuất",
+    "pendingChip_other": "{{count}} đề xuất",
+    "pendingTitle": "Đề xuất chờ duyệt ({{count}})",
+    "pendingTitle_other": "Đề xuất chờ duyệt ({{count}})"
   }
 }

@@ -154,5 +154,19 @@
       "structural": "構造",
       "content": "内容"
     }
+  },
+  "suggestions": {
+    "aiRegen": "AI再生成（grounded）",
+    "community": "コミュニティ",
+    "humanEditedNote": "この記事には人の編集があります → AI版は上書きせず提案になります。",
+    "preview": "提案",
+    "showDiff": "変更を表示",
+    "hideDiff": "変更を隠す",
+    "accept": "承認",
+    "reject": "却下",
+    "pendingChip": "提案 {{count}} 件",
+    "pendingChip_other": "提案 {{count}} 件",
+    "pendingTitle": "承認待ちの提案（{{count}}）",
+    "pendingTitle_other": "承認待ちの提案（{{count}}）"
   }
 }

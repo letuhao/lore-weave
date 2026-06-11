@@ -154,5 +154,19 @@
       "structural": "結構",
       "content": "內容"
     }
+  },
+  "suggestions": {
+    "aiRegen": "AI 重新生成（grounded）",
+    "community": "社群",
+    "humanEditedNote": "此文章已有人工編輯 → AI 版本將成為建議而非覆寫。",
+    "preview": "建議內容",
+    "showDiff": "顯示差異",
+    "hideDiff": "隱藏差異",
+    "accept": "接受",
+    "reject": "拒絕",
+    "pendingChip": "{{count}} 則建議",
+    "pendingChip_other": "{{count}} 則建議",
+    "pendingTitle": "待審建議（{{count}}）",
+    "pendingTitle_other": "待審建議（{{count}}）"
   }
 }

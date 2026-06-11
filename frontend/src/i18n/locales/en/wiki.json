@@ -154,5 +154,19 @@
       "structural": "Structural",
       "content": "Content"
     }
+  },
+  "suggestions": {
+    "aiRegen": "AI regenerated (grounded)",
+    "community": "Community",
+    "humanEditedNote": "This article has human edits → the AI version becomes a suggestion instead of overwriting.",
+    "preview": "Proposed",
+    "showDiff": "Show changes",
+    "hideDiff": "Hide changes",
+    "accept": "Accept",
+    "reject": "Reject",
+    "pendingChip": "{{count}} suggestion",
+    "pendingChip_other": "{{count}} suggestions",
+    "pendingTitle": "Pending suggestions ({{count}})",
+    "pendingTitle_other": "Pending suggestions ({{count}})"
   }
 }
