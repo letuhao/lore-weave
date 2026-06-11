@@ -174,6 +174,129 @@ async def test_outline_archive_recurses_subtree(pool):
     assert await repo.archive_node(user, arc.id) is None
 
 
+async def test_outline_restore_recurses_subtree(pool):
+    """T1.1b restore = inverse of archive: un-archives the node + its archived
+    descendants (the whole cascade comes back)."""
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    arc = await repo.create_node(user, project, kind="arc", title="arc")
+    chap = await repo.create_node(
+        user, project, kind="chapter", parent_id=arc.id, chapter_id=chapter,
+    )
+    scene = await repo.create_node(
+        user, project, kind="scene", parent_id=chap.id, chapter_id=chapter,
+    )
+    await repo.archive_node(user, arc.id)  # archives arc+chap+scene
+
+    restored = await repo.restore_node(user, arc.id)
+    assert restored is not None and restored.is_archived is False
+    visible = {n.id for n in await repo.list_tree(user, project)}
+    assert {arc.id, chap.id, scene.id} <= visible  # whole subtree back
+    # restoring again → nothing archived → None
+    assert await repo.restore_node(user, arc.id) is None
+
+
+async def test_outline_reorder_within_siblings_renumbers_story_order(pool):
+    """T1.1c: reordering a scene after a later sibling rewrites its rank AND
+    dense-renumbers the chapter's scene story_order to match (reading order)."""
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    arc = await repo.create_node(user, project, kind="arc", title="arc")
+    chap = await repo.create_node(user, project, kind="chapter", parent_id=arc.id, chapter_id=chapter)
+    s1 = await repo.create_node(user, project, kind="scene", parent_id=chap.id, chapter_id=chapter, title="s1")
+    s2 = await repo.create_node(user, project, kind="scene", parent_id=chap.id, chapter_id=chapter, title="s2")
+    s3 = await repo.create_node(user, project, kind="scene", parent_id=chap.id, chapter_id=chapter, title="s3")
+
+    # move s1 to AFTER s3 → new order s2, s3, s1
+    moved = await repo.reorder_node(user, s1.id, new_parent_id=chap.id, after_id=s3.id)
+    assert moved is not None
+    scenes = await repo.scenes_for_chapter(user, project, chapter)  # ORDER BY story_order, rank
+    assert [s.title for s in scenes] == ["s2", "s3", "s1"]
+    assert [s.story_order for s in scenes] == [0, 1, 2]  # dense, matches rank order
+
+
+async def test_outline_reorder_reparents_scene_across_chapters(pool):
+    """A scene dragged to another chapter inherits the new chapter's chapter_id
+    and is renumbered into the destination's reading order; the source chapter's
+    remaining scenes re-densify."""
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    chA, chB = uuid.uuid4(), uuid.uuid4()
+    arc = await repo.create_node(user, project, kind="arc", title="arc")
+    cA = await repo.create_node(user, project, kind="chapter", parent_id=arc.id, chapter_id=chA)
+    cB = await repo.create_node(user, project, kind="chapter", parent_id=arc.id, chapter_id=chB)
+    a1 = await repo.create_node(user, project, kind="scene", parent_id=cA.id, chapter_id=chA, title="a1")
+    a2 = await repo.create_node(user, project, kind="scene", parent_id=cA.id, chapter_id=chA, title="a2")
+    b1 = await repo.create_node(user, project, kind="scene", parent_id=cB.id, chapter_id=chB, title="b1")
+
+    moved = await repo.reorder_node(user, a1.id, new_parent_id=cB.id, after_id=b1.id)
+    assert moved is not None
+    assert moved.parent_id == cB.id and moved.chapter_id == chB  # inherited new chapter
+    dest = await repo.scenes_for_chapter(user, project, chB)
+    assert [s.title for s in dest] == ["b1", "a1"] and [s.story_order for s in dest] == [0, 1]
+    src = await repo.scenes_for_chapter(user, project, chA)
+    assert [s.title for s in src] == ["a2"] and [s.story_order for s in src] == [0]  # re-densified
+
+
+async def test_outline_beat_role_allowed_on_scene_and_chapter_not_arc(pool):
+    """T1.2 Beat Sheet migration: beat_role may live on a scene OR a chapter, but
+    an arc (or beat) still violates outline_beatrole_kind."""
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    arc = await repo.create_node(user, project, kind="arc", title="arc")
+    chap = await repo.create_node(user, project, kind="chapter", parent_id=arc.id, chapter_id=chapter)
+    scene = await repo.create_node(user, project, kind="scene", parent_id=chap.id, chapter_id=chapter)
+
+    s = await repo.update_node(user, scene.id, {"beat_role": "catalyst"})
+    assert s is not None and s.beat_role == "catalyst"
+    c = await repo.update_node(user, chap.id, {"beat_role": "opening_image"})  # NEW: chapter allowed
+    assert c is not None and c.beat_role == "opening_image"
+    # clearing works (nullable)
+    cleared = await repo.update_node(user, chap.id, {"beat_role": None})
+    assert cleared is not None and cleared.beat_role is None
+    # an arc still cannot carry a beat_role
+    with pytest.raises(asyncpg.exceptions.CheckViolationError):
+        await repo.update_node(user, arc.id, {"beat_role": "finale"})
+
+
+async def test_outline_reorder_rejects_cycle(pool):
+    """Reparenting a node under its own descendant is a 400 (ReferenceViolationError)
+    — the same guard update_node uses, applied before any write."""
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    arc = await repo.create_node(user, project, kind="arc", title="arc")
+    chap = await repo.create_node(user, project, kind="chapter", parent_id=arc.id, chapter_id=chapter)
+    with pytest.raises(ReferenceViolationError):
+        await repo.reorder_node(user, arc.id, new_parent_id=chap.id, after_id=None)
+
+
+async def test_outline_restore_reconnects_archived_ancestors(pool):
+    """Restoring a node whose ancestor is still archived must also un-archive the
+    archived ancestor chain — else the restored node orphans out of the tree
+    (its parent_id points at an archived, invisible row)."""
+    repo = OutlineRepo(pool)
+    user, project, _ = _ids()
+    chapter = uuid.uuid4()
+    arc = await repo.create_node(user, project, kind="arc", title="arc")
+    chap = await repo.create_node(
+        user, project, kind="chapter", parent_id=arc.id, chapter_id=chapter,
+    )
+    scene = await repo.create_node(
+        user, project, kind="scene", parent_id=chap.id, chapter_id=chapter,
+    )
+    await repo.archive_node(user, arc.id)  # archives arc+chap+scene
+
+    # restore only the SCENE → ancestor chain (chap, arc) restored too
+    restored = await repo.restore_node(user, scene.id)
+    assert restored is not None and restored.is_archived is False
+    visible = {n.id for n in await repo.list_tree(user, project)}
+    assert {arc.id, chap.id, scene.id} <= visible  # reconnected to a visible root
+
+
 async def test_outline_archive_terminates_on_parent_cycle(pool):
     """FINDING-3 backstop: archive_node's recursive CTE must not loop forever on
     a stray parent cycle. The repo now BLOCKS reparent-cycles (see
@@ -885,6 +1008,25 @@ async def test_correction_stats_rates_by_mode(pool):
     # cross-user isolation → all zero
     other = await cr.correction_stats(uuid.uuid4(), project)
     assert all(m.generations == 0 and m.corrected_jobs == 0 for m in other.by_mode)
+
+
+async def test_correction_stats_excludes_selection_edits(pool):
+    """/review-impl: T3.2 selection edits run mode='cowrite' but are NOT part of the
+    draft-correction flywheel (no correction captured) — they must NOT inflate the
+    cowrite `generations` denominator, which would drag its correction rate down and
+    corrupt the cowrite-vs-auto eval signal."""
+    gjr = GenerationJobsRepo(pool)
+    cr = GenerationCorrectionsRepo(pool)
+    user, project, _ = _ids()
+    # one real cowrite scene draft + two selection edits (also mode='cowrite').
+    await gjr.create(user, project, operation="draft_scene", mode="cowrite", status="completed")
+    await gjr.create(user, project, operation="rewrite", mode="cowrite", status="completed",
+                     input={"selection_edit": True})
+    await gjr.create(user, project, operation="expand", mode="cowrite", status="completed",
+                     input={"selection_edit": True})
+    stats = await cr.correction_stats(user, project)
+    cw = next(m for m in stats.by_mode if m.mode == "cowrite")
+    assert cw.generations == 1  # ONLY the real scene draft, not the 2 selection edits
 
 
 async def test_correction_stats_distinct_job_and_completed_only(pool):

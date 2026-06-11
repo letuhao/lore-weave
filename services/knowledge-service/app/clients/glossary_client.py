@@ -543,6 +543,32 @@ class GlossaryClient:
             logger.warning("glossary wiki-writeback failed: %s", exc)
             return None
 
+    async def fetch_wiki_gold_pairs(
+        self,
+        book_id: UUID,
+        *,
+        limit: int,
+    ) -> list[dict]:
+        """D-WIKI-M8-FEWSHOT — GET /internal/books/{book_id}/wiki/gold-pairs.
+
+        Returns up to `limit` recent gold AI→human revision pairs (plaintext, truncated
+        server-side) as `[{article_id, entity_id, ai_text, human_text}]`. Best-effort:
+        returns [] on ANY failure — missing exemplars must never break generation."""
+        url = f"{self._base_url}/internal/books/{book_id}/wiki/gold-pairs"
+        tid = trace_id_var.get()
+        try:
+            resp = await self._http.get(
+                url, params={"limit": limit},
+                headers={"X-Trace-Id": tid} if tid else None,
+            )
+            if resp.status_code != 200:
+                logger.warning("glossary wiki-gold-pairs %d", resp.status_code)
+                return []
+            return resp.json().get("pairs", [])
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("glossary wiki-gold-pairs failed: %s", exc)
+            return []
+
     async def generate_wiki_stubs(
         self,
         book_id: UUID,

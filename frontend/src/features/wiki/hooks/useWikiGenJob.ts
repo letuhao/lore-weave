@@ -15,6 +15,9 @@ export interface TriggerArgs {
   /** Single-article regenerate (M7b-2b): generate exactly these entities. */
   entity_ids?: string[];
   max_spend_usd?: number;
+  /** W5 — optional override model for the corrective revise re-gen. */
+  revise_model_ref?: string;
+  revise_model_source?: string;
 }
 
 /**
@@ -67,6 +70,9 @@ export function useWikiGenJob(bookId: string) {
     if (job?.status === 'complete' && invalidatedFor.current !== job.job_id) {
       invalidatedFor.current = job.job_id;
       queryClient.invalidateQueries({ queryKey: ['wiki-articles', bookId] });
+      // Phase-2b — a completed (re)generation resolves staleness server-side
+      // (wiki_writeback), so refresh the "Knowledge updates" feed too.
+      queryClient.invalidateQueries({ queryKey: ['wiki-staleness', bookId] });
     }
   }, [job?.status, job?.job_id, bookId, queryClient]);
 
@@ -94,6 +100,13 @@ export function useWikiGenJob(bookId: string) {
                   model_ref: args.model_ref,
                   model_source: args.model_source || 'user_model',
                   ...(args.max_spend_usd != null ? { max_spend_usd: args.max_spend_usd } : {}),
+                  // W5 — forward the revise-model override only when set (paired).
+                  ...(args.revise_model_ref
+                    ? {
+                        revise_model_ref: args.revise_model_ref,
+                        revise_model_source: args.revise_model_source || 'user_model',
+                      }
+                    : {}),
                 }
               : {}),
           },

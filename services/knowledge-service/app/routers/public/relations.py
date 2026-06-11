@@ -167,3 +167,54 @@ async def correct_relation_endpoint(
         user_id, body.old_relation_id, new_rel.id,
     )
     return after if after is not None else new_rel
+
+
+class CreateRelationRequest(BaseModel):
+    """T2.5 — create a user-authored relation (World Map "link places")
+    described by ``(subject_id, predicate, object_id)``."""
+
+    subject_id: str = Field(min_length=1, max_length=200)
+    object_id: str = Field(min_length=1, max_length=200)
+    predicate: str = Field(min_length=1, max_length=100)
+
+
+@relations_router.post(
+    "/relations",
+    response_model=Relation,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_relation_endpoint(
+    body: CreateRelationRequest,
+    user_id: UUID = Depends(get_current_user),
+) -> Relation:
+    """T2.5 — create a user-authored relation (World Map "link places").
+
+    Reuses ``recreate_relation`` (user-asserted: confidence 1.0,
+    pending_validation false). Multi-tenant: both endpoints are MATCHed
+    ``WHERE user_id = $user_id``, so a relation to a cross-user / missing
+    entity finds no node → ``None`` → **409**. Idempotent on the
+    ``(user, subject, predicate, object)`` tuple.
+    """
+    if body.subject_id == body.object_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="subject_id and object_id must differ",
+        )
+    async with neo4j_session() as session:
+        rel = await recreate_relation(
+            session,
+            user_id=str(user_id),
+            subject_id=body.subject_id,
+            predicate=body.predicate,
+            object_id=body.object_id,
+        )
+    if rel is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="subject or object entity not found for this user",
+        )
+    logger.info(
+        "T2.5: user created relation user_id=%s %s -[%s]-> %s",
+        user_id, body.subject_id, body.predicate, body.object_id,
+    )
+    return rel

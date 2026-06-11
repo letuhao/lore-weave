@@ -230,7 +230,7 @@ func TestK3_AutoRegenOnDescriptionUpdate(t *testing.T) {
 		id).Scan(&snapshotBefore)
 
 	entityUUID, _ := uuid.Parse(id)
-	if err := srv.regenerateAutoShortDescription(ctx, entityUUID); err != nil {
+	if err := srv.regenerateAutoShortDescription(ctx, pool, entityUUID); err != nil {
 		t.Fatalf("regenerate: %v", err)
 	}
 
@@ -271,7 +271,7 @@ func TestK3_AutoRegenSkippedWhenUserOverride(t *testing.T) {
 
 	srv := newExportServer(t, pool)
 	entityUUID, _ := uuid.Parse(id)
-	if err := srv.regenerateAutoShortDescription(ctx, entityUUID); err != nil {
+	if err := srv.regenerateAutoShortDescription(ctx, pool, entityUUID); err != nil {
 		t.Fatalf("regenerate: %v", err)
 	}
 
@@ -323,7 +323,7 @@ func TestK3_AutoRegenSkipsWhenShortDescUnchanged(t *testing.T) {
 	// First regen: short_description goes from NULL → "First sentence."
 	// This legitimately fires the self-trigger → recalc → snapshot_at
 	// advances. We capture the value after this first run as our baseline.
-	if err := srv.regenerateAutoShortDescription(ctx, entityUUID); err != nil {
+	if err := srv.regenerateAutoShortDescription(ctx, pool, entityUUID); err != nil {
 		t.Fatalf("first regen: %v", err)
 	}
 	var baseline string
@@ -334,7 +334,7 @@ func TestK3_AutoRegenSkipsWhenShortDescUnchanged(t *testing.T) {
 	// Second regen with no description change — the IS DISTINCT guard
 	// must suppress the UPDATE, so the self-trigger must not fire and
 	// snapshot_at must stay put.
-	if err := srv.regenerateAutoShortDescription(ctx, entityUUID); err != nil {
+	if err := srv.regenerateAutoShortDescription(ctx, pool, entityUUID); err != nil {
 		t.Fatalf("second regen: %v", err)
 	}
 	var after string

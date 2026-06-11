@@ -8,6 +8,10 @@ import type {
   WikiSuggestionResp,
   WikiGenJobStatus,
   WikiGenerateResult,
+  WikiGenConfig,
+  WikiStalenessListResp,
+  WikiStalenessSweepResp,
+  WikiStalenessDiff,
 } from './types';
 
 const BASE = '/v1/glossary';
@@ -81,6 +85,9 @@ export const wikiApi = {
       model_ref?: string;
       model_source?: string;
       max_spend_usd?: number;
+      // W5 — optional override model for the corrective revise re-gen.
+      revise_model_ref?: string;
+      revise_model_source?: string;
     },
     token: string,
   ): Promise<WikiGenerateResult> {
@@ -109,6 +116,58 @@ export const wikiApi = {
       method: 'POST',
       token,
     });
+  },
+
+  /** Flat per-article wiki-gen cost estimate (D-WIKI-P2B-COST-ESTIMATE) — the FE
+   *  multiplies by the selected-entity count for a pre-flight estimate. */
+  getGenConfig(bookId: string, token: string): Promise<WikiGenConfig> {
+    return apiJson<WikiGenConfig>(`${BASE}/books/${bookId}/wiki/gen-config`, { token });
+  },
+
+  /* ── wiki-llm Phase-2 — "Knowledge updates" change-feed (§5.3) ── */
+
+  listStaleness(bookId: string, token: string): Promise<WikiStalenessListResp> {
+    return apiJson<WikiStalenessListResp>(`${BASE}/books/${bookId}/wiki/staleness`, { token });
+  },
+
+  dismissStaleness(
+    bookId: string,
+    stalenessId: string,
+    token: string,
+  ): Promise<{ staleness_id: string; status: string }> {
+    return apiJson(`${BASE}/books/${bookId}/wiki/staleness/${stalenessId}/dismiss`, {
+      method: 'POST',
+      token,
+    });
+  },
+
+  /** W2 — batch "dismiss selected" (accept-as-is, no spend). */
+  dismissStalenessBatch(
+    bookId: string,
+    stalenessIds: string[],
+    token: string,
+  ): Promise<{ dismissed: number }> {
+    return apiJson(`${BASE}/books/${bookId}/wiki/staleness/dismiss-batch`, {
+      method: 'POST',
+      body: JSON.stringify({ staleness_ids: stalenessIds }),
+      token,
+    });
+  },
+
+  /** W2 — owner-triggered "rescan fingerprint": recipe-drift (versions sourced from
+   *  knowledge) + kg-drift. `recipe_swept=false` when knowledge is unreachable. */
+  sweepStaleness(bookId: string, token: string): Promise<WikiStalenessSweepResp> {
+    return apiJson<WikiStalenessSweepResp>(`${BASE}/books/${bookId}/wiki/staleness/sweep`, {
+      method: 'POST',
+      token,
+    });
+  },
+
+  /** W6b-2b — the source change diff for one staleness row (before snapshot vs the
+   *  current source). `available:false` ⇒ no snapshot / no "after" → use the jump. */
+  getStalenessDiff(bookId: string, stalenessId: string, token: string): Promise<WikiStalenessDiff> {
+    return apiJson<WikiStalenessDiff>(
+      `${BASE}/books/${bookId}/wiki/staleness/${stalenessId}/diff`, { token });
   },
 
   /* ── Revisions ── */

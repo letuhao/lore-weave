@@ -47,7 +47,10 @@ from app.engine.stitch import stitch_chapter
 from app.engine.canon_reflect import run_canon_reflect
 from app.engine.narrative_thread import detect_and_update_threads
 from app.engine.compress import compress
-from app.engine.cowrite import build_messages, estimate_prompt_tokens, stream_draft
+from app.engine.cowrite import (
+    SELECTION_MAX_CHARS, build_messages, build_selection_messages,
+    estimate_prompt_tokens, stream_draft,
+)
 from app.engine.critic import judge_prose
 from app.engine.select import diverge, select_draft
 from app.reasoning import ReasoningSignals, score_effort
@@ -93,6 +96,25 @@ class GenerateBody(BaseModel):
     # assembles per scene; an explicit 'chapter' here 409-redirects to the chapter
     # endpoint (B2). Literal → a bad value 422s at request validation.
     assembly_mode: Literal["per_scene", "chapter"] | None = None
+
+
+class SelectionEditBody(BaseModel):
+    # T3.2 — selection-scoped edit. The Literal makes a bad operation a 422 at
+    # request validation (before any job/stream), mirroring GenerateBody.mode; the
+    # engine's build_selection_messages ALSO raises on an unregistered op (defense
+    # in depth — the LOOM-39 missing-enum lesson).
+    operation: Literal["rewrite", "expand", "describe"]
+    selection: Annotated[str, StringConstraints(min_length=1, max_length=SELECTION_MAX_CHARS)]
+    # PO: couple grounding to the compose panel's active scene. Optional — a free
+    # selection may sit in a chapter with no scene node → voice-only grounding.
+    scene_context: UUID | None = None
+    model_source: Literal["user_model", "platform_model"]
+    model_ref: UUID
+    guide: str = ""
+    max_output_tokens: int = Field(default=_MAX_OUTPUT_DEFAULT, ge=1, le=8192)
+    reasoning: Literal["off", "auto", "low", "medium", "high"] = "auto"
+    model_kind: str | None = None
+    model_name: str | None = None
 
 
 class GenerateChapterBody(BaseModel):
@@ -512,6 +534,136 @@ async def generate(
                         "output_tokens": m.output_tokens, "measured": m.measured,
                         "capped": final.get("capped", False),
                         "truncated": truncated, "finish_reason": m.finish_reason})
+        else:
+            await jobs.update_status(user_id, job.id, "failed")
+            yield _sse({"type": "done", "job_id": str(job.id), "status": "failed"})
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
+@router.post("/works/{project_id}/selection-edit")
+async def selection_edit(
+    project_id: UUID,
+    body: SelectionEditBody,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+    scene_links: SceneLinksRepo = Depends(get_scene_links_repo),
+    canon: CanonRulesRepo = Depends(get_canon_rules_repo),
+    jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
+    book: BookClient = Depends(get_book_client_dep),
+    glossary: GlossaryClient = Depends(get_glossary_client_dep),
+    knowledge: KnowledgeClient = Depends(get_knowledge_client_dep),
+    llm: LLMClient = Depends(get_llm_client_dep),
+    narrative_threads: NarrativeThreadRepo = Depends(get_narrative_thread_repo),
+) -> Any:
+    """T3.2 — selection-scoped edit (rewrite/expand/describe) over the author's
+    highlighted prose. Decoupled from outline_node_id (AH-1): a selection may sit
+    in a chapter with no scene node, so this never requires one. Grounds on the
+    BookProfile voice ALWAYS; on the scene pack when `scene_context` resolves to a
+    valid node (degrades to voice-only on any pack failure — never 404s on the
+    grounding source). Streams the replacement (same SSE as cowrite); the FE
+    replaces the Tiptap range on Accept (no server persistence until then)."""
+    work = await works.get(user_id, project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail="work not found")
+    profile = from_settings(work.settings)
+    _src_lang = profile.source_language
+
+    grounding = ""
+    node = None
+    if body.scene_context is not None:
+        cand = await outline.get_node(user_id, body.scene_context)
+        if cand is not None and str(cand.project_id) == str(project_id):
+            node = cand
+
+            async def _compress_fn(older: list[str], timeline_texts: list[str], plan: str) -> str:
+                return await compress(
+                    llm, user_id=str(user_id), model_source=body.model_source,
+                    model_ref=str(body.model_ref), prose=older, timeline=timeline_texts,
+                    plan=plan, source_language=_src_lang,
+                    max_input_chars=settings.compress_max_input_chars)
+
+            try:
+                pc = await pack(
+                    PackRequest(user_id=user_id, project_id=project_id, book_id=work.book_id,
+                                node=node.model_dump(mode="python"), bearer=bearer, guide=body.guide,
+                                settings=work.settings),
+                    book=book, glossary=glossary, knowledge=knowledge, canon_repo=canon,
+                    outline_repo=outline, scene_links_repo=scene_links,
+                    budget_tokens=settings.pack_token_budget, jobs_repo=jobs,
+                    compress_fn=_compress_fn, narrative_threads_repo=narrative_threads)
+                grounding = pc.prompt
+            except Exception:  # noqa: BLE001 — grounding is best-effort: a pack
+                # failure of ANY kind degrades to voice-only, never 500s the edit
+                # (the docstring's "never fails on the grounding source").
+                logger.warning("selection-edit grounding pack failed — voice-only", exc_info=True)
+                grounding = ""
+
+    # build_selection_messages RAISES on an unregistered op; the Literal field above
+    # already 422s a bad value, so this is the defense-in-depth backstop (LOOM-39).
+    messages = build_selection_messages(
+        body.selection, profile, body.operation, body.guide, grounding)
+    prompt_estimate = estimate_prompt_tokens(messages, B.default_counter())
+    prompt_ceiling = settings.pack_token_budget * 2
+    if prompt_estimate > prompt_ceiling:
+        raise HTTPException(status_code=413, detail={
+            "code": "PROMPT_TOO_LARGE", "estimate": prompt_estimate, "ceiling": prompt_ceiling})
+
+    signals = ReasoningSignals(
+        operation=body.operation, n_canon_rules=0, n_present_entities=0,
+        has_reveal_gate=False, tension=None, guide=body.guide)
+    control = infer_reasoning_control(body.model_kind, body.model_name)
+    reasoning = resolve_reasoning(
+        user_pref=body.reasoning, model_control=control, auto_effort=score_effort(signals),
+        auto_source=str(work.settings.get("reasoning_engine", "rule_based")))
+
+    # /review-impl HIGH: outline_node_id is DELIBERATELY None even when a scene
+    # grounded the edit. The scene is GROUNDING only, not a draft association — the
+    # node-join consumers (chapter_scene_drafts/prior_scene_drafts → stitch + S1
+    # state-reinjection; outline.chapter_scene_gate → publish-gate canon count) take
+    # the LATEST completed job per scene node, so a node-tagged selection edit (a
+    # rewritten fragment, no canon block) would masquerade as the scene's draft and
+    # corrupt the stitch / reinjection / gate. The scene id stays in `input` for
+    # traceability only.
+    job, created = await jobs.create(
+        user_id, project_id, operation=body.operation,
+        outline_node_id=None,
+        mode="cowrite", status="running",
+        input={"model_source": body.model_source, "model_ref": str(body.model_ref),
+               "operation": body.operation, "selection_edit": True,
+               "scene_context": str(node.id) if node is not None else None,
+               "prompt_estimate": prompt_estimate,
+               "reasoning": reasoning.source, "reasoning_effort": reasoning.effort})
+
+    async def event_gen():
+        yield _sse({"type": "job", "job_id": str(job.id), "created": created,
+                    "grounding_available": bool(grounding),
+                    "reasoning_source": reasoning.source,
+                    "reasoning_effort": reasoning.effort})
+        final: dict[str, Any] | None = None
+        async for ev in stream_draft(
+            llm.sdk, user_id=str(user_id), model_source=body.model_source,
+            model_ref=str(body.model_ref), messages=messages,
+            prompt_token_estimate=prompt_estimate, max_output_tokens=body.max_output_tokens,
+            hard_cap_output=body.max_output_tokens * 2,
+            reasoning_effort=None if reasoning.passthrough else reasoning.effort,
+        ):
+            if ev["type"] == "usage":
+                final = ev
+            else:
+                yield _sse(ev)
+        if final is not None:
+            m = final["metering"]
+            await jobs.update_status(
+                user_id, job.id, "completed",
+                result={"text": final["text"], "input_tokens": m.input_tokens,
+                        "output_tokens": m.output_tokens, "measured": m.measured,
+                        "finish_reason": m.finish_reason, "selection_edit": True})
+            yield _sse({"type": "done", "job_id": str(job.id), "status": "completed",
+                        "output_tokens": m.output_tokens, "measured": m.measured,
+                        "finish_reason": m.finish_reason})
         else:
             await jobs.update_status(user_id, job.id, "failed")
             yield _sse({"type": "done", "job_id": str(job.id), "status": "failed"})

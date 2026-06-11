@@ -122,6 +122,13 @@ func (s *Server) Router() http.Handler {
 		// wiki-llm M5 — knowledge-service writes an AI-generated article here
 		// (clobber-guard: upsert an ai/stub draft, else file a wiki_suggestion).
 		r.Post("/books/{book_id}/wiki/articles", s.internalWriteWikiArticle)
+		// wiki-llm Phase-2 (§5.2) — on-demand recipe-drift sweep: flag AI articles
+		// whose stored prompt/pipeline version lags the current one (the caller
+		// supplies the current versions, which live in knowledge's config).
+		r.Post("/books/{book_id}/wiki/staleness-sweep", s.sweepWikiStaleness)
+		// wiki-llm M8 (D-WIKI-M8-FEWSHOT) — gold AI→human revision pairs (plaintext,
+		// truncated) for few-shot generation in knowledge-service.
+		r.Get("/books/{book_id}/wiki/gold-pairs", s.listWikiGoldPairs)
 	})
 
 	r.Route("/v1/glossary", func(r chi.Router) {
@@ -170,11 +177,21 @@ func (s *Server) Router() http.Handler {
 				r.Get("/", s.listWikiArticles)
 				r.Post("/", s.createWikiArticle)
 				r.Post("/generate", s.generateWikiStubs)
+				// wiki-llm Phase-2b (D-WIKI-P2B-COST-ESTIMATE) — flat per-article cost.
+				r.Get("/gen-config", s.getWikiGenConfigStatus)
 				// wiki-llm M7b — LLM-gen job lifecycle proxy (status + resume/cancel).
 				r.Route("/job", func(r chi.Router) {
 					r.Get("/", s.getWikiGenJobStatus)
 					r.Post("/{job_id}/resume", s.resumeWikiGenJob)
 					r.Post("/{job_id}/cancel", s.cancelWikiGenJob)
+				})
+				// wiki-llm Phase-2b (§5.3) — the "Knowledge updates" change-feed.
+				r.Route("/staleness", func(r chi.Router) {
+					r.Get("/", s.listWikiStaleness)
+					r.Post("/sweep", s.sweepWikiStalenessPublic)
+					r.Post("/dismiss-batch", s.dismissWikiStalenessBatch)
+					r.Get("/{staleness_id}/diff", s.getWikiStalenessDiff)
+					r.Post("/{staleness_id}/dismiss", s.dismissWikiStaleness)
 				})
 				r.Get("/suggestions", s.listWikiSuggestions)
 				r.Get("/public", s.publicListWikiArticles)

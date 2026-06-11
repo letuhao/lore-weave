@@ -11,12 +11,19 @@ import type { StreamEvent } from '../types';
 
 export type GenerateArgs = {
   projectId: string;
-  outlineNodeId: string;
+  /** Scene draft: the committed scene node. Omit + pass `selection` to run a
+   *  T3.2 selection-edit instead (a different, scene-decoupled endpoint). */
+  outlineNodeId?: string;
   modelSource: string;
   modelRef: string;
   operation?: string;
   guide?: string;
   maxOutputTokens?: number;
+  /** T3.2 selection-edit: the highlighted prose. When set, `start` POSTs to
+   *  `selection-edit` (operation ∈ rewrite|expand|describe) instead of `generate`. */
+  selection?: string;
+  /** T3.2: optional scene node for grounding (the compose panel's active scene). */
+  sceneContext?: string | null;
   /** Author reasoning preference; the server resolves "auto" per the selected
    * model's capability. off/low/medium/high are explicit overrides. */
   reasoning?: 'off' | 'auto' | 'low' | 'medium' | 'high';
@@ -54,11 +61,26 @@ export function useCompositionStream(token: string | null) {
       setStreaming(true);
       const controller = new AbortController();
       abortRef.current = controller;
-      try {
-        const res = await fetch(compositionApi.generateUrl(args.projectId), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ''}` },
-          body: JSON.stringify({
+      // T3.2: a `selection` switches to the selection-edit endpoint (scene-decoupled);
+      // otherwise this is the scene-draft generate. The SSE handling below is shared.
+      const isSelection = args.selection != null;
+      const url = isSelection
+        ? compositionApi.selectionEditUrl(args.projectId)
+        : compositionApi.generateUrl(args.projectId);
+      const body = isSelection
+        ? {
+            operation: args.operation ?? 'rewrite',
+            selection: args.selection,
+            scene_context: args.sceneContext ?? null,
+            model_source: args.modelSource,
+            model_ref: args.modelRef,
+            guide: args.guide ?? '',
+            max_output_tokens: args.maxOutputTokens ?? 1024,
+            reasoning: args.reasoning ?? 'auto',
+            ...(args.modelKind ? { model_kind: args.modelKind } : {}),
+            ...(args.modelName ? { model_name: args.modelName } : {}),
+          }
+        : {
             outline_node_id: args.outlineNodeId,
             model_source: args.modelSource,
             model_ref: args.modelRef,
@@ -68,7 +90,12 @@ export function useCompositionStream(token: string | null) {
             reasoning: args.reasoning ?? 'auto',
             ...(args.modelKind ? { model_kind: args.modelKind } : {}),
             ...(args.modelName ? { model_name: args.modelName } : {}),
-          }),
+          };
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ''}` },
+          body: JSON.stringify(body),
           signal: controller.signal,
         });
         if (!res.ok || !res.body) {

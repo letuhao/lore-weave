@@ -32,9 +32,11 @@ from app.events.handlers import (
     handle_translation_corrected,
     handle_translation_quality,
     handle_translation_reviewed,
+    handle_wiki_corrected,
+    handle_wiki_suggestion_reviewed,
 )
 from app.middleware.trace_id import TraceIdMiddleware
-from app.routers import corrections, eval as eval_routes, mining
+from app.routers import corrections, eval as eval_routes, mining, wiki_judge
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -55,6 +57,8 @@ def build_dispatcher() -> EventDispatcher:
     dispatcher.register("translation.reviewed", handle_translation_reviewed)  # M7b
     dispatcher.register("translation.corrected", handle_translation_corrected)  # M7c-1
     dispatcher.register("glossary.name_confirmed", handle_name_confirmed)  # M7c-3
+    dispatcher.register("wiki.corrected", handle_wiki_corrected)  # D-WIKI-M8
+    dispatcher.register("wiki.suggestion_reviewed", handle_wiki_suggestion_reviewed)  # D-WIKI-M8
     return dispatcher
 
 
@@ -109,6 +113,7 @@ app.add_middleware(
 app.include_router(corrections.router)
 app.include_router(mining.router)
 app.include_router(eval_routes.router)
+app.include_router(wiki_judge.router)  # D-WIKI-M8-EVAL-PLUS — internal groundedness judge
 
 
 @app.get("/health", response_class=PlainTextResponse)

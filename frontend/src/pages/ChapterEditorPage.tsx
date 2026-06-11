@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
   Save, PanelLeft, PanelRight, Clock, ChevronRight, ChevronLeft, ChevronRight as ChevronRightNav, SpellCheck,
-  BookOpen, FileText, BookMarked, Pen, Sparkles, Languages, AlertTriangle,
+  BookOpen, FileText, BookMarked, ListTree, Pen, Sparkles, Languages, AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { apiBase } from '@/api';
@@ -32,6 +32,10 @@ import { Chat } from '@/features/chat/Chat';
 import { fireSendToChat } from '@/features/chat/context/sendToChat';
 import { registerEditorTarget } from '@/features/chat/context/editorBridge';
 import { CompositionPanel } from '@/features/composition/components/CompositionPanel';
+import { SelectionToolbar } from '@/features/composition/components/SelectionToolbar';
+import { InlineAiLayer } from '@/features/composition/components/InlineAiLayer';
+import { useWorkResolution } from '@/features/composition/hooks/useWork';
+import { OutlineTree } from '@/features/composition/components/OutlineTree';
 import { useChapterPublishGate, publishGateMessages } from '@/features/composition/hooks/usePublishGate';
 
 function wordCount(text: string): number {
@@ -140,6 +144,19 @@ export function ChapterEditorPage() {
   const [rightTab, setRightTab] = useState<'history' | 'ai' | 'compose'>('history');
   const [revKey, setRevKey] = useState(0);
 
+  // T3.2 — resolve the co-writer Work (for the editor Selection Tools' projectId)
+  // + lift the active scene so the toolbar grounds on the compose panel's scene.
+  // useWorkResolution is react-query-cached, so CompositionPanel reuses this fetch.
+  const workResolution = useWorkResolution(bookId, accessToken);
+  const composeWork =
+    workResolution.data?.status === 'found' ? workResolution.data.work
+      : workResolution.data?.status === 'candidates' ? (workResolution.data.candidates[0] ?? null)
+        : null;
+  const composeProjectId = composeWork?.project_id ?? null;
+  const composeDefaultModel =
+    typeof composeWork?.settings?.default_model_ref === 'string' ? composeWork.settings.default_model_ref : null;
+  const [activeSceneId, setActiveSceneId] = useState('');
+
   // ARCH-1 C5: when the AI panel opens (or the chapter changes while it's
   // open), auto-attach the current chapter as chat context via the existing
   // send-to-chat event. The chat listener re-fetches the chapter body fresh at
@@ -176,7 +193,7 @@ export function ChapterEditorPage() {
   const editorElRef = useRef<HTMLElement | null>(null);
 
   // Left sidebar
-  const [leftTab, setLeftTab] = useState<'source' | 'chapters' | 'glossary'>('chapters');
+  const [leftTab, setLeftTab] = useState<'source' | 'chapters' | 'glossary' | 'outline'>('chapters');
   const [originalContent, setOriginalContent] = useState<string | null>(null);
   const [originalLoading, setOriginalLoading] = useState(false);
   const [allChapters, setAllChapters] = useState<Chapter[]>([]);
@@ -707,7 +724,26 @@ export function ChapterEditorPage() {
                   </span>
                 )}
               </button>
+              <button
+                onClick={() => setLeftTab('outline')}
+                className={cn(
+                  'flex flex-1 items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors',
+                  leftTab === 'outline' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <ListTree className="h-3 w-3" />{t('tabs.outline')}
+              </button>
             </div>
+
+            {/* ── Outline tab (T1.1a — committed-outline browser) ───────── */}
+            {leftTab === 'outline' && (
+              <OutlineTree
+                bookId={bookId}
+                token={accessToken}
+                currentChapterId={chapterId}
+                onNavigateChapter={navigateToChapter}
+              />
+            )}
 
             {/* ── Chapters tab ─────────────────────────────────────────── */}
             {leftTab === 'chapters' && (
@@ -846,6 +882,29 @@ export function ChapterEditorPage() {
               grammarEnabled={grammarEnabled}
               editorMode={editorMode}
               className="flex-1 overflow-y-auto"
+              // T3.2: AI Selection Tools — only when a co-writer Work exists.
+              selectionMenu={composeProjectId
+                ? (editor) => (
+                    <SelectionToolbar
+                      editor={editor}
+                      projectId={composeProjectId}
+                      sceneContext={activeSceneId || null}
+                      token={accessToken}
+                    />
+                  )
+                : undefined}
+              // T3.3: Classic⇄AI inline mode (toggle + inline ghost) — co-writer Work only.
+              aiLayer={composeProjectId
+                ? (editor) => (
+                    <InlineAiLayer
+                      editor={editor}
+                      projectId={composeProjectId}
+                      sceneId={activeSceneId || null}
+                      modelRef={composeDefaultModel}
+                      token={accessToken}
+                    />
+                  )
+                : undefined}
             />
           )}
 
@@ -951,6 +1010,8 @@ export function ChapterEditorPage() {
                   chapterId={chapterId}
                   token={accessToken}
                   onAccept={(text) => tiptapEditorRef.current?.insertAtCursor(text)}
+                  sceneId={activeSceneId}
+                  onSceneChange={setActiveSceneId}
                 />
               )}
             </div>
