@@ -2160,6 +2160,20 @@ RETURN t
 """
 
 
+# T2.1 — re-point the source's `(:Fact)-[:ABOUT]->` edges onto target before the
+# DETACH DELETE, else facts about a merged-away entity orphan (vanish from the live
+# entity's codex list). MERGE is idempotent — a fact already ABOUT target gains no
+# dup; the stale source edge is removed by the DETACH DELETE in step 7.
+_MERGE_REWIRE_ABOUT_CYPHER = """
+MATCH (f:Fact)-[:ABOUT]->(s:Entity {id: $source_id})
+WHERE f.user_id = $user_id
+MATCH (t:Entity {id: $target_id})
+WHERE t.user_id = $user_id
+MERGE (f)-[:ABOUT]->(t)
+RETURN count(*) AS rewired
+"""
+
+
 _MERGE_DELETE_SOURCE_CYPHER = """
 MATCH (s:Entity {id: $source_id})
 WHERE s.user_id = $user_id
@@ -2357,6 +2371,15 @@ async def merge_entities(
         await run_write(
             tx,
             _MERGE_REWIRE_EVIDENCED_BY_CYPHER,
+            user_id=user_id,
+            source_id=source_id,
+            target_id=target_id,
+        )
+
+        # 5b. T2.1 — re-point (:Fact)-[:ABOUT]-> edges onto target (before delete).
+        await run_write(
+            tx,
+            _MERGE_REWIRE_ABOUT_CYPHER,
             user_id=user_id,
             source_id=source_id,
             target_id=target_id,

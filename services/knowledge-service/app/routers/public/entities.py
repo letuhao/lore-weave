@@ -38,9 +38,13 @@ from app.db.neo4j_repos.entities import (
     unlock_entity_user_edited,
     update_entity_fields,
 )
+from app.db.neo4j_repos.entity_status import statuses_detail_at_order
+from app.db.neo4j_repos.facts import Fact, list_facts_for_entity
 from app.db.repositories import VersionMismatchError
 from app.db.repositories.entity_alias_map import EntityAliasMapRepo
-from app.deps import get_entity_alias_map_repo
+from app.clients.book_client import BookClient
+from app.deps import get_book_client, get_entity_alias_map_repo
+from app.spoiler_window import resolve_before_order
 from app.events.outbox_emit import (
     ENTITY_CORRECTED,
     emit_correction,
@@ -271,6 +275,65 @@ async def list_entities(
     return EntitiesListResponse(entities=rows, total=total)
 
 
+# ── T2.1 — Cast & Codex: spoiler-windowed status + facts ──────────────
+
+
+class EntityStatusEntry(BaseModel):
+    status: str  # 'active' | 'gone'
+    from_order: int | None = None
+
+
+class EntityStatusesResponse(BaseModel):
+    # keyed by Entity.id; every requested id appears (default 'active').
+    statuses: dict[str, EntityStatusEntry]
+    # False when the chapter spoiler-window couldn't be resolved (fail-closed:
+    # all 'active', no history) so the FE can show "reading position unknown".
+    window_available: bool
+
+
+# MUST be declared BEFORE `/entities/{entity_id}` or FastAPI captures
+# `statuses` as an entity_id.
+@entities_router.get("/entities/statuses", response_model=EntityStatusesResponse)
+async def list_entity_statuses(
+    project_id: UUID = Query(description="The knowledge project (book) whose cast to status."),
+    before_chapter_id: UUID | None = Query(
+        default=None,
+        description=(
+            "Spoiler-window the status THROUGH this book chapter (resolved "
+            "server-side). Omitted / unresolvable → fail-closed (all 'active')."
+        ),
+    ),
+    kind: str | None = Query(default=None, max_length=100),
+    user_id: UUID = Depends(get_current_user),
+    book_client: BookClient = Depends(get_book_client),
+) -> EntityStatusesResponse:
+    """T2.1 — batch `:EntityStatus` (`active|gone`) for a project's cast, windowed
+    to `before_chapter_id`. Project-scoped (not a client id list) to avoid URL-length
+    blowups on large casts. Multi-tenant: `user_id` from JWT scopes both reads."""
+    before_order, available = await resolve_before_order(book_client, before_chapter_id)
+    async with neo4j_session() as session:
+        rows, _total = await list_entities_filtered(
+            session,
+            user_id=str(user_id),
+            project_id=str(project_id),
+            kind=kind,
+            search=None,
+            limit=ENTITIES_MAX_LIMIT,
+            offset=0,
+        )
+        detail = await statuses_detail_at_order(
+            session,
+            user_id=str(user_id),
+            project_id=str(project_id),
+            entity_ids=[e.id for e in rows],
+            at_order=before_order,
+        )
+    return EntityStatusesResponse(
+        statuses={eid: EntityStatusEntry(**v) for eid, v in detail.items()},
+        window_available=available,
+    )
+
+
 @entities_router.get(
     "/entities/{entity_id}",
     response_model=EntityDetail,
@@ -313,6 +376,42 @@ async def get_entity_detail(
         )
     response.headers["ETag"] = _etag(detail.entity.version)
     return detail
+
+
+class EntityFactsResponse(BaseModel):
+    facts: list[Fact]
+    window_available: bool
+
+
+@entities_router.get(
+    "/entities/{entity_id}/facts",
+    response_model=EntityFactsResponse,
+)
+async def list_entity_facts(
+    entity_id: str = Path(min_length=1, max_length=200),
+    before_chapter_id: UUID | None = Query(
+        default=None,
+        description=(
+            "Spoiler-window the facts THROUGH this book chapter (by the fact's "
+            "established-at order). Omitted / unresolvable → fail-closed (no facts)."
+        ),
+    ),
+    user_id: UUID = Depends(get_current_user),
+    book_client: BookClient = Depends(get_book_client),
+) -> EntityFactsResponse:
+    """T2.1 — the known-facts list (`decision|preference|milestone|negation`) ABOUT
+    one entity, spoiler-windowed by `before_chapter_id`. A cross-user / unknown
+    entity simply yields no facts (no existence leak). L2-loader filters apply
+    (confidence ≥ 0.8, not pending) so quarantine candidates don't surface."""
+    before_order, available = await resolve_before_order(book_client, before_chapter_id)
+    async with neo4j_session() as session:
+        facts = await list_facts_for_entity(
+            session,
+            user_id=str(user_id),
+            entity_id=entity_id,
+            before_order=before_order,
+        )
+    return EntityFactsResponse(facts=facts, window_available=available)
 
 
 # ── K19d γ-a — PATCH /entities/{id} ──────────────────────────────────

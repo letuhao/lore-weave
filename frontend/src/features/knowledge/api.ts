@@ -332,6 +332,50 @@ export interface EntityDetail {
   total_relations: number;
 }
 
+// ── T2.1 Cast & Codex — spoiler-windowed status + facts ───────────────
+
+/** One entity's story-state at the windowed reading position. `from_order` is
+ *  null when the entity has no recorded transition (defaults to `active`). */
+export interface EntityStatusEntry {
+  status: 'active' | 'gone';
+  from_order: number | null;
+}
+
+/** Batch status for a project's cast, keyed by `Entity.id`. `window_available`
+ *  is false when the chapter spoiler-window couldn't be resolved (fail-closed:
+ *  everyone `active`, no history) — the codex shows a "reading position unknown"
+ *  hint rather than implying a clean slate. */
+export interface EntityStatusesResponse {
+  statuses: Record<string, EntityStatusEntry>;
+  window_available: boolean;
+}
+
+export type EntityFactType = 'decision' | 'preference' | 'milestone' | 'negation';
+
+/** A known fact ABOUT an entity (decision/preference/…). Spoiler-windowed by
+ *  `from_order` server-side. Mirrors the BE Fact projection (subset the codex
+ *  renders). */
+export interface EntityFact {
+  id: string;
+  type: EntityFactType;
+  content: string;
+  confidence: number;
+  source_chapter: string | null;
+  from_order: number | null;
+}
+
+export interface EntityFactsResponse {
+  facts: EntityFact[];
+  window_available: boolean;
+}
+
+export interface EntityStatusesParams {
+  project_id: string;
+  /** Window the status THROUGH this book chapter (resolved server-side). */
+  before_chapter_id?: string;
+  kind?: string;
+}
+
 // ── K19d γ-a — PATCH /entities/{id} body ──────────────────────────────
 
 export interface EntityUpdatePayload {
@@ -438,6 +482,9 @@ export interface TimelineListParams {
    *  user / missing entity collapses to an empty timeline (no 404
    *  existence leak per KSA §6.4). */
   entity_id?: string;
+  /** T2.1: spoiler-window the timeline THROUGH this book chapter (resolved
+   *  server-side to a before_order ceiling). An explicit `before_order` wins. */
+  before_chapter_id?: string;
   limit?: number;
   offset?: number;
 }
@@ -1291,11 +1338,47 @@ export const knowledgeApi = {
     if (params.before_chronological != null)
       qs.set('before_chronological', String(params.before_chronological));
     if (params.entity_id != null) qs.set('entity_id', params.entity_id);
+    if (params.before_chapter_id != null)
+      qs.set('before_chapter_id', params.before_chapter_id);
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.offset != null) qs.set('offset', String(params.offset));
     const q = qs.toString();
     return apiJson<TimelineResponse>(
       `${BASE}/timeline${q ? `?${q}` : ''}`,
+      { token },
+    );
+  },
+
+  // ── T2.1 Cast & Codex ────────────────────────────────────────────────
+
+  /** Batch story-state (active|gone) for a project's cast, windowed to the
+   *  current chapter. Project-scoped (no client id list). */
+  getEntityStatuses(
+    params: EntityStatusesParams,
+    token: string,
+  ): Promise<EntityStatusesResponse> {
+    const qs = new URLSearchParams({ project_id: params.project_id });
+    if (params.before_chapter_id != null)
+      qs.set('before_chapter_id', params.before_chapter_id);
+    if (params.kind != null) qs.set('kind', params.kind);
+    return apiJson<EntityStatusesResponse>(
+      `${BASE}/entities/statuses?${qs.toString()}`,
+      { token },
+    );
+  },
+
+  /** The known-facts list ABOUT one entity, spoiler-windowed by chapter. */
+  getEntityFacts(
+    entityId: string,
+    params: { before_chapter_id?: string },
+    token: string,
+  ): Promise<EntityFactsResponse> {
+    const qs = new URLSearchParams();
+    if (params.before_chapter_id != null)
+      qs.set('before_chapter_id', params.before_chapter_id);
+    const q = qs.toString();
+    return apiJson<EntityFactsResponse>(
+      `${BASE}/entities/${encodeURIComponent(entityId)}/facts${q ? `?${q}` : ''}`,
       { token },
     );
   },

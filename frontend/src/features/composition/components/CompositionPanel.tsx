@@ -14,6 +14,7 @@ import { ChapterAssembleView } from './ChapterAssembleView';
 import { PlannerView } from './PlannerView';
 import { BeatSheetView } from './BeatSheetView';
 import { SceneGraphCanvas } from './SceneGraphCanvas';
+import { CastCodexPanel } from './CastCodexPanel';
 import { GroundingPanel } from './GroundingPanel';
 import { CanonRulesPanel } from './CanonRulesPanel';
 import { ThreadsPanel } from './ThreadsPanel';
@@ -27,7 +28,7 @@ type Props = {
   onAccept: (text: string) => void; // insert accepted prose into the editor
 };
 
-type SubTab = 'compose' | 'assemble' | 'planner' | 'beats' | 'graph' | 'grounding' | 'canon' | 'threads' | 'quality' | 'settings';
+type SubTab = 'compose' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'grounding' | 'canon' | 'threads' | 'quality' | 'settings';
 
 export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) {
   const { t } = useTranslation('composition');
@@ -162,7 +163,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
 
       {/* sub-tabs */}
       <div className="flex gap-1 border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700">
-        {(['compose', 'assemble', 'planner', 'beats', 'graph', 'grounding', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'quality', 'settings'] as SubTab[]).map((tb) => (
+        {(['compose', 'assemble', 'planner', 'beats', 'graph', 'cast', 'grounding', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'quality', 'settings'] as SubTab[]).map((tb) => (
           <button
             key={tb}
             data-testid={`composition-subtab-${tb}`}
@@ -217,6 +218,9 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
         </div>
         <div className={tab === 'graph' ? '' : 'hidden'}>
           <SceneGraphCanvas work={work} bookId={bookId} token={token} />
+        </div>
+        <div className={tab === 'cast' ? '' : 'hidden'}>
+          <CastCodexPanel bookId={bookId} chapterId={chapterId} token={token} />
         </div>
         <div className={tab === 'grounding' ? '' : 'hidden'}>
           <GroundingPanel projectId={work.project_id} sceneId={effectiveScene} token={token} />
