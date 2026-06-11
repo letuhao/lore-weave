@@ -31,13 +31,22 @@ from ..models import (
     Campaign,
     CampaignChapter,
     CampaignDetail,
+    CampaignListItem,
+    ChapterPage,
     CampaignProgress,
+    CampaignReport,
+    ErrorGroup,
     StageCounts,
-    UpdateBudgetPayload,
+    ActivityEntry,
+    ActivityPage,
+    UpdateCampaignPayload,
+    MODEL_PATCH_FIELDS,
+    RerunFailedPayload,
     EstimateRequest,
     EstimateResponse,
 )
 from .. import estimate as est
+from ..cause import normalize_error_cause
 from .. import repositories as repo
 
 router = APIRouter(prefix="/v1/campaigns", tags=["campaigns"])
@@ -195,6 +204,8 @@ async def create_campaign(
                 verifier_model_ref=payload.verifier_model_ref,
                 eval_judge_model_source=payload.eval_judge_model_source,
                 eval_judge_model_ref=payload.eval_judge_model_ref,
+                est_usd_low=payload.est_usd_low,    # G1: persist launch estimate band
+                est_usd_high=payload.est_usd_high,
             )
             await repo.seed_campaign_chapters(
                 conn, row["campaign_id"],
@@ -258,30 +269,55 @@ async def estimate_campaign(
 
 
 @router.patch("/{campaign_id}", response_model=Campaign)
-async def update_campaign_budget(
+async def update_campaign(
     campaign_id: UUID,
-    payload: UpdateBudgetPayload,
+    payload: UpdateCampaignPayload,
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
 ):
-    """S4d — raise/lower the budget cap (owner-scoped). Does NOT auto-resume a
-    paused campaign; resume via POST /{id}/start once budget_usd > spent_usd."""
-    row = await repo.update_budget(db, campaign_id, UUID(user_id), payload.budget_usd)
+    """PATCH a campaign (owner-scoped, partial). `budget_usd` raises/lowers the cap in
+    any non-terminal status (does NOT auto-resume — /start once budget > spent). The
+    four LLM models (translation/knowledge/verifier/eval-judge) can be re-picked only
+    while created/paused (D-FACTORY-SWITCH-MODEL-RESUME — switch to a local model, then
+    resume); a model change on a running/terminal campaign is 409. Only fields present
+    in the body are applied."""
+    provided = payload.model_fields_set
+    if not provided:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "CAMPAIGN_PATCH_EMPTY", "message": "no fields to update"},
+        )
+    # A model switch is gated to created/paused — load the campaign to check status
+    # (also gives the owner-scoped 404). Only the explicitly-provided fields update.
+    row = await repo.get_campaign(db, campaign_id, UUID(user_id))
     if row is None:
         raise HTTPException(
             status_code=404,
             detail={"code": "CAMPAIGN_NOT_FOUND", "message": "campaign not found"},
         )
-    return _campaign_model(row)
+    if provided & MODEL_PATCH_FIELDS and row["status"] not in ("created", "paused"):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "CAMPAIGN_MODELS_LOCKED",
+                    "message": f"models can only be changed while created/paused (status is {row['status']}); pause first"},
+        )
+    fields = payload.model_dump(include=provided)
+    updated = await repo.update_campaign_fields(db, campaign_id, UUID(user_id), fields)
+    if updated is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "CAMPAIGN_NOT_FOUND", "message": "campaign not found"},
+        )
+    return _campaign_model(updated)
 
 
-@router.get("", response_model=list[Campaign])
+@router.get("", response_model=list[CampaignListItem])
 async def list_campaigns(
     user_id: str = Depends(get_current_user),
     db: asyncpg.Pool = Depends(get_db),
 ):
     rows = await repo.list_campaigns(db, UUID(user_id))
-    return [_campaign_model(r) for r in rows]
+    return [CampaignListItem(**dict(r)) for r in rows]
 
 
 @router.get("/{campaign_id}", response_model=CampaignDetail)
@@ -294,10 +330,59 @@ async def get_campaign(
     if row is None:
         raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
                                                      "message": "campaign not found"})
-    chapter_rows = await repo.get_campaign_chapters(db, campaign_id)
-    detail = CampaignDetail(**dict(row))
-    detail.chapters = [CampaignChapter(**dict(cr)) for cr in chapter_rows]
-    return detail
+    # D-S6-CHAPTER-PAGING: chapters are no longer embedded here (a 4000-chapter
+    # campaign would ship every row each poll) — the monitor fetches them paginated
+    # via GET /{id}/chapters. The detail stays lightweight metadata.
+    return CampaignDetail(**dict(row))
+
+
+@router.get("/{campaign_id}/chapters", response_model=ChapterPage)
+async def get_campaign_chapters_endpoint(
+    campaign_id: UUID,
+    status: str = "attention",
+    limit: int = 200,
+    offset: int = 0,
+    user_id: str = Depends(get_current_user),
+    db: asyncpg.Pool = Depends(get_db),
+):
+    """D-S6-CHAPTER-PAGING — one server-side page of the per-chapter projection +
+    total. `status=attention` (default) = rows that aren't fully settled (failed /
+    in-progress); `status=inflight` = rows with a stage currently dispatched (the
+    processing panel); `status=all` = everything. Owner-scoped (404 if not owned)."""
+    row = await repo.get_campaign(db, campaign_id, UUID(user_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
+                                                     "message": "campaign not found"})
+    status = status if status in ("attention", "inflight", "all") else "attention"
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
+    rows, total = await repo.get_campaign_chapters_page(
+        db, campaign_id, status=status, limit=limit, offset=offset,
+    )
+    return ChapterPage(items=[CampaignChapter(**dict(r)) for r in rows], total=total)
+
+
+@router.get("/{campaign_id}/activity", response_model=ActivityPage)
+async def get_campaign_activity_endpoint(
+    campaign_id: UUID,
+    limit: int = 50,
+    before_id: int | None = None,
+    user_id: str = Depends(get_current_user),
+    db: asyncpg.Pool = Depends(get_db),
+):
+    """D-FACTORY-INFLIGHT-LOG — the monitor's recent-first activity log (one row per
+    stage-status transition, written by the campaign_chapters trigger). Keyset-paged
+    via `before_id` (pass back `next_before`). Owner-scoped (404 if not owned)."""
+    row = await repo.get_campaign(db, campaign_id, UUID(user_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
+                                                     "message": "campaign not found"})
+    limit = max(1, min(limit, 200))
+    rows = await repo.get_campaign_activity(db, campaign_id, limit=limit, before_id=before_id)
+    items = [ActivityEntry(**dict(r)) for r in rows]
+    # next_before only when the page is full (more rows may remain); else end-of-log.
+    next_before = items[-1].id if len(items) == limit else None
+    return ActivityPage(items=items, next_before=next_before)
 
 
 @router.get("/{campaign_id}/progress", response_model=CampaignProgress)
@@ -338,6 +423,54 @@ async def get_campaign_progress_endpoint(
     )
 
 
+@router.get("/{campaign_id}/report", response_model=CampaignReport)
+async def get_campaign_report_endpoint(
+    campaign_id: UUID,
+    user_id: str = Depends(get_current_user),
+    db: asyncpg.Pool = Depends(get_db),
+):
+    """G1 — completion / wake-up report: outcome summary + spend-vs-estimate +
+    failure breakdown (grouped by normalized cause). Owner-scoped (404 if not owned).
+    Available for any status; most useful once terminal (completed/failed/cancelled)."""
+    row = await repo.get_report_row(db, campaign_id, UUID(user_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
+                                                     "message": "campaign not found"})
+    agg = await repo.get_campaign_progress(db, campaign_id)
+
+    def _stage(prefix: str) -> StageCounts:
+        total = agg["total"]
+        done, failed, skipped = agg[f"{prefix}_done"], agg[f"{prefix}_failed"], agg[f"{prefix}_skipped"]
+        return StageCounts(total=total, done=done, failed=failed, skipped=skipped,
+                           in_progress=total - done - failed - skipped)
+
+    # Bucket failed chapters by normalized cause (pure fn) and sum counts.
+    buckets: dict[str, dict] = {}
+    for er in await repo.get_failed_error_strings(db, campaign_id):
+        cause, remediable = normalize_error_cause(er["last_error"])
+        b = buckets.setdefault(cause, {"count": 0, "remediable": remediable})
+        b["count"] += er["n"]
+    error_groups = [
+        ErrorGroup(cause=c, count=b["count"], remediable=b["remediable"])
+        for c, b in sorted(buckets.items(), key=lambda kv: kv[1]["count"], reverse=True)
+    ]
+
+    return CampaignReport(
+        campaign_id=campaign_id,
+        status=row["status"],
+        started_at=row["started_at"],
+        finished_at=row["finished_at"],
+        duration_seconds=row["duration_seconds"],
+        total_chapters=row["total_chapters"],
+        stages={"knowledge": _stage("kn"), "translation": _stage("tr"), "eval": _stage("ev")},
+        spent_usd=row["spent_usd"],
+        budget_usd=row["budget_usd"],
+        est_usd_low=row["est_usd_low"],
+        est_usd_high=row["est_usd_high"],
+        error_groups=error_groups,
+    )
+
+
 @router.post("/{campaign_id}/start", response_model=Campaign)
 async def start_campaign(
     campaign_id: UUID,
@@ -364,6 +497,46 @@ async def start_campaign(
                     "message": "spent_usd is at/over budget_usd; raise the budget (PATCH) before resuming"},
         )
     await repo.set_campaign_status(db, campaign_id, "running", set_started=True)
+    updated = await repo.get_campaign(db, campaign_id, UUID(user_id))
+    return _campaign_model(updated)
+
+
+@router.post("/{campaign_id}/rerun-failed", response_model=Campaign)
+async def rerun_failed_campaign(
+    campaign_id: UUID,
+    payload: RerunFailedPayload | None = None,
+    user_id: str = Depends(get_current_user),
+    db: asyncpg.Pool = Depends(get_db),
+):
+    """G2 — reset the campaign's failed chapters (or a chosen subset) to `pending`
+    (+ zero attempts, clear last_error) and re-arm the campaign to `running` so the
+    driver re-dispatches them. The downstream skip-gate prevents re-spend on
+    already-completed work. A cancelled/cancelling campaign can't be re-run; the
+    over-budget guard applies (re-running dispatches → spends). NOTE: re-arming a
+    *paused* campaign to running also resumes its other pending work (re-run implies
+    "make progress again"); cancel instead if you only wanted the failed chapters
+    inspected (review-impl LOW)."""
+    row = await repo.get_campaign(db, campaign_id, UUID(user_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
+                                                     "message": "campaign not found"})
+    if row["status"] in ("cancelled", "cancelling"):
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "CAMPAIGN_NOT_RERUNNABLE",
+                    "message": f"cannot re-run a {row['status']} campaign"},
+        )
+    if row["budget_usd"] is not None and row["spent_usd"] >= row["budget_usd"]:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "CAMPAIGN_OVER_BUDGET",
+                    "message": "spent_usd is at/over budget_usd; raise the budget (PATCH) before re-running"},
+        )
+    ids = payload.chapter_ids if payload else None
+    n = await repo.reset_failed_stages(db, campaign_id, ids)
+    # Re-arm so the driver picks the reset chapters up; no-op if nothing was failed.
+    if n > 0 and row["status"] != "running":
+        await repo.set_campaign_status(db, campaign_id, "running", set_started=True)
     updated = await repo.get_campaign(db, campaign_id, UUID(user_id))
     return _campaign_model(updated)
 

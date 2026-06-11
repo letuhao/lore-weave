@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
-import { aiModelsApi, type UserModel } from '../../ai-models/api';
+import { useByokModels } from '../hooks/useByokModels';
 
 interface Props {
   /** BYOK capability to filter the user's models by ('chat' | 'embedding' | 'rerank'). */
@@ -18,35 +17,16 @@ interface Props {
  * S5c — generalized BYOK model picker for the campaign Model Matrix. One component
  * drives all six roles (different `capability`); mirrors the knowledge
  * EmbeddingModelPicker (native <select> bound to user_model_id, orphan-value guard,
- * empty-registry hint). View-only: it owns its own fetch but no business logic.
+ * empty-registry hint). View-only; the model fetch is shared per-capability via
+ * useByokModels (D-S5C-PICKER-DEDUP) so the four `chat` pickers fetch once.
  */
 export function ModelRolePicker({ capability, label, value, onChange, disabled, hint }: Props) {
   const { t } = useTranslation('campaigns');
   const { accessToken } = useAuth();
-  const [models, setModels] = useState<UserModel[] | null>(null);
-  const [error, setError] = useState(false);
+  const { models, loading, error } = useByokModels(capability);
 
-  useEffect(() => {
-    if (!accessToken) {
-      setModels([]);
-      return;
-    }
-    let cancelled = false;
-    setError(false);
-    aiModelsApi
-      .listUserModels(accessToken, { capability, include_inactive: false })
-      .then((resp) => !cancelled && setModels(resp.items))
-      .catch(() => {
-        if (cancelled) return;
-        setError(true);
-        setModels([]);
-      });
-    return () => { cancelled = true; };
-  }, [accessToken, capability]);
-
-  const loading = models === null;
   const valueInOptions =
-    value === null || (models?.some((m) => m.user_model_id === value) ?? false);
+    value === null || models.some((m) => m.user_model_id === value);
 
   return (
     <label className="flex flex-col gap-1">
@@ -65,7 +45,7 @@ export function ModelRolePicker({ capability, label, value, onChange, disabled, 
             {t('matrix.orphan', { defaultValue: 'Previously selected (no longer in your registry)' })}
           </option>
         )}
-        {(models ?? []).map((m) => (
+        {models.map((m) => (
           <option key={m.user_model_id} value={m.user_model_id}>
             {m.alias ? `${m.alias} (${m.provider_model_name})` : `${m.provider_kind}/${m.provider_model_name}`}
           </option>
@@ -76,7 +56,7 @@ export function ModelRolePicker({ capability, label, value, onChange, disabled, 
           {t('matrix.loadError', { defaultValue: 'Failed to load models.' })}
         </span>
       )}
-      {!loading && !error && accessToken && (models?.length ?? 0) === 0 && (
+      {!loading && !error && accessToken && models.length === 0 && (
         <span className="text-[11px] text-muted-foreground">
           {t('matrix.empty', {
             defaultValue: 'No {{capability}}-capable models. Add one in AI Models → Credentials.',

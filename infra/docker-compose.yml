@@ -302,6 +302,14 @@ services:
       # have code defaults; set to override for the autonomous batch.
       REDIS_URL: redis://redis:6379
       GOVERNOR_CLOUD_MAX: ${GOVERNOR_CLOUD_MAX:-8}
+      # LLM re-arch Phase 1 Commit 3 — the durable work queue is now the gate:
+      # a job's per-kind semaphore (local→1) serialises BEFORE Process, so the
+      # governor inside Process never sees >1 concurrent local call → no acquire
+      # contention. With the queue ON the GOVERNOR_ACQUIRE_TIMEOUT_MS band-aid
+      # (was 600000, the interim acquire-or-die mitigation) is REVERTED to the
+      # 30s code default (D-REVERT-GOVERNOR-ACQUIRE-BANDAID) — overridable if ever
+      # needed. The queue, not a long acquire wait, is what stops the cascade.
+      LLM_JOB_QUEUE_ENABLED: ${LLM_JOB_QUEUE_ENABLED:-true}
       BREAKER_THRESHOLD: ${BREAKER_THRESHOLD:-5}
       BREAKER_COOLDOWN_S: ${BREAKER_COOLDOWN_S:-30}
       # S4b (decision C) — usage outbox relay → Redis streams (reuses REDIS_URL).

@@ -33,6 +33,9 @@ export interface Campaign {
   updated_at: string;
   started_at: string | null;
   finished_at: string | null;
+  // #2 polish — present only on the list endpoint (translation done+skipped count
+  // for the row's progress bar). Absent on get/detail.
+  progress_done?: number;
 }
 
 export interface CampaignChapter {
@@ -116,6 +119,25 @@ export interface CreateCampaignPayload {
   chapter_from?: number | null;
   chapter_to?: number | null;
   budget_usd?: string | null;
+  // G1 — launch-time estimate band (from /estimate), persisted for the report's
+  // spent-vs-estimate. Omitted when launched without estimating.
+  est_usd_low?: string | null;
+  est_usd_high?: string | null;
+}
+
+/** PATCH /campaigns/{id} — partial update. budget_usd is editable any time; the
+ *  four LLM models (D-FACTORY-SWITCH-MODEL-RESUME) only while created/paused. Only
+ *  the keys present are applied. */
+export interface UpdateCampaignPayload {
+  budget_usd?: string;
+  translation_model_source?: string | null;
+  translation_model_ref?: string | null;
+  knowledge_model_source?: string | null;
+  knowledge_model_ref?: string | null;
+  verifier_model_source?: string | null;
+  verifier_model_ref?: string | null;
+  eval_judge_model_source?: string | null;
+  eval_judge_model_ref?: string | null;
 }
 
 export interface EstimateRequest {
@@ -133,6 +155,12 @@ export interface StageEstimate {
   model_ref: string | null;
   status: string;          // ok | unpriced | not_found | bad_request | not_estimated
   estimated_usd: string;
+  input_tokens: number;    // #5 polish — workload the band was priced on
+  output_tokens: number;
+  // D-FACTORY-EST-PROVIDER-KIND — cloud/local badge. provider_kind null + is_local
+  // false when no model was resolved for the stage (not_estimated / not_found).
+  provider_kind: string | null;
+  is_local: boolean;
 }
 
 export interface StageCounts {
@@ -143,6 +171,34 @@ export interface StageCounts {
   in_progress: number;
 }
 
+/** D-S6-CHAPTER-PAGING — one server-side page of the per-chapter projection. */
+export interface ChapterPage {
+  items: CampaignChapter[];
+  total: number;
+}
+
+/** Server-side chapter filters: `attention` = not fully settled (the table's
+ *  default), `inflight` = a stage currently dispatched (D-FACTORY-INFLIGHT-PANEL),
+ *  `all` = everything. */
+export type ChapterFilterStatus = 'attention' | 'inflight' | 'all';
+
+/** D-FACTORY-INFLIGHT-LOG — one logged stage-status transition (activity feed). */
+export interface ActivityEntry {
+  id: number;
+  chapter_id: string;
+  chapter_sort: number;
+  stage: string;        // knowledge | translation | eval
+  status: string;       // dispatched | done | skipped | failed
+  detail: string | null;  // last_error, only on a failed transition
+  created_at: string;
+}
+
+/** A recent-first page of the activity log; `next_before` feeds the next page. */
+export interface ActivityPage {
+  items: ActivityEntry[];
+  next_before: number | null;
+}
+
 /** S6 — lightweight live-progress payload (polled while a campaign is active). */
 export interface CampaignProgress {
   campaign_id: string;
@@ -151,6 +207,29 @@ export interface CampaignProgress {
   budget_usd: string | null;
   total_chapters: number;
   stages: Record<'knowledge' | 'translation' | 'eval', StageCounts>;
+}
+
+/** G1 — failed chapters bucketed by normalized cause for the report. */
+export interface ErrorGroup {
+  cause: string;        // rate_limit | circuit_open | empty_body | zero_output | attempts_exhausted | other
+  count: number;
+  remediable: boolean;  // true → a re-run is likely to succeed
+}
+
+/** G1 — completion / wake-up report (terminal-campaign summary). */
+export interface CampaignReport {
+  campaign_id: string;
+  status: CampaignStatus;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_seconds: number | null;
+  total_chapters: number;
+  stages: Record<'knowledge' | 'translation' | 'eval', StageCounts>;
+  spent_usd: string;
+  budget_usd: string | null;
+  est_usd_low: string | null;
+  est_usd_high: string | null;
+  error_groups: ErrorGroup[];
 }
 
 /** Statuses that are still progressing → the monitor keeps polling. */

@@ -19,6 +19,10 @@ export interface WizardForm {
   chapterTo: number | null;
   gatingMode: 'phase_barrier' | 'cold_start';  // D-S5C-GATING (quality vs speed)
   budgetUsd: string;                 // free-text USD ('' = uncapped)
+  // G1 — captured from the last successful /estimate so the launch persists the
+  // band for the completion report's spent-vs-estimate (null = never estimated).
+  estUsdLow: string | null;
+  estUsdHigh: string | null;
   picks: Record<ModelRole, string | null>;  // user_model_id per role (null = unset)
   confirmEmbeddingChange: boolean;
 }
@@ -37,6 +41,8 @@ const INITIAL: WizardForm = {
   chapterTo: null,
   gatingMode: 'phase_barrier',  // highest quality default (decision B)
   budgetUsd: '',
+  estUsdLow: null,
+  estUsdHigh: null,
   picks: { ...EMPTY_PICKS },
   confirmEmbeddingChange: false,
 };
@@ -140,6 +146,8 @@ export function useCampaignWizard() {
       rerank_model_source: rr.model_source,
       rerank_model_ref: rr.model_ref,
       confirm_embedding_change: form.confirmEmbeddingChange,
+      est_usd_low: form.estUsdLow,   // G1 (persist the estimate band for the report)
+      est_usd_high: form.estUsdHigh,
     };
   }, [form]);
 

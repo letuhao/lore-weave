@@ -27,6 +27,12 @@ func maxFor(kind string, cloudMax int) int {
 	return cloudMax
 }
 
+// MaxFor is the exported concurrency cap for a provider kind — used by the
+// Phase-1 Commit-3 job-queue consumer to size its per-kind semaphore (local
+// kinds serialize to 1 = the single GPU; cloud kinds get cloudMax). Same logic
+// as the governor's internal gate, so the queue's bound matches the slot bound.
+func MaxFor(kind string, cloudMax int) int { return maxFor(kind, cloudMax) }
+
 // GovernorConfig — tunables (from service config).
 type GovernorConfig struct {
 	CloudMax       int           // concurrency cap for cloud provider kinds

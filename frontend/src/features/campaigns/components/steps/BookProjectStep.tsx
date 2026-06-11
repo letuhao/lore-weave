@@ -23,7 +23,9 @@ export function BookProjectStep({ form, setField }: Props) {
   });
   const projects = useQuery({
     queryKey: ['campaign-wizard', 'projects'],
-    queryFn: () => knowledgeApi.listProjects({ limit: 200 }, accessToken!),
+    // knowledge /projects caps limit at 100 (>100 → 422, which silently emptied
+    // the dropdown and made the wizard unusable — Next never enabled).
+    queryFn: () => knowledgeApi.listProjects({ limit: 100 }, accessToken!),
     enabled: !!accessToken,
   });
 

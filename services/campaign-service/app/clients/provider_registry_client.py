@@ -32,8 +32,10 @@ class ProviderRegistryEstimateClient:
 
     async def estimate(self, *, owner_user_id: str, items: list[dict]) -> list[dict]:
         """POST the batch → returns the per-item results
-        ([{label, status, estimated_usd}]). Raises EstimateUnavailable on
-        network failure or a non-2xx response."""
+        ([{label, status, estimated_usd, provider_kind, is_local}]) verbatim.
+        provider_kind/is_local (D-FACTORY-EST-PROVIDER-KIND) feed the FE's
+        cloud/local badge; this client passes them through unmodified. Raises
+        EstimateUnavailable on network failure or a non-2xx response."""
         url = f"{self._base_url}/internal/billing/estimate"
         body = {"owner_user_id": owner_user_id, "items": items}
         try:

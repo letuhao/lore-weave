@@ -48,6 +48,14 @@ type Config struct {
 	// Config-driven (env JOB_MAX_RETRIES), code default 3.
 	JobMaxRetries int
 
+	// Phase 0 (event-driven re-arch) — runaway backstop for the async job
+	// path: a per-job wall-clock ceiling so a hung/runaway generation
+	// self-cancels and frees its concurrency slot even if nobody issues a
+	// DELETE. 0 (env unset / "0") = disabled (no ceiling). Set generously
+	// when enabled — it is a backstop, not the long-run mechanism (a legit
+	// multi-chunk job can run for many minutes). Env LLM_JOB_WALLCLOCK_TIMEOUT_S.
+	LLMJobWallclockTimeoutS int
+
 	// S3a (G5) — per-provider concurrency governor + circuit-breaker on the
 	// jobs-worker path. RedisURL empty → governance disabled (Guard passes
 	// calls through). Sized for the autonomous batch: bound cloud concurrency,
@@ -72,6 +80,27 @@ type Config struct {
 	CampaignUsageStreamMaxLen int
 	UsageRelayPollMs          int
 	UsageRelayBatch           int
+
+	// LLM re-arch Phase 1 — durable terminal-event stream (job_event_outbox →
+	// relay → here). A caller resumes on it keyed by job_id. Shares the S4b relay
+	// loop + REDIS_URL gate.
+	LLMJobTerminalStream       string
+	LLMJobTerminalStreamMaxLen int
+
+	// LLM re-arch Phase 1 Commit 3 — durable per-kind work queue. When true (AND
+	// RABBITMQ_URL set), submit enqueues to llm.jobs.{kind} and a consumer pool
+	// (size = governor.maxFor(kind)) runs the job — jobs WAIT in the queue instead
+	// of failing acquire. Default false ⇒ today's direct-goroutine dispatch (zero
+	// change). Env LLM_JOB_QUEUE_ENABLED.
+	LLMJobQueueEnabled bool
+
+	// LLM re-arch Phase 1 (§5.6) — stuck-`running` truth-sweeper. A job that
+	// crashed mid-Process is left running (queue redelivery can't re-run it); this
+	// periodic sweep bulk-fails any running job with no progress past the timeout.
+	// Timeout generous (a legit long multi-chunk job keeps bumping last_progress_at).
+	// 0 = disabled. Env LLM_RUNNING_SWEEP_TIMEOUT_S / LLM_RUNNING_SWEEP_INTERVAL_S.
+	LLMRunningSweepTimeoutS  int
+	LLMRunningSweepIntervalS int
 }
 
 func Load() (*Config, error) {
@@ -116,6 +145,15 @@ func Load() (*Config, error) {
 	if c.JobMaxRetries, err = getEnvInt("JOB_MAX_RETRIES", 3); err != nil {
 		return nil, err
 	}
+	// Phase 0 — optional per-job wall-clock backstop; 0/unset = disabled.
+	// getEnvInt rejects 0, so read it directly to allow the disabled sentinel.
+	if v := os.Getenv("LLM_JOB_WALLCLOCK_TIMEOUT_S"); v != "" {
+		n, convErr := strconv.Atoi(v)
+		if convErr != nil || n < 0 {
+			return nil, fmt.Errorf("LLM_JOB_WALLCLOCK_TIMEOUT_S must be a non-negative integer")
+		}
+		c.LLMJobWallclockTimeoutS = n
+	}
 	// S3a governor + breaker (all optional; RedisURL empty disables governance).
 	c.RedisURL = os.Getenv("REDIS_URL")
 	if c.GovernorCloudMax, err = getEnvInt("GOVERNOR_CLOUD_MAX", 8); err != nil {
@@ -153,6 +191,26 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	if c.UsageRelayBatch, err = getEnvInt("USAGE_RELAY_BATCH", 100); err != nil {
+		return nil, err
+	}
+	// LLM re-arch Phase 1 — terminal-event stream (shares the S4b relay).
+	c.LLMJobTerminalStream = getEnv("LLM_JOB_TERMINAL_STREAM", "loreweave:events:llm_job_terminal")
+	if c.LLMJobTerminalStreamMaxLen, err = getEnvInt("LLM_JOB_TERMINAL_STREAM_MAXLEN", 100000); err != nil {
+		return nil, err
+	}
+	c.LLMJobQueueEnabled = os.Getenv("LLM_JOB_QUEUE_ENABLED") == "true"
+	// §5.6 stuck-running sweeper. Default 30min timeout / 60s interval; read
+	// directly so 0 (disabled) is allowed (getEnvInt rejects 0).
+	if v := os.Getenv("LLM_RUNNING_SWEEP_TIMEOUT_S"); v != "" {
+		n, convErr := strconv.Atoi(v)
+		if convErr != nil || n < 0 {
+			return nil, fmt.Errorf("LLM_RUNNING_SWEEP_TIMEOUT_S must be a non-negative integer")
+		}
+		c.LLMRunningSweepTimeoutS = n
+	} else {
+		c.LLMRunningSweepTimeoutS = 1800
+	}
+	if c.LLMRunningSweepIntervalS, err = getEnvInt("LLM_RUNNING_SWEEP_INTERVAL_S", 60); err != nil {
 		return nil, err
 	}
 	return c, nil

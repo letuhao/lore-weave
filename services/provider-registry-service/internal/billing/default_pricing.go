@@ -85,3 +85,14 @@ func DefaultPricing(providerKind, modelName string) (Pricing, bool) {
 	p, ok := defaultPriceTable[priceKey(providerKind, modelName)]
 	return p, ok
 }
+
+// IsLocalKind reports whether a provider kind runs on the user's own hardware
+// (BYOK self-hosted → no per-token cost). `localProviderKinds` is the single
+// source of truth for this classification; callers (e.g. the S5a estimate's
+// cloud/local badge) must not re-derive the list. Caveat: an `openai`-kind
+// provider pointed at a custom local base_url reads as NOT local here — the
+// kind alone can't reveal that (same blind spot as DefaultPricing).
+func IsLocalKind(providerKind string) bool {
+	_, local := localProviderKinds[providerKind]
+	return local
+}

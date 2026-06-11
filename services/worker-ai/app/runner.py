@@ -370,7 +370,7 @@ def _is_likely_reasoning_model(name: str | None) -> bool:
     if not name:
         return False
     n = name.lower()
-    # OpenAI o-series as a token (o1/o3/o4/o5) without matching e.g. 'gpt-4o'.
+    # OpenAI o-series as a token (o1/o3/o4/o5) without matching e.g. gpt-4o.
     if re.search(r"(?:^|[^a-z0-9])o[1345](?:-|$|[^a-z0-9])", n):
         return True
     return any(p in n for p in _REASONING_MODEL_PATTERNS)
