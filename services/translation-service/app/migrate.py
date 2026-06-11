@@ -105,6 +105,26 @@ CREATE INDEX IF NOT EXISTS idx_ctc_ct ON chapter_translation_chunks(chapter_tran
 ALTER TABLE chapter_translations
   ADD COLUMN IF NOT EXISTS version_num INT NOT NULL DEFAULT 1;
 
+-- LLM re-arch Phase 2b — event-driven decouple of the chapter pipeline.
+-- pipeline_stage tracks the V3 stage (translate | verify | correct | done) so a
+-- llm_job_terminal consumer can resume the chapter at the right step.
+-- provider_job_id is the chapter's CURRENT in-flight LLM job (the sequential
+-- chunk-translate / verify / correct call) — a terminal event for it routes the
+-- consumer back to this chapter. The per-chunk state already lives in
+-- chapter_translation_chunks (translated_text + status + compact_memo_applied),
+-- so the session history is RECONSTRUCTED from completed chunk rows rather than
+-- serialized in-memory — that's what makes the decouple tractable.
+ALTER TABLE chapter_translations
+  ADD COLUMN IF NOT EXISTS pipeline_stage  TEXT,
+  ADD COLUMN IF NOT EXISTS provider_job_id UUID;
+-- Resume index: find the chapter awaiting a given in-flight LLM job in O(1).
+CREATE INDEX IF NOT EXISTS idx_ct_provider_job
+  ON chapter_translations(provider_job_id) WHERE provider_job_id IS NOT NULL;
+-- Per-chunk in-flight job (the chunk currently being translated). The sequential
+-- chunk loop has at most one in-flight chunk per chapter at a time.
+ALTER TABLE chapter_translation_chunks
+  ADD COLUMN IF NOT EXISTS provider_job_id UUID;
+
 -- Backfill: assign sequential version_num per (chapter_id, target_language)
 -- ordered by created_at so existing rows don't violate the unique index.
 -- Safe to re-run (idempotent — ROW_NUMBER is deterministic by created_at).
