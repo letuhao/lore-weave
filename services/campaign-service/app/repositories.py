@@ -174,6 +174,18 @@ _ATTENTION_FILTER = (
     "AND translation_status IN ('done','skipped') "
     "AND eval_status IN ('done','skipped'))"
 )
+# D-FACTORY-INFLIGHT-PANEL — rows with a stage currently dispatched to a provider
+# (the "Now processing" panel). Only knowledge/translation are driver-dispatched
+# (eval is observed, never sits in 'dispatched'); mirrors count_inflight's predicate.
+_INFLIGHT_FILTER = "AND 'dispatched' IN (knowledge_status, translation_status)"
+
+# status → WHERE fragment. A whitelist (never raw-interpolated): the router clamps
+# the request value to these keys; an unknown value falls back to "attention".
+_CHAPTER_FILTERS = {
+    "attention": _ATTENTION_FILTER,
+    "inflight": _INFLIGHT_FILTER,
+    "all": "",
+}
 
 
 async def get_campaign_chapters_page(
@@ -183,9 +195,10 @@ async def get_campaign_chapters_page(
     """D-S6-CHAPTER-PAGING — one page of the per-chapter projection + the total
     (server-side, so a 4000-chapter campaign doesn't ship every row to the monitor).
     `status='attention'` filters to rows that aren't fully settled (failed or
-    in-progress) — the table's default; `'all'` returns everything. The filter is a
+    in-progress) — the table's default; `'inflight'` = rows with a stage currently
+    dispatched (the processing panel); `'all'` returns everything. The filter is a
     fixed literal chosen by a whitelisted `status` (never raw-interpolated)."""
-    where = _ATTENTION_FILTER if status == "attention" else ""
+    where = _CHAPTER_FILTERS.get(status, _ATTENTION_FILTER)
     total = await pool.fetchval(
         f"SELECT COUNT(*) FROM campaign_chapters WHERE campaign_id = $1 {where}",
         campaign_id,

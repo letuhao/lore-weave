@@ -346,6 +346,18 @@ def test_chapters_page_404_when_not_owned(client, mocker):
     assert resp.status_code == 404
 
 
+def test_chapters_page_accepts_inflight_status(client, mocker):
+    # D-FACTORY-INFLIGHT-PANEL — 'inflight' is a valid status (not clamped to attention)
+    # and is threaded to the repo for the "Now processing" panel.
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="running"))
+    page = mocker.patch("app.repositories.get_campaign_chapters_page",
+                        new_callable=AsyncMock, return_value=([_chap_row(2)], 1))
+    resp = client.get(f"/v1/campaigns/{CAMP}/chapters?status=inflight&limit=50")
+    assert resp.status_code == 200, resp.text
+    assert page.call_args.kwargs["status"] == "inflight"
+
+
 def test_list_includes_progress_done(client, mocker):
     # #2 polish — the list carries a per-row progress_done (defaults 0 when absent).
     row_with = FakeRecord({**dict(_campaign_row(total_chapters=5)), "progress_done": 3})

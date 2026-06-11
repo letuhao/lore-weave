@@ -5,6 +5,7 @@ import type {
   CampaignProgress,
   CampaignReport,
   ChapterPage,
+  ChapterFilterStatus,
   CreateCampaignPayload,
   EstimateRequest,
   EstimateResponse,
@@ -64,7 +65,7 @@ export const campaignsApi = {
   // D-S6-CHAPTER-PAGING — one server-side page of the per-chapter projection.
   chapters(
     campaignId: string,
-    opts: { status: 'attention' | 'all'; limit: number; offset: number },
+    opts: { status: ChapterFilterStatus; limit: number; offset: number },
     token: string,
   ): Promise<ChapterPage> {
     const q = `status=${opts.status}&limit=${opts.limit}&offset=${opts.offset}`;

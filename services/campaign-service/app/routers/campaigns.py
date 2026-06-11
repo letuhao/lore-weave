@@ -319,12 +319,13 @@ async def get_campaign_chapters_endpoint(
 ):
     """D-S6-CHAPTER-PAGING — one server-side page of the per-chapter projection +
     total. `status=attention` (default) = rows that aren't fully settled (failed /
-    in-progress); `status=all` = everything. Owner-scoped (404 if not owned)."""
+    in-progress); `status=inflight` = rows with a stage currently dispatched (the
+    processing panel); `status=all` = everything. Owner-scoped (404 if not owned)."""
     row = await repo.get_campaign(db, campaign_id, UUID(user_id))
     if row is None:
         raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
                                                      "message": "campaign not found"})
-    status = status if status in ("attention", "all") else "attention"
+    status = status if status in ("attention", "inflight", "all") else "attention"
     limit = max(1, min(limit, 500))
     offset = max(0, offset)
     rows, total = await repo.get_campaign_chapters_page(

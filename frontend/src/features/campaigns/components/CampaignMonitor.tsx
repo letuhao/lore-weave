@@ -6,6 +6,7 @@ import { StatusBadge } from './StatusBadge';
 import { SpentBudgetBar } from './SpentBudgetBar';
 import { StageProgress } from './StageProgress';
 import { ChapterProjectionTable } from './ChapterProjectionTable';
+import { InFlightPanel } from './InFlightPanel';
 import { MonitorControls } from './MonitorControls';
 import { CampaignReport } from './CampaignReport';
 import { deriveRunStats } from '../runStats';
@@ -99,6 +100,9 @@ export function CampaignMonitor({ campaignId }: { campaignId: string }) {
       <SpentBudgetBar spentUsd={spent} budgetUsd={budget} />
 
       {progress.data && <StageProgress stages={progress.data.stages} />}
+
+      {/* D-FACTORY-INFLIGHT-PANEL — which chapters are dispatched right now (active only). */}
+      <InFlightPanel campaignId={c.campaign_id} active={!terminal} />
 
       <ChapterProjectionTable
         campaignId={c.campaign_id}

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/auth';
 import { campaignsApi } from '../api';
-import { ACTIVE_STATUSES, type CampaignStatus } from '../types';
+import { ACTIVE_STATUSES, type CampaignStatus, type ChapterFilterStatus } from '../types';
 
 /** List the current user's campaigns (the /campaigns landing). */
 export function useCampaigns() {
@@ -45,7 +45,7 @@ export function useCampaignProgress(campaignId?: string) {
  *  change / refetch (no flicker). */
 export function useCampaignChapters(
   campaignId: string | undefined,
-  opts: { status: 'attention' | 'all'; limit: number; offset: number; active: boolean },
+  opts: { status: ChapterFilterStatus; limit: number; offset: number; active: boolean },
 ) {
   const { accessToken } = useAuth();
   return useQuery({
@@ -54,6 +54,22 @@ export function useCampaignChapters(
       campaignId!, { status: opts.status, limit: opts.limit, offset: opts.offset }, accessToken!),
     enabled: !!accessToken && !!campaignId,
     refetchInterval: opts.active ? 15000 : false,
+    placeholderData: (prev) => prev,
+  });
+}
+
+/** D-FACTORY-INFLIGHT-PANEL — the chapters currently dispatched to a provider
+ *  (the "Now processing" panel). The set is bounded by driver concurrency, so one
+ *  small page suffices; polls 6s while active (matches the live-progress cadence),
+ *  stops when the campaign is terminal. */
+export function useInFlightChapters(campaignId: string | undefined, active: boolean) {
+  const { accessToken } = useAuth();
+  return useQuery({
+    queryKey: ['campaign-chapters', campaignId, 'inflight'],
+    queryFn: () => campaignsApi.chapters(
+      campaignId!, { status: 'inflight', limit: 50, offset: 0 }, accessToken!),
+    enabled: !!accessToken && !!campaignId && active,
+    refetchInterval: active ? 6000 : false,
     placeholderData: (prev) => prev,
   });
 }

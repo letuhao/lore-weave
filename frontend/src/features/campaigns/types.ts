@@ -162,6 +162,11 @@ export interface ChapterPage {
   total: number;
 }
 
+/** Server-side chapter filters: `attention` = not fully settled (the table's
+ *  default), `inflight` = a stage currently dispatched (D-FACTORY-INFLIGHT-PANEL),
+ *  `all` = everything. */
+export type ChapterFilterStatus = 'attention' | 'inflight' | 'all';
+
 /** S6 — lightweight live-progress payload (polled while a campaign is active). */
 export interface CampaignProgress {
   campaign_id: string;

@@ -100,6 +100,22 @@ async def test_chapters_page_attention_filter_and_paging(pool):
     assert total2 == 3 and [r["chapter_sort"] for r in page2] == [3, 4]
 
 
+async def test_chapters_page_inflight_filter(pool):
+    # D-FACTORY-INFLIGHT-PANEL — 'inflight' returns ONLY rows with a stage currently
+    # dispatched (knowledge OR translation); failed/pending/settled are excluded.
+    cid = await _make_campaign(pool)
+    await _chapter(pool, cid, 1, kn='done', tr='done', ev='done')          # settled
+    await _chapter(pool, cid, 2, kn='dispatched', tr='pending', ev='pending')  # in-flight (kn)
+    await _chapter(pool, cid, 3, kn='done', tr='dispatched', ev='pending')     # in-flight (tr)
+    await _chapter(pool, cid, 4, kn='failed', tr='pending', ev='pending')   # attention, NOT in-flight
+
+    rows, total = await repo.get_campaign_chapters_page(pool, cid, status='inflight', limit=10, offset=0)
+    assert total == 2 and [r["chapter_sort"] for r in rows] == [2, 3]
+    # the failed row is in 'attention' but not 'inflight'
+    att, att_total = await repo.get_campaign_chapters_page(pool, cid, status='attention', limit=10, offset=0)
+    assert att_total == 3 and 4 in [r["chapter_sort"] for r in att]
+
+
 async def test_progress_scopes_to_the_campaign(pool):
     a = await _make_campaign(pool)
     b = await _make_campaign(pool)
