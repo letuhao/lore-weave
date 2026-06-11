@@ -53,6 +53,20 @@
     "stop": "停止",
     "stale": "選択範囲が変わりました — もう一度お試しください。"
   },
+  "inline": {
+    "mode": "執筆モード",
+    "mode_classic": "クラシック",
+    "mode_ai": "AI",
+    "continue": "続きを書く",
+    "drafting": "AI · 執筆中",
+    "accept": "採用",
+    "edit": "編集",
+    "regenerate": "再生成",
+    "discard": "Esc 破棄",
+    "need_model": "共筆設定でデフォルトモデルを設定してください",
+    "need_scene": "先に共筆パネルで場面を選択してください",
+    "stale": "カーソルが移動しました — もう一度お試しください。"
+  },
   "beats": "ビート",
   "beatsheet": {
     "title": "ビートシート",

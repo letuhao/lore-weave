@@ -53,6 +53,20 @@
     "stop": "Dừng",
     "stale": "Vùng chọn đã thay đổi — hãy thử lại."
   },
+  "inline": {
+    "mode": "Chế độ viết",
+    "mode_classic": "Cổ điển",
+    "mode_ai": "AI",
+    "continue": "Viết tiếp",
+    "drafting": "AI · đang soạn",
+    "accept": "Chấp nhận",
+    "edit": "Sửa",
+    "regenerate": "Tạo lại",
+    "discard": "Esc Bỏ",
+    "need_model": "Đặt mô hình mặc định trong Cài đặt đồng tác giả",
+    "need_scene": "Hãy chọn một cảnh trong bảng đồng tác giả trước",
+    "stale": "Con trỏ đã di chuyển — hãy thử lại."
+  },
   "beats": "Nhịp",
   "beatsheet": {
     "title": "Bảng nhịp",

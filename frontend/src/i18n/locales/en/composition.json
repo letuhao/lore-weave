@@ -53,6 +53,20 @@
     "stop": "Stop",
     "stale": "The selection changed — try again."
   },
+  "inline": {
+    "mode": "Writing mode",
+    "mode_classic": "Classic",
+    "mode_ai": "AI",
+    "continue": "Continue",
+    "drafting": "AI · drafting",
+    "accept": "Accept",
+    "edit": "Edit",
+    "regenerate": "Regenerate",
+    "discard": "Esc Discard",
+    "need_model": "Set a default model in the co-writer Settings",
+    "need_scene": "Pick a scene in the co-writer panel first",
+    "stale": "The cursor moved — try again."
+  },
   "beats": "Beats",
   "beatsheet": {
     "title": "Beat Sheet",

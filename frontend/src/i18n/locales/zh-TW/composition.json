@@ -53,6 +53,20 @@
     "stop": "停止",
     "stale": "選取內容已變更 — 請重試。"
   },
+  "inline": {
+    "mode": "寫作模式",
+    "mode_classic": "經典",
+    "mode_ai": "AI",
+    "continue": "續寫",
+    "drafting": "AI · 草擬中",
+    "accept": "採用",
+    "edit": "編輯",
+    "regenerate": "重新生成",
+    "discard": "Esc 捨棄",
+    "need_model": "請在共筆設定中設定預設模型",
+    "need_scene": "請先在共筆面板中選擇一個場景",
+    "stale": "游標已移動 — 請重試。"
+  },
   "beats": "節拍",
   "beatsheet": {
     "title": "節拍表",

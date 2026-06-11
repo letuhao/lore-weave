@@ -64,6 +64,10 @@ interface TiptapEditorProps {
    *  composition Selection Tools). Rendered inside, only when editable, with the
    *  editor instance. Default: nothing (other hosts unaffected). */
   selectionMenu?: (editor: Editor) => React.ReactNode;
+  /** T3.3: host-supplied inline-AI layer (Classic⇄AI toggle + inline ghost) bound
+   *  to the live editor. Rendered inside (editable) so it can position at the caret
+   *  and commit via editor commands. Default: nothing. */
+  aiLayer?: (editor: Editor) => React.ReactNode;
 }
 
 import { extractText, addTextSnapshots } from '@/lib/tiptap-utils';
@@ -72,7 +76,7 @@ export { extractText, addTextSnapshots };
 export { setGlossaryEntities, setGlossaryEnabled, getGlossaryCount };
 
 export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
-  function TiptapEditor({ content, onUpdate, editable = true, grammarEnabled = true, editorMode = 'classic', className, selectionMenu }, ref) {
+  function TiptapEditor({ content, onUpdate, editable = true, grammarEnabled = true, editorMode = 'classic', className, selectionMenu, aiLayer }, ref) {
     const initialContent = useRef(content);
     const prevContent = useRef(content);
     const isExternalUpdate = useRef(false);
@@ -228,6 +232,7 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
             {editable && <SlashMenuPopup editor={editor} mode={editorMode} />}
             {editable && <CodeBlockToolbar editor={editor} />}
             {editable && selectionMenu?.(editor)}
+            {editable && aiLayer?.(editor)}
           </>
         )}
       </div>

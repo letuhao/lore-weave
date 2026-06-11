@@ -33,6 +33,7 @@ import { fireSendToChat } from '@/features/chat/context/sendToChat';
 import { registerEditorTarget } from '@/features/chat/context/editorBridge';
 import { CompositionPanel } from '@/features/composition/components/CompositionPanel';
 import { SelectionToolbar } from '@/features/composition/components/SelectionToolbar';
+import { InlineAiLayer } from '@/features/composition/components/InlineAiLayer';
 import { useWorkResolution } from '@/features/composition/hooks/useWork';
 import { OutlineTree } from '@/features/composition/components/OutlineTree';
 import { useChapterPublishGate, publishGateMessages } from '@/features/composition/hooks/usePublishGate';
@@ -152,6 +153,8 @@ export function ChapterEditorPage() {
       : workResolution.data?.status === 'candidates' ? (workResolution.data.candidates[0] ?? null)
         : null;
   const composeProjectId = composeWork?.project_id ?? null;
+  const composeDefaultModel =
+    typeof composeWork?.settings?.default_model_ref === 'string' ? composeWork.settings.default_model_ref : null;
   const [activeSceneId, setActiveSceneId] = useState('');
 
   // ARCH-1 C5: when the AI panel opens (or the chapter changes while it's
@@ -886,6 +889,18 @@ export function ChapterEditorPage() {
                       editor={editor}
                       projectId={composeProjectId}
                       sceneContext={activeSceneId || null}
+                      token={accessToken}
+                    />
+                  )
+                : undefined}
+              // T3.3: Classic⇄AI inline mode (toggle + inline ghost) — co-writer Work only.
+              aiLayer={composeProjectId
+                ? (editor) => (
+                    <InlineAiLayer
+                      editor={editor}
+                      projectId={composeProjectId}
+                      sceneId={activeSceneId || null}
+                      modelRef={composeDefaultModel}
                       token={accessToken}
                     />
                   )
