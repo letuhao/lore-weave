@@ -80,6 +80,14 @@ SCORE_CONFIG_SEED: list[dict[str, Any]] = [
      "description": "M7d: online LLM-judge fidelity of a translation vs its source [0,1] "
                     "(source=auto, panel_safe=false — a single online judge). Reason + judge "
                     "model in the comment."},
+    {"name": "wiki_suggestion_reviewed", "data_type": "numeric", "min_value": 0.0, "max_value": 1.0,
+     "description": "D-WIKI-M8: an owner accepted (=1.0) or rejected (=0.0) a community "
+                    "suggestion on an AI-generated wiki article (source=human; only "
+                    "was_ai_generated reviews). The action + suggestion_id ride in the comment. "
+                    "POLARITY: 1.0 means a community EDIT to the AI article was adopted — i.e. "
+                    "the article was mutated/corrected, NOT that the AI output was approved. Do "
+                    "NOT average this as an AI-quality score (opposite sense to "
+                    "translation_human_accept); it is a community-adoption signal."},
 ]
 
 

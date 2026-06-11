@@ -594,6 +594,7 @@ func (s *Server) patchWikiArticle(w http.ResponseWriter, r *http.Request) {
 				BookID:                bookID.String(),
 				ArticleID:             articleID.String(),
 				EntityID:              corrEntityID.String(),
+				UserID:                userID.String(),
 				PriorGenerationStatus: prior,
 				EmittedAt:             time.Now().UTC().Format(time.RFC3339),
 			}); err != nil {
@@ -2034,6 +2035,7 @@ func (s *Server) reviewWikiSuggestion(w http.ResponseWriter, r *http.Request) {
 		BookID:         bookID.String(),
 		ArticleID:      articleID.String(),
 		SuggestionID:   sugID.String(),
+		UserID:         userID.String(),
 		Action:         req.Action,
 		WasAIGenerated: revGenStatus != nil,
 		EmittedAt:      time.Now().UTC().Format(time.RFC3339),

@@ -40,6 +40,16 @@ class Settings(BaseSettings):
     # {run_id}/sample) for opted-in runs, then feeds the online judge.
     knowledge_internal_url: str = "http://knowledge-service:8092"
 
+    # D-WIKI-M8-LEARNING-CONSUMER — collect the wiki feedback flywheel signal
+    # (wiki.corrected → corrections, wiki.suggestion_reviewed → quality_scores,
+    # target='wiki_article'). ON by default: the collect is cheap (DB writes from
+    # events already on the stream). The expensive LLM-judge scoring of wiki articles
+    # is a separate, off-by-default follow-up (D-WIKI-M8-EVAL-PLUS). Flip this off to
+    # stop recording the wiki signal entirely. NOTE: this is a collect on/off, not a
+    # pause — events arriving while it is off are acked WITHOUT a row (not buffered or
+    # replayable); flipping it back on resumes collection from new events only.
+    wiki_learning_enabled: bool = True
+
     class Config:
         env_file = ".env"
 
