@@ -3,7 +3,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 import asyncpg
 
-from ..deps import get_current_user, get_db
+from ..deps import get_db
+from ..grant_deps import GrantLevel, require_book_grant
 from ..models import BookCoverageResponse, ChapterCoverage, CoverageCell
 
 router = APIRouter(prefix="/v1/translation", tags=["translation-coverage"])
@@ -12,7 +13,9 @@ router = APIRouter(prefix="/v1/translation", tags=["translation-coverage"])
 @router.get("/books/{book_id}/coverage", response_model=BookCoverageResponse)
 async def get_book_coverage(
     book_id: UUID,
-    user_id: str = Depends(get_current_user),
+    # E0-4a view gate + D-E0-4-F shared per-book view: the matrix shows ALL of the
+    # book's translations (drop owner_user_id; book_id still scopes → IDOR-safe).
+    _grant: UUID = Depends(require_book_grant(GrantLevel.VIEW)),
     db: asyncpg.Pool = Depends(get_db),
 ):
     """
@@ -61,11 +64,10 @@ async def get_book_coverage(
           ON actv.chapter_id      = ct.chapter_id
          AND actv.target_language = ct.target_language
         WHERE ct.book_id       = $1
-          AND ct.owner_user_id = $2
         GROUP BY ct.chapter_id, ct.target_language, actv.chapter_translation_id
         ORDER BY ct.chapter_id, ct.target_language
         """,
-        book_id, UUID(user_id),
+        book_id,
     )
 
     # Build chapter → {language → CoverageCell} map
