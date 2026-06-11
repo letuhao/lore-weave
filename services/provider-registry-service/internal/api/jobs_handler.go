@@ -13,6 +13,7 @@ package api
 // the result.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -220,19 +221,44 @@ func (s *Server) doSubmitJob(w http.ResponseWriter, r *http.Request, userID uuid
 	}
 
 	// Spawn the worker goroutine. observability.DetachedContext carries the
-	// request's trace context (so the job span joins this trace) WITHOUT its
-	// cancellation — the goroutine must survive the 202 response. The worker
-	// gets pf.input — the possibly max_tokens-capped input.
+	// request's trace context (so the job span joins this trace) WITHOUT the
+	// request's cancellation — the goroutine must survive the 202 response.
+	// spawnJob then layers a NEW cancellable context registered against jobID
+	// so DELETE /v1/llm/jobs/{id} can abort the in-flight call (Phase 0). The
+	// worker gets pf.input — the possibly max_tokens-capped input.
 	workerCtx := observability.DetachedContext(r.Context())
-	go func() {
-		s.jobsWorker.Process(workerCtx, jobID, userID, in.Operation, in.ModelSource, modelRef, pf.input, chunkCfg)
-	}()
+	s.spawnJob(workerCtx, jobID, func(ctx context.Context) {
+		s.jobsWorker.Process(ctx, jobID, userID, in.Operation, in.ModelSource, modelRef, pf.input, chunkCfg)
+	})
 
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"job_id":       jobID.String(),
 		"status":       "pending",
 		"submitted_at": nowRFC3339Nano(),
 	})
+}
+
+// spawnJob runs fn in a cancellable, trace-preserving worker goroutine and
+// registers its CancelFunc against jobID so DELETE /v1/llm/jobs/{id} can ABORT
+// the in-flight provider call — the governor's Acquire and the streamer's read
+// loop both honor ctx.Done(), so cancelling frees the concurrency slot the
+// instant it's issued (Phase 0; the documented "Phase 6 worker-context
+// cancellation"). workerCtx must already carry the detached trace context.
+// When jobWallclock > 0 a runaway self-cancels after that ceiling even absent
+// an explicit DELETE. The goroutine always deregisters + releases on return.
+func (s *Server) spawnJob(workerCtx context.Context, jobID uuid.UUID, fn func(context.Context)) {
+	var cancel context.CancelFunc
+	if s.jobWallclock > 0 {
+		workerCtx, cancel = context.WithTimeout(workerCtx, s.jobWallclock)
+	} else {
+		workerCtx, cancel = context.WithCancel(workerCtx)
+	}
+	s.jobCancels.register(jobID, cancel)
+	go func() {
+		defer s.jobCancels.remove(jobID)
+		defer cancel()
+		fn(workerCtx)
+	}()
 }
 
 // maxTokensCap records a budget-driven max_tokens reduction. It is folded into
@@ -672,15 +698,16 @@ func (s *Server) doSubmitSttMultipart(w http.ResponseWriter, r *http.Request, us
 	}
 
 	// Spawn the worker goroutine. audioBytes is captured by closure;
-	// observability.DetachedContext carries the request trace context
-	// without its cancellation, so the goroutine survives the 202 response.
+	// observability.DetachedContext carries the request trace context without
+	// its cancellation (goroutine survives the 202); spawnJob layers a
+	// cancellable, DELETE-abortable context (Phase 0).
 	workerCtx := observability.DetachedContext(r.Context())
-	go func() {
+	s.spawnJob(workerCtx, jobID, func(ctx context.Context) {
 		s.jobsWorker.ProcessAudioInline(
-			workerCtx, jobID, userID, modelSource, modelRef,
+			ctx, jobID, userID, modelSource, modelRef,
 			language, audioBytes, contentType,
 		)
-	}()
+	})
 
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"job_id":       jobID.String(),
@@ -890,10 +917,12 @@ func (s *Server) doGetJob(w http.ResponseWriter, r *http.Request, userID uuid.UU
 	writeJSON(w, http.StatusOK, jobs.MarshalJob(job))
 }
 
-// cancelLlmJob — DELETE /v1/llm/jobs/{job_id} (JWT auth). Best-effort
-// cancel: ctx of an in-flight worker goroutine is independent (we used
-// context.Background()), so cancellation today only flips DB state.
-// Phase 6 hardens with worker-context cancellation.
+// cancelLlmJob — DELETE /v1/llm/jobs/{job_id} (JWT auth). Flips the DB row to
+// cancelled AND (Phase 0) aborts the in-flight worker goroutine via the
+// jobCancels registry: ctx.Done() propagates to the governor + streamer, which
+// stop the upstream read and free the concurrency slot immediately. The abort
+// is process-local (single-replica correct); HA needs a Redis cancel-flag
+// (spec §5.1 D2). Cancel is idempotent — a no-op if the job is already terminal.
 func (s *Server) cancelLlmJob(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := s.auth(r)
 	if !ok {
@@ -925,6 +954,10 @@ func (s *Server) cancelLlmJob(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "LLM_JOB_TERMINAL", "job already terminal")
 		return
 	}
+	// Phase 0 — abort the in-flight worker goroutine (if this replica owns it):
+	// ctx.Done() → governor/streamer stop the upstream call + free the slot.
+	// No-op when the goroutine already finished or runs on another replica.
+	s.jobCancels.cancel(jobID)
 	// Phase 2c — emit terminal event so notification-service can fan out.
 	// Phase 6a — release the spend reservation (cancelled job: no spend).
 	// Both best-effort: the DB row is the source of truth; a notifier blip

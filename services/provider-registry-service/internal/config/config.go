@@ -48,6 +48,14 @@ type Config struct {
 	// Config-driven (env JOB_MAX_RETRIES), code default 3.
 	JobMaxRetries int
 
+	// Phase 0 (event-driven re-arch) — runaway backstop for the async job
+	// path: a per-job wall-clock ceiling so a hung/runaway generation
+	// self-cancels and frees its concurrency slot even if nobody issues a
+	// DELETE. 0 (env unset / "0") = disabled (no ceiling). Set generously
+	// when enabled — it is a backstop, not the long-run mechanism (a legit
+	// multi-chunk job can run for many minutes). Env LLM_JOB_WALLCLOCK_TIMEOUT_S.
+	LLMJobWallclockTimeoutS int
+
 	// S3a (G5) — per-provider concurrency governor + circuit-breaker on the
 	// jobs-worker path. RedisURL empty → governance disabled (Guard passes
 	// calls through). Sized for the autonomous batch: bound cloud concurrency,
@@ -115,6 +123,15 @@ func Load() (*Config, error) {
 	}
 	if c.JobMaxRetries, err = getEnvInt("JOB_MAX_RETRIES", 3); err != nil {
 		return nil, err
+	}
+	// Phase 0 — optional per-job wall-clock backstop; 0/unset = disabled.
+	// getEnvInt rejects 0, so read it directly to allow the disabled sentinel.
+	if v := os.Getenv("LLM_JOB_WALLCLOCK_TIMEOUT_S"); v != "" {
+		n, convErr := strconv.Atoi(v)
+		if convErr != nil || n < 0 {
+			return nil, fmt.Errorf("LLM_JOB_WALLCLOCK_TIMEOUT_S must be a non-negative integer")
+		}
+		c.LLMJobWallclockTimeoutS = n
 	}
 	// S3a governor + breaker (all optional; RedisURL empty disables governance).
 	c.RedisURL = os.Getenv("REDIS_URL")

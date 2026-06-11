@@ -60,6 +60,13 @@ type Server struct {
 	// gates on jobsRepo != nil before using them.
 	estimator billing.Estimator
 	guardrail *billing.GuardrailClient
+
+	// Phase 0 (event-driven re-arch) — per-job cancellation. jobCancels maps an
+	// in-flight async job to its worker-goroutine CancelFunc so DELETE actually
+	// aborts the provider call + frees the governor slot (not just DB state).
+	// jobWallclock (0 = disabled) is the optional runaway backstop.
+	jobCancels   jobCancelRegistry
+	jobWallclock time.Duration
 }
 
 // NewServer constructs the HTTP server. notifier may be nil (router-only
@@ -97,6 +104,9 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 		SystemPromptTokenEstimate: cfg.SystemPromptTokenEstimate,
 	}
 	s.guardrail = billing.NewGuardrailClient(cfg.UsageBillingServiceURL, cfg.InternalServiceToken, nil)
+	if cfg.LLMJobWallclockTimeoutS > 0 {
+		s.jobWallclock = time.Duration(cfg.LLMJobWallclockTimeoutS) * time.Second
+	}
 	if pool != nil {
 		s.jobsRepo = jobs.NewRepo(pool)
 		s.jobsWorker = jobs.NewWorker(s.jobsRepo, s.resolveJobCreds, jobsAdapterFactory(s.invokeClient), notifier, nil, audioCache, s.guardrail, cfg.JobMaxRetries)
