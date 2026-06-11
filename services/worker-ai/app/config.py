@@ -51,6 +51,14 @@ class Settings(BaseSettings):
     extraction_wake_enabled: bool = True
     extraction_wake_stream: str = "extraction.wake"
 
+    # LLM re-arch Phase 2b WX (worker-ai extraction decouple): opt-in event-driven
+    # decouple of extract_pass2 (submit→release→resume on the job's terminal event
+    # instead of pinning a worker coroutine for the whole chapter). OFF ⇒ the
+    # synchronous extract_pass2 path is unchanged. Wired by WX-T3 (the decoupled
+    # orchestrator + an llm_job_terminal consumer); WX-T1/T2 are additive scaffolding
+    # + the SDK pure-seam refactor that leave this dormant.
+    extraction_decouple_enabled: bool = False
+
     # Max items to process per poll cycle before re-checking job status.
     # Lower = more responsive to pause/cancel, higher = less DB overhead.
     items_per_status_check: int = 1

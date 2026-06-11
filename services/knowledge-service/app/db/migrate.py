@@ -331,6 +331,20 @@ ALTER TABLE extraction_jobs
   ADD COLUMN IF NOT EXISTS billing_embedding_model TEXT,
   ADD COLUMN IF NOT EXISTS billing_llm_model       TEXT;
 
+-- LLM re-arch Phase 2b WX-T1 (worker-ai extraction decouple): event-driven resume
+-- state. extract_pass2 is a multi-stage DAG with a concurrent fan-in (entity →
+-- gather(relation,event,fact) → recovery → filter, × chunks), so the decoupled
+-- orchestrator must persist (a) the IN-FLIGHT job set — the trio puts ≥3 jobs in
+-- flight at once → fan-in on all their terminal events — and (b) an explicit
+-- partial-extraction blob (stage cursor + per-op accumulators) that can't be
+-- reconstructed from anything else. All additive; NULL ⇒ legacy synchronous path
+-- (zero behavior change until extraction_decouple_enabled flips on). See
+-- docs/plans/2026-06-11-llm-rearch-phase2b-workerai-extraction-decouple-design.md.
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS provider_job_ids JSONB,
+  ADD COLUMN IF NOT EXISTS resume_state     JSONB,
+  ADD COLUMN IF NOT EXISTS pipeline_stage   TEXT;
+
 CREATE INDEX IF NOT EXISTS idx_extraction_jobs_project
   ON extraction_jobs (project_id, created_at DESC);
 
