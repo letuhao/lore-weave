@@ -399,6 +399,45 @@ def test_patch_404_when_not_owned(client, mocker):
     assert resp.status_code == 404
 
 
+def _act_row(id_, sort, stage, status, detail=None):
+    return FakeRecord({
+        "id": id_, "chapter_id": UUID(CAMP), "chapter_sort": sort,
+        "stage": stage, "status": status, "detail": detail, "created_at": NOW,
+    })
+
+
+def test_activity_returns_page_with_next_before(client, mocker):
+    # D-FACTORY-INFLIGHT-LOG — a FULL page advertises next_before (= last id) for paging.
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="running"))
+    act = mocker.patch("app.repositories.get_campaign_activity", new_callable=AsyncMock,
+                       return_value=[_act_row(9, 5, "translation", "done"),
+                                     _act_row(8, 7, "knowledge", "failed", "HTTP 429")])
+    resp = client.get(f"/v1/campaigns/{CAMP}/activity?limit=2")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert [i["id"] for i in body["items"]] == [9, 8]
+    assert body["items"][1]["detail"] == "HTTP 429"
+    assert body["next_before"] == 8           # full page → more may remain
+    assert act.call_args.kwargs["before_id"] is None
+
+
+def test_activity_partial_page_has_no_next_before(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock,
+                 return_value=_campaign_row(status="running"))
+    mocker.patch("app.repositories.get_campaign_activity", new_callable=AsyncMock,
+                 return_value=[_act_row(3, 1, "knowledge", "dispatched")])
+    resp = client.get(f"/v1/campaigns/{CAMP}/activity?limit=50")
+    assert resp.status_code == 200
+    assert resp.json()["next_before"] is None  # 1 < 50 → end of log
+
+
+def test_activity_404_when_not_owned(client, mocker):
+    mocker.patch("app.repositories.get_campaign", new_callable=AsyncMock, return_value=None)
+    resp = client.get(f"/v1/campaigns/{CAMP}/activity")
+    assert resp.status_code == 404
+
+
 def test_chapters_page_accepts_inflight_status(client, mocker):
     # D-FACTORY-INFLIGHT-PANEL — 'inflight' is a valid status (not clamped to attention)
     # and is threaded to the repo for the "Now processing" panel.

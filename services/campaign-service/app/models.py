@@ -307,6 +307,25 @@ class CampaignReport(BaseModel):
     error_groups: list[ErrorGroup] = []
 
 
+class ActivityEntry(BaseModel):
+    """D-FACTORY-INFLIGHT-LOG — one logged stage-status transition (from the
+    campaign_chapters trigger)."""
+    id: int
+    chapter_id: UUID
+    chapter_sort: int
+    stage: str            # knowledge | translation | eval
+    status: str           # dispatched | done | skipped | failed
+    detail: Optional[str] = None   # last_error, only on a failed transition
+    created_at: datetime
+
+
+class ActivityPage(BaseModel):
+    """A recent-first page of the activity log. `next_before` = pass it back as
+    `before_id` to fetch the next (older) page; None when no older rows remain."""
+    items: list[ActivityEntry] = []
+    next_before: Optional[int] = None
+
+
 class ErrorResponse(BaseModel):
     code: str
     message: str

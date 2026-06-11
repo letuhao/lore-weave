@@ -218,6 +218,33 @@ async def get_campaign_chapters_page(
     return rows, int(total or 0)
 
 
+async def get_campaign_activity(
+    pool: asyncpg.Pool, campaign_id: UUID, *, limit: int = 50, before_id: Optional[int] = None,
+) -> list[asyncpg.Record]:
+    """D-FACTORY-INFLIGHT-LOG — one recent-first page of the activity log (written by
+    the campaign_chapters trigger). Keyset pagination: `before_id` returns rows older
+    than that id (id DESC), so newer rows arriving at the head never shift a page."""
+    if before_id is not None:
+        return await pool.fetch(
+            """
+            SELECT id, chapter_id, chapter_sort, stage, status, detail, created_at
+            FROM campaign_activity
+            WHERE campaign_id = $1 AND id < $2
+            ORDER BY id DESC LIMIT $3
+            """,
+            campaign_id, before_id, limit,
+        )
+    return await pool.fetch(
+        """
+        SELECT id, chapter_id, chapter_sort, stage, status, detail, created_at
+        FROM campaign_activity
+        WHERE campaign_id = $1
+        ORDER BY id DESC LIMIT $2
+        """,
+        campaign_id, limit,
+    )
+
+
 async def get_campaign_progress(
     pool: asyncpg.Pool, campaign_id: UUID,
 ) -> asyncpg.Record:

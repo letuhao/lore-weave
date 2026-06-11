@@ -37,6 +37,8 @@ from ..models import (
     CampaignReport,
     ErrorGroup,
     StageCounts,
+    ActivityEntry,
+    ActivityPage,
     UpdateCampaignPayload,
     MODEL_PATCH_FIELDS,
     RerunFailedPayload,
@@ -358,6 +360,29 @@ async def get_campaign_chapters_endpoint(
         db, campaign_id, status=status, limit=limit, offset=offset,
     )
     return ChapterPage(items=[CampaignChapter(**dict(r)) for r in rows], total=total)
+
+
+@router.get("/{campaign_id}/activity", response_model=ActivityPage)
+async def get_campaign_activity_endpoint(
+    campaign_id: UUID,
+    limit: int = 50,
+    before_id: int | None = None,
+    user_id: str = Depends(get_current_user),
+    db: asyncpg.Pool = Depends(get_db),
+):
+    """D-FACTORY-INFLIGHT-LOG — the monitor's recent-first activity log (one row per
+    stage-status transition, written by the campaign_chapters trigger). Keyset-paged
+    via `before_id` (pass back `next_before`). Owner-scoped (404 if not owned)."""
+    row = await repo.get_campaign(db, campaign_id, UUID(user_id))
+    if row is None:
+        raise HTTPException(status_code=404, detail={"code": "CAMPAIGN_NOT_FOUND",
+                                                     "message": "campaign not found"})
+    limit = max(1, min(limit, 200))
+    rows = await repo.get_campaign_activity(db, campaign_id, limit=limit, before_id=before_id)
+    items = [ActivityEntry(**dict(r)) for r in rows]
+    # next_before only when the page is full (more rows may remain); else end-of-log.
+    next_before = items[-1].id if len(items) == limit else None
+    return ActivityPage(items=items, next_before=next_before)
 
 
 @router.get("/{campaign_id}/progress", response_model=CampaignProgress)

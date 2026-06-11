@@ -7,6 +7,7 @@ import { SpentBudgetBar } from './SpentBudgetBar';
 import { StageProgress } from './StageProgress';
 import { ChapterProjectionTable } from './ChapterProjectionTable';
 import { InFlightPanel } from './InFlightPanel';
+import { ActivityLog } from './ActivityLog';
 import { SwitchModelControl } from './SwitchModelControl';
 import { MonitorControls } from './MonitorControls';
 import { CampaignReport } from './CampaignReport';
@@ -116,6 +117,9 @@ export function CampaignMonitor({ campaignId }: { campaignId: string }) {
           Object.values(progress.data.stages).some((s) => s.failed > 0)
         }
       />
+
+      {/* D-FACTORY-INFLIGHT-LOG — timestamped recent-activity feed (trigger-sourced). */}
+      <ActivityLog campaignId={c.campaign_id} active={!terminal} />
     </div>
   );
 }

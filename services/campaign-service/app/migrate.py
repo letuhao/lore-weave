@@ -119,6 +119,53 @@ ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS verifier_model_ref    UUID;
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS eval_judge_model_source TEXT;
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS eval_judge_model_ref    UUID;
 ALTER TABLE campaign_chapters ADD COLUMN IF NOT EXISTS eval_fidelity_score NUMERIC(4,3);
+
+-- D-FACTORY-INFLIGHT-LOG — append-only per-chapter activity log (the monitor's
+-- timestamped recent-activity feed). Sourced ENTIRELY by a trigger on
+-- campaign_chapters (below): every stage-status transition the driver/consumer/
+-- reconcile/cancel write as an UPDATE becomes one row here — no app instrumentation.
+CREATE TABLE IF NOT EXISTS campaign_activity (
+  id           BIGSERIAL PRIMARY KEY,
+  campaign_id  UUID NOT NULL,
+  chapter_id   UUID NOT NULL,
+  chapter_sort INT  NOT NULL DEFAULT 0,
+  stage        TEXT NOT NULL,   -- knowledge | translation | eval
+  status       TEXT NOT NULL,   -- dispatched | done | skipped | failed
+  detail       TEXT,            -- last_error, only when status='failed'
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- recent-first keyset pagination per campaign (WHERE campaign_id ORDER BY id DESC).
+CREATE INDEX IF NOT EXISTS idx_campactivity_campaign
+  ON campaign_activity(campaign_id, id DESC);
+
+-- The trigger: one activity row per changed stage-status. Fires on UPDATE only, so
+-- the initial seed INSERT (all stages 'pending') logs nothing — only transitions.
+-- IS DISTINCT FROM is NULL-safe; an attempts-only / job_id-only UPDATE writes nothing.
+CREATE OR REPLACE FUNCTION campaign_activity_log() RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.knowledge_status IS DISTINCT FROM OLD.knowledge_status THEN
+    INSERT INTO campaign_activity (campaign_id, chapter_id, chapter_sort, stage, status, detail)
+    VALUES (NEW.campaign_id, NEW.chapter_id, NEW.chapter_sort, 'knowledge', NEW.knowledge_status,
+            CASE WHEN NEW.knowledge_status = 'failed' THEN NEW.last_error END);
+  END IF;
+  IF NEW.translation_status IS DISTINCT FROM OLD.translation_status THEN
+    INSERT INTO campaign_activity (campaign_id, chapter_id, chapter_sort, stage, status, detail)
+    VALUES (NEW.campaign_id, NEW.chapter_id, NEW.chapter_sort, 'translation', NEW.translation_status,
+            CASE WHEN NEW.translation_status = 'failed' THEN NEW.last_error END);
+  END IF;
+  IF NEW.eval_status IS DISTINCT FROM OLD.eval_status THEN
+    INSERT INTO campaign_activity (campaign_id, chapter_id, chapter_sort, stage, status, detail)
+    VALUES (NEW.campaign_id, NEW.chapter_id, NEW.chapter_sort, 'eval', NEW.eval_status,
+            CASE WHEN NEW.eval_status = 'failed' THEN NEW.last_error END);
+  END IF;
+  RETURN NULL;  -- AFTER trigger: return value ignored.
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_campaign_activity ON campaign_chapters;
+CREATE TRIGGER trg_campaign_activity
+  AFTER UPDATE ON campaign_chapters
+  FOR EACH ROW EXECUTE FUNCTION campaign_activity_log();
 """
 
 

@@ -74,6 +74,19 @@ export function useInFlightChapters(campaignId: string | undefined, active: bool
   });
 }
 
+/** D-FACTORY-INFLIGHT-LOG — the recent activity feed (newest first). Polls 6s while
+ *  active (matches the live cadence); MVP shows the most-recent page only. */
+export function useCampaignActivity(campaignId: string | undefined, active: boolean, limit = 30) {
+  const { accessToken } = useAuth();
+  return useQuery({
+    queryKey: ['campaign-activity', campaignId, limit],
+    queryFn: () => campaignsApi.activity(campaignId!, { limit }, accessToken!),
+    enabled: !!accessToken && !!campaignId,
+    refetchInterval: active ? 6000 : false,
+    placeholderData: (prev) => prev,
+  });
+}
+
 /** G1 — completion / wake-up report. Fetched on demand for a terminal campaign
  *  (no polling); the monitor swaps in the report view once status is terminal. */
 export function useCampaignReport(campaignId?: string, enabled = true) {

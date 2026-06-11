@@ -6,6 +6,7 @@ import type {
   CampaignReport,
   ChapterPage,
   ChapterFilterStatus,
+  ActivityPage,
   CreateCampaignPayload,
   EstimateRequest,
   EstimateResponse,
@@ -71,6 +72,16 @@ export const campaignsApi = {
   ): Promise<ChapterPage> {
     const q = `status=${opts.status}&limit=${opts.limit}&offset=${opts.offset}`;
     return apiJson<ChapterPage>(`/v1/campaigns/${campaignId}/chapters?${q}`, { token });
+  },
+
+  // D-FACTORY-INFLIGHT-LOG — recent-first activity log (keyset-paged via beforeId).
+  activity(
+    campaignId: string,
+    opts: { limit: number; beforeId?: number | null },
+    token: string,
+  ): Promise<ActivityPage> {
+    const q = `limit=${opts.limit}${opts.beforeId != null ? `&before_id=${opts.beforeId}` : ''}`;
+    return apiJson<ActivityPage>(`/v1/campaigns/${campaignId}/activity?${q}`, { token });
   },
 
   // G2 — re-run failed chapters (null/empty chapterIds = all failed). Re-arms the

@@ -182,6 +182,23 @@ export interface ChapterPage {
  *  `all` = everything. */
 export type ChapterFilterStatus = 'attention' | 'inflight' | 'all';
 
+/** D-FACTORY-INFLIGHT-LOG — one logged stage-status transition (activity feed). */
+export interface ActivityEntry {
+  id: number;
+  chapter_id: string;
+  chapter_sort: number;
+  stage: string;        // knowledge | translation | eval
+  status: string;       // dispatched | done | skipped | failed
+  detail: string | null;  // last_error, only on a failed transition
+  created_at: string;
+}
+
+/** A recent-first page of the activity log; `next_before` feeds the next page. */
+export interface ActivityPage {
+  items: ActivityEntry[];
+  next_before: number | null;
+}
+
 /** S6 — lightweight live-progress payload (polled while a campaign is active). */
 export interface CampaignProgress {
   campaign_id: string;
