@@ -1,11 +1,13 @@
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { RefreshCw, X, Check, AlertTriangle, ShieldAlert, Clock, Info, ScanSearch } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { RefreshCw, X, Check, AlertTriangle, ShieldAlert, Clock, Info, ScanSearch, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
 import { wikiApi } from '../api';
 import { useWikiStaleness } from '../hooks/useWikiStaleness';
+import { sourceJumpUrl } from '../lib/stalenessSource';
 import type { WikiStalenessRow, WikiGenConfig } from '../types';
 
 /**
@@ -145,6 +147,9 @@ export function KnowledgeUpdatesPanel({
                 {items.map((r) => {
                   const Icon = severityIcon(r.severity);
                   const when = new Date(r.detected_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                  // W6b-1 — jump to the CURRENT source that changed (entity → glossary,
+                  // chapter → reader); null for recipe/KG drift (no single source).
+                  const jump = sourceJumpUrl(bookId, r.source_ref);
                   return (
                     <div
                       key={r.staleness_id}
@@ -164,6 +169,18 @@ export function KnowledgeUpdatesPanel({
                         <Icon className="h-2.5 w-2.5" />
                         {t(`staleness.severity.${r.severity}`, { defaultValue: r.severity })}
                       </span>
+                      {jump && (
+                        <Link
+                          to={jump}
+                          onClick={onClose}
+                          data-testid="staleness-source-jump"
+                          title={t('staleness.viewSource')}
+                          className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-secondary hover:text-foreground"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          {t('staleness.viewSource')}
+                        </Link>
+                      )}
                       <button
                         onClick={() => dismiss(r.staleness_id)}
                         disabled={dismissing === r.staleness_id}

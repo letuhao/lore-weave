@@ -174,6 +174,7 @@
     "dismiss": "Dismiss",
     "dismissed": "Marked up to date",
     "dismissFailed": "Failed to dismiss",
+    "viewSource": "View source",
     "select": "Select {{name}}",
     "selectedCount": "{{count}} selected",
     "nArticles": "{{count}} article",

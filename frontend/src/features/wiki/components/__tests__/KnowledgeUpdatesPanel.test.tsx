@@ -8,6 +8,12 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
+// W6b-1 — the panel renders a react-router Link for the "view source" jump.
+vi.mock('react-router-dom', () => ({
+  Link: ({ to, children, ...p }: { to: string; children: React.ReactNode }) => (
+    <a href={to} {...p}>{children}</a>
+  ),
+}));
 // gen-config (cost basis) — return a flat $0.50/article so the batch estimate is deterministic.
 vi.mock('@tanstack/react-query', () => ({
   useQuery: () => ({ data: { cost_per_article_usd: 0.5 } }),
@@ -111,5 +117,25 @@ describe('KnowledgeUpdatesPanel', () => {
     fireEvent.click(checks[0]); // e1
     fireEvent.click(checks[2]); // e2 → 2 distinct entities
     expect(screen.getByTestId('staleness-cost').textContent).toContain('~$1.00');
+  });
+
+  // W6b-1 — the per-row "view source" jump.
+  it('renders a view-source jump for entity/block rows and closes the panel on click', () => {
+    const onClose = vi.fn();
+    useWikiStalenessMock.mockReturnValue({
+      ...baseHook(),
+      rows: [
+        row({ staleness_id: 's1', reason_code: 'entity_changed', source_ref: { source_type: 'entity', source_id: 'e9' } }),
+        row({ staleness_id: 's2', reason_code: 'chapter_regrounded', source_ref: { source_type: 'block', source_id: 'ch7' } }),
+        row({ staleness_id: 's3', reason_code: 'recipe_drift', source_ref: { source_type: 'recipe' } }),
+      ],
+    });
+    render(<KnowledgeUpdatesPanel bookId="b" open onClose={onClose} onRegenerate={() => {}} />);
+    const jumps = screen.getAllByTestId('staleness-source-jump');
+    expect(jumps).toHaveLength(2); // entity + block; recipe drift has no jump
+    expect(jumps[0].getAttribute('href')).toBe('/books/b/glossary');
+    expect(jumps[1].getAttribute('href')).toBe('/books/b/chapters/ch7/read');
+    fireEvent.click(jumps[0]);
+    expect(onClose).toHaveBeenCalled();
   });
 });
