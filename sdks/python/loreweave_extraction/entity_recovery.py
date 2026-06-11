@@ -199,32 +199,54 @@ async def _call_classifier_llm(
 ) -> str:
     """One classifier chat call. Returns content string; raises ValueError
     on any non-usable outcome (mirrors pass2_filter._call_filter_llm)."""
-    max_tokens = 1024 + 200 * max(1, n_items)
     try:
         job = await llm_client.submit_and_wait(
             user_id=user_id,
-            operation="chat",
-            model_source=config.model_source,
-            model_ref=config.model_ref,
-            input={
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                "response_format": {"type": "text"},
-                "temperature": 0.0,
-                "max_tokens": max_tokens,
-                "chat_template_kwargs": {
-                    "thinking": False,
-                    "enable_thinking": False,
-                },
-            },
-            chunking=None,
-            job_meta={"extractor": "entity_recovery"},
             transient_retry_budget=config.transient_retry_budget,
+            **build_recovery_submit_kwargs(
+                config=config, system=system, user=user, n_items=n_items,
+            ),
         )
     except Exception as exc:  # noqa: BLE001
         raise ValueError(f"recovery LLM call failed: {exc}") from exc
+    return parse_recovery_job(job)
+
+
+# ── Decouple seams (LLM re-arch Phase 2b WX-T2b) — see extractors/entity.py ──
+
+
+def build_recovery_submit_kwargs(
+    *, config: "EntityRecoveryConfig", system: str, user: str, n_items: int,
+) -> dict:
+    """Pure: submit_and_wait / submit_job kwargs for the recovery classifier chat
+    (user_id + transient_retry_budget stay per-call)."""
+    max_tokens = 1024 + 200 * max(1, n_items)
+    return dict(
+        operation="chat",
+        model_source=config.model_source,
+        model_ref=config.model_ref,
+        input={
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "response_format": {"type": "text"},
+            "temperature": 0.0,
+            "max_tokens": max_tokens,
+            "chat_template_kwargs": {
+                "thinking": False,
+                "enable_thinking": False,
+            },
+        },
+        chunking=None,
+        job_meta={"extractor": "entity_recovery"},
+    )
+
+
+def parse_recovery_job(job) -> str:
+    """Pure: validate the terminal Job + extract the classifier content. Raises
+    ValueError on any non-usable outcome (so the per-batch caller marks the batch
+    unjudged instead of aborting the recovery pass)."""
     if getattr(job, "status", None) != "completed":
         raise ValueError(
             f"recovery job ended status={getattr(job, 'status', '?')}"

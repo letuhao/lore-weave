@@ -94,6 +94,50 @@ worker slot during a long extraction), not the Critical incident fix. Given the 
 refactor) is the safe, valuable first step** even on its own — it improves SDK testability
 regardless of the decouple.
 
+## WX-T2b + WX-T3 BUILD PLAN (PO chose the full event-driven scope, 2026-06-11)
+
+### WX-T2b — seam recovery + filter (byte-identical, mirrors WX-T2)
+
+Both use `operation="chat"` via a `_call_*_llm` helper (submit_and_wait → `messages[0].content`).
+The seams differ from the 4 simple extractors because each wraps candidate-analysis +
+verdict-application around the call:
+
+- `entity_recovery.py`: ONE classifier call. Seam → `build_recovery_submit_kwargs(system,user,config,n_items)` (the `_call_classifier_llm` body sans submit) + `parse_recovery_content(content)→verdicts`. The public `recover_missing_entities` keeps the candidate→prompt build + verdict→apply; it calls build→submit_and_wait→parse.
+- `pass2_filter.py`: N **sequential** per-batch calls. Seam → `build_filter_submit_kwargs(system,user,config,n_items)` + `parse_filter_content(content)→verdicts` per batch. `apply_precision_filter` keeps the batch loop + apply.
+
+Verify: SDK extraction suite + worker-ai 179 + knowledge extraction units stay green (the 3 `summarize_level` fails stay pre-existing).
+
+### WX-T3 — the resume_state state machine (per chunk)
+
+`extraction_jobs.resume_state` (mode='extract'):
+```
+chunk_text, known_entities, model_ref, billing_*, project_id, source_{type,id}, persist-ctx…
+stage:        "entity" | "trio" | "recovery" | "filter" | "persist"
+entities/relations/events/facts: accumulators (folded as each stage completes)
+trio_jobs:    {op: provider_job_id}    — the fan-in set; advance only when all 3 folded
+trio_done:    {op: result}
+filter_batches: [...] ; filter_idx ; (filter is a sub-loop like block-translate batches)
+```
+`extraction_jobs.provider_job_ids` (WX-T1) = the live set (≥3 during `trio`); the consumer
+looks a terminal event's job_id up across it.
+
+Stage transitions (consumer `resume`, per terminal event):
+- `entity` done → if no entities: persist-empty + advance chunk; else submit the trio (3 `submit_job`), stage=`trio`, persist all 3 in `trio_jobs`+`provider_job_ids`.
+- `trio`: fold the one op whose job fired; when `trio_jobs` all folded → stage=`recovery` (if configured) else `filter` (if configured) else `persist`.
+- `recovery` done → apply verdicts → stage=`filter`|`persist`.
+- `filter`: fold batch, submit next batch or (last) → stage=`persist`.
+- `persist` → POST `/internal/extraction/persist-pass2` (finalize-first idempotent) → advance the chunk cursor / emit `knowledge.chapter_extracted` → submit the next chunk's `entity` or complete the job.
+
+**Runner integration (the heavy part).** Today `runner._extract_and_persist` blocks then the loop does spend/cursor/`chapter_extracted`. Decoupled: the runner submits chunk-0 `entity` + releases; the **consumer** owns persist + `_record_spending` + `_advance_cursor` + the completion event (reusing the runner's existing helpers). `set_billing_user_id` re-bound in the consumer before each resumed submit.
+
+**Consumer** = worker-ai `llm_terminal_consumer` (model on translation's; worker-ai already runs a Redis-stream `summary_consumer` → same shape). Idempotency: persist + cursor-advance finalize-first under a status/cursor guard (a chunk already advanced → ack+ignore).
+
+### Slices (each a checkpoint)
+- **WX-T2b** — recovery + filter seams (this commit). ← BUILD START
+- **WX-T3a** — `decoupled_extract.py` PURE state machine (stage transitions + trio fan-in + filter sub-loop) + unit tests. No runner wiring.
+- **WX-T3b** — the worker-ai consumer + runner release-branch + persist/spend/cursor/event ownership + billing re-bind, behind the flag.
+- **WX-T3c** — `D-WX-LIVE-SMOKE` (real extraction chunk through the event path).
+
 ## Reuse map
 
 | Need | Asset |

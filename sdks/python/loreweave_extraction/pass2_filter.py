@@ -261,37 +261,58 @@ async def _call_filter_llm(
     string. Raises ValueError on any non-usable outcome so the per-batch
     caller's `except ValueError` marks the batch unjudged instead of
     aborting the whole filter pass (mirrors `llm_judge._call_judge`)."""
-    # Conservative output budget: ~250 tokens per verdict, mirrors
-    # llm_judge calibration for reasoning-token bursts. Tune in BUILD
-    # if filter_coverage shows truncation pattern.
-    max_tokens = 1536 + 256 * max(1, n_items)
     try:
         job = await llm_client.submit_and_wait(
             user_id=user_id,
-            operation="chat",
-            model_source=config.model_source,
-            model_ref=config.model_ref,
-            input={
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                "response_format": {"type": "text"},
-                "temperature": 0.0,
-                "max_tokens": max_tokens,
-                # Anti-thinking flag for reasoning-tuned local models;
-                # harmless on plain models.
-                "chat_template_kwargs": {
-                    "thinking": False,
-                    "enable_thinking": False,
-                },
-            },
-            chunking=None,
-            job_meta={"extractor": "pass2_filter"},
             transient_retry_budget=config.transient_retry_budget,
+            **build_filter_submit_kwargs(
+                config=config, system=system, user=user, n_items=n_items,
+            ),
         )
     except Exception as exc:  # noqa: BLE001 — translate to ValueError
         raise ValueError(f"filter LLM call failed: {exc}") from exc
+    return parse_filter_job(job)
+
+
+# ── Decouple seams (LLM re-arch Phase 2b WX-T2b) — see extractors/entity.py ──
+
+
+def build_filter_submit_kwargs(
+    *, config: "PrecisionFilterConfig", system: str, user: str, n_items: int,
+) -> dict:
+    """Pure: submit_and_wait / submit_job kwargs for ONE filter chat batch
+    (user_id + transient_retry_budget stay per-call)."""
+    # Conservative output budget: ~250 tokens per verdict, mirrors
+    # llm_judge calibration for reasoning-token bursts.
+    max_tokens = 1536 + 256 * max(1, n_items)
+    return dict(
+        operation="chat",
+        model_source=config.model_source,
+        model_ref=config.model_ref,
+        input={
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "response_format": {"type": "text"},
+            "temperature": 0.0,
+            "max_tokens": max_tokens,
+            # Anti-thinking flag for reasoning-tuned local models;
+            # harmless on plain models.
+            "chat_template_kwargs": {
+                "thinking": False,
+                "enable_thinking": False,
+            },
+        },
+        chunking=None,
+        job_meta={"extractor": "pass2_filter"},
+    )
+
+
+def parse_filter_job(job) -> str:
+    """Pure: validate the terminal Job + extract the filter content. Raises
+    ValueError on any non-usable outcome so the per-batch caller marks the batch
+    unjudged instead of aborting the whole filter pass."""
     if getattr(job, "status", None) != "completed":
         raise ValueError(
             f"filter job ended status={getattr(job, 'status', '?')}"
