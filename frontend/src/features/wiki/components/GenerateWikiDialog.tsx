@@ -1,11 +1,14 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { FormDialog } from '@/components/shared';
 import { useAuth } from '@/auth';
 import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
 import { glossaryApi } from '@/features/glossary/api';
+import { booksApi } from '@/features/books/api';
+import { knowledgeApi } from '@/features/knowledge/api';
+import { usageApi } from '@/features/usage/api';
 import { cn } from '@/lib/utils';
 import { wikiApi } from '../api';
 import type { WikiGenConfig } from '../types';
@@ -115,6 +118,35 @@ export function GenerateWikiDialog({
   const rawPerArticle = configQuery.data ? Number(configQuery.data.cost_per_article_usd) : NaN;
   const perArticle = Number.isFinite(rawPerArticle) ? rawPerArticle : null;
   const fmtUsd = (n: number) => `$${n.toFixed(2)}`;
+
+  // W6a — advisory context lines (all lazy-gated so they never fire on a plain
+  // WikiTab load). Language is the book's source language (a cheap proxy for the
+  // BookProfile-derived generation language, which isn't FE-reachable); indexed +
+  // budget are the grounding + spend context the mockup's screen-② shows.
+  const bookQuery = useQuery({
+    queryKey: ['book', bookId],
+    queryFn: () => booksApi.getBook(accessToken!, bookId!),
+    enabled: open && !!accessToken && !!bookId,
+    staleTime: 5 * 60_000,
+  });
+  const language = bookQuery.data?.original_language || null;
+
+  const projectsQuery = useQuery({
+    queryKey: ['knowledge-projects', bookId],
+    queryFn: () => knowledgeApi.listProjects({ book_id: bookId!, limit: 1 }, accessToken!),
+    enabled: open && isLlm && !!accessToken && !!bookId,
+    staleTime: 60_000,
+  });
+  // undefined while loading → render nothing; true/false once known.
+  const indexed = projectsQuery.data ? (projectsQuery.data.items?.length ?? 0) > 0 : null;
+
+  const guardrailQuery = useQuery({
+    queryKey: ['usage-guardrail'],
+    queryFn: () => usageApi.getGuardrail(accessToken!),
+    enabled: open && isLlm && !!accessToken,
+    staleTime: 60_000,
+  });
+  const guardrail = guardrailQuery.data ?? null;
   // In AI mode a model must be picked before confirming (the empty placeholder
   // would otherwise trigger an unintended deterministic/no-op run). The stub
   // path needs nothing. Regen is always 'llm', so it inherits the model gate.
@@ -175,6 +207,14 @@ export function GenerateWikiDialog({
       }
     >
       <div className="flex flex-col gap-4">
+        {/* W6a — advisory language line (the book's source language; the true
+            generation language derives from BookProfile, not FE-reachable). */}
+        {language && (
+          <p data-testid="wiki-gen-language" className="text-[11px] text-muted-foreground">
+            {t('gen.context.language', { lang: language })}
+          </p>
+        )}
+
         {/* Generation-mode toggle — batch only (regen is always AI). Replaces the
             old ''-vs-model dropdown overload with an explicit segmented control. */}
         {!isRegen && (
@@ -252,6 +292,18 @@ export function GenerateWikiDialog({
           </label>
         )}
 
+        {/* W6a — grounding status: AI generation needs the book's knowledge graph
+            (retrieval); a not-indexed book degrades to an ungrounded skip. */}
+        {isLlm && indexed !== null && (
+          <p
+            data-testid="wiki-gen-indexed"
+            className={cn('flex items-center gap-1.5 text-[11px]', indexed ? 'text-muted-foreground' : 'text-amber-500')}
+          >
+            {indexed ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+            {indexed ? t('gen.context.indexed') : t('gen.context.notIndexed')}
+          </p>
+        )}
+
         {/* Optional kind filter — batch generate only (regen is one entity) */}
         {!isRegen && kinds.length > 0 && (
           <fieldset className="flex flex-col gap-1.5">
@@ -314,6 +366,17 @@ export function GenerateWikiDialog({
                     total: fmtUsd(entityIds!.length * perArticle),
                   })
                 : t('gen.estimate.perArticle', { perArticle: fmtUsd(perArticle) })}
+          </p>
+        )}
+
+        {/* W6a — monthly spend context (advisory; the per-job cap above is the
+            actual guard). Shows how much of the monthly budget is already used. */}
+        {isLlm && guardrail && guardrail.monthly_limit_usd > 0 && (
+          <p data-testid="wiki-gen-budget" className="text-[11px] text-muted-foreground">
+            {t('gen.context.budget', {
+              used: fmtUsd(guardrail.monthly_spent_usd),
+              limit: fmtUsd(guardrail.monthly_limit_usd),
+            })}
           </p>
         )}
       </div>

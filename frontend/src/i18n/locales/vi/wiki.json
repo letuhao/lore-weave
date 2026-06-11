@@ -75,6 +75,12 @@
       "same": "Giống mô hình tạo sinh",
       "hint": "Chỉ dùng cho lần tạo lại để sửa các bài bị gắn cờ canon."
     },
+    "context": {
+      "language": "Ngôn ngữ sinh: {{lang}}",
+      "indexed": "Đã lập chỉ mục tri thức",
+      "notIndexed": "Chưa lập chỉ mục tri thức — AI sẽ bỏ qua thực thể không có nền tảng",
+      "budget": "Đã dùng tháng này: {{used}} / {{limit}}"
+    },
     "kinds": {
       "label": "Giới hạn theo loại (tùy chọn)",
       "hint": "Để trống để tạo cho mọi loại thực thể."

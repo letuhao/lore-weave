@@ -23,6 +23,18 @@ const getGenConfig = vi.fn();
 vi.mock('../../api', () => ({
   wikiApi: { getGenConfig: (...a: unknown[]) => getGenConfig(...a) },
 }));
+const getBook = vi.fn();
+vi.mock('@/features/books/api', () => ({
+  booksApi: { getBook: (...a: unknown[]) => getBook(...a) },
+}));
+const listProjects = vi.fn();
+vi.mock('@/features/knowledge/api', () => ({
+  knowledgeApi: { listProjects: (...a: unknown[]) => listProjects(...a) },
+}));
+const getGuardrail = vi.fn();
+vi.mock('@/features/usage/api', () => ({
+  usageApi: { getGuardrail: (...a: unknown[]) => getGuardrail(...a) },
+}));
 
 import { GenerateWikiDialog } from '../GenerateWikiDialog';
 
@@ -49,6 +61,13 @@ beforeEach(() => {
   });
   getKinds.mockResolvedValue([{ kind_id: 'k1', code: 'character', name: 'Character', icon: '🧍', color: '#abc' }]);
   getGenConfig.mockResolvedValue({ cost_per_article_usd: '0.05' });
+  // W6a — advisory-context reads (lazy-gated; default to a sensible loaded state).
+  getBook.mockResolvedValue({ book_id: 'b1', original_language: 'en' });
+  listProjects.mockResolvedValue({ items: [{ project_id: 'p1' }] });
+  getGuardrail.mockResolvedValue({
+    daily_limit_usd: 1, monthly_limit_usd: 10, daily_spent_usd: 0, monthly_spent_usd: 3,
+    reserved_usd: 0, daily_available_usd: 1, monthly_available_usd: 7,
+  });
 });
 
 describe('GenerateWikiDialog', () => {
@@ -288,5 +307,39 @@ describe('GenerateWikiDialog', () => {
     expect((screen.getByTestId('wiki-gen-confirm') as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByTestId('wiki-gen-confirm'));
     expect(onTrigger).not.toHaveBeenCalled();
+  });
+
+  // ── W6a: advisory context lines (language / grounding / budget) ──────────────
+
+  it('shows the book language line (advisory) when a book is loaded', async () => {
+    wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={vi.fn()} busy={false} bookId="b1" />);
+    await waitFor(() =>
+      expect(screen.getByTestId('wiki-gen-language').textContent).toContain('gen.context.language'),
+    );
+    expect(screen.getByTestId('wiki-gen-language').textContent).toContain('"lang":"en"');
+  });
+
+  it('shows the grounding-status + budget lines in AI mode', async () => {
+    wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={vi.fn()} busy={false} bookId="b1" />);
+    // stub default ⇒ AI-only lines hidden
+    expect(screen.queryByTestId('wiki-gen-indexed')).toBeNull();
+    expect(screen.queryByTestId('wiki-gen-budget')).toBeNull();
+    await toAiMode();
+    await waitFor(() => expect(screen.getByTestId('wiki-gen-indexed').textContent).toContain('gen.context.indexed'));
+    await waitFor(() => {
+      const txt = screen.getByTestId('wiki-gen-budget').textContent || '';
+      expect(txt).toContain('gen.context.budget');
+      expect(txt).toContain('"used":"$3.00"');
+      expect(txt).toContain('"limit":"$10.00"');
+    });
+  });
+
+  it('flags a not-indexed book in AI mode', async () => {
+    listProjects.mockResolvedValue({ items: [] }); // no knowledge project → not indexed
+    wrap(<GenerateWikiDialog open onClose={() => {}} onTrigger={vi.fn()} busy={false} bookId="b1" />);
+    await toAiMode();
+    await waitFor(() =>
+      expect(screen.getByTestId('wiki-gen-indexed').textContent).toContain('gen.context.notIndexed'),
+    );
   });
 });

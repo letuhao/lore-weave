@@ -75,6 +75,12 @@
       "same": "與生成模型相同",
       "hint": "僅用於對 canon 標記文章的修正重新生成。"
     },
+    "context": {
+      "language": "生成語言：{{lang}}",
+      "indexed": "已建立知識圖譜",
+      "notIndexed": "尚未建立知識圖譜 — AI 將略過缺乏依據的實體",
+      "budget": "本月已用：{{used}} / {{limit}}"
+    },
     "kinds": {
       "label": "限定類別（選填）",
       "hint": "留空則生成所有實體類別。"

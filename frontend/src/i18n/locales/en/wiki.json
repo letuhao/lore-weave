@@ -75,6 +75,12 @@
       "same": "Same as generation",
       "hint": "Used only for the corrective re-generation of canon-flagged articles."
     },
+    "context": {
+      "language": "Generation language: {{lang}}",
+      "indexed": "Knowledge graph built",
+      "notIndexed": "Knowledge graph not built — AI generation will skip ungrounded entities",
+      "budget": "Spent this month: {{used}} of {{limit}}"
+    },
     "kinds": {
       "label": "Limit to kinds (optional)",
       "hint": "Leave empty to generate for all entity kinds."

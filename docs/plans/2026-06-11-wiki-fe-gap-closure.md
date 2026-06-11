@@ -60,6 +60,11 @@ The mockup showed separate prose + verify models. Reality: `verify_article` is *
 - BE: `wiki_gen_jobs` +`revise_model_ref`/`revise_model_source` (additive nullable) threaded `WikiGenerateRequest`→`create`→orchestrator (paired fallback keyed on the ref). Glossary `triggerWikiGeneration`/`generateWikiStubs` forward both (omit-when-empty). FE: an optional 2nd picker (AI mode, batch + regen, default "Same as generation").
 - **Acceptance:** picking a different revise model + an article that trips a canon flag runs the corrective revise with the override; clean articles unaffected; null ⇒ prose model. **✅ met** (each hop unit-proven; end-to-end → `D-WIKI-W5-LIVE-SMOKE`).
 
+### W6 — Generate-dialog polish (screen ②, gap #6) + change-feed diff-link (screen ⑤, gap #3) · split W6a/W6b
+- **W6a (FE) · M · ✅ DONE 2026-06-11 (PO: reuse existing apis; indexed via knowledge-projects read):** three lazy-gated advisory lines in `GenerateWikiDialog` — **language** (`booksApi.getBook().original_language`, advisory proxy; true gen-language lives in BookProfile, not FE-reachable), **grounding-status** (AI mode, `knowledgeApi.listProjects({book_id})` → built/not-built), **budget/used** (AI mode, `usageApi.getGuardrail()` → monthly used/limit, only when a limit is set). i18n ×4 `gen.context.*`. vitest 4. FE-only, no new BE.
+- **W6b (cross-service XL) · ⏳ NEXT (PO chose true snapshots):** the per-staleness-row "xem thay đổi" diff. **No stored before-state today** (`source_ref` is a reference; `build_inputs` is a hash). Likely: before = `wiki_article_source_usage` snippet (captured at gen time — verify), after = current source (cross-service fetch per `source_type`), render via the W1 `wikiDiff` lib. Own `/loom` with its own CLARIFY (which source_types; degrade kg/recipe drift which lack a text before).
+- **Acceptance (W6a):** the dialog shows the book language + (AI mode) the indexed status + monthly spend context. **✅ met.**
+
 ---
 
 ## Sequencing & sizing
