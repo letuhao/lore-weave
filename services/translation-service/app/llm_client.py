@@ -160,6 +160,11 @@ def get_llm_client() -> LLMClient:
             auth_mode="internal",
             internal_token=settings.internal_service_token,
             user_id=None,  # per-call override required (multi-tenant)
+            # LLM re-arch Phase 2 — event-driven resume. wait_terminal wakes on
+            # the job's terminal event (loreweave:events:llm_job_terminal) instead
+            # of pure-polling, degrading to the poll on any Redis fault.
+            # Transparent: no call-site change; submit_and_wait stays the adapter.
+            event_redis_url=settings.redis_url,
         )
         _client = LLMClient(sdk)
     return _client
