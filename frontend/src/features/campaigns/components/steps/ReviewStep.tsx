@@ -19,6 +19,18 @@ interface Props {
   onEstimated?: (low: string, high: string) => void;
 }
 
+/** D-S5C-BUDGET-VALIDATE — pure budget-input check mirroring the backend rule
+ *  (CreateCampaignPayload): blank = uncapped (valid → null); else must be a positive
+ *  finite number below the NUMERIC(16,8) ceiling (1e8). Pure → unit-tested. */
+export function validateBudget(raw: string): 'invalid' | 'tooLarge' | null {
+  const v = raw.trim();
+  if (v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return 'invalid';
+  if (n >= 1e8) return 'tooLarge';
+  return null;
+}
+
 /** Step 4 (view): budget cap + on-demand cost/time estimate + Launch (create→start). */
 export function ReviewStep({ buildEstimateRequest, buildCreatePayload, budgetUsd, setBudget, onLaunched, onEstimated }: Props) {
   const { t } = useTranslation('campaigns');
@@ -43,6 +55,13 @@ export function ReviewStep({ buildEstimateRequest, buildCreatePayload, budgetUsd
     },
   });
 
+  // D-S5C-BUDGET-VALIDATE — map the pure validation code to a localized message.
+  const budgetCode = validateBudget(budgetUsd);
+  const budgetError =
+    budgetCode === 'invalid' ? t('review.budgetInvalid', { defaultValue: 'Enter a positive amount, or leave blank for uncapped.' })
+    : budgetCode === 'tooLarge' ? t('review.budgetTooLarge', { defaultValue: 'Budget is too large.' })
+    : null;
+
   const money = (v: string) => `$${Number(v).toFixed(4)}`;
   // #5 polish — compact token count (31.0M / 3.2K / 0).
   const tok = (n: number) =>
@@ -55,12 +74,15 @@ export function ReviewStep({ buildEstimateRequest, buildCreatePayload, budgetUsd
         <span className="text-xs font-medium text-muted-foreground">
           {t('review.budget', { defaultValue: 'Budget cap (USD, optional)' })}
         </span>
-        <input className={fieldCls} value={budgetUsd}
+        <input className={`${fieldCls} ${budgetError ? 'border-destructive' : ''}`} value={budgetUsd}
           onChange={(e) => setBudget(e.target.value)}
+          aria-invalid={!!budgetError}
           placeholder={t('review.budgetPlaceholder', { defaultValue: 'blank = uncapped' })} />
-        <span className="text-[11px] text-muted-foreground">
-          {t('review.budgetHint', { defaultValue: 'The campaign auto-pauses once summed spend reaches this.' })}
-        </span>
+        {budgetError
+          ? <span className="text-[11px] text-destructive">{budgetError}</span>
+          : <span className="text-[11px] text-muted-foreground">
+              {t('review.budgetHint', { defaultValue: 'The campaign auto-pauses once summed spend reaches this.' })}
+            </span>}
       </label>
 
       <button type="button"
@@ -124,7 +146,7 @@ export function ReviewStep({ buildEstimateRequest, buildCreatePayload, budgetUsd
 
       <button type="button"
         onClick={() => launch.mutate(buildCreatePayload())}
-        disabled={launch.isPending}
+        disabled={launch.isPending || !!budgetError}
         className="self-start rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
         {launch.isPending
           ? t('review.launching', { defaultValue: 'Launching…' })
