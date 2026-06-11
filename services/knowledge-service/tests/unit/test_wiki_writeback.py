@@ -82,6 +82,30 @@ def test_source_usage_entity_kg_and_deduped_chapters():
     assert block_rows[0]["source_version"]  # content-hash version present
 
 
+def test_source_usage_captures_source_text_per_type():
+    # W6b-2 — each usage row carries the source text it was built from (the diff "before").
+    usage = build_source_usage(_ctx(), _build_inputs())
+    by_type = {u["source_type"]: u for u in usage}
+    # entity = the brief surface (name + aliases + short_description)
+    assert "姜子牙" in by_type["entity"]["source_text"]
+    assert "飞熊" in by_type["entity"]["source_text"]
+    assert "封神主角" in by_type["entity"]["source_text"]
+    # kg = the KG fact item; block = the chapter's passages joined
+    assert "元始天尊" in by_type["kg"]["source_text"]
+    assert "奉命下山伐纣" in by_type["block"]["source_text"]
+    assert "封神台点将" in by_type["block"]["source_text"]
+
+
+def test_source_text_is_capped():
+    big = "字" * 5000
+    ctx = GenerationContext(brief=EntityBrief(entity_id="e1", name="X", short_description=big), items=[])
+    bi = compute_build_inputs(context=ctx, model_ref="m", prompt_version="p",
+                              pipeline_version="v", retrieval_params={})
+    txt = next(u for u in build_source_usage(ctx, bi) if u["source_type"] == "entity")["source_text"]
+    assert len(txt) <= 2001  # 2000 cap + the … ellipsis
+    assert txt.endswith("…")
+
+
 def test_source_usage_no_kg_row_when_no_kg():
     brief = EntityBrief(entity_id="e2", name="x", short_description="d")
     ctx = GenerationContext(brief=brief, items=[

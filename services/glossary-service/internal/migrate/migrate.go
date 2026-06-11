@@ -656,6 +656,10 @@ CREATE TABLE IF NOT EXISTS wiki_article_source_usage (
   PRIMARY KEY (article_id, source_type, source_id)
 );
 CREATE INDEX IF NOT EXISTS idx_wasu_source ON wiki_article_source_usage(source_type, source_id);
+-- wiki-llm W6b-2 — the source text used at generation time (the "before" half of
+-- the change diff; the "after" re-gathers live). NULL for pre-W6b-2 rows → no diff
+-- (the reader falls back to the W6b-1 "view source" jump). Capped on the writer side.
+ALTER TABLE wiki_article_source_usage ADD COLUMN IF NOT EXISTS source_text TEXT;
 
 -- risk #4 — the deterministic stub previously wrote its seed revision as
 -- author_type='owner', indistinguishable from a human edit. Migrate legacy stub

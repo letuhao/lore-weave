@@ -37,26 +37,53 @@ def generation_status_for(verify: WikiVerifyResult) -> str:
     return "generated"
 
 
+# W6b-2 — the source text used at generation time is captured per usage row so a
+# later "what changed" view can diff it against the CURRENT source. Capped to bound
+# storage (one row per source per article; passages can be long).
+_SRC_TEXT_MAX = 2000
+
+
+def _cap(text: str) -> str:
+    text = text.strip()
+    return text if len(text) <= _SRC_TEXT_MAX else text[:_SRC_TEXT_MAX].rstrip() + "…"
+
+
+def _brief_text(brief) -> str:
+    """The entity's textual surface (what an `entity_changed` edit touches)."""
+    parts = [brief.name]
+    if brief.aliases:
+        parts.append("(" + ", ".join(brief.aliases) + ")")
+    if brief.short_description:
+        parts.append(brief.short_description)
+    return "\n".join(p for p in parts if p)
+
+
 def build_source_usage(
     context: GenerationContext, build_inputs: dict[str, Any],
 ) -> list[dict[str, str]]:
     """The §5.1 reverse index. One ``entity`` row (the subject), one ``kg`` row
     (its neighbourhood, keyed by the entity) when KG facts were used, and one
     ``block`` row per distinct cited CHAPTER (the granularity of a chapter-edit
-    event), each versioned by a content hash so a no-op change is distinguishable."""
+    event), each versioned by a content hash so a no-op change is distinguishable.
+
+    W6b-2: each row also carries the ``source_text`` it was built from (capped), the
+    "before" half of the future-only change diff (the "after" re-gathers live)."""
     brief = context.brief
     usage: list[dict[str, str]] = [
         {
             "source_type": "entity",
             "source_id": brief.entity_id,
             "source_version": build_inputs["entity_content_hash"],
+            "source_text": _cap(_brief_text(brief)),
         }
     ]
-    if any(it.source.kind == "kg" for it in context.items):
+    kg_texts = [it.text for it in context.items if it.source.kind == "kg"]
+    if kg_texts:
         usage.append({
             "source_type": "kg",
             "source_id": brief.entity_id,
             "source_version": build_inputs["kg_neighborhood_hash"],
+            "source_text": _cap("\n".join(kg_texts)),
         })
     by_chapter: dict[str, list[str]] = {}
     for it in context.items:
@@ -67,6 +94,7 @@ def build_source_usage(
             "source_type": "block",
             "source_id": chapter_id,
             "source_version": stable_hash(sorted(texts)),
+            "source_text": _cap("\n".join(texts)),
         })
     return usage
 

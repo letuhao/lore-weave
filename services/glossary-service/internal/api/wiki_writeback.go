@@ -27,6 +27,8 @@ type wikiSourceUsage struct {
 	SourceType    string `json:"source_type"` // 'entity' | 'kg' | 'block'
 	SourceID      string `json:"source_id"`
 	SourceVersion string `json:"source_version"`
+	// W6b-2 — the source text at generation time (the "before" half of the diff).
+	SourceText string `json:"source_text"`
 }
 
 type wikiWritebackRequest struct {
@@ -245,10 +247,14 @@ func (s *Server) replaceSourceUsage(
 		if u.SourceVersion != "" {
 			ver = u.SourceVersion
 		}
+		var srcText any
+		if u.SourceText != "" {
+			srcText = u.SourceText
+		}
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO wiki_article_source_usage (article_id, source_type, source_id, source_version)
-			VALUES ($1, $2, $3, $4)`,
-			articleID, u.SourceType, u.SourceID, ver,
+			INSERT INTO wiki_article_source_usage (article_id, source_type, source_id, source_version, source_text)
+			VALUES ($1, $2, $3, $4, $5)`,
+			articleID, u.SourceType, u.SourceID, ver, srcText,
 		); err != nil {
 			return err
 		}
