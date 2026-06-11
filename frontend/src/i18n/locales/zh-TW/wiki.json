@@ -108,6 +108,29 @@
     "regenDescription": "以 AI 重新生成此文章。經人工編輯的文章將轉為建議而非被覆寫。",
     "regenHint": "選擇模型以重新生成此文章。",
     "confirmRegen": "重新生成",
+    "results": {
+      "title": "生成結果",
+      "dismiss": "關閉結果",
+      "cites": "引用",
+      "flags": "驗證標記",
+      "queued": "{{count}} 個等待中",
+      "queued_other": "{{count}} 個等待中"
+    },
+    "outcome": {
+      "written": "已建立",
+      "suggestion": "建議",
+      "skipped": "略過",
+      "writeback_failed": "失敗",
+      "error": "錯誤",
+      "processing": "處理中"
+    },
+    "pass": {
+      "context": "檢索",
+      "generate": "撰寫",
+      "verify": "驗證",
+      "revise": "修訂",
+      "writeback": "儲存"
+    },
     "badge": {
       "generated": "AI",
       "generatedHint": "AI 生成，已通過驗證。",

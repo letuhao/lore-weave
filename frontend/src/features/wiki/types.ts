@@ -182,6 +182,19 @@ export type WikiGenJobState =
   | 'failed'
   | 'cancelled';
 
+/** W4a — the per-entity pipeline pass the orchestrator emits as live progress. */
+export type WikiGenPass = 'context' | 'generate' | 'verify' | 'revise' | 'writeback';
+
+/** W4a — one entity's generation outcome + the detail the screen-③ table shows.
+ *  `outcome` is 'written' | 'suggestion' | 'skipped' | 'writeback_failed' | 'error'
+ *  | 'processing' (the transient in-flight row). */
+export interface WikiEntityResult {
+  outcome: string;
+  citations: number;
+  flags: number;
+  name: string | null;
+}
+
 /** Poll shape from GET /v1/glossary/books/{id}/wiki/job (knowledge via proxy). */
 export interface WikiGenJobStatus {
   job_id: string;
@@ -195,6 +208,11 @@ export interface WikiGenJobStatus {
   cost_spent_usd: string | number;
   max_spend_usd: string | number | null;
   error_message: string | null;
+  // W4a — per-entity results (entity_id → detail) + the live sub-step pointer.
+  // Optional for back-compat with a pre-W4a knowledge image.
+  results?: Record<string, WikiEntityResult>;
+  current_entity_id?: string | null;
+  current_pass?: WikiGenPass | string | null;
 }
 
 /** Flat per-article wiki-gen cost (D-WIKI-P2B-COST-ESTIMATE). Decimal serializes

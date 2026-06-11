@@ -108,6 +108,29 @@
     "regenDescription": "Tạo lại bài viết này bằng AI. Bài viết đã có chỉnh sửa của người sẽ thành đề xuất thay vì bị ghi đè.",
     "regenHint": "Chọn một mô hình để tạo lại bài viết này.",
     "confirmRegen": "Tạo lại",
+    "results": {
+      "title": "Kết quả tạo",
+      "dismiss": "Đóng kết quả",
+      "cites": "Trích dẫn",
+      "flags": "Cờ kiểm tra",
+      "queued": "{{count}} đang chờ",
+      "queued_other": "{{count}} đang chờ"
+    },
+    "outcome": {
+      "written": "Đã tạo",
+      "suggestion": "Đề xuất",
+      "skipped": "Bỏ qua",
+      "writeback_failed": "Thất bại",
+      "error": "Lỗi",
+      "processing": "Đang xử lý"
+    },
+    "pass": {
+      "context": "Truy xuất",
+      "generate": "Viết",
+      "verify": "Kiểm chứng",
+      "revise": "Chỉnh sửa",
+      "writeback": "Lưu"
+    },
     "badge": {
       "generated": "AI",
       "generatedHint": "Do AI tạo, đã qua kiểm tra.",

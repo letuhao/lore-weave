@@ -108,6 +108,29 @@
     "regenDescription": "この記事をAIで再生成します。人が編集した記事は上書きされず、提案として登録されます。",
     "regenHint": "再生成するモデルを選択してください。",
     "confirmRegen": "再生成",
+    "results": {
+      "title": "生成結果",
+      "dismiss": "結果を閉じる",
+      "cites": "引用",
+      "flags": "検証フラグ",
+      "queued": "{{count}}件待機中",
+      "queued_other": "{{count}}件待機中"
+    },
+    "outcome": {
+      "written": "作成",
+      "suggestion": "提案",
+      "skipped": "スキップ",
+      "writeback_failed": "失敗",
+      "error": "エラー",
+      "processing": "処理中"
+    },
+    "pass": {
+      "context": "取得",
+      "generate": "作成",
+      "verify": "検証",
+      "revise": "修正",
+      "writeback": "保存"
+    },
     "badge": {
       "generated": "AI",
       "generatedHint": "AI生成・検証済み。",

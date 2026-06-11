@@ -12,6 +12,7 @@ import type { WikiArticleListItem, WikiInfoboxAttr } from '@/features/wiki/types
 import { useWikiGenJob } from '@/features/wiki/hooks/useWikiGenJob';
 import { GenerateWikiDialog } from '@/features/wiki/components/GenerateWikiDialog';
 import { WikiGenJobBanner } from '@/features/wiki/components/WikiGenJobBanner';
+import { WikiGenJobDetail } from '@/features/wiki/components/WikiGenJobDetail';
 import { WikiGenBadge } from '@/features/wiki/components/WikiGenBadge';
 import { VerifyFlagsPanel } from '@/features/wiki/components/VerifyFlagsPanel';
 import { WikiSuggestionReview } from '@/features/wiki/components/WikiSuggestionReview';
@@ -716,6 +717,7 @@ export function WikiTab({ bookId }: { bookId: string }) {
     return (
       <>
         <WikiGenJobBanner job={job} onResume={resume} onCancel={cancel} busy={busy} />
+        <WikiGenJobDetail key={job?.job_id ?? 'none'} job={job} />
         <EmptyState
           icon={BookOpen}
           title={t('noArticles')}
@@ -769,6 +771,7 @@ export function WikiTab({ bookId }: { bookId: string }) {
         </button>
       )}
       <WikiGenJobBanner job={job} onResume={resume} onCancel={cancel} busy={busy} />
+      <WikiGenJobDetail key={job?.job_id ?? 'none'} job={job} />
       <div className="flex overflow-hidden rounded-lg border" style={{ minHeight: 500 }}>
         {/* Left sidebar */}
         <div className="w-[220px] shrink-0">

@@ -108,6 +108,29 @@
     "regenDescription": "Re-generate this article with AI. A human-edited article becomes a suggestion rather than being overwritten.",
     "regenHint": "Pick a model to regenerate this article.",
     "confirmRegen": "Regenerate",
+    "results": {
+      "title": "Generation results",
+      "dismiss": "Dismiss results",
+      "cites": "Citations",
+      "flags": "Verification flags",
+      "queued": "{{count}} queued",
+      "queued_other": "{{count}} queued"
+    },
+    "outcome": {
+      "written": "Created",
+      "suggestion": "Suggestion",
+      "skipped": "Skipped",
+      "writeback_failed": "Failed",
+      "error": "Error",
+      "processing": "Processing"
+    },
+    "pass": {
+      "context": "Retrieving",
+      "generate": "Writing",
+      "verify": "Verifying",
+      "revise": "Revising",
+      "writeback": "Saving"
+    },
     "badge": {
       "generated": "AI",
       "generatedHint": "AI-generated, passed verification.",
