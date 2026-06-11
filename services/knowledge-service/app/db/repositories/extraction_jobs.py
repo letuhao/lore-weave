@@ -148,7 +148,8 @@ _SELECT_COLS = """
   llm_model, embedding_model, max_spend_usd,
   items_total, items_processed, current_cursor, cost_spent_usd,
   started_at, paused_at, completed_at, created_at, updated_at,
-  error_message, campaign_id
+  error_message, campaign_id,
+  billing_user_id, billing_embedding_model, billing_llm_model
 """
 
 
@@ -171,6 +172,17 @@ class ExtractionJob(BaseModel):
     # S4a: the Auto-Draft Factory campaign that owns this job (cost attribution).
     # None for ordinary user-initiated extractions.
     campaign_id: UUID | None = None
+
+    # E0-3 Phase 2a — BYOK dual-identity billing. When a book collaborator
+    # triggers extraction, these carry the CALLER's billing identity (their key
+    # + their same-model refs); `user_id` and `embedding_model` above stay the
+    # project owner's (graph partition + canonical search tag). NULL ⇒
+    # owner-triggered/legacy ⇒ single-identity path. Fail-safe (worker): if
+    # billing_user_id is set but a billing ref is NULL, the job fails — never a
+    # fall-back to the owner's key. See docs/plans/2026-06-11-e0-3-*.
+    billing_user_id: UUID | None = None
+    billing_embedding_model: str | None = None
+    billing_llm_model: str | None = None
 
     items_total: int | None = None
     items_processed: int = 0
@@ -221,6 +233,11 @@ class ExtractionJobCreate(BaseModel):
     items_total: Annotated[int, Field(ge=0)] | None = None
     # S4a: owning campaign (cost attribution). None for user-initiated jobs.
     campaign_id: UUID | None = None
+    # E0-3 Phase 2a — caller's BYOK billing identity (None ⇒ owner-triggered,
+    # single-identity legacy path). Set only on the collaborator path (2b).
+    billing_user_id: UUID | None = None
+    billing_embedding_model: Annotated[str, Field(min_length=1, max_length=200)] | None = None
+    billing_llm_model: Annotated[str, Field(min_length=1, max_length=200)] | None = None
 
 
 # ── try_spend outcome ────────────────────────────────────────────────────
@@ -280,8 +297,9 @@ class ExtractionJobsRepo:
         query = f"""
         INSERT INTO extraction_jobs
           (user_id, project_id, scope, scope_range, llm_model,
-           embedding_model, max_spend_usd, items_total, campaign_id)
-        VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9)
+           embedding_model, max_spend_usd, items_total, campaign_id,
+           billing_user_id, billing_embedding_model, billing_llm_model)
+        VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11, $12)
         RETURNING {_SELECT_COLS}
         """
         async with self._pool.acquire() as conn:
@@ -296,6 +314,9 @@ class ExtractionJobsRepo:
                 data.max_spend_usd,
                 data.items_total,
                 data.campaign_id,
+                data.billing_user_id,
+                data.billing_embedding_model,
+                data.billing_llm_model,
             )
         return _row_to_job(row)
 
