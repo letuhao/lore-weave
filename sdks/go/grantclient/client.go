@@ -40,9 +40,19 @@ type Options struct {
 	Transport http.RoundTripper
 }
 
+// Access is a resolved (grant, book-lifecycle) pair from the /access authority.
+type Access struct {
+	Level     GrantLevel
+	Lifecycle string // book lifecycle_state: "active"|"trashed"|"purge_pending"; "" if book absent
+}
+
+// Active reports whether the book is in its normal editable state. Edit/manage
+// operations should gate on this (a trashed/purge_pending book is read-only).
+func (a Access) Active() bool { return a.Lifecycle == "active" }
+
 type cacheEntry struct {
-	level GrantLevel
-	exp   time.Time
+	access Access
+	exp    time.Time
 }
 
 // Client resolves (user, book) grants against book-service with a short-TTL
@@ -81,24 +91,32 @@ func NewClient(opts Options) (*Client, error) {
 	}, nil
 }
 
-// ResolveGrant returns the level userID holds on bookID. Positive grants are
-// cached for the TTL; `none` and transport errors are never cached. On a
-// book-service failure it returns (GrantNone, ErrUnavailable) — fail closed.
-func (c *Client) ResolveGrant(ctx context.Context, bookID, userID uuid.UUID) (GrantLevel, error) {
+// ResolveAccess returns the grant level userID holds on bookID plus the book's
+// lifecycle state. Positive grants are cached for the TTL; `none` and transport
+// errors are never cached. On a book-service failure it returns
+// (zero Access, ErrUnavailable) — fail closed.
+func (c *Client) ResolveAccess(ctx context.Context, bookID, userID uuid.UUID) (Access, error) {
 	key := userID.String() + ":" + bookID.String()
 	if v, ok := c.cache.Load(key); ok {
 		if e := v.(cacheEntry); c.now().Before(e.exp) {
-			return e.level, nil
+			return e.access, nil
 		}
 	}
-	lvl, err := c.fetch(ctx, bookID, userID)
+	acc, err := c.fetch(ctx, bookID, userID)
 	if err != nil {
-		return GrantNone, err
+		return Access{}, err
 	}
-	if lvl > GrantNone {
-		c.cache.Store(key, cacheEntry{level: lvl, exp: c.now().Add(c.ttl)})
+	if acc.Level > GrantNone {
+		c.cache.Store(key, cacheEntry{access: acc, exp: c.now().Add(c.ttl)})
 	}
-	return lvl, nil
+	return acc, nil
+}
+
+// ResolveGrant returns just the grant level (see ResolveAccess). Fail-closed:
+// a book-service failure returns (GrantNone, ErrUnavailable).
+func (c *Client) ResolveGrant(ctx context.Context, bookID, userID uuid.UUID) (GrantLevel, error) {
+	acc, err := c.ResolveAccess(ctx, bookID, userID)
+	return acc.Level, err
 }
 
 // RequireGrant resolves the grant and returns nil iff it satisfies need.
@@ -115,27 +133,28 @@ func (c *Client) RequireGrant(ctx context.Context, bookID, userID uuid.UUID, nee
 	return nil
 }
 
-func (c *Client) fetch(ctx context.Context, bookID, userID uuid.UUID) (GrantLevel, error) {
+func (c *Client) fetch(ctx context.Context, bookID, userID uuid.UUID) (Access, error) {
 	u := fmt.Sprintf("%s/internal/books/%s/access?user_id=%s",
 		c.baseURL, bookID.String(), url.QueryEscape(userID.String()))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return GrantNone, ErrUnavailable
+		return Access{}, ErrUnavailable
 	}
 	req.Header.Set("X-Internal-Token", c.internalToken)
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return GrantNone, ErrUnavailable
+		return Access{}, ErrUnavailable
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return GrantNone, ErrUnavailable
+		return Access{}, ErrUnavailable
 	}
 	var body struct {
 		GrantLevel string `json:"grant_level"`
+		Lifecycle  string `json:"lifecycle_state"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return GrantNone, ErrUnavailable
+		return Access{}, ErrUnavailable
 	}
-	return ParseGrantLevel(body.GrantLevel), nil
+	return Access{Level: ParseGrantLevel(body.GrantLevel), Lifecycle: body.Lifecycle}, nil
 }

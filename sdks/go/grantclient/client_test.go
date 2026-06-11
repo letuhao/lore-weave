@@ -222,6 +222,59 @@ func TestRequireGrant(t *testing.T) {
 	}
 }
 
+func TestAccessActive(t *testing.T) {
+	t.Parallel()
+	if !(Access{Lifecycle: "active"}).Active() {
+		t.Error("active book must report Active()")
+	}
+	for _, s := range []string{"trashed", "purge_pending", ""} {
+		if (Access{Lifecycle: s}).Active() {
+			t.Errorf("lifecycle %q must NOT be Active()", s)
+		}
+	}
+}
+
+// stubAccess returns an /access stub replying with both grant_level + lifecycle_state.
+func stubAccess(t *testing.T, level, lifecycle string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"grant_level":"` + level + `","lifecycle_state":"` + lifecycle + `"}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestResolveAccess_LevelAndLifecycle(t *testing.T) {
+	t.Parallel()
+	srv := stubAccess(t, "edit", "trashed")
+	c := testClient(t, srv.URL)
+	acc, err := c.ResolveAccess(context.Background(), uuid.New(), uuid.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acc.Level != GrantEdit || acc.Lifecycle != "trashed" || acc.Active() {
+		t.Errorf("got %+v want {edit trashed !active}", acc)
+	}
+	// ResolveGrant wrapper still returns just the level.
+	if lvl, _ := c.ResolveGrant(context.Background(), uuid.New(), uuid.New()); lvl != GrantEdit {
+		t.Errorf("ResolveGrant wrapper=%v want edit", lvl)
+	}
+}
+
+func TestResolveAccess_FailClosed(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(srv.Close)
+	c := testClient(t, srv.URL)
+	acc, err := c.ResolveAccess(context.Background(), uuid.New(), uuid.New())
+	if err != ErrUnavailable || acc.Level != GrantNone || acc.Lifecycle != "" {
+		t.Errorf("authority 503: got (%+v,%v) want (zero, ErrUnavailable)", acc, err)
+	}
+}
+
 func TestRequireGrant_UnavailableFailsClosed(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

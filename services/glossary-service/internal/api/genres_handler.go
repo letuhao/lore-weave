@@ -5,17 +5,22 @@ import (
 	"time"
 
 	"github.com/loreweave/glossary-service/internal/domain"
+	"github.com/loreweave/grantclient"
 )
 
 // listGenres returns all genre groups for a book, sorted by sort_order.
 func (s *Server) listGenres(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireUserID(r); !ok {
+	userID, ok := s.requireUserID(r)
+	if !ok {
 		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
 		return
 	}
 
 	bookID, ok := parsePathUUID(w, r, "book_id")
 	if !ok {
+		return
+	}
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 

@@ -88,10 +88,40 @@ func (s *Server) resolveGrant(ctx context.Context, bookID, userID uuid.UUID) (Gr
 	return roleToLevel(role), nil
 }
 
+// resolveAccess resolves both the caller's grant AND the book's lifecycle in one
+// query, for the /access authority (E0-1 consumers gate edit/manage on lifecycle).
+// A MISSING book yields (GrantNone, "", nil) — never an error, never a 404 (R4):
+// grant is `none` and lifecycle is "" (absent), so it's still no existence oracle.
+func (s *Server) resolveAccess(ctx context.Context, bookID, userID uuid.UUID) (GrantLevel, string, error) {
+	var owner uuid.UUID
+	var lifecycle string
+	err := s.pool.QueryRow(ctx, `SELECT owner_user_id, lifecycle_state FROM books WHERE id=$1`, bookID).Scan(&owner, &lifecycle)
+	if err == pgx.ErrNoRows {
+		return GrantNone, "", nil
+	}
+	if err != nil {
+		return GrantNone, "", err
+	}
+	if owner == userID {
+		return GrantOwner, lifecycle, nil
+	}
+	var role string
+	err = s.pool.QueryRow(ctx, `SELECT role FROM book_collaborators WHERE book_id=$1 AND user_id=$2`, bookID, userID).Scan(&role)
+	if err == pgx.ErrNoRows {
+		// No grant → return EMPTY lifecycle (same as a missing book), so /access
+		// can't be used to distinguish exists-but-no-access from missing (R4).
+		return GrantNone, "", nil
+	}
+	if err != nil {
+		return GrantNone, "", err
+	}
+	return roleToLevel(role), lifecycle, nil
+}
+
 // getBookAccess (internal) — the single authority every service calls to resolve
-// a (user, book) grant. Always 200 with a level; `none` covers both
-// missing-book and no-grant (zero existence oracle, R4). Fail-closed: a DB
-// error → 503 so callers deny rather than assume access.
+// a (user, book) grant. Always 200 with a level + the book's lifecycle_state;
+// `none` covers both missing-book and no-grant (zero existence oracle, R4).
+// Fail-closed: a DB error → 503 so callers deny rather than assume access.
 func (s *Server) getBookAccess(w http.ResponseWriter, r *http.Request) {
 	bookID, err := uuid.Parse(chi.URLParam(r, "book_id"))
 	if err != nil {
@@ -103,12 +133,12 @@ func (s *Server) getBookAccess(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_USER_ID", "invalid user_id")
 		return
 	}
-	lvl, err := s.resolveGrant(r.Context(), bookID, userID)
+	lvl, lifecycle, err := s.resolveAccess(r.Context(), bookID, userID)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "RESOLVE_FAILED", "grant resolution failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"grant_level": lvl.String()})
+	writeJSON(w, http.StatusOK, map[string]string{"grant_level": lvl.String(), "lifecycle_state": lifecycle})
 }
 
 // requireBookOwner gates owner-only grant management (D-E0-D). Not-owner and

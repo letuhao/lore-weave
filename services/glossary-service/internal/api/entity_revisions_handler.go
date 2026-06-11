@@ -21,6 +21,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/loreweave/grantclient"
 )
 
 const entityRevisionsListCap = 200
@@ -34,9 +35,11 @@ type entityRevisionSummary struct {
 	CreatedAt   string  `json:"created_at"`
 }
 
-// authEntityRevision runs the shared auth + ownership + entity-in-book checks and
-// returns (bookID, entityID, userID, ok).
-func (s *Server) authEntityRevision(w http.ResponseWriter, r *http.Request) (uuid.UUID, uuid.UUID, uuid.UUID, bool) {
+// authEntityRevision runs the shared auth + grant + entity-in-book checks and
+// returns (bookID, entityID, userID, ok). `need` is the minimum grant: reads
+// pass GrantView; the mutating restore passes GrantEdit (else a view-only
+// collaborator could write via restore — /review-impl HIGH).
+func (s *Server) authEntityRevision(w http.ResponseWriter, r *http.Request, need grantclient.GrantLevel) (uuid.UUID, uuid.UUID, uuid.UUID, bool) {
 	var zero uuid.UUID
 	userID, ok := s.requireUserID(r)
 	if !ok {
@@ -47,7 +50,7 @@ func (s *Server) authEntityRevision(w http.ResponseWriter, r *http.Request) (uui
 	if !ok {
 		return zero, zero, zero, false
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, need) {
 		return zero, zero, zero, false
 	}
 	entityID, ok := parsePathUUID(w, r, "entity_id")
@@ -66,7 +69,7 @@ func (s *Server) authEntityRevision(w http.ResponseWriter, r *http.Request) (uui
 }
 
 func (s *Server) listEntityRevisions(w http.ResponseWriter, r *http.Request) {
-	_, entityID, _, ok := s.authEntityRevision(w, r)
+	_, entityID, _, ok := s.authEntityRevision(w, r, grantclient.GrantView)
 	if !ok {
 		return
 	}
@@ -98,7 +101,7 @@ func (s *Server) listEntityRevisions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getEntityRevision(w http.ResponseWriter, r *http.Request) {
-	_, entityID, _, ok := s.authEntityRevision(w, r)
+	_, entityID, _, ok := s.authEntityRevision(w, r, grantclient.GrantView)
 	if !ok {
 		return
 	}
@@ -137,7 +140,7 @@ func (s *Server) getEntityRevision(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) restoreEntityRevision(w http.ResponseWriter, r *http.Request) {
-	bookID, entityID, userID, ok := s.authEntityRevision(w, r)
+	bookID, entityID, userID, ok := s.authEntityRevision(w, r, grantclient.GrantEdit)
 	if !ok {
 		return
 	}
