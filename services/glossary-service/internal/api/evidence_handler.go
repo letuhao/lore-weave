@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/loreweave/grantclient"
 )
 
 // ── list entity evidences ────────────────────────────────────────────────────
@@ -49,8 +50,8 @@ type evidenceListResp struct {
 	Total               int                     `json:"total"`
 	Limit               int                     `json:"limit"`
 	Offset              int                     `json:"offset"`
-	AvailableAttributes []evidenceFilterOption   `json:"available_attributes"`
-	AvailableChapters   []evidenceChapterOption  `json:"available_chapters"`
+	AvailableAttributes []evidenceFilterOption  `json:"available_attributes"`
+	AvailableChapters   []evidenceChapterOption `json:"available_chapters"`
 	AvailableLanguages  []string                `json:"available_languages"`
 }
 
@@ -69,7 +70,7 @@ func (s *Server) listEntityEvidences(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 	if !s.verifyEntityInBook(w, r.Context(), entityID, bookID) {
@@ -402,7 +403,7 @@ func (s *Server) createEvidence(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 	if !s.verifyEntityInBook(w, r.Context(), entityID, bookID) {
@@ -508,7 +509,7 @@ func (s *Server) updateEvidence(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 	if !s.verifyEntityInBook(w, r.Context(), entityID, bookID) {
@@ -686,7 +687,7 @@ func (s *Server) deleteEvidence(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 	if !s.verifyEntityInBook(w, r.Context(), entityID, bookID) {

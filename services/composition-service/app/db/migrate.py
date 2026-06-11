@@ -66,7 +66,8 @@ CREATE TABLE IF NOT EXISTS outline_node (
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT outline_chapter_required  CHECK (kind NOT IN ('chapter','scene') OR chapter_id IS NOT NULL),
-  CONSTRAINT outline_beatrole_scene    CHECK (beat_role IS NULL OR kind = 'scene')
+  -- T1.2 Beat Sheet: beat_role may live on a scene OR a chapter (arcs/beats excluded).
+  CONSTRAINT outline_beatrole_kind     CHECK (beat_role IS NULL OR kind IN ('scene','chapter'))
 );
 CREATE INDEX IF NOT EXISTS idx_outline_node_project ON outline_node(project_id) WHERE NOT is_archived;
 CREATE INDEX IF NOT EXISTS idx_outline_node_parent  ON outline_node(parent_id, rank);
@@ -183,6 +184,18 @@ CREATE INDEX IF NOT EXISTS idx_narrative_thread_open
 -- generation_run.state (spec §10.3): persisted ReasoningState for resumable auto
 -- runs + the re-injected open-thread set. `generation_run` IS generation_job here.
 ALTER TABLE generation_job ADD COLUMN IF NOT EXISTS state JSONB;
+
+-- T1.2 Beat Sheet: relax the legacy scene-only beat_role CHECK so a CHAPTER can
+-- also carry a beat_role (manual beat-assign at chapter level). Idempotent: the
+-- DO-block no-ops once the new constraint exists (no re-validate on every boot).
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'outline_beatrole_kind') THEN
+    ALTER TABLE outline_node DROP CONSTRAINT IF EXISTS outline_beatrole_scene;
+    ALTER TABLE outline_node ADD CONSTRAINT outline_beatrole_kind
+      CHECK (beat_role IS NULL OR kind IN ('scene','chapter'));
+  END IF;
+END $$;
 
 -- ── generation_correction: the human-gate signal (V1 correction flywheel, §3).
 -- ONE row per author correction on a generation. Only GENUINE-AUTHOR-CHOICE kinds

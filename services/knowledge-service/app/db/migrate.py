@@ -318,6 +318,19 @@ CREATE TABLE IF NOT EXISTS extraction_jobs (
 ALTER TABLE extraction_jobs
   ADD COLUMN IF NOT EXISTS campaign_id UUID;
 
+-- E0-3 Phase 2a (D-E0-3-CALLER-PAYS-EXTRACTION): BYOK dual-identity billing.
+-- A collaborator's extraction must charge the COLLABORATOR's key, never the
+-- owner's (only a key's owner may cause it to be charged). These three columns
+-- carry the CALLER's billing identity; everything else on the row (graph
+-- partition user_id, the canonical embedding_model search tag) stays the
+-- project owner's. NULL ⇒ owner-triggered (or legacy) ⇒ single-identity path,
+-- resolves exactly as before. Fail-safe: worker DENIES if billing_user_id is
+-- set but a billing ref is NULL (never falls back to the owner's key).
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS billing_user_id         UUID,
+  ADD COLUMN IF NOT EXISTS billing_embedding_model TEXT,
+  ADD COLUMN IF NOT EXISTS billing_llm_model       TEXT;
+
 CREATE INDEX IF NOT EXISTS idx_extraction_jobs_project
   ON extraction_jobs (project_id, created_at DESC);
 

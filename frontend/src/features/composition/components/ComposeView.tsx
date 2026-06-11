@@ -4,6 +4,7 @@
 // a ghost preview — it is NOT in the editor doc and is NEVER autosaved until the
 // author clicks Accept (§13 SC4), which calls onAccept() to insert it and then
 // runs an advisory critique.
+import type { Dispatch, SetStateAction } from 'react';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCompositionStream } from '../hooks/useCompositionStream';
@@ -23,11 +24,15 @@ type Props = {
   modelName?: string;
   token: string | null;
   onAccept: (text: string) => void;
+  /** T3.1: the compose guide is lifted to CompositionPanel so the co-writer chat's
+   *  "Use as guide" can pre-fill it. A SetStateAction setter so the canon-revise
+   *  append (functional updater) keeps working. */
+  guide: string;
+  onGuideChange: Dispatch<SetStateAction<string>>;
 };
 
-export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName, token, onAccept }: Props) {
+export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName, token, onAccept, guide, onGuideChange }: Props) {
   const { t } = useTranslation('composition');
-  const [guide, setGuide] = useState('');
   const guideRef = useRef<HTMLTextAreaElement>(null);
   // Reasoning preference. "auto" lets the server decide per the selected model
   // (adaptive pass-through vs our rule-based scorer); off/low/medium/high are
@@ -85,7 +90,7 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
           'Keep canon consistent: {{name}} is gone from the story by this scene — do not portray them as present or acting.',
         name,
       }) + (v.why ? ` (${v.why})` : '');
-    setGuide((prev) => (prev.trim() ? `${prev.trim()}\n${line}` : line));
+    onGuideChange((prev) => (prev.trim() ? `${prev.trim()}\n${line}` : line));
     guideRef.current?.focus();
   };
 
@@ -110,7 +115,7 @@ export function ComposeView({ projectId, sceneId, modelRef, modelKind, modelName
         rows={2}
         placeholder={t('guidePlaceholder', { defaultValue: 'Optional guidance for the co-writer…' })}
         value={guide}
-        onChange={(e) => setGuide(e.target.value)}
+        onChange={(e) => onGuideChange(e.target.value)}
       />
       <div className="flex items-center gap-2">
         <select

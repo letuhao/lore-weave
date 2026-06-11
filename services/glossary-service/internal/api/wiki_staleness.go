@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/loreweave/grantclient"
 )
 
 // wikiStalenessRow is one pending change-feed entry: the stale article + WHY.
@@ -39,7 +40,7 @@ func (s *Server) listWikiStaleness(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 	rows, err := s.pool.Query(r.Context(), `
@@ -106,7 +107,7 @@ func (s *Server) dismissWikiStaleness(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 	var articleID uuid.UUID
@@ -156,7 +157,7 @@ func (s *Server) dismissWikiStalenessBatch(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 	var req struct {
@@ -271,7 +272,7 @@ func (s *Server) getWikiStalenessDiff(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 
@@ -341,7 +342,7 @@ func (s *Server) sweepWikiStalenessPublic(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 

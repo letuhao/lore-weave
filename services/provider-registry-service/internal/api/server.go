@@ -60,6 +60,19 @@ type Server struct {
 	// gates on jobsRepo != nil before using them.
 	estimator billing.Estimator
 	guardrail *billing.GuardrailClient
+
+	// Phase 0 (event-driven re-arch) — per-job cancellation. jobCancels maps an
+	// in-flight async job to its worker-goroutine CancelFunc so DELETE actually
+	// aborts the provider call + frees the governor slot (not just DB state).
+	// jobWallclock (0 = disabled) is the optional runaway backstop.
+	jobCancels   jobCancelRegistry
+	jobWallclock time.Duration
+
+	// Phase 1 Commit 3 (event-driven re-arch) — durable per-kind work queue.
+	// nil ⇒ direct-goroutine dispatch (LLM_JOB_QUEUE_ENABLED off / no broker).
+	// When set, doSubmitJob enqueues instead of spawning, and a consumer pool
+	// (per-kind semaphore = governor.MaxFor) runs jobs — wait-not-fail.
+	jobQueue *jobs.JobQueue
 }
 
 // NewServer constructs the HTTP server. notifier may be nil (router-only
@@ -97,6 +110,9 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 		SystemPromptTokenEstimate: cfg.SystemPromptTokenEstimate,
 	}
 	s.guardrail = billing.NewGuardrailClient(cfg.UsageBillingServiceURL, cfg.InternalServiceToken, nil)
+	if cfg.LLMJobWallclockTimeoutS > 0 {
+		s.jobWallclock = time.Duration(cfg.LLMJobWallclockTimeoutS) * time.Second
+	}
 	if pool != nil {
 		s.jobsRepo = jobs.NewRepo(pool)
 		s.jobsWorker = jobs.NewWorker(s.jobsRepo, s.resolveJobCreds, jobsAdapterFactory(s.invokeClient), notifier, nil, audioCache, s.guardrail, cfg.JobMaxRetries)
@@ -129,6 +145,8 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 					CampaignUsageStream: cfg.CampaignUsageStream,
 					UsageMaxLen:         int64(cfg.UsageStreamMaxLen),
 					CampaignMaxLen:      int64(cfg.CampaignUsageStreamMaxLen),
+					TerminalStream:      cfg.LLMJobTerminalStream,
+					TerminalMaxLen:      int64(cfg.LLMJobTerminalStreamMaxLen),
 					PollInterval:        time.Duration(cfg.UsageRelayPollMs) * time.Millisecond,
 					BatchSize:           cfg.UsageRelayBatch,
 				}, nil)
@@ -136,6 +154,79 @@ func NewServer(pool *pgxpool.Pool, cfg *config.Config, notifier jobs.Notifier, a
 				slog.Info("S4b usage relay enabled", "usage_stream", cfg.UsageStream, "campaign_stream", cfg.CampaignUsageStream)
 			} else {
 				slog.Warn("S3a: REDIS_URL set but unparseable — governance disabled", "err", err)
+			}
+		}
+
+		// Phase 1 §5.6 — stuck-`running` truth-sweeper. Periodically bulk-fails
+		// jobs that crashed mid-Process (left running, no progress past the
+		// timeout) + emits their terminal event so the caller resumes. Timeout 0
+		// = disabled. Independent of Redis (the DB transition stands even if the
+		// relay isn't shipping events).
+		if cfg.LLMRunningSweepTimeoutS > 0 {
+			timeout := time.Duration(cfg.LLMRunningSweepTimeoutS) * time.Second
+			interval := time.Duration(cfg.LLMRunningSweepIntervalS) * time.Second
+			repo := s.jobsRepo
+			go func() {
+				t := time.NewTicker(interval)
+				defer t.Stop()
+				for range t.C {
+					if n, serr := repo.SweepStuckRunning(context.Background(), timeout); serr != nil {
+						slog.Warn("stuck-running sweep failed", "err", serr)
+					} else if n > 0 {
+						slog.Info("stuck-running sweep", "swept", n)
+					}
+				}
+			}()
+			slog.Info("stuck-running sweeper enabled", "timeout_s", cfg.LLMRunningSweepTimeoutS, "interval_s", cfg.LLMRunningSweepIntervalS)
+		}
+
+		// Phase 1 Commit 3 — durable work queue. When enabled (+ broker set),
+		// submit enqueues and this consumer pool runs jobs behind a per-kind
+		// semaphore (= governor.MaxFor), so a slow local job DELAYS the queue
+		// instead of failing everyone behind it on acquire (the incident class).
+		if cfg.LLMJobQueueEnabled && cfg.RabbitMQURL != "" {
+			if jq, qerr := jobs.NewJobQueue(cfg.RabbitMQURL, cfg.GovernorCloudMax, slog.Default()); qerr != nil {
+				slog.Warn("LLM job queue: init failed — direct dispatch", "err", qerr)
+			} else {
+				s.jobQueue = jq
+				// resolve: job_id → provider kind (the semaphore class).
+				resolve := func(ctx context.Context, jobID uuid.UUID) (string, bool) {
+					d, lerr := s.jobsRepo.LoadForProcess(ctx, jobID)
+					if lerr != nil {
+						return "", false
+					}
+					kind, ok, rerr := s.jobsRepo.ResolveKind(ctx, d.ModelSource, d.OwnerUserID, d.ModelRef)
+					if rerr != nil || !ok {
+						return "", false
+					}
+					return kind, true
+				}
+				// run: Phase-0 cancellable ctx + jobID→cancel registration, SYNC
+				// (the consumer acks only after the job is terminal). DELETE still
+				// aborts an in-flight queued job + frees its slot.
+				run := func(ctx context.Context, jobID uuid.UUID) {
+					wctx := observability.DetachedContext(ctx)
+					var cancel context.CancelFunc
+					if s.jobWallclock > 0 {
+						wctx, cancel = context.WithTimeout(wctx, s.jobWallclock)
+					} else {
+						wctx, cancel = context.WithCancel(wctx)
+					}
+					s.jobCancels.register(jobID, cancel)
+					defer s.jobCancels.remove(jobID)
+					defer cancel()
+					s.jobsWorker.ProcessJob(wctx, jobID)
+				}
+				workers := cfg.GovernorCloudMax * 2
+				if workers < 4 {
+					workers = 4
+				}
+				if cerr := s.jobQueue.StartConsumer(context.Background(), workers, resolve, run); cerr != nil {
+					slog.Warn("LLM job queue: consumer start failed — direct dispatch", "err", cerr)
+					s.jobQueue = nil
+				} else {
+					slog.Info("LLM job queue enabled", "workers", workers, "cloud_max", cfg.GovernorCloudMax)
+				}
 			}
 		}
 	}

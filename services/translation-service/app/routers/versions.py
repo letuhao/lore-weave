@@ -5,6 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException
 import asyncpg
 
 from ..deps import get_current_user, get_db
+from ..grant_deps import (
+    GrantLevel,
+    authorize_book,
+    book_for_chapter,
+    get_grant_client_dep,
+)
 
 log = logging.getLogger(__name__)
 from ..models import (
@@ -19,20 +25,24 @@ from ..models import (
 router = APIRouter(prefix="/v1/translation", tags=["translation-versions"])
 
 
-def _assert_owner(row, user_id: str) -> None:
-    if not row or str(row["owner_user_id"]) != user_id:
-        raise HTTPException(status_code=403, detail={"code": "TRANSL_FORBIDDEN", "message": "Access denied"})
-
-
 # ── List all versions for a chapter, grouped by language ───────────────────────
 
 @router.get("/chapters/{chapter_id}/versions", response_model=ChapterVersionsResponse)
 async def list_chapter_versions(
     chapter_id: UUID,
     user_id: str = Depends(get_current_user),
+    gc=Depends(get_grant_client_dep),
     db: asyncpg.Pool = Depends(get_db),
 ):
-    # Fetch all chapter_translations for this chapter owned by user, newest first
+    # E0-4a: a chapter with no translations yet has no book to resolve a grant on
+    # → return empty (leak-safe, preserves the prior empty-list behavior for owners
+    # too). Once translations exist, gate on the book grant (view) then show ALL
+    # versions for the chapter (D-E0-4-F shared per-book view — drop owner_user_id).
+    book_id = await book_for_chapter(db, chapter_id)
+    if book_id is None:
+        return ChapterVersionsResponse(chapter_id=chapter_id, languages=[])
+    await authorize_book(gc, book_id, UUID(user_id), GrantLevel.VIEW)
+
     rows = await db.fetch(
         """
         SELECT ct.*,
@@ -43,10 +53,9 @@ async def list_chapter_versions(
           ON actv.chapter_id = ct.chapter_id
          AND actv.target_language = ct.target_language
         WHERE ct.chapter_id = $1
-          AND ct.owner_user_id = $2
         ORDER BY ct.target_language, ct.version_num DESC
         """,
-        chapter_id, UUID(user_id),
+        chapter_id,
     )
 
     if not rows:
@@ -91,6 +100,7 @@ async def get_chapter_version(
     chapter_id: UUID,
     version_id: UUID,
     user_id: str = Depends(get_current_user),
+    gc=Depends(get_grant_client_dep),
     db: asyncpg.Pool = Depends(get_db),
 ):
     row = await db.fetchrow(
@@ -99,7 +109,8 @@ async def get_chapter_version(
     )
     if not row:
         raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Version not found"})
-    _assert_owner(row, user_id)
+    # E0-4a view gate (version→book grant); non-grantee → 404 (uniform anti-oracle).
+    await authorize_book(gc, row["book_id"], UUID(user_id), GrantLevel.VIEW)
 
     return ChapterTranslation(**dict(row))
 
@@ -112,6 +123,7 @@ async def set_active_version(
     version_id: UUID,
     acknowledge_issues: bool = False,
     user_id: str = Depends(get_current_user),
+    gc=Depends(get_grant_client_dep),
     db: asyncpg.Pool = Depends(get_db),
 ):
     row = await db.fetchrow(
@@ -121,7 +133,10 @@ async def set_active_version(
     )
     if not row:
         raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Version not found"})
-    _assert_owner(row, user_id)
+    # E0-4a edit gate (version→book) — publishing the active version is an edit
+    # action; the published version is per-(chapter,language) shared state. The
+    # set_by_user_id below is the caller (caller-attributed). Non-grantee → 404.
+    await authorize_book(gc, row["book_id"], UUID(user_id), GrantLevel.EDIT)
 
     if row["status"] != "completed":
         raise HTTPException(
@@ -200,6 +215,7 @@ async def save_edited_version(
     chapter_id: UUID,
     body: SaveEditedTranslationRequest,
     user_id: str = Depends(get_current_user),
+    gc=Depends(get_grant_client_dep),
     db: asyncpg.Pool = Depends(get_db),
 ):
     """M7c (Channel 1b): save a human-edited translation as a NEW version
@@ -214,7 +230,9 @@ async def save_edited_version(
     )
     if not src:
         raise HTTPException(status_code=404, detail={"code": "TRANSL_NOT_FOUND", "message": "Source version not found"})
-    _assert_owner(src, user_id)
+    # E0-4a edit gate (source-version→book). Saving a human edit creates a new
+    # version attributed to the caller; an edit grant on the book authorizes it.
+    await authorize_book(gc, src["book_id"], UUID(user_id), GrantLevel.EDIT)
     if src["target_language"] != body.target_language:
         raise HTTPException(
             status_code=422,
@@ -222,15 +240,17 @@ async def save_edited_version(
         )
 
     # New human version: max(version_num)+1 for (chapter, lang); reuse the source
-    # version's job_id/book_id/owner (the edit attaches to the same job — avoids
-    # making job_id a nullable FK). authored_by='human' + the parent link.
+    # version's job_id/book_id (the edit attaches to the same job — avoids making
+    # job_id a nullable FK). E0-4a caller-attribution: owner_user_id is the CALLER
+    # ($7), NOT the source's owner — a collaborator's human edit belongs to the
+    # collaborator (review-impl MED-1). authored_by='human' + the parent link.
     new = await db.fetchrow(
         """
         INSERT INTO chapter_translations
           (job_id, chapter_id, book_id, owner_user_id, status, target_language,
            translated_body, translated_body_json, translated_body_format,
            version_num, authored_by, edited_from_version_id, finished_at)
-        SELECT job_id, chapter_id, book_id, owner_user_id, 'completed', target_language,
+        SELECT job_id, chapter_id, book_id, $7::uuid, 'completed', target_language,
                $3, $4::jsonb, $5,
                COALESCE((SELECT MAX(version_num) FROM chapter_translations
                           WHERE chapter_id=$2 AND target_language=$6), 0) + 1,
@@ -242,6 +262,7 @@ async def save_edited_version(
         body.translated_body,
         json.dumps(body.translated_body_json) if body.translated_body_json is not None else None,
         body.translated_body_format, body.target_language,
+        UUID(user_id),
     )
 
     # M7c gold: emit the LLM→human diff (best-effort post-commit; a feedback-log

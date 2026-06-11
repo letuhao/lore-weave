@@ -235,6 +235,33 @@ CREATE TABLE IF NOT EXISTS usage_outbox (
 );
 CREATE INDEX IF NOT EXISTS idx_usage_outbox_unpublished
   ON usage_outbox(id) WHERE published_at IS NULL;
+
+-- LLM re-arch Phase 1 — transactional terminal-event outbox. On EVERY terminal
+-- transition (completed|failed|cancelled) the worker (and the cancel handler)
+-- writes one row HERE in the same tx as the llm_jobs finalize; a relay XADDs it
+-- to loreweave:events:llm_job_terminal and stamps published_at. This is the
+-- durable, per-job-correlated completion signal a caller resumes on (the SDK
+-- event adapter + future service consumers). Mirrors usage_outbox: at-least-once
+-- delivery, consumers dedup on job_id. result_ref = job_id (consumer fetches the
+-- full result via GET /internal/llm/jobs/{id}); the event carries only the
+-- correlation + summary so the stream stays light.
+CREATE TABLE IF NOT EXISTS job_event_outbox (
+  id             BIGSERIAL PRIMARY KEY,
+  job_id         UUID NOT NULL,
+  owner_user_id  UUID NOT NULL,
+  operation      TEXT NOT NULL,
+  status         TEXT NOT NULL,
+  kind           TEXT NOT NULL DEFAULT '',
+  cost_usd       NUMERIC(16,8),
+  error_code     TEXT,
+  error_message  TEXT,
+  campaign_id    UUID,
+  correlation_id TEXT,
+  published_at   TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_job_event_outbox_unpublished
+  ON job_event_outbox(id) WHERE published_at IS NULL;
 `
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {

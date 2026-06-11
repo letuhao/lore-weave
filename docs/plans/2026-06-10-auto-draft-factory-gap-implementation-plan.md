@@ -6,6 +6,14 @@
 
 Ordering principle: backend-first (endpoints + data), then FE wiring, each slice a `/loom` with tests. Most gaps are **read-side/aggregation** (no new saga state) → low risk.
 
+## ✅ STATUS (2026-06-11, branch `feat/auto-draft-factory-gaps`, PR #30)
+**Done:** G1 wake-up report · G2 re-run-failed · G3 monitor stats · G4 review CTA · /review-impl fixes · polish: campaigns-list progress bar, paused banner, ingest row, **#1 chapter-table server paging** (`GET /{id}/chapters?status&limit&offset`; detail un-embeds chapters), **#5 estimate per-stage token columns** (partial).
+**Still deferred (with reason):**
+- **#5 cloud/local provider badge** — needs provider-registry to echo `provider_kind` in the estimate response (cross-service; the per-stage USD already signals $0-local).
+- **#4 in-flight panel + recent log** — redundant with the (now-paginated) attention table + the G3 in-progress stat; a meaningful panel needs per-chapter sub-step state (batch/verify/backoff) we don't project, and the log needs a per-chapter activity event feed.
+- **#7 switch-model-on-resume** — heavy (mutating models on a live campaign); workaround = cancel + new campaign.
+- **Vision-beyond-MVP** (unchanged): scheduling step, optional sample-run, sub-run child campaigns, CSV export, heatmap, compact-model role.
+
 ---
 
 ## 🔴 G1 — Completion / wake-up report

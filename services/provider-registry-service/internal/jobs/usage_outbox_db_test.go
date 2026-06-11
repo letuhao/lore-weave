@@ -77,7 +77,7 @@ func TestFinalizeWithUsageOutbox_CompletedWritesOutboxInTx(t *testing.T) {
 	usage := &UsageOutbox{ModelSource: "user_model", ModelRef: modelRef,
 		Operation: "translation", InputTokens: 120, OutputTokens: 30, CostUSD: floatPtr(0.0001)}
 	rows, err := repo.FinalizeWithUsageOutbox(context.Background(), jobID, owner,
-		"completed", map[string]any{"x": 1}, "", "", "", usage)
+		"completed", map[string]any{"x": 1}, "", "", "", usage, nil)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestFinalizeWithUsageOutbox_RaceLost_NoOutbox(t *testing.T) {
 	usage := &UsageOutbox{ModelSource: "user_model", ModelRef: uuid.New(),
 		Operation: "translation", InputTokens: 1, OutputTokens: 1, CostUSD: floatPtr(0.1)}
 	rows, err := repo.FinalizeWithUsageOutbox(context.Background(), uuid.New(), uuid.New(),
-		"completed", nil, "", "", "", usage)
+		"completed", nil, "", "", "", usage, nil)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestFinalizeWithUsageOutbox_Failed_NoOutbox(t *testing.T) {
 	mock.ExpectCommit()
 
 	rows, err := repo.FinalizeWithUsageOutbox(context.Background(), uuid.New(), uuid.New(),
-		"failed", nil, "LLM_ERR", "boom", "", nil)
+		"failed", nil, "LLM_ERR", "boom", "", nil, nil)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -223,5 +223,181 @@ func TestDrainOnce_EmptyBatch_NoXAddCommitsClean(t *testing.T) {
 	}
 	if err := rmock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("redis expectations: %v", err)
+	}
+}
+
+// ── LLM re-arch Phase 1 — durable terminal-event outbox ──────────────────────
+
+func TestFinalizeWithUsageOutbox_WritesTerminalEvent(t *testing.T) {
+	// A FAILED job (no usage) with a non-nil term → finalize UPDATE + the
+	// job_event_outbox INSERT (every terminal status emits), NO usage INSERT.
+	mock, _ := pgxmock.NewPool()
+	defer mock.Close()
+	repo := &Repo{pool: mock}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(6)...).
+		WillReturnRows(pgxmock.NewRows([]string{"job_meta"}).AddRow([]byte(`{}`)))
+	mock.ExpectExec("INSERT INTO job_event_outbox").WithArgs(anyArgs(10)...).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mock.ExpectCommit()
+
+	term := &TerminalOutbox{Operation: "translation", ErrorCode: "LLM_ERR", ErrorMessage: "boom"}
+	rows, err := repo.FinalizeWithUsageOutbox(context.Background(), uuid.New(), uuid.New(),
+		"failed", nil, "LLM_ERR", "boom", "", nil, term)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if rows != 1 {
+		t.Fatalf("rows=%d want 1", rows)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+func TestFinalizeWithUsageOutbox_CompletedWritesBothOutboxes(t *testing.T) {
+	// completed + usage + term → usage_outbox INSERT THEN job_event_outbox INSERT,
+	// both in the one tx.
+	mock, _ := pgxmock.NewPool()
+	defer mock.Close()
+	repo := &Repo{pool: mock}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(6)...).
+		WillReturnRows(pgxmock.NewRows([]string{"job_meta"}).AddRow([]byte(`{}`)))
+	mock.ExpectExec("INSERT INTO usage_outbox").WithArgs(anyArgs(9)...).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mock.ExpectExec("INSERT INTO job_event_outbox").WithArgs(anyArgs(10)...).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mock.ExpectCommit()
+
+	usage := &UsageOutbox{ModelSource: "user_model", ModelRef: uuid.New(),
+		Operation: "chat", InputTokens: 10, OutputTokens: 5, CostUSD: floatPtr(0.002)}
+	term := &TerminalOutbox{Operation: "chat", CostUSD: floatPtr(0.002)}
+	rows, err := repo.FinalizeWithUsageOutbox(context.Background(), uuid.New(), uuid.New(),
+		"completed", map[string]any{"x": 1}, "", "", "", usage, term)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if rows != 1 {
+		t.Fatalf("rows=%d want 1", rows)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+func TestCancel_WritesTerminalEventInTx(t *testing.T) {
+	// A real cancel transition → UPDATE…RETURNING operation,job_meta + the
+	// job_event_outbox INSERT (status=cancelled), all in one tx.
+	mock, _ := pgxmock.NewPool()
+	defer mock.Close()
+	repo := &Repo{pool: mock}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(2)...).
+		WillReturnRows(pgxmock.NewRows([]string{"operation", "job_meta"}).
+			AddRow("entity_extraction", []byte(`{}`)))
+	mock.ExpectExec("INSERT INTO job_event_outbox").WithArgs(anyArgs(10)...).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mock.ExpectCommit()
+
+	rows, err := repo.Cancel(context.Background(), uuid.New(), uuid.New())
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if rows != 1 {
+		t.Fatalf("rows=%d want 1", rows)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+func TestCancel_NoRow_NoEventNoOp(t *testing.T) {
+	// Already-terminal / not-found → UPDATE matches 0 rows → ErrNoRows → commit,
+	// NO job_event INSERT, returns 0.
+	mock, _ := pgxmock.NewPool()
+	defer mock.Close()
+	repo := &Repo{pool: mock}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("UPDATE llm_jobs").WithArgs(anyArgs(2)...).
+		WillReturnRows(pgxmock.NewRows([]string{"operation", "job_meta"})) // empty → ErrNoRows
+	mock.ExpectCommit()
+
+	rows, err := repo.Cancel(context.Background(), uuid.New(), uuid.New())
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if rows != 0 {
+		t.Fatalf("rows=%d want 0", rows)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("expectations: %v", err)
+	}
+}
+
+func TestDrainTerminalOnce_PublishesAndMarks(t *testing.T) {
+	// One unpublished terminal row → XADD to the terminal stream + mark published,
+	// in one tx. Nullable columns (cost_usd, error_*, campaign_id, correlation_id)
+	// scan into *string.
+	db, _ := pgxmock.NewPool()
+	defer db.Close()
+	rdb, rmock := redismock.NewClientMock()
+	rxm := rmock.CustomMatch(orderlessArgs)
+	relay := NewUsageRelay(rdb, db, RelayConfig{TerminalStream: "t", TerminalMaxLen: 10, BatchSize: 50}, nil)
+
+	jobID, owner, camp := uuid.New().String(), uuid.New().String(), uuid.New().String()
+	cost := "0.004"
+	cols := []string{"id", "job_id", "owner_user_id", "operation", "status", "kind",
+		"cost_usd", "error_code", "error_message", "campaign_id", "correlation_id"}
+	db.ExpectBegin()
+	db.ExpectQuery("SELECT").WithArgs(anyArgs(1)...).WillReturnRows(
+		pgxmock.NewRows(cols).AddRow(int64(1), jobID, owner, "entity_extraction", "completed",
+			"lm_studio", &cost, (*string)(nil), (*string)(nil), &camp, (*string)(nil)),
+	)
+	want := buildTerminalFields(jobID, owner, "entity_extraction", "completed", "lm_studio",
+		"0.004", "", "", camp, "")
+	rxm.ExpectXAdd(&redis.XAddArgs{Stream: "t", MaxLen: 10, Approx: true, Values: want}).SetVal("1-0")
+	db.ExpectExec("UPDATE job_event_outbox SET published_at").WithArgs(anyArgs(1)...).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	db.ExpectCommit()
+
+	n, err := relay.drainTerminalOnce(context.Background())
+	if err != nil {
+		t.Fatalf("drainTerminalOnce: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("published=%d want 1", n)
+	}
+	if err := db.ExpectationsWereMet(); err != nil {
+		t.Fatalf("db expectations: %v", err)
+	}
+	if err := rmock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("redis expectations: %v", err)
+	}
+}
+
+func TestBuildTerminalFields_WireContract(t *testing.T) {
+	f := buildTerminalFields("job-1", "owner-1", "translation", "failed", "openai",
+		"0.01", "LLM_ERR", "boom", "camp-1", "corr-1")
+	want := map[string]any{
+		"job_id": "job-1", "owner_user_id": "owner-1", "operation": "translation",
+		"status": "failed", "kind": "openai", "result_ref": "job-1",
+		"cost_usd": "0.01", "error_code": "LLM_ERR", "error_message": "boom",
+		"campaign_id": "camp-1", "correlation_id": "corr-1",
+	}
+	if len(f) != len(want) {
+		t.Fatalf("field count %d != %d", len(f), len(want))
+	}
+	for k, v := range want {
+		if f[k] != v {
+			t.Fatalf("field %q = %v want %v", k, f[k], v)
+		}
+	}
+	if f["result_ref"] != f["job_id"] {
+		t.Fatalf("result_ref %v != job_id %v", f["result_ref"], f["job_id"])
 	}
 }

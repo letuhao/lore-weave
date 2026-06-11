@@ -18,8 +18,29 @@ export type WorkResolution = {
   book_project_ids: string[];
 };
 
+// T0.1 — narrative-thread (promise/foreshadow) ledger row. Advisory (D4); the
+// `open` set is the author's unpaid-promise debt. Mirrors composition-service
+// NarrativeThread (app/db/models.py).
+export type ThreadKind = 'promise' | 'foreshadow' | 'question' | 'mice_thread';
+export type ThreadStatus = 'open' | 'progressing' | 'paid' | 'dropped';
+export type NarrativeThread = {
+  id: string;
+  project_id: string;
+  user_id: string;
+  kind: ThreadKind;
+  status: ThreadStatus;
+  opened_at_node: string | null;
+  payoff_node: string | null;
+  priority: number;
+  summary: string;
+  version: number;
+};
+
 // ── A3 decompose planner (cycle 13) ──────────────────────────────────────────
-export type StructureTemplate = { id: string; name: string; kind?: string; beats?: unknown[] };
+// T1.2 Beat Sheet — a template beat: a `key` (joins to node.beat_role) + its
+// structural `purpose`. Mirrors the BE StructureTemplate.beats (plan.py).
+export type Beat = { key: string; purpose: string };
+export type StructureTemplate = { id: string; name: string; kind?: string; beats: Beat[] };
 
 // Preview shape — mirrors composition-service DecomposeResult (dataclasses.asdict).
 // The chapter is nested under `chapter`; scenes carry resolved present_entity_ids
@@ -64,12 +85,29 @@ export type OutlineNode = {
   project_id: string;
   parent_id: string | null;
   kind: 'arc' | 'chapter' | 'scene' | 'beat';
+  rank: string; // lexorank — the BE's primary within-parent order (story_order NULLS LAST, then rank)
   title: string;
   chapter_id: string | null;
   story_order: number | null;
   status: 'empty' | 'outline' | 'drafting' | 'done';
   synopsis: string;
   version: number;
+  is_archived: boolean; // T1.1b — archived nodes are hidden unless the tree's "show archived" view is on
+  beat_role: string | null; // T1.2 — the structure-template beat key this node fills (or null)
+};
+
+// T1.3 Scene Graph — a non-derivable scene edge (a causal/structural dependency
+// the linear outline can't express). `setup_payoff` is the planted-payoff axis
+// (solid arrow); `custom` is a free author-defined relation (dashed). Mirrors the
+// BE SceneLink (app/db/models.py). Unique on (from,to,kind) → dup create 409s.
+export type SceneLinkKind = 'setup_payoff' | 'custom';
+export type SceneLink = {
+  id: string;
+  project_id: string;
+  from_node_id: string;
+  to_node_id: string;
+  kind: SceneLinkKind;
+  label: string;
 };
 
 // M9 chapter-gate (OI-1): can this chapter be published? can_publish is true
@@ -245,3 +283,6 @@ export type StreamEvent =
   | { type: 'capped' }
   | { type: 'error'; error: string }
   | { type: 'done'; job_id: string; status: string; output_tokens?: number; measured?: boolean; capped?: boolean; replay?: boolean };
+
+// T3.2 — selection-scoped AI operations on highlighted prose.
+export type SelectionOperation = 'rewrite' | 'expand' | 'describe';

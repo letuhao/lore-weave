@@ -3,52 +3,77 @@ package api
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/loreweave/grantclient"
 )
 
-// Ownership sentinels for the MCP read tools (INV-8).
+// Grant sentinels for the book-scoped guards (E0-1 collaboration model).
 var (
-	// ErrNotAccessible — the book doesn't exist OR isn't owned by the caller.
-	// Deliberately UNIFORM for both cases (H13) so a tool can't be used as an
-	// existence oracle to probe other users' book ids.
+	// ErrNotAccessible — the caller's grant does not satisfy the required level
+	// (covers not-a-collaborator AND missing book — deliberately UNIFORM, H13/R4,
+	// so a tool can't be used as an existence oracle).
 	ErrNotAccessible = errors.New("book not accessible")
-	// ErrBookUnavailable — book-service couldn't be reached, so ownership is
-	// UNKNOWN → fail closed (deny), never assume owned.
-	ErrBookUnavailable = errors.New("book ownership unavailable")
+	// ErrBookUnavailable — book-service couldn't be reached, so the grant is
+	// UNKNOWN → fail closed (deny), never assume access.
+	ErrBookUnavailable = errors.New("book grant unavailable")
+	// ErrBookInactive — the caller has the grant, but the book is trashed/
+	// purge_pending and the operation needs edit or higher (reads are still OK).
+	ErrBookInactive = errors.New("book not in an editable state")
 )
 
-const ownershipCacheTTL = 60 * time.Second
-
-type ownerCacheEntry struct {
-	owned bool
-	exp   time.Time
+// buildGrantClient constructs the shared grant client from config. Returns nil
+// when book-service coordinates are absent (mirrors the nil-on-misconfig pattern
+// used for other optional clients) — the guards then fail closed. Logs loudly so
+// a permanent deny-everything is debuggable.
+func buildGrantClient(bookServiceURL, internalToken string) *grantclient.Client {
+	gc, err := grantclient.NewClient(grantclient.Options{
+		BaseURL:       bookServiceURL,
+		InternalToken: internalToken,
+	})
+	if err != nil {
+		slog.Error("glossary: grantclient init failed; ALL book-scoped guards will fail closed until fixed", "err", err)
+		return nil
+	}
+	return gc
 }
 
-// checkBookOwnership verifies userID owns bookID (INV-8). Backed by a short-TTL
-// cache that stores ONLY positive results — a not-owner / not-found / unavailable
-// is never cached, so a revoked grant or a transient book-service outage re-checks
-// on the next call. book-service down → ErrBookUnavailable (fail-closed).
-func (s *Server) checkBookOwnership(ctx context.Context, bookID, userID uuid.UUID) error {
-	key := userID.String() + ":" + bookID.String()
-	if v, ok := s.ownerCache.Load(key); ok {
-		if e := v.(ownerCacheEntry); e.owned && time.Now().Before(e.exp) {
-			return nil
-		}
-	}
-
-	proj, status := s.fetchBookProjection(ctx, bookID)
-	switch {
-	case status == http.StatusNotFound:
-		return ErrNotAccessible
-	case status != http.StatusOK:
+// checkGrant resolves the caller's grant on bookID and returns nil iff it
+// satisfies need. For need>=edit it ALSO requires the book be active
+// (trashed/purge_pending → ErrBookInactive); reads (view) are allowed on an
+// inactive book. Fail-closed on a missing client or an unreachable book-service.
+func (s *Server) checkGrant(ctx context.Context, bookID, userID uuid.UUID, need grantclient.GrantLevel) error {
+	if s.grantClient == nil {
 		return ErrBookUnavailable
-	case proj.OwnerUserID != userID:
+	}
+	acc, err := s.grantClient.ResolveAccess(ctx, bookID, userID)
+	if err != nil {
+		return ErrBookUnavailable
+	}
+	if !acc.Level.AtLeast(need) {
 		return ErrNotAccessible
 	}
-
-	s.ownerCache.Store(key, ownerCacheEntry{owned: true, exp: time.Now().Add(ownershipCacheTTL)})
+	if need >= grantclient.GrantEdit && !acc.Active() {
+		return ErrBookInactive
+	}
 	return nil
+}
+
+// requireGrant is the HTTP-handler guard. It writes the appropriate error
+// response and returns false on deny; true means the caller may proceed.
+func (s *Server) requireGrant(w http.ResponseWriter, ctx context.Context, bookID, userID uuid.UUID, need grantclient.GrantLevel) bool {
+	switch err := s.checkGrant(ctx, bookID, userID, need); {
+	case err == nil:
+		return true
+	case errors.Is(err, ErrBookUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "GLOSS_UPSTREAM_UNAVAILABLE", "book service unavailable")
+	case errors.Is(err, ErrBookInactive):
+		writeError(w, http.StatusConflict, "GLOSS_BOOK_INVALID_LIFECYCLE", "book is not in an editable state")
+	default: // ErrNotAccessible (under-grant or missing book — uniform 403, no oracle)
+		writeError(w, http.StatusForbidden, "GLOSS_FORBIDDEN", "forbidden")
+	}
+	return false
 }

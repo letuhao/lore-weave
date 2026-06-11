@@ -213,11 +213,6 @@ func computeHighlight(text, query string, window int) highlightResult {
 
 // searchChapterText — GET /v1/books/{book_id}/search?q=&limit= (mode=lexical).
 func (s *Server) searchChapterText(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
@@ -237,15 +232,10 @@ func (s *Server) searchChapterText(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", errMsg)
 		return
 	}
-	// Ownership IS the tenant gate (INV-4) — internal-token callers don't reach
-	// this external route; here the JWT subject must own the book.
-	lifecycle, okBook, status := s.ensureOwnerBook(r.Context(), bookID, ownerID)
-	if !okBook {
-		if status == http.StatusNotFound {
-			writeError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "book not found")
-		} else {
-			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to load book")
-		}
+	// Grant IS the tenant gate (INV-4) — internal-token callers don't reach this
+	// external route; here the JWT subject must hold ≥view on the book (E0-2).
+	_, _, lifecycle, ok := s.authBook(w, r, bookID, GrantView)
+	if !ok {
 		return
 	}
 	if lifecycle == "purge_pending" { // mirror getBookByID — don't search a book being purged (LOW-2)

@@ -35,6 +35,20 @@ ALTER TABLE books ADD COLUMN IF NOT EXISTS genre_tags TEXT[] NOT NULL DEFAULT '{
 ALTER TABLE books ADD COLUMN IF NOT EXISTS wiki_settings JSONB NOT NULL DEFAULT '{"visibility":"off","community_mode":"off","ai_assist":false,"glossary_exposure":"names","auto_generate":false}';
 ALTER TABLE books ADD COLUMN IF NOT EXISTS extraction_profile JSONB;
 
+-- E0 (collaboration-permissions): non-owner grants on a book. The owner is
+-- implicit via books.owner_user_id and is NEVER stored here, so an empty
+-- table == today's single-owner behavior (AC6 no-regress is free).
+CREATE TABLE IF NOT EXISTS book_collaborators (
+  book_id    UUID NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  user_id    UUID NOT NULL,
+  role       TEXT NOT NULL CHECK (role IN ('view','edit','manage')),
+  granted_by UUID NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (book_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_book_collab_user ON book_collaborators(user_id);
+
 CREATE TABLE IF NOT EXISTS chapters (
   id UUID PRIMARY KEY DEFAULT uuidv7(),
   book_id UUID NOT NULL REFERENCES books(id) ON DELETE CASCADE,

@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/loreweave/glossary-service/internal/shortdesc"
+	"github.com/loreweave/grantclient"
 )
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -99,7 +100,7 @@ func (s *Server) patchAttributeValue(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 	if !s.verifyEntityInBook(w, r.Context(), entityID, bookID) {
@@ -354,7 +355,7 @@ func (s *Server) createTranslation(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 	if !s.verifyEntityInBook(w, r.Context(), entityID, bookID) {
@@ -437,7 +438,7 @@ func (s *Server) updateTranslation(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 	if !s.verifyEntityInBook(w, r.Context(), entityID, bookID) {
@@ -556,7 +557,7 @@ func (s *Server) deleteTranslation(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 	if !s.verifyEntityInBook(w, r.Context(), entityID, bookID) {

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/loreweave/grantclient"
 	"log/slog"
 	"net/http"
 )
@@ -28,7 +29,7 @@ func (s *Server) getWikiGenJobStatus(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 	status, body, err := s.getWikiGenJob(r.Context(), bookID, userID)
@@ -57,7 +58,7 @@ func (s *Server) getWikiGenConfigStatus(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 	status, body, err := s.getWikiGenConfig(r.Context())
@@ -99,7 +100,12 @@ func (s *Server) wikiGenJobActionProxy(w http.ResponseWriter, r *http.Request, a
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	// resume re-drives a paused job (edit); cancel discards it (manage).
+	need := grantclient.GrantEdit
+	if action == "cancel" {
+		need = grantclient.GrantManage
+	}
+	if !s.requireGrant(w, r.Context(), bookID, userID, need) {
 		return
 	}
 	status, body, err := s.wikiGenJobAction(r.Context(), bookID, userID, jobID, action)

@@ -4,7 +4,7 @@
 import { apiBase, apiJson } from '../../api';
 import type {
   AutoGeneration, CanonRule, ChapterGeneration, CommitDecomposePayload, CorrectionBody, CorrectionStats,
-  DecomposePreview, GenerationJob, Grounding, OutlineNode, PublishGate, StructureTemplate, Work, WorkResolution,
+  DecomposePreview, GenerationJob, Grounding, NarrativeThread, OutlineNode, PublishGate, SceneLink, SceneLinkKind, StructureTemplate, Work, WorkResolution,
 } from './types';
 
 // A3 decompose preview request (cycle 13).
@@ -47,16 +47,62 @@ export const compositionApi = {
   createWork(bookId: string, token: string): Promise<Work> {
     return apiJson<Work>(`${BASE}/books/${bookId}/work`, { method: 'POST', token });
   },
-  getOutline(projectId: string, token: string): Promise<{ nodes: OutlineNode[]; scene_links: unknown[] }> {
-    return apiJson(`${BASE}/works/${projectId}/outline`, { token });
+  getOutline(projectId: string, token: string, includeArchived = false): Promise<{ nodes: OutlineNode[]; scene_links: SceneLink[] }> {
+    const qs = includeArchived ? '?include_archived=true' : '';
+    return apiJson(`${BASE}/works/${projectId}/outline${qs}`, { token });
+  },
+  // T1.3 Scene Graph — create a typed scene edge. 201 → the new link; 409
+  // SCENE_LINK_EXISTS on a duplicate (from,to,kind); 400 BAD_REFERENCE if either
+  // endpoint isn't the caller's node in this project.
+  createSceneLink(
+    projectId: string,
+    body: { from_node_id: string; to_node_id: string; kind: SceneLinkKind; label: string },
+    token: string,
+  ): Promise<SceneLink> {
+    return apiJson(`${BASE}/works/${projectId}/scene-links`, { method: 'POST', body: JSON.stringify(body), token });
+  },
+  // T1.3 — hard-delete a scene edge (edges have no archive; 204 / 404).
+  deleteSceneLink(linkId: string, token: string): Promise<void> {
+    return apiJson(`${BASE}/scene-links/${linkId}`, { method: 'DELETE', token });
   },
   createNode(projectId: string, payload: Partial<OutlineNode> & { kind: string }, token: string): Promise<OutlineNode> {
     return apiJson(`${BASE}/works/${projectId}/outline/nodes`, { method: 'POST', body: JSON.stringify(payload), token });
   },
   // Patch an outline node (M9: set a scene's status — 'done' commits it for the
-  // chapter-gate + emits composition.scene_committed server-side).
-  patchNode(nodeId: string, patch: Partial<OutlineNode>, token: string): Promise<OutlineNode> {
-    return apiJson(`${BASE}/outline/nodes/${nodeId}`, { method: 'PATCH', body: JSON.stringify(patch), token });
+  // chapter-gate + emits composition.scene_committed server-side). T1.1b: pass
+  // `version` to send If-Match → the BE 412s with NODE_VERSION_CONFLICT (carrying
+  // .body.detail.current) on a stale edit. Omitting `version` keeps the legacy
+  // self-acquiring behaviour (M9 useSetSceneStatus) — backward-compatible.
+  patchNode(nodeId: string, patch: Partial<OutlineNode>, token: string, version?: number): Promise<OutlineNode> {
+    return apiJson(`${BASE}/outline/nodes/${nodeId}`, {
+      method: 'PATCH', body: JSON.stringify(patch), token,
+      ...(version !== undefined ? { headers: { 'If-Match': String(version) } } : {}),
+    });
+  },
+  // T1.1b — soft-archive an outline node (DELETE = archive, returns the archived
+  // node; unconditional, no If-Match). Children are archived by the BE closure.
+  archiveNode(nodeId: string, token: string): Promise<OutlineNode> {
+    return apiJson(`${BASE}/outline/nodes/${nodeId}`, { method: 'DELETE', token });
+  },
+  // T1.1b — un-archive a node (inverse of DELETE). The BE restores the archived
+  // subtree + archived ancestor chain so it reconnects to a visible root.
+  restoreNode(nodeId: string, token: string): Promise<OutlineNode> {
+    return apiJson(`${BASE}/outline/nodes/${nodeId}/restore`, { method: 'POST', token });
+  },
+  // T1.1c — drag-reorder + reparent. Places the node under `new_parent_id` after
+  // `after_id` (null = first child). The BE computes the fractional rank +
+  // renumbers scene story_order. Optional `version` → If-Match (412 on stale);
+  // 400 BAD_REFERENCE on a reparent cycle / bad parent.
+  reorderNode(
+    nodeId: string,
+    move: { new_parent_id: string | null; after_id: string | null },
+    token: string,
+    version?: number,
+  ): Promise<OutlineNode> {
+    return apiJson(`${BASE}/outline/nodes/${nodeId}/reorder`, {
+      method: 'POST', body: JSON.stringify(move), token,
+      ...(version !== undefined ? { headers: { 'If-Match': String(version) } } : {}),
+    });
   },
   // A3 decompose planner (cycle 13). listTemplates → built-in + user structure
   // templates; decomposePreview → the proposed (NOT persisted) arc→chapter→scene
@@ -83,6 +129,10 @@ export const compositionApi = {
   // The full URL for the SSE generate POST (used by useCompositionStream's fetch).
   generateUrl(projectId: string): string {
     return `${apiBase()}${BASE}/works/${projectId}/generate`;
+  },
+  // T3.2 — the SSE selection-edit POST (rewrite/expand/describe over a selection).
+  selectionEditUrl(projectId: string): string {
+    return `${apiBase()}${BASE}/works/${projectId}/selection-edit`;
   },
   // V1 slice 3 — auto (diverge→converge): NON-streaming POST that returns the
   // winner + all K candidate texts (the human-gate cards).
@@ -165,5 +215,15 @@ export const compositionApi = {
   },
   deleteCanonRule(ruleId: string, token: string): Promise<CanonRule> {
     return apiJson(`${BASE}/canon-rules/${ruleId}`, { method: 'DELETE', token });
+  },
+  // T0.1 — read the narrative-thread ledger (FD-1 S4a). `open` = the unpaid-promise
+  // debt (priority-ordered); `all` = the full ledger. `open_count` is the true debt
+  // count (not capped by the list LIMIT). Read-only.
+  listNarrativeThreads(
+    projectId: string,
+    status: 'open' | 'all',
+    token: string,
+  ): Promise<{ threads: NarrativeThread[]; open_count: number }> {
+    return apiJson(`${BASE}/works/${projectId}/narrative-threads?status=${status}`, { token });
   },
 };

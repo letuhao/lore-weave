@@ -45,7 +45,11 @@ class StubOutline:
         self.create_raises = None
         self.update_raises = None
         self.update_result = _node(version=2)
+        self.last_patch = None
         self.archive_result = _node(is_archived=True)
+        self.restore_result = _node(is_archived=False)
+        self.reorder_result = _node(version=2)
+        self.reorder_raises = None
         self.gate = {"chapter_id": "c", "scenes_total": 2, "scenes_done": 2, "can_publish": True}
         self.commit_aware_called = False
     async def list_tree(self, u, p, **kw): return self.tree
@@ -53,6 +57,7 @@ class StubOutline:
         if self.create_raises: raise self.create_raises
         return self.node
     async def update_node(self, u, n, patch, **kw):
+        self.last_patch = patch
         if self.update_raises: raise self.update_raises
         return self.update_result
     async def update_node_commit_aware(self, u, n, patch, **kw):
@@ -61,6 +66,10 @@ class StubOutline:
         return self.update_result
     async def chapter_scene_gate(self, u, p, ch): return self.gate
     async def archive_node(self, u, n): return self.archive_result
+    async def restore_node(self, u, n): return self.restore_result
+    async def reorder_node(self, u, n, **kw):
+        if self.reorder_raises: raise self.reorder_raises
+        return self.reorder_result
 
 
 class StubSceneLinks:
@@ -160,6 +169,34 @@ def test_delete_node_archives(ctx):
     assert r.status_code == 200 and r.json()["is_archived"] is True
 
 
+def test_restore_node_200_and_404(ctx):
+    c, _, outline, _, _ = ctx
+    r = c.post(f"/v1/composition/outline/nodes/{NODE}/restore")
+    assert r.status_code == 200 and r.json()["is_archived"] is False
+    # not archived / not ours → repo returns None → 404
+    outline.restore_result = None
+    assert c.post(f"/v1/composition/outline/nodes/{NODE}/restore").status_code == 404
+
+
+def test_reorder_node_200_412_400_404(ctx):
+    c, _, outline, _, _ = ctx
+    body = {"new_parent_id": str(uuid.uuid4()), "after_id": str(uuid.uuid4())}
+    r = c.post(f"/v1/composition/outline/nodes/{NODE}/reorder", json=body,
+               headers={"If-Match": "1"})
+    assert r.status_code == 200 and r.json()["version"] == 2
+    # stale If-Match → 412 with current
+    outline.reorder_raises = VersionMismatchError(_node(version=9))
+    r = c.post(f"/v1/composition/outline/nodes/{NODE}/reorder", json=body, headers={"If-Match": "1"})
+    assert r.status_code == 412 and r.json()["detail"]["code"] == "NODE_VERSION_CONFLICT"
+    # reparent cycle / bad ref → 400
+    outline.reorder_raises = ReferenceViolationError("cycle")
+    assert c.post(f"/v1/composition/outline/nodes/{NODE}/reorder", json=body).status_code == 400
+    # node gone → 404
+    outline.reorder_raises = None
+    outline.reorder_result = None
+    assert c.post(f"/v1/composition/outline/nodes/{NODE}/reorder", json=body).status_code == 404
+
+
 # ── M9 chapter-gate + scene_committed routing ──
 
 def test_publish_gate_returns_counts(ctx):
@@ -184,6 +221,17 @@ def test_patch_status_done_routes_through_commit_aware(ctx):
     c, _, outline, _, _ = ctx
     r = c.patch(f"/v1/composition/outline/nodes/{NODE}", json={"status": "done"})
     assert r.status_code == 200 and outline.commit_aware_called is True
+
+
+def test_patch_beat_role_set_and_explicit_null_clear(ctx):
+    """T1.2: assigning a beat (beat_role='k') and CLEARING it (beat_role=null) both
+    reach update_node. An explicit JSON null must survive model_dump(exclude_unset)
+    — the clear path silently breaks if Pydantic dropped it."""
+    c, _, outline, _, _ = ctx
+    c.patch(f"/v1/composition/outline/nodes/{NODE}", json={"beat_role": "catalyst"})
+    assert outline.last_patch == {"beat_role": "catalyst"}
+    c.patch(f"/v1/composition/outline/nodes/{NODE}", json={"beat_role": None})
+    assert outline.last_patch == {"beat_role": None}  # explicit null kept → clears
 
 
 def test_patch_non_done_uses_plain_update(ctx):

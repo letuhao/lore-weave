@@ -15,26 +15,39 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// mockBookOwner stands up a fake book-service projection endpoint so verifyBookOwner
-// passes for `owner`, and points the fixture's server at it. Returns the owner id.
+// mockBookOwner stands up a fake book-service serving /access (the E0-1 grant
+// authority) + /projection so the HTTP guards pass for `owner`, points the
+// fixture's server at it, and (re)wires the grant client (which captures the
+// base URL at construction). Returns the owner id.
 func mockBookOwner(t *testing.T, f *mergeFixture) string {
 	t.Helper()
-	owner := uuid.New().String()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	owner := uuid.New()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/access") {
+			lvl := "none"
+			if r.URL.Query().Get("user_id") == owner.String() {
+				lvl = "owner"
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"grant_level": lvl, "lifecycle_state": "active"})
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"book_id": f.bookID.String(), "owner_user_id": owner,
+			"book_id": f.bookID.String(), "owner_user_id": owner.String(),
 		})
 	}))
 	t.Cleanup(srv.Close)
 	f.srv.cfg.BookServiceURL = srv.URL
-	return owner
+	f.srv.cfg.InternalServiceToken = "tok"
+	f.srv.grantClient = buildGrantClient(srv.URL, "tok")
+	return owner.String()
 }
 
 func mkWikiArticle(t *testing.T, pool *pgxpool.Pool, ctx context.Context, bookID, entityID uuid.UUID) uuid.UUID {

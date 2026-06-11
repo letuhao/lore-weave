@@ -60,6 +60,15 @@ class InternalExtractionPayload(BaseModel):
     # S4a: the owning campaign, persisted on the extraction job + stamped onto
     # every provider job_meta by worker-ai for per-campaign cost attribution.
     campaign_id: UUID | None = None
+    # E0-4b — BYOK caller-pays for a manage-collaborator's campaign. When set and
+    # != user_id (the book/project owner = graph partition), the extraction bills
+    # the CALLER (their key) via 2b's dual identity: `billing_user_id` is the
+    # caller; `billing_embedding_model` is the caller's OWN ref for the SAME model
+    # the project uses (dimension-guarded in the core); the stored embedding tag
+    # stays the project's canonical model. `model_ref` is then the caller's LLM
+    # ref. NULL/owner-self → legacy owner-paid path (unchanged).
+    billing_user_id: UUID | None = None
+    billing_embedding_model: str | None = None
 
 
 class DispatchResponse(BaseModel):
@@ -103,14 +112,34 @@ async def dispatch_extraction(
     if payload.chapter_from is not None and payload.chapter_to is not None:
         scope_range = {"chapter_range": [payload.chapter_from, payload.chapter_to]}
 
+    # E0-4b — BYOK caller-pays branch: when billing_user_id is set and differs
+    # from payload.user_id (the book/project owner = graph partition), the
+    # campaign was started by a manage-collaborator → bill the CALLER via 2b's
+    # dual identity. body.embedding_model becomes the CALLER's own same-model ref
+    # (the core probes its dimension against the project's vector space and
+    # stores the project's canonical tag); `caller` drives billing. Owner-self /
+    # None → legacy owner-paid path (body uses the project's model, no caller).
+    is_collab = (
+        payload.billing_user_id is not None
+        and payload.billing_user_id != payload.user_id
+    )
+    if is_collab and not payload.billing_embedding_model:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"code": "KNOW_NO_BILLING_EMBEDDING",
+                    "message": "billing_embedding_model is required when billing_user_id is set"},
+        )
     body = StartJobRequest(
         scope=payload.scope,
         scope_range=scope_range,
         llm_model=str(payload.model_ref),
-        embedding_model=project.embedding_model,
+        embedding_model=(
+            payload.billing_embedding_model if is_collab else project.embedding_model
+        ),
     )
     job = await _start_extraction_job_core(
         project_id, body, payload.user_id, projects_repo, jobs_repo, benchmark_repo,
+        caller=payload.billing_user_id if is_collab else None,
         campaign_id=payload.campaign_id,
     )
     return DispatchResponse(job_id=job.job_id)

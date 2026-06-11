@@ -1,8 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ChapterProjectionTable } from '../ChapterProjectionTable';
+import { useCampaignChapters } from '../../hooks/useCampaignQueries';
 import type { CampaignChapter } from '../../types';
+
+vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
+vi.mock('../../hooks/useCampaignQueries', () => ({ useCampaignChapters: vi.fn() }));
+
+const mockUse = vi.mocked(useCampaignChapters);
 
 function ch(sort: number, over: Partial<CampaignChapter>): CampaignChapter {
   return {
@@ -13,29 +20,59 @@ function ch(sort: number, over: Partial<CampaignChapter>): CampaignChapter {
   };
 }
 
-const CHAPTERS = [
-  ch(1, {}), // all done → hidden by default
-  ch(2, { translation_status: 'failed', last_error: 'boom' }), // failed → shown
-  ch(3, { translation_status: 'dispatched' }), // in-progress → shown
-];
+function setPage(items: CampaignChapter[], total: number) {
+  mockUse.mockReturnValue({ data: { items, total }, isLoading: false } as ReturnType<typeof useCampaignChapters>);
+}
 
-describe('ChapterProjectionTable', () => {
-  it('defaults to failed + in-progress rows (hides fully-done chapters)', () => {
-    render(<ChapterProjectionTable chapters={CHAPTERS} />);
-    // rows render the chapter_sort in the first cell
-    expect(screen.queryByRole('cell', { name: '1' })).not.toBeInTheDocument(); // done → hidden
-    expect(screen.getByRole('cell', { name: '2' })).toBeInTheDocument();       // failed → shown
-    expect(screen.getByRole('cell', { name: '3' })).toBeInTheDocument();       // in-progress → shown
-  });
+function renderTable(props: Partial<Parameters<typeof ChapterProjectionTable>[0]> = {}) {
+  const qc = new QueryClient();
+  return render(
+    <QueryClientProvider client={qc}>
+      <ChapterProjectionTable campaignId="cmp1" active hasFailures={false} {...props} />
+    </QueryClientProvider>,
+  );
+}
 
-  it('"show all" reveals the done chapters too', async () => {
-    render(<ChapterProjectionTable chapters={CHAPTERS} />);
-    await userEvent.click(screen.getByText('monitor.showAll')); // i18n mock returns the key
+describe('ChapterProjectionTable (server-paginated)', () => {
+  beforeEach(() => mockUse.mockReset());
+
+  it('renders the server page + range, paginates via offset', async () => {
+    setPage([ch(1, { translation_status: 'failed', last_error: 'boom' }), ch(2, { translation_status: 'dispatched' })], 250);
+    renderTable();
     expect(screen.getByRole('cell', { name: '1' })).toBeInTheDocument();
+    expect(screen.getByText('monitor.pageRange')).toBeInTheDocument();  // i18n key (range shown)
+    // Next advances the offset → the hook is re-called with offset 200
+    await userEvent.click(screen.getByText('monitor.next'));
+    const offsets = mockUse.mock.calls.map((c) => (c[1] as { offset: number }).offset);
+    expect(offsets).toContain(200);
   });
 
-  it('shows an all-done message when nothing needs attention', () => {
-    render(<ChapterProjectionTable chapters={[ch(1, {}), ch(2, {})]} />);
+  it('"show all" switches the server status filter to all', async () => {
+    setPage([ch(1, {})], 1);
+    renderTable();
+    await userEvent.click(screen.getByText('monitor.showAll'));
+    const statuses = mockUse.mock.calls.map((c) => (c[1] as { status: string }).status);
+    expect(statuses).toContain('all');
+  });
+
+  it('all-done message when the attention page is empty', () => {
+    setPage([], 0);
+    renderTable();
     expect(screen.getByText('monitor.allDone')).toBeInTheDocument();
+  });
+
+  it('G2: re-run-all shows when hasFailures; selecting a failed row enables re-run-selected', async () => {
+    setPage([ch(2, { translation_status: 'failed', last_error: 'x' })], 1);
+    renderTable({ hasFailures: true });
+    expect(screen.getByText('monitor.rerunAll')).toBeInTheDocument();
+    const cb = screen.getByLabelText('select chapter 2');
+    await userEvent.click(cb);
+    expect(cb).toBeChecked();
+  });
+
+  it('no re-run-all when the campaign has no failures', () => {
+    setPage([ch(3, { translation_status: 'dispatched' })], 1);
+    renderTable({ hasFailures: false });
+    expect(screen.queryByText('monitor.rerunAll')).not.toBeInTheDocument();
   });
 });

@@ -71,6 +71,9 @@ vi.mock('@/features/composition/components/CompositionPanel', () => ({
 }));
 vi.mock('@/features/chat/context/sendToChat', () => ({ fireSendToChat: vi.fn() }));
 vi.mock('@/features/chat/context/editorBridge', () => ({ registerEditorTarget: vi.fn() }));
+// T3.2: the page resolves the co-writer Work for the editor Selection Tools; stub
+// it to "no work" so this publish-gate test needs no QueryClient.
+vi.mock('@/features/composition/hooks/useWork', () => ({ useWorkResolution: () => ({ data: undefined }) }));
 
 import { ChapterEditorPage } from '../ChapterEditorPage';
 import type { ChapterPublishGate } from '@/features/composition/hooks/usePublishGate';

@@ -81,8 +81,10 @@ def test_assemble_band_and_time():
         source_tokens=1000, chapter_count=10,
         models={est.ROLE_TRANSLATOR: ("user_model", TR)}, cfg=settings)
     priced = [
-        {"label": "translation", "status": "ok", "estimated_usd": 4.0},
-        {"label": "verify", "status": "ok", "estimated_usd": 2.0},
+        {"label": "translation", "status": "ok", "estimated_usd": 4.0,
+         "provider_kind": "ollama", "is_local": True},
+        {"label": "verify", "status": "ok", "estimated_usd": 2.0,
+         "provider_kind": "openai", "is_local": False},
     ]
     out = est.assemble_estimate(priced=priced, metas=metas, chapter_count=10, cfg=settings)
     assert out["estimated_usd_high"] == 6.0
@@ -90,6 +92,18 @@ def test_assemble_band_and_time():
     assert out["estimated_minutes_high"] > 0
     assert out["estimated_minutes_low"] <= out["estimated_minutes_high"]
     assert out["currency"] == "USD"
+    # #5 polish — per_stage carries the priced workload (tokens), not just $.
+    tr = next(s for s in out["per_stage"] if s["stage"] == "translation")
+    assert tr["input_tokens"] == 1000  # source_tokens
+    assert tr["output_tokens"] > 0     # source × translation_output_ratio
+    # D-FACTORY-EST-PROVIDER-KIND — provider_kind + is_local threaded from the oracle item.
+    assert tr["provider_kind"] == "ollama" and tr["is_local"] is True
+    vr = next(s for s in out["per_stage"] if s["stage"] == "verify")
+    assert vr["provider_kind"] == "openai" and vr["is_local"] is False
+    # a not-estimated stage (no model) has zero tokens + no badge
+    ex = next(s for s in out["per_stage"] if s["stage"] == "extraction")
+    assert ex["input_tokens"] == 0 and ex["output_tokens"] == 0
+    assert ex["provider_kind"] is None and ex["is_local"] is False
 
 
 def test_assemble_unpriced_makes_band_a_floor():

@@ -31,7 +31,8 @@
   "tabs": {
     "chapters": "章",
     "original": "原文",
-    "glossary": "用語集"
+    "glossary": "用語集",
+    "outline": "アウトライン"
   },
   "chapter_count": "{{count}}章",
   "chapter_count_other": "{{count}}章",

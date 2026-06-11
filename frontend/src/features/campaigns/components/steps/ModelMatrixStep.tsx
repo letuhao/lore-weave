@@ -24,7 +24,8 @@ export function ModelMatrixStep({ form, setPick, setField }: Props) {
 
   const projects = useQuery({
     queryKey: ['campaign-wizard', 'projects'],
-    queryFn: () => knowledgeApi.listProjects({ limit: 200 }, accessToken!),
+    // knowledge /projects caps limit at 100 (>100 → 422); keep in sync with BookProjectStep.
+    queryFn: () => knowledgeApi.listProjects({ limit: 100 }, accessToken!),
     enabled: !!accessToken,
   });
   const project = projects.data?.items.find((p) => p.project_id === form.projectId);

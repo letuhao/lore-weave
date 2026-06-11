@@ -76,6 +76,8 @@ async def create_campaign(
     verifier_model_ref: Optional[UUID] = None,
     eval_judge_model_source: Optional[str] = None,
     eval_judge_model_ref: Optional[UUID] = None,
+    est_usd_low: Optional[Decimal] = None,
+    est_usd_high: Optional[Decimal] = None,
 ) -> asyncpg.Record:
     return await conn.fetchrow(
         f"""
@@ -85,9 +87,10 @@ async def create_campaign(
           translation_model_source, translation_model_ref,
           verifier_model_source, verifier_model_ref,
           eval_judge_model_source, eval_judge_model_ref,
-          chapter_from, chapter_to, total_chapters, budget_usd
+          chapter_from, chapter_to, total_chapters, budget_usd,
+          est_usd_low, est_usd_high
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
         RETURNING {_CAMPAIGN_COLS}
         """,
         owner_user_id, book_id, name, gating_mode, target_language,
@@ -96,6 +99,7 @@ async def create_campaign(
         verifier_model_source, verifier_model_ref,
         eval_judge_model_source, eval_judge_model_ref,
         chapter_from, chapter_to, total_chapters, budget_usd,
+        est_usd_low, est_usd_high,
     )
 
 
@@ -134,9 +138,17 @@ async def get_campaign(
 async def list_campaigns(
     pool: asyncpg.Pool, owner_user_id: UUID,
 ) -> list[asyncpg.Record]:
+    # #2 polish — include a lightweight progress count (translation done+skipped) per
+    # row via a correlated subquery, for the list's progress bar (one query total).
     return await pool.fetch(
-        f"SELECT {_CAMPAIGN_COLS} FROM campaigns "
-        f"WHERE owner_user_id = $1 ORDER BY created_at DESC",
+        f"""
+        SELECT {_CAMPAIGN_COLS},
+          (SELECT COUNT(*) FROM campaign_chapters cc
+           WHERE cc.campaign_id = campaigns.campaign_id
+             AND cc.translation_status IN ('done', 'skipped')) AS progress_done
+        FROM campaigns
+        WHERE owner_user_id = $1 ORDER BY created_at DESC
+        """,
         owner_user_id,
     )
 
@@ -154,6 +166,82 @@ async def get_campaign_chapters(
         ORDER BY chapter_sort ASC
         """,
         campaign_id,
+    )
+
+
+_ATTENTION_FILTER = (
+    "AND NOT (knowledge_status IN ('done','skipped') "
+    "AND translation_status IN ('done','skipped') "
+    "AND eval_status IN ('done','skipped'))"
+)
+# D-FACTORY-INFLIGHT-PANEL — rows with a stage currently dispatched to a provider
+# (the "Now processing" panel). Only knowledge/translation are driver-dispatched
+# (eval is observed, never sits in 'dispatched'); mirrors count_inflight's predicate.
+_INFLIGHT_FILTER = "AND 'dispatched' IN (knowledge_status, translation_status)"
+
+# status → WHERE fragment. A whitelist (never raw-interpolated): the router clamps
+# the request value to these keys; an unknown value falls back to "attention".
+_CHAPTER_FILTERS = {
+    "attention": _ATTENTION_FILTER,
+    "inflight": _INFLIGHT_FILTER,
+    "all": "",
+}
+
+
+async def get_campaign_chapters_page(
+    pool: asyncpg.Pool, campaign_id: UUID, *,
+    status: str = "attention", limit: int = 200, offset: int = 0,
+) -> tuple[list[asyncpg.Record], int]:
+    """D-S6-CHAPTER-PAGING — one page of the per-chapter projection + the total
+    (server-side, so a 4000-chapter campaign doesn't ship every row to the monitor).
+    `status='attention'` filters to rows that aren't fully settled (failed or
+    in-progress) — the table's default; `'inflight'` = rows with a stage currently
+    dispatched (the processing panel); `'all'` returns everything. The filter is a
+    fixed literal chosen by a whitelisted `status` (never raw-interpolated)."""
+    where = _CHAPTER_FILTERS.get(status, _ATTENTION_FILTER)
+    total = await pool.fetchval(
+        f"SELECT COUNT(*) FROM campaign_chapters WHERE campaign_id = $1 {where}",
+        campaign_id,
+    )
+    rows = await pool.fetch(
+        f"""
+        SELECT chapter_id, chapter_sort, ingest_status, knowledge_status,
+               translation_status, eval_status, knowledge_attempts,
+               translation_attempts, last_error, eval_fidelity_score
+        FROM campaign_chapters
+        WHERE campaign_id = $1 {where}
+        ORDER BY chapter_sort ASC
+        LIMIT $2 OFFSET $3
+        """,
+        campaign_id, limit, offset,
+    )
+    return rows, int(total or 0)
+
+
+async def get_campaign_activity(
+    pool: asyncpg.Pool, campaign_id: UUID, *, limit: int = 50, before_id: Optional[int] = None,
+) -> list[asyncpg.Record]:
+    """D-FACTORY-INFLIGHT-LOG — one recent-first page of the activity log (written by
+    the campaign_chapters trigger). Keyset pagination: `before_id` returns rows older
+    than that id (id DESC), so newer rows arriving at the head never shift a page."""
+    if before_id is not None:
+        return await pool.fetch(
+            """
+            SELECT id, chapter_id, chapter_sort, stage, status, detail, created_at
+            FROM campaign_activity
+            WHERE campaign_id = $1 AND id < $2
+            ORDER BY id DESC LIMIT $3
+            """,
+            campaign_id, before_id, limit,
+        )
+    return await pool.fetch(
+        """
+        SELECT id, chapter_id, chapter_sort, stage, status, detail, created_at
+        FROM campaign_activity
+        WHERE campaign_id = $1
+        ORDER BY id DESC LIMIT $2
+        """,
+        campaign_id, limit,
     )
 
 
@@ -179,6 +267,47 @@ async def get_campaign_progress(
           COUNT(*) FILTER (WHERE eval_status        = 'skipped') AS ev_skipped
         FROM campaign_chapters
         WHERE campaign_id = $1
+        """,
+        campaign_id,
+    )
+
+
+async def get_report_row(
+    pool: asyncpg.Pool, campaign_id: UUID, owner_user_id: UUID,
+) -> Optional[asyncpg.Record]:
+    """G1 — owner-scoped summary row for the completion report (status, timing,
+    spend, budget, persisted estimate band). Dedicated SELECT so it stays isolated
+    from the Campaign-building endpoints."""
+    return await pool.fetchrow(
+        """
+        SELECT status, total_chapters, spent_usd, budget_usd,
+               est_usd_low, est_usd_high, started_at, finished_at,
+               EXTRACT(EPOCH FROM (COALESCE(finished_at, now()) - started_at))::bigint
+                 AS duration_seconds
+        FROM campaigns
+        WHERE campaign_id = $1 AND owner_user_id = $2
+        """,
+        campaign_id, owner_user_id,
+    )
+
+
+async def get_failed_error_strings(
+    pool: asyncpg.Pool, campaign_id: UUID,
+) -> list[asyncpg.Record]:
+    """G1 — (last_error, count) for chapters with a FAILED knowledge/translation
+    stage, for the report's error grouping. The router buckets each `last_error` via
+    `normalize_error_cause` and sums counts per cause (bucketing is a pure, unit-
+    tested fn). Scoped to knowledge/translation (NOT eval) to match
+    `reset_failed_stages` — eval is observed (rides translation.quality), not
+    dispatched, so an eval failure is neither actionable nor re-runnable; counting it
+    here would report an "error" that "Re-run all failed" can't clear (review-impl)."""
+    return await pool.fetch(
+        """
+        SELECT last_error, COUNT(*) AS n
+        FROM campaign_chapters
+        WHERE campaign_id = $1
+          AND 'failed' IN (knowledge_status, translation_status)
+        GROUP BY last_error
         """,
         campaign_id,
     )
@@ -258,20 +387,40 @@ async def accumulate_and_maybe_pause(
             return True
 
 
-async def update_budget(
-    pool: asyncpg.Pool, campaign_id: UUID, owner_user_id: UUID, budget_usd: Decimal,
+# D-FACTORY-SWITCH-MODEL-RESUME — columns a PATCH may update. A whitelist so a
+# rogue key can never reach the SET clause (the field name is interpolated only
+# after this membership check; values stay parameterized). Embedding/rerank are
+# NOT here (knowledge-project SSOT; embedding change is destructive to the graph).
+_UPDATABLE_COLS = (
+    "budget_usd",
+    "translation_model_source", "translation_model_ref",
+    "knowledge_model_source", "knowledge_model_ref",
+    "verifier_model_source", "verifier_model_ref",
+    "eval_judge_model_source", "eval_judge_model_ref",
+)
+
+
+async def update_campaign_fields(
+    pool: asyncpg.Pool, campaign_id: UUID, owner_user_id: UUID, fields: dict,
 ) -> Optional[asyncpg.Record]:
-    """Owner-scoped budget update (PATCH). Returns the updated row, or None when the
-    campaign isn't found / not owned (→ 404). Does NOT change status — a paused
-    campaign stays paused; resume via /start once budget_usd is above spent_usd."""
+    """Owner-scoped partial update (PATCH) of whitelisted campaign columns (budget +
+    the four switchable LLM models). Only keys in `_UPDATABLE_COLS` are applied — the
+    column name is interpolated solely from that whitelist, values stay parameterized.
+    Returns the updated row, or None when no valid field is given / the campaign isn't
+    found or owned (→ 404). Status is unchanged (resume via /start)."""
+    cols = [c for c in _UPDATABLE_COLS if c in fields]
+    if not cols:
+        return None
+    set_frag = ", ".join(f"{c} = ${i + 3}" for i, c in enumerate(cols))
+    values = [fields[c] for c in cols]
     return await pool.fetchrow(
         f"""
         UPDATE campaigns
-        SET budget_usd = $3, updated_at = now()
+        SET {set_frag}, updated_at = now()
         WHERE campaign_id = $1 AND owner_user_id = $2
         RETURNING {_CAMPAIGN_COLS}
         """,
-        campaign_id, owner_user_id, budget_usd,
+        campaign_id, owner_user_id, *values,
     )
 
 
@@ -630,6 +779,35 @@ async def reset_stuck_stage(
         WHERE campaign_id = $1 AND chapter_id = $2 AND {col} = 'dispatched'
         """,
         campaign_id, UUID(chapter_id), reason[:2000],
+    )
+    try:
+        return int(result.split()[-1])
+    except (ValueError, IndexError, AttributeError):
+        return 0
+
+
+async def reset_failed_stages(
+    pool: asyncpg.Pool, campaign_id: UUID, chapter_ids: Optional[list[UUID]] = None,
+) -> int:
+    """G2 (user re-run-failed): reset FAILED knowledge/translation stages to
+    'pending' + zero their attempts + clear last_error, so gating re-dispatches
+    them (the downstream skip-gate prevents re-spend on already-done work). Scoped
+    to `chapter_ids` (None = ALL failed chapters in the campaign). `eval` is OBSERVED
+    (rides translation.quality), so it is not reset here. Returns rows changed."""
+    result = await pool.execute(
+        """
+        UPDATE campaign_chapters
+        SET knowledge_status   = CASE WHEN knowledge_status='failed'   THEN 'pending' ELSE knowledge_status END,
+            knowledge_attempts = CASE WHEN knowledge_status='failed'   THEN 0 ELSE knowledge_attempts END,
+            translation_status = CASE WHEN translation_status='failed' THEN 'pending' ELSE translation_status END,
+            translation_attempts = CASE WHEN translation_status='failed' THEN 0 ELSE translation_attempts END,
+            last_error = NULL,
+            updated_at = now()
+        WHERE campaign_id = $1
+          AND 'failed' IN (knowledge_status, translation_status)
+          AND ($2::uuid[] IS NULL OR chapter_id = ANY($2::uuid[]))
+        """,
+        campaign_id, chapter_ids,
     )
     try:
         return int(result.split()[-1])

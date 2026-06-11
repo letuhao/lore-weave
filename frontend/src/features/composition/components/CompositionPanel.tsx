@@ -10,10 +10,19 @@ import { aiModelsApi } from '../../ai-models/api';
 import { useChapterScenes, useCreateScene, useCreateWork, useSetSceneStatus, useWorkResolution } from '../hooks/useWork';
 import type { Work } from '../types';
 import { ComposeView } from './ComposeView';
+import { CoWriterChat } from './CoWriterChat';
 import { ChapterAssembleView } from './ChapterAssembleView';
 import { PlannerView } from './PlannerView';
+import { BeatSheetView } from './BeatSheetView';
+import { SceneGraphCanvas } from './SceneGraphCanvas';
+import { CastCodexPanel } from './CastCodexPanel';
+import { RelationshipMap } from './RelationshipMap';
+import { TimelineView } from './TimelineView';
+import { CharacterArcView } from './CharacterArcView';
+import { WorldMap } from './WorldMap';
 import { GroundingPanel } from './GroundingPanel';
 import { CanonRulesPanel } from './CanonRulesPanel';
+import { ThreadsPanel } from './ThreadsPanel';
 import { QualityPanel } from './QualityPanel';
 import { CompositionSettingsView } from './CompositionSettingsView';
 
@@ -22,17 +31,33 @@ type Props = {
   chapterId: string;
   token: string | null;
   onAccept: (text: string) => void; // insert accepted prose into the editor
+  /** T3.2: the active scene can be lifted to ChapterEditorPage so the editor's
+   *  Selection Tools ground on it. Controlled-or-internal — omitted → own state. */
+  sceneId?: string;
+  onSceneChange?: (id: string) => void;
 };
 
-type SubTab = 'compose' | 'assemble' | 'planner' | 'grounding' | 'canon' | 'quality' | 'settings';
+type SubTab = 'compose' | 'cowriter' | 'assemble' | 'planner' | 'beats' | 'graph' | 'cast' | 'relmap' | 'timeline' | 'arc' | 'worldmap' | 'grounding' | 'canon' | 'threads' | 'quality' | 'settings';
 
-export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) {
+export function CompositionPanel({ bookId, chapterId, token, onAccept, sceneId: sceneIdProp, onSceneChange }: Props) {
   const { t } = useTranslation('composition');
   const resolution = useWorkResolution(bookId, token);
   const createWork = useCreateWork(bookId, token);
   const [tab, setTab] = useState<SubTab>('compose');
-  const [sceneId, setSceneId] = useState<string>('');
+  const [localSceneId, setLocalSceneId] = useState<string>('');
+  const sceneId = sceneIdProp ?? localSceneId;
+  const setSceneId = onSceneChange ?? setLocalSceneId;
   const [modelRef, setModelRef] = useState<string>('');
+  // T2.4: the character whose arc is shown — lifted here so the Cast codex (T2.1)
+  // can launch the arc tab with a character preselected; the arc's own picker also
+  // writes back through setArcEntityId.
+  const [arcEntityId, setArcEntityId] = useState<string | null>(null);
+  // T2.5: the Cast search is lifted here so the World Map can "open a place in the
+  // codex" by prefilling its name + switching to the cast tab.
+  const [castSearch, setCastSearch] = useState('');
+  // T3.1: the compose guide is lifted here so the co-writer chat's "Use as guide"
+  // can pre-fill it (then switch to the compose tab).
+  const [composeGuide, setComposeGuide] = useState('');
 
   const res = resolution.data;
   // 'found' → the marked Work; 'candidates' (rare multi-marked) → the first,
@@ -89,6 +114,9 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
   // The selected model's metadata — hints for the server's auto-reasoning
   // strategy (adaptive pass-through vs our rule-based scorer).
   const selectedModel = models.data?.find((m) => m.user_model_id === effectiveModelRef);
+  // T0.1 — the plot-thread debt panel is opt-in: only surface its sub-tab when
+  // the book has narrative-thread tracking on (same gate as the producer).
+  const threadsEnabled = work.settings?.narrative_thread_enabled === true;
 
   return (
     <div className="flex h-full flex-col">
@@ -156,7 +184,7 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
 
       {/* sub-tabs */}
       <div className="flex gap-1 border-b border-neutral-200 px-2 pt-1 text-sm dark:border-neutral-700">
-        {(['compose', 'assemble', 'planner', 'grounding', 'canon', 'quality', 'settings'] as SubTab[]).map((tb) => (
+        {(['compose', 'cowriter', 'assemble', 'planner', 'beats', 'graph', 'cast', 'relmap', 'timeline', 'arc', 'worldmap', 'grounding', 'canon', ...(threadsEnabled ? ['threads' as const] : []), 'quality', 'settings'] as SubTab[]).map((tb) => (
           <button
             key={tb}
             data-testid={`composition-subtab-${tb}`}
@@ -187,6 +215,15 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
             modelName={selectedModel?.provider_model_name}
             token={token}
             onAccept={onAccept}
+            guide={composeGuide}
+            onGuideChange={setComposeGuide}
+          />
+        </div>
+        <div className={tab === 'cowriter' ? '' : 'hidden'}>
+          <CoWriterChat
+            bookId={bookId}
+            onAccept={onAccept}
+            onUseAsGuide={(text) => { setComposeGuide(text); setTab('compose'); }}
           />
         </div>
         <div className={tab === 'assemble' ? '' : 'hidden'}>
@@ -206,12 +243,57 @@ export function CompositionPanel({ bookId, chapterId, token, onAccept }: Props) 
         <div className={tab === 'planner' ? '' : 'hidden'}>
           <PlannerView projectId={work.project_id} bookId={bookId} modelRef={effectiveModelRef} modelSource="user_model" models={models.data ?? []} token={token} />
         </div>
+        <div className={tab === 'beats' ? '' : 'hidden'}>
+          <BeatSheetView bookId={bookId} projectId={work.project_id} token={token} />
+        </div>
+        <div className={tab === 'graph' ? '' : 'hidden'}>
+          <SceneGraphCanvas work={work} bookId={bookId} token={token} />
+        </div>
+        <div className={tab === 'cast' ? '' : 'hidden'}>
+          <CastCodexPanel
+            bookId={bookId}
+            chapterId={chapterId}
+            token={token}
+            onViewArc={(id) => { setArcEntityId(id); setTab('arc'); }}
+            search={castSearch}
+            onSearchChange={setCastSearch}
+          />
+        </div>
+        <div className={tab === 'relmap' ? '' : 'hidden'}>
+          <RelationshipMap bookId={bookId} token={token} />
+        </div>
+        <div className={tab === 'timeline' ? '' : 'hidden'}>
+          <TimelineView bookId={bookId} chapterId={chapterId} token={token} />
+        </div>
+        <div className={tab === 'arc' ? '' : 'hidden'}>
+          <CharacterArcView
+            bookId={bookId}
+            chapterId={chapterId}
+            token={token}
+            entityId={arcEntityId}
+            onEntityChange={setArcEntityId}
+          />
+        </div>
+        <div className={tab === 'worldmap' ? '' : 'hidden'}>
+          <WorldMap
+            work={work}
+            bookId={bookId}
+            chapterId={chapterId}
+            token={token}
+            onViewCast={(name) => { setCastSearch(name); setTab('cast'); }}
+          />
+        </div>
         <div className={tab === 'grounding' ? '' : 'hidden'}>
           <GroundingPanel projectId={work.project_id} sceneId={effectiveScene} token={token} />
         </div>
         <div className={tab === 'canon' ? '' : 'hidden'}>
           <CanonRulesPanel projectId={work.project_id} bookId={bookId} token={token} />
         </div>
+        {threadsEnabled && (
+          <div className={tab === 'threads' ? '' : 'hidden'}>
+            <ThreadsPanel projectId={work.project_id} token={token} enabled={threadsEnabled} />
+          </div>
+        )}
         <div className={tab === 'quality' ? '' : 'hidden'}>
           <QualityPanel projectId={work.project_id} token={token} />
         </div>

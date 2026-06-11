@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/loreweave/grantclient"
 )
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -93,7 +94,7 @@ func (s *Server) listChapterLinks(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 	if !s.verifyEntityInBook(w, r.Context(), entityID, bookID) {
@@ -124,7 +125,7 @@ func (s *Server) createChapterLink(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 	if !s.verifyEntityInBook(w, r.Context(), entityID, bookID) {
@@ -224,7 +225,7 @@ func (s *Server) updateChapterLink(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 	if !s.verifyEntityInBook(w, r.Context(), entityID, bookID) {
@@ -316,7 +317,7 @@ func (s *Server) deleteChapterLink(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 	if !s.verifyEntityInBook(w, r.Context(), entityID, bookID) {

@@ -105,6 +105,26 @@ class SummaryProcessorDeps:
     summary_enqueue: SummaryEnqueueFn  # for M4 re-enqueue
 
 
+# ── E0-3 Phase 2a-2 — BYOK billing identity for the summary provider calls ──
+# Gate on billing_user_id (the identity), never a ref alone (review-impl MED-1).
+# The STORED embedding_model_uuid tag (search filter / index / cache key) always
+# stays msg.embedding_model_uuid — only the GENERATION refs/user swap to billing.
+# The embed adapter's user is bound in the /summarize-message endpoint to the
+# SAME billing_bill_user, so the embed model_uuid passed here resolves there.
+
+
+def _bill_user(msg: "SummarizeMessage") -> str:
+    return msg.billing_user_id or msg.user_id
+
+
+def _bill_llm_ref(msg: "SummarizeMessage") -> str:
+    return msg.billing_llm_model if msg.billing_user_id else msg.model_ref
+
+
+def _bill_embed_ref(msg: "SummarizeMessage") -> str:
+    return msg.billing_embedding_model if msg.billing_user_id else msg.embedding_model_uuid
+
+
 async def process_summarize_message(
     msg: SummarizeMessage, deps: SummaryProcessorDeps,
 ) -> SummaryProcessResult:
@@ -204,25 +224,27 @@ async def process_summarize_message(
             summary_id=cached.id,
         )
 
-    # 4. Call summarize_level extractor (LLM).
-    user_id_str = msg.user_id
+    # 4. Call summarize_level extractor (LLM). E0-3 2a-2: a collaborator-
+    # triggered summary resolves the LLM under the CALLER's key + LLM ref.
     project_id_str = msg.project_id or None
     summary = await summarize_level(
         level=msg.level,
         child_texts=child_texts,
         entity_names=entity_names,
-        user_id=user_id_str,
+        user_id=_bill_user(msg),
         project_id=project_id_str,
         model_source="user_model",
-        model_ref=msg.model_ref,
+        model_ref=_bill_llm_ref(msg),
         llm_client=deps.llm_client,
     )
     summary_text = summary.summary_text[:500]  # L3 fix: writer truncates
 
-    # 5. Embed the summary.
+    # 5. Embed the summary. E0-3 2a-2: generate under the caller's embedding ref
+    # (the adapter's user is bound to the same billing user in the endpoint);
+    # the STORED tag below stays msg.embedding_model_uuid (the project's).
     embedding = await deps.embedding_client.embed(
         text=summary_text,
-        model_uuid=msg.embedding_model_uuid,
+        model_uuid=_bill_embed_ref(msg),
     )
 
     # 6. Persist row + write Neo4j hierarchy-node properties.
@@ -375,6 +397,11 @@ async def _reenqueue_with_backoff(
         embedding_dimension=msg.embedding_dimension,
         retry_at_epoch=now_epoch() + backoff_s,
         retried_n=msg.retried_n + 1,
+        # E0-3 2a-2: forward billing identity on retry, else a retried summary
+        # would silently fall back to the owner's key.
+        billing_user_id=msg.billing_user_id,
+        billing_llm_model=msg.billing_llm_model,
+        billing_embedding_model=msg.billing_embedding_model,
     )
     await enqueue(new_msg)
 
