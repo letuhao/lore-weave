@@ -482,6 +482,112 @@ async def handle_generation_corrected(event: EventData, *, pool: asyncpg.Pool) -
     )
 
 
+# ── wiki-llm M8 (D-WIKI-M8-LEARNING-CONSUMER) — the wiki feedback flywheel ─────
+# Collect-by-default; the LLM-judge scoring of wiki articles is a separate,
+# off-by-default follow-up (D-WIKI-M8-EVAL-PLUS). The gold AI→human PROSE is NOT
+# copied here (the corrections table is redact-by-default — structural + hashes);
+# it stays in glossary `wiki_revisions`, reachable via the correction's
+# target_id=article_id when the few-shot half (D-WIKI-M8-FEWSHOT) needs it.
+
+
+async def handle_wiki_corrected(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`wiki.corrected` → a `wiki_article` correction (the AI-draft→human-edit gold
+    POINTER). Emitted by glossary when a human edits an AI-authored article; the
+    owner (`user_id`) is the corrector. Structural-only: before = the AI state at
+    correction (author_type + prior generation_status), after = human-owned — a
+    non-None `after` so derive_diff_class reads a generic edit, not a spurious-drop.
+    Gated by `wiki_learning_enabled` (off → ack, no row); empty outbox_id / missing
+    user_id raise → DLQ (R3-W1)."""
+    from app.config import settings
+
+    if not settings.wiki_learning_enabled:
+        logger.debug("wiki.corrected — wiki learning disabled, skipping (id=%s)", event.message_id)
+        return
+    payload = event.payload
+    # target_id = article_id is the canonical gold-pair pointer (the few-shot half
+    # fetches the AI+human revisions from glossary by it); the event's entity_id is
+    # intentionally not stored — it's derivable from the article in glossary.
+    article_id = payload.get("article_id") or event.aggregate_id
+    user_id = _uuid_or_none(payload.get("user_id"))
+    await _persist_correction(
+        pool,
+        user_id=user_id,
+        project_id=None,
+        book_id=_uuid_or_none(payload.get("book_id")),
+        target_type="wiki_article",
+        target_id=str(article_id),
+        op="human_edit",
+        before_snapshot={
+            "author_type": "ai",
+            "generation_status": payload.get("prior_generation_status"),
+        },
+        after_snapshot={"author_type": "human"},
+        source_chapter=None,
+        source_span=None,
+        source_extraction_run_id=None,
+        actor_type="user",
+        actor_id=user_id,
+        origin_service="glossary",
+        origin_event_id=event.outbox_id,
+        origin_event_type=event.event_type,
+        emitted_at=_parse_ts(payload.get("emitted_at")),
+    )
+    logger.debug(
+        "wiki correction persisted: article=%s prior=%s origin=glossary:%s",
+        article_id, payload.get("prior_generation_status"), event.outbox_id,
+    )
+
+
+async def handle_wiki_suggestion_reviewed(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`wiki.suggestion_reviewed` → a `source='human'` quality_score on the AI article.
+
+    Only AI-generated articles give an AI-quality signal (`was_ai_generated`); a
+    review of a human-authored article is skipped (ack, no row). accept=1.0 /
+    reject=0.0 under `metric_name='wiki_suggestion_reviewed'` (the action +
+    suggestion_id ride in the comment). Gated by `wiki_learning_enabled`; empty
+    outbox_id / missing user_id|article_id / bad action raise → DLQ."""
+    from app.config import settings
+
+    if not settings.wiki_learning_enabled:
+        logger.debug(
+            "wiki.suggestion_reviewed — wiki learning disabled, skipping (id=%s)", event.message_id,
+        )
+        return
+    payload = event.payload
+    if not payload.get("was_ai_generated"):
+        logger.debug(
+            "wiki.suggestion_reviewed on a non-AI article — skipping (id=%s)", event.message_id,
+        )
+        return
+    if not event.outbox_id:
+        raise ValueError("wiki.suggestion_reviewed has empty outbox_id — refusing to insert")
+    article_id = payload.get("article_id") or event.aggregate_id
+    user_id = _uuid_or_none(payload.get("user_id"))
+    action = payload.get("action")
+    if user_id is None or not article_id or action not in ("accept", "reject"):
+        raise ValueError(
+            "wiki.suggestion_reviewed missing user_id/article_id or bad action "
+            f"(user_id={payload.get('user_id')!r} article={article_id!r} action={action!r}) — refusing"
+        )
+    await persist_consumed_score(
+        pool,
+        target_kind="wiki_article",
+        target_id=str(article_id),
+        user_id=user_id,
+        book_id=_uuid_or_none(payload.get("book_id")),
+        metric_name="wiki_suggestion_reviewed",
+        value_num=1.0 if action == "accept" else 0.0,
+        source="human",
+        origin_service="glossary",
+        origin_event_id=event.outbox_id,
+        comment=json.dumps({"action": action, "suggestion_id": payload.get("suggestion_id")}),
+    )
+    logger.debug(
+        "wiki suggestion-review persisted: article=%s action=%s origin=glossary:%s",
+        article_id, action, event.outbox_id,
+    )
+
+
 async def handle_translation_quality(event: EventData, *, pool: asyncpg.Pool) -> None:
     """`translation.quality` → a `source='auto'` quality_score (track M7a, Channel 2
     — the LLM-action log).

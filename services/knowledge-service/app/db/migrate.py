@@ -884,6 +884,26 @@ CREATE INDEX IF NOT EXISTS idx_wiki_gen_jobs_project
 CREATE UNIQUE INDEX IF NOT EXISTS idx_wiki_gen_jobs_one_active_per_book
   ON wiki_gen_jobs (book_id)
   WHERE status IN ('pending','running','paused');
+
+-- wiki-llm W4a — per-entity result detail + live sub-step progress (the FE
+-- screen-③ results table). `results` is an OBJECT keyed by entity_id →
+-- {outcome, citations, flags, name}; it carries both the in-flight ('processing')
+-- and finished rows (cheap idempotent upsert via `|| jsonb_build_object`, so a
+-- resume/retry overwrites). `current_entity_id`/`current_pass` point at the one
+-- in-flight entity + its pipeline pass (context|generate|verify|revise|writeback);
+-- both are NULL when no entity is processing (cleared at complete/pause/fail).
+ALTER TABLE wiki_gen_jobs
+  ADD COLUMN IF NOT EXISTS results            JSONB NOT NULL DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS current_entity_id  TEXT,
+  ADD COLUMN IF NOT EXISTS current_pass       TEXT;
+
+-- wiki-llm W5 (D-WIKI-PER-STEP-MODEL) — an OPTIONAL second model for the
+-- corrective revise re-gen ("write with A, fix canon-flagged articles with B").
+-- NULL ⇒ the revise reuses the prose model_ref/model_source (unchanged behavior).
+-- verify_article is rule-based (no LLM), so this only affects revise_article.
+ALTER TABLE wiki_gen_jobs
+  ADD COLUMN IF NOT EXISTS revise_model_ref    TEXT,
+  ADD COLUMN IF NOT EXISTS revise_model_source TEXT;
 """
 
 

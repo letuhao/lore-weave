@@ -82,12 +82,16 @@ func TestPatch_EmitsWikiCorrected_OnAIArticle(t *testing.T) {
 		t.Fatalf("want 1 wiki.corrected event, got %d", n)
 	}
 	// the prior AI quality travels in the payload
-	var prior string
+	var prior, evUserID string
 	f.pool.QueryRow(f.ctx,
-		`SELECT payload->>'prior_generation_status' FROM outbox_events WHERE event_type='wiki.corrected' AND payload->>'article_id'=$1`,
-		art.String()).Scan(&prior)
+		`SELECT payload->>'prior_generation_status', payload->>'user_id' FROM outbox_events WHERE event_type='wiki.corrected' AND payload->>'article_id'=$1`,
+		art.String()).Scan(&prior, &evUserID)
 	if prior != "needs_review" {
 		t.Fatalf("prior_generation_status: want needs_review, got %q", prior)
+	}
+	// D-WIKI-M8-LEARNING-CONSUMER: the owner travels so learning can own the correction.
+	if evUserID != owner.String() {
+		t.Fatalf("wiki.corrected user_id: want %s, got %q", owner, evUserID)
 	}
 	// /review-impl F2 — the human now owns it: the AI markers are cleared so the
 	// stale needs_review badge + flags panel don't persist.
@@ -148,13 +152,16 @@ func TestReview_EmitsSuggestionReviewed(t *testing.T) {
 	if n := countOutbox(t, f, "wiki.suggestion_reviewed", art.String()); n != 1 {
 		t.Fatalf("want 1 wiki.suggestion_reviewed event, got %d", n)
 	}
-	var action string
+	var action, evUserID string
 	var wasAI bool
 	f.pool.QueryRow(f.ctx,
-		`SELECT payload->>'action', (payload->>'was_ai_generated')::bool FROM outbox_events
+		`SELECT payload->>'action', (payload->>'was_ai_generated')::bool, payload->>'user_id' FROM outbox_events
 		 WHERE event_type='wiki.suggestion_reviewed' AND payload->>'article_id'=$1`,
-		art.String()).Scan(&action, &wasAI)
+		art.String()).Scan(&action, &wasAI, &evUserID)
 	if action != "reject" || !wasAI {
 		t.Fatalf("payload: want action=reject was_ai=true, got action=%q was_ai=%v", action, wasAI)
+	}
+	if evUserID != owner.String() {
+		t.Fatalf("wiki.suggestion_reviewed user_id: want %s, got %q", owner, evUserID)
 	}
 }

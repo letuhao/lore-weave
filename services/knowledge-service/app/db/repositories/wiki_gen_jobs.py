@@ -55,12 +55,21 @@ class WikiGenJob(BaseModel):
     items_processed: int = 0
     cost_spent_usd: Decimal = Decimal("0")
     error_message: str | None = None
+    # W4a — per-entity result detail (entity_id → {outcome, citations, flags, name})
+    # + the live sub-step pointer (the one in-flight entity + its pipeline pass).
+    results: dict[str, Any] = {}
+    current_entity_id: str | None = None
+    current_pass: str | None = None
+    # W5 — optional second model for the corrective revise re-gen (null = prose model).
+    revise_model_ref: str | None = None
+    revise_model_source: str | None = None
 
 
 _COLS = (
     "job_id, user_id, project_id, book_id, status, model_source, model_ref, "
     "entity_ids, items_done, max_spend_usd, items_total, items_processed, "
-    "cost_spent_usd, error_message"
+    "cost_spent_usd, error_message, results, current_entity_id, current_pass, "
+    "revise_model_ref, revise_model_source"
 )
 
 
@@ -68,6 +77,13 @@ def _parse_list(raw: Any) -> list[str]:
     if isinstance(raw, str):
         raw = json.loads(raw) if raw.strip() else []
     return [str(x) for x in raw] if isinstance(raw, list) else []
+
+
+def _parse_obj(raw: Any) -> dict[str, Any]:
+    """JSONB object → dict (asyncpg may hand back a JSON string or a dict)."""
+    if isinstance(raw, str):
+        raw = json.loads(raw) if raw.strip() else {}
+    return dict(raw) if isinstance(raw, dict) else {}
 
 
 def _row_to_job(row: asyncpg.Record) -> WikiGenJob:
@@ -79,6 +95,10 @@ def _row_to_job(row: asyncpg.Record) -> WikiGenJob:
         max_spend_usd=row["max_spend_usd"], items_total=row["items_total"],
         items_processed=row["items_processed"], cost_spent_usd=row["cost_spent_usd"],
         error_message=row["error_message"],
+        results=_parse_obj(row["results"]),
+        current_entity_id=row["current_entity_id"], current_pass=row["current_pass"],
+        revise_model_ref=row["revise_model_ref"],
+        revise_model_source=row["revise_model_source"],
     )
 
 
@@ -90,21 +110,26 @@ class WikiGenJobsRepo:
         self, *, user_id: UUID, project_id: UUID, book_id: UUID,
         model_source: str, model_ref: str, entity_ids: list[str],
         max_spend_usd: Decimal | None, items_total: int | None,
+        revise_model_ref: str | None = None, revise_model_source: str | None = None,
     ) -> WikiGenJob:
         """Insert a pending job. The per-book partial-unique index makes a 2nd
-        active job for the book raise UniqueViolation → :class:`ActiveJobExists`."""
+        active job for the book raise UniqueViolation → :class:`ActiveJobExists`.
+        ``revise_model_*`` (W5) is the optional corrective-revise override (null =
+        the revise reuses the prose model)."""
         try:
             async with self._pool.acquire() as conn:
                 row = await conn.fetchrow(
                     f"""
                     INSERT INTO wiki_gen_jobs
                       (user_id, project_id, book_id, model_source, model_ref,
-                       entity_ids, max_spend_usd, items_total)
-                    VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8)
+                       entity_ids, max_spend_usd, items_total,
+                       revise_model_ref, revise_model_source)
+                    VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10)
                     RETURNING {_COLS}
                     """,
                     user_id, project_id, book_id, model_source, model_ref,
                     json.dumps([str(e) for e in entity_ids]), max_spend_usd, items_total,
+                    revise_model_ref or None, revise_model_source or None,
                 )
             return _row_to_job(row)
         except asyncpg.UniqueViolationError:
@@ -162,10 +187,36 @@ class WikiGenJobsRepo:
             tag = await conn.execute(
                 """UPDATE wiki_gen_jobs
                    SET status='running', started_at=COALESCE(started_at, now()),
-                       items_total=$2, updated_at=now()
+                       items_total=$2, current_entity_id=NULL, current_pass=NULL,
+                       updated_at=now()
                    WHERE job_id=$1 AND status IN ('pending','running')""",
                 job_id, items_total)
         return _affected(tag) == 1
+
+    async def set_progress(self, job_id: UUID, entity_id: str, pass_name: str) -> None:
+        """W4a — point the live sub-step pointer at the entity currently in flight
+        and its pipeline pass (context|generate|verify|revise|writeback). A cheap
+        UPDATE called before each pass; the FE poll renders the live indicator off
+        it. Best-effort at the call site (a progress write must not crash the run)."""
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """UPDATE wiki_gen_jobs
+                   SET current_entity_id=$2, current_pass=$3, updated_at=now()
+                   WHERE job_id=$1""",
+                job_id, entity_id, pass_name)
+
+    async def record_result(self, job_id: UUID, entity_id: str, detail: dict[str, Any]) -> None:
+        """W4a — upsert one entity's result detail into the ``results`` object
+        ({outcome, citations, flags, name}). Idempotent: a preliminary 'processing'
+        row is overwritten by the final outcome, and a resume/retry overwrites a
+        prior attempt. Best-effort at the call site."""
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """UPDATE wiki_gen_jobs
+                   SET results = results || jsonb_build_object($2::text, $3::jsonb),
+                       updated_at=now()
+                   WHERE job_id=$1""",
+                job_id, entity_id, json.dumps(detail))
 
     async def mark_entity_done(self, job_id: UUID, entity_id: str, *, cost: Decimal) -> None:
         """Append the entity to items_done (skip-on-resume) + bump processed/cost,
@@ -186,13 +237,15 @@ class WikiGenJobsRepo:
         async with self._pool.acquire() as conn:
             await conn.execute(
                 """UPDATE wiki_gen_jobs SET status='paused', paused_at=now(),
-                   error_message=$2, updated_at=now() WHERE job_id=$1""",
+                   error_message=$2, current_entity_id=NULL, current_pass=NULL,
+                   updated_at=now() WHERE job_id=$1""",
                 job_id, reason)
 
     async def complete(self, job_id: UUID) -> None:
         async with self._pool.acquire() as conn:
             await conn.execute(
                 """UPDATE wiki_gen_jobs SET status='complete', completed_at=now(),
+                   current_entity_id=NULL, current_pass=NULL,
                    updated_at=now() WHERE job_id=$1""",
                 job_id)
 
@@ -228,5 +281,6 @@ class WikiGenJobsRepo:
         async with self._pool.acquire() as conn:
             await conn.execute(
                 """UPDATE wiki_gen_jobs SET status='failed', error_message=$2,
+                   current_entity_id=NULL, current_pass=NULL,
                    updated_at=now() WHERE job_id=$1""",
                 job_id, error[:2000])

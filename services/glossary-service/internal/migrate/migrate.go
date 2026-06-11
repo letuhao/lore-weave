@@ -656,6 +656,10 @@ CREATE TABLE IF NOT EXISTS wiki_article_source_usage (
   PRIMARY KEY (article_id, source_type, source_id)
 );
 CREATE INDEX IF NOT EXISTS idx_wasu_source ON wiki_article_source_usage(source_type, source_id);
+-- wiki-llm W6b-2 — the source text used at generation time (the "before" half of
+-- the change diff; the "after" re-gathers live). NULL for pre-W6b-2 rows → no diff
+-- (the reader falls back to the W6b-1 "view source" jump). Capped on the writer side.
+ALTER TABLE wiki_article_source_usage ADD COLUMN IF NOT EXISTS source_text TEXT;
 
 -- risk #4 — the deterministic stub previously wrote its seed revision as
 -- author_type='owner', indistinguishable from a human edit. Migrate legacy stub
@@ -665,6 +669,33 @@ CREATE INDEX IF NOT EXISTS idx_wasu_source ON wiki_article_source_usage(source_t
 -- touches legacy rows once (idempotent thereafter).
 UPDATE wiki_revisions SET author_type = 'system'
   WHERE author_type = 'owner' AND summary = 'Auto-generated from KG';
+
+-- wiki-llm Phase-2 (§5.2) — the DEFER staleness ledger. When a knowledge source an
+-- article was built from changes, the wiki-staleness consumer (push) / sweep (pull)
+-- records a row here + flips wiki_articles.is_knowledge_stale — and does ZERO LLM
+-- work. The "Knowledge updates" surface (§5.3) drains it; regeneration is always
+-- user-gated. reason_code: entity_changed | name_changed | enrichment_changed |
+-- merged | chapter_regrounded | citation_broken | recipe_drift.  severity:
+-- structural (frame wrong) | content (advisory) | hard (cite points at non-canon).
+CREATE TABLE IF NOT EXISTS wiki_staleness (
+  staleness_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  article_id   UUID NOT NULL REFERENCES wiki_articles(article_id) ON DELETE CASCADE,
+  reason_code  TEXT NOT NULL,
+  source_ref   JSONB NOT NULL DEFAULT '{}',   -- {source_type, source_id, event_id, ...}
+  severity     TEXT NOT NULL DEFAULT 'content',
+  status       TEXT NOT NULL DEFAULT 'pending', -- pending | regenerated | dismissed
+  detected_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Idempotent capture: one OPEN (pending) row per (article, reason, source) so an
+-- at-least-once event redelivery never piles duplicates. source_id is lifted out of
+-- source_ref for the dedup key (an expression index can't be a UNIQUE constraint
+-- target directly, so a partial unique index on the expression is used).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_wiki_staleness_open
+  ON wiki_staleness (article_id, reason_code, (source_ref->>'source_id'))
+  WHERE status = 'pending';
+-- The "Knowledge updates" feed lists pending rows per book — join via the article.
+CREATE INDEX IF NOT EXISTS idx_wiki_staleness_pending
+  ON wiki_staleness (article_id) WHERE status = 'pending';
 `
 
 func UpWiki(ctx context.Context, pool *pgxpool.Pool) error {

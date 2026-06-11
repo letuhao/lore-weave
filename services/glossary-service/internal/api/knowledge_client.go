@@ -119,6 +119,7 @@ func (s *Server) fetchWikiNeighborhood(ctx context.Context, ownerUserID, glossar
 func (s *Server) triggerWikiGeneration(
 	ctx context.Context, bookID, userID uuid.UUID,
 	modelSource, modelRef string, entityIDs []string, maxSpendUSD *float64,
+	reviseModelSource, reviseModelRef string,
 ) (status int, respBody []byte, err error) {
 	base := strings.TrimRight(s.cfg.KnowledgeServiceURL, "/")
 	if base == "" {
@@ -132,6 +133,12 @@ func (s *Server) triggerWikiGeneration(
 	}
 	if maxSpendUSD != nil {
 		payload["max_spend_usd"] = *maxSpendUSD
+	}
+	// W5 — forward the optional revise-model override only when set (both keys
+	// together or neither), so knowledge sees null → prose-model fallback.
+	if reviseModelRef != "" {
+		payload["revise_model_ref"] = reviseModelRef
+		payload["revise_model_source"] = reviseModelSource
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -190,6 +197,83 @@ func (s *Server) getWikiGenJob(
 	return res.StatusCode, respBody, nil
 }
 
+// getWikiGenConfig fetches the flat per-article wiki-gen cost estimate from
+// knowledge-service (D-WIKI-P2B-COST-ESTIMATE). PROPAGATES the upstream status+body
+// (a read the FE needs verbatim); errors when knowledge-service is unconfigured.
+func (s *Server) getWikiGenConfig(ctx context.Context) (status int, respBody []byte, err error) {
+	base := strings.TrimRight(s.cfg.KnowledgeServiceURL, "/")
+	if base == "" {
+		return 0, nil, fmt.Errorf("knowledge-service not configured")
+	}
+	url := fmt.Sprintf("%s/internal/knowledge/wiki/gen-config", base)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return 0, nil, err
+	}
+	if s.cfg.InternalServiceToken != "" {
+		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	}
+	if tid := TraceIDFromContext(ctx); tid != "" {
+		req.Header.Set(traceIDHeader, tid)
+	}
+	res, err := knowledgeHTTPClient.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer res.Body.Close()
+	respBody, _ = io.ReadAll(io.LimitReader(res.Body, 1<<16))
+	return res.StatusCode, respBody, nil
+}
+
+// fetchKgHashes asks knowledge-service to recompute the CURRENT kg_neighborhood_hash
+// for each entity (D-WIKI-P2-KG-SWEEP). Knowledge reuses the exact generation render
+// path so the hash compares byte-for-byte with the stored one; entities whose KG is
+// unavailable are OMITTED by knowledge (not empty-hashed). Unlike fetchWikiNeighborhood
+// this does NOT degrade-to-nil silently — it returns an error so the sweep can SKIP
+// the KG half rather than flag false drift (the caller decides; ownerID = Neo4j tenant).
+func (s *Server) fetchKgHashes(
+	ctx context.Context, bookID, ownerID uuid.UUID, entityIDs []string,
+) (map[string]string, error) {
+	base := strings.TrimRight(s.cfg.KnowledgeServiceURL, "/")
+	if base == "" {
+		return nil, fmt.Errorf("knowledge-service not configured")
+	}
+	body, err := json.Marshal(map[string]any{
+		"user_id":    ownerID.String(),
+		"entity_ids": entityIDs,
+	})
+	if err != nil {
+		return nil, err
+	}
+	url := fmt.Sprintf("%s/internal/knowledge/books/%s/wiki/kg-hashes", base, bookID.String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if s.cfg.InternalServiceToken != "" {
+		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	}
+	if tid := TraceIDFromContext(ctx); tid != "" {
+		req.Header.Set(traceIDHeader, tid)
+	}
+	res, err := knowledgeHTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("kg-hashes: knowledge returned %d", res.StatusCode)
+	}
+	var parsed struct {
+		Hashes map[string]string `json:"hashes"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&parsed); err != nil {
+		return nil, err
+	}
+	return parsed.Hashes, nil
+}
+
 // wikiGenJobAction drives a resume/cancel on a wiki-gen job. ``action`` is the
 // path verb ("resume" | "cancel"); the user_id travels in the body so
 // knowledge-service can re-assert ownership. PROPAGATES the upstream status
@@ -225,6 +309,52 @@ func (s *Server) wikiGenJobAction(
 	defer res.Body.Close()
 	respBody, _ = io.ReadAll(io.LimitReader(res.Body, 1<<16))
 	return res.StatusCode, respBody, nil
+}
+
+// fetchWikiSourceText (W6b-2b) — the CURRENT source text per source (the change-diff
+// "after"), re-gathered by knowledge through the same context path as generation.
+// Returns the {key→text} map; errors when knowledge is unconfigured/unreachable or
+// returns non-200 (the caller then degrades to no-diff).
+func (s *Server) fetchWikiSourceText(
+	ctx context.Context, bookID, userID uuid.UUID, entityID string, sources []map[string]string,
+) (map[string]string, error) {
+	base := strings.TrimRight(s.cfg.KnowledgeServiceURL, "/")
+	if base == "" {
+		return nil, fmt.Errorf("knowledge-service not configured")
+	}
+	body, err := json.Marshal(map[string]any{
+		"user_id": userID.String(), "entity_id": entityID, "sources": sources,
+	})
+	if err != nil {
+		return nil, err
+	}
+	url := fmt.Sprintf("%s/internal/knowledge/books/%s/wiki/source-text", base, bookID.String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if s.cfg.InternalServiceToken != "" {
+		req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	}
+	if tid := TraceIDFromContext(ctx); tid != "" {
+		req.Header.Set(traceIDHeader, tid)
+	}
+	res, err := knowledgeHTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("source-text upstream %d", res.StatusCode)
+	}
+	var out struct {
+		Texts map[string]string `json:"texts"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return out.Texts, nil
 }
 
 // badEntityIDError marks an invalid client-supplied entity id so the handler can

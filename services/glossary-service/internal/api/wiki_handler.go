@@ -31,6 +31,9 @@ type wikiArticleListItem struct {
 	// AI-generated) | 'generated' | 'needs_review' | 'blocked'. omitempty so a
 	// plain article carries no badge field.
 	GenerationStatus *string `json:"generation_status,omitempty"`
+	// wiki-llm Phase-2 — a knowledge source the article was built from changed; the
+	// FE shows an "Outdated" badge. Cleared on regenerate (§5.3).
+	IsKnowledgeStale bool `json:"is_knowledge_stale"`
 }
 
 type wikiArticleListResp struct {
@@ -188,7 +191,7 @@ func (s *Server) listWikiArticles(w http.ResponseWriter, r *http.Request) {
 			ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
 			wa.status, wa.template_code,
 			(SELECT COUNT(*) FROM wiki_revisions wr WHERE wr.article_id = wa.article_id) AS revision_count,
-			wa.updated_at, wa.generation_status
+			wa.updated_at, wa.generation_status, wa.is_knowledge_stale
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
 		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
@@ -220,7 +223,7 @@ func (s *Server) listWikiArticles(w http.ResponseWriter, r *http.Request) {
 			&it.Kind.KindID, &it.Kind.Code, &it.Kind.Name, &it.Kind.Icon, &it.Kind.Color,
 			&it.Status, &it.TemplateCode,
 			&it.RevisionCount,
-			&it.UpdatedAt, &it.GenerationStatus,
+			&it.UpdatedAt, &it.GenerationStatus, &it.IsKnowledgeStale,
 		); err != nil {
 			slog.Error("listWikiArticles scan", "error", err)
 			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
@@ -592,6 +595,7 @@ func (s *Server) patchWikiArticle(w http.ResponseWriter, r *http.Request) {
 				BookID:                bookID.String(),
 				ArticleID:             articleID.String(),
 				EntityID:              corrEntityID.String(),
+				UserID:                userID.String(),
 				PriorGenerationStatus: prior,
 				EmittedAt:             time.Now().UTC().Format(time.RFC3339),
 			}); err != nil {
@@ -948,6 +952,10 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 		// of resolving by kind — so a "Regenerate" button re-runs exactly one
 		// entity (the clobber-guard still protects any human-edited article).
 		EntityIDs []string `json:"entity_ids"`
+		// wiki-llm W5 — optional override model for the corrective revise re-gen
+		// (null/empty ⇒ knowledge reuses the prose model). Forwarded as a pair.
+		ReviseModelRef    string `json:"revise_model_ref"`
+		ReviseModelSource string `json:"revise_model_source"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "WIKI_BAD_REQUEST", "invalid JSON body")
@@ -981,8 +989,15 @@ func (s *Server) generateWikiStubs(w http.ResponseWriter, r *http.Request) {
 		if modelSource == "" {
 			modelSource = "user_model"
 		}
+		// W5 — pair the revise source with its ref (default 'user_model' when a
+		// revise ref is given without an explicit source); empty ref = no override.
+		reviseSource := req.ReviseModelSource
+		if req.ReviseModelRef != "" && reviseSource == "" {
+			reviseSource = "user_model"
+		}
 		status, body, err := s.triggerWikiGeneration(
-			r.Context(), bookID, userID, modelSource, req.ModelRef, entityIDs, req.MaxSpendUSD)
+			r.Context(), bookID, userID, modelSource, req.ModelRef, entityIDs, req.MaxSpendUSD,
+			reviseSource, req.ReviseModelRef)
 		if err != nil {
 			slog.Error("generateWikiStubs delegate", "error", err)
 			writeError(w, http.StatusBadGateway, "WIKI_DELEGATE", "generation service unavailable")
@@ -1285,7 +1300,7 @@ func (s *Server) loadWikiArticleDetail(r *http.Request, bookID, articleID uuid.U
 			wa.status, wa.template_code,
 			(SELECT COUNT(*) FROM wiki_revisions wr WHERE wr.article_id = wa.article_id) AS revision_count,
 			wa.updated_at, wa.body_json, wa.spoiler_chapters, wa.created_at, wa.superseded_by_entity_id,
-			wa.generation_status, wa.generation_provenance, wa.generated_at
+			wa.generation_status, wa.generation_provenance, wa.generated_at, wa.is_knowledge_stale
 		FROM wiki_articles wa
 		JOIN glossary_entities ge ON ge.entity_id = wa.entity_id
 		JOIN entity_kinds ek ON ek.kind_id = ge.kind_id
@@ -1304,7 +1319,7 @@ func (s *Server) loadWikiArticleDetail(r *http.Request, bookID, articleID uuid.U
 		&d.Status, &d.TemplateCode,
 		&d.RevisionCount,
 		&d.UpdatedAt, &d.BodyJSON, &spoilerChapters, &d.CreatedAt, &d.SupersededBy,
-		&d.GenerationStatus, &d.GenerationProvenance, &d.GeneratedAt,
+		&d.GenerationStatus, &d.GenerationProvenance, &d.GeneratedAt, &d.IsKnowledgeStale,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("loadWikiArticleDetail main: %w", err)
@@ -1922,6 +1937,33 @@ func (s *Server) reviewWikiSuggestion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Action == "accept" {
+		// An AI regeneration that the clobber-guard filed as a suggestion (because the
+		// article had human edits) stores an ENVELOPE in diff_json —
+		// {body_json, generation_status, generation_provenance} — NOT a raw body. A
+		// human community suggestion stores the TipTap doc directly. Discriminate on
+		// the envelope's two server-set keys (body_json + a validated generation_status)
+		// — a TipTap doc, {"type":"doc",...}, carries neither, so a client-crafted diff
+		// can't masquerade as a regen. For an AI regen we unwrap the real body and
+		// restore the generation metadata, so the accepted article reflects the new AI
+		// generation (badges/provenance correct) and is logged as an 'ai' revision —
+		// future regens then overwrite it freely instead of re-filing suggestions.
+		var env struct {
+			BodyJSON             json.RawMessage `json:"body_json"`
+			GenerationStatus     *string         `json:"generation_status"`
+			GenerationProvenance json.RawMessage `json:"generation_provenance"`
+		}
+		_ = json.Unmarshal(diffJSON, &env)
+		isAIRegen := env.BodyJSON != nil && env.GenerationStatus != nil
+
+		applyBody := diffJSON
+		authorType := "community"
+		summary := "Community suggestion accepted"
+		if isAIRegen {
+			applyBody = env.BodyJSON
+			authorType = "ai"
+			summary = "AI regeneration accepted"
+		}
+
 		// Lock article for revision version safety
 		if _, err := tx.Exec(r.Context(),
 			`SELECT 1 FROM wiki_articles WHERE article_id=$1 FOR UPDATE`, articleID); err != nil {
@@ -1930,23 +1972,57 @@ func (s *Server) reviewWikiSuggestion(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Apply diff_json to article body
-		if _, err := tx.Exec(r.Context(),
+		// Apply the accepted body. An AI regen also restores its generation metadata.
+		if isAIRegen {
+			if _, err := tx.Exec(r.Context(), `
+				UPDATE wiki_articles
+				   SET body_json=$1, generation_status=$2, generation_provenance=$3,
+				       generated_at=now(), updated_at=now()
+				 WHERE article_id=$4`,
+				applyBody, env.GenerationStatus, env.GenerationProvenance, articleID,
+			); err != nil {
+				slog.Error("reviewWikiSuggestion apply", "error", err)
+				writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+				return
+			}
+		} else if _, err := tx.Exec(r.Context(),
 			`UPDATE wiki_articles SET body_json=$1, updated_at=now() WHERE article_id=$2`,
-			diffJSON, articleID,
+			applyBody, articleID,
 		); err != nil {
 			slog.Error("reviewWikiSuggestion apply", "error", err)
 			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
 			return
 		}
 
-		// Create community revision
+		// Create the revision: 'community' for a human suggestion, 'ai' for a regen.
 		if _, err := tx.Exec(r.Context(), `
 			INSERT INTO wiki_revisions (article_id, version, body_json, author_id, author_type, summary)
-			VALUES ($1, COALESCE((SELECT MAX(version) FROM wiki_revisions WHERE article_id=$1), 0) + 1, $2, $3, 'community', $4)`,
-			articleID, diffJSON, sugUserID, "Community suggestion accepted",
+			VALUES ($1, COALESCE((SELECT MAX(version) FROM wiki_revisions WHERE article_id=$1), 0) + 1, $2, $3, $4, $5)`,
+			articleID, applyBody, sugUserID, authorType, summary,
 		); err != nil {
 			slog.Error("reviewWikiSuggestion revision", "error", err)
+			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+			return
+		}
+
+		// wiki-llm Phase-2b (D-WIKI-P2B-SUGGESTION-RESOLVE) — accepting a suggestion
+		// brings the article up to date, so resolve its pending staleness ledger rows
+		// and clear the denormalized "Outdated" flag (symmetric with the direct-write
+		// resolve in wiki_writeback.go). A REJECT intentionally leaves the staleness
+		// pending — the changed source is still unaddressed.
+		if _, err := tx.Exec(r.Context(),
+			`UPDATE wiki_staleness SET status='regenerated' WHERE article_id=$1 AND status='pending'`,
+			articleID,
+		); err != nil {
+			slog.Error("reviewWikiSuggestion resolve staleness", "error", err)
+			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
+			return
+		}
+		if _, err := tx.Exec(r.Context(),
+			`UPDATE wiki_articles SET is_knowledge_stale=false WHERE article_id=$1`,
+			articleID,
+		); err != nil {
+			slog.Error("reviewWikiSuggestion clear stale flag", "error", err)
 			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
 			return
 		}
@@ -1971,6 +2047,7 @@ func (s *Server) reviewWikiSuggestion(w http.ResponseWriter, r *http.Request) {
 		BookID:         bookID.String(),
 		ArticleID:      articleID.String(),
 		SuggestionID:   sugID.String(),
+		UserID:         userID.String(),
 		Action:         req.Action,
 		WasAIGenerated: revGenStatus != nil,
 		EmittedAt:      time.Now().UTC().Format(time.RFC3339),
