@@ -40,16 +40,6 @@ var allowedMediaTypes = map[string]string{
 // ── Upload ──────────────────────────────────────────────────────────────────
 
 func (s *Server) uploadChapterMedia(w http.ResponseWriter, r *http.Request) {
-	if s.minio == nil {
-		writeError(w, http.StatusServiceUnavailable, "MEDIA_UNAVAILABLE", "media storage not configured")
-		return
-	}
-
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
@@ -60,13 +50,16 @@ func (s *Server) uploadChapterMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	lifecycle, okBook, status := s.ensureOwnerBook(r.Context(), bookID, ownerID)
-	if !okBook {
-		writeError(w, status, "BOOK_NOT_FOUND", "book not found")
+	_, _, lifecycle, ok := s.authBook(w, r, bookID, GrantEdit)
+	if !ok {
 		return
 	}
 	if lifecycle != "active" {
 		writeError(w, http.StatusConflict, "BOOK_INVALID_LIFECYCLE", "book not active")
+		return
+	}
+	if s.minio == nil {
+		writeError(w, http.StatusServiceUnavailable, "MEDIA_UNAVAILABLE", "media storage not configured")
 		return
 	}
 
@@ -180,17 +173,11 @@ func (s *Server) uploadChapterMedia(w http.ResponseWriter, r *http.Request) {
 // ── List versions ───────────────────────────────────────────────────────────
 
 func (s *Server) listMediaVersions(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
 	}
-	if _, okBook, st := s.ensureOwnerBook(r.Context(), bookID, ownerID); !okBook {
-		writeError(w, st, "BOOK_NOT_FOUND", "book not found")
+	if _, _, _, ok := s.authBook(w, r, bookID, GrantView); !ok {
 		return
 	}
 	chapterID := chi.URLParam(r, "chapter_id")
@@ -249,17 +236,11 @@ func (s *Server) listMediaVersions(w http.ResponseWriter, r *http.Request) {
 // ── Create version (manual — prompt/caption changes) ────────────────────────
 
 func (s *Server) createMediaVersion(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
 	}
-	if _, okBook, st := s.ensureOwnerBook(r.Context(), bookID, ownerID); !okBook {
-		writeError(w, st, "BOOK_NOT_FOUND", "book not found")
+	if _, _, _, ok := s.authBook(w, r, bookID, GrantEdit); !ok {
 		return
 	}
 	chapterID := chi.URLParam(r, "chapter_id")
@@ -314,17 +295,12 @@ func (s *Server) createMediaVersion(w http.ResponseWriter, r *http.Request) {
 // ── Delete version ──────────────────────────────────────────────────────────
 
 func (s *Server) deleteMediaVersion(w http.ResponseWriter, r *http.Request) {
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
 	bookID, ok := parseUUIDParam(w, r, "book_id")
 	if !ok {
 		return
 	}
-	if _, okBook, st := s.ensureOwnerBook(r.Context(), bookID, ownerID); !okBook {
-		writeError(w, st, "BOOK_NOT_FOUND", "book not found")
+	// Asset deletion is content-destructive → manage (PO-locked CLARIFY 2026-06-11).
+	if _, _, _, ok := s.authBook(w, r, bookID, GrantManage); !ok {
 		return
 	}
 	versionID := chi.URLParam(r, "version_id")
@@ -403,6 +379,23 @@ func writeImageGenError(w http.ResponseWriter, err error) {
 // ── AI Image Generation ─────────────────────────────────────────────────────
 
 func (s *Server) generateChapterMedia(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parseUUIDParam(w, r, "book_id")
+	if !ok {
+		return
+	}
+	chapterID := chi.URLParam(r, "chapter_id")
+
+	// E0-2: authorize BEFORE revealing infra state. Edit grant required; the
+	// generation bills the CALLER's BYOK (their own credentials/budget), while the
+	// book owner is recorded for attribution.
+	caller, ownerID, lifecycle, ok := s.authBook(w, r, bookID, GrantEdit)
+	if !ok {
+		return
+	}
+	if lifecycle != "active" {
+		writeError(w, http.StatusConflict, "BOOK_INVALID_LIFECYCLE", "book not active")
+		return
+	}
 	if s.minio == nil {
 		writeError(w, http.StatusServiceUnavailable, "MEDIA_UNAVAILABLE", "media storage not configured")
 		return
@@ -413,27 +406,6 @@ func (s *Server) generateChapterMedia(w http.ResponseWriter, r *http.Request) {
 	// INTERNAL_SERVICE_TOKEN was missing at startup (config.Load enforces).
 	if s.llmgw == nil {
 		writeError(w, http.StatusServiceUnavailable, "GENERATION_UNAVAILABLE", "AI generation not configured")
-		return
-	}
-
-	ownerID, ok := s.requireUserID(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
-		return
-	}
-	bookID, ok := parseUUIDParam(w, r, "book_id")
-	if !ok {
-		return
-	}
-	chapterID := chi.URLParam(r, "chapter_id")
-
-	lifecycle, okBook, status := s.ensureOwnerBook(r.Context(), bookID, ownerID)
-	if !okBook {
-		writeError(w, status, "BOOK_NOT_FOUND", "book not found")
-		return
-	}
-	if lifecycle != "active" {
-		writeError(w, http.StatusConflict, "BOOK_INVALID_LIFECYCLE", "book not active")
 		return
 	}
 
@@ -468,7 +440,7 @@ func (s *Server) generateChapterMedia(w http.ResponseWriter, r *http.Request) {
 		ModelSource: llmgw.ModelSource(body.ModelSource),
 		ModelRef:    body.ModelRef,
 		Size:        &size,
-		UserID:      ownerID.String(),
+		UserID:      caller.String(),
 	})
 	if err != nil {
 		writeImageGenError(w, err)

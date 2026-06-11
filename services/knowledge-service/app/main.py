@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from loreweave_obs import current_otel_trace_id, setup_tracing
 
 from app.clients.book_client import close_book_client, get_book_client
+from app.clients.grant_client import close_grant_client, get_grant_client
 from app.clients.embedding_client import close_embedding_client, get_embedding_client
 from app.clients.glossary_client import close_glossary_client, init_glossary_client
 from app.clients.llm_client import close_llm_client, get_llm_client
@@ -75,6 +76,7 @@ async def _close_all_startup_resources() -> None:
         ("llm_client", close_llm_client),
         ("embedding_client", close_embedding_client),
         ("book_client", close_book_client),
+        ("grant_client", close_grant_client),
         ("glossary_client", close_glossary_client),
         ("neo4j_driver", close_neo4j_driver),
         ("pools", close_pools),
@@ -103,6 +105,8 @@ async def lifespan(app: FastAPI):
         init_glossary_client()
         # K16.2 — long-lived httpx client for book-service chapter counts.
         get_book_client()
+        # E0-3 — long-lived httpx client for the book-service grant authority.
+        get_grant_client()
         # K12.2 — long-lived httpx client for embedding calls.
         get_embedding_client()
         # loreweave_llm SDK wrapper for unified-gateway LLM calls. Touched
@@ -611,6 +615,7 @@ async def lifespan(app: FastAPI):
         await close_llm_client()
         await close_embedding_client()
         await close_book_client()
+        await close_grant_client()
         await close_glossary_client()
         await close_neo4j_driver()
         await close_pools()

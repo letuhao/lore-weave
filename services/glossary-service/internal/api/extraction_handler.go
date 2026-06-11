@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/loreweave/grantclient"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -26,8 +27,18 @@ import (
 //   - Public:   GET /v1/glossary/books/{book_id}/extraction-profile  (JWT auth)
 //   - Internal: GET /internal/books/{book_id}/extraction-profile     (service token)
 func (s *Server) getExtractionProfile(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
+		return
+	}
 	bookID, ok := parsePathUUID(w, r, "book_id")
 	if !ok {
+		return
+	}
+	// /review-impl: the /v1 profile is JWT/grant-gated (the service-token
+	// /internal/.../extraction-profile route is the one workers call). Reads = view.
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 	ctx := r.Context()
@@ -339,8 +350,8 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 // bulkUpsertRequest is the request body for POST /internal/books/{book_id}/extract-entities.
 type bulkUpsertRequest struct {
 	SourceLanguage   string                       `json:"source_language"`
-	AttributeActions map[string]map[string]string  `json:"attribute_actions"` // kind_code → attr_code → "fill"|"overwrite"
-	Entities         []extractedEntity             `json:"entities"`
+	AttributeActions map[string]map[string]string `json:"attribute_actions"` // kind_code → attr_code → "fill"|"overwrite"
+	Entities         []extractedEntity            `json:"entities"`
 	// ParkUnknownKinds gates the unknown-bucket fallback (D-GLOSSARY-UNKNOWN-BLAST-RADIUS).
 	// nil/true (default) → an entity whose kind_code matches neither a kind nor an
 	// alias is PARKED under 'unknown' for author triage (never silently dropped — the
@@ -361,11 +372,11 @@ type bulkUpsertRequest struct {
 }
 
 type extractedEntity struct {
-	KindCode     string            `json:"kind_code"`
-	Name         string            `json:"name"`
-	Attributes   map[string]any    `json:"attributes"`
-	Evidence     string            `json:"evidence"`
-	ChapterLinks []chapterLinkIn   `json:"chapter_links"`
+	KindCode     string          `json:"kind_code"`
+	Name         string          `json:"name"`
+	Attributes   map[string]any  `json:"attributes"`
+	Evidence     string          `json:"evidence"`
+	ChapterLinks []chapterLinkIn `json:"chapter_links"`
 	// Translation (M4d-2b) — optional target-language rendering of the name, seeded
 	// by the translation 2-pass cold-start writeback. Written to the name attr's
 	// attribute_translations at confidence='machine' (the M1d trust ladder treats
@@ -466,10 +477,10 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 	isAIWriteback := slices.Contains(req.DefaultTags, tagAISuggested)
 
 	var (
-		results  []entityResult
-		created  int
-		updated  int
-		skipped  int
+		results []entityResult
+		created int
+		updated int
+		skipped int
 	)
 
 	for _, ent := range req.Entities {
@@ -1409,4 +1420,3 @@ func (s *Server) internalListEntities(w http.ResponseWriter, r *http.Request) {
 		NextCursor: nextCursor,
 	})
 }
-

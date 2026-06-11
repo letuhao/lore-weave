@@ -63,6 +63,47 @@ async def test_dispatch_happy_path_returns_ack():
 
 
 @pytest.mark.asyncio
+async def test_dispatch_forwards_billing_identity_when_present():
+    """E0-3 2a-2: a collaborator-enqueued summary message carries billing
+    fields on the redis record → the consumer forwards them to the HTTP
+    dispatch so knowledge-service bills the caller's key."""
+    kc = MagicMock(spec=KnowledgeClient)
+    kc.process_summarize_message = AsyncMock(return_value=SummarizeMessageResult(
+        level="chapter", node_id="n1", cache_hit=False, race_winner=True,
+        re_enqueued=False, skipped_retry_exhausted=False, summary_id="s1",
+    ))
+    await _dispatch_one_message(
+        knowledge_client=kc,
+        fields=_fields(
+            billing_user_id="collab-B",
+            billing_llm_model="collab-llm",
+            billing_embedding_model="collab-emb",
+        ),
+        message_id="1-2",
+    )
+    kw = kc.process_summarize_message.await_args.kwargs
+    assert kw["billing_user_id"] == "collab-B"
+    assert kw["billing_llm_model"] == "collab-llm"
+    assert kw["billing_embedding_model"] == "collab-emb"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_billing_absent_forwards_empty():
+    """Legacy / owner-triggered message (no billing keys) → "" forwarded."""
+    kc = MagicMock(spec=KnowledgeClient)
+    kc.process_summarize_message = AsyncMock(return_value=SummarizeMessageResult(
+        level="chapter", node_id="n1", cache_hit=False, race_winner=True,
+        re_enqueued=False, skipped_retry_exhausted=False, summary_id="s1",
+    ))
+    await _dispatch_one_message(
+        knowledge_client=kc, fields=_fields(), message_id="1-3",
+    )
+    kw = kc.process_summarize_message.await_args.kwargs
+    assert kw["billing_user_id"] == ""
+    assert kw["billing_embedding_model"] == ""
+
+
+@pytest.mark.asyncio
 async def test_dispatch_retryable_error_returns_noack():
     """Retryable HTTP error → leave un-ACKed for PEL re-delivery."""
     kc = MagicMock(spec=KnowledgeClient)

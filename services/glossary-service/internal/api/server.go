@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -13,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/loreweave/grantclient"
 	"github.com/loreweave/observability"
 
 	"github.com/loreweave/glossary-service/internal/config"
@@ -23,13 +23,18 @@ type Server struct {
 	pool   *pgxpool.Pool
 	cfg    *config.Config
 	secret []byte
-	// ownerCache memoizes positive book-ownership checks for the MCP read tools
-	// (INV-8). Keyed "user:book" → ownerCacheEntry; see ownership.go.
-	ownerCache sync.Map
+	// grantClient resolves (user, book) grants against book-service (E0-1).
+	// Positive-grant caching lives in the client; nil → guards fail closed.
+	grantClient *grantclient.Client
 }
 
 func NewServer(pool *pgxpool.Pool, cfg *config.Config) *Server {
-	return &Server{pool: pool, cfg: cfg, secret: []byte(cfg.JWTSecret)}
+	return &Server{
+		pool:        pool,
+		cfg:         cfg,
+		secret:      []byte(cfg.JWTSecret),
+		grantClient: buildGrantClient(cfg.BookServiceURL, cfg.InternalServiceToken),
+	}
 }
 
 func (s *Server) Router() http.Handler {
