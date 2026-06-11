@@ -167,6 +167,23 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
             "chapter %s: using BLOCK pipeline (%d blocks, model=%s/%s)",
             chapter_id, len(blocks), msg.get("model_source"), msg.get("model_ref"),
         )
+        # LLM re-arch Phase 2b-T3a: event-driven decouple of the v2 BLOCK translate
+        # stage. Submit batch 0 + RELEASE; the llm_terminal_consumer drives every
+        # subsequent batch/retry off the terminal events and finalizes. (V3
+        # verify/correct decouple = 2b-T3b — v3 stays synchronous under this flag.)
+        if settings.translation_decouple_enabled and pipeline_version == "v2":
+            from .decoupled_block_translate import start_chapter_blocks as _decoupled_start_blocks
+            log.info("chapter %s: using DECOUPLED BLOCK pipeline (decouple flag on)", chapter_id)
+            submitted = await _decoupled_start_blocks(
+                pool=pool, llm_client=llm_client,
+                chapter_translation_id=chapter_translation_id,
+                blocks=blocks, source_lang=source_lang, msg=msg,
+                context_window=context_window, chapter_text=chapter_text,
+            )
+            if submitted:
+                return  # released — the consumer finalizes on the terminal events
+            # No translatable batches → fall through to the synchronous path, which
+            # finalizes the original blocks as the empty-plan case does.
         (translated_blocks, input_tokens, output_tokens, translated_count,
          translatable_count, translated_texts) = (
             await _translate_blocks(

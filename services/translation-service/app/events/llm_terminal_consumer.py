@@ -33,7 +33,7 @@ from uuid import UUID
 import redis.asyncio as aioredis
 
 from ..llm_client import LLMClient, set_campaign_id
-from ..workers import decoupled_translate
+from ..workers import decoupled_block_translate, decoupled_translate
 
 log = logging.getLogger(__name__)
 
@@ -175,11 +175,19 @@ class LLMTerminalConsumer:
             job = await self._llm_client.sdk.get_job(
                 job_id, user_id=owner_user_id or msg.get("user_id"),
             )
-            await decoupled_translate.resume(
-                pool=self._pool, llm_client=self._llm_client, job=job,
-                chapter_translation_id=ct_id,
-                finalize_cb=self._make_finalize_cb(msg, ct_id, rs),
-            )
+            # Dispatch by the engine that owns this chapter's resume_state.
+            if rs.get("mode") == "block":
+                await decoupled_block_translate.resume(
+                    pool=self._pool, llm_client=self._llm_client, job=job,
+                    chapter_translation_id=ct_id,
+                    finalize_cb=self._make_block_finalize_cb(msg, ct_id, rs),
+                )
+            else:
+                await decoupled_translate.resume(
+                    pool=self._pool, llm_client=self._llm_client, job=job,
+                    chapter_translation_id=ct_id,
+                    finalize_cb=self._make_finalize_cb(msg, ct_id, rs),
+                )
             await r.xack(STREAM, GROUP_NAME, msg_id)
         except Exception as exc:
             retry_key = f"transl:llmresume:retry:{msg_id}"
@@ -216,6 +224,28 @@ class LLMTerminalConsumer:
                 chapter_text=rs.get("chapter_text", ""),
                 translated_body_text=body, translated_body_json=None,
                 translated_body_format="text", memo_text=body,
+                input_tokens=in_tok, output_tokens=out_tok,
+            )
+
+        return _cb
+
+    def _make_block_finalize_cb(self, msg: dict, ct_id: UUID, rs: dict):
+        """Block-path finalize hook (2b-T3a). The engine rebuilt the Tiptap body →
+        `body_json` (format='json'), with `memo_text` = translated-only text."""
+        from ..workers.chapter_worker import _finalize_chapter
+
+        async def _cb(body_json: str, in_tok: int, out_tok: int, memo_text: str) -> None:
+            await _finalize_chapter(
+                pool=self._pool, publish_event=self._publish_event, msg=msg,
+                job_id=UUID(str(msg["job_id"])), chapter_id=UUID(str(msg["chapter_id"])),
+                user_id=msg["user_id"], chapter_translation_id=ct_id,
+                pipeline_version=msg.get("pipeline_version", "v2"),
+                chapter_index=msg.get("chapter_index", 0),
+                target_language=msg.get("target_language", ""),
+                source_lang=rs.get("source_lang", "unknown"),
+                chapter_text=rs.get("chapter_text", ""),
+                translated_body_text=None, translated_body_json=body_json,
+                translated_body_format="json", memo_text=memo_text,
                 input_tokens=in_tok, output_tokens=out_tok,
             )
 
