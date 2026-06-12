@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 TERMINAL_STREAM = "loreweave:events:llm_job_terminal"
 GROUP = "worker-ai-extract-resume"
-_DEFAULT_COST_PER_ITEM = None  # resolved lazily from runner to avoid an import cycle
+MAX_RETRIES = 3
 
 
 def _decode(v) -> str:
@@ -192,12 +192,57 @@ async def _handle(pool, knowledge_client, llm_client, fields: dict) -> None:
     await _resume(pool, knowledge_client, llm_client, owner, job_id, ej_id, rs)
 
 
+async def _process_msg(client, pool, knowledge_client, llm_client, msg_id: str, fields: dict) -> None:
+    """Process one terminal event with BOUNDED retry (review-impl finding 1). On a
+    transient failure (DB blip, knowledge 503, slow get_job) we DO NOT ack — the
+    message stays in the PEL and is re-processed by the startup drain on the next run,
+    so the chapter is NOT permanently dropped (there is no stale-resume sweeper for
+    extraction; immediate-ack would strand the job forever). A genuine poison is acked
+    after MAX_RETRIES deliveries so it can't redeliver-storm. Mirrors the glossary /
+    translation terminal consumers."""
+    try:
+        await _handle(pool, knowledge_client, llm_client, fields)
+        await client.xack(TERMINAL_STREAM, GROUP, msg_id)
+    except Exception as exc:  # noqa: BLE001
+        retry_key = f"worker-ai:extract-resume:retry:{msg_id}"
+        count = int(await client.incr(retry_key))
+        await client.expire(retry_key, 3600)
+        if count >= MAX_RETRIES:
+            logger.error(
+                "decoupled-extract resume failed %d× msg=%s — acking (poison): %s",
+                count, msg_id, exc,
+            )
+            await client.xack(TERMINAL_STREAM, GROUP, msg_id)
+            await client.delete(retry_key)
+        else:
+            logger.warning(
+                "decoupled-extract resume failed (%d/%d) msg=%s — leaving unacked "
+                "(recovered by the startup drain): %s",
+                count, MAX_RETRIES, msg_id, exc,
+            )
+
+
+async def _drain_pending(client, pool, knowledge_client, llm_client, consumer_name: str) -> None:
+    """Re-process this consumer's unacked PEL (id '0') — recovers transient-failed
+    events left unacked by a prior run."""
+    try:
+        results = await client.xreadgroup(
+            GROUP, consumer_name, {TERMINAL_STREAM: "0"}, count=100,
+        )
+        for _stream, messages in results or []:
+            for msg_id, fields in messages:
+                await _process_msg(client, pool, knowledge_client, llm_client, msg_id, fields)
+    except Exception:
+        logger.exception("error draining pending decoupled-extract events")
+
+
 async def consume_llm_terminal_stream(
     pool, knowledge_client, llm_client: LLMClient, *,
     redis_url: str, consumer_name: str, block_ms: int = 5000,
 ) -> None:
     """Long-running consumer task (run via asyncio.gather in app.main, gated on the
     decouple flag). Cancel-safe: shutdown raises CancelledError from xreadgroup."""
+    import asyncio
     # socket_timeout=None is REQUIRED — a per-read socket timeout shorter than
     # block_ms pre-empts the server-side BLOCK and raises redis.TimeoutError, which
     # would crash the consumer task (and the worker via the gather). Mirrors the
@@ -212,6 +257,9 @@ async def consume_llm_terminal_stream(
         except aioredis.ResponseError as exc:
             if "BUSYGROUP" not in str(exc):
                 raise
+        # Recover any unacked events from a prior run BEFORE reading new ones
+        # (review-impl finding 1 — the recovery path for transient-failed resumes).
+        await _drain_pending(client, pool, knowledge_client, llm_client, consumer_name)
         logger.info("decoupled-extract terminal consumer started (name=%s)", consumer_name)
         while True:
             try:
@@ -220,22 +268,11 @@ async def consume_llm_terminal_stream(
                 )
                 for _stream, messages in results or []:
                     for msg_id, fields in messages:
-                        try:
-                            await _handle(pool, knowledge_client, llm_client, fields)
-                            await client.xack(TERMINAL_STREAM, GROUP, msg_id)
-                        except Exception:
-                            logger.exception(
-                                "decoupled-extract resume failed for msg %s — acking "
-                                "to avoid a redelivery storm (the chapter stays in-flight; "
-                                "the 2h stale sweeper / campaign reconcile is the backstop)",
-                                msg_id,
-                            )
-                            await client.xack(TERMINAL_STREAM, GROUP, msg_id)
+                        await _process_msg(client, pool, knowledge_client, llm_client, msg_id, fields)
             except aioredis.TimeoutError:
                 continue  # idle long-poll — no new events this block window
             except aioredis.ConnectionError:
                 logger.warning("terminal consumer: redis connection lost; retry in 5s")
-                import asyncio
                 await asyncio.sleep(5)
     finally:
         await client.aclose()

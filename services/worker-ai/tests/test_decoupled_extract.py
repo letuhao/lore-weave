@@ -194,3 +194,35 @@ def test_shell_empty_entities_short_circuits_to_persist():
     rs = d.fold_entity_job(_seed_shell_rs(), _job({"entities": []}))
     assert rs["stage"] == d.PERSIST  # no entities → nothing to anchor
     assert d.reconstruct_candidates(rs).entities == []
+
+
+def test_shell_trio_serde_roundtrips_nonempty():
+    """review-impl finding 5 — non-empty relation/event/fact serde: model_dump(mode='json')
+    ↔ model_validate through the resume_state JSONB must round-trip (the prior shell test
+    only covered EMPTY trio results, so a candidate-model shape issue would slip to live)."""
+    rs = _seed_shell_rs()
+    # two entities so the relation resolves both endpoints (survives _postprocess)
+    rs = d.fold_entity_job(rs, _job({"entities": [
+        {"name": "Kai", "kind": "person", "confidence": 0.9},
+        {"name": "Bob", "kind": "person", "confidence": 0.9},
+    ]}))
+    rs = d.begin_trio(rs, {"relation": "jr", "event": "je", "fact": "jf"})
+    rs = d.fold_trio_job(rs, "relation", _job({"relations": [
+        {"subject": "Kai", "predicate": "knows", "object": "Bob", "confidence": 0.8},
+    ]}))
+    rs = d.fold_trio_job(rs, "event", _job({"events": [
+        {"name": "Meeting", "summary": "Kai meets Bob", "participants": ["Kai", "Bob"],
+         "kind": "action", "confidence": 0.8},
+    ]}))
+    rs = d.fold_trio_job(rs, "fact", _job({"facts": [
+        {"content": "Kai is brave", "type": "trait", "confidence": 0.7},
+    ]}))
+    assert rs["stage"] == d.PERSIST
+    # accumulators are JSON-safe dicts in resume_state
+    assert all(isinstance(x, dict) for x in rs["relations"] + rs["events"] + rs["facts"])
+    # the relation survives postprocess (both endpoints are entities) AND round-trips
+    # back to a typed object for persist_pass2 — the end-to-end serde proof.
+    cands = d.reconstruct_candidates(rs)
+    assert any(r.subject == "Kai" and r.object == "Bob" for r in cands.relations)
+    # events/facts serde must not raise on reconstruct (counts depend on postprocess)
+    _ = cands.events, cands.facts
