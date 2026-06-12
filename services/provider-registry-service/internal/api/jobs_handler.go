@@ -940,12 +940,32 @@ func (s *Server) doGetJob(w http.ResponseWriter, r *http.Request, userID uuid.UU
 // stop the upstream read and free the concurrency slot immediately. The abort
 // is process-local (single-replica correct); HA needs a Redis cancel-flag
 // (spec §5.1 D2). Cancel is idempotent — a no-op if the job is already terminal.
+// cancelLlmJob — DELETE /v1/llm/jobs/{job_id} (JWT auth).
 func (s *Server) cancelLlmJob(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := s.auth(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "LLM_AUTH_FAILED", "unauthorized")
 		return
 	}
+	s.doCancelLlmJob(w, r, userID)
+}
+
+// internalCancelLlmJob — DELETE /internal/llm/jobs/{job_id} (X-Internal-Token +
+// user_id query). M3: lets a service (chat-service) abort an in-flight stream it
+// owns by the stream_job_id it minted — the internal-token analog of the JWT route.
+func (s *Server) internalCancelLlmJob(w http.ResponseWriter, r *http.Request) {
+	userID, ok := parseUserIDQuery(w, r)
+	if !ok {
+		return
+	}
+	s.doCancelLlmJob(w, r, userID)
+}
+
+// doCancelLlmJob — shared cancel core for both auth flavors. Marks the row
+// cancelled (idempotent: rows==0 → 404/409) then aborts the in-flight worker/
+// stream goroutine via jobCancels (Phase 0) and best-effort emits the terminal
+// event + releases the spend reservation.
+func (s *Server) doCancelLlmJob(w http.ResponseWriter, r *http.Request, userID uuid.UUID) {
 	if s.jobsRepo == nil {
 		writeError(w, http.StatusServiceUnavailable, "LLM_INTERNAL_ERROR", "jobs subsystem not initialized")
 		return

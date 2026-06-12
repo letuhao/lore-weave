@@ -144,6 +144,11 @@ class StreamRequest(BaseModel):
     chat_template_kwargs: dict[str, Any] | None = None
     stream_format: StreamFormat = "openai"
     trace_id: str | None = None
+    # M3 (chat disconnect-cancel) — OPTIONAL caller-minted job id. When set, the
+    # gateway persists a billing-neutral observability llm_jobs row + registers a
+    # cancellable context under this id, so the caller can abort the in-flight
+    # stream via DELETE /internal/llm/jobs/{id}. None (default) → today's behavior.
+    stream_job_id: str | None = None
 
     def to_request_body(self) -> dict[str, Any]:
         """Serialize to the wire JSON body. Drops `max_tokens` when it's

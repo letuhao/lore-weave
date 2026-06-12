@@ -405,6 +405,8 @@ func (s *Server) Router() http.Handler {
 		// Phase 2b — service-to-service async LLM job lifecycle.
 		r.Post("/llm/jobs", s.internalSubmitLlmJob)
 		r.Get("/llm/jobs/{job_id}", s.internalGetLlmJob)
+		// M3 — service-to-service stream cancel (chat disconnect → abort).
+		r.Delete("/llm/jobs/{job_id}", s.internalCancelLlmJob)
 	})
 
 	return r
