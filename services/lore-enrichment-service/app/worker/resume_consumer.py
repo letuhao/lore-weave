@@ -23,6 +23,7 @@ import asyncpg
 import redis.asyncio as aioredis
 
 from app.api.jobs import GapTarget, _gap_from_target, load_spent_so_far
+from app.compose.compose_task import run_compose_task
 from app.db.book_profile import get_book_profile
 from app.jobs.assembly import build_live_runner
 from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM
@@ -30,7 +31,9 @@ from app.jobs.job_request import existing_gap_refs, load_job_request
 from app.strategies.base import StrategyContext
 from app.strategies.registry import InactiveStrategyError, UnknownStrategyError
 
-__all__ = ["consume_resume_stream", "redrive_one", "RESUME_GROUP"]
+__all__ = [
+    "consume_resume_stream", "redrive_one", "dispatch_resume_message", "RESUME_GROUP",
+]
 
 logger = logging.getLogger("lore_enrichment.resume_worker")
 
@@ -135,6 +138,28 @@ async def redrive_one(
     return outcome.final_state
 
 
+async def dispatch_resume_message(*, pool: asyncpg.Pool, fields: dict) -> None:
+    """Route ONE resume-stream message by its shape (Phase 3 M2).
+
+    The SAME stream carries two trigger kinds: a `task_id` field is a one-shot
+    compose task (profile-suggest / intent-resolve → :func:`run_compose_task`); the
+    legacy `job_id` shape is a cost-cap-paused gap-fill re-drive (:func:`redrive_one`).
+    Both are idempotent for at-least-once redelivery. A business failure is handled
+    INSIDE the callee (marks the task failed / drops a poison) and returns normally
+    → the caller ACKs; only an infra error propagates → the caller leaves it
+    un-ACKed for redelivery."""
+    task_id = fields.get("task_id", "")
+    if task_id:
+        await run_compose_task(pool, task_id=task_id)
+        return
+    await redrive_one(
+        pool=pool,
+        job_id=fields.get("job_id", ""),
+        project_id=fields.get("project_id", ""),
+        user_id=fields.get("user_id", ""),
+    )
+
+
 async def consume_resume_stream(
     *,
     pool: asyncpg.Pool,
@@ -175,12 +200,7 @@ async def consume_resume_stream(
                 for message_id, fields in messages:
                     ack = True
                     try:
-                        await redrive_one(
-                            pool=pool,
-                            job_id=fields.get("job_id", ""),
-                            project_id=fields.get("project_id", ""),
-                            user_id=fields.get("user_id", ""),
-                        )
+                        await dispatch_resume_message(pool=pool, fields=fields)
                     except Exception:  # noqa: BLE001 — transient infra → redeliver
                         logger.warning(
                             "resume msg %s failed; leaving un-ACKed for redelivery",

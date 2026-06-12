@@ -599,6 +599,41 @@ CREATE TABLE IF NOT EXISTS enrichment_upload (
 
 CREATE INDEX IF NOT EXISTS idx_enrichment_upload_scope
   ON enrichment_upload(user_id, book_id, created_at DESC);
+
+-- ═══════════════════════════════════════════════════════════════
+-- enrichment_compose_task (Phase 3 M2) — the durable row for a one-shot
+-- interactive LLM task moved OFF the request path. The two compose endpoints
+-- (profile/suggest, compose/resolve-intent) used to run their single LLM call
+-- inline and return the result; they now create a 'pending' task here, enqueue a
+-- trigger on the resume stream, and return 202 + task_id. The resume worker runs
+-- the compute and writes result_json; GET /compose-tasks/{id} polls.
+--
+-- DISTINCT from enrichment_job (gap-fill: C8 state machine, technique CHECK,
+-- proposal children, cost-cap pause) — a one-shot suggest/intent fits none of
+-- that, so this is a dedicated lightweight table, NOT a new enrichment_job kind.
+-- Per-user/project scope (Q3); book_id is the always-present GUI anchor. No FK
+-- (cross-DB ids). request_json holds only the request shape (model_ref UUIDs +
+-- params + acting user) — NEVER a secret; result_json holds the draft output the
+-- author reviews (a suggested profile / a resolved intent). ADDITIVE.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS enrichment_compose_task (
+  task_id        UUID PRIMARY KEY DEFAULT uuidv7(),
+  kind           TEXT NOT NULL
+    CHECK (kind IN ('profile_suggest','intent_resolve')),
+  status         TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending','running','completed','failed')),
+  user_id        UUID NOT NULL,                   -- scope (Q3); no FK (cross-DB)
+  project_id     UUID NOT NULL,                   -- scope (Q3); no FK (cross-DB)
+  book_id        UUID,                            -- GUI anchor (always set today)
+  request_json   JSONB NOT NULL,                  -- request shape only (no secret)
+  result_json    JSONB,                           -- draft output (author reviews)
+  error_message  TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_enrichment_compose_task_scope
+  ON enrichment_compose_task(user_id, book_id, created_at DESC);
 """
 
 
@@ -612,6 +647,7 @@ CREATE INDEX IF NOT EXISTS idx_enrichment_upload_scope
 #   been up-migrated, breaking the down→up round-trip (and the db-test fixture's
 #   per-test reset). It was added to the UP DDL but not here.
 DOWN_DDL = """
+DROP TABLE IF EXISTS enrichment_compose_task;
 DROP TABLE IF EXISTS enrichment_upload;
 DROP TABLE IF EXISTS enrichment_book_profile;
 DROP TABLE IF EXISTS enrichment_eval_runs;
