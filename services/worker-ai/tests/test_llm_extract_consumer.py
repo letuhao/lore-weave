@@ -165,6 +165,47 @@ async def test_persist_chunk_skips_when_row_vanished():
     assert _sqls(conn) == ""  # no writes at all
 
 
+# ── D-WX-RUN-SAMPLE-DECOUPLE ─────────────────────────────────────────────────
+
+async def test_persist_chunk_writes_run_sample_when_opted_in():
+    """An opted-in project (save_raw_extraction) writes the extraction_run_sample at
+    finalize, keyed by the run_payload's run_id, on `pool` OUTSIDE the finalize tx
+    (a swallowed best-effort error inside the tx would poison it)."""
+    conn = FakeConn([{"resume_state": {"stage": dx.PERSIST}}])
+    pool = FakePool(conn)
+    kc = AsyncMock()
+    kc.persist_pass2.return_value = _persist_result()
+    rs = _persist_rs()
+    rs["save_raw_extraction"] = True
+    rs["chunk_text"] = "Alice fell down the hole."
+
+    await _persist_chunk(pool, kc, EJ, rs)
+
+    sample_idx = next(
+        i for i, (s, _) in enumerate(conn.executed)
+        if "extraction_run_samples" in s
+    )
+    cursor_idx = next(
+        i for i, (s, _) in enumerate(conn.executed) if "current_cursor" in s
+    )
+    assert sample_idx < cursor_idx                      # sample before the event/tx
+    assert conn.executed_in_tx[sample_idx] is False     # written OUTSIDE the finalize tx
+    sample_args = conn.executed[sample_idx][1]
+    assert str(sample_args[0]) == rs["run_payload"]["run_id"]  # same run_id as the event
+    assert sample_args[6] == "Alice fell down the hole."       # source_text
+
+
+async def test_persist_chunk_skips_run_sample_when_not_opted():
+    conn = FakeConn([{"resume_state": {"stage": dx.PERSIST}}])
+    pool = FakePool(conn)
+    kc = AsyncMock()
+    kc.persist_pass2.return_value = _persist_result()
+
+    await _persist_chunk(pool, kc, EJ, _persist_rs())  # no save_raw_extraction
+
+    assert "extraction_run_samples" not in _sqls(conn)
+
+
 # ── D-WX-TRIO-FANIN-RACE ─────────────────────────────────────────────────────
 
 def _trio_rs():

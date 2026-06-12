@@ -106,9 +106,11 @@
 - **RE-SMOKE PASSED** (job `019ebaf5`, entity-under-lock → trio → `persisted via event path (entities=19 relations=22)` → complete, cursor advanced, 0 errors) — the entity FOR UPDATE didn't regress the happy path. **212 worker-ai unit + provider-gate OK.**
 - **WX money-path is now /review-impl-cleared + live-proven → ready for default-on consideration.**
 
-**▶ NEXT — debt-paydown roadmap (Wave 1+2 DONE; Wave 3 WX live-smoke PASSED + money-path reviewed):**
-- **Default-on decision:** the WX decoupled path is review-cleared + live-proven (happy path + entity/trio race serialised). Flip the compose default `EXTRACTION_DECOUPLE_ENABLED` to true when ready (still ephemeral-on in the running stack now).
-- **Wave 3 remainder:** `D-2B-TRANSL-SWEEP-LIVE-SMOKE` (translation stranded→re-drive — stack up + flags on) + `D-WX-RUN-SAMPLE-DECOUPLE` (port `persist_run_sample`).
+**✅ WAVE 3-rem A DONE (2026-06-12) — `D-WX-RUN-SAMPLE-DECOUPLE`.** The decoupled extraction consumer now writes the `extraction_run_samples` online-judge feed at parity with the sync chapter loop. `sample_emit.persist_run_sample`/`_best_effort` now take `user_id`/`project_id` explicitly (the consumer has no JobRow — only resume_state); `_start_decoupled_chunk` seeds `save_raw_extraction` into resume_state; `_persist_chunk` writes the sample **best-effort on `pool` BEFORE the finalize tx** (a swallowed best-effort error INSIDE the tx would poison it — a failed statement aborts the whole Postgres tx), keyed by the SAME `run_payload["run_id"]` as the emitted `extraction_run` event (the eval-runner fetches by it), idempotent `ON CONFLICT (run_id)`. Non-opted projects write nothing; inert when the decouple flag is off. **VERIFY: 214 worker-ai unit (2 new consumer run-sample tests; 3 sample_emit signature updates) + provider-gate OK.** Single-service; end-to-end coverable by the existing `D-WX-LIVE-SMOKE` stack-up.
+
+**▶ NEXT — debt-paydown roadmap (Wave 1+2 DONE; Wave 3 WX live-smoke PASSED + money-path reviewed; Wave 3-rem run-sample DONE):**
+- **Default-on decision:** the WX decoupled path is review-cleared + live-proven (happy path + entity/trio race serialised). Flip the compose default `EXTRACTION_DECOUPLE_ENABLED` to true when ready (still ephemeral-on in the running stack now). **Best done after Wave 4 (recovery/filter decouple) so the flip is full-featured** (recovery/filter projects currently fall back to sync).
+- **Wave 3 remainder:** `D-2B-TRANSL-SWEEP-LIVE-SMOKE` (translation stranded→re-drive — stack up + flags on). ✅ `D-WX-RUN-SAMPLE-DECOUPLE` DONE.
 - **Wave 4 — `D-WX-RECOVERY-FILTER-DECOUPLE`** (wire recovery + filter fan-out stages).
 - **Wave 5 — 2b-T3b (V3 verify/correct decouple, XL).**
 - **Wave 6 — `D-V3-TRANSLATION-PROMPT-ECHO`** (real quality bug) + `D-PHASE0-CANCEL-LIVE-SMOKE`.

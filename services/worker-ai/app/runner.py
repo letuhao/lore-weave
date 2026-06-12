@@ -1372,6 +1372,10 @@ async def _start_decoupled_chunk(
         prompt_overrides=run_snapshot.prompts or {},
         campaign_id=(str(job.campaign_id) if job.campaign_id else None),
         billing_user_id=(str(job.billing_user_id) if job.billing_user_id else None),
+        # D-WX-RUN-SAMPLE-DECOUPLE — the project's raw-retention opt-in, seeded so
+        # the consumer's terminal persist can write the extraction_run_sample at
+        # parity with the sync chapter loop (keyed by run_payload's run_id).
+        save_raw_extraction=bool(job.save_raw_extraction),
         persist_ctx={
             "source_type": "chapter", "source_id": str(ch.chapter_id),
             "job_id": str(job.job_id), "project_id": str(job.project_id),
@@ -1888,7 +1892,8 @@ async def process_job(
                 # never fail the extraction. Non-opted → write nothing.
                 if job.save_raw_extraction and candidates is not None:
                     await persist_run_sample_best_effort(
-                        pool, run_id=run_id, job=job, book_id=book_id,
+                        pool, run_id=run_id, user_id=job.user_id,
+                        project_id=job.project_id, book_id=book_id,
                         config_hash=run_cfg_hash, candidates=candidates,
                         source_text=text,
                     )

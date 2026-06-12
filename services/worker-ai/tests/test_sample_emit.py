@@ -78,7 +78,8 @@ async def test_persist_inserts_with_conflict_guard_and_json_items():
     book_id = uuid.uuid4()
     job = _job()
     await persist_run_sample(
-        ex, run_id=run_id, job=job, book_id=book_id, config_hash="cfg",
+        ex, run_id=run_id, user_id=job.user_id, project_id=job.project_id,
+        book_id=book_id, config_hash="cfg",
         candidates=_candidates(), source_text="Alice fell down the hole.",
     )
     sql, params = ex.execute.await_args.args[0], ex.execute.await_args.args
@@ -95,8 +96,10 @@ async def test_persist_inserts_with_conflict_guard_and_json_items():
 @pytest.mark.asyncio
 async def test_persist_null_book_id_ok():
     ex = AsyncMock()
+    job = _job()
     await persist_run_sample(
-        ex, run_id=str(uuid.uuid4()), job=_job(), book_id=None, config_hash=None,
+        ex, run_id=str(uuid.uuid4()), user_id=job.user_id, project_id=job.project_id,
+        book_id=None, config_hash=None,
         candidates=_candidates(), source_text="x",
     )
     assert ex.execute.await_args.args[4] is None  # book_id NULL
@@ -107,7 +110,9 @@ async def test_best_effort_swallows_executor_failure():
     ex = AsyncMock()
     ex.execute = AsyncMock(side_effect=RuntimeError("db down"))
     # must NOT raise
+    job = _job()
     await persist_run_sample_best_effort(
-        ex, run_id=str(uuid.uuid4()), job=_job(), book_id=None, config_hash=None,
+        ex, run_id=str(uuid.uuid4()), user_id=job.user_id, project_id=job.project_id,
+        book_id=None, config_hash=None,
         candidates=_candidates(), source_text="x",
     )

@@ -33,6 +33,7 @@ import redis.asyncio as aioredis
 
 from app import decoupled_extract as dx
 from app.llm_client import LLMClient, set_billing_user_id, set_campaign_id
+from app.sample_emit import persist_run_sample_best_effort
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +142,20 @@ async def _persist_chunk(pool, knowledge_client, ej_id, rs: dict) -> None:
         "facts_merged": result.facts_merged,
     }
     chapter_extracted = rs.get("chapter_extracted")
+    # D-WX-RUN-SAMPLE-DECOUPLE — write the online-judge run-sample at parity with
+    # the sync chapter loop, keyed by the SAME run_id that lands in the event below
+    # (the eval-runner fetches the sample by the event's run_id). Done on `pool` (its
+    # own connection) BEFORE the finalize tx — persist_run_sample_best_effort swallows
+    # errors, and a swallowed failure INSIDE the tx would poison it (a failed statement
+    # aborts the whole Postgres transaction). Best-effort + idempotent (ON CONFLICT
+    # run_id); a redelivery re-writes the same row as a no-op. Non-opted → skipped.
+    if rs.get("save_raw_extraction"):
+        await persist_run_sample_best_effort(
+            pool, run_id=run_payload["run_id"], user_id=owner_id,
+            project_id=project_id, book_id=run_payload.get("book_id"),
+            config_hash=run_payload.get("config_hash"), candidates=cands,
+            source_text=rs.get("chunk_text", ""),
+        )
     async with pool.acquire() as conn:
         async with conn.transaction():
             # Re-read FOR UPDATE: if a concurrent finalize (a duplicate terminal event
