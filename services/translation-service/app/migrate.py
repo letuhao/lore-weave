@@ -131,6 +131,15 @@ CREATE INDEX IF NOT EXISTS idx_ct_provider_job
 ALTER TABLE chapter_translation_chunks
   ADD COLUMN IF NOT EXISTS provider_job_id UUID;
 
+-- Wave 2a (D-2B-SUBMIT-PERSIST-GAP) — a stale-resume sweeper (parity with worker-ai's
+-- Wave 1b) needs a time-based idle signal; chapter_translations had no updated_at.
+-- Additive, default now(); bumped on every resume_state write (the engines' _persist_inflight).
+ALTER TABLE chapter_translations
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+-- Partial index for the sweep scan (only rows with a live resume_state matter).
+CREATE INDEX IF NOT EXISTS idx_ct_resume_sweep
+  ON chapter_translations(updated_at) WHERE resume_state IS NOT NULL;
+
 -- Backfill: assign sequential version_num per (chapter_id, target_language)
 -- ordered by created_at so existing rows don't violate the unique index.
 -- Safe to re-run (idempotent — ROW_NUMBER is deterministic by created_at).

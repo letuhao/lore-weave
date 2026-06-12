@@ -154,6 +154,29 @@ class LLMTerminalConsumer:
         except Exception:
             log.exception("error draining pending llm-terminal events")
 
+    async def _resume_loaded(self, ct_id: UUID, rs: dict, job) -> None:
+        """Dispatch a terminal job into the chapter's resume engine (block/text). Binds
+        the owning campaign so any resume submit keeps its attribution (the contextvar
+        the worker set on the first submit). Shared by the event path (`_handle`) and
+        the Wave-2a sweeper (`sweep_once`)."""
+        msg = rs["msg"]
+        set_campaign_id(msg.get("campaign_id"))
+        try:
+            if rs.get("mode") == "block":
+                await decoupled_block_translate.resume(
+                    pool=self._pool, llm_client=self._llm_client, job=job,
+                    chapter_translation_id=ct_id,
+                    finalize_cb=self._make_block_finalize_cb(msg, ct_id, rs),
+                )
+            else:
+                await decoupled_translate.resume(
+                    pool=self._pool, llm_client=self._llm_client, job=job,
+                    chapter_translation_id=ct_id,
+                    finalize_cb=self._make_finalize_cb(msg, ct_id, rs),
+                )
+        finally:
+            set_campaign_id(None)
+
     async def _handle(self, r: aioredis.Redis, msg_id: str, fields: dict) -> None:
         job_id = fields.get("job_id")
         owner_user_id = fields.get("owner_user_id") or None
@@ -167,27 +190,10 @@ class LLMTerminalConsumer:
                 await r.xack(STREAM, GROUP_NAME, msg_id)
                 return
             ct_id, rs = loaded
-            msg = rs["msg"]
-            # Resume may submit the next chunk/compaction — bind the owning campaign
-            # so those provider jobs keep their attribution (the same contextvar the
-            # worker set on the first submit). Cleared in finally.
-            set_campaign_id(msg.get("campaign_id"))
             job = await self._llm_client.sdk.get_job(
-                job_id, user_id=owner_user_id or msg.get("user_id"),
+                job_id, user_id=owner_user_id or rs["msg"].get("user_id"),
             )
-            # Dispatch by the engine that owns this chapter's resume_state.
-            if rs.get("mode") == "block":
-                await decoupled_block_translate.resume(
-                    pool=self._pool, llm_client=self._llm_client, job=job,
-                    chapter_translation_id=ct_id,
-                    finalize_cb=self._make_block_finalize_cb(msg, ct_id, rs),
-                )
-            else:
-                await decoupled_translate.resume(
-                    pool=self._pool, llm_client=self._llm_client, job=job,
-                    chapter_translation_id=ct_id,
-                    finalize_cb=self._make_finalize_cb(msg, ct_id, rs),
-                )
+            await self._resume_loaded(ct_id, rs, job)
             await r.xack(STREAM, GROUP_NAME, msg_id)
         except Exception as exc:
             retry_key = f"transl:llmresume:retry:{msg_id}"
@@ -202,8 +208,70 @@ class LLMTerminalConsumer:
                 log.warning("llm-terminal event %s (job=%s) failed (%d/%d): %s",
                             msg_id, job_id, count, MAX_RETRIES, exc)
                 # leave unacked → redelivered
-        finally:
-            set_campaign_id(None)
+
+    # ── Wave 2a — stuck-resume sweeper (D-2B-SUBMIT-PERSIST-GAP) ──────────────────
+    # The runtime backstop for a stranded resume_state (consumer crash/poison, a lost
+    # terminal event, or a submit→persist gap): a Redis stream gives no redelivery
+    # after ack. Re-drive any chapter idle past the timeout by re-checking its single
+    # in-flight provider_job_id's terminal status and replaying the SAME idempotent
+    # resume dispatch the event path uses (the finalize guard absorbs a double-finalize).
+
+    async def sweep_once(self, *, timeout_s: int, batch: int) -> int:
+        """One sweep tick. Returns the number of chapters re-driven."""
+        rows = await self._pool.fetch(
+            """SELECT id, provider_job_id, resume_state
+               FROM chapter_translations
+               WHERE resume_state IS NOT NULL
+                 AND provider_job_id IS NOT NULL
+                 AND status NOT IN ('completed', 'failed')
+                 AND updated_at < now() - make_interval(secs => $1::int)
+               ORDER BY updated_at ASC
+               LIMIT $2::int""",
+            timeout_s, batch,
+        )
+        redriven = 0
+        for row in rows:
+            rs = row["resume_state"]
+            rs = rs if isinstance(rs, dict) else json.loads(rs)
+            msg = rs.get("msg") or {}
+            try:
+                job = await self._llm_client.sdk.get_job(
+                    str(row["provider_job_id"]), user_id=msg.get("user_id"),
+                )
+            except Exception:  # noqa: BLE001 — transient get_job fault: next row/tick
+                continue
+            # Only replay a TERMINAL job — resume folds the result unconditionally (it's
+            # normally driven by a terminal event), so a still-running job would fold an
+            # incomplete result. Slow ≠ stuck.
+            if not job.is_terminal():
+                continue
+            try:
+                await self._resume_loaded(row["id"], rs, job)
+                redriven += 1
+                log.warning("resume-sweep: re-drove stranded chapter ct=%s via job=%s",
+                            row["id"], row["provider_job_id"])
+            except Exception:
+                log.exception("resume-sweep: re-drive failed ct=%s", row["id"])
+        return redriven
+
+    async def run_sweeper(self, *, interval_s: int, timeout_s: int, batch: int) -> None:
+        """Long-running periodic sweeper task. interval_s <= 0 ⇒ disabled."""
+        if interval_s <= 0:
+            log.info("translation resume sweeper disabled (interval<=0)")
+            return
+        log.info("translation resume sweeper started (interval=%ds timeout=%ds batch=%d)",
+                 interval_s, timeout_s, batch)
+        # Loops until the task is cancelled at shutdown (CancelledError propagates out).
+        while True:
+            try:
+                n = await self.sweep_once(timeout_s=timeout_s, batch=batch)
+                if n:
+                    log.info("resume-sweep: re-drove %d stranded chapter(s)", n)
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 — one bad tick must not kill the loop
+                log.exception("translation resume sweeper tick failed")
+            await asyncio.sleep(interval_s)
 
     def _make_finalize_cb(self, msg: dict, ct_id: UUID, rs: dict):
         """Build the finalize hook the decoupled engine calls when all chunks are

@@ -59,11 +59,20 @@ async def lifespan(app: FastAPI):
     # otherwise — no decoupled chapters exist so every event would just ack+ignore).
     llm_consumer = None
     llm_consumer_task = None
+    llm_sweeper_task = None
     if settings.translation_decouple_enabled:
         llm_consumer = LLMTerminalConsumer(
             settings.redis_url, pool, get_llm_client(), publish_event,
         )
         llm_consumer_task = asyncio.create_task(llm_consumer.run())
+        # Wave 2a — the stuck-resume sweeper (runtime backstop for a stranded
+        # resume_state: consumer poison, lost terminal event, or a submit→persist gap).
+        if settings.translation_resume_sweep_interval_s > 0:
+            llm_sweeper_task = asyncio.create_task(llm_consumer.run_sweeper(
+                interval_s=settings.translation_resume_sweep_interval_s,
+                timeout_s=settings.translation_resume_sweep_timeout_s,
+                batch=settings.translation_resume_sweep_batch,
+            ))
 
     yield
 
@@ -72,6 +81,10 @@ async def lifespan(app: FastAPI):
     with suppress(asyncio.CancelledError, Exception):
         await consumer_task
     await consumer.close()
+    if llm_sweeper_task is not None:
+        llm_sweeper_task.cancel()
+        with suppress(asyncio.CancelledError, Exception):
+            await llm_sweeper_task
     if llm_consumer is not None:
         await llm_consumer.stop()
         llm_consumer_task.cancel()

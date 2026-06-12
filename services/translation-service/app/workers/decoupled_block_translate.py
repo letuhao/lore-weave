@@ -268,7 +268,7 @@ async def start_chapter_blocks(
     rs["msg"] = msg
     rs["context_window"] = context_window
     rs["chapter_text"] = chapter_text  # quality-feed source_text at finalize (M7d parity)
-    await _submit_next_batch(pool=pool, llm_client=llm_client,
+    await _submit_next_batch(ex=pool, llm_client=llm_client,
                              chapter_translation_id=chapter_translation_id, rs=rs)
     return True
 
@@ -282,65 +282,92 @@ async def resume(
     from .block_batcher import parse_translated_blocks
     from .glossary_client import auto_correct_glossary
 
-    rs = await _load_resume_state(pool, chapter_translation_id)
-    if rs is None:
-        log.warning("decoupled-block resume: no resume_state for ct=%s — dropping", chapter_translation_id)
-        return
-
-    if job.status != "completed":
-        # Permanent batch failure — accept what we have so far as a failed attempt
-        # at the LAST attempt boundary (mirrors translate_batch_with_retry's break).
-        batch = rs["batches"][rs["batch_idx"]]
-        rs = apply_batch_result(
-            dict(rs, attempt=rs["max_retries"]), parsed={}, in_tok=0, out_tok=0,
-            valid=False, errors=[f"job status={job.status}"],
-        )
-    else:
-        response_text, in_tok, out_tok = _parse_sdk_response(job)
-        batch = rs["batches"][rs["batch_idx"]]
-        block_indices = batch["block_indices"]
-        input_texts = {int(k): v for k, v in batch["input_texts"].items()}
-        parsed = parse_translated_blocks(response_text, block_indices)
-        validation = validate_translation_output(parsed, block_indices, input_texts)
-        # Glossary auto-correct (only matters on an accepted batch; harmless on retry).
-        cmap = rs["glossary_correction_map"]
-        if cmap and parsed:
-            for idx in list(parsed.keys()):
-                corrected, count = auto_correct_glossary(parsed[idx], cmap)
-                if count > 0:
-                    parsed[idx] = corrected
-        rs = apply_batch_result(
-            rs, parsed=parsed, in_tok=in_tok, out_tok=out_tok,
-            valid=validation.valid, errors=validation.errors,
-        )
-
-    action = decide_block_action(rs)
-    if action[0] == "finalize":
-        result_blocks, translated_count = reassemble_blocks(rs)
-        # Total-failure guard (TR-4): translatable blocks existed but none translated
-        # → FAIL rather than silently persist all-original as "completed".
-        if rs["translatable_count"] > 0 and translated_count == 0:
-            await _clear_resume_state(pool, chapter_translation_id)
-            await _fail(
-                pool, chapter_translation_id,
-                f"translation produced no output: 0/{rs['translatable_count']} blocks translated",
+    # D-2B-TRANSL-RESUME-RACE — the fold is a read-modify-write on resume_state with no
+    # natural dedup (the consumer's _load_for_job gate matches the CURRENT provider_job_id,
+    # but the sweeper and multiple replicas can drive the SAME terminal concurrently). We
+    # serialise under a row lock and re-verify provider_job_id still equals THIS job; the
+    # next-batch submit + its provider_job_id advance happen UNDER the lock, so the loser
+    # re-reads the advanced id and skips → no double batch-submit. Finalize stays idempotent
+    # and runs AFTER the lock (calling _finalize_chapter — which locks the same row on its
+    # own connection — nested inside this tx would deadlock).
+    job_uuid = UUID(str(job.job_id))
+    finalize_payload = None
+    fail_reason = None
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                "SELECT resume_state, provider_job_id FROM chapter_translations WHERE id=$1 FOR UPDATE",
+                chapter_translation_id,
             )
-            return
-        body_json = json.dumps(result_blocks)
-        memo = memo_from_translated(rs)
-        # Finalize-FIRST then clear (crash-safe; see decoupled_translate.resume).
-        await finalize_cb(body_json, rs["total_input"], rs["total_output"], memo)
+            if row is None or row["resume_state"] is None:
+                return  # finalized/cleared by a concurrent resume
+            if row["provider_job_id"] != job_uuid:
+                return  # this terminal already folded + advanced by a concurrent resume
+            rs = row["resume_state"]
+            rs = rs if isinstance(rs, dict) else json.loads(rs)
+
+            if job.status != "completed":
+                # Permanent batch failure — accept what we have so far as a failed attempt
+                # at the LAST attempt boundary (mirrors translate_batch_with_retry's break).
+                rs = apply_batch_result(
+                    dict(rs, attempt=rs["max_retries"]), parsed={}, in_tok=0, out_tok=0,
+                    valid=False, errors=[f"job status={job.status}"],
+                )
+            else:
+                response_text, in_tok, out_tok = _parse_sdk_response(job)
+                batch = rs["batches"][rs["batch_idx"]]
+                block_indices = batch["block_indices"]
+                input_texts = {int(k): v for k, v in batch["input_texts"].items()}
+                parsed = parse_translated_blocks(response_text, block_indices)
+                validation = validate_translation_output(parsed, block_indices, input_texts)
+                # Glossary auto-correct (only matters on an accepted batch; harmless on retry).
+                cmap = rs["glossary_correction_map"]
+                if cmap and parsed:
+                    for idx in list(parsed.keys()):
+                        corrected, count = auto_correct_glossary(parsed[idx], cmap)
+                        if count > 0:
+                            parsed[idx] = corrected
+                rs = apply_batch_result(
+                    rs, parsed=parsed, in_tok=in_tok, out_tok=out_tok,
+                    valid=validation.valid, errors=validation.errors,
+                )
+
+            action = decide_block_action(rs)
+            if action[0] != "finalize":
+                await _submit_next_batch(ex=conn, llm_client=llm_client,
+                                         chapter_translation_id=chapter_translation_id, rs=rs)
+                return
+            result_blocks, translated_count = reassemble_blocks(rs)
+            # Total-failure guard (TR-4): translatable blocks existed but none translated
+            # → FAIL rather than silently persist all-original as "completed".
+            if rs["translatable_count"] > 0 and translated_count == 0:
+                fail_reason = (
+                    f"translation produced no output: 0/{rs['translatable_count']} blocks translated"
+                )
+            else:
+                finalize_payload = (
+                    json.dumps(result_blocks), rs["total_input"], rs["total_output"],
+                    memo_from_translated(rs),
+                )
+
+    # ── outside the FOR UPDATE lock ──
+    if fail_reason is not None:
         await _clear_resume_state(pool, chapter_translation_id)
+        await _fail(pool, chapter_translation_id, fail_reason)
         return
-    await _submit_next_batch(pool=pool, llm_client=llm_client,
-                             chapter_translation_id=chapter_translation_id, rs=rs)
+    if finalize_payload is not None:
+        body_json, total_in, total_out, memo = finalize_payload
+        # Finalize-FIRST then clear (crash-safe; idempotent via status<>'completed').
+        await finalize_cb(body_json, total_in, total_out, memo)
+        await _clear_resume_state(pool, chapter_translation_id)
 
 
 async def _submit_next_batch(
-    *, pool, llm_client: LLMClient, chapter_translation_id: UUID, rs: dict,
+    *, ex, llm_client: LLMClient, chapter_translation_id: UUID, rs: dict,
 ) -> None:
     """Submit the current (batch_idx, attempt) WITHOUT waiting; persist
-    provider_job_id + resume_state, then return."""
+    provider_job_id + resume_state on `ex` (a Pool for the initial submit, or the
+    FOR UPDATE connection during a resume), then return."""
     from .session_translator import _TRANSLATION_MAX_OUTPUT_TOKENS
 
     msg = rs["msg"]
@@ -366,7 +393,7 @@ async def _submit_next_batch(
             "decoupled_kind": "translate_block",
         },
     )
-    await _persist_inflight(pool, chapter_translation_id, submit.job_id, rs)
+    await _persist_inflight(ex, chapter_translation_id, submit.job_id, rs)
 
 
 # ── DB helpers (thin) ─────────────────────────────────────────────────────────
@@ -376,10 +403,13 @@ async def _record_glossary_usage(pool, ct_id: UUID, used_entity_ids) -> None:
     await _impl(pool, ct_id, used_entity_ids)
 
 
-async def _persist_inflight(pool, ct_id: UUID, provider_job_id, rs: dict) -> None:
-    await pool.execute(
+async def _persist_inflight(ex, ct_id: UUID, provider_job_id, rs: dict) -> None:
+    # ex is a Pool (initial submit) OR an asyncpg Connection (the resume race-guard
+    # persists the advance UNDER the FOR UPDATE lock so a racing resume sees it).
+    # updated_at bumped so the Wave-2a resume sweeper's idle-detection reflects real progress.
+    await ex.execute(
         """UPDATE chapter_translations
-           SET provider_job_id=$2, pipeline_stage='translate', resume_state=$3
+           SET provider_job_id=$2, pipeline_stage='translate', resume_state=$3, updated_at=now()
            WHERE id=$1""",
         ct_id, UUID(str(provider_job_id)), json.dumps(rs),
     )

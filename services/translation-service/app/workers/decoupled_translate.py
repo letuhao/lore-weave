@@ -19,6 +19,7 @@ in follow-ups (2b-T3); this increment proves the engine on the text path.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 from uuid import UUID
@@ -160,7 +161,7 @@ async def start_chapter(
     # with the synchronous path. Redundant with `chunks` (a split of this) but the
     # split isn't guaranteed byte-lossless, and the storage cost is trivial.
     rs["chapter_text"] = chapter_text
-    await _submit_next(pool=pool, llm_client=llm_client,
+    await _submit_next(ex=pool, llm_client=llm_client,
                        chapter_translation_id=chapter_translation_id, rs=rs)
 
 
@@ -174,52 +175,74 @@ async def resume(
     is the caller-supplied hook that runs the post-translate pipeline
     (finalize/emit) — kept in the existing flow for this increment. `msg` +
     `context_window` are read from the persisted resume_state (self-contained)."""
-    rs = await _load_resume_state(pool, chapter_translation_id)
-    if rs is None:
-        log.warning("decoupled resume: no resume_state for ct=%s — dropping", chapter_translation_id)
+    # D-2B-TRANSL-RESUME-RACE — serialise the fold under a row lock + re-verify this job
+    # is still the in-flight one, so a concurrent/duplicate resume (consumer-vs-sweeper,
+    # or multi-replica) can't double-fold the chunk / double-submit the next step. The
+    # next-step submit advances provider_job_id UNDER the lock → the loser skips. Finalize
+    # is idempotent (status<>'completed') and runs AFTER the lock (calling _finalize_chapter
+    # — which locks the same row on its own connection — nested here would deadlock).
+    job_uuid = UUID(str(job.job_id))
+    finalize_payload = None
+    fail_reason = None
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                "SELECT resume_state, provider_job_id FROM chapter_translations WHERE id=$1 FOR UPDATE",
+                chapter_translation_id,
+            )
+            if row is None or row["resume_state"] is None:
+                return  # finalized/cleared by a concurrent resume
+            if row["provider_job_id"] != job_uuid:
+                return  # this terminal already folded + advanced by a concurrent resume
+            rs = row["resume_state"]
+            rs = rs if isinstance(rs, dict) else json.loads(rs)
+            msg = rs["msg"]
+            context_window = rs["context_window"]
+
+            if job.status != "completed":
+                # Best-effort for compaction (keep old memo, continue); hard for translate.
+                if rs["awaiting"] == "compact":
+                    log.warning("decoupled: compact job %s non-terminal-ok — keeping memo", job.job_id)
+                    rs = apply_compact_result(rs, rs["compact_memo"])
+                else:
+                    fail_reason = f"translate job {job.job_id} status={job.status}"
+            elif rs["awaiting"] == "translate":
+                translated, in_tok, out_tok = _parse_sdk_response(job)
+                await _record_chunk(conn, chapter_translation_id, rs["chunk_idx"], translated, in_tok, out_tok)
+                rs = apply_translate_result(rs, translated, in_tok, out_tok, msg)
+            else:  # compact completed
+                memo, _, _ = _parse_sdk_response(job)
+                rs = apply_compact_result(rs, memo or rs["compact_memo"])
+
+            if fail_reason is None:
+                action = decide_next_action(rs, context_window)
+                if action[0] != "finalize":
+                    await _submit_next(ex=conn, llm_client=llm_client,
+                                       chapter_translation_id=chapter_translation_id, rs=rs)
+                    return
+                finalize_payload = ("\n\n".join(rs["translated_parts"]),
+                                    rs["total_input"], rs["total_output"])
+
+    # ── outside the FOR UPDATE lock ──
+    if fail_reason is not None:
+        await _fail(pool, chapter_translation_id, fail_reason)
         return
-    msg = rs["msg"]
-    context_window = rs["context_window"]
-
-    if job.status != "completed":
-        # Best-effort for compaction (keep old memo, continue); hard for translate.
-        if rs["awaiting"] == "compact":
-            log.warning("decoupled: compact job %s non-terminal-ok — keeping memo", job.job_id)
-            rs = apply_compact_result(rs, rs["compact_memo"])
-        else:
-            await _fail(pool, chapter_translation_id, f"translate job {job.job_id} status={job.status}")
-            return
-    elif rs["awaiting"] == "translate":
-        translated, in_tok, out_tok = _parse_sdk_response(job)
-        await _record_chunk(pool, chapter_translation_id, rs["chunk_idx"], translated, in_tok, out_tok)
-        rs = apply_translate_result(rs, translated, in_tok, out_tok, msg)
-    else:  # compact completed
-        memo, _, _ = _parse_sdk_response(job)
-        rs = apply_compact_result(rs, memo or rs["compact_memo"])
-
-    action = decide_next_action(rs, context_window)
-    if action[0] == "finalize":
-        body = "\n\n".join(rs["translated_parts"])
-        # Finalize-FIRST, then clear — crash-safe under at-least-once delivery.
-        # finalize_cb sets status='completed' (idempotent via its status guard);
-        # only after it commits do we clear provider_job_id. If we crash between
-        # the two, the terminal event redelivers, finds the row still pointing at
-        # this job, re-folds from the (pre-fold) persisted resume_state — yielding
-        # the SAME body — and finalize_cb's guard absorbs the duplicate. Clearing
-        # first would instead lose the row on redelivery → a translated chapter
-        # stuck 'running' until the 2h sweeper marks it failed.
-        await finalize_cb(body, rs["total_input"], rs["total_output"])
+    if finalize_payload is not None:
+        body, total_in, total_out = finalize_payload
+        # Finalize-FIRST, then clear — crash-safe under at-least-once delivery. finalize_cb
+        # sets status='completed' (idempotent via its status guard); only after it commits
+        # do we clear provider_job_id. A crash between the two redelivers → re-folds from
+        # the persisted resume_state → SAME body → the guard absorbs the duplicate.
+        await finalize_cb(body, total_in, total_out)
         await _clear_resume_state(pool, chapter_translation_id)
-        return
-    await _submit_next(pool=pool, llm_client=llm_client,
-                       chapter_translation_id=chapter_translation_id, rs=rs)
 
 
 async def _submit_next(
-    *, pool, llm_client: LLMClient, chapter_translation_id: UUID, rs: dict,
+    *, ex, llm_client: LLMClient, chapter_translation_id: UUID, rs: dict,
 ) -> None:
     """Submit the next step (translate or compact) WITHOUT waiting; persist the
-    in-flight provider_job_id + the updated resume_state, then return. `msg` +
+    in-flight provider_job_id + the updated resume_state on `ex` (a Pool for the initial
+    submit, or the FOR UPDATE connection during a resume), then return. `msg` +
     `context_window` come from rs (self-contained)."""
     msg = rs["msg"]
     context_window = rs["context_window"]
@@ -243,16 +266,19 @@ async def _submit_next(
         model_source=model_source, model_ref=str(model_ref),
         input={"messages": messages}, chunking=None, job_meta=job_meta,
     )
-    await _persist_inflight(pool, chapter_translation_id, submit.job_id, rs)
+    await _persist_inflight(ex, chapter_translation_id, submit.job_id, rs)
 
 
 # ── DB helpers (thin) ─────────────────────────────────────────────────────────
 
-async def _persist_inflight(pool, ct_id: UUID, provider_job_id, rs: dict) -> None:
+async def _persist_inflight(ex, ct_id: UUID, provider_job_id, rs: dict) -> None:
     import json
-    await pool.execute(
+    # ex is a Pool (initial submit) OR an asyncpg Connection (the resume race-guard
+    # persists the advance UNDER the FOR UPDATE lock so a racing resume sees it).
+    # updated_at bumped so the Wave-2a resume sweeper's idle-detection reflects real progress.
+    await ex.execute(
         """UPDATE chapter_translations
-           SET provider_job_id=$2, pipeline_stage='translate', resume_state=$3
+           SET provider_job_id=$2, pipeline_stage='translate', resume_state=$3, updated_at=now()
            WHERE id=$1""",
         ct_id, UUID(str(provider_job_id)), json.dumps(rs),
     )
@@ -274,8 +300,8 @@ async def _clear_resume_state(pool, ct_id: UUID) -> None:
     )
 
 
-async def _record_chunk(pool, ct_id: UUID, chunk_idx: int, translated: str, in_tok: int, out_tok: int) -> None:
-    await pool.execute(
+async def _record_chunk(ex, ct_id: UUID, chunk_idx: int, translated: str, in_tok: int, out_tok: int) -> None:
+    await ex.execute(
         """INSERT INTO chapter_translation_chunks
              (chapter_translation_id, chunk_index, chunk_text, translated_text,
               input_tokens, output_tokens, status)

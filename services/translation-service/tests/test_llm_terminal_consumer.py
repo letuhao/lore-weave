@@ -164,3 +164,76 @@ async def test_handle_resumes_and_acks_for_decoupled_chapter():
     # bound the campaign for the resumed submit, then cleared in finally
     assert set_camp.call_args_list[0].args[0] == "camp-9"
     assert set_camp.call_args_list[-1].args[0] is None
+
+
+# ── Wave 2a — stuck-resume sweeper ───────────────────────────────────────────
+
+def _sdk_job(terminal: bool):
+    j = MagicMock()
+    j.is_terminal = MagicMock(return_value=terminal)
+    return j
+
+
+def _sweep_consumer(rows, *, terminal=True, get_job_error=False):
+    pool = MagicMock()
+    pool.fetch = AsyncMock(return_value=rows)
+    sdk = AsyncMock()
+    if get_job_error:
+        sdk.get_job = AsyncMock(side_effect=RuntimeError("transient"))
+    else:
+        sdk.get_job = AsyncMock(return_value=_sdk_job(terminal))
+    llm_client = MagicMock()
+    llm_client.sdk = sdk
+    return c.LLMTerminalConsumer("redis://x", pool, llm_client, AsyncMock())
+
+
+def _stranded_row():
+    return {"id": uuid4(), "provider_job_id": uuid4(),
+            "resume_state": {"msg": {"user_id": "u"}, "mode": "block"}}
+
+
+@pytest.mark.asyncio
+async def test_sweep_redrives_a_terminal_job():
+    consumer = _sweep_consumer([_stranded_row()], terminal=True)
+    with patch.object(consumer, "_resume_loaded", new=AsyncMock()) as redrive:
+        n = await consumer.sweep_once(timeout_s=900, batch=20)
+    assert n == 1
+    redrive.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_sweep_leaves_inflight_job_alone():
+    consumer = _sweep_consumer([_stranded_row()], terminal=False)  # slow ≠ stuck
+    with patch.object(consumer, "_resume_loaded", new=AsyncMock()) as redrive:
+        n = await consumer.sweep_once(timeout_s=900, batch=20)
+    assert n == 0
+    redrive.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sweep_continues_past_get_job_error():
+    consumer = _sweep_consumer([_stranded_row()], get_job_error=True)
+    with patch.object(consumer, "_resume_loaded", new=AsyncMock()) as redrive:
+        n = await consumer.sweep_once(timeout_s=900, batch=20)
+    assert n == 0
+    redrive.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sweep_query_filters_on_resume_and_idle():
+    captured = {}
+
+    async def fetch(sql, *args):
+        captured["sql"] = sql
+        captured["args"] = args
+        return []
+
+    consumer = _sweep_consumer([])
+    consumer._pool.fetch = fetch
+    await consumer.sweep_once(timeout_s=900, batch=20)
+    sql = captured["sql"]
+    assert "resume_state IS NOT NULL" in sql
+    assert "provider_job_id IS NOT NULL" in sql
+    assert "make_interval" in sql and "updated_at <" in sql
+    assert "status NOT IN ('completed', 'failed')" in sql
+    assert captured["args"] == (900, 20)

@@ -61,6 +61,16 @@ class Settings(BaseSettings):
     # under this flag for now).
     translation_decouple_enabled: bool = False
 
+    # Wave 2a (D-2B-SUBMIT-PERSIST-GAP) — stuck-resume sweeper (parity with worker-ai
+    # Wave 1b). A Redis stream gives no redelivery after ack, so a consumer crash/poison,
+    # a lost terminal event, or a submit→persist gap can strand a chapter_translations
+    # row with resume_state set. This periodic loop re-drives any such row idle past the
+    # timeout by re-checking its provider_job_id's terminal status and replaying the
+    # consumer's idempotent resume dispatch. Only runs when the decouple flag is on.
+    translation_resume_sweep_interval_s: int = 60
+    translation_resume_sweep_timeout_s: int = 900
+    translation_resume_sweep_batch: int = 20
+
     class Config:
         env_file = ".env"
 
