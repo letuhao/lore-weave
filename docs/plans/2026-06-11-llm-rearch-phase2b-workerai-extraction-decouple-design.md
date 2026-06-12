@@ -138,6 +138,55 @@ Stage transitions (consumer `resume`, per terminal event):
 - **WX-T3b** — the worker-ai consumer + runner release-branch + persist/spend/cursor/event ownership + billing re-bind, behind the flag.
 - **WX-T3c** — `D-WX-LIVE-SMOKE` (real extraction chunk through the event path).
 
+## WX-T3b TURNKEY BUILD PLAN (foundation 100% done — this is the remaining cohesive unit)
+
+All seams + the pure SM are committed + verified. WX-T3b is the consumer + the runner
+control-flow **inversion** + a cross-service live-smoke. **Flag-gated** (`extraction_decouple_enabled`,
+default off) ⇒ the sync path is untouched until `D-WX-LIVE-SMOKE` gates flipping it on.
+
+### resume_state schema (extraction_jobs.resume_state, mode='extract', per in-flight chapter)
+Pure-SM fields (new_extract_state + the fan-out sets) PLUS the submit + persist context:
+```
+# submit context
+chunk_text, known_entities([]), all_known(set after entity), model_source('user_model'),
+model_ref, project_id, user_id, source_type('chapter'), source_id(chapter_id), job_id,
+prompt_overrides({op:{system}}), has_recovery, has_filter,
+recovery_cfg({model_ref,model_source,max_items_per_batch,transient_retry_budget,known_entity_kinds}),
+filter_cfg({model_ref,model_source,partial_policy,categories,max_items_per_batch,transient_retry_budget}),
+# accumulators are SERIALIZED candidates (model_dump); reconstruct via *Candidate.model_validate
+# for the trio postprocess (needs entity objects) + persist_pass2.
+# persist context (the ~25 fields from runner.py:1310-1786)
+hierarchy_paths, chapter_index, book_parts, is_last_chapter_of_book, embedding_model_uuid,
+embedding_dimension, writer_autocreate, billing_user_id, billing_llm_model, billing_embedding_model,
+book_id, save_raw_extraction, run_cfg_hash, run_base_version, cursor_to_set, chapter_extracted{...}
+```
+`extraction_jobs.provider_job_ids` (WX-T1) = the flat in-flight id set for the consumer's lookup
+(`WHERE provider_job_ids @> '["<job_id>"]'::jsonb`).
+
+### shell (decoupled_extract.py — add over the seams + pure SM; unit-testable with mock Jobs)
+- `assemble_entity_submit(rs)` = build_entity_system + build_entity_submit_kwargs (context_budget=None, matches worker-ai's extract_pass2 call).
+- `assemble_trio_submits(rs)` → {op: kwargs} via build_<op>_system(rs.all_known)+build_<op>_submit_kwargs.
+- `fold_entity_job(rs, job)` = apply_entity_job → set all_known = known ∪ entity names → apply_entity_result. (serialize candidates).
+- `fold_trio_job(rs, op, job)` = apply_<op>_job(entities=reconstruct(rs.entities)) → fold_trio_op.
+- recovery: `assemble_recovery(rs)` = prepare_recovery (Tier1+2 inline) → build_recovery_batches → {batch_key: kwargs}; `fold_recovery_job` = parse_recovery_job+_parse_decisions → apply_recovery_batch → fold_recovery_task; on complete → finalize_recovery.
+- filter: `assemble_filter(rs)` = build_filter_category_batches per category → {cat:batch → kwargs}; `fold_filter_job` = parse_filter_job+_parse_verdicts → fold_filter_task; on complete → compute_filter_kept per cat + stitch.
+
+### consumer (worker-ai/app/llm_extract_consumer.py — model on summary_consumer + translation's llm_terminal_consumer)
+stream `loreweave:events:llm_job_terminal`, group `worker-ai-extract-resume`. `_handle`:
+`set_billing_user_id(rs.billing)` → lookup job by provider_job_ids → dispatch fold by stage →
+submit next stage (provider_job_ids+resume_state persisted) → on PERSIST: `knowledge_client.persist_pass2`
+(reconstructed candidates+context) → `persist_run_sample_best_effort` (if save_raw) → `_advance_cursor_and_emit_run`(chapter_extracted) → `_record_spending` → emit `extraction.wake` → clear resume_state. Idempotent: a chapter already advanced (cursor past it / resume_state cleared) → ack+ignore. set_billing_user_id(None) in finally.
+
+### runner branch (process_job, flag-gated, chapters scope)
+In-flight guard: `resume_state` set ⇒ a chapter is mid-flight ⇒ return (the consumer drives + wakes).
+Else, for the next chapter (per cursor): build the context, `assemble_entity_submit` → `llm_client.submit_job` → write provider_job_ids+resume_state → return (release). Replaces the synchronous `_extract_and_persist` at runner.py:1609 + skips the post-extract block (the consumer owns it). Sync path unchanged when flag off.
+
+### wire + smoke
+Start the consumer in worker-ai's main loop (alongside summary_consumer). `D-WX-LIVE-SMOKE`: rebuild
+worker-ai+knowledge images, flag on, dispatch a real campaign chapter → assert: chapter persisted via
+the event path (no pinned coroutine), `chapter_extracted` emitted, cursor advanced, `billing_user_id`
+honored (collaborator path), 0 double-spend. Then `/review-impl` the money-path before default-on.
+
 ## Reuse map
 
 | Need | Asset |
