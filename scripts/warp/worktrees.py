@@ -16,14 +16,16 @@ Why Python (not bash like RAID): bash wrappers fail on the project's Windows box
 equivalent of RAID's worktrees-*.sh.
 
 Usage:
-  worktrees.py check   [--task <slug>]              # exit 1 if stale warp worktrees/branches linger
-  worktrees.py list    --task <slug> [--json]
-  worktrees.py cleanup --task <slug> [--delete-branches]
+  worktrees.py check    [--task <slug>]                       # exit 1 if stale warp worktrees/branches linger
+  worktrees.py list     --task <slug> [--json]
+  worktrees.py cleanup  --task <slug> [--delete-branches]
+  worktrees.py pin-base --branch <branch> --base <sha>        # run INSIDE a slice worktree: pin its base
 
 Exit codes:
   0  success (check: nothing stale)
   1  check: stale warp worktrees/branches found (refuse to start a new fan-out)
   2  usage / git error
+  3  pin-base: base SHA unreachable in this worktree (caller returns BLOCKED)
 """
 from __future__ import annotations
 
@@ -129,6 +131,56 @@ def _merged_branches() -> set[str]:
 # ── commands ─────────────────────────────────────────────────────────
 
 
+def cmd_pin_base(args) -> int:
+    """Pin THIS worktree's slice branch to the exact committed base SHA.
+
+    D-WARP-WORKTREE-BASE-FLAKY: `Agent(isolation:worktree)` does NOT guarantee the
+    base commit a slice worktree starts from. On this box the harness handed out
+    inconsistent bases (some slices landed on a stale `main`, 66 commits behind the
+    orchestrator's committed DESIGN HEAD), so a slice silently built against code
+    that was missing the very work it depended on. RAID never hit this because its
+    `worktrees-create.sh` pins the base explicitly (`git worktree add … <BASE>`);
+    warp delegated base-selection to the opaque harness.
+
+    Fix: every slice runs this FIRST (before reading or building anything). Because
+    all worktrees of one repo share the object store, the coordinator's committed
+    base SHA is always reachable here — so `git checkout -B <branch> <base>` forces
+    the slice branch to start at EXACTLY that commit regardless of the flaky base
+    the harness handed out. Using the SHA (not a branch name) avoids the
+    "already checked out in another worktree" refusal.
+
+    Exit: 0 pinned · 3 base_mismatch (SHA unreachable → caller returns BLOCKED) ·
+    2 git error.
+    """
+    branch, base = args.branch, args.base
+    # 1. reachability guard — the base commit MUST exist in this worktree's shared
+    #    object DB. If it doesn't, the harness gave us a detached repo we can't fix
+    #    locally; that's a BLOCKED design signal, not something to checkout around.
+    rc, out, _ = _git("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")
+    base_full = out.strip()
+    if rc != 0 or not base_full:
+        print(f"base_mismatch: base commit {base!r} is unreachable in this worktree "
+              f"— return BLOCKED(base_mismatch)", file=sys.stderr)
+        return 3
+    # 2. pin: create/reset the slice branch to the base SHA, immune to the worktree's
+    #    (possibly stale) starting commit. -B is safe: a fresh fan-out has no prior
+    #    slice branch (worktrees.py check enforced that), and the SHA sidesteps the
+    #    branch-already-checked-out guard.
+    rc, _, err = _git("checkout", "-B", branch, base_full)
+    if rc != 0:
+        print(f"pin-base: git checkout -B {branch} {base_full} failed: {err.strip()}",
+              file=sys.stderr)
+        return 2
+    # 3. confirm — never claim a pin we didn't verify (evidence gate).
+    rc, out, _ = _git("rev-parse", "HEAD")
+    head = out.strip()
+    if rc != 0 or head != base_full:
+        print(f"pin-base: post-pin HEAD {head!r} != base {base_full!r}", file=sys.stderr)
+        return 2
+    print(f"OK: {branch} pinned at {head}")
+    return 0
+
+
 def cmd_check(args) -> int:
     wts = warp_worktrees(args.task)
     brs = warp_branches(args.task)
@@ -213,6 +265,12 @@ def main(argv: list[str] | None = None) -> int:
     pk.add_argument("--delete-branches", action="store_true",
                     help="also delete branches already merged into HEAD")
     pk.set_defaults(fn=cmd_cleanup)
+
+    pp = sub.add_parser("pin-base",
+                        help="pin THIS worktree's slice branch to the coordinator's base SHA")
+    pp.add_argument("--branch", required=True, help="the slice branch warp/<task>/slice-<id>")
+    pp.add_argument("--base", required=True, help="the coordinator's committed base SHA")
+    pp.set_defaults(fn=cmd_pin_base)
 
     args = p.parse_args(argv)
     return args.fn(args)

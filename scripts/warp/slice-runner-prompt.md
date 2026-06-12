@@ -6,8 +6,9 @@
 >
 > **Coordinator interpolation:** before passing as `prompt` to the Agent tool, the
 > Coordinator substitutes every `<...>` placeholder from the slice's row in
-> `docs/warp/<TASK>/manifest.yaml`:
-> `<TASK> <SLICE_ID> <SLICE_LABEL> <BRANCH> <WRITES> <READS> <FROZEN_INTERFACE> <ACCEPTANCE>`
+> `docs/warp/<TASK>/manifest.yaml` (plus `<BASE_SHA>` = the Coordinator's committed
+> base, captured once for the whole fan-out):
+> `<TASK> <SLICE_ID> <SLICE_LABEL> <BRANCH> <BASE_SHA> <WRITES> <READS> <FROZEN_INTERFACE> <ACCEPTANCE>`
 >
 > A slice-runner that finds an un-substituted `<...>` placeholder MUST halt
 > immediately and return `{result: "BLOCKED", reason: "prompt_interpolation_failure"}`.
@@ -28,6 +29,24 @@ validated before you were spawned).
 - **Frozen interface (READ-ONLY, do not edit):** `<FROZEN_INTERFACE>`
 - **Acceptance (your slice is done when these pass):** `<ACCEPTANCE>`
 
+## Step 0 — PIN YOUR BASE (do this FIRST, before reading or building anything)
+
+Your worktree's starting commit is **NOT guaranteed** — the `isolation:worktree`
+harness has handed out stale bases (a slice landed on `main`, 66 commits behind the
+work it depended on, and silently built against missing code). Before anything else,
+force your branch onto the exact committed base the Coordinator pinned:
+
+```
+python scripts/warp/worktrees.py pin-base --branch <BRANCH> --base <BASE_SHA>
+```
+
+- **Exit 0** → you are now on `<BRANCH>` at `<BASE_SHA>`. Proceed to required reading.
+- **Exit 3** (`base_mismatch`) → the base SHA is unreachable in your worktree; you
+  cannot self-heal. **STOP** and return `BLOCKED` with reason `base_mismatch`.
+
+Do NOT read any file or run any test before this succeeds — reading against a stale
+base would mislead everything downstream.
+
 ## Required reading (in this order)
 
 1. The frozen-interface files listed above — this is the contract you build against.
@@ -44,9 +63,9 @@ have none — cold start). Everything you need is the frozen interface + your su
 3. **REFACTOR** — clean up while tests stay green.
 4. **VERIFY** — run `<ACCEPTANCE>` fresh; read the full output; only claim pass on a real
    green run (evidence gate — no "should pass").
-5. **COMMIT** — stage only your changed files (no `git add -A`) and commit to your branch:
+5. **COMMIT** — you are already on `<BRANCH>` at `<BASE_SHA>` (Step 0). Stage only your
+   changed files (no `git add -A`) and commit:
    ```
-   git checkout -b <BRANCH>        # if not already on it
    git add <only files under your write-set>
    git commit -m "warp(<TASK>): slice <SLICE_ID> <SLICE_LABEL>"
    ```
@@ -85,7 +104,7 @@ have none — cold start). Everything you need is the frozen interface + your su
   "result": "BLOCKED",
   "slice_id": <SLICE_ID>,
   "branch": "<BRANCH>",
-  "reason": "needs_out_of_scope_write | frozen_interface_insufficient | acceptance_unreachable | prompt_interpolation_failure",
+  "reason": "needs_out_of_scope_write | frozen_interface_insufficient | acceptance_unreachable | prompt_interpolation_failure | base_mismatch",
   "detail": "<=300 chars — e.g. which file outside the write-set was needed, or which frozen contract gap blocked you",
   "files_modified": ["<any partial work committed>"]
 }

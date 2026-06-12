@@ -163,7 +163,7 @@ No surgery to the existing state machine; the parallel structure lives *above* i
 
 | `/warp` need | Source | Concrete asset (verified on disk) |
 |---|---|---|
-| Fan-out in isolated worktrees | RAID DPS | `Agent(isolation:worktree, run_in_background:true)` pattern; [`scripts/raid/worktrees-create.sh`](../../scripts/raid/worktrees-create.sh), `worktrees-cleanup.sh`, `worktrees-check.sh` |
+| Fan-out in isolated worktrees | RAID DPS | `Agent(isolation:worktree, run_in_background:true)` pattern; [`scripts/raid/worktrees-create.sh`](../../scripts/raid/worktrees-create.sh), `worktrees-cleanup.sh`, `worktrees-check.sh`. **The harness does NOT pin the slice base — warp pins it via `worktrees.py pin-base` (§10 base-flaky row); RAID pins explicitly in `worktrees-create.sh`.** |
 | Per-slice isolated test infra | RAID B2 | `scripts/raid/test-infra-up-dps.sh` / `test-infra-down-dps.sh` (deterministic ports) |
 | Integration/reconcile node | RAID Tank | Phase-6 rebase logic (RAID_WORKFLOW §4) |
 | Regression chase | RAID Healer | Phase-6 step 2 |
@@ -185,6 +185,7 @@ Net-new = the decision layer (§5 TRIAGE rubric, §6 manifest + validator) and a
 | **Reconcile cost eats the win** (Amdahl) | Measure reconcile wall-time + conflict count per run (RAID's `health-dashboard.py` P10 is precedent). A task that reconciles painfully twice → demote to serial. |
 | **Token cost** ≈ N× BUILD + orchestration (~RAID's $15-30 range) | Opt-in only; never XS/S; the user decides when wall-clock > token cost. |
 | **Stale-image false-green at reconcile smoke** | Rebuild touched images first (memory `live-smoke-rebuild-stale-images-first`); `scripts/build-stack.sh` stamps a git-SHA freshness label. |
+| **Flaky worktree base** (`D-WARP-WORKTREE-BASE-FLAKY`, first real-task run) — `Agent(isolation:worktree)` did NOT reliably base slices on the committed HEAD: on the project's Windows box it handed out **inconsistent bases** (some slices on a stale `main`, 66 commits behind the committed DESIGN HEAD), so a slice silently built against missing code. RAID never hit this because `worktrees-create.sh` pins the base explicitly. | The Coordinator captures `BASE_SHA=$(git rev-parse HEAD)` after committing the DESIGN artifacts and passes it to every slice; each slice's **Step 0** runs `worktrees.py pin-base --branch <BRANCH> --base <BASE_SHA>` FIRST — `git checkout -B <branch> <sha>` forces its branch onto the exact base regardless of the harness's choice (all worktrees share the object store, so the SHA is always reachable). Unreachable SHA → `BLOCKED(base_mismatch)`. The Coordinator then re-verifies each DONE slice with `git merge-base --is-ancestor <BASE_SHA> <branch>`. Proven against real git in `scripts/test_warp_base_pin.py`. |
 
 **Shared-write magnets in *this* repo** (TRIAGE Q3 must explicitly check — these are where "independent" slices secretly collide):
 - **DB migration sequence numbers** — two slices each adding `migrations/00N_*.sql` will both grab the next N.

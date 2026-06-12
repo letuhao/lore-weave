@@ -79,18 +79,34 @@ You (main session) are the /warp COORDINATOR. Pre-flight:
   python scripts/warp/worktrees.py check --task <slug>     # refuse if stale warp worktrees linger
   COMMIT the DESIGN artifacts first (frozen interface + manifest + slice briefs), THEN re-run
     `workflow-gate.py slices <manifest> --verify-frozen`.  ← dry-run finding D1:
-    Agent(isolation:worktree) bases each slice on a COMMITTED ref (HEAD), never the
-    orchestrator's uncommitted edits. An uncommitted frozen file / brief is invisible to
-    the slices. --verify-frozen now BLOCKs a frozen path that isn't committed in HEAD.
+    a slice worktree must see the orchestrator's committed work, so the frozen files /
+    briefs MUST be committed in HEAD before fan-out (uncommitted edits are invisible to
+    the slices); --verify-frozen BLOCKs a frozen path that isn't committed in HEAD.
+  CAPTURE THE BASE SHA after that commit:  BASE_SHA=$(git rev-parse HEAD)
+    ← D-WARP-WORKTREE-BASE-FLAKY (real-task finding): Agent(isolation:worktree) does
+    NOT reliably base a slice on HEAD — on this box it handed out STALE bases (slices
+    landed on `main`, 66 commits behind the committed DESIGN HEAD, and silently built
+    against missing code). So we PIN every slice to BASE_SHA ourselves (RAID does this
+    explicitly via worktrees-create.sh; warp must too). Each slice self-heals in Step 0.
 
 BUILD — fan out (one message, all slices, concurrent):
   For each slice in manifest.yaml:
     - Read scripts/warp/slice-runner-prompt.md; interpolate
-      <TASK> <SLICE_ID> <SLICE_LABEL> <BRANCH=warp/<slug>/slice-<id>> <WRITES> <READS> <FROZEN_INTERFACE> <ACCEPTANCE>
+      <TASK> <SLICE_ID> <SLICE_LABEL> <BRANCH=warp/<slug>/slice-<id>> <BASE_SHA> <WRITES> <READS> <FROZEN_INTERFACE> <ACCEPTANCE>
     - Spawn Agent: { subagent_type: general-purpose, isolation: "worktree",
                      run_in_background: true, prompt: <interpolated> }
+      (the slice's Step 0 runs `worktrees.py pin-base --branch <BRANCH> --base <BASE_SHA>`
+       FIRST, forcing its branch onto BASE_SHA regardless of the base the harness gave it.)
   Receive each slice's ≤1500-token structured return (runtime auto-notifies; no polling).
-    - result DONE      → record branch + commit_sha
+    - result DONE      → record branch + commit_sha, THEN VERIFY THE BASE (belt to the
+                         slice's suspenders): `git merge-base --is-ancestor <BASE_SHA> <branch>`
+                         — exit 0 means the slice built on the pinned base. Non-zero ⇒ the
+                         slice didn't pin (stale prompt cache?) ⇒ re-run that slice; do NOT
+                         reconcile a slice that isn't descended from BASE_SHA.
+    - result BLOCKED with base_mismatch
+                       → BASE_SHA was unreachable in the slice's worktree (harness gave a
+                         detached/unrelated repo). Re-spawn the slice; if it persists, the
+                         worktree substrate is broken on this box → fall back to serial /loom.
     - result BLOCKED with needs_out_of_scope_write | frozen_interface_insufficient
                        → a DESIGN signal: STOP, return to DESIGN (re-slice / re-freeze). Do NOT patch around it.
 
@@ -125,7 +141,7 @@ Adversary's job (spec §10), not the validator's. "Disjoint", not "provably inde
 | Independence gate | [`scripts/workflow-gate.py slices`](../../scripts/workflow-gate.py) → [`scripts/warp/slice-manifest-validate.py`](../../scripts/warp/slice-manifest-validate.py) |
 | Manifest template | [`docs/warp/EXAMPLE-manifest.yaml`](../../docs/warp/EXAMPLE-manifest.yaml) |
 | Slice sub-agent prompt | [`scripts/warp/slice-runner-prompt.md`](../../scripts/warp/slice-runner-prompt.md) |
-| Worktree lifecycle | [`scripts/warp/worktrees.py`](../../scripts/warp/worktrees.py) (check / list / cleanup) |
+| Worktree lifecycle | [`scripts/warp/worktrees.py`](../../scripts/warp/worktrees.py) (check / list / cleanup / **pin-base** — the slice base-pin self-heal) |
 | Slice brief shape | [`docs/raid/cycle_briefs/TEMPLATE.md`](../../docs/raid/cycle_briefs/TEMPLATE.md) |
 | Cold-start Adversary / Scope Guard | [`docs/amaw-workflow.md`](../../docs/amaw-workflow.md) |
 | Reconcile (Healer mindset) | [`docs/raid/RAID_WORKFLOW.md`](../../docs/raid/RAID_WORKFLOW.md) §4 Phase 6 |
