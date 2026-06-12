@@ -17,7 +17,7 @@ frozen_interface:
   - path: infra/docker-compose.yml
     sha: 51c944bcaa53a2e8b304a4783b6efc1623180df8
   - path: docs/sessions/SESSION_HANDOFF.md
-    sha: 53e56fc287ae5a47a17999d95118ecc736e3786f
+    sha: 9475d099217756031a3fdd596f8e7e2c0a52ae69   # re-pinned to base 69a7a0bf (slice-1 + warp-base-fix landed)
 
 slices:
   - id: 1
