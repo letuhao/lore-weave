@@ -29,7 +29,8 @@ can be **fully frozen up front**. Best fit: a feature spanning several services 
 contract; a mechanical migration over many independent files.
 
 **Do NOT use it** (take `/loom` instead) for:
-- XS/S tasks — orchestration overhead dwarfs the win.
+- XS/S tasks — orchestration overhead dwarfs the win. (Size by **complexity, not file count** —
+  a wide-but-mechanical change that the gate breadth-discounts to S is a `/loom`, not a `/warp`.)
 - **Refactors of a shared type/API** — they mutate a shared surface; slices aren't independent.
 - Anything touching a **shared-write magnet** that can't be confined to one slice:
   DB migration sequence numbers, DI/route/consumer registration, i18n key bundles,
