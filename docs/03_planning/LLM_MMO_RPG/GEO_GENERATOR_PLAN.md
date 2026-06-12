@@ -8,7 +8,39 @@
 
 ## Current status & next session (handoff)
 
-> **🆕 2026-05-31 (session 100) — 3D WORLD EXPORT — BUILT.** The world MODEL has
+> **🆕🔬 2026-05-31 (session 100) — ELEVATION REDESIGN ARC — RESEARCH + SPEC DONE,
+> BUILD PAUSED (PO checkpoint).** The PO flagged a real defect: the sphere
+> elevation is mostly **procedural noise weakly coupled to tectonics**. Verified
+> empirically (seed-7 megaplanet): **0 % of Mountain cells lie on a convergent
+> plate boundary** (peaks = independent ridged-fBm, not tectonics); only 3 of 6
+> boundary kinds fire; raw model ocean<sea<land is correct (the "ocean rises" is a
+> render/export artifact — no real bathymetry).
+> - **Research (deep-research, 105 agents, cited):**
+>   [`docs/research/2026-05-31-geological-elevation.md`](../../research/2026-05-31-geological-elevation.md)
+>   — isostasy (bimodal target), boundary tectonics→topography, age-depth bathymetry
+>   (GDH1 `d=2600+365√t`), stream-power erosion (`dh/dt=U−K·A^m·S^n`, m/n≈0.5),
+>   Cortial 2019 / Cordonnier 2016 algorithms.
+> - **Arc spec (6 staged ships):**
+>   [`docs/specs/2026-05-31-elevation-redesign.md`](../../specs/2026-05-31-elevation-redesign.md).
+>   New pipeline: isostasy base → boundary uplift field → age bathymetry → coupled
+>   uplift⇄erosion, calibrated to the hypsometric curve. Data model adds `crust_age`
+>   + `crust_thickness`. Each stage has a metric; biome/climate threshold
+>   **recalibration is a required per-stage check** (biome stays correct — it still
+>   reads `elevation:u16`+`sea_level`; Mountain/Highland will then sit on tectonic
+>   belts).
+> - **Defects D1-D7** mapped in the spec §0. Audit notes: `erosion.rs` is already
+>   stream-power (couple it to uplift, don't rebuild); `plates.rs` already has all 6
+>   boundary uplift magnitudes (amplify the relief FROM them = S1).
+>
+> **TOP NEXT: build S1** 🎯 — relief amplified from the tectonic uplift field so
+> mountains rise AT convergent/collision belts (fixes D1, the headline). Metric:
+> `%Mountain-on-convergent-boundary` 0 %→≥60 %. Then S2…S6 per the spec. Each stage
+> = full 12-phase + `/review-impl` + PO POST-REVIEW. PO paused after the spec to
+> review the research/spec files before building.
+>
+> ---
+>
+> **2026-05-31 (session 100) — 3D WORLD EXPORT — BUILT.** The world MODEL has
 > been a real 3D sphere (3D Voronoi mesh + `u16` elevation + plate tectonics + the
 > climate arc) all along, but had only ever been rendered to 2D images. Added
 > `crates/world-gen/src/export.rs` (new): two exports so the planet can be seen/used
