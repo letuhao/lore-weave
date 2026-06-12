@@ -1363,8 +1363,12 @@ async def _start_decoupled_chunk(
     from app import decoupled_extract as dx
 
     eff_model_ref = job.billing_llm_model if job.billing_user_id else run_snapshot.model_ref
+    # WX Wave 4 — recovery/filter are now decoupled fan-out stages (no sync fallback).
+    eff_recovery = run_snapshot.entity_recovery
+    eff_filter = run_snapshot.precision_filter
     rs = dx.new_extract_state(
-        chunk_text=text, known_entities=[], has_recovery=False, has_filter=False,
+        chunk_text=text, known_entities=[],
+        has_recovery=eff_recovery is not None, has_filter=eff_filter is not None,
     )
     rs.update(
         user_id=str(job.user_id), project_id=str(job.project_id),
@@ -1401,6 +1405,27 @@ async def _start_decoupled_chunk(
         },
         cursor_to_set={"last_chapter_id": str(ch.chapter_id), "scope": "chapters"},
     )
+    # WX Wave 4 — serialize the recovery/filter configs into resume_state so the consumer
+    # (which only sees a job_id) can drive the Tier-3 + category×batch fan-outs over the
+    # WX-T2c seams. worker-ai has no glossary access ⇒ known_entity_kinds is empty ⇒ all
+    # unmatched names go to the Tier-3 LLM classifier (matches the sync path there).
+    if eff_recovery is not None:
+        rs["_recovery_cfg"] = {
+            "model_ref": eff_recovery.model_ref,
+            "model_source": eff_recovery.model_source,
+            "max_items_per_batch": eff_recovery.max_items_per_batch,
+            "transient_retry_budget": eff_recovery.transient_retry_budget,
+            "known_entity_kinds": dict(eff_recovery.known_entity_kinds),
+        }
+    if eff_filter is not None:
+        rs["_filter_cfg"] = {
+            "model_ref": eff_filter.model_ref,
+            "model_source": eff_filter.model_source,
+            "partial_policy": eff_filter.partial_policy,
+            "categories": list(eff_filter.categories),
+            "max_items_per_batch": eff_filter.max_items_per_batch,
+            "transient_retry_budget": eff_filter.transient_retry_budget,
+        }
     # Bounded transient-retry on the entity submit — mirrors submit_and_wait's
     # resilience. A fire-and-forget submit_job has no retry, so without this a single
     # transient transport blip to provider-registry would PERMANENTLY fail the job
@@ -1716,16 +1741,15 @@ async def process_job(
 
                 # LLM re-arch Phase 2b WX-T3b — event-driven decouple of the chapter
                 # extraction. Submit the entity job + RELEASE (return); the
-                # llm_extract_consumer drives entity→trio→persist off the terminal
-                # events and advances the cursor + emits chapter_extracted. Gated to
-                # projects WITHOUT recovery/filter (those stages stay synchronous —
-                # the SM + WX-T2c seams support them; wiring is a follow-up). The next
-                # poll (resume_state cleared by the consumer) handles the next chapter.
+                # llm_extract_consumer drives entity→trio→[recovery]→[filter]→persist off
+                # the terminal events and advances the cursor + emits chapter_extracted.
+                # WX Wave 4 — recovery/filter are now decoupled fan-out stages too, so the
+                # branch is no longer gated to projects without them (the prior gate is
+                # dropped). The next poll (resume_state cleared by the consumer) handles
+                # the next chapter.
                 if (
                     _decouple_enabled()
                     and job.scope in ("chapters", "all")
-                    and run_snapshot.precision_filter is None
-                    and run_snapshot.entity_recovery is None
                 ):
                     await _start_decoupled_chunk(
                         pool, llm_client, job=job, ch=ch, text=text, book_id=book_id,

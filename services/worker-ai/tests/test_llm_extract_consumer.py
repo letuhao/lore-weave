@@ -392,6 +392,114 @@ async def test_real_fold_completes_and_finalizes_with_seed_keys_intact():
     assert "resume_state=NULL" in sqls
 
 
+# ── WX Wave 4 — recovery/filter stage dispatch (orchestration, not fold) ─────────
+# Fold/finalize correctness lives in test_decoupled_extract; here we lock that the
+# consumer, on a stage COMPLETING, submits the next fan-out UNDER the lock (or persists),
+# exactly like the entity→trio transition.
+
+def _trio_complete_rs(has_recovery=False, has_filter=False):
+    rs = dx.new_extract_state(
+        chunk_text="t", known_entities=[], has_recovery=has_recovery, has_filter=has_filter,
+    )
+    rs = dx.apply_entity_result(rs, ["e1"])
+    rs = dx.begin_trio(rs, {"relation": "jr", "event": "je", "fact": "jf"})
+    rs["user_id"] = USER
+    return rs
+
+
+async def test_trio_complete_dispatches_recovery_under_lock(monkeypatch):
+    fresh = _trio_complete_rs(has_recovery=True)
+    conn = FakeConn([{"resume_state": fresh}])  # trio FOR UPDATE re-read
+    pool = FakePool(conn)
+    kc = AsyncMock()
+    llm = AsyncMock()
+    llm.get_job.return_value = SimpleNamespace(status="completed", result={})
+    llm.submit_job = AsyncMock(return_value=SimpleNamespace(job_id="rjob0"))
+    monkeypatch.setattr(dx, "op_for_job", lambda rs, jid: "fact")
+    monkeypatch.setattr(dx, "fold_trio_job", lambda rs, op, job: {**rs, "stage": dx.RECOVERY})
+    monkeypatch.setattr(dx, "assemble_recovery",
+                        lambda rs: ({"r0": {"operation": "chat"}}, {**rs, "stage": dx.RECOVERY}))
+
+    await _resume(pool, kc, llm, None, "jf", EJ, _trio_complete_rs(has_recovery=True))
+
+    llm.submit_job.assert_awaited_once()                          # recovery batch submitted
+    assert any("provider_job_ids" in s and "resume_state=$3" in s for s, _ in conn.executed)
+    assert all(conn.executed_in_tx)                               # under the lock
+    kc.persist_pass2.assert_not_awaited()                         # recovery in flight, not done
+
+
+async def test_recovery_complete_dispatches_filter(monkeypatch):
+    base = dx.new_extract_state(
+        chunk_text="t", known_entities=[], has_recovery=True, has_filter=True,
+    )
+    base["stage"] = dx.RECOVERY
+    base["user_id"] = USER
+    base = dx.begin_recovery(base, {"r0": "rj0"})
+    conn = FakeConn([{"resume_state": base}])
+    pool = FakePool(conn)
+    kc = AsyncMock()
+    llm = AsyncMock()
+    llm.get_job.return_value = SimpleNamespace(status="completed", result={})
+    llm.submit_job = AsyncMock(return_value=SimpleNamespace(job_id="fjob0"))
+    monkeypatch.setattr(dx, "recovery_task_for_job", lambda rs, jid: "r0")
+    monkeypatch.setattr(dx, "fold_recovery_terminal", lambda rs, k, job: {**rs, "stage": dx.FILTER})
+    monkeypatch.setattr(dx, "assemble_filter",
+                        lambda rs: ({"f:entity:0": {"operation": "chat"}}, {**rs, "stage": dx.FILTER}))
+
+    await _resume(pool, kc, llm, None, "rj0", EJ, {**base})
+
+    llm.submit_job.assert_awaited_once()                          # filter batch submitted
+    kc.persist_pass2.assert_not_awaited()
+
+
+async def test_filter_complete_finalizes_and_persists(monkeypatch):
+    base = dx.new_extract_state(
+        chunk_text="t", known_entities=[], has_recovery=False, has_filter=True,
+    )
+    base["stage"] = dx.FILTER
+    base.update(_persist_rs(stage=dx.FILTER))
+    base = dx.begin_filter(base, {"f:entity:0": "fj0"})
+    conn = FakeConn([{"resume_state": base}, {"resume_state": {"stage": dx.PERSIST}}])
+    pool = FakePool(conn)
+    kc = AsyncMock()
+    kc.persist_pass2.return_value = _persist_result()
+    llm = AsyncMock()
+    llm.get_job.return_value = SimpleNamespace(status="completed", result={})
+    monkeypatch.setattr(dx, "filter_task_for_job", lambda rs, jid: "f:entity:0")
+    monkeypatch.setattr(dx, "fold_filter_terminal", lambda rs, k, job: {**rs, "stage": dx.PERSIST})
+    captured = {}
+    monkeypatch.setattr(dx, "finalize_filter",
+                        lambda rs: captured.update(called=True) or rs)
+
+    await _resume(pool, kc, llm, None, "fj0", EJ, {**base})
+
+    assert captured.get("called")                                 # filter stitch applied
+    kc.persist_pass2.assert_awaited_once()                        # then finalized
+    assert "current_month_spent_usd" in _sqls(conn)               # spend recorded once
+
+
+async def test_empty_recovery_advances_through_to_persist(monkeypatch):
+    # has_recovery, but assemble_recovery finds no Tier-3 work AND no filter → the
+    # dispatcher walks RECOVERY→PERSIST in one pass, no submit, finalize directly.
+    base = _trio_complete_rs(has_recovery=True, has_filter=False)
+    conn = FakeConn([{"resume_state": base}, {"resume_state": {"stage": dx.PERSIST}}])
+    pool = FakePool(conn)
+    kc = AsyncMock()
+    kc.persist_pass2.return_value = _persist_result()
+    llm = AsyncMock()
+    llm.get_job.return_value = SimpleNamespace(status="completed", result={})
+    llm.submit_job = AsyncMock()
+    monkeypatch.setattr(dx, "op_for_job", lambda rs, jid: "fact")
+    monkeypatch.setattr(dx, "fold_trio_job",
+                        lambda rs, op, job: {**rs, **_persist_rs(stage=dx.RECOVERY)})
+    monkeypatch.setattr(dx, "assemble_recovery", lambda rs: ({}, rs))  # no Tier-3 work
+
+    await _resume(pool, kc, llm, None, "jf", EJ, {**base})
+
+    llm.submit_job.assert_not_awaited()                           # nothing to submit
+    kc.persist_pass2.assert_awaited_once()                        # advanced through to persist
+
+
 # ── WX Wave 1b — stuck-resume sweeper ────────────────────────────────────────
 
 import app.llm_extract_consumer as consumer_mod  # noqa: E402

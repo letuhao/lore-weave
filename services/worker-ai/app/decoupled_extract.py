@@ -321,3 +321,200 @@ def fold_trio_job(rs: dict[str, Any], op: str, job, on_dropped=None) -> dict[str
     else:
         return rs
     return fold_trio_op(rs, op, _ser(items))
+
+
+# ── recovery shell (WX Wave 4) — Tier-3 LLM classifier fan-out ──────────────────
+# Tier-1+2 (glossary/hints, no LLM) runs inline in assemble_recovery; worker-ai has no
+# glossary access so known_entity_kinds is empty ⇒ every unmatched name goes to Tier-3.
+# Each Tier-3 batch is a fire-and-forget submit; on its terminal the verdicts are applied
+# into the (promoted, name_verdict) accumulators and finalize_recovery recomputes
+# entities/relations from the immutable post-trio base (idempotent/monotonic each fold).
+
+
+def _recovery_config(rs: dict[str, Any]):
+    from loreweave_extraction.entity_recovery import EntityRecoveryConfig
+    c = rs["_recovery_cfg"]
+    return EntityRecoveryConfig(
+        model_ref=c["model_ref"],
+        model_source=c.get("model_source", "user_model"),
+        max_items_per_batch=c.get("max_items_per_batch", 5),
+        transient_retry_budget=c.get("transient_retry_budget", 1),
+        known_entity_kinds=dict(c.get("known_entity_kinds") or {}),
+    )
+
+
+def _candidates_from(entities_ser: list, relations_ser: list):
+    """Minimal Pass2Candidates (entities + relations only) for finalize_recovery."""
+    from loreweave_extraction.extractors.entity import LLMEntityCandidate
+    from loreweave_extraction.extractors.relation import LLMRelationCandidate
+    from loreweave_extraction.pass2 import Pass2Candidates
+    return Pass2Candidates(
+        entities=[LLMEntityCandidate.model_validate(d) for d in entities_ser],
+        relations=[LLMRelationCandidate.model_validate(d) for d in relations_ser],
+    )
+
+
+def assemble_recovery(rs: dict[str, Any]) -> tuple[dict[str, dict], dict[str, Any]]:
+    """Run Tier-1+2 inline + build the Tier-3 LLM batch submits. Returns
+    ({batch_key: submit_kwargs}, rs2) with the recovery accumulators seeded (immutable
+    base snapshot + promoted/name_verdict + batch→names map). An empty map ⇒ no Tier-3
+    work (Tier-1+2 already finalized into entities/relations); the dispatcher then calls
+    begin_recovery({}) to advance to filter/persist."""
+    from loreweave_extraction.entity_recovery import (
+        build_recovery_batches, build_recovery_submit_kwargs,
+        finalize_recovery, prepare_recovery,
+    )
+    cfg = _recovery_config(rs)
+    cands = reconstruct_candidates(rs)
+    promoted, name_verdict, still_unmatched, unmatched = prepare_recovery(
+        cands, config=cfg, user_id=rs["user_id"],
+        project_id=rs.get("project_id"), on_decision=None,
+    )
+    out = dict(rs)
+    out["recovery_base_entities"] = list(rs["entities"])
+    out["recovery_base_relations"] = list(rs["relations"])
+    out["recovery_promoted"] = _ser(promoted)
+    out["recovery_name_verdict"] = dict(name_verdict)
+    out["recovery_batch_names"] = {}
+    if not unmatched or not still_unmatched:
+        # Nothing for the LLM (no unmatched, or all resolved by Tier-1+2). Apply the
+        # promote/abstract-drop now so the stage's effect still lands, then no submits.
+        final = finalize_recovery(cands, promoted, name_verdict)
+        out["entities"] = _ser(final.entities)
+        out["relations"] = _ser(final.relations)
+        return {}, out
+    system, batches = build_recovery_batches(still_unmatched, rs["chunk_text"], cfg)
+    submits: dict[str, dict] = {}
+    for user_msg, n_items, batch_start in batches:
+        key = f"r{batch_start}"
+        out["recovery_batch_names"][key] = still_unmatched[batch_start:batch_start + n_items]
+        submits[key] = build_recovery_submit_kwargs(
+            config=cfg, system=system, user=user_msg, n_items=n_items,
+        )
+    return submits, out
+
+
+def fold_recovery_terminal(rs: dict[str, Any], batch_key: str, job) -> dict[str, Any]:
+    """Apply one Tier-3 recovery batch terminal → accumulate promoted/name_verdict →
+    recompute entities/relations via finalize_recovery (from the immutable base) → SM
+    fold_recovery_task. Idempotent on a dup terminal for an already-folded batch."""
+    from loreweave_extraction.entity_recovery import (
+        _parse_decisions, apply_recovery_batch, finalize_recovery, parse_recovery_job,
+    )
+    from loreweave_extraction.extractors.entity import LLMEntityCandidate
+    if batch_key not in rs.get("recovery_batch_names", {}):
+        return rs  # unknown job (superseded/foreign)
+    if batch_key in rs.get("recovery_folded", []):
+        return rs  # already folded — don't re-apply the verdicts (idempotent)
+    batch = rs["recovery_batch_names"][batch_key]
+    try:
+        decisions = _parse_decisions(parse_recovery_job(job))
+    except Exception:  # noqa: BLE001 — a bad/empty batch degrades to all-unjudged
+        decisions = {}
+    promoted = [LLMEntityCandidate.model_validate(d) for d in rs.get("recovery_promoted", [])]
+    name_verdict = dict(rs.get("recovery_name_verdict", {}))
+    apply_recovery_batch(
+        batch, decisions, promoted_out=promoted, name_verdict_out=name_verdict,
+        user_id=rs["user_id"], project_id=rs.get("project_id"), on_decision=None,
+    )
+    base = _candidates_from(rs["recovery_base_entities"], rs["recovery_base_relations"])
+    final = finalize_recovery(base, promoted, name_verdict)
+    out = dict(rs)
+    out["recovery_promoted"] = _ser(promoted)
+    out["recovery_name_verdict"] = name_verdict
+    return fold_recovery_task(
+        out, batch_key, entities=_ser(final.entities), relations=_ser(final.relations),
+    )
+
+
+# ── filter shell (WX Wave 4) — category × batch fan-out ─────────────────────────
+# Each (category, batch) is a fire-and-forget submit; on its terminal the per-item
+# verdicts fold into the {category: {global_idx: verdict}} accumulator. When all fold,
+# finalize_filter computes the kept set per category (compute_filter_kept) + stitches
+# the surviving items back into entities/relations/events (facts unfiltered).
+
+
+def _filter_config(rs: dict[str, Any]):
+    from loreweave_extraction.pass2_filter import PrecisionFilterConfig
+    c = rs["_filter_cfg"]
+    return PrecisionFilterConfig(
+        model_ref=c["model_ref"],
+        model_source=c.get("model_source", "user_model"),
+        partial_policy=c.get("partial_policy", "keep"),
+        categories=tuple(c.get("categories") or ("entity", "relation", "event")),
+        max_items_per_batch=c.get("max_items_per_batch", 3),
+        transient_retry_budget=c.get("transient_retry_budget", 1),
+    )
+
+
+def _filter_cat_items(rs: dict[str, Any]) -> dict[str, list]:
+    cands = reconstruct_candidates(rs)
+    return {"entity": cands.entities, "relation": cands.relations, "event": cands.events}
+
+
+def assemble_filter(rs: dict[str, Any]) -> tuple[dict[str, dict], dict[str, Any]]:
+    """Build the per-(category, batch) filter submits over the post-recovery candidates.
+    Returns ({task_key: submit_kwargs}, rs2) with filter_batch_meta + filter_n_input
+    seeded. Empty map ⇒ no items in any configured category (dispatcher → persist)."""
+    from loreweave_extraction.pass2_filter import (
+        build_filter_category_batches, build_filter_submit_kwargs,
+    )
+    cfg = _filter_config(rs)
+    cat_items = _filter_cat_items(rs)
+    out = dict(rs)
+    out["filter_batch_meta"] = {}
+    out["filter_n_input"] = {}
+    submits: dict[str, dict] = {}
+    for category in cfg.categories:
+        items = cat_items.get(category, [])
+        out["filter_n_input"][category] = len(items)
+        if not items:
+            continue
+        system, batches = build_filter_category_batches(
+            category, items, rs["chunk_text"], cfg,
+        )
+        for user_msg, n_items, batch_start in batches:
+            key = f"f:{category}:{batch_start}"
+            out["filter_batch_meta"][key] = {
+                "category": category, "batch_start": batch_start, "n_items": n_items,
+            }
+            submits[key] = build_filter_submit_kwargs(
+                config=cfg, system=system, user=user_msg, n_items=n_items,
+            )
+    return submits, out
+
+
+def fold_filter_terminal(rs: dict[str, Any], task_key: str, job) -> dict[str, Any]:
+    """Apply one filter batch terminal → parse per-item verdicts → map local→global idx
+    → SM fold_filter_task. Idempotent on a dup for an already-folded task."""
+    from loreweave_extraction.pass2_filter import _parse_verdicts, parse_filter_job
+    meta = rs.get("filter_batch_meta", {}).get(task_key)
+    if meta is None:
+        return rs
+    if task_key in rs.get("filter_folded", []):
+        return rs
+    try:
+        local = _parse_verdicts(parse_filter_job(job), meta["n_items"])
+    except Exception:  # noqa: BLE001 — a bad batch degrades to all-unjudged
+        local = {}
+    verdicts = {meta["batch_start"] + k: v for k, v in local.items()}
+    return fold_filter_task(rs, task_key, meta["category"], verdicts)
+
+
+def finalize_filter(rs: dict[str, Any]) -> dict[str, Any]:
+    """Compute the kept set per category (compute_filter_kept) + stitch the surviving
+    items back into entities/relations/events. Facts are never filtered. Applied once,
+    when the filter fan-in completes (SM stage → persist)."""
+    from loreweave_extraction.pass2_filter import compute_filter_kept
+    cfg = _filter_config(rs)
+    cat_items = _filter_cat_items(rs)
+    fv = rs.get("filter_verdicts", {})
+    out = dict(rs)
+    rs_key = {"entity": "entities", "relation": "relations", "event": "events"}
+    for category in cfg.categories:
+        items = cat_items[category]
+        n_input = rs.get("filter_n_input", {}).get(category, len(items))
+        verdicts_by_idx = {int(k): v for k, v in fv.get(category, {}).items()}
+        kept, _coverage = compute_filter_kept(category, n_input, verdicts_by_idx, cfg, None)
+        out[rs_key[category]] = _ser([items[i] for i in kept])
+    return out

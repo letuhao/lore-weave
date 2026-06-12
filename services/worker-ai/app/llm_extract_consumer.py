@@ -184,6 +184,64 @@ async def _persist_chunk(pool, knowledge_client, ej_id, rs: dict) -> None:
     )
 
 
+# ── WX Wave 4 — recovery/filter stage dispatch ──────────────────────────────────
+# After a fold advances the stage, submit the next optional fan-out (recovery → filter)
+# under the caller's row lock — the submits are fire-and-forget POSTs (fast enqueue, NOT
+# an LLM wait), exactly like the entity→trio transition, so holding the lock across them
+# is cheap and serialises a concurrent driver / replica. Empty recovery/filter stages
+# advance through to persist.
+
+_INFLIGHT_KEY = {dx.TRIO: "trio_jobs", dx.RECOVERY: "recovery_jobs", dx.FILTER: "filter_jobs"}
+
+
+async def _submit_map(llm_client: LLMClient, rs: dict, submits: dict[str, dict]) -> dict[str, str]:
+    jobs: dict[str, str] = {}
+    for key, kwargs in submits.items():
+        sub = await llm_client.submit_job(user_id=rs["user_id"], **kwargs)
+        jobs[key] = str(sub.job_id)
+    return jobs
+
+
+async def _dispatch_next(llm_client: LLMClient, rs: dict) -> tuple[dict, list[str] | None]:
+    """Submit the next stage's fan-out. Returns (rs, inflight_ids) for the first stage
+    with work, or (rs, None) = ready-to-persist when it reaches PERSIST. Only entered
+    after a fold ADVANCED past its stage, so it never sees ENTITY/TRIO here."""
+    while True:
+        stage = rs["stage"]
+        if stage == dx.RECOVERY:
+            submits, rs = dx.assemble_recovery(rs)
+            if submits:
+                jobs = await _submit_map(llm_client, rs, submits)
+                return dx.begin_recovery(rs, jobs), list(jobs.values())
+            rs = dx.begin_recovery(rs, {})  # no Tier-3 work → advance to filter/persist
+        elif stage == dx.FILTER:
+            submits, rs = dx.assemble_filter(rs)
+            if submits:
+                jobs = await _submit_map(llm_client, rs, submits)
+                return dx.begin_filter(rs, jobs), list(jobs.values())
+            rs = dx.begin_filter(rs, {})  # no items → persist
+        else:  # PERSIST / unexpected
+            return rs, None
+
+
+async def _advance_after_fold(conn, llm_client: LLMClient, ej_id, fresh: dict, fold_stage: str) -> dict | None:
+    """Under the open row lock: if still mid-fan-in on `fold_stage`, persist the partial
+    state and stay; else (the stage completed) finalize the filter stitch / dispatch the
+    next stage. Returns the completed rs to persist OUTSIDE the lock, or None when it
+    persisted in-flight under the lock."""
+    if fresh["stage"] == fold_stage:
+        ids = list(fresh[_INFLIGHT_KEY[fold_stage]].values())
+        await _persist_inflight(conn, ej_id, ids, fresh)
+        return None
+    if fold_stage == dx.FILTER:
+        return dx.finalize_filter(fresh)  # filter only ever completes → PERSIST
+    rs2, inflight = await _dispatch_next(llm_client, fresh)
+    if inflight is not None:
+        await _persist_inflight(conn, ej_id, inflight, rs2)
+        return None
+    return rs2
+
+
 async def _resume(pool, knowledge_client, llm_client: LLMClient, owner_user_id, job_id, ej_id, rs: dict) -> None:
     """Fold the terminal job into the SM, then submit the next stage or persist."""
     set_campaign_id(rs.get("campaign_id"))
@@ -257,9 +315,62 @@ async def _resume(pool, knowledge_client, llm_client: LLMClient, owner_user_id, 
                     if op is None:  # duplicate of an already-superseded op
                         return
                     fresh = dx.fold_trio_job(fresh, op, job)
-                    await _persist_inflight(conn, ej_id, list(fresh["trio_jobs"].values()), fresh)
-                    if fresh["stage"] != dx.TRIO:  # all 3 folded → finalize
-                        completed_rs = fresh
+                    # All 3 folded → dispatch recovery/filter (or persist); else persist
+                    # the partial fan-in and stay in trio. _advance_after_fold submits the
+                    # next fan-out UNDER this lock (fast fire-and-forget POSTs).
+                    completed_rs = await _advance_after_fold(conn, llm_client, ej_id, fresh, dx.TRIO)
+            if completed_rs is not None:
+                await _persist_chunk(pool, knowledge_client, ej_id, completed_rs)
+
+        elif stage == dx.RECOVERY:
+            # Recovery is a fan-out of Tier-3 classifier batches. Same FOR UPDATE
+            # read-modify-write serialisation as trio: fold this batch's verdicts, then
+            # either persist the partial fan-in or (all folded) dispatch filter/persist.
+            completed_rs = None
+            async with pool.acquire() as conn:
+                async with conn.transaction():
+                    row = await conn.fetchrow(
+                        """SELECT resume_state FROM extraction_jobs
+                           WHERE job_id=$1 AND resume_state IS NOT NULL FOR UPDATE""",
+                        ej_id,
+                    )
+                    if row is None:
+                        return
+                    fresh = row["resume_state"]
+                    fresh = fresh if isinstance(fresh, dict) else json.loads(fresh)
+                    if fresh.get("stage") != dx.RECOVERY:
+                        return
+                    batch_key = dx.recovery_task_for_job(fresh, job_id)
+                    if batch_key is None:  # dup/superseded batch
+                        return
+                    fresh = dx.fold_recovery_terminal(fresh, batch_key, job)
+                    completed_rs = await _advance_after_fold(conn, llm_client, ej_id, fresh, dx.RECOVERY)
+            if completed_rs is not None:
+                await _persist_chunk(pool, knowledge_client, ej_id, completed_rs)
+
+        elif stage == dx.FILTER:
+            # Filter is a fan-out of (category, batch) tasks. Fold this task's verdicts;
+            # when the whole fan-in completes, _advance_after_fold runs finalize_filter
+            # (compute kept + stitch) and returns the finalize-ready rs.
+            completed_rs = None
+            async with pool.acquire() as conn:
+                async with conn.transaction():
+                    row = await conn.fetchrow(
+                        """SELECT resume_state FROM extraction_jobs
+                           WHERE job_id=$1 AND resume_state IS NOT NULL FOR UPDATE""",
+                        ej_id,
+                    )
+                    if row is None:
+                        return
+                    fresh = row["resume_state"]
+                    fresh = fresh if isinstance(fresh, dict) else json.loads(fresh)
+                    if fresh.get("stage") != dx.FILTER:
+                        return
+                    task_key = dx.filter_task_for_job(fresh, job_id)
+                    if task_key is None:
+                        return
+                    fresh = dx.fold_filter_terminal(fresh, task_key, job)
+                    completed_rs = await _advance_after_fold(conn, llm_client, ej_id, fresh, dx.FILTER)
             if completed_rs is not None:
                 await _persist_chunk(pool, knowledge_client, ej_id, completed_rs)
 

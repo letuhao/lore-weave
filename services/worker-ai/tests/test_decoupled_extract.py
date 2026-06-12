@@ -226,3 +226,145 @@ def test_shell_trio_serde_roundtrips_nonempty():
     assert any(r.subject == "Kai" and r.object == "Bob" for r in cands.relations)
     # events/facts serde must not raise on reconstruct (counts depend on postprocess)
     _ = cands.events, cands.facts
+
+
+# ── WX Wave 4 shell — recovery + filter fan-out over the WX-T2c seams ───────────
+
+def _entity(name, cid):
+    return {"name": name, "kind": "person", "aliases": [], "confidence": 0.9,
+            "canonical_name": name.lower(), "canonical_id": cid}
+
+
+def _relation(subj, obj, rid):
+    return {"subject": subj, "predicate": "saw", "object": obj, "polarity": "affirm",
+            "modality": "actual", "confidence": 0.8, "subject_id": None,
+            "object_id": None, "relation_id": rid}
+
+
+def _recovery_rs():
+    rs = d.new_extract_state(chunk_text="Kai saw a Ghost.", known_entities=[],
+                             has_recovery=True, has_filter=False)
+    rs.update(user_id="11111111-1111-1111-1111-111111111111", project_id=None,
+              model_source="user_model", model_ref="m", stage=d.RECOVERY)
+    rs["_recovery_cfg"] = {"model_ref": "rec-model", "model_source": "user_model",
+                           "max_items_per_batch": 5, "transient_retry_budget": 1,
+                           "known_entity_kinds": {}}
+    rs["entities"] = [_entity("Kai", "e-kai")]
+    rs["relations"] = [_relation("Kai", "Ghost", "r1")]  # "Ghost" unmatched → Tier-3
+    return rs
+
+
+def test_assemble_recovery_builds_tier3_batch_for_unmatched_name():
+    submits, rs = d.assemble_recovery(_recovery_rs())
+    assert list(submits) == ["r0"]
+    assert submits["r0"]["operation"] == "chat"
+    assert submits["r0"]["model_ref"] == "rec-model"
+    assert rs["recovery_batch_names"]["r0"] == ["Ghost"]
+    assert rs["recovery_base_entities"] and rs["recovery_promoted"] == []
+
+
+def test_fold_recovery_promotes_entity_verdict():
+    _submits, rs = d.assemble_recovery(_recovery_rs())
+    rs = d.begin_recovery(rs, {"r0": "j0"})
+    job = _job({"messages": [{"content":
+        '{"decisions":[{"idx":0,"verdict":"entity","kind":"person"}]}'}]})
+    rs = d.fold_recovery_terminal(rs, "r0", job)
+    assert d.recovery_complete(rs) and rs["stage"] == d.PERSIST  # no filter
+    names = [e["name"] for e in rs["entities"]]
+    assert names == ["Kai", "Ghost"]                 # Ghost promoted
+    assert len(rs["relations"]) == 1                 # relation kept (not abstract)
+
+
+def test_fold_recovery_drops_abstract_relations():
+    _submits, rs = d.assemble_recovery(_recovery_rs())
+    rs = d.begin_recovery(rs, {"r0": "j0"})
+    job = _job({"messages": [{"content": '{"decisions":[{"idx":0,"verdict":"abstract"}]}'}]})
+    rs = d.fold_recovery_terminal(rs, "r0", job)
+    assert [e["name"] for e in rs["entities"]] == ["Kai"]   # nothing promoted
+    assert rs["relations"] == []                            # abstract-Ghost relation dropped
+
+
+def test_fold_recovery_idempotent_on_duplicate_batch():
+    _submits, rs = d.assemble_recovery(_recovery_rs())
+    rs = d.begin_recovery(rs, {"r0": "j0"})
+    job = _job({"messages": [{"content":
+        '{"decisions":[{"idx":0,"verdict":"entity","kind":"person"}]}'}]})
+    rs = d.fold_recovery_terminal(rs, "r0", job)
+    again = d.fold_recovery_terminal(rs, "r0", job)  # dup terminal
+    assert [e["name"] for e in again["entities"]] == ["Kai", "Ghost"]  # not double-promoted
+
+
+def test_recovery_accumulates_promoted_across_two_batches():
+    """The cross-fold accumulator (recovery_promoted/name_verdict) must survive batch→
+    batch: with max_items_per_batch=1 + two unmatched names, the 2nd fold reads the 1st
+    fold's promoted set and APPENDS — the riskiest part of the multi-batch decouple. Each
+    fold recomputes entities from the immutable base, so the final reflects BOTH."""
+    rs = _recovery_rs()
+    rs["_recovery_cfg"]["max_items_per_batch"] = 1
+    rs["relations"] = [_relation("Kai", "Ghost", "r1"), _relation("Kai", "Wraith", "r2")]
+    submits, rs = d.assemble_recovery(rs)
+    assert set(submits) == {"r0", "r1"}                      # 2 single-name batches
+    rs = d.begin_recovery(rs, {"r0": "j0", "r1": "j1"})
+
+    ent = lambda name: _job({"messages": [{"content":
+        f'{{"decisions":[{{"idx":0,"verdict":"entity","kind":"person"}}]}}'}]})
+    rs = d.fold_recovery_terminal(rs, "r0", ent("Ghost"))
+    assert not d.recovery_complete(rs) and rs["stage"] == d.RECOVERY  # 1/2, stays
+    assert [e["name"] for e in rs["entities"]] == ["Kai", "Ghost"]
+    rs = d.fold_recovery_terminal(rs, "r1", ent("Wraith"))
+    assert d.recovery_complete(rs) and rs["stage"] == d.PERSIST
+    # BOTH promoted — the 2nd fold did not clobber the 1st's accumulator
+    assert [e["name"] for e in rs["entities"]] == ["Kai", "Ghost", "Wraith"]
+
+
+def _filter_rs(categories=("entity",)):
+    rs = d.new_extract_state(chunk_text="text", known_entities=[],
+                             has_recovery=False, has_filter=True)
+    rs.update(user_id="u", project_id="p", model_source="user_model", model_ref="m",
+              stage=d.FILTER)
+    rs["_filter_cfg"] = {"model_ref": "flt-model", "model_source": "user_model",
+                         "partial_policy": "keep", "categories": list(categories),
+                         "max_items_per_batch": 3, "transient_retry_budget": 1}
+    rs["entities"] = [_entity("Kai", "e-kai"), _entity("Ghost", "e-ghost")]
+    rs["relations"] = [_relation("Kai", "Ghost", "r1")]
+    return rs
+
+
+def test_assemble_filter_builds_category_batches():
+    submits, rs = d.assemble_filter(_filter_rs())
+    assert list(submits) == ["f:entity:0"]
+    assert submits["f:entity:0"]["model_ref"] == "flt-model"
+    assert rs["filter_n_input"]["entity"] == 2
+    assert rs["filter_batch_meta"]["f:entity:0"]["category"] == "entity"
+
+
+def test_fold_filter_then_finalize_keeps_supported_only():
+    submits, rs = d.assemble_filter(_filter_rs())
+    rs = d.begin_filter(rs, {"f:entity:0": "j0"})
+    job = _job({"messages": [{"content":
+        '{"verdicts":[{"idx":0,"verdict":"supported"},{"idx":1,"verdict":"unsupported"}]}'}]})
+    rs = d.fold_filter_terminal(rs, "f:entity:0", job)
+    assert d.filter_complete(rs) and rs["stage"] == d.PERSIST
+    rs = d.finalize_filter(rs)
+    assert [e["name"] for e in rs["entities"]] == ["Kai"]  # idx0 supported kept, idx1 dropped
+    assert len(rs["relations"]) == 1                        # relation category not filtered
+
+
+def test_fold_filter_idempotent_on_duplicate_task():
+    submits, rs = d.assemble_filter(_filter_rs())
+    rs = d.begin_filter(rs, {"f:entity:0": "j0"})
+    job = _job({"messages": [{"content": '{"verdicts":[{"idx":0,"verdict":"supported"}]}'}]})
+    rs = d.fold_filter_terminal(rs, "f:entity:0", job)
+    again = d.fold_filter_terminal(rs, "f:entity:0", job)
+    assert again["filter_verdicts"]["entity"] == {"0": "supported"}
+    assert again["filter_folded"] == ["f:entity:0"]
+
+
+def test_finalize_filter_unjudged_kept_under_keep_policy():
+    submits, rs = d.assemble_filter(_filter_rs())
+    rs = d.begin_filter(rs, {"f:entity:0": "j0"})
+    # empty verdicts → both idx unjudged → keep policy keeps both
+    job = _job({"messages": [{"content": '{"verdicts":[]}'}]})
+    rs = d.fold_filter_terminal(rs, "f:entity:0", job)
+    rs = d.finalize_filter(rs)
+    assert [e["name"] for e in rs["entities"]] == ["Kai", "Ghost"]
