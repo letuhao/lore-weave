@@ -347,6 +347,21 @@ func newBlockingReadCloser() *blockingReadCloser {
 }
 
 func (b *blockingReadCloser) Read(p []byte) (int, error) {
+	// Drain any already-buffered data FIRST. A bare select over {in, closed}
+	// picks randomly when BOTH are ready (data buffered AND body closed),
+	// which made TestIdleTimeoutReader_ZeroTimeoutDisables flaky: a Send
+	// followed by Close left both channels ready, so Read sometimes returned
+	// io.ErrClosedPipe before delivering the buffered "hello". Real pipes
+	// deliver buffered bytes before reporting close, so model that here.
+	select {
+	case data, ok := <-b.in:
+		if !ok {
+			return 0, io.EOF
+		}
+		n := copy(p, data)
+		return n, nil
+	default:
+	}
 	select {
 	case data, ok := <-b.in:
 		if !ok {

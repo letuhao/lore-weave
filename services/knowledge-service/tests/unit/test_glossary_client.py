@@ -336,3 +336,75 @@ async def test_list_entities_internal_token_and_trace_id_sent(gc: GlossaryClient
         trace_id_var.reset(token)
 
     assert captured == [("unit-test-token", "trace-abc")]
+
+
+# ── mui #1c G-cand — propose_merge_candidates ────────────────────────────────
+
+
+def _merge_candidates_url(book_id: str) -> str:
+    return f"http://glossary-service:8088/internal/books/{book_id}/merge-candidates"
+
+
+@pytest.mark.asyncio
+async def test_propose_merge_candidates_posts_cluster(gc: GlossaryClient):
+    book_id = uuid4()
+    captured: dict = {}
+
+    def capture(request: httpx.Request) -> httpx.Response:
+        import json as _json
+
+        captured.update(_json.loads(request.content))
+        return httpx.Response(200, json={"results": [{"candidate_id": "c1", "status": "proposed"}]})
+
+    with respx.mock() as mock:
+        mock.post(_merge_candidates_url(str(book_id))).mock(side_effect=capture)
+        out = await gc.propose_merge_candidates(
+            book_id,
+            candidates=[
+                {
+                    "member_entity_ids": ["e1", "e2"],
+                    "suggested_winner_entity_id": "e1",
+                    "score": 0.8,
+                    "rationale": "co-occur",
+                }
+            ],
+        )
+
+    assert out == {"results": [{"candidate_id": "c1", "status": "proposed"}]}
+    assert captured["candidates"][0]["member_entity_ids"] == ["e1", "e2"]
+    assert captured["candidates"][0]["suggested_winner_entity_id"] == "e1"
+
+
+@pytest.mark.asyncio
+async def test_propose_merge_candidates_empty_skips_call(gc: GlossaryClient):
+    # No candidates → no HTTP call, returns None (assert_all_called would fail
+    # if a request were made against an empty mock router).
+    with respx.mock(assert_all_called=False) as mock:
+        route = mock.post(_merge_candidates_url(str(uuid4())))
+        out = await gc.propose_merge_candidates(uuid4(), candidates=[])
+    assert out is None
+    assert not route.called
+
+
+@pytest.mark.asyncio
+async def test_propose_merge_candidates_5xx_returns_none(gc: GlossaryClient):
+    book_id = uuid4()
+    with respx.mock() as mock:
+        mock.post(_merge_candidates_url(str(book_id))).respond(503)
+        out = await gc.propose_merge_candidates(
+            book_id, candidates=[{"member_entity_ids": ["e1", "e2"]}]
+        )
+    assert out is None
+
+
+@pytest.mark.asyncio
+async def test_propose_merge_candidates_connection_error_returns_none(gc: GlossaryClient):
+    book_id = uuid4()
+    with respx.mock() as mock:
+        mock.post(_merge_candidates_url(str(book_id))).mock(
+            side_effect=httpx.ConnectError("boom")
+        )
+        out = await gc.propose_merge_candidates(
+            book_id, candidates=[{"member_entity_ids": ["e1", "e2"]}]
+        )
+    assert out is None

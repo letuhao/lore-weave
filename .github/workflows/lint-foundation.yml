@@ -1,0 +1,48 @@
+# .github/workflows/lint-foundation.yml — L1.K.16
+#
+# Wires the 15 foundation lints (L1.K.1–L1.K.15) into PR check.
+# Q-L1K-1 LOCKED: mix — semgrep for cross-language patterns, shell+grep for
+# simple, go vet for Go-specific. V1 ships all-shell since semgrep adds infra
+# overhead; semgrep upgrades land per-lint in a follow-on cycle as patterns
+# mature.
+#
+# Each lint runs in parallel via matrix. Total wall-clock target ≤ 3 min
+# (per L1.K acceptance).
+
+name: lint-foundation
+
+on:
+  pull_request:
+    branches: [main, mmo-rpg/foundation-mega-task]
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    name: ${{ matrix.lint }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        lint:
+          - meta-write-discipline-lint
+          - pii-classify-lint
+          - transitions-validation-lint
+          - shard-allocation-validation
+          - migration-idempotency-validator
+          - observability-inventory-lint
+          - capacity-budget-lint
+          - dep-pinning-lint
+          - timeout-discipline-lint
+          - language-rule-lint
+          - role-grant-validator
+          - outbox-event-emit-lint
+          - service-acl-matrix-lint
+          - prompt-assembly-discipline-lint
+          - meta-sensitive-read-bypass-lint
+          - read-audit-query-type-drift-lint
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run ${{ matrix.lint }}
+        run: bash scripts/${{ matrix.lint }}.sh

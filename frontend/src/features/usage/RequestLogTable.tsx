@@ -1,4 +1,5 @@
 import { Fragment, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronDown, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Pagination } from '@/components/shared/Pagination';
@@ -24,14 +25,6 @@ const PROVIDER_COLORS: Record<string, string> = {
   openai: 'text-[#74c0a4]',
   ollama: 'text-[#7ab4f0]',
   lm_studio: 'text-[#a78bfa]',
-};
-
-const PURPOSE_LABELS: Record<string, string> = {
-  translation: 'Translation',
-  chat: 'Chat',
-  chunk_edit: 'Chunk Edit',
-  image_gen: 'Image Gen',
-  unknown: 'Other',
 };
 
 function formatTime(dateStr: string): string {
@@ -68,6 +61,7 @@ export function RequestLogTable({
   onOffsetChange,
   onLimitChange,
 }: Props) {
+  const { t } = useTranslation('usage');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const activeFilters = Object.entries(filters).filter(([, v]) => v);
@@ -77,13 +71,13 @@ export function RequestLogTable({
       {/* Header */}
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold">Request Log</span>
+          <span className="text-sm font-semibold">{t('log.request_log')}</span>
           <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-            {total} requests
+            {t('log.requests_count', { count: total })}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-muted-foreground">Show</span>
+          <span className="text-[11px] text-muted-foreground">{t('log.show')}</span>
           <select
             value={limit}
             onChange={(e) => { onLimitChange(Number(e.target.value)); onOffsetChange(0); }}
@@ -105,8 +99,8 @@ export function RequestLogTable({
             type="text"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Filter current page..."
-            aria-label="Search usage logs on current page"
+            placeholder={t('log.search_placeholder')}
+            aria-label={t('log.search_aria')}
             className="h-[30px] w-full rounded border bg-background pl-7 pr-2 text-[11px] placeholder:text-muted-foreground/40 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
           />
         </div>
@@ -115,10 +109,10 @@ export function RequestLogTable({
         <select
           value={filters.provider_kind ?? ''}
           onChange={(e) => onFiltersChange({ ...filters, provider_kind: (e.target.value || undefined) as ProviderKind | undefined })}
-          aria-label="Filter by provider"
+          aria-label={t('log.provider_aria')}
           className="h-[30px] min-w-[130px] rounded border bg-background px-2 text-[11px]"
         >
-          <option value="">All Providers</option>
+          <option value="">{t('log.all_providers')}</option>
           <option value="anthropic">Anthropic</option>
           <option value="openai">OpenAI</option>
           <option value="ollama">Ollama</option>
@@ -128,26 +122,26 @@ export function RequestLogTable({
         <select
           value={filters.purpose ?? ''}
           onChange={(e) => onFiltersChange({ ...filters, purpose: (e.target.value || undefined) as Purpose | undefined })}
-          aria-label="Filter by purpose"
+          aria-label={t('log.purpose_aria')}
           className="h-[30px] min-w-[120px] rounded border bg-background px-2 text-[11px]"
         >
-          <option value="">All Purposes</option>
-          <option value="translation">Translation</option>
-          <option value="chat">Chat</option>
-          <option value="chunk_edit">Chunk Edit</option>
-          <option value="image_gen">Image Gen</option>
+          <option value="">{t('log.all_purposes')}</option>
+          <option value="translation">{t('purpose.translation')}</option>
+          <option value="chat">{t('purpose.chat')}</option>
+          <option value="chunk_edit">{t('purpose.chunk_edit')}</option>
+          <option value="image_gen">{t('purpose.image_gen')}</option>
         </select>
 
         <select
           value={filters.request_status ?? ''}
           onChange={(e) => onFiltersChange({ ...filters, request_status: (e.target.value || undefined) as RequestStatus | undefined })}
-          aria-label="Filter by status"
+          aria-label={t('log.status_aria')}
           className="h-[30px] min-w-[100px] rounded border bg-background px-2 text-[11px]"
         >
-          <option value="">All Status</option>
-          <option value="success">Success</option>
-          <option value="provider_error">Error</option>
-          <option value="billing_rejected">Rejected</option>
+          <option value="">{t('log.all_status')}</option>
+          <option value="success">{t('log.status_success')}</option>
+          <option value="provider_error">{t('log.status_error')}</option>
+          <option value="billing_rejected">{t('log.status_rejected')}</option>
         </select>
 
         {/* Active filter chips */}
@@ -172,13 +166,13 @@ export function RequestLogTable({
         <table className="w-full text-xs">
           <thead>
             <tr>
-              <th className="border-b bg-muted/30 px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground" style={{ width: 140 }}>Time</th>
-              <th className="border-b bg-muted/30 px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground" style={{ width: 80 }}>Status</th>
-              <th className="border-b bg-muted/30 px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground" style={{ width: 90 }}>Purpose</th>
-              <th className="border-b bg-muted/30 px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground" style={{ width: 100 }}>Provider</th>
-              <th className="border-b bg-muted/30 px-3 py-2 text-right text-[10px] font-medium uppercase tracking-wider text-muted-foreground" style={{ width: 80 }}>Input</th>
-              <th className="border-b bg-muted/30 px-3 py-2 text-right text-[10px] font-medium uppercase tracking-wider text-muted-foreground" style={{ width: 80 }}>Output</th>
-              <th className="border-b bg-muted/30 px-3 py-2 text-right text-[10px] font-medium uppercase tracking-wider text-muted-foreground" style={{ width: 70 }}>Cost</th>
+              <th className="border-b bg-muted/30 px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground" style={{ width: 140 }}>{t('log.col_time')}</th>
+              <th className="border-b bg-muted/30 px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground" style={{ width: 80 }}>{t('log.col_status')}</th>
+              <th className="border-b bg-muted/30 px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground" style={{ width: 90 }}>{t('log.col_purpose')}</th>
+              <th className="border-b bg-muted/30 px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground" style={{ width: 100 }}>{t('log.col_provider')}</th>
+              <th className="border-b bg-muted/30 px-3 py-2 text-right text-[10px] font-medium uppercase tracking-wider text-muted-foreground" style={{ width: 80 }}>{t('log.col_input')}</th>
+              <th className="border-b bg-muted/30 px-3 py-2 text-right text-[10px] font-medium uppercase tracking-wider text-muted-foreground" style={{ width: 80 }}>{t('log.col_output')}</th>
+              <th className="border-b bg-muted/30 px-3 py-2 text-right text-[10px] font-medium uppercase tracking-wider text-muted-foreground" style={{ width: 70 }}>{t('log.col_cost')}</th>
               <th className="border-b bg-muted/30 px-3 py-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground" style={{ width: 36 }} />
             </tr>
           </thead>
@@ -204,12 +198,12 @@ export function RequestLogTable({
                   <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">{formatTime(log.created_at)}</td>
                   <td className="px-3 py-2">
                     <span className={cn('inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium', STATUS_STYLES[log.request_status] ?? 'bg-secondary text-muted-foreground')}>
-                      {log.request_status === 'success' ? '200 OK' : log.request_status === 'provider_error' ? 'Error' : 'Rejected'}
+                      {log.request_status === 'success' ? t('log.cell_ok') : log.request_status === 'provider_error' ? t('log.cell_error') : t('log.cell_rejected')}
                     </span>
                   </td>
                   <td className="px-3 py-2">
                     <span className={cn('inline-flex rounded border px-2 py-0.5 text-[10px] font-medium', PURPOSE_STYLES[log.purpose] ?? PURPOSE_STYLES.unknown)}>
-                      {PURPOSE_LABELS[log.purpose] ?? log.purpose}
+                      {t(`purpose.${log.purpose}`, { defaultValue: log.purpose })}
                     </span>
                   </td>
                   <td className="px-3 py-2">
@@ -223,7 +217,7 @@ export function RequestLogTable({
                   </td>
                   <td className="px-3 py-2 text-right font-mono text-[11px] text-muted-foreground">${log.total_cost_usd.toFixed(3)}</td>
                   <td className="px-3 py-2">
-                    <span aria-label={expandedId === log.usage_log_id ? 'Collapse details' : 'Expand details'}>
+                    <span aria-label={expandedId === log.usage_log_id ? t('log.collapse_details') : t('log.expand_details')}>
                       <ChevronDown
                         className={cn(
                           'h-3 w-3 text-muted-foreground transition-transform',
@@ -241,7 +235,7 @@ export function RequestLogTable({
             {logs.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-3 py-8 text-center text-xs text-muted-foreground">
-                  No usage logs found.
+                  {t('log.no_logs')}
                 </td>
               </tr>
             )}

@@ -1,0 +1,101 @@
+name: conformance-ci
+
+# S1 of the foundation runtime test plan (docs/specs/2026-06-04-foundation-runtime-test-plan.md).
+#
+# Runs the conformance runner — the uniform verdict contract {pass|fail|notrun|skip}
+# that every later slice (C/C2/C3 oracles, fault matrix, perf gate) reports into.
+# Kept separate from foundation-ci.yml so the conformance results history (JSONL)
+# is its own concern (plan §2.5, §10).
+#
+# The gate fails ONLY on a `fail` verdict. Live-probes that need the foundation
+# stack degrade to `notrun` on this bare runner (S1 does not boot the live stack
+# — open item O1), so a green run here means "nothing failed", not "everything ran".
+
+on:
+  push:
+    branches: [main, "mmo-rpg/**"]
+  pull_request:
+    branches: [main, "mmo-rpg/**"]
+  # S5 standing integrity gate — nightly live battery. NOTE: GitHub Actions runs
+  # `schedule:` ONLY from the DEFAULT branch (main); on a feature branch the
+  # nightly job below is dormant until merged. `workflow_dispatch` allows a manual
+  # post-merge smoke from the Actions UI.
+  schedule:
+    - cron: "0 7 * * *" # 07:00 UTC daily
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    name: Conformance runner
+    # Bare-runner pass (live-probes degrade to notrun). The scheduled live battery
+    # is the separate standing-integrity-nightly job; skip this one on schedule.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tests/conformance
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: runner unit tests
+        run: go test ./...
+      - name: run conformance suite
+        run: go run ./cmd/conformance -catalog ./catalog
+      - name: upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-results
+          path: tests/conformance/results/
+          if-no-files-found: warn
+
+  standing-integrity-nightly:
+    name: Standing integrity gate (nightly — live battery)
+    # S5 (Battery B). Unlike the bare-runner job above, this boots the foundation
+    # stack FIRST so the live-probes (incl. standing-integrity-gate, which seeds N
+    # shards → rebuild → real integrity-checker differential → drift+coverage gate,
+    # with the embedded --bite non-vacuity proof) actually RUN instead of notrun.
+    # schedule fires only on main; workflow_dispatch is the manual post-merge smoke.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      # The gate smoke discovers binaries at target/debug/{rebuilder,replay-aggregate}
+      # and {tests/workload-gen/wg, services/integrity-checker/ic} (no .exe on Linux).
+      - name: build foundation binaries
+        run: |
+          cargo build -p world-service --bin rebuilder --bin replay-aggregate
+          go build -C tests/workload-gen -o wg ./cmd/workload-gen
+          go build -C services/integrity-checker -o ic ./cmd/integrity-checker
+      # Boot PG + Redis via the foundation-dev compose so the runner's
+      # `foundation-stack` predicate is met (else every live-probe → notrun). The
+      # default port 55432 is fine on Linux (the dev-box 55600 override is a
+      # Windows excluded-range workaround only). The gate seeds its own meta+shard
+      # DBs and runs no sibling services, so there is no container churn here.
+      - name: boot foundation stack (PG + Redis)
+        run: |
+          docker compose -f infra/foundation-dev/docker-compose.yml up -d postgres-foundation redis-foundation
+          for _ in $(seq 1 30); do
+            if docker exec foundation-dev-postgres pg_isready -U foundation >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+      - name: run conformance suite (full live battery)
+        working-directory: tests/conformance
+        run: go run ./cmd/conformance -catalog ./catalog
+      - name: upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: standing-integrity-results
+          path: tests/conformance/results/
+          if-no-files-found: warn

@@ -47,10 +47,52 @@ var defaultPriceTable = map[string]Pricing{
 	priceKey("gemini", "gemini-2.5-flash"): textPricing(0.30, 2.50),
 }
 
-// DefaultPricing returns the pre-fill Pricing for a known cloud text model,
-// and true. For an unknown model it returns the zero Pricing and false — the
-// caller then leaves `pricing` empty so the model fails closed until priced.
+// localProviderKinds — provider kinds that run on the user's own hardware
+// (BYOK self-hosted). They have no per-token cost, so they pre-fill explicit
+// $0 pricing (non-nil 0 = priced-free, NOT absent) and never fail closed with
+// a 402. Cloud providers (openai/anthropic/gemini) stay in defaultPriceTable
+// and must be priced. (An `openai`-kind provider pointed at a CUSTOM local
+// base_url — e.g. a local OpenAI-compatible server — can't be detected from
+// kind+name here; the user prices it once, or it's set free in the DB.)
+var localProviderKinds = map[string]struct{}{
+	"lm_studio":     {},
+	"ollama":        {},
+	"kokoro_local":  {},
+	"whisper_local": {},
+}
+
+// freePricing — explicit $0 across every dimension (text in/out, image,
+// per-second, per-kchar) so a local model is free regardless of operation
+// (chat, tts, stt, image_gen, embedding).
+func freePricing() Pricing {
+	return Pricing{
+		InputPerMTok:  usd(0),
+		OutputPerMTok: usd(0),
+		PerImage:      usd(0),
+		PerSecond:     usd(0),
+		PerKChar:      usd(0),
+	}
+}
+
+// DefaultPricing returns the pre-fill Pricing for a known cloud text model, or
+// explicit-free pricing for a self-hosted (local) provider kind. For an
+// unknown cloud model it returns the zero Pricing and false — the caller then
+// leaves `pricing` empty so the model fails closed until priced.
 func DefaultPricing(providerKind, modelName string) (Pricing, bool) {
+	if _, local := localProviderKinds[providerKind]; local {
+		return freePricing(), true
+	}
 	p, ok := defaultPriceTable[priceKey(providerKind, modelName)]
 	return p, ok
+}
+
+// IsLocalKind reports whether a provider kind runs on the user's own hardware
+// (BYOK self-hosted → no per-token cost). `localProviderKinds` is the single
+// source of truth for this classification; callers (e.g. the S5a estimate's
+// cloud/local badge) must not re-derive the list. Caveat: an `openai`-kind
+// provider pointed at a custom local base_url reads as NOT local here — the
+// kind alone can't reveal that (same blind spot as DefaultPricing).
+func IsLocalKind(providerKind string) bool {
+	_, local := localProviderKinds[providerKind]
+	return local
 }

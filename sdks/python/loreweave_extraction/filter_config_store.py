@@ -54,6 +54,15 @@ FILTER_RELOAD_PUBSUB_CHANNEL = "loreweave:precision-filter-reload"
 # (don't crash) so a rolling-deploy where KS leads doesn't break workers.
 WIRE_SCHEMA_VERSION = 1
 
+# Subscriber idle poll timeout. ``get_message(timeout=)`` returns None after
+# this long with no message — the loop re-polls (and re-checks stop_event)
+# without resubscribing. Chosen to match cache_invalidation's subscriber.
+# IMPORTANT (redis-py 8): use get_message(timeout=) NOT pubsub.listen() —
+# under redis-py 8 a blocking listen() read RAISES TimeoutError on socket idle
+# (5.x returned nothing), which spammed ERROR logs + forced a resubscribe every
+# idle tick. get_message(timeout=) returns None on idle and stays subscribed.
+_SUBSCRIBE_POLL_TIMEOUT_S = 1.0
+
 
 class RedisClientProtocol(Protocol):
     """Minimal duck-typed interface for the bits we use from
@@ -213,14 +222,20 @@ async def subscribe_filter_reload(
                 "filter_config_store: subscribed to %s",
                 FILTER_RELOAD_PUBSUB_CHANNEL,
             )
-            async for message in pubsub.listen():
+            # Inner poll loop: get_message(timeout=) returns None on idle and
+            # stays subscribed (vs pubsub.listen(), which raises TimeoutError on
+            # socket idle under redis-py 8 → log spam + resubscribe churn).
+            # ignore_subscribe_messages=True filters the subscribe ack, so any
+            # non-None message is a real "reload" signal.
+            while True:
                 if stop_event is not None and stop_event.is_set():
                     return
-                # First message after subscribe is the subscribe ack;
-                # skip non-message types.
-                msg_type = message.get("type") if isinstance(message, dict) else None
-                if msg_type != "message":
-                    continue
+                message = await pubsub.get_message(
+                    ignore_subscribe_messages=True,
+                    timeout=_SUBSCRIBE_POLL_TIMEOUT_S,
+                )
+                if message is None:
+                    continue  # idle tick — re-poll
                 try:
                     await on_reload()
                 except Exception:
@@ -228,7 +243,6 @@ async def subscribe_filter_reload(
                         "filter_config_store: on_reload handler raised — "
                         "subscriber continues",
                     )
-            # listen() ended without exception (unusual) → loop back
         except asyncio.CancelledError:
             logger.info("filter_config_store: subscriber cancelled")
             raise

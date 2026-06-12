@@ -1,0 +1,160 @@
+{
+  "title": "SLO Burn Rate (cycle 34 L7.I)",
+  "uid": "slo-burn-rate",
+  "tags": ["slo", "burn-rate", "cycle-34", "L7.I"],
+  "timezone": "utc",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "lw_env",
+        "type": "custom",
+        "current": {"text": "dev", "value": "dev"},
+        "options": [
+          {"text": "dev", "value": "dev"},
+          {"text": "staging", "value": "staging"},
+          {"text": "prod", "value": "prod"}
+        ]
+      },
+      {
+        "name": "sli",
+        "type": "custom",
+        "current": {"text": "sli_session_availability", "value": "sli_session_availability"},
+        "options": [
+          {"text": "sli_session_availability", "value": "sli_session_availability"},
+          {"text": "sli_turn_completion", "value": "sli_turn_completion"},
+          {"text": "sli_event_delivery", "value": "sli_event_delivery"},
+          {"text": "sli_realtime_freshness", "value": "sli_realtime_freshness"},
+          {"text": "sli_auth_success", "value": "sli_auth_success"},
+          {"text": "sli_admin_action_success", "value": "sli_admin_action_success"},
+          {"text": "sli_cross_reality_propagation", "value": "sli_cross_reality_propagation"}
+        ]
+      },
+      {
+        "name": "tier",
+        "type": "custom",
+        "current": {"text": "paid", "value": "paid"},
+        "options": [
+          {"text": "free", "value": "free"},
+          {"text": "paid", "value": "paid"},
+          {"text": "premium", "value": "premium"},
+          {"text": "platform", "value": "platform"}
+        ]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Current SLI ratio (1h)",
+      "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "targets": [
+        {
+          "expr": "lw:${sli}:ratio_1h{tier=\"${tier}\"}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "orange", "value": 0.95},
+              {"color": "yellow", "value": 0.99},
+              {"color": "green", "value": 0.995}
+            ]
+          }
+        }
+      },
+      "options": {"colorMode": "background"}
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "1h ratio over time",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "targets": [
+        {
+          "expr": "lw:${sli}:ratio_1h{tier=\"${tier}\"}",
+          "refId": "A",
+          "legendFormat": "1h"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0.9, "max": 1.0}}
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Burn-rate ladder (1h vs target)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "targets": [
+        {
+          "expr": "(1 - lw:${sli}:ratio_1h{tier=\"${tier}\"}) / (1 - 0.99)",
+          "refId": "A",
+          "legendFormat": "burn × (target=99%)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 2},
+              {"color": "orange", "value": 5},
+              {"color": "red", "value": 10}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "All SLIs current 1h ratio",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
+      "datasource": {"type": "prometheus", "uid": "prom-primary"},
+      "targets": [
+        {
+          "expr": "{__name__=~\"lw:sli_.*:ratio_1h\"}",
+          "refId": "A",
+          "instant": true,
+          "format": "table"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "logs",
+      "title": "Recent SLO burn alerts (logs)",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 20},
+      "datasource": {"type": "loki", "uid": "loki-primary"},
+      "targets": [
+        {
+          "expr": "{service=\"alertmanager\"} |= \"sli_ref\"",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "title": "Burn-rate spike runbook",
+      "url": "/runbooks/slo/burn-rate-spike.md",
+      "targetBlank": false
+    }
+  ]
+}

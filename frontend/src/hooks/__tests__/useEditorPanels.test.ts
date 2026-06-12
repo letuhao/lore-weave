@@ -9,10 +9,11 @@ describe('useEditorPanels', () => {
 
   it('returns default state when localStorage is empty', () => {
     const { result } = renderHook(() => useEditorPanels());
-    expect(result.current.left).toBe(true);
+    // Hook default: left panel collapsed, right open (see readState()).
+    expect(result.current.left).toBe(false);
     expect(result.current.right).toBe(true);
     expect(result.current.leftWidth).toBe(300);
-    expect(result.current.rightWidth).toBe(320);
+    expect(result.current.rightWidth).toBe(400);
   });
 
   it('reads initial state from localStorage', () => {
@@ -28,16 +29,17 @@ describe('useEditorPanels', () => {
   it('handles corrupted localStorage gracefully', () => {
     localStorage.setItem('lw_editor_panels', 'not-json');
     const { result } = renderHook(() => useEditorPanels());
-    expect(result.current.left).toBe(true);
+    expect(result.current.left).toBe(false);
     expect(result.current.right).toBe(true);
   });
 
   it('toggleLeft flips left panel visibility and persists', () => {
     const { result } = renderHook(() => useEditorPanels());
     act(() => result.current.toggleLeft());
-    expect(result.current.left).toBe(false);
+    // Default left=false, so a toggle turns it on.
+    expect(result.current.left).toBe(true);
     const saved = JSON.parse(localStorage.getItem('lw_editor_panels')!);
-    expect(saved.left).toBe(false);
+    expect(saved.left).toBe(true);
   });
 
   it('toggleRight flips right panel visibility and persists', () => {
@@ -46,5 +48,22 @@ describe('useEditorPanels', () => {
     expect(result.current.right).toBe(false);
     const saved = JSON.parse(localStorage.getItem('lw_editor_panels')!);
     expect(saved.right).toBe(false);
+  });
+
+  it('setRightWidth persists a rounded width (resizable panel)', () => {
+    const { result } = renderHook(() => useEditorPanels());
+    act(() => result.current.setRightWidth(437.6));
+    expect(result.current.rightWidth).toBe(438);
+    const saved = JSON.parse(localStorage.getItem('lw_editor_panels')!);
+    expect(saved.rightWidth).toBe(438);
+    // other fields preserved
+    expect(saved.right).toBe(true);
+  });
+
+  it('setLeftWidth persists a rounded width', () => {
+    const { result } = renderHook(() => useEditorPanels());
+    act(() => result.current.setLeftWidth(259.2));
+    expect(result.current.leftWidth).toBe(259);
+    expect(JSON.parse(localStorage.getItem('lw_editor_panels')!).leftWidth).toBe(259);
   });
 });

@@ -1,0 +1,79 @@
+# infra/k8s/archive-worker-deployment.yaml — L2.J.1
+#
+# V1 single replica (Q-L2J-1 dedicated service + Q-L2K-1 separate from
+# retention-worker). V2+ scales when archive backlog grows (more than ~1000
+# realities × 12 months would exceed V1's daily cadence).
+#
+# Capacity budget: contracts/capacity/budgets.yaml → archive-worker class=worker
+# V1: min=1 max=1 cpu=1.0 mem=2Gi scale_trigger=archive_queue>10
+# V3: min=1 max=4
+#
+# SLOs:
+#   - per-reality archive lag < 72h (alert threshold; scripts/archive-worker-cron.yaml)
+#   - partition DROP only after verified-upload (invariant pkg/archive_loop)
+#   - heartbeat write every 10s via publisher_heartbeats (reuse decision)
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: archive-worker
+  namespace: lw-foundation
+  labels:
+    app.kubernetes.io/name: archive-worker
+    app.kubernetes.io/component: data-platform
+    lw.shipped.cycle: "11"
+spec:
+  replicas: 1  # V1 single replica (Q-L2J-1). V2+ when archive backlog requires.
+  strategy:
+    type: Recreate  # V1: avoid two replicas racing on the same partition; idempotent picker means a stale replica is safe but RECREATE keeps it clean.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: archive-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: archive-worker
+        app.kubernetes.io/component: data-platform
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: archive-worker
+      containers:
+        - name: archive-worker
+          image: ghcr.io/loreweave/archive-worker:0.1.0
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests: { cpu: "1",    memory: "2Gi" }
+            limits:   { cpu: "2",    memory: "4Gi" }
+          env:
+            - name: LW_ARCHIVE_WORKER_ID
+              valueFrom:
+                fieldRef: { fieldPath: metadata.name }
+            - name: LW_SHARD_HOST
+              valueFrom:
+                fieldRef: { fieldPath: spec.nodeName }
+            - name: LW_META_DSN
+              valueFrom:
+                secretKeyRef: { name: lw-meta-dsn, key: dsn }
+            - name: LW_MINIO_ENDPOINT
+              valueFrom:
+                configMapKeyRef: { name: lw-minio-cfg, key: endpoint }
+            - name: LW_MINIO_BUCKET
+              value: "lw-event-archive"
+          ports:
+            - containerPort: 9090
+              name: metrics
+          livenessProbe:
+            httpGet: { path: /healthz, port: 9090 }
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /readyz, port: 9090 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      tolerations:
+        - key: "shard-host"
+          operator: "Exists"

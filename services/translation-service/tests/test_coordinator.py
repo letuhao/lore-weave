@@ -118,8 +118,88 @@ async def test_coordinator_chapter_message_contains_required_fields():
         "job_id", "chapter_id", "chapter_index", "total_chapters",
         "book_id", "user_id", "model_source", "model_ref",
         "system_prompt", "user_prompt_tpl", "target_language",
+        "pipeline_version",
     }
     assert required.issubset(body.keys())
+
+
+@pytest.mark.asyncio
+async def test_coordinator_forwards_pipeline_version():
+    """T0.6 regression (review-impl MED-1): the flag must survive the job→chapter
+    fan-out. If it doesn't, a 'v3' job silently downgrades to 'v2' at the worker
+    (which defaults an absent field to 'v2'), and no other test would catch it."""
+    pool, _ = _make_pool()
+    publish = AsyncMock()
+    msg = {**_job_msg([str(uuid4())]), "pipeline_version": "v3"}
+    from app.workers.coordinator import handle_job_message
+    await handle_job_message(msg, pool, publish, AsyncMock())
+
+    assert publish.call_args.args[1]["pipeline_version"] == "v3"
+
+
+@pytest.mark.asyncio
+async def test_coordinator_defaults_pipeline_version_when_absent():
+    """A legacy job message without the flag fans out as 'v2' (back-compat)."""
+    pool, _ = _make_pool()
+    publish = AsyncMock()
+    from app.workers.coordinator import handle_job_message
+    await handle_job_message(_job_msg([str(uuid4())]), pool, publish, AsyncMock())
+
+    assert publish.call_args.args[1]["pipeline_version"] == "v2"
+
+
+@pytest.mark.asyncio
+async def test_coordinator_forwards_qa_config():
+    """config-plumbing: qa_depth / max_qa_rounds / verifier_model must survive the
+    job→chapter fan-out (else a 'thorough' job silently runs 'standard' defaults)."""
+    pool, _ = _make_pool()
+    publish = AsyncMock()
+    vref = str(uuid4())
+    msg = {**_job_msg([str(uuid4())]), "qa_depth": "thorough", "max_qa_rounds": 4,
+           "verifier_model_source": "platform_model", "verifier_model_ref": vref}
+    from app.workers.coordinator import handle_job_message
+    await handle_job_message(msg, pool, publish, AsyncMock())
+
+    body = publish.call_args.args[1]
+    assert body["qa_depth"] == "thorough" and body["max_qa_rounds"] == 4
+    assert body["verifier_model_source"] == "platform_model"
+    assert body["verifier_model_ref"] == vref
+
+
+@pytest.mark.asyncio
+async def test_coordinator_defaults_qa_config_when_absent():
+    """A legacy job message without QA config fans out as standard defaults."""
+    pool, _ = _make_pool()
+    publish = AsyncMock()
+    from app.workers.coordinator import handle_job_message
+    await handle_job_message(_job_msg([str(uuid4())]), pool, publish, AsyncMock())
+
+    body = publish.call_args.args[1]
+    assert body["qa_depth"] == "standard" and body["max_qa_rounds"] == 2
+    assert body["verifier_model_ref"] is None
+
+
+@pytest.mark.asyncio
+async def test_coordinator_forwards_campaign_id():
+    """S4a: campaign_id must survive the job→chapter fan-out, or the chapter worker
+    never binds it and the provider job_meta loses attribution. (LOW-5 hop guard.)"""
+    pool, _ = _make_pool()
+    publish = AsyncMock()
+    camp = str(uuid4())
+    msg = {**_job_msg([str(uuid4())]), "campaign_id": camp}
+    from app.workers.coordinator import handle_job_message
+    await handle_job_message(msg, pool, publish, AsyncMock())
+    assert publish.call_args.args[1]["campaign_id"] == camp
+
+
+@pytest.mark.asyncio
+async def test_coordinator_campaign_id_none_when_absent():
+    """A non-campaign job fans out campaign_id=None (no attribution) — no behavior change."""
+    pool, _ = _make_pool()
+    publish = AsyncMock()
+    from app.workers.coordinator import handle_job_message
+    await handle_job_message(_job_msg([str(uuid4())]), pool, publish, AsyncMock())
+    assert publish.call_args.args[1]["campaign_id"] is None
 
 
 @pytest.mark.asyncio

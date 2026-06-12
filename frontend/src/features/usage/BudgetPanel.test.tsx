@@ -41,7 +41,8 @@ describe('BudgetPanel', () => {
       saveLimits: vi.fn(),
     });
     render(<BudgetPanel />);
-    expect(screen.getByText(/loading budget/i)).toBeInTheDocument();
+    // The global react-i18next mock returns the key, so assert on keys.
+    expect(screen.getByText('budget.loading')).toBeInTheDocument();
   });
 
   it('renders the daily/monthly limits and the platform balance', () => {
@@ -53,11 +54,11 @@ describe('BudgetPanel', () => {
       saveLimits: vi.fn(),
     });
     render(<BudgetPanel />);
-    expect(screen.getByText('Daily')).toBeInTheDocument();
-    expect(screen.getByText('Monthly')).toBeInTheDocument();
+    expect(screen.getByText('budget.daily')).toBeInTheDocument();
+    expect(screen.getByText('budget.monthly')).toBeInTheDocument();
     // Daily "used" = spent 3 + reserved 1 = $4.00.
     expect(screen.getByText(/\$4\.00/)).toBeInTheDocument();
-    expect(screen.getByText('Platform balance')).toBeInTheDocument();
+    expect(screen.getByText('budget.platform_balance')).toBeInTheDocument();
   });
 
   it('validates the edit form and saves valid limits', () => {
@@ -71,17 +72,17 @@ describe('BudgetPanel', () => {
     });
     render(<BudgetPanel />);
 
-    fireEvent.click(screen.getByText(/edit limits/i));
-    const dailyInput = screen.getByLabelText(/daily limit/i);
+    fireEvent.click(screen.getByText('budget.edit_limits'));
+    const dailyInput = screen.getByLabelText('budget.daily_limit_usd');
 
     // A zero limit is rejected — message shown, Save disabled.
     fireEvent.change(dailyInput, { target: { value: '0' } });
-    expect(screen.getByText(/must be greater than 0/i)).toBeInTheDocument();
-    expect(screen.getByText('Save')).toBeDisabled();
+    expect(screen.getByText('budget.limits_invalid')).toBeInTheDocument();
+    expect(screen.getByText('budget.save')).toBeDisabled();
 
     // A valid edit saves; monthly was untouched → its prefilled 100 stands.
     fireEvent.change(dailyInput, { target: { value: '15' } });
-    fireEvent.click(screen.getByText('Save'));
+    fireEvent.click(screen.getByText('budget.save'));
     expect(saveLimits).toHaveBeenCalledWith(15, 100);
   });
 });

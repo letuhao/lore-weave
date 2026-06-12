@@ -48,6 +48,11 @@ class Project(BaseModel):
     # D-EMB-MODEL-REF-01: caller-supplied vector dimension; the
     # passage_ingester + L3 selector + benchmark read it at call time.
     embedding_dimension: int | None = None
+    # D-RERANK-NOT-BYOK: per-project BYOK rerank model (provider-registry
+    # user_model UUID) + source. None ⇒ raw-search skips the rerank step
+    # (rerank is optional, never platform-fixed). FE picker = S0b.
+    rerank_model: str | None = None
+    rerank_model_source: str = "user_model"
     extraction_config: dict
     last_extracted_at: datetime | None = None
     estimated_cost_usd: Decimal
@@ -68,6 +73,8 @@ class Project(BaseModel):
     # re-judge / debug / A-B prompt comparison. FE wire-up tracked as
     # D-P2-FE-SAVE-RAW.
     save_raw_extraction: bool = False
+    # E2 — user-set genre tag for per-genre config-quality mining.
+    genre: str | None = None
     version: int  # D-K8-03: bumped on every non-empty PATCH.
     created_at: datetime
     updated_at: datetime
@@ -79,6 +86,7 @@ class ProjectCreate(BaseModel):
     project_type: ProjectType
     book_id: UUID | None = None
     instructions: ProjectInstructions = ""
+    genre: str | None = None
 
 
 class ProjectUpdate(BaseModel):
@@ -126,9 +134,89 @@ class ProjectUpdate(BaseModel):
     is_archived: bool | None = None
     embedding_model: str | None = None
     embedding_dimension: int | None = None
+    # D-RERANK-NOT-BYOK (S0b): omit to leave unchanged. Set to a provider-registry
+    # user_model UUID to enable BYOK rerank for raw-search; set to None to clear
+    # (rerank then skipped). rerank_model_source is NOT NULL in the DB so an
+    # explicit None is "skip" (same as tool_calling_enabled).
+    rerank_model: str | None = None
+    rerank_model_source: str | None = None
     tool_calling_enabled: bool | None = None
     memory_remember_confirm: bool | None = None
     save_raw_extraction: bool | None = None
+    # E2: None = "skip" (unchanged); explicitly set to None via PATCH uses
+    # _NULLABLE_UPDATE_COLUMNS so it clears (sets to SQL NULL).
+    genre: str | None = None
+
+
+# ── B2-B-b1 — per-project extraction-config tuning (structural subset) ──
+# These drive worker-ai's resolve_effective_config (project override > global
+# default). `extra="forbid"` rejects out-of-subset keys with 422 (DESIGN Q4).
+# Raw prompt editing (`prompts`) is the SEPARATE security-sensitive b2 pass —
+# deliberately NOT here. PUT semantics: the body REPLACES extraction_config;
+# omit a sub-object to drop that override (fall back to the global default).
+
+ModelSourceLit = Literal["user_model", "platform_model"]
+FilterCategoryLit = Literal["entity", "relation", "event"]
+PartialPolicyLit = Literal["keep", "drop"]
+
+
+class LlmModelOverride(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    model_ref: str | None = None
+    model_source: ModelSourceLit | None = None
+
+
+class PrecisionFilterOverride(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool | None = None
+    categories: list[FilterCategoryLit] | None = None
+    partial_policy: PartialPolicyLit | None = None
+    model_ref: str | None = None
+    model_source: ModelSourceLit | None = None
+
+
+class EntityRecoveryOverride(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool | None = None
+    model_ref: str | None = None
+    model_source: ModelSourceLit | None = None
+
+
+class WriterAutocreateOverride(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool | None = None
+
+
+# B2-B-b2 — raw per-op system-prompt override (SECURITY-sensitive). Only the
+# `system` instructions are overridable (the user message is always the raw
+# chapter text). Capped at 16 kB/field (DESIGN §2.5 — the SDK context_budget
+# absorbs oversize as more chunks; the cap only stops the absurd whole-novel
+# paste). The SDK appends a fixed output-contract reminder so a custom prompt
+# can't break the JSON-only discipline. Raw text lives ONLY in the owner's
+# project row — it is content-hashed, never copied raw, into learning-service.
+# /review-impl MED-1 — only the ops extract_pass2 actually applies overrides
+# for. `summarize_level` runs in a separate P3 path that doesn't thread
+# prompt_overrides yet, so offering it here would accept an inert override.
+PromptOpLit = Literal["entity", "relation", "event", "fact"]
+_PROMPT_MAX_LEN = 16384  # ~16 kB
+
+
+class PromptOverride(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    system: Annotated[str, StringConstraints(max_length=_PROMPT_MAX_LEN)] | None = None
+
+
+class ProjectExtractionConfigUpdate(BaseModel):
+    """The full per-project extraction-config. PUT replaces the stored
+    `extraction_config` with the non-None fields of this body — the caller
+    (FE) must send the COMPLETE config (structural + prompts) each time, or an
+    omitted section is dropped (PUT-replace, not merge)."""
+    model_config = ConfigDict(extra="forbid")
+    llm_model: LlmModelOverride | None = None
+    precision_filter: PrecisionFilterOverride | None = None
+    entity_recovery: EntityRecoveryOverride | None = None
+    writer_autocreate: WriterAutocreateOverride | None = None
+    prompts: dict[PromptOpLit, PromptOverride] | None = None
 
 
 class Summary(BaseModel):

@@ -1,15 +1,18 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { ArrowLeft, Eye, EyeOff, BookCheck } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi } from '@/features/books/api';
 import { versionsApi, type ChapterTranslation } from '@/features/translation/api';
 import { BlockAlignedReview, computeReviewStats } from '@/features/translation/components/BlockAlignedReview';
 import { SplitCompareView } from '@/features/translation/components/SplitCompareView';
+import { ConfirmNameDialog } from '@/features/translation/components/ConfirmNameDialog';
 import { cn } from '@/lib/utils';
 import type { JSONContent } from '@tiptap/react';
 
 export default function TranslationReviewPage() {
+  const { t } = useTranslation('translation');
   const { bookId, chapterId, versionId } = useParams<{ bookId: string; chapterId: string; versionId: string }>();
   const { accessToken } = useAuth();
   const navigate = useNavigate();
@@ -23,6 +26,7 @@ export default function TranslationReviewPage() {
   const [isBlockMode, setIsBlockMode] = useState(false);
   const [showPassthrough, setShowPassthrough] = useState(true);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [confirmNameOpen, setConfirmNameOpen] = useState(false);
 
   // Version list for switcher
   const [versions, setVersions] = useState<{ id: string; version_num: number; target_language: string; status: string }[]>([]);
@@ -132,7 +136,7 @@ export default function TranslationReviewPage() {
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            Back
+            {t('review.back')}
           </button>
           <div className="h-4 w-px bg-border" />
           <div className="text-xs">
@@ -145,7 +149,7 @@ export default function TranslationReviewPage() {
           {/* Language pair */}
           {version && (
             <span className="text-[11px] font-medium">
-              <span className="text-primary">{version.source_language ?? 'Source'}</span>
+              <span className="text-primary">{version.source_language ?? t('review.source_fallback')}</span>
               <span className="text-muted-foreground mx-1.5">&rarr;</span>
               <span className="text-[#3da692]">{version.target_language}</span>
             </span>
@@ -169,8 +173,8 @@ export default function TranslationReviewPage() {
           {/* Stats */}
           {stats && (
             <span className="text-[10px] text-muted-foreground font-mono">
-              {stats.translated}/{stats.translate + stats.caption} blocks
-              {stats.empty > 0 && <span className="text-[#e8a832] ml-1">({stats.empty} empty)</span>}
+              {t('review.blocks_stat', { translated: stats.translated, total: stats.translate + stats.caption })}
+              {stats.empty > 0 && <span className="text-[#e8a832] ml-1">{t('review.empty_stat', { count: stats.empty })}</span>}
             </span>
           )}
 
@@ -179,10 +183,10 @@ export default function TranslationReviewPage() {
             <button
               onClick={() => setShowPassthrough(p => !p)}
               className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-              title={showPassthrough ? 'Hide unchanged blocks' : 'Show all blocks'}
+              title={showPassthrough ? t('review.hide_unchanged') : t('review.show_all')}
             >
               {showPassthrough ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-              {showPassthrough ? 'All' : 'Translatable'}
+              {showPassthrough ? t('review.all') : t('review.translatable')}
             </button>
           )}
 
@@ -191,21 +195,42 @@ export default function TranslationReviewPage() {
             'rounded-full px-2 py-0.5 text-[9px] font-semibold',
             isBlockMode ? 'bg-[#8b5cf6]/10 text-[#8b5cf6]' : 'bg-secondary text-muted-foreground',
           )}>
-            {isBlockMode ? 'Block' : 'Text'}
+            {isBlockMode ? t('review.block_mode') : t('review.text_mode')}
           </span>
+
+          {/* M6a: confirm a corrected name into the glossary (human-fix flywheel) */}
+          {version && bookId && (
+            <button
+              onClick={() => setConfirmNameOpen(true)}
+              className="flex items-center gap-1 rounded px-2 py-1 text-[10px] text-[#3da692] hover:bg-[#3da692]/10 transition-colors"
+              title={t('confirm_name.button_title')}
+            >
+              <BookCheck className="h-3 w-3" />
+              {t('confirm_name.button')}
+            </button>
+          )}
         </div>
       </div>
+
+      {version && bookId && (
+        <ConfirmNameDialog
+          open={confirmNameOpen}
+          onOpenChange={setConfirmNameOpen}
+          bookId={bookId}
+          targetLang={version.target_language}
+        />
+      )}
 
       {/* ── Pane headers ────────────────────────────────────────────── */}
       {isBlockMode && (
         <div className="flex shrink-0 border-b border-border">
           <div className="w-9 shrink-0 border-r border-border/30" />
           <div className="flex-1 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary/70">
-            Original
+            {t('review.pane_original')}
           </div>
           <div className="w-px bg-border/50" />
           <div className="flex-1 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#3da692]/70">
-            Translation
+            {t('review.pane_translation')}
           </div>
         </div>
       )}

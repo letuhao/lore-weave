@@ -26,6 +26,8 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.db.book_profile import NEUTRAL_PROFILE, BookProfile
+
 if TYPE_CHECKING:  # avoid importing the gap model at runtime (keeps base lean)
     from app.gaps.model import Gap
 
@@ -57,7 +59,7 @@ class Technique(str, Enum):
     without translation.
 
     Tier mapping is fixed by the locked rollout and exposed via :meth:`tier`:
-      * P1 — ``template``, ``retrieval``
+      * P1 — ``template``, ``retrieval``, ``compose_draft``
       * P2 — ``fabrication``
       * P3 — ``recook``
     """
@@ -66,6 +68,10 @@ class Technique(str, Enum):
     RETRIEVAL = "retrieval"
     FABRICATION = "fabrication"
     RECOOK = "recook"
+    # Compose mode D (draft expansion). P1 + UNGATED: it expands the AUTHOR's own
+    # draft (not corpus/canon-fabricated), so it carries the same low-risk tier as
+    # retrieval. Still H0-quarantined + ③(N/A — no corpus) + ④ promote-gate.
+    COMPOSE_DRAFT = "compose_draft"
 
     @property
     def tier(self) -> Tier:
@@ -81,6 +87,7 @@ _TECHNIQUE_TIER: dict[Technique, Tier] = {
     Technique.RETRIEVAL: Tier.P1,
     Technique.FABRICATION: Tier.P2,
     Technique.RECOOK: Tier.P3,
+    Technique.COMPOSE_DRAFT: Tier.P1,  # ungated — expands the author's own draft
 }
 
 
@@ -124,6 +131,17 @@ class StrategyContext(BaseModel):
     # to a concrete endpoint+model downstream. NEVER a model name. Optional here
     # because the interface predates any real generation.
     model_ref: str | None = None
+    # The per-book worldview profile (de-bias C1). Read by the prompt builders +
+    # the dimension resolver to de-bias generation away from the hardcoded 封神/商周/
+    # 中文/地点 universe. Defaults to the NEUTRAL profile (language auto, anachronism
+    # OFF) so a context built without a book behaves like a generic worldbuilder.
+    profile: BookProfile = NEUTRAL_PROFILE
+    # Compose mode D (draft expansion): the author's own draft prose to expand +
+    # how (``add_only`` keep-verbatim | ``rewrite`` voice-sync). Additive + frozen,
+    # ignored by every other strategy (exactly like ``profile`` was in C1) — only
+    # the DraftExpandStrategy reads them. None on a non-compose-draft run.
+    seed_text: str | None = None
+    expand_mode: str | None = None
 
 
 class EnrichmentStrategy(ABC):

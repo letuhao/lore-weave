@@ -10,7 +10,8 @@
       "entities": "實體",
       "timeline": "時間軸",
       "raw": "原始",
-      "privacy": "隱私"
+      "privacy": "隱私",
+      "insights": "洞察"
     }
   },
   "mobile": {
@@ -378,7 +379,37 @@
       "archive": "封存",
       "restore": "還原",
       "delete": "刪除",
+      "tuneExtraction": "調整抽取",
       "bookId": "book_id"
+    },
+    "extractionTuning": {
+      "title": "調整抽取",
+      "description": "各小說的抽取設定。變更套用於本專案的下一次抽取執行。",
+      "filterEnabled": "精確度過濾（捨棄低支持度的抽取）",
+      "category": {
+        "entity": "實體",
+        "relation": "關係",
+        "event": "事件"
+      },
+      "categoriesRequired": "至少選擇一個類別，或關閉過濾器。",
+      "partialPolicy": "部分匹配：",
+      "policyKeep": "保留",
+      "policyDrop": "捨棄",
+      "recoveryEnabled": "實體復原（找回遺漏的實體）",
+      "autocreateEnabled": "撰寫自動建立（建立關係所參照的實體）",
+      "promptWarning": "進階：自訂提示會取代該步驟的預設抽取指示，可能降低品質。留空以使用預設。一律強制 JSON 輸出。",
+      "promptPlaceholder": "留空以使用預設提示",
+      "prompt": {
+        "entity": "實體抽取提示",
+        "relation": "關係抽取提示",
+        "event": "事件抽取提示",
+        "fact": "事實抽取提示"
+      },
+      "save": "儲存",
+      "saving": "儲存中…",
+      "cancel": "取消",
+      "saved": "已儲存抽取設定。",
+      "failed": "儲存失敗：{{error}}"
     },
     "form": {
       "createTitle": "新增專案",
@@ -750,5 +781,102 @@
       "description": "這會永久刪除所有專案與摘要。請在下方輸入 {{token}} 以確認。",
       "cancel": "取消"
     }
+  },
+  "relations": {
+    "edit": {
+      "cta": "Correct relation",
+      "title": "Correct relation",
+      "description": "Fix this relation's predicate, or mark it as wrong so it's removed.",
+      "field": {
+        "predicate": "Predicate"
+      },
+      "save": "Correct",
+      "saving": "Correcting…",
+      "cancel": "Cancel",
+      "correctSuccess": "Relation corrected.",
+      "invalidateSuccess": "Relation removed.",
+      "invalidateHint": "If this relation should never have been extracted, mark it wrong to remove it.",
+      "invalidateConfirm": "Mark this relation as wrong and remove it?",
+      "markWrong": "Mark wrong",
+      "invalidating": "Removing…",
+      "failed": "Couldn't save the correction: {{error}}"
+    }
+  },
+  "events": {
+    "edit": {
+      "cta": "Edit",
+      "title": "Edit event",
+      "description": "Adjust this event's title, summary, or timing.",
+      "field": {
+        "title": "Title",
+        "summary": "Summary",
+        "timeCue": "Time cue",
+        "dateIso": "Date (ISO)"
+      },
+      "dateIsoPlaceholder": "YYYY or YYYY-MM-DD",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "success": "Event updated.",
+      "conflict": "Another device updated this event. Review the latest and try again.",
+      "failed": "Couldn't update the event: {{error}}",
+      "invalidDate": "Date must be YYYY, YYYY-MM, or YYYY-MM-DD."
+    },
+    "archive": {
+      "cta": "Delete",
+      "confirm": "Delete (hide) this event?",
+      "archiving": "Deleting…",
+      "success": "Event deleted.",
+      "failed": "Couldn't delete the event: {{error}}"
+    }
+  },
+  "mining": {
+    "sections": {
+      "configQuality": {
+        "title": "配置品質",
+        "description": "依類型和配置的成功率。同一配置雜湊執行 2 次以上後顯示資料。",
+        "empty": "尚無資料 — 每個類型需要 2 次以上使用相同配置雜湊的擷取。",
+        "exploration": "探索樣本（隨機末段）"
+      },
+      "modelMatrix": {
+        "title": "模型矩陣",
+        "description": "依模型和任務範圍的加權結果分數。succeeded=1.0 · skipped=0.3 · failed=0.0。",
+        "empty": "尚無資料 — 需要 2 次以上使用相同模型和範圍的擷取。"
+      },
+      "defaultDrift": {
+        "title": "配置漂移",
+        "description": "哪些擷取參數偏離預設値，以及各專案是否趨向相同値。",
+        "empty": "尚未記錄任何參數調整。"
+      },
+      "outcomeRecompute": {
+        "title": "結果重算",
+        "description": "套用使用者校正後重新評估的擷取執行。",
+        "empty": "尚無校正資料。當校正連結到擷取執行時，此功能將啟用。"
+      }
+    },
+    "columns": {
+      "genre": "類型",
+      "configHash": "配置",
+      "runs": "次數",
+      "successRate": "成功率",
+      "avgEntities": "平均實體",
+      "model": "模型",
+      "scope": "範圍",
+      "filter": "過濾器",
+      "weightedOutcome": "分數",
+      "target": "參數",
+      "affectedProjects": "專案",
+      "driftPattern": "模式",
+      "runsWithOutcome": "有結果的執行",
+      "runId": "執行",
+      "outcome": "結果",
+      "recomputed": "重算",
+      "corrections": "校正"
+    },
+    "driftPattern": {
+      "convergent": "收斂",
+      "divergent": "發散"
+    },
+    "totalRuns": "共 {{count}} 次執行"
   }
 }

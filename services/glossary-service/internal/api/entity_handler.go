@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/loreweave/grantclient"
 )
 
 // ── response types ────────────────────────────────────────────────────────────
@@ -131,24 +132,6 @@ func splitNonEmpty(s, sep string) []string {
 		}
 	}
 	return out
-}
-
-// verifyBookOwner fetches the book projection and checks that userID is the owner.
-// Returns false and writes an appropriate error response on failure.
-func (s *Server) verifyBookOwner(w http.ResponseWriter, ctx context.Context, bookID, userID uuid.UUID) bool {
-	proj, status := s.fetchBookProjection(ctx, bookID)
-	switch {
-	case status == http.StatusNotFound:
-		writeError(w, http.StatusNotFound, "GLOSS_BOOK_NOT_FOUND", "book not found")
-		return false
-	case status != http.StatusOK:
-		writeError(w, http.StatusServiceUnavailable, "GLOSS_UPSTREAM_UNAVAILABLE", "book service unavailable")
-		return false
-	case proj.OwnerUserID != userID:
-		writeError(w, http.StatusForbidden, "GLOSS_FORBIDDEN", "forbidden")
-		return false
-	}
-	return true
 }
 
 // ── loadEntityDetail ──────────────────────────────────────────────────────────
@@ -337,7 +320,7 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 
@@ -429,8 +412,12 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			name, kind, aliases, shortDesc = "", "", []string{}, ""
 		}
+		// Phase B: a user-created entity is a "missing-add" correction
+		// (before=nil). The creator holds an edit grant (requireGrant above —
+		// owner or collaborator), so actor_id = userID.
 		payload := buildEntityEventPayload(
 			bookID.String(), entityIDStr, name, kind, aliases, shortDesc, "created",
+			"user", userID.String(), nil,
 		)
 		if err := emitEntityUpdatedTx(ctx, tx, createEntityUUID, payload); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "outbox emit failed")
@@ -464,7 +451,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 
@@ -650,7 +637,7 @@ func (s *Server) getEntityDetail(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 
@@ -683,7 +670,7 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 
@@ -692,6 +679,14 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
 		return
 	}
+
+	// H5 optimistic concurrency (opt-in): the assistant-edit Apply path sends
+	// If-Match carrying the entity's `updated_at` captured when it was read
+	// (glossary_get_entity). When present, the UPDATE is gated on that version
+	// so a concurrent edit (e.g. the background pipeline) since the read yields
+	// 412 instead of a silent lost update. Absent header ⇒ unchanged behavior
+	// (the /v1 glossary UI does not send it).
+	ifMatch := strings.TrimSpace(r.Header.Get("If-Match"))
 
 	setClauses := []string{}
 	args := []any{}
@@ -793,22 +788,88 @@ func (s *Server) patchEntity(w http.ResponseWriter, r *http.Request) {
 	if len(setClauses) > 0 {
 		setClauses = append(setClauses, "updated_at = now()")
 		args = append(args, entityID, bookID)
+		whereClause := fmt.Sprintf("entity_id = $%d AND book_id = $%d", argN, argN+1)
+		if ifMatch != "" {
+			args = append(args, ifMatch)
+			whereClause += fmt.Sprintf(" AND updated_at = $%d::timestamptz", argN+2)
+		}
 		updateSQL := fmt.Sprintf(
-			"UPDATE glossary_entities SET %s WHERE entity_id = $%d AND book_id = $%d",
-			strings.Join(setClauses, ", "), argN, argN+1)
-		tag, err := s.pool.Exec(ctx, updateSQL, args...)
+			"UPDATE glossary_entities SET %s WHERE %s",
+			strings.Join(setClauses, ", "), whereClause)
+
+		// Phase B: PATCH is now transactional so the before/after snapshot is
+		// captured consistently with the UPDATE (no TOCTOU — design §5 /
+		// review-impl MED-3). The glossary.entity_updated event commits
+		// atomically with the edit (transactional outbox, like createEntity).
+		tx, err := s.pool.Begin(ctx)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "begin tx failed")
+			return
+		}
+		defer tx.Rollback(ctx)
+
+		// Capture BEFORE in-tx (FOR-UPDATE-equivalent: the subsequent UPDATE
+		// locks the row, so no concurrent writer can interleave).
+		beforeName, beforeKind, beforeAliases, beforeShortDesc, beforeOK :=
+			loadEntityEventFields(ctx, tx, entityID)
+
+		tag, err := tx.Exec(ctx, updateSQL, args...)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "update failed")
 			return
 		}
 		if tag.RowsAffected() == 0 {
+			// With If-Match, 0 rows can mean the version drifted (entity still
+			// exists) OR the entity is gone — distinguish so the assistant gets a
+			// truthful conflict vs not-found (H5/H6). Without If-Match it can only
+			// be not-found (the WHERE was entity_id + book_id only).
+			if ifMatch != "" {
+				var exists bool
+				// EDIT-LOW3: don't swallow a DB error here — a failed existence
+				// check is an INFRA fault, not "entity not found". Surface 500 so
+				// it isn't mislabelled 404.
+				if err := tx.QueryRow(ctx,
+					`SELECT EXISTS(SELECT 1 FROM glossary_entities WHERE entity_id=$1 AND book_id=$2)`,
+					entityID, bookID).Scan(&exists); err != nil {
+					writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "existence check failed")
+					return
+				}
+				if exists {
+					writeError(w, http.StatusPreconditionFailed, "GLOSS_VERSION_CONFLICT",
+						"entity changed since it was read; re-open and try again")
+					return
+				}
+			}
 			writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "entity not found")
 			return
 		}
-		// C4 (K14) — entity changed → emit best-effort (already committed
-		// via pool.Exec above; fire-and-forget so a broker hiccup can't
-		// turn a successful PATCH into a 500).
-		s.emitEntityUpdated(ctx, entityID, "updated")
+
+		// Capture AFTER in-tx and emit transactionally. A user PATCH is a
+		// correction by construction (requireGrant edit above → actor = userID).
+		afterName, afterKind, afterAliases, afterShortDesc, _ :=
+			loadEntityEventFields(ctx, tx, entityID)
+		var before *EntitySnapshot
+		if beforeOK {
+			before = &EntitySnapshot{
+				Name:             beforeName,
+				Kind:             beforeKind,
+				Aliases:          beforeAliases,
+				ShortDescription: beforeShortDesc,
+			}
+		}
+		payload := buildEntityEventPayload(
+			bookID.String(), entityID.String(),
+			afterName, afterKind, afterAliases, afterShortDesc, "updated",
+			"user", userID.String(), before,
+		)
+		if err := emitEntityUpdatedTx(ctx, tx, entityID, payload); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "outbox emit failed")
+			return
+		}
+		if err := tx.Commit(ctx); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")
+			return
+		}
 	}
 
 	detail, err := s.loadEntityDetail(ctx, bookID, entityID)
@@ -844,7 +905,7 @@ func (s *Server) setEntityPinned(w http.ResponseWriter, r *http.Request, pinned 
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantEdit) {
 		return
 	}
 
@@ -895,7 +956,7 @@ func (s *Server) deleteEntity(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantManage) {
 		return
 	}
 
@@ -930,7 +991,7 @@ func (s *Server) listEntityNames(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 

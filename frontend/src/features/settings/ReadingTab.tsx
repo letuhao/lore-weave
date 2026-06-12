@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppTheme, useReaderTheme, APP_THEMES, type AppTheme } from '@/providers/ThemeProvider';
@@ -53,12 +54,13 @@ const APP_THEME_COLORS: Record<AppTheme, { bg: string; fg: string; accent: strin
 };
 
 const SPACING_OPTIONS = [
-  { value: 0.8, label: 'Compact' },
-  { value: 1.2, label: 'Normal' },
-  { value: 1.6, label: 'Relaxed' },
+  { value: 0.8, key: 'compact' },
+  { value: 1.2, key: 'normal' },
+  { value: 1.6, key: 'relaxed' },
 ];
 
 export function ReadingTab() {
+  const { t } = useTranslation('settings');
   const { appTheme, setAppTheme } = useAppTheme();
   const {
     theme: readerTheme, presetName, presets, setPreset,
@@ -93,18 +95,18 @@ export function ReadingTab() {
 
       {/* ── App Theme ───────────────────────────────────────────────── */}
       <section>
-        <h2 className="text-sm font-semibold">App Theme</h2>
-        <p className="mb-4 text-xs text-muted-foreground">Changes the appearance of the entire interface.</p>
+        <h2 className="text-sm font-semibold">{t('reading.app_theme')}</h2>
+        <p className="mb-4 text-xs text-muted-foreground">{t('reading.app_theme_desc')}</p>
         <div className="grid grid-cols-4 gap-3 max-w-lg">
-          {APP_THEMES.map((t) => {
-            const colors = APP_THEME_COLORS[t.value];
+          {APP_THEMES.map((th) => {
+            const colors = APP_THEME_COLORS[th.value];
             return (
               <button
-                key={t.value}
-                onClick={() => setAppTheme(t.value)}
+                key={th.value}
+                onClick={() => setAppTheme(th.value)}
                 className={cn(
                   'group flex flex-col items-center gap-2 rounded-lg border p-3 transition-all',
-                  appTheme === t.value ? 'border-primary ring-2 ring-primary/30' : 'border-border hover:bg-secondary/50',
+                  appTheme === th.value ? 'border-primary ring-2 ring-primary/30' : 'border-border hover:bg-secondary/50',
                 )}
               >
                 <div
@@ -116,7 +118,7 @@ export function ReadingTab() {
                     <div className="h-1 w-3 rounded-full" style={{ background: colors.accent }} />
                   </div>
                 </div>
-                <span className="text-[11px] font-medium">{t.label}</span>
+                <span className="text-[11px] font-medium">{th.label}</span>
               </button>
             );
           })}
@@ -125,8 +127,8 @@ export function ReadingTab() {
 
       {/* ── Reader Theme Presets ─────────────────────────────────────── */}
       <section>
-        <h2 className="text-sm font-semibold">Reader Theme</h2>
-        <p className="mb-4 text-xs text-muted-foreground">Independent theme for the reading view.</p>
+        <h2 className="text-sm font-semibold">{t('reading.reader_theme')}</h2>
+        <p className="mb-4 text-xs text-muted-foreground">{t('reading.reader_theme_desc')}</p>
         <div className="grid grid-cols-3 gap-3 max-w-lg sm:grid-cols-6">
           {Object.entries(presets).map(([key, preset]) => (
             <button
@@ -153,7 +155,7 @@ export function ReadingTab() {
         {/* Custom presets */}
         {customPresets.length > 0 && (
           <div className="mt-3">
-            <p className="mb-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Custom Presets</p>
+            <p className="mb-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{t('reading.custom_presets')}</p>
             <div className="flex flex-wrap gap-2">
               {customPresets.map((cp) => (
                 <div key={cp.name} className="group flex items-center gap-1 rounded-lg border px-2 py-1.5 hover:bg-secondary/50 transition-colors">
@@ -176,11 +178,11 @@ export function ReadingTab() {
 
       {/* ── Custom Colors ───────────────────────────────────────────── */}
       <section>
-        <h2 className="text-sm font-semibold">Custom Colors</h2>
-        <p className="mb-4 text-xs text-muted-foreground">Override the preset background and text colors.</p>
+        <h2 className="text-sm font-semibold">{t('reading.custom_colors')}</h2>
+        <p className="mb-4 text-xs text-muted-foreground">{t('reading.custom_colors_desc')}</p>
         <div className="flex gap-6 max-w-lg">
           <div className="flex-1">
-            <label className="mb-2 block text-xs font-medium">Background</label>
+            <label className="mb-2 block text-xs font-medium">{t('reading.background')}</label>
             <div className="flex items-center gap-3">
               <input
                 type="color"
@@ -190,12 +192,12 @@ export function ReadingTab() {
               />
               <span className="font-mono text-[11px] text-muted-foreground">{readerTheme.bg}</span>
               {readerTheme.bg !== (presets[presetName]?.bg ?? '') && (
-                <button onClick={() => setCustomBg('')} className="text-[10px] text-primary hover:underline">Reset</button>
+                <button onClick={() => setCustomBg('')} className="text-[10px] text-primary hover:underline">{t('reading.reset')}</button>
               )}
             </div>
           </div>
           <div className="flex-1">
-            <label className="mb-2 block text-xs font-medium">Text</label>
+            <label className="mb-2 block text-xs font-medium">{t('reading.text')}</label>
             <div className="flex items-center gap-3">
               <input
                 type="color"
@@ -205,7 +207,7 @@ export function ReadingTab() {
               />
               <span className="font-mono text-[11px] text-muted-foreground">{readerTheme.fg}</span>
               {readerTheme.fg !== (presets[presetName]?.fg ?? '') && (
-                <button onClick={() => setCustomFg('')} className="text-[10px] text-primary hover:underline">Reset</button>
+                <button onClick={() => setCustomFg('')} className="text-[10px] text-primary hover:underline">{t('reading.reset')}</button>
               )}
             </div>
           </div>
@@ -214,13 +216,13 @@ export function ReadingTab() {
 
       {/* ── Reader Typography ───────────────────────────────────────── */}
       <section>
-        <h2 className="text-sm font-semibold">Reader Typography</h2>
-        <p className="mb-4 text-xs text-muted-foreground">Fine-tune the reading experience.</p>
+        <h2 className="text-sm font-semibold">{t('reading.typography')}</h2>
+        <p className="mb-4 text-xs text-muted-foreground">{t('reading.typography_desc')}</p>
 
         <div className="space-y-5 max-w-lg">
           {/* Font family */}
           <div>
-            <label className="mb-2 block text-xs font-medium">Font Family</label>
+            <label className="mb-2 block text-xs font-medium">{t('reading.font_family')}</label>
             <div className="flex flex-col gap-2">
               {READER_FONTS.map((f) => (
                 <button
@@ -235,7 +237,7 @@ export function ReadingTab() {
                 >
                   <div>
                     <p className={cn('text-[13px] font-medium', f.cls)}>{f.label}</p>
-                    <p className={cn('text-[11px] text-muted-foreground mt-0.5', f.cls)} style={{ fontFamily: f.value }}>The throne room was silent...</p>
+                    <p className={cn('text-[11px] text-muted-foreground mt-0.5', f.cls)} style={{ fontFamily: f.value }}>{t('reading.font_sample')}</p>
                   </div>
                   {readerTheme.fontFamily === f.value && (
                     <span className="h-4 w-4 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
@@ -250,7 +252,7 @@ export function ReadingTab() {
           {/* Font size */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-medium">Font Size</label>
+              <label className="text-xs font-medium">{t('reading.font_size')}</label>
               <span className="text-xs font-semibold text-primary">{readerTheme.fontSize}px</span>
             </div>
             <input
@@ -267,7 +269,7 @@ export function ReadingTab() {
           {/* Line height */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-medium">Line Height</label>
+              <label className="text-xs font-medium">{t('reading.line_height')}</label>
               <span className="text-xs font-semibold text-primary">{readerTheme.lineHeight.toFixed(1)}</span>
             </div>
             <input
@@ -277,14 +279,14 @@ export function ReadingTab() {
               className="w-full accent-primary"
             />
             <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
-              <span>Compact</span><span>Normal</span><span>Relaxed</span>
+              <span>{t('reading.spacing_compact')}</span><span>{t('reading.spacing_normal')}</span><span>{t('reading.spacing_relaxed')}</span>
             </div>
           </div>
 
           {/* Max width */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-medium">Text Width</label>
+              <label className="text-xs font-medium">{t('reading.text_width')}</label>
               <span className="text-xs font-semibold text-primary">{readerTheme.maxWidth}px</span>
             </div>
             <input
@@ -294,13 +296,13 @@ export function ReadingTab() {
               className="w-full accent-primary"
             />
             <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
-              <span>Narrow</span><span>Medium</span><span>Wide</span>
+              <span>{t('reading.width_narrow')}</span><span>{t('reading.width_medium')}</span><span>{t('reading.width_wide')}</span>
             </div>
           </div>
 
           {/* Paragraph spacing */}
           <div>
-            <label className="mb-2 block text-xs font-medium">Paragraph Spacing</label>
+            <label className="mb-2 block text-xs font-medium">{t('reading.paragraph_spacing')}</label>
             <div className="flex gap-1 rounded-md border bg-secondary/50 p-1">
               {SPACING_OPTIONS.map((s) => (
                 <button
@@ -313,7 +315,7 @@ export function ReadingTab() {
                       : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
-                  {s.label}
+                  {t(`reading.spacing_${s.key}`)}
                 </button>
               ))}
             </div>
@@ -323,46 +325,46 @@ export function ReadingTab() {
 
       {/* ── Save as Custom Preset ────────────────────────────────────── */}
       <section>
-        <h2 className="text-sm font-semibold">Save as Custom Preset</h2>
-        <p className="mb-3 text-xs text-muted-foreground">Save your current reader settings as a reusable preset.</p>
+        <h2 className="text-sm font-semibold">{t('reading.save_preset')}</h2>
+        <p className="mb-3 text-xs text-muted-foreground">{t('reading.save_preset_desc')}</p>
         <div className="flex gap-2 max-w-sm">
           <input
             value={newPresetName}
             onChange={(e) => setNewPresetName(e.target.value)}
-            placeholder="Preset name..."
+            placeholder={t('reading.preset_name_ph')}
             className="flex-1 rounded-md border bg-input px-3 py-1.5 text-xs focus:border-ring focus:outline-none placeholder:text-muted-foreground/50"
           />
           <button
             onClick={() => {
               if (!newPresetName.trim()) return;
               saveCustomPreset(newPresetName.trim());
-              toast.success(`Preset "${newPresetName.trim()}" saved`);
+              toast.success(t('reading.toast.preset_saved', { name: newPresetName.trim() }));
               setNewPresetName('');
             }}
             disabled={!newPresetName.trim()}
             className="rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
-            Save
+            {t('reading.save')}
           </button>
         </div>
       </section>
 
       {/* ── AI Models ─────────────────────────────────────────────── */}
       <section>
-        <h2 className="text-sm font-semibold">AI Models</h2>
+        <h2 className="text-sm font-semibold">{t('reading.ai_models')}</h2>
         <p className="mb-4 text-xs text-muted-foreground">
-          Default models for media generation. Add models with the right capabilities in Settings &gt; Providers.
+          {t('reading.ai_models_desc')}
         </p>
         <div className="space-y-4 max-w-lg">
           {/* TTS model */}
           <div>
-            <label className="mb-1.5 block text-xs font-medium">TTS Model</label>
+            <label className="mb-1.5 block text-xs font-medium">{t('reading.tts_model')}</label>
             <select
               value={mediaPrefs.ttsModelId}
               onChange={e => updateMediaPref('ttsModelId', e.target.value)}
               className="w-full rounded-md border bg-input px-3 py-1.5 text-xs focus:border-ring focus:outline-none"
             >
-              <option value="">Auto (first available)</option>
+              <option value="">{t('reading.auto_first')}</option>
               {ttsModels.map(m => (
                 <option key={m.user_model_id} value={m.user_model_id}>
                   {m.alias || m.provider_model_name} ({m.provider_kind})
@@ -373,7 +375,7 @@ export function ReadingTab() {
 
           {/* Default voice */}
           <div>
-            <label className="mb-1.5 block text-xs font-medium">Default Voice</label>
+            <label className="mb-1.5 block text-xs font-medium">{t('reading.default_voice')}</label>
             <div className="flex flex-wrap gap-1.5">
               {VOICE_OPTIONS.map(v => (
                 <button
@@ -394,13 +396,13 @@ export function ReadingTab() {
 
           {/* Image model */}
           <div>
-            <label className="mb-1.5 block text-xs font-medium">Image Generation Model</label>
+            <label className="mb-1.5 block text-xs font-medium">{t('reading.image_model')}</label>
             <select
               value={mediaPrefs.imageModelId}
               onChange={e => updateMediaPref('imageModelId', e.target.value)}
               className="w-full rounded-md border bg-input px-3 py-1.5 text-xs focus:border-ring focus:outline-none"
             >
-              <option value="">Auto (first available)</option>
+              <option value="">{t('reading.auto_first')}</option>
               {imageModels.map(m => (
                 <option key={m.user_model_id} value={m.user_model_id}>
                   {m.alias || m.provider_model_name} ({m.provider_kind})
@@ -411,7 +413,7 @@ export function ReadingTab() {
 
           {/* Default image size */}
           <div>
-            <label className="mb-1.5 block text-xs font-medium">Default Image Size</label>
+            <label className="mb-1.5 block text-xs font-medium">{t('reading.default_image_size')}</label>
             <div className="flex flex-wrap gap-1.5">
               {IMAGE_SIZE_OPTIONS.map(s => (
                 <button
@@ -432,13 +434,13 @@ export function ReadingTab() {
 
           {/* Video model */}
           <div>
-            <label className="mb-1.5 block text-xs font-medium">Video Generation Model</label>
+            <label className="mb-1.5 block text-xs font-medium">{t('reading.video_model')}</label>
             <select
               value={mediaPrefs.videoModelId}
               onChange={e => updateMediaPref('videoModelId', e.target.value)}
               className="w-full rounded-md border bg-input px-3 py-1.5 text-xs focus:border-ring focus:outline-none"
             >
-              <option value="">Auto (first available)</option>
+              <option value="">{t('reading.auto_first')}</option>
               {videoModels.map(m => (
                 <option key={m.user_model_id} value={m.user_model_id}>
                   {m.alias || m.provider_model_name} ({m.provider_kind})
@@ -449,7 +451,7 @@ export function ReadingTab() {
 
           {(ttsModels.length === 0 && imageModels.length === 0 && videoModels.length === 0) && (
             <p className="text-[11px] text-muted-foreground/70 italic">
-              No media-capable models found. Add models with TTS, image, or video capabilities in the Providers tab.
+              {t('reading.no_media_models')}
             </p>
           )}
         </div>
@@ -457,8 +459,8 @@ export function ReadingTab() {
 
       {/* ── Live Preview ────────────────────────────────────────────── */}
       <section>
-        <h2 className="text-sm font-semibold">Preview</h2>
-        <p className="mb-3 text-xs text-muted-foreground">How your reader content will look.</p>
+        <h2 className="text-sm font-semibold">{t('reading.preview')}</h2>
+        <p className="mb-3 text-xs text-muted-foreground">{t('reading.preview_desc')}</p>
         <div
           className="overflow-hidden rounded-lg border"
           style={{
@@ -472,19 +474,19 @@ export function ReadingTab() {
           }}
         >
           <p style={{ marginBottom: `${readerTheme.spacing}em` }}>
-            The throne room was silent save for the quiet crackling of magical torches. The Demon Lord sat cross-legged, examining a scroll detailing the latest territorial dispute with the neighboring kingdom of Aerolia.
+            {t('reading.preview_p1')}
           </p>
           <p style={{ marginBottom: `${readerTheme.spacing}em` }}>
-            "Your Majesty," the aide said, bowing deeply. "The envoy from the Eastern Province has arrived. They bring... unusual terms."
+            {t('reading.preview_p2')}
           </p>
           <p>
-            The Demon Lord raised an eyebrow. "Unusual? Or simply inconvenient?"
+            {t('reading.preview_p3')}
           </p>
         </div>
       </section>
 
       <p className="text-[10px] text-muted-foreground">
-        Changes are saved automatically.
+        {t('reading.auto_saved')}
       </p>
     </div>
   );

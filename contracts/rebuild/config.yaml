@@ -1,0 +1,36 @@
+# L3.D + L3.G rebuilder config (RAID cycle 14).
+#
+# Layer-plan L3.D.2: `storage.rebuild.parallel_workers = 8`.
+# Layer-plan L3.G acceptance: reality unavailable bounded (seconds → minutes).
+# Layer-plan L3.H.3: `rolling_concurrency = 50`, `freeze_timeout_minutes = 30`
+#   (catastrophic config lives in catastrophic_config.yaml — DPS 3).
+
+storage:
+  rebuild:
+    # Per-aggregate concurrency for the L3.D ParallelRebuilder.
+    parallel_workers: 8
+    # Per-aggregate timeout — failure → retry → dead letter.
+    per_aggregate_timeout_seconds: 60
+    # Per-batch event count (memory bound).
+    batch_size: 5000
+    # Retries before moving an aggregate to the dead letter store.
+    max_retries: 2
+
+freeze_rebuild:
+  # L3.G freeze gate — projection table flipped to read-only while the
+  # rebuilder runs. NOT blue-green (Q-L3-5 explicitly excludes blue-green
+  # from V1 foundation).
+  #
+  # Reality state transitions:
+  #   active  → rebuilding   (writes rejected with 503; reads continue from
+  #                           cache + replicas as L1.J ModeReadOnly)
+  #   rebuilding → active    (after rebuilder finishes + integrity-checker
+  #                           confirms zero pending drift)
+  default_freeze_timeout_minutes: 5
+  # Hard cap — if a freeze exceeds this, operator MUST intervene (a stuck
+  # rebuilder past the cap is a runbook trigger, not a silent retry).
+  max_freeze_timeout_minutes: 30
+  # Dry-run mode emits the plan + a count of events that WOULD replay, but
+  # does NOT TRUNCATE projection tables or call the rebuilder. Used by
+  # operators to verify scope before pulling the trigger.
+  default_dry_run: false

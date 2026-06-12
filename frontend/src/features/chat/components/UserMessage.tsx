@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Check, Pencil, Trash2, X } from 'lucide-react';
 import TextareaAutosize from 'react-textarea-autosize';
 
@@ -10,6 +11,7 @@ interface UserMessageProps {
 }
 
 export function UserMessage({ content, onEdit, onDelete, disabled }: UserMessageProps) {
+  const { t } = useTranslation('chat');
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(content);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -61,24 +63,24 @@ export function UserMessage({ content, onEdit, onDelete, disabled }: UserMessage
         />
         <div className="flex items-center justify-between">
           <span className="text-[10px] text-muted-foreground">
-            Enter to confirm &middot; Esc to cancel &middot; Shift+Enter new line
+            {t('message.edit_hint')}
           </span>
           <div className="flex gap-1">
             <button
               type="button"
               onClick={cancelEdit}
-              title="Cancel (Esc)"
+              title={t('message.cancel_title')}
               className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
             >
-              Cancel
+              {t('message.cancel')}
             </button>
             <button
               type="button"
               onClick={confirmEdit}
-              title="Confirm (Enter)"
+              title={t('message.confirm_title')}
               className="rounded-md bg-accent/10 px-2 py-1 text-xs text-accent hover:bg-accent/20 transition-colors"
             >
-              Save
+              {t('message.save')}
             </button>
           </div>
         </div>
@@ -95,7 +97,7 @@ export function UserMessage({ content, onEdit, onDelete, disabled }: UserMessage
             <button
               type="button"
               onClick={startEdit}
-              title="Edit message"
+              title={t('message.edit_message')}
               className="rounded-md p-1 text-muted-foreground hover:text-foreground"
             >
               <Pencil className="h-3 w-3" />
@@ -105,7 +107,7 @@ export function UserMessage({ content, onEdit, onDelete, disabled }: UserMessage
             <button
               type="button"
               onClick={onDelete}
-              title="Delete message"
+              title={t('message.delete_message')}
               className="rounded-md p-1 text-muted-foreground hover:text-destructive"
             >
               <Trash2 className="h-3 w-3" />

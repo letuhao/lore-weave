@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ArrowLeft, ArrowRight, BookOpen, ChevronRight, Share2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { booksApi } from '@/features/books/api';
@@ -46,6 +47,7 @@ function hashGradient(id: string): string {
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export function SharedBookPage() {
+  const { t } = useTranslation('catalog');
   const { accessToken = '' } = useParams();
   const [book, setBook] = useState<SharedBook | null>(null);
   const [chapters, setChapters] = useState<SharedChapter[]>([]);
@@ -67,7 +69,7 @@ export function SharedBookPage() {
     let mounted = true;
     booksApi.getUnlisted(accessToken)
       .then((data) => { if (mounted) setBook(data as SharedBook); })
-      .catch((e) => { if (mounted) setError((e as Error).message || 'Shared link not found or expired'); })
+      .catch((e) => { if (mounted) setError((e as Error).message || t('shared.not_found')); })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, [accessToken]);
@@ -92,10 +94,10 @@ export function SharedBookPage() {
     booksApi.getUnlistedChapter(accessToken, ch.chapter_id)
       .then((data) => {
         const content = data.text_content || (typeof data.body === 'string' ? data.body : JSON.stringify(data.body));
-        setReadingChapter({ chapter_id: ch.chapter_id, title: ch.title || 'Untitled', body: content });
+        setReadingChapter({ chapter_id: ch.chapter_id, title: ch.title || t('detail.untitled'), body: content });
       })
       .catch((e) => {
-        toast.error(`Failed to load chapter: ${(e as Error).message}`);
+        toast.error(t('shared.load_chapter_failed', { error: (e as Error).message }));
         setReadingChapter(null);
       })
       .finally(() => setLoadingChapter(false));
@@ -123,9 +125,9 @@ export function SharedBookPage() {
   if (error || !book) {
     return (
       <div className="mx-auto max-w-[1000px] px-8 py-16 text-center">
-        <p className="text-sm text-destructive">{error || 'This shared link is invalid or has expired.'}</p>
+        <p className="text-sm text-destructive">{error || t('shared.invalid')}</p>
         <Link to="/browse" className="mt-4 inline-block text-sm text-accent hover:underline">
-          Browse public books instead
+          {t('shared.browse_instead')}
         </Link>
       </div>
     );
@@ -151,7 +153,7 @@ export function SharedBookPage() {
             className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to chapters
+            {t('shared.back_to_chapters')}
           </button>
           <span className="text-xs text-muted-foreground">{book.title}</span>
         </div>
@@ -173,7 +175,7 @@ export function SharedBookPage() {
               className="flex items-center gap-1.5 text-sm text-accent hover:underline disabled:opacity-50"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-              {prevCh.title || `Ch. ${prevCh.sort_order}`}
+              {prevCh.title || t('shared.ch_short', { n: prevCh.sort_order })}
             </button>
           ) : <div />}
           {nextCh ? (
@@ -182,7 +184,7 @@ export function SharedBookPage() {
               disabled={loadingChapter}
               className="flex items-center gap-1.5 text-sm text-accent hover:underline disabled:opacity-50"
             >
-              {nextCh.title || `Ch. ${nextCh.sort_order}`}
+              {nextCh.title || t('shared.ch_short', { n: nextCh.sort_order })}
               <ArrowRight className="h-3.5 w-3.5" />
             </button>
           ) : <div />}
@@ -200,7 +202,7 @@ export function SharedBookPage() {
       <div className="mb-6 flex items-center gap-2 rounded-lg border border-accent/20 bg-accent/5 px-4 py-2.5">
         <Share2 className="h-4 w-4 text-accent" />
         <p className="text-sm text-accent">
-          You're viewing a shared link. This book is not publicly listed.
+          {t('shared.indicator')}
         </p>
       </div>
 
@@ -217,13 +219,13 @@ export function SharedBookPage() {
 
         <div className="min-w-0 flex-1">
           <div className="mb-2 flex items-center gap-2">
-            <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] font-medium text-accent">Unlisted</span>
+            <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] font-medium text-accent">{t('detail.unlisted_badge')}</span>
           </div>
 
           <h1 className="font-serif text-2xl font-semibold leading-tight">{book.title}</h1>
 
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground">
-            <span>{book.chapter_count ?? 0} chapters</span>
+            <span>{t('detail.chapters_count', { count: book.chapter_count ?? 0 })}</span>
             {book.original_language && (
               <>
                 <span>&middot;</span>
@@ -246,20 +248,20 @@ export function SharedBookPage() {
                 className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:brightness-110 disabled:opacity-50"
               >
                 <BookOpen className="h-4 w-4" />
-                {loadingChapter ? 'Loading...' : 'Start Reading'}
+                {loadingChapter ? t('detail.loading') : t('detail.start_reading')}
               </button>
             ) : (
               <button disabled className="inline-flex items-center gap-1.5 rounded-lg bg-accent/50 px-4 py-2 text-sm font-medium text-white/60 cursor-not-allowed">
                 <BookOpen className="h-4 w-4" />
-                No chapters yet
+                {t('detail.no_chapters_yet')}
               </button>
             )}
             <button
-              onClick={() => { navigator.clipboard.writeText(window.location.href).then(() => toast.success('Link copied')).catch(() => toast.error('Failed to copy')); }}
+              onClick={() => { navigator.clipboard.writeText(window.location.href).then(() => toast.success(t('detail.link_copied'))).catch(() => toast.error(t('detail.copy_failed'))); }}
               className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm text-foreground transition-colors hover:bg-secondary"
             >
               <Share2 className="h-3.5 w-3.5" />
-              Copy Link
+              {t('detail.copy_link')}
             </button>
           </div>
         </div>
@@ -267,11 +269,11 @@ export function SharedBookPage() {
 
       {/* Chapter List */}
       <div className="mt-8">
-        <h2 className="mb-4 text-base font-semibold">Chapters</h2>
+        <h2 className="mb-4 text-base font-semibold">{t('detail.chapters_heading')}</h2>
 
         {chapters.length === 0 ? (
           <div className="rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-            No chapters available.
+            {t('detail.no_chapters_available')}
           </div>
         ) : (
           <div className="overflow-hidden rounded-lg border border-border bg-card">
@@ -286,10 +288,10 @@ export function SharedBookPage() {
                   {ch.sort_order}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-medium">{ch.title || 'Untitled'}</p>
+                  <p className="truncate text-[13px] font-medium">{ch.title || t('detail.untitled')}</p>
                   {ch.word_count_estimate != null && ch.word_count_estimate > 0 && (
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
-                      {ch.word_count_estimate.toLocaleString()} words
+                      {t('detail.words', { count: ch.word_count_estimate.toLocaleString() })}
                     </p>
                   )}
                 </div>
@@ -300,7 +302,7 @@ export function SharedBookPage() {
             {total > limit && (
               <div className="border-t border-border px-4 py-3">
                 <p className="mb-2 text-center text-[11px] text-muted-foreground">
-                  Showing {offset + 1}–{Math.min(offset + limit, total)} of {total} chapters
+                  {t('detail.showing_chapters', { from: offset + 1, to: Math.min(offset + limit, total), total })}
                 </p>
                 <div className="flex justify-center">
                   <Pagination total={total} limit={limit} offset={offset} onChange={setOffset} />

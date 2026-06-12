@@ -2,6 +2,7 @@ import { apiJson } from '../../api';
 import type {
   BenchmarkRunResponse,
   BenchmarkStatus,
+  ExtractionConfigPayload,
   Project,
   ProjectCreatePayload,
   ProjectListParams,
@@ -331,6 +332,50 @@ export interface EntityDetail {
   total_relations: number;
 }
 
+// ── T2.1 Cast & Codex — spoiler-windowed status + facts ───────────────
+
+/** One entity's story-state at the windowed reading position. `from_order` is
+ *  null when the entity has no recorded transition (defaults to `active`). */
+export interface EntityStatusEntry {
+  status: 'active' | 'gone';
+  from_order: number | null;
+}
+
+/** Batch status for a project's cast, keyed by `Entity.id`. `window_available`
+ *  is false when the chapter spoiler-window couldn't be resolved (fail-closed:
+ *  everyone `active`, no history) — the codex shows a "reading position unknown"
+ *  hint rather than implying a clean slate. */
+export interface EntityStatusesResponse {
+  statuses: Record<string, EntityStatusEntry>;
+  window_available: boolean;
+}
+
+export type EntityFactType = 'decision' | 'preference' | 'milestone' | 'negation';
+
+/** A known fact ABOUT an entity (decision/preference/…). Spoiler-windowed by
+ *  `from_order` server-side. Mirrors the BE Fact projection (subset the codex
+ *  renders). */
+export interface EntityFact {
+  id: string;
+  type: EntityFactType;
+  content: string;
+  confidence: number;
+  source_chapter: string | null;
+  from_order: number | null;
+}
+
+export interface EntityFactsResponse {
+  facts: EntityFact[];
+  window_available: boolean;
+}
+
+export interface EntityStatusesParams {
+  project_id: string;
+  /** Window the status THROUGH this book chapter (resolved server-side). */
+  before_chapter_id?: string;
+  kind?: string;
+}
+
 // ── K19d γ-a — PATCH /entities/{id} body ──────────────────────────────
 
 export interface EntityUpdatePayload {
@@ -338,6 +383,25 @@ export interface EntityUpdatePayload {
   kind?: string;
   /** Replaces the full list; not an append. Pass [] to clear. */
   aliases?: string[];
+}
+
+// ── T2.5 World Map — manual entity / relation authoring ──────────────
+
+/** Create a user-authored entity (World Map "+ add place"). `kind` is one of
+ *  character|location|faction|concept (BE-enforced). Idempotent on (name, kind)
+ *  within the project. */
+export interface CreateEntityPayload {
+  project_id: string;
+  name: string;
+  kind: string;
+}
+
+/** Create a user-authored relation (World Map "link places"). 409 if either
+ *  endpoint isn't the caller's entity; 422 on a self-loop. */
+export interface CreateRelationPayload {
+  subject_id: string;
+  object_id: string;
+  predicate: string;
 }
 
 // ── K19d γ-b — POST /entities/{id}/merge-into/{other} ────────────────
@@ -387,14 +451,38 @@ export interface TimelineEvent {
   chapter_title: string | null;
   event_order: number | null;
   chronological_order: number | null;
+  /** C18 — in-story ISO date (partial precision: YYYY / YYYY-MM / YYYY-MM-DD).
+   *  Present in the BE Event projection; declared here for the C-FE edit form. */
+  event_date_iso: string | null;
+  /** C18-DEF-01 — free-text narrative time hint (e.g. "the next morning"). */
+  time_cue: string | null;
   participants: string[];
   confidence: number;
   source_types: string[];
   evidence_count: number;
   mention_count: number;
   archived_at: string | null;
+  /** Phase B C2 — optimistic-concurrency version for user edits (If-Match).
+   *  Pre-C2 events default to 1 on the BE read path. */
+  version: number;
   created_at: string | null;
   updated_at: string | null;
+}
+
+// ── Phase B C — relation + event correction payloads ─────────────────
+
+export interface RelationCorrectPayload {
+  old_relation_id: string;
+  subject_id: string;
+  predicate: string;
+  object_id: string;
+}
+
+export interface EventUpdatePayload {
+  title?: string;
+  summary?: string;
+  time_cue?: string;
+  event_date_iso?: string;
 }
 
 export interface TimelineListParams {
@@ -413,6 +501,9 @@ export interface TimelineListParams {
    *  user / missing entity collapses to an empty timeline (no 404
    *  existence leak per KSA §6.4). */
   entity_id?: string;
+  /** T2.1: spoiler-window the timeline THROUGH this book chapter (resolved
+   *  server-side to a before_order ceiling). An explicit `before_order` wins. */
+  before_chapter_id?: string;
   limit?: number;
   offset?: number;
 }
@@ -479,6 +570,62 @@ export type DrawerSearchErrorCode =
   | 'embedding_dim_mismatch'
   | 'unknown';
 
+// ── Phase E2 — learning-service mining response shapes ─────────────────────
+
+export interface MiningConfigQualityRow {
+  genre: string | null;
+  config_hash: string;
+  run_count: number;
+  succeeded: number;
+  avg_entities_on_success: number | null;
+  success_rate: number | null;
+}
+
+export interface MiningConfigQualityResponse {
+  items: MiningConfigQualityRow[];
+  exploration: MiningConfigQualityRow[];
+}
+
+export interface MiningModelMatrixRow {
+  model_ref: string | null;
+  scope: string | null;
+  has_filter: boolean;
+  run_count: number;
+  succeeded: number;
+  weighted_outcome: number | null;
+}
+
+export interface MiningModelMatrixResponse {
+  items: MiningModelMatrixRow[];
+}
+
+export interface MiningDriftRow {
+  target: string;
+  base_default_version: string | null;
+  affected_projects: number;
+  distinct_after_values: number;
+  drift_pattern: string;
+  runs_with_outcome: number;
+}
+
+export interface MiningDefaultDriftResponse {
+  items: MiningDriftRow[];
+}
+
+export interface MiningOutcomeRecomputeRow {
+  run_id: string;
+  project_id: string;
+  pipeline_outcome: string | null;
+  created_at: string;
+  post_run_corrections: number;
+  recomputed_outcome: string | null;
+}
+
+export interface MiningOutcomeRecomputeResponse {
+  items: MiningOutcomeRecomputeRow[];
+  total: number;
+}
+
 export interface DrawerSearchError extends Error {
   status?: number;
   errorCode: DrawerSearchErrorCode;
@@ -516,6 +663,7 @@ export function parseDrawersError(err: unknown): DrawerSearchError {
 }
 
 const BASE = '/v1/knowledge';
+const LEARNING_BASE = '/v1/learning';
 
 // D-K8-03: weak ETag format used by the knowledge-service routes.
 const ifMatch = (version: number): Record<string, string> => ({
@@ -564,6 +712,7 @@ export const knowledgeApi = {
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.cursor) qs.set('cursor', params.cursor);
     if (params.include_archived) qs.set('include_archived', 'true');
+    if (params.book_id) qs.set('book_id', params.book_id);
     const q = qs.toString();
     return apiJson<ProjectListResponse>(
       `${BASE}/projects${q ? `?${q}` : ''}`,
@@ -596,6 +745,23 @@ export const knowledgeApi = {
     // returns 428 if the header is missing, 412 if it's stale.
     return apiJson<Project>(`${BASE}/projects/${projectId}`, {
       method: 'PATCH',
+      body: JSON.stringify(payload),
+      token,
+      headers: ifMatch(expectedVersion),
+    });
+  },
+
+  // B2-B/C — per-novel extraction-config tuning. PUT-REPLACE: the caller must
+  // send the COMPLETE config (read-modify-write off project.extraction_config),
+  // since an omitted section is dropped. If-Match strictly required (428 / 412).
+  updateExtractionConfig(
+    projectId: string,
+    payload: ExtractionConfigPayload,
+    token: string,
+    expectedVersion: number,
+  ): Promise<Project> {
+    return apiJson<Project>(`${BASE}/projects/${projectId}/extraction-config`, {
+      method: 'PUT',
       body: JSON.stringify(payload),
       token,
       headers: ifMatch(expectedVersion),
@@ -1010,6 +1176,27 @@ export const knowledgeApi = {
     );
   },
 
+  // ── T2.5 World Map — manual authoring ────────────────────────────────
+
+  /** Create a user-authored entity (e.g. a World Map place). 201. */
+  createEntity(payload: CreateEntityPayload, token: string): Promise<Entity> {
+    return apiJson<Entity>(`${BASE}/entities`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      token,
+    });
+  },
+
+  /** Create a user-authored relation between two of the caller's entities. 201;
+   *  409 if an endpoint isn't the caller's; 422 on a self-loop. */
+  createRelation(payload: CreateRelationPayload, token: string): Promise<EntityRelation> {
+    return apiJson<EntityRelation>(`${BASE}/relations`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      token,
+    });
+  },
+
   // ── K19d γ-a — PATCH /entities/{id} ──────────────────────────────────
 
   updateEntity(
@@ -1057,6 +1244,123 @@ export const knowledgeApi = {
     );
   },
 
+  // ── Phase B C — relation corrections ─────────────────────────────────
+
+  getRelation(relationId: string, token: string): Promise<EntityRelation> {
+    return apiJson<EntityRelation>(
+      `${BASE}/relations/${encodeURIComponent(relationId)}`,
+      { token },
+    );
+  },
+
+  /** Mark a relation wrong → soft-invalidate (spurious-drop correction). */
+  invalidateRelation(relationId: string, token: string): Promise<EntityRelation> {
+    return apiJson<EntityRelation>(
+      `${BASE}/relations/${encodeURIComponent(relationId)}/invalidate`,
+      { method: 'POST', token },
+    );
+  },
+
+  /** Fix a relation: invalidate the old edge + recreate the corrected one
+   *  (predicate-fix correction). Returns the live (resurrected) edge. */
+  correctRelation(
+    body: RelationCorrectPayload,
+    token: string,
+  ): Promise<EntityRelation> {
+    return apiJson<EntityRelation>(`${BASE}/relations/correct`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      token,
+    });
+  },
+
+  // ── Phase B C — event corrections ────────────────────────────────────
+
+  updateEvent(
+    eventId: string,
+    body: EventUpdatePayload,
+    ifMatchVersion: number,
+    token: string,
+  ): Promise<TimelineEvent> {
+    return apiJson<TimelineEvent>(
+      `${BASE}/events/${encodeURIComponent(eventId)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+        token,
+        // C2: strict If-Match — BE 428s without it.
+        headers: ifMatch(ifMatchVersion),
+      },
+    );
+  },
+
+  /** Soft-archive an event (user "delete"). 204 No Content. */
+  archiveEvent(eventId: string, token: string): Promise<void> {
+    return apiJson<void>(
+      `${BASE}/events/${encodeURIComponent(eventId)}`,
+      { method: 'DELETE', token },
+    );
+  },
+
+  // ── Phase E2 — learning-service mining ───────────────────────────────────
+
+  miningConfigQuality(
+    token: string,
+    params?: { genre?: string; limit?: number },
+  ): Promise<MiningConfigQualityResponse> {
+    const qs = new URLSearchParams();
+    if (params?.genre) qs.set('genre', params.genre);
+    if (params?.limit != null) qs.set('limit', String(params.limit));
+    const q = qs.toString();
+    return apiJson<MiningConfigQualityResponse>(
+      `${LEARNING_BASE}/mining/config-quality${q ? `?${q}` : ''}`,
+      { token },
+    );
+  },
+
+  miningModelMatrix(
+    token: string,
+    params?: { scope?: string },
+  ): Promise<MiningModelMatrixResponse> {
+    const qs = new URLSearchParams();
+    if (params?.scope) qs.set('scope', params.scope);
+    const q = qs.toString();
+    return apiJson<MiningModelMatrixResponse>(
+      `${LEARNING_BASE}/mining/model-matrix${q ? `?${q}` : ''}`,
+      { token },
+    );
+  },
+
+  miningDefaultDrift(
+    token: string,
+    params?: { target?: string; base_default_version?: string },
+  ): Promise<MiningDefaultDriftResponse> {
+    const qs = new URLSearchParams();
+    if (params?.target) qs.set('target', params.target);
+    if (params?.base_default_version) qs.set('base_default_version', params.base_default_version);
+    const q = qs.toString();
+    return apiJson<MiningDefaultDriftResponse>(
+      `${LEARNING_BASE}/mining/default-drift${q ? `?${q}` : ''}`,
+      { token },
+    );
+  },
+
+  miningOutcomeRecompute(
+    token: string,
+    params?: { project_id?: string; window_days?: number; limit?: number; offset?: number },
+  ): Promise<MiningOutcomeRecomputeResponse> {
+    const qs = new URLSearchParams();
+    if (params?.project_id) qs.set('project_id', params.project_id);
+    if (params?.window_days != null) qs.set('window_days', String(params.window_days));
+    if (params?.limit != null) qs.set('limit', String(params.limit));
+    if (params?.offset != null) qs.set('offset', String(params.offset));
+    const q = qs.toString();
+    return apiJson<MiningOutcomeRecomputeResponse>(
+      `${LEARNING_BASE}/mining/outcome-recompute${q ? `?${q}` : ''}`,
+      { token },
+    );
+  },
+
   // ── K19e.2 — GET /v1/knowledge/timeline ──────────────────────────────
 
   listTimeline(
@@ -1074,11 +1378,47 @@ export const knowledgeApi = {
     if (params.before_chronological != null)
       qs.set('before_chronological', String(params.before_chronological));
     if (params.entity_id != null) qs.set('entity_id', params.entity_id);
+    if (params.before_chapter_id != null)
+      qs.set('before_chapter_id', params.before_chapter_id);
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.offset != null) qs.set('offset', String(params.offset));
     const q = qs.toString();
     return apiJson<TimelineResponse>(
       `${BASE}/timeline${q ? `?${q}` : ''}`,
+      { token },
+    );
+  },
+
+  // ── T2.1 Cast & Codex ────────────────────────────────────────────────
+
+  /** Batch story-state (active|gone) for a project's cast, windowed to the
+   *  current chapter. Project-scoped (no client id list). */
+  getEntityStatuses(
+    params: EntityStatusesParams,
+    token: string,
+  ): Promise<EntityStatusesResponse> {
+    const qs = new URLSearchParams({ project_id: params.project_id });
+    if (params.before_chapter_id != null)
+      qs.set('before_chapter_id', params.before_chapter_id);
+    if (params.kind != null) qs.set('kind', params.kind);
+    return apiJson<EntityStatusesResponse>(
+      `${BASE}/entities/statuses?${qs.toString()}`,
+      { token },
+    );
+  },
+
+  /** The known-facts list ABOUT one entity, spoiler-windowed by chapter. */
+  getEntityFacts(
+    entityId: string,
+    params: { before_chapter_id?: string },
+    token: string,
+  ): Promise<EntityFactsResponse> {
+    const qs = new URLSearchParams();
+    if (params.before_chapter_id != null)
+      qs.set('before_chapter_id', params.before_chapter_id);
+    const q = qs.toString();
+    return apiJson<EntityFactsResponse>(
+      `${BASE}/entities/${encodeURIComponent(entityId)}/facts${q ? `?${q}` : ''}`,
       { token },
     );
   },

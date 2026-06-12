@@ -120,6 +120,17 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_project
   ON chat_sessions(project_id) WHERE project_id IS NOT NULL;
 
+-- A2A phase-2 — optional "composer" model for in-turn prose delegation. When
+-- set, the orchestrator (session model) may call the server-side compose_prose
+-- tool, which streams THIS model to generate prose and returns it as the tool
+-- result. NULL → compose_prose is not advertised (single-model behaviour).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_sessions' AND column_name='composer_model_ref') THEN
+    ALTER TABLE chat_sessions ADD COLUMN composer_model_source VARCHAR(20);
+    ALTER TABLE chat_sessions ADD COLUMN composer_model_ref UUID;
+  END IF;
+END $$;
+
 -- K13.1 — outbox_events: transactional outbox for event-driven pipeline.
 -- Matches book-service schema so worker-infra outbox-relay can pick up
 -- events uniformly. Worker-infra publishes to Redis Stream
@@ -147,6 +158,62 @@ DO $$ BEGIN
     ALTER TABLE chat_messages ADD COLUMN tool_calls JSONB;
   END IF;
 END $$;
+
+-- ARCH-1 C6 — suspended runs for AG-UI frontend-tool-calls. When the model
+-- calls a frontend tool (e.g. propose_edit), the turn pauses: the in-flight
+-- conversation `working` list + the dangling assistant tool-call cannot be
+-- rebuilt from chat_messages (the assistant row isn't written until end-of-
+-- turn), so the whole state is persisted here keyed by run_id. The resume
+-- endpoint rehydrates it, appends the tool result, and runs a 2nd LLM pass.
+-- Rows are deleted on resume; an `expires_at` sweep reclaims abandoned ones.
+CREATE TABLE IF NOT EXISTS chat_suspended_runs (
+  run_id            UUID PRIMARY KEY,
+  session_id        UUID NOT NULL REFERENCES chat_sessions(session_id) ON DELETE CASCADE,
+  owner_user_id     UUID NOT NULL,
+  -- the assistant message id shared by both runs of the logical turn
+  message_id        UUID NOT NULL,
+  -- full conversation passed to the LLM at suspend time (incl. the dangling
+  -- assistant tool-call message), as a JSON array of chat messages
+  working           JSONB NOT NULL,
+  -- the pending frontend tool call awaiting a client result
+  pending_tool_call JSONB NOT NULL,  -- {id, name, args}
+  -- usage accumulated in the first run, summed with the resume run at the end
+  input_tokens      INT NOT NULL DEFAULT 0,
+  output_tokens     INT NOT NULL DEFAULT 0,
+  model_source      VARCHAR(20) NOT NULL,
+  model_ref         UUID NOT NULL,
+  parent_message_id UUID,
+  user_message_content TEXT NOT NULL DEFAULT '',
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at        TIMESTAMPTZ NOT NULL DEFAULT now() + interval '6 hours'
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_suspended_runs_session
+  ON chat_suspended_runs(session_id);
+CREATE INDEX IF NOT EXISTS idx_chat_suspended_runs_sweep
+  ON chat_suspended_runs(expires_at);
+
+-- ══════════════════════════════════════════════════════════════════════
+-- Track "Production Eval + Feedback Flywheel" — Q3: chat-turn feedback.
+-- The only absent feedback primitive (chat-service had none). Captures
+-- explicit thumbs/rating + implicit regenerate-as-negative; emitted via the
+-- existing outbox -> relay -> loreweave:events:chat -> learning-service, which
+-- writes a quality_scores row (target_kind=chat_message, source=human).
+-- ══════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS message_feedback (
+  id                         UUID PRIMARY KEY DEFAULT uuidv7(),
+  message_id                 UUID NOT NULL REFERENCES chat_messages(message_id) ON DELETE CASCADE,
+  session_id                 UUID NOT NULL,
+  user_id                    UUID NOT NULL,                  -- corpus owner (== message owner)
+  rating                     SMALLINT NOT NULL,             -- +1 thumb up, -1 thumb down
+  reason                     TEXT,                          -- optional free-text / 'regenerated'
+  regenerated_from_message_id UUID,                         -- set when this is the implicit negative from a regenerate
+  created_at                 TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_message_feedback_message
+  ON message_feedback(message_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_message_feedback_user
+  ON message_feedback(user_id, created_at DESC);
 """
 
 

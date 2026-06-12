@@ -1,0 +1,23 @@
+{
+  "_spec": "canon.entry.promoted → UPDATE canon_projection {canon_layer=payload.to_layer, source_event_id=env.event_id, last_synced_at=env.recorded_at}, keyed canon_entry_id (CanonProjection; M4 §9.7.4 L2→L1).",
+  "envelope": {
+    "event_id": "00000000-0000-0000-0000-000000000703",
+    "event_type": "canon.entry.promoted",
+    "event_version": 1,
+    "aggregate_id": "c-1",
+    "aggregate_type": "canon",
+    "aggregate_version": 3,
+    "reality_id": "22222222-2222-2222-2222-222222222222",
+    "occurred_at": "2026-01-01T00:00:11.000000Z",
+    "recorded_at": "2026-01-01T00:00:11.000000Z",
+    "payload": { "canon_entry_id": "c-1", "to_layer": "L1_axiom" }
+  },
+  "expected_updates": [
+    { "Update": {
+      "table": "canon_projection",
+      "pk": { "canon_entry_id": "c-1" },
+      "fields": { "canon_layer": "L1_axiom", "source_event_id": "00000000-0000-0000-0000-000000000703", "last_synced_at": "2026-01-01T00:00:11.000000Z" },
+      "meta": { "event_id": "00000000-0000-0000-0000-000000000703", "aggregate_version": 3, "applied_at": "2026-01-01T00:00:11.000000Z" }
+    }}
+  ]
+}

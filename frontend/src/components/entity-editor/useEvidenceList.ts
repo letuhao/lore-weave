@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
@@ -14,6 +15,7 @@ import type {
 const PAGE_SIZE = 20;
 
 export function useEvidenceList(bookId: string, entityId: string, bookOriginalLanguage?: string) {
+  const { t } = useTranslation('entityEditor');
   const { accessToken } = useAuth();
 
   // List state
@@ -108,7 +110,7 @@ export function useEvidenceList(bookId: string, entityId: string, bookOriginalLa
     setEditSaving(true);
     try {
       await glossaryApi.patchEvidence(bookId, entityId, item.attr_value_id, item.evidence_id, editForm, accessToken);
-      toast.success('Evidence updated');
+      toast.success(t('evidence.toast.updated'));
       setEditingId(null);
       void fetchList();
     } catch (e) {
@@ -122,7 +124,7 @@ export function useEvidenceList(bookId: string, entityId: string, bookOriginalLa
     if (!accessToken) return;
     try {
       await glossaryApi.deleteEvidence(bookId, entityId, item.attr_value_id, item.evidence_id, accessToken);
-      toast.success('Evidence deleted');
+      toast.success(t('evidence.toast.deleted'));
       void fetchList();
     } catch (e) {
       toast.error((e as Error).message);
@@ -135,13 +137,13 @@ export function useEvidenceList(bookId: string, entityId: string, bookOriginalLa
   const createEvidence = useCallback(async (attrValueId: string, payload: Parameters<typeof glossaryApi.createEvidence>[3]) => {
     if (!accessToken || !attrValueId) return;
     if (!payload.original_text?.trim()) {
-      toast.error('Original text is required');
+      toast.error(t('evidence.toast.text_required'));
       return;
     }
     setCreateSaving(true);
     try {
       await glossaryApi.createEvidence(bookId, entityId, attrValueId, payload, accessToken);
-      toast.success('Evidence created');
+      toast.success(t('evidence.toast.created'));
       filterOptionsLoaded.current = false; // refresh filter options
       void fetchList();
       setCreateSaving(false);

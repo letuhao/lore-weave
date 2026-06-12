@@ -106,6 +106,99 @@ class TestBuildGlossaryContext:
                 assert "kind" in parsed
 
 
+# ── trust ladder (D-TRANSL-M1D): verified_map vs correction_map ───────────────
+
+class TestTrustLadder:
+    """The V3 verifier hard-checks only *canon* translations. build_glossary_context
+    splits the glossary into the full ``correction_map`` (V2 auto-correct + prompt,
+    unchanged) and a ``verified_map`` subset the V3 verifier enforces."""
+
+    def test_verified_map_keeps_only_verified_confidence(self):
+        entries = [
+            {"zh": ["提拉米"], "vi": ["Tirami"], "kind": "character", "confidence": "verified"},
+            {"zh": ["阿尔德里克"], "vi": ["Aldric"], "kind": "character", "confidence": "machine"},
+            {"zh": ["伊斯坦莎"], "vi": ["Isutansha"], "kind": "character", "confidence": "draft"},
+        ]
+        text = "提拉米 阿尔德里克 伊斯坦莎"
+        ctx = build_glossary_context(entries, text, "vi")
+        # Full map carries every translated entry (V2 parity).
+        assert ctx.correction_map == {
+            "提拉米": "Tirami", "阿尔德里克": "Aldric", "伊斯坦莎": "Isutansha",
+        }
+        # Hard-check map carries ONLY the human-confirmed (verified) one.
+        assert ctx.verified_map == {"提拉米": "Tirami"}
+
+    def test_absent_confidence_key_is_legacy_trusted(self):
+        """A glossary build that predates the confidence field (key absent) must
+        behave exactly as before — every translation hard-checked. Guards the
+        rolling-deploy window where translation-service reads confidence before
+        glossary-service emits it."""
+        entries = [
+            {"zh": ["提拉米"], "vi": ["Tirami"], "kind": "character"},
+            {"zh": ["魔族"], "vi": ["Ma tộc"], "kind": "race"},
+        ]
+        text = "提拉米 魔族"
+        ctx = build_glossary_context(entries, text, "vi")
+        assert ctx.verified_map == ctx.correction_map
+        assert ctx.verified_map == {"提拉米": "Tirami", "魔族": "Ma tộc"}
+
+    def test_empty_confidence_string_is_demoted(self):
+        """An explicit empty-string confidence (present but blank) is NOT verified —
+        only a truly absent key is the legacy escape hatch."""
+        entries = [{"zh": ["提拉米"], "vi": ["Tirami"], "kind": "character", "confidence": ""}]
+        ctx = build_glossary_context(entries, "提拉米", "vi")
+        assert ctx.correction_map == {"提拉米": "Tirami"}
+        assert ctx.verified_map == {}
+
+    def test_verified_map_empty_when_no_entries(self):
+        ctx = build_glossary_context([], CHAPTER_TEXT, "vi")
+        assert ctx.verified_map == {}
+
+    def test_machine_translation_does_not_hard_fail_verifier(self):
+        """End-to-end at the unit level: a machine-confidence glossary term that the
+        draft renders differently must NOT produce a HIGH wrong_name issue, because
+        the verifier is fed verified_map (which excludes it)."""
+        from app.workers.v3.verifier import verify_rules
+        entries = [{"zh": ["提拉米"], "vi": ["Tirami"], "kind": "character", "confidence": "machine"}]
+        ctx = build_glossary_context(entries, "提拉米", "vi")
+        report = verify_rules({0: "提拉米 来了"}, {0: "Tilami came"}, ctx.verified_map, "vi")
+        assert not any(i.type == "wrong_name" for i in report.issues)
+        # And the full map still WOULD have flagged it (proves the demotion is the cause).
+        report_full = verify_rules({0: "提拉米 来了"}, {0: "Tilami came"}, ctx.correction_map, "vi")
+        assert any(i.type == "wrong_name" for i in report_full.issues)
+
+
+# ── M6b: used_entity_ids (glossary usage index source) ────────────────────────
+
+class TestUsedEntityIds:
+    def test_records_entity_ids_of_entries_in_chapter(self):
+        """Only entities whose names appear in the chapter (score > 0) are 'used'."""
+        entries = [
+            {"zh": ["提拉米"], "vi": ["Tirami"], "kind": "character", "entity_id": "E-TIRAMI"},
+            {"zh": ["阿尔德里克"], "vi": ["Aldric"], "kind": "character", "entity_id": "E-ALDRIC"},
+        ]
+        ctx = build_glossary_context(entries, "提拉米 来了。提拉米 走了。", "vi")
+        assert ctx.used_entity_ids == {"E-TIRAMI"}  # 阿尔德里克 absent from text → not used
+
+    def test_pinned_score0_entity_not_marked_used(self):
+        """A pinned entity with a target translation but absent from THIS chapter's
+        text is included in the prompt but is NOT 'used' (no staleness link)."""
+        entries = [{"zh": ["不在文中"], "vi": ["Pinned"], "kind": "character", "entity_id": "E-PIN"}]
+        ctx = build_glossary_context(entries, "提拉米 来了", "vi")
+        assert "E-PIN" not in ctx.used_entity_ids
+
+    def test_missing_entity_id_is_skipped(self):
+        """A legacy glossary build without entity_id contributes nothing (no crash)."""
+        entries = [{"zh": ["提拉米"], "vi": ["Tirami"], "kind": "character"}]
+        ctx = build_glossary_context(entries, "提拉米 来了", "vi")
+        assert ctx.used_entity_ids == set()
+
+    def test_entry_carries_entity_id(self):
+        entries = [{"zh": ["提拉米"], "vi": ["Tirami"], "kind": "character", "entity_id": "E1"}]
+        ctx = build_glossary_context(entries, "提拉米", "vi")
+        assert ctx.entries[0].entity_id == "E1"
+
+
 # ── auto_correct_glossary ────────────────────────────────────────────────
 
 class TestAutoCorrectGlossary:
@@ -145,3 +238,107 @@ class TestAutoCorrectGlossary:
         corrected, count = auto_correct_glossary(text, correction_map)
         assert corrected == "Anh ta là người Ma tộc duy nhất."
         assert count == 1
+
+
+# ── M4d-2b: writeback_name_pairs (target-translation seeding) ─────────────────
+
+class _Pair:
+    def __init__(self, source, target, kind="character"):
+        self.source = source
+        self.target = target
+        self.kind = kind
+
+
+class _WResp:
+    def __init__(self, status_code, payload):
+        self.status_code = status_code
+        self._p = payload
+
+    def json(self):
+        return self._p
+
+
+class _WClient:
+    last = {}
+
+    def __init__(self, resp=None, exc=None):
+        self._resp = resp
+        self._exc = exc
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def post(self, url, json=None, headers=None):
+        _WClient.last = {"url": url, "json": json, "headers": headers}
+        if self._exc:
+            raise self._exc
+        return self._resp
+
+
+def _patch_w(monkeypatch, *, url="http://gloss:8088", resp=None, exc=None):
+    from app.workers import glossary_client as gc
+    monkeypatch.setattr(gc.settings, "glossary_service_internal_url", url)
+    monkeypatch.setattr(gc.settings, "internal_service_token", "tok")
+    monkeypatch.setattr(gc.httpx, "AsyncClient", lambda *a, **k: _WClient(resp=resp, exc=exc))
+    _WClient.last = {}
+
+
+class TestSanitizeName:
+    def test_strips_control_and_collapses(self):
+        from app.workers.glossary_client import _sanitize_name
+        assert _sanitize_name("提拉\t米  \n苏") == "提拉 米 苏"
+
+    def test_caps_length(self):
+        from app.workers.glossary_client import _sanitize_name
+        assert len(_sanitize_name("x" * 500)) == 120
+
+    def test_empty(self):
+        from app.workers.glossary_client import _sanitize_name
+        assert _sanitize_name("") == ""
+
+
+@pytest.mark.asyncio
+class TestWritebackNamePairs:
+    async def test_body_shape_and_sanitize_and_skip_empty(self, monkeypatch):
+        from app.workers.glossary_client import writeback_name_pairs
+        _patch_w(monkeypatch, resp=_WResp(200, {"created": 2}))
+        pairs = [_Pair("提拉米", "Tirami"), _Pair("  ", "x"),
+                 _Pair("阿尔德里克", "Aldric", "location")]
+        res = await writeback_name_pairs("b1", "zh", "vi", pairs)
+        assert res == {"created": 2}
+        body = _WClient.last["json"]
+        assert body["default_tags"] == ["ai-suggested"]
+        assert body["park_unknown_kinds"] is False
+        assert body["source_language"] == "zh"
+        assert len(body["entities"]) == 2  # blank-source pair skipped
+        assert body["entities"][0] == {
+            "kind_code": "character", "name": "提拉米", "attributes": {},
+            "translation": {"language_code": "vi", "value": "Tirami"},
+        }
+        assert body["entities"][1]["kind_code"] == "location"
+        assert _WClient.last["headers"]["X-Internal-Token"] == "tok"
+        assert _WClient.last["url"].endswith("/internal/books/b1/extract-entities")
+
+    async def test_null_gate_when_unconfigured(self, monkeypatch):
+        from app.workers.glossary_client import writeback_name_pairs
+        _patch_w(monkeypatch, url="", resp=_WResp(200, {}))
+        assert await writeback_name_pairs("b1", "zh", "vi", [_Pair("a", "b")]) is None
+        assert _WClient.last == {}  # no HTTP
+
+    async def test_no_pairs_returns_none(self, monkeypatch):
+        from app.workers.glossary_client import writeback_name_pairs
+        _patch_w(monkeypatch, resp=_WResp(200, {}))
+        assert await writeback_name_pairs("b1", "zh", "vi", []) is None
+
+    async def test_non_200_degrades(self, monkeypatch):
+        from app.workers.glossary_client import writeback_name_pairs
+        _patch_w(monkeypatch, resp=_WResp(503, {}))
+        assert await writeback_name_pairs("b1", "zh", "vi", [_Pair("a", "b")]) is None
+
+    async def test_transport_error_degrades(self, monkeypatch):
+        from app.workers.glossary_client import writeback_name_pairs
+        _patch_w(monkeypatch, exc=RuntimeError("boom"))
+        assert await writeback_name_pairs("b1", "zh", "vi", [_Pair("a", "b")]) is None

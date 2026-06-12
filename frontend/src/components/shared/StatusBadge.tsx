@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { Lock, Link2, Globe, Loader2, Check, X } from 'lucide-react';
 
@@ -7,6 +8,8 @@ type Variant =
   | 'running' | 'pending' | 'completed' | 'failed'
   | 'translated' | 'not_started' | 'partial';
 
+// English fallbacks (used when no i18n instance / key missing). Display labels
+// are resolved from the `common.badge.*` namespace at render time.
 const config: Record<Variant, { label: string; className: string; icon?: React.ElementType }> = {
   // Visibility
   private:       { label: 'Private',       className: 'bg-secondary text-muted-foreground',              icon: Lock },
@@ -33,6 +36,7 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge({ variant, label, className }: StatusBadgeProps) {
+  const { t } = useTranslation('common');
   const c = config[variant];
   const Icon = c.icon;
 
@@ -48,7 +52,7 @@ export function StatusBadge({ variant, label, className }: StatusBadgeProps) {
       {!Icon && (variant === 'active' || variant === 'trashed' || variant === 'purge_pending' || variant === 'pending' || variant === 'not_started') && (
         <span className="h-1.5 w-1.5 rounded-full bg-current" />
       )}
-      {label ?? c.label}
+      {label ?? t(`badge.${variant}`, { defaultValue: c.label })}
     </span>
   );
 }

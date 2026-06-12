@@ -1,0 +1,161 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Glossary Service — Seed Export API (L5.F.2)
+  version: 1.0.0
+  description: |
+    L5.F.2 RPC for reality seeding (L5.G, cycle 26+). Bulk export of all
+    canon entries for a book — used by world-service's reality_seeder to
+    populate the per-reality canon_projection on `status=seeding` →
+    `status=active` transition.
+
+    Per Q-L5-4 LOCKED: HTTP/JSON V1.
+
+    ## Scope (cycle 25)
+      * GET /v1/canon/{book_id}/seed_export
+          → streaming/paginated bulk export of all canon entries for a
+            book at a consistent snapshot. Returns NDJSON for streaming.
+
+    ## Semantics
+      * Read-after-write consistent at snapshot time (server sets
+        `snapshot_at` in the response envelope).
+      * Pagination is cursor-based (NDJSON streaming + final cursor row).
+      * Includes ALL canon entries regardless of `canon_layer` so the
+        per-reality projection has the full authored canon at seed time.
+
+    ## ACL
+    Only `world-service` (cycle-7 SVID) is permitted to call this RPC
+    per the L5.F.3 service_acl entry. Other callers receive 403.
+
+servers:
+  - url: https://glossary-service.loreweave.dev
+  - url: http://glossary-service:8080
+
+tags:
+  - name: canon-seed-export
+
+paths:
+  /v1/canon/{book_id}/seed_export:
+    get:
+      tags: [canon-seed-export]
+      summary: Bulk export canon entries for reality seeding (L5.G)
+      description: |
+        Streams all canon entries for a book in NDJSON. Each line is a
+        CanonEntry; the final line is a SeedExportEnvelope with the
+        snapshot timestamp + entry count.
+
+        For large books, supports cursor-based pagination via the
+        `cursor` query parameter — but the recommended pattern is single
+        streaming response (server holds a SELECT cursor and streams
+        without batching).
+      operationId: exportCanonForSeed
+      security:
+        - svidBearer: []
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: NDJSON stream of CanonEntry + final SeedExportEnvelope
+          content:
+            application/x-ndjson:
+              schema:
+                # NDJSON: each line is either a CanonEntry (matching
+                # canon_read.yaml CanonEntry shape) OR a SeedExportEnvelope
+                # (must be the final line).
+                oneOf:
+                  - $ref: '#/components/schemas/CanonEntry'
+                  - $ref: '#/components/schemas/SeedExportEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    svidBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: SVID
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid SVID
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Caller SVID not in service_acl (only world-service allowed)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    CanonEntry:
+      type: object
+      required:
+        - canon_entry_id
+        - book_id
+        - attribute_path
+        - value
+        - canon_layer
+        - lock_level
+        - last_synced_at
+      properties:
+        canon_entry_id:
+          type: string
+          format: uuid
+        book_id:
+          type: string
+          format: uuid
+        attribute_path:
+          type: string
+        value: {}
+        canon_layer:
+          type: string
+          enum: [L1_axiom, L2_seeded]
+        lock_level:
+          type: string
+          enum: [hard, soft, archived, experimental]
+        last_synced_at:
+          type: string
+          format: date-time
+
+    SeedExportEnvelope:
+      type: object
+      required: [_envelope, snapshot_at, entry_count]
+      properties:
+        _envelope:
+          type: string
+          enum: [seed_export_complete]
+          description: Sentinel — final NDJSON line.
+        snapshot_at:
+          type: string
+          format: date-time
+          description: Server snapshot timestamp at start of export.
+        entry_count:
+          type: integer
+          description: Total CanonEntry lines streamed before this envelope.
+        next_cursor:
+          type: string
+          description: If present, more pages remain. Pass back as ?cursor=.
+          nullable: true
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string

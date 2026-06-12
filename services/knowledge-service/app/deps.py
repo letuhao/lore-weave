@@ -18,7 +18,11 @@ from app.clients.book_client import get_book_client as _get_book_client_singleto
 from app.clients.embedding_client import EmbeddingClient
 from app.clients.embedding_client import get_embedding_client as _get_embedding_client_singleton
 from app.clients.glossary_client import GlossaryClient
+from app.clients.reranker_client import RerankerClient
+from app.clients.reranker_client import get_reranker_client as _get_reranker_client_singleton
 from app.clients.glossary_client import get_glossary_client as _get_glossary_client_singleton
+from app.clients.grant_client import GrantClient
+from app.clients.grant_client import get_grant_client as _get_grant_client_singleton
 from app.clients.llm_client import LLMClient
 from app.clients.llm_client import get_llm_client as _get_llm_client_singleton
 from app.db.pool import get_knowledge_pool
@@ -33,6 +37,34 @@ from app.db.repositories.entity_alias_map import EntityAliasMapRepo
 from app.db.repositories.summary_spending import SummarySpendingRepo
 from app.db.repositories.user_budgets import UserBudgetsRepo
 from app.db.repositories.user_data import UserDataRepo
+from app.jobs.extraction_wake import (
+    ExtractionWakeFn,
+    make_redis_extraction_wake,
+    noop_extraction_wake,
+)
+
+# FD-22 — singleton wake emitter (one redis client per process, mirrors the
+# client singletons above). Disabled flag or no redis_url → the no-op fn.
+_extraction_wake_fn: ExtractionWakeFn | None = None
+
+
+async def get_extraction_wake() -> ExtractionWakeFn:
+    """FD-22 — extraction-start wake emitter. Best-effort Redis XADD that lets
+    worker-ai pick a job up immediately instead of waiting for its next poll.
+    No-op when disabled or redis_url is unset (poll still covers it).
+
+    The fn is a process-lifetime singleton (one redis client, mirrors the client
+    singletons above). Tests MUST override this dep via dependency_overrides
+    (the route tests do) so the cached global never binds a real redis client
+    into the suite (review-impl LOW #3)."""
+    global _extraction_wake_fn
+    if _extraction_wake_fn is None:
+        from app.config import settings
+        if settings.extraction_wake_enabled and settings.redis_url:
+            _extraction_wake_fn = make_redis_extraction_wake(settings.redis_url)
+        else:
+            _extraction_wake_fn = noop_extraction_wake
+    return _extraction_wake_fn
 
 
 async def get_summaries_repo() -> SummariesRepo:
@@ -94,8 +126,17 @@ async def get_book_client() -> BookClient:
     return _get_book_client_singleton()
 
 
+async def get_grant_client() -> GrantClient:
+    """E0 collaboration grant client (book-service /access). Singleton per worker."""
+    return _get_grant_client_singleton()
+
+
 async def get_embedding_client() -> EmbeddingClient:
     return _get_embedding_client_singleton()
+
+
+async def get_reranker_client() -> RerankerClient:
+    return _get_reranker_client_singleton()
 
 
 async def get_llm_client() -> LLMClient:

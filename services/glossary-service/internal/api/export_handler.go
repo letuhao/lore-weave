@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/loreweave/grantclient"
 )
 
 // ── RAG export types ──────────────────────────────────────────────────────────
@@ -67,8 +68,8 @@ type snapEntity struct {
 	Kind     struct {
 		Code string `json:"code"`
 	} `json:"kind"`
-	Status string   `json:"status"`
-	Tags   []string `json:"tags"`
+	Status     string   `json:"status"`
+	Tags       []string `json:"tags"`
 	Attributes []struct {
 		Code             string `json:"code"`
 		Name             string `json:"name"`
@@ -187,7 +188,7 @@ func (s *Server) exportGlossary(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if !s.verifyBookOwner(w, r.Context(), bookID, userID) {
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 

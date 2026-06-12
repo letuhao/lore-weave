@@ -1,0 +1,98 @@
+# meta-sensitive-read-paths.yml — Q-L1B-2 resolution
+#
+# This file enumerates the READ paths that trigger a meta_read_audit row
+# (S04 §12T.6).  Reads NOT in this file are NOT audited (performance choice).
+#
+# Q-L1B-2 resolution: "Platform owns initial set; security team CODEOWNERS
+# approval on changes."  Initial set seeded by cycle 2 (L1.B).
+#
+# Each entry MUST specify:
+#   - id            : stable kebab-case identifier (used in meta_read_audit.query_type)
+#   - description   : human-readable purpose
+#   - tables        : meta tables the path reads
+#   - rationale     : why this is sensitive (PII, cross-user, bulk, audit, etc.)
+#   - reviewers     : CODEOWNERS for changes (security team alias)
+#
+# Library callers tag their reads with the `id` (e.g., ReadSensitive(ctx, "audit_query", params)).
+# Bypass detection: L1.K lint greps for direct SELECT on these tables outside the library.
+
+version: 1
+paths:
+  - id: player_index_cross_user
+    description: "SELECT * FROM player_character_index WHERE user_ref_id != $caller_user"
+    tables:
+      - player_character_index  # ships in cycle 8 (L1.A-2); listed early so the path id is stable
+    rationale: "Cross-user PC visibility — identity-manipulation surface (L1.A §2.4 risk)"
+    reviewers:
+      - security-team
+
+  - id: audit_query
+    description: "Any SELECT FROM *_audit or *_log"
+    tables:
+      - meta_write_audit
+      - meta_read_audit
+      - lifecycle_transition_audit
+      - reality_close_audit
+      - archive_verification_log
+      - reality_migration_audit
+    rationale: "Audit-tampering / forensic-leak vector — must be observed"
+    reviewers:
+      - security-team
+
+  - id: admin_bulk_export
+    description: "Explicit admin-cli bulk export commands"
+    tables:
+      - reality_registry
+      - publisher_heartbeats
+      - session_cost_summary
+    rationale: "Admin Tier-1 ops require audit trail (S04 §12T.6 admin actor)"
+    reviewers:
+      - security-team
+      - sre-team
+
+  - id: bulk_meta_query
+    description: "Any query with LIMIT > 1000 or missing WHERE on a meta table"
+    tables:
+      - "*"  # catch-all — library helper flags any read matching the bulk pattern
+    rationale: "Bulk scans can exfiltrate; library injects LIMIT cap or audits"
+    reviewers:
+      - security-team
+
+  - id: bulk_pii_read
+    description: "Bulk / multi-user PII fetch via the contracts/pii SDK (TagBulkPIIRead)"
+    tables:
+      - pii_registry
+      - pii_kek
+    # The contracts/pii SDK (Go contracts/pii/sdk.go TagBulkPIIRead + Rust
+    # dp-kernel SensitiveReadTag::BulkPiiRead) tags bulk PII reads with this id;
+    # the row lands in meta_read_audit. Listed here so the YAML SSOT matches the
+    # actually-written id-set + the migration CHECK (D-READAUDIT-ENUM-DRIFT).
+    rationale: "Multi-user PII read — highest exfiltration surface; every bulk PII read audited (GDPR Art. 15)"
+    reviewers:
+      - security-team
+
+  # ── Cycle 22 (L4.Q PII SDK) — single-user GetPII / ErasePII tags. ───
+  # The cycle-22 contracts/pii SDK tags every GetPII + ErasePII call with
+  # one of these ids; the row lands in meta_read_audit (migration 014).
+  # The migration 014 CHECK enum is relaxed in a V1+30d migration to
+  # include these ids; the SDK already tags reads with them so the
+  # migration is data-compatible from day 1.
+  #
+  # Q-L1B-2: platform owns initial set; security team CODEOWNERS on
+  # changes — this entry is the platform-owned cycle-22 addition.
+  - id: pii_user_get
+    description: "Single-user PII fetch via contracts/pii SDK GetPII()"
+    tables:
+      - pii_registry
+      - pii_kek
+    rationale: "Per-user PII read goes through KMS decrypt; must be audited individually (GDPR Art. 15 right of access)"
+    reviewers:
+      - security-team
+
+  - id: pii_user_erase
+    description: "Single-user PII erasure via contracts/pii SDK ErasePII()"
+    tables:
+      - pii_kek
+    rationale: "KEK destroy is the crypto-shred operation that satisfies GDPR Art. 17; auditable in perpetuity"
+    reviewers:
+      - security-team

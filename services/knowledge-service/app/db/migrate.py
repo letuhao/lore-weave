@@ -234,6 +234,13 @@ ALTER TABLE knowledge_projects
 ALTER TABLE knowledge_projects
   DROP COLUMN IF EXISTS embedding_provider_id;
 
+-- D-RERANK-NOT-BYOK — per-project BYOK rerank model (mirrors embedding_model):
+-- the user's provider-registry user_model UUID + source. NULL rerank_model ⇒
+-- raw-search SKIPS the rerank step (rerank is optional, never platform-fixed).
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS rerank_model        TEXT,
+  ADD COLUMN IF NOT EXISTS rerank_model_source TEXT NOT NULL DEFAULT 'user_model';
+
 -- ═══════════════════════════════════════════════════════════════
 -- K10.1 — extraction_pending
 -- Events that arrived while extraction was disabled for their project.
@@ -262,6 +269,12 @@ CREATE INDEX IF NOT EXISTS idx_extraction_pending_unprocessed
   ON extraction_pending (project_id, created_at)
   WHERE processed_at IS NULL;
 
+-- Canon Model CM3b: pin the PUBLISHED revision the worker must extract (vs the
+-- live draft). Set when a chapter.published row is queued; the worker-ai
+-- coalescing drainer fetches that revision's text via book-service (CM3a).
+-- NULL for legacy/chat rows. Additive + idempotent.
+ALTER TABLE extraction_pending ADD COLUMN IF NOT EXISTS revision_id UUID;
+
 -- ═══════════════════════════════════════════════════════════════
 -- K10.2 — extraction_jobs
 -- User-triggered extraction runs with atomic cost tracking. K10.4's
@@ -275,10 +288,10 @@ CREATE TABLE IF NOT EXISTS extraction_jobs (
   project_id        UUID NOT NULL
     REFERENCES knowledge_projects(project_id) ON DELETE CASCADE,
   scope             TEXT NOT NULL
-    CHECK (scope IN ('chapters','chat','glossary_sync','all')),
+    CHECK (scope IN ('chapters','chat','glossary_sync','all','chapters_pending')),
   scope_range       JSONB,
   status            TEXT NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending','running','paused','complete','failed','cancelled')),
+    CHECK (status IN ('pending','running','paused','summarizing','complete','failed','cancelled')),
 
   llm_model         TEXT NOT NULL,
   embedding_model   TEXT NOT NULL,
@@ -298,6 +311,26 @@ CREATE TABLE IF NOT EXISTS extraction_jobs (
   error_message     TEXT
 );
 
+-- S4a (Auto-Draft Factory cost attribution): the owning campaign for a
+-- campaign-dispatched extraction job. NULL for ordinary user-initiated jobs.
+-- worker-ai reads this from the job row and stamps it onto every provider
+-- job_meta so the campaign's extraction spend is summable (decision C).
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS campaign_id UUID;
+
+-- E0-3 Phase 2a (D-E0-3-CALLER-PAYS-EXTRACTION): BYOK dual-identity billing.
+-- A collaborator's extraction must charge the COLLABORATOR's key, never the
+-- owner's (only a key's owner may cause it to be charged). These three columns
+-- carry the CALLER's billing identity; everything else on the row (graph
+-- partition user_id, the canonical embedding_model search tag) stays the
+-- project owner's. NULL ⇒ owner-triggered (or legacy) ⇒ single-identity path,
+-- resolves exactly as before. Fail-safe: worker DENIES if billing_user_id is
+-- set but a billing ref is NULL (never falls back to the owner's key).
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS billing_user_id         UUID,
+  ADD COLUMN IF NOT EXISTS billing_embedding_model TEXT,
+  ADD COLUMN IF NOT EXISTS billing_llm_model       TEXT;
+
 CREATE INDEX IF NOT EXISTS idx_extraction_jobs_project
   ON extraction_jobs (project_id, created_at DESC);
 
@@ -313,6 +346,16 @@ CREATE INDEX IF NOT EXISTS idx_extraction_jobs_active
 CREATE UNIQUE INDEX IF NOT EXISTS idx_extraction_jobs_one_active_per_project
   ON extraction_jobs (project_id)
   WHERE status IN ('pending','running','paused');
+
+-- Canon Model CM3b: add 'chapters_pending' (the worker-ai coalescing drainer
+-- scope) to the scope CHECK for ALREADY-DEPLOYED tables — the inline CHECK in
+-- the table definition only applies to a fresh table. Idempotent: drop-if-exists
+-- then re-add (Postgres names the inline column CHECK 'extraction_jobs_scope_check').
+DO $cm3b_scope$ BEGIN
+  ALTER TABLE extraction_jobs DROP CONSTRAINT IF EXISTS extraction_jobs_scope_check;
+  ALTER TABLE extraction_jobs ADD CONSTRAINT extraction_jobs_scope_check
+    CHECK (scope IN ('chapters','chat','glossary_sync','all','chapters_pending'));
+END $cm3b_scope$;
 
 -- ═══════════════════════════════════════════════════════════════
 -- K10.2b — extraction_errors
@@ -715,16 +758,152 @@ CREATE TABLE IF NOT EXISTS summary_books (
   UNIQUE (book_id, embedding_model_uuid)
 );
 
--- M1: extend extraction_jobs.status CHECK to include 'summarizing'.
--- Idempotent via DROP IF EXISTS + re-add. Wrap in DO block so a missing
--- constraint doesn't abort the migration.
+-- M1 (Cycle 10 reconcile): the AUTHORITATIVE extraction_jobs.status vocabulary.
+-- The status values the code EMITS must stay in sync with
+-- `app.jobs.state_machine.JobStatus` + the repo guards
+-- (`app.db.repositories.extraction_jobs`) + worker-ai's `_complete_job`/`_fail_job`
+-- + the FE (`ExtractionJobsTab`): pending/running/paused/complete/failed/cancelled.
+-- 'summarizing' is a RESERVED transitional state introduced by the original M1 —
+-- it has no writer yet and is intentionally NOT in JobStatus; kept here so a future
+-- summary phase can use it without a constraint migration. The original M1 added
+-- 'summarizing' but silently renamed 'complete'->'completed' and DROPPED
+-- 'paused'/'cancelled' — which the whole codebase still emits, so every
+-- finished/paused/cancelled extraction CheckViolated and was misreported
+-- (DEFERRED 065). Reconciled to the full set the code uses (a widening — never
+-- rejects an existing valid row). Idempotent via DROP IF EXISTS + re-add.
+-- CAVEAT: the EXCEPTION-swallow below means a failed ADD (existing-row violation /
+-- lock) leaves the OLD constraint in place SILENTLY — confirm the live swap took
+-- via the cycle-11 extraction smoke (a real job reaching 'complete') or
+-- pg_get_constraintdef, not by migrate exit code alone.
 DO $$ BEGIN
   ALTER TABLE extraction_jobs
     DROP CONSTRAINT IF EXISTS extraction_jobs_status_check;
   ALTER TABLE extraction_jobs ADD CONSTRAINT extraction_jobs_status_check
-    CHECK (status IN ('pending','running','summarizing','completed','failed'));
+    CHECK (status IN ('pending','running','paused','summarizing','complete','failed','cancelled'));
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
+
+-- Phase B (correction capture) — knowledge-service's FIRST transactional
+-- outbox. User edits to the graph (entity PATCH / archive; relations + events
+-- in sub-session C) emit knowledge.*_corrected events here; worker-infra's
+-- relay ships them to loreweave:events:knowledge (aggregate_type='knowledge')
+-- for learning-service to persist as corrections. NOTE the cross-store caveat
+-- (design §6.6): the graph write is in Neo4j, this outbox is in Postgres, so
+-- emission is BEST-EFFORT post-Neo4j-success — never atomic. A dropped row
+-- under-counts the correction log; the §10.1 replay tool is the backstop.
+CREATE TABLE IF NOT EXISTS outbox_events (
+  id             UUID PRIMARY KEY DEFAULT uuidv7(),
+  aggregate_type TEXT NOT NULL DEFAULT 'knowledge',
+  aggregate_id   UUID NOT NULL,
+  event_type     TEXT NOT NULL,
+  payload        JSONB NOT NULL DEFAULT '{}',
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  published_at   TIMESTAMPTZ,
+  retry_count    INT NOT NULL DEFAULT 0,
+  last_error     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_outbox_pending
+  ON outbox_events(created_at) WHERE published_at IS NULL;
+
+-- ═══════════════════════════════════════════════════════════════
+-- Phase E2 — genre tag on knowledge_projects (2026-06-01)
+-- Free-text, user-settable (e.g. "Tiên hiệp", "trinh thám").
+-- Copied to extraction_runs at run-emit time for genre-segment
+-- mining queries without a cross-DB join at query time.
+-- ═══════════════════════════════════════════════════════════════
+ALTER TABLE knowledge_projects
+  ADD COLUMN IF NOT EXISTS genre TEXT;
+
+-- ═══════════════════════════════════════════════════════════════
+-- Q4b-feed — per-run items+source sample for the online LLM judge
+-- (2026-06-01). docs/plans/2026-06-01-q4b-feed-extraction-run-samples.md
+--
+-- The ONLY run-attributable store of the extracted items + chapter
+-- source: the live persist-pass2 path writes only post-merge Neo4j
+-- (no run_id), and never extraction_leaves. worker-ai writes one row
+-- here per SUCCEEDED chapter run, but ONLY for projects opted into
+-- save_raw_extraction (the existing raw-retention consent — same gate
+-- as extraction_leaves_raw). Non-opted runs write nothing
+-- (redact-by-default). learning-service's eval-runner fetches by
+-- run_id to feed run_online_judge.
+--
+-- TRANSIENT judging buffer, not history: pruned after 7 days on
+-- knowledge-service startup. items_jsonb holds the minimal judge-shape
+-- projection only ({entity:[{name,kind}], relation:[{subject,predicate,
+-- object,polarity}], event:[{summary,participants}]}) — confidence,
+-- canonical_ids, offsets dropped.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS extraction_run_samples (
+  run_id       UUID PRIMARY KEY,
+  user_id      UUID NOT NULL,
+  project_id   UUID,
+  book_id      UUID,
+  config_hash  TEXT,
+  items_jsonb  JSONB NOT NULL,
+  source_text  TEXT NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_extraction_run_samples_created
+  ON extraction_run_samples(created_at);
+
+-- ═══════════════════════════════════════════════════════════════
+-- wiki-llm M6 — wiki_gen_jobs: a batch LLM wiki-generation run over a
+-- book's entities. Mirrors extraction_jobs (state machine + cost-cap)
+-- with wiki specifics: book_id, the entity_ids to generate (empty = all
+-- AI-eligible), items_done for skip-on-resume, and the model the user
+-- picked. The state CHECK matches state_machine.py exactly.
+-- ═══════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS wiki_gen_jobs (
+  job_id          UUID PRIMARY KEY DEFAULT uuidv7(),
+  user_id         UUID NOT NULL,                    -- no FK (cross-DB)
+  project_id      UUID NOT NULL
+    REFERENCES knowledge_projects(project_id) ON DELETE CASCADE,
+  book_id         UUID NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending','running','paused','complete','failed','cancelled')),
+  model_source    TEXT NOT NULL,
+  model_ref       TEXT NOT NULL,
+  entity_ids      JSONB NOT NULL DEFAULT '[]',       -- [] = all AI-eligible entities
+  items_done      JSONB NOT NULL DEFAULT '[]',       -- entity_ids already generated (skip-on-resume)
+  max_spend_usd   NUMERIC(10,4),
+  items_total     INT,
+  items_processed INT NOT NULL DEFAULT 0,
+  cost_spent_usd  NUMERIC(10,4) NOT NULL DEFAULT 0,
+  started_at      TIMESTAMPTZ,
+  paused_at       TIMESTAMPTZ,
+  completed_at    TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  error_message   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_wiki_gen_jobs_project
+  ON wiki_gen_jobs (project_id, created_at DESC);
+-- Per-book lock (risk #13): only ONE active job per book. A 2nd request
+-- conflicts on this partial unique index → the trigger returns 409 + the
+-- existing job_id. Durable (survives restart), unlike a pg advisory lock.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_wiki_gen_jobs_one_active_per_book
+  ON wiki_gen_jobs (book_id)
+  WHERE status IN ('pending','running','paused');
+
+-- wiki-llm W4a — per-entity result detail + live sub-step progress (the FE
+-- screen-③ results table). `results` is an OBJECT keyed by entity_id →
+-- {outcome, citations, flags, name}; it carries both the in-flight ('processing')
+-- and finished rows (cheap idempotent upsert via `|| jsonb_build_object`, so a
+-- resume/retry overwrites). `current_entity_id`/`current_pass` point at the one
+-- in-flight entity + its pipeline pass (context|generate|verify|revise|writeback);
+-- both are NULL when no entity is processing (cleared at complete/pause/fail).
+ALTER TABLE wiki_gen_jobs
+  ADD COLUMN IF NOT EXISTS results            JSONB NOT NULL DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS current_entity_id  TEXT,
+  ADD COLUMN IF NOT EXISTS current_pass       TEXT;
+
+-- wiki-llm W5 (D-WIKI-PER-STEP-MODEL) — an OPTIONAL second model for the
+-- corrective revise re-gen ("write with A, fix canon-flagged articles with B").
+-- NULL ⇒ the revise reuses the prose model_ref/model_source (unchanged behavior).
+-- verify_article is rule-based (no LLM), so this only affects revise_article.
+ALTER TABLE wiki_gen_jobs
+  ADD COLUMN IF NOT EXISTS revise_model_ref    TEXT,
+  ADD COLUMN IF NOT EXISTS revise_model_source TEXT;
 """
 
 

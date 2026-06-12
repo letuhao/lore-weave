@@ -1,0 +1,69 @@
+# infra/prometheus/recording-rules.yaml — L1.I.2 (RAID cycle 6)
+#
+# Aggregation rules. Per-shard + per-status rollups so dashboards +
+# alerts don't have to materialize 100K-series queries.
+#
+# Naming convention (Prometheus best practice):
+#   lw:<thing>:<aggregation>[:<dimension>]
+#
+# All rules MUST preserve the cardinality controls of the underlying
+# metrics: only `reality_id` + `shard_host` may carry per-reality
+# dimensionality. Aggregations to (shard_host, status) drop reality_id.
+
+groups:
+  - name: lw_per_reality_rollups
+    interval: 30s
+    rules:
+      # ────────────────────────────────────────────────────────────────
+      # Storage size per shard (sum across all realities on that shard)
+      # ────────────────────────────────────────────────────────────────
+      - record: lw:reality_db_size_bytes:sum_by_shard
+        expr: sum by (shard_host) (pg_database_size_bytes{db_class!="meta-postgres"})
+
+      # Connection count per shard
+      - record: lw:reality_db_connections:sum_by_shard
+        expr: sum by (shard_host) (pg_stat_database_numbackends{db_class!="meta-postgres"})
+
+      # Per-reality transaction commit rate (5m)
+      - record: lw:reality_db_xact_commit:rate5m
+        expr: rate(pg_stat_database_xact_commit{db_class!="meta-postgres"}[5m])
+
+      # Per-reality transaction rollback rate
+      - record: lw:reality_db_xact_rollback:rate5m
+        expr: rate(pg_stat_database_xact_rollback{db_class!="meta-postgres"}[5m])
+
+      # Tuples-returned rate (read throughput proxy)
+      - record: lw:reality_db_tup_returned:rate5m
+        expr: rate(pg_stat_database_tup_returned{db_class!="meta-postgres"}[5m])
+
+      # Tuples-inserted rate (write throughput proxy)
+      - record: lw:reality_db_tup_inserted:rate5m
+        expr: rate(pg_stat_database_tup_inserted{db_class!="meta-postgres"}[5m])
+
+  - name: lw_meta_rollups
+    interval: 30s
+    rules:
+      # ────────────────────────────────────────────────────────────────
+      # Meta-postgres replication lag (max across replicas)
+      # ────────────────────────────────────────────────────────────────
+      - record: lw:meta_replication_lag_bytes:max
+        expr: max(pg_stat_replication_lag_bytes{db_class="meta-postgres"})
+
+      # Meta-write audit insert rate (proxy for MetaWrite() throughput)
+      - record: lw:meta_write_audit_inserts:rate5m
+        expr: rate(pg_stat_user_tables_n_tup_ins{db_class="meta-postgres",relname="meta_write_audit"}[5m])
+
+      # Lifecycle transition audit rate
+      - record: lw:lifecycle_transition_audit_inserts:rate5m
+        expr: rate(pg_stat_user_tables_n_tup_ins{db_class="meta-postgres",relname="lifecycle_transition_audit"}[5m])
+
+  - name: lw_migration_rollups
+    interval: 30s
+    rules:
+      # Migration runs in flight (cycle 6 — L1.D)
+      - record: lw:migration_in_flight:count
+        expr: sum(lw_migration_orchestrator_active_runs)
+
+      # Migration failure rate (rate of migration_failed events)
+      - record: lw:migration_failed:rate5m
+        expr: rate(pg_stat_user_tables_n_tup_ins{relname="reality_migration_audit"}[5m])

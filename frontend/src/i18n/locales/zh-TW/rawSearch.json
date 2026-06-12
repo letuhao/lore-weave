@@ -1,0 +1,22 @@
+{
+  "title": "原文搜尋",
+  "subtitle": "搜尋本書各章的原文（草稿）。",
+  "placeholder": "搜尋章節內文…",
+  "hint": "輸入以搜尋章節原文。",
+  "loading": "搜尋中…",
+  "no_results": "找不到符合的結果。",
+  "error": "搜尋失敗，請再試一次。",
+  "mode_label": "搜尋模式",
+  "mode_hybrid": "混合",
+  "mode_lexical": "字面",
+  "granularity_label": "結果模式",
+  "granularity_chapter": "導覽",
+  "granularity_block": "挖掘",
+  "granularity_chapter_hint": "每章一個最佳符合",
+  "granularity_block_hint": "所有符合的段落",
+  "limit_label": "結果數",
+  "relevance_label": "相關度",
+  "copy": "複製",
+  "copied": "已複製",
+  "degraded": "部分結果可能受限（某個搜尋後端無法使用）。"
+}

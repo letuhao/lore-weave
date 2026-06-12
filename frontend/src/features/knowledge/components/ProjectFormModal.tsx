@@ -10,6 +10,7 @@ import type {
   ProjectUpdatePayload,
 } from '../types';
 import { EmbeddingModelPicker } from './EmbeddingModelPicker';
+import { RerankModelPicker } from './RerankModelPicker';
 
 // Caps mirror the backend Pydantic StringConstraints in
 // services/knowledge-service/app/db/models.py. Keeping them in sync
@@ -17,6 +18,7 @@ import { EmbeddingModelPicker } from './EmbeddingModelPicker';
 const NAME_MAX = 200;
 const DESCRIPTION_MAX = 2000;
 const INSTRUCTIONS_MAX = 20000;
+const GENRE_MAX = 100;
 
 const PROJECT_TYPE_VALUES: ProjectType[] = ['book', 'translation', 'code', 'general'];
 
@@ -50,11 +52,16 @@ export function ProjectFormModal({
   const [projectType, setProjectType] = useState<ProjectType>('general');
   const [instructions, setInstructions] = useState('');
   const [bookId, setBookId] = useState('');
+  const [genre, setGenre] = useState('');
   // K12.4: embedding_model is edit-only — switching it mid-extraction
   // is a rebuild-worthy change, so we expose it on the edit form but
   // not on create (new projects have no extracted data yet).
   const [embeddingModel, setEmbeddingModel] = useState<string | null>(null);
   const [initialEmbeddingModel, setInitialEmbeddingModel] = useState<string | null>(null);
+  // D-RERANK-NOT-BYOK (S0b): per-project BYOK rerank model — edit-only, like
+  // embedding_model. null ⇒ raw-search skips rerank.
+  const [rerankModel, setRerankModel] = useState<string | null>(null);
+  const [initialRerankModel, setInitialRerankModel] = useState<string | null>(null);
   // K21-C (D3/D4): per-project memory-tool toggles. Edit-only (like
   // embedding_model) — they govern the chat tool loop, which is
   // meaningless on a project with no chat history yet. Both mirror
@@ -88,8 +95,11 @@ export function ProjectFormModal({
       setProjectType(project.project_type);
       setInstructions(project.instructions);
       setBookId(project.book_id ?? '');
+      setGenre(project.genre ?? '');
       setEmbeddingModel(project.embedding_model);
       setInitialEmbeddingModel(project.embedding_model);
+      setRerankModel(project.rerank_model);
+      setInitialRerankModel(project.rerank_model);
       setToolCallingEnabled(project.tool_calling_enabled);
       setMemoryRememberConfirm(project.memory_remember_confirm);
       setBaselineVersion(project.version);
@@ -99,8 +109,11 @@ export function ProjectFormModal({
       setProjectType('general');
       setInstructions('');
       setBookId('');
+      setGenre('');
       setEmbeddingModel(null);
       setInitialEmbeddingModel(null);
+      setRerankModel(null);
+      setInitialRerankModel(null);
       setToolCallingEnabled(true);
       setMemoryRememberConfirm(false);
       setBaselineVersion(null);
@@ -110,11 +123,13 @@ export function ProjectFormModal({
   const trimmedName = name.trim();
   const trimmedDescription = description.trim();
   const trimmedInstructions = instructions.trim();
+  const trimmedGenre = genre.trim();
   const nameValid = trimmedName.length >= 1 && trimmedName.length <= NAME_MAX;
   const descriptionValid = description.length <= DESCRIPTION_MAX;
   const instructionsValid = instructions.length <= INSTRUCTIONS_MAX;
+  const genreValid = trimmedGenre.length <= GENRE_MAX;
   const bookIdValid = bookId === '' || /^[0-9a-f-]{36}$/i.test(bookId);
-  const canSave = nameValid && descriptionValid && instructionsValid && bookIdValid && !saving;
+  const canSave = nameValid && descriptionValid && instructionsValid && genreValid && bookIdValid && !saving;
 
   const handleSubmit = async () => {
     if (!canSave) return;
@@ -130,6 +145,7 @@ export function ProjectFormModal({
           project_type: projectType,
           instructions: trimmedInstructions,
           book_id: bookIdPayload,
+          genre: trimmedGenre || null,
         });
       } else if (project && baselineVersion != null) {
         const patch: ProjectUpdatePayload = {
@@ -137,6 +153,7 @@ export function ProjectFormModal({
           description: trimmedDescription,
           instructions: trimmedInstructions,
           book_id: bookIdPayload,
+          genre: trimmedGenre || null,
           // K21-C (D3/D4): always send the memory-tool toggles on
           // edit — they're plain form fields like name/description.
           tool_calling_enabled: toolCallingEnabled,
@@ -147,6 +164,10 @@ export function ProjectFormModal({
         // (ProjectUpdate.model_dump(exclude_unset=True) pattern).
         if (embeddingModel !== initialEmbeddingModel) {
           patch.embedding_model = embeddingModel;
+        }
+        // D-RERANK-NOT-BYOK (S0b): include rerank_model only when changed.
+        if (rerankModel !== initialRerankModel) {
+          patch.rerank_model = rerankModel;
         }
         await onUpdate(project.project_id, patch, baselineVersion);
       }
@@ -252,6 +273,23 @@ export function ProjectFormModal({
         </label>
 
         <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-muted-foreground">{t('projects.form.genre', { defaultValue: 'Genre' })}</span>
+          <input
+            type="text"
+            value={genre}
+            onChange={(e) => setGenre(e.target.value)}
+            maxLength={GENRE_MAX}
+            className="rounded-md border bg-input px-3 py-2 text-sm outline-none focus:border-ring"
+            placeholder={t('projects.form.genrePlaceholder', { defaultValue: 'e.g. Tiên hiệp, Cultivation, Fantasy…' })}
+          />
+          {!genreValid && (
+            <span className="text-[11px] text-destructive">
+              {t('projects.form.genreError', { max: GENRE_MAX, defaultValue: `Genre must be at most ${GENRE_MAX} characters.` })}
+            </span>
+          )}
+        </label>
+
+        <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted-foreground">
             {t('projects.form.bookId')}
           </span>
@@ -312,6 +350,16 @@ export function ProjectFormModal({
             onChange={setEmbeddingModel}
             disabled={saving}
             projectId={project?.project_id}
+          />
+        )}
+
+        {/* D-RERANK-NOT-BYOK (S0b): per-project BYOK rerank model — edit-only,
+            mirroring the embedding picker. Optional: empty ⇒ raw-search skips rerank. */}
+        {mode === 'edit' && (
+          <RerankModelPicker
+            value={rerankModel}
+            onChange={setRerankModel}
+            disabled={saving}
           />
         )}
 

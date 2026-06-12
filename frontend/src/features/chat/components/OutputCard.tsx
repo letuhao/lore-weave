@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Check, ClipboardPaste, Code2, Copy, Download, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -16,6 +17,7 @@ interface OutputCardProps {
 }
 
 export function OutputCard({ output }: OutputCardProps) {
+  const { t } = useTranslation('chat');
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
@@ -30,7 +32,7 @@ export function OutputCard({ output }: OutputCardProps) {
       language: output.language,
       sourceOutputId: output.output_id,
     });
-    toast.success('Sent to editor');
+    toast.success(t('output.sent_to_editor'));
   }
 
   function handleDownload() {
@@ -42,7 +44,7 @@ export function OutputCard({ output }: OutputCardProps) {
   }
 
   const icon = TYPE_ICON[output.output_type] ?? <FileText className="h-3.5 w-3.5" />;
-  const label = output.title ?? (output.output_type === 'code' ? `Code (${output.language ?? '?'})` : 'Text');
+  const label = output.title ?? (output.output_type === 'code' ? t('output.code', { lang: output.language ?? '?' }) : t('output.text'));
 
   return (
     <div className="mt-2 rounded-md border border-border bg-card/50 text-xs">
@@ -61,7 +63,7 @@ export function OutputCard({ output }: OutputCardProps) {
             onClick={handleCopy}
           >
             {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
-            {copied ? 'Copied' : 'Copy'}
+            {copied ? t('output.copied') : t('output.copy')}
           </button>
           <button
             type="button"
@@ -69,7 +71,7 @@ export function OutputCard({ output }: OutputCardProps) {
             onClick={handlePasteToEditor}
           >
             <ClipboardPaste className="h-3 w-3" />
-            To Editor
+            {t('output.to_editor')}
           </button>
           <button
             type="button"
@@ -77,7 +79,7 @@ export function OutputCard({ output }: OutputCardProps) {
             onClick={handleDownload}
           >
             <Download className="h-3 w-3" />
-            Save
+            {t('output.save')}
           </button>
         </div>
       </div>

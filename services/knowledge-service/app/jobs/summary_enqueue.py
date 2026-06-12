@@ -47,6 +47,15 @@ class SummarizeMessage:
     embedding_dimension: int
     retry_at_epoch: float = 0.0   # M4 re-enqueue: skip until this time
     retried_n: int = 0            # M4 retry budget
+    # E0-3 Phase 2a-2 — BYOK caller-pays. When a book collaborator triggers the
+    # extraction that enqueued this summary, the LLM + embed provider calls in
+    # summary_processor must resolve under the CALLER's key + same-model refs;
+    # the stored embedding_model_uuid tag (search filter) stays the project's.
+    # Empty ⇒ owner-triggered ⇒ legacy single-identity path. Resolvers gate on
+    # billing_user_id (the identity), never a ref alone (review-impl MED-1).
+    billing_user_id: str = ""
+    billing_llm_model: str = ""
+    billing_embedding_model: str = ""
 
     def to_redis_fields(self) -> dict[str, str]:
         """Serialize for XADD (Redis Stream field values are strings)."""
@@ -63,6 +72,11 @@ class SummarizeMessage:
             "embedding_dimension": str(self.embedding_dimension),
             "retry_at_epoch": str(self.retry_at_epoch),
             "retried_n": str(self.retried_n),
+            # E0-3 2a-2 — empty string ⇒ owner-triggered (legacy). Old messages
+            # without these keys deserialize to "" via from_redis_fields.
+            "billing_user_id": self.billing_user_id,
+            "billing_llm_model": self.billing_llm_model,
+            "billing_embedding_model": self.billing_embedding_model,
         }
 
     @classmethod
@@ -88,6 +102,9 @@ class SummarizeMessage:
             embedding_dimension=int(_s("embedding_dimension") or "0"),
             retry_at_epoch=float(_s("retry_at_epoch") or "0"),
             retried_n=int(_s("retried_n") or "0"),
+            billing_user_id=_s("billing_user_id"),
+            billing_llm_model=_s("billing_llm_model"),
+            billing_embedding_model=_s("billing_embedding_model"),
         )
 
 

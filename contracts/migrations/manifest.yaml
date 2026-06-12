@@ -1,0 +1,101 @@
+# contracts/migrations/manifest.yaml — L1.D.5 (RAID cycle 6)
+#
+# Ordered declarative manifest of every per-reality schema migration the
+# orchestrator (services/migration-orchestrator) may apply. The first entry
+# is mandatory and MUST be "0001_initial" — it references the per-reality
+# skeleton shipped in cycle 5 (contracts/migrations/per_reality/0001_initial.up.sql).
+#
+# Schema (see internal/manifest/manifest.go):
+#   version: 1                         — manifest schema version
+#   migrations:                        — ordered, monotonically-increasing
+#     - id: "<filename-stem>"          — matches per_reality/<id>.up.sql
+#       version: <uint>                — strictly increasing
+#       breaking: <bool>               — true ⇒ route through canary module
+#       dependencies: [<id>, ...]      — must reference earlier ids
+#       description: "<one-line>"      — for runbook + dashboards
+#
+# Locked decisions:
+#   - Q-L1D-1 (OPEN_QUESTIONS_LOCKED.md line 38): V1 = doc-only manual rollback.
+#     `breaking: true` triggers canary (1 reality first); a canary failure
+#     halts the fan-out and surfaces the failure in reality_migration_audit
+#     for SRE follow-up. NO auto-rollback in V1.
+#   - Q-L2-2: events partition strategy = monthly. Lands in cycle 8 as
+#     0002_events_partitioning (NOT shipped here — only declared as the
+#     reserved next slot).
+
+version: 1
+
+migrations:
+  - id: "0001_initial"
+    version: 1
+    breaking: false
+    dependencies: []
+    description: "per-reality skeleton (events / outbox / snapshots / projection_meta) — shipped RAID cycle 5"
+
+  # ── L2 per-reality tables (RAID cycle 9 — L2.A + L2.B + L2.E)
+  #
+  # All three are `breaking: true` because they DROP the cycle-5 skeleton
+  # tables (events / snapshots / outbox) and re-create them in their
+  # production shape. The L1.D orchestrator routes breaking migrations
+  # through a 1-reality canary first (Q-L1D-1) and halts fan-out on canary
+  # failure — at V1 we are pre-launch so no rows exist; canary is a CI
+  # smoke not a live-data risk.
+
+  - id: "0002_events_table"
+    version: 2
+    breaking: true
+    dependencies: ["0001_initial"]
+    description: "L2 cycle 9 — events table production shape: monthly RANGE partition on recorded_at (Q-L2-2), lz4 on payload+metadata, audit_ref UUID pointer (Q-L2-3)"
+
+  - id: "0003_event_audit_table"
+    version: 3
+    breaking: true
+    dependencies: ["0002_events_table"]
+    description: "L2 cycle 9 — event_audit table: monthly RANGE partition, lz4 on text+jsonb, event_ref UUID pointer (NOT FK; Q-L2-3); 30d non-flagged / 90d flagged retention"
+
+  - id: "0004_aggregate_snapshots_table"
+    version: 4
+    breaking: true
+    dependencies: ["0002_events_table"]
+    description: "L2 cycle 9 — aggregate_snapshots table (replaces cycle-5 skeleton 'snapshots'): PK (reality_id, agg_type, agg_id, agg_version), OPT-IN per-aggregate policy via contracts/events/snapshot_policy.yaml"
+
+  # ── L2 per-reality outbox (RAID cycle 10 — L2.C)
+  #
+  # NOT breaking: cycle-5 placeholder `outbox` was dropped by cycle 9's 0002
+  # migration; this migration creates a NEW table `events_outbox` and never
+  # touches user data (table is empty by construction at first apply).
+  - id: "0005_events_outbox_table"
+    version: 5
+    breaking: false
+    dependencies: ["0002_events_table"]
+    description: "L2 cycle 10 — events_outbox table (L2.C): event_id UUID pointer (NOT FK; Q-L2-3 archive-cut), 2 partial indexes (pending + dead_letter), drained by L2.D publisher; same-TX with event append per Q-L1B-3."
+
+  # ── L3 per-reality projection tables (RAID cycle 13 — L3.A + L3.K)
+  #
+  # 0006 ships the 10 L3.A projection tables (pc, npc, region, world_kv,
+  # session_participants, npc_session_memory, npc_session_memory_embedding,
+  # npc_pc_relationship, pc_inventory, pc_relationship). 0007 ships the
+  # L3.K drift-state summary table + stale_projections view + 10-row seed.
+  - id: "0006_projections"
+    version: 6
+    breaking: false
+    dependencies: ["0001_initial"]
+    description: "L3 cycle 13 — 10 L3.A projection tables (PC/NPC/region/world_kv/session) + VerificationMeta cols per Q-L3-4. npc_session_memory_embedding uses VECTOR(1536) when pgvector ext present (Q-L3I-1), BYTEA(1536*4) fallback otherwise (cycle 16 0008_pgvector_setup ALTERs to VECTOR(1536))."
+
+  - id: "0007_drift_metadata"
+    version: 7
+    breaking: false
+    dependencies: ["0006_projections"]
+    description: "L3 cycle 13 — L3.K projection_drift_state summary table (PK=table_name, CHECK allowlist=10 L3.A tables) + stale_projections view; idempotent seed of 10 rows. Cycle 14 L3.E sampler + L3.F monthly check write here."
+
+  # ── L3.I pgvector finalizer (RAID cycle 16 — L3.I)
+  #
+  # Three-part migration: (a) CREATE EXTENSION vector (idempotent), (b) ALTER
+  # npc_session_memory_embedding.embedding BYTEA → VECTOR(1536) (conditional
+  # — skips if cycle 13's path-A already created with VECTOR), (c) CREATE
+  # HNSW INDEX (m=16, ef_construction=64). Closes the L3 layer.
+  - id: "0008_pgvector_setup"
+    version: 8
+    breaking: false
+    dependencies: ["0006_projections"]
+    description: "L3 cycle 16 — L3.I pgvector finalizer: CREATE EXTENSION vector + ALTER npc_session_memory_embedding.embedding to VECTOR(1536) when BYTEA placeholder still present + HNSW(m=16, ef_construction=64). Q-L3I-1 dim=1536 LOCKED. Closes L3 layer."

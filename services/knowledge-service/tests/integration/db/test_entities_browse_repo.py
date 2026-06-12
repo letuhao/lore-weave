@@ -401,7 +401,7 @@ async def test_update_entity_fields_sets_user_edited_and_renames(
         assert baseline is not None
         assert baseline.user_edited is False
 
-        updated = await update_entity_fields(
+        updated, _before = await update_entity_fields(
             session,
             user_id=test_user,
             entity_id=ent.id,
@@ -428,7 +428,7 @@ async def test_update_entity_fields_cross_user_returns_none(
             name="Stranger", kind="character",
             source_type="chat_turn", confidence=0.9,
         )
-        result = await update_entity_fields(
+        result, _before = await update_entity_fields(
             session,
             user_id=test_user,
             entity_id=other_ent.id,

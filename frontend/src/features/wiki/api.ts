@@ -6,6 +6,12 @@ import type {
   WikiRevisionDetail,
   WikiSuggestionListResp,
   WikiSuggestionResp,
+  WikiGenJobStatus,
+  WikiGenerateResult,
+  WikiGenConfig,
+  WikiStalenessListResp,
+  WikiStalenessSweepResp,
+  WikiStalenessDiff,
 } from './types';
 
 const BASE = '/v1/glossary';
@@ -64,16 +70,104 @@ export const wikiApi = {
     });
   },
 
+  /**
+   * Generate wiki articles. With no `model_ref` → deterministic stubs
+   * (`{created}`). With a `model_ref` → DELEGATES to the LLM batch generator,
+   * returning a job (`{job_id,status}`) or `{action:'none'}`; a 409 (active job)
+   * is thrown by apiJson and handled by the caller.
+   */
   generateStubs(
     bookId: string,
-    body: { kind_codes?: string[]; limit?: number },
+    body: {
+      kind_codes?: string[];
+      entity_ids?: string[];
+      limit?: number;
+      model_ref?: string;
+      model_source?: string;
+      max_spend_usd?: number;
+      // W5 — optional override model for the corrective revise re-gen.
+      revise_model_ref?: string;
+      revise_model_source?: string;
+    },
     token: string,
-  ): Promise<{ created: number; articles: unknown[] }> {
+  ): Promise<WikiGenerateResult> {
     return apiJson(`${BASE}/books/${bookId}/wiki/generate`, {
       method: 'POST',
       body: JSON.stringify(body),
       token,
     });
+  },
+
+  /* ── wiki-llm M7b — LLM-gen job lifecycle (glossary proxy → knowledge) ── */
+
+  getJob(bookId: string, token: string): Promise<WikiGenJobStatus> {
+    return apiJson<WikiGenJobStatus>(`${BASE}/books/${bookId}/wiki/job`, { token });
+  },
+
+  resumeJob(bookId: string, jobId: string, token: string): Promise<{ job_id: string; status: string }> {
+    return apiJson(`${BASE}/books/${bookId}/wiki/job/${jobId}/resume`, {
+      method: 'POST',
+      token,
+    });
+  },
+
+  cancelJob(bookId: string, jobId: string, token: string): Promise<{ job_id: string; status: string }> {
+    return apiJson(`${BASE}/books/${bookId}/wiki/job/${jobId}/cancel`, {
+      method: 'POST',
+      token,
+    });
+  },
+
+  /** Flat per-article wiki-gen cost estimate (D-WIKI-P2B-COST-ESTIMATE) — the FE
+   *  multiplies by the selected-entity count for a pre-flight estimate. */
+  getGenConfig(bookId: string, token: string): Promise<WikiGenConfig> {
+    return apiJson<WikiGenConfig>(`${BASE}/books/${bookId}/wiki/gen-config`, { token });
+  },
+
+  /* ── wiki-llm Phase-2 — "Knowledge updates" change-feed (§5.3) ── */
+
+  listStaleness(bookId: string, token: string): Promise<WikiStalenessListResp> {
+    return apiJson<WikiStalenessListResp>(`${BASE}/books/${bookId}/wiki/staleness`, { token });
+  },
+
+  dismissStaleness(
+    bookId: string,
+    stalenessId: string,
+    token: string,
+  ): Promise<{ staleness_id: string; status: string }> {
+    return apiJson(`${BASE}/books/${bookId}/wiki/staleness/${stalenessId}/dismiss`, {
+      method: 'POST',
+      token,
+    });
+  },
+
+  /** W2 — batch "dismiss selected" (accept-as-is, no spend). */
+  dismissStalenessBatch(
+    bookId: string,
+    stalenessIds: string[],
+    token: string,
+  ): Promise<{ dismissed: number }> {
+    return apiJson(`${BASE}/books/${bookId}/wiki/staleness/dismiss-batch`, {
+      method: 'POST',
+      body: JSON.stringify({ staleness_ids: stalenessIds }),
+      token,
+    });
+  },
+
+  /** W2 — owner-triggered "rescan fingerprint": recipe-drift (versions sourced from
+   *  knowledge) + kg-drift. `recipe_swept=false` when knowledge is unreachable. */
+  sweepStaleness(bookId: string, token: string): Promise<WikiStalenessSweepResp> {
+    return apiJson<WikiStalenessSweepResp>(`${BASE}/books/${bookId}/wiki/staleness/sweep`, {
+      method: 'POST',
+      token,
+    });
+  },
+
+  /** W6b-2b — the source change diff for one staleness row (before snapshot vs the
+   *  current source). `available:false` ⇒ no snapshot / no "after" → use the jump. */
+  getStalenessDiff(bookId: string, stalenessId: string, token: string): Promise<WikiStalenessDiff> {
+    return apiJson<WikiStalenessDiff>(
+      `${BASE}/books/${bookId}/wiki/staleness/${stalenessId}/diff`, { token });
   },
 
   /* ── Revisions ── */

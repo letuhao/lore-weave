@@ -26,6 +26,7 @@ from app.clients.sanitize import neutralize_injection
 
 __all__ = [
     "GlossaryEntity",
+    "EntityCoverageRow",
     "WikiArticle",
     "GlossaryServiceError",
     "GlossaryClient",
@@ -45,6 +46,18 @@ class GlossaryEntity:
     name: str = ""
     kind: str = ""
     description: str = ""
+
+
+@dataclass(frozen=True)
+class EntityCoverageRow:
+    """One entity's enrichment coverage (D1 gap-auto-detect input): the PROMOTED
+    enrichment dimensions it already has + its mention_count (C6 ranking signal)."""
+
+    entity_id: str
+    canonical_name: str
+    kind: str
+    mention_count: int
+    dimensions: tuple[str, ...]  # promoted-enrichment dimensions already present
 
 
 @dataclass(frozen=True)
@@ -83,11 +96,48 @@ class GlossaryClient:
             GlossaryEntity(
                 entity_id=str(r.get("id") or r.get("entity_id") or ""),
                 name=neutralize_injection(r.get("name") or r.get("canonical_name")),
-                kind=str(r.get("kind") or r.get("kind_name") or ""),
-                description=neutralize_injection(r.get("description")),
+                kind=str(r.get("kind") or r.get("kind_code") or r.get("kind_name") or ""),
+                # The internal entities endpoint returns the authored canon under
+                # `short_description` (the column, F-C12-1) — fall back to the
+                # legacy `description` key. The contradiction check reads this.
+                description=neutralize_injection(
+                    r.get("short_description") or r.get("description")
+                ),
             )
             for r in rows
         ]
+
+    async def list_enrichment_coverage(
+        self, *, book_id: UUID, limit: int = 200
+    ) -> list[EntityCoverageRow]:
+        """Read per-entity enrichment coverage for gap-auto-detection (D1).
+
+        Returns each entity's canonical name, kind, mention_count, and the
+        PROMOTED enrichment dimensions it already has. The caller builds
+        EntityCoverage from this (present_dimensions = these dims) and runs the
+        C7 gap engine. Internal-token, book-scoped."""
+        url = f"{self._base}/internal/books/{book_id}/enrichment-coverage"
+        resp = await self._get(
+            url,
+            headers={"X-Internal-Token": self._internal_token},
+            params={"limit": str(limit)},
+        )
+        rows = _as_rows(resp.json())
+        out: list[EntityCoverageRow] = []
+        for r in rows:
+            dims = r.get("dimensions") or []
+            out.append(
+                EntityCoverageRow(
+                    entity_id=str(r.get("entity_id") or r.get("id") or ""),
+                    canonical_name=neutralize_injection(r.get("canonical_name") or r.get("name")),
+                    kind=str(r.get("kind") or "location"),
+                    mention_count=int(r.get("mention_count") or 0),
+                    dimensions=tuple(
+                        neutralize_injection(d) for d in dims if isinstance(d, str)
+                    ),
+                )
+            )
+        return out
 
     # ── user-scoped wiki read (JWT pass-through) ─────────────────────────────
 

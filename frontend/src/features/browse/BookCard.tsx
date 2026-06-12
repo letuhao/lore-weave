@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 // Deterministic gradient from book_id hash
 const GRADIENTS = [
@@ -34,6 +35,7 @@ type Props = {
 };
 
 export function BookCard({ book }: Props) {
+  const { t } = useTranslation('catalog');
   const gradient = GRADIENTS[hashIndex(book.book_id)];
   const lang = book.original_language;
 
@@ -87,7 +89,7 @@ export function BookCard({ book }: Props) {
         )}
         <div className="mt-2 flex items-center justify-between">
           <span className="text-[10px] text-muted-foreground">
-            {book.chapter_count ?? 0} ch
+            {t('card.chapters_short', { count: book.chapter_count ?? 0 })}
           </span>
           {lang && (
             <span className="rounded bg-secondary px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground">

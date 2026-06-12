@@ -11,7 +11,8 @@ import pytest
 from app.events.dispatcher import EventData
 from app.events.handlers import (
     handle_chat_turn,
-    handle_chapter_saved,
+    handle_chapter_published,
+    handle_chapter_unpublished,
     handle_chapter_deleted,
     handle_glossary_entity_updated,
 )
@@ -69,6 +70,26 @@ async def test_chat_turn_queues_event_with_user_id(mock_gate):
 
 @pytest.mark.asyncio
 @patch("app.events.handlers.should_extract", return_value=True)
+@patch("app.events.handlers.ExtractionPendingRepo")
+async def test_chat_turn_enqueues_aggregate_type_chat(mock_repo_cls, mock_gate):
+    # FD-2 regression: enqueue as aggregate_type='chat' so the worker-ai chat
+    # drainer (WHERE aggregate_type='chat') consumes it. Was 'chat_session' →
+    # never drained → chat knowledge was never extracted.
+    pool, _ = _mock_pool()
+    repo = MagicMock()
+    repo.queue_event = AsyncMock()
+    mock_repo_cls.return_value = repo
+    event = _event(
+        "chat.turn_completed", aggregate_id=str(_USER),
+        payload={"project_id": str(_PROJECT), "user_id": str(_USER)},
+    )
+    await handle_chat_turn(event, pool=pool)
+    req = repo.queue_event.await_args.args[1]
+    assert req.aggregate_type == "chat"
+
+
+@pytest.mark.asyncio
+@patch("app.events.handlers.should_extract", return_value=True)
 async def test_chat_turn_resolves_user_from_db(mock_gate):
     """user_id missing from payload — handler looks up from project."""
     pool, conn = _mock_pool()
@@ -90,68 +111,104 @@ async def test_chat_turn_missing_project_id_skips():
     conn.fetchrow.assert_not_called()
 
 
-# ── K14.6: chapter.saved ─────────────────────────────────────────────
+# ── CM3b/CM3c: chapter.published (graph-queue + passage-ingest) ──────
+
+
+_REVISION = uuid4()
+
+
+def _published_event(revision_id=str(_REVISION), book_id=str(_BOOK)):
+    payload = {"book_id": book_id} if book_id else {}
+    if revision_id is not None:
+        payload["revision_id"] = revision_id
+    return _event(
+        "chapter.published", aggregate_id=str(_CHAPTER), payload=payload,
+    )
+
+
+def _book_client_with_sort(sort_order=7):
+    """A book_client mock whose get_chapter_sort_orders (CM4 chapter_index
+    source) returns the chapter's sort_order awaitably."""
+    bc = MagicMock()
+    bc.get_chapter_sort_orders = AsyncMock(return_value={_CHAPTER: sort_order})
+    return bc
+
+
+def _patch_pending_repo(monkeypatch):
+    """Patch ExtractionPendingRepo so the graph-queue write is a no-op
+    spy. Returns the upsert AsyncMock for assertions."""
+    upsert = AsyncMock()
+    repo_instance = MagicMock()
+    repo_instance.upsert_chapter_pending = upsert
+    monkeypatch.setattr(
+        "app.events.handlers.ExtractionPendingRepo",
+        lambda _pool: repo_instance,
+    )
+    return upsert
 
 
 @pytest.mark.asyncio
-async def test_chapter_saved_queues_event():
+async def test_chapter_published_queues_graph_and_skips_passages_when_no_embedding(
+    monkeypatch,
+):
+    """canon=published: graph-queue ALWAYS written; passage-ingest skips
+    cleanly when the project has no embedding config."""
     pool, conn = _mock_pool()
-    # D-K18.3-01: project lookup now also returns embedding config.
-    # None values cause the passage-ingest branch to skip cleanly —
-    # the core contract of this test is "extraction_pending queued".
     pool.fetchrow = AsyncMock(return_value={
         "project_id": _PROJECT, "user_id": _USER,
         "embedding_model": None, "embedding_dimension": None,
     })
+    upsert = _patch_pending_repo(monkeypatch)
 
-    event = _event(
-        "chapter.saved",
-        aggregate_id=str(_CHAPTER),
-        payload={"book_id": str(_BOOK)},  # no user_id — realistic
-    )
-    await handle_chapter_saved(event, pool=pool)
-    pool.fetchrow.assert_called_once()  # project lookup
+    await handle_chapter_published(_published_event(), pool=pool)
+
+    upsert.assert_awaited_once()  # graph-queue at the pinned revision
+    args = upsert.await_args.args
+    assert args[2] == _CHAPTER and args[3] == _REVISION
 
 
 @pytest.mark.asyncio
-async def test_chapter_saved_no_project_skips():
+async def test_chapter_published_missing_revision_id_skips(monkeypatch):
+    """No revision_id in payload → cannot pin canon → skip entirely
+    (no graph-queue, no passage-ingest)."""
+    pool, conn = _mock_pool()
+    pool.fetchrow = AsyncMock(return_value={
+        "project_id": _PROJECT, "user_id": _USER,
+        "embedding_model": "bge-m3", "embedding_dimension": 1024,
+    })
+    upsert = _patch_pending_repo(monkeypatch)
+
+    await handle_chapter_published(_published_event(revision_id=None), pool=pool)
+
+    upsert.assert_not_awaited()
+    pool.fetchrow.assert_not_called()  # bails before project lookup
+
+
+@pytest.mark.asyncio
+async def test_chapter_published_no_project_skips(monkeypatch):
     pool, conn = _mock_pool()
     pool.fetchrow = AsyncMock(return_value=None)
+    upsert = _patch_pending_repo(monkeypatch)
 
-    event = _event(
-        "chapter.saved",
-        aggregate_id=str(_CHAPTER),
-        payload={"book_id": str(_BOOK)},
-    )
-    await handle_chapter_saved(event, pool=pool)
+    await handle_chapter_published(_published_event(), pool=pool)
+
     pool.fetchrow.assert_called_once()
-    conn.fetchrow.assert_not_called()
+    upsert.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_chapter_saved_missing_book_id_skips():
-    pool, conn = _mock_pool()
-    event = _event("chapter.saved", aggregate_id=str(_CHAPTER), payload={})
-    await handle_chapter_saved(event, pool=pool)
-    pool.fetchrow.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_chapter_saved_triggers_passage_ingest_when_embedding_configured(
-    monkeypatch,
-):
-    """D-K18.3-01: when project has embedding_model + dim + NEO4J_URI,
-    the handler calls `ingest_chapter_passages` after queueing."""
+async def test_chapter_published_ingests_passages_at_pinned_revision(monkeypatch):
+    """CM3c: embedding configured + NEO4J_URI → ingest_chapter_passages is
+    called with the PINNED revision_id and delete_stale_on_missing=False."""
     from contextlib import asynccontextmanager
-    from unittest.mock import MagicMock
 
     pool, conn = _mock_pool()
     pool.fetchrow = AsyncMock(return_value={
         "project_id": _PROJECT, "user_id": _USER,
         "embedding_model": "bge-m3", "embedding_dimension": 1024,
     })
+    upsert = _patch_pending_repo(monkeypatch)
 
-    # Patch the settings + the lazy-imported ingester.
     with patch("app.config.settings") as ms:
         ms.neo4j_uri = "bolt://fake"
 
@@ -165,95 +222,43 @@ async def test_chapter_saved_triggers_passage_ingest_when_embedding_configured(
             "app.extraction.passage_ingester.ingest_chapter_passages", ingest_mock,
         )
         monkeypatch.setattr(
-            "app.clients.book_client.get_book_client", lambda: MagicMock(),
+            "app.clients.book_client.get_book_client",
+            lambda: _book_client_with_sort(7),
         )
         monkeypatch.setattr(
             "app.clients.embedding_client.get_embedding_client",
             lambda: MagicMock(),
         )
 
-        event = _event(
-            "chapter.saved",
-            aggregate_id=str(_CHAPTER),
-            payload={"book_id": str(_BOOK)},
-        )
-        await handle_chapter_saved(event, pool=pool)
+        await handle_chapter_published(_published_event(), pool=pool)
 
+    upsert.assert_awaited_once()  # graph-queue still written
     ingest_mock.assert_awaited_once()
     kw = ingest_mock.await_args.kwargs
     assert kw["embedding_model"] == "bge-m3"
     assert kw["embedding_dim"] == 1024
+    assert kw["revision_id"] == _REVISION  # pinned, not the live draft
+    assert kw["delete_stale_on_missing"] is False  # transient None mustn't wipe
+    assert kw["chapter_index"] == 7  # CM4: stamped from book-service sort_order
 
 
 @pytest.mark.asyncio
-async def test_chapter_saved_skips_passage_ingest_when_no_embedding():
-    """D-K18.3-01: project without embedding_model → queue extraction
-    but skip passage ingest cleanly."""
-    pool, conn = _mock_pool()
-    pool.fetchrow = AsyncMock(return_value={
-        "project_id": _PROJECT, "user_id": _USER,
-        "embedding_model": None, "embedding_dimension": None,
-    })
-
-    event = _event(
-        "chapter.saved",
-        aggregate_id=str(_CHAPTER),
-        payload={"book_id": str(_BOOK)},
-    )
-    # Should NOT raise even though no embedding_client is patched in —
-    # the guard returns early before any client lookup.
-    await handle_chapter_saved(event, pool=pool)
-
-
-# ── C12a (D-K16.2-02b) — chapter_range gating ─────────────────────
-
-
-def _make_job(scope="chapters", chapter_range=None):
-    """Minimal ExtractionJob stub for the gating path. Only the
-    fields the handler reads (scope + scope_range) need to be
-    realistic; the rest are placeholders."""
-    from datetime import datetime, timezone
-    from decimal import Decimal
-    from app.db.repositories.extraction_jobs import ExtractionJob
-    return ExtractionJob(
-        job_id=uuid4(),
-        user_id=_USER,
-        project_id=_PROJECT,
-        scope=scope,
-        scope_range={"chapter_range": list(chapter_range)} if chapter_range else None,
-        status="running",
-        llm_model="claude-sonnet-4-6",
-        embedding_model="bge-m3",
-        max_spend_usd=None,
-        items_total=None,
-        items_processed=0,
-        current_cursor=None,
-        cost_spent_usd=Decimal("0"),
-        started_at=datetime.now(timezone.utc),
-        paused_at=None,
-        completed_at=None,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-        error_message=None,
-        project_name=None,
-    )
-
-
-async def _run_chapter_saved_with_gating(
-    monkeypatch, *, active_jobs, sort_orders,
+async def test_chapter_published_passage_failure_does_not_block_graph_queue(
+    monkeypatch,
 ):
-    """Harness for C12a gating tests. Patches the same surfaces the
-    existing ingest-ON test does plus list_active_for_project +
-    get_chapter_sort_orders. Returns the ingest_mock so callers can
-    assert whether ingest was called or not."""
+    """Best-effort isolation invariant: the graph-queue is written BEFORE
+    passage-ingest, and a passage-ingest exception is swallowed — so a failing
+    embed must NOT lose the (already-written) graph-extraction queue, and the
+    handler must not raise. Guards the queue-first ordering against future
+    reorders."""
     from contextlib import asynccontextmanager
-    from unittest.mock import MagicMock
 
-    pool, _conn = _mock_pool()
+    pool, conn = _mock_pool()
     pool.fetchrow = AsyncMock(return_value={
         "project_id": _PROJECT, "user_id": _USER,
         "embedding_model": "bge-m3", "embedding_dimension": 1024,
     })
+    upsert = _patch_pending_repo(monkeypatch)
 
     with patch("app.config.settings") as ms:
         ms.neo4j_uri = "bolt://fake"
@@ -262,126 +267,138 @@ async def _run_chapter_saved_with_gating(
         async def fake_session():
             yield MagicMock()
 
-        ingest_mock = AsyncMock()
+        # ingest blows up — must be swallowed, queue must survive.
+        ingest_mock = AsyncMock(side_effect=RuntimeError("embed 503"))
         monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
         monkeypatch.setattr(
             "app.extraction.passage_ingester.ingest_chapter_passages", ingest_mock,
         )
-        bc_mock = MagicMock()
-        bc_mock.get_chapter_sort_orders = AsyncMock(return_value=sort_orders)
         monkeypatch.setattr(
-            "app.clients.book_client.get_book_client", lambda: bc_mock,
+            "app.clients.book_client.get_book_client",
+            lambda: _book_client_with_sort(7),
         )
         monkeypatch.setattr(
             "app.clients.embedding_client.get_embedding_client",
             lambda: MagicMock(),
         )
-        # Patch ExtractionJobsRepo.list_active_for_project on the class
-        # so the handler's fresh instance sees the mock.
+
+        # Must NOT raise despite the ingest failure.
+        await handle_chapter_published(_published_event(), pool=pool)
+
+    upsert.assert_awaited_once()  # graph-queue survived the passage failure
+    ingest_mock.assert_awaited_once()
+
+
+# ── CM3b/CM3c: chapter.unpublished (graph + passage retract) ─────────
+
+
+def _unpublished_event():
+    return _event(
+        "chapter.unpublished",
+        aggregate_id=str(_CHAPTER),
+        payload={"book_id": str(_BOOK)},
+    )
+
+
+@pytest.mark.asyncio
+async def test_chapter_unpublished_retracts_graph_and_passages(monkeypatch):
+    """Symmetry: unpublish retracts BOTH the graph evidence AND the L3
+    passages (so the semantic index doesn't keep published-era passages)."""
+    from contextlib import asynccontextmanager
+
+    pool, conn = _mock_pool()
+    pool.fetchrow = AsyncMock(
+        return_value={"project_id": _PROJECT, "user_id": _USER}
+    )
+
+    with patch("app.config.settings") as ms:
+        ms.neo4j_uri = "bolt://fake"
+
+        @asynccontextmanager
+        async def fake_session():
+            yield MagicMock()
+
+        remove_mock = AsyncMock(return_value=3)
+        cleanup_mock = AsyncMock(return_value=MagicMock(total=2))
+        delete_mock = AsyncMock(return_value=7)
+        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        # CM3b-RETRACT-FIX: handler now retracts via the NATURAL-KEY helper
+        # (hashes the source id) — the raw-id call removed zero edges.
         monkeypatch.setattr(
-            "app.db.repositories.extraction_jobs.ExtractionJobsRepo.list_active_for_project",
-            AsyncMock(return_value=active_jobs),
+            "app.db.neo4j_repos.provenance.remove_evidence_for_natural_key",
+            remove_mock,
+        )
+        # /review-impl MED: cleanup is deliberately NOT called here (it would
+        # race a concurrent same-project extraction outside the job lock).
+        monkeypatch.setattr(
+            "app.db.neo4j_repos.provenance.cleanup_zero_evidence_nodes",
+            cleanup_mock,
+        )
+        monkeypatch.setattr(
+            "app.db.neo4j_repos.passages.delete_passages_for_source", delete_mock,
         )
 
-        event = _event(
-            "chapter.saved",
-            aggregate_id=str(_CHAPTER),
-            payload={"book_id": str(_BOOK)},
+        await handle_chapter_unpublished(_unpublished_event(), pool=pool)
+
+    pool.execute.assert_awaited()  # pending row dropped
+    # CM3b-RETRACT-FIX regression-lock: the retract is called with the
+    # NATURAL KEY (user, project, source_type, source_id), so the helper can
+    # hash the right ExtractionSource id. The pre-fix bug passed the raw
+    # chapter_id straight to a hashed-id MATCH → zero edges removed.
+    remove_mock.assert_awaited_once()
+    rk = remove_mock.await_args.kwargs
+    assert rk["source_type"] == "chapter"
+    assert rk["source_id"] == str(_CHAPTER)
+    assert rk["user_id"] == str(_USER)
+    assert rk["project_id"] == str(_PROJECT)
+    # /review-impl MED regression-lock: NO orphan sweep in the unpublish path
+    # (races concurrent extraction outside the job lock; reconciler GCs instead).
+    cleanup_mock.assert_not_awaited()
+    delete_mock.assert_awaited_once()
+    dk = delete_mock.await_args.kwargs
+    assert dk["source_type"] == "chapter"
+    assert dk["source_id"] == str(_CHAPTER)
+    assert dk["user_id"] == str(_USER)
+
+
+@pytest.mark.asyncio
+async def test_chapter_unpublished_passage_retract_independent_of_graph_failure(
+    monkeypatch,
+):
+    """R3-WARN#2: if the graph retract raises, the passage retract must
+    STILL run (independent best-effort steps), else published-era passages
+    linger after unpublish."""
+    from contextlib import asynccontextmanager
+
+    pool, conn = _mock_pool()
+    pool.fetchrow = AsyncMock(
+        return_value={"project_id": _PROJECT, "user_id": _USER}
+    )
+
+    with patch("app.config.settings") as ms:
+        ms.neo4j_uri = "bolt://fake"
+
+        @asynccontextmanager
+        async def fake_session():
+            yield MagicMock()
+
+        remove_mock = AsyncMock(side_effect=RuntimeError("neo4j transient"))
+        delete_mock = AsyncMock(return_value=7)
+        monkeypatch.setattr("app.db.neo4j.neo4j_session", fake_session)
+        # CM3b-RETRACT-FIX: handler retracts via the natural-key helper now.
+        monkeypatch.setattr(
+            "app.db.neo4j_repos.provenance.remove_evidence_for_natural_key",
+            remove_mock,
         )
-        await handle_chapter_saved(event, pool=pool)
+        monkeypatch.setattr(
+            "app.db.neo4j_repos.passages.delete_passages_for_source", delete_mock,
+        )
 
-    return ingest_mock
+        # Must NOT raise (both steps swallow their own errors).
+        await handle_chapter_unpublished(_unpublished_event(), pool=pool)
 
-
-@pytest.mark.asyncio
-async def test_chapter_saved_ingests_when_no_active_chapter_jobs(monkeypatch):
-    """No active scope='chapters' jobs → ingest proceeds (baseline)."""
-    ingest_mock = await _run_chapter_saved_with_gating(
-        monkeypatch,
-        active_jobs=[_make_job(scope="chat")],  # non-chapter scope
-        sort_orders={_CHAPTER: 5},
-    )
-    ingest_mock.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_chapter_saved_ingests_when_active_chapter_job_has_no_range(monkeypatch):
-    """Active chapter-scope job with no chapter_range → full-scope
-    intent → ingest proceeds. The gate only triggers when ALL active
-    chapter-scope jobs have bounded ranges."""
-    ingest_mock = await _run_chapter_saved_with_gating(
-        monkeypatch,
-        active_jobs=[_make_job(scope="chapters", chapter_range=None)],
-        sort_orders={_CHAPTER: 5},
-    )
-    ingest_mock.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_chapter_saved_skips_when_chapter_outside_range(monkeypatch):
-    """Active chapter-scope job with range [10, 20] + chapter at
-    sort_order=5 → skip ingest (out of range)."""
-    ingest_mock = await _run_chapter_saved_with_gating(
-        monkeypatch,
-        active_jobs=[_make_job(scope="chapters", chapter_range=[10, 20])],
-        sort_orders={_CHAPTER: 5},
-    )
-    ingest_mock.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_chapter_saved_ingests_when_chapter_inside_range(monkeypatch):
-    """Active chapter-scope job with range [10, 20] + chapter at
-    sort_order=15 → in-range → ingest proceeds."""
-    ingest_mock = await _run_chapter_saved_with_gating(
-        monkeypatch,
-        active_jobs=[_make_job(scope="chapters", chapter_range=[10, 20])],
-        sort_orders={_CHAPTER: 15},
-    )
-    ingest_mock.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_chapter_saved_disjoint_union_of_ranges(monkeypatch):
-    """Two active chapter-scope jobs with non-overlapping ranges
-    [10, 20] and [40, 50]. Chapter at sort_order=30 is in NEITHER
-    range → skip. Chapter at sort_order=45 is in the second range
-    → ingest. This locks the disjoint-union semantic (not outer
-    envelope which would over-ingest 30)."""
-    # sort_order=30: outside both → skip
-    ingest_mock_skip = await _run_chapter_saved_with_gating(
-        monkeypatch,
-        active_jobs=[
-            _make_job(scope="chapters", chapter_range=[10, 20]),
-            _make_job(scope="chapters", chapter_range=[40, 50]),
-        ],
-        sort_orders={_CHAPTER: 30},
-    )
-    ingest_mock_skip.assert_not_awaited()
-
-    # sort_order=45: in second range → ingest
-    ingest_mock_yes = await _run_chapter_saved_with_gating(
-        monkeypatch,
-        active_jobs=[
-            _make_job(scope="chapters", chapter_range=[10, 20]),
-            _make_job(scope="chapters", chapter_range=[40, 50]),
-        ],
-        sort_orders={_CHAPTER: 45},
-    )
-    ingest_mock_yes.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_chapter_saved_overingests_when_sort_order_fetch_fails(monkeypatch):
-    """Graceful degrade: book-service returns empty sort_orders map
-    → handler proceeds with ingest rather than silently skipping.
-    Missing sort_order is uncertainty, not a confirmed out-of-range."""
-    ingest_mock = await _run_chapter_saved_with_gating(
-        monkeypatch,
-        active_jobs=[_make_job(scope="chapters", chapter_range=[10, 20])],
-        sort_orders={},  # book-service unavailable or chapter not found
-    )
-    ingest_mock.assert_awaited_once()
+    remove_mock.assert_awaited_once()
+    delete_mock.assert_awaited_once()  # ran despite the graph-retract failure
 
 
 # ── K14.7: chapter.deleted ───────────────────────────────────────────

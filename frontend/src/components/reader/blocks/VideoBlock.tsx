@@ -1,10 +1,12 @@
 import type { JSONContent } from '@tiptap/react';
+import { useTranslation } from 'react-i18next';
 
 interface VideoBlockProps {
   node: JSONContent;
 }
 
 export function VideoBlock({ node }: VideoBlockProps) {
+  const { t } = useTranslation('reader');
   const src = node.attrs?.src as string | null;
   const caption = (node.attrs?.caption as string) || '';
   const width = (node.attrs?.width as number) || 100;
@@ -17,7 +19,7 @@ export function VideoBlock({ node }: VideoBlockProps) {
             <rect x="2" y="4" width="20" height="16" rx="2" />
             <path d="M8 10l6 4-6 4V10z" />
           </svg>
-          <span>Video not available</span>
+          <span>{t('block.video_unavailable')}</span>
         </div>
         {caption && <figcaption>{caption}</figcaption>}
       </figure>

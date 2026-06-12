@@ -32,11 +32,25 @@ type wikiRenderInput struct {
 	Attributes []wikiRenderAttr
 	// Neighborhood is the KG 1-hop read; nil when unavailable/empty.
 	Neighborhood *kgNeighborhood
+	// Enrichments are the lore-enrichment SUPPLEMENT rows (entity_enrichments,
+	// live = not soft-deleted). They are a DISTINGUISHED `dị bản` of the original
+	// canon (B1) — rendered in their own clearly-labeled, non-canon section,
+	// never merged into the attributes/relations canon. nil/empty → no section.
+	Enrichments []wikiRenderEnrichment
 }
 
 type wikiRenderAttr struct {
 	Label string
 	Value string
+}
+
+// wikiRenderEnrichment is one entity_enrichments supplement row (a per-dimension
+// enrichment variant). Multiple rows may share a dimension (the `dị bản` model).
+type wikiRenderEnrichment struct {
+	Dimension    string
+	Content      string
+	ReviewStatus string // 'proposed' | 'promoted'
+	Technique    string
 }
 
 // sourceTypeEnriched is the H0 quarantine marker. Kept as a constant so
@@ -112,6 +126,29 @@ func renderWikiBody(in wikiRenderInput) json.RawMessage {
 		)))
 	}
 
+	// ── Enrichment SUPPLEMENT section (entity_enrichments / B1 `dị bản`) ──
+	// The distinguished supplement layer: per-dimension enriched content, kept
+	// structurally + visibly separate from the original canon above. Even a
+	// PROMOTED enrichment renders here (never merged into 基本资料/关系), so
+	// original canon vs enrichment-variant stays tellable-apart for life (B1).
+	if enr := groupEnrichments(in.Enrichments); len(enr) > 0 {
+		content = append(content, headingNode(2, "增补设定（dị bản·增补）"))
+		content = append(content, paragraphNode(
+			"以下为自动增补的补充设定（enriched），非原典正史；同一维度可能存在多个版本（dị bản）。",
+		))
+		items := make([]any, 0, len(enr))
+		for _, e := range enr {
+			label := e.Dimension
+			if label == "" {
+				label = "补充"
+			}
+			items = append(items, enrichedListItemNode(
+				fmt.Sprintf("【增补·%s】%s", label, e.Content),
+			))
+		}
+		content = append(content, bulletListNode(items))
+	}
+
 	doc := map[string]any{
 		"type":    "doc",
 		"content": content,
@@ -139,6 +176,26 @@ func splitRelations(n *kgNeighborhood) (canon, enriched []kgNeighborRelation) {
 	sortRelations(canon)
 	sortRelations(enriched)
 	return canon, enriched
+}
+
+// groupEnrichments returns the supplement rows sorted deterministically by
+// (dimension, content) so renders are reproducible, dropping any empty-content
+// row. Multiple variants per dimension are preserved (the `dị bản` model).
+func groupEnrichments(es []wikiRenderEnrichment) []wikiRenderEnrichment {
+	out := make([]wikiRenderEnrichment, 0, len(es))
+	for _, e := range es {
+		if e.Content == "" {
+			continue
+		}
+		out = append(out, e)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Dimension != out[j].Dimension {
+			return out[i].Dimension < out[j].Dimension
+		}
+		return out[i].Content < out[j].Content
+	})
+	return out
 }
 
 func sortRelations(rs []kgNeighborRelation) {

@@ -1,0 +1,283 @@
+# infra/docker-compose.observability.yml — L7.F + L7.H (RAID cycle 33)
+#
+# Brings up the full observability stack:
+#   * vector (log shipper)
+#   * loki (log store)
+#   * prom-a (Prometheus HA primary)
+#   * prom-b (Prometheus HA secondary)
+#   * grafana
+#
+# STUBBED (NOT included as live services per Q-L1I-2):
+#   * thanos-sidecar (config in infra/thanos/thanos.yaml)
+#   * thanos-query
+#   * thanos-store
+#   * thanos-compactor
+# These activate V1+30d. Activation = uncomment the blocks at the bottom
+# of this file + remove infra/thanos/STUB_FLAG.md (see that file for
+# the full activation checklist).
+#
+# LOCKED decisions consumed:
+#   - Q-L1I-1: HA pair via federation — prom-a + prom-b run identical
+#     scrape configs with prom_replica = 'a' / 'b' external label.
+#   - Q-L1I-2: V1 = 30d Prometheus native retention; Thanos sidecar
+#     STUBBED until V1+30d.
+#   - Q-L7F-1: Loki self-hosted (this file = no managed-SaaS dependency).
+#   - Q-L7-3: NO service mesh — no Istio / Linkerd / Envoy here.
+#
+# Usage:
+#   docker compose -f infra/docker-compose.observability.yml up -d
+#   docker compose -f infra/docker-compose.observability.yml ps
+#   docker compose -f infra/docker-compose.observability.yml down
+#
+# Verify smoke (cycle 33 verify):
+#   docker compose -f infra/docker-compose.observability.yml config
+#   (validates without starting; verifier uses this)
+
+version: "3.8"
+
+networks:
+  lw-obs-net:
+    driver: bridge
+
+volumes:
+  prom-a-data:
+  prom-b-data:
+  loki-data:
+  grafana-data:
+
+services:
+  # ───────────────────────────────────────────────────────────────────
+  # Prometheus HA — replica A
+  # ───────────────────────────────────────────────────────────────────
+  prom-a:
+    image: prom/prometheus:v2.50.1
+    container_name: prom-a
+    hostname: prom-a.internal
+    networks:
+      lw-obs-net:
+        aliases: [prom-a.internal]
+    ports:
+      - "9090:9090"
+    environment:
+      PROM_REPLICA_ID: a
+      LW_ENV: ${LW_ENV:-dev}
+    volumes:
+      - ./prometheus/main.yaml:/etc/prometheus/main.yaml:ro
+      - ./prometheus/scrape-config.yaml:/etc/prometheus/scrape-config.yaml:ro
+      - ./prometheus/recording-rules.yaml:/etc/prometheus/recording-rules.yaml:ro
+      - ./prometheus/recording-rules:/etc/prometheus/recording-rules:ro
+      - ./prometheus/alerts:/etc/prometheus/alerts:ro
+      - ./prometheus/targets:/etc/prometheus/targets:ro
+      - prom-a-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/main.yaml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-lifecycle
+      - --web.console.libraries=/usr/share/prometheus/console_libraries
+      - --web.console.templates=/usr/share/prometheus/consoles
+
+  # ───────────────────────────────────────────────────────────────────
+  # Prometheus HA — replica B (identical scrape, different prom_replica label)
+  # ───────────────────────────────────────────────────────────────────
+  prom-b:
+    image: prom/prometheus:v2.50.1
+    container_name: prom-b
+    hostname: prom-b.internal
+    networks:
+      lw-obs-net:
+        aliases: [prom-b.internal]
+    ports:
+      - "9091:9090"
+    environment:
+      PROM_REPLICA_ID: b
+      LW_ENV: ${LW_ENV:-dev}
+    volumes:
+      - ./prometheus/main.yaml:/etc/prometheus/main.yaml:ro
+      - ./prometheus/scrape-config.yaml:/etc/prometheus/scrape-config.yaml:ro
+      - ./prometheus/recording-rules.yaml:/etc/prometheus/recording-rules.yaml:ro
+      - ./prometheus/recording-rules:/etc/prometheus/recording-rules:ro
+      - ./prometheus/alerts:/etc/prometheus/alerts:ro
+      - ./prometheus/targets:/etc/prometheus/targets:ro
+      - prom-b-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/main.yaml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-lifecycle
+
+  # ───────────────────────────────────────────────────────────────────
+  # Loki — self-hosted (Q-L7F-1)
+  # ───────────────────────────────────────────────────────────────────
+  loki:
+    image: grafana/loki:2.9.6
+    container_name: loki
+    hostname: loki.internal
+    networks:
+      lw-obs-net:
+        aliases: [loki.internal]
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/loki-distributed.yaml:/etc/loki/loki.yaml:ro
+      - ./loki/retention.yaml:/etc/loki/retention.yaml:ro
+      - loki-data:/loki
+    command: -config.file=/etc/loki/loki.yaml
+
+  # ───────────────────────────────────────────────────────────────────
+  # Vector — log shipper (Q-L7F-1, defense-in-depth scrubber)
+  # ───────────────────────────────────────────────────────────────────
+  vector:
+    image: timberio/vector:0.36.0-alpine
+    container_name: vector
+    hostname: vector.internal
+    networks:
+      lw-obs-net:
+        aliases: [vector.internal]
+    ports:
+      - "9598:9598"
+    environment:
+      LW_ENV: ${LW_ENV:-dev}
+    volumes:
+      - ./vector/vector.toml:/etc/vector/vector.toml:ro
+      - ./vector/scrubber_patterns.yaml:/etc/vector/scrubber_patterns.yaml:ro
+      - ./vector/per_service_routing.yaml:/etc/vector/per_service_routing.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/log/lw:/var/log/lw:ro
+    depends_on:
+      - loki
+
+  # ───────────────────────────────────────────────────────────────────
+  # Grafana — visualization
+  # ───────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.1
+    container_name: grafana
+    hostname: grafana.internal
+    networks:
+      lw-obs-net:
+        aliases: [grafana.internal]
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-admin}
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    volumes:
+      - ./grafana/grafana.ini:/etc/grafana/grafana.ini:ro
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prom-a
+      - prom-b
+      - loki
+
+  # ───────────────────────────────────────────────────────────────────
+  # Alertmanager — RAID cycle 34 L7.J (Q-L7C-1 PagerDuty V1)
+  # ───────────────────────────────────────────────────────────────────
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    hostname: alertmanager.internal
+    networks:
+      lw-obs-net:
+        aliases: [alertmanager.internal]
+    ports:
+      - "9093:9093"
+    environment:
+      # PagerDuty integration keys (Q-L7C-1) — set via .env or secret
+      # store. Defaults are DUMMY values to satisfy template substitution
+      # during dry-run; real deploys MUST inject the actual keys.
+      PAGERDUTY_INTEGRATION_KEY_SEV0: ${PAGERDUTY_INTEGRATION_KEY_SEV0:-dummy-sev0-key}
+      PAGERDUTY_INTEGRATION_KEY_SEV1: ${PAGERDUTY_INTEGRATION_KEY_SEV1:-dummy-sev1-key}
+      PAGERDUTY_INTEGRATION_KEY_SRE: ${PAGERDUTY_INTEGRATION_KEY_SRE:-dummy-sre-key}
+      PAGERDUTY_INTEGRATION_KEY_SECURITY: ${PAGERDUTY_INTEGRATION_KEY_SECURITY:-dummy-security-key}
+      PAGERDUTY_INTEGRATION_KEY_DATA: ${PAGERDUTY_INTEGRATION_KEY_DATA:-dummy-data-key}
+      SLACK_WEBHOOK_ALERTS: ${SLACK_WEBHOOK_ALERTS:-https://hooks.slack.com/services/dummy}
+      SLACK_WEBHOOK_ALERTS_INFO: ${SLACK_WEBHOOK_ALERTS_INFO:-https://hooks.slack.com/services/dummy}
+      SMTP_SMARTHOST: ${SMTP_SMARTHOST:-localhost:25}
+    volumes:
+      - ./alertmanager/main.yaml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--cluster.listen-address='
+    depends_on:
+      - alert-recorder
+
+  # ───────────────────────────────────────────────────────────────────
+  # slo-budget-calculator — RAID cycle 34 L7.I (Q-L7-1 SEPARATE service)
+  # ───────────────────────────────────────────────────────────────────
+  slo-budget-calculator:
+    build:
+      context: ../services/slo-budget-calculator
+      dockerfile: Dockerfile
+    container_name: slo-budget-calculator
+    hostname: slo-budget-calculator.internal
+    networks:
+      lw-obs-net:
+        aliases: [slo-budget-calculator.internal]
+    ports:
+      - "8090:8090"
+    environment:
+      LW_SLI_CONFIG: /etc/slo-budget-calculator/sli_definitions.yaml
+      LW_SLO_TARGET_CONFIG: /etc/slo-budget-calculator/slo_targets.yaml
+      LW_LISTEN: ":8090"
+    depends_on:
+      - prom-a
+
+  # ───────────────────────────────────────────────────────────────────
+  # alert-recorder — RAID cycle 34 L7.J (Q-L7-1 SEPARATE service)
+  # ───────────────────────────────────────────────────────────────────
+  alert-recorder:
+    build:
+      context: ../services/alert-recorder
+      dockerfile: Dockerfile
+    container_name: alert-recorder
+    hostname: alert-recorder.internal
+    networks:
+      lw-obs-net:
+        aliases: [alert-recorder.internal]
+    ports:
+      - "8091:8091"
+    environment:
+      LW_LISTEN: ":8091"
+
+# ─────────────────────────────────────────────────────────────────────
+# STUBBED V1 — DO NOT UNCOMMENT WITHOUT REMOVING infra/thanos/STUB_FLAG.md
+# ─────────────────────────────────────────────────────────────────────
+#
+# Per Q-L1I-2: Thanos sidecar activates V1+30d for 1y+ retention.
+# Activation checklist in infra/thanos/STUB_FLAG.md.
+#
+#  thanos-sidecar-a:
+#    image: thanosio/thanos:v0.34.0
+#    container_name: thanos-sidecar-a
+#    hostname: thanos-sidecar-a.internal
+#    networks: [lw-obs-net]
+#    volumes:
+#      - ./thanos/thanos.yaml:/etc/thanos/thanos.yaml:ro
+#      - prom-a-data:/prometheus:ro
+#    command:
+#      - sidecar
+#      - --tsdb.path=/prometheus
+#      - --prometheus.url=http://prom-a.internal:9090
+#      - --objstore.config-file=/etc/thanos/thanos.yaml
+#    depends_on: [prom-a]
+#
+#  thanos-sidecar-b:
+#    image: thanosio/thanos:v0.34.0
+#    ...
+#
+#  thanos-query:
+#    image: thanosio/thanos:v0.34.0
+#    container_name: thanos-query
+#    hostname: thanos-query.internal
+#    ports: ["10902:10902"]
+#    command:
+#      - query
+#      - --http-address=0.0.0.0:10902
+#      - --grpc-address=0.0.0.0:10901
+#      - --query.replica-label=prom_replica
+#      - --store=dnssrv+_grpc._tcp.thanos-sidecar.internal

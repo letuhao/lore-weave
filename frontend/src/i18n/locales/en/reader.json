@@ -1,0 +1,146 @@
+{
+  "loading": "Loading...",
+  "chapter_of": "Chapter {{current}} of {{total}}",
+  "stop_reading": "Stop reading",
+  "read_aloud": "Read aloud",
+  "reading_theme": "Reading theme",
+  "edit_chapter": "Edit this chapter",
+  "back_to_book": "Back to book",
+  "chapter_label": "Chapter {{n}}",
+  "chars": "chars",
+  "words": "words",
+  "min_read": "~{{minutes}} min read",
+  "loading_translation": "Loading translation...",
+  "empty_chapter": "Empty chapter — nothing written yet.",
+  "end_of_chapter": "End of Chapter {{n}}",
+  "next_in": "Next chapter in {{seconds}}s...",
+  "cancel": "Cancel",
+  "progress": "Chapter {{current}} of {{total}} · {{percent}}% complete",
+  "ch_short": "Ch. {{n}}",
+  "history": {
+    "title": "Reading History",
+    "subtitle": "Your recently read books and chapters.",
+    "empty": "No reading history yet. Start reading a chapter!",
+    "chapters_read": "{{count}} chapters read",
+    "fully_read": "{{percent}}% fully read",
+    "last_read": "Last read {{date}}",
+    "continue": "Continue"
+  },
+  "theme": {
+    "title": "Reading Theme",
+    "presets": "Theme Presets",
+    "preset": {
+      "dark": {
+        "name": "Dark",
+        "desc": "Warm dark background"
+      },
+      "light": {
+        "name": "Light",
+        "desc": "Clean white background"
+      },
+      "sepia": {
+        "name": "Sepia",
+        "desc": "Warm paper tone"
+      },
+      "oled": {
+        "name": "OLED",
+        "desc": "True black for OLED screens"
+      },
+      "parchment": {
+        "name": "Parchment",
+        "desc": "Classic parchment feel"
+      },
+      "forest": {
+        "name": "Forest",
+        "desc": "Easy on the eyes at night"
+      }
+    },
+    "font": "Font",
+    "typography": "Typography",
+    "font_size": "Font size",
+    "line_height": "Line height",
+    "text_width": "Text width",
+    "spacing": "Spacing",
+    "reading_mode": "Reading Mode",
+    "show_indices": "Show block indices (translator mode)",
+    "auto_next": "Auto-load next chapter",
+    "auto_scroll": "Auto-scroll with TTS"
+  },
+  "tts": {
+    "source": {
+      "attached": "Attached",
+      "ai": "AI TTS",
+      "browser": "Browser",
+      "inline": "Audio"
+    },
+    "prev_block": "Previous block (Shift+Left)",
+    "play": "Play (Space)",
+    "pause": "Pause (Space)",
+    "next_block": "Next block (Shift+Right)",
+    "cycle_speed": "Cycle speed",
+    "autoscroll_on": "Auto-scroll: ON",
+    "autoscroll_off": "Auto-scroll: OFF",
+    "settings": "TTS Settings",
+    "stop": "Stop (Escape)",
+    "speed": "Speed",
+    "browser_voice": "Browser Voice",
+    "default": "Default",
+    "no_voices": "No voices available. Your browser may not support Web Speech API.",
+    "ai_model": "AI TTS Model",
+    "none_browser": "None (browser TTS only)",
+    "no_models": "No models configured. Add a provider in Settings > Providers.",
+    "ai_voice": "AI Voice",
+    "openai_voices": "OpenAI voices: alloy, echo, fable, onyx, nova, shimmer",
+    "behavior": "Behavior",
+    "autoscroll_active": "Auto-scroll to active block",
+    "highlight_active": "Highlight active block",
+    "now_playing": "Now Playing",
+    "block_label": "Block: {{id}}",
+    "status": {
+      "playing": "playing",
+      "paused": "paused",
+      "loading": "loading"
+    }
+  },
+  "audio": {
+    "source": {
+      "attached": "Attached",
+      "ai": "AI TTS",
+      "browser": "Browser",
+      "inline": "Audio Block",
+      "none": "None"
+    },
+    "coverage": "Audio Coverage",
+    "summary": "{{speakable}} speakable blocks · {{missing}} using browser TTS",
+    "generate_missing": "Generate Missing Audio",
+    "block_chars": "{{count}} block · ~{{chars}} characters",
+    "block_chars_other": "{{count}} blocks · ~{{chars}} characters",
+    "est_cost": "est. ${{cost}}",
+    "generating": "Generating... {{progress}}/{{total}}",
+    "select_model_alert": "Select a TTS model in TTS Settings first.",
+    "generate_all": "Generate All ({{count}})",
+    "blocks": "Blocks",
+    "audio_block_preview": "Audio block"
+  },
+  "block": {
+    "audio_unavailable": "Audio not available",
+    "audio_fallback": "Your browser does not support the audio element.",
+    "image_unavailable": "Image not available",
+    "video_unavailable": "Video not available"
+  },
+  "indicator": {
+    "pause": "Pause",
+    "play": "Play attached audio",
+    "mismatch": "Audio subtitle differs from block text"
+  },
+  "citation": {
+    "aria": "Citation {{n}}",
+    "jump": "Jump to source",
+    "relevance": "Relevance",
+    "source": {
+      "glossary": "Glossary",
+      "kg": "Knowledge",
+      "passage": "Passage"
+    }
+  }
+}

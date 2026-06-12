@@ -90,6 +90,12 @@ async def extract_pass2(
     on_filter_decision: "DecisionHandler | None" = None,
     entity_recovery: "EntityRecoveryConfig | None" = None,
     on_recovery_decision: "RecoveryDecisionHandler | None" = None,
+    # B2-B-b2 — per-op raw system-prompt overrides {op: {"system": str}}.
+    # When present for an op, that op's system prompt is replaced by the custom
+    # text + an SDK-controlled output-contract reminder (DESIGN §2.5). None /
+    # absent op → the default prompt. Only "system" is honored (the user message
+    # is always the raw chapter text).
+    prompt_overrides: "dict[str, dict[str, str]] | None" = None,
 ) -> Pass2Candidates:
     """Run the full Pass 2 extraction pipeline.
 
@@ -120,6 +126,12 @@ async def extract_pass2(
     if not text or not text.strip():
         return Pass2Candidates()
 
+    # B2-B-b2 — per-op system-prompt override lookup ({} when none).
+    _po = prompt_overrides or {}
+
+    def _sys(op: str) -> str | None:
+        return (_po.get(op) or {}).get("system")
+
     # Step 1 — entities first so subsequent extractors can anchor.
     entities = await extract_entities(
         text=text,
@@ -130,6 +142,7 @@ async def extract_pass2(
         model_ref=model_ref,
         llm_client=llm_client,
         on_dropped=on_dropped,
+        prompt_override_system=_sys("entity"),
     )
 
     # Gate: if no entities, nothing to anchor.
@@ -153,9 +166,9 @@ async def extract_pass2(
     )
 
     relations, events, facts = await asyncio.gather(
-        extract_relations(**extractor_kwargs),
-        extract_events(**extractor_kwargs),
-        extract_facts(**extractor_kwargs),
+        extract_relations(**extractor_kwargs, prompt_override_system=_sys("relation")),
+        extract_events(**extractor_kwargs, prompt_override_system=_sys("event")),
+        extract_facts(**extractor_kwargs, prompt_override_system=_sys("fact")),
     )
 
     candidates = Pass2Candidates(

@@ -48,6 +48,8 @@ __all__ = [
     "get_entity",
     "find_entities_by_name",
     "find_entities_by_vector",
+    "set_entity_embedding",
+    "find_entities_needing_embedding",
     "link_to_glossary",
     "get_entity_by_glossary_id",
     "unlink_from_glossary",
@@ -213,6 +215,7 @@ ON CREATE SET
   e.aliases = [$name],
   e.canonical_version = $canonical_version,
   e.source_types = [$source_type],
+  e.provenances = [$provenance],
   e.confidence = $confidence,
   e.glossary_entity_id = NULL,
   e.anchor_score = 0.0,
@@ -233,6 +236,13 @@ ON MATCH SET
   e.source_types = CASE
     WHEN $source_type IN e.source_types THEN e.source_types
     ELSE e.source_types + $source_type
+  END,
+  // CM5 provenance — accumulate the deduped set of authorship origins
+  // (PO: accumulate). Mirrors source_types. coalesce guards pre-CM5 nodes
+  // that have no provenances property yet.
+  e.provenances = CASE
+    WHEN $provenance IN coalesce(e.provenances, []) THEN e.provenances
+    ELSE coalesce(e.provenances, []) + $provenance
   END,
   e.confidence = CASE
     WHEN $confidence > e.confidence THEN $confidence
@@ -261,6 +271,7 @@ async def merge_entity(
     confidence: float = 0.0,
     canonical_version: int = 1,
     auto_created: bool = False,
+    provenance: str = "human_authored",
 ) -> Entity:
     """Idempotent upsert. Re-running with the same (user_id, project_id,
     name, kind) tuple returns the same node — no duplicates.
@@ -305,6 +316,7 @@ async def merge_entity(
         source_type=source_type,
         confidence=confidence,
         auto_created=auto_created,
+        provenance=provenance,
     )
     record = await result.single()
     if record is None:
@@ -328,6 +340,7 @@ async def merge_entity_at_id(
     kind: str,
     source_type: str,
     confidence: float = 0.0,
+    provenance: str = "human_authored",
 ) -> "Entity | None":
     """C17 — upsert at a caller-supplied entity id (no SHA derivation).
 
@@ -370,6 +383,10 @@ async def merge_entity_at_id(
               WHEN $source_type IN e.source_types THEN e.source_types
               ELSE e.source_types + $source_type
             END,
+            e.provenances = CASE
+              WHEN $provenance IN coalesce(e.provenances, []) THEN e.provenances
+              ELSE coalesce(e.provenances, []) + $provenance
+            END,
             e.confidence = CASE
               WHEN $confidence > e.confidence THEN $confidence
               ELSE e.confidence
@@ -385,6 +402,7 @@ async def merge_entity_at_id(
         kind=kind,
         source_type=source_type,
         confidence=confidence,
+        provenance=provenance,
     )
     record = await result.single()
     if record is None:
@@ -980,6 +998,133 @@ async def find_entities_by_vector(
             )
         )
     return hits
+
+
+# ── K17 entity-embedding WRITE pipeline ────────────────────────────────
+#
+# The read counterpart (find_entities_by_vector, above) expects every
+# anchored :Entity to carry `embedding_{dim}` + `embedding_model`. K17 is the
+# producer that stamps them. Mirrors the passage embedding write
+# (app/db/neo4j_repos/passages.py upsert_passage): dim-validated f-string into
+# the property name (closed-set, no injection), only the dim-matching property
+# written so mixed-model tenants coexist. Unlike passages (chapter-scoped,
+# MERGE-on-ingest), an entity already exists — we MATCH and SET in place.
+
+# `embed_prop` is f-string-substituted; it is validated against the closed
+# SUPPORTED_VECTOR_DIMS set below, so there is no injection surface.
+_SET_ENTITY_EMBEDDING_CYPHER_TEMPLATE = """
+MATCH (e:Entity {{id: $id}})
+WHERE e.user_id = $user_id
+SET e.{embed_prop} = $embedding,
+    e.embedding_model = $embedding_model,
+    e.embedding_version = $embedding_version
+RETURN e.id AS id
+"""
+# NOTE: deliberately does NOT touch `e.updated_at`. Embedding is a DERIVED-data
+# write, not a content edit; bumping the shared `updated_at` would make an
+# embedded entity falsely float to the top of the recency-ordered listing
+# queries (`ORDER BY e.updated_at DESC` — list_entities_filtered etc.) and skew
+# `find_entities_needing_embedding`'s own newest-content-first ordering.
+# `embedding_version` is the embed-freshness tracker (review-impl MED).
+
+
+async def set_entity_embedding(
+    session: CypherSession,
+    *,
+    user_id: str,
+    entity_id: str,
+    embedding: list[float],
+    embedding_dim: int,
+    embedding_model: str,
+    embedding_version: int,
+) -> bool:
+    """Stamp a per-dim embedding on an EXISTING `:Entity` (K17).
+
+    MATCH (not MERGE) — the entity must already exist (created by the Pass-2
+    writer / glossary anchor). Writes only the `embedding_{dim}` property that
+    matches `embedding_dim`; the other dim properties stay untouched so
+    mixed-model tenants (projects on different embedding models) coexist —
+    same invariant as `upsert_passage`. `embedding_version` records the
+    entity's `version` at embed time so the dirty-signal in
+    `find_entities_needing_embedding` can detect content drift. Returns True
+    when a row was updated, False when no entity matched (id/user mismatch)."""
+    if embedding_dim not in SUPPORTED_VECTOR_DIMS:
+        raise ValueError(
+            f"unsupported embedding_dim {embedding_dim}; "
+            f"must be one of {SUPPORTED_VECTOR_DIMS}"
+        )
+    if len(embedding) != embedding_dim:
+        raise ValueError(
+            f"embedding length {len(embedding)} does not match dim {embedding_dim}"
+        )
+    cypher = _SET_ENTITY_EMBEDDING_CYPHER_TEMPLATE.format(
+        embed_prop=f"embedding_{embedding_dim}",
+    )
+    result = await run_write(
+        session,
+        cypher,
+        user_id=user_id,
+        id=entity_id,
+        embedding=embedding,
+        embedding_model=embedding_model,
+        embedding_version=embedding_version,
+    )
+    record = await result.single()
+    return record is not None
+
+
+# Anchored entities whose embedding is MISSING or STALE for the project's
+# current model: never embedded, embedded under a different model, or whose
+# content (version) advanced since the last embed. Scoped to anchored
+# (glossary_entity_id) + active (not archived) entities — exactly the set the
+# read path (find_entities_by_vector) can surface, so we never embed an orphan
+# KG node that would never be returned anyway.
+_FIND_NEEDING_EMBEDDING_CYPHER = """
+MATCH (e:Entity)
+WHERE e.user_id = $user_id
+  AND ($project_id IS NULL OR e.project_id = $project_id)
+  AND e.glossary_entity_id IS NOT NULL
+  AND e.archived_at IS NULL
+  AND (
+    e.embedding_model IS NULL
+    OR e.embedding_model <> $embedding_model
+    OR coalesce(e.embedding_version, -1) < coalesce(e.version, 1)
+  )
+RETURN e
+ORDER BY e.updated_at DESC
+LIMIT $limit
+"""
+
+
+async def find_entities_needing_embedding(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    embedding_model: str,
+    limit: int = 200,
+) -> list[Entity]:
+    """Anchored, active entities that need a (re)embed for `embedding_model`.
+
+    "Need" = never embedded, embedded under a different model, or content
+    advanced (`embedding_version < version`) since the last embed. Newest-first
+    so an incremental run after an extraction touches the just-changed entities
+    first. The producer (`app.extraction.entity_embedder`) drains this with a
+    per-run cap; `limit` bounds one batch."""
+    if limit <= 0:
+        raise ValueError(f"limit must be positive, got {limit}")
+    result = await run_read(
+        session,
+        _FIND_NEEDING_EMBEDDING_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        embedding_model=embedding_model,
+        limit=limit,
+    )
+    out: list[Entity] = []
+    async for record in result:
+        out.append(_node_to_entity(record["e"]))
+    return out
 
 
 # ── link_to_glossary / unlink_from_glossary ───────────────────────────
@@ -1689,7 +1834,11 @@ async def get_neighborhood_by_glossary_id(
 _UPDATE_ENTITY_FIELDS_CYPHER = """
 MATCH (e:Entity {id: $id})
 WHERE e.user_id = $user_id
-WITH e, coalesce(e.version, 1) AS current_version
+// Phase B: capture the pre-edit snapshot in the SAME query (design §6.3 —
+// same-Cypher, NOT read-before-write, so before/after are TOCTOU-consistent).
+// The WITH materialises `before` eagerly, before the FOREACH SET mutates e.
+WITH e, coalesce(e.version, 1) AS current_version,
+     {name: e.name, kind: e.kind, aliases: coalesce(e.aliases, [])} AS before
 FOREACH (_ IN CASE WHEN current_version = $expected_version THEN [1] ELSE [] END |
   SET
     e.name = CASE WHEN $name IS NULL THEN e.name ELSE $name END,
@@ -1706,7 +1855,7 @@ FOREACH (_ IN CASE WHEN current_version = $expected_version THEN [1] ELSE [] END
     e.version = current_version + 1,
     e.updated_at = datetime()
 )
-RETURN e, current_version = $expected_version AS applied
+RETURN e, current_version = $expected_version AS applied, before
 """
 
 
@@ -1719,9 +1868,16 @@ async def update_entity_fields(
     kind: str | None,
     aliases: list[str] | None,
     expected_version: int,
-) -> Entity | None:
+) -> tuple[Entity | None, dict | None]:
     """K19d.5 + C9 — patch an entity's display fields with optimistic
     concurrency.
+
+    Phase B: returns ``(entity, before)`` where ``before`` is the pre-edit
+    ``{name, kind, aliases}`` snapshot captured in the SAME Cypher (design §6.3)
+    — used by the router to emit a ``knowledge.entity_corrected`` event.
+    ``before`` is ``None`` when no row matched. On a version mismatch the
+    function still raises ``VersionMismatchError`` (before is irrelevant — no
+    edit happened).
 
     Sets `user_edited=true` + bumps `version` on any successful write.
     `expected_version` must match the row's current version (coalesced
@@ -1762,11 +1918,13 @@ async def update_entity_fields(
     )
     record = await result.single()
     if record is None:
-        return None
+        return None, None
     entity = _node_to_entity(record["e"])
     if not record["applied"]:
         raise VersionMismatchError(entity)
-    return entity
+    before_raw = record["before"]
+    before = dict(before_raw) if before_raw is not None else None
+    return entity, before
 
 
 # C9 (D-K19d-γa-02) — unlock user_edited so extractions can contribute
@@ -2002,6 +2160,20 @@ RETURN t
 """
 
 
+# T2.1 — re-point the source's `(:Fact)-[:ABOUT]->` edges onto target before the
+# DETACH DELETE, else facts about a merged-away entity orphan (vanish from the live
+# entity's codex list). MERGE is idempotent — a fact already ABOUT target gains no
+# dup; the stale source edge is removed by the DETACH DELETE in step 7.
+_MERGE_REWIRE_ABOUT_CYPHER = """
+MATCH (f:Fact)-[:ABOUT]->(s:Entity {id: $source_id})
+WHERE f.user_id = $user_id
+MATCH (t:Entity {id: $target_id})
+WHERE t.user_id = $user_id
+MERGE (f)-[:ABOUT]->(t)
+RETURN count(*) AS rewired
+"""
+
+
 _MERGE_DELETE_SOURCE_CYPHER = """
 MATCH (s:Entity {id: $source_id})
 WHERE s.user_id = $user_id
@@ -2199,6 +2371,15 @@ async def merge_entities(
         await run_write(
             tx,
             _MERGE_REWIRE_EVIDENCED_BY_CYPHER,
+            user_id=user_id,
+            source_id=source_id,
+            target_id=target_id,
+        )
+
+        # 5b. T2.1 — re-point (:Fact)-[:ABOUT]-> edges onto target (before delete).
+        await run_write(
+            tx,
+            _MERGE_REWIRE_ABOUT_CYPHER,
             user_id=user_id,
             source_id=source_id,
             target_id=target_id,

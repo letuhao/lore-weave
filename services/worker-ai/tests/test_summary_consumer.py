@@ -63,6 +63,47 @@ async def test_dispatch_happy_path_returns_ack():
 
 
 @pytest.mark.asyncio
+async def test_dispatch_forwards_billing_identity_when_present():
+    """E0-3 2a-2: a collaborator-enqueued summary message carries billing
+    fields on the redis record → the consumer forwards them to the HTTP
+    dispatch so knowledge-service bills the caller's key."""
+    kc = MagicMock(spec=KnowledgeClient)
+    kc.process_summarize_message = AsyncMock(return_value=SummarizeMessageResult(
+        level="chapter", node_id="n1", cache_hit=False, race_winner=True,
+        re_enqueued=False, skipped_retry_exhausted=False, summary_id="s1",
+    ))
+    await _dispatch_one_message(
+        knowledge_client=kc,
+        fields=_fields(
+            billing_user_id="collab-B",
+            billing_llm_model="collab-llm",
+            billing_embedding_model="collab-emb",
+        ),
+        message_id="1-2",
+    )
+    kw = kc.process_summarize_message.await_args.kwargs
+    assert kw["billing_user_id"] == "collab-B"
+    assert kw["billing_llm_model"] == "collab-llm"
+    assert kw["billing_embedding_model"] == "collab-emb"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_billing_absent_forwards_empty():
+    """Legacy / owner-triggered message (no billing keys) → "" forwarded."""
+    kc = MagicMock(spec=KnowledgeClient)
+    kc.process_summarize_message = AsyncMock(return_value=SummarizeMessageResult(
+        level="chapter", node_id="n1", cache_hit=False, race_winner=True,
+        re_enqueued=False, skipped_retry_exhausted=False, summary_id="s1",
+    ))
+    await _dispatch_one_message(
+        knowledge_client=kc, fields=_fields(), message_id="1-3",
+    )
+    kw = kc.process_summarize_message.await_args.kwargs
+    assert kw["billing_user_id"] == ""
+    assert kw["billing_embedding_model"] == ""
+
+
+@pytest.mark.asyncio
 async def test_dispatch_retryable_error_returns_noack():
     """Retryable HTTP error → leave un-ACKed for PEL re-delivery."""
     kc = MagicMock(spec=KnowledgeClient)
@@ -314,6 +355,43 @@ async def test_consume_stream_xacks_on_success(monkeypatch):
 
     fake_client.xack.assert_awaited_once()
     fake_client.aclose.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_consume_stream_continues_on_idle_timeout(monkeypatch):
+    """D-REDIS8-CONSUMERS: redis-py 8 makes a blocking XREADGROUP(block=) raise
+    TimeoutError on idle. The loop must treat it as normal idle (continue, no
+    WARNING, no backoff) and keep reading — proven by processing the message
+    that arrives AFTER the idle timeout."""
+    import redis.asyncio as aioredis
+
+    fake_client = MagicMock()
+    fake_client.xgroup_create = AsyncMock(return_value=None)
+    fake_client.xack = AsyncMock(return_value=1)
+    fake_client.aclose = AsyncMock()
+    fake_client.xreadgroup = AsyncMock(side_effect=[
+        aioredis.TimeoutError("Timeout reading from redis:6379"),  # idle tick
+        [(b"extraction.summarize", [(b"1-0", _fields())])],         # real message
+        asyncio.CancelledError(),
+    ])
+    monkeypatch.setattr(
+        "app.summary_consumer.aioredis.from_url",
+        lambda *a, **kw: fake_client,
+    )
+
+    kc = MagicMock(spec=KnowledgeClient)
+    kc.process_summarize_message = AsyncMock(return_value=SummarizeMessageResult(
+        level="chapter", node_id="n1", cache_hit=False, race_winner=True,
+        re_enqueued=False, skipped_retry_exhausted=False, summary_id="s1",
+    ))
+
+    with pytest.raises(asyncio.CancelledError):
+        await consume_summary_stream(
+            kc, redis_url="redis://test",
+            consumer_group="g", consumer_name="c", block_ms=10,
+        )
+    # processed the post-timeout message → the idle TimeoutError was a clean continue
+    fake_client.xack.assert_awaited_once()
 
 
 @pytest.mark.asyncio

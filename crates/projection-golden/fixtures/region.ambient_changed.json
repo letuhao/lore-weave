@@ -1,0 +1,23 @@
+{
+  "_spec": "region.ambient_changed → UPDATE region_projection.ambient_state=payload.ambient_state + last_event_version, keyed region_id.",
+  "envelope": {
+    "event_id": "00000000-0000-0000-0000-000000000502",
+    "event_type": "region.ambient_changed",
+    "event_version": 1,
+    "aggregate_id": "region-1",
+    "aggregate_type": "region",
+    "aggregate_version": 2,
+    "reality_id": "22222222-2222-2222-2222-222222222222",
+    "occurred_at": "2026-01-01T00:00:08.000000Z",
+    "recorded_at": "2026-01-01T00:00:08.000000Z",
+    "payload": { "ambient_state": { "weather": "rain" } }
+  },
+  "expected_updates": [
+    { "Update": {
+      "table": "region_projection",
+      "pk": { "region_id": "region-1" },
+      "fields": { "ambient_state": { "weather": "rain" }, "last_event_version": 2 },
+      "meta": { "event_id": "00000000-0000-0000-0000-000000000502", "aggregate_version": 2, "applied_at": "2026-01-01T00:00:08.000000Z" }
+    }}
+  ]
+}

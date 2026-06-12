@@ -1,0 +1,88 @@
+# L7.A ops-domain admin commands — RAID cycle 36 DPS 5.
+# Operational commands that touch deploy / chaos / service modes.
+
+domain: ops
+commands:
+  - name: ops drain-replica
+    version: "1.0.0"
+    summary: "Drain a Postgres replica for maintenance (set out-of-rotation)."
+    handler: opsDrainReplica
+    params:
+      - {name: host,   type: string, required: true, description: "Replica host"}
+      - {name: reason, type: string, required: true, description: "Audit explanation"}
+    impact_class: tier-2-griefing
+    dry_run_required: true
+    double_approval_required: false
+    carry_forward_cycle: "36"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]
+
+  - name: ops set-service-mode
+    version: "1.0.0"
+    summary: "Set a service into degraded|read-only|maintenance mode."
+    handler: opsSetServiceMode
+    params:
+      - {name: service, type: string, required: true, description: "Service name (must exist in service_acl/matrix.yaml)"}
+      - {name: mode,    type: enum,   required: true, description: "active|degraded|read-only|maintenance"}
+      - {name: reason,  type: string, required: true, description: "Audit explanation"}
+    impact_class: tier-1-destructive
+    dry_run_required: true
+    double_approval_required: true
+    carry_forward_cycle: "36"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]
+
+  - name: ops deploy-freeze
+    version: "1.0.0"
+    summary: "Freeze deploys for a service or globally (SR5 deploy freeze, cycle 35 canary-controller carry-forward)."
+    handler: opsDeployFreeze
+    params:
+      - {name: scope,    type: enum,   required: true,  description: "global|service"}
+      - {name: service,  type: string, required: false, description: "Required if scope=service"}
+      - {name: reason,   type: string, required: true,  description: "Audit explanation (SR5)"}
+      - {name: duration, type: duration, required: false, description: "Auto-thaw window (default 24h)"}
+    impact_class: tier-2-griefing
+    dry_run_required: true
+    double_approval_required: false
+    carry_forward_cycle: "35"  # canary-controller cycle 35
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2, Q-L7K-1]
+
+  - name: ops deploy-thaw
+    version: "1.0.0"
+    summary: "Lift a deploy freeze (SR5)."
+    handler: opsDeployThaw
+    params:
+      - {name: scope,   type: enum,   required: true,  description: "global|service"}
+      - {name: service, type: string, required: false, description: "Required if scope=service"}
+      - {name: reason,  type: string, required: true,  description: "Audit explanation"}
+    impact_class: tier-2-griefing
+    dry_run_required: false
+    double_approval_required: false
+    carry_forward_cycle: "35"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2, Q-L7K-1]
+
+  - name: ops canary-advance
+    version: "1.0.0"
+    summary: "Manual canary stage advance (SR5; carry-forward cycle 35 canary-controller)."
+    handler: opsCanaryAdvance
+    params:
+      - {name: service,    type: string, required: true,  description: "Service name"}
+      - {name: deployment, type: string, required: true,  description: "Deployment ID"}
+      - {name: reason,     type: string, required: true,  description: "Audit explanation"}
+    impact_class: tier-2-griefing
+    dry_run_required: true
+    double_approval_required: false
+    carry_forward_cycle: "35"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2, Q-L7K-1]
+
+  - name: ops chaos-run
+    version: "1.0.0"
+    summary: "Trigger a chaos drill from the SR7 catalog."
+    handler: opsChaosRun
+    params:
+      - {name: drill_id, type: string, required: true, description: "Catalog ID of the drill"}
+      - {name: dry_run,  type: bool,   required: false, description: "Default true (chaos drills require explicit --no-dry-run)"}
+      - {name: reason,   type: string, required: true,  description: "Audit explanation"}
+    impact_class: tier-2-griefing
+    dry_run_required: true
+    double_approval_required: false
+    carry_forward_cycle: "36"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]

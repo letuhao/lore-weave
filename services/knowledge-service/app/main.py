@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from loreweave_obs import current_otel_trace_id, setup_tracing
 
 from app.clients.book_client import close_book_client, get_book_client
+from app.clients.grant_client import close_grant_client, get_grant_client
 from app.clients.embedding_client import close_embedding_client, get_embedding_client
 from app.clients.glossary_client import close_glossary_client, init_glossary_client
 from app.clients.llm_client import close_llm_client, get_llm_client
@@ -21,12 +22,18 @@ from app.logging_config import setup_logging, trace_id_var
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
     context,
+    coref,
     health,
     internal_admin,
+    internal_backfill,
+    internal_canon,
     internal_benchmark,
+    internal_dispatch,
+    internal_enrichment,
     internal_extraction,
     internal_parse,
     internal_summarize,
+    internal_timeline,
     internal_tools,
     internal_wiki,
     metrics,
@@ -34,15 +41,22 @@ from app.routers import (
 )
 from app.routers.public import costs as public_costs
 from app.routers.public import drawers as public_drawers
+from app.routers.public import raw_search as public_raw_search
 from app.routers.public import entities as public_entities
 from app.routers.public import extraction as public_extraction
 from app.routers.public import logs as public_logs
 from app.routers.public import pending_facts as public_pending_facts
+from app.routers.public import events as public_events
 from app.routers.public import projects as public_projects
+from app.routers.public import relations as public_relations
 from app.routers.public import summaries as public_summaries
 from app.routers.public.summaries import close_cooldown_client
 from app.routers.public import timeline as public_timeline
 from app.routers.public import user_data as public_user_data
+# ARCH-1 C1 — MCP server facade. build_mcp_app() returns the ASGI app
+# mounted at /mcp; mcp_server's StreamableHTTP session manager is run
+# inside the lifespan below.
+from app.mcp.server import build_mcp_app, mcp_server
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +76,7 @@ async def _close_all_startup_resources() -> None:
         ("llm_client", close_llm_client),
         ("embedding_client", close_embedding_client),
         ("book_client", close_book_client),
+        ("grant_client", close_grant_client),
         ("glossary_client", close_glossary_client),
         ("neo4j_driver", close_neo4j_driver),
         ("pools", close_pools),
@@ -90,6 +105,8 @@ async def lifespan(app: FastAPI):
         init_glossary_client()
         # K16.2 — long-lived httpx client for book-service chapter counts.
         get_book_client()
+        # E0-3 — long-lived httpx client for the book-service grant authority.
+        get_grant_client()
         # K12.2 — long-lived httpx client for embedding calls.
         get_embedding_client()
         # loreweave_llm SDK wrapper for unified-gateway LLM calls. Touched
@@ -126,6 +143,27 @@ async def lifespan(app: FastAPI):
         except Exception:
             logger.warning(
                 "D-P2-STALE-CLAIM-LIFESPAN-HOOK: stale-claim recovery failed (non-fatal)",
+                exc_info=True,
+            )
+        # Q4b-feed — prune extraction_run_samples older than the judging
+        # window. The sample is a transient buffer feeding the online judge;
+        # rows past the window are dead novel-text weight. Best-effort: a
+        # Postgres hiccup here MUST NOT block service startup.
+        try:
+            from app.db.repositories.extraction_run_samples import (
+                ExtractionRunSamplesRepo,
+            )
+            pruned_n = await ExtractionRunSamplesRepo(
+                get_knowledge_pool()
+            ).prune_older_than(settings.extraction_run_sample_ttl_days)
+            if pruned_n > 0:
+                logger.info(
+                    "Q4b-feed: pruned %d extraction_run_samples older than %d days",
+                    pruned_n, settings.extraction_run_sample_ttl_days,
+                )
+        except Exception:
+            logger.warning(
+                "Q4b-feed: extraction_run_samples prune failed (non-fatal)",
                 exc_info=True,
             )
     except Exception:
@@ -165,20 +203,33 @@ async def lifespan(app: FastAPI):
         from app.events.dispatcher import EventDispatcher
         from app.events.handlers import (
             handle_chat_turn,
-            handle_chapter_saved,
+            handle_chapter_published,
+            handle_chapter_unpublished,
             handle_chapter_deleted,
             handle_glossary_entity_updated,
+            handle_glossary_entity_merged,
         )
 
         dispatcher = EventDispatcher()
         dispatcher.register("chat.turn_completed", handle_chat_turn)
-        dispatcher.register("chapter.saved", handle_chapter_saved)
+        # Canon Model CM3c: canon = published. BOTH graph extraction AND L3
+        # passage-ingest now trigger on chapter.published (at the pinned
+        # revision), never chapter.saved — so unreviewed draft prose never
+        # canonizes. chapter.saved is no longer consumed by knowledge (the
+        # handler was dropped); statistics-service still consumes it separately.
+        dispatcher.register("chapter.published", handle_chapter_published)
+        dispatcher.register("chapter.unpublished", handle_chapter_unpublished)
         dispatcher.register("chapter.deleted", handle_chapter_deleted)
         # C4 (K14) — auto glossary→KG propagation. glossary-service emits
         # glossary.entity_updated on every entity write (single + bulk
         # extract); this triggers the existing glossary_sync → Neo4j.
         dispatcher.register(
             "glossary.entity_updated", handle_glossary_entity_updated,
+        )
+        # mui #1c — glossary.entity_merged consolidates the KG: merge the loser
+        # :Entity into the winner + entity_alias_map (anti-resurrection).
+        dispatcher.register(
+            "glossary.entity_merged", handle_glossary_entity_merged,
         )
 
         consumer = EventConsumer(
@@ -285,6 +336,21 @@ async def lifespan(app: FastAPI):
                 exc_info=True,
             )
 
+    # wiki-llm M6 — wiki-gen stream consumer (flag-gated OFF by default: it
+    # spends tokens, so a deploy never auto-starts generating). Cancel-driven
+    # shutdown like the other background loops.
+    wiki_gen_task = None
+    if settings.wiki_gen_enabled:
+        try:
+            from app.jobs.wiki_gen_processor import run_wiki_gen_consumer
+            wiki_gen_task = asyncio.create_task(run_wiki_gen_consumer())
+            logger.info("wiki-llm M6: wiki-gen consumer started as background task")
+        except Exception:
+            logger.warning(
+                "wiki-llm M6: wiki-gen consumer failed to start (non-fatal)",
+                exc_info=True,
+            )
+
     # C14a — reconcile-evidence-count + quarantine-cleanup schedulers.
     # Both wrap existing per-user/global Neo4j functions (K11.9 + K15.10)
     # in periodic sweeps. Gated on neo4j_uri same as summary regen
@@ -379,10 +445,48 @@ async def lifespan(app: FastAPI):
                 exc_info=True,
             )
 
+    # ARCH-1 C1 — run the MCP StreamableHTTP session manager. The /mcp
+    # sub-app is mounted at module level (after app construction), but a
+    # mounted Starlette sub-app's lifespan is NOT auto-run under FastAPI,
+    # so we enter its session manager here. stateless_http=True means no
+    # per-session state survives between calls; scope arrives in headers.
+    # Failure to start affects only the MCP path — the bespoke
+    # /internal/tools/* routes stay up regardless (dual-run).
+    mcp_exit_stack: AsyncExitStack | None = None
+    try:
+        mcp_exit_stack = AsyncExitStack()
+        await mcp_exit_stack.enter_async_context(mcp_server.session_manager.run())
+        logger.info("ARCH-1 C1: MCP session manager started; /mcp facade live")
+    except Exception:
+        logger.warning(
+            "ARCH-1 C1: MCP session manager failed to start (non-fatal) — "
+            "/mcp facade unavailable, bespoke /internal/tools/* still serve",
+            exc_info=True,
+        )
+        if mcp_exit_stack is not None:
+            await mcp_exit_stack.aclose()
+            mcp_exit_stack = None
+
     logger.info("knowledge-service started on port %d", settings.port)
     try:
         yield
     finally:
+        # ARCH-1 C1 — stop the MCP session manager first so in-flight
+        # tool calls are cancelled before the repos/pools they touch are
+        # closed. The SDK's session-manager shutdown cancels its anyio
+        # task group (streamable_http_manager.run() -> tg.cancel_scope
+        # .cancel()); it does NOT drain — there is no grace period for a
+        # mid-query handler. The ORDERING still matters: cancelling here,
+        # ahead of close_pools() below, lets a cancelled handler unwind
+        # against a still-open pool instead of hitting a closed one.
+        if mcp_exit_stack is not None:
+            try:
+                await mcp_exit_stack.aclose()
+            except Exception:
+                logger.warning(
+                    "ARCH-1 C1: error stopping MCP session manager",
+                    exc_info=True,
+                )
         # Stop cache invalidator first so in-flight publishes drain
         # before we close the Redis client.
         if cache_invalidator is not None:
@@ -420,6 +524,16 @@ async def lifespan(app: FastAPI):
                 pass
             except Exception:
                 logger.warning("Error stopping anchor-refresh loop", exc_info=True)
+
+        # wiki-llm M6: stop the wiki-gen consumer.
+        if wiki_gen_task is not None:
+            wiki_gen_task.cancel()
+            try:
+                await wiki_gen_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.warning("wiki-llm M6: error stopping wiki-gen consumer", exc_info=True)
 
         # K20.3: stop summary regen loops (project first, then global).
         if summary_regen_task is not None:
@@ -501,6 +615,7 @@ async def lifespan(app: FastAPI):
         await close_llm_client()
         await close_embedding_client()
         await close_book_client()
+        await close_grant_client()
         await close_glossary_client()
         await close_neo4j_driver()
         await close_pools()
@@ -562,18 +677,27 @@ app.include_router(health.router)
 app.include_router(ping.public_router)
 app.include_router(ping.internal_router)
 app.include_router(context.router)
+app.include_router(coref.router)
 app.include_router(internal_admin.router)
+app.include_router(internal_backfill.router)
+app.include_router(internal_canon.router)
 app.include_router(internal_benchmark.router)
+app.include_router(internal_dispatch.router)
+app.include_router(internal_enrichment.router)
 app.include_router(internal_extraction.router)
 app.include_router(internal_parse.router)
 app.include_router(internal_summarize.router)
+app.include_router(internal_timeline.router)
 app.include_router(internal_tools.router)
 app.include_router(internal_wiki.router)
 app.include_router(metrics.router)
 app.include_router(public_costs.router)
 app.include_router(public_drawers.router)
+app.include_router(public_raw_search.router)
 app.include_router(public_entities.router)
 app.include_router(public_entities.entities_router)
+app.include_router(public_relations.relations_router)
+app.include_router(public_events.events_router)
 app.include_router(public_extraction.router)
 app.include_router(public_extraction.jobs_router)
 app.include_router(public_logs.router)
@@ -582,3 +706,11 @@ app.include_router(public_projects.router)
 app.include_router(public_summaries.router)
 app.include_router(public_timeline.timeline_router)
 app.include_router(public_user_data.router)
+
+# ARCH-1 C1 — MCP server facade. Dual-run: /internal/tools/* retained.
+# Streamable HTTP transport; auth via X-Internal-Token is checked inside
+# each tool handler's _build_tool_context(). build_mcp_app() returns the
+# Starlette ASGI app synchronously; mounted AFTER all routers so FastAPI
+# routes take precedence over the Starlette sub-app. The StreamableHTTP
+# session manager is run by the lifespan above.
+app.mount("/mcp", build_mcp_app())

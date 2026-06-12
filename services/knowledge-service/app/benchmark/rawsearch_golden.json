@@ -1,0 +1,696 @@
+{
+  "_about": "P3-EVAL/E5 golden set. Expected + graded MINED from the live exact-substring oracle (anti-cheat). Rebuild: python scripts/build_rawsearch_golden.py. Bands: exact (incl. wide terms), phrase, paraphrase, typo (fuzzy), negative.",
+  "book_id": "019ea2fc-ffc7-7dc6-8f09-1f8625584b59",
+  "project_id": "019ea2fd-0523-7c3d-ab59-72c0c0a73a3b",
+  "counts": {
+    "exact": 16,
+    "phrase": 4,
+    "typo": 3,
+    "paraphrase": 5,
+    "negative": 5
+  },
+  "total": 33,
+  "thresholds": {
+    "hybrid_hit@5": 0.9,
+    "hybrid_ndcg@10": 0.7,
+    "lexical_oracle_recall": 0.8,
+    "semantic_ann_recall": 0.9,
+    "max_negative_leak": 0
+  },
+  "queries": [
+    {
+      "q": "龙象般若",
+      "band": "exact",
+      "origin": 5,
+      "expected": [
+        "019ea2fd-007a-78dc-b1c8-a23806d0567e",
+        "019ea2fd-00b1-7e69-9964-4f3819dec9bc",
+        "019ea2fd-0116-7822-96b4-e97f34ad2ae8",
+        "019ea2fd-012f-7237-9ca3-2cbacf0c92c8",
+        "019ea2fd-0177-7933-b047-18835d911f19",
+        "019ea2fd-018f-7261-b0b5-ec3666fc2fd5",
+        "019ea2fd-01a6-7ac4-a8b3-dac502ce52f3",
+        "019ea2fd-02b8-7a34-a48a-eca6bba9bc55",
+        "019ea2fd-02e5-7782-9e56-3b4565ba0204",
+        "019ea2fd-03e3-7b69-a429-a02e13be5d17",
+        "019ea2fd-03fb-7098-8c9a-d0ccd6da3c4a"
+      ],
+      "graded": {
+        "019ea2fd-007a-78dc-b1c8-a23806d0567e": 3,
+        "019ea2fd-00b1-7e69-9964-4f3819dec9bc": 1,
+        "019ea2fd-0116-7822-96b4-e97f34ad2ae8": 1,
+        "019ea2fd-012f-7237-9ca3-2cbacf0c92c8": 1,
+        "019ea2fd-0177-7933-b047-18835d911f19": 1,
+        "019ea2fd-018f-7261-b0b5-ec3666fc2fd5": 1,
+        "019ea2fd-01a6-7ac4-a8b3-dac502ce52f3": 1,
+        "019ea2fd-02b8-7a34-a48a-eca6bba9bc55": 1,
+        "019ea2fd-02e5-7782-9e56-3b4565ba0204": 1,
+        "019ea2fd-03e3-7b69-a429-a02e13be5d17": 1,
+        "019ea2fd-03fb-7098-8c9a-d0ccd6da3c4a": 1
+      }
+    },
+    {
+      "q": "天心剑法",
+      "band": "exact",
+      "origin": 7,
+      "expected": [
+        "019ea2fd-00b1-7e69-9964-4f3819dec9bc",
+        "019ea2fd-00cd-7669-b874-1100b867a4a1",
+        "019ea2fd-00e4-7a99-9239-a4f83ff4f1b7",
+        "019ea2fd-0177-7933-b047-18835d911f19",
+        "019ea2fd-018f-7261-b0b5-ec3666fc2fd5",
+        "019ea2fd-0274-78b6-b760-0a6b7a99f1de",
+        "019ea2fd-028b-780f-968d-44b7f9d4026b",
+        "019ea2fd-02b8-7a34-a48a-eca6bba9bc55"
+      ],
+      "graded": {
+        "019ea2fd-00b1-7e69-9964-4f3819dec9bc": 3,
+        "019ea2fd-00cd-7669-b874-1100b867a4a1": 1,
+        "019ea2fd-00e4-7a99-9239-a4f83ff4f1b7": 1,
+        "019ea2fd-0177-7933-b047-18835d911f19": 1,
+        "019ea2fd-018f-7261-b0b5-ec3666fc2fd5": 1,
+        "019ea2fd-0274-78b6-b760-0a6b7a99f1de": 1,
+        "019ea2fd-028b-780f-968d-44b7f9d4026b": 1,
+        "019ea2fd-02b8-7a34-a48a-eca6bba9bc55": 1
+      }
+    },
+    {
+      "q": "火蛇枪法",
+      "band": "exact",
+      "origin": 27,
+      "expected": [
+        "019ea2fd-028b-780f-968d-44b7f9d4026b"
+      ],
+      "graded": {
+        "019ea2fd-028b-780f-968d-44b7f9d4026b": 3
+      }
+    },
+    {
+      "q": "时空秘典",
+      "band": "exact",
+      "origin": 4,
+      "expected": [
+        "019ea2fd-005b-70bc-a9de-0a2f57338f70",
+        "019ea2fd-018f-7261-b0b5-ec3666fc2fd5",
+        "019ea2fd-02e5-7782-9e56-3b4565ba0204",
+        "019ea2fd-02fb-7fd7-a987-3566acebf226",
+        "019ea2fd-0312-7359-9470-80c41d0a0fe2"
+      ],
+      "graded": {
+        "019ea2fd-005b-70bc-a9de-0a2f57338f70": 3,
+        "019ea2fd-018f-7261-b0b5-ec3666fc2fd5": 1,
+        "019ea2fd-02e5-7782-9e56-3b4565ba0204": 1,
+        "019ea2fd-02fb-7fd7-a987-3566acebf226": 1,
+        "019ea2fd-0312-7359-9470-80c41d0a0fe2": 1
+      }
+    },
+    {
+      "q": "乾坤神木图",
+      "band": "exact",
+      "origin": 32,
+      "expected": [
+        "019ea2fd-02fb-7fd7-a987-3566acebf226",
+        "019ea2fd-0312-7359-9470-80c41d0a0fe2",
+        "019ea2fd-03fb-7098-8c9a-d0ccd6da3c4a",
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762"
+      ],
+      "graded": {
+        "019ea2fd-02fb-7fd7-a987-3566acebf226": 3,
+        "019ea2fd-0312-7359-9470-80c41d0a0fe2": 1,
+        "019ea2fd-03fb-7098-8c9a-d0ccd6da3c4a": 1,
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762": 1
+      }
+    },
+    {
+      "q": "清玄阁",
+      "band": "exact",
+      "origin": 12,
+      "expected": [
+        "019ea2fd-012f-7237-9ca3-2cbacf0c92c8",
+        "019ea2fd-0146-7158-8543-200dd9f7cfd3",
+        "019ea2fd-015e-77da-b23a-bcb3ac569041",
+        "019ea2fd-0177-7933-b047-18835d911f19",
+        "019ea2fd-01bf-70f0-bc01-da89aa3e0e69",
+        "019ea2fd-0329-74b0-a40c-700041ebaa33",
+        "019ea2fd-0355-7447-9966-49384c41500f",
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762",
+        "019ea2fd-042b-7ba7-af85-94f0ab59d373"
+      ],
+      "graded": {
+        "019ea2fd-012f-7237-9ca3-2cbacf0c92c8": 3,
+        "019ea2fd-0146-7158-8543-200dd9f7cfd3": 1,
+        "019ea2fd-015e-77da-b23a-bcb3ac569041": 1,
+        "019ea2fd-0177-7933-b047-18835d911f19": 1,
+        "019ea2fd-01bf-70f0-bc01-da89aa3e0e69": 1,
+        "019ea2fd-0329-74b0-a40c-700041ebaa33": 1,
+        "019ea2fd-0355-7447-9966-49384c41500f": 1,
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762": 1,
+        "019ea2fd-042b-7ba7-af85-94f0ab59d373": 1
+      }
+    },
+    {
+      "q": "蛮神池",
+      "band": "exact",
+      "origin": 30,
+      "expected": [
+        "019ea2fd-0247-7527-bf42-574ee2e8d77a",
+        "019ea2fd-025d-7693-9f17-3a996722d5e1",
+        "019ea2fd-02b8-7a34-a48a-eca6bba9bc55",
+        "019ea2fd-02ce-77af-bdb6-a0382ae8210b",
+        "019ea2fd-02e5-7782-9e56-3b4565ba0204",
+        "019ea2fd-03e3-7b69-a429-a02e13be5d17"
+      ],
+      "graded": {
+        "019ea2fd-0247-7527-bf42-574ee2e8d77a": 1,
+        "019ea2fd-025d-7693-9f17-3a996722d5e1": 1,
+        "019ea2fd-02b8-7a34-a48a-eca6bba9bc55": 1,
+        "019ea2fd-02ce-77af-bdb6-a0382ae8210b": 3,
+        "019ea2fd-02e5-7782-9e56-3b4565ba0204": 1,
+        "019ea2fd-03e3-7b69-a429-a02e13be5d17": 1
+      }
+    },
+    {
+      "q": "铭纹公会",
+      "band": "exact",
+      "origin": 33,
+      "expected": [
+        "019ea2fd-0312-7359-9470-80c41d0a0fe2",
+        "019ea2fd-0329-74b0-a40c-700041ebaa33",
+        "019ea2fd-033f-7725-8cc3-b301c24dda46",
+        "019ea2fd-0355-7447-9966-49384c41500f",
+        "019ea2fd-03e3-7b69-a429-a02e13be5d17",
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762",
+        "019ea2fd-042b-7ba7-af85-94f0ab59d373"
+      ],
+      "graded": {
+        "019ea2fd-0312-7359-9470-80c41d0a0fe2": 3,
+        "019ea2fd-0329-74b0-a40c-700041ebaa33": 1,
+        "019ea2fd-033f-7725-8cc3-b301c24dda46": 1,
+        "019ea2fd-0355-7447-9966-49384c41500f": 1,
+        "019ea2fd-03e3-7b69-a429-a02e13be5d17": 1,
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762": 1,
+        "019ea2fd-042b-7ba7-af85-94f0ab59d373": 1
+      }
+    },
+    {
+      "q": "铁皮蛮牛",
+      "band": "exact",
+      "origin": 21,
+      "expected": [
+        "019ea2fd-0202-7b6c-8ba3-4eb7c640992e",
+        "019ea2fd-021b-70be-9c78-338970380e9e",
+        "019ea2fd-0231-73a2-8195-55c83e8cf5ef"
+      ],
+      "graded": {
+        "019ea2fd-0202-7b6c-8ba3-4eb7c640992e": 3,
+        "019ea2fd-021b-70be-9c78-338970380e9e": 1,
+        "019ea2fd-0231-73a2-8195-55c83e8cf5ef": 1
+      }
+    },
+    {
+      "q": "秦雅",
+      "band": "exact",
+      "origin": 13,
+      "expected": [
+        "019ea2fd-0146-7158-8543-200dd9f7cfd3",
+        "019ea2fd-015e-77da-b23a-bcb3ac569041",
+        "019ea2fd-01bf-70f0-bc01-da89aa3e0e69",
+        "019ea2fd-01d6-7f77-9dd1-5a5f35444084",
+        "019ea2fd-028b-780f-968d-44b7f9d4026b",
+        "019ea2fd-02a1-7fca-ad60-f0f14dbd45d0",
+        "019ea2fd-0329-74b0-a40c-700041ebaa33",
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762",
+        "019ea2fd-042b-7ba7-af85-94f0ab59d373"
+      ],
+      "graded": {
+        "019ea2fd-0146-7158-8543-200dd9f7cfd3": 3,
+        "019ea2fd-015e-77da-b23a-bcb3ac569041": 1,
+        "019ea2fd-01bf-70f0-bc01-da89aa3e0e69": 1,
+        "019ea2fd-01d6-7f77-9dd1-5a5f35444084": 1,
+        "019ea2fd-028b-780f-968d-44b7f9d4026b": 1,
+        "019ea2fd-02a1-7fca-ad60-f0f14dbd45d0": 1,
+        "019ea2fd-0329-74b0-a40c-700041ebaa33": 1,
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762": 1,
+        "019ea2fd-042b-7ba7-af85-94f0ab59d373": 1
+      }
+    },
+    {
+      "q": "空间戒指",
+      "band": "exact",
+      "origin": 39,
+      "expected": [
+        "019ea2fd-03fb-7098-8c9a-d0ccd6da3c4a",
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762"
+      ],
+      "graded": {
+        "019ea2fd-03fb-7098-8c9a-d0ccd6da3c4a": 1,
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762": 3
+      }
+    },
+    {
+      "q": "林泞姗",
+      "band": "exact",
+      "origin": 6,
+      "expected": [
+        "019ea2fd-0095-7c0d-a9f6-1431a27d4b65",
+        "019ea2fd-00b1-7e69-9964-4f3819dec9bc",
+        "019ea2fd-00cd-7669-b874-1100b867a4a1",
+        "019ea2fd-00e4-7a99-9239-a4f83ff4f1b7",
+        "019ea2fd-00fe-76bf-b5a8-8f2b057a0cd6",
+        "019ea2fd-01a6-7ac4-a8b3-dac502ce52f3",
+        "019ea2fd-01bf-70f0-bc01-da89aa3e0e69",
+        "019ea2fd-01d6-7f77-9dd1-5a5f35444084",
+        "019ea2fd-01ec-748f-9cae-fd7f3d4c1a4b",
+        "019ea2fd-0231-73a2-8195-55c83e8cf5ef",
+        "019ea2fd-0247-7527-bf42-574ee2e8d77a",
+        "019ea2fd-025d-7693-9f17-3a996722d5e1",
+        "019ea2fd-0274-78b6-b760-0a6b7a99f1de",
+        "019ea2fd-028b-780f-968d-44b7f9d4026b",
+        "019ea2fd-02a1-7fca-ad60-f0f14dbd45d0",
+        "019ea2fd-02b8-7a34-a48a-eca6bba9bc55",
+        "019ea2fd-02ce-77af-bdb6-a0382ae8210b",
+        "019ea2fd-0329-74b0-a40c-700041ebaa33",
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762"
+      ],
+      "graded": {
+        "019ea2fd-0095-7c0d-a9f6-1431a27d4b65": 3,
+        "019ea2fd-00b1-7e69-9964-4f3819dec9bc": 1,
+        "019ea2fd-00cd-7669-b874-1100b867a4a1": 1,
+        "019ea2fd-00e4-7a99-9239-a4f83ff4f1b7": 1,
+        "019ea2fd-00fe-76bf-b5a8-8f2b057a0cd6": 1,
+        "019ea2fd-01a6-7ac4-a8b3-dac502ce52f3": 1,
+        "019ea2fd-01bf-70f0-bc01-da89aa3e0e69": 1,
+        "019ea2fd-01d6-7f77-9dd1-5a5f35444084": 1,
+        "019ea2fd-01ec-748f-9cae-fd7f3d4c1a4b": 1,
+        "019ea2fd-0231-73a2-8195-55c83e8cf5ef": 1,
+        "019ea2fd-0247-7527-bf42-574ee2e8d77a": 1,
+        "019ea2fd-025d-7693-9f17-3a996722d5e1": 1,
+        "019ea2fd-0274-78b6-b760-0a6b7a99f1de": 1,
+        "019ea2fd-028b-780f-968d-44b7f9d4026b": 1,
+        "019ea2fd-02a1-7fca-ad60-f0f14dbd45d0": 1,
+        "019ea2fd-02b8-7a34-a48a-eca6bba9bc55": 1,
+        "019ea2fd-02ce-77af-bdb6-a0382ae8210b": 1,
+        "019ea2fd-0329-74b0-a40c-700041ebaa33": 1,
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762": 1
+      }
+    },
+    {
+      "q": "神武印记",
+      "band": "exact",
+      "origin": 2,
+      "expected": [
+        "019ea2fc-ffec-7bf5-880f-19e0feead82f",
+        "019ea2fd-0011-7479-9614-0dd3edcdeff7",
+        "019ea2fd-0031-7f7c-8f16-65b474cc55cb",
+        "019ea2fd-005b-70bc-a9de-0a2f57338f70",
+        "019ea2fd-007a-78dc-b1c8-a23806d0567e",
+        "019ea2fd-0095-7c0d-a9f6-1431a27d4b65",
+        "019ea2fd-00b1-7e69-9964-4f3819dec9bc",
+        "019ea2fd-00e4-7a99-9239-a4f83ff4f1b7",
+        "019ea2fd-00fe-76bf-b5a8-8f2b057a0cd6",
+        "019ea2fd-0116-7822-96b4-e97f34ad2ae8",
+        "019ea2fd-015e-77da-b23a-bcb3ac569041",
+        "019ea2fd-01a6-7ac4-a8b3-dac502ce52f3",
+        "019ea2fd-01bf-70f0-bc01-da89aa3e0e69",
+        "019ea2fd-01d6-7f77-9dd1-5a5f35444084",
+        "019ea2fd-01ec-748f-9cae-fd7f3d4c1a4b",
+        "019ea2fd-021b-70be-9c78-338970380e9e",
+        "019ea2fd-0231-73a2-8195-55c83e8cf5ef",
+        "019ea2fd-025d-7693-9f17-3a996722d5e1",
+        "019ea2fd-028b-780f-968d-44b7f9d4026b",
+        "019ea2fd-02a1-7fca-ad60-f0f14dbd45d0",
+        "019ea2fd-02ce-77af-bdb6-a0382ae8210b",
+        "019ea2fd-02e5-7782-9e56-3b4565ba0204",
+        "019ea2fd-02fb-7fd7-a987-3566acebf226"
+      ],
+      "graded": {
+        "019ea2fc-ffec-7bf5-880f-19e0feead82f": 1,
+        "019ea2fd-0011-7479-9614-0dd3edcdeff7": 3,
+        "019ea2fd-0031-7f7c-8f16-65b474cc55cb": 1,
+        "019ea2fd-005b-70bc-a9de-0a2f57338f70": 1,
+        "019ea2fd-007a-78dc-b1c8-a23806d0567e": 1,
+        "019ea2fd-0095-7c0d-a9f6-1431a27d4b65": 1,
+        "019ea2fd-00b1-7e69-9964-4f3819dec9bc": 1,
+        "019ea2fd-00e4-7a99-9239-a4f83ff4f1b7": 1,
+        "019ea2fd-00fe-76bf-b5a8-8f2b057a0cd6": 1,
+        "019ea2fd-0116-7822-96b4-e97f34ad2ae8": 1,
+        "019ea2fd-015e-77da-b23a-bcb3ac569041": 1,
+        "019ea2fd-01a6-7ac4-a8b3-dac502ce52f3": 1,
+        "019ea2fd-01bf-70f0-bc01-da89aa3e0e69": 1,
+        "019ea2fd-01d6-7f77-9dd1-5a5f35444084": 1,
+        "019ea2fd-01ec-748f-9cae-fd7f3d4c1a4b": 1,
+        "019ea2fd-021b-70be-9c78-338970380e9e": 1,
+        "019ea2fd-0231-73a2-8195-55c83e8cf5ef": 1,
+        "019ea2fd-025d-7693-9f17-3a996722d5e1": 1,
+        "019ea2fd-028b-780f-968d-44b7f9d4026b": 1,
+        "019ea2fd-02a1-7fca-ad60-f0f14dbd45d0": 1,
+        "019ea2fd-02ce-77af-bdb6-a0382ae8210b": 1,
+        "019ea2fd-02e5-7782-9e56-3b4565ba0204": 1,
+        "019ea2fd-02fb-7fd7-a987-3566acebf226": 1
+      }
+    },
+    {
+      "q": "黄极境",
+      "band": "exact",
+      "origin": 3,
+      "expected": [
+        "019ea2fc-ffec-7bf5-880f-19e0feead82f",
+        "019ea2fd-0031-7f7c-8f16-65b474cc55cb",
+        "019ea2fd-005b-70bc-a9de-0a2f57338f70",
+        "019ea2fd-007a-78dc-b1c8-a23806d0567e",
+        "019ea2fd-0095-7c0d-a9f6-1431a27d4b65",
+        "019ea2fd-00b1-7e69-9964-4f3819dec9bc",
+        "019ea2fd-00e4-7a99-9239-a4f83ff4f1b7",
+        "019ea2fd-00fe-76bf-b5a8-8f2b057a0cd6",
+        "019ea2fd-0116-7822-96b4-e97f34ad2ae8",
+        "019ea2fd-012f-7237-9ca3-2cbacf0c92c8",
+        "019ea2fd-0177-7933-b047-18835d911f19",
+        "019ea2fd-018f-7261-b0b5-ec3666fc2fd5",
+        "019ea2fd-01a6-7ac4-a8b3-dac502ce52f3",
+        "019ea2fd-01bf-70f0-bc01-da89aa3e0e69",
+        "019ea2fd-01ec-748f-9cae-fd7f3d4c1a4b",
+        "019ea2fd-0202-7b6c-8ba3-4eb7c640992e",
+        "019ea2fd-021b-70be-9c78-338970380e9e",
+        "019ea2fd-0247-7527-bf42-574ee2e8d77a",
+        "019ea2fd-025d-7693-9f17-3a996722d5e1",
+        "019ea2fd-0274-78b6-b760-0a6b7a99f1de",
+        "019ea2fd-028b-780f-968d-44b7f9d4026b",
+        "019ea2fd-02a1-7fca-ad60-f0f14dbd45d0",
+        "019ea2fd-02ce-77af-bdb6-a0382ae8210b",
+        "019ea2fd-02e5-7782-9e56-3b4565ba0204",
+        "019ea2fd-0312-7359-9470-80c41d0a0fe2",
+        "019ea2fd-0329-74b0-a40c-700041ebaa33",
+        "019ea2fd-0355-7447-9966-49384c41500f",
+        "019ea2fd-03e3-7b69-a429-a02e13be5d17",
+        "019ea2fd-03fb-7098-8c9a-d0ccd6da3c4a",
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762",
+        "019ea2fd-042b-7ba7-af85-94f0ab59d373"
+      ],
+      "graded": {
+        "019ea2fc-ffec-7bf5-880f-19e0feead82f": 1,
+        "019ea2fd-0031-7f7c-8f16-65b474cc55cb": 3,
+        "019ea2fd-005b-70bc-a9de-0a2f57338f70": 1,
+        "019ea2fd-007a-78dc-b1c8-a23806d0567e": 1,
+        "019ea2fd-0095-7c0d-a9f6-1431a27d4b65": 1,
+        "019ea2fd-00b1-7e69-9964-4f3819dec9bc": 1,
+        "019ea2fd-00e4-7a99-9239-a4f83ff4f1b7": 1,
+        "019ea2fd-00fe-76bf-b5a8-8f2b057a0cd6": 1,
+        "019ea2fd-0116-7822-96b4-e97f34ad2ae8": 1,
+        "019ea2fd-012f-7237-9ca3-2cbacf0c92c8": 1,
+        "019ea2fd-0177-7933-b047-18835d911f19": 1,
+        "019ea2fd-018f-7261-b0b5-ec3666fc2fd5": 1,
+        "019ea2fd-01a6-7ac4-a8b3-dac502ce52f3": 1,
+        "019ea2fd-01bf-70f0-bc01-da89aa3e0e69": 1,
+        "019ea2fd-01ec-748f-9cae-fd7f3d4c1a4b": 1,
+        "019ea2fd-0202-7b6c-8ba3-4eb7c640992e": 1,
+        "019ea2fd-021b-70be-9c78-338970380e9e": 1,
+        "019ea2fd-0247-7527-bf42-574ee2e8d77a": 1,
+        "019ea2fd-025d-7693-9f17-3a996722d5e1": 1,
+        "019ea2fd-0274-78b6-b760-0a6b7a99f1de": 1,
+        "019ea2fd-028b-780f-968d-44b7f9d4026b": 1,
+        "019ea2fd-02a1-7fca-ad60-f0f14dbd45d0": 1,
+        "019ea2fd-02ce-77af-bdb6-a0382ae8210b": 1,
+        "019ea2fd-02e5-7782-9e56-3b4565ba0204": 1,
+        "019ea2fd-0312-7359-9470-80c41d0a0fe2": 1,
+        "019ea2fd-0329-74b0-a40c-700041ebaa33": 1,
+        "019ea2fd-0355-7447-9966-49384c41500f": 1,
+        "019ea2fd-03e3-7b69-a429-a02e13be5d17": 1,
+        "019ea2fd-03fb-7098-8c9a-d0ccd6da3c4a": 1,
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762": 1,
+        "019ea2fd-042b-7ba7-af85-94f0ab59d373": 1
+      }
+    },
+    {
+      "q": "拜月魔教",
+      "band": "exact",
+      "origin": 37,
+      "expected": [
+        "019ea2fd-03e3-7b69-a429-a02e13be5d17"
+      ],
+      "graded": {
+        "019ea2fd-03e3-7b69-a429-a02e13be5d17": 3
+      }
+    },
+    {
+      "q": "青火鹿",
+      "band": "exact",
+      "origin": 23,
+      "expected": [
+        "019ea2fd-021b-70be-9c78-338970380e9e",
+        "019ea2fd-0231-73a2-8195-55c83e8cf5ef",
+        "019ea2fd-0247-7527-bf42-574ee2e8d77a"
+      ],
+      "graded": {
+        "019ea2fd-021b-70be-9c78-338970380e9e": 1,
+        "019ea2fd-0231-73a2-8195-55c83e8cf5ef": 3,
+        "019ea2fd-0247-7527-bf42-574ee2e8d77a": 1
+      }
+    },
+    {
+      "q": "屠天杀地",
+      "band": "phrase",
+      "origin": 31,
+      "expected": [
+        "019ea2fd-02e5-7782-9e56-3b4565ba0204",
+        "019ea2fd-02fb-7fd7-a987-3566acebf226",
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762",
+        "019ea2fd-042b-7ba7-af85-94f0ab59d373"
+      ],
+      "graded": {
+        "019ea2fd-02e5-7782-9e56-3b4565ba0204": 3,
+        "019ea2fd-02fb-7fd7-a987-3566acebf226": 1,
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762": 1,
+        "019ea2fd-042b-7ba7-af85-94f0ab59d373": 1
+      }
+    },
+    {
+      "q": "全城戒严",
+      "band": "phrase",
+      "origin": 36,
+      "expected": [
+        "019ea2fd-0355-7447-9966-49384c41500f"
+      ],
+      "graded": {
+        "019ea2fd-0355-7447-9966-49384c41500f": 3
+      }
+    },
+    {
+      "q": "精神力",
+      "band": "phrase",
+      "origin": 34,
+      "expected": [
+        "019ea2fd-0116-7822-96b4-e97f34ad2ae8",
+        "019ea2fd-0146-7158-8543-200dd9f7cfd3",
+        "019ea2fd-021b-70be-9c78-338970380e9e",
+        "019ea2fd-0231-73a2-8195-55c83e8cf5ef",
+        "019ea2fd-02b8-7a34-a48a-eca6bba9bc55",
+        "019ea2fd-02ce-77af-bdb6-a0382ae8210b",
+        "019ea2fd-02e5-7782-9e56-3b4565ba0204",
+        "019ea2fd-02fb-7fd7-a987-3566acebf226",
+        "019ea2fd-0312-7359-9470-80c41d0a0fe2",
+        "019ea2fd-0329-74b0-a40c-700041ebaa33",
+        "019ea2fd-033f-7725-8cc3-b301c24dda46",
+        "019ea2fd-03fb-7098-8c9a-d0ccd6da3c4a",
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762",
+        "019ea2fd-042b-7ba7-af85-94f0ab59d373"
+      ],
+      "graded": {
+        "019ea2fd-0116-7822-96b4-e97f34ad2ae8": 1,
+        "019ea2fd-0146-7158-8543-200dd9f7cfd3": 1,
+        "019ea2fd-021b-70be-9c78-338970380e9e": 1,
+        "019ea2fd-0231-73a2-8195-55c83e8cf5ef": 1,
+        "019ea2fd-02b8-7a34-a48a-eca6bba9bc55": 1,
+        "019ea2fd-02ce-77af-bdb6-a0382ae8210b": 1,
+        "019ea2fd-02e5-7782-9e56-3b4565ba0204": 1,
+        "019ea2fd-02fb-7fd7-a987-3566acebf226": 1,
+        "019ea2fd-0312-7359-9470-80c41d0a0fe2": 1,
+        "019ea2fd-0329-74b0-a40c-700041ebaa33": 3,
+        "019ea2fd-033f-7725-8cc3-b301c24dda46": 1,
+        "019ea2fd-03fb-7098-8c9a-d0ccd6da3c4a": 1,
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762": 1,
+        "019ea2fd-042b-7ba7-af85-94f0ab59d373": 1
+      }
+    },
+    {
+      "q": "轮脉",
+      "band": "phrase",
+      "origin": 38,
+      "expected": [
+        "019ea2fd-03fb-7098-8c9a-d0ccd6da3c4a",
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762"
+      ],
+      "graded": {
+        "019ea2fd-03fb-7098-8c9a-d0ccd6da3c4a": 3,
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762": 1
+      }
+    },
+    {
+      "q": "龙象班若",
+      "band": "typo",
+      "origin": 5,
+      "expected": [
+        "019ea2fd-007a-78dc-b1c8-a23806d0567e",
+        "019ea2fd-00b1-7e69-9964-4f3819dec9bc",
+        "019ea2fd-0116-7822-96b4-e97f34ad2ae8",
+        "019ea2fd-012f-7237-9ca3-2cbacf0c92c8",
+        "019ea2fd-0177-7933-b047-18835d911f19",
+        "019ea2fd-018f-7261-b0b5-ec3666fc2fd5",
+        "019ea2fd-01a6-7ac4-a8b3-dac502ce52f3",
+        "019ea2fd-02b8-7a34-a48a-eca6bba9bc55",
+        "019ea2fd-02e5-7782-9e56-3b4565ba0204",
+        "019ea2fd-03e3-7b69-a429-a02e13be5d17",
+        "019ea2fd-03fb-7098-8c9a-d0ccd6da3c4a"
+      ],
+      "graded": {
+        "019ea2fd-007a-78dc-b1c8-a23806d0567e": 3,
+        "019ea2fd-00b1-7e69-9964-4f3819dec9bc": 1,
+        "019ea2fd-0116-7822-96b4-e97f34ad2ae8": 1,
+        "019ea2fd-012f-7237-9ca3-2cbacf0c92c8": 1,
+        "019ea2fd-0177-7933-b047-18835d911f19": 1,
+        "019ea2fd-018f-7261-b0b5-ec3666fc2fd5": 1,
+        "019ea2fd-01a6-7ac4-a8b3-dac502ce52f3": 1,
+        "019ea2fd-02b8-7a34-a48a-eca6bba9bc55": 1,
+        "019ea2fd-02e5-7782-9e56-3b4565ba0204": 1,
+        "019ea2fd-03e3-7b69-a429-a02e13be5d17": 1,
+        "019ea2fd-03fb-7098-8c9a-d0ccd6da3c4a": 1
+      }
+    },
+    {
+      "q": "天心箭法",
+      "band": "typo",
+      "origin": 7,
+      "expected": [
+        "019ea2fd-00b1-7e69-9964-4f3819dec9bc",
+        "019ea2fd-00cd-7669-b874-1100b867a4a1",
+        "019ea2fd-00e4-7a99-9239-a4f83ff4f1b7",
+        "019ea2fd-0177-7933-b047-18835d911f19",
+        "019ea2fd-018f-7261-b0b5-ec3666fc2fd5",
+        "019ea2fd-0274-78b6-b760-0a6b7a99f1de",
+        "019ea2fd-028b-780f-968d-44b7f9d4026b",
+        "019ea2fd-02b8-7a34-a48a-eca6bba9bc55"
+      ],
+      "graded": {
+        "019ea2fd-00b1-7e69-9964-4f3819dec9bc": 3,
+        "019ea2fd-00cd-7669-b874-1100b867a4a1": 1,
+        "019ea2fd-00e4-7a99-9239-a4f83ff4f1b7": 1,
+        "019ea2fd-0177-7933-b047-18835d911f19": 1,
+        "019ea2fd-018f-7261-b0b5-ec3666fc2fd5": 1,
+        "019ea2fd-0274-78b6-b760-0a6b7a99f1de": 1,
+        "019ea2fd-028b-780f-968d-44b7f9d4026b": 1,
+        "019ea2fd-02b8-7a34-a48a-eca6bba9bc55": 1
+      }
+    },
+    {
+      "q": "清玄各",
+      "band": "typo",
+      "origin": 12,
+      "expected": [
+        "019ea2fd-012f-7237-9ca3-2cbacf0c92c8",
+        "019ea2fd-0146-7158-8543-200dd9f7cfd3",
+        "019ea2fd-015e-77da-b23a-bcb3ac569041",
+        "019ea2fd-0177-7933-b047-18835d911f19",
+        "019ea2fd-01bf-70f0-bc01-da89aa3e0e69",
+        "019ea2fd-0329-74b0-a40c-700041ebaa33",
+        "019ea2fd-0355-7447-9966-49384c41500f",
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762",
+        "019ea2fd-042b-7ba7-af85-94f0ab59d373"
+      ],
+      "graded": {
+        "019ea2fd-012f-7237-9ca3-2cbacf0c92c8": 3,
+        "019ea2fd-0146-7158-8543-200dd9f7cfd3": 1,
+        "019ea2fd-015e-77da-b23a-bcb3ac569041": 1,
+        "019ea2fd-0177-7933-b047-18835d911f19": 1,
+        "019ea2fd-01bf-70f0-bc01-da89aa3e0e69": 1,
+        "019ea2fd-0329-74b0-a40c-700041ebaa33": 1,
+        "019ea2fd-0355-7447-9966-49384c41500f": 1,
+        "019ea2fd-0412-7957-b0f5-b4b2350b9762": 1,
+        "019ea2fd-042b-7ba7-af85-94f0ab59d373": 1
+      }
+    },
+    {
+      "q": "少年第一次开启神武印记的经过",
+      "band": "paraphrase",
+      "origin": 2,
+      "expected": [
+        "019ea2fd-0011-7479-9614-0dd3edcdeff7"
+      ],
+      "graded": {
+        "019ea2fd-0011-7479-9614-0dd3edcdeff7": 3
+      }
+    },
+    {
+      "q": "三年前到底发生了什么真相",
+      "band": "paraphrase",
+      "origin": 9,
+      "expected": [
+        "019ea2fd-00e4-7a99-9239-a4f83ff4f1b7"
+      ],
+      "graded": {
+        "019ea2fd-00e4-7a99-9239-a4f83ff4f1b7": 3
+      }
+    },
+    {
+      "q": "主角获得与时空有关的秘传典籍",
+      "band": "paraphrase",
+      "origin": 4,
+      "expected": [
+        "019ea2fd-005b-70bc-a9de-0a2f57338f70"
+      ],
+      "graded": {
+        "019ea2fd-005b-70bc-a9de-0a2f57338f70": 3
+      }
+    },
+    {
+      "q": "岁末考核中的比试表现",
+      "band": "paraphrase",
+      "origin": 18,
+      "expected": [
+        "019ea2fd-01bf-70f0-bc01-da89aa3e0e69"
+      ],
+      "graded": {
+        "019ea2fd-01bf-70f0-bc01-da89aa3e0e69": 3
+      }
+    },
+    {
+      "q": "铭纹公会是什么样的组织",
+      "band": "paraphrase",
+      "origin": 33,
+      "expected": [
+        "019ea2fd-0312-7359-9470-80c41d0a0fe2"
+      ],
+      "graded": {
+        "019ea2fd-0312-7359-9470-80c41d0a0fe2": 3
+      }
+    },
+    {
+      "q": "封神榜",
+      "band": "negative",
+      "expected": [],
+      "graded": {}
+    },
+    {
+      "q": "量子计算机",
+      "band": "negative",
+      "expected": [],
+      "graded": {}
+    },
+    {
+      "q": "哈利波特",
+      "band": "negative",
+      "expected": [],
+      "graded": {}
+    },
+    {
+      "q": "区块链",
+      "band": "negative",
+      "expected": [],
+      "graded": {}
+    },
+    {
+      "q": "蜘蛛侠",
+      "band": "negative",
+      "expected": [],
+      "graded": {}
+    }
+  ]
+}

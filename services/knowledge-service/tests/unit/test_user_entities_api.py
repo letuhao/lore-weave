@@ -94,9 +94,13 @@ def test_list_user_entities_limit_out_of_range_rejected(mock_list):
     assert client.get("/v1/knowledge/me/entities?limit=0").status_code == 422
 
 
+@patch("app.routers.public.entities.get_entity", new_callable=AsyncMock)
 @patch("app.routers.public.entities.archive_entity", new_callable=AsyncMock)
 @patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
-def test_archive_user_entity_happy(mock_archive):
+def test_archive_user_entity_happy(mock_archive, mock_get):
+    # Phase B: handler reads the pre-archive snapshot first (for the
+    # correction event) before archiving.
+    mock_get.return_value = _entity_stub()
     mock_archive.return_value = _entity_stub()
     client = _make_client()
     resp = client.delete(f"/v1/knowledge/me/entities/{_TEST_ENTITY_ID}")
@@ -108,11 +112,13 @@ def test_archive_user_entity_happy(mock_archive):
     assert kwargs["user_id"] == str(_TEST_USER)
 
 
+@patch("app.routers.public.entities.get_entity", new_callable=AsyncMock)
 @patch("app.routers.public.entities.archive_entity", new_callable=AsyncMock)
 @patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
-def test_archive_user_entity_not_found(mock_archive):
+def test_archive_user_entity_not_found(mock_archive, mock_get):
     """archive_entity returns None when entity doesn't exist or is
     already archived; router translates to 404."""
+    mock_get.return_value = None
     mock_archive.return_value = None
     client = _make_client()
     resp = client.delete(f"/v1/knowledge/me/entities/{_TEST_ENTITY_ID}")

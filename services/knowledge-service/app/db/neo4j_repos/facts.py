@@ -47,6 +47,7 @@ __all__ = [
     "merge_fact",
     "get_fact",
     "list_facts_by_type",
+    "list_facts_for_entity",
     "invalidate_fact",
     "delete_facts_with_zero_evidence",
 ]
@@ -104,6 +105,11 @@ class Fact(BaseModel):
     valid_until: datetime | None = None
     source_types: list[str] = Field(default_factory=list)
     source_chapter: str | None = None
+    # T2.1 — reading-axis order (chapter_sort_order × EVENT_ORDER_CHAPTER_STRIDE),
+    # stamped at extraction so the codex can spoiler-window a fact to the chapter it
+    # was established in. NULL on legacy facts + chat-tool facts (no chapter) → those
+    # are excluded under any finite window (NULL <= X is null/false in Cypher).
+    from_order: int | None = None
     evidence_count: int = 0
     archived_at: datetime | None = None
     created_at: datetime | None = None
@@ -137,15 +143,26 @@ ON CREATE SET
   f.valid_from = coalesce($valid_from, datetime()),
   f.valid_until = NULL,
   f.source_types = [$source_type],
+  f.provenances = [$provenance],
   f.source_chapter = $source_chapter,
+  f.from_order = $from_order,
   f.evidence_count = 0,
   f.archived_at = NULL,
   f.created_at = datetime(),
   f.updated_at = datetime()
 ON MATCH SET
+  // Backfill from_order on a later re-extraction that DOES carry one (a fact first
+  // seen via a positionless source keeps NULL until a positioned source re-mentions
+  // it); never overwrite an existing order.
+  f.from_order = coalesce(f.from_order, $from_order),
   f.source_types = CASE
     WHEN $source_type IN f.source_types THEN f.source_types
     ELSE f.source_types + $source_type
+  END,
+  // CM5 provenance — accumulate deduped origins (mirrors source_types).
+  f.provenances = CASE
+    WHEN $provenance IN coalesce(f.provenances, []) THEN f.provenances
+    ELSE coalesce(f.provenances, []) + $provenance
   END,
   f.confidence = CASE
     WHEN $confidence > f.confidence THEN $confidence
@@ -174,11 +191,20 @@ async def merge_fact(
     valid_from: datetime | None = None,
     source_type: str = "book_content",
     source_chapter: str | None = None,
+    provenance: str = "human_authored",
+    subject_id: str | None = None,
+    from_order: int | None = None,
 ) -> Fact:
     """Idempotent upsert. Same (user, project, type, normalized
     content) returns the same node. K17 Pass 2 promotion
     semantics same as relations: higher confidence wins AND
     flips `pending_validation` to the new value.
+
+    T2.1 — `subject_id` (when given + the entity exists for this user) MERGEs a
+    `(:Fact)-[:ABOUT]->(:Entity)` edge so the codex can list a character's facts;
+    the fact `id` stays content-keyed (idempotency unchanged), so two same-wording
+    facts about different subjects share ONE node with multiple ABOUT edges.
+    `from_order` is the reading-axis order (for spoiler-windowing).
     """
     if type not in FACT_TYPES:
         raise ValueError(f"type must be one of {FACT_TYPES}, got {type!r}")
@@ -209,11 +235,29 @@ async def merge_fact(
         valid_from=valid_from,
         source_type=source_type,
         source_chapter=normalized_source_chapter,
+        from_order=from_order,
+        provenance=provenance,
     )
     record = await result.single()
     if record is None:
         raise RuntimeError(f"merge_fact returned no row for id={fid!r}")
+    # T2.1 — link the fact to its subject entity (idempotent). MATCH (not MERGE) the
+    # Entity so an unresolved/cross-user subject silently no-ops instead of creating a
+    # phantom node; the caller (pass2_writer) already validates subject ∈ merged ids.
+    if subject_id:
+        await run_write(
+            session,
+            _LINK_FACT_SUBJECT_CYPHER,
+            user_id=user_id, fact_id=fid, subject_id=subject_id,
+        )
     return _node_to_fact(record["f"])
+
+
+_LINK_FACT_SUBJECT_CYPHER = """
+MATCH (f:Fact {id: $fact_id}), (e:Entity {id: $subject_id})
+WHERE f.user_id = $user_id AND e.user_id = $user_id
+MERGE (f)-[:ABOUT]->(e)
+"""
 
 
 # ── get_fact ──────────────────────────────────────────────────────────
@@ -303,6 +347,64 @@ async def list_facts_by_type(
         user_id=user_id,
         project_id=project_id,
         type=type,
+        min_confidence=min_confidence,
+        exclude_pending=exclude_pending,
+        include_archived=include_archived,
+        limit=limit,
+    )
+    return [_node_to_fact(record["f"]) async for record in result]
+
+
+# ── list_facts_for_entity (T2.1) ──────────────────────────────────────
+
+
+# Facts ABOUT one entity, spoiler-windowed by `from_order`. Same L2-loader
+# defaults as list_facts_by_type (confidence/pending/valid/archived). The
+# window is INCLUSIVE: `f.from_order <= before_order`; a NULL from_order (legacy
+# / chat-tool facts) never passes a finite window — they stay hidden until a
+# positioned re-extraction stamps an order.
+_LIST_FACTS_FOR_ENTITY_CYPHER = """
+MATCH (f:Fact)-[:ABOUT]->(e:Entity {id: $entity_id})
+WHERE f.user_id = $user_id
+  AND e.user_id = $user_id
+  AND ($exclude_pending = false OR coalesce(f.pending_validation, false) = false)
+  AND f.confidence >= $min_confidence
+  AND f.valid_until IS NULL
+  AND ($include_archived OR f.archived_at IS NULL)
+  AND ($before_order IS NULL OR f.from_order <= $before_order)
+RETURN DISTINCT f
+ORDER BY f.from_order ASC, f.confidence DESC, f.created_at DESC
+LIMIT $limit
+"""
+
+
+async def list_facts_for_entity(
+    session: CypherSession,
+    *,
+    user_id: str,
+    entity_id: str,
+    before_order: int | None = None,
+    min_confidence: float = 0.8,
+    exclude_pending: bool = True,
+    include_archived: bool = False,
+    limit: int = 100,
+) -> list[Fact]:
+    """T2.1 — the known-facts list for one entity (`(:Fact)-[:ABOUT]->(:Entity)`),
+    spoiler-windowed by `from_order <= before_order`. `before_order=None` = no
+    window (all linked facts). Filters default to the L2 loader so quarantine /
+    low-confidence candidates don't surface as established "known facts"."""
+    if not entity_id:
+        raise ValueError("entity_id must be a non-empty string")
+    if min_confidence < 0.0 or min_confidence > 1.0:
+        raise ValueError(f"min_confidence must be in [0,1], got {min_confidence}")
+    if limit <= 0:
+        raise ValueError(f"limit must be positive, got {limit}")
+    result = await run_read(
+        session,
+        _LIST_FACTS_FOR_ENTITY_CYPHER,
+        user_id=user_id,
+        entity_id=entity_id,
+        before_order=before_order,
         min_confidence=min_confidence,
         exclude_pending=exclude_pending,
         include_archived=include_archived,

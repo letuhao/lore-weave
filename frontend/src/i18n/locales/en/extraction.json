@@ -69,7 +69,8 @@
     "skipped": "Skipped",
     "activityLog": "Activity Log",
     "cancel": "Cancel",
-    "cancelConfirm": "Cancel this extraction job? Chapters already processed will keep their results."
+    "cancelConfirm": "Cancel this extraction job? Chapters already processed will keep their results.",
+    "cancelRequested": "Cancellation requested"
   },
   "results": {
     "title": "Extraction Complete",

@@ -24,6 +24,59 @@ members = [
     "services/world-service",
     "services/travel-service",
     "crates/world-gen",
+    "crates/meta-rs",
+    "crates/dp-kernel",
+    # Cycle 13 — L3.B per-aggregate projection skeletons (consume
+    # `crates/dp-kernel::Projection` trait shipped cycle 12; write to the
+    # `contracts/migrations/per_reality/0006_projections.sql` tables shipped
+    # this cycle). Full event coverage lands with L4-L7 domain cycles.
+    "crates/projections/pc",
+    "crates/projections/npc",
+    "crates/projections/region",
+    "crates/projections/world_kv",
+    "crates/projections/session",
+    # Cycle 23 — L5.D.3 canon projection (11th projection table; consumes the
+    # cycle-13 cycle-12 `Projection` trait + writes to the cycle-23 L5.D.1
+    # `canon_projection` table in per-reality DB). Glossary-service authoring
+    # is OUT of foundation scope per Q-L5A-1; this crate handles the
+    # per-reality projection write path from canon.* events fanned out via
+    # the xreality protocol (cycle 10) + meta-worker canon writer (cycle 24+).
+    "crates/projections/canon",
+    # S2/C2 (2026-06-04) — from-spec golden fixtures: {event -> expected
+    # projection delta} per event type, asserted against the full projection
+    # set's apply_one. The value-correctness oracle (regression-lock framing).
+    "crates/projection-golden",
+    # Cycle 27 — L5.I.3 full canon-guardrail implementation. Backwards-compat
+    # with cycle-25 `dp-kernel::canon_cache::CanonGuardrail` trait (Q-L5-5
+    # LOCKED). Production roleplay-service / world-service binds
+    # `contracts_prompt::YamlGuardrail` in place of cycle-25 `NoOpGuardrail`
+    # placeholder. Rules data-driven via YAML manifest
+    # (`contracts/canon/guardrail_rules.yaml`).
+    "crates/contracts-prompt",
+    # Cycle 28 — L6.A.5 WS server-lib + envelope/close-code types for
+    # downstream Rust services (roleplay-service, world-service). Per
+    # Q-L6-1 the gateway WS impl lives in NestJS api-gateway-bff; this
+    # crate is server-LIB types only (no Rust WS server).
+    "crates/contracts-ws",
+    # Cycle 14 — L3.D per-aggregate parallel rebuilder. Consumes
+    # `dp-kernel::Projection` + `ProjectionRunner` (cycle 12) to replay events
+    # from the L2.A event log into the cycle-13 projection tables. Used by
+    # the cycle-14 L3.G freeze-rebuild script and the cycle-14 L3.H
+    # catastrophic admin-cli command (Q-L3-3 admin-cli + rolling_rebuild).
+    "crates/rebuilder",
+    # Cycle 17 — L4.B proc-macros for `dp-kernel`. Ships `#[derive(Aggregate)]`
+    # + `#[handles_event("...")]` attribute (Q-L4B-1). Separate crate because
+    # proc-macro = true crates cannot ship runtime types in the same crate.
+    "crates/dp-kernel-macros",
+    # Cycle 25 — L5.F.4 Rust HTTP/JSON client for glossary-service canon
+    # RPCs (cycle 25 L5.F). Q-L5-4 LOCKED: HTTP/JSON V1. Mirror of the Go
+    # client at `clients/go/glossary_client/`. Used by Rust services
+    # (world-service Rust shards, future roleplay-service Rust shards) to
+    # call glossary-service canon RPCs (read + write + seed-export).
+    "clients/rust/glossary_client",
+    # S9 (2026-06-12) — Stateright model checking of foundation protocols
+    # (I9 lifecycle CAS, I13 outbox, I7 cross-reality fan-out).
+    "crates/foundation-model",
 ]
 
 [workspace.package]
@@ -62,8 +115,11 @@ rand_chacha = "0.3"
 thiserror = "1.0"
 anyhow = "1.0"
 
-# UUIDs (gateway StreamRequest.model_ref + user_id query param)
-uuid = { version = "1.10", features = ["serde", "v4"] }
+# UUIDs (gateway StreamRequest.model_ref + user_id query param).
+# v5 enables deterministic UUIDs (namespace + name → UUID) — used by the
+# cycle-26 L5.G reality_seeder to derive synthetic seed event_ids from
+# (reality_id, canon_entry_id) so retries don't multiply audit entries.
+uuid = { version = "1.10", features = ["serde", "v4", "v5"] }
 
 # Structured logging
 tracing = "0.1"
@@ -71,6 +127,39 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # HTTP mock server for offline SSE-parser / gateway integration tests (dev-only)
 wiremock = "0.6"
+
+# Cycle 17 (L4.A) — Postgres async client for the dp-kernel EventStore wrapper.
+# Per Q-L4A-1 we WRAP the `PgPool` behind a `PgEventStore { pool: Arc<PgPool> }`
+# struct (not exposed via `pub`) so future backend swaps (Redis Streams, NATS
+# JetStream) only touch the EventStore trait impl boundary, never callers.
+# `runtime-tokio-rustls` matches the project's preference for rustls-tls (cycle
+# 0 reqwest decision) and avoids OpenSSL on Windows dev.
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio-rustls",
+    "postgres",
+    "uuid",
+    "json",
+    "macros",
+] }
+
+# Cycle 16 / DEFERRED-059 — embedding-queue live wiring (world-service).
+# async-trait: async IO traits (provider/writer/audit) — same pattern dp-kernel
+#   uses for the EventStore trait.
+# pgvector: sqlx Encode/Decode for the `vector` type (npc_session_memory_embedding
+#   .embedding VECTOR(1536)). The `sqlx` feature targets sqlx 0.8.
+# prometheus: Rust ops-surface metrics (first Rust worker with a /metrics
+#   endpoint; mirrors the Go workers' prometheus/client_golang surface).
+async-trait = "0.1"
+pgvector = { version = "0.4", default-features = false, features = ["sqlx"] }
+prometheus = "0.13"
+
+# Cycle 17 (L4.B) — proc-macro toolkit for `#[derive(Aggregate)]`.
+syn = { version = "2.0", features = ["full"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+# trybuild is used by L4.B macros' tests to assert compile-error messages stay
+# friendly. Dev-only — pinned in the macros crate's [dev-dependencies] only.
+trybuild = "1.0"
 
 [profile.release]
 lto = "thin"

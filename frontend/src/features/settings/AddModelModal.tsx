@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, RefreshCw, Search, Star, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -18,11 +19,6 @@ const CAP_STYLES: Record<string, string> = {
   reranker: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/15',
 };
 
-const CAP_LABELS: Record<string, string> = {
-  chat: 'Chat / LLM', embedding: 'Embedding', tts: 'Text-to-Speech',
-  stt: 'Speech-to-Text', image_gen: 'Image Gen', moderation: 'Moderation', reranker: 'Reranker',
-};
-
 type Props = {
   provider: ProviderCredential;
   onClose: () => void;
@@ -30,6 +26,7 @@ type Props = {
 };
 
 export function AddModelModal({ provider, onClose, onAdded }: Props) {
+  const { t } = useTranslation('settings');
   const { accessToken } = useAuth();
   const [inventory, setInventory] = useState<InventoryModel[]>([]);
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
@@ -52,7 +49,7 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
     setLoadingInv(true);
     providerApi.listInventory(accessToken, provider.provider_credential_id, refresh)
       .then((res) => { setInventory(res.items ?? []); setSyncedAt(res.synced_at ?? null); })
-      .catch((e) => { if (refresh) toast.error(`Failed to fetch models: ${(e as Error).message}`); })
+      .catch((e) => { if (refresh) toast.error(t('model_modal.toast.fetch_failed', { error: (e as Error).message })); })
       .finally(() => setLoadingInv(false));
   }, [accessToken, provider.provider_credential_id]);
 
@@ -98,7 +95,7 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
   async function handleSubmit() {
     if (!accessToken) return;
     const modelName = selected?.provider_model_name ?? search.trim();
-    if (!modelName) { toast.error('Select or enter a model name'); return; }
+    if (!modelName) { toast.error(t('model_modal.toast.select_model')); return; }
     setSaving(true);
     try {
       // Build capability_flags from checkboxes
@@ -121,11 +118,11 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
         tags: tags.map((t) => ({ tag_name: t })),
         notes: notes || undefined,
       });
-      toast.success(`${alias || modelName} added`);
+      toast.success(t('model_modal.toast.model_added', { name: alias || modelName }));
       onAdded();
       onClose();
     } catch (e) {
-      toast.error((e as Error).message || 'Failed to add model');
+      toast.error((e as Error).message || t('model_modal.toast.add_failed'));
     } finally {
       setSaving(false);
     }
@@ -138,14 +135,14 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
       onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
       role="dialog"
       aria-modal="true"
-      aria-label="Add model"
+      aria-label={t('model_modal.add.aria')}
     >
       <div className="w-full max-w-[560px] max-h-[90vh] overflow-y-auto rounded-xl border bg-card shadow-2xl" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between border-b px-5 py-4">
           <div>
-            <h2 className="text-[15px] font-semibold">Add Model</h2>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">Select from {provider.display_name}&apos;s available models</p>
+            <h2 className="text-[15px] font-semibold">{t('model_modal.add.title')}</h2>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">{t('model_modal.add.subtitle', { provider: provider.display_name })}</p>
           </div>
           <button onClick={onClose} className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground">
             <X className="h-4 w-4" />
@@ -156,7 +153,7 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
         <div className="grid grid-cols-[1fr_auto] gap-2 border-b bg-secondary/30 px-5 py-2.5">
           {/* Left: model count + type badges */}
           <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground min-w-0">
-            <span className="font-semibold text-foreground">{inventory.length} models</span>
+            <span className="font-semibold text-foreground">{t('model_modal.add.count_models', { count: inventory.length })}</span>
             {inventory.length > 0 &&
               Object.entries(
                 inventory.reduce<Record<string, number>>((acc, m) => {
@@ -166,7 +163,7 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
                 }, {}),
               ).map(([cap, count]) => (
                 <span key={cap} className={cn('inline-flex items-center gap-0.5 whitespace-nowrap rounded px-1.5 py-0.5 text-[9px] font-medium border', CAP_STYLES[cap] || 'bg-secondary text-muted-foreground border-border')}>
-                  {count} {CAP_LABELS[cap] || cap}
+                  {count} {t(`model_modal.cap.${cap}`, { defaultValue: cap })}
                 </span>
               ))
             }
@@ -175,12 +172,12 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
           {/* Right: timestamp + refresh button */}
           <div className="flex flex-col items-end gap-1 shrink-0">
             <button
-              onClick={() => { fetchInventory(true); toast.info('Fetching models from provider...'); }}
+              onClick={() => { fetchInventory(true); toast.info(t('model_modal.toast.fetching')); }}
               disabled={loadingInv}
               className="flex items-center gap-1 rounded px-2 py-1 text-[10px] font-medium text-accent border border-accent/20 hover:bg-accent/10 disabled:opacity-40 transition-colors"
             >
               <RefreshCw className={`h-3 w-3 ${loadingInv ? 'animate-spin' : ''}`} />
-              Refresh
+              {t('model_modal.add.refresh')}
             </button>
             {syncedAt && (
               <span className="text-[9px] text-muted-foreground">
@@ -194,7 +191,7 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
         <div className="space-y-5 px-5 py-5">
           {/* Model search / autocomplete */}
           <div>
-            <label className="mb-1 block text-xs font-medium">Model</label>
+            <label className="mb-1 block text-xs font-medium">{t('model_modal.add.model')}</label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
               <input
@@ -202,11 +199,11 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setSelected(null); setShowDropdown(true); }}
                 onFocus={() => setShowDropdown(true)}
-                placeholder="Search models..."
+                placeholder={t('model_modal.add.search_ph')}
                 className="h-9 w-full rounded-md border bg-background pl-9 pr-16 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
-                {loadingInv ? '...' : `${inventory.length} models`}
+                {loadingInv ? '...' : t('model_modal.add.count_models', { count: inventory.length })}
               </span>
 
               {showDropdown && !loadingInv && grouped.size > 0 && (
@@ -214,7 +211,7 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
                   {Array.from(grouped.entries()).map(([cap, items]) => (
                     <div key={cap}>
                       <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        {CAP_LABELS[cap] ?? cap}
+                        {t(`model_modal.cap.${cap}`, { defaultValue: cap })}
                       </div>
                       {items.map((m) => (
                         <button
@@ -230,7 +227,7 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
                               <span className="truncate text-[13px] font-medium">{m._meta.displayName}</span>
                               {m._meta.isRecommended && (
                                 <span className="inline-flex items-center gap-0.5 rounded-full bg-green-500/10 px-1.5 py-0.5 text-[9px] font-medium text-green-400">
-                                  <Star className="h-2 w-2" /> Top
+                                  <Star className="h-2 w-2" /> {t('model_modal.add.top')}
                                 </span>
                               )}
                             </div>
@@ -238,11 +235,11 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
                           </div>
                           {m.context_length && (
                             <span className="text-[10px] text-muted-foreground">
-                              {m.context_length >= 1_000_000 ? `${(m.context_length / 1_000_000).toFixed(0)}M` : `${Math.round(m.context_length / 1000)}K`} ctx
+                              {m.context_length >= 1_000_000 ? `${(m.context_length / 1_000_000).toFixed(0)}M` : `${Math.round(m.context_length / 1000)}K`} {t('model_modal.add.ctx')}
                             </span>
                           )}
                           <span className={cn('rounded border px-1.5 py-0.5 text-[9px] font-medium', CAP_STYLES[cap] ?? 'bg-secondary text-muted-foreground')}>
-                            {CAP_LABELS[cap] ?? cap}
+                            {t(`model_modal.cap.${cap}`, { defaultValue: cap })}
                           </span>
                         </button>
                       ))}
@@ -251,17 +248,17 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
                 </div>
               )}
             </div>
-            <p className="mt-1 text-[11px] text-muted-foreground">Type to search. Or enter a custom model name not in the list.</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">{t('model_modal.add.model_hint')}</p>
           </div>
 
           {/* Alias + Context Length */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs font-medium">Alias (display name)</label>
-              <input type="text" value={alias} onChange={(e) => setAlias(e.target.value)} placeholder="e.g. My Fast Model" className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30" />
+              <label className="mb-1 block text-xs font-medium">{t('model_modal.add.alias')}</label>
+              <input type="text" value={alias} onChange={(e) => setAlias(e.target.value)} placeholder={t('model_modal.add.alias_ph')} className="h-9 w-full rounded-md border bg-background px-3 text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30" />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium">Context Length</label>
+              <label className="mb-1 block text-xs font-medium">{t('model_modal.add.context_length')}</label>
               <input type="number" value={contextLength} onChange={(e) => setContextLength(e.target.value)} className="h-9 w-full rounded-md border bg-background px-3 font-mono text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30" />
             </div>
           </div>
@@ -274,21 +271,21 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
 
           {/* Notes */}
           <div>
-            <label className="mb-1 block text-xs font-medium">Notes</label>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Optional notes about this model configuration..." className="w-full resize-y rounded-md border bg-background px-3 py-2 text-xs leading-relaxed focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30" />
+            <label className="mb-1 block text-xs font-medium">{t('model_modal.add.notes')}</label>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder={t('model_modal.add.notes_ph')} className="w-full resize-y rounded-md border bg-background px-3 py-2 text-xs leading-relaxed focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30" />
           </div>
         </div>
 
         {/* Footer */}
         <div className="flex justify-end gap-2 border-t px-5 py-3">
-          <button onClick={onClose} className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-secondary">Cancel</button>
+          <button onClick={onClose} className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-secondary">{t('model_modal.add.cancel')}</button>
           <button
             onClick={handleSubmit}
             disabled={saving || (!selected && !search.trim())}
             className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
           >
             {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
-            {saving ? 'Adding...' : 'Add Model'}
+            {saving ? t('model_modal.add.adding') : t('model_modal.add.submit')}
           </button>
         </div>
       </div>

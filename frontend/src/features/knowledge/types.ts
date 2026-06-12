@@ -22,6 +22,7 @@ export interface Project {
   project_type: ProjectType;
   book_id: string | null;
   instructions: string;
+  genre: string | null;
   extraction_enabled: boolean;
   // K21-C (D3 / K21.12): when false, the chat tool loop skips this
   // project's memory tools entirely. Default true (the BE Cycle-B
@@ -35,6 +36,10 @@ export interface Project {
   embedding_model: string | null;
   // K12.4: dimension derived from embedding_model server-side.
   embedding_dimension: number | null;
+  // D-RERANK-NOT-BYOK: per-project BYOK rerank model (provider-registry
+  // user_model UUID) + source. null ⇒ raw-search skips the rerank step.
+  rerank_model: string | null;
+  rerank_model_source: string;
   extraction_config: Record<string, unknown>;
   last_extracted_at: string | null;
   estimated_cost_usd: string;
@@ -53,6 +58,7 @@ export interface ProjectCreatePayload {
   project_type: ProjectType;
   book_id?: string | null;
   instructions?: string;
+  genre?: string | null;
 }
 
 export interface ProjectUpdatePayload {
@@ -61,6 +67,8 @@ export interface ProjectUpdatePayload {
   instructions?: string;
   // book_id: omit to leave unchanged; null to clear; UUID to set.
   book_id?: string | null;
+  // genre: omit to leave unchanged; null to clear; string to set.
+  genre?: string | null;
   // K-CLEAN-3 (D-K8-02 partial): the K7c PATCH endpoint accepts
   // is_archived for the Restore action. Setting to false on an
   // archived row un-archives it. Track 1 only ships the restore
@@ -72,6 +80,10 @@ export interface ProjectUpdatePayload {
   // Omit to leave unchanged; null to clear; a known model name to set.
   // The backend auto-derives embedding_dimension from the model name.
   embedding_model?: string | null;
+  // D-RERANK-NOT-BYOK (S0b): per-project BYOK rerank model — a
+  // provider-registry user_model UUID. Omit to leave unchanged; null to
+  // clear (rerank then skipped in raw-search).
+  rerank_model?: string | null;
   // K21-C (D3): per-project memory-tool opt-out. Omit to leave
   // unchanged. The public PATCH endpoint accepted this since Cycle B.
   tool_calling_enabled?: boolean;
@@ -85,10 +97,51 @@ export interface ProjectListResponse {
   next_cursor: string | null;
 }
 
+// ── B2-B/C — per-novel extraction-config tuning ────────────────────────────
+// Mirrors knowledge-service ProjectExtractionConfigUpdate (PUT-replace). The
+// FE does read-modify-write off the project's existing extraction_config so it
+// never drops keys it doesn't expose. `writer_autocreate` is intentionally NOT
+// surfaced yet (resolved+hashed BE-side but not applied — would be misleading).
+export type ExtractionModelSource = 'user_model' | 'platform_model';
+export type FilterCategory = 'entity' | 'relation' | 'event';
+export type PartialPolicy = 'keep' | 'drop';
+export type PromptOp = 'entity' | 'relation' | 'event' | 'fact';
+export const PROMPT_OPS: PromptOp[] = ['entity', 'relation', 'event', 'fact'];
+// Matches the BE 16 kB/field cap (loreweave/knowledge ProjectExtractionConfigUpdate).
+export const PROMPT_MAX_LEN = 16384;
+
+export interface PrecisionFilterOverride {
+  enabled?: boolean;
+  categories?: FilterCategory[];
+  partial_policy?: PartialPolicy;
+  model_ref?: string;
+  model_source?: ExtractionModelSource;
+}
+
+export interface EntityRecoveryOverride {
+  enabled?: boolean;
+  model_ref?: string;
+  model_source?: ExtractionModelSource;
+}
+
+export interface PromptOverride {
+  system?: string;
+}
+
+export interface ExtractionConfigPayload {
+  llm_model?: { model_ref?: string; model_source?: ExtractionModelSource };
+  precision_filter?: PrecisionFilterOverride;
+  entity_recovery?: EntityRecoveryOverride;
+  writer_autocreate?: { enabled?: boolean };
+  prompts?: Partial<Record<PromptOp, PromptOverride>>;
+}
+
 export interface ProjectListParams {
   limit?: number;
   cursor?: string | null;
   include_archived?: boolean;
+  // ARCH-1 C5: filter to the project linked to this book (editor AI panel).
+  book_id?: string;
 }
 
 export interface Summary {

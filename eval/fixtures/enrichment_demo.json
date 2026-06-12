@@ -1,0 +1,102 @@
+{
+  "_meta": {
+    "cycle": "C15 enrichment-eval demo replay fixture",
+    "source": "the 4 LOCKED demo locations (玉虛宮/碧遊宮·金鰲島/蓬萊/陳塘關) — replay shape mirroring the persisted enrichment_proposal columns so the deterministic scorers score a fixture and a live DB row identically.",
+    "note": "Content is representative source-faithful Chinese (文言/半文言) of the kind the C14 real-Qwen demo produced. H0: every proposal is origin='enrichment', confidence<1.0, review_status='proposed'. Used to freeze eval/baselines/enrichment-v1.json and to exercise the deterministic sub-scores in the CI gate (no live judges needed for the deterministic four).",
+    "usefulness_note": "The usefulness sub-score is SUBJECTIVE and is 0 in a deterministic (no-judge) run — the live verify wires the real judge ensemble. The frozen baseline records the deterministic-four mean + composite at usefulness=0."
+  },
+  "proposals": [
+    {
+      "name": "玉虛宮",
+      "entity_kind": "location",
+      "origin": "enrichment",
+      "technique": "retrieval",
+      "confidence": 0.30,
+      "review_status": "proposed",
+      "provenance_json": {
+        "technique": "retrieval",
+        "model_ref": "ref-gen-demo",
+        "dimensions": {
+          "历史": "玉虛宮乃闡教元始天尊道场，肇基于上古，立于昆侖之巅，为阐教传道授业之所。",
+          "地理": "处昆侖之丘，山势嵯峨，云气缭绕，下临河、赤、洋、黑诸水之源，乃帝之下都。",
+          "文化": "宫中弟子修阐教正法，重清静无为，朝参暮礼，金钟玉磬之声不绝。",
+          "features": "琼楼玉宇，丹岩怪石，宫前有沙棠薲草，灵禽神兽守护其侧。",
+          "inhabitants": "元始天尊居之，门下十二金仙及众弟子，神陆吾司昆侖之囿。"
+        },
+        "canon_verify": {"flags": []}
+      },
+      "source_refs_json": [
+        {"corpus_id": "shanhaijing-c14", "chunk_id": "kunlun-1", "score": 0.81}
+      ]
+    },
+    {
+      "name": "碧遊宮／金鰲島",
+      "entity_kind": "location",
+      "origin": "enrichment",
+      "technique": "retrieval",
+      "confidence": 0.30,
+      "review_status": "proposed",
+      "provenance_json": {
+        "technique": "retrieval",
+        "model_ref": "ref-gen-demo",
+        "dimensions": {
+          "历史": "金鰲島乃截教通天教主道场，碧遊宮为其说法之所，截教门人多聚于此。",
+          "地理": "处东海之上，青山幽静，势镇汪洋，潮涌银山，波翻雪浪，丹岩峭壁环列。",
+          "文化": "截教重万仙来朝，广纳异类得道之士，宫中演阵图、传截教秘法。",
+          "features": "瑶草奇花不谢，青松翠柏长春，仙桃常结果，修竹每留云，洞门紧闭。",
+          "inhabitants": "通天教主居碧遊宮，门下截教众仙，如多宝、金灵、龟灵诸圣。"
+        },
+        "canon_verify": {"flags": []}
+      },
+      "source_refs_json": [
+        {"corpus_id": "fengshen-c14", "chunk_id": "jinao-1", "score": 0.78}
+      ]
+    },
+    {
+      "name": "蓬萊",
+      "entity_kind": "location",
+      "origin": "enrichment",
+      "technique": "retrieval",
+      "confidence": 0.30,
+      "review_status": "proposed",
+      "provenance_json": {
+        "technique": "retrieval",
+        "model_ref": "ref-gen-demo",
+        "dimensions": {
+          "历史": "蓬萊乃东海三仙山之一，自上古即为群仙栖隐修真之所，名著仙籍。",
+          "地理": "孤悬东海之中，云雾常封，凡舟莫至，唯乘云驾鹤者可临其境。",
+          "文化": "岛上仙家以琼浆玉露为食，崇尚清修无为，往来皆方外之士。",
+          "features": "有琼楼玉宇、瑶池仙草，灵芝异果遍生，仙禽瑞兽栖止其间。",
+          "inhabitants": "多为得道散仙与上古真人，时有八仙之流往来栖息。"
+        },
+        "canon_verify": {"flags": []}
+      },
+      "source_refs_json": [
+        {"corpus_id": "shanhaijing-c14", "chunk_id": "penglai-1", "score": 0.80}
+      ]
+    },
+    {
+      "name": "陳塘關",
+      "entity_kind": "location",
+      "origin": "enrichment",
+      "technique": "retrieval",
+      "confidence": 0.30,
+      "review_status": "proposed",
+      "provenance_json": {
+        "technique": "retrieval",
+        "model_ref": "ref-gen-demo",
+        "dimensions": {
+          "历史": "陳塘關为商末边陲要隘，总兵李靖镇守于此，哪吒生于关中，闹海之事即起于斯。",
+          "地理": "关隘地处东海之滨，近九湾河、东海口，野马岭为其要冲，扼守边疆通衢。",
+          "文化": "边关将士操演三军，谨守关隘，民风尚武，兼有戍边屯垦之俗。",
+          "features": "关城雄峙，烽燧相望，下临滚滚清波，绿水滔滔接于东海。",
+          "inhabitants": "总兵李靖及殷夫人，子金吒、木吒、哪吒，并守关将卒。"
+        },
+        "canon_verify": {"flags": []}
+      },
+      "source_refs_json": [
+        {"corpus_id": "fengshen-c14", "chunk_id": "chentang-1", "score": 0.79}
+      ]
+    }
+  ]
+}

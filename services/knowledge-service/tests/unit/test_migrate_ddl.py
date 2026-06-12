@@ -30,12 +30,19 @@ def test_extraction_jobs_table_present():
 
 
 def test_extraction_jobs_scope_check_constraint():
-    assert "scope IN ('chapters','chat','glossary_sync','all')" in DDL
+    # CM3b: 'chapters_pending' = the worker-ai coalescing drainer scope.
+    assert (
+        "scope IN ('chapters','chat','glossary_sync','all','chapters_pending')"
+        in DDL
+    )
 
 
 def test_extraction_jobs_status_check_constraint():
+    # Cycle 10: the full status vocabulary the code actually emits — incl.
+    # 'summarizing' (M1) AND 'paused'/'cancelled'/'complete' (state machine +
+    # worker-ai). Both the inline CREATE constraint and the M1 ALTER carry it.
     assert (
-        "status IN ('pending','running','paused','complete','failed','cancelled')"
+        "status IN ('pending','running','paused','summarizing','complete','failed','cancelled')"
         in DDL
     )
 

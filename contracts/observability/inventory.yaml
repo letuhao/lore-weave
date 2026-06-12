@@ -1,0 +1,1272 @@
+# contracts/observability/inventory.yaml — L1.I.6 (RAID cycle 6)
+#
+# I19 observability inventory — the AUTHORITATIVE list of every metric +
+# log channel + trace span the LoreWeave platform emits.
+#
+# Each entry MUST declare:
+#   - name           — canonical metric/log/trace name
+#   - kind           — counter | gauge | histogram | summary | log | trace
+#   - layer          — L1 | L2 | L3 | L4 | L5 | L6 | L7
+#   - shipped_cycle  — RAID cycle that landed it
+#   - labels         — bounded list of label dimensions (cardinality controls)
+#   - description    — one-line semantics
+#   - owner          — service/team responsible
+#
+# The L1.K observability-inventory-lint.sh (cycle 7) enforces that:
+#   1. every metric scraped by Prometheus appears here
+#   2. no metric appears here without a Prometheus scrape config OR alert
+#   3. label sets in inventory match label sets in actual emissions
+#
+# Cycle 6 enumerates EVERY metric emitted by cycles 1-6 (see below). Future
+# cycles MUST append entries for each new metric.
+
+version: 1
+
+metrics:
+  # ────────────────────────────────────────────────────────────────────
+  # L1.E — Meta HA (cycle 1)
+  # ────────────────────────────────────────────────────────────────────
+  - name: pg_stat_replication_lag_bytes
+    kind: gauge
+    layer: L1
+    shipped_cycle: 1
+    labels: [application_name, shard_host, db_class]
+    description: 'replication lag in bytes per replica'
+    owner: sre
+    source: postgres-exporter
+
+  - name: pg_archive_last_archived_seconds
+    kind: gauge
+    layer: L1
+    shipped_cycle: 1
+    labels: [shard_host, db_class]
+    description: 'unix seconds of last successful WAL archive'
+    owner: sre
+    source: postgres-exporter
+
+  # ────────────────────────────────────────────────────────────────────
+  # L1.A-1/2/3/4 + L1.B — Meta tables + library (cycles 2/3/4)
+  # ────────────────────────────────────────────────────────────────────
+  - name: pg_stat_user_tables_n_tup_ins
+    kind: counter
+    layer: L1
+    shipped_cycle: 2
+    labels: [relname, reality_id, shard_host, db_class]
+    description: 'rows inserted per table — restricted to 7 audit tables for cardinality'
+    owner: platform
+    source: postgres-exporter
+    cardinality_notes: 'relname is restricted to the 7 audit-table allowlist in infra/postgres-exporter/postgres-exporter.yaml'
+
+  # ────────────────────────────────────────────────────────────────────
+  # L1.C — Provisioner (cycle 5)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_provisioner_steps_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 5
+    labels: [step, outcome, shard_host]
+    description: 'provisioner 11-step outcomes (done/skipped) per shard'
+    owner: world-platform
+    source: services/world-service
+    cardinality_notes: 'step is from PROVISION_STEPS const (11 values); outcome ∈ {done, skipped}; shard_host is bounded by physical shard count'
+
+  - name: lw_deprovisioner_steps_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 5
+    labels: [step, outcome, shard_host]
+    description: 'deprovisioner 6-step outcomes per shard'
+    owner: world-platform
+    source: services/world-service
+
+  - name: shard_utilization_realities_used
+    kind: gauge
+    layer: L1
+    shipped_cycle: 5
+    labels: [shard_host]
+    description: 'count of active realities per shard'
+    owner: world-platform
+    source: services/world-service
+
+  - name: shard_utilization_realities_total
+    kind: gauge
+    layer: L1
+    shipped_cycle: 5
+    labels: [shard_host]
+    description: 'capacity (total realities slot) per shard'
+    owner: world-platform
+    source: services/world-service
+
+  # ────────────────────────────────────────────────────────────────────
+  # L1.G — Pgbouncer pool metrics (cycle 5)
+  # ────────────────────────────────────────────────────────────────────
+  - name: pgbouncer_pool_active_connections
+    kind: gauge
+    layer: L1
+    shipped_cycle: 5
+    labels: [pool_name, database, shard_host]
+    description: 'active backend connections per pgbouncer pool'
+    owner: sre
+    source: pgbouncer-exporter
+    cardinality_notes: 'pool_name + database bounded by databases.ini entries'
+
+  - name: pgbouncer_pool_waiting_clients
+    kind: gauge
+    layer: L1
+    shipped_cycle: 5
+    labels: [pool_name, database, shard_host]
+    description: 'clients waiting for a backend connection'
+    owner: sre
+    source: pgbouncer-exporter
+
+  # ────────────────────────────────────────────────────────────────────
+  # L1.F — Redis cache (cycle 5)
+  # ────────────────────────────────────────────────────────────────────
+  - name: redis_memory_used_bytes
+    kind: gauge
+    layer: L1
+    shipped_cycle: 5
+    labels: [instance, role]
+    description: 'redis memory in use'
+    owner: sre
+    source: redis-exporter
+
+  - name: redis_keyspace_keys
+    kind: gauge
+    layer: L1
+    shipped_cycle: 5
+    labels: [instance, db]
+    description: 'total keys per redis db'
+    owner: sre
+    source: redis-exporter
+
+  - name: lw_cache_invalidation_propagation_seconds
+    kind: histogram
+    layer: L1
+    shipped_cycle: 5
+    labels: [key_kind]
+    description: 'time from invalidation event to cache eviction across instances'
+    owner: platform
+    source: contracts/meta cache library
+
+  # ────────────────────────────────────────────────────────────────────
+  # L1.I — Per-DB metrics aggregation (cycle 6 — THIS CYCLE)
+  # ────────────────────────────────────────────────────────────────────
+  - name: pg_database_size_bytes
+    kind: gauge
+    layer: L1
+    shipped_cycle: 6
+    labels: [reality_id, shard_host, db_class]
+    description: 'per-reality database size — bounded label set per L1.I.5 cardinality controls'
+    owner: world-platform
+    source: postgres-exporter
+
+  - name: pg_stat_database_numbackends
+    kind: gauge
+    layer: L1
+    shipped_cycle: 6
+    labels: [reality_id, shard_host, db_class]
+    description: 'active backends per reality DB'
+    owner: world-platform
+    source: postgres-exporter
+
+  - name: pg_stat_database_xact_commit
+    kind: counter
+    layer: L1
+    shipped_cycle: 6
+    labels: [reality_id, shard_host, db_class]
+    description: 'committed transactions per reality DB'
+    owner: world-platform
+    source: postgres-exporter
+
+  - name: pg_stat_database_xact_rollback
+    kind: counter
+    layer: L1
+    shipped_cycle: 6
+    labels: [reality_id, shard_host, db_class]
+    description: 'rolled-back transactions per reality DB'
+    owner: world-platform
+    source: postgres-exporter
+
+  - name: pg_stat_database_tup_returned
+    kind: counter
+    layer: L1
+    shipped_cycle: 6
+    labels: [reality_id, shard_host, db_class]
+    description: 'tuples returned (read throughput proxy)'
+    owner: world-platform
+    source: postgres-exporter
+
+  - name: pg_stat_database_tup_inserted
+    kind: counter
+    layer: L1
+    shipped_cycle: 6
+    labels: [reality_id, shard_host, db_class]
+    description: 'tuples inserted (write throughput proxy)'
+    owner: world-platform
+    source: postgres-exporter
+
+  - name: pg_stat_database_tup_updated
+    kind: counter
+    layer: L1
+    shipped_cycle: 6
+    labels: [reality_id, shard_host, db_class]
+    description: 'tuples updated'
+    owner: world-platform
+    source: postgres-exporter
+
+  # Note: pg_stat_database_tup_deleted is intentionally NOT exposed in V1.
+  # It tracks DELETE-row counts which are rarely actionable in our model
+  # (we don't issue per-row DELETEs on per-reality data — soft-delete via
+  # status enum is preferred). If a future cycle needs it, add the entry
+  # AND bump the cardinality budget here + L1.I.9 test.
+
+  # ── L1.D migration-orchestrator metrics (cycle 6)
+  - name: lw_migration_orchestrator_active_runs
+    kind: gauge
+    layer: L1
+    shipped_cycle: 6
+    labels: []
+    description: 'count of migration runs currently in-flight (cap = 10)'
+    owner: sre
+    source: services/migration-orchestrator
+
+  - name: lw_migration_orchestrator_canary_aborted_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 6
+    labels: [migration_id, reason]
+    description: 'breaking-migration canary abort count'
+    owner: sre
+    source: services/migration-orchestrator
+    cardinality_notes: 'migration_id bounded by manifest.yaml entries; reason ∈ {canary_apply_failed, canary_verification_timeout, canary_verification_*}'
+
+  - name: lw_migration_orchestrator_attempts_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 6
+    labels: [migration_id, outcome]
+    description: 'migration attempt outcomes (succeeded/failed/transient_retry)'
+    owner: sre
+    source: services/migration-orchestrator
+
+  # ────────────────────────────────────────────────────────────────────
+  # L2.A — Events table (cycle 9)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_events_appended_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 9
+    labels: [reality_id, aggregate_type, event_type, outcome]
+    description: 'event append attempts per aggregate_type + event_type; outcome ∈ {ok, conflict, schema_violation, error}'
+    owner: world-platform
+    source: contracts/events (write helper)
+    cardinality_notes: 'aggregate_type bounded by _registry.yaml aggregates (~5); event_type bounded by _registry.yaml events (~3 V1, ~50 V3); reality_id × event_type is the dominant factor and is the same bound as L1.I per-reality budget'
+
+  - name: lw_partition_manager_runs_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 9
+    labels: [table, op, outcome]
+    description: 'per-reality-partition-manager.sh run outcomes; table ∈ {events, event_audit}, op ∈ {create_ahead, detach_old, list}, outcome ∈ {ok, dry_run, error}'
+    owner: world-platform
+    source: scripts/per-reality-partition-manager.sh
+
+  # ────────────────────────────────────────────────────────────────────
+  # L2.B — Event audit (cycle 9)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_event_audit_writes_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 9
+    labels: [reality_id, actor_type, flagged]
+    description: 'event_audit rows written; actor_type ∈ {system,user,service,llm}; flagged ∈ {true,false}'
+    owner: world-platform
+    source: contracts/events (audit_helpers)
+
+  - name: lw_event_audit_retention_pruned_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 9
+    labels: [class, partition_drop]
+    description: 'rows pruned by event-audit-retention-cron.sh; class ∈ {flagged, non_flagged}; partition_drop ∈ {true, false}'
+    owner: world-platform
+    source: scripts/event-audit-retention-cron.sh
+
+  # ────────────────────────────────────────────────────────────────────
+  # L2.E — Aggregate snapshots (cycle 9)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_aggregate_snapshots_taken_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 9
+    labels: [reality_id, aggregate_type]
+    description: 'snapshots persisted per aggregate_type (per snapshot_policy.yaml opt-in)'
+    owner: world-platform
+    source: crates/dp-kernel (snapshot worker — wired in cycle 14)
+
+  - name: lw_aggregate_snapshots_loaded_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 9
+    labels: [reality_id, aggregate_type, outcome]
+    description: 'aggregate loader snapshot lookups; outcome ∈ {hit, miss_full_replay, schema_drift_fallback}'
+    owner: world-platform
+    source: crates/dp-kernel (loader — wired in cycle 12)
+
+  # ────────────────────────────────────────────────────────────────────
+  # L2.C — events_outbox (cycle 10 — THIS CYCLE)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_outbox_enqueued_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: [reality_id, event_type]
+    description: 'outbox rows enqueued (one per emitted event); written via events.OutboxWrite'
+    owner: world-platform
+    source: contracts/events (OutboxWrite helper)
+    cardinality_notes: 'reality_id × event_type — same multiplicative cap as L2.A lw_events_appended_total'
+
+  # ────────────────────────────────────────────────────────────────────
+  # L2.D — Publisher (cycle 10)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_outbox_lag_seconds
+    kind: gauge
+    layer: L2
+    shipped_cycle: 10
+    labels: [shard_host]
+    description: 'now() - min(enqueued_at) WHERE published=FALSE AND dead_lettered_at IS NULL; SLO 1s P50 / 10s P99 (R06 §12F.3)'
+    owner: sre
+    source: services/publisher
+
+  - name: lw_publisher_active_replicas
+    kind: gauge
+    layer: L2
+    shipped_cycle: 10
+    labels: [shard_host]
+    description: 'count of publisher replicas currently active per shard (V1 always 1; V2+ counts leader-elected actives)'
+    owner: sre
+    source: services/publisher (heartbeat loop)
+
+  - name: lw_publisher_xadd_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: [shard_host, event_type, outcome]
+    description: 'publisher XADD outcomes; outcome ∈ {ok, transient_fail, dead_letter}'
+    owner: world-platform
+    source: services/publisher (poll_loop)
+
+  - name: lw_outbox_dead_lettered_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: [shard_host, reality_id, event_type]
+    description: 'rows transitioned to dead_lettered_at IS NOT NULL after attempts >= max_attempts'
+    owner: sre
+    source: services/publisher (retry policy)
+
+  - name: lw_publisher_heartbeat_failures_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: [shard_host]
+    description: 'consecutive heartbeat write failures; resets to 0 on success; 3 in a row → ServiceMode=Limited (L1.J)'
+    owner: sre
+    source: services/publisher (heartbeat)
+
+  # ────────────────────────────────────────────────────────────────────
+  # L2.L — xreality fanout + meta-worker (cycle 10)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_xreality_fanout_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: [event_type, outcome]
+    description: 'publisher xreality fanout outcomes; outcome ∈ {ok, error}; event_type bounded by xreality.* registry entries'
+    owner: world-platform
+    source: services/publisher (xreality_fanout)
+
+  - name: lw_meta_worker_dispatch_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: [event_type, outcome]
+    description: 'meta-worker xreality dispatcher outcomes; outcome ∈ {ok, no_handler, handler_error}'
+    owner: world-platform
+    source: services/meta-worker (internal/dispatch)
+
+  - name: lw_meta_worker_lag_seconds
+    kind: gauge
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'now() - max(xreality stream entry ts already consumed); SLO 2s P99 per L2.L acceptance'
+    owner: sre
+    source: services/meta-worker
+
+  # ──────────────────────────────────────────────────────────────────
+  # Cycle 11 — L2.J archive-worker + L2.K retention-worker
+  # ──────────────────────────────────────────────────────────────────
+
+  - name: lw_archive_partitions_archived_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: [outcome]
+    description: 'archive-worker partition-archive outcomes; outcome ∈ {ok, upload_failed, verify_failed, drop_failed}; counts iterations not partitions'
+    owner: world-platform
+    source: services/archive-worker (pkg/archive_loop)
+
+  - name: lw_archive_bytes_uploaded_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'cumulative bytes uploaded to lw-event-archive bucket (post-ZSTD compression); used to track cold-tier storage growth'
+    owner: world-platform
+    source: services/archive-worker (pkg/archive_loop)
+
+  - name: lw_archive_rows_archived_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'cumulative event rows archived (sum of archive_state.row_count); cross-checked vs partition row counts pre-DROP'
+    owner: world-platform
+    source: services/archive-worker (pkg/archive_loop)
+
+  - name: lw_archive_lag_hours
+    kind: gauge
+    layer: L2
+    shipped_cycle: 11
+    labels: [reality_id]
+    description: 'now() - max(archive_state.archived_at) per reality; alert when > stale_alert_threshold (72h per archive-worker-cron.yaml)'
+    owner: sre
+    source: services/archive-worker
+    cardinality_notes: 'reality_id — bounded by V1=100 / V1+30d=1000 realities; folded into per-reality budget'
+
+  - name: lw_retention_outbox_pruned_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'cumulative events_outbox rows DELETEd by retention-worker (addresses D-OUTBOX-PRUNE row 055). NEVER includes dead-letter rows.'
+    owner: world-platform
+    source: services/retention-worker (pkg/outbox_pruner)
+
+  - name: lw_retention_audit_invocations_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: [outcome]
+    description: 'retention-worker audit-script invocations; outcome ∈ {ok, error}; one per per-reality scheduling tick'
+    owner: world-platform
+    source: services/retention-worker (pkg/audit_invoker)
+
+  # ────────────────────────────────────────────────────────────────────
+  # L3.K — Drift detection metadata (cycle 13)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_projection_drift_count
+    kind: gauge
+    layer: L3
+    shipped_cycle: 13
+    labels: [reality_id, table]
+    description: 'per-projection-table drift count from last L3.E/F integrity sweep (= projection_drift_state.drift_count). 0 = healthy. Cycle 13 ships skeleton populator (scripts/projection-drift-check.sh) that always emits 0; cycle 14 L3.E integrity-checker writes real values from sample re-replay.'
+    owner: world-platform
+    source: services/integrity-checker (cycle 14) — placeholder script in cycle 13 (scripts/projection-drift-check.sh)
+    cardinality_notes: 'table — bounded by 10 (L3.A allowlist enforced by projection_drift_table_name_allowlist CHECK in 0007_drift_metadata.up.sql). reality_id — bounded by per-reality budget. Total = 10 × N realities ≤ 10K series at V1+30d.'
+
+  - name: lw_projection_drift_last_check_age_seconds
+    kind: gauge
+    layer: L3
+    shipped_cycle: 13
+    labels: [reality_id, table]
+    description: 'now() - projection_drift_state.last_verified_at per (reality, table). Backs L3.J stale-verification alert (fire at > 7d per L3.K acceptance). NULL last_verified_at surfaces as -1 sentinel; downstream alert treats negative as STALE_NEVER.'
+    owner: world-platform
+    source: services/integrity-checker (cycle 14) — backed by projection_drift_state SELECT in cycle 13 cron skeleton
+    cardinality_notes: 'identical bounds to lw_projection_drift_count'
+
+  # ────────────────────────────────────────────────────────────────────
+  # L3.J — Projection lag + check observability (cycle 15)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_projection_lag_seconds
+    kind: gauge
+    layer: L3
+    shipped_cycle: 15
+    labels: [reality_id, table]
+    description: 'wall-clock lag = NOW() - max(projection.applied_at) per (reality, table). Backs the LWProjectionLagWarning (60s) + LWProjectionLagCritical (300s) alerts in infra/prometheus/alerts/projection.yaml. Distinct from lw_projection_drift_last_check_age_seconds (cycle 13) — THIS metric measures publisher→projection latency; that one measures integrity-checker freshness.'
+    owner: world-platform
+    source: services/integrity-checker (pkg/metrics MetricProjectionLagSeconds)
+    cardinality_notes: 'table — bounded by 10 (L3.A allowlist enforced by sampler+state_writer). reality_id — bounded by per-reality budget. Identical bounds to lw_projection_drift_count.'
+
+  - name: lw_projection_check_duration_seconds
+    kind: histogram
+    layer: L3
+    shipped_cycle: 15
+    labels: [mode, table]
+    description: 'wall-time of one (reality, table, mode) integrity-checker run. mode ∈ {daily, monthly}. Daily P99 expected < 30s per table; monthly P99 expected < 1h for 10K-aggregate reality (per L3.F acceptance). SRE uses this to spot a runaway full-scan early (e.g. 6h on a 1K-row table = bug).'
+    owner: world-platform
+    source: services/integrity-checker (pkg/metrics MetricProjectionCheckDurationSeconds)
+    cardinality_notes: 'mode ∈ {daily, monthly} (bounded 2). table — bounded by 10 (L3.A allowlist). 2 × 10 = 20 series total (NOT multiplied by reality_id — duration is per (mode, table) aggregate; reality breakdown lives on the drift/lag gauges).'
+
+  - name: lw_projection_check_runs_total
+    kind: counter
+    layer: L3
+    shipped_cycle: 15
+    labels: [mode, outcome]
+    description: 'integrity-checker run counts. mode ∈ {daily, monthly}; outcome ∈ {ok, error}. error path includes loader failures, fetch failures, cursor stuck, ctx-cancelled mid-scan. Counts ALL across realities — per-reality breakdown lives on the drift/lag gauges.'
+    owner: world-platform
+    source: services/integrity-checker (pkg/metrics MetricProjectionCheckRunsTotal)
+    cardinality_notes: 'mode × outcome = 4 series total. Fixed cardinality (no reality_id, no table).'
+
+  # ────────────────────────────────────────────────────────────────────
+  # L4.F + L4.G + L4.N — resilience + lifecycle + dependencies (cycle 18)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_dependency_circuit_state
+    kind: gauge
+    layer: L4
+    shipped_cycle: 18
+    labels: [dep, service]
+    description: 'circuit breaker state per (caller_service, dep) pair. Values match SR06 §12AI.8: 0=closed / 1=half_open / 2=open. SR06-D5 fault-domain rule: one gauge per (caller, dep); two services calling the same dep maintain INDEPENDENT gauges.'
+    owner: platform
+    source: contracts/resilience (Go) + crates/dp-kernel::resilience (Rust)
+    cardinality_notes: 'service — bounded by registered foundation services (~20); dep — bounded by matrix.yaml entries (~10 at V1, ~30 at V3). Worst case ~600 series. Well within budget.'
+
+  - name: lw_dependency_circuit_transitions_total
+    kind: counter
+    layer: L4
+    shipped_cycle: 18
+    labels: [dep, service, from, to]
+    description: 'cumulative circuit-state transitions per (caller_service, dep) per (from, to) pair. Mirrors the dependency_events rows for circuit_open / circuit_half_open / circuit_closed (SR06 §12AI.9). Postmortem use: confirm a SEV0 outage was preceded by N transitions.'
+    owner: platform
+    source: contracts/resilience (Go) + crates/dp-kernel::resilience (Rust)
+    cardinality_notes: 'service × dep × from × to = ~20 × 10 × 3 × 3 / 2 (forbidden self-transitions) ≈ 2700 series upper bound. Realistic ≤ 600 (most pairs idle).'
+
+  - name: lw_dependency_bulkhead_inflight
+    kind: gauge
+    layer: L4
+    shipped_cycle: 18
+    labels: [dep, service]
+    description: 'current in-flight calls held by the bulkhead per (caller_service, dep). Useful for spotting "always at MaxConcurrent" deps that need capacity bump (SR06 §12AI.10).'
+    owner: platform
+    source: contracts/resilience::Bulkhead.Active() + crates/dp-kernel::resilience::Bulkhead::active()
+    cardinality_notes: 'service × dep ≤ 200 series.'
+
+  - name: lw_dependency_bulkhead_rejected_total
+    kind: counter
+    layer: L4
+    shipped_cycle: 18
+    labels: [dep, service]
+    description: 'cumulative ErrBulkheadFull rejections per (caller_service, dep). Counterpart to the dependency_events bulkhead_full_burst row + the SR06 §12AI.8 lw_dependency_errors_total{error_class="bulkhead_full"} aggregate. Sustained > 5/min suggests capacity bump per SR06 §12AI.10.'
+    owner: platform
+    source: contracts/resilience::Bulkhead.Rejected()
+    cardinality_notes: 'service × dep ≤ 200 series.'
+
+  - name: lw_lifecycle_drain_duration_seconds
+    kind: histogram
+    layer: L4
+    shipped_cycle: 18
+    labels: [service, outcome]
+    description: 'wall-clock duration of one Drain invocation per (service, outcome). outcome ∈ {success, deadline_exceeded, hook_error}. Per SR06 §12AI.11 the V1 budget is 30s default / 10s stateless / 120s long-runner; this histogram tells SRE when a service routinely brushes its cap.'
+    owner: platform
+    source: contracts/lifecycle::Drain + crates/dp-kernel::lifecycle::drain
+    cardinality_notes: 'service ≤ 20; outcome ∈ {3} = ≤ 60 series.'
+
+  - name: lw_service_mode
+    kind: gauge
+    layer: L4
+    shipped_cycle: 18
+    labels: [service]
+    description: 'current ServiceMode per service. Integer values match the lifecycle.ServiceMode enum: 0=full / 1=limited / 2=essentials / 3=read_only / 4=offline. Per SR06 §12AI.6 a mode > 0 indicates a degraded dep; combine with lw_dependency_circuit_state to identify the trigger.'
+    owner: platform
+    source: contracts/lifecycle::ServiceMode emitted by each service health-endpoint
+    cardinality_notes: 'service ≤ 20 = ≤ 20 series.'
+
+  # ────────────────────────────────────────────────────────────────────
+  # L5.E — Canon cache (RAID cycle 25)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_canon_cache_hits_total
+    kind: counter
+    layer: L5
+    shipped_cycle: 25
+    labels: [reality_id]
+    description: 'cumulative cache hits in the L5.E per-reality canon cache (contracts/prompt/canon_cache.go + crates/dp-kernel/src/canon_cache.rs). Combined with lw_canon_cache_misses_total, drives the L5.E.4 hit-rate ≥ 90% SLO via recording rule lw_canon_cache_hit_rate{reality_id} = hits / (hits + misses). Q-L5-1 event-driven invalidation is PRIMARY; this counter tells SRE if the TTL fallback is firing instead.'
+    owner: platform
+    source: contracts/prompt::Cache.metrics.IncHit + dp-kernel::canon_cache::MetricsSink.inc_hit
+    cardinality_notes: 'reality_id is HIGH-cardinality (1 series per active reality). At V1 = 100 realities = 100 series; V3 = 10K realities = 10K series. Within 70K per-reality budget.'
+
+  - name: lw_canon_cache_misses_total
+    kind: counter
+    layer: L5
+    shipped_cycle: 25
+    labels: [reality_id]
+    description: 'cumulative cache misses in the L5.E canon cache. Pairs with lw_canon_cache_hits_total to compute hit-rate. Spike in misses = stale invalidation pattern or capacity issue.'
+    owner: platform
+    source: contracts/prompt::Cache.metrics.IncMiss + dp-kernel::canon_cache::MetricsSink.inc_miss
+    cardinality_notes: 'reality_id = 1 series per reality (matches hits).'
+
+  - name: lw_canon_cache_invalidations_total
+    kind: counter
+    layer: L5
+    shipped_cycle: 25
+    labels: [reality_id]
+    description: 'cumulative invalidations issued (Q-L5-1 PRIMARY path — canon_writer post-UPSERT). Sustained zero on an active reality = canon_writer NOT calling Invalidate (Q-L5-1 violation; TTL fallback compensates but the hit-rate degrades).'
+    owner: platform
+    source: contracts/prompt::Cache.metrics.AddInvalidations + dp-kernel::canon_cache::MetricsSink.add_invalidations
+    cardinality_notes: 'reality_id = 1 series per reality.'
+
+  # ────────────────────────────────────────────────────────────────────
+  # L6.E — WebSocket server (cycle 28: L6.A + L6.B + L6.E)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_ws_active_connections
+    kind: gauge
+    layer: L6
+    shipped_cycle: 28
+    labels: []
+    description: 'active WS connections on this gateway replica. Driver for cap-saturation alert (>80% of Q-L6-2 10K cap → HPA scale signal).'
+    owner: platform
+    source: api-gateway-bff/src/ws/metrics.ts::WsMetrics.activeConnections
+    cardinality_notes: 'unlabeled gauge — exactly 1 series per replica. No per-connection cardinality (auditor focus).'
+
+  - name: lw_ws_handshake_failures_total
+    kind: counter
+    layer: L6
+    shipped_cycle: 28
+    labels: [reason]
+    description: 'WS handshake rejections per reason — missing_ticket, invalid_protocol_header, ticket_redeem_failed, ticket_expired, origin_mismatch, fingerprint_mismatch, cap_reached, session_store_failed, unknown.'
+    owner: platform
+    source: api-gateway-bff/src/ws/metrics.ts::WsMetrics.handshakeFailures
+    cardinality_notes: 'reason ≤ 9 enumerated values — 9 series per replica.'
+
+  - name: lw_ws_messages_total
+    kind: counter
+    layer: L6
+    shipped_cycle: 28
+    labels: [direction, kind]
+    description: 'WS frames flowing through the gateway — direction = c2s|s2c × kind = control|data. Drives msg-rate alert.'
+    owner: platform
+    source: api-gateway-bff/src/ws/metrics.ts::WsMetrics.messages
+    cardinality_notes: 'direction × kind = 2 × 2 = 4 series per replica.'
+
+  - name: lw_ws_authz_rejections_total
+    kind: counter
+    layer: L6
+    shipped_cycle: 28
+    labels: [reason]
+    description: 'WS per-message authz rejections (foundation here; populated by cycle 29 L6.C). Reasons = s2_not_in_session, s3_privacy_violation, scope_not_allowed, reality_not_allowed, schema_invalid.'
+    owner: platform
+    source: api-gateway-bff/src/ws/metrics.ts::WsMetrics.authzRejections
+    cardinality_notes: 'reason ≤ 5 enumerated values — 5 series per replica.'
+
+  - name: lw_ws_ticket_redeemed_total
+    kind: counter
+    layer: L6
+    shipped_cycle: 28
+    labels: [outcome]
+    description: 'WS ticket redeem outcomes — success, expired, not_found, origin_mismatch, fingerprint_mismatch. High `not_found` rate may signal replay attacks; high `expired` rate signals clock skew or slow upgrade.'
+    owner: platform
+    source: api-gateway-bff/src/ws/metrics.ts::WsMetrics.ticketRedeemed
+    cardinality_notes: 'outcome ≤ 5 enumerated values — 5 series per replica.'
+
+  - name: lw_ws_connection_evictions_total
+    kind: counter
+    layer: L6
+    shipped_cycle: 28
+    labels: [reason]
+    description: 'WS connection close causes — normal_close, cap_reached_lru, forced_disconnect, session_expired. Force-disconnect spikes signal admin actions or token revocations.'
+    owner: platform
+    source: api-gateway-bff/src/ws/metrics.ts::WsMetrics.evictions
+    cardinality_notes: 'reason ≤ 4 enumerated values — 4 series per replica.'
+
+  # ────────────────────────────────────────────────────────────────────
+  # L6.F — Observability admission runtime (cycle 30, Q-L6F-1)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_metric_admission_warn_total
+    kind: counter
+    layer: L6
+    shipped_cycle: 30
+    labels: [reason]
+    description: 'V1 warn-and-drop admission counter — increments whenever an unregistered metric is emitted while admission mode = warn. Reasons = unregistered_metric, unregistered_label. SRE watches this counter during the V1+30d adoption window; non-zero means an emission path is missing from inventory.yaml.'
+    owner: platform
+    source: pkg/metrics/admission_lib.go (Lib wraps contracts/observability/admission.go::Admission)
+    cardinality_notes: 'reason ≤ 2 enumerated values; metric-name dimension intentionally NOT a label (would explode cardinality during typo storms — see budget_breach_writer instead).'
+
+  - name: lw_metric_admission_rejections_total
+    kind: counter
+    layer: L6
+    shipped_cycle: 30
+    labels: [reason]
+    description: 'V1+30d hard-reject admission counter — increments whenever an unregistered metric is dropped while admission mode = reject. Non-zero post-flip indicates an emission escaped the 30-day warn window; file P1 ticket to owning team.'
+    owner: platform
+    source: pkg/metrics/admission_lib.go (Lib wraps contracts/observability/admission.go::Admission)
+    cardinality_notes: 'reason ≤ 2 enumerated values; same cardinality discipline as warn counter.'
+
+  # ────────────────────────────────────────────────────────────────────
+  # L6.G — Capacity admission webhook (cycle 30, Q-L6G-1: K8s)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_capacity_admission_decisions_total
+    kind: counter
+    layer: L6
+    shipped_cycle: 30
+    labels: [decision]
+    description: 'K8s ValidatingAdmissionWebhook decision outcomes — allow, deny_no_budget, deny_over_budget, allow_via_override. Decisions are emitted by the cycle-30 admission webhook (infra/k8s/admission-webhook/) and consumed by the SRE deployment dashboard.'
+    owner: platform
+    source: infra/k8s/admission-webhook/capacity_checker.go::Checker.Review
+    cardinality_notes: 'decision ≤ 4 enumerated values — 4 series per webhook replica.'
+
+  - name: lw_capacity_admission_latency_seconds
+    kind: histogram
+    layer: L6
+    shipped_cycle: 30
+    labels: []
+    description: 'K8s admission webhook decision latency. Acceptance criterion: P99 < 100ms (per L6.G layer plan §177).'
+    owner: platform
+    source: infra/k8s/admission-webhook/capacity_checker.go::Checker.Review
+    cardinality_notes: 'no labels — one histogram per webhook replica.'
+
+  # ────────────────────────────────────────────────────────────────────
+  # L6.I — Prompt user-input wrap + canary token (cycle 31, Q-L6L-1)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_prompt_canary_leak_count
+    kind: counter
+    layer: L6
+    shipped_cycle: 31
+    labels: [intent]
+    description: 'Cycle-31 L6.I.3 canary detector — counts post-LLM-output responses containing the per-prompt canary token embedded in SectionSystem. A non-zero count signals prompt regurgitation / injection. Foundation V1 emits the counter only; LLM-safety sub-program (Q-L6L-1) wires fail-closed actions.'
+    owner: llm-safety
+    source: contracts/prompt/canary_token.go::DefaultCanaryDetector.Detect (caller-side emit)
+    cardinality_notes: 'intent ≤ 7 enumerated values per S09 §12Y.2 — 7 series total.'
+
+  # ────────────────────────────────────────────────────────────────────
+  # L7.E + L7.G — Logging + Tracing libs (cycle 32)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_log_redactions_total
+    kind: counter
+    layer: L7
+    shipped_cycle: 32
+    labels: [kind]
+    description: 'Cycle-32 L7.E.2/3 — count of log fields redacted by the structured-logger PII/Sensitive pipeline. kind ∈ {pii, sensitive}. A non-zero value at startup signals legitimate redaction discipline; a spike signals a regression that started leaking PII into log lines (caught at L7.E redactor seam, not at ingest scrubber).'
+    owner: platform
+    source: contracts/logging/logger.go::jsonLogger.Emit (caller-side emit via WithRedactionCounter)
+    cardinality_notes: 'kind ∈ {pii, sensitive} — 2 series total.'
+
+  - name: lw_trace_spans_total
+    kind: counter
+    layer: L7
+    shipped_cycle: 32
+    labels: [service, kind, status]
+    description: 'Cycle-32 L7.G — count of spans exported by the foundation tracing library. service is the cycle-19 service-name (kebab-case); kind ∈ {internal, server, client, producer, consumer}; status ∈ {unset, ok, error}. Drives the cycle 33+ Tempo dashboard span-throughput panel + per-service trace volume budget.'
+    owner: platform
+    source: contracts/tracing/exporter.go::Exporter.Export (caller-side emit)
+    cardinality_notes: 'service × kind × status ≤ 40 services × 5 × 3 = 600 series ceiling.'
+
+  - name: lw_trace_sampling_decisions_total
+    kind: counter
+    layer: L7
+    shipped_cycle: 32
+    labels: [decision, reason]
+    description: 'Cycle-32 L7.G — sampler decisions (counts dropped vs sampled). decision ∈ {drop, record_and_sample}; reason ∈ {probabilistic, force, parent_sampled, hint_drop}. Used to verify Q-L7-3 (no service mesh = sampler is in-library) is honored: per cycle-19 L4.H adaptive policy, prod default = 1% baseline + 100% on SEV0/SEV1.'
+    owner: platform
+    source: contracts/tracing/sampler.go::ProbabilisticSampler.ShouldSample (caller-side emit)
+    cardinality_notes: 'decision ∈ {drop, record_and_sample} × reason ∈ {probabilistic, force, parent_sampled, hint_drop} = 8 series total.'
+
+  # ────────────────────────────────────────────────────────────────────
+  # L7.F + L7.H — Observability infra (cycle 33)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_log_density_pii_hits_total
+    kind: counter
+    layer: L7
+    shipped_cycle: 33
+    labels: [pattern]
+    description: 'Cycle-33 L7.F.7 — PII hits found by the periodic log-density-detector.sh scan. pattern ∈ {email, phone, ipv4, ssn, cc_pan}. This is defense-in-depth audit metric: non-zero indicates the cycle-32 source-side Redactor AND the cycle-33 Vector ingest scrubber both missed a PII pattern (real bug). A spike here is a SEV1.'
+    owner: platform
+    source: scripts/log-density-detector.sh
+    cardinality_notes: 'pattern ∈ {email, phone, ipv4, ssn, cc_pan} — 5 series total.'
+
+  - name: lw_log_density_threshold_hits_total
+    kind: counter
+    layer: L7
+    shipped_cycle: 33
+    labels: [result]
+    description: 'Cycle-33 L7.F.7 — count of log-density-detector runs that fired the over-threshold alert. result ∈ {over, under, empty}. Used by SRE to track noisy emitter regressions before they overload Loki.'
+    owner: platform
+    source: scripts/log-density-detector.sh
+    cardinality_notes: 'result ∈ {over, under, empty} — 3 series total.'
+
+  - name: lw_obs_stack_up
+    kind: gauge
+    layer: L7
+    shipped_cycle: 33
+    labels: [instance]
+    description: 'Cycle-33 L7.H.2 recording rule — `min(up{job="observability-stack"}) by (instance)`. Self-monitoring rollup for the Vector / Loki / Grafana stack. 1 = healthy, 0 = at least one obs component down. Drives the platform SLO summary dashboard.'
+    owner: platform
+    source: infra/prometheus/recording-rules/aggregation.yaml::lw:obs_stack_up
+    cardinality_notes: 'instance label per obs-stack container — typically ≤ 5 series (vector + loki + grafana + prom-a + prom-b).'
+
+  # ────────────────────────────────────────────────────────────────────
+  # L7.I + L7.J — SLO infra + Alertmanager (cycle 34)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw:sli_session_availability:ratio_5m
+    kind: gauge
+    layer: L7
+    shipped_cycle: 34
+    labels: [tier]
+    description: 'Cycle-34 L7.I.3 recording rule — sli_session_availability over 5m window per (tier). Feeds the burn-rate alert ladder + the slo-burn-rate dashboard. Derived from raw lw_session_starts_total.'
+    owner: sre
+    source: infra/prometheus/recording-rules/sli.yaml::lw_sli_tier_scoped
+    cardinality_notes: 'tier ∈ {free, paid, premium} — 3 series.'
+
+  - name: lw:sli_turn_completion:ratio_5m
+    kind: gauge
+    layer: L7
+    shipped_cycle: 34
+    labels: [tier]
+    description: 'Cycle-34 L7.I.3 — sli_turn_completion 5m ratio per tier.'
+    owner: platform
+    source: infra/prometheus/recording-rules/sli.yaml::lw_sli_tier_scoped
+    cardinality_notes: 'tier ∈ {free, paid, premium} — 3 series.'
+
+  - name: lw:sli_event_delivery:ratio_5m
+    kind: gauge
+    layer: L7
+    shipped_cycle: 34
+    labels: [tier]
+    description: 'Cycle-34 L7.I.3 — sli_event_delivery 5m ratio per tier.'
+    owner: sre
+    source: infra/prometheus/recording-rules/sli.yaml::lw_sli_tier_scoped
+    cardinality_notes: 'tier ∈ {free, paid, premium} — 3 series.'
+
+  - name: lw:sli_realtime_freshness:ratio_5m
+    kind: gauge
+    layer: L7
+    shipped_cycle: 34
+    labels: [tier]
+    description: 'Cycle-34 L7.I.3 — sli_realtime_freshness 5m ratio per tier.'
+    owner: platform
+    source: infra/prometheus/recording-rules/sli.yaml::lw_sli_tier_scoped
+    cardinality_notes: 'tier ∈ {free, paid, premium} — 3 series.'
+
+  - name: lw:sli_auth_success:ratio_5m
+    kind: gauge
+    layer: L7
+    shipped_cycle: 34
+    labels: [tier]
+    description: 'Cycle-34 L7.I.3 — sli_auth_success 5m ratio per tier (7d window, 99.9% target flat).'
+    owner: sre
+    source: infra/prometheus/recording-rules/sli.yaml::lw_sli_tier_scoped
+    cardinality_notes: 'tier ∈ {free, paid, premium} — 3 series.'
+
+  - name: lw:sli_admin_action_success:ratio_5m
+    kind: gauge
+    layer: L7
+    shipped_cycle: 34
+    labels: []
+    description: 'Cycle-34 L7.I.3 — sli_admin_action_success 5m ratio (platform-scoped; no tier).'
+    owner: sre
+    source: infra/prometheus/recording-rules/sli.yaml::lw_sli_platform_scoped
+    cardinality_notes: '1 series (no labels).'
+
+  - name: lw:sli_cross_reality_propagation:ratio_5m
+    kind: gauge
+    layer: L7
+    shipped_cycle: 34
+    labels: []
+    description: 'Cycle-34 L7.I.3 — sli_cross_reality_propagation 5m ratio (platform-scoped).'
+    owner: platform
+    source: infra/prometheus/recording-rules/sli.yaml::lw_sli_platform_scoped
+    cardinality_notes: '1 series.'
+
+  - name: lw_alert_recorder_outcomes_total
+    kind: counter
+    layer: L7
+    shipped_cycle: 34
+    labels: [state, sli_ref]
+    description: 'Cycle-34 L7.J.5 — count of alert_outcomes written by alert-recorder. state ∈ {received, dispatched, resolved, silenced}. Spike here without a corresponding sli_ref burn = alert storm warning.'
+    owner: sre
+    source: services/alert-recorder
+
+  - name: lw_alert_silence_policy_violation_total
+    kind: counter
+    layer: L7
+    shipped_cycle: 34
+    labels: [category, protected]
+    description: 'Cycle-34 L7.J — count of silence requests that violated silence_admission_policy.yaml. protected ∈ {true, false}. Non-zero with protected=true is a HARD escalation per runbooks/alerts/silence_misuse.md.'
+    owner: sre
+    source: services/alert-recorder
+
+  # ────────────────────────────────────────────────────────────────────
+  # 078 backfill (2026-05-31) — emitted spine-worker metrics not previously
+  # registered. These are the names the SHIPPED code actually emits; the older
+  # planned names a few entries above (lw_meta_worker_dispatch_total,
+  # lw_archive_bytes_uploaded_total, lw_retention_outbox_pruned_total, …) are
+  # stale-by-refactor — reconciling/retiring them is tracked in DEFERRED-111
+  # (renaming emitted metrics is dashboard/alert-load-bearing).
+  # ────────────────────────────────────────────────────────────────────
+  # ── P2/101 slice B — meta-outbox-relay (meta_outbox → Redis drain)
+  - name: lw_meta_outbox_published_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 101
+    labels: []
+    description: 'meta_outbox rows XADDed + marked published.'
+    owner: world-platform
+    source: services/meta-outbox-relay (drain)
+  - name: lw_meta_outbox_retried_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 101
+    labels: []
+    description: 'meta_outbox rows marked for retry after a transient XADD failure.'
+    owner: sre
+    source: services/meta-outbox-relay (retry policy)
+  - name: lw_meta_outbox_dead_lettered_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 101
+    labels: []
+    description: 'meta_outbox rows dead-lettered at max attempts.'
+    owner: sre
+    source: services/meta-outbox-relay (retry policy)
+  - name: lw_meta_outbox_xreality_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 101
+    labels: []
+    description: 'meta_outbox rows ALSO emitted to an xreality.* topic (cross-reality bridge).'
+    owner: world-platform
+    source: services/meta-outbox-relay (drain)
+  - name: lw_meta_outbox_iteration_errors_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 101
+    labels: []
+    description: 'meta-outbox-relay drain iterations that returned an error.'
+    owner: sre
+    source: services/meta-outbox-relay (drain)
+  - name: lw_meta_outbox_pending
+    kind: gauge
+    layer: L1
+    shipped_cycle: 101
+    labels: []
+    description: 'Unpublished, non-dead-lettered meta_outbox rows (drain lag — alert if it grows unbounded, i.e. relay down).'
+    owner: sre
+    source: services/meta-outbox-relay (pending-depth count)
+  - name: lw_meta_outbox_pruned_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 112
+    labels: []
+    description: 'Spent (published, past-grace) meta_outbox rows deleted by the pruner (P2/112 ephemeral retention).'
+    owner: sre
+    source: services/meta-outbox-relay (prune)
+  # ── P2/106 — breach-notifier (lw.incidents.breach → DPO delivery)
+  - name: lw_breach_delivery_delivered_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 106
+    labels: []
+    description: 'GDPR Art.33 DPO notices delivered + recorded (delivery-confirmed).'
+    owner: sre
+    source: services/breach-notifier (handler)
+  - name: lw_breach_delivery_failed_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 106
+    labels: []
+    description: 'DPO notice delivery attempts that failed (left pending for redelivery).'
+    owner: sre
+    source: services/breach-notifier (handler)
+  - name: lw_breach_delivery_skipped_duplicate_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 106
+    labels: []
+    description: 'DPO notices skipped because already delivered (idempotency guard).'
+    owner: sre
+    source: services/breach-notifier (handler)
+  - name: lw_breach_delivery_malformed_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 106
+    labels: []
+    description: 'dpo_notice obligations dropped as malformed (failed contract Validate) — alertable.'
+    owner: sre
+    source: services/breach-notifier (handler)
+  - name: lw_breach_delivery_iteration_errors_total
+    kind: counter
+    layer: L1
+    shipped_cycle: 106
+    labels: []
+    description: 'breach-notifier consumer loop iterations that returned an error.'
+    owner: sre
+    source: services/breach-notifier (loop)
+  - name: lw_publisher_published_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'Outbox rows XADDed + marked published.'
+    owner: world-platform
+    source: services/publisher (poll_loop)
+  - name: lw_publisher_fanout_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: [result]
+    description: 'xreality fanout XADDs by result.'
+    owner: world-platform
+    source: services/publisher (xreality_fanout)
+    cardinality_notes: 'result is a small bounded enum (ok/error).'
+  - name: lw_publisher_dead_lettered_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'Outbox rows dead-lettered at max attempts.'
+    owner: sre
+    source: services/publisher (retry policy)
+  - name: lw_publisher_retried_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'Outbox rows marked for retry after a transient XADD failure.'
+    owner: sre
+    source: services/publisher (retry policy)
+  - name: lw_publisher_reality_errors_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'Per-reality drain transactions that failed (infra error).'
+    owner: sre
+    source: services/publisher (poll_loop)
+  - name: lw_publisher_iteration_errors_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'Poll-loop iterations that returned an error.'
+    owner: sre
+    source: services/publisher (poll_loop)
+  - name: lw_meta_worker_dispatched_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'messages dispatched + acked.'
+    owner: world-platform
+    source: services/meta-worker (internal/dispatch)
+  - name: lw_meta_worker_acked_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'messages XACKed.'
+    owner: world-platform
+    source: services/meta-worker (internal/dispatch)
+  - name: lw_meta_worker_read_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'xreality messages read.'
+    owner: world-platform
+    source: services/meta-worker (internal/dispatch)
+  - name: lw_meta_worker_read_errors_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'XREADGROUP errors.'
+    owner: sre
+    source: services/meta-worker (internal/dispatch)
+  - name: lw_meta_worker_handler_errors_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'handler errors (NACK / redelivery).'
+    owner: sre
+    source: services/meta-worker (internal/dispatch)
+  - name: lw_meta_worker_no_handler_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 10
+    labels: []
+    description: 'messages with no registered handler (I7 allowlist).'
+    owner: world-platform
+    source: services/meta-worker (internal/dispatch)
+  - name: lw_archive_bytes_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'Encoded archive bytes uploaded (post-ZSTD).'
+    owner: world-platform
+    source: services/archive-worker (pkg/archive_loop)
+  - name: lw_archive_errors_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'Archive iteration errors.'
+    owner: sre
+    source: services/archive-worker (pkg/archive_loop)
+  - name: lw_archive_partitions_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'Partitions archived + dropped.'
+    owner: world-platform
+    source: services/archive-worker (pkg/archive_loop)
+  - name: lw_archive_rows_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'Event rows archived.'
+    owner: world-platform
+    source: services/archive-worker (pkg/archive_loop)
+  - name: lw_retention_audit_flagged_deleted_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'flagged event_audit rows pruned.'
+    owner: world-platform
+    source: services/retention-worker
+  - name: lw_retention_audit_nonflagged_deleted_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'non-flagged event_audit rows pruned.'
+    owner: world-platform
+    source: services/retention-worker
+  - name: lw_retention_audit_partitions_dropped_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'fully-expired event_audit partitions dropped.'
+    owner: world-platform
+    source: services/retention-worker
+  - name: lw_retention_errors_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'retention iteration errors.'
+    owner: sre
+    source: services/retention-worker
+  - name: lw_retention_outbox_deleted_total
+    kind: counter
+    layer: L2
+    shipped_cycle: 11
+    labels: []
+    description: 'events_outbox rows pruned (dead-letter rows excluded).'
+    owner: world-platform
+    source: services/retention-worker (pkg/outbox_pruner)
+  - name: lw_embedding_queue_depth
+    kind: gauge
+    layer: L3
+    shipped_cycle: 16
+    labels: []
+    description: 'current in-process embedding queue depth.'
+    owner: sre
+    source: services/world-service (embedding_queue)
+  - name: lw_embedding_queue_failures_total
+    kind: counter
+    layer: L3
+    shipped_cycle: 16
+    labels: []
+    description: 'embedding items that did NOT result in a successful write.'
+    owner: sre
+    source: services/world-service (embedding_queue)
+  - name: lw_embedding_provider_tokens_total
+    kind: counter
+    layer: L3
+    shipped_cycle: 16
+    labels: []
+    description: 'provider tokens billed for embedding requests.'
+    owner: world-platform
+    source: services/world-service (embedding_queue)
+  - name: lw_embedding_audit_outcome_total
+    kind: counter
+    layer: L3
+    shipped_cycle: 16
+    labels: [outcome]
+    description: 'embedding write-audit outcomes (bounded outcome enum).'
+    owner: world-platform
+    source: services/world-service (embedding_queue)
+    cardinality_notes: 'outcome is a small bounded enum (ok/write_error/…).'
+
+  # ────────────────────────────────────────────────────────────────────
+  # L7.K — canary deploy controller (cycle 38, live-wired 064 / 2026-06-03)
+  # ────────────────────────────────────────────────────────────────────
+  - name: lw_canary_stage
+    kind: gauge
+    layer: L7
+    shipped_cycle: 38
+    labels: []
+    description: 'Current canary stage (0..4) of the active major deploy; -1 when no active canary. Drives the deploy-progress dashboard. Emitted by canary-controller per tick (064 live wiring).'
+    owner: sre
+    source: services/canary-controller (internal/metrics)
+    cardinality_notes: 'unlabeled single gauge — 1 series.'
+
+  - name: lw_canary_controller_observed_burn
+    kind: gauge
+    layer: L7
+    shipped_cycle: 38
+    labels: []
+    description: 'Last cohort SLI burn the canary-controller observed for the active canary (diagnostic; set from each Prometheus Observe). DISTINCT from the authoritative per-cohort series lw_canary_sli_cohort{stage,service} the deployed services emit (added to inventory when D-CANARY-LIVE-SMOKE lands), which the controller QUERIES and compares against 2× baseline (§12AH.4).'
+    owner: sre
+    source: services/canary-controller (internal/metrics)
+    cardinality_notes: 'unlabeled single gauge — 1 series.'
+
+  - name: lw_canary_abort_total
+    kind: counter
+    layer: L7
+    shipped_cycle: 38
+    labels: []
+    description: 'Total canary auto-aborts (cohort SLI burn breach or stage-0 error). A non-zero increment is an SRE-paged rollback (§12AH.4).'
+    owner: sre
+    source: services/canary-controller (internal/metrics)
+    cardinality_notes: 'unlabeled single counter — 1 series.'
+
+  - name: lw_deploy_freeze_active
+    kind: gauge
+    layer: L7
+    shipped_cycle: 38
+    labels: []
+    description: '1 when a deploy freeze is active, else 0. Freeze source wired with the deploy pipeline (D-CANARY-LIVE-SMOKE); stays 0 in V1.'
+    owner: sre
+    source: services/canary-controller (internal/metrics)
+    cardinality_notes: 'unlabeled single gauge — 1 series.'
+
+# ────────────────────────────────────────────────────────────────────
+# CARDINALITY BUDGET (V1)
+# ────────────────────────────────────────────────────────────────────
+# Per-reality metrics: 7 (size + numbackends + xact_commit + xact_rollback +
+#                       tup_returned + tup_inserted + tup_updated)
+# Per-reality budget: 7 × N realities × ~5 shard_host distinct = 7N series
+# (shard_host is 1:1 with N, so the multiplicative factor reduces to ~1.)
+#
+# At V1 = 100 realities ⇒ 700 series. At V1+30d = 1000 realities ⇒ 7000.
+# At V3 = 10K realities ⇒ 70K series — still well below 1M (the typical
+# Prometheus single-instance practical ceiling).
+#
+# tests/integration/metrics_cardinality_test.go injects 100 realities
+# and asserts series count ≤ 7 × 100 = 700.
+
+cardinality_budget:
+  per_reality_metric_count: 7
+  v1_realities: 100
+  v1_target_series: 700
+  v1_plus_30d_realities: 1000
+  v1_plus_30d_target_series: 7000
+  v3_realities: 10000
+  v3_target_series: 70000

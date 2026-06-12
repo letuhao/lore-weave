@@ -12,6 +12,12 @@ type EmbedResult struct {
 	Embeddings [][]float64 `json:"embeddings"`
 	Dimension  int         `json:"dimension"`
 	Model      string      `json:"model"`
+	// PromptTokens is the upstream provider's reported input-token usage for the
+	// embed call (OpenAI/LM Studio `usage.prompt_tokens`). 0 when the provider
+	// omits it (e.g. Ollama). Surfaced so a caller can meter the embed leg on a
+	// REAL count instead of a char-estimate (LE-059b). omitempty keeps the wire
+	// shape unchanged for providers that report nothing.
+	PromptTokens int `json:"prompt_tokens,omitempty"`
 }
 
 // Embed dispatches an embedding call to the correct provider endpoint.
@@ -41,6 +47,10 @@ func Embed(ctx context.Context, adapter Adapter, client *http.Client, endpointBa
 // embedOpenAI calls POST /v1/embeddings (OpenAI-compatible).
 func embedOpenAI(ctx context.Context, client *http.Client, endpointBaseURL, secret, model string, texts []string) (*EmbedResult, error) {
 	base := strings.TrimRight(endpointBaseURL, "/")
+	// Strip trailing /v1 so credentials stored as "http://host:port/v1"
+	// (the standard form used by LM Studio / local providers) don't
+	// produce a double /v1/v1/embeddings path.
+	base = strings.TrimSuffix(base, "/v1")
 	if base == "" {
 		base = openaiBaseURL
 	}
@@ -107,10 +117,18 @@ func parseOpenAIEmbeddingResponse(out map[string]any, model string) (*EmbedResul
 	if m, ok := out["model"].(string); ok && m != "" {
 		model = m
 	}
+	// LE-059b: surface the provider's reported input-token usage when present
+	// (OpenAI/LM Studio `usage.prompt_tokens`) so the caller can meter the embed
+	// leg on a real count. Absent/malformed → 0 (caller falls back to estimate).
+	promptTokens := 0
+	if u, ok := out["usage"].(map[string]any); ok {
+		promptTokens = int(toFloat(u["prompt_tokens"]))
+	}
 	return &EmbedResult{
-		Embeddings: embeddings,
-		Dimension:  dim,
-		Model:      model,
+		Embeddings:   embeddings,
+		Dimension:    dim,
+		Model:        model,
+		PromptTokens: promptTokens,
 	}, nil
 }
 

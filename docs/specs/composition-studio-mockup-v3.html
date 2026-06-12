@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LoreWeave — Composition (v3, faithful to the real editor)</title>
+<style>
+  :root{
+    --bg:25 8% 8%; --fg:40 30% 95%;
+    --card:25 7% 11%; --pop:25 7% 13%;
+    --primary:35 85% 55%; --primary-fg:25 10% 6%;
+    --secondary:25 6% 16%; --muted:25 5% 16%; --muted-fg:30 8% 62%;
+    --accent:170 40% 45%; --accent-fg:170 45% 88%;
+    --destructive:0 72% 58%; --success:150 65% 48%; --warning:38 92% 55%; --info:215 80% 60%;
+    --border:25 6% 18%; --input:25 6% 14%; --ring:35 80% 55%;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --serif:"Iowan Old Style",Georgia,"Times New Roman",serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:var(--sans);background:hsl(var(--bg));color:hsl(var(--fg));font-size:13px;-webkit-font-smoothing:antialiased}
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  .app{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+  .aionly{display:none}
+  .app[data-mode="ai"] .aionly{display:flex}
+
+  /* toolbar */
+  .tb{display:flex;height:42px;flex-shrink:0;align-items:center;justify-content:space-between;border-bottom:1px solid hsl(var(--border));background:hsl(var(--card));padding:0 16px}
+  .crumb{display:flex;align-items:center;gap:6px;font-size:12px;color:hsl(var(--muted-fg))}
+  .crumb .nav{padding:3px;border-radius:5px}.crumb .nav:hover{background:hsl(var(--secondary))}
+  .crumb b{color:hsl(var(--fg));font-weight:600}
+  .tbR{display:flex;align-items:center;gap:8px}
+  .modesw{display:flex;align-items:center;border:1px solid hsl(var(--border));background:hsl(var(--muted)/.4);border-radius:7px;padding:2px}
+  .modesw button{display:flex;align-items:center;gap:5px;border-radius:5px;padding:4px 9px;font-size:11px;font-weight:600;color:hsl(var(--muted-fg))}
+  .modesw button.on{background:hsl(var(--bg));color:hsl(var(--fg));box-shadow:0 1px 2px #0006}
+  .tbtn{display:flex;align-items:center;gap:5px;border-radius:5px;padding:5px 8px;font-size:11px;font-weight:600;color:hsl(var(--muted-fg))}
+  .tbtn:hover{color:hsl(var(--fg));background:hsl(var(--secondary))}
+  .tbtn.grm{color:hsl(var(--warning))}
+  .tbtn.act{background:hsl(var(--primary)/.15);color:hsl(var(--primary))}
+  .div{width:1px;height:16px;background:hsl(var(--border));margin:0 3px}
+  .pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:2px 9px;font-size:10px;font-weight:600}
+  .pill.ok{background:hsl(var(--success)/.12);color:hsl(var(--success))}
+  .pill .d{width:6px;height:6px;border-radius:50%;background:currentColor}
+  .ver{font-size:10px;font-family:ui-monospace,monospace;color:hsl(var(--muted-fg))}
+  .save{display:inline-flex;align-items:center;gap:6px;background:hsl(var(--primary));color:hsl(var(--primary-fg));border-radius:6px;padding:5px 11px;font-size:12px;font-weight:600}
+  .save:hover{background:hsl(35 85% 50%)}
+  .kbd{border:1px solid hsl(var(--fg)/.2);background:hsl(var(--fg)/.08);border-radius:3px;padding:0 4px;font-family:ui-monospace,monospace;font-size:9px;margin-left:4px}
+  .maptop{display:none;align-items:center;gap:6px;background:hsl(var(--primary)/.12);border:1px solid hsl(var(--primary)/.3);color:hsl(var(--primary));border-radius:6px;padding:4px 9px;font-size:11px;font-weight:700}
+  .app[data-mode="ai"] .maptop{display:inline-flex}
+
+  /* panels */
+  .area{display:flex;flex:1;overflow:hidden;position:relative}
+  .lp,.rp{width:300px;flex-shrink:0;display:flex;flex-direction:column;background:hsl(var(--card))}
+  .lp{border-right:1px solid hsl(var(--border))}
+  .rp{width:320px;border-left:1px solid hsl(var(--border))}
+  .lp.hidden{display:none}
+  .ptabs{display:flex;border-bottom:1px solid hsl(var(--border));align-items:stretch}
+  .ptab{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:8px;font-size:11px;font-weight:600;color:hsl(var(--muted-fg));border-bottom:2px solid transparent;white-space:nowrap}
+  .ptab:hover{color:hsl(var(--fg))}
+  .ptab.on{color:hsl(var(--primary));border-bottom-color:hsl(var(--primary))}
+  .ptab.dis{color:hsl(var(--muted-fg)/.4);cursor:not-allowed}
+  .ptab .cnt{font-size:9px;padding:0 5px;border-radius:99px;background:hsl(var(--primary)/.18);color:hsl(var(--primary))}
+  .pbody{flex:1;overflow-y:auto}
+  .lcap{border-bottom:1px solid hsl(var(--border));padding:7px 12px;font-size:10px;color:hsl(var(--muted-fg))}
+  .chrow{display:flex;gap:8px;align-items:flex-start;width:100%;border-bottom:1px solid hsl(var(--border));padding:9px 12px;text-align:left;color:hsl(var(--muted-fg));font-size:12px}
+  .chrow:hover{background:hsl(var(--secondary)/.5);color:hsl(var(--fg))}
+  .chrow.cur{border-left:2px solid hsl(var(--primary));background:hsl(var(--primary)/.07);color:hsl(var(--primary))}
+  .chrow .n{width:18px;text-align:right;font-family:ui-monospace,monospace;font-size:10px;opacity:.5;flex-shrink:0}
+  .otree{padding:6px 8px}
+  .onode{display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:6px;font-size:12px}
+  .onode:hover{background:hsl(var(--secondary))}
+  .onode.l1{font-weight:600}.onode.l2{padding-left:20px;color:hsl(var(--muted-fg))}.onode.l3{padding-left:34px;color:hsl(var(--muted-fg));font-size:11.5px}
+  .onode.cur{color:hsl(var(--primary))}
+  .od{width:6px;height:6px;border-radius:50%}.od.ok{background:hsl(var(--success))}.od.wip{background:hsl(var(--warning))}.od.cur{background:hsl(var(--primary))}.od.e{background:hsl(var(--border))}
+
+  /* center */
+  .center{position:relative;display:flex;flex:1;flex-direction:column;overflow:hidden;background:hsl(var(--bg))}
+  .titlebar{flex-shrink:0;border-bottom:1px solid hsl(var(--border));padding:16px 26px 12px}
+  .titlebar input{width:100%;background:transparent;border:none;outline:none;font-family:var(--serif);font-size:21px;font-weight:600;color:hsl(var(--fg))}
+  .tmeta{margin-top:6px;display:flex;gap:9px;font-size:10px;color:hsl(var(--muted-fg))}
+  .tmeta .b{color:hsl(var(--border))}
+  .edit{flex:1;overflow-y:auto;padding:22px 0}
+  .prose{max-width:620px;margin:0 auto;padding:0 28px;font-family:var(--serif);font-size:17px;line-height:1.85;color:hsl(40 22% 86%)}
+  .prose p{margin:0 0 16px}
+  .ghost{display:none}
+  .app[data-mode="ai"] .ghost{display:block;color:hsl(35 60% 62%);border-left:2px solid hsl(var(--primary)/.5);padding-left:10px;background:linear-gradient(90deg,hsl(var(--primary)/.06),transparent)}
+  .accept{display:none;gap:6px;margin-top:8px}
+  .app[data-mode="ai"] .accept{display:flex}
+  .acc{font-size:11px;font-weight:600;border:1px solid hsl(var(--border));border-radius:6px;padding:4px 9px;color:hsl(var(--muted-fg))}
+  .acc.go{background:hsl(var(--primary));color:hsl(var(--primary-fg));border-color:hsl(var(--primary))}
+  .slashhint{max-width:620px;margin:4px auto 0;padding:0 28px;font-size:11px;color:hsl(var(--muted-fg)/.7)}
+  .savenote{flex-shrink:0;border-top:1px solid hsl(var(--border));padding:8px 16px}
+  .savenote input{width:100%;background:hsl(var(--bg));border:1px solid hsl(var(--border));border-radius:6px;padding:6px 11px;font-size:12px;color:hsl(var(--fg))}
+  .savenote input::placeholder{color:hsl(var(--muted-fg)/.5)}
+  /* ── inherited: mention-linking + heatmap (NovelCrafter Codex) ── */
+  .mention{border-bottom:1.5px dotted hsl(var(--accent));cursor:help;color:hsl(40 26% 90%)}
+  .mention:hover{background:hsl(var(--accent)/.12)}
+  .app.heat .mention{border-bottom:none;border-radius:3px;padding:0 3px;color:hsl(var(--fg))}
+  .app.heat .mention.h3{background:hsl(var(--accent)/.40)} .app.heat .mention.h2{background:hsl(var(--accent)/.22)} .app.heat .mention.h1{background:hsl(var(--accent)/.1)}
+  .hm{display:flex;align-items:center;gap:8px;font-size:11.5px;padding:3px 0}
+  .hm .hn{width:74px;color:hsl(var(--muted-fg))}
+  .hm .hb{flex:1;height:7px;border-radius:99px;background:hsl(var(--muted));overflow:hidden}.hm .hb i{display:block;height:100%;background:hsl(var(--accent))}
+  .hm .hc{width:22px;text-align:right;color:hsl(var(--muted-fg));font-size:10px}
+  /* ── inherited: provenance highlight (Sudowrite) ── */
+  .prov{background:hsl(var(--primary)/.13);border-radius:3px;box-shadow:inset 2px 0 hsl(var(--primary)/.55);padding:1px 4px;cursor:pointer}
+  .prov.reviewed{background:transparent;box-shadow:none;padding:0}
+  .provtag{font-size:9px;font-weight:800;color:hsl(var(--primary));margin-left:4px;vertical-align:1px}
+  .prov.reviewed .provtag{display:none}
+  /* ── inherited: focus / typewriter mode (Ulysses/Dabble) ── */
+  .focusbtn.on{background:hsl(var(--primary)/.15);color:hsl(var(--primary))}
+  .app.focus .lp,.app.focus .rp{display:none}
+  .app.focus .tmeta,.app.focus .savenote,.app.focus .maptop{opacity:0;pointer-events:none}
+  .app.focus .edit{padding-top:80px}
+  .app.focus .prose p{opacity:.28;transition:opacity .2s}
+  .app.focus .prose p.focusline{opacity:1}
+  .focuspill{display:none;position:absolute;top:12px;right:18px;z-index:20;align-items:center;gap:8px;background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:99px;padding:5px 12px;font-size:11px;box-shadow:0 4px 14px #0007}
+  .focuspill .ok{color:hsl(var(--success));font-weight:700}
+  .app.focus .focuspill{display:inline-flex}
+
+  /* right AI panel */
+  .subtabs{display:flex;gap:2px;padding:8px 10px;border-bottom:1px solid hsl(var(--border))}
+  .subtab{padding:5px 9px;font-size:11px;font-weight:600;border-radius:6px;color:hsl(var(--muted-fg))}
+  .subtab.on{background:hsl(var(--primary)/.14);color:hsl(var(--primary))}
+  .aipane{display:none;padding:11px}
+  .aipane.on{display:block}
+  .secttl{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:hsl(var(--muted-fg));margin:10px 0 6px}
+  .secttl:first-child{margin-top:0}
+  .cwbox{border:1px solid hsl(var(--border));border-radius:8px;background:hsl(var(--bg));padding:8px;font-size:12px}
+  .cwbox .ask{color:hsl(var(--muted-fg)/.6)}
+  .cwsug{border:1px solid hsl(var(--primary)/.25);background:hsl(var(--primary)/.06);border-radius:8px;padding:9px;margin-top:9px;font-family:var(--serif);font-size:12.5px;color:hsl(40 22% 84%);line-height:1.5}
+  .cwact{display:flex;gap:6px;margin-top:8px}
+  .gline{display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 8px;border:1px solid hsl(var(--border));border-radius:7px;margin:5px 0;background:hsl(var(--bg))}
+  .gt{font-size:8.5px;font-weight:800;text-transform:uppercase;padding:2px 5px;border-radius:4px}
+  .gt.ch{background:hsl(var(--primary)/.16);color:hsl(var(--primary))}.gt.lo{background:hsl(var(--accent)/.18);color:hsl(var(--accent-fg))}.gt.ru{background:hsl(var(--destructive)/.16);color:hsl(var(--destructive))}.gt.ok{background:hsl(var(--success)/.16);color:hsl(var(--success))}.gt.fac{background:hsl(var(--warning)/.16);color:hsl(var(--warning))}
+  .cut{font-size:10px;font-weight:700;color:hsl(var(--destructive));background:hsl(var(--destructive)/.1);border:1px solid hsl(var(--destructive)/.25);border-radius:6px;padding:5px 8px;margin-bottom:8px}
+  .score{display:flex;align-items:center;gap:8px;font-size:11.5px;padding:3px 0}
+  .score .n{width:78px;color:hsl(var(--muted-fg))}
+  .bar{flex:1;height:6px;border-radius:99px;background:hsl(var(--muted));overflow:hidden}.bar i{display:block;height:100%}
+  .addcomp{width:100%;border:1px dashed hsl(var(--border));border-radius:7px;padding:8px;color:hsl(var(--muted-fg));font-size:11.5px;font-weight:600;margin-top:12px}
+  .addcomp:hover{border-color:hsl(var(--primary)/.5);color:hsl(var(--primary))}
+  .revrow{display:flex;gap:8px;align-items:center;font-size:11.5px;padding:8px 11px;border-bottom:1px solid hsl(var(--border));color:hsl(var(--muted-fg))}
+  /* component picker */
+  .picker{position:absolute;top:36px;right:6px;width:220px;background:hsl(var(--pop));border:1px solid hsl(var(--border));border-radius:8px;box-shadow:0 12px 34px #000a;padding:6px;z-index:25;display:none}
+  .picker.on{display:block}
+  .pkcap{font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:hsl(var(--muted-fg));padding:7px 7px 3px}
+  .pkrow{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;font-size:12px;color:hsl(var(--fg))}
+  .pkrow:hover{background:hsl(var(--secondary))}
+  .pkrow .po{margin-left:auto;font-size:10px;color:hsl(var(--muted-fg))}
+  /* plot threads panel */
+  .thr{display:flex;align-items:center;gap:8px;font-size:12px;padding:7px 2px;border-bottom:1px solid hsl(var(--border));color:hsl(var(--fg))}
+  .thr .tk.warn{color:hsl(var(--warning))}.thr .tk.ok{color:hsl(var(--success))}
+  .thr .mt{margin-left:auto;font-size:10px;color:hsl(var(--muted-fg))}
+  /* style sliders */
+  .sld{margin:10px 2px}.sld .lab{display:flex;justify-content:space-between;font-size:11px;color:hsl(var(--muted-fg));margin-bottom:6px}
+  .sld .tr{height:6px;border-radius:99px;background:hsl(var(--muted));position:relative}
+  .sld .fl{position:absolute;left:0;height:6px;border-radius:99px;background:linear-gradient(90deg,hsl(var(--accent)),hsl(var(--primary)))}
+  .sld .kb{position:absolute;top:-4px;width:13px;height:13px;border-radius:50%;background:hsl(var(--fg));border:2px solid hsl(var(--primary))}
+  .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+  .chip{font-size:11px;border:1px solid hsl(var(--border));background:hsl(var(--bg));border-radius:99px;padding:3px 9px;color:hsl(var(--muted-fg))}
+
+  /* status bar */
+  .sb{display:flex;height:24px;flex-shrink:0;align-items:center;justify-content:space-between;border-top:1px solid hsl(var(--border));padding:0 12px;font-size:10px;color:hsl(var(--muted-fg));background:hsl(25 10% 7%)}
+  .sb .l,.sb .r{display:flex;align-items:center;gap:12px}
+  .sbk{border:1px solid hsl(var(--border));background:hsl(var(--secondary));border-radius:3px;padding:0 4px;font-family:ui-monospace,monospace;font-size:9px}
+
+  /* views overlay */
+  .overlay{position:absolute;inset:0;z-index:30;background:hsl(25 9% 7%);display:none;flex-direction:column}
+  .overlay.on{display:flex}
+  .ovh{display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid hsl(var(--border));background:hsl(var(--card))}
+  .ovh .t{font-weight:700;font-size:13px;min-width:130px}
+  .ovh .tag{font-size:9.5px;font-weight:700;background:hsl(var(--primary)/.16);color:hsl(var(--primary));border-radius:99px;padding:2px 8px}
+  .ovsw{display:flex;gap:2px;margin-left:8px;background:hsl(var(--muted)/.4);border:1px solid hsl(var(--border));border-radius:7px;padding:2px}
+  .ovsw button{padding:4px 10px;border-radius:5px;font-size:11.5px;font-weight:600;color:hsl(var(--muted-fg))}
+  .ovsw button.on{background:hsl(var(--bg));color:hsl(var(--fg))}
+  .ovh .x{margin-left:auto;border:1px solid hsl(var(--border));border-radius:6px;padding:5px 10px;font-size:11.5px;font-weight:600;color:hsl(var(--muted-fg))}
+  .ovh .x:hover{color:hsl(var(--fg));background:hsl(var(--secondary))}
+  .ovbody{flex:1;position:relative;overflow:hidden}
+  .ovview{position:absolute;inset:0;overflow:auto;display:none}
+  .ovview.on{display:block}
+  /* scene graph */
+  .ovcanvas{position:absolute;inset:0;overflow:auto;background-color:hsl(25 9% 9%);background-image:radial-gradient(hsl(25 6% 16%) 1px,transparent 1px);background-size:24px 24px}
+  .cv{position:relative;width:1000px;height:440px;margin:18px}
+  .mn{position:absolute;width:188px;background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:10px;padding:9px 11px;z-index:2}
+  .mn.cur{border-color:hsl(var(--primary));box-shadow:0 0 0 2px hsl(var(--primary)/.25)}
+  .mn .sn{font-size:9.5px;font-weight:800;color:hsl(var(--primary-fg));background:hsl(var(--primary));border-radius:5px;padding:2px 6px;display:inline-block}
+  .mn .tt{font-family:var(--serif);font-weight:600;font-size:13.5px;margin:6px 0 3px}
+  .mn .sy{font-size:11px;color:hsl(var(--muted-fg))}
+  .mlinks{position:absolute;inset:0;pointer-events:none}
+  /* timeline */
+  .tlwrap{padding:80px 60px}
+  .tlline{position:relative;height:3px;background:hsl(var(--border));border-radius:2px}
+  .tlpt{position:absolute;top:-7px;width:14px;height:14px;border-radius:50%;background:hsl(var(--primary));border:3px solid hsl(25 9% 7%);transform:translateX(-50%)}
+  .tlpt.dim{background:hsl(var(--muted-fg));opacity:.5}
+  .tllab{position:absolute;top:18px;transform:translateX(-50%);text-align:center;width:140px;font-size:11px;color:hsl(var(--muted-fg))}
+  .tllab b{display:block;color:hsl(var(--fg));font-size:12px;margin-bottom:2px}
+  .tlcut{position:absolute;top:-34px;bottom:-34px;width:0;border-left:2px dashed hsl(var(--destructive));transform:translateX(-50%)}
+  .tlcut span{position:absolute;top:-22px;left:8px;font-size:10px;font-weight:700;color:hsl(var(--destructive));white-space:nowrap}
+  /* beat sheet */
+  .bswrap{display:flex;gap:12px;padding:40px;overflow-x:auto;align-items:flex-start}
+  .bscard{flex:0 0 184px;border:1px solid hsl(var(--border));border-radius:10px;background:hsl(var(--card));padding:13px}
+  .bscard .bn{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:hsl(var(--accent-fg))}
+  .bscard .bt{font-family:var(--serif);font-weight:600;font-size:15px;margin:7px 0 5px}
+  .bscard .bf{font-size:11px;color:hsl(var(--muted-fg))}
+  .bscard.cur{border-color:hsl(var(--primary));box-shadow:0 0 0 2px hsl(var(--primary)/.2)}
+  .bscard.empty{border-style:dashed;opacity:.55}
+</style>
+</head>
+<body>
+<div class="app" id="app" data-mode="classic">
+
+  <div class="tb">
+    <div class="crumb">
+      <button class="nav" title="Previous">‹</button>
+      <button>Workspace</button> › <button>Embers of the Ashen Gate</button> ›
+      <b>Confrontation at the Gate</b>
+      <button class="nav" title="Next">›</button>
+    </div>
+    <div class="tbR">
+      <button class="maptop" id="mapBtn">🗺 Story Map</button>
+      <div class="modesw" id="modesw">
+        <button data-mode="classic" class="on">✎ Classic</button>
+        <button data-mode="ai">✦ AI</button>
+      </div>
+      <button class="tbtn grm" title="Grammar">⌁ Aa</button>
+      <button class="tbtn" title="Translate">文 Translate</button>
+      <button class="tbtn focusbtn" id="focusBtn" title="Focus / typewriter mode">◎ Focus</button>
+      <div class="div"></div>
+      <button class="tbtn" id="tgL" title="Left panel  (Ctrl+B)">▤</button>
+      <button class="tbtn act" id="tgR" title="Right panel  (Ctrl+J)">▦</button>
+      <div class="div"></div>
+      <span class="pill ok"><span class="d"></span> Saved</span>
+      <span class="ver">v7</span>
+      <button class="save">↓ Save <span class="kbd">Ctrl+S</span></button>
+    </div>
+  </div>
+
+  <div class="area" id="area">
+
+    <!-- LEFT -->
+    <div class="lp hidden" id="lp">
+      <div class="ptabs">
+        <button class="ptab on" data-lt="chapters">▤ Chapters</button>
+        <button class="ptab" data-lt="source">⌯ Original</button>
+        <button class="ptab" data-lt="glossary">▦ Glossary <span class="cnt">42</span></button>
+        <button class="ptab aionly" data-lt="outline">☰ Outline</button>
+      </div>
+      <div class="pbody">
+        <div class="lcontent" data-lt="chapters">
+          <div class="lcap">12 chapters</div>
+          <button class="chrow"><span class="n">10</span> The Broken Oath</button>
+          <button class="chrow"><span class="n">11</span> Ashfall — Arrival</button>
+          <button class="chrow cur"><span class="n">12</span> Confrontation at the Gate</button>
+          <button class="chrow"><span class="n">13</span> The Hollow King</button>
+        </div>
+        <div class="lcontent" data-lt="outline" style="display:none">
+          <div class="otree">
+            <div class="onode l1"><span class="od ok"></span> Act II — Descent</div>
+            <div class="onode l2"><span class="od wip"></span> Ch.12 — Ashfall</div>
+            <div class="onode l3"><span class="od ok"></span> S1 · Arrival</div>
+            <div class="onode l3 cur"><span class="od cur"></span> S3 · Confrontation</div>
+            <div class="onode l3"><span class="od e"></span> S4 · Aftermath</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CENTER -->
+    <div class="center">
+      <div class="focuspill">🛡 <span class="ok">Continuity ✓</span> &nbsp;·&nbsp; ✦ tap a line for grounding</div>
+      <div class="titlebar">
+        <input value="Confrontation at the Gate" />
+        <div class="tmeta"><span>English</span><span class="b">|</span><span>2,140 chars</span><span class="b">|</span><span>1,840 words</span><span class="b">|</span><span>12 paragraphs</span></div>
+      </div>
+      <div class="edit">
+        <div class="prose">
+          <p class="focusline">The Gate of Ash rose out of the fog like a wound that had never closed. <span class="mention h3" title="Kael · character · 11 mentions in this chapter">Kael</span> felt the old cold settle into the empty place at his hip where a scabbard used to hang, and he made himself walk toward it anyway.</p>
+          <p><span class="mention h2" title="Mira · character · 7 mentions">Mira</span> was already there, of course. She always reached the dangerous places first. "You came," she said, and something in the word landed wrong — too pleased, too rehearsed.</p>
+          <p class="prov" id="provPara" title="AI wrote this — click to mark reviewed">"I came." He let his empty fingers fall open. "I have nothing left to draw," he said, "which is the only reason you should be afraid."<span class="provtag">✦ AI · unreviewed</span></p>
+          <p class="ghost">The fog held its breath. Beyond <span class="mention h1" title="The Gate of Ash · place · 4 mentions">the gate</span>, something ancient turned to listen.</p>
+          <div class="accept">
+            <button class="acc go">↵ Accept</button><button class="acc">✎ Edit</button><button class="acc">⟳ Regenerate</button>
+          </div>
+        </div>
+        <div class="slashhint">Type <b>/</b> for commands<span class="aionly" style="display:inline"> &nbsp;·&nbsp; <b>✦ Continue</b> to let the AI draft the next beat</span></div>
+      </div>
+      <div class="savenote"><input placeholder="Save note (optional)…" /></div>
+    </div>
+
+    <!-- RIGHT -->
+    <div class="rp" id="rp">
+      <div class="ptabs" style="position:relative">
+        <button class="ptab on" data-rt="history">◴ History</button>
+        <button class="ptab dis" id="rtAI" data-rt="ai">✦ AI</button>
+        <button class="ptab" data-rt="canon" style="display:none;flex:0 0 auto">⚖ Canon</button>
+        <button class="ptab" data-rt="cast" style="display:none;flex:0 0 auto">👥 Cast</button>
+        <button class="ptab" data-rt="threads" style="display:none;flex:0 0 auto">🧵 Threads</button>
+        <button class="ptab" data-rt="style" style="display:none;flex:0 0 auto">🎚 Style</button>
+        <button class="ptab aionly" id="addBtn" style="flex:0 0 auto;border-bottom:none" title="Add a component">＋</button>
+        <div class="picker" id="picker">
+          <div class="pkcap">Dock as panel</div>
+          <div class="pkrow" data-add="canon">⚖ Canon Rules<span class="po">dock</span></div>
+          <div class="pkrow" data-add="cast">👥 Cast &amp; Codex<span class="po">dock</span></div>
+          <div class="pkrow" data-add="threads">🧵 Plot Threads<span class="po">dock</span></div>
+          <div class="pkrow" data-add="style">🎚 Style &amp; Voice<span class="po">dock</span></div>
+          <div class="pkcap">Open as view</div>
+          <div class="pkrow" data-view="map">🎬 Scene Graph<span class="po">⧉ view</span></div>
+          <div class="pkrow" data-view="timeline">🕑 Timeline<span class="po">⧉ view</span></div>
+          <div class="pkrow" data-view="beats">⌗ Beat Sheet<span class="po">⧉ view</span></div>
+        </div>
+      </div>
+      <div class="pbody">
+        <!-- history -->
+        <div class="rcontent" data-rt="history">
+          <div class="revrow"><span class="od cur" style="width:6px;height:6px;border-radius:50%;background:hsl(var(--primary))"></span> v7 · now — your edits</div>
+          <div class="revrow"><span class="od ok" style="width:6px;height:6px;border-radius:50%;background:hsl(var(--success))"></span> v6 · 14:02 — imported draft</div>
+          <div class="revrow"><span class="od ok" style="width:6px;height:6px;border-radius:50%;background:hsl(var(--success))"></span> v5 · 13:40 — first pass</div>
+        </div>
+        <!-- AI -->
+        <div class="rcontent" data-rt="ai" style="display:none">
+          <div class="subtabs" id="subtabs">
+            <button class="subtab on" data-st="cw">💬 Co-writer</button>
+            <button class="subtab" data-st="gr">🔎 Grounding</button>
+            <button class="subtab" data-st="cr">🛡 Critic</button>
+          </div>
+          <div class="aipane on" data-st="cw">
+            <div class="cwbox"><span class="ask">Guide the next beat… “end on a cliffhanger”</span></div>
+            <div class="cwsug">"I have nothing left to draw," he said, "which is the only reason you should be afraid." — he let the empty fingers fall open.</div>
+            <div class="cwact"><button class="acc go">↵ Insert</button><button class="acc">⟳ Again</button></div>
+            <button class="addcomp" id="addComp">＋ Add a component — opens the picker ↗</button>
+          </div>
+          <div class="aipane" data-st="gr">
+            <div class="cut">⏳ Injected for next generation · canon ≤ Ch.12·S3 (spoiler-safe)</div>
+            <div class="secttl">Present in scene</div>
+            <div class="gline"><span class="gt ch">char</span> Kael — swordless (Ch.9), wounded</div>
+            <div class="gline"><span class="gt ch">char</span> Mira — hidden allegiance</div>
+            <div class="secttl">Lore</div>
+            <div class="gline"><span class="gt lo">place</span> The Gate of Ash</div>
+            <div class="secttl">Active canon rule</div>
+            <div class="gline" style="border-color:hsl(var(--destructive)/.4)"><span class="gt ru">rule</span> Kael's sword is lost — 1 conflict</div>
+            <div class="secttl">Mention heatmap · this chapter</div>
+            <div class="hm"><span class="hn">Kael</span><div class="hb"><i style="width:92%"></i></div><span class="hc">11</span></div>
+            <div class="hm"><span class="hn">Mira</span><div class="hb"><i style="width:58%"></i></div><span class="hc">7</span></div>
+            <div class="hm"><span class="hn">Gate of Ash</span><div class="hb"><i style="width:33%"></i></div><span class="hc">4</span></div>
+            <button class="addcomp" id="heatToggle">◍ Show heatmap in prose</button>
+          </div>
+          <div class="aipane" data-st="cr">
+            <div class="score"><span class="n">Coherence</span><div class="bar"><i style="width:91%;background:hsl(var(--success))"></i></div><b>.91</b></div>
+            <div class="score"><span class="n">Voice (Kael)</span><div class="bar"><i style="width:86%;background:hsl(var(--success))"></i></div><b>.86</b></div>
+            <div class="score"><span class="n">Pacing</span><div class="bar"><i style="width:79%;background:hsl(var(--warning))"></i></div><b>.79</b></div>
+            <div class="score"><span class="n">Canon</span><div class="bar"><i style="width:50%;background:hsl(var(--destructive))"></i></div><b style="color:hsl(var(--destructive))">✗</b></div>
+            <div class="gline" style="border-color:hsl(var(--destructive)/.4);margin-top:10px;font-size:11.5px;color:hsl(var(--destructive))">⚠ draft drew a lost sword — conflicts with a canon rule</div>
+          </div>
+        </div>
+        <!-- docked: Canon Rules -->
+        <div class="rcontent" data-rt="canon" style="display:none;padding:11px">
+          <div class="secttl">Active canon rules</div>
+          <div class="gline" style="border-color:hsl(var(--destructive)/.4)"><span class="gt ru">rule</span> Kael's sword is lost (Ch.9) — enforced</div>
+          <div class="gline"><span class="gt ok">rule</span> The dead cannot be revived</div>
+          <div class="gline"><span class="gt ok">rule</span> Mira's betrayal hidden → Ch.14</div>
+          <button class="addcomp">＋ Declare a rule</button>
+        </div>
+        <!-- docked: Cast & Codex -->
+        <div class="rcontent" data-rt="cast" style="display:none;padding:11px">
+          <div class="secttl">Cast in this book</div>
+          <div class="gline"><span class="gt ch">char</span> Kael — swordless, wounded</div>
+          <div class="gline"><span class="gt ch">char</span> Mira — hidden allegiance</div>
+          <div class="gline"><span class="gt lo">place</span> The Gate of Ash</div>
+          <div class="gline"><span class="gt fac">faction</span> The Ashen Pact</div>
+        </div>
+        <!-- docked: Plot Threads -->
+        <div class="rcontent" data-rt="threads" style="display:none;padding:11px">
+          <div class="secttl">Open &amp; paid threads</div>
+          <div class="thr"><span class="tk warn">🔓</span> The missing letter <span class="mt">set Ch.3</span></div>
+          <div class="thr"><span class="tk warn">🔓</span> Mira's allegiance <span class="mt">set Ch.7 · due soon</span></div>
+          <div class="thr"><span class="tk ok">🔒</span> Kael's lost sword <span class="mt">paid → rule</span></div>
+        </div>
+        <!-- docked: Style & Voice -->
+        <div class="rcontent" data-rt="style" style="display:none;padding:11px">
+          <div class="secttl">Prose style</div>
+          <div class="sld"><div class="lab"><span>Density</span><span>lean ◂▸ lush</span></div><div class="tr"><div class="fl" style="width:38%"></div><div class="kb" style="left:34%"></div></div></div>
+          <div class="sld"><div class="lab"><span>Pace</span><span>slow ◂▸ fast</span></div><div class="tr"><div class="fl" style="width:62%"></div><div class="kb" style="left:58%"></div></div></div>
+          <div class="secttl">Voice — Kael</div>
+          <div class="chips"><span class="chip">terse</span><span class="chip">understatement</span><span class="chip">no purple prose</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- power VIEWS overlay (opt-in, full-width, multi-view) -->
+    <div class="overlay" id="overlay">
+      <div class="ovh">
+        <span class="t" id="ovTitle">🎬 Scene Graph</span><span class="tag">opt-in · power view</span>
+        <div class="ovsw" id="ovsw">
+          <button data-v="map" class="on">🎬 Scene Graph</button>
+          <button data-v="timeline">🕑 Timeline</button>
+          <button data-v="beats">⌗ Beat Sheet</button>
+        </div>
+        <button class="x" id="ovClose">✕ Back to editor</button>
+      </div>
+      <div class="ovbody">
+        <!-- Scene Graph -->
+        <div class="ovview on" data-v="map">
+          <div class="ovcanvas">
+            <div class="cv">
+              <svg class="mlinks" viewBox="0 0 1000 440" preserveAspectRatio="none">
+                <defs><marker id="ah" markerWidth="9" markerHeight="9" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="hsl(35 85% 55%)"/></marker></defs>
+                <path d="M218,120 C250,120 250,200 280,200" fill="none" stroke="hsl(35 85% 55%)" stroke-width="2" marker-end="url(#ah)"/>
+                <path d="M468,200 C500,200 500,110 530,110" fill="none" stroke="hsl(35 85% 55%)" stroke-width="2" marker-end="url(#ah)"/>
+                <path d="M718,110 C750,110 750,200 780,200" fill="none" stroke="hsl(35 85% 55%)" stroke-width="2" marker-end="url(#ah)"/>
+                <path d="M120,165 C300,250 400,250 590,165" fill="none" stroke="hsl(170 40% 45%)" stroke-width="1.6" stroke-dasharray="6 5"/>
+              </svg>
+              <div class="mn" style="left:30px;top:78px"><span class="sn">S1</span><div class="tt">Arrival</div><div class="sy">reach the dead arch at dusk</div></div>
+              <div class="mn" style="left:280px;top:158px"><span class="sn">S2</span><div class="tt">The Warning</div><div class="sy">the toll is named</div></div>
+              <div class="mn cur" style="left:530px;top:68px"><span class="sn">S3</span><div class="tt">Confrontation</div><div class="sy">nothing left to draw</div></div>
+              <div class="mn" style="left:780px;top:158px"><span class="sn">S4</span><div class="tt">Aftermath</div><div class="sy">a toll paid in memory</div></div>
+            </div>
+          </div>
+        </div>
+        <!-- Timeline -->
+        <div class="ovview" data-v="timeline">
+          <div class="tlwrap">
+            <div class="tlline">
+              <div class="tlpt" style="left:12%"></div><div class="tllab" style="left:12%"><b>Ch.9</b> Kael's sword shatters</div>
+              <div class="tlpt" style="left:34%"></div><div class="tllab" style="left:34%"><b>Ch.11</b> the oath is broken</div>
+              <div class="tlpt" style="left:56%"></div><div class="tllab" style="left:56%"><b>Ch.12 · S2</b> the gatekeeper's warning</div>
+              <div class="tlcut" style="left:66%"><span>▲ AI sees events ≤ here (spoiler-safe)</span></div>
+              <div class="tlpt dim" style="left:84%"></div><div class="tllab" style="left:84%;opacity:.45"><b>Ch.13</b> (hidden: the Hollow King)</div>
+            </div>
+          </div>
+        </div>
+        <!-- Beat Sheet -->
+        <div class="ovview" data-v="beats">
+          <div class="bswrap">
+            <div class="bscard"><div class="bn">Opening Image</div><div class="bt">Arrival</div><div class="bf">S1 · drafted</div></div>
+            <div class="bscard"><div class="bn">Catalyst</div><div class="bt">The Warning</div><div class="bf">S2 · drafted</div></div>
+            <div class="bscard cur"><div class="bn">Confrontation</div><div class="bt">At the Gate</div><div class="bf">S3 · writing…</div></div>
+            <div class="bscard empty"><div class="bn">Break into 3</div><div class="bt">Aftermath</div><div class="bf">S4 · empty</div></div>
+            <div class="bscard empty"><div class="bn">Finale</div><div class="bt">—</div><div class="bf">unplaced</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sb">
+    <div class="l"><span>● Connected</span><span>English</span><span>1,840 words</span></div>
+    <div class="r"><span><span class="sbk">Ctrl+B</span> left</span><span><span class="sbk">Ctrl+J</span> right</span><span><span class="sbk">Ctrl+S</span> save</span></div>
+  </div>
+</div>
+
+<script>
+  const app=document.getElementById('app');
+  const picker=document.getElementById('picker');
+  function setMode(m){
+    app.dataset.mode=m;
+    document.querySelectorAll('#modesw button').forEach(b=>b.classList.toggle('on',b.dataset.mode===m));
+    const rtAI=document.getElementById('rtAI');
+    if(m==='ai'){ rtAI.classList.remove('dis'); selRight('ai'); }
+    else { rtAI.classList.add('dis'); selRight('history'); closePicker(); }
+  }
+  function selRight(rt){
+    document.querySelectorAll('.rp .ptab').forEach(t=>{ if(t.dataset.rt) t.classList.toggle('on',t.dataset.rt===rt); });
+    document.querySelectorAll('.rcontent').forEach(c=>c.style.display=c.dataset.rt===rt?'block':'none');
+  }
+  function openPicker(){ picker.classList.add('on'); }
+  function closePicker(){ picker.classList.remove('on'); }
+  function openView(v){
+    document.getElementById('overlay').classList.add('on');
+    document.querySelectorAll('.ovview').forEach(x=>x.classList.toggle('on',x.dataset.v===v));
+    document.querySelectorAll('#ovsw button').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
+    const titles={map:'🎬 Scene Graph',timeline:'🕑 Timeline',beats:'⌗ Beat Sheet'};
+    document.getElementById('ovTitle').textContent=titles[v]||'View';
+  }
+  document.getElementById('modesw').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setMode(b.dataset.mode);});
+  // right tab bar (delegated): switch tab, or open the ＋ picker
+  document.querySelector('.rp .ptabs').addEventListener('click',e=>{
+    if(e.target.closest('#addBtn')){ e.stopPropagation(); picker.classList.toggle('on'); return; }
+    const t=e.target.closest('.ptab'); if(!t||!t.dataset.rt||t.classList.contains('dis')) return;
+    selRight(t.dataset.rt);
+  });
+  // pick a component → small docks as a tab, large opens as a view
+  picker.addEventListener('click',e=>{
+    const r=e.target.closest('.pkrow'); if(!r) return;
+    if(r.dataset.add){ const tab=document.querySelector('.ptab[data-rt="'+r.dataset.add+'"]'); if(tab) tab.style.display='inline-flex'; selRight(r.dataset.add); }
+    if(r.dataset.view){ openView(r.dataset.view); }
+    closePicker();
+  });
+  document.addEventListener('click',e=>{ if(picker.classList.contains('on') && !e.target.closest('#picker') && !e.target.closest('#addBtn') && !e.target.closest('#addComp')) closePicker(); });
+  // ai sub-tabs
+  document.getElementById('subtabs').addEventListener('click',e=>{const b=e.target.closest('.subtab');if(!b)return;
+    document.querySelectorAll('.subtab').forEach(t=>t.classList.toggle('on',t===b));
+    document.querySelectorAll('.aipane').forEach(p=>p.classList.toggle('on',p.dataset.st===b.dataset.st));});
+  // left tabs
+  document.querySelectorAll('.lp .ptab').forEach(t=>t.addEventListener('click',()=>{
+    document.querySelectorAll('.lp .ptab').forEach(x=>x.classList.toggle('on',x===t));
+    document.querySelectorAll('.lcontent').forEach(c=>c.style.display=c.dataset.lt===t.dataset.lt?'block':'none');}));
+  // panel toggles
+  document.getElementById('tgL').addEventListener('click',function(){const lp=document.getElementById('lp');lp.classList.toggle('hidden');this.classList.toggle('act',!lp.classList.contains('hidden'));});
+  document.getElementById('tgR').addEventListener('click',function(){const rp=document.getElementById('rp');rp.style.display=rp.style.display==='none'?'flex':'none';this.classList.toggle('act',rp.style.display!=='none');});
+  document.getElementById('addComp')?.addEventListener('click',e=>{e.stopPropagation();openPicker();});
+  // views overlay
+  document.getElementById('ovsw').addEventListener('click',e=>{const b=e.target.closest('button');if(b)openView(b.dataset.v);});
+  document.getElementById('mapBtn').addEventListener('click',()=>openView('map'));
+  document.getElementById('ovClose').addEventListener('click',()=>document.getElementById('overlay').classList.remove('on'));
+  // ── inherited UX wiring ──
+  document.getElementById('focusBtn').addEventListener('click',function(){ app.classList.toggle('focus'); this.classList.toggle('on',app.classList.contains('focus')); });
+  document.getElementById('provPara')?.addEventListener('click',function(){ this.classList.add('reviewed'); });
+  document.getElementById('heatToggle')?.addEventListener('click',()=>app.classList.toggle('heat'));
+  document.querySelectorAll('.prose p').forEach(p=>p.addEventListener('click',()=>{ if(app.classList.contains('focus')){ document.querySelectorAll('.prose p').forEach(x=>x.classList.remove('focusline')); p.classList.add('focusline'); } }));
+  // initial state from hash
+  const h=location.hash;
+  if(h.includes('ai')) setMode('ai');
+  if(h.includes('add')) openPicker();
+  ['canon','cast','threads','style'].forEach(k=>{ if(h.includes(k)){ const tb=document.querySelector('.ptab[data-rt="'+k+'"]'); if(tb) tb.style.display='inline-flex'; selRight(k); } });
+  if(h.includes('timeline')) openView('timeline');
+  if(h.includes('beats')) openView('beats');
+  if(h.includes('focus')){ app.classList.add('focus'); document.getElementById('focusBtn').classList.add('on'); }
+  if(h.includes('heat')){ setMode('ai'); app.classList.add('heat'); const g=document.querySelector('.subtab[data-st="gr"]'); if(g) g.click(); }
+</script>
+</body>
+</html>

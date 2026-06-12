@@ -1,0 +1,35 @@
+# infra/statuspage/components.yaml — L7.L.2 (RAID cycle 37)
+#
+# The component list shown on the public status page. Matches the service
+# catalog (CLAUDE.md). This is the SOURCE OF TRUTH the statuspage-updater
+# reads to map an incident's affected `components` (from IncidentDeclaredV1)
+# onto status-page component ids. main.tf declares one statuspage_component
+# resource per id here; verify-cycle-37.sh enforces the 1:1 match.
+#
+# Q-L7L-1 LOCKED: Statuspage.io V1.
+
+version: 1
+shipped_cycle: 37
+expected_component_count: 5
+
+components:
+  - id: gateway
+    name: 'API Gateway'
+    description: 'External traffic entry point (api-gateway-bff)'
+    group: edge
+  - id: auth
+    name: 'Authentication'
+    description: 'Login + identity (auth-service)'
+    group: core
+  - id: world
+    name: 'World'
+    description: 'World / zone state'
+    group: core
+  - id: roleplay
+    name: 'Roleplay'
+    description: 'Chat / turn engine'
+    group: core
+  - id: realtime
+    name: 'Realtime'
+    description: 'WebSocket / live updates'
+    group: core

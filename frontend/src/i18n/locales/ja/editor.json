@@ -1,0 +1,341 @@
+{
+  "saved": "章を保存しました",
+  "no_content": "翻訳するコンテンツがありません",
+  "translation_failed": "翻訳に失敗しました",
+  "translated_blocks": "{{count}}ブロックを翻訳しました",
+  "text_translation_received": "テキスト翻訳を受信しました — ブロックモードを推奨します",
+  "breadcrumb": {
+    "workspace": "ワークスペース",
+    "book": "書籍",
+    "chapter": "章"
+  },
+  "prev_chapter": "前の章",
+  "next_chapter": "次の章",
+  "mode": {
+    "classic": "クラシック",
+    "classic_title": "クラシックモード — 集中執筆",
+    "ai": "AI",
+    "ai_title": "AIアシスタントモード — 全機能"
+  },
+  "grammar_title": "文法・スペルチェックの切り替え（LanguageTool）",
+  "translate_title": "AIでコンテンツを翻訳（ブロックモード）",
+  "translating": "翻訳中...",
+  "translate": "翻訳",
+  "toggle_source": "ソースパネルの切り替え",
+  "toggle_history": "履歴 / AIパネルの切り替え",
+  "unsaved": "未保存",
+  "saved_badge": "保存済み",
+  "discard_title": "未保存の変更をすべて破棄",
+  "discard": "破棄",
+  "save": "保存",
+  "tabs": {
+    "chapters": "章",
+    "original": "原文",
+    "glossary": "用語集",
+    "outline": "アウトライン"
+  },
+  "chapter_count": "{{count}}章",
+  "chapter_count_other": "{{count}}章",
+  "original_readonly": "アップロードされた原文 — 読み取り専用",
+  "no_original": "原文ソースなし — この章はエディタで直接作成されました（ファイルはインポートされていません）。",
+  "title_placeholder": "章のタイトル",
+  "chars": "{{n}}文字",
+  "words": "{{n}}語",
+  "paragraphs": "{{count}}段落",
+  "paragraphs_other": "{{count}}段落",
+  "save_note_placeholder": "保存メモ（任意） — 例：「回想シーンを追加」",
+  "history": "履歴",
+  "ai_chat": "AIチャット",
+  "coming_soon": "近日公開",
+  "connected": "接続済み",
+  "left_panel": "左パネル",
+  "right_panel": "右パネル",
+  "discard_confirm": {
+    "title": "変更を破棄しますか？",
+    "desc": "未保存の変更はすべて永久に失われます。元に戻せません。",
+    "confirm": "変更を破棄",
+    "cancel": "編集を続ける"
+  },
+  "toolbar": {
+    "paragraph": "段落",
+    "h1": "見出し1",
+    "h2": "見出し2",
+    "h3": "見出し3",
+    "bold": "太字 (Ctrl+B)",
+    "italic": "斜体 (Ctrl+I)",
+    "strike": "取り消し線",
+    "underline": "下線 (Ctrl+U)",
+    "inline_code": "インラインコード",
+    "link": "リンク",
+    "url_prompt": "URL:",
+    "highlight": "ハイライト (Ctrl+Shift+H)",
+    "subscript": "下付き文字",
+    "superscript": "上付き文字",
+    "bullet_list": "箇条書きリスト",
+    "ordered_list": "番号付きリスト",
+    "blockquote": "引用",
+    "insert_image": "画像を挿入",
+    "insert_video": "動画を挿入",
+    "insert_audio": "音声を挿入",
+    "code_block": "コードブロック",
+    "horizontal_rule": "水平線",
+    "undo": "元に戻す (Ctrl+Z)",
+    "redo": "やり直し (Ctrl+Shift+Z)"
+  },
+  "slash": {
+    "paragraph": {
+      "title": "段落",
+      "desc": "プレーンテキストブロック"
+    },
+    "heading1": {
+      "title": "見出し1",
+      "desc": "大セクション見出し"
+    },
+    "heading2": {
+      "title": "見出し2",
+      "desc": "中セクション見出し"
+    },
+    "heading3": {
+      "title": "見出し3",
+      "desc": "小セクション見出し"
+    },
+    "bullet": {
+      "title": "箇条書きリスト",
+      "desc": "順序なしリスト"
+    },
+    "numbered": {
+      "title": "番号付きリスト",
+      "desc": "順序付きリスト"
+    },
+    "quote": {
+      "title": "引用",
+      "desc": "ブロック引用"
+    },
+    "image": {
+      "title": "画像",
+      "desc": "アップロード、貼り付け、またはAI生成"
+    },
+    "video": {
+      "title": "動画",
+      "desc": "動画ファイルをアップロード"
+    },
+    "audio": {
+      "title": "音声",
+      "desc": "音声ファイルをアップロード"
+    },
+    "code": {
+      "title": "コードブロック",
+      "desc": "シンタックスハイライト付きコード"
+    },
+    "callout": {
+      "title": "コールアウト",
+      "desc": "著者のメモやヒント"
+    },
+    "divider": {
+      "title": "区切り線",
+      "desc": "水平線"
+    }
+  },
+  "code": {
+    "language_label": "コード言語",
+    "copy": "コードをコピー",
+    "delete": "コードブロックを削除"
+  },
+  "media": {
+    "ai_prompt": "AIプロンプト",
+    "saved": "保存済み",
+    "empty": "空",
+    "placeholder": "AIのコンテキストと生成のためにこのメディアを説明...",
+    "stored_note": "AIコンテキストと再生成のためメディアと共に保存されます。",
+    "copied": "コピーしました",
+    "copy_prompt": "プロンプトをコピー",
+    "regenerate": "再生成",
+    "generating": "生成中..."
+  },
+  "image": {
+    "err_type": "サポートされていない形式: {{type}}。PNG、JPG、GIF、またはWebPを使用してください。",
+    "err_size": "ファイルが大きすぎます: {{size}} MB。最大10 MB。",
+    "upload_unavailable": "アップロードできません — 先に章を保存してください。",
+    "upload_failed": "アップロードに失敗しました",
+    "regen_save_first": "AI生成を有効にするには先に章を保存してください。",
+    "regen_no_model": "AIモデルが設定されていません。設定でプロバイダーを追加してください。",
+    "regen_no_provider": "アクティブなAIプロバイダーがありません。設定 → プロバイダーで設定してください。",
+    "regen_failed": "生成に失敗しました",
+    "default_title": "画像",
+    "version_history": "バージョン履歴",
+    "copy_filename": "ファイル名をコピー",
+    "copy": "コピー",
+    "ai_mode": "AIモード",
+    "replace": "置換",
+    "replace_title": "画像を置換",
+    "delete_block": "ブロックを削除",
+    "delete_image_block": "画像ブロックを削除",
+    "uploading": "アップロード中... {{pct}}%",
+    "drop_here": "ここに画像をドロップ",
+    "drop_hint": "画像をドロップ、クリックして参照、またはCtrl+V",
+    "formats": "PNG、JPG、GIF、WebP — 最大10 MB",
+    "width_title": "幅: {{width}}%",
+    "caption_placeholder": "キャプションを追加...",
+    "caption_aria": "画像キャプション",
+    "alt_text": "代替テキスト",
+    "alt_set": "設定済み",
+    "alt_placeholder": "スクリーンリーダーとEPUBエクスポート用にこの画像を説明...",
+    "alt_aria": "画像の代替テキスト",
+    "alt_note": "スクリーンリーダー、検索、EPUBエクスポートで使用されます。キャプションとは異なります。"
+  },
+  "video": {
+    "err_type": "サポートされていない形式: {{type}}。MP4またはWebMを使用してください。",
+    "err_size": "ファイルが大きすぎます: {{size}} MB。最大100 MB。",
+    "upload_unavailable": "アップロードできません — 先に章を保存してください。",
+    "upload_failed": "アップロードに失敗しました",
+    "gen_save_first": "先に章を保存してください。",
+    "gen_no_model": "動画生成モデルが設定されていません。設定 > プロバイダーで追加してください。",
+    "gen_failed": "生成に失敗しました",
+    "default_title": "動画",
+    "version_history": "バージョン履歴",
+    "copy_filename": "ファイル名をコピー",
+    "copy": "コピー",
+    "ai_mode": "AIモード",
+    "replace": "置換",
+    "replace_title": "動画を置換",
+    "delete_block": "ブロックを削除",
+    "delete_video_block": "動画ブロックを削除",
+    "uploading": "アップロード中... {{pct}}%",
+    "drop_here": "ここに動画をドロップ",
+    "drop_hint": "動画をドロップまたはクリックして参照",
+    "formats": "MP4、WebM — 最大100 MB",
+    "width_title": "幅: {{width}}%",
+    "caption_placeholder": "キャプションを追加...",
+    "caption_aria": "動画キャプション",
+    "alt_text": "代替テキスト",
+    "alt_set": "設定済み",
+    "alt_placeholder": "スクリーンリーダーとEPUBエクスポート用にこの動画を説明...",
+    "alt_aria": "動画の代替テキスト",
+    "alt_note": "スクリーンリーダー、検索、EPUBエクスポートで使用されます。キャプションとは異なります。",
+    "generate": "生成"
+  },
+  "audio": {
+    "err_type": "サポートされていない形式: {{type}}。MP3、WAV、OGG、WebM、またはM4Aを使用してください。",
+    "err_size": "ファイルが大きすぎます: {{size}} MB。最大20 MB。",
+    "upload_unavailable": "アップロードできません — 先に章を保存してください。",
+    "upload_failed": "アップロードに失敗しました",
+    "default_title": "音声",
+    "ai_mode": "AIモード",
+    "play": "再生",
+    "pause": "一時停止",
+    "replace_title": "音声を置換",
+    "delete_audio_block": "音声ブロックを削除",
+    "uploading": "アップロード中... {{pct}}%",
+    "drop_here": "ここに音声をドロップ",
+    "drop_hint": "音声ファイルをドロップまたはクリックして参照",
+    "formats": "MP3、WAV、OGG、WebM、M4A — 最大20 MB",
+    "subtitle_placeholder": "字幕を追加...",
+    "subtitle_aria": "音声字幕"
+  },
+  "callout": {
+    "type": {
+      "note": "メモ",
+      "warning": "警告",
+      "tip": "ヒント",
+      "danger": "危険"
+    },
+    "title": "{{type}} — クリックしてタイプを変更"
+  },
+  "revision": {
+    "restored": "リビジョンを復元しました",
+    "header": "リビジョン履歴 · {{count}}",
+    "empty": "まだリビジョンがありません。保存して作成してください。",
+    "current": "現在",
+    "view": "表示",
+    "restore": "復元",
+    "confirm_title": "このリビジョンを復元しますか？",
+    "confirm_desc": "現在の下書きをこの古いバージョンで上書きし、新しいリビジョンエントリを作成します。元に戻せません。",
+    "close_preview": "プレビューを閉じる",
+    "preview": "リビジョンプレビュー",
+    "restore_version": "このバージョンを復元",
+    "empty_revision": "空のリビジョン。"
+  },
+  "source": {
+    "header": "Block JSON — 章構造の読み取り専用ビュー",
+    "copied": "コピーしました",
+    "copy": "JSONをコピー"
+  },
+  "version": {
+    "loading": "バージョン履歴を読み込み中...",
+    "close": "閉じる",
+    "title": "バージョン履歴",
+    "block_crumb": "ブロック",
+    "comparing": "v{{old}} → v{{new}} を比較",
+    "previous": "以前",
+    "old": "旧",
+    "no_media": "メディアなし",
+    "current": "現在",
+    "selected": "選択中",
+    "current_tag": "現在",
+    "no_media_version": "このバージョンにメディアがありません",
+    "no_versions": "まだバージョンがありません",
+    "version_count": "{{count}}バージョン",
+    "version_count_other": "{{count}}バージョン",
+    "total": "合計{{size}}",
+    "delete_confirm": "バージョン{{version}}を削除しますか？元に戻せません。",
+    "versions": "バージョン",
+    "restore_version": "v{{version}}を復元",
+    "timeago": {
+      "just_now": "たった今",
+      "mins": "{{n}}分前",
+      "hours": "{{n}}時間前",
+      "yesterday": "昨日",
+      "days": "{{n}}日前"
+    },
+    "action": {
+      "upload": "メディアをアップロード",
+      "regenerate": "改善されたプロンプトで再生成",
+      "caption_edit": "キャプションを更新",
+      "prompt_edit": "プロンプトを更新"
+    },
+    "diff_identical": "プロンプトは同一です",
+    "diff_title": "AIプロンプト差分 ({{old}} → {{new}})",
+    "diff_previous": "以前",
+    "diff_current": "現在"
+  },
+  "media_guard": {
+    "protected": "メディアブロックはクラシックモードで保護されています。編集または削除するにはAIモードに切り替えてください。"
+  },
+  "publish": {
+    "publish": "公開",
+    "republish": "再公開",
+    "unpublish": "非公開",
+    "draft_badge": "下書き",
+    "published_badge": "公開済み",
+    "confirm_title": "この章を非公開にしますか？",
+    "confirm_body": "この章を正典から削除します。抽出された知識とパッセージは、再公開するまで取り消されます。",
+    "published_toast": "章を公開しました",
+    "unpublished_toast": "章を非公開にしました",
+    "conflict_toast": "開いてから下書きが変更されました。公開する前に再読み込みしてください。",
+    "empty_toast": "この章には公開する内容がありません。先に何か書いてください。",
+    "save_first": "公開する前に保存してください",
+    "gate_pending": "{{total}}個中{{pending}}個のシーンが未完了です",
+    "gate_no_scenes": "公開するには、少なくとも1つのシーンを作成して完了してください",
+    "gate_canon_blocked": "{{count}}個のシーンに未解決の正典矛盾",
+    "gate_unchecked": "{{count}}個のシーンで正典が未検証",
+    "gate_unchecked_hint": "これらのシーンには確認すべき登場人物がいますが、読み順の位置を解決できないため正典を検証していません。公開は可能です — 可能なら確認してください。"
+  },
+  "compare": {
+    "open": "比較",
+    "title": "リビジョンを比較",
+    "back": "エディターに戻る",
+    "left": "左のリビジョン",
+    "right": "右のリビジョン",
+    "side_by_side": "左右に並べる",
+    "inline": "インライン",
+    "no_revisions": "リビジョンなし",
+    "need_two": "比較するには、保存されたリビジョンが2つ以上必要です。",
+    "loading": "読み込み中…",
+    "diffing": "差分を計算中…",
+    "error": "比較を読み込めませんでした。",
+    "truncated": "リビジョンが大きすぎるため、詳細な差分ではなく全置換を表示します。",
+    "same": "両側が同じリビジョンです — 差分はありません。",
+    "load_more": "さらに読み込む ({{loaded}}/{{total}})",
+    "load_more_hint": "古いリビジョンを選択肢に読み込む"
+  }
+}

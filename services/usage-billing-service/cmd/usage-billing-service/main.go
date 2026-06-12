@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/loreweave/observability"
 	"github.com/loreweave/usage-billing-service/internal/api"
@@ -71,6 +72,19 @@ func main() {
 	sweepCtx, sweepCancel := context.WithCancel(context.Background())
 	defer sweepCancel()
 	go srv.StartSweeper(sweepCtx, 5*time.Minute)
+
+	// S4c — usage audit stream consumer (only when REDIS_URL is set; dev/test
+	// without Redis skips it, and /record still serves the streaming path).
+	if cfg.RedisURL != "" {
+		if opts, perr := redis.ParseURL(cfg.RedisURL); perr == nil {
+			rdb := redis.NewClient(opts)
+			consumer := api.NewUsageConsumer(rdb, pool, srv, cfg.UsageStream, cfg.UsageConsumerGroup, "", nil)
+			go consumer.Run(sweepCtx)
+			slog.Info("S4c usage consumer enabled", "stream", cfg.UsageStream, "group", cfg.UsageConsumerGroup)
+		} else {
+			slog.Warn("S4c: REDIS_URL set but unparseable — usage consumer disabled", "err", perr)
+		}
+	}
 
 	httpSrv := &http.Server{
 		Addr:              cfg.HTTPAddr,

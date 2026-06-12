@@ -15,6 +15,7 @@ Errors bubble up as _TransientError / _PermanentError (defined in chapter_worker
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
@@ -32,6 +33,7 @@ from loreweave_llm.models import Job
 
 from ..config import settings, DEFAULT_COMPACT_SYSTEM_PROMPT, DEFAULT_COMPACT_USER_PROMPT_TPL
 from ..llm_client import LLMClient
+from ..metrics import record_stage
 from .chunk_splitter import estimate_tokens, split_chapter
 
 log = logging.getLogger(__name__)
@@ -521,7 +523,9 @@ async def _translate_chunk(
             "session_translator: transient retry exhausted for chunk %d (ct=%s) code=%s",
             chunk_idx + 1, chapter_translation_id, exc.underlying_code,
         )
-        raise _TransientError(f"provider_error_{exc.underlying_code}") from exc
+        raise _TransientError(
+            f"provider_error_{exc.underlying_code}", code=exc.underlying_code
+        ) from exc
     except LLMQuotaExceeded as exc:
         # /review-impl HIGH#1 — 402 billing/quota: PERMANENT, no retry
         log.error(
@@ -550,7 +554,9 @@ async def _translate_chunk(
             "session_translator: SDK error for chunk %d (ct=%s): %s",
             chunk_idx + 1, chapter_translation_id, exc,
         )
-        raise _TransientError(f"invoke unreachable: {exc}") from exc
+        raise _TransientError(
+            f"invoke unreachable: {exc}", code=getattr(exc, "code", None)
+        ) from exc
 
     log.debug(
         "session_translator: job ended status=%s for chunk %d (ct=%s)",
@@ -569,8 +575,9 @@ async def _translate_chunk(
             raise _PermanentError("billing_rejected")
         if err_code == "LLM_MODEL_NOT_FOUND":
             raise _PermanentError("model_not_found")
-        # 5xx-class upstream errors → transient (worker retries)
-        raise _TransientError(f"provider_error_{err_code}")
+        # 5xx-class upstream errors → transient (worker retries). S3c-2b: carry
+        # the structured code so circuit-open auto-pause doesn't parse the message.
+        raise _TransientError(f"provider_error_{err_code}", code=err_code)
 
     translated_text, in_tok, out_tok = _parse_sdk_response(sdk_job)
 
@@ -659,6 +666,33 @@ async def _insert_chunk_row(
     return row["id"]
 
 
+async def _record_glossary_usage(
+    pool, chapter_translation_id: UUID, used_entity_ids: set[str],
+) -> None:
+    """M6b: record which glossary entities this chapter's translation drew on so a
+    later glossary.entity_updated flags only the chapters that used it (not the
+    whole book). Best-effort + additive — a failure here never breaks translation.
+    Batched single statement; idempotent (ON CONFLICT DO NOTHING). $2::uuid casts
+    the text entity_ids from the glossary endpoint."""
+    if not used_entity_ids:
+        return
+    try:
+        await pool.executemany(
+            """
+            INSERT INTO chapter_translation_glossary_usage
+              (chapter_translation_id, entity_id)
+            VALUES ($1, $2::uuid)
+            ON CONFLICT DO NOTHING
+            """,
+            [(chapter_translation_id, eid) for eid in used_entity_ids],
+        )
+    except Exception:  # defensive, non-fatal (covered by usage-record tests)
+        log.warning(
+            "M6b: failed to record glossary usage for ct=%s (non-fatal)",
+            chapter_translation_id, exc_info=True,
+        )
+
+
 async def _update_chunk_row(
     pool, chunk_row_id: UUID, translated_text: str, in_tok: int, out_tok: int,
 ) -> None:
@@ -675,6 +709,33 @@ async def _update_chunk_row(
     )
 
 
+async def _update_block_chunk_row(
+    pool, chunk_row_id: UUID, translated_text: str | None, in_tok: int, out_tok: int,
+    status: str, validation_errors: list[str], validation_warnings: list[str],
+    glossary_corrections: int, retry_count: int,
+) -> None:
+    """Block-pipeline chunk-row finalizer — also records the V6 quality columns
+    (validation errors/warnings, glossary corrections, retry count). The text
+    pipeline uses the simpler _update_chunk_row above (TD3/W11)."""
+    await pool.execute(
+        """
+        UPDATE chapter_translation_chunks
+        SET translated_text      = $1,
+            input_tokens         = $2,
+            output_tokens        = $3,
+            status               = $4,
+            validation_errors    = $5,
+            validation_warnings  = $6,
+            glossary_corrections = $7,
+            retry_count          = $8
+        WHERE id = $9
+        """,
+        translated_text, in_tok or None, out_tok or None, status,
+        validation_errors, validation_warnings, glossary_corrections, retry_count,
+        chunk_row_id,
+    )
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Phase 8F → V2: Block-level translation pipeline
 # ══════════════════════════════════════════════════════════════════════════════
@@ -686,10 +747,18 @@ CRITICAL RULES:
 2. Translate ONLY the text after each [BLOCK N] label. Do NOT add, remove, or reorder blocks.
 3. Preserve inline formatting: **bold**, *italic*, `code`, ~~strikethrough~~, __underline__, [link text](url).
 4. Output ONLY the translated blocks. No explanations, no commentary, no extra text.
-5. You MUST output exactly {block_count} blocks."""
+5. You MUST output exactly {block_count} blocks.
+6. Do NOT think, reason, or deliberate. Begin the translated output immediately with [BLOCK ...]."""
 
 # Max retries per batch when validation fails
 _MAX_BATCH_RETRIES = 2
+
+# Output-token ceiling for a translation batch. Reasoning models (Qwen3, R1)
+# otherwise burn the default 4096-token output budget on hidden thinking and
+# truncate the answer (TR-4, 2026-05-31). Headroom for a full-batch translation
+# (a chapter chunk is ~7-8k input tokens; CJK output runs denser). Capped
+# against the context window at the call site so input+output can't overflow.
+_TRANSLATION_MAX_OUTPUT_TOKENS = 16384
 
 
 # ── Output validation ────────────────────────────────────────────────────────
@@ -793,6 +862,126 @@ def extract_token_counts(response: dict) -> tuple[int, int]:
     return input_tok, output_tok
 
 
+@dataclass
+class BatchTranslateResult:
+    """Outcome of translating one [BLOCK N] batch (M5d/TD2 shared kernel)."""
+    parsed: dict[int, str] = field(default_factory=dict)
+    input_tokens: int = 0
+    output_tokens: int = 0
+    attempts_used: int = 0
+    last_validation: Any = None
+    failed: set[int] = field(default_factory=set)
+
+
+async def translate_batch_with_retry(
+    *,
+    llm_client: LLMClient,
+    user_id: str,
+    model_source: str,
+    model_ref: str,
+    system_content: str,
+    user_content: str,
+    combined: str,
+    block_indices: list[int],
+    input_texts: dict[int, str],
+    out_max: int,
+    max_retries: int,
+    job_meta_base: dict,
+) -> BatchTranslateResult:
+    """Translate one [BLOCK N] batch: SDK call → validate → retry with a correction
+    prompt on failure. Shared per-batch kernel (M5d/TD2) — the worker pipeline wraps
+    it with glossary/persistence/rolling-summary; the synchronous /translate-text
+    block mode calls it directly (gaining validation + retry). The loop body is the
+    worker's original per-batch logic, verbatim, so worker behaviour is unchanged.
+    """
+    from .block_batcher import parse_translated_blocks
+
+    parsed: dict[int, str] = {}
+    failed: set[int] = set()
+    in_tok_total = 0
+    out_tok_total = 0
+    attempts_used = 0
+    last_validation = None
+    correction_hint = ""
+
+    for attempt in range(max_retries + 1):
+        messages = [{"role": "system", "content": system_content}]
+        if correction_hint:
+            messages.append({"role": "assistant", "content": "I understand. Let me fix the output."})
+            messages.append({"role": "user", "content": correction_hint})
+        else:
+            messages.append({"role": "user", "content": user_content})
+
+        try:
+            sdk_job = await llm_client.submit_and_wait(
+                user_id=user_id,
+                operation="translation",
+                model_source=model_source,
+                model_ref=model_ref,
+                input={
+                    "messages": messages,
+                    "max_tokens": out_max,
+                    "reasoning_effort": "none",
+                    "chat_template_kwargs": {"enable_thinking": False},
+                },
+                chunking=None,
+                job_meta={**job_meta_base, "attempt": attempt},
+                transient_retry_budget=1,
+            )
+            if sdk_job.status != "completed":
+                err_code = sdk_job.error.code if sdk_job.error else "unknown"
+                log.error("translate_batch: attempt %d job ended status=%s code=%s",
+                          attempt + 1, sdk_job.status, err_code)
+                break  # don't retry on permanent errors
+
+            response_text, in_tok, out_tok = _parse_sdk_response(sdk_job)
+            in_tok_total += in_tok
+            out_tok_total += out_tok
+            attempts_used = attempt + 1
+
+            parsed = parse_translated_blocks(response_text, block_indices)
+            validation = validate_translation_output(parsed, block_indices, input_texts)
+            last_validation = validation
+
+            if validation.warnings:
+                log.warning("translate_batch: attempt %d warnings: %s", attempt + 1, validation.warnings)
+
+            if validation.valid:
+                break  # success
+            else:
+                log.warning("translate_batch: attempt %d validation failed: %s",
+                            attempt + 1, validation.errors)
+                if attempt < max_retries:
+                    correction_hint = (
+                        f"Your previous output had errors: {'; '.join(validation.errors)}. "
+                        f"Please translate exactly {len(block_indices)} blocks "
+                        f"with indices {block_indices}. "
+                        f"Output each block with its [BLOCK N] marker.\n\n{combined}"
+                    )
+                else:
+                    failed.update(set(block_indices) - set(parsed.keys()))
+
+        except (LLMQuotaExceeded, LLMModelNotFound, LLMAuthFailed,
+                LLMInvalidRequest, LLMDecodeError, LLMStreamNotSupported) as exc:
+            # Permanent SDK errors won't fix on retry — fail the whole batch.
+            log.error("translate_batch: permanent SDK error %s — failing batch",
+                      exc.__class__.__name__)
+            parsed = {}
+            failed.update(block_indices)
+            break
+        except Exception as exc:
+            log.error("translate_batch: attempt %d failed: %s", attempt + 1, exc)
+            parsed = {}
+            if attempt == max_retries:
+                failed.update(block_indices)
+            continue
+
+    return BatchTranslateResult(
+        parsed=parsed, input_tokens=in_tok_total, output_tokens=out_tok_total,
+        attempts_used=attempts_used, last_validation=last_validation, failed=failed,
+    )
+
+
 async def translate_chapter_blocks(
     blocks: list[dict],
     source_lang: str,
@@ -802,6 +991,8 @@ async def translate_chapter_blocks(
     *,
     llm_client: LLMClient,
     context_window: int = _FALLBACK_CONTEXT_WINDOW,
+    extra_system: str = "",
+    group_ids: dict[int, int] | None = None,
 ) -> tuple[list[dict], int, int]:
     """
     Translate a chapter's Tiptap blocks using the block-level pipeline (V2).
@@ -823,7 +1014,13 @@ async def translate_chapter_blocks(
         context_window:         Model context window in tokens.
 
     Returns:
-        (translated_blocks, total_input_tokens, total_output_tokens)
+        (translated_blocks, total_input_tokens, total_output_tokens,
+         translated_count, translatable_count, translated_texts)
+        translated_count/translatable_count let the caller detect a total
+        failure (translatable blocks existed but none translated) and mark the
+        chapter FAILED instead of silently persisting all-original blocks as
+        "completed". translated_texts ({block_index: text}) is the translated-only
+        text for the cross-chapter memo (M4c).
     """
     from .block_classifier import rebuild_block, extract_translatable_text
     from .block_batcher import build_batch_plan, parse_translated_blocks
@@ -835,6 +1032,10 @@ async def translate_chapter_blocks(
         context_window_tokens=context_window,
         source_lang=source_lang,
         target_lang=target_code,
+        group_ids=group_ids,
+        # D-TRANSL-EXTRASYSTEM-BUDGET: reserve room for the V3 injected context
+        # (romanization + knowledge brief + prev-memo) appended to the system prompt.
+        extra_system_tokens=estimate_tokens(extra_system),
     )
     log.info(
         "block_translator_v2: %d blocks (%d translate, %d pass, %d caption) → %d batches (ct=%s)",
@@ -843,7 +1044,7 @@ async def translate_chapter_blocks(
     )
 
     if not plan.batches:
-        return blocks, 0, 0
+        return blocks, 0, 0, 0, plan.translatable_count, {}
 
     user_id = msg["user_id"]
 
@@ -872,6 +1073,10 @@ async def translate_chapter_blocks(
         len(glossary_ctx.entries), glossary_ctx.token_estimate,
         len(glossary_ctx.correction_map), chapter_translation_id,
     )
+    # M6b: record per-chapter glossary-entity usage for targeted staleness.
+    await _record_glossary_usage(
+        pool, chapter_translation_id, glossary_ctx.used_entity_ids,
+    )
 
     # Per-block translated texts (index → translated text)
     translated_texts: dict[int, str] = {}
@@ -887,6 +1092,16 @@ async def translate_chapter_blocks(
         combined = batch.combined_text()
         # Build input_texts map for validation
         input_texts = {e.index: e.text for e in batch.entries}
+
+        # TD3/W11: persist a per-batch chunk row (observability + resume + the V6
+        # quality columns the block pipeline never populated before).
+        chunk_row_id = await _insert_chunk_row(
+            pool, chapter_translation_id, batch_idx, combined, rolling_summary or None,
+        )
+        batch_in = 0
+        batch_out = 0
+        attempts_used = 0
+        last_validation = None
 
         log.info(
             "block_translator_v2: batch %d/%d — %d blocks, ~%d tokens (ct=%s)",
@@ -908,6 +1123,8 @@ async def translate_chapter_blocks(
                 "\n\nIMPORTANT: For names and terms listed in the GLOSSARY above, "
                 "you MUST use the EXACT translations provided. Do NOT invent your own."
             )
+        if extra_system:
+            system_content += "\n\n" + extra_system
 
         # Build user message with optional rolling summary
         user_parts = []
@@ -921,114 +1138,37 @@ async def translate_chapter_blocks(
         )
         user_content = "\n".join(user_parts)
 
-        # Retry loop with validation
-        parsed = None
-        correction_hint = ""
-        for attempt in range(_MAX_BATCH_RETRIES + 1):
-            messages = [
-                {"role": "system", "content": system_content},
-            ]
-            if correction_hint:
-                # Add correction as assistant acknowledgment + user re-request
-                messages.append({"role": "assistant", "content": "I understand. Let me fix the output."})
-                messages.append({"role": "user", "content": correction_hint})
-            else:
-                messages.append({"role": "user", "content": user_content})
+        # Output-token budget for this batch: generous headroom (thinking is
+        # disabled below, so reasoning shouldn't eat it), capped so
+        # input+output stays within the model context window.
+        out_max = min(
+            _TRANSLATION_MAX_OUTPUT_TOKENS,
+            max(2048, context_window - batch.token_estimate - 2048),
+        )
 
-            try:
-                # Phase 4c-β: SDK call replaces /v1/model-registry/invoke.
-                # `break` on non-completed status preserves the legacy
-                # "don't retry on HTTP errors" semantic — SDK handles
-                # transient retries internally; reaching here with
-                # non-completed means a permanent error.
-                sdk_job = await llm_client.submit_and_wait(
-                    user_id=user_id,
-                    operation="translation",
-                    model_source=msg["model_source"],
-                    model_ref=str(msg["model_ref"]),
-                    input={"messages": messages},
-                    chunking=None,
-                    job_meta={
-                        "chapter_translation_id": str(chapter_translation_id),
-                        "batch_idx": batch_idx,
-                        "attempt": attempt,
-                    },
-                    transient_retry_budget=1,
-                )
-                if sdk_job.status != "completed":
-                    err_code = sdk_job.error.code if sdk_job.error else "unknown"
-                    log.error(
-                        "block_translator_v2: batch %d attempt %d job ended status=%s code=%s",
-                        batch_idx + 1, attempt + 1, sdk_job.status, err_code,
-                    )
-                    break  # don't retry on permanent errors
-
-                response_text, in_tok, out_tok = _parse_sdk_response(sdk_job)
-                total_input += in_tok
-                total_output += out_tok
-
-                # Parse [BLOCK N] markers
-                parsed = parse_translated_blocks(response_text, batch.block_indices)
-
-                # V2: Validate output
-                validation = validate_translation_output(
-                    parsed, batch.block_indices, input_texts,
-                )
-
-                if validation.warnings:
-                    log.warning(
-                        "block_translator_v2: batch %d warnings: %s",
-                        batch_idx + 1, validation.warnings,
-                    )
-
-                if validation.valid:
-                    log.info(
-                        "block_translator_v2: batch %d attempt %d — valid, %d/%d blocks",
-                        batch_idx + 1, attempt + 1, len(parsed), len(batch.entries),
-                    )
-                    break  # success
-                else:
-                    log.warning(
-                        "block_translator_v2: batch %d attempt %d — validation failed: %s",
-                        batch_idx + 1, attempt + 1, validation.errors,
-                    )
-                    if attempt < _MAX_BATCH_RETRIES:
-                        # Build correction prompt for retry
-                        correction_hint = (
-                            f"Your previous output had errors: {'; '.join(validation.errors)}. "
-                            f"Please translate exactly {len(batch.entries)} blocks "
-                            f"with indices {batch.block_indices}. "
-                            f"Output each block with its [BLOCK N] marker.\n\n{combined}"
-                        )
-                    else:
-                        log.error(
-                            "block_translator_v2: batch %d failed after %d retries: %s",
-                            batch_idx + 1, _MAX_BATCH_RETRIES, validation.errors,
-                        )
-                        # Mark missing blocks as failed
-                        missing = set(batch.block_indices) - set(parsed.keys())
-                        failed_blocks.update(missing)
-
-            except (LLMQuotaExceeded, LLMModelNotFound, LLMAuthFailed,
-                    LLMInvalidRequest, LLMDecodeError, LLMStreamNotSupported) as exc:
-                # /review-impl HIGH#1 — permanent SDK errors won't fix
-                # themselves on retry; mark all batch blocks failed
-                # immediately + break out of the validation retry loop.
-                log.error(
-                    "block_translator_v2: batch %d permanent SDK error %s — failing batch",
-                    batch_idx + 1, exc.__class__.__name__,
-                )
-                parsed = None
-                failed_blocks.update(batch.block_indices)
-                break
-            except Exception as exc:
-                log.error("block_translator_v2: batch %d attempt %d failed: %s", batch_idx + 1, attempt + 1, exc)
-                parsed = None
-                if attempt == _MAX_BATCH_RETRIES:
-                    failed_blocks.update(batch.block_indices)
-                continue
+        # M5d/TD2: the per-batch SDK + validation-retry loop now lives in the
+        # shared translate_batch_with_retry kernel (also used by the sync
+        # /translate-text block mode). This wrapper keeps glossary auto-correct,
+        # rolling summary, chunk-row persistence, and totals accounting.
+        _br = await translate_batch_with_retry(
+            llm_client=llm_client, user_id=user_id,
+            model_source=msg["model_source"], model_ref=str(msg["model_ref"]),
+            system_content=system_content, user_content=user_content,
+            combined=combined, block_indices=batch.block_indices, input_texts=input_texts,
+            out_max=out_max, max_retries=_MAX_BATCH_RETRIES,
+            job_meta_base={"chapter_translation_id": str(chapter_translation_id), "batch_idx": batch_idx},
+        )
+        parsed = _br.parsed
+        total_input += _br.input_tokens
+        total_output += _br.output_tokens
+        batch_in = _br.input_tokens
+        batch_out = _br.output_tokens
+        attempts_used = _br.attempts_used
+        last_validation = _br.last_validation
+        failed_blocks.update(_br.failed)
 
         # Merge successfully parsed blocks + auto-correct glossary
+        batch_glossary_corrections = 0
         if parsed:
             # V2 P6: Auto-correct untranslated source terms
             if glossary_ctx.correction_map:
@@ -1039,6 +1179,7 @@ async def translate_chapter_blocks(
                     if count > 0:
                         parsed[idx] = corrected
                         total_glossary_corrections += count
+                        batch_glossary_corrections += count
 
             translated_texts.update(parsed)
 
@@ -1048,6 +1189,24 @@ async def translate_chapter_blocks(
             )
             sentences = [s.strip() for s in last_translated.replace("\n", ". ").split(".") if s.strip()]
             rolling_summary = ". ".join(sentences[-5:]) + "." if sentences else ""
+
+        # TD3/W11: finalize this batch's chunk row with text + quality metrics.
+        _batch_translated = (
+            "\n".join(parsed[i] for i in sorted(parsed)) if parsed else None
+        )
+        await _update_block_chunk_row(
+            pool, chunk_row_id, _batch_translated, batch_in, batch_out,
+            "completed" if parsed else "failed",
+            last_validation.errors if last_validation else [],
+            last_validation.warnings if last_validation else [],
+            batch_glossary_corrections, max(0, attempts_used - 1),
+        )
+        record_stage(
+            "translation.batch", pipeline="block", batch_idx=batch_idx,
+            blocks=len(batch.entries), in_tokens=batch_in, out_tokens=batch_out,
+            retries=max(0, attempts_used - 1),
+            status="completed" if parsed else "failed", ct=str(chapter_translation_id),
+        )
 
     if total_glossary_corrections > 0:
         log.info(
@@ -1076,4 +1235,8 @@ async def translate_chapter_blocks(
             sorted(failed_blocks), chapter_translation_id,
         )
 
-    return result_blocks, total_input, total_output
+    # translated_texts ({idx: text}) is the authoritative translated-only source
+    # for the cross-chapter memo (M4c, D-TRANSL-MEMO-M4) — failed blocks fell back
+    # to original in result_blocks and must NOT pollute the memo.
+    return (result_blocks, total_input, total_output, translated_count,
+            plan.translatable_count, translated_texts)

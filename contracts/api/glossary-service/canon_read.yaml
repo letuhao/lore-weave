@@ -1,0 +1,264 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Glossary Service — Canon Read API (L5.F)
+  version: 1.0.0
+  description: |
+    L5.F RPC contract between glossary-service and consumer services
+    (roleplay-service, world-service). Per Q-L5-4 LOCKED, the V1 wire
+    transport is HTTP/JSON (consistent with the existing LoreWeave novel
+    platform); gRPC V2+ if perf demands.
+
+    ## Scope (cycle 25)
+      * GET /v1/canon/{book_id}/{attribute_path}
+          → single canon entry lookup. Read-through to per-reality
+            canon_projection (L5.D) if `reality_id` query param present;
+            otherwise reads canonical (book-level) canon entry from
+            glossary-service's own DB (Q-L1A-2 SSOT).
+      * GET /v1/canon/{book_id}/entries
+          → bulk read with `?since=<rfc3339>` for incremental sync per
+            L5.F.1 acceptance criterion.
+
+    ## LOCKED decisions consumed
+      * **Q-L5-4**: HTTP/JSON V1; gRPC V2+. This spec is the canonical
+        V1 transport.
+      * **Q-L5A-1**: foundation owns ONLY the contract. The glossary-
+        service server impl is a separate sub-program that consumes this
+        OpenAPI spec.
+      * **Q-L5-3**: `canon_layer` enum = {`L1_axiom`, `L2_seeded`}.
+      * **Q-L5-1**: `last_synced_at` field is the cycle-23 L5.D
+        invalidation key; clients use it both for cache freshness probe
+        and for the `?since=` parameter on the bulk endpoint.
+
+    ## Auth
+    All endpoints require SVID-based mutual TLS per cycle-22 L4.M
+    service-ACL discipline. The bearer token in the `Authorization`
+    header carries the SPIFFE id of the caller. The companion canon-write
+    contract (canon_write.yaml) additionally gates the
+    `canon_guardrail` integration point per Q-L5-5.
+
+servers:
+  - url: https://glossary-service.loreweave.dev
+    description: Production
+  - url: http://glossary-service:8080
+    description: Docker Compose dev
+
+tags:
+  - name: canon-read
+    description: Per-book + per-reality canon entry reads (L5.F.1)
+  - name: canon-bulk
+    description: Bulk reads for incremental sync (L5.F.1 since=)
+  - name: canon-seed-export
+    description: Bulk export for reality seeding (L5.F.2; defers to seed_export.yaml)
+
+paths:
+  /v1/canon/{book_id}/{attribute_path}:
+    get:
+      tags: [canon-read]
+      summary: Get a single canon entry by (book_id, attribute_path)
+      description: |
+        Returns the canonical canon entry for the given (book_id,
+        attribute_path). If `reality_id` query param is supplied, applies
+        the per-reality projection (L5.D) to honor L3 overrides; otherwise
+        returns the book-level authored canon (Q-L1A-2 SSOT).
+
+        Status codes:
+          * 200 — found
+          * 404 — no canon entry for (book_id, attribute_path)
+          * 401 — missing/invalid SVID
+          * 403 — caller SVID not in service_acl matrix for this RPC
+      operationId: getCanonEntry
+      security:
+        - svidBearer: []
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: attribute_path
+          in: path
+          required: true
+          description: Dotted path (e.g. `world.climate`, `faction.allegiance`).
+          schema:
+            type: string
+            pattern: '^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$'
+        - name: reality_id
+          in: query
+          required: false
+          description: If present, applies per-reality projection (L3 overrides honored).
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Canon entry returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CanonEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/canon/{book_id}/entries:
+    get:
+      tags: [canon-bulk]
+      summary: List canon entries with incremental-sync since= filter
+      description: |
+        Bulk read for incremental sync. Clients pass `?since=<rfc3339>`
+        to fetch only entries with `last_synced_at > since`. Used by:
+          * cycle-23 publisher draining glossary outbox (Q-L5A-1)
+          * cycle-25 L5.E canon cache warm-up at startup
+          * cycle-26+ L5.G reality seeder (also see seed_export.yaml)
+      operationId: listCanonEntries
+      security:
+        - svidBearer: []
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: since
+          in: query
+          required: false
+          description: Only entries with last_synced_at > since (RFC3339 timestamp).
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque pagination cursor from prior response.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Page of canon entries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CanonEntryPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    svidBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: SVID
+      description: SPIFFE SVID JWT. Carried in `Authorization: Bearer <svid>`.
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid SVID
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Caller SVID not authorized for this RPC (service_acl mismatch)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Canon entry not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    CanonEntry:
+      type: object
+      required:
+        - canon_entry_id
+        - book_id
+        - attribute_path
+        - value
+        - canon_layer
+        - lock_level
+        - last_synced_at
+      properties:
+        canon_entry_id:
+          type: string
+          format: uuid
+        book_id:
+          type: string
+          format: uuid
+        attribute_path:
+          type: string
+        value:
+          # Opaque canonical JSON bytes. Server returns the parsed value;
+          # clients re-marshal if needed for downstream storage.
+          description: Canonical canon value. Type is attribute-schema dependent.
+        canon_layer:
+          type: string
+          enum: [L1_axiom, L2_seeded]
+          description: Q-L5-3 LOCKED enum.
+        lock_level:
+          type: string
+          enum: [hard, soft, archived, experimental]
+        reality_id:
+          type: string
+          format: uuid
+          description: |
+            Present only when the request specified ?reality_id=...
+            (per-reality projection applied; L3 overrides may have
+            modified value vs. authored canon).
+          nullable: true
+        overridden_by_l3_event_id:
+          type: string
+          format: uuid
+          description: |
+            Per-reality only — non-null means this canon entry has been
+            shadowed by an L3 event in this reality. The returned `value`
+            still reflects the AUTHORED canon; clients must check this
+            field to know if an L3 override is active.
+          nullable: true
+        last_synced_at:
+          type: string
+          format: date-time
+          description: Q-L5-1 cache invalidation key. Mirrors canon_projection.last_synced_at.
+
+    CanonEntryPage:
+      type: object
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/CanonEntry'
+        next_cursor:
+          type: string
+          description: Pass back as ?cursor= for the next page. Absent = end.
+          nullable: true
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true

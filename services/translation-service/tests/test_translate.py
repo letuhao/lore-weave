@@ -8,7 +8,7 @@ to assert).
 """
 from typing import Any
 import datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -226,3 +226,38 @@ class TestTranslateText:
             json={},
         )
         assert resp.status_code == 422
+
+    # ── Block mode (M5d/TD2: shared kernel) ───────────────────────────────────
+
+    def test_block_mode_translates_via_kernel(self, client, fake_pool, fake_llm):
+        fake_pool.fetchrow.return_value = _prefs_row()
+        fake_llm.queue_translation(
+            content="[BLOCK 0]\nXin chào thế giới", input_tokens=5, output_tokens=6)
+        with patch("app.workers.chapter_worker._get_model_context_window",
+                   new_callable=AsyncMock, return_value=8192):
+            resp = client.post("/v1/translation/translate-text", json={
+                "blocks": [{"type": "paragraph",
+                            "content": [{"type": "text", "text": "Hello world"}]}],
+            })
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["translated_body_format"] == "json"
+        assert "Xin chào thế giới" in str(body["translated_blocks"][0])
+        assert len(fake_llm.calls) == 1
+
+    def test_block_mode_retries_on_invalid_output(self, client, fake_pool, fake_llm):
+        """M5d/TD2: the sync block path now shares the worker kernel, so it
+        validates output and retries with a correction prompt — it did neither
+        before (best-effort single shot)."""
+        fake_pool.fetchrow.return_value = _prefs_row()
+        fake_llm.queue_translation(content="garbage without any block markers")  # invalid
+        fake_llm.queue_translation(content="[BLOCK 0]\nXin chào")                 # valid retry
+        with patch("app.workers.chapter_worker._get_model_context_window",
+                   new_callable=AsyncMock, return_value=8192):
+            resp = client.post("/v1/translation/translate-text", json={
+                "blocks": [{"type": "paragraph",
+                            "content": [{"type": "text", "text": "Hello"}]}],
+            })
+        assert resp.status_code == 200
+        assert len(fake_llm.calls) == 2  # retried after validation failure
+        assert "Xin chào" in str(resp.json()["translated_blocks"][0])

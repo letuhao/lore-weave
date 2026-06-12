@@ -1,0 +1,69 @@
+# contracts/retention/event_classes.yaml — L2.K.2 per-class retention rules.
+#
+# Cycle 11 ships this as a CONTRACT SKELETON. The full classifier (L2.K.3)
+# that maps event_type → retention_class lands incrementally as new event
+# types stabilize. V1 retention-worker reads this file at startup to
+# validate config-shape; it does NOT yet branch policy by class because
+# L2.K.1 V1 only prunes outbox + invokes audit-retention-cron (which has
+# its own per-flag classification baked in).
+#
+# Schema:
+#   version: <int>
+#   classes:
+#     - name: <class-name>
+#       hot_days: <int>          # how long the row lives in the live per-reality table
+#       warm_days: <int>         # how long after hot_days it lives in a warm partition
+#       cold_archive: <bool>     # at warm_days expiry, archive to MinIO (cold tier)
+#       canon: <bool>            # canon events NEVER auto-deleted (acceptance criterion)
+#       notes: <free text>
+#   event_type_map:
+#     <event_type>: <class-name>
+
+version: 1
+
+# ── retention classes ────────────────────────────────────────────────────
+classes:
+  # Authored canon — NEVER auto-deleted. The L2.K.5 runbook covers manual
+  # erasure for GDPR right-to-be-forgotten; auto-pruning is forbidden.
+  - name: canon_events
+    hot_days: 0       # always hot
+    warm_days: 0
+    cold_archive: false
+    canon: true
+    notes: "Authored canon never auto-deleted. CI gate: retention-worker MUST refuse to delete any row whose class.canon=true."
+
+  # Volatile NPC chatter / ambient sim events — relatively short-lived.
+  - name: volatile_npc
+    hot_days: 30
+    warm_days: 60
+    cold_archive: true
+    canon: false
+    notes: "Ambient NPC chatter. Archived after 90d via L2.J archive-worker (events partition DROP)."
+
+  # Audit events — paired retention with event_audit table per R01 §12A.3.
+  - name: audit
+    hot_days: 30
+    warm_days: 60
+    cold_archive: true
+    canon: false
+    notes: "Non-flagged 30d hot / 90d total. Flagged retained 90d hot per scripts/event-audit-retention-cron.sh."
+
+  # Broadcast / cross-reality announcements.
+  - name: broadcast
+    hot_days: 90
+    warm_days: 0
+    cold_archive: false
+    canon: false
+    notes: "xreality broadcast events. 90d hot then DELETE (no archive — broadcast metadata is reconstructible)."
+
+# ── event_type → class mapping ───────────────────────────────────────────
+# CYCLE 11 V1: stub mapping. Each new event_type added to
+# contracts/events/_registry.yaml SHOULD also land a row here; the
+# observability lint that enforces this couplng is DEFERRED (D-EVENT-CLASS-LINT).
+event_type_map:
+  # Stub example — real event_types come online as cycles 12+ ship aggregates.
+  npc.said: volatile_npc
+  npc.moved: volatile_npc
+  canon.promoted: canon_events
+  xreality.canon.promoted: broadcast
+  xreality.user.erased: broadcast

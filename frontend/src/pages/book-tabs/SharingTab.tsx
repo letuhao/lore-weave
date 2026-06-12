@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Globe, Lock, Link2, RefreshCw, Copy, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
@@ -8,13 +9,14 @@ import { cn } from '@/lib/utils';
 
 type Visibility = 'private' | 'unlisted' | 'public';
 
-const VISIBILITY_OPTIONS: { value: Visibility; label: string; icon: typeof Globe; desc: string }[] = [
-  { value: 'private', label: 'Private', icon: Lock, desc: 'Only you can see this book' },
-  { value: 'unlisted', label: 'Unlisted', icon: Link2, desc: 'Anyone with the link can read' },
-  { value: 'public', label: 'Public', icon: Globe, desc: 'Visible in the public catalog' },
+const VISIBILITY_OPTIONS: { value: Visibility; icon: typeof Globe }[] = [
+  { value: 'private', icon: Lock },
+  { value: 'unlisted', icon: Link2 },
+  { value: 'public', icon: Globe },
 ];
 
 export function SharingTab({ bookId }: { bookId: string }) {
+  const { t } = useTranslation('books');
   const { accessToken } = useAuth();
   const [visibility, setVisibility] = useState<Visibility>('private');
   const [unlistedToken, setUnlistedToken] = useState<string | null>(null);
@@ -30,7 +32,7 @@ export function SharingTab({ bookId }: { bookId: string }) {
         setVisibility(data.visibility);
         setUnlistedToken(data.unlisted_access_token ?? null);
       })
-      .catch(() => toast.error('Failed to load sharing settings'))
+      .catch(() => toast.error(t('sharing.load_failed')))
       .finally(() => setLoading(false));
   }, [accessToken, bookId]);
 
@@ -41,9 +43,9 @@ export function SharingTab({ bookId }: { bookId: string }) {
       const result = await booksApi.patchSharing(accessToken, bookId, { visibility: v }) as { visibility: Visibility; unlisted_access_token?: string };
       setVisibility(result.visibility);
       setUnlistedToken(result.unlisted_access_token ?? null);
-      toast.success(`Visibility set to ${v}`);
+      toast.success(t('sharing.visibility_set', { name: t(`sharing.options.${v}.label`) }));
     } catch {
-      toast.error('Failed to update visibility');
+      toast.error(t('sharing.update_failed'));
     } finally {
       setSaving(false);
     }
@@ -55,9 +57,9 @@ export function SharingTab({ bookId }: { bookId: string }) {
     try {
       const result = await booksApi.patchSharing(accessToken, bookId, { rotate_unlisted_token: true }) as { unlisted_access_token?: string };
       setUnlistedToken(result.unlisted_access_token ?? null);
-      toast.success('Link token rotated');
+      toast.success(t('sharing.token_rotated'));
     } catch {
-      toast.error('Failed to rotate token');
+      toast.error(t('sharing.rotate_failed'));
     } finally {
       setSaving(false);
     }
@@ -83,11 +85,11 @@ export function SharingTab({ bookId }: { bookId: string }) {
   return (
     <div className="max-w-lg space-y-6 p-6">
       <div>
-        <h3 className="text-sm font-semibold">Visibility</h3>
-        <p className="mb-3 text-xs text-muted-foreground">Control who can see and read this book.</p>
+        <h3 className="text-sm font-semibold">{t('sharing.title')}</h3>
+        <p className="mb-3 text-xs text-muted-foreground">{t('sharing.subtitle')}</p>
 
         <div className="space-y-2">
-          {VISIBILITY_OPTIONS.map(({ value, label, icon: Icon, desc }) => (
+          {VISIBILITY_OPTIONS.map(({ value, icon: Icon }) => (
             <button
               key={value}
               onClick={() => handleVisibilityChange(value)}
@@ -107,9 +109,9 @@ export function SharingTab({ bookId }: { bookId: string }) {
               </div>
               <div>
                 <span className={cn('text-sm font-medium', visibility === value && 'text-primary')}>
-                  {label}
+                  {t(`sharing.options.${value}.label`)}
                 </span>
-                <p className="text-[11px] text-muted-foreground">{desc}</p>
+                <p className="text-[11px] text-muted-foreground">{t(`sharing.options.${value}.desc`)}</p>
               </div>
               {visibility === value && (
                 <Check className="ml-auto h-4 w-4 text-primary" />
@@ -122,7 +124,7 @@ export function SharingTab({ bookId }: { bookId: string }) {
       {/* Unlisted link section */}
       {visibility === 'unlisted' && unlistedToken && (
         <div className="rounded-lg border bg-card p-4">
-          <h4 className="mb-2 text-xs font-semibold">Shareable Link</h4>
+          <h4 className="mb-2 text-xs font-semibold">{t('sharing.link_title')}</h4>
           <div className="flex items-center gap-2">
             <div className="flex-1 truncate rounded-md border bg-background px-3 py-2 font-mono text-[11px] text-muted-foreground">
               {window.location.origin}/read/{unlistedToken}
@@ -132,7 +134,7 @@ export function SharingTab({ bookId }: { bookId: string }) {
               className="inline-flex items-center gap-1 rounded-md border px-2.5 py-2 text-xs font-medium hover:bg-secondary"
             >
               {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-              {copied ? 'Copied' : 'Copy'}
+              {copied ? t('sharing.copied') : t('sharing.copy')}
             </button>
           </div>
           <button
@@ -141,7 +143,7 @@ export function SharingTab({ bookId }: { bookId: string }) {
             className="mt-2 inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
           >
             <RefreshCw className="h-3 w-3" />
-            Rotate link (invalidates old link)
+            {t('sharing.rotate')}
           </button>
         </div>
       )}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { BookOpen, Clock, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type ReadingHistoryEntry } from '@/features/books/api';
@@ -36,6 +37,7 @@ function formatTime(ms: number): string {
 }
 
 export default function ReadingHistoryPage() {
+  const { t } = useTranslation('reader');
   const { accessToken } = useAuth();
   const [groups, setGroups] = useState<BookGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,13 +62,13 @@ export default function ReadingHistoryPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-10">
-      <h1 className="mb-1 text-lg font-semibold">Reading History</h1>
-      <p className="mb-6 text-xs text-muted-foreground">Your recently read books and chapters.</p>
+      <h1 className="mb-1 text-lg font-semibold">{t('history.title')}</h1>
+      <p className="mb-6 text-xs text-muted-foreground">{t('history.subtitle')}</p>
 
       {groups.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-16 text-muted-foreground">
           <BookOpen className="h-10 w-10 opacity-40" />
-          <p className="text-sm">No reading history yet. Start reading a chapter!</p>
+          <p className="text-sm">{t('history.empty')}</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -90,10 +92,10 @@ export default function ReadingHistoryPage() {
                         <Clock className="h-3 w-3" />
                         {formatTime(g.total_time_ms)}
                       </span>
-                      <span>{g.chapters.length} {g.chapters.length === 1 ? 'chapter' : 'chapters'} read</span>
-                      <span>{completion}% fully read</span>
+                      <span>{t('history.chapters_read', { count: g.chapters.length })}</span>
+                      <span>{t('history.fully_read', { percent: completion })}</span>
                       <span className="text-muted-foreground/50">
-                        Last read {new Date(g.last_read).toLocaleDateString()}
+                        {t('history.last_read', { date: new Date(g.last_read).toLocaleDateString() })}
                       </span>
                     </div>
                     {/* Progress bar */}
@@ -110,7 +112,7 @@ export default function ReadingHistoryPage() {
                       to={`/books/${g.book_id}/chapters/${lastChapter.chapter_id}/read`}
                       className="flex shrink-0 items-center gap-1.5 rounded-md bg-primary/10 px-3 py-1.5 text-[11px] font-medium text-primary hover:bg-primary/20 transition-colors"
                     >
-                      Continue
+                      {t('history.continue')}
                       <ArrowRight className="h-3 w-3" />
                     </Link>
                   )}

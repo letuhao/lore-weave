@@ -119,6 +119,7 @@ def _make_client(
     benchmark=None,  # default: passing run; pass `_NO_BENCHMARK` for None
     project_budget_check=None,  # D-K16.11-01: can_start_job override
     user_budget_check=None,  # D-K16.11-01: check_user_monthly_budget override
+    wake_fn=None,  # FD-22: override the extraction wake emitter (default: recording mock)
 ) -> TestClient:
     """Build a TestClient with all deps overridden.
 
@@ -137,6 +138,7 @@ def _make_client(
         get_book_client,
         get_extraction_jobs_repo,
         get_extraction_pending_repo,
+        get_extraction_wake,
         get_glossary_client,
         get_projects_repo,
     )
@@ -192,8 +194,13 @@ def _make_client(
     app.dependency_overrides[get_book_client] = lambda: AsyncMock(spec=BookClient)
     app.dependency_overrides[get_glossary_client] = lambda: AsyncMock(spec=GlossaryClient)
     app.dependency_overrides[get_benchmark_runs_repo] = lambda: benchmark_repo
+    # FD-22: override the wake emitter so the route never touches real Redis.
+    # Default = a recording AsyncMock; tests can pass a raising one.
+    recording_wake = wake_fn if wake_fn is not None else AsyncMock()
+    app.dependency_overrides[get_extraction_wake] = lambda: recording_wake
 
     client = TestClient(app, raise_server_exceptions=False)
+    client._wake_fn = recording_wake
     # Patch the pool at module level so the endpoint's get_knowledge_pool()
     # returns our mock. Lifecycle: started here, stopped in _post_start
     # after the request completes. Each test MUST call _post_start exactly
@@ -496,3 +503,41 @@ def test_start_job_null_max_spend_uses_zero_estimated_cost():
     client = _make_client()
     resp = _post_start(client, max_spend_usd=None)
     assert resp.status_code == 201
+
+
+# ── FD-22: extraction wake emitted on a successful start ─────────────
+
+
+def test_start_job_emits_wake_after_creation():
+    """FD-22: a successful start fires the wake exactly once with the
+    created job's id + project id (so worker-ai picks it up immediately
+    instead of on its next poll)."""
+    client = _make_client()
+    wake = client._wake_fn
+    resp = _post_start(client)
+    assert resp.status_code == 201
+    wake.assert_awaited_once()
+    _, kwargs = wake.call_args
+    assert kwargs["job_id"] == _TEST_JOB_ID
+    assert kwargs["project_id"] == _TEST_PROJECT
+
+
+def test_start_job_wake_failure_does_not_fail_201():
+    """FD-22: the wake is best-effort — even a raising wake fn must NOT
+    break job-start (the job is already running; the poll loop is the
+    fallback). The route's outer guard swallows it."""
+    raising_wake = AsyncMock(side_effect=ConnectionError("redis down"))
+    client = _make_client(wake_fn=raising_wake)
+    resp = _post_start(client)
+    assert resp.status_code == 201
+    raising_wake.assert_awaited_once()
+
+
+def test_start_job_no_wake_when_gate_rejects():
+    """FD-22: a rejected start (e.g. missing benchmark) must NOT emit a
+    wake — there is no running job to pick up."""
+    client = _make_client(benchmark=_NO_BENCHMARK)
+    wake = client._wake_fn
+    resp = _post_start(client)
+    assert resp.status_code == 409
+    wake.assert_not_awaited()

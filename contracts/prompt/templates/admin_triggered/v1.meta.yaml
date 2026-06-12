@@ -1,0 +1,14 @@
+# Cycle 31 L6.K.2 — admin_triggered template metadata (v1 skeleton).
+# Q-L6K-1 LOCKED: foundation ships EMPTY templates. Feature team owns copy.
+
+intent: admin_triggered
+version: 1
+status: skeleton
+compatible_model_tiers:
+  - tier_high
+  - tier_mid
+expected_token_budget: 8000    # S09 §12Y.7 cap for admin_triggered
+fixture_set: v1.fixtures/
+deprecated_at: null
+replay_window_days: 365   # admin actions retained longer for audit
+owner: llm-logic-subprogram

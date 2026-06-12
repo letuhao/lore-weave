@@ -230,6 +230,102 @@ CREATE TABLE IF NOT EXISTS extraction_chapter_results (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_ecr_job ON extraction_chapter_results(job_id);
+
+-- ── V8: Translation Pipeline V3 — selection flag, per-role models, QA config ──
+-- Additive + idempotent. Default pipeline_version='v2' ⇒ zero behavior change
+-- until a book/job opts into 'v3'. verifier_model_* nullable ⇒ falls back to the
+-- translator model. qa_depth ∈ {rule_only, standard, thorough}.
+ALTER TABLE user_translation_preferences
+  ADD COLUMN IF NOT EXISTS pipeline_version      TEXT NOT NULL DEFAULT 'v2',
+  ADD COLUMN IF NOT EXISTS verifier_model_source TEXT,
+  ADD COLUMN IF NOT EXISTS verifier_model_ref    UUID,
+  ADD COLUMN IF NOT EXISTS max_qa_rounds         INT  NOT NULL DEFAULT 2,
+  ADD COLUMN IF NOT EXISTS qa_depth              TEXT NOT NULL DEFAULT 'standard',
+  ADD COLUMN IF NOT EXISTS cold_start_mode       TEXT NOT NULL DEFAULT 'single_pass';
+
+ALTER TABLE book_translation_settings
+  ADD COLUMN IF NOT EXISTS pipeline_version      TEXT NOT NULL DEFAULT 'v2',
+  ADD COLUMN IF NOT EXISTS verifier_model_source TEXT,
+  ADD COLUMN IF NOT EXISTS verifier_model_ref    UUID,
+  ADD COLUMN IF NOT EXISTS max_qa_rounds         INT  NOT NULL DEFAULT 2,
+  ADD COLUMN IF NOT EXISTS qa_depth              TEXT NOT NULL DEFAULT 'standard',
+  ADD COLUMN IF NOT EXISTS cold_start_mode       TEXT NOT NULL DEFAULT 'single_pass';
+
+ALTER TABLE translation_jobs
+  ADD COLUMN IF NOT EXISTS pipeline_version      TEXT NOT NULL DEFAULT 'v2',
+  ADD COLUMN IF NOT EXISTS verifier_model_source TEXT,
+  ADD COLUMN IF NOT EXISTS verifier_model_ref    UUID,
+  ADD COLUMN IF NOT EXISTS max_qa_rounds         INT  NOT NULL DEFAULT 2,
+  ADD COLUMN IF NOT EXISTS qa_depth              TEXT NOT NULL DEFAULT 'standard',
+  ADD COLUMN IF NOT EXISTS cold_start_mode       TEXT NOT NULL DEFAULT 'single_pass';
+
+-- S5b-eval: per-campaign translation eval-judge model. Only on translation_jobs
+-- (campaign-supplied via dispatch; NOT a user/book setting). Rides the
+-- translation.quality event to learning-service's M7d-2 fidelity judge.
+ALTER TABLE translation_jobs
+  ADD COLUMN IF NOT EXISTS eval_judge_model_source TEXT,
+  ADD COLUMN IF NOT EXISTS eval_judge_model_ref    UUID;
+
+-- Per-block QA issues — drives targeted re-translate + the future "needs review" UI.
+CREATE TABLE IF NOT EXISTS translation_quality_issues (
+  id                     UUID PRIMARY KEY DEFAULT uuidv7(),
+  chapter_translation_id UUID NOT NULL REFERENCES chapter_translations(id) ON DELETE CASCADE,
+  block_index            INT  NOT NULL,
+  round                  INT  NOT NULL DEFAULT 0,
+  issue_type             TEXT NOT NULL,   -- omission|wrong_name|added|number_mismatch|format|untranslated
+  severity               TEXT NOT NULL,   -- high|med|low
+  detail                 TEXT,
+  expected               TEXT,
+  resolved               BOOLEAN NOT NULL DEFAULT false,
+  detected_by            TEXT NOT NULL DEFAULT 'rule',  -- rule|llm
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_tqi_ct ON translation_quality_issues(chapter_translation_id);
+
+-- Per-chapter quality rollup (cheap badge source; no status-enum churn).
+ALTER TABLE chapter_translations
+  ADD COLUMN IF NOT EXISTS quality_score         INT,
+  ADD COLUMN IF NOT EXISTS unresolved_high_count INT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS qa_rounds_used        INT NOT NULL DEFAULT 0;
+
+-- M5c living-book: glossary-staleness flag. Set true (coarse, book-level) when a
+-- glossary entity for the book changes (consumed from loreweave:events:glossary);
+-- a hint that the translation predates the glossary edit. Additive + idempotent.
+ALTER TABLE chapter_translations
+  ADD COLUMN IF NOT EXISTS is_glossary_stale BOOLEAN NOT NULL DEFAULT false;
+
+-- M6b full-propagate: per-(chapter_translation, entity) glossary usage index.
+-- The worker records which glossary entities a chapter's translation actually
+-- drew on (entries that scored > 0 against the chapter text). On a later
+-- glossary.entity_updated the staleness consumer flags ONLY the chapter
+-- translations whose index contains the changed entity_id (and, when the event
+-- carries target_language, only that language) instead of the whole book.
+-- A translation with NO rows here (translated before this index existed) falls
+-- back to the coarse flag — no false-negatives. ON DELETE CASCADE ties usage to
+-- its translation version.
+CREATE TABLE IF NOT EXISTS chapter_translation_glossary_usage (
+  chapter_translation_id UUID NOT NULL
+    REFERENCES chapter_translations(id) ON DELETE CASCADE,
+  entity_id              UUID NOT NULL,
+  PRIMARY KEY (chapter_translation_id, entity_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ctgu_entity
+  ON chapter_translation_glossary_usage(entity_id);
+
+-- M7c (human-fix gold): mark human-authored translation versions + link the LLM
+-- version they were edited from, so the LLM→human diff can be captured as a
+-- learning correction (before=LLM draft, after=human edit). Additive + idempotent.
+-- 'llm' default keeps every existing/worker-produced version unchanged.
+ALTER TABLE chapter_translations
+  ADD COLUMN IF NOT EXISTS authored_by TEXT NOT NULL DEFAULT 'llm',
+  ADD COLUMN IF NOT EXISTS edited_from_version_id UUID;
+
+-- S4a (Auto-Draft Factory cost attribution): the owning campaign for a
+-- campaign-dispatched job. NULL for ordinary user-initiated translations. Stored
+-- for queryability; the runtime correlation rides through to each provider job's
+-- job_meta via the per-chapter message + a worker-set contextvar (see llm_client).
+ALTER TABLE translation_jobs
+  ADD COLUMN IF NOT EXISTS campaign_id UUID;
 """
 
 

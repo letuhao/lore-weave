@@ -1,0 +1,17 @@
+# AMAW Adversary findings — CM3c, round 2 (regressions from round-1 folds)
+
+**Verdict:** BLOCK (2 BLOCK + 1 WARN). Captured rules: read pre-loaded (none — ContextHub unreachable).
+
+## BLOCK#1 — `p3_is_last = ch.chapter_id == pre_chapters[-1].chapter_id` fires whole-book summary on a non-tail chapter
+`worker-ai/app/runner.py:1334`. `is_last_chapter_of_book` drives the book-level L0/part summary roll-up in `/persist-pass2`.
+- **Manual path** (`scope in chapters/all`): `pre_chapters` is the published list in sort order; cursor-resume strips from the FRONT → `[-1]` is the book's true (canon) tail. Under canon=published, rolling up at the last *published* chapter is CORRECT (previously it rolled up over draft chapters). **Not a bug — resolved by canon semantics.**
+- **Drain path** (`scope='chapters_pending'`, added CM3b): `pre_chapters` is a *coalesced subset* of re-published chapters → `[-1]` is a mid-book chapter → spurious whole-book summary roll-up on every incremental re-publish. **Real pre-existing CM3b bug, surfaced here.**
+**Resolution (FOLDED):** scope-guard — `p3_is_last = (job.scope in ('chapters','all')) and (ch.chapter_id == pre_chapters[-1].chapter_id)`. The coalesced drain path NEVER asserts is_last (incremental re-publish must not re-roll the book summary; the next whole-book manual rebuild refreshes it). 1-line fix; closes the CM3b latent bug too.
+
+## BLOCK#2 — new `editorial_status` positional param can collide with LIMIT/OFFSET placeholders
+`book-service/internal/api/server.go:1953-1973`. `buildSortRangeFilter` assigns `$N` via `len(outArgs)`; `limitPos=len(countArgs)+1`, `offsetPos=len(countArgs)+2` are computed AFTER it returns. Threading a new positional param naively (placeholder `$N` without appending its value to `countArgs` before computing limit/offset positions) → either a pgx bind-count error (500 on every gated enumeration) or silent mis-bind (LIMIT int used as the status string → `editorial_status='1000'` matches nothing → manual rebuild extracts ZERO chapters: a total published-gate blackout).
+**Resolution (FOLDED — design now prescribes exact wiring):** apply the `editorial_status` predicate as a clause appended to BOTH `where` and `countWhere` AFTER `buildSortRangeFilter` returns; append its value to `countArgs`; emit its placeholder via `len(countArgs)` (post-append); then compute `limitPos/offsetPos = len(countArgs)+1/+2`; reuse the same `countArgs` for COUNT and LIST. Test: `total == len(items)` for an unbounded page WITH the param + pagination still binds with the param present + invalid value → 400.
+
+## WARN#3 — dropping the C12a `chapter_range` gate un-suppresses publish-driven inline embed during a bounded manual job
+§8.11 drops C12a on the published passage path. C12a also served a CONCURRENCY purpose: it suppressed inline passage-ingest for chapters outside an active bounded `scope='chapters'` job's range, keeping that job's embed-cost envelope bounded. Now an out-of-range `chapter.published` embeds immediately, and the (now published-gated) cost estimate can't see concurrent publish-driven embeds.
+**Resolution (ACCEPT-WITH-NOTE):** passages are delete-first/idempotent → not data-incorrect. Publish-driven ingest is intentionally un-gated (publish is explicit per-chapter). The bounded-job cost envelope no longer suppresses concurrent publishes — documented so a future CM-FE bulk-publish doesn't rediscover it as an embed-cost spike. Bounded by publish frequency in Cycle 0.

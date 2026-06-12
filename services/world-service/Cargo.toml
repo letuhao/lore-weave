@@ -1,17 +1,108 @@
 [package]
 name = "world-service"
-version = "0.1.0-cycle0"
-description = "Geography substrate service for the LLM MMO RPG — hosts the world_geometry aggregate (GEO_001) + the POL/SET/ROUTE activation generators. Cycle 0 scaffold: no behavior; awaits the DP-kernel + Cycle 1."
+version = "0.1.0-cycle26"
+description = "Geography substrate service for the LLM MMO RPG. Cycle 5 (L1.C) added the per-reality DB provisioner / deprovisioner / capacity_planner / orphan_scanner modules + db_pool (L1.G.3). Cycle 16 (L3.I) added the embedding queue. Cycle 26 (L5.G) adds the reality_seeder module: orchestrator + canon/book/knowledge RPC traits + Q-L5-2 translation gate + Q-L1A-3 audit sink + per-100-entry checkpointing + lifecycle transitioner for seeding→active/failed_seeding. The GEO_001 aggregate behavior still awaits the DP-kernel (cycle 17)."
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[lib]
+name = "world_service"
+path = "src/lib.rs"
+
 [[bin]]
 name = "world-service"
 path = "src/main.rs"
 
-# Cycle 0 is an empty-compiling scaffold — no dependencies yet.
-# Cycle 1 (GEO_001) adds deps once the DP-kernel aggregate framework exists.
+# L1.C.4 — orphan_scanner binary. Nightly cron entry-point per R04 §12D.7.
+# Reads reality_registry; marks partial-state realities and drops after a
+# 7-day grace period.
+[[bin]]
+name = "orphan_scanner"
+path = "src/bin/orphan_scanner.rs"
+
+# L3.I cycle 16 / DEFERRED-059 — embedding-worker binary. Drains the embedding
+# queue, writes VECTOR(1536) into npc_session_memory_embedding, and emits a
+# service_to_service_audit row per provider call. Tokio ticker + graceful
+# shutdown + /healthz+/readyz+/metrics.
+[[bin]]
+name = "embedding-worker"
+path = "src/bin/embedding_worker.rs"
+
+# 073 (L3.G/H) — projection rebuilder binary. The per-reality WORKER that the
+# admin-cli rebuild-projection / catastrophic-rebuild commands invoke (Q-L3-3):
+# replays the events log through the L3.B projection crates into a TRUNCATEd
+# projection table, emitting JSON RebuildStats on stdout. First live projection-
+# apply path; correctness validation gated on the L3.E/F integrity checker.
+[[bin]]
+name = "rebuilder"
+path = "src/bin/rebuilder.rs"
+
+# L3.E/F (integrity checker keystone) — replay-aggregate binary. The per-sampled
+# -row WORKER the Go integrity-checker invokes: replays the owning event
+# aggregate(s) up to the row's boundary event into a TEMP shadow of the target
+# projection table, then emits the row's `to_jsonb - meta_keys` payload as JSON
+# so the checker can byte-compare it against the live row. Reuses the 073
+# rebuilder writer + projections. See docs/plans/2026-06-03-l3ef-integrity-checker.md.
+[[bin]]
+name = "replay-aggregate"
+path = "src/bin/replay-aggregate.rs"
+
+# L1.C provisioner core + L1.G.3 db_pool share these. All workspace-pinned.
 [dependencies]
+thiserror = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+meta-rs = { path = "../../crates/meta-rs" }
+
+# DEFERRED-059 embedding-queue live wiring — async DB + audit + ops surface.
+tokio = { workspace = true }
+sqlx = { workspace = true }
+async-trait = { workspace = true }
+pgvector = { workspace = true }
+# Health/metrics HTTP surface — axum (repo Rust convention; tilemap-service
+# already serves /internal/v1/tilemaps/render via axum). NOT raw hyper.
+axum = { workspace = true }
+prometheus = { workspace = true }
+tracing-subscriber = { workspace = true }
+# 089 D-EMBEDDING-PROVIDER-WIRING — reqwest client to the BYOK gateway
+# (provider-registry POST /internal/embed). First reqwest in world-service; calls
+# OUR gateway, NOT a vendor SDK (provider-gateway invariant). Workspace-pinned.
+reqwest = { workspace = true }
+# 073 (L3.G/H) projection rebuilder — the per-aggregate parallel replay engine
+# (crates/rebuilder) + the L3.B projection trait/envelope (crates/dp-kernel) +
+# the 6 concrete projection crates. world-service is the first consumer of these
+# (the "wired in cycle 15+" path the rebuilder doc names).
+rebuilder = { path = "../../crates/rebuilder" }
+dp-kernel = { path = "../../crates/dp-kernel" }
+projections-canon = { path = "../../crates/projections/canon" }
+projections-npc = { path = "../../crates/projections/npc" }
+projections-pc = { path = "../../crates/projections/pc" }
+projections-region = { path = "../../crates/projections/region" }
+projections-session = { path = "../../crates/projections/session" }
+projections-world-kv = { path = "../../crates/projections/world_kv" }
+
+[features]
+# 091 D-EMBEDDING-TESTKIT: exposes embedding_queue::testkit (shared in-memory
+# fakes) to OUT-OF-CRATE consumers (the integration tests in tests/). In-crate
+# unit tests get it under cfg(test) automatically. Off by default → no testkit
+# code in production builds (the rebuilder/embedding-worker bins, etc.).
+testkit = []
+
+[dev-dependencies]
+# Self dev-dependency to enable the `testkit` feature when building the
+# integration tests in tests/ (which compile the lib WITHOUT cfg(test), so they
+# need the feature to see embedding_queue::testkit). Standard Cargo idiom.
+world-service = { path = ".", features = ["testkit"] }
+# Embedding-queue unit tests are async (#[tokio::test]) over the async IO
+# traits; the live-smoke integration test (tests/embedding_live.rs) is gated
+# on LOREWEAVE_TEST_PG_URL + LOREWEAVE_TEST_META_URL.
+tokio = { workspace = true }
+# 089: pins the BYOK-gateway request shape (HttpEmbeddingProvider) against a stub
+# server without needing provider-registry up (the real round-trip is the deferred
+# live-smoke). Workspace-pinned.
+wiremock = { workspace = true }

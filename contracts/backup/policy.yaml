@@ -1,0 +1,88 @@
+# contracts/backup/policy.yaml — L1.H tiered backup policy
+#
+# Owning kernel chunk: R04 §12D.3
+# LOCKED Q-IDs honored:
+#   * Q-L1H-1 (line 43): MinIO pre-existing; foundation adds `lw-db-backups` bucket only.
+#   * Q-L1H-2 (line 44): Restore drills = monthly per-shard automated + quarterly full-system manual.
+# Authoritative retention matrix: L1A_meta_tables.md §0 row "backups" (7/14/30d per R4).
+#
+# Schema:
+#   version: <int>
+#   tiers:
+#     <reality_status>:
+#       incremental_interval: <duration|null>
+#       full_interval: <duration|null>
+#       retention_days: <int>
+#       compression: <gzip|zstd|none>
+#       target_bucket: <minio bucket name>
+#
+# Lookup pattern: `backup-scheduler` reads reality_registry.status → applies the
+# tier matched by status. Statuses not in the matrix get the `default` tier
+# (best-effort weekly full + 30d retention) and warn.
+
+version: 1
+
+# All tiers ship to the same dedicated MinIO bucket (Q-L1H-1).
+target_bucket: lw-db-backups
+
+# Monthly restore-drill cadence per Q-L1H-2.
+restore_drill:
+  per_shard_cadence: monthly
+  per_shard_automated: true
+  full_system_cadence: quarterly
+  full_system_automated: false   # manual; SRE runs runbook
+  alert_on_drill_failure: page    # exit code drives alert (review-finding (f) hardened)
+
+tiers:
+  active:
+    incremental_interval: 24h
+    full_interval: 7d
+    retention_days: 14
+    compression: zstd
+  pending_close:
+    incremental_interval: 24h
+    full_interval: 7d
+    retention_days: 14
+    compression: zstd
+  frozen:
+    incremental_interval: null
+    full_interval: 28d
+    retention_days: 30           # frozen tier retention 30d
+    compression: zstd
+  migrating:
+    incremental_interval: 12h    # tighter while in migration
+    full_interval: 7d
+    retention_days: 14
+    compression: zstd
+  archived:
+    # archived realities have already gone through the L2.J archive worker
+    # (per-partition Parquet to MinIO); we keep ONE last full backup of the
+    # meta-side reality_registry row state but the per-reality DB itself is
+    # retired. No incrementals.
+    incremental_interval: null
+    full_interval: null
+    retention_days: 7            # 7d quick-restore window post-archive
+    compression: zstd
+  archived_verified:
+    incremental_interval: null
+    full_interval: null
+    retention_days: 7
+    compression: zstd
+  soft_deleted:
+    # 30d grace period; no new backups, keep previous 30d.
+    incremental_interval: null
+    full_interval: null
+    retention_days: 30
+    compression: zstd
+  dropped:
+    # terminal state; no backups; existing backups retained for legal/forensic 30d
+    # then naturally expire.
+    incremental_interval: null
+    full_interval: null
+    retention_days: 30
+    compression: none
+  default:
+    incremental_interval: null
+    full_interval: 7d
+    retention_days: 14
+    compression: zstd

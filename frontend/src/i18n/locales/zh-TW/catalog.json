@@ -1,0 +1,62 @@
+{
+  "browse": {
+    "title": "探索故事",
+    "subtitle": "瀏覽 LoreWeave 社群的公開小說。跨語言閱讀、翻譯並探索故事。",
+    "search_placeholder": "依書名、作者或語言搜尋...",
+    "search_aria": "搜尋目錄",
+    "no_books": "找不到書籍。請嘗試其他搜尋或篩選。",
+    "load_failed": "載入目錄失敗"
+  },
+  "filter": {
+    "lang_all": "全部",
+    "clear_genres": "清除類型",
+    "books_found": "找到 {{count}} 本書",
+    "sort_aria": "書籍排序方式",
+    "sort": {
+      "recent": "最新",
+      "popular": "最熱門",
+      "chapters": "章節最多",
+      "alpha": "依字母順序"
+    }
+  },
+  "card": {
+    "chapters_short": "{{count}} 章"
+  },
+  "detail": {
+    "breadcrumb_browse": "瀏覽",
+    "public_badge": "公開",
+    "unlisted_badge": "不公開",
+    "chapters_count": "{{count}} 章",
+    "available_languages": "可用語言",
+    "original": "原文",
+    "start_reading": "開始閱讀",
+    "no_chapters_yet": "尚無章節",
+    "share": "分享",
+    "copy_link": "複製連結",
+    "loading": "載入中...",
+    "chapters_heading": "章節",
+    "no_chapters_available": "沒有可用的章節。",
+    "untitled": "未命名",
+    "words": "{{count}} 字",
+    "showing_chapters": "顯示 {{total}} 章中的 {{from}}–{{to}}",
+    "stat_chapters": "章節數",
+    "stat_languages": "語言",
+    "stat_original": "原文",
+    "stat_published": "發佈",
+    "na": "無",
+    "book_not_found": "找不到書籍",
+    "back_to_browse": "返回瀏覽",
+    "link_copied": "已複製連結",
+    "copy_failed": "複製失敗",
+    "load_chapters_failed": "載入章節失敗"
+  },
+  "shared": {
+    "indicator": "你正在檢視一個分享連結。此書籍未公開列出。",
+    "invalid": "此分享連結無效或已過期。",
+    "not_found": "找不到分享連結或已過期",
+    "browse_instead": "改為瀏覽公開書籍",
+    "back_to_chapters": "返回章節",
+    "ch_short": "第 {{n}} 章",
+    "load_chapter_failed": "載入章節失敗：{{error}}"
+  }
+}

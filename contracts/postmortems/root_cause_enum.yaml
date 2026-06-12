@@ -1,0 +1,51 @@
+# contracts/postmortems/root_cause_enum.yaml — L7.D.11 (RAID cycle 37)
+#
+# The SR04 12-enum root-cause taxonomy. Every postmortem (docs/sre/postmortems/
+# <id>.md) MUST classify its root cause with exactly one of these 12 ids
+# (the postmortem TEMPLATE.md "Root cause" field references this enum).
+# postmortem-bot validates the chosen id against this list at stub creation.
+#
+# Per SR04-D — bounded taxonomy so postmortem aggregation (which class of
+# failure recurs?) is queryable rather than free-text.
+
+version: 1
+shipped_cycle: 37
+expected_enum_count: 12
+
+root_causes:
+  - id: code_defect
+    label: 'Code defect'
+    description: 'Logic bug, off-by-one, unhandled edge case in service code.'
+  - id: config_error
+    label: 'Configuration error'
+    description: 'Wrong env var, feature flag, threshold, or routing config.'
+  - id: capacity_exhaustion
+    label: 'Capacity exhaustion'
+    description: 'CPU/memory/disk/connection-pool/quota exhausted under load.'
+  - id: dependency_failure
+    label: 'Dependency failure'
+    description: 'Downstream service, DB, cache, queue, or external provider down/degraded.'
+  - id: data_corruption
+    label: 'Data corruption / integrity loss'
+    description: 'Canon/audit/state data wrong, mismatched hash, lost write.'
+  - id: deploy_regression
+    label: 'Deploy / release regression'
+    description: 'A deploy, migration, or rollout introduced the failure.'
+  - id: infrastructure_failure
+    label: 'Infrastructure failure'
+    description: 'Host, network, DNS, cloud-provider, or hardware fault.'
+  - id: security_incident
+    label: 'Security incident'
+    description: 'Intrusion, credential leak, injection, or abuse.'
+  - id: human_operational_error
+    label: 'Human / operational error'
+    description: 'Manual mistake during ops, admin action, or break-glass.'
+  - id: observability_gap
+    label: 'Observability gap'
+    description: 'Missing alert, dashboard, log, or trace delayed detection.'
+  - id: capacity_planning_miss
+    label: 'Capacity / scaling planning miss'
+    description: 'Foreseeable growth not provisioned for; not a sudden spike.'
+  - id: unknown
+    label: 'Unknown / undetermined'
+    description: 'Root cause not conclusively determined (requires follow-up).'

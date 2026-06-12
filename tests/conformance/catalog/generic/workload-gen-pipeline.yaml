@@ -1,0 +1,11 @@
+id: workload-gen-pipeline
+description: "S3 — seed events via the workload generator's real outbox write path, rebuild the live projections from them (world-service rebuilder), and assert the base→derived pipeline populated the projection tables (emit → rebuild)."
+invariant: I-base-to-derived
+kind: live-probe
+command: ["bash", "scripts/workload-gen-pipeline-smoke.sh"]
+# foundation-stack = PG + Redis up. On a bare CI runner / dev box without the
+# stack this is unmet → notrun (the rebuild differential vs replay-aggregate,
+# i.e. the full integrity-checker, is tracked as D-WORKLOAD-GEN-INTEGRITY-DIFF).
+requires: ["foundation-stack"]
+skip_when: []
+fail_closed_on_setup_error: false

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import type { ProviderBreakdown, PurposeBreakdown } from './types';
 
 const PROVIDER_COLORS: Record<string, string> = {
@@ -13,14 +14,6 @@ const PURPOSE_COLORS: Record<string, string> = {
   chunk_edit: '#a78bfa',
   image_gen: '#e8a832',
   unknown: '#9e9488',
-};
-
-const PURPOSE_LABELS: Record<string, string> = {
-  translation: 'Translation',
-  chat: 'Chat',
-  chunk_edit: 'Chunk Edit',
-  image_gen: 'Image Gen',
-  unknown: 'Other',
 };
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -43,6 +36,7 @@ type Props = {
 };
 
 export function BreakdownPanels({ byProvider, byPurpose, periodLabel }: Props) {
+  const { t } = useTranslation('usage');
   const maxProviderTokens = Math.max(1, ...byProvider.map((p) => p.total_tokens));
   const maxPurposeTokens = Math.max(1, ...byPurpose.map((p) => p.total_tokens));
 
@@ -51,12 +45,12 @@ export function BreakdownPanels({ byProvider, byPurpose, periodLabel }: Props) {
       {/* By Provider */}
       <div className="overflow-hidden rounded-lg border bg-card">
         <div className="flex items-center justify-between border-b px-4 py-3">
-          <span className="text-sm font-semibold">Tokens by Provider</span>
+          <span className="text-sm font-semibold">{t('breakdown.tokens_by_provider')}</span>
           <span className="text-[10px] text-muted-foreground">{periodLabel}</span>
         </div>
         <div className="space-y-3 p-4">
           {byProvider.length === 0 && (
-            <p className="text-xs text-muted-foreground">No data</p>
+            <p className="text-xs text-muted-foreground">{t('breakdown.no_data')}</p>
           )}
           {byProvider.map((item) => (
             <div key={item.provider_kind} className="flex items-center gap-3">
@@ -92,12 +86,12 @@ export function BreakdownPanels({ byProvider, byPurpose, periodLabel }: Props) {
       {/* By Purpose */}
       <div className="overflow-hidden rounded-lg border bg-card">
         <div className="flex items-center justify-between border-b px-4 py-3">
-          <span className="text-sm font-semibold">Tokens by Purpose</span>
+          <span className="text-sm font-semibold">{t('breakdown.tokens_by_purpose')}</span>
           <span className="text-[10px] text-muted-foreground">{periodLabel}</span>
         </div>
         <div className="space-y-3 p-4">
           {byPurpose.length === 0 && (
-            <p className="text-xs text-muted-foreground">No data</p>
+            <p className="text-xs text-muted-foreground">{t('breakdown.no_data')}</p>
           )}
           {byPurpose.map((item) => (
             <div key={item.purpose} className="flex items-center gap-3">
@@ -106,7 +100,7 @@ export function BreakdownPanels({ byProvider, byPurpose, periodLabel }: Props) {
                   className="inline-block h-2 w-2 rounded-sm"
                   style={{ background: PURPOSE_COLORS[item.purpose] }}
                 />
-                {PURPOSE_LABELS[item.purpose] ?? item.purpose}
+                {t(`purpose.${item.purpose}`, { defaultValue: item.purpose })}
               </span>
               <div className="flex-1">
                 <div className="h-5 rounded-sm bg-secondary">
@@ -123,7 +117,7 @@ export function BreakdownPanels({ byProvider, byPurpose, periodLabel }: Props) {
                 {formatTokens(item.total_tokens)}
               </span>
               <span className="w-16 text-right text-[10px] text-muted-foreground">
-                {item.request_count} calls
+                {t('breakdown.calls', { count: item.request_count })}
               </span>
             </div>
           ))}

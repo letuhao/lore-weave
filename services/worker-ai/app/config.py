@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     # Service URLs for HTTP calls.
     knowledge_service_url: str = "http://knowledge-service:8092"
     book_service_url: str = "http://book-service:8082"
+    chat_service_url: str = "http://chat-service:8090"  # FD-2: chat-turn text fetch
     # C12c-a: glossary-service URL for the paginated entity list the
     # scope='glossary_sync' worker branch iterates.
     glossary_service_url: str = "http://glossary-service:8082"
@@ -31,12 +32,24 @@ class Settings(BaseSettings):
     persist_pass2_timeout_s: float = 30.0  # Neo4j writes are seconds, not minutes
     extract_item_timeout_s: float = 120.0  # back-compat — to be removed in Phase 4d
     book_client_timeout_s: float = 10.0
+    chat_client_timeout_s: float = 10.0  # FD-2: chat-turn text fetch (cheap read)
     # C12c-a: glossary list is cheap pagination (no LLM) — shorter
     # timeout than the book client's chapter fetch.
     glossary_client_timeout_s: float = 10.0
+    # FD-27: provider-registry model-info fetch for the reasoning-model
+    # advisory — a tiny metadata read, runs once per job. Best-effort.
+    provider_registry_client_timeout_s: float = 5.0
 
     # Poll interval (seconds) — how often to check for running jobs.
     poll_interval_s: float = 5.0
+
+    # FD-22 — block on a knowledge-service wake signal instead of a blind sleep
+    # between poll cycles, so a freshly started job is picked up immediately.
+    # The poll stays the source-of-truth; this only shortens the wait. Disabled
+    # (or no redis_url) → plain sleep = pure polling. Stream name MUST match the
+    # producer's `EXTRACTION_WAKE_STREAM` in knowledge-service.
+    extraction_wake_enabled: bool = True
+    extraction_wake_stream: str = "extraction.wake"
 
     # Max items to process per poll cycle before re-checking job status.
     # Lower = more responsive to pause/cancel, higher = less DB overhead.

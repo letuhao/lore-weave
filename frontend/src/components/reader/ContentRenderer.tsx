@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { JSONContent } from '@tiptap/react';
 import './reader.css';
 import { ParagraphBlock } from './blocks/ParagraphBlock';
@@ -85,6 +86,7 @@ function AudioIndicator({ audioUrl, audioSource, audioSubtitle, blockText }: {
   audioSubtitle: string | null;
   blockText: string;
 }) {
+  const { t } = useTranslation('reader');
   const [playing, setPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -112,7 +114,7 @@ function AudioIndicator({ audioUrl, audioSource, audioSubtitle, blockText }: {
       <button
         type="button"
         className={cn('reader-inline-play', playing && 'playing')}
-        title={playing ? 'Pause' : 'Play attached audio'}
+        title={playing ? t('indicator.pause') : t('indicator.play')}
       >
         {playing ? '⏸' : '▶'}
       </button>
@@ -120,7 +122,7 @@ function AudioIndicator({ audioUrl, audioSource, audioSubtitle, blockText }: {
         {sourceLabel}
       </span>
       {hasMismatch && (
-        <span className="reader-audio-mismatch" title="Audio subtitle differs from block text">⚠</span>
+        <span className="reader-audio-mismatch" title={t('indicator.mismatch')}>⚠</span>
       )}
     </span>
   );

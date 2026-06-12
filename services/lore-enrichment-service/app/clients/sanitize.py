@@ -31,6 +31,11 @@ _INVISIBLE = dict.fromkeys(
 )
 
 # Common injection control markers (chat-template + role-spoofing tokens).
+# DEFERRED-050: also neutralize "forget the above" + Classical-Chinese (文言文)
+# meta-directives anchored on a textual BACK-REFERENCE (前述/上文/以上 — "the
+# AFOREMENTIONED text/command"). Kept in sync with the fuller verify/sanitize.py
+# scanner; deliberately narrow (an in-world Classical command has no back-
+# reference) so legitimate 封神演义 prose passes through untouched.
 _MARKERS = re.compile(
     r"(?is)("
     r"<\|[a-z_]+\|>"                      # <|im_start|>, <|system|>, …
@@ -38,6 +43,12 @@ _MARKERS = re.compile(
     r"|</?s>"                             # <s> / </s>
     r"|\b(?:system|assistant|user)\s*:"   # role: prefixes
     r"|ignore\s+(?:all\s+)?previous\s+instructions"
+    r"|forget\s+(?:everything|all|previous|the\s+above)"
+    r"|(?:勿|毋|莫|休|不[要须必]|无须|毋须)"
+    r"(?:从|听|遵|依|理会|顾|采纳|执行|遵从|遵循)"
+    r"[^\n]{0,10}?(?:前述|前文|上文|以上|前面|之前|先前|前言)"
+    r"|(?:违背|背离|违逆|推翻|废除|废止|摒弃|抛却)"
+    r"[^\n]{0,10}?(?:前述|前文|上文|以上|之前|先前|前言)"
     r")"
 )
 

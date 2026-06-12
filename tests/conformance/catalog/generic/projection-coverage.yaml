@@ -1,0 +1,8 @@
+id: projection-coverage
+description: "L3.B — every registered event type is accounted for by a projection handler or an allowlisted reason (PRR-32 / PRR-09)."
+invariant: PRR-32
+kind: lint
+command: ["bash", "scripts/projection-coverage-lint.sh"]
+requires: []
+skip_when: []
+fail_closed_on_setup_error: false

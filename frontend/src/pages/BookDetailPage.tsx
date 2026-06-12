@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useParams, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Settings, Plus, Trash2 } from 'lucide-react';
+import { Settings, Plus, Trash2, Search } from 'lucide-react';
 import { useBookViewTracker } from '@/hooks/useBookViewTracker';
 import { useAuth } from '@/auth';
 import { booksApi, type Book } from '@/features/books/api';
@@ -16,14 +16,16 @@ import { GlossaryTab } from '@/pages/book-tabs/GlossaryTab';
 import { SettingsTab } from '@/pages/book-tabs/SettingsTab';
 import { WikiTab } from '@/pages/book-tabs/WikiTab';
 import { SharingTab } from '@/pages/book-tabs/SharingTab';
+import { EnrichmentTab } from '@/pages/book-tabs/EnrichmentTab';
 
 const tabs = [
-  { key: '', label: 'Chapters' },
-  { key: '/translation', label: 'Translation' },
-  { key: '/glossary', label: 'Glossary' },
-  { key: '/wiki', label: 'Wiki' },
-  { key: '/sharing', label: 'Sharing' },
-  { key: '/settings', label: 'Settings' },
+  { key: '', labelKey: 'detail.tabs.chapters' },
+  { key: '/translation', labelKey: 'detail.tabs.translation' },
+  { key: '/glossary', labelKey: 'detail.tabs.glossary' },
+  { key: '/enrichment', labelKey: 'detail.tabs.enrichment' },
+  { key: '/wiki', labelKey: 'detail.tabs.wiki' },
+  { key: '/sharing', labelKey: 'detail.tabs.sharing' },
+  { key: '/settings', labelKey: 'detail.tabs.settings' },
 ];
 
 export function BookDetailPage() {
@@ -65,7 +67,7 @@ export function BookDetailPage() {
   }
 
   if (error || !book) {
-    return <p className="text-sm text-destructive">{(error as Error)?.message || 'Book not found'}</p>;
+    return <p className="text-sm text-destructive">{(error as Error)?.message || t('detail.not_found')}</p>;
   }
 
   // Determine active tab from URL
@@ -88,13 +90,13 @@ export function BookDetailPage() {
             {book.updated_at && (
               <>
                 <span className="text-border">·</span>
-                <span>Updated {new Date(book.updated_at).toLocaleDateString()}</span>
+                <span>{t('detail.updated', { date: new Date(book.updated_at).toLocaleDateString() })}</span>
               </>
             )}
             {bookStats && bookStats.total_readers > 0 && (
               <>
                 <span className="text-border">·</span>
-                <span>{bookStats.total_readers} {bookStats.total_readers === 1 ? 'reader' : 'readers'}</span>
+                <span>{t('detail.readers', { count: bookStats.total_readers })}</span>
               </>
             )}
           </span>
@@ -102,6 +104,14 @@ export function BookDetailPage() {
         actions={
           <div className="flex items-center gap-2">
             {book.visibility && <StatusBadge variant={book.visibility} />}
+            <Link
+              to={`/books/${bookId}/search`}
+              aria-label={t('rawSearch:title')}
+              title={t('rawSearch:title')}
+              className="inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <Search className="h-3.5 w-3.5" />
+            </Link>
             <button
               onClick={() => setTrashOpen(true)}
               className="inline-flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
@@ -129,7 +139,7 @@ export function BookDetailPage() {
                     : 'border-transparent text-muted-foreground hover:text-foreground',
                 )}
               >
-                {tab.label}
+                {t(tab.labelKey)}
               </Link>
             ))}
           </div>
@@ -144,9 +154,9 @@ export function BookDetailPage() {
       <ConfirmDialog
         open={trashOpen}
         onOpenChange={setTrashOpen}
-        title="Move to trash?"
-        description={`"${book.title}" and all chapters will be moved to trash. You can restore within 30 days.`}
-        confirmLabel="Move to Trash"
+        title={t('detail.trash_confirm.title')}
+        description={t('detail.trash_confirm.description', { title: book.title })}
+        confirmLabel={t('detail.trash_confirm.confirm')}
         variant="destructive"
         onConfirm={() => void handleTrash()}
       />
@@ -181,6 +191,11 @@ function BookTabContent({ bookId, book, activeTab, onReload }: {
       {visited.has('/glossary') && (
         <div style={{ display: activeTab === '/glossary' ? undefined : 'none' }}>
           <GlossaryTab bookId={bookId} bookGenreTags={book.genre_tags ?? []} bookOriginalLanguage={book.original_language ?? undefined} />
+        </div>
+      )}
+      {visited.has('/enrichment') && (
+        <div style={{ display: activeTab === '/enrichment' ? undefined : 'none' }}>
+          <EnrichmentTab bookId={bookId} />
         </div>
       )}
       {visited.has('/wiki') && (

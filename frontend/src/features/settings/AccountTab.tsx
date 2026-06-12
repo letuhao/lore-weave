@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Save, AlertTriangle, Eye, EyeOff, Mail, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -7,6 +8,7 @@ import { ConfirmDialog } from '@/components/shared';
 import { accountApi, type Profile } from './api';
 
 export function AccountTab() {
+  const { t } = useTranslation('settings');
   const { accessToken, updateUser } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -19,11 +21,11 @@ export function AccountTab() {
     if (!accessToken) return;
     try {
       await accountApi.deleteAccount(accessToken);
-      toast.success('Account deleted');
+      toast.success(t('account.toast.deleted'));
       localStorage.removeItem('lw_auth');
       window.location.href = '/login';
     } catch {
-      toast.error('Failed to delete account');
+      toast.error(t('account.toast.delete_failed'));
     }
   };
 
@@ -49,7 +51,7 @@ export function AccountTab() {
       setProfile(p);
       setDisplayName(p.display_name ?? '');
     }).catch(() => {
-      if (!cancelled) toast.error('Failed to load profile');
+      if (!cancelled) toast.error(t('account.toast.load_failed'));
     }).finally(() => {
       if (!cancelled) setLoading(false);
     });
@@ -63,9 +65,9 @@ export function AccountTab() {
       const updated = await accountApi.patchProfile(accessToken, { display_name: displayName });
       setProfile(updated);
       updateUser({ display_name: updated.display_name });
-      toast.success('Profile updated');
+      toast.success(t('account.toast.updated'));
     } catch {
-      toast.error('Failed to save profile');
+      toast.error(t('account.toast.save_failed'));
     } finally {
       setSaving(false);
     }
@@ -73,16 +75,16 @@ export function AccountTab() {
 
   async function handleChangePassword() {
     if (!accessToken) return;
-    if (newPw !== confirmPw) { toast.error('Passwords do not match'); return; }
-    if (newPw.length < 8) { toast.error('Password must be at least 8 characters'); return; }
+    if (newPw !== confirmPw) { toast.error(t('account.toast.pw_mismatch')); return; }
+    if (newPw.length < 8) { toast.error(t('account.toast.pw_too_short')); return; }
     setPwSaving(true);
     try {
       await accountApi.changePassword(accessToken, { current_password: currentPw, new_password: newPw });
-      toast.success('Password changed');
+      toast.success(t('account.toast.pw_changed'));
       setShowPwForm(false);
       setCurrentPw(''); setNewPw(''); setConfirmPw('');
     } catch (e) {
-      toast.error((e as Error).message || 'Failed to change password');
+      toast.error((e as Error).message || t('account.toast.pw_change_failed'));
     } finally {
       setPwSaving(false);
     }
@@ -94,9 +96,9 @@ export function AccountTab() {
     try {
       await accountApi.requestVerifyEmail(accessToken);
       setVerifyStep('sent');
-      toast.success('Verification email sent — check your inbox');
+      toast.success(t('account.toast.verify_sent'));
     } catch (e) {
-      toast.error((e as Error).message || 'Failed to send verification email');
+      toast.error((e as Error).message || t('account.toast.verify_send_failed'));
     } finally {
       setVerifySending(false);
     }
@@ -110,9 +112,9 @@ export function AccountTab() {
       setProfile((p) => p ? { ...p, email_verified: true } : p);
       setVerifyStep('idle');
       setVerifyToken('');
-      toast.success('Email verified successfully');
+      toast.success(t('account.toast.email_verified'));
     } catch (e) {
-      toast.error((e as Error).message || 'Verification failed');
+      toast.error((e as Error).message || t('account.toast.verify_failed'));
     } finally {
       setVerifySending(false);
     }
@@ -132,11 +134,11 @@ export function AccountTab() {
     <div className="space-y-0">
       {/* Profile section */}
       <div className="border-b py-5">
-        <h2 className="text-sm font-semibold">Account</h2>
-        <p className="mb-4 text-xs text-muted-foreground">Manage your profile and login credentials.</p>
+        <h2 className="text-sm font-semibold">{t('account.heading')}</h2>
+        <p className="mb-4 text-xs text-muted-foreground">{t('account.subtitle')}</p>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs font-medium">Display Name</label>
+            <label className="mb-1 block text-xs font-medium">{t('account.display_name')}</label>
             <input
               type="text"
               value={displayName}
@@ -145,7 +147,7 @@ export function AccountTab() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium">Email</label>
+            <label className="mb-1 block text-xs font-medium">{t('account.email')}</label>
             <input
               type="email"
               value={profile?.email ?? ''}
@@ -154,7 +156,7 @@ export function AccountTab() {
             />
             {profile?.email_verified ? (
               <p className="mt-1 flex items-center gap-1 text-[10px] text-green-500">
-                <CheckCircle className="h-3 w-3" /> Verified
+                <CheckCircle className="h-3 w-3" /> {t('account.verified')}
               </p>
             ) : profile ? (
               <div className="mt-1.5">
@@ -165,14 +167,14 @@ export function AccountTab() {
                     className="flex items-center gap-1 text-[10px] font-medium text-yellow-500 hover:text-yellow-400"
                   >
                     <Mail className="h-3 w-3" />
-                    {verifySending ? 'Sending...' : 'Verify email'}
+                    {verifySending ? t('account.sending') : t('account.verify_email')}
                   </button>
                 )}
                 {verifyStep === 'sent' && (
                   <div className="space-y-1.5">
-                    <p className="text-[10px] text-green-500">Verification email sent — check your inbox</p>
+                    <p className="text-[10px] text-green-500">{t('account.verify_sent_line')}</p>
                     <button onClick={() => setVerifyStep('confirm')} className="text-[10px] font-medium text-primary hover:underline">
-                      Enter verification token
+                      {t('account.enter_token')}
                     </button>
                   </div>
                 )}
@@ -182,7 +184,7 @@ export function AccountTab() {
                       type="text"
                       value={verifyToken}
                       onChange={(e) => setVerifyToken(e.target.value)}
-                      placeholder="Paste token from email..."
+                      placeholder={t('account.token_placeholder')}
                       autoComplete="off"
                       className="h-7 w-48 rounded border bg-background px-2 text-[11px] focus:border-ring focus:outline-none"
                     />
@@ -191,10 +193,10 @@ export function AccountTab() {
                       disabled={verifySending || !verifyToken.trim()}
                       className="rounded bg-primary px-2 py-1 text-[10px] font-medium text-primary-foreground disabled:opacity-50"
                     >
-                      {verifySending ? '...' : 'Confirm'}
+                      {verifySending ? '...' : t('account.confirm')}
                     </button>
                     <button onClick={() => { setVerifyStep('idle'); setVerifyToken(''); }} className="text-[10px] text-muted-foreground hover:text-foreground">
-                      Cancel
+                      {t('account.cancel')}
                     </button>
                   </div>
                 )}
@@ -207,7 +209,7 @@ export function AccountTab() {
             onClick={() => setShowPwForm(!showPwForm)}
             className="rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-secondary"
           >
-            Change Password
+            {t('account.change_password')}
           </button>
           <button
             onClick={handleSaveProfile}
@@ -215,7 +217,7 @@ export function AccountTab() {
             className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:brightness-110 disabled:opacity-50"
           >
             <Save className="h-3 w-3" />
-            {saving ? 'Saving...' : 'Save Changes'}
+            {saving ? t('account.saving') : t('account.save_changes')}
           </button>
         </div>
       </div>
@@ -223,10 +225,10 @@ export function AccountTab() {
       {/* Change password form */}
       {showPwForm && (
         <div className="border-b py-5">
-          <h2 className="mb-3 text-sm font-semibold">Change Password</h2>
+          <h2 className="mb-3 text-sm font-semibold">{t('account.pw_heading')}</h2>
           <div className="max-w-sm space-y-3">
             <div>
-              <label className="mb-1 block text-xs font-medium">Current Password</label>
+              <label className="mb-1 block text-xs font-medium">{t('account.current_pw')}</label>
               <div className="relative">
                 <input
                   type={showCurrent ? 'text' : 'password'}
@@ -235,13 +237,13 @@ export function AccountTab() {
                   autoComplete="current-password"
                   className="h-9 w-full rounded-md border bg-background px-3 pr-9 font-mono text-[13px] tracking-wider focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
                 />
-                <button onClick={() => setShowCurrent(!showCurrent)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground" aria-label="Toggle password visibility">
+                <button onClick={() => setShowCurrent(!showCurrent)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground" aria-label={t('account.toggle_pw_aria')}>
                   {showCurrent ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                 </button>
               </div>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium">New Password</label>
+              <label className="mb-1 block text-xs font-medium">{t('account.new_pw')}</label>
               <div className="relative">
                 <input
                   type={showNew ? 'text' : 'password'}
@@ -250,13 +252,13 @@ export function AccountTab() {
                   autoComplete="new-password"
                   className="h-9 w-full rounded-md border bg-background px-3 pr-9 font-mono text-[13px] tracking-wider focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
                 />
-                <button onClick={() => setShowNew(!showNew)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground" aria-label="Toggle password visibility">
+                <button onClick={() => setShowNew(!showNew)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground" aria-label={t('account.toggle_pw_aria')}>
                   {showNew ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                 </button>
               </div>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium">Confirm New Password</label>
+              <label className="mb-1 block text-xs font-medium">{t('account.confirm_new_pw')}</label>
               <input
                 type="password"
                 value={confirmPw}
@@ -273,7 +275,7 @@ export function AccountTab() {
               disabled={pwSaving || !currentPw || !newPw || newPw !== confirmPw}
               className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
             >
-              {pwSaving ? 'Changing...' : 'Update Password'}
+              {pwSaving ? t('account.changing') : t('account.update_password')}
             </button>
           </div>
         </div>
@@ -281,19 +283,19 @@ export function AccountTab() {
 
       {/* Danger zone */}
       <div className="py-5">
-        <h2 className="text-sm font-semibold text-destructive">Danger Zone</h2>
-        <p className="mb-4 text-xs text-muted-foreground">Irreversible actions. Be careful.</p>
+        <h2 className="text-sm font-semibold text-destructive">{t('account.danger_zone')}</h2>
+        <p className="mb-4 text-xs text-muted-foreground">{t('account.danger_subtitle')}</p>
         <div className="flex items-center justify-between rounded-md border border-destructive/20 px-4 py-3">
           <div>
-            <span className="text-[13px] font-medium">Delete Account</span>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">Permanently delete your account and all data. This cannot be undone.</p>
+            <span className="text-[13px] font-medium">{t('account.delete_account')}</span>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">{t('account.delete_desc')}</p>
           </div>
           <button
             onClick={() => setDeleteOpen(true)}
             className="flex items-center gap-1.5 rounded-md border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10"
           >
             <AlertTriangle className="h-3 w-3" />
-            Delete Account
+            {t('account.delete_account')}
           </button>
         </div>
       </div>
@@ -301,9 +303,9 @@ export function AccountTab() {
         <ConfirmDialog
           open
           onOpenChange={(v) => { if (!v) setDeleteOpen(false); }}
-          title="Delete Account"
-          description="This will permanently delete your account, revoke all sessions, and log you out. This cannot be undone."
-          confirmLabel="Delete My Account"
+          title={t('account.delete_dialog_title')}
+          description={t('account.delete_dialog_desc')}
+          confirmLabel={t('account.delete_confirm_label')}
           variant="destructive"
           onConfirm={handleDeleteAccount}
         />

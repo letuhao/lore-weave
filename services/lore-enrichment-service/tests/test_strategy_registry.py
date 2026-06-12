@@ -58,8 +58,10 @@ def _full_registry(flags=None) -> StrategyRegistry:
 
 # ── feature-flag defaults (Q-R2: P1 active, P2/P3 inactive) ───────────────────
 def test_default_active_set_is_exactly_p1() -> None:
+    # P1 (active by default) = template + retrieval + compose_draft (Compose mode D,
+    # ungated — it expands the author's own draft). Derived from the tier table.
     assert DEFAULT_ACTIVE_TECHNIQUES == frozenset(
-        {Technique.TEMPLATE, Technique.RETRIEVAL}
+        {Technique.TEMPLATE, Technique.RETRIEVAL, Technique.COMPOSE_DRAFT}
     )
     # and those are exactly the P1 tier
     assert all(t.tier is Tier.P1 for t in DEFAULT_ACTIVE_TECHNIQUES)
@@ -112,11 +114,14 @@ def test_list_active_excludes_inactive() -> None:
     reg = _full_registry()
     active = reg.list_active()
     keys = {s.technique for s in active}
-    assert keys == {Technique.TEMPLATE, Technique.RETRIEVAL}
+    # P1 default-active set: template + retrieval + compose_draft (mode D, ungated).
+    assert keys == {Technique.TEMPLATE, Technique.RETRIEVAL, Technique.COMPOSE_DRAFT}
     assert Technique.FABRICATION not in keys
     assert Technique.RECOOK not in keys
-    # deterministic order = Technique declaration order
-    assert [s.technique for s in active] == [Technique.TEMPLATE, Technique.RETRIEVAL]
+    # deterministic order = Technique declaration order (compose_draft is declared last)
+    assert [s.technique for s in active] == [
+        Technique.TEMPLATE, Technique.RETRIEVAL, Technique.COMPOSE_DRAFT
+    ]
 
 
 def test_list_registered_shows_all_but_does_not_imply_selectable() -> None:

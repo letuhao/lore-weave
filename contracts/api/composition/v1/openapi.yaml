@@ -1,0 +1,498 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Composition Service (LOOM Co-writer)
+  version: 0.0.0-v0
+  description: >
+    Composition V0 — the lore-grounded co-writer. All routes are proxied by
+    api-gateway-bff under /v1/composition and are JWT user-scoped (cross-user =
+    404). Prose I/O proxies book-service (decision B); generation/outline/canon/
+    grounding are FE↔composition. Contract-first, additive — frozen before the
+    M8 FE. This describes the M0–M7 surface; request/response objects carry the
+    load-bearing fields, not every column.
+servers:
+  - url: /v1/composition
+security:
+  - bearerAuth: []
+tags:
+  - name: work
+  - name: prose
+  - name: outline
+  - name: canon
+  - name: grounding
+  - name: engine
+
+paths:
+  /books/{book_id}/work:
+    get:
+      tags: [work]
+      summary: Resolve the Work for a book (§6.2 prefers-marked)
+      parameters: [{ $ref: '#/components/parameters/BookId' }]
+      responses:
+        '200':
+          description: Resolution result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkResolution' }
+    post:
+      tags: [work]
+      summary: Confirm-create a Work (ensure knowledge project + composition_work)
+      description: >
+        PLANNED — not yet implemented (D-COMP-POST-WORK-CREATE). Needs a
+        knowledge ProjectCreate client; the M8 FE create-Work flow consumes it.
+      parameters: [{ $ref: '#/components/parameters/BookId' }]
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Work' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /works/{project_id}:
+    get:
+      tags: [work]
+      parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+      responses:
+        '200': { description: Work, content: { application/json: { schema: { $ref: '#/components/schemas/Work' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [work]
+      parameters:
+        - { $ref: '#/components/parameters/ProjectId' }
+        - { $ref: '#/components/parameters/IfMatch' }
+      requestBody:
+        content: { application/json: { schema: { $ref: '#/components/schemas/WorkPatch' } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Work' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/VersionConflict' }
+
+  /works/{project_id}/chapters/{chapter_id}/prose:
+    get:
+      tags: [prose]
+      summary: Read the canonical chapter DRAFT (proxied to book-service)
+      parameters:
+        - { $ref: '#/components/parameters/ProjectId' }
+        - { $ref: '#/components/parameters/ChapterId' }
+      responses:
+        '200': { description: Draft + draft_version + base_revision_id, content: { application/json: { schema: { $ref: '#/components/schemas/Prose' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '502': { $ref: '#/components/responses/Upstream' }
+    put:
+      tags: [prose]
+      summary: Write the chapter DRAFT only (no canonization; mandatory expected_draft_version → 409)
+      parameters:
+        - { $ref: '#/components/parameters/ProjectId' }
+        - { $ref: '#/components/parameters/ChapterId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body, expected_draft_version]
+              properties:
+                body: { type: object, description: TipTap doc (JSON object) }
+                expected_draft_version: { type: integer, description: from the prior GET (OI-2/PS2) }
+                body_format: { type: string }
+                commit_message: { type: string }
+      responses:
+        '200': { description: Updated draft, content: { application/json: { schema: { $ref: '#/components/schemas/Prose' } } } }
+        '409': { description: CHAPTER_DRAFT_CONFLICT (stale draft_version) }
+        '422': { description: expected_draft_version missing }
+
+  /works/{project_id}/outline:
+    get:
+      tags: [outline]
+      parameters:
+        - { $ref: '#/components/parameters/ProjectId' }
+        - { name: include_archived, in: query, schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: Tree + scene-links
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes: { type: array, items: { $ref: '#/components/schemas/OutlineNode' } }
+                  scene_links: { type: array, items: { $ref: '#/components/schemas/SceneLink' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /works/{project_id}/outline/nodes:
+    post:
+      tags: [outline]
+      parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+      requestBody:
+        content: { application/json: { schema: { $ref: '#/components/schemas/NodeCreate' } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/OutlineNode' } } } }
+        '400': { description: BAD_REFERENCE / CONSTRAINT }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /outline/nodes/{node_id}:
+    patch:
+      tags: [outline]
+      parameters:
+        - { name: node_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/IfMatch' }
+      requestBody:
+        content: { application/json: { schema: { $ref: '#/components/schemas/NodePatch' } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/OutlineNode' } } } }
+        '400': { description: BAD_REFERENCE (cross-scope parent / reparent cycle) }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/VersionConflict' }
+    delete:
+      tags: [outline]
+      summary: Soft-archive the node + its descendants
+      parameters: [{ name: node_id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Archived, content: { application/json: { schema: { $ref: '#/components/schemas/OutlineNode' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /works/{project_id}/scene-links:
+    post:
+      tags: [outline]
+      parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from_node_id, to_node_id]
+              properties:
+                from_node_id: { type: string, format: uuid }
+                to_node_id: { type: string, format: uuid }
+                kind: { type: string, enum: [setup_payoff, custom] }
+                label: { type: string }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/SceneLink' } } } }
+        '400': { description: BAD_REFERENCE (endpoint not owned / not in project) }
+        '409': { description: SCENE_LINK_EXISTS }
+
+  /scene-links/{link_id}:
+    delete:
+      tags: [outline]
+      parameters: [{ name: link_id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '204': { description: Deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /works/{project_id}/canon-rules:
+    get:
+      tags: [canon]
+      parameters:
+        - { $ref: '#/components/parameters/ProjectId' }
+        - { name: active_only, in: query, schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: Rules
+          content: { application/json: { schema: { type: object, properties: { rules: { type: array, items: { $ref: '#/components/schemas/CanonRule' } } } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [canon]
+      parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+      requestBody:
+        content: { application/json: { schema: { $ref: '#/components/schemas/CanonRuleCreate' } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/CanonRule' } } } }
+        '400': { description: CANON_WINDOW_INVERTED (from_order > until_order) }
+
+  /canon-rules/{rule_id}:
+    patch:
+      tags: [canon]
+      parameters:
+        - { name: rule_id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/IfMatch' }
+      requestBody:
+        content: { application/json: { schema: { $ref: '#/components/schemas/CanonRuleCreate' } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/CanonRule' } } } }
+        '400': { description: CANON_WINDOW_INVERTED }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/VersionConflict' }
+    delete:
+      tags: [canon]
+      summary: Soft-archive the rule
+      parameters: [{ name: rule_id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Archived, content: { application/json: { schema: { $ref: '#/components/schemas/CanonRule' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /templates:
+    get:
+      tags: [canon]
+      summary: List structure templates (built-in + user's)
+      responses:
+        '200':
+          description: Templates
+          content: { application/json: { schema: { type: object, properties: { templates: { type: array, items: { $ref: '#/components/schemas/StructureTemplate' } } } } } }
+
+  /works/{project_id}/scenes/{node_id}/grounding:
+    get:
+      tags: [grounding]
+      summary: Packed-context preview for a scene (the RAG packer)
+      parameters:
+        - { $ref: '#/components/parameters/ProjectId' }
+        - { $ref: '#/components/parameters/NodeId' }
+        - { name: guide, in: query, schema: { type: string } }
+      responses:
+        '200': { description: Packed context, content: { application/json: { schema: { $ref: '#/components/schemas/Grounding' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '502': { $ref: '#/components/responses/Upstream' }
+
+  /works/{project_id}/generate:
+    post:
+      tags: [engine]
+      summary: Co-write — stream a draft (text/event-stream)
+      description: >
+        Retrieve (packer) → budget pre-check → cancel in-flight for the node +
+        idempotency → stream tokens → meter real usage → persist the job. The
+        response is an SSE stream of {type: job|token|reasoning|capped|error|done}.
+      parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/GenerateRequest' } } }
+      responses:
+        '200':
+          description: SSE token stream
+          content: { text/event-stream: { schema: { type: string } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { description: PROMPT_TOO_LARGE }
+        '422': { description: invalid model_source / mode }
+
+  /works/{project_id}/scenes/{node_id}/suggest-cast:
+    post:
+      tags: [engine]
+      summary: AI-suggest present_entity_ids from the beat/guide
+      parameters:
+        - { $ref: '#/components/parameters/ProjectId' }
+        - { $ref: '#/components/parameters/NodeId' }
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { guide: { type: string } } } } }
+      responses:
+        '200': { description: Suggested ids, content: { application/json: { schema: { type: object, properties: { suggested_entity_ids: { type: array, items: { type: string, format: uuid } } } } } } }
+
+  /jobs/{job_id}:
+    get:
+      tags: [engine]
+      parameters: [{ name: job_id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Job, content: { application/json: { schema: { $ref: '#/components/schemas/GenerationJob' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /jobs/{job_id}/critique:
+    post:
+      tags: [engine]
+      summary: Advisory judge_prose critique (distinct critic model from work settings)
+      parameters: [{ name: job_id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_revision_id]
+              properties:
+                target_revision_id: { type: string, format: uuid }
+                passage: { type: string }
+      responses:
+        '200': { description: Critic result (or null + warning if no distinct critic configured), content: { application/json: { schema: { type: object, properties: { critic: { $ref: '#/components/schemas/Critic' }, warning: { type: string } } } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /jobs/{job_id}/dismiss-violation:
+    post:
+      tags: [engine]
+      parameters: [{ name: job_id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        content: { application/json: { schema: { type: object, required: [rule_id], properties: { rule_id: { type: string } } } } }
+      responses:
+        '200': { description: Updated critic, content: { application/json: { schema: { type: object, properties: { critic: { $ref: '#/components/schemas/Critic' } } } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    BookId: { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+    ProjectId: { name: project_id, in: path, required: true, schema: { type: string, format: uuid } }
+    ChapterId: { name: chapter_id, in: path, required: true, schema: { type: string, format: uuid } }
+    NodeId: { name: node_id, in: path, required: true, schema: { type: string, format: uuid } }
+    IfMatch: { name: If-Match, in: header, required: false, schema: { type: integer }, description: optimistic-concurrency version }
+  responses:
+    NotFound: { description: Not found (also cross-user — no enumeration leak) }
+    VersionConflict: { description: 412 — version mismatch; body carries the current row }
+    Upstream: { description: 502 — an upstream service (book) was unreachable }
+  schemas:
+    WorkResolution:
+      type: object
+      properties:
+        status: { type: string, enum: [found, candidates, unmarked_single, unmarked_candidates, none, unavailable] }
+        work: { $ref: '#/components/schemas/Work' }
+        candidates: { type: array, items: { $ref: '#/components/schemas/Work' } }
+        book_project_id: { type: string, format: uuid, nullable: true }
+        book_project_ids: { type: array, items: { type: string, format: uuid } }
+    Work:
+      type: object
+      properties:
+        project_id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        book_id: { type: string, format: uuid }
+        active_template_id: { type: string, format: uuid, nullable: true }
+        status: { type: string, enum: [active, archived] }
+        settings: { type: object }
+        version: { type: integer }
+    WorkPatch:
+      type: object
+      properties:
+        active_template_id: { type: string, format: uuid, nullable: true }
+        status: { type: string, enum: [active, archived] }
+        settings: { type: object }
+    Prose:
+      type: object
+      properties:
+        chapter_id: { type: string, format: uuid }
+        body: { type: object }
+        draft_version: { type: integer }
+        base_revision_id: { type: string, format: uuid, nullable: true }
+        text_content: { type: string, nullable: true }
+    OutlineNode:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        parent_id: { type: string, format: uuid, nullable: true }
+        kind: { type: string, enum: [arc, chapter, scene, beat] }
+        rank: { type: string }
+        title: { type: string }
+        present_entity_ids: { type: array, items: { type: string, format: uuid } }
+        beat_role: { type: string, nullable: true }
+        status: { type: string, enum: [empty, outline, drafting, done] }
+        chapter_id: { type: string, format: uuid, nullable: true }
+        story_order: { type: integer, nullable: true }
+        synopsis: { type: string }
+        version: { type: integer }
+    NodeCreate:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [arc, chapter, scene, beat] }
+        parent_id: { type: string, format: uuid, nullable: true }
+        rank: { type: string, nullable: true }
+        title: { type: string }
+        chapter_id: { type: string, format: uuid, nullable: true, description: required for kind chapter|scene }
+        story_order: { type: integer, nullable: true }
+        synopsis: { type: string }
+    NodePatch:
+      type: object
+      description: partial — only provided fields change; parent_id reparent is cycle/ownership guarded
+      properties:
+        title: { type: string }
+        status: { type: string, enum: [empty, outline, drafting, done] }
+        parent_id: { type: string, format: uuid, nullable: true }
+        rank: { type: string }
+        story_order: { type: integer, nullable: true }
+        synopsis: { type: string }
+    SceneLink:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        from_node_id: { type: string, format: uuid }
+        to_node_id: { type: string, format: uuid }
+        kind: { type: string, enum: [setup_payoff, custom] }
+        label: { type: string }
+    CanonRule:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        text: { type: string }
+        scope: { type: string, enum: [world, entity, reveal_gate] }
+        entity_id: { type: string, format: uuid, nullable: true }
+        from_order: { type: integer, nullable: true }
+        until_order: { type: integer, nullable: true }
+        active: { type: boolean }
+        version: { type: integer }
+    CanonRuleCreate:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string }
+        scope: { type: string, enum: [world, entity, reveal_gate] }
+        entity_id: { type: string, format: uuid, nullable: true }
+        from_order: { type: integer, nullable: true }
+        until_order: { type: integer, nullable: true }
+        kind: { type: string, nullable: true }
+    StructureTemplate:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        owner_user_id: { type: string, format: uuid, nullable: true }
+        name: { type: string }
+        kind: { type: string }
+        beats: { type: array, items: { type: object } }
+    Grounding:
+      type: object
+      properties:
+        blocks: { type: object, additionalProperties: { type: string } }
+        prompt: { type: string }
+        profile: { type: object }
+        token_count: { type: integer }
+        grounding_available: { type: boolean }
+        l4_dropped_no_position: { type: integer }
+        warnings: { type: array, items: { type: string } }
+    GenerateRequest:
+      type: object
+      required: [outline_node_id, model_source, model_ref]
+      properties:
+        outline_node_id: { type: string, format: uuid }
+        model_source: { type: string, enum: [user_model, platform_model] }
+        model_ref: { type: string, format: uuid }
+        operation: { type: string }
+        mode: { type: string, enum: [cowrite, auto] }
+        guide: { type: string }
+        max_output_tokens: { type: integer }
+        reasoning:
+          type: string
+          enum: [off, auto, low, medium, high]
+          default: auto
+          description: >
+            Author reasoning ("thinking") preference. "auto" → the server resolves
+            it per the selected model (adaptive → pass through; reasoning model →
+            rule-based scorer over the scene's canon/entity/tension signals;
+            non-reasoning → no-op). off/low/medium/high are explicit overrides. The
+            resolved {reasoning_source, reasoning_effort} are echoed in the SSE
+            `job` frame.
+        model_kind:
+          type: string
+          nullable: true
+          description: Selected model's provider_kind hint (anthropic, lm_studio, …) — lets the resolver pick the auto strategy per the registered model.
+        model_name:
+          type: string
+          nullable: true
+          description: Selected model's provider_model_name hint.
+        idempotency_key: { type: string, nullable: true }
+    GenerationJob:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        outline_node_id: { type: string, format: uuid, nullable: true }
+        operation: { type: string }
+        status: { type: string, enum: [pending, running, completed, failed, cancelled] }
+        result: { type: object, nullable: true }
+        critic: { $ref: '#/components/schemas/Critic' }
+    Critic:
+      type: object
+      nullable: true
+      properties:
+        coherence: { type: integer, nullable: true }
+        voice_match: { type: integer, nullable: true }
+        pacing: { type: integer, nullable: true }
+        canon_consistency: { type: integer, nullable: true }
+        violations:
+          type: array
+          items:
+            type: object
+            properties:
+              rule_id: { type: string }
+              violated: { type: boolean }
+              span: { type: string }
+              why: { type: string }
+              dismissed: { type: boolean }
+        error: { type: string }

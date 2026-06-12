@@ -30,7 +30,7 @@ export function StepProgress({ jobId, onComplete }: StepProgressProps) {
     setCancelling(true);
     try {
       await extractionApi.cancelJob(jobId, accessToken);
-      toast.success('Cancellation requested');
+      toast.success(t('progress.cancelRequested'));
     } catch (e) {
       toast.error((e as Error).message);
     }

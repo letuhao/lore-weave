@@ -122,6 +122,19 @@ export type GenreGroup = {
   created_at: string;
 };
 
+// ── Kind-resolution review (unknown bucket + aliases) ────────────────────────
+// When extract-entities can't resolve an incoming kind_code, the entity is parked
+// under the 'unknown' system kind (never dropped) and remembers the code it arrived
+// as in source_kind_code. These types back the author's triage GUI.
+
+export type UnknownEntity = {
+  entity_id: string;
+  name: string;
+  source_kind_code: string | null;
+  status: string;
+  created_at: string;
+};
+
 export type EntityNameEntry = {
   entity_id: string;
   display_name: string;
@@ -129,6 +142,45 @@ export type EntityNameEntry = {
   kind_color?: string;
   kind_icon?: string;
   kind_name?: string;
+};
+
+// ── Merge candidates (mui #1c — coreference merge inbox) ─────────────────────
+// knowledge's coref detector proposes clusters of likely-same entities; the
+// author reviews here and confirms via the R5 merge endpoint (or dismisses).
+
+export type MergeCandidateMember = {
+  entity_id: string;
+  name: string;
+  aliases: string[];
+  chapter_link_count: number;
+};
+
+export type MergeCandidate = {
+  candidate_id: string;
+  kind_code: string;
+  score: number;
+  rationale: string;
+  evidence: unknown;
+  suggested_winner_entity_id?: string;
+  status: 'proposed' | 'dismissed' | 'merged';
+  created_at: string;
+  members: MergeCandidateMember[];
+};
+
+export type MergeCandidateListResponse = {
+  candidates: MergeCandidate[];
+};
+
+export type MergeResultItem = {
+  loser_id: string;
+  journal_id?: string;
+  status: 'merged' | 'skipped' | 'failed';
+  reason?: string;
+};
+
+export type MergeResult = {
+  winner_id: string;
+  results: MergeResultItem[];
 };
 
 export type FilterState = {
@@ -215,4 +267,54 @@ export type PatchEvidencePayload = {
   chapter_index?: number | null;
   block_or_line?: string;
   note?: string | null;
+};
+
+// ── VG-3: entity revision history (D-GLOSSARY-VERSIONING) ────────────────────
+
+export type EntityRevisionSummary = {
+  revision_id: string;
+  revision_num: number;
+  op: string; // created | updated | restore | baseline | delete
+  actor_type: string; // user | pipeline | system
+  actor_id?: string;
+  created_at: string;
+};
+
+export type RevisionSnapshotTranslation = {
+  language_code: string;
+  value: string;
+  confidence?: string;
+};
+
+export type RevisionSnapshotEvidence = {
+  evidence_type?: string;
+  original_text?: string;
+  chapter_title?: string | null;
+};
+
+export type RevisionSnapshotAttribute = {
+  code?: string;
+  name?: string;
+  original_value?: string;
+  translations?: RevisionSnapshotTranslation[];
+  evidences?: RevisionSnapshotEvidence[];
+};
+
+export type RevisionSnapshotChapterLink = {
+  chapter_title?: string | null;
+  chapter_index?: number | null;
+  relevance?: string;
+};
+
+export type RevisionSnapshot = {
+  status?: string;
+  alive?: boolean;
+  tags?: string[];
+  kind?: { code?: string; name?: string };
+  attributes?: RevisionSnapshotAttribute[];
+  chapter_links?: RevisionSnapshotChapterLink[];
+};
+
+export type EntityRevisionDetail = EntityRevisionSummary & {
+  snapshot: RevisionSnapshot;
 };

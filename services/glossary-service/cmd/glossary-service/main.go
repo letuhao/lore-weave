@@ -15,6 +15,7 @@ import (
 
 	"github.com/loreweave/glossary-service/internal/api"
 	"github.com/loreweave/glossary-service/internal/config"
+	"github.com/loreweave/glossary-service/internal/events"
 	"github.com/loreweave/glossary-service/internal/migrate"
 	"github.com/loreweave/glossary-service/internal/shortdesc"
 )
@@ -72,6 +73,12 @@ func main() {
 	}
 	if err := migrate.Seed(ctx, pool); err != nil {
 		slog.Error("seed", "error", err)
+		os.Exit(1)
+	}
+	// Kind-alias epic E2: default aliases (faction→organization, generic→terminology).
+	// MUST run after Seed (it references the seeded kinds) — idempotent, every startup.
+	if err := migrate.SeedKindAliases(ctx, pool); err != nil {
+		slog.Error("seed kind-aliases", "error", err)
 		os.Exit(1)
 	}
 	if err := migrate.UpSnapshot(ctx, pool); err != nil {
@@ -133,6 +140,29 @@ func main() {
 		os.Exit(1)
 	}
 
+	// lore-enrichment supplement layer (F-C13-1 + F-C13-2 / PO ruling B1):
+	// enrichment content lives in its own table, FK→canonical entity, so it
+	// stays structurally distinct from the original authored canon
+	// (short_description). Runs after the entity table + short-desc migrations
+	// since it references glossary_entities(entity_id).
+	if err := migrate.UpEntityEnrichments(ctx, pool); err != nil {
+		slog.Error("migrate entity-enrichments", "error", err)
+		os.Exit(1)
+	}
+	if err := migrate.UpEntityMerge(ctx, pool); err != nil {
+		slog.Error("migrate entity-merge", "error", err)
+		os.Exit(1)
+	}
+	if err := migrate.UpMergeCandidates(ctx, pool); err != nil {
+		slog.Error("migrate merge-candidates", "error", err)
+		os.Exit(1)
+	}
+	// D-GLOSSARY-VERSIONING (VG-1): entity_revisions history store.
+	if err := migrate.UpEntityRevisions(ctx, pool); err != nil {
+		slog.Error("migrate entity-revisions", "error", err)
+		os.Exit(1)
+	}
+
 	// Run the short-description backfill in a background goroutine so
 	// the HTTP listener + healthcheck come up immediately. For a fresh
 	// DB this completes in milliseconds; for a catalogue with many
@@ -152,6 +182,30 @@ func main() {
 			slog.Info("backfill short-description complete", "processed", n)
 		}
 	}(ctx)
+
+	// VG-1: glossary entity versioning. Enabled only when REDIS_URL is set.
+	if cfg.RedisURL != "" {
+		// Baseline existing entities (protect their current state before any edit)
+		// in the background — a bulk INSERT…SELECT that must not block startup.
+		go func(bctx context.Context) {
+			if err := migrate.BackfillEntityRevisions(bctx, pool); err != nil {
+				slog.Warn("backfill entity-revisions failed (non-fatal)", "error", err)
+			}
+		}(ctx)
+		// Async revision-projection consumer off the event stream.
+		if rc, err := events.NewRevisionConsumer(pool, cfg.RedisURL); err != nil {
+			slog.Warn("revision-consumer init failed (history capture disabled)", "error", err)
+		} else if rc != nil {
+			go rc.Run(ctx)
+		}
+		// wiki-llm Phase-2 (§5.2) — wiki change-control capture: flags AI articles
+		// stale (ledger) when a source they were built from changes. Never regenerates.
+		if sc, err := events.NewStalenessConsumer(pool, cfg.RedisURL); err != nil {
+			slog.Warn("staleness-consumer init failed (wiki staleness capture disabled)", "error", err)
+		} else if sc != nil {
+			go sc.Run(ctx)
+		}
+	}
 
 	srv := api.NewServer(pool, cfg)
 	httpSrv := &http.Server{

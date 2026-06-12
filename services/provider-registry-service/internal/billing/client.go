@@ -162,6 +162,13 @@ type UsageRecord struct {
 	Operation    string // → /record `purpose`
 	InputTokens  int
 	OutputTokens int
+	// TotalCostUSD is the authoritative per-model cost (input×in_rate +
+	// output×out_rate from the model's Pricing), computed by the caller (the same
+	// `actual` it reconciles the reservation with). nil → usage-billing falls back
+	// to its flat per-token placeholder (back-compat / pricing-unresolved). Without
+	// this the audit ledger mis-bills: a flat rate under-counts cloud models (gpt-4o
+	// output is 4× input) AND wrongly charges local ($0) models.
+	TotalCostUSD *float64
 }
 
 // RecordUsage posts a model-level usage entry to usage-billing's
@@ -174,7 +181,7 @@ type UsageRecord struct {
 // usage-billing's stale provider_kind CHECK is dropped in the 6a-β migration
 // so an empty value is now accepted.
 func (c *GuardrailClient) RecordUsage(ctx context.Context, rec UsageRecord) error {
-	status, raw, err := c.post(ctx, "/internal/model-billing/record", map[string]any{
+	payload := map[string]any{
 		"request_id":     rec.RequestID,
 		"owner_user_id":  rec.OwnerUserID,
 		"provider_kind":  "",
@@ -184,7 +191,13 @@ func (c *GuardrailClient) RecordUsage(ctx context.Context, rec UsageRecord) erro
 		"output_tokens":  rec.OutputTokens,
 		"request_status": "success",
 		"purpose":        rec.Operation,
-	})
+	}
+	// Send the authoritative per-model cost when the caller resolved it; absent →
+	// usage-billing uses its flat fallback (back-compat).
+	if rec.TotalCostUSD != nil {
+		payload["total_cost_usd"] = *rec.TotalCostUSD
+	}
+	status, raw, err := c.post(ctx, "/internal/model-billing/record", payload)
 	if err != nil {
 		return err
 	}

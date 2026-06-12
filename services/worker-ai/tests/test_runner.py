@@ -17,11 +17,14 @@ from uuid import uuid4
 import pytest
 
 from app.clients import (
-    BookClient, ChapterInfo, ExtractionResult,
+    BookClient, ChapterHierarchy, ChapterInfo, ChatClient, ExtractionResult,
     GlossaryClient, GlossaryEntity, GlossaryPage, GlossarySyncResult,
-    KnowledgeClient,
+    HierarchyPart, HierarchyScene, KnowledgeClient, ProviderRegistryClient,
 )
-from app.runner import JobRow, process_job, poll_and_run, _get_running_jobs
+from app.runner import (
+    JobRow, process_job, poll_and_run, _get_running_jobs,
+    _enumerate_chapters, _ensure_chat_pending_jobs, _is_likely_reasoning_model,
+)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -47,17 +50,29 @@ def _job(**overrides) -> JobRow:
     return JobRow(**defaults)
 
 
-def _ok_result(source_id: str = "ch-1") -> ExtractionResult:
+class _FakeCandidates:
+    """Q4b-feed — minimal Pass2Candidates stand-in. `_extract_and_persist`
+    now returns (ExtractionResult, candidates); process_job unpacks the tuple.
+    Empty lists → project_items yields empty categories (and save_raw defaults
+    False in these tests, so the sample write is skipped anyway)."""
+    entities: list = []
+    relations: list = []
+    events: list = []
+    facts: list = []
+
+
+def _ok_result(source_id: str = "ch-1") -> tuple[ExtractionResult, _FakeCandidates]:
+    """Q4b-feed: returns the (result, candidates) tuple the chapter loop unpacks."""
     return ExtractionResult(
         source_id=source_id,
         entities_merged=2,
         relations_created=1,
         events_merged=1,
         facts_merged=3,
-    )
+    ), _FakeCandidates()
 
 
-def _error_result(retryable: bool = True) -> ExtractionResult:
+def _error_result(retryable: bool = True) -> tuple[ExtractionResult, None]:
     return ExtractionResult(
         source_id="ch-1",
         entities_merged=0,
@@ -66,7 +81,7 @@ def _error_result(retryable: bool = True) -> ExtractionResult:
         facts_merged=0,
         retryable=retryable,
         error="something broke",
-    )
+    ), None
 
 
 _TEST_BOOK_ID = uuid4()
@@ -87,6 +102,22 @@ def _mock_pool(book_id=_TEST_BOOK_ID):
     pool.execute = AsyncMock()
     # Default: no pending chat turns
     pool.fetch = AsyncMock(return_value=[])
+    # B2-A: the chapter-success/skip path advances the cursor + emits the
+    # extraction_run in ONE transaction via `async with pool.acquire() as conn,
+    # conn.transaction():`. Wire acquire()/transaction() as async context
+    # managers; the acquired conn SHARES pool.execute so existing
+    # call-inspection assertions still observe the cursor-advance (and the new
+    # INSERT INTO outbox_events).
+    conn = AsyncMock()
+    conn.execute = pool.execute
+    _txn = MagicMock()
+    _txn.__aenter__ = AsyncMock(return_value=None)
+    _txn.__aexit__ = AsyncMock(return_value=False)
+    conn.transaction = MagicMock(return_value=_txn)
+    _acq = MagicMock()
+    _acq.__aenter__ = AsyncMock(return_value=conn)
+    _acq.__aexit__ = AsyncMock(return_value=False)
+    pool.acquire = MagicMock(return_value=_acq)
     return pool
 
 
@@ -98,7 +129,12 @@ def _mock_knowledge_client():
     glossary_sync path which still goes through glossary_sync_entity).
     """
     client = AsyncMock(spec=KnowledgeClient)
-    client.persist_pass2 = AsyncMock(return_value=_ok_result())
+    # persist_pass2 returns a single ExtractionResult (NOT the tuple _ok_result
+    # now returns) — the real _extract_and_persist wraps it with candidates.
+    client.persist_pass2 = AsyncMock(return_value=ExtractionResult(
+        source_id="ch-1", entities_merged=2, relations_created=1,
+        events_merged=1, facts_merged=3,
+    ))
     return client
 
 
@@ -112,9 +148,33 @@ def _mock_llm_client():
 def _mock_book_client(chapters=None, text="Chapter text here."):
     client = AsyncMock(spec=BookClient)
     if chapters is None:
-        chapters = [ChapterInfo(chapter_id="ch-1", title="Ch 1", sort_order=1)]
+        # CM3c: a published chapter carries its pinned published_revision_id
+        # (→ ChapterInfo.revision_id), so the manual rebuild reads the pinned
+        # revision text via get_chapter_revision_text.
+        chapters = [ChapterInfo(
+            chapter_id="ch-1", title="Ch 1", sort_order=1, revision_id="rev-1",
+        )]
     client.list_chapters = AsyncMock(return_value=chapters)
     client.get_chapter_text = AsyncMock(return_value=text)
+    # CM3c: published chapters fetch the pinned revision; mirror `text` so
+    # text-unavailable (text=None) still exercises the skip path.
+    client.get_chapter_revision_text = AsyncMock(return_value=text)
+    return client
+
+
+def _mock_chat_client(text=""):
+    """FD-2 — mock ChatClient. Default get_turn_text returns "" (the chat path
+    degrades to a graceful no-op); pass `text` to exercise real chat extraction."""
+    client = AsyncMock(spec=ChatClient)
+    client.get_turn_text = AsyncMock(return_value=text or None)
+    return client
+
+
+def _mock_provider_client(model_name=None):
+    """FD-27 — mock ProviderRegistryClient. Default get_model_name returns None
+    (advisory off); pass a name to exercise the reasoning-model advisory."""
+    client = AsyncMock(spec=ProviderRegistryClient)
+    client.get_model_name = AsyncMock(return_value=model_name)
     return client
 
 
@@ -156,6 +216,84 @@ def _glossary_sync_ok(entity_id: str) -> GlossarySyncResult:
     )
 
 
+# ── S4a: process_job binds the owning campaign as a contextvar ───────
+
+
+@pytest.mark.asyncio
+@patch("app.runner.set_campaign_id")
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_process_job_binds_campaign_id_contextvar(mock_extract_persist, mock_set):
+    """The campaign on the job row is bound (as str) before any LLM call, so the
+    llm_client merge stamps it onto every provider job_meta. None → cleared."""
+    mock_extract_persist.return_value = _ok_result()
+    camp = uuid4()
+    job = _job(scope="chapters", campaign_id=camp)
+    await process_job(_mock_pool(), _mock_knowledge_client(), _mock_llm_client(),
+                      _mock_book_client(), _mock_glossary_client(),
+                      _mock_chat_client(), _mock_provider_client(), job)
+    mock_set.assert_called_once_with(str(camp))
+
+
+@pytest.mark.asyncio
+@patch("app.runner.set_campaign_id")
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_process_job_clears_campaign_id_when_none(mock_extract_persist, mock_set):
+    """A non-campaign job clears the contextvar (None) so it can't inherit a
+    previous job's campaign on a reused task."""
+    mock_extract_persist.return_value = _ok_result()
+    await process_job(_mock_pool(), _mock_knowledge_client(), _mock_llm_client(),
+                      _mock_book_client(), _mock_glossary_client(),
+                      _mock_chat_client(), _mock_provider_client(), _job(scope="chapters"))
+    mock_set.assert_called_once_with(None)
+
+
+# ── E0-3 Phase 2a: fail-safe wiring into process_job (review-impl MED-2) ──
+
+
+@pytest.mark.asyncio
+@patch("app.runner._fail_job", new_callable=AsyncMock)
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_process_job_fails_job_on_partial_billing_identity(
+    mock_extract_persist, mock_fail_job
+):
+    """A job with billing_user_id but a missing billing ref must be FAILED (not
+    crash the poll loop, not silently run on the owner's key). Proves the
+    assert_billing_complete fail-safe is wired INSIDE process_job's try so the
+    existing except→_fail_job handler catches it — and that no extraction (no
+    provider call) happens first."""
+    job = _job(
+        scope="chapters",
+        billing_user_id=uuid4(),
+        billing_llm_model=None,  # partial → fail-safe must trip
+        billing_embedding_model="collab-emb",
+    )
+    await process_job(_mock_pool(), _mock_knowledge_client(), _mock_llm_client(),
+                      _mock_book_client(), _mock_glossary_client(),
+                      _mock_chat_client(), _mock_provider_client(), job)
+    # Job failed via the fail-safe; no provider call was made.
+    mock_fail_job.assert_awaited_once()
+    assert job.job_id in mock_fail_job.call_args.args
+    mock_extract_persist.assert_not_called()
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_process_job_runs_normally_with_complete_billing(mock_extract_persist):
+    """The mirror: a complete billing identity passes the fail-safe and proceeds
+    to extraction (the collaborator path actually runs)."""
+    mock_extract_persist.return_value = _ok_result()
+    job = _job(
+        scope="chapters",
+        billing_user_id=uuid4(),
+        billing_llm_model="collab-llm",
+        billing_embedding_model="collab-emb",
+    )
+    await process_job(_mock_pool(), _mock_knowledge_client(), _mock_llm_client(),
+                      _mock_book_client(), _mock_glossary_client(),
+                      _mock_chat_client(), _mock_provider_client(), job)
+    mock_extract_persist.assert_called_once()
+
+
 # ── process_job: chapters scope ──────────────────────────────────────
 
 
@@ -171,12 +309,94 @@ async def test_process_job_chapters_success(mock_extract_persist):
     bc = _mock_book_client()
     gc = _mock_glossary_client()
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     # Should have called _extract_and_persist once
     mock_extract_persist.assert_called_once()
     # Should have advanced cursor + recorded spending + completed job
     assert pool.execute.call_count >= 3
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_chapter_index_threaded_when_no_part(mock_extract_persist):
+    """FD-4 (066 regression): a part-less chapter (hierarchy.part is None) must
+    STILL thread chapter_index (= sort_order) to persist — the capture reads
+    hierarchy.chapter_index INDEPENDENT of the part gate. Before the fix the
+    chapter_index lived only inside the `part is not None` block, so flat books
+    got event_order=None → every status_effect silently dropped. hierarchy_paths
+    stays None (the part-MERGE genuinely needs a part)."""
+    from types import SimpleNamespace
+
+    mock_extract_persist.return_value = _ok_result()
+    job = _job(scope="chapters")
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    llm = _mock_llm_client()
+    bc = _mock_book_client()
+    # Part-less hierarchy: no part, no chapter_path — but a real sort_order.
+    bc.get_chapter_hierarchy = AsyncMock(return_value=SimpleNamespace(
+        part=None, chapter_path=None, chapter_index=2, book_id="bk-1",
+    ))
+    gc = _mock_glossary_client()
+
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
+
+    mock_extract_persist.assert_called_once()
+    kwargs = mock_extract_persist.call_args.kwargs
+    assert kwargs["chapter_index"] == 2          # threaded despite no part
+    assert kwargs["hierarchy_paths"] is None      # part-MERGE correctly skipped
+
+
+def _execs_with(pool, needle):
+    return [
+        c for c in pool.execute.call_args_list
+        if isinstance(c.args[0], str) and needle in c.args[0]
+    ]
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_q4b_feed_no_sample_when_not_opted_in(mock_extract_persist):
+    """Q4b-feed redact-by-default: a project WITHOUT save_raw_extraction writes
+    NO extraction_run_samples row (the online judge never sees its content)."""
+    mock_extract_persist.return_value = _ok_result()
+    job = _job(scope="chapters", save_raw_extraction=False)
+    pool = _mock_pool()
+    await process_job(pool, _mock_knowledge_client(), _mock_llm_client(),
+                      _mock_book_client(), _mock_glossary_client(), _mock_chat_client(), _mock_provider_client(), job)
+    assert _execs_with(pool, "INSERT INTO extraction_run_samples") == []
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_q4b_feed_sample_written_with_run_id_parity(mock_extract_persist):
+    """Q4b-feed #1 risk regression-lock: an opted-in project writes exactly one
+    sample, keyed by the SAME run_id that lands in the extraction_run event —
+    parity is load-bearing (the online judge fetches the sample by that id)."""
+    mock_extract_persist.return_value = _ok_result()
+    job = _job(scope="chapters", save_raw_extraction=True)
+    pool = _mock_pool()
+    await process_job(pool, _mock_knowledge_client(), _mock_llm_client(),
+                      _mock_book_client(), _mock_glossary_client(), _mock_chat_client(), _mock_provider_client(), job)
+
+    samples = _execs_with(pool, "INSERT INTO extraction_run_samples")
+    assert len(samples) == 1
+    sample_run_id = samples[0].args[1]  # $1 run_id (UUID)
+
+    # the run_id in the emitted event payload must equal the sample's run_id
+    import json as _json
+    outbox = _execs_with(pool, "INSERT INTO outbox_events")
+    # find the run-completed event (payload param carries run_id)
+    event_run_ids = [
+        _json.loads(c.args[3])["run_id"]
+        for c in outbox
+        if len(c.args) > 3 and isinstance(c.args[3], str) and "run_id" in c.args[3]
+    ]
+    assert event_run_ids, "no run-completed event emitted"
+    assert str(sample_run_id) in event_run_ids, (
+        f"run_id parity broken: sample={sample_run_id} not in event {event_run_ids}"
+    )
 
 
 @pytest.mark.asyncio
@@ -187,7 +407,7 @@ async def test_process_job_chapters_records_spending_on_success(mock_extract_per
     the CostSummary card sees real production figures."""
     mock_extract_persist.return_value = _ok_result()
     chapters = [
-        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i)
+        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i, revision_id=f"rev-{i}")
         for i in range(3)
     ]
     job = _job(scope="chapters")
@@ -197,7 +417,7 @@ async def test_process_job_chapters_records_spending_on_success(mock_extract_per
     bc = _mock_book_client(chapters=chapters)
     gc = _mock_glossary_client()
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     # Collect the SQL text of every execute call; count how many
     # target knowledge_projects with the monthly-spend + all-time
@@ -219,7 +439,7 @@ async def test_process_job_appends_log_on_chapter_success(mock_extract_persist):
     level=info and an event=chapter_processed context tag."""
     mock_extract_persist.return_value = _ok_result()
     chapters = [
-        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i)
+        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i, revision_id=f"rev-{i}")
         for i in range(2)
     ]
     job = _job(scope="chapters")
@@ -229,7 +449,7 @@ async def test_process_job_appends_log_on_chapter_success(mock_extract_persist):
     bc = _mock_book_client(chapters=chapters)
     gc = _mock_glossary_client()
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     log_calls = [
         c for c in pool.execute.call_args_list
@@ -257,7 +477,7 @@ async def test_process_job_appends_error_log_on_fatal_failure(mock_extract_persi
     bc = _mock_book_client()
     gc = _mock_glossary_client()
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     error_logs = [
         c for c in pool.execute.call_args_list
@@ -286,7 +506,7 @@ async def test_process_job_chat_records_spending_on_success(mock_extract_persist
     bc = _mock_book_client()
     gc = _mock_glossary_client()
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     spending_calls = [
         c for c in pool.execute.call_args_list
@@ -299,11 +519,50 @@ async def test_process_job_chat_records_spending_on_success(mock_extract_persist
 
 @pytest.mark.asyncio
 @patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_process_job_chat_passes_fetched_turn_text(mock_extract_persist):
+    """FD-2 core regression: the chat branch fetches the REAL turn text from
+    chat-service (by the assistant message id = aggregate_id) and feeds it to
+    extraction — was a hardcoded text="" no-op. Lock the wired text."""
+    mock_extract_persist.return_value = _ok_result()
+    job = _job(scope="chat")
+    pool = _mock_pool()
+    msg_id = uuid4()
+    pool.fetch = AsyncMock(return_value=[{"pending_id": uuid4(), "aggregate_id": msg_id}])
+    cc = _mock_chat_client(text="User: who is Kael?\n\nAssistant: a disgraced knight.")
+
+    await process_job(pool, _mock_knowledge_client(), _mock_llm_client(),
+                      _mock_book_client(), _mock_glossary_client(), cc, _mock_provider_client(), job)
+
+    cc.get_turn_text.assert_awaited_once_with(msg_id)
+    assert mock_extract_persist.await_args.kwargs["text"] == \
+        "User: who is Kael?\n\nAssistant: a disgraced knight."
+    assert mock_extract_persist.await_args.kwargs["source_type"] == "chat_message"
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_process_job_chat_missing_text_degrades_to_empty(mock_extract_persist):
+    """FD-2 — a turn whose text can't be fetched (None) degrades to text="" (the
+    graceful no-op the path always had), NOT a crash."""
+    mock_extract_persist.return_value = _ok_result()
+    job = _job(scope="chat")
+    pool = _mock_pool()
+    pool.fetch = AsyncMock(return_value=[{"pending_id": uuid4(), "aggregate_id": uuid4()}])
+    cc = _mock_chat_client(text="")  # get_turn_text → None
+
+    await process_job(pool, _mock_knowledge_client(), _mock_llm_client(),
+                      _mock_book_client(), _mock_glossary_client(), cc, _mock_provider_client(), job)
+
+    assert mock_extract_persist.await_args.kwargs["text"] == ""
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
 async def test_process_job_multiple_chapters(mock_extract_persist):
     """Multiple chapters processed in order."""
     mock_extract_persist.return_value = _ok_result()
     chapters = [
-        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i)
+        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i, revision_id=f"rev-{i}")
         for i in range(3)
     ]
     job = _job(scope="chapters")
@@ -313,7 +572,7 @@ async def test_process_job_multiple_chapters(mock_extract_persist):
     bc = _mock_book_client(chapters=chapters)
     gc = _mock_glossary_client()
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     assert mock_extract_persist.call_count == 3
 
@@ -324,7 +583,7 @@ async def test_process_job_pause_detected(mock_extract_persist):
     """Job paused mid-run — runner stops processing."""
     mock_extract_persist.return_value = _ok_result()
     chapters = [
-        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i)
+        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i, revision_id=f"rev-{i}")
         for i in range(5)
     ]
     job = _job(scope="chapters")
@@ -336,7 +595,7 @@ async def test_process_job_pause_detected(mock_extract_persist):
     bc = _mock_book_client(chapters=chapters)
     gc = _mock_glossary_client()
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     # Only 1 chapter processed before pause detected
     assert mock_extract_persist.call_count == 1
@@ -356,7 +615,7 @@ async def test_process_job_cancel_detected(mock_extract_persist):
     bc = _mock_book_client()
     gc = _mock_glossary_client()
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     mock_extract_persist.assert_not_called()
 
@@ -376,7 +635,7 @@ async def test_process_job_budget_auto_pause(mock_extract_persist):
     bc = _mock_book_client()
     gc = _mock_glossary_client()
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     mock_extract_persist.assert_not_called()
 
@@ -393,7 +652,7 @@ async def test_process_job_permanent_error_fails_job(mock_extract_persist):
     bc = _mock_book_client()
     gc = _mock_glossary_client()
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     # Should have called execute for fail_job + update_project
     fail_calls = [
@@ -416,7 +675,7 @@ async def test_process_job_retryable_error_stops_run_for_retry(mock_extract_pers
     bc = _mock_book_client()
     gc = _mock_glossary_client()
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     # Only one extraction attempt this run
     mock_extract_persist.assert_called_once()
@@ -441,7 +700,7 @@ async def test_process_job_no_book_id(mock_extract_persist):
     gc = _mock_glossary_client()
     bc.list_chapters = AsyncMock(return_value=None)
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     mock_extract_persist.assert_not_called()
 
@@ -458,7 +717,7 @@ async def test_poll_no_jobs_returns_zero():
     bc = _mock_book_client()
     gc = _mock_glossary_client()
 
-    count = await poll_and_run(pool, kc, llm, bc, gc)
+    count = await poll_and_run(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client())
     assert count == 0
 
 
@@ -474,7 +733,7 @@ async def test_process_job_chapter_text_unavailable_skips(mock_extract_persist):
     bc = _mock_book_client(text=None)
     gc = _mock_glossary_client()
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     mock_extract_persist.assert_not_called()  # skipped
 
@@ -488,7 +747,7 @@ async def test_backfill_sets_items_total_when_none(mock_extract_persist):
     """When items_total is None, runner counts items and sets it."""
     mock_extract_persist.return_value = _ok_result()
     chapters = [
-        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i)
+        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i, revision_id=f"rev-{i}")
         for i in range(5)
     ]
     job = _job(scope="chapters", items_total=None)
@@ -498,7 +757,7 @@ async def test_backfill_sets_items_total_when_none(mock_extract_persist):
     bc = _mock_book_client(chapters=chapters)
     gc = _mock_glossary_client()
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     # items_total should be set via _set_items_total (execute call)
     set_total_calls = [
@@ -522,7 +781,7 @@ async def test_backfill_skips_items_total_when_already_set(mock_extract_persist)
     bc = _mock_book_client()
     gc = _mock_glossary_client()
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     # _set_items_total should NOT be called
     set_total_calls = [
@@ -538,7 +797,7 @@ async def test_backfill_scope_all_counts_chapters_and_chat(mock_extract_persist)
     """scope=all counts both chapters and pending chat turns."""
     mock_extract_persist.return_value = _ok_result()
     chapters = [
-        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i)
+        ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i, revision_id=f"rev-{i}")
         for i in range(3)
     ]
     pending_rows = [
@@ -556,7 +815,7 @@ async def test_backfill_scope_all_counts_chapters_and_chat(mock_extract_persist)
     bc = _mock_book_client(chapters=chapters)
     gc = _mock_glossary_client()
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     # 3 chapters + 2 chat turns = 5 extract calls
     assert mock_extract_persist.call_count == 5
@@ -588,7 +847,7 @@ async def test_process_job_glossary_sync_success(mock_extract_persist):
         ),
     ])
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     # No LLM extract — only the two glossary sync calls.
     mock_extract_persist.assert_not_called()
@@ -605,7 +864,7 @@ async def test_process_job_all_scope_includes_glossary(mock_extract_persist):
     after chapters+chat. The TODO at line 621 is removed; a user
     who runs `all` gets chapters + chat + glossary end-to-end."""
     mock_extract_persist.return_value = _ok_result()
-    chapters = [ChapterInfo(chapter_id="ch-1", title="Ch 1", sort_order=1)]
+    chapters = [ChapterInfo(chapter_id="ch-1", title="Ch 1", sort_order=1, revision_id="rev-1")]
     job = _job(scope="all")
     pool = _mock_pool()
     # Return one pending chat turn to exercise the chat branch too.
@@ -627,7 +886,7 @@ async def test_process_job_all_scope_includes_glossary(mock_extract_persist):
         ([_glossary_entity("e1", "Arthur")], None),
     ])
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     # chapters + chat → 2 _extract_and_persist; glossary → 1 glossary_sync_entity.
     assert mock_extract_persist.call_count == 2
@@ -640,7 +899,7 @@ async def test_process_job_items_total_includes_glossary(mock_extract_persist):
     """C12c-a: when items_total is None (backfill), the pre-count
     covers chapters + chat + glossary pages."""
     mock_extract_persist.return_value = _ok_result()
-    chapters = [ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i) for i in range(2)]
+    chapters = [ChapterInfo(chapter_id=f"ch-{i}", title=f"Ch {i}", sort_order=i, revision_id=f"rev-{i}") for i in range(2)]
     job = _job(scope="all", items_total=None)
     pool = _mock_pool()
     kc = _mock_knowledge_client()
@@ -656,7 +915,7 @@ async def test_process_job_items_total_includes_glossary(mock_extract_persist):
         ),
     ])
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     # _set_items_total sends an UPDATE with SET items_total = $X.
     set_total_calls = [
@@ -688,7 +947,7 @@ async def test_process_job_glossary_sync_empty_book_no_op(mock_extract_persist):
     bc = _mock_book_client()
     gc = _mock_glossary_client()  # default: empty page
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     kc.glossary_sync_entity.assert_not_called()
     mock_extract_persist.assert_not_called()
@@ -734,7 +993,7 @@ async def test_process_job_glossary_partial_enumeration_skips_items_total(mock_e
         ],
     )
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     # 2 entities synced (page 1 survived).
     assert kc.glossary_sync_entity.call_count == 2
@@ -780,7 +1039,7 @@ async def test_process_job_glossary_retry_exhaustion_skips_entity(mock_extract_p
         ([_glossary_entity(entity_id, "Flaky")], None),
     ])
 
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     # One attempt this run — reaches retry count 3 == _MAX_RETRIES_PER_ITEM
     # → skipped. Error log with retry_exhausted event emitted.
@@ -830,12 +1089,15 @@ async def test_extract_and_persist_happy_path_calls_persist_with_candidates(
     )
     mock_extract.return_value = candidates
     kc = AsyncMock(spec=KnowledgeClient)
-    kc.persist_pass2 = AsyncMock(return_value=_ok_result())
+    kc.persist_pass2 = AsyncMock(return_value=ExtractionResult(
+        source_id="ch-1", entities_merged=2, relations_created=1,
+        events_merged=1, facts_merged=3,
+    ))
     user_id = uuid4()
     project_id = uuid4()
     job_id = uuid4()
 
-    result = await _extract_and_persist(
+    result, _candidates = await _extract_and_persist(
         knowledge_client=kc,
         llm_client=_mock_llm_client(),
         user_id=user_id,
@@ -883,7 +1145,7 @@ async def test_extract_and_persist_provider_exhausted_is_retryable(mock_extract)
     kc = AsyncMock(spec=KnowledgeClient)
     kc.persist_pass2 = AsyncMock()
 
-    result = await _extract_and_persist(
+    result, _candidates = await _extract_and_persist(
         knowledge_client=kc, llm_client=_mock_llm_client(),
         user_id=uuid4(), project_id=uuid4(),
         source_type="chapter", source_id="ch-1", job_id=uuid4(),
@@ -910,7 +1172,7 @@ async def test_extract_and_persist_provider_stage_is_not_retryable(mock_extract)
     kc = AsyncMock(spec=KnowledgeClient)
     kc.persist_pass2 = AsyncMock()
 
-    result = await _extract_and_persist(
+    result, _candidates = await _extract_and_persist(
         knowledge_client=kc, llm_client=_mock_llm_client(),
         user_id=uuid4(), project_id=uuid4(),
         source_type="chapter", source_id="ch-1", job_id=uuid4(),
@@ -937,7 +1199,7 @@ async def test_extract_and_persist_cancelled_stage_is_not_retryable(mock_extract
     kc = AsyncMock(spec=KnowledgeClient)
     kc.persist_pass2 = AsyncMock()
 
-    result = await _extract_and_persist(
+    result, _candidates = await _extract_and_persist(
         knowledge_client=kc, llm_client=_mock_llm_client(),
         user_id=uuid4(), project_id=uuid4(),
         source_type="chapter", source_id="ch-1", job_id=uuid4(),
@@ -962,9 +1224,12 @@ async def test_extract_and_persist_empty_text_still_persists(mock_extract):
 
     mock_extract.return_value = Pass2Candidates()  # all 4 lists empty
     kc = AsyncMock(spec=KnowledgeClient)
-    kc.persist_pass2 = AsyncMock(return_value=_ok_result(source_id="turn-1"))
+    kc.persist_pass2 = AsyncMock(return_value=ExtractionResult(
+        source_id="turn-1", entities_merged=0, relations_created=0,
+        events_merged=0, facts_merged=0,
+    ))
 
-    result = await _extract_and_persist(
+    result, _candidates = await _extract_and_persist(
         knowledge_client=kc, llm_client=_mock_llm_client(),
         user_id=uuid4(), project_id=uuid4(),
         source_type="chat_turn", source_id="turn-1", job_id=uuid4(),
@@ -1287,13 +1552,23 @@ async def test_get_running_jobs_pulls_embedding_dimension(monkeypatch):
         "max_spend_usd": Decimal("10"), "items_total": 5,
         "items_processed": 0, "current_cursor": None,
         "cost_spent_usd": Decimal("0"),
+        "campaign_id": None,
+        "billing_user_id": None,
+        "billing_embedding_model": None,
+        "billing_llm_model": None,
         "embedding_dimension": 1024,
+        "extraction_config": {},
+        "genre": "Tiên hiệp",
+        "save_raw_extraction": True,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
     jobs = await _get_running_jobs(pool)
     assert len(jobs) == 1
     assert jobs[0].embedding_dimension == 1024
+    assert jobs[0].genre == "Tiên hiệp"
+    assert jobs[0].save_raw_extraction is True  # Q4b-feed: threaded onto JobRow
+    assert jobs[0].billing_user_id is None  # E0-3 2a: owner-triggered ⇒ NULL
 
 
 @pytest.mark.asyncio
@@ -1307,12 +1582,50 @@ async def test_get_running_jobs_handles_null_embedding_dimension():
         "max_spend_usd": None, "items_total": None,
         "items_processed": 0, "current_cursor": None,
         "cost_spent_usd": Decimal("0"),
+        "campaign_id": None,
+        "billing_user_id": None,
+        "billing_embedding_model": None,
+        "billing_llm_model": None,
         "embedding_dimension": None,
+        "extraction_config": None,
+        "genre": None,
+        "save_raw_extraction": False,
     }
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[fake_row])
     jobs = await _get_running_jobs(pool)
     assert jobs[0].embedding_dimension is None
+    assert jobs[0].save_raw_extraction is False  # Q4b-feed: default OFF
+
+
+@pytest.mark.asyncio
+async def test_get_running_jobs_threads_billing_identity():
+    """E0-3 Phase 2a: a collaborator-triggered job's billing identity is read
+    from the SELECT onto JobRow so process_job can bill the caller's key."""
+    from app.runner import _get_running_jobs
+    collab = uuid4()
+    fake_row = {
+        "job_id": uuid4(), "user_id": uuid4(), "project_id": uuid4(),
+        "scope": "chapters", "scope_range": None, "status": "running",
+        "llm_model": "owner-llm", "embedding_model": "owner-emb",
+        "max_spend_usd": None, "items_total": None,
+        "items_processed": 0, "current_cursor": None,
+        "cost_spent_usd": Decimal("0"),
+        "campaign_id": None,
+        "billing_user_id": collab,
+        "billing_embedding_model": "collab-emb",
+        "billing_llm_model": "collab-llm",
+        "embedding_dimension": 1024,
+        "extraction_config": None,
+        "genre": None,
+        "save_raw_extraction": False,
+    }
+    pool = AsyncMock()
+    pool.fetch = AsyncMock(return_value=[fake_row])
+    jobs = await _get_running_jobs(pool)
+    assert jobs[0].billing_user_id == collab
+    assert jobs[0].billing_embedding_model == "collab-emb"
+    assert jobs[0].billing_llm_model == "collab-llm"
 
 
 # ── D-PHASE6C-WORKERAI-JOB-SPAN: parent span per process_job call ───
@@ -1367,7 +1680,7 @@ async def test_process_job_emits_parent_span_with_job_attributes(
     gc = _mock_glossary_client()
 
     _worker_ai_span_exporter.clear()
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     spans = [
         s for s in _worker_ai_span_exporter.get_finished_spans()
@@ -1404,7 +1717,7 @@ async def test_process_job_span_handles_none_items_total(
     gc = _mock_glossary_client()
 
     _worker_ai_span_exporter.clear()
-    await process_job(pool, kc, llm, bc, gc, job)
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
 
     spans = [
         s for s in _worker_ai_span_exporter.get_finished_spans()
@@ -1527,7 +1840,7 @@ async def test_runner_filter_degraded_status_still_persists_pass_a() -> None:
         kc = _mock_knowledge_client()
         llm = _mock_llm_client()
 
-        result = await _extract_and_persist(
+        result, _candidates = await _extract_and_persist(
             knowledge_client=kc,
             llm_client=llm,
             user_id=uuid4(),
@@ -2069,3 +2382,327 @@ def test_start_metrics_server_no_op_when_port_zero(caplog):
     assert any(
         "metrics server disabled" in r.getMessage() for r in caplog.records
     )
+
+
+# ── CM3c: _enumerate_chapters canon=published gate + is_last scope-guard ──
+
+
+def _full_hierarchy(chapter_id: str) -> ChapterHierarchy:
+    """A complete hierarchy (part + chapter_path set) so the P3 is_last
+    branch in process_job is reached."""
+    return ChapterHierarchy(
+        book_id=str(uuid4()),
+        book_path="book",
+        book_title="The Book",
+        part=HierarchyPart(id=str(uuid4()), path="book/part-1", index=1, title="P1"),
+        chapter_id=chapter_id,
+        chapter_path=f"book/part-1/{chapter_id}",
+        chapter_index=1,
+        chapter_title="C1",
+        scenes=(HierarchyScene(id=str(uuid4()), path="s", index=1),),
+        book_parts=(HierarchyPart(id=str(uuid4()), path="book/part-1", index=1, title="P1"),),
+    )
+
+
+@pytest.mark.asyncio
+async def test_enumerate_chapters_requests_published_and_skips_null_revision():
+    """CM3c: _enumerate_chapters asks book-service for editorial_status=
+    'published' (server-side draft gate) and skips any published chapter
+    whose published_revision_id is NULL (can't pin canon — R2-NEW-2 edge)."""
+    book_id = uuid4()
+    bc = AsyncMock(spec=BookClient)
+    bc.list_chapters = AsyncMock(return_value=[
+        ChapterInfo(chapter_id="ch-1", title="C1", sort_order=1,
+                    revision_id="rev-1", editorial_status="published"),
+        # published but no pinned revision → must be skipped (with a WARNING)
+        ChapterInfo(chapter_id="ch-2", title="C2", sort_order=2,
+                    revision_id=None, editorial_status="published"),
+    ])
+
+    result = await _enumerate_chapters(bc, book_id, None)
+
+    bc.list_chapters.assert_awaited_once_with(book_id, editorial_status="published")
+    assert [c.chapter_id for c in result] == ["ch-1"]  # null-revision dropped
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_chapters_pending_drain_never_asserts_is_last(mock_extract_persist):
+    """R2-BLOCK#1: the coalescing chapters_pending drain processes a SUBSET of
+    re-published chapters → its tail is NOT the book tail → is_last_chapter_of_book
+    must be False (else every incremental re-publish re-rolls the whole-book L0
+    summary)."""
+    mock_extract_persist.return_value = _ok_result()
+    job = _job(scope="chapters_pending", embedding_dimension=1024)
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    llm = _mock_llm_client()
+    bc = _mock_book_client()
+    bc.get_chapter_hierarchy = AsyncMock(return_value=_full_hierarchy("ch-1"))
+    gc = _mock_glossary_client()
+
+    with patch(
+        "app.runner._enumerate_pending_chapters",
+        AsyncMock(return_value=[ChapterInfo(
+            chapter_id="ch-1", title="C1", sort_order=1,
+            revision_id="rev-1", pending_id=uuid4(),
+        )]),
+    ):
+        await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
+
+    mock_extract_persist.assert_awaited_once()
+    assert mock_extract_persist.await_args.kwargs["is_last_chapter_of_book"] is False
+
+
+@pytest.mark.asyncio
+@patch("app.runner._mark_pending_processed", new_callable=AsyncMock)
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_chapters_pending_dead_revision_marks_processed(mock_extract, mock_mark):
+    """D-CM3B-DEAD-REVISION-LOOP: when a chapters_pending chapter's PINNED
+    revision is permanently gone (get_chapter_revision_text → None), the drain
+    MUST mark the pending row processed (revision-guarded) so it stops re-arming
+    a fresh drain job every poll. Without this an orphaned pending row loops
+    forever emitting skipped extraction_runs."""
+    pending = uuid4()
+    job = _job(scope="chapters_pending", embedding_dimension=1024)
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    llm = _mock_llm_client()
+    bc = _mock_book_client(text=None)  # pinned revision 404 → None (gone)
+    gc = _mock_glossary_client()
+
+    with patch(
+        "app.runner._enumerate_pending_chapters",
+        AsyncMock(return_value=[ChapterInfo(
+            chapter_id="ch-dead", title="C", sort_order=1,
+            revision_id="rev-gone", pending_id=pending,
+        )]),
+    ):
+        await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
+
+    # the dead chapter was NOT extracted, but its pending row was drained
+    mock_extract.assert_not_awaited()
+    mock_mark.assert_awaited_once()
+    assert mock_mark.await_args.args[2] == pending          # pending_id
+    assert mock_mark.await_args.kwargs["revision_id"] == "rev-gone"  # revision-guarded
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_chapters_whole_book_asserts_is_last_on_tail(mock_extract_persist):
+    """Counterpart: a genuine whole-book ('chapters') pass DOES assert is_last
+    on the tail chapter — the guard must not over-suppress."""
+    mock_extract_persist.return_value = _ok_result()
+    job = _job(scope="chapters", embedding_dimension=1024)
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    llm = _mock_llm_client()
+    bc = _mock_book_client()  # single published chapter ch-1 (the tail)
+    bc.get_chapter_hierarchy = AsyncMock(return_value=_full_hierarchy("ch-1"))
+    gc = _mock_glossary_client()
+
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client(), job)
+
+    mock_extract_persist.assert_awaited_once()
+    assert mock_extract_persist.await_args.kwargs["is_last_chapter_of_book"] is True
+
+
+# ── FD-2: chat→KG auto-drain ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_ensure_chat_pending_jobs_creates_chat_scope_job():
+    """FD-2: a project with unprocessed `aggregate_type='chat'` rows + a prior
+    job (to reuse models from) gets a `scope='chat'` drain job created. Without
+    this, chat turns would only extract on a manual full run."""
+    user_id, project_id = uuid4(), uuid4()
+    pool = AsyncMock()
+    pool.fetch = AsyncMock(return_value=[{"user_id": user_id, "project_id": project_id}])
+    pool.fetchrow = AsyncMock(return_value={
+        "llm_model": "gpt-4o", "embedding_model": "bge-m3",
+        "max_spend_usd": Decimal("5.00"),
+    })
+    pool.execute = AsyncMock()
+
+    created = await _ensure_chat_pending_jobs(pool)
+
+    assert created == 1
+    pool.execute.assert_awaited_once()
+    sql, *args = pool.execute.await_args.args
+    assert "INSERT INTO extraction_jobs" in sql
+    assert "'chat'" in sql              # scope literal in the INSERT
+    assert args[0] == user_id and args[1] == project_id
+    assert args[2] == "gpt-4o"          # reuses the last job's model (no placeholder)
+
+
+@pytest.mark.asyncio
+async def test_ensure_chat_pending_jobs_skips_project_with_no_prior_job():
+    """A project with queued chat rows but NO prior job is skipped — a manual
+    /extraction/start bootstraps the models first (a placeholder model_ref would
+    break extraction). No INSERT issued."""
+    pool = AsyncMock()
+    pool.fetch = AsyncMock(return_value=[{"user_id": uuid4(), "project_id": uuid4()}])
+    pool.fetchrow = AsyncMock(return_value=None)   # no prior job
+    pool.execute = AsyncMock()
+
+    created = await _ensure_chat_pending_jobs(pool)
+
+    assert created == 0
+    pool.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_poll_and_run_invokes_chat_drainer():
+    """poll_and_run must arm the chat drainer each cycle (alongside chapters),
+    else chat pending rows never auto-drain."""
+    pool = _mock_pool()
+    pool.fetch = AsyncMock(return_value=[])  # no pending rows, no running jobs
+    kc, llm = _mock_knowledge_client(), _mock_llm_client()
+    bc, gc = _mock_book_client(), _mock_glossary_client()
+
+    with patch("app.runner._ensure_chat_pending_jobs", new_callable=AsyncMock) as mock_chat_drain, \
+         patch("app.runner._ensure_chapters_pending_jobs", new_callable=AsyncMock):
+        await poll_and_run(pool, kc, llm, bc, gc, _mock_chat_client(), _mock_provider_client())
+
+    mock_chat_drain.assert_awaited_once_with(pool)
+
+
+# ── FD-27: zero-output guard + reasoning-model advisory ──────────────
+
+
+@pytest.mark.parametrize("name,expected", [
+    ("o1", True), ("o3-mini", True), ("O1-preview", True), ("o4-mini", True),
+    ("qwen/qwen3.6-35b-a3b", True), ("deepseek-r1-distill", True), ("qwq-32b", True),
+    ("glm-z1-9b", True), ("some-thinking-model", True), ("magistral-small", True),
+    ("gpt-4o", False), ("gpt-4.1", False), ("qwen2.5-72b-instruct", False),
+    ("llama-3.3-70b", False), ("claude-opus-4-8", False), ("mistral-large", False),
+    (None, False), ("", False),
+])
+def test_is_likely_reasoning_model(name, expected):
+    """FD-27 heuristic: o-series + known reasoning families flagged; chat models
+    (incl. the gpt-4o trap, where 'o' is a suffix) not."""
+    assert _is_likely_reasoning_model(name) is expected
+
+
+@pytest.mark.asyncio
+@patch("app.runner.extract_pass2", new_callable=AsyncMock)
+async def test_extract_and_persist_warns_on_zero_output(mock_extract):
+    """FD-27 symptom guard: substantive input + empty candidates → counter +1."""
+    from loreweave_extraction.pass2 import Pass2Candidates
+    from app.runner import _extract_and_persist
+    from app.metrics import worker_ai_extraction_zero_output_total
+
+    mock_extract.return_value = Pass2Candidates(entities=[], relations=[], events=[], facts=[])
+    kc = AsyncMock(spec=KnowledgeClient)
+    kc.persist_pass2 = AsyncMock(return_value=_ok_result())
+    before = worker_ai_extraction_zero_output_total.labels(source_type="chapter")._value.get()
+
+    await _extract_and_persist(
+        knowledge_client=kc, llm_client=_mock_llm_client(),
+        user_id=uuid4(), project_id=uuid4(),
+        source_type="chapter", source_id="ch-1", job_id=uuid4(),
+        model_ref="qwen3-test", text="x" * 100,  # ≥ 40 chars
+    )
+
+    after = worker_ai_extraction_zero_output_total.labels(source_type="chapter")._value.get()
+    assert after == before + 1
+
+
+@pytest.mark.asyncio
+@patch("app.runner.extract_pass2", new_callable=AsyncMock)
+async def test_extract_and_persist_no_warn_on_short_or_nonempty(mock_extract):
+    """FD-27: short input (below threshold) OR non-empty candidates → no counter bump."""
+    from loreweave_extraction.pass2 import Pass2Candidates
+    from app.runner import _extract_and_persist
+    from app.metrics import worker_ai_extraction_zero_output_total
+
+    kc = AsyncMock(spec=KnowledgeClient)
+    kc.persist_pass2 = AsyncMock(return_value=_ok_result())
+    before = worker_ai_extraction_zero_output_total.labels(source_type="chapter")._value.get()
+
+    # short input + empty → no warn (trivial input legitimately yields nothing)
+    mock_extract.return_value = Pass2Candidates(entities=[], relations=[], events=[], facts=[])
+    await _extract_and_persist(
+        knowledge_client=kc, llm_client=_mock_llm_client(),
+        user_id=uuid4(), project_id=uuid4(),
+        source_type="chapter", source_id="ch-1", job_id=uuid4(),
+        model_ref="m", text="short",
+    )
+    # substantive input + NON-empty candidates → no warn
+    mock_extract.return_value = Pass2Candidates(
+        entities=[_entity_candidate("Kai")], relations=[], events=[], facts=[],
+    )
+    await _extract_and_persist(
+        knowledge_client=kc, llm_client=_mock_llm_client(),
+        user_id=uuid4(), project_id=uuid4(),
+        source_type="chapter", source_id="ch-2", job_id=uuid4(),
+        model_ref="m", text="x" * 100,
+    )
+
+    after = worker_ai_extraction_zero_output_total.labels(source_type="chapter")._value.get()
+    assert after == before
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_process_job_reasoning_model_advisory(mock_extract):
+    """FD-27 pre-check: a reasoning-model name → advisory counter +1; the
+    provider lookup is awaited once per job."""
+    from app.metrics import worker_ai_extraction_reasoning_model_advised_total
+    mock_extract.return_value = _ok_result()
+    pool = _mock_pool()
+    kc, llm = _mock_knowledge_client(), _mock_llm_client()
+    bc, gc = _mock_book_client(), _mock_glossary_client()
+    job = _job(scope="chapters", embedding_dimension=1024)
+    pc = _mock_provider_client(model_name="qwen/qwen3.6-35b-a3b")
+    before = worker_ai_extraction_reasoning_model_advised_total._value.get()
+
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), pc, job)
+
+    after = worker_ai_extraction_reasoning_model_advised_total._value.get()
+    assert after == before + 1
+    pc.get_model_name.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_process_job_no_advisory_for_nonreasoning_model(mock_extract):
+    """FD-27: a non-reasoning model name (or None lookup) → no advisory bump."""
+    from app.metrics import worker_ai_extraction_reasoning_model_advised_total
+    mock_extract.return_value = _ok_result()
+    pool = _mock_pool()
+    kc, llm = _mock_knowledge_client(), _mock_llm_client()
+    bc, gc = _mock_book_client(), _mock_glossary_client()
+    job = _job(scope="chapters", embedding_dimension=1024)
+    pc = _mock_provider_client(model_name="gpt-4o")
+    before = worker_ai_extraction_reasoning_model_advised_total._value.get()
+
+    await process_job(pool, kc, llm, bc, gc, _mock_chat_client(), pc, job)
+
+    after = worker_ai_extraction_reasoning_model_advised_total._value.get()
+    assert after == before
+
+
+@pytest.mark.asyncio
+@patch("app.runner._extract_and_persist", new_callable=AsyncMock)
+async def test_process_job_no_advisory_for_glossary_sync_scope(mock_extract):
+    """FD-27 /review-impl MED: glossary_sync runs NO LLM extraction → the
+    reasoning advisory must not fire (and must not even resolve the model)."""
+    from app.metrics import worker_ai_extraction_reasoning_model_advised_total
+    mock_extract.return_value = _ok_result()
+    pool = _mock_pool()
+    kc = _mock_knowledge_client()
+    kc.glossary_sync_entity = AsyncMock(
+        side_effect=lambda **kwargs: _glossary_sync_ok(kwargs["glossary_entity_id"]),
+    )
+    bc = _mock_book_client()
+    gc = _mock_glossary_client(pages=[([_glossary_entity("e1", "Alice")], None)])
+    job = _job(scope="glossary_sync")
+    pc = _mock_provider_client(model_name="qwen/qwen3.6-35b-a3b")  # would fire if not gated
+    before = worker_ai_extraction_reasoning_model_advised_total._value.get()
+
+    await process_job(pool, kc, _mock_llm_client(), bc, gc, _mock_chat_client(), pc, job)
+
+    after = worker_ai_extraction_reasoning_model_advised_total._value.get()
+    assert after == before
+    pc.get_model_name.assert_not_awaited()  # gated before the lookup

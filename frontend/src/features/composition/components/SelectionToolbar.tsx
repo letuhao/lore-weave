@@ -1,0 +1,167 @@
+// LOOM Composition (T3.2) — Selection Tools. A Tiptap floating toolbar over a prose
+// selection offering Rewrite / Expand / Describe. Choosing one streams a grounded,
+// voice-consistent replacement (reuses useCompositionStream in selection mode) shown
+// as a ghost; Accept replaces the saved range, Discard reverts. Self-contained model
+// picker (PO). Grounding couples to the compose panel's active scene (sceneContext).
+import { useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { BubbleMenu } from '@tiptap/react/menus';
+import type { Editor } from '@tiptap/react';
+import { aiModelsApi } from '../../ai-models/api';
+import { useCompositionStream } from '../hooks/useCompositionStream';
+import type { SelectionOperation } from '../types';
+
+export const SELECTION_MAX_CHARS = 8000;
+const OPS: SelectionOperation[] = ['rewrite', 'expand', 'describe'];
+
+type Range = { from: number; to: number };
+
+export function SelectionToolbar({
+  editor, projectId, sceneContext, token,
+}: {
+  editor: Editor;
+  projectId: string;
+  sceneContext: string | null;
+  token: string | null;
+}) {
+  const { t } = useTranslation('composition');
+  const stream = useCompositionStream(token);
+  const [modelRef, setModelRef] = useState('');
+  const [instruction, setInstruction] = useState('');
+  // The range captured when the op ran — Accept replaces THIS, not the live
+  // selection (which may have shifted while streaming).
+  const savedRange = useRef<Range | null>(null);
+  // An op is "active" from click until Accept/Discard — keeps the bubble open even
+  // when the streamed ghost has collapsed the visible selection.
+  const [active, setActive] = useState(false);
+
+  const models = useQuery({
+    queryKey: ['composition', 'chat-models'],
+    queryFn: () => aiModelsApi.listUserModels(token!, { capability: 'chat' }),
+    enabled: !!token,
+    select: (d) => d.items.filter((m) => m.is_active),
+  });
+  const modelList = models.data ?? [];
+  const effectiveModel = modelRef || modelList[0]?.user_model_id || '';
+  const selectedModel = modelList.find((m) => m.user_model_id === effectiveModel);
+
+  const selText = () => {
+    const { from, to } = editor.state.selection;
+    return editor.state.doc.textBetween(from, to, ' ');
+  };
+  const tooLong = selText().length > SELECTION_MAX_CHARS;
+
+  const run = (op: SelectionOperation) => {
+    const { from, to } = editor.state.selection;
+    const text = editor.state.doc.textBetween(from, to, ' ');
+    if (!text.trim() || text.length > SELECTION_MAX_CHARS || !effectiveModel) return;
+    savedRange.current = { from, to };
+    setActive(true);
+    void stream.start({
+      projectId,
+      selection: text,
+      operation: op,
+      sceneContext,
+      modelSource: 'user_model',
+      modelRef: effectiveModel,
+      guide: instruction.trim(),
+      modelKind: selectedModel?.provider_kind,
+      modelName: selectedModel?.provider_model_name,
+    });
+  };
+
+  const reset = () => { setActive(false); stream.clearGhost(); savedRange.current = null; };
+  const discard = () => { stream.stop(); reset(); };
+  const accept = () => {
+    const range = savedRange.current;
+    if (!range || !stream.ghost) return;
+    // Saved positions can go stale if the doc changed mid-stream — bounds-check
+    // before replacing so we never corrupt the doc (D-T3.2-SELECTION-RANGE-MAP).
+    if (range.to > editor.state.doc.content.size) {
+      toast.error(t('sel.stale', { defaultValue: 'The selection changed — try again.' }));
+      reset();
+      return;
+    }
+    editor.chain().focus().deleteRange(range).insertContentAt(range.from, stream.ghost).run();
+    reset();
+  };
+
+  // Keep the menu open while an op is active (ghost pending), else only on a
+  // non-empty selection within the cap.
+  const shouldShow = ({ editor: ed }: { editor: Editor }) => {
+    if (active) return true;
+    return !ed.state.selection.empty;
+  };
+
+  return (
+    <BubbleMenu editor={editor} shouldShow={shouldShow} data-testid="selection-bubble">
+      <div data-testid="selection-toolbar" className="flex max-w-[22rem] flex-col gap-1.5 rounded-md border bg-popover p-2 text-[11px] shadow-md">
+        {active ? (
+          <>
+            <div data-testid="selection-ghost" className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded bg-muted/40 p-1.5 text-foreground">
+              {stream.ghost || (stream.streaming ? t('sel.streaming', { defaultValue: 'Generating…' }) : '')}
+              {stream.error && <span className="text-rose-600"> {stream.error}</span>}
+            </div>
+            <div className="flex items-center gap-1.5">
+              {stream.streaming ? (
+                <button type="button" data-testid="selection-stop" className="rounded bg-rose-600 px-2 py-0.5 text-white" onClick={discard}>
+                  {t('sel.stop', { defaultValue: 'Stop' })}
+                </button>
+              ) : (
+                <button type="button" data-testid="selection-accept" className="rounded bg-emerald-600 px-2 py-0.5 text-white disabled:opacity-50" disabled={!stream.ghost} onClick={accept}>
+                  {t('sel.accept', { defaultValue: 'Accept' })}
+                </button>
+              )}
+              <button type="button" data-testid="selection-discard" className="rounded border px-2 py-0.5 text-muted-foreground" onClick={discard}>
+                {t('sel.discard', { defaultValue: 'Discard' })}
+              </button>
+            </div>
+          </>
+        ) : tooLong ? (
+          <span data-testid="selection-too-long" className="text-amber-600">
+            {t('sel.too_long', { defaultValue: 'Selection too long for AI tools.' })}
+          </span>
+        ) : (
+          <>
+            <div className="flex items-center gap-1.5">
+              <select
+                data-testid="selection-model"
+                aria-label={t('sel.model', { defaultValue: 'Model' })}
+                className="min-w-0 flex-1 rounded border bg-background px-1 py-0.5"
+                value={effectiveModel}
+                onChange={(e) => setModelRef(e.target.value)}
+              >
+                {modelList.length === 0 && <option value="">{t('sel.no_model', { defaultValue: 'No model' })}</option>}
+                {modelList.map((m) => <option key={m.user_model_id} value={m.user_model_id}>{m.alias || m.provider_model_name}</option>)}
+              </select>
+            </div>
+            <input
+              data-testid="selection-instruction"
+              aria-label={t('sel.instruction', { defaultValue: 'Optional instruction' })}
+              placeholder={t('sel.instruction', { defaultValue: 'e.g. terser…' })}
+              className="rounded border bg-background px-1 py-0.5"
+              value={instruction}
+              onChange={(e) => setInstruction(e.target.value)}
+            />
+            <div className="flex items-center gap-1.5">
+              {OPS.map((op) => (
+                <button
+                  key={op}
+                  type="button"
+                  data-testid={`selection-${op}`}
+                  className="rounded border px-2 py-0.5 hover:border-primary hover:text-primary disabled:opacity-40"
+                  disabled={!effectiveModel}
+                  onClick={() => run(op)}
+                >
+                  ✦ {t(`sel.${op}`, { defaultValue: op })}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </BubbleMenu>
+  );
+}

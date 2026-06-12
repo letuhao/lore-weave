@@ -87,6 +87,17 @@ from loreweave_extraction.extractors.precision_filter_prompts import (
     build_precision_prompt,
     precision_prompt_body,
 )
+from loreweave_extraction.prompts import (
+    OUTPUT_CONTRACT_REMINDER,
+    apply_prompt_override,
+)
+from loreweave_extraction.resolve_config import (
+    PROMPT_OPS,
+    ResolvedConfig,
+    base_default_version,
+    config_hash,
+    resolve_effective_config,
+)
 
 __all__ = [
     # Orchestration
@@ -145,6 +156,15 @@ __all__ = [
     # P2 — extractor version (sha256 of prompts/*.md)
     "__extractor_version__",
     "get_extractor_version",
+    # B2 — effective config resolution + content-addressed hashing
+    "ResolvedConfig",
+    "resolve_effective_config",
+    "config_hash",
+    "base_default_version",
+    "PROMPT_OPS",
+    # B2-B-b2 — raw per-op prompt override + injection-safe output contract
+    "apply_prompt_override",
+    "OUTPUT_CONTRACT_REMINDER",
     # Model-context-aware chunking + concurrency
     "ContextBudget",
     "Language",

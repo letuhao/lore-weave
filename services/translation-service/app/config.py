@@ -33,10 +33,26 @@ class Settings(BaseSettings):
     # field and consolidate.
     provider_registry_internal_url: str = "http://provider-registry-service:8085"
     glossary_service_internal_url: str = "http://glossary-service:8088"
+    # M4a: knowledge-service for the V3 knowledge layer (relations → pronoun/
+    # honorific context). Empty by default = feature off (Null port): the client
+    # degrades to an empty neighbourhood and makes no HTTP call. Set in the live
+    # stack to enable. Internal-token auth (shared internal_service_token).
+    knowledge_service_internal_url: str = ""
     rabbitmq_url: str
+    # M5c: Redis Streams — consume glossary change events to flag stale translations.
+    redis_url: str = "redis://redis:6379"
     notification_service_internal_url: str = "http://notification-service:8091"
     internal_service_token: str
     port: int = 8087
+    # M7d-3: opt-in feed of source+translated text into the translation.quality
+    # event so the M7d-2 online fidelity judge has inputs to score. OFF by default
+    # — when off, the event payload is byte-identical to M7a (no extra cost, no
+    # text shipped). INDEPENDENT of learning's online_translation_judge_enabled
+    # (the consumer-side gate): both must be on for a judge to actually run, so
+    # turning the feed on alone is harmless. Truncate each side to bound the
+    # event-bus payload — a head-sample is enough for a fidelity judgment.
+    translation_judge_feed_enabled: bool = False
+    translation_judge_feed_max_chars: int = 2000
 
     class Config:
         env_file = ".env"

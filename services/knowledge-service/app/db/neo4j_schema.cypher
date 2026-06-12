@@ -141,6 +141,41 @@ FOR (e:Event) ON (e.user_id, e.evidence_count);
 CREATE INDEX fact_user_evidence IF NOT EXISTS
 FOR (f:Fact) ON (f.user_id, f.evidence_count);
 
+// T2.1 — Cast & Codex. A fact MAY link to its subject entity via
+// (:Fact)-[:ABOUT]->(:Entity) (stamped at extraction from the candidate's
+// resolved subject_id; absent for universal claims). `from_order` is the
+// reading-axis order (chapter_sort_order × EVENT_ORDER_CHAPTER_STRIDE) so the
+// codex can spoiler-window a fact to the chapter it was established in; NULL on
+// legacy / chat-tool facts (excluded under any finite window). The index serves
+// the windowed per-entity facts read.
+CREATE INDEX fact_user_from_order IF NOT EXISTS
+FOR (f:Fact) ON (f.user_id, f.from_order);
+
+// ─────────────────────────────────────────────────────────────────
+// A2-S1 :EntityStatus — coarse entity status timeline (active|gone) for the
+// composition canon guard. One node per (entity, status, from_order) transition;
+// "status at P" = latest evidenced transition with from_order <= P, default
+// active. from_order is on the reading axis (event_order / EVENT_ORDER_CHAPTER_
+// STRIDE scale). Evidence-backed so retract-then-write + zero-evidence cleanup
+// keep it in lockstep with the source (canon=published invariant).
+// ─────────────────────────────────────────────────────────────────
+
+CREATE CONSTRAINT entity_status_id_unique IF NOT EXISTS
+FOR (s:EntityStatus) REQUIRE s.id IS UNIQUE;
+
+// "Status of this entity at/<= a reading position." The hot path for
+// status_at_order — user+entity prefix, from_order for the range scan.
+CREATE INDEX entity_status_user_entity_order IF NOT EXISTS
+FOR (s:EntityStatus) ON (s.user_id, s.entity_id, s.from_order);
+
+// Zero-evidence cleanup after retract (mirrors fact_user_evidence).
+CREATE INDEX entity_status_user_evidence IF NOT EXISTS
+FOR (s:EntityStatus) ON (s.user_id, s.evidence_count);
+
+// Project-scoped cleanup / backfill.
+CREATE INDEX entity_status_user_project IF NOT EXISTS
+FOR (s:EntityStatus) ON (s.user_id, s.project_id);
+
 // ─────────────────────────────────────────────────────────────────
 // EXTRACTION SOURCE INDEXES — provenance lookup
 // ─────────────────────────────────────────────────────────────────

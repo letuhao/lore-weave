@@ -67,12 +67,24 @@ async def translate_text(
 
     source_language = body.source_language if body.source_language != "auto" else "auto-detect"
 
-    # ── Block mode (Phase 8F) ──────────────────────────────────────────────
+    # ── Block mode (Phase 8F; M5d/TD2: shared kernel, real context window) ──
     if body.blocks and len(body.blocks) > 0:
         from ..workers.block_classifier import rebuild_block
-        from ..workers.block_batcher import build_batch_plan, parse_translated_blocks
+        from ..workers.block_batcher import build_batch_plan
+        from ..workers.chapter_worker import _get_model_context_window
+        from ..workers.session_translator import (
+            _BLOCK_SYSTEM_PROMPT, _SafeFormatMap, _lang_name,
+            translate_batch_with_retry, _TRANSLATION_MAX_OUTPUT_TOKENS, _MAX_BATCH_RETRIES,
+        )
 
-        plan = build_batch_plan(body.blocks, context_window_tokens=8192)
+        # TD2: real model context window (was hardcoded 8192) + language-aware budget.
+        context_window = await _get_model_context_window(
+            {"model_ref": str(model_ref), "model_source": model_source}
+        )
+        plan = build_batch_plan(
+            body.blocks, context_window_tokens=context_window,
+            source_lang=source_language, target_lang=target_language,
+        )
         if not plan.batches:
             return TranslateTextResponse(
                 translated_blocks=body.blocks,
@@ -81,47 +93,42 @@ async def translate_text(
                 target_language=target_language,
             )
 
-        from ..workers.session_translator import _BLOCK_SYSTEM_PROMPT, _SafeFormatMap, _lang_name
-        sys_content = _BLOCK_SYSTEM_PROMPT.format_map(_SafeFormatMap({
-            "source_lang": _lang_name(source_language),
-            "source_code": source_language,
-            "target_lang": _lang_name(target_language),
-            "target_code": target_language,
-        }))
-
         translated_texts: dict[int, str] = {}
         total_in = 0
         total_out = 0
 
-        # Phase 4c-γ: SDK call replaces /v1/model-registry/invoke.
-        # Best-effort per batch — any SDK error skips the batch (matches
-        # legacy `continue` on httpx.TimeoutException / RequestError);
-        # missing blocks fall back to original text in the result loop.
-        for batch in plan.batches:
+        # M5d/TD2: route each batch through the shared kernel — the sync path now
+        # gets the worker's validation + correction-retry (it had neither before).
+        # No glossary: /translate-text is book-agnostic (no book_id to scope to).
+        for batch_idx, batch in enumerate(plan.batches):
             combined = batch.combined_text()
-            try:
-                sdk_job = await llm_client.submit_and_wait(
-                    user_id=user_id,
-                    operation="translation",
-                    model_source=model_source,
-                    model_ref=str(model_ref),
-                    input={"messages": [
-                        {"role": "system", "content": sys_content},
-                        {"role": "user", "content": f"Translate the following blocks from {_lang_name(source_language)} to {_lang_name(target_language)}:\n\n{combined}"},
-                    ]},
-                    chunking=None,
-                    job_meta={"endpoint": "translate-text-blocks"},
-                    transient_retry_budget=1,
-                )
-            except (LLMTransientRetryNeededError, LLMError):
-                continue
-            if sdk_job.status != "completed":
-                continue
-            response_text, in_tok, out_tok = _parse_sdk_response(sdk_job)
-            total_in += in_tok
-            total_out += out_tok
-            parsed = parse_translated_blocks(response_text, batch.block_indices)
-            translated_texts.update(parsed)
+            input_texts = {e.index: e.text for e in batch.entries}
+            system_content = _BLOCK_SYSTEM_PROMPT.format_map(_SafeFormatMap({
+                "source_lang": _lang_name(source_language),
+                "source_code": source_language,
+                "target_lang": _lang_name(target_language),
+                "target_code": target_language,
+                "block_count": str(len(batch.entries)),
+            }))
+            user_content = (
+                f"Translate the following {len(batch.entries)} blocks "
+                f"from {_lang_name(source_language)} to {_lang_name(target_language)}:\n\n{combined}"
+            )
+            out_max = min(
+                _TRANSLATION_MAX_OUTPUT_TOKENS,
+                max(2048, context_window - batch.token_estimate - 2048),
+            )
+            br = await translate_batch_with_retry(
+                llm_client=llm_client, user_id=user_id,
+                model_source=model_source, model_ref=str(model_ref),
+                system_content=system_content, user_content=user_content,
+                combined=combined, block_indices=batch.block_indices, input_texts=input_texts,
+                out_max=out_max, max_retries=_MAX_BATCH_RETRIES,
+                job_meta_base={"endpoint": "translate-text-blocks", "batch_idx": batch_idx},
+            )
+            translated_texts.update(br.parsed)
+            total_in += br.input_tokens
+            total_out += br.output_tokens
 
         result_blocks = []
         for entry in plan.all_entries:

@@ -1,5 +1,6 @@
 import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { providerApi } from '@/features/settings/api';
@@ -7,7 +8,7 @@ import { booksApi, type Book } from '@/features/books/api';
 import { glossaryApi } from '@/features/glossary/api';
 import type { GlossaryEntity } from '@/features/glossary/types';
 import { useSessions } from '../hooks/useSessions';
-import { buildContextBlock } from '../context/formatContext';
+import { buildContextBlock, tiptapDocToText } from '../context/formatContext';
 import { onSendToChat } from '../context/sendToChat';
 import type { ContextItem } from '../context/types';
 import type { ChatSession, CreateSessionPayload } from '../types';
@@ -64,7 +65,17 @@ export function useChatSession() {
 
 // ── Provider ───────────────────────────────────────────────────────────────────
 
-export function ChatSessionProvider({ children }: { children: React.ReactNode }) {
+interface ChatSessionProviderProps {
+  children: React.ReactNode;
+  // ARCH-1 C5: embedded mode (e.g. the editor AI panel). When true the
+  // provider does NOT read the URL session param or navigate on selection —
+  // the host owns which session is active. Default false = today's URL-driven
+  // page behavior, unchanged.
+  embedded?: boolean;
+}
+
+export function ChatSessionProvider({ children, embedded = false }: ChatSessionProviderProps) {
+  const { t } = useTranslation('chat');
   const { accessToken } = useAuth();
   const navigate = useNavigate();
   const { sessionId: urlSessionId } = useParams<{ sessionId?: string }>();
@@ -85,23 +96,27 @@ export function ChatSessionProvider({ children }: { children: React.ReactNode })
 
   const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
 
-  // Restore session from URL param
+  // Restore session from URL param (page mode only — embedded hosts inject
+  // the active session themselves via selectSession).
   useEffect(() => {
-    if (!urlSessionId || sessions.length === 0) return;
+    if (embedded || !urlSessionId || sessions.length === 0) return;
     const match = sessions.find((s) => s.session_id === urlSessionId);
     if (match && match.session_id !== activeSession?.session_id) {
       setActiveSession(match);
     }
-  }, [urlSessionId, sessions]);
+  }, [embedded, urlSessionId, sessions]);
 
   const selectSession = useCallback((session: ChatSession | null) => {
     setActiveSession(session);
+    // Embedded hosts (editor panel) have no chat route to navigate — selecting
+    // a session is pure state. Page mode keeps URL ↔ session in sync.
+    if (embedded) return;
     if (session) {
       navigate(`/chat/${session.session_id}`, { replace: true });
     } else {
       navigate('/chat', { replace: true });
     }
-  }, [navigate]);
+  }, [embedded, navigate]);
 
   // ── Session CRUD ───────────────────────────────────────────────────────────
 
@@ -112,9 +127,9 @@ export function ChatSessionProvider({ children }: { children: React.ReactNode })
       setShowNewDialog(false);
       setContextItems([]);
     } catch (err) {
-      toast.error(`Failed to create chat: ${(err as Error).message}`);
+      toast.error(t('session_toast.create_failed', { error: (err as Error).message }));
     }
-  }, [createSessionApi, selectSession]);
+  }, [createSessionApi, selectSession, t]);
 
   const renameSession = useCallback(async (sessionId: string, title: string) => {
     try {
@@ -123,27 +138,27 @@ export function ChatSessionProvider({ children }: { children: React.ReactNode })
         setActiveSession((prev) => (prev ? { ...prev, title } : prev));
       }
     } catch (err) {
-      toast.error(`Rename failed: ${(err as Error).message}`);
+      toast.error(t('session_toast.rename_failed', { error: (err as Error).message }));
     }
-  }, [renameSessionApi, activeSession?.session_id]);
+  }, [renameSessionApi, activeSession?.session_id, t]);
 
   const archiveSession = useCallback(async (sessionId: string) => {
     try {
       await archiveSessionApi(sessionId);
       if (activeSession?.session_id === sessionId) selectSession(null);
     } catch (err) {
-      toast.error(`Archive failed: ${(err as Error).message}`);
+      toast.error(t('session_toast.archive_failed', { error: (err as Error).message }));
     }
-  }, [archiveSessionApi, activeSession?.session_id, selectSession]);
+  }, [archiveSessionApi, activeSession?.session_id, selectSession, t]);
 
   const deleteSession = useCallback(async (sessionId: string) => {
     try {
       await deleteSessionApi(sessionId);
       if (activeSession?.session_id === sessionId) selectSession(null);
     } catch (err) {
-      toast.error(`Delete failed: ${(err as Error).message}`);
+      toast.error(t('session_toast.delete_failed', { error: (err as Error).message }));
     }
-  }, [deleteSessionApi, activeSession?.session_id, selectSession]);
+  }, [deleteSessionApi, activeSession?.session_id, selectSession, t]);
 
   const togglePin = useCallback(async (sessionId: string, pinned: boolean) => {
     await togglePinApi(sessionId, pinned);
@@ -221,7 +236,7 @@ export function ChatSessionProvider({ children }: { children: React.ReactNode })
       const items = contextItemsRef.current;
       if (items.length === 0) {
         sendFn(content, thinking).catch((err) => {
-          toast.error(`Chat error: ${(err as Error).message}`);
+          toast.error(t('session_toast.chat_error', { error: (err as Error).message }));
         });
         return;
       }
@@ -240,13 +255,17 @@ export function ChatSessionProvider({ children }: { children: React.ReactNode })
               resolvedData.set(item.id, { book });
             } else if (item.type === 'chapter' && item.bookId && item.chapterId) {
               const draft = await booksApi.getDraft(accessToken, item.bookId, item.chapterId);
-              resolvedData.set(item.id, { chapterBody: draft.body ?? '' });
+              // draft.body is raw Tiptap JSON; use the server's extracted
+              // text_content (fall back to client-side extraction). Passing
+              // draft.body directly produced "[object Object]" (C5-era bug).
+              const chapterBody = draft.text_content ?? tiptapDocToText(draft.body);
+              resolvedData.set(item.id, { chapterBody });
             } else if (item.type === 'glossary' && item.bookId) {
               const entity = await glossaryApi.getEntity(item.bookId, item.id, accessToken);
               resolvedData.set(item.id, { entity });
             }
           } catch {
-            toast.warning(`Could not load context for "${item.label}" — sending without it`);
+            toast.warning(t('session_toast.context_load_failed', { label: item.label }));
           }
         }
 
@@ -254,11 +273,11 @@ export function ChatSessionProvider({ children }: { children: React.ReactNode })
         const finalContent = contextBlock ? contextBlock + content : content;
 
         sendFn(finalContent, thinking).catch((err) => {
-          toast.error(`Chat error: ${(err as Error).message}`);
+          toast.error(t('session_toast.chat_error', { error: (err as Error).message }));
         });
       })();
     },
-    [accessToken],
+    [accessToken, t],
   );
 
   // ── UI state ───────────────────────────────────────────────────────────────

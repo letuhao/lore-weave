@@ -4,8 +4,9 @@
  * Works for both authenticated and anonymous users.
  */
 import { useEffect, useRef } from 'react';
+import { apiBase } from '@/api';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3000';
+const API_BASE = apiBase();
 const DEBOUNCE_KEY = 'lw:last-view';
 const DEBOUNCE_MS = 30_000;
 

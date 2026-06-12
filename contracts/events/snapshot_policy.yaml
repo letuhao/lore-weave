@@ -1,0 +1,49 @@
+# contracts/events/snapshot_policy.yaml — L2.E (RAID cycle 9 DPS 3)
+#
+# Opt-in aggregate_snapshots policy. By default NO aggregate type takes
+# snapshots (V1 chooses correctness + simplicity over premature optimization).
+# Adding an entry below opts that aggregate_type in to the snapshot worker
+# (lands in cycle 14 L3.D rebuild orchestrator) — when the worker sees an
+# aggregate cross `every_n_events`, it persists a row to `aggregate_snapshots`.
+#
+# Schema:
+#   version: 1
+#   policies:
+#     - aggregate_type: "<canonical aggregate_type from _registry.yaml>"
+#       every_n_events: <uint>      # snapshot after N events since last snapshot
+#       keep_last_n:    <uint>      # how many historical snapshots to keep
+#       description:    "<one-liner: why this aggregate justifies snapshotting>"
+#
+# Guidance:
+#   - Short-lived aggregates (e.g. a one-shot "world.tick" pulse) get NO entry.
+#   - Long-lived high-version aggregates (NPCs, regions, PCs) belong here once
+#     event count per aggregate exceeds ~500 — that's the L3 §6 break-even
+#     point where snapshot+delta beats full replay.
+#   - Audit aggregates (event_audit logical aggregate) get NO entry — they
+#     are pruned, not replayed.
+#
+# Q-L2-1 (LOCKED): V1 sync projection. Snapshots are the loader-side optim
+# for the sync read path; they do NOT introduce async projection semantics.
+
+version: 1
+
+policies:
+  # ── EMPTY by default. Future cycles add aggregates here as load testing
+  # shows replay cost exceeds snapshot+delta cost. The CI policy lint
+  # (cycle 9 DPS 3 sibling test) enforces:
+  #   - every policy.aggregate_type MUST appear as `aggregate:` in
+  #     contracts/events/_registry.yaml
+  #   - every_n_events >= 100 (smaller values waste storage on snapshot churn)
+  #   - keep_last_n >= 1 (rolling history for debug)
+  #
+  # Example (commented-out — uncomment when L3 rebuild orchestrator lands):
+  #
+  # - aggregate_type: "npc"
+  #   every_n_events: 500
+  #   keep_last_n: 3
+  #   description: "Long-running NPC dialogue + state — break-even at ~500 events"
+  #
+  # - aggregate_type: "region"
+  #   every_n_events: 1000
+  #   keep_last_n: 3
+  #   description: "Region simulation state — sparse but long-lived"

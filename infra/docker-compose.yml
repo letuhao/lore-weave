@@ -3,6 +3,15 @@
 # Browser: http://localhost:5296  |  Gateway: http://localhost:3123  |  Auth: http://localhost:8204
 # Optional env file: copy .env.example to .env and set JWT_SECRET (>= 32 chars) for production-like secrets.
 
+# Stale-image guard (F-LIVE-1): every first-party build target stamps the git SHA +
+# build time as image labels so scripts/check_stack_freshness.py can detect a running
+# container that is behind HEAD. Set via scripts/build-stack.sh (exports GIT_SHA +
+# BUILD_TIME before `docker compose build`); a plain build leaves them 'unknown' and
+# the guard falls back to its timestamp proxy.
+x-build-labels: &build-labels
+  org.loreweave.git_sha: "${GIT_SHA:-unknown}"
+  org.loreweave.build_time: "${BUILD_TIME:-unknown}"
+
 services:
   postgres:
     image: postgres:18-alpine
@@ -55,6 +64,7 @@ services:
     build:
       context: ../infra/mock-audio-service
       dockerfile: Dockerfile
+      labels: *build-labels
     ports:
       - "8600:8600"
     profiles:
@@ -77,6 +87,7 @@ services:
     build:
       context: ..
       dockerfile: services/auth-service/Dockerfile
+      labels: *build-labels
     environment:
       HTTP_ADDR: ":8081"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_auth?sslmode=disable
@@ -111,6 +122,7 @@ services:
     build:
       context: ..
       dockerfile: services/book-service/Dockerfile
+      labels: *build-labels
     environment:
       HTTP_ADDR: ":8082"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book?sslmode=disable
@@ -142,12 +154,51 @@ services:
     ports:
       - "8205:8082"
 
+  composition-service:
+    # LOOM Composition V0 — lore-grounded co-writer. Repo-root build context
+    # so the Dockerfile can COPY sdks/python (loreweave_obs/llm/eval).
+    build:
+      context: ..
+      dockerfile: services/composition-service/Dockerfile
+      labels: *build-labels
+    environment:
+      PORT: "8093"
+      COMPOSITION_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_composition
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: INFO
+      # S2 — long-chapter state-compress threshold (chars of raw story-so-far
+      # before the packer compresses the older portion). Default 6000; overridable.
+      PACK_COMPRESS_RECENT_THRESHOLD_CHARS: ${PACK_COMPRESS_RECENT_THRESHOLD_CHARS:-6000}
+      # Internal service URLs — consumed by the M3 client wrappers.
+      KNOWLEDGE_INTERNAL_URL: http://knowledge-service:8092
+      GLOSSARY_INTERNAL_URL: http://glossary-service:8088
+      BOOK_INTERNAL_URL: http://book-service:8082
+      LLM_GATEWAY_INTERNAL_URL: http://provider-registry-service:8085
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8093/health')\" || exit 1"]
+      interval: 5s
+      timeout: 3s
+      start_period: 20s
+      retries: 5
+    restart: unless-stopped
+    ports:
+      - "8217:8093"
+
   sharing-service:
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.
     build:
       context: ..
       dockerfile: services/sharing-service/Dockerfile
+      labels: *build-labels
     environment:
       HTTP_ADDR: ":8083"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_sharing?sslmode=disable
@@ -176,6 +227,7 @@ services:
     build:
       context: ..
       dockerfile: services/catalog-service/Dockerfile
+      labels: *build-labels
     environment:
       HTTP_ADDR: ":8084"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_catalog?sslmode=disable
@@ -206,6 +258,7 @@ services:
     build:
       context: ..
       dockerfile: services/provider-registry-service/Dockerfile
+      labels: *build-labels
     environment:
       HTTP_ADDR: ":8085"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_provider_registry?sslmode=disable
@@ -224,6 +277,9 @@ services:
       MINIO_USE_SSL: "false"
       MINIO_EXTERNAL_URL: http://localhost:9123
       AUDIO_CACHE_BUCKET: loreweave-audio-cache
+      # E5B rerank is now BYOK (D-RERANK-NOT-BYOK): /internal/rerank resolves the
+      # user's rerank model from provider-registry like /internal/embed — no
+      # platform RERANK_URL / RERANK_MODEL / RERANK_SERVICE_TOKEN config anymore.
       # Session-61 long-chapter perf fix — per-Read idle timeout on
       # streaming upstreams (see provider/streamer.go). Defense-in-depth
       # against LM Studio auto-evicting a loaded model mid-stream (the
@@ -241,6 +297,28 @@ services:
       # Phase 6b — transient-retry budget for a worker job. Optional; the
       # code default (3) applies when unset.
       JOB_MAX_RETRIES: ${JOB_MAX_RETRIES:-3}
+      # S3a (G5) — per-provider concurrency governor + circuit-breaker on the
+      # jobs-worker path. REDIS_URL enables it (unset = governance off). Tunables
+      # have code defaults; set to override for the autonomous batch.
+      REDIS_URL: redis://redis:6379
+      GOVERNOR_CLOUD_MAX: ${GOVERNOR_CLOUD_MAX:-8}
+      # LLM re-arch Phase 1 Commit 3 — the durable work queue is now the gate:
+      # a job's per-kind semaphore (local→1) serialises BEFORE Process, so the
+      # governor inside Process never sees >1 concurrent local call → no acquire
+      # contention. With the queue ON the GOVERNOR_ACQUIRE_TIMEOUT_MS band-aid
+      # (was 600000, the interim acquire-or-die mitigation) is REVERTED to the
+      # 30s code default (D-REVERT-GOVERNOR-ACQUIRE-BANDAID) — overridable if ever
+      # needed. The queue, not a long acquire wait, is what stops the cascade.
+      LLM_JOB_QUEUE_ENABLED: ${LLM_JOB_QUEUE_ENABLED:-true}
+      BREAKER_THRESHOLD: ${BREAKER_THRESHOLD:-5}
+      BREAKER_COOLDOWN_S: ${BREAKER_COOLDOWN_S:-30}
+      # S4b (decision C) — usage outbox relay → Redis streams (reuses REDIS_URL).
+      # Streams: campaign-service (S4d) consumes :campaign_usage; usage-billing
+      # (S4c) consumes :usage. MAXLEN bounds each (G8).
+      USAGE_STREAM: ${USAGE_STREAM:-loreweave:events:usage}
+      CAMPAIGN_USAGE_STREAM: ${CAMPAIGN_USAGE_STREAM:-loreweave:events:campaign_usage}
+      USAGE_STREAM_MAXLEN: ${USAGE_STREAM_MAXLEN:-100000}
+      CAMPAIGN_USAGE_STREAM_MAXLEN: ${CAMPAIGN_USAGE_STREAM_MAXLEN:-50000}
       # Phase 6c — OpenTelemetry trace export. Unset = no-op tracer (the
       # service still boots). Set it + bring up the `observability` profile
       # to wire tracing to the collector; see the otel-collector block.
@@ -268,6 +346,7 @@ services:
     build:
       context: ..
       dockerfile: services/usage-billing-service/Dockerfile
+      labels: *build-labels
     environment:
       HTTP_ADDR: ":8086"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_usage_billing?sslmode=disable
@@ -289,11 +368,19 @@ services:
       # P5). Generous for the test/UAT environment so it never gates.
       # Same numeric(16,8) ceiling as the guardrail budgets above.
       PLATFORM_FREE_TIER_USD: ${PLATFORM_FREE_TIER_USD:-99000000}
+      # S4c — usage audit stream consumer. Consumes the S4b loreweave:events:usage
+      # stream (provider-registry relay) → usage_logs audit. Unset REDIS_URL = no
+      # consumer (the /record streaming path still works).
+      REDIS_URL: redis://redis:6379
+      USAGE_STREAM: ${USAGE_STREAM:-loreweave:events:usage}
+      USAGE_CONSUMER_GROUP: ${USAGE_CONSUMER_GROUP:-usage-biller}
       # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
 
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8086/health"]
@@ -326,6 +413,7 @@ services:
     build:
       context: ..
       dockerfile: services/translation-service/Dockerfile
+      labels: *build-labels
     environment:
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_translation
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
@@ -335,9 +423,13 @@ services:
       # env var for naming consistency with knowledge-service + worker-ai.
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       GLOSSARY_SERVICE_INTERNAL_URL: http://glossary-service:8088
+      # M4a: V3 knowledge layer (relations → pronoun/honorific). Empty disables it.
+      KNOWLEDGE_SERVICE_INTERNAL_URL: http://knowledge-service:8092
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # M5c: consume glossary change events (Redis Stream) to flag stale translations.
+      REDIS_URL: redis://redis:6379
       PORT: "8087"
     depends_on:
       postgres:
@@ -358,11 +450,56 @@ services:
     ports:
       - "8210:8087"
 
+  campaign-service:
+    # Auto-Draft Factory S1 — saga orchestrator + per-chapter projection.
+    # Context = repo root so the Dockerfile can COPY sdks/python (loreweave_obs)
+    # alongside the service code (same pattern as translation/knowledge).
+    build:
+      context: ..
+      dockerfile: services/campaign-service/Dockerfile
+      labels: *build-labels
+    environment:
+      DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_campaign
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      BOOK_SERVICE_INTERNAL_URL: http://book-service:8082
+      TRANSLATION_SERVICE_INTERNAL_URL: http://translation-service:8087
+      KNOWLEDGE_SERVICE_INTERNAL_URL: http://knowledge-service:8092
+      # Projection consumer reads the existing event spine (chapter/translation/
+      # knowledge streams). Reconnect loop tolerates redis startup races, so
+      # redis is NOT a hard depends_on (matches translation-service).
+      REDIS_URL: redis://redis:6379
+      PORT: "8095"
+      # D-CAMPAIGN-BESTEFFORT-EMIT-REDIS — stuck-`dispatched` self-heal window.
+      # Overridable for live-smokes (default 900s = 15 min).
+      STUCK_DISPATCH_TIMEOUT_S: ${STUCK_DISPATCH_TIMEOUT_S:-900}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      book-service:
+        condition: service_healthy
+      translation-service:
+        condition: service_healthy
+      knowledge-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8095/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    ports:
+      - "8223:8095"
+
   translation-worker:
     # Phase 4c-α: context bumped to repo root for SDK install.
+    # restart policy matches sibling background workers (worker-infra/worker-ai):
+    # without it, a stack restart that exits the worker leaves translation
+    # silently broken (jobs enqueue to RabbitMQ but nothing consumes them).
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: services/translation-service/Dockerfile.worker
+      labels: *build-labels
     environment:
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_translation
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
@@ -371,6 +508,8 @@ services:
       # Phase 4c-α: SDK install. Same host as legacy URL.
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       GLOSSARY_SERVICE_INTERNAL_URL: http://glossary-service:8088
+      # M4a: V3 knowledge layer (relations → pronoun/honorific). Empty disables it.
+      KNOWLEDGE_SERVICE_INTERNAL_URL: http://knowledge-service:8092
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
@@ -392,6 +531,7 @@ services:
     build:
       context: ..
       dockerfile: services/glossary-service/Dockerfile
+      labels: *build-labels
     environment:
       HTTP_ADDR: ":8088"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary?sslmode=disable
@@ -399,12 +539,24 @@ services:
       AUTH_SERVICE_URL: http://auth-service:8081
       BOOK_SERVICE_URL: http://book-service:8082
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # DEFERRED-044: the C5 wiki-from-KG renderer reads an entity's KG
+      # neighbourhood from knowledge-service when this is set, and degrades to a
+      # name/kind/attributes-only body when unset (no hard dependency — so no
+      # depends_on coupling). Without it, /wiki/generate omits the KG relationship
+      # sections in the dev/prod stack.
+      KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      # VG-1: glossary entity versioning. When set, glossary-service runs the
+      # revision-projection consumer on loreweave:events:glossary (whole-entity
+      # snapshots into entity_revisions — the recovery/undo substrate). Unset =
+      # feature dormant. Recovery-critical (PO 2026-06-07), so wired in the stack.
+      REDIS_URL: redis://redis:6379
       # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
         condition: service_healthy
-
+      redis:
+        condition: service_healthy
       book-service:
         condition: service_healthy
     healthcheck:
@@ -422,6 +574,7 @@ services:
       # translation-service patterns.
       context: ..
       dockerfile: services/video-gen-service/Dockerfile
+      labels: *build-labels
     environment:
       HTTP_PORT: "8088"
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
@@ -453,6 +606,7 @@ services:
       # context until they migrate to the SDK.
       context: ..
       dockerfile: services/chat-service/Dockerfile
+      labels: *build-labels
     environment:
       PORT: "8090"
       DATABASE_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_chat
@@ -470,6 +624,9 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       REDIS_URL: redis://redis:6379
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      # ai-gateway P0: TOOLS (definitions + MCP execute) go through the gateway;
+      # build_context (grounding) still targets KNOWLEDGE_SERVICE_URL above.
+      AI_GATEWAY_URL: http://ai-gateway:8210
       # build_context is a fast read on the chat hot path — 500ms.
       KNOWLEDGE_CLIENT_TIMEOUT_S: "0.5"
       KNOWLEDGE_CLIENT_RETRIES: "1"
@@ -489,6 +646,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+      ai-gateway:
+        condition: service_healthy
     ports:
       - "8212:8090"
     healthcheck:
@@ -498,12 +657,42 @@ services:
       start_period: 20s
       retries: 5
 
+  # ai-gateway P0 — internal MCP federation gateway. MCP server upstream
+  # (chat, composition) + MCP client downstream federating knowledge's /mcp.
+  ai-gateway:
+    build:
+      context: ../services/ai-gateway
+      dockerfile: Dockerfile
+      labels: *build-labels
+    environment:
+      AI_GATEWAY_PORT: "8210"
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      KNOWLEDGE_MCP_URL: http://knowledge-service:8092/mcp
+      GLOSSARY_MCP_URL: http://glossary-service:8088/mcp
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      knowledge-service:
+        condition: service_healthy
+      glossary-service:
+        condition: service_healthy
+    ports:
+      - "8218:8210"
+    healthcheck:
+      # node is always present in the image (wget/curl are not) — a wget probe
+      # left the gateway permanently "unhealthy", blocking dependents' depends_on.
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:8210/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 5s
+      timeout: 3s
+      start_period: 15s
+      retries: 5
+
   knowledge-service:
     build:
       # Phase 4a-α: context is repo root so Dockerfile can COPY sdks/python.
       # Mirrors chat-service Phase 1c-ii setup.
       context: ..
       dockerfile: services/knowledge-service/Dockerfile
+      labels: *build-labels
     environment:
       PORT: "8092"
       KNOWLEDGE_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge
@@ -552,6 +741,12 @@ services:
       # Override ENABLED=true to enable; MAX_PER_CHAPTER tunes the cap.
       KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED: ${KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED:-false}
       KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_MAX_PER_CHAPTER: ${KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_MAX_PER_CHAPTER:-20}
+      # wiki-llm M1 (option A) — read the authored de-bias BookProfile from
+      # lore-enrichment over the internal token to shape the wiki-gen prompt.
+      LORE_ENRICHMENT_SERVICE_URL: http://lore-enrichment-service:8093
+      # wiki-llm M6 — batch wiki-generation consumer. OFF by default (spends
+      # tokens); set true to drain loreweave:events:wiki-gen and generate.
+      WIKI_GEN_ENABLED: ${KNOWLEDGE_WIKI_GEN_ENABLED:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -581,6 +776,7 @@ services:
       # Repo-root context so a later cycle can COPY sdks/python (loreweave_llm).
       context: ..
       dockerfile: services/lore-enrichment-service/Dockerfile
+      labels: *build-labels
     environment:
       PORT: "8093"
       LORE_ENRICHMENT_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_lore_enrichment
@@ -592,13 +788,104 @@ services:
       BOOK_SERVICE_URL: http://book-service:8082
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       REDIS_URL: redis://redis:6379
+      # C18 — OpenTelemetry trace export (mirrors api-gateway-bff / the other
+      # FastAPI services). Empty default → setup_tracing is a no-op (dev). Set to
+      # the collector endpoint to enable tracing.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      # Compose slice 3 (mode F) — MinIO object storage for uploaded files.
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: loreweave
+      MINIO_SECRET_KEY: loreweave_dev_minio_secret
+      MINIO_BUCKET: lore-enrichment-uploads
+      MINIO_USE_SSL: "false"
     depends_on:
       postgres:
         condition: service_healthy
+      minio:
+        condition: service_started
     ports:
       - "8221:8093"
+    # Liveness probe — /health is constant-ok (no DB). C18 added /ready (DB-
+    # readiness, SELECT 1, 503 on failure) for orchestrator traffic-gating; the
+    # compose healthcheck stays on /health so a brief DB blip does NOT crash-loop
+    # the container (DEFERRED-042 cleared — see RUNBOOK.md /health vs /ready).
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8093/health')\" || exit 1"]
+      interval: 5s
+      timeout: 3s
+      start_period: 20s
+      retries: 5
+    restart: unless-stopped
+
+  # F-C14-1/051 — background resume worker. Same image as lore-enrichment-service
+  # (CMD override), runs the Redis-Streams resume consumer that re-drives
+  # cost-cap-paused jobs (skipping already-done gaps). No HTTP port.
+  lore-enrichment-worker:
+    build:
+      context: ..
+      dockerfile: services/lore-enrichment-service/Dockerfile
+      labels: *build-labels
+    command: ["python", "-m", "app.worker"]
+    environment:
+      LORE_ENRICHMENT_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_lore_enrichment
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      GLOSSARY_SERVICE_URL: http://glossary-service:8088
+      BOOK_SERVICE_URL: http://book-service:8082
+      PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
+      REDIS_URL: redis://redis:6379
+      RESUME_CONSUMER_ENABLED: ${RESUME_CONSUMER_ENABLED:-true}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      # The reaper's orphan-object sweep (D-COMPOSE-S3-UPLOAD-REAPER) deletes row-less
+      # MinIO objects, so the worker needs the SAME bucket config as the service.
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: loreweave
+      MINIO_SECRET_KEY: loreweave_dev_minio_secret
+      MINIO_BUCKET: lore-enrichment-uploads
+      MINIO_USE_SSL: "false"
+    # LE-062: the worker is a headless consumer (no HTTP server), so override the
+    # image's HTTP /health probe with a heartbeat-file freshness check. The worker
+    # touches the heartbeat from a background task while its event loop is alive
+    # (stays fresh during long generations; goes stale only on a real hang/crash).
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.worker.healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  learning-service:
+    # Phase B — Axis-1 correction capture. Consumes the correction event spine
+    # (glossary.entity_updated [user-only] + knowledge.*_corrected) off Redis
+    # Streams and persists to the `corrections` log; exposes a read API.
+    # Repo-root context for parity with the other Python services (no sdks COPY
+    # — learning-service makes no LLM calls this cycle).
+    build:
+      context: ..
+      dockerfile: services/learning-service/Dockerfile
+    environment:
+      PORT: "8094"
+      LEARNING_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_learning
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8222:8094"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8094/health')\" || exit 1"]
       interval: 5s
       timeout: 3s
       start_period: 20s
@@ -611,6 +898,7 @@ services:
     build:
       context: ..
       dockerfile: services/worker-infra/Dockerfile
+      labels: *build-labels
     environment:
       WORKER_TASKS: "outbox-relay,outbox-cleanup,import-processor"
       EVENTS_DB_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_events
@@ -619,8 +907,20 @@ services:
       # rows (aggregate_type='glossary' → stream loreweave:events:glossary)
       # for knowledge-service's glossary-sync consumer. Additive — existing
       # book/translation/chat sources unchanged.
-      OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book,translation:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_translation,chat:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_chat,glossary:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary"
-      OUTBOX_CLEANUP_RETAIN_DAYS: "7"
+      # Phase B sub-session B: knowledge added so the relay ships KS's new
+      # transactional outbox (knowledge.*_corrected, aggregate_type='knowledge')
+      # to loreweave:events:knowledge for learning-service.
+      # LOOM V1 correction-flywheel slice 1 (D-COMP-OUTBOX-NOT-RELAYED): composition
+      # added so the relay ships its txn outbox (composition.generation_corrected +
+      # the pre-existing M9 scene_committed, aggregate_type='composition') to
+      # loreweave:events:composition. Until now composition wrote outbox rows that
+      # were NEVER relayed (M9 telemetry was emitted-but-unconsumed).
+      OUTBOX_SOURCES: "book:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book,translation:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_translation,chat:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_chat,glossary:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_glossary,knowledge:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge,composition:postgres://loreweave:loreweave_dev@postgres:5432/loreweave_composition"
+      # Phase B (§10.1): bumped 7→30 days. glossary now also feeds
+      # learning-service's append-only correction log; a longer retention on the
+      # source outbox rows + event_log is the replay backstop so a learning-
+      # service outage can be backfilled (ReplayCorrections, D#049).
+      OUTBOX_CLEANUP_RETAIN_DAYS: "30"
       BOOK_DB_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_book
       PANDOC_URL: http://pandoc-server:3030
       MINIO_ENDPOINT: minio:9000
@@ -651,6 +951,7 @@ services:
     build:
       context: ..
       dockerfile: services/worker-ai/Dockerfile
+      labels: *build-labels
     environment:
       KNOWLEDGE_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
@@ -680,6 +981,9 @@ services:
       # Set to 0 to disable (e.g. when running multiple worker replicas
       # on the same host that would collide on the port).
       METRICS_PORT: "${WORKER_AI_METRICS_PORT:-8094}"
+      # B2 follow-up — global env knob for writer autocreate.  Mirrors the
+      # knowledge-service value so both services share one .env toggle.
+      KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED: ${KNOWLEDGE_EXTRACTION_WRITER_AUTOCREATE_ENABLED:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -701,6 +1005,7 @@ services:
     build:
       context: ..
       dockerfile: services/statistics-service/Dockerfile
+      labels: *build-labels
     environment:
       HTTP_ADDR: ":8089"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_statistics?sslmode=disable
@@ -734,6 +1039,7 @@ services:
     build:
       context: ..
       dockerfile: services/notification-service/Dockerfile
+      labels: *build-labels
     environment:
       HTTP_ADDR: ":8091"
       DATABASE_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_notification?sslmode=disable
@@ -762,6 +1068,7 @@ services:
     build:
       context: ../services/api-gateway-bff
       dockerfile: Dockerfile
+      labels: *build-labels
     environment:
       PORT: "3000"
       AUTH_SERVICE_URL: http://auth-service:8081
@@ -777,7 +1084,12 @@ services:
       STATISTICS_SERVICE_URL: http://statistics-service:8089
       NOTIFICATION_SERVICE_URL: http://notification-service:8091
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
+      # Auto-Draft Factory S1 — campaign saga API (/v1/campaigns).
+      CAMPAIGN_SERVICE_URL: http://campaign-service:8095
       LORE_ENRICHMENT_SERVICE_URL: http://lore-enrichment-service:8093
+      LEARNING_SERVICE_URL: http://learning-service:8094
+      # LOOM M7 — composition-service (co-writer). Same in-cluster pattern.
+      COMPOSITION_SERVICE_URL: http://composition-service:8093
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
@@ -808,11 +1120,25 @@ services:
         condition: service_healthy
       knowledge-service:
         condition: service_healthy
+      campaign-service:
+        # Auto-Draft Factory S1 — start-ordering only (not a hard gate): the
+        # gateway must not wedge the stack if the saga orchestrator is unhealthy.
+        condition: service_started
       lore-enrichment-service:
         # C0 skeleton — start-ordering only, NOT a hard health gate: the gateway
         # must not wedge the whole stack if this nascent service is unhealthy
         # (adversary r2 BLOCK#1). Upgrade to service_healthy once it carries real
         # routes (post-C3).
+        condition: service_started
+      learning-service:
+        # Phase B — start-ordering only (not a hard gate): the correction read
+        # API is non-critical, so a learning-service hiccup must not wedge the
+        # gateway/whole stack. Mirrors the lore-enrichment posture.
+        condition: service_started
+      composition-service:
+        # LOOM M7 — start-ordering only (not a hard gate): a composition hiccup
+        # must not wedge the gateway; the compositionProxy 503-on-down handler
+        # degrades gracefully. Mirrors the learning/lore-enrichment posture.
         condition: service_started
       rabbitmq:
         condition: service_healthy
@@ -838,6 +1164,11 @@ services:
 
   languagetool:
     image: erikvl87/languagetool:latest
+    # restart policy added 2026-05-31: the service block existed but the
+    # container was never started (same class as the translation-worker gap),
+    # so the editor grammar check 500'd. unless-stopped keeps it alive across
+    # daemon restarts; the frontend container hard-depends on it (see below).
+    restart: unless-stopped
     environment:
       Java_Xms: 256m
       Java_Xmx: 512m
@@ -845,6 +1176,12 @@ services:
       - "8875:8010"
     volumes:
       - loreweave_languagetool:/LanguageTool/languagetool-data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8010/v2/languages >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
 
   pandoc-server:
     image: pandoc/core:latest
@@ -861,6 +1198,7 @@ services:
     build:
       context: ../frontend
       dockerfile: Dockerfile
+      labels: *build-labels
       args:
         VITE_API_BASE: ${VITE_API_BASE:-http://localhost:3123}
     depends_on:
@@ -986,6 +1324,7 @@ services:
     build:
       context: ..
       dockerfile: services/tilemap-service/Dockerfile
+      labels: *build-labels
     environment:
       # Env name rewrite (LOW-2 from /review-impl 2026-05-24): the host /
       # .env reads `INTERNAL_SERVICE_TOKEN` (matching auth-service /
@@ -1036,6 +1375,7 @@ services:
     build:
       context: ../services/game-server
       dockerfile: Dockerfile
+      labels: *build-labels
     environment:
       PORT: "2567"
       # Dev auth token — EchoRoom.onAuth checks options.jwt against this.
@@ -1072,6 +1412,7 @@ services:
     build:
       context: ..
       dockerfile: frontend-game/Dockerfile
+      labels: *build-labels
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:5174/livez"]
       interval: 10s

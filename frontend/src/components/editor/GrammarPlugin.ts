@@ -1,7 +1,7 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { checkGrammar, type GrammarMatch } from '@/features/grammar/api';
+import { checkGrammar, grammarServiceAvailable, type GrammarMatch } from '@/features/grammar/api';
 
 const grammarPluginKey = new PluginKey('grammar');
 
@@ -109,14 +109,24 @@ async function runGrammarCheck(view: any) {
     }
     return true;
   });
+  if (blocks.length === 0) return;
 
-  // Check all blocks in parallel
-  const results = await Promise.all(
-    blocks.map(async (block) => {
-      const matches = await checkGrammar(block.text);
-      return { block, matches };
-    }),
-  );
+  // Probe with the FIRST block before fanning out. If LanguageTool is down, the
+  // probe's failure opens the circuit breaker (see features/grammar/api.ts), and
+  // we skip the remaining blocks. A plain `Promise.all(blocks.map(...))` would
+  // fire all N requests *before* the first failure can open the breaker — so a
+  // missing LT service spams the console with N×500s on every editor load (the
+  // breaker only ever helped the subsequent debounced edit-loop, not cold load).
+  const [probe, ...rest] = blocks;
+  const results: Array<{ block: { from: number; text: string }; matches: GrammarMatch[] }> = [
+    { block: probe, matches: await checkGrammar(probe.text) },
+  ];
+  if (grammarServiceAvailable() && rest.length > 0) {
+    const restResults = await Promise.all(
+      rest.map(async (block) => ({ block, matches: await checkGrammar(block.text) })),
+    );
+    results.push(...restResults);
+  }
 
   // Doc may have changed during async grammar check — abort if so
   if (!view.state.doc.eq(docSnapshot)) return;

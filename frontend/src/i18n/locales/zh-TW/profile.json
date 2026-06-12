@@ -14,7 +14,6 @@
   "unfollowError": "取消追蹤失敗。",
   "userNotFound": "找不到使用者。",
   "achievements": "成就",
-  "comingSoon": "{{feature}} — 即將推出",
   "chapters": "章節",
   "readers": "讀者",
   "recentActivity": "近期活動",
@@ -35,13 +34,16 @@
     "hundredReaders": "100+ 讀者",
     "followers": "{{count}} 粉絲",
     "multiLangTranslator": "{{count}} 語言翻譯者",
-    "fiftyChapters": "50+ 章節已翻譯"
+    "fiftyChapters": "50+ 章節已翻譯",
+    "booksPublished_other": "已出版 {{count}} 本書"
   },
   "loadError": "無法載入書籍。",
+  "noWiki": "尚無 Wiki 貢獻。",
+  "wikiError": "無法載入 Wiki 貢獻。",
+  "untitled": "未命名",
   "tabs": {
     "books": "書籍",
     "translations": "翻譯",
-    "wiki": "Wiki 貢獻",
-    "reviews": "評論"
+    "wiki": "Wiki 貢獻"
   }
 }

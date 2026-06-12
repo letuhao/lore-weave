@@ -9,11 +9,13 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/loreweave/grantclient"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -25,8 +27,18 @@ import (
 //   - Public:   GET /v1/glossary/books/{book_id}/extraction-profile  (JWT auth)
 //   - Internal: GET /internal/books/{book_id}/extraction-profile     (service token)
 func (s *Server) getExtractionProfile(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "GLOSS_UNAUTHORIZED", "valid Bearer token required")
+		return
+	}
 	bookID, ok := parsePathUUID(w, r, "book_id")
 	if !ok {
+		return
+	}
+	// /review-impl: the /v1 profile is JWT/grant-gated (the service-token
+	// /internal/.../extraction-profile route is the one workers call). Reads = view.
+	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
 	ctx := r.Context()
@@ -338,16 +350,44 @@ func (s *Server) getKnownEntities(w http.ResponseWriter, r *http.Request) {
 // bulkUpsertRequest is the request body for POST /internal/books/{book_id}/extract-entities.
 type bulkUpsertRequest struct {
 	SourceLanguage   string                       `json:"source_language"`
-	AttributeActions map[string]map[string]string  `json:"attribute_actions"` // kind_code → attr_code → "fill"|"overwrite"
-	Entities         []extractedEntity             `json:"entities"`
+	AttributeActions map[string]map[string]string `json:"attribute_actions"` // kind_code → attr_code → "fill"|"overwrite"
+	Entities         []extractedEntity            `json:"entities"`
+	// ParkUnknownKinds gates the unknown-bucket fallback (D-GLOSSARY-UNKNOWN-BLAST-RADIUS).
+	// nil/true (default) → an entity whose kind_code matches neither a kind nor an
+	// alias is PARKED under 'unknown' for author triage (never silently dropped — the
+	// "never drop" design). A caller that emits noisy/experimental kinds (e.g. the
+	// knowledge-service extraction pipeline) can send false to opt OUT and have such
+	// entities SKIPPED instead of flooding the review queue. Pointer so an omitted
+	// field keeps the park-by-default behavior (backward-compatible).
+	ParkUnknownKinds *bool `json:"park_unknown_kinds"`
+	// DefaultTags are applied (on CREATE only) to every entity this batch
+	// creates. The knowledge-service writeback loop sends `["ai-suggested"]`
+	// so the FE can surface AI-discovered drafts as a reviewable inbox
+	// (GET /entities?status=draft&tags=ai-suggested). When the batch is an
+	// AI writeback (DefaultTags contains "ai-suggested"), a proposed name
+	// that resolves to an existing entity carrying the `ai-rejected`
+	// tombstone is SKIPPED — a user-rejected suggestion is not re-proposed.
+	// nil/empty → no tags applied, no tombstone gate (backward-compatible).
+	DefaultTags []string `json:"default_tags"`
 }
 
 type extractedEntity struct {
-	KindCode     string            `json:"kind_code"`
-	Name         string            `json:"name"`
-	Attributes   map[string]any    `json:"attributes"`
-	Evidence     string            `json:"evidence"`
-	ChapterLinks []chapterLinkIn   `json:"chapter_links"`
+	KindCode     string          `json:"kind_code"`
+	Name         string          `json:"name"`
+	Attributes   map[string]any  `json:"attributes"`
+	Evidence     string          `json:"evidence"`
+	ChapterLinks []chapterLinkIn `json:"chapter_links"`
+	// Translation (M4d-2b) — optional target-language rendering of the name, seeded
+	// by the translation 2-pass cold-start writeback. Written to the name attr's
+	// attribute_translations at confidence='machine' (the M1d trust ladder treats
+	// it as a soft hint, not canon). Omitted ⇒ no translation written (backward-
+	// compatible). Never overwrites a human-verified translation (see §upsert).
+	Translation *translationIn `json:"translation"`
+}
+
+type translationIn struct {
+	LanguageCode string `json:"language_code"`
+	Value        string `json:"value"`
 }
 
 type chapterLinkIn struct {
@@ -364,7 +404,17 @@ type entityResult struct {
 	Status            string   `json:"status"` // "created" | "updated" | "skipped"
 	AttributesWritten []string `json:"attributes_written"`
 	AttributesSkipped []string `json:"attributes_skipped"`
+	SkipReason        string   `json:"skip_reason,omitempty"` // e.g. "tombstoned" when an ai-rejected name is re-proposed
 }
+
+const (
+	// tagAISuggested marks an entity created by the knowledge-service
+	// writeback loop, so the FE can list it as a reviewable AI suggestion.
+	tagAISuggested = "ai-suggested"
+	// tagAIRejected is the tombstone a user sets when rejecting an AI
+	// suggestion; an AI writeback batch skips names that carry it.
+	tagAIRejected = "ai-rejected"
+)
 
 // bulkExtractEntities receives extracted entities from translation-service and upserts them.
 //
@@ -412,17 +462,38 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The 'unknown' review bucket: a kind_code that resolves to neither a kind nor
+	// an alias is PARKED here (never silently dropped) so the author can triage it
+	// (alias it to a kind, or create a kind from it) — the entity remembers the code
+	// it arrived as in source_kind_code. uuid.Nil only if the migration hasn't seeded
+	// 'unknown' yet, in which case we preserve the legacy skip (fail-safe).
+	unknownKindID := kindMap["unknown"]
+	// D-GLOSSARY-UNKNOWN-BLAST-RADIUS: parking is the default; a caller may opt out
+	// (park_unknown_kinds=false) to SKIP unrecognised kinds instead of flooding the
+	// review queue. Omitted → park (backward-compatible).
+	parkUnknown := req.ParkUnknownKinds == nil || *req.ParkUnknownKinds
+	// isAIWriteback gates the tombstone skip: only an AI writeback batch
+	// (marked by the ai-suggested default tag) suppresses ai-rejected names.
+	isAIWriteback := slices.Contains(req.DefaultTags, tagAISuggested)
+
 	var (
-		results  []entityResult
-		created  int
-		updated  int
-		skipped  int
+		results []entityResult
+		created int
+		updated int
+		skipped int
 	)
 
 	for _, ent := range req.Entities {
 		kindID, kindOK := kindMap[ent.KindCode]
+		sourceKindCode := "" // non-empty only when parked under 'unknown'
 		if !kindOK {
-			continue // unknown kind, skip
+			if !parkUnknown || unknownKindID == uuid.Nil {
+				// Caller opted out of parking, OR no unknown bucket seeded yet
+				// (legacy fail-safe) → skip the unrecognised kind.
+				continue
+			}
+			kindID = unknownKindID
+			sourceKindCode = ent.KindCode // remember the original code for review
 		}
 		if ent.Name == "" {
 			continue
@@ -445,9 +516,34 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		result.Name = ent.Name
 		result.KindCode = ent.KindCode
 
+		// Tombstone gate (P5): when this batch is an AI writeback, a name
+		// that resolves to an entity the user previously rejected
+		// (tag 'ai-rejected') is skipped without touching the row — a
+		// rejected suggestion must not be re-proposed every extraction.
+		if existingID != uuid.Nil && isAIWriteback {
+			rejected, terr := s.entityHasTag(ctx, existingID, tagAIRejected)
+			if terr != nil {
+				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "tombstone check failed")
+				return
+			}
+			if rejected {
+				result.EntityID = existingID.String()
+				result.Status = "skipped"
+				result.SkipReason = "tombstoned"
+				result.AttributesWritten = []string{}
+				result.AttributesSkipped = []string{}
+				skipped++
+				results = append(results, result)
+				continue
+			}
+		}
+
 		if existingID == uuid.Nil {
-			// 2. CREATE new entity
-			entityID, err := s.createExtractedEntity(ctx, bookID, kindID, ent, actions, attrDefMap, req.SourceLanguage)
+			// 2. CREATE new entity — default tags (e.g. ai-suggested) are
+			// applied on create only, so an AI writeback never re-tags a
+			// user's existing/active entity into the suggestion inbox.
+			entityID, err := s.createExtractedEntity(ctx, bookID, kindID, ent, actions, attrDefMap, req.SourceLanguage, req.DefaultTags)
 			if err != nil {
 				BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 				writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to create entity: "+err.Error())
@@ -455,6 +551,18 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			}
 			result.EntityID = entityID.String()
 			result.Status = "created"
+			// Parked under 'unknown' → remember the code it arrived as, so the review
+			// GUI can offer "alias <code> → <kind>" / "create kind from <code>".
+			if sourceKindCode != "" {
+				if _, uerr := s.pool.Exec(ctx,
+					`UPDATE glossary_entities SET source_kind_code = $1 WHERE entity_id = $2`,
+					sourceKindCode, entityID,
+				); uerr != nil {
+					BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+					writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "failed to record source kind: "+uerr.Error())
+					return
+				}
+			}
 			// All provided attributes are written on create
 			result.AttributesWritten = make([]string, 0, len(ent.Attributes)+1)
 			result.AttributesWritten = append(result.AttributesWritten, "name")
@@ -528,6 +636,49 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// 5b. M4d-2b — optional target translation for the name attribute. Seeds
+		// the 2-pass cold-start source→target renderings as machine drafts.
+		// Conditional upsert: insert when absent, overwrite a draft/machine value,
+		// but NEVER a verified (human) translation (M1d trust ladder). An
+		// overwritten machine value remains recoverable via the VG-1 revision
+		// history. Best-effort (the entity already committed above).
+		translationChanged := false
+		if ent.Translation != nil && ent.Translation.LanguageCode != "" && ent.Translation.Value != "" {
+			entID, _ := uuid.Parse(result.EntityID)
+			nameAttrDefID, nameOK := attrDefMap[kindID.String()+":name"]
+			if nameOK {
+				var nameAVID uuid.UUID
+				if err := s.pool.QueryRow(ctx, `
+					SELECT attr_value_id FROM entity_attribute_values
+					WHERE entity_id = $1 AND attr_def_id = $2
+				`, entID, nameAttrDefID).Scan(&nameAVID); err == nil {
+					ct, err := s.pool.Exec(ctx, `
+						INSERT INTO attribute_translations (attr_value_id, language_code, value, confidence, translator)
+						VALUES ($1, $2, $3, 'machine', 'translation-2pass')
+						ON CONFLICT (attr_value_id, language_code) DO UPDATE
+						  SET value = EXCLUDED.value, confidence = 'machine',
+						      translator = EXCLUDED.translator, updated_at = now()
+						  WHERE attribute_translations.confidence <> 'verified'
+					`, nameAVID, ent.Translation.LanguageCode, ent.Translation.Value)
+					if err != nil {
+						slog.Warn("extraction: failed to write name translation",
+							"entity", ent.Name, "error", err)
+					} else if ct.RowsAffected() > 0 {
+						translationChanged = true
+					}
+				}
+			}
+		}
+		// review-impl: a translation-only change to an EXISTING entity merges to
+		// "skipped" (no attr changed), but the translation DID change — it must
+		// still emit so VG-1 versions it (recoverable) and M5c marks dependents
+		// stale. Promote skipped→updated so the emit below fires.
+		if translationChanged && result.Status == "skipped" {
+			result.Status = "updated"
+			updated++
+			skipped--
+		}
+
 		// 6. C4 (K14) — emit ONE glossary.entity_updated per entity that
 		// was actually written (created or updated). "skipped" entities
 		// changed nothing, so no event. This is the bulk fan-out: a batch
@@ -540,9 +691,12 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		// whole bulk response).
 		if result.Status == "created" || result.Status == "updated" {
 			entID, _ := uuid.Parse(result.EntityID)
+			// Phase B: actor_type="pipeline" — this is the extraction's
+			// ORIGINAL output, not a user correction. learning-service skips
+			// pipeline events (no before/after attached).
 			payload := buildEntityEventPayload(
 				bookID.String(), result.EntityID, ent.Name, ent.KindCode,
-				nil, "", result.Status,
+				nil, "", result.Status, "pipeline", "", nil,
 			)
 			if err := insertEntityOutboxEvent(ctx, func(ctx context.Context, sql string, args ...any) error {
 				_, e := s.pool.Exec(ctx, sql, args...)
@@ -584,7 +738,28 @@ func (s *Server) loadKindMap(ctx context.Context) (map[string]uuid.UUID, error) 
 		}
 		m[code] = id
 	}
-	return m, nil
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Fold in kind ALIASES so an alias_code resolves to its kind exactly like a
+	// real code. A real kind.code ALWAYS wins (never overridden by an alias), so a
+	// code that later becomes a kind takes precedence over a stale alias.
+	arows, err := s.pool.Query(ctx, `SELECT alias_code, kind_id FROM entity_kind_aliases`)
+	if err != nil {
+		return nil, err
+	}
+	defer arows.Close()
+	for arows.Next() {
+		var id uuid.UUID
+		var alias string
+		if err := arows.Scan(&alias, &id); err != nil {
+			return nil, err
+		}
+		if _, isKind := m[alias]; !isKind {
+			m[alias] = id
+		}
+	}
+	return m, arows.Err()
 }
 
 // loadAttrDefMap returns a map of "kind_id:code" → attr_def_id.
@@ -678,6 +853,24 @@ func (s *Server) findEntityByNameOrAlias(ctx context.Context, bookID, kindID uui
 	return uuid.Nil, nil
 }
 
+// entityHasTag reports whether the entity's tags array contains tag.
+// Used by the AI-writeback tombstone gate (ai-rejected). Returns false
+// if the entity is gone (no row) — a deleted target can't be tombstoned.
+func (s *Server) entityHasTag(ctx context.Context, entityID uuid.UUID, tag string) (bool, error) {
+	var has bool
+	err := s.pool.QueryRow(ctx,
+		`SELECT $2 = ANY(tags) FROM glossary_entities WHERE entity_id = $1`,
+		entityID, tag,
+	).Scan(&has)
+	if err == pgx.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return has, nil
+}
+
 // createExtractedEntity creates a new entity with all provided attributes.
 func (s *Server) createExtractedEntity(
 	ctx context.Context,
@@ -686,13 +879,17 @@ func (s *Server) createExtractedEntity(
 	actions map[string]string,
 	attrDefMap map[string]uuid.UUID,
 	sourceLang string,
+	tags []string,
 ) (uuid.UUID, error) {
+	if tags == nil {
+		tags = []string{} // tags column is NOT NULL DEFAULT '{}'
+	}
 	var entityID uuid.UUID
 	err := s.pool.QueryRow(ctx, `
-		INSERT INTO glossary_entities (book_id, kind_id, status)
-		VALUES ($1, $2, 'draft')
+		INSERT INTO glossary_entities (book_id, kind_id, status, tags)
+		VALUES ($1, $2, 'draft', $3)
 		RETURNING entity_id
-	`, bookID, kindID).Scan(&entityID)
+	`, bookID, kindID, tags).Scan(&entityID)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("insert entity: %w", err)
 	}
@@ -1077,7 +1274,13 @@ func (s *Server) internalListEntities(w http.ResponseWriter, r *http.Request) {
 			k.code AS kind_code,
 			COALESCE(name_av.original_value, '') AS name,
 			COALESCE(alias_av.original_value, '') AS aliases_raw,
-			short_av.original_value AS short_description
+			-- Prefer the AUTHORED canon column (the SSOT short_description set via
+			-- the canon-content path / wiki — see DEFERRED-053) over the EAV
+			-- attribute, which extract-entities cannot populate (silent no-op).
+			-- The enrichment contradiction check (F-C12-1) reads this to detect a
+			-- generated fact that NEGATES authored canon. Falls back to the EAV
+			-- value when the column is null (backward-compatible).
+			COALESCE(NULLIF(e.short_description, ''), short_av.original_value) AS short_description
 		FROM glossary_entities e
 		JOIN entity_kinds k ON k.kind_id = e.kind_id
 		LEFT JOIN entity_attribute_values name_av
@@ -1217,4 +1420,3 @@ func (s *Server) internalListEntities(w http.ResponseWriter, r *http.Request) {
 		NextCursor: nextCursor,
 	})
 }
-

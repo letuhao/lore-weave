@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Wiki LLM-Building — Draft Mockup · LoreWeave</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&family=Noto+Serif+TC:wght@400;600;700&display=swap" rel="stylesheet" />
+<style>
+  /* ── LoreWeave dark amber theme tokens (mirrored from frontend/src/index.css) ── */
+  :root{
+    --background:#161311; --foreground:#F6F1E8;
+    --card:#1E1A17; --card-hover:#241F1B; --popover:#1E1A17;
+    --primary:#F0A93A; --primary-foreground:#110F0D; --primary-muted:#3D2E12;
+    --secondary:#2A2622; --secondary-foreground:#E8E1D6;
+    --muted:#2A2724; --muted-foreground:#A69E94; --muted-fg:#9E9488;
+    --accent:#449E8E; --destructive:#E04343; --success:#2DCA7E; --warning:#F5A623; --info:#5496E8;
+    --border:#332D28; --border-hover:#4A423B; --input:#262220; --ring:#EC9F33;
+    --radius:.5rem;
+    --reader-width:680px;
+    --sans:"Inter",system-ui,sans-serif;
+    --serif:"Lora","Noto Serif TC","Songti TC",Georgia,serif;
+    --mono:"JetBrains Mono",monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--background);color:var(--foreground);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .serif{font-family:var(--serif)}
+  .mono{font-family:var(--mono)}
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  a{color:inherit;text-decoration:none}
+  svg{display:block}
+  .muted{color:var(--muted-foreground)}
+  .micro{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted-foreground)}
+
+  /* ── buttons ── */
+  .btn{display:inline-flex;align-items:center;gap:6px;border-radius:6px;font-size:13px;transition:.12s;white-space:nowrap}
+  .btn-primary{background:var(--primary);color:var(--primary-foreground);padding:7px 12px;font-size:12px;font-weight:600}
+  .btn-primary:hover{filter:brightness(1.1)}
+  .btn-outline{border:1px solid var(--border);color:var(--muted-foreground);padding:7px 12px}
+  .btn-outline:hover{background:var(--secondary);color:var(--foreground);border-color:var(--border-hover)}
+  .btn-ghost{color:var(--muted-foreground);padding:5px 8px}
+  .btn-ghost:hover{background:var(--secondary);color:var(--foreground)}
+  .icon-btn{width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;color:var(--muted-foreground)}
+  .icon-btn:hover{background:var(--secondary);color:var(--foreground)}
+
+  /* ── pills / badges ── */
+  .pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 10px;font-size:11px;font-weight:500}
+  .badge-ai{background:rgba(240,169,58,.13);color:var(--primary);border:1px solid rgba(240,169,58,.25)}
+  .badge-draft{background:rgba(245,166,35,.12);color:var(--warning)}
+  .badge-warn{background:rgba(245,166,35,.12);color:var(--warning)}
+  .badge-ok{background:rgba(45,202,126,.1);color:var(--success)}
+  .badge-danger{background:rgba(224,67,67,.12);color:var(--destructive)}
+  .badge-muted{background:var(--secondary);color:var(--muted-foreground)}
+  .badge-info{background:rgba(84,150,232,.12);color:var(--info)}
+
+  /* ── app shell ── */
+  .app{display:flex;height:100vh;overflow:hidden}
+  .sidebar{width:240px;flex-shrink:0;border-right:1px solid var(--border);background:var(--background);display:flex;flex-direction:column;padding:14px 10px}
+  .logo{display:flex;align-items:center;gap:9px;padding:6px 8px 16px}
+  .logo .tile{width:32px;height:32px;border-radius:8px;background:var(--primary);color:var(--primary-foreground);display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-weight:700;font-size:18px}
+  .nav-sec{margin-top:14px}
+  .nav-sec h4{padding:6px 8px}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:6px;font-size:13px;color:var(--muted-foreground)}
+  .nav-item:hover{background:var(--secondary);color:var(--foreground)}
+  .nav-item.active{background:rgba(240,169,58,.15);color:var(--primary);font-weight:500}
+  .sidebar-foot{margin-top:auto;display:flex;align-items:center;gap:10px;padding:10px 8px;border-top:1px solid var(--border)}
+  .avatar-sm{width:28px;height:28px;border-radius:999px;background:rgba(240,169,58,.2);color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600}
+  .main{flex:1;overflow-y:auto}
+  .container{max-width:1152px;margin:0 auto;padding:22px 40px 60px}
+
+  /* breadcrumb + tabs */
+  .crumb{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted-foreground);margin-bottom:10px}
+  .page-title{font-family:var(--serif);font-size:22px;font-weight:600}
+  .tabstrip{display:flex;gap:2px;border-bottom:1px solid var(--border);margin:16px 0 0}
+  .tab{padding:9px 14px;font-size:13px;font-weight:500;color:var(--muted-foreground);border-bottom:2px solid transparent;transition:.12s}
+  .tab:hover{color:var(--foreground)}
+  .tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+
+  /* draft banner + screen switcher */
+  .draft-banner{background:linear-gradient(90deg,rgba(240,169,58,.08),transparent);border:1px solid rgba(240,169,58,.2);border-radius:8px;padding:12px 16px;margin:18px 0;display:flex;gap:14px;align-items:flex-start}
+  .switcher{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 20px}
+  .switcher button{border:1px solid var(--border);background:var(--card);color:var(--muted-foreground);padding:8px 14px;border-radius:999px;font-size:12.5px;font-weight:500}
+  .switcher button:hover{border-color:var(--border-hover);color:var(--foreground)}
+  .switcher button.active{background:var(--primary);color:var(--primary-foreground);border-color:var(--primary)}
+
+  .screen{display:none}
+  .screen.active{display:block}
+  .screen-label{font-size:12px;color:var(--muted-foreground);margin-bottom:10px}
+  .screen-label b{color:var(--primary)}
+
+  /* ── wiki two-pane ── */
+  .wiki-shell{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;min-height:560px;background:var(--background)}
+  .wiki-side{width:230px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);padding:12px 10px;display:flex;flex-direction:column;gap:10px}
+  .wiki-side-head{display:flex;align-items:center;gap:7px}
+  .wiki-side-head .ttl{font-family:var(--serif);font-size:15px;font-weight:600;flex:1}
+  .search{position:relative}
+  .search input{width:100%;height:30px;background:var(--input);border:1px solid var(--border);border-radius:6px;padding:0 8px 0 28px;color:var(--foreground);font-size:12.5px}
+  .search input::placeholder{color:var(--muted-foreground)}
+  .search svg{position:absolute;left:8px;top:8px}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{border-radius:999px;padding:3px 9px;font-size:11px;background:var(--secondary);color:var(--muted-foreground)}
+  .chip.active{font-weight:600}
+  .artlist{display:flex;flex-direction:column;gap:3px;overflow-y:auto}
+  .grp-h{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted-foreground);padding:9px 6px 3px}
+  .art{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;font-size:13px;border-left:2px solid transparent;cursor:pointer}
+  .art:hover{background:var(--secondary)}
+  .art.sel{border-left-color:var(--primary);background:rgba(240,169,58,.08);font-weight:600}
+  .dot{width:6px;height:6px;border-radius:2px;flex-shrink:0}
+  .art .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* reader pane */
+  .wiki-read{flex:1;padding:22px 26px;overflow-y:auto;position:relative}
+  .read-head{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap}
+  .read-title{font-family:var(--serif);font-size:26px;font-weight:600;line-height:1.2}
+  .read-actions{margin-left:auto;display:flex;gap:7px}
+  .read-sub{font-size:11.5px;color:var(--muted-foreground);margin-top:6px}
+  .flagcard{margin:14px 0;border:1px solid rgba(245,166,35,.3);background:rgba(245,166,35,.06);border-radius:8px;padding:10px 12px;font-size:12.5px;display:flex;gap:9px}
+  .infobox{float:right;width:262px;margin:6px 0 14px 18px;border:1px solid var(--border);border-radius:8px;background:var(--card);overflow:hidden}
+  .infobox .ava{height:104px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#F0A93A,#9c6516)}
+  .infobox .ava span{font-family:var(--serif);font-size:46px;color:#1a1410;font-weight:600}
+  .infobox .ib-name{font-family:var(--serif);font-size:17px;font-weight:600;padding:10px 12px 2px}
+  .infobox .ib-kind{padding:0 12px 8px}
+  .ib-row{display:flex;font-size:12px;border-top:1px solid var(--border);padding:6px 12px}
+  .ib-row .k{width:74px;color:var(--muted-foreground);flex-shrink:0}
+  .ib-row .v{font-weight:500}
+  .body{font-family:var(--serif);font-size:16px;line-height:1.85;color:#ECE6DB}
+  .body h2{font-family:var(--serif);font-size:19px;font-weight:600;margin:20px 0 8px;color:#F6F1E8}
+  .body p{margin:10px 0}
+  sup.cite{color:var(--primary);font-size:11px;font-weight:600;cursor:pointer;padding:0 1px}
+  sup.cite:hover{text-decoration:underline}
+  .refs{clear:both;margin-top:24px;border-top:1px solid var(--border);padding-top:14px}
+  .refs h3{font-size:13px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:7px}
+  .ref{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:12.5px;border-bottom:1px solid var(--border)}
+  .ref .n{color:var(--primary);font-weight:600;font-family:var(--mono);font-size:12px}
+  .ref .loc{color:var(--muted-foreground)}
+  .ref .relbar{width:54px;height:4px;border-radius:2px;background:var(--secondary);overflow:hidden;margin-left:auto}
+  .ref .relbar i{display:block;height:100%;background:var(--accent)}
+  .ref .jump{color:var(--accent);display:inline-flex;align-items:center;gap:4px;font-size:11.5px}
+  .ref .jump:hover{text-decoration:underline}
+
+  /* ── generic card ── */
+  .card{border:1px solid var(--border);border-radius:8px;background:var(--card)}
+  .card-p{padding:16px}
+
+  /* ── modal ── */
+  .modal-wrap{position:relative;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#100d0b}
+  .modal-dim{padding:36px;background:repeating-linear-gradient(45deg,#1212100a,#1212100a 12px,#00000010 12px,#00000010 24px)}
+  .modal{max-width:560px;margin:0 auto;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 24px 60px #000a}
+  .modal-h{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:9px}
+  .modal-h .t{font-family:var(--serif);font-size:17px;font-weight:600}
+  .modal-b{padding:18px;display:flex;flex-direction:column;gap:16px}
+  .modal-f{padding:14px 18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:9px}
+  .fld{display:flex;flex-direction:column;gap:7px}
+  .fld>label{font-size:12px;font-weight:600;color:var(--secondary-foreground)}
+  .fld .hint{font-size:11px;color:var(--muted-foreground)}
+  .seg{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+  .seg button{flex:1;padding:9px;font-size:12.5px;color:var(--muted-foreground);text-align:center;border-right:1px solid var(--border)}
+  .seg button:last-child{border-right:none}
+  .seg button.on{background:rgba(240,169,58,.13);color:var(--primary);font-weight:600}
+  .seg button .s{display:block;font-size:10px;font-weight:400;color:var(--muted-foreground);margin-top:2px}
+  .select{display:flex;align-items:center;gap:8px;background:var(--input);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px}
+  .select .tag{margin-left:auto;font-size:10px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .ground-ok{display:flex;gap:9px;align-items:flex-start;background:rgba(45,202,126,.07);border:1px solid rgba(45,202,126,.25);border-radius:8px;padding:10px 12px;font-size:12px}
+  .cost{display:flex;align-items:center;gap:10px;background:var(--secondary);border-radius:8px;padding:10px 12px;font-size:12.5px}
+  .cost .est{font-family:var(--mono);font-weight:600;color:var(--foreground)}
+
+  /* ── job progress ── */
+  .job-h{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .progress{height:8px;border-radius:999px;background:var(--secondary);overflow:hidden;margin:6px 0 4px}
+  .progress i{display:block;height:100%;background:var(--primary)}
+  .steps{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+  .step{display:flex;align-items:center;gap:7px;border:1px solid var(--border);border-radius:999px;padding:6px 12px;font-size:12px;color:var(--muted-foreground)}
+  .step.done{border-color:rgba(45,202,126,.3);color:var(--success)}
+  .step.run{border-color:rgba(240,169,58,.4);color:var(--primary)}
+  .step .nb{font-family:var(--mono);font-size:11px;opacity:.7}
+  .entrow{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);font-size:13px}
+  .entrow .en{flex:1}
+  .entrow .meta{font-size:11px;color:var(--muted-foreground)}
+  .spin{animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .pausecard{border:1px solid rgba(245,166,35,.35);background:rgba(245,166,35,.07);border-radius:8px;padding:13px 15px;display:flex;align-items:center;gap:12px;margin-top:14px}
+
+  /* ── suggestions / diff ── */
+  .sug{border:1px solid var(--border);border-radius:8px;background:var(--card);margin-bottom:14px;overflow:hidden}
+  .sug-h{padding:12px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--border)}
+  .sug-b{padding:12px 14px}
+  .sug-reason{font-size:12.5px;color:var(--muted-foreground);margin-bottom:10px}
+  .diff{font-family:var(--mono);font-size:12px;border:1px solid var(--border);border-radius:6px;overflow:hidden}
+  .diff div{padding:4px 10px;white-space:pre-wrap}
+  .diff .del{background:rgba(224,67,67,.08);color:#e88}
+  .diff .add{background:rgba(45,202,126,.08);color:#8d9}
+  .diff .ctx{color:var(--muted-foreground)}
+  .sug-f{padding:11px 14px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+  .btn-accept{background:rgba(45,202,126,.14);color:var(--success);padding:7px 14px;border-radius:6px;font-size:12.5px;font-weight:600}
+  .btn-accept:hover{background:rgba(45,202,126,.22)}
+  .btn-reject{background:rgba(224,67,67,.12);color:var(--destructive);padding:7px 14px;border-radius:6px;font-size:12.5px;font-weight:600}
+  .btn-reject:hover{background:rgba(224,67,67,.2)}
+
+  .note{font-size:11.5px;color:var(--muted-foreground);margin-top:12px;font-style:italic}
+
+  /* ── change-feed (Knowledge updates / coi thay đổi) ── */
+  .info-banner{background:rgba(84,150,232,.07);border:1px solid rgba(84,150,232,.22);border-radius:8px;padding:11px 14px;font-size:12.5px;display:flex;gap:10px;align-items:flex-start;margin-bottom:14px}
+  .batchbar{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border-hover);border-radius:8px;padding:11px 14px;margin-bottom:14px;flex-wrap:wrap}
+  .sev{display:flex;gap:13px;font-size:11.5px}
+  .cbx{width:16px;height:16px;border:1.5px solid var(--border-hover);border-radius:4px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;color:transparent}
+  .cbx.on{background:var(--primary);border-color:var(--primary);color:var(--primary-foreground)}
+  .chg{border:1px solid var(--border);border-left-width:3px;border-radius:8px;background:var(--card);margin-bottom:12px;overflow:hidden}
+  .chg-h{padding:11px 14px;display:flex;align-items:center;gap:11px;flex-wrap:wrap;border-bottom:1px solid var(--border)}
+  .chg-h .ic{width:30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .affrow{display:flex;align-items:center;gap:10px;padding:8px 14px;font-size:13px;border-top:1px solid var(--border)}
+  .affrow .part{font-size:11.5px;color:var(--muted-foreground)}
+  .chg-f{padding:8px 14px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;align-items:center}
+  .chg-f a.diff-link{color:var(--accent);font-size:12px;margin-right:auto}
+  .mini-btn{padding:5px 11px;border-radius:6px;font-size:12px;font-weight:600}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ── left app sidebar ── -->
+  <aside class="sidebar">
+    <div class="logo"><div class="tile">L</div><span class="serif" style="font-size:17px;font-weight:600">LoreWeave</span></div>
+    <div class="nav-sec">
+      <h4 class="micro">Chính</h4>
+      <a class="nav-item active">📚 &nbsp;Sách</a>
+      <a class="nav-item">💬 &nbsp;Chat</a>
+      <a class="nav-item">🧠 &nbsp;Tri thức</a>
+      <a class="nav-item">🔎 &nbsp;Duyệt</a>
+    </div>
+    <div class="nav-sec">
+      <h4 class="micro">Quản lý</h4>
+      <a class="nav-item">🗑 &nbsp;Thùng rác</a>
+      <a class="nav-item">📊 &nbsp;Sử dụng</a>
+      <a class="nav-item">⚙️ &nbsp;Cài đặt</a>
+    </div>
+    <div class="sidebar-foot">
+      <div class="avatar-sm">C</div>
+      <div style="font-size:12px"><div style="font-weight:500">Claude Test</div><div class="muted" style="font-size:10px">claude-test@…</div></div>
+    </div>
+  </aside>
+
+  <!-- ── main ── -->
+  <main class="main">
+    <div class="container">
+      <!-- book chrome -->
+      <div class="crumb"><span>Sách</span><span>›</span><span class="serif" style="color:var(--foreground)">封神演义</span></div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="page-title">封神演义</div>
+        <span class="pill badge-muted">Bản dịch · 100 chương</span>
+      </div>
+      <div class="tabstrip">
+        <a class="tab">Chương</a><a class="tab">Dịch</a><a class="tab">Glossary</a>
+        <a class="tab">Bồi đắp</a><a class="tab active">Wiki</a><a class="tab">Chia sẻ</a><a class="tab">Cài đặt</a>
+      </div>
+
+      <!-- draft banner -->
+      <div class="draft-banner">
+        <div style="font-size:20px">✨</div>
+        <div style="font-size:12.5px;line-height:1.6">
+          <b style="color:var(--primary)">Draft mockup — Wiki LLM-Building (v2)</b>. Đây là bản phác thảo HTML phi chức năng để duyệt UX, không phải code thật.
+          Dữ liệu mẫu: 封神演义. Dùng nút bên dưới để chuyển giữa các màn. Theme/khung bám đúng app (dark amber · Lora · 2-pane).
+          <span class="muted">Map nguồn: <code class="mono">frontend/src/pages/book-tabs/WikiTab.tsx</code> · spec <code class="mono">docs/specs/2026-06-08-wiki-llm-building.md</code></span>
+        </div>
+      </div>
+
+      <!-- screen switcher -->
+      <div class="switcher">
+        <button class="active" data-s="reader">① Reader · bài AI (citations + badge + flags)</button>
+        <button data-s="generate">② Hộp thoại "Tạo bằng AI"</button>
+        <button data-s="job">③ Tiến trình multi-pass + cost cap</button>
+        <button data-s="suggest">④ Clobber-guard → Đề xuất</button>
+        <button data-s="changes">⑤ Cập nhật tri thức · coi thay đổi</button>
+      </div>
+
+      <!-- ════════ SCREEN 1 — READER (AI article) ════════ -->
+      <section class="screen active" id="reader">
+        <div class="screen-label">Màn <b>Reader</b> — bài wiki do AI sinh: badge "AI tạo · chưa kiểm chứng", banner cảnh báo verify-flag, văn xuôi có trích dẫn <code class="mono">[n]</code>, mục "Nguồn trích dẫn" với nút nhảy-tới-nguồn, nút <b>Tạo lại</b>.</div>
+        <div class="wiki-shell">
+          <!-- left -->
+          <div class="wiki-side">
+            <div class="wiki-side-head">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+              <span class="ttl">Wiki</span>
+              <button class="icon-btn" title="Tạo bằng AI" style="color:var(--primary)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></svg>
+              </button>
+              <button class="icon-btn" title="Tạo bài">＋</button>
+            </div>
+            <div class="muted" style="font-size:10px;padding:0 2px">18 bài · 11 do AI sinh</div>
+            <div class="search">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input placeholder="Tìm trong wiki…" />
+            </div>
+            <div class="chips">
+              <span class="chip active" style="background:rgba(240,169,58,.14);color:var(--primary)">Tất cả</span>
+              <span class="chip">人物</span><span class="chip">势力</span><span class="chip">法宝</span><span class="chip">地点</span>
+            </div>
+            <div class="artlist">
+              <div class="grp-h">人物</div>
+              <div class="art sel"><span class="dot" style="background:#e0884a"></span><span class="nm">姜子牙</span><svg width="11" height="11" viewBox="0 0 24 24" fill="var(--primary)"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></svg></div>
+              <div class="art"><span class="dot" style="background:#e0884a"></span><span class="nm">哪吒</span></div>
+              <div class="art"><span class="dot" style="background:#e0884a"></span><span class="nm">妲己</span><span class="pill badge-draft" style="padding:0 7px;font-size:9px">Nháp</span></div>
+              <div class="art"><span class="dot" style="background:#e0884a"></span><span class="nm">杨戬</span></div>
+              <div class="art"><span class="dot" style="background:#e0884a"></span><span class="nm">黄飞虎</span></div>
+              <div class="grp-h">势力</div>
+              <div class="art"><span class="dot" style="background:#5496E8"></span><span class="nm">阐教</span></div>
+              <div class="art"><span class="dot" style="background:#5496E8"></span><span class="nm">截教</span></div>
+              <div class="art"><span class="dot" style="background:#5496E8"></span><span class="nm">西周</span></div>
+              <div class="grp-h">法宝</div>
+              <div class="art"><span class="dot" style="background:#449E8E"></span><span class="nm">打神鞭</span></div>
+              <div class="art"><span class="dot" style="background:#449E8E"></span><span class="nm">杏黄旗</span></div>
+            </div>
+          </div>
+
+          <!-- reader -->
+          <div class="wiki-read">
+            <div class="read-head">
+              <div>
+                <div class="read-title">姜子牙</div>
+                <div class="read-sub">Sửa lần cuối 2026-06-08 · 3 phiên bản · <span style="color:var(--primary)">由 AI 生成</span> · grounded trên 3 đoạn gốc</div>
+              </div>
+              <div class="read-actions">
+                <span class="pill" style="background:#e0884a18;color:#e0884a">人物</span>
+                <span class="pill badge-ai">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></svg>
+                  AI tạo · chưa kiểm chứng
+                </span>
+              </div>
+            </div>
+
+            <div style="display:flex;gap:7px;margin-top:12px">
+              <button class="btn btn-primary"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Sửa</button>
+              <button class="btn btn-outline"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Lịch sử</button>
+              <button class="btn btn-outline" style="color:var(--primary);border-color:rgba(240,169,58,.35)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.7 2.8L3 8"/><path d="M3 3v5h5"/></svg>Tạo lại</button>
+            </div>
+
+            <!-- verify-flag banner -->
+            <div class="flagcard">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2" style="flex-shrink:0;margin-top:1px"><path d="m21.7 18-9-15.5a2 2 0 0 0-3.4 0L0 18a2 2 0 0 0 1.7 3h18.6a2 2 0 0 0 1.7-3z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+              <div>
+                <b>1 điểm cần kiểm chứng</b> — đoạn "封神" nhắc tới <i>佛法</i>; <code class="mono">CanonVerifier</code> gắn cờ <b>xung đột thời đại</b> (商周 vs 佛教) · mức <b>thấp</b>.
+                <a style="color:var(--accent);margin-left:6px">Xem tất cả cờ →</a>
+                <div class="muted" style="margin-top:3px;font-size:11px">Bài vẫn ở trạng thái <b>Nháp</b>; chưa bị chặn xuất bản (<code class="mono">publish_blocked=false</code>). Chủ sách duyệt rồi mới publish.</div>
+              </div>
+            </div>
+
+            <!-- infobox -->
+            <div class="infobox">
+              <div class="ava"><span>姜</span></div>
+              <div class="ib-name">姜子牙</div>
+              <div class="ib-kind"><span class="pill" style="background:#e0884a18;color:#e0884a">人物</span></div>
+              <div class="ib-row"><span class="k">姓名</span><span class="v">姜尚</span></div>
+              <div class="ib-row"><span class="k">字</span><span class="v">子牙</span></div>
+              <div class="ib-row"><span class="k">道号</span><span class="v">飞熊</span></div>
+              <div class="ib-row"><span class="k">师承</span><span class="v">元始天尊（玉虚宫）</span></div>
+              <div class="ib-row"><span class="k">阵营</span><span class="v">西周 · 阐教</span></div>
+              <div class="ib-row"><span class="k">出场</span><span class="v">第十五回</span></div>
+            </div>
+
+            <!-- body with citations -->
+            <div class="body">
+              <p>姜子牙，姓姜名尚，字子牙，道号飞熊，是阐教掌教元始天尊门下弟子，于昆仑山玉虚宫修行四十载<sup class="cite">[1]</sup>。因仙道难成、命中无份成仙，奉师命下山辅佐周室，执掌封神大业，是全书贯穿始终的核心人物<sup class="cite">[1]</sup>。</p>
+              <h2>生平</h2>
+              <p>姜子牙下山后际遇坎坷，曾于朝歌以卖面、编笊篱等营生糊口，半生潦倒，年逾七旬方遇明主<sup class="cite">[2]</sup>。后于渭水之畔以无饵之钩垂钓，借此静待时机，终得周文王访贤，拜为丞相，世称"姜太公"<sup class="cite">[2]</sup>。</p>
+              <h2>封神</h2>
+              <p>武王伐纣功成之后，姜子牙奉元始天尊符敕，登台敕封阵亡群雄之魂魄，依其生前功过分定神位，是为"封神"<sup class="cite">[3]</sup>。他手持打神鞭、肩担封神榜，号令三界神祇，奠定了新的天庭秩序<sup class="cite">[3]</sup>。</p>
+            </div>
+
+            <!-- references -->
+            <div class="refs">
+              <h3><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Nguồn trích dẫn <span class="muted" style="font-weight:400;font-size:11px">· hybrid retrieval · rerank ✓</span></h3>
+              <div class="ref"><span class="n">[1]</span><span>第十五回 · 昆仑山元始天尊命姜尚下山</span><span class="loc mono" style="font-size:11px">block 34</span><span class="relbar"><i style="width:94%"></i></span><a class="jump">Nhảy tới nguồn<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></a></div>
+              <div class="ref"><span class="n">[2]</span><span>第二十三回 · 渭水文王访太公</span><span class="loc mono" style="font-size:11px">block 12</span><span class="relbar"><i style="width:88%"></i></span><a class="jump">Nhảy tới nguồn<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></a></div>
+              <div class="ref"><span class="n">[3]</span><span>第九十九回 · 姜子牙归国封神</span><span class="loc mono" style="font-size:11px">block 8</span><span class="relbar"><i style="width:91%"></i></span><a class="jump">Nhảy tới nguồn<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></a></div>
+              <div class="note">Mỗi <code class="mono">[n]</code> neo vào <code class="mono">block_index</code> của chương → tái dùng precise-scroll <code class="mono">?block=N</code> của raw-search. Mọi câu khẳng định đều phải có cite (structural cite-enforcement); câu không grounded bị bỏ lúc parse.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ════════ SCREEN 2 — GENERATE DIALOG ════════ -->
+      <section class="screen" id="generate">
+        <div class="screen-label">Màn <b>Tạo bằng AI</b> — thay nút "1-bấm-chạy-luôn" hiện tại bằng hộp thoại: toggle Mẫu/AI, chọn model (per-step prose vs verify), phạm vi, trạng thái grounding, và <b>ước tính chi phí</b>.</div>
+        <div class="modal-wrap"><div class="modal-dim">
+          <div class="modal">
+            <div class="modal-h">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="var(--primary)"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></svg>
+              <span class="t">Tạo Wiki bằng AI</span>
+            </div>
+            <div class="modal-b">
+              <div class="fld">
+                <label>Chế độ</label>
+                <div class="seg">
+                  <button>Mẫu cố định<span class="s">tất định · miễn phí · như cũ</span></button>
+                  <button class="on">AI tạo sinh<span class="s">grounded · có trích dẫn · multi-pass</span></button>
+                </div>
+              </div>
+              <div class="grid2">
+                <div class="fld">
+                  <label>Mô hình văn phong <span class="muted" style="font-weight:400">(prose)</span></label>
+                  <div class="select">🪶 Claude Opus 4.8 <span class="pill badge-info tag">BYOK</span></div>
+                  <span class="hint">Bước viết — model mạnh.</span>
+                </div>
+                <div class="fld">
+                  <label>Mô hình kiểm chứng <span class="muted" style="font-weight:400">(verify)</span></label>
+                  <div class="select">⚡ Qwen3-7B · 本地 <span class="pill badge-muted tag">rẻ</span></div>
+                  <span class="hint">Để trống → dùng model văn phong.</span>
+                </div>
+              </div>
+              <div class="fld">
+                <label>Phạm vi</label>
+                <div class="chips" style="gap:6px">
+                  <span class="chip" style="background:rgba(240,169,58,.14);color:var(--primary)">人物 ✓</span>
+                  <span class="chip" style="background:rgba(240,169,58,.14);color:var(--primary)">势力 ✓</span>
+                  <span class="chip" style="background:rgba(240,169,58,.14);color:var(--primary)">法宝 ✓</span>
+                  <span class="chip">地点</span>
+                  <span class="muted" style="font-size:11px;align-self:center">· chỉ entity chưa có bài</span>
+                </div>
+              </div>
+              <div class="grid2">
+                <div class="fld">
+                  <label>Giới hạn số bài / lần</label>
+                  <div class="select"><input value="20" style="background:none;border:none;color:inherit;width:100%;font-size:13px" /></div>
+                </div>
+                <div class="fld">
+                  <label>Ngôn ngữ sinh</label>
+                  <div class="select">自动 · theo BookProfile <span class="pill badge-muted tag">中文</span></div>
+                </div>
+              </div>
+              <div class="ground-ok">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2" style="flex-shrink:0;margin-top:1px"><path d="M20 6 9 17l-5-5"/></svg>
+                <div><b>Sách đã lập chỉ mục</b> · grounding = hybrid (lexical + semantic) + rerank bật. Nếu chưa index → tự degrade về lexical + KG + attrs, kèm gợi ý "index để chất lượng tốt hơn".</div>
+              </div>
+              <div class="cost">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5"/><path d="M12 16h.01"/></svg>
+                <div>Ước tính <span class="est">~20 bài × ~1.2k tok ≈ $0.18</span></div>
+                <div class="muted" style="margin-left:auto">Ngân sách $5.00 · tháng này đã dùng $0.32</div>
+              </div>
+            </div>
+            <div class="modal-f">
+              <button class="btn btn-outline">Hủy</button>
+              <button class="btn btn-primary"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></svg>Tạo sinh</button>
+            </div>
+          </div>
+        </div></div>
+      </section>
+
+      <!-- ════════ SCREEN 3 — JOB PROGRESS ════════ -->
+      <section class="screen" id="job">
+        <div class="screen-label">Màn <b>Tiến trình</b> — poll job-row (SSOT): thanh tiến trình, <b>4 pass</b> của entity đang xử lý, kết quả từng entity (đã tạo / bỏ qua vì thiếu grounding / có cảnh báo), và ví dụ trạng thái <b>tạm dừng do chạm trần chi phí</b> (resumable).</div>
+        <div class="card card-p">
+          <div class="job-h">
+            <span class="pill badge-ai"><span class="spin" style="display:inline-block">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.2-8.5"/></svg></span> Đang chạy</span>
+            <span class="mono muted" style="font-size:11px">job_id 7f3a…c21</span>
+            <span class="muted" style="margin-left:auto;font-size:12.5px">Chi phí <span class="mono" style="color:var(--foreground)">$0.11</span> / $5.00</span>
+          </div>
+          <div style="font-size:12.5px;margin-bottom:2px">12 / 20 entity</div>
+          <div class="progress"><i style="width:60%"></i></div>
+
+          <div style="margin-top:16px;font-size:13px">Đang xử lý: <b>妲己</b> <span class="muted">(人物)</span></div>
+          <div class="steps">
+            <span class="step done"><span class="nb">①</span> Viết <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg></span>
+            <span class="step done"><span class="nb">②</span> Kiểm tra quy tắc (cite) <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg></span>
+            <span class="step run"><span class="nb">③</span> Kiểm chứng (CanonVerifier) <span class="spin" style="display:inline-block"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.2-8.5"/></svg></span></span>
+            <span class="step"><span class="nb">④</span> Sửa (chỉ nếu HIGH · tối đa 1 vòng)</span>
+          </div>
+          <div class="note" style="margin-top:4px">Vòng sửa chỉ kích hoạt khi có cờ HIGH; <code class="mono">keep-if-improved</code> tất định — chỉ nhận bản sửa nếu rule-count giảm (LLM không lái quyết định).</div>
+
+          <div style="margin-top:18px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+            <div class="entrow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg><span class="en">姜子牙</span><span class="meta">3 trích dẫn</span><span class="pill badge-ok" style="font-size:10px">Đã tạo</span></div>
+            <div class="entrow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg><span class="en">哪吒</span><span class="meta">5 trích dẫn</span><span class="pill badge-ok" style="font-size:10px">Đã tạo</span></div>
+            <div class="entrow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2"><path d="m21.7 18-9-15.5a2 2 0 0 0-3.4 0L0 18a2 2 0 0 0 1.7 3h18.6a2 2 0 0 0 1.7-3z"/></svg><span class="en">杨戬</span><span class="meta">4 trích dẫn · 1 cờ thời đại</span><span class="pill badge-warn" style="font-size:10px">Đã tạo · cảnh báo</span></div>
+            <div class="entrow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg><span class="en">申公豹</span><span class="meta">grounding không đủ — không bịa</span><span class="pill badge-muted" style="font-size:10px">Bỏ qua</span></div>
+            <div class="entrow"><span class="spin"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.2-8.5"/></svg></span><span class="en">妲己</span><span class="meta">pass ③/④…</span><span class="pill badge-ai" style="font-size:10px">Đang xử lý</span></div>
+            <div class="entrow" style="border-bottom:none;color:var(--muted-foreground)"><span style="width:14px;text-align:center">·</span><span class="en">+ 8 entity trong hàng đợi</span></div>
+          </div>
+
+          <!-- paused example -->
+          <div class="pausecard">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2" style="flex-shrink:0"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+            <div style="flex:1;font-size:12.5px">
+              <b>Ví dụ trạng thái: Tạm dừng do chạm trần chi phí.</b> Job chuyển <code class="mono">status='paused'</code> — <b>việc đã xong không mất</b>; khi tiếp tục, resume <i>bỏ qua entity đã sinh</i> trước khi tốn token (skip-done-before-spend → hội tụ).
+            </div>
+            <button class="btn btn-primary">Tiếp tục</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ════════ SCREEN 4 — SUGGESTIONS (clobber guard) ════════ -->
+      <section class="screen" id="suggest">
+        <div class="screen-label">Màn <b>Đề xuất</b> — khi "Tạo lại" một bài <b>đã có chỉnh sửa của người</b>, clobber-guard <i>không ghi đè</i> mà đẩy bản AI thành <b>đề xuất kèm diff</b> để chủ sách duyệt (tái dùng đúng bảng <code class="mono">wiki_suggestions</code> sẵn có).</div>
+        <div class="card card-p">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+            <div class="serif" style="font-size:17px;font-weight:600">Đề xuất & AI tái tạo</div>
+            <span class="pill badge-muted">2 chờ duyệt</span>
+          </div>
+
+          <!-- AI-regen-as-suggestion (the clobber guard) -->
+          <div class="sug">
+            <div class="sug-h">
+              <span class="pill badge-ai"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></svg>AI tái tạo (grounded)</span>
+              <span style="font-weight:600">哪吒</span>
+              <span class="muted" style="font-size:12px">→ chủ sách · vừa xong</span>
+            </div>
+            <div class="sug-b">
+              <div class="sug-reason">⚠ Bài này <b>đã có chỉnh sửa thủ công</b> (đã publish, có revision của owner) → bản AI <b>không ghi đè</b> mà chuyển thành đề xuất chờ duyệt. <span class="muted">(<code class="mono">author_type='ai'</code> chỉ được refresh draft chưa ai chạm.)</span></div>
+              <div class="diff">
+                <div class="ctx">  哪吒，乾元山金光洞太乙真人之徒，灵珠子转世<sup style="color:var(--primary)">[1]</sup>。</div>
+                <div class="del">- 七岁时大闹东海，抽龙筋、打死巡海夜叉。</div>
+                <div class="add">+ 七岁时于九湾河戏水，以混天绫搅动龙宫，先后击杀巡海夜叉李艮与龙王三太子敖丙<sup style="color:var(--primary)">[2]</sup>。</div>
+                <div class="add">+ 后剔骨还父、削肉还母，由太乙真人以莲花莲藕重塑其身<sup style="color:var(--primary)">[3]</sup>。</div>
+              </div>
+            </div>
+            <div class="sug-f">
+              <button class="btn-reject">Từ chối</button>
+              <button class="btn-accept">Chấp nhận → áp vào bài</button>
+            </div>
+          </div>
+
+          <!-- a regular community suggestion for contrast -->
+          <div class="sug">
+            <div class="sug-h">
+              <span class="pill badge-info">👥 Cộng đồng</span>
+              <span style="font-weight:600">姜子牙</span>
+              <span class="muted" style="font-size:12px">bởi reader_8821 · 2 giờ trước</span>
+            </div>
+            <div class="sug-b">
+              <div class="sug-reason">"道号应为'飞熊'而非'非熊'，见第二十三回。"</div>
+              <div class="diff">
+                <div class="del">- 道号非熊</div>
+                <div class="add">+ 道号飞熊</div>
+              </div>
+            </div>
+            <div class="sug-f">
+              <button class="btn-reject">Từ chối</button>
+              <button class="btn-accept">Chấp nhận</button>
+            </div>
+          </div>
+          <div class="note">Cả AI-tái-tạo lẫn đề xuất cộng đồng đi qua <b>cùng một hàng đợi duyệt</b> — giữ đúng tinh thần H0: AI luôn ở dạng chờ-người-duyệt, không tự ghi đè canon.</div>
+        </div>
+      </section>
+
+      <!-- ════════ SCREEN 5 — KNOWLEDGE UPDATES (coi thay đổi) ════════ -->
+      <section class="screen" id="changes">
+        <div class="screen-label">Màn <b>Cập nhật tri thức</b> (§5.3) — knowledge đổi → bài bị lật stale, <b>gom vào ledger</b> chờ duyệt. Coi <i>thay đổi gì</i> + <i>ảnh hưởng bài nào</i>, gom batch tạo lại có <b>ước tính chi phí</b>. Deferred + user-gated: <b>không gì tự regenerate</b>.</div>
+        <div class="card card-p">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+            <div class="serif" style="font-size:17px;font-weight:600">Cập nhật tri thức</div>
+            <span class="pill badge-warn">5 bài outdated</span>
+            <button class="btn btn-ghost" style="margin-left:auto;font-size:12px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.7 2.8L3 8"/><path d="M3 3v5h5"/></svg>Quét lại fingerprint</button>
+          </div>
+
+          <div class="info-banner">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--info)" stroke-width="2" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+            <div>Thay đổi của knowledge được <b>ghi nhận tự động</b> và gom tại đây (deferred ledger — <b>không phải realtime CDC</b>). Cờ tự lật nhưng <b>không bài nào được tạo lại</b> cho tới khi bạn chọn — vì regenerate tốn token.</div>
+          </div>
+
+          <!-- batch action bar -->
+          <div class="batchbar">
+            <span class="cbx on"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span>
+            <span style="font-size:12.5px"><b>4</b> đã chọn</span>
+            <div class="sev" style="margin-left:6px">
+              <span style="color:var(--destructive)">● 1 citation gãy</span>
+              <span style="color:var(--warning)">● 2 cấu trúc</span>
+              <span style="color:var(--info)">● 2 nội dung</span>
+            </div>
+            <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+              <span class="muted" style="font-size:12px">Ước tính <span class="mono" style="color:var(--foreground)">~$0.14</span> · cost-cap $5.00</span>
+              <button class="btn btn-outline">Bỏ qua</button>
+              <button class="btn btn-primary"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></svg>Tạo lại đã chọn</button>
+            </div>
+          </div>
+
+          <!-- ① citation broken (hard) -->
+          <div class="chg" style="border-left-color:var(--destructive)">
+            <div class="chg-h">
+              <div class="ic" style="background:rgba(224,67,67,.12);color:var(--destructive)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></div>
+              <div style="flex:1">
+                <div style="font-weight:600">第十二回 đã bị xóa</div>
+                <div class="muted" style="font-size:11px"><code class="mono">chapter.deleted</code> · 5 phút trước · citation neo vào chương này giờ gãy</div>
+              </div>
+              <span class="pill badge-danger">Citation gãy</span>
+            </div>
+            <div class="affrow"><span class="cbx on"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span><span class="dot" style="background:#e0884a"></span><span style="font-weight:500">哪吒</span><span class="part">— [2] neo block 18 @ 第十二回 → không còn canon</span><span style="margin-left:auto" class="pill badge-danger" >Cứng</span></div>
+            <div class="chg-f"><a class="diff-link">Xem thay đổi</a><button class="btn-reject mini-btn">Bỏ qua</button><button class="btn-accept mini-btn">Tạo lại</button></div>
+          </div>
+
+          <!-- ② chapter republished (content) → cascade 2 articles -->
+          <div class="chg" style="border-left-color:var(--info)">
+            <div class="chg-h">
+              <div class="ic" style="background:rgba(84,150,232,.12);color:var(--info)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.7 2.8L3 8"/><path d="M3 3v5h5"/></svg></div>
+              <div style="flex:1">
+                <div style="font-weight:600">第二十三回《妲己进宫》 tái-publish <span class="muted" style="font-weight:400;font-size:11px">(revision mới)</span></div>
+                <div class="muted" style="font-size:11px"><code class="mono">chapter.published</code> · 1 giờ trước · đoạn gốc đổi → join 2 bài đang cite chương này</div>
+              </div>
+              <span class="pill badge-info">Chương tái-publish</span>
+            </div>
+            <div class="affrow"><span class="cbx on"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span><span class="dot" style="background:#e0884a"></span><span style="font-weight:500">妲己</span><span class="part">— [1][3] grounding drift</span><span style="margin-left:auto" class="pill badge-info">Nội dung</span></div>
+            <div class="affrow"><span class="cbx on"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span><span class="dot" style="background:#e0884a"></span><span style="font-weight:500">姜子牙</span><span class="part">— [2] neo block 12 @ 第二十三回</span><span style="margin-left:auto" class="pill badge-info">Nội dung</span></div>
+            <div class="chg-f"><a class="diff-link">Xem thay đổi</a><button class="btn-reject mini-btn">Bỏ qua</button><button class="btn-accept mini-btn">Tạo lại cả 2</button></div>
+          </div>
+
+          <!-- ③ entity merged (structural) -->
+          <div class="chg" style="border-left-color:var(--warning)">
+            <div class="chg-h">
+              <div class="ic" style="background:rgba(245,166,35,.12);color:var(--warning)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 4 3 8l4 4"/><path d="M3 8h13a4 4 0 0 1 4 4v8"/></svg></div>
+              <div style="flex:1">
+                <div style="font-weight:600">Gộp 姬昌 → 周文王</div>
+                <div class="muted" style="font-size:11px"><code class="mono">glossary.entity_merged</code> · 3 giờ trước · neighborhood + alias gộp · redirect 姬昌 đã tạo · revisions của 姬昌 đã giữ</div>
+              </div>
+              <span class="pill badge-warn">Đã gộp</span>
+            </div>
+            <div class="affrow"><span class="cbx on"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span><span class="dot" style="background:#e0884a"></span><span style="font-weight:500">周文王</span><span class="part">— context đã gộp → nên sinh lại từ ngữ cảnh hợp nhất</span><span style="margin-left:auto" class="pill badge-warn">Cấu trúc</span></div>
+            <div class="chg-f"><a class="diff-link">Xem thay đổi</a><button class="btn-reject mini-btn">Bỏ qua</button><button class="btn-accept mini-btn">Tạo lại</button></div>
+          </div>
+
+          <!-- ④ attr edited + human-edited article → routes to suggestion -->
+          <div class="chg" style="border-left-color:var(--warning)">
+            <div class="chg-h">
+              <div class="ic" style="background:rgba(245,166,35,.12);color:var(--warning)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></div>
+              <div style="flex:1">
+                <div style="font-weight:600">Thêm attr 法宝: 哮天犬 <span class="muted" style="font-weight:400">(杨戬)</span></div>
+                <div class="muted" style="font-size:11px"><code class="mono">glossary.entity_updated</code> · hôm qua</div>
+              </div>
+              <span class="pill badge-muted">Sửa attr</span>
+            </div>
+            <div class="affrow"><span class="cbx"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span><span class="dot" style="background:#e0884a"></span><span style="font-weight:500">杨戬</span><span class="part">— ⚠ bài <b>đã có chỉnh sửa người</b> → tạo lại sẽ thành <b>đề xuất</b>, không ghi đè (clobber-guard)</span><span style="margin-left:auto" class="pill badge-ai">→ Đề xuất</span></div>
+            <div class="chg-f"><a class="diff-link">Xem thay đổi</a><button class="btn-reject mini-btn">Bỏ qua</button><button class="btn-accept mini-btn">Tạo đề xuất</button></div>
+          </div>
+
+          <!-- ⑤ recipe upgraded (global, advisory, unchecked) -->
+          <div class="chg" style="border-left-color:var(--accent)">
+            <div class="chg-h">
+              <div class="ic" style="background:rgba(68,158,142,.12);color:var(--accent)"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z"/></svg></div>
+              <div style="flex:1">
+                <div style="font-weight:600">Prompt nâng v2 → v3 <span class="muted" style="font-weight:400;font-size:11px">(pipeline_version — same-input drift)</span></div>
+                <div class="muted" style="font-size:11px">phát hiện bởi <b>fingerprint sweep</b> · không phải event · không bắt buộc</div>
+              </div>
+              <span class="pill" style="background:rgba(68,158,142,.12);color:var(--accent)">Công thức mới</span>
+            </div>
+            <div class="affrow"><span class="cbx"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span><span class="muted" style="font-size:12.5px">11 bài AI có thể sinh lại tốt hơn với prompt v3 — chỉ làm nếu bạn muốn</span><a style="margin-left:auto;color:var(--accent);font-size:12px">Xem 11 bài →</a></div>
+          </div>
+
+          <div class="note">Mỗi dòng = join <code class="mono">wiki_article_source_usage</code> (capture lúc sinh) × event/sweep. Cờ <code class="mono">is_knowledge_stale</code> tự lật; <b>token chỉ tốn khi bạn bấm Tạo lại</b>. Severity: 🔴 citation gãy (cứng) · 🟡 cấu trúc (kind/merge) · 🔵 nội dung (attr/grounding). Bài người-đã-sửa luôn đi đường đề xuất.</div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<script>
+  const btns=document.querySelectorAll('.switcher button');
+  const screens=document.querySelectorAll('.screen');
+  btns.forEach(b=>b.addEventListener('click',()=>{
+    btns.forEach(x=>x.classList.remove('active'));
+    screens.forEach(s=>s.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById(b.dataset.s).classList.add('active');
+    document.querySelector('.main').scrollTo({top:0,behavior:'smooth'});
+  }));
+</script>
+</body>
+</html>

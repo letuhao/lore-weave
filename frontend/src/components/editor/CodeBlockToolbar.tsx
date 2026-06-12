@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Editor } from '@tiptap/react';
 import { Copy, Check, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -14,6 +15,7 @@ interface CodeBlockToolbarProps {
  * Positioned absolutely relative to the editor wrapper.
  */
 export function CodeBlockToolbar({ editor }: CodeBlockToolbarProps) {
+  const { t } = useTranslation('editor');
   const [visible, setVisible] = useState(false);
   const [language, setLanguage] = useState('plaintext');
   const [pos, setPos] = useState({ top: 0, right: 0 });
@@ -128,7 +130,7 @@ export function CodeBlockToolbar({ editor }: CodeBlockToolbarProps) {
       <select
         value={language}
         onChange={handleLanguageChange}
-        aria-label="Code language"
+        aria-label={t('code.language_label')}
         className="rounded border bg-input px-1.5 py-0.5 font-mono text-[10px] text-foreground outline-none"
         onMouseDown={(e) => e.stopPropagation()}
       >
@@ -146,7 +148,7 @@ export function CodeBlockToolbar({ editor }: CodeBlockToolbarProps) {
           'flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] transition-colors',
           copied ? 'text-success' : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
         )}
-        title="Copy code"
+        title={t('code.copy')}
       >
         {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
       </button>
@@ -155,7 +157,7 @@ export function CodeBlockToolbar({ editor }: CodeBlockToolbarProps) {
         type="button"
         onClick={handleDelete}
         className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-        title="Delete code block"
+        title={t('code.delete')}
       >
         <Trash2 className="h-3 w-3" />
       </button>

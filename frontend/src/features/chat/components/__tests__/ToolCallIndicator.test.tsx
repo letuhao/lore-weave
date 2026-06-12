@@ -20,8 +20,8 @@ describe('ToolCallIndicator', () => {
     render(<ToolCallIndicator toolCalls={calls} />);
     const chips = screen.getAllByTestId('tool-call-chip');
     expect(chips).toHaveLength(2);
-    expect(chips[0]).toHaveTextContent('Searched memory');
-    expect(chips[1]).toHaveTextContent('Noted a memory');
+    expect(chips[0]).toHaveTextContent('tools.label.memory_search');
+    expect(chips[1]).toHaveTextContent('tools.label.memory_remember');
   });
 
   it('maps every known tool name to its label', () => {
@@ -34,11 +34,11 @@ describe('ToolCallIndicator', () => {
     ];
     render(<ToolCallIndicator toolCalls={calls} />);
     const chips = screen.getAllByTestId('tool-call-chip');
-    expect(chips[0]).toHaveTextContent('Searched memory');
-    expect(chips[1]).toHaveTextContent('Recalled an entity');
-    expect(chips[2]).toHaveTextContent('Checked the timeline');
-    expect(chips[3]).toHaveTextContent('Noted a memory');
-    expect(chips[4]).toHaveTextContent('Forgot a fact');
+    expect(chips[0]).toHaveTextContent('tools.label.memory_search');
+    expect(chips[1]).toHaveTextContent('tools.label.memory_recall_entity');
+    expect(chips[2]).toHaveTextContent('tools.label.memory_timeline');
+    expect(chips[3]).toHaveTextContent('tools.label.memory_remember');
+    expect(chips[4]).toHaveTextContent('tools.label.memory_forget');
   });
 
   it('falls back to the raw tool name for an unknown tool', () => {
@@ -66,9 +66,9 @@ describe('ToolCallIndicator', () => {
     render(<ToolCallIndicator toolCalls={calls} />);
     fireEvent.click(screen.getByTestId('tool-call-indicator').querySelector('button')!);
     const detail = screen.getByTestId('tool-call-detail');
-    expect(detail).toHaveTextContent('ok');
-    expect(detail).toHaveTextContent('failed');
-    expect(detail).toHaveTextContent('step 1');
+    expect(detail).toHaveTextContent('tools.ok');
+    expect(detail).toHaveTextContent('tools.failed');
+    expect(detail).toHaveTextContent('tools.step');
   });
 
   it('marks a failed call with aria-expanded toggling on the row button', () => {

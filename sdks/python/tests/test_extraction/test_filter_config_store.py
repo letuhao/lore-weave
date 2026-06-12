@@ -14,11 +14,13 @@ from loreweave_extraction.filter_config_store import (
     FILTER_CONFIG_REDIS_KEY,
     FILTER_RELOAD_PUBSUB_CHANNEL,
     WIRE_SCHEMA_VERSION,
+    _SUBSCRIBE_POLL_TIMEOUT_S,
     _deserialize_config,
     _serialize_config,
     delete_filter_config,
     get_filter_config,
     set_filter_config,
+    subscribe_filter_reload,
 )
 from loreweave_extraction.pass2_filter import PrecisionFilterConfig
 
@@ -154,3 +156,94 @@ async def test_delete_filter_config_deletes_key_and_publishes():
     mock_client.publish.assert_called_once_with(
         FILTER_RELOAD_PUBSUB_CHANNEL, "reload",
     )
+
+
+# ── subscribe_filter_reload (D-REDIS8-CONSUMERS: get_message, not listen) ──
+
+
+def _pubsub_mock():
+    ps = MagicMock()
+    ps.subscribe = AsyncMock()
+    ps.unsubscribe = AsyncMock()
+    ps.aclose = AsyncMock()
+    ps.listen = MagicMock()  # must NOT be used (redis-8 raises on idle listen)
+    return ps
+
+
+@pytest.mark.asyncio
+async def test_subscribe_calls_on_reload_on_message():
+    """A pub/sub message triggers on_reload(); the loop then honours stop_event."""
+    import asyncio
+
+    stop = asyncio.Event()
+    ps = _pubsub_mock()
+    ps.get_message = AsyncMock(return_value={"type": "message", "data": "reload"})
+    client = MagicMock()
+    client.pubsub = MagicMock(return_value=ps)
+
+    calls = []
+
+    async def on_reload():
+        calls.append(1)
+        stop.set()  # stop after the first reload so the loop exits
+
+    await subscribe_filter_reload(client, on_reload, stop_event=stop)
+
+    assert calls == [1]
+    ps.listen.assert_not_called()  # redis-8-safe: uses get_message, never listen()
+    ps.unsubscribe.assert_awaited()  # finally cleanup ran
+    ps.aclose.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_subscribe_idle_none_does_not_reload():
+    """get_message returns None on idle (redis-8-safe) → no reload, no error,
+    loop re-polls and exits cleanly on stop_event."""
+    import asyncio
+
+    stop = asyncio.Event()
+    ps = _pubsub_mock()
+
+    async def _gm(**kwargs):
+        stop.set()  # exit after this idle tick
+        return None
+
+    ps.get_message = AsyncMock(side_effect=_gm)
+    client = MagicMock()
+    client.pubsub = MagicMock(return_value=ps)
+
+    calls = []
+
+    async def on_reload():
+        calls.append(1)
+
+    await subscribe_filter_reload(client, on_reload, stop_event=stop)
+
+    assert calls == []  # None message → no reload
+    # called with the redis-8-safe args (timeout returns None, doesn't raise)
+    ps.get_message.assert_awaited_with(
+        ignore_subscribe_messages=True, timeout=_SUBSCRIBE_POLL_TIMEOUT_S,
+    )
+
+
+@pytest.mark.asyncio
+async def test_subscribe_survives_on_reload_exception():
+    """An on_reload handler that raises must not kill the subscriber loop."""
+    import asyncio
+
+    stop = asyncio.Event()
+    ps = _pubsub_mock()
+    ps.get_message = AsyncMock(return_value={"type": "message", "data": "reload"})
+    client = MagicMock()
+    client.pubsub = MagicMock(return_value=ps)
+
+    calls = []
+
+    async def on_reload():
+        calls.append(1)
+        stop.set()
+        raise RuntimeError("handler boom")
+
+    # must NOT raise out of the subscriber
+    await subscribe_filter_reload(client, on_reload, stop_event=stop)
+    assert calls == [1]

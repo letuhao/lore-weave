@@ -2,11 +2,12 @@ import { useState, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Save, Eye, EyeOff, CheckCircle2, XCircle, Trash2 } from 'lucide-react';
+import { ArrowLeft, Save, Eye, EyeOff, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { wikiApi } from '@/features/wiki/api';
 import type { WikiRevisionListItem, WikiSuggestionResp, WikiInfoboxAttr } from '@/features/wiki/types';
+import { WikiSuggestionReview } from '@/features/wiki/components/WikiSuggestionReview';
 import { TiptapEditor } from '@/components/editor/TiptapEditor';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { ConfirmDialog } from '@/components/shared';
@@ -79,12 +80,12 @@ function RevisionPanel({ bookId, articleId }: { bookId: string; articleId: strin
     if (!restoreTarget || !accessToken) return;
     try {
       await wikiApi.restoreRevision(bookId, articleId, restoreTarget.revision_id, accessToken);
-      toast.success(`Restored to version ${restoreTarget.version}`);
+      toast.success(t('restored', { version: restoreTarget.version }));
       queryClient.invalidateQueries({ queryKey: ['wiki-article', bookId, articleId] });
       queryClient.invalidateQueries({ queryKey: ['wiki-revisions', bookId, articleId] });
       setRestoreTarget(null);
     } catch {
-      toast.error('Failed to restore revision');
+      toast.error(t('restoreFailed'));
     }
   };
 
@@ -144,7 +145,7 @@ function RevisionPanel({ bookId, articleId }: { bookId: string; articleId: strin
 
 /* ── Suggestion review panel ─────────────────────────────────────────────── */
 
-function SuggestionPanel({ bookId, articleId }: { bookId: string; articleId: string }) {
+function SuggestionPanel({ bookId, articleId, currentBody }: { bookId: string; articleId: string; currentBody?: unknown }) {
   const { accessToken } = useAuth();
   const { t } = useTranslation('wiki');
   const queryClient = useQueryClient();
@@ -168,14 +169,18 @@ function SuggestionPanel({ bookId, articleId }: { bookId: string; articleId: str
     if (!accessToken) return;
     try {
       await wikiApi.reviewSuggestion(bookId, sug.article_id, sug.suggestion_id, { action }, accessToken);
-      toast.success(action === 'accept' ? 'Suggestion accepted' : 'Suggestion rejected');
+      toast.success(action === 'accept' ? t('suggestionAccepted') : t('suggestionRejected'));
       queryClient.invalidateQueries({ queryKey: ['wiki-suggestions', bookId] });
       if (action === 'accept') {
         queryClient.invalidateQueries({ queryKey: ['wiki-article', bookId, sug.article_id] });
         queryClient.invalidateQueries({ queryKey: ['wiki-revisions', bookId, sug.article_id] });
+        // /review-impl F1: an AI-regen accept resolves staleness server-side — keep the
+        // feed + sidebar badges fresh (parity with the reader review handler).
+        queryClient.invalidateQueries({ queryKey: ['wiki-staleness', bookId] });
+        queryClient.invalidateQueries({ queryKey: ['wiki-articles', bookId] });
       }
     } catch {
-      toast.error('Failed to review suggestion');
+      toast.error(t('reviewFailed'));
     }
   };
 
@@ -198,24 +203,14 @@ function SuggestionPanel({ bookId, articleId }: { bookId: string; articleId: str
       </div>
       <div className="flex-1 overflow-y-auto">
         {items.map(sug => (
-          <div key={sug.suggestion_id} className="border-b px-3 py-2">
-            <p className="mb-1 text-xs font-medium">{sug.article_display_name || 'Edit'}</p>
-            <p className="mb-2 text-[11px] text-muted-foreground">{sug.reason || 'No reason given'}</p>
-            <div className="flex gap-1">
-              <button
-                onClick={() => handleReview(sug, 'accept')}
-                className="inline-flex items-center gap-1 rounded border border-green-500/20 bg-green-500/10 px-2 py-0.5 text-[10px] font-medium text-green-400 hover:bg-green-500/20"
-              >
-                <CheckCircle2 className="h-3 w-3" /> Accept
-              </button>
-              <button
-                onClick={() => handleReview(sug, 'reject')}
-                className="inline-flex items-center gap-1 rounded border border-red-500/15 bg-red-500/6 px-2 py-0.5 text-[10px] font-medium text-red-400 hover:bg-red-500/15"
-              >
-                <XCircle className="h-3 w-3" /> Reject
-              </button>
-            </div>
-          </div>
+          <WikiSuggestionReview
+            key={sug.suggestion_id}
+            suggestion={sug}
+            currentBodyJson={currentBody}
+            bookId={bookId}
+            onAccept={() => handleReview(sug, 'accept')}
+            onReject={() => handleReview(sug, 'reject')}
+          />
         ))}
       </div>
     </div>
@@ -272,30 +267,30 @@ export function WikiEditorPage() {
         body_json: body,
         summary: summary || 'Updated article',
       }, accessToken);
-      toast.success('Saved');
+      toast.success(t('saved'));
       setDirty(false);
       queryClient.invalidateQueries({ queryKey: ['wiki-article', bookId, articleId] });
       queryClient.invalidateQueries({ queryKey: ['wiki-revisions', bookId, articleId] });
       queryClient.invalidateQueries({ queryKey: ['wiki-articles', bookId] });
     } catch {
-      toast.error('Failed to save');
+      toast.error(t('saveFailed'));
     } finally {
       setSaving(false);
     }
-  }, [accessToken, article, body, bookId, articleId, queryClient]);
+  }, [accessToken, article, body, bookId, articleId, queryClient, t]);
 
   const handleTogglePublish = useCallback(async () => {
     if (!accessToken || !article) return;
     const newStatus = article.status === 'published' ? 'draft' : 'published';
     try {
       await wikiApi.patchArticle(bookId, articleId, { status: newStatus }, accessToken);
-      toast.success(newStatus === 'published' ? 'Published' : 'Unpublished');
+      toast.success(newStatus === 'published' ? t('published') : t('unpublished'));
       queryClient.invalidateQueries({ queryKey: ['wiki-article', bookId, articleId] });
       queryClient.invalidateQueries({ queryKey: ['wiki-articles', bookId] });
     } catch {
-      toast.error('Failed to update status');
+      toast.error(t('statusFailed'));
     }
-  }, [accessToken, article, bookId, articleId, queryClient]);
+  }, [accessToken, article, bookId, articleId, queryClient, t]);
 
   const handleDelete = useCallback(async () => {
     if (!accessToken) return;
@@ -305,7 +300,7 @@ export function WikiEditorPage() {
       queryClient.invalidateQueries({ queryKey: ['wiki-articles', bookId] });
       navigate(`/books/${bookId}/wiki`);
     } catch {
-      toast.error('Failed to delete');
+      toast.error(t('deleteFailed'));
     }
   }, [accessToken, bookId, articleId, queryClient, navigate, t]);
 
@@ -430,7 +425,7 @@ export function WikiEditorPage() {
               <RevisionPanel bookId={bookId} articleId={articleId} />
             )}
             {rightPanel === 'suggestions' && (
-              <SuggestionPanel bookId={bookId} articleId={articleId} />
+              <SuggestionPanel bookId={bookId} articleId={articleId} currentBody={article?.body_json} />
             )}
           </div>
         </div>

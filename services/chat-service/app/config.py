@@ -30,6 +30,18 @@ class Settings(BaseSettings):
     # per-call timeout so a slow write doesn't ReadTimeout (D-K21B-06).
     knowledge_tool_timeout_s: float = 30.0
 
+    # ai-gateway P0 (2026-06-10) — TOOLS now go through the ai-gateway (MCP
+    # federation), NOT knowledge directly. Hard cutover: tool definitions + MCP
+    # execution target this URL; build_context (grounding) STAYS on
+    # knowledge_service_url (gateway grounding is P6, not P0).
+    ai_gateway_url: str = "http://ai-gateway:8210"
+
+    # ARCH-1 C3 — default stream event format when a request sends no
+    # x-loreweave-stream-format header. "legacy" (LoreWeave SSE vocabulary) or
+    # "agui" (AG-UI protocol). Per-request header overrides this; the default
+    # stays "legacy" until the AG-UI frontend (C4) ships.
+    default_stream_format: str = "legacy"
+
     # D-T2-03 — degraded-mode fallback when knowledge-service is unreachable
     # or returns an error. Must agree with knowledge-service's Mode 1 + Mode 2
     # `recent_message_count` (which also defaults to 50). Both services read

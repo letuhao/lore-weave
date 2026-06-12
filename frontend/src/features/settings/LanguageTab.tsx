@@ -12,7 +12,7 @@ const GUI_LANGUAGES = [
 ];
 
 export function LanguageTab() {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation('settings');
   const { accessToken } = useAuth();
   const current = i18n.language;
 
@@ -20,15 +20,15 @@ export function LanguageTab() {
     i18n.changeLanguage(code);
     localStorage.setItem('lw_language', code);
     syncPrefsToServer('ui_language', code, accessToken);
-    toast.success(`Language changed to ${GUI_LANGUAGES.find((l) => l.code === code)?.native ?? code}`);
+    toast.success(t('language.toast.changed_to', { lang: GUI_LANGUAGES.find((l) => l.code === code)?.native ?? code }));
   }
 
   return (
     <div>
       <div className="py-5">
-        <h2 className="text-sm font-semibold">GUI Language</h2>
+        <h2 className="text-sm font-semibold">{t('language.gui_language')}</h2>
         <p className="mb-4 text-xs text-muted-foreground">
-          Change the interface language. Content (books, chapters) is not affected.
+          {t('language.gui_language_desc')}
         </p>
         <div className="flex flex-wrap gap-2">
           {GUI_LANGUAGES.map((lang) => (
@@ -47,7 +47,7 @@ export function LanguageTab() {
           ))}
         </div>
         <p className="mt-3 text-[11px] text-muted-foreground">
-          Currently: <strong>{GUI_LANGUAGES.find((l) => l.code === current || current.startsWith(l.code + '-'))?.native ?? current}</strong>
+          {t('language.currently')} <strong>{GUI_LANGUAGES.find((l) => l.code === current || current.startsWith(l.code + '-'))?.native ?? current}</strong>
         </p>
       </div>
     </div>

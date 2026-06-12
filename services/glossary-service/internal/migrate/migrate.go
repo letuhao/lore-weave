@@ -125,7 +125,73 @@ CREATE TABLE IF NOT EXISTS evidence_translations (
   UNIQUE(evidence_id, language_code)
 );
 CREATE INDEX IF NOT EXISTS idx_evtr_evidence ON evidence_translations(evidence_id);
+
+-- ── Kind aliases + unknown bucket (kind-resolution epic) ─────────────────────
+-- entity_kind_aliases lets a code that ISN'T a kind resolve to one (e.g. a
+-- supplement layer's "faction" → "organization"), as DATA not hardcode. The
+-- "merge alias" review action inserts a row here. alias_code is globally UNIQUE
+-- (a code can't alias two kinds); a code that is also a real kind.code is never
+-- inserted (the resolver checks kinds first).
+CREATE TABLE IF NOT EXISTS entity_kind_aliases (
+  alias_id    UUID PRIMARY KEY DEFAULT uuidv7(),
+  alias_code  TEXT NOT NULL UNIQUE,
+  kind_id     UUID NOT NULL REFERENCES entity_kinds(kind_id) ON DELETE CASCADE,
+  created_by  UUID,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_kind_aliases_kind ON entity_kind_aliases(kind_id);
+
+-- An entity whose incoming kind_code resolved to nothing is parked under the
+-- 'unknown' kind (never dropped) and remembers the code it arrived as, so the
+-- review GUI can offer "alias <code> → <kind>" or "create kind from <code>".
+ALTER TABLE glossary_entities ADD COLUMN IF NOT EXISTS source_kind_code TEXT;
+
+-- The 'unknown' system kind (the review bucket). Hidden from the normal kind
+-- picker; an entity here is awaiting kind triage. Idempotent (ON CONFLICT) so it
+-- exists on already-seeded DBs too (Seed() only runs on an empty catalogue).
+INSERT INTO entity_kinds (code, name, icon, color, is_default, is_hidden, sort_order, genre_tags)
+VALUES ('unknown', 'Unknown', '❓', '#94a3b8', true, true, 9999, '{universal}')
+ON CONFLICT (code) DO NOTHING;
+
+-- The 'unknown' kind needs at least a name attribute so a parked entity is nameable
+-- (createExtractedEntity only writes the name when the kind has a 'name' attr_def),
+-- + aliases/description so dedup + the review GUI work. Idempotent.
+INSERT INTO attribute_definitions (kind_id, code, name, field_type, is_required, is_system, sort_order)
+SELECT ek.kind_id, v.code, v.name, v.field_type, v.is_required, true, v.sort_order
+FROM entity_kinds ek
+CROSS JOIN (VALUES
+  ('name', 'Name', 'text', true, 1),
+  ('aliases', 'Aliases', 'tags', false, 2),
+  ('description', 'Description', 'textarea', false, 3)
+) AS v(code, name, field_type, is_required, sort_order)
+WHERE ek.code = 'unknown'
+ON CONFLICT (kind_id, code) DO NOTHING;
 `
+
+// seedKindAliasesSQL — the DEFAULT kind aliases. Stable, unambiguous synonyms so a
+// supplement/extraction layer's vocabulary resolves without manual triage: 'faction'
+// is glossary's 'organization'; 'generic' (the freeform fallback) is 'terminology'
+// (the concept/entry kind). This is what lets lore-enrichment send its RAW kind and
+// drop its hardcoded translation map (kind-alias epic E2). MUST run AFTER Seed() —
+// it JOINs the target kinds, which Seed() creates (schemaSQL/Up runs BEFORE Seed, so
+// putting this in schemaSQL would no-op on a fresh DB). Idempotent; only inserts when
+// the target kind exists; never clobbers an author-created alias (ON CONFLICT).
+const seedKindAliasesSQL = `
+INSERT INTO entity_kind_aliases (alias_code, kind_id)
+SELECT v.alias_code, ek.kind_id
+FROM (VALUES ('faction', 'organization'), ('generic', 'terminology')) AS v(alias_code, target_code)
+JOIN entity_kinds ek ON ek.code = v.target_code
+ON CONFLICT (alias_code) DO NOTHING;
+`
+
+// SeedKindAliases inserts the default kind aliases. Idempotent; call AFTER Seed()
+// (the target kinds must exist). Safe on every startup.
+func SeedKindAliases(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, seedKindAliasesSQL); err != nil {
+		return fmt.Errorf("seed kind aliases: %w", err)
+	}
+	return nil
+}
 
 func Up(ctx context.Context, pool *pgxpool.Pool) error {
 	if _, err := pool.Exec(ctx, schemaSQL); err != nil {
@@ -493,7 +559,7 @@ func UpGenreGroups(ctx context.Context, pool *pgxpool.Pool) error {
 const wikiSQL = `
 CREATE TABLE IF NOT EXISTS wiki_articles (
   article_id       UUID PRIMARY KEY DEFAULT uuidv7(),
-  entity_id        UUID NOT NULL UNIQUE REFERENCES glossary_entities(entity_id) ON DELETE CASCADE,
+  entity_id        UUID NOT NULL UNIQUE REFERENCES glossary_entities(entity_id) ON DELETE RESTRICT,
   book_id          UUID NOT NULL,
   body_json        JSONB NOT NULL DEFAULT '{}',
   status           TEXT NOT NULL DEFAULT 'draft',
@@ -518,6 +584,118 @@ CREATE TABLE IF NOT EXISTS wiki_revisions (
   UNIQUE(article_id, version)
 );
 CREATE INDEX IF NOT EXISTS idx_wr_article ON wiki_revisions(article_id);
+
+-- Bug-1 fix: archive-redirect pointer for a loser article superseded by a merge
+-- winner. The loser's article is kept (revision-preserved) and points at the
+-- winner entity, never silently dropped (merge-spec AC4). NULL = live article.
+ALTER TABLE wiki_articles ADD COLUMN IF NOT EXISTS superseded_by_entity_id UUID DEFAULT NULL;
+CREATE INDEX IF NOT EXISTS idx_wa_superseded ON wiki_articles(superseded_by_entity_id)
+  WHERE superseded_by_entity_id IS NOT NULL;
+-- superseded_by points at the merge winner; ON DELETE SET NULL so a later hard-delete
+-- of the winner (e.g. via kind-delete) clears the redirect instead of dangling.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'wiki_articles_superseded_by_fkey') THEN
+    ALTER TABLE wiki_articles ADD CONSTRAINT wiki_articles_superseded_by_fkey
+      FOREIGN KEY (superseded_by_entity_id) REFERENCES glossary_entities(entity_id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
+-- Bug-2 fix: wiki_articles is a product table — an entity delete must NOT silently
+-- cascade-destroy articles + revisions + suggestions. Swap the entity FK
+-- CASCADE -> RESTRICT (idempotent, constraint-name-agnostic so it survives a
+-- legacy auto-named constraint). kind-delete now removes articles explicitly,
+-- emits wiki.deleted, and surfaces a count instead of a silent cascade.
+--
+-- Idempotency: scope the drop to the FK on the entity_id COLUMN specifically —
+-- wiki_articles has a SECOND FK to glossary_entities (superseded_by_entity_id,
+-- added just above), so a column-agnostic single-row select could drop the
+-- wrong one and then collide on re-add (the restart bug). Skip entirely when the
+-- RESTRICT-named constraint already exists.
+DO $$
+DECLARE c text;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'wiki_articles_entity_id_fkey'
+       AND conrelid = 'wiki_articles'::regclass
+  ) THEN
+    SELECT conname INTO c FROM pg_constraint
+     WHERE conrelid = 'wiki_articles'::regclass AND contype = 'f'
+       AND confrelid = 'glossary_entities'::regclass
+       AND conkey = ARRAY[(SELECT attnum FROM pg_attribute
+             WHERE attrelid = 'wiki_articles'::regclass
+               AND attname = 'entity_id' AND NOT attisdropped)]::smallint[];
+    IF c IS NOT NULL THEN EXECUTE format('ALTER TABLE wiki_articles DROP CONSTRAINT %I', c); END IF;
+    ALTER TABLE wiki_articles
+      ADD CONSTRAINT wiki_articles_entity_id_fkey
+      FOREIGN KEY (entity_id) REFERENCES glossary_entities(entity_id) ON DELETE RESTRICT;
+  END IF;
+END $$;
+
+-- wiki-llm M5 (C6) — AI-generation columns on the article + the §5.1 source-usage
+-- reverse index. generation_status: NULL (never AI-generated / human-authored) |
+-- 'generated' (clean) | 'needs_review' (verify flags) | 'blocked' (publish-blocked).
+-- generation_provenance carries build_inputs (C7 fingerprint) + citations +
+-- verify_flags. is_knowledge_stale is flipped by the Phase-2 staleness sweep.
+ALTER TABLE wiki_articles
+  ADD COLUMN IF NOT EXISTS generation_status     TEXT,
+  ADD COLUMN IF NOT EXISTS generated_by          TEXT,
+  ADD COLUMN IF NOT EXISTS generation_provenance JSONB,
+  ADD COLUMN IF NOT EXISTS generated_at          TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS spoiler_horizon       INT,
+  ADD COLUMN IF NOT EXISTS is_knowledge_stale    BOOLEAN NOT NULL DEFAULT false;
+
+-- §5.1 reverse index: which sources (entity attrs / KG facts / chapter blocks) an
+-- article was built from, so the Phase-2 staleness sweep can find every article a
+-- changed source affects. CASCADE with the article (it's owned provenance).
+CREATE TABLE IF NOT EXISTS wiki_article_source_usage (
+  article_id     UUID NOT NULL REFERENCES wiki_articles(article_id) ON DELETE CASCADE,
+  source_type    TEXT NOT NULL,         -- 'entity' | 'kg' | 'block'
+  source_id      TEXT NOT NULL,
+  source_version TEXT,                  -- content hash / revision (NULL = unknown)
+  PRIMARY KEY (article_id, source_type, source_id)
+);
+CREATE INDEX IF NOT EXISTS idx_wasu_source ON wiki_article_source_usage(source_type, source_id);
+-- wiki-llm W6b-2 — the source text used at generation time (the "before" half of
+-- the change diff; the "after" re-gathers live). NULL for pre-W6b-2 rows → no diff
+-- (the reader falls back to the W6b-1 "view source" jump). Capped on the writer side.
+ALTER TABLE wiki_article_source_usage ADD COLUMN IF NOT EXISTS source_text TEXT;
+
+-- risk #4 — the deterministic stub previously wrote its seed revision as
+-- author_type='owner', indistinguishable from a human edit. Migrate legacy stub
+-- revisions to 'system' (detected by the stub's fixed summary) so the M5
+-- clobber-guard may let an AI regen overwrite a stub but NOT a human edit. New
+-- stubs write 'system' directly (generateWikiStubs), so this UPDATE only ever
+-- touches legacy rows once (idempotent thereafter).
+UPDATE wiki_revisions SET author_type = 'system'
+  WHERE author_type = 'owner' AND summary = 'Auto-generated from KG';
+
+-- wiki-llm Phase-2 (§5.2) — the DEFER staleness ledger. When a knowledge source an
+-- article was built from changes, the wiki-staleness consumer (push) / sweep (pull)
+-- records a row here + flips wiki_articles.is_knowledge_stale — and does ZERO LLM
+-- work. The "Knowledge updates" surface (§5.3) drains it; regeneration is always
+-- user-gated. reason_code: entity_changed | name_changed | enrichment_changed |
+-- merged | chapter_regrounded | citation_broken | recipe_drift.  severity:
+-- structural (frame wrong) | content (advisory) | hard (cite points at non-canon).
+CREATE TABLE IF NOT EXISTS wiki_staleness (
+  staleness_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  article_id   UUID NOT NULL REFERENCES wiki_articles(article_id) ON DELETE CASCADE,
+  reason_code  TEXT NOT NULL,
+  source_ref   JSONB NOT NULL DEFAULT '{}',   -- {source_type, source_id, event_id, ...}
+  severity     TEXT NOT NULL DEFAULT 'content',
+  status       TEXT NOT NULL DEFAULT 'pending', -- pending | regenerated | dismissed
+  detected_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Idempotent capture: one OPEN (pending) row per (article, reason, source) so an
+-- at-least-once event redelivery never piles duplicates. source_id is lifted out of
+-- source_ref for the dedup key (an expression index can't be a UNIQUE constraint
+-- target directly, so a partial unique index on the expression is used).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_wiki_staleness_open
+  ON wiki_staleness (article_id, reason_code, (source_ref->>'source_id'))
+  WHERE status = 'pending';
+-- The "Knowledge updates" feed lists pending rows per book — join via the article.
+CREATE INDEX IF NOT EXISTS idx_wiki_staleness_pending
+  ON wiki_staleness (article_id) WHERE status = 'pending';
 `
 
 func UpWiki(ctx context.Context, pool *pgxpool.Pool) error {
@@ -1190,6 +1368,175 @@ func BackfillKnowledgeMemory(ctx context.Context, pool *pgxpool.Pool) error {
 			`SELECT recalculate_entity_snapshot($1)`, id); err != nil {
 			return fmt.Errorf("backfill-km entity %s: %w", id, err)
 		}
+	}
+	return nil
+}
+
+// ── entity_enrichments (lore-enrichment F-C13-1 + F-C13-2) ─────────────────
+//
+// The lore-enrichment promote flow used to write enriched lore onto the
+// canonical entity's short_description COLUMN (DEFERRED-053 / canon-content).
+// The QC review (F-C13-2) found that conflates makeup with the original
+// authored canon: once enrichment resolves onto the real canonical entity,
+// short_description can no longer be told apart from author-written canon, and
+// retract had no clean per-supplement undo (F-C13-1 — it tried to recycle the
+// WHOLE entity via a user JWT the service-to-service handler never has).
+//
+// PO ruling B1 (2026-05-31): glossary is the SINGLE SSOT; enrichment is a
+// DISTINGUISHED SUPPLEMENT / `dị bản` (variant) of the original canon — never
+// merged into / overwriting it, never a parallel entity. It must stay
+// tellable-apart for life. This table is the structural guarantee of that
+// separation: enrichment content lives HERE (FK→canonical entity), original
+// canon stays in glossary_entities.short_description, untouched.
+//
+// Design (spec 2026-05-31-enrichment-supplement-canon-model.md, option c):
+//   - one row per (entity, dimension, proposal) — a proposal_id keys a variant
+//     set, so multiple `dị bản` per (entity, dimension) coexist (UNIQUE key
+//     includes proposal_id, NOT just (entity, dimension)).
+//   - H0 invariants carried into the schema: confidence < 1.0 (a supplement row
+//     can never carry canon confidence), origin <> 'glossary' (never the canon
+//     origin), review_status ∈ {proposed, promoted} (never a canon status).
+//   - retract = soft-delete (deleted_at), reversible — the canonical entity and
+//     its original canon are never touched.
+//   - the partial index serves the live read (book_id, entity_id) WHERE not
+//     soft-deleted — the wiki/entity supplement section.
+//
+// Idempotent: CREATE TABLE / INDEX IF NOT EXISTS. uuidv7() is a PG18 native.
+const entityEnrichmentsSQL = `
+CREATE TABLE IF NOT EXISTS entity_enrichments (
+  enrichment_id  UUID PRIMARY KEY DEFAULT uuidv7(),
+  entity_id      UUID NOT NULL REFERENCES glossary_entities(entity_id) ON DELETE CASCADE,
+  book_id        UUID NOT NULL,
+  dimension      TEXT NOT NULL,
+  content        TEXT NOT NULL,
+  origin         TEXT NOT NULL DEFAULT 'enrichment'
+    CHECK (origin <> '' AND origin <> 'glossary'),
+  technique      TEXT NOT NULL,
+  confidence     NUMERIC(4,3) NOT NULL CHECK (confidence > 0 AND confidence < 1.0),
+  proposal_id    UUID NOT NULL,
+  review_status  TEXT NOT NULL DEFAULT 'proposed'
+    CHECK (review_status IN ('proposed','promoted')),
+  promoted_by    UUID,
+  promoted_at    TIMESTAMPTZ,
+  deleted_at     TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (entity_id, dimension, proposal_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_entity_enrichments_live
+  ON entity_enrichments(book_id, entity_id) WHERE deleted_at IS NULL;
+
+-- Provenance backstop (review-impl LOW-6): a 'promoted' supplement row MUST
+-- carry the promoter marker. Mirrors the enrichment_proposal promote-only
+-- invariant; the handler also returns a clean 400, this is the DB guarantee.
+-- Idempotent DO-block (ADD CONSTRAINT IF NOT EXISTS isn't available pre-PG18
+-- for the project's historical pattern; kept hand-idempotent for consistency).
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'entity_enrichments_promoted_has_marker'
+  ) THEN
+    ALTER TABLE entity_enrichments
+      ADD CONSTRAINT entity_enrichments_promoted_has_marker
+      CHECK (review_status <> 'promoted' OR promoted_by IS NOT NULL);
+  END IF;
+END$$;
+`
+
+// UpEntityEnrichments creates the entity_enrichments table that holds the
+// lore-enrichment supplement layer (PO ruling B1 / F-C13-1 + F-C13-2).
+// Idempotent. Registered in cmd/glossary-service/main.go after the
+// short-description migrations (it FKs glossary_entities, which Up() creates).
+func UpEntityEnrichments(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, entityEnrichmentsSQL); err != nil {
+		return fmt.Errorf("migrate entity-enrichments: %w", err)
+	}
+	return nil
+}
+
+// entityMergeSQL backs mui #1c — entity-resolution/merge. Adds the
+// `merged_into_entity_id` audit pointer on glossary_entities and the
+// `merge_journal` table. Reversibility model (spec §3.3): the merge
+// SOFT-deletes the loser and repoints only NON-conflicting child rows to the
+// winner; conflicting rows stay with the (now hidden) loser. The journal
+// records exactly which child-row PKs were repointed + the winner's aliases
+// value before folding, so un-merge replays them back without row snapshots.
+const entityMergeSQL = `
+ALTER TABLE glossary_entities
+  ADD COLUMN IF NOT EXISTS merged_into_entity_id UUID DEFAULT NULL;
+
+CREATE TABLE IF NOT EXISTS merge_journal (
+  journal_id                 UUID PRIMARY KEY DEFAULT uuidv7(),
+  book_id                    UUID NOT NULL,
+  winner_entity_id           UUID NOT NULL,
+  loser_entity_id            UUID NOT NULL,
+  repointed_chapter_link_ids UUID[] NOT NULL DEFAULT '{}',
+  repointed_eav_ids          UUID[] NOT NULL DEFAULT '{}',
+  repointed_enrichment_ids   UUID[] NOT NULL DEFAULT '{}',
+  repointed_audit_ids        UUID[] NOT NULL DEFAULT '{}',
+  repointed_wiki_article_id  UUID,
+  winner_aliases_before      TEXT,
+  status                     TEXT NOT NULL DEFAULT 'merged'
+    CHECK (status IN ('merged','reverted')),
+  merged_by                  UUID,
+  merged_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  reverted_at                TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_merge_journal_book  ON merge_journal(book_id);
+CREATE INDEX IF NOT EXISTS idx_merge_journal_loser ON merge_journal(loser_entity_id);
+
+-- Bug-1 fix: when BOTH winner+loser have a wiki_article, the loser's is archived
+-- in place (superseded_by_entity_id := winner) rather than repointed. Record it
+-- so un-merge can clear the archive flag (symmetric with repointed_wiki_article_id).
+ALTER TABLE merge_journal ADD COLUMN IF NOT EXISTS superseded_wiki_article_id UUID DEFAULT NULL;
+`
+
+// UpEntityMerge creates the merge_journal table + merged_into_entity_id column
+// (mui #1c). Idempotent. Register in main.go after UpEntityEnrichments.
+func UpEntityMerge(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, entityMergeSQL); err != nil {
+		return fmt.Errorf("migrate entity-merge: %w", err)
+	}
+	return nil
+}
+
+// mergeCandidatesSQL backs mui #1c G-cand — the merge-candidate review surface.
+// knowledge's coref detector (K-detect) proposes clusters of likely-same
+// entities INTO glossary (knowledge=AI compute, glossary=SSOT/curation); the
+// human reviews here and confirms via the existing R5 merge endpoint.
+// `member_set_key` is the sorted-distinct member-id set joined by ',' — the
+// UNIQUE(book_id, member_set_key) makes re-proposing the same cluster
+// idempotent, and the conditional upsert (WHERE status='proposed') means a
+// dismissed/merged cluster is never resurrected by a later detection pass.
+const mergeCandidatesSQL = `
+CREATE TABLE IF NOT EXISTS merge_candidates (
+  candidate_id               UUID PRIMARY KEY DEFAULT uuidv7(),
+  book_id                    UUID NOT NULL,
+  kind_id                    UUID NOT NULL REFERENCES entity_kinds(kind_id),
+  member_entity_ids          UUID[] NOT NULL,
+  member_set_key             TEXT NOT NULL,
+  suggested_winner_entity_id UUID,
+  score                      DOUBLE PRECISION NOT NULL DEFAULT 0,
+  evidence_json              JSONB NOT NULL DEFAULT '[]',
+  rationale                  TEXT NOT NULL DEFAULT '',
+  status                     TEXT NOT NULL DEFAULT 'proposed'
+    CHECK (status IN ('proposed','dismissed','merged')),
+  created_at                 TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at                 TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_merge_candidates_setkey
+  ON merge_candidates(book_id, member_set_key);
+CREATE INDEX IF NOT EXISTS idx_merge_candidates_book_status
+  ON merge_candidates(book_id, status);
+`
+
+// UpMergeCandidates creates the merge_candidates table (mui #1c G-cand).
+// Idempotent. Register in main.go after UpEntityMerge.
+func UpMergeCandidates(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, mergeCandidatesSQL); err != nil {
+		return fmt.Errorf("migrate merge-candidates: %w", err)
 	}
 	return nil
 }

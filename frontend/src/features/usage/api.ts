@@ -3,7 +3,6 @@ import type {
   UsageLog,
   UsageLogDetail,
   UsageSummary,
-  AccountBalance,
   UsageFilters,
   Period,
   Guardrail,
@@ -44,9 +43,8 @@ export const usageApi = {
     );
   },
 
-  getBalance(token: string) {
-    return apiJson<AccountBalance>('/v1/model-billing/account-balance', { token });
-  },
+  // S4c: getBalance (deprecated token account-balance) retired — the USD spend
+  // guardrail + platform balance below are the wallet view.
 
   // Phase 6a-γ — spend guardrail (Subsystem A) + platform balance (Subsystem B).
   getGuardrail(token: string) {

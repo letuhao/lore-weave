@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
 interface AttrCardProps {
@@ -16,6 +17,7 @@ interface AttrCardProps {
 }
 
 export function AttrCard({ name, code, fieldType, isSystem, isRequired, modified, children, hasTranslations, translationSlot }: AttrCardProps) {
+  const { t } = useTranslation('entityEditor');
   return (
     <div className={cn(
       'rounded-lg border bg-card overflow-hidden transition-colors hover:border-[hsl(var(--border-hover,25_6%_24%))]',
@@ -29,9 +31,9 @@ export function AttrCard({ name, code, fieldType, isSystem, isRequired, modified
           ) : (
             <span className="rounded bg-warning/12 px-1.5 py-0.5 text-[9px] font-semibold text-warning">USR</span>
           )}
-          {isRequired && <span className="text-[10px] font-medium text-destructive">*required</span>}
-          {modified && <span className="rounded bg-warning/8 px-1.5 py-0.5 text-[9px] text-warning">modified</span>}
-          {hasTranslations && <span className="h-1.5 w-1.5 rounded-full bg-blue-400" title="Has translations" />}
+          {isRequired && <span className="text-[10px] font-medium text-destructive">{t('attr_card.required')}</span>}
+          {modified && <span className="rounded bg-warning/8 px-1.5 py-0.5 text-[9px] text-warning">{t('attr_card.modified')}</span>}
+          {hasTranslations && <span className="h-1.5 w-1.5 rounded-full bg-blue-400" title={t('attr_card.has_translations')} />}
         </div>
         <span className="font-mono text-[9px] text-muted-foreground">{code} · {fieldType}</span>
       </div>

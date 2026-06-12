@@ -1,0 +1,27 @@
+# infra/comms/templates/incident_resolved.yaml — L7.D.5 / Q-L7-2
+# Pre-approved comms: incident resolved.
+
+id: incident_resolved
+description: 'Final notice — the incident is resolved.'
+channel: status_page
+severities:
+  - SEV0
+  - SEV1
+  - SEV2
+placeholders:
+  - incident_id
+  - components
+  - duration
+locales:
+  en:
+    subject: 'Resolved: service restored'
+    body: |
+      The issue affecting {{components}} has been resolved and service is
+      fully restored. Total impact duration: {{duration}}.
+      Thank you for your patience. A postmortem will follow for {{incident_id}}.
+  vi:
+    subject: 'Đã khắc phục: dịch vụ đã khôi phục'
+    body: |
+      Sự cố ảnh hưởng đến {{components}} đã được khắc phục và dịch vụ đã được
+      khôi phục hoàn toàn. Tổng thời gian ảnh hưởng: {{duration}}.
+      Cảm ơn sự kiên nhẫn của bạn. Báo cáo phân tích sẽ được công bố cho {{incident_id}}.

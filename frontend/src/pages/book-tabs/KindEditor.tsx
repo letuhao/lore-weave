@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Settings2, Plus, Trash2, Save, Loader2, ChevronRight, X, Pencil, GripVertical, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
@@ -20,6 +21,7 @@ function AttrRow({ attr, kindCode, onEdit, onToggle, onDelete, dragProps, isOver
   isOver?: boolean;
   genreColorMap?: Map<string, string>;
 }) {
+  const { t } = useTranslation('books');
   const modified = kindCode ? isAttrModified(kindCode, attr) : false;
   const inactive = attr.is_active === false;
   return (
@@ -41,9 +43,9 @@ function AttrRow({ attr, kindCode, onEdit, onToggle, onDelete, dragProps, isOver
           ) : (
             <span className="rounded bg-primary/15 px-1 py-0.5 text-[9px] font-medium text-primary">USR</span>
           )}
-          {modified && <span className="text-[9px] font-medium text-amber-400 italic">modified</span>}
+          {modified && <span className="text-[9px] font-medium text-amber-400 italic">{t('kind_editor.modified')}</span>}
           {(attr.auto_fill_prompt || attr.translation_hint) && (
-            <span className="inline-flex items-center gap-1 rounded bg-accent/12 px-1 py-0.5 text-[8px] font-semibold text-accent">AI</span>
+            <span className="inline-flex items-center gap-1 rounded bg-accent/12 px-1 py-0.5 text-[8px] font-semibold text-accent">{t('kind_editor.ai')}</span>
           )}
           {(attr.genre_tags ?? []).map((tag) => {
             const color = genreColorMap?.get(tag);
@@ -61,14 +63,14 @@ function AttrRow({ attr, kindCode, onEdit, onToggle, onDelete, dragProps, isOver
           {attr.description && <span className="text-[10px] text-muted-foreground truncate max-w-[200px]">{attr.description}</span>}
         </div>
       </div>
-      <span className="text-[10px] text-muted-foreground">{attr.is_required ? 'required' : 'optional'}</span>
+      <span className="text-[10px] text-muted-foreground">{attr.is_required ? t('kind_editor.required') : t('kind_editor.optional')}</span>
       <button
         onClick={onToggle}
         className={cn(
           "relative h-[18px] w-8 rounded-full transition-colors flex-shrink-0",
           inactive ? "bg-secondary" : "bg-green-500",
         )}
-        title={inactive ? 'Activate' : 'Deactivate'}
+        title={inactive ? t('kind_editor.activate') : t('kind_editor.deactivate')}
       >
         <span className={cn(
           "absolute top-[2px] h-[14px] w-[14px] rounded-full transition-all",
@@ -78,7 +80,7 @@ function AttrRow({ attr, kindCode, onEdit, onToggle, onDelete, dragProps, isOver
       <button
         onClick={onEdit}
         className="opacity-0 group-hover:opacity-100 max-md:opacity-100 rounded p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
-        title="Edit attribute"
+        title={t('kind_editor.edit_attr')}
       >
         <Pencil className="h-3 w-3" />
       </button>
@@ -86,7 +88,7 @@ function AttrRow({ attr, kindCode, onEdit, onToggle, onDelete, dragProps, isOver
         <button
           onClick={onDelete}
           className="opacity-0 group-hover:opacity-100 max-md:opacity-100 rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
-          title="Delete attribute"
+          title={t('kind_editor.delete_attr')}
         >
           <Trash2 className="h-3 w-3" />
         </button>
@@ -96,6 +98,7 @@ function AttrRow({ attr, kindCode, onEdit, onToggle, onDelete, dragProps, isOver
 }
 
 export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () => void }) {
+  const { t } = useTranslation('books');
   const { accessToken } = useAuth();
   const [kinds, setKinds] = useState<EntityKind[]>([]);
   const [genres, setGenres] = useState<GenreGroup[]>([]);
@@ -176,7 +179,7 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
         name: editName, icon: editIcon, color: editColor,
         description: editDescription || null, genre_tags: editGenreTags,
       });
-      toast.success('Kind saved');
+      toast.success(t('kind_editor.kind_saved'));
       setKindDirty(false);
       await loadKinds();
     } catch (e) { toast.error((e as Error).message); }
@@ -187,7 +190,7 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
     if (!accessToken || !newCode || !newName) return;
     try {
       const k = await glossaryApi.createKind(accessToken, { code: newCode, name: newName });
-      toast.success(`Kind "${k.name}" created`);
+      toast.success(t('kind_editor.kind_created', { name: k.name }));
       setShowNewKind(false);
       setNewCode('');
       setNewName('');
@@ -200,7 +203,7 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
     if (!accessToken || !deleteTarget) return;
     try {
       await glossaryApi.deleteKind(accessToken, deleteTarget.kind_id);
-      toast.success('Kind deleted');
+      toast.success(t('kind_editor.kind_deleted'));
       setDeleteTarget(null);
       if (selectedId === deleteTarget.kind_id) setSelectedId(null);
       await loadKinds();
@@ -219,7 +222,7 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
         .filter((a) => a.is_system && seed.attrs[a.code] && a.name !== seed.attrs[a.code].name)
         .map((a) => glossaryApi.patchAttrDef(accessToken, revertTarget.kind_id, a.attr_def_id, { name: seed.attrs[a.code].name }));
       await Promise.allSettled(attrPatches);
-      toast.success('Reverted to defaults');
+      toast.success(t('kind_editor.reverted'));
       setRevertTarget(null);
       await loadKinds();
     } catch (e) { toast.error((e as Error).message); }
@@ -239,7 +242,7 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
     try {
       await glossaryApi.reorderKinds(accessToken, ordered);
     } catch (e) {
-      toast.error('Reorder failed');
+      toast.error(t('kind_editor.reorder_failed'));
       await loadKinds();
     }
   };
@@ -257,7 +260,7 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
       await glossaryApi.reorderAttrDefs(accessToken, selected.kind_id, ordered);
       await loadKinds();
     } catch (e) {
-      toast.error('Reorder failed');
+      toast.error(t('kind_editor.reorder_failed'));
       await loadKinds();
     }
   };
@@ -276,7 +279,7 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
     if (!accessToken || !selected || !deleteAttrTarget) return;
     try {
       await glossaryApi.deleteAttrDef(accessToken, selected.kind_id, deleteAttrTarget.attr_def_id);
-      toast.success('Attribute deleted');
+      toast.success(t('kind_editor.attr_deleted'));
       setDeleteAttrTarget(null);
       await loadKinds();
     } catch (e) { toast.error((e as Error).message); }
@@ -306,21 +309,21 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
       <div className="flex items-center justify-between border-b px-4 py-3 flex-shrink-0">
         <div className="flex items-center gap-2">
           <Settings2 className="h-4 w-4 text-muted-foreground" />
-          <h3 className="text-sm font-semibold">Entity Kinds</h3>
-          <span className="text-xs text-muted-foreground">{kinds.length} kinds</span>
+          <h3 className="text-sm font-semibold">{t('kind_editor.title')}</h3>
+          <span className="text-xs text-muted-foreground">{t('kind_editor.kind_count', { count: kinds.length })}</span>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowNewKind(true)}
             className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
           >
-            <Plus className="h-3 w-3" /> New Kind
+            <Plus className="h-3 w-3" /> {t('kind_editor.new_kind')}
           </button>
           <button
             onClick={onClose}
             className="rounded-md border px-3 py-1 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
           >
-            Back to Glossary
+            {t('kind_editor.back')}
           </button>
         </div>
       </div>
@@ -329,8 +332,8 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
       <div className="flex flex-1 overflow-hidden">
         {/* Left: kind list */}
         <div className="w-64 flex-shrink-0 border-r overflow-y-auto">
-          {[{ label: 'System Kinds', items: systemKinds, isSystem: true },
-            { label: 'User Kinds', items: userKinds, isSystem: false }]
+          {[{ label: t('kind_editor.system_kinds'), items: systemKinds, isSystem: true },
+            { label: t('kind_editor.user_kinds'), items: userKinds, isSystem: false }]
             .filter((g) => g.items.length > 0)
             .map((group) => (
             <div key={group.label}>
@@ -362,17 +365,17 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
                     <div className="flex items-center gap-1.5">
                       <span className="font-medium truncate">{k.name}</span>
                       {k.is_default ? (
-                        <span className="rounded bg-blue-500/15 px-1.5 py-0.5 text-[8px] font-medium text-blue-400 flex-shrink-0">System</span>
+                        <span className="rounded bg-blue-500/15 px-1.5 py-0.5 text-[8px] font-medium text-blue-400 flex-shrink-0">{t('kind_editor.system_badge')}</span>
                       ) : (
-                        <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[8px] font-medium text-primary flex-shrink-0">Custom</span>
+                        <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[8px] font-medium text-primary flex-shrink-0">{t('kind_editor.custom_badge')}</span>
                       )}
                       {k.is_default && countKindModifications(k) > 0 && (
-                        <span className="text-[8px] font-medium text-amber-400 italic flex-shrink-0">modified</span>
+                        <span className="text-[8px] font-medium text-amber-400 italic flex-shrink-0">{t('kind_editor.modified')}</span>
                       )}
                     </div>
                     <span className="text-[10px] text-muted-foreground">
-                      {k.default_attributes.length} attr{k.default_attributes.length !== 1 ? 's' : ''}
-                      {' · '}{k.entity_count} entit{k.entity_count !== 1 ? 'ies' : 'y'}
+                      {t('kind_editor.attr_count', { count: k.default_attributes.length })}
+                      {' · '}{t('kind_editor.entity_count', { count: k.entity_count })}
                     </span>
                   </div>
                   {selectedId === k.kind_id && <ChevronRight className="h-3 w-3 text-primary" />}
@@ -391,9 +394,9 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-[10px] text-muted-foreground">{selected.code}</span>
-                    {selected.is_default && <span className="rounded bg-secondary px-1.5 py-0.5 text-[9px] text-muted-foreground">system</span>}
+                    {selected.is_default && <span className="rounded bg-secondary px-1.5 py-0.5 text-[9px] text-muted-foreground">{t('kind_editor.system_tag')}</span>}
                     <span className="text-[10px] text-muted-foreground">
-                      {selected.default_attributes.length} attrs · {selected.entity_count} entit{selected.entity_count !== 1 ? 'ies' : 'y'}
+                      {t('kind_editor.attr_count', { count: selected.default_attributes.length })} · {t('kind_editor.entity_count', { count: selected.entity_count })}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -401,17 +404,17 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
                       <button
                         onClick={() => setRevertTarget(selected)}
                         className="inline-flex items-center gap-1 rounded-md border border-dashed border-blue-500/40 px-2 py-1 text-[10px] font-medium text-blue-400 hover:bg-blue-500/10 transition-colors"
-                        title="Revert all changes to system defaults"
+                        title={t('kind_editor.revert_title_attr')}
                       >
                         <RotateCcw className="h-3 w-3" />
-                        Revert to Default
+                        {t('kind_editor.revert_to_default')}
                       </button>
                     )}
                     {!selected.is_default && (
                       <button
                         onClick={() => setDeleteTarget(selected)}
                         className="rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
-                        title="Delete kind"
+                        title={t('kind_editor.delete_kind_tooltip')}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -423,14 +426,14 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
                         className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                       >
                         {savingKind ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                        Save
+                        {t('kind_editor.save')}
                       </button>
                     )}
                   </div>
                 </div>
                 <div className="grid grid-cols-[auto_1fr_auto] gap-3 items-end">
                   <div>
-                    <label className="text-[10px] text-muted-foreground">Icon</label>
+                    <label className="text-[10px] text-muted-foreground">{t('kind_editor.icon')}</label>
                     <input
                       value={editIcon}
                       onChange={(e) => { setEditIcon(e.target.value); setKindDirty(true); }}
@@ -438,7 +441,7 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] text-muted-foreground">Name</label>
+                    <label className="text-[10px] text-muted-foreground">{t('kind_editor.name')}</label>
                     <input
                       value={editName}
                       onChange={(e) => { setEditName(e.target.value); setKindDirty(true); }}
@@ -446,7 +449,7 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] text-muted-foreground">Color</label>
+                    <label className="text-[10px] text-muted-foreground">{t('kind_editor.color')}</label>
                     <input
                       type="color"
                       value={editColor}
@@ -456,11 +459,11 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
                   </div>
                 </div>
                 <div>
-                  <label className="text-[10px] text-muted-foreground">Description</label>
+                  <label className="text-[10px] text-muted-foreground">{t('kind_editor.description')}</label>
                   <textarea
                     value={editDescription}
                     onChange={(e) => { setEditDescription(e.target.value); setKindDirty(true); }}
-                    placeholder="What this kind represents..."
+                    placeholder={t('kind_editor.description_placeholder')}
                     rows={2}
                     className="mt-1 w-full resize-none rounded-md border bg-background px-3 py-1.5 text-xs focus:border-ring focus:outline-none placeholder:text-muted-foreground/50"
                   />
@@ -469,7 +472,7 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
 
               {/* Genre tags */}
               <div className="flex items-center gap-2 border-b bg-card/30 px-6 py-2.5">
-                <span className="flex-shrink-0 text-[10px] font-medium text-muted-foreground">Genres:</span>
+                <span className="flex-shrink-0 text-[10px] font-medium text-muted-foreground">{t('kind_editor.genres_label')}</span>
                 <div className="flex flex-1 flex-wrap items-center gap-1.5">
                   {editGenreTags.map((tag) => {
                     const gColor = genreColorMap.get(tag);
@@ -487,7 +490,7 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
                       {tag}
                       <button
                         onClick={() => {
-                          setEditGenreTags(editGenreTags.filter((t) => t !== tag));
+                          setEditGenreTags(editGenreTags.filter((x) => x !== tag));
                           setKindDirty(true);
                         }}
                         className="ml-0.5 rounded-full p-px text-muted-foreground/60 hover:text-foreground transition-colors"
@@ -497,7 +500,7 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
                     </span>
                   );})}
                   <input
-                    placeholder="+ Add genre"
+                    placeholder={t('kind_editor.add_genre')}
                     className="w-24 bg-transparent text-[10px] outline-none placeholder:text-muted-foreground/50"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
@@ -513,24 +516,24 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
                   />
                 </div>
                 <span className="flex-shrink-0 text-[9px] text-muted-foreground">
-                  Empty = all books
+                  {t('kind_editor.empty_all_books')}
                 </span>
               </div>
 
               {/* Attributes */}
               <div className="px-6 py-4">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-semibold">Attributes ({selected.default_attributes.length})</span>
+                  <span className="text-xs font-semibold">{t('kind_editor.attributes', { count: selected.default_attributes.length })}</span>
                   <button
                     onClick={() => setShowCreateAttr(true)}
                     className="inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[10px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
                   >
-                    <Plus className="h-3 w-3" /> Add Attribute
+                    <Plus className="h-3 w-3" /> {t('kind_editor.add_attribute')}
                   </button>
                 </div>
 
                 {selected.default_attributes.length === 0 ? (
-                  <p className="text-xs text-muted-foreground italic py-4">No attributes defined. Click "Add Attribute" to create one.</p>
+                  <p className="text-xs text-muted-foreground italic py-4">{t('kind_editor.no_attributes')}</p>
                 ) : (
                   <div className="rounded-lg border overflow-hidden">
                     {/* System attributes */}
@@ -539,7 +542,7 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
                         <div className="px-3 py-1.5" style={{ background: 'rgba(24,20,18,0.3)' }}>
                           <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-blue-400">
                             <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
-                            System Attributes
+                            {t('kind_editor.system_attributes')}
                           </span>
                         </div>
                         {[...selected.default_attributes]
@@ -567,7 +570,7 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
                         <div className="px-3 py-1.5" style={{ background: 'rgba(24,20,18,0.3)' }}>
                           <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
                             <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                            User Attributes
+                            {t('kind_editor.user_attributes')}
                           </span>
                         </div>
                         {[...selected.default_attributes]
@@ -595,7 +598,7 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
             </div>
           ) : (
             <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
-              Select a kind to view and edit
+              {t('kind_editor.select_kind')}
             </div>
           )}
         </div>
@@ -608,37 +611,37 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="w-full max-w-sm rounded-lg border bg-background shadow-xl" onClick={(e) => e.stopPropagation()}>
               <div className="border-b px-5 py-3 flex items-center justify-between">
-                <h3 className="text-sm font-semibold">New Entity Kind</h3>
+                <h3 className="text-sm font-semibold">{t('kind_editor.new_kind_title')}</h3>
                 <button onClick={() => setShowNewKind(false)} className="rounded p-1 text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
               </div>
               <div className="px-5 py-4 space-y-3">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Code</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('kind_editor.code')}</label>
                   <input
                     value={newCode}
                     onChange={(e) => setNewCode(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                    placeholder="e.g. spell, faction, vehicle"
+                    placeholder={t('kind_editor.code_placeholder')}
                     className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-xs font-mono focus:border-ring focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Display Name</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('kind_editor.display_name')}</label>
                   <input
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
-                    placeholder="e.g. Spell, Faction, Vehicle"
+                    placeholder={t('kind_editor.display_name_placeholder')}
                     className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-xs focus:border-ring focus:outline-none"
                   />
                 </div>
               </div>
               <div className="flex justify-end gap-2 border-t px-5 py-3">
-                <button onClick={() => setShowNewKind(false)} className="rounded-md border px-4 py-1.5 text-xs text-muted-foreground hover:bg-secondary">Cancel</button>
+                <button onClick={() => setShowNewKind(false)} className="rounded-md border px-4 py-1.5 text-xs text-muted-foreground hover:bg-secondary">{t('kind_editor.cancel')}</button>
                 <button
                   onClick={() => void handleCreateKind()}
                   disabled={!newCode || !newName}
                   className="rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                 >
-                  Create Kind
+                  {t('kind_editor.create_kind')}
                 </button>
               </div>
             </div>
@@ -650,27 +653,27 @@ export function KindEditor({ bookId, onClose }: { bookId: string; onClose: () =>
       <ConfirmDialog
         open={!!deleteTarget}
         onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
-        title="Delete kind?"
-        description={`"${deleteTarget?.name}" and all its attribute definitions will be permanently deleted. This cannot be undone.`}
-        confirmLabel="Delete Kind"
+        title={t('kind_editor.delete_kind_confirm.title')}
+        description={t('kind_editor.delete_kind_confirm.desc', { name: deleteTarget?.name })}
+        confirmLabel={t('kind_editor.delete_kind_confirm.confirm')}
         variant="destructive"
         onConfirm={() => void handleDeleteKind()}
       />
       <ConfirmDialog
         open={!!deleteAttrTarget}
         onOpenChange={(open) => { if (!open) setDeleteAttrTarget(null); }}
-        title="Delete attribute?"
-        description={`"${deleteAttrTarget?.name}" will be removed from this kind. Existing entity values for this attribute will be deleted.`}
-        confirmLabel="Delete Attribute"
+        title={t('kind_editor.delete_attr_confirm.title')}
+        description={t('kind_editor.delete_attr_confirm.desc', { name: deleteAttrTarget?.name })}
+        confirmLabel={t('kind_editor.delete_attr_confirm.confirm')}
         variant="destructive"
         onConfirm={() => void handleDeleteAttr()}
       />
       <ConfirmDialog
         open={!!revertTarget}
         onOpenChange={(open) => { if (!open) setRevertTarget(null); }}
-        title="Revert to defaults?"
-        description={`"${revertTarget?.name}" will be reset to its original name, icon, color, and attribute names. Genre tags and custom attributes will not be affected.`}
-        confirmLabel="Revert"
+        title={t('kind_editor.revert_confirm.title')}
+        description={t('kind_editor.revert_confirm.desc', { name: revertTarget?.name })}
+        confirmLabel={t('kind_editor.revert_confirm.confirm')}
         variant="destructive"
         onConfirm={() => void handleRevertKind()}
       />

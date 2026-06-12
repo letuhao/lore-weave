@@ -1,0 +1,23 @@
+# Q-L6K-1 (LOCKED 2026-05-29): foundation ships EMPTY templates.
+#
+# The 7 prompt templates (one per Intent — session_turn, npc_reply,
+# canon_check, canon_extraction, admin_triggered, world_seed, summary)
+# are authored by the LLM-logic sub-program / feature team / DF3, NOT
+# by the foundation. This .gitkeep keeps the directory tracked so the
+# Composer's registry loader has a canonical path to scan.
+#
+# When the sub-program lands templates, the per-intent layout per S09
+# §12Y.3 is:
+#
+#   contracts/prompt/templates/<intent>/
+#     v1.tmpl             # Go text/template body
+#     v1.meta.yaml        # template metadata (compatible_model_tiers,
+#                         #   expected_token_budget, fixture_set,
+#                         #   deprecated_at, replay_window_days)
+#     v1.fixtures/        # YAML fixtures per S09 §12Y.3 (basic,
+#                         #   confidential_memory_excluded, injection_canary)
+#   contracts/prompt/templates/registry.yaml    # active + deprecated per intent
+#
+# Foundation does NOT pre-populate any of these; doing so would force
+# the LLM-safety + LLM-logic sub-programs to inherit foundation guesses
+# about model tuning + injection canon.

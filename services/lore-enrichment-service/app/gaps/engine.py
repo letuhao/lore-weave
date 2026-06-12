@@ -39,8 +39,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.clients.knowledge import GraphStats
 from app.clients.port import KnowledgeReadPort
 from app.gaps.model import (
-    Dimension,
-    EntityKind,
     Gap,
     GapRanking,
     dimensions_for,
@@ -68,11 +66,11 @@ class EntityCoverage(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    entity_kind: EntityKind
+    entity_kind: str = Field(min_length=1)
     canonical_name: str = Field(min_length=1)
     target_ref: str | None = None
     mention_count: int = Field(ge=0, default=0)
-    present_dimensions: tuple[Dimension, ...] = ()
+    present_dimensions: tuple[str, ...] = ()
 
 
 class GapDetectionEngine:
