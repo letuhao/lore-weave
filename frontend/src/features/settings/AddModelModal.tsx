@@ -16,7 +16,8 @@ const CAP_STYLES: Record<string, string> = {
   stt: 'bg-orange-500/10 text-orange-400 border-orange-500/15',
   image_gen: 'bg-pink-500/10 text-pink-400 border-pink-500/15',
   moderation: 'bg-purple-500/10 text-purple-400 border-purple-500/15',
-  reranker: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/15',
+  // C0 reconcile: keyed by the canonical `rerank` capability token (was `reranker`).
+  rerank: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/15',
 };
 
 type Props = {

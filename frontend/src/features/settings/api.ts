@@ -84,7 +84,16 @@ export type InventoryModel = {
   capability_flags?: Record<string, unknown>;
 };
 
-export type CapabilityType = 'chat' | 'embedding' | 'tts' | 'stt' | 'image_gen' | 'moderation' | 'reranker';
+// C0 rerank/reranker reconcile (BL-1): the canonical capability token is
+// `rerank` — the value provider-registry tags rerank models with and the value
+// RerankModelPicker/ModelRolePicker filter on. The settings display layer used
+// the divergent `reranker`, so a registered rerank model rendered with no badge.
+// Use this constant everywhere the rerank capability is referenced so a future
+// rename can't silently re-introduce drift (the wiring test asserts the picker
+// filters on exactly this token).
+export const RERANK_CAPABILITY = 'rerank' as const;
+
+export type CapabilityType = 'chat' | 'embedding' | 'tts' | 'stt' | 'image_gen' | 'moderation' | 'rerank';
 
 export function getInventoryMeta(m: InventoryModel) {
   const f = m.capability_flags ?? {};

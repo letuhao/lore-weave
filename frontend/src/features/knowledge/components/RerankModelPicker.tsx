@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
 import { aiModelsApi, type UserModel } from '../../ai-models/api';
+import { RERANK_CAPABILITY } from '../../settings/api';
 
 /**
  * D-RERANK-NOT-BYOK (S0b) — Rerank model picker for knowledge projects.
@@ -36,7 +37,7 @@ export function RerankModelPicker({ value, onChange, disabled }: Props) {
     let cancelled = false;
     setError(null);
     aiModelsApi
-      .listUserModels(accessToken, { capability: 'rerank', include_inactive: false })
+      .listUserModels(accessToken, { capability: RERANK_CAPABILITY, include_inactive: false })
       .then((resp) => {
         if (cancelled) return;
         setModels(resp.items);

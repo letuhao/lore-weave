@@ -1431,3 +1431,8 @@
 {"ts": "2026-06-06T17:58:15.725708", "task": "canon-cm1-editorial-lifecycle", "phase": "commit", "agent": "main", "action": "phase_complete", "evidence": "e6cdaba7 — 12 files, 360 ins/22 del"}
 {"ts": "2026-06-06T17:58:41.277975", "task": "canon-cm1-editorial-lifecycle", "phase": "retro", "agent": "main", "action": "phase_complete", "evidence": "MCP unavailable (local HTTP); no lesson persisted. Notable patterns: vi.hoisted+partial-module-mock for ChapterEditorPage; publishGateMessages pure-function extraction"}
 {"ts": "2026-06-06T17:58:41.277975", "task": "canon-cm1-editorial-lifecycle", "phase": "retro", "agent": "main", "action": "sprint_complete", "evidence": "MCP unavailable (local HTTP); no lesson persisted. Notable patterns: vi.hoisted+partial-module-mock for ChapterEditorPage; publishGateMessages pure-function extraction"}
+{"ts": "2026-06-12T23:00:29Z", "event": "coordinator_idle"}
+{"ts": "2026-06-12T23:01:40Z", "event": "brief_generator_drift_inconclusive", "cd": "", "rw": ""}
+{"ts": "2026-06-12T23:01:40Z", "event": "brief_generator_drift_inconclusive", "cd": "", "rw": ""}
+{"ts": "2026-06-12T23:13:54Z", "event": "coordinator_next_cycle_emitted", "cycle": 1}
+{"ts":"2026-06-12T23:22:00Z","event":"verify_cycle_0_passed","cycle":0}

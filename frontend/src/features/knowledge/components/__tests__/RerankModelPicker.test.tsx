@@ -20,6 +20,7 @@ vi.mock('@/features/ai-models/api', () => ({
 }));
 
 import { RerankModelPicker } from '../RerankModelPicker';
+import { RERANK_CAPABILITY } from '@/features/settings/api';
 
 const RERANK_MODEL = {
   user_model_id: 'rr1',
@@ -38,11 +39,27 @@ describe('RerankModelPicker (D-RERANK-NOT-BYOK S0b)', () => {
     await waitFor(() => expect(listUserModelsMock).toHaveBeenCalled());
     // BYOK + capability-scoped — never a hardcoded model name.
     expect(listUserModelsMock).toHaveBeenCalledWith('tok-test', {
-      capability: 'rerank',
+      capability: RERANK_CAPABILITY,
       include_inactive: false,
     });
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'rr1' } });
     expect(onChange).toHaveBeenCalledWith('rr1');
+  });
+
+  // C0 rerank/reranker reconcile (BL-1) — spy-injection wiring guard. The picker
+  // MUST filter on the SAME canonical token the rest of the platform uses; if a
+  // future edit swaps the picker back to a divergent literal (e.g. 'reranker'),
+  // the spy argument no longer equals RERANK_CAPABILITY and this fails — the
+  // wire can't be silently dropped (nil-tolerant-wiring lesson).
+  it('filters on the canonical RERANK_CAPABILITY token (not a divergent literal)', async () => {
+    // The canonical value must be exactly what provider-registry tags rerank
+    // models with and what RerankModelPicker/ModelRolePicker resolve.
+    expect(RERANK_CAPABILITY).toBe('rerank');
+    listUserModelsMock.mockResolvedValue({ items: [] });
+    render(<RerankModelPicker value={null} onChange={vi.fn()} />);
+    await waitFor(() => expect(listUserModelsMock).toHaveBeenCalled());
+    const [, opts] = listUserModelsMock.mock.calls[0] as [string, { capability: string }];
+    expect(opts.capability).toBe(RERANK_CAPABILITY);
   });
 
   it('selecting None clears the model (rerank optional → onChange null)', async () => {
