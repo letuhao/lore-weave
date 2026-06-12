@@ -155,7 +155,10 @@ async def main() -> None:
     # chunks exist so every event would ack+ignore). Drives entity→trio→persist off
     # loreweave:events:llm_job_terminal for chapters the runner released.
     if settings.extraction_decouple_enabled and settings.redis_url:
-        from app.llm_extract_consumer import consume_llm_terminal_stream
+        from app.llm_extract_consumer import (
+            consume_llm_terminal_stream,
+            run_resume_sweeper,
+        )
         coroutines.append(consume_llm_terminal_stream(
             pool, knowledge_client, llm_client,
             redis_url=settings.redis_url,
@@ -163,6 +166,16 @@ async def main() -> None:
             block_ms=settings.summary_consumer_block_ms,
         ))
         logger.info("WX-T3b: decoupled-extraction consumer started")
+        # WX Wave 1b — the stuck-resume sweeper (runtime backstop for a stranded
+        # resume_state: consumer poison, lost terminal event, or a submit→persist gap).
+        if settings.extraction_resume_sweep_interval_s > 0:
+            coroutines.append(run_resume_sweeper(
+                pool, knowledge_client, llm_client,
+                interval_s=settings.extraction_resume_sweep_interval_s,
+                timeout_s=settings.extraction_resume_sweep_timeout_s,
+                batch=settings.extraction_resume_sweep_batch,
+            ))
+            logger.info("WX Wave 1b: decoupled-extraction resume sweeper started")
 
     # Cycle 73f — runtime filter config reload. Subscribes to Redis
     # pubsub; on each signal, re-reads the Redis config key + atomically

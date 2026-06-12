@@ -73,8 +73,9 @@ class _Acq:
 
 
 class FakePool:
-    def __init__(self, conn):
+    def __init__(self, conn, fetch_rows=None):
         self._conn = conn
+        self._fetch_rows = fetch_rows or []
 
     def acquire(self):
         return _Acq(self._conn)
@@ -84,6 +85,9 @@ class FakePool:
 
     async def fetchrow(self, sql, *args):
         return await self._conn.fetchrow(sql, *args)
+
+    async def fetch(self, sql, *args):
+        return list(self._fetch_rows)
 
 
 def _persist_result():
@@ -304,3 +308,100 @@ async def test_real_fold_completes_and_finalizes_with_seed_keys_intact():
     sqls = _sqls(conn)
     assert "current_cursor" in sqls and "current_month_spent_usd" in sqls
     assert "resume_state=NULL" in sqls
+
+
+# ── WX Wave 1b — stuck-resume sweeper ────────────────────────────────────────
+
+import app.llm_extract_consumer as consumer_mod  # noqa: E402
+from app.llm_extract_consumer import _sweep_once  # noqa: E402
+
+
+def _stranded_row(job_ids, stage=dx.TRIO):
+    return {
+        "id": EJ,
+        "provider_job_ids": list(job_ids),
+        "resume_state": {"stage": stage, "user_id": USER},
+    }
+
+
+def _spy_resume(monkeypatch):
+    calls = []
+
+    async def fake_resume(pool, kc, llm, owner, jid, ej_id, rs):
+        calls.append(jid)
+
+    monkeypatch.setattr(consumer_mod, "_resume", fake_resume)
+    return calls
+
+
+async def test_sweep_redrives_a_terminal_job(monkeypatch):
+    conn = FakeConn([])
+    pool = FakePool(conn, fetch_rows=[_stranded_row(["j1"])])
+    llm = AsyncMock()
+    llm.get_job.return_value = SimpleNamespace(status="completed", result={})
+    calls = _spy_resume(monkeypatch)
+
+    n = await _sweep_once(pool, AsyncMock(), llm, timeout_s=900, batch=20)
+
+    assert n == 1 and calls == ["j1"]
+
+
+async def test_sweep_leaves_inflight_job_alone(monkeypatch):
+    conn = FakeConn([])
+    pool = FakePool(conn, fetch_rows=[_stranded_row(["j1"])])
+    llm = AsyncMock()
+    llm.get_job.return_value = SimpleNamespace(status="running", result=None)  # slow ≠ stuck
+    calls = _spy_resume(monkeypatch)
+
+    n = await _sweep_once(pool, AsyncMock(), llm, timeout_s=900, batch=20)
+
+    assert n == 0 and calls == []
+
+
+async def test_sweep_tries_next_id_when_get_job_errors(monkeypatch):
+    conn = FakeConn([])
+    pool = FakePool(conn, fetch_rows=[_stranded_row(["bad", "good"])])
+    llm = AsyncMock()
+
+    async def get_job(jid, user_id=None):
+        if jid == "bad":
+            raise RuntimeError("transient")
+        return SimpleNamespace(status="completed", result={})
+
+    llm.get_job.side_effect = get_job
+    calls = _spy_resume(monkeypatch)
+
+    n = await _sweep_once(pool, AsyncMock(), llm, timeout_s=900, batch=20)
+
+    assert n == 1 and calls == ["good"]  # skipped the erroring id, re-drove the next
+
+
+async def test_sweep_redrives_once_per_row_then_breaks(monkeypatch):
+    conn = FakeConn([])
+    pool = FakePool(conn, fetch_rows=[_stranded_row(["j1", "j2"])])  # both terminal
+    llm = AsyncMock()
+    llm.get_job.return_value = SimpleNamespace(status="completed", result={})
+    calls = _spy_resume(monkeypatch)
+
+    n = await _sweep_once(pool, AsyncMock(), llm, timeout_s=900, batch=20)
+
+    assert n == 1 and calls == ["j1"]  # one re-drive advances the row; re-eval next tick
+
+
+async def test_sweep_query_filters_on_resume_and_idle(monkeypatch):
+    captured = {}
+
+    class CapturingPool(FakePool):
+        async def fetch(self, sql, *args):
+            captured["sql"] = sql
+            captured["args"] = args
+            return []
+
+    pool = CapturingPool(FakeConn([]))
+    await _sweep_once(pool, AsyncMock(), AsyncMock(), timeout_s=900, batch=20)
+
+    sql = captured["sql"]
+    assert "resume_state IS NOT NULL" in sql
+    assert "make_interval" in sql and "updated_at <" in sql
+    assert "status IN ('running', 'paused')" in sql
+    assert captured["args"] == (900, 20)

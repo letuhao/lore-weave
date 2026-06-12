@@ -1420,7 +1420,8 @@ async def _start_decoupled_chunk(
         raise last_exc if last_exc else RuntimeError("decoupled entity submit failed")
     await pool.execute(
         """UPDATE extraction_jobs
-           SET resume_state=$2::jsonb, provider_job_ids=$3::jsonb, pipeline_stage=$4
+           SET resume_state=$2::jsonb, provider_job_ids=$3::jsonb, pipeline_stage=$4,
+               updated_at=now()
            WHERE job_id=$1""",
         job.job_id, json.dumps(rs), json.dumps([str(submit.job_id)]), rs["stage"],
     )

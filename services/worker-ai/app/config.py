@@ -59,6 +59,17 @@ class Settings(BaseSettings):
     # + the SDK pure-seam refactor that leave this dormant.
     extraction_decouple_enabled: bool = False
 
+    # WX Wave 1b — stuck-resume sweeper. The decoupled finalize is a STRICT tx (no
+    # best-effort fallback) and a Redis stream gives no redelivery after ack, so a
+    # consumer crash/poison or a submit→persist gap can strand an extraction_jobs row
+    # with resume_state set + no runtime recovery. This periodic loop re-drives any
+    # such row idle longer than the timeout by re-checking each in-flight
+    # provider_job_id's terminal status and replaying the consumer's idempotent
+    # `_resume`. Only runs when the decouple flag is on. interval 0 ⇒ off.
+    extraction_resume_sweep_interval_s: int = 60
+    extraction_resume_sweep_timeout_s: int = 900
+    extraction_resume_sweep_batch: int = 20
+
     # Max items to process per poll cycle before re-checking job status.
     # Lower = more responsive to pause/cancel, higher = less DB overhead.
     items_per_status_check: int = 1

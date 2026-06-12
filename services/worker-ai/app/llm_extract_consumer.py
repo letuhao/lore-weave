@@ -73,7 +73,8 @@ async def _persist_inflight(ex, ej_id, provider_job_ids: list[str], rs: dict) ->
     # merged state inside the FOR UPDATE tx — D-WX-TRIO-FANIN-RACE).
     await ex.execute(
         """UPDATE extraction_jobs
-           SET provider_job_ids=$2::jsonb, resume_state=$3::jsonb, pipeline_stage=$4
+           SET provider_job_ids=$2::jsonb, resume_state=$3::jsonb, pipeline_stage=$4,
+               updated_at=now()
            WHERE id=$1""",
         ej_id, json.dumps([str(j) for j in provider_job_ids]),
         json.dumps(rs), rs["stage"],
@@ -295,6 +296,87 @@ async def _drain_pending(client, pool, knowledge_client, llm_client, consumer_na
                 await _process_msg(client, pool, knowledge_client, llm_client, msg_id, fields)
     except Exception:
         logger.exception("error draining pending decoupled-extract events")
+
+
+# ── WX Wave 1b — stuck-resume sweeper (D-WX-SUBMIT-PERSIST-GAP) ───────────────────
+# The runtime backstop the strict-tx finalize (Wave 1a) made load-bearing: a Redis
+# stream gives no redelivery after ack, so a consumer crash/poison, a lost terminal
+# event, or a submit→persist gap can strand an extraction_jobs row with resume_state
+# set. This re-drives any such row idle longer than the timeout by re-checking each
+# in-flight provider_job_id's terminal status and replaying the consumer's idempotent
+# `_resume` (the FOR UPDATE / finalize-recheck make a concurrent consumer + sweeper
+# safe). A still-in-flight job is left alone (slow, not stuck).
+
+TERMINAL_JOB_STATUSES = {"completed", "failed", "cancelled"}
+
+
+async def _sweep_once(pool, knowledge_client, llm_client: LLMClient, *,
+                      timeout_s: int, batch: int) -> int:
+    """One sweep tick. Returns the number of rows re-driven (for tests/telemetry)."""
+    rows = await pool.fetch(
+        """SELECT id, provider_job_ids, resume_state
+           FROM extraction_jobs
+           WHERE resume_state IS NOT NULL
+             AND status IN ('running', 'paused')
+             AND updated_at < now() - make_interval(secs => $1::int)
+           ORDER BY updated_at ASC
+           LIMIT $2::int""",
+        timeout_s, batch,
+    )
+    redriven = 0
+    for row in rows:
+        rs = row["resume_state"]
+        rs = rs if isinstance(rs, dict) else json.loads(rs)
+        job_ids = row["provider_job_ids"] or []
+        if not isinstance(job_ids, list):
+            job_ids = json.loads(job_ids)
+        owner = rs.get("billing_user_id") or rs.get("user_id")
+        for jid in job_ids:
+            try:
+                job = await llm_client.get_job(jid, user_id=owner)
+            except Exception:  # noqa: BLE001 — a transient get_job fault: try the next id/tick
+                continue
+            # Only replay a TERMINAL job — _resume folds the job result unconditionally
+            # (it's normally driven by a terminal event), so re-driving a still-running
+            # job would fold an incomplete result. Slow ≠ stuck.
+            if getattr(job, "status", None) not in TERMINAL_JOB_STATUSES:
+                continue
+            try:
+                await _resume(pool, knowledge_client, llm_client, None, jid, row["id"], rs)
+                redriven += 1
+                logger.warning(
+                    "resume-sweep: re-drove stranded chunk ej=%s via job=%s (stage=%s)",
+                    row["id"], jid, rs.get("stage"),
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("resume-sweep: re-drive failed ej=%s job=%s", row["id"], jid)
+            break  # _resume advanced/persisted the row; re-evaluate on the next tick
+    return redriven
+
+
+async def run_resume_sweeper(pool, knowledge_client, llm_client: LLMClient, *,
+                             interval_s: int, timeout_s: int, batch: int) -> None:
+    """Long-running periodic sweeper (gather'd in app.main alongside the consumer,
+    gated on the decouple flag). interval_s <= 0 ⇒ disabled (returns immediately)."""
+    import asyncio
+    if interval_s <= 0:
+        logger.info("resume sweeper disabled (interval<=0)")
+        return
+    logger.info(
+        "decoupled-extract resume sweeper started (interval=%ds timeout=%ds batch=%d)",
+        interval_s, timeout_s, batch,
+    )
+    while True:
+        try:
+            n = await _sweep_once(pool, knowledge_client, llm_client,
+                                  timeout_s=timeout_s, batch=batch)
+            if n:
+                logger.info("resume-sweep: re-drove %d stranded chunk(s)", n)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 — one bad tick must not kill the loop
+            logger.exception("resume sweeper tick failed")
+        await asyncio.sleep(interval_s)
 
 
 async def consume_llm_terminal_stream(
