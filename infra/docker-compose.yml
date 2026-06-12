@@ -981,6 +981,13 @@ services:
       WORKER_AI_PRECISION_FILTER_MODEL_SOURCE: ${WORKER_AI_PRECISION_FILTER_MODEL_SOURCE:-user_model}
       # Cycle 73b — see knowledge-service block for rationale; same default.
       WORKER_AI_PRECISION_FILTER_CATEGORIES: ${WORKER_AI_PRECISION_FILTER_CATEGORIES:-relation}
+      # LLM re-arch Phase 2b WX-T3b — event-driven decouple of chapter extraction.
+      # ON ⇒ the runner submits a chapter's entity job + releases, and the
+      # llm_extract_consumer drives entity→trio→persist off the terminal events
+      # (gated to projects WITHOUT recovery/filter — those stay synchronous). Default
+      # off (synchronous extract_pass2 unchanged). Read by BOTH app.main (consumer)
+      # and runner.py (the branch) so worker + consumer stay coherent.
+      EXTRACTION_DECOUPLE_ENABLED: ${EXTRACTION_DECOUPLE_ENABLED:-false}
       # Cycle 73d — entity recovery OFF by default; eval-validate first.
       WORKER_AI_ENTITY_RECOVERY_MODEL_REF: ${WORKER_AI_ENTITY_RECOVERY_MODEL_REF:-}
       WORKER_AI_ENTITY_RECOVERY_MODEL_SOURCE: ${WORKER_AI_ENTITY_RECOVERY_MODEL_SOURCE:-user_model}

@@ -210,10 +210,114 @@ def filter_complete(rs: dict[str, Any]) -> bool:
 # ── candidates view ───────────────────────────────────────────────────────────
 
 def candidates_dict(rs: dict[str, Any]) -> dict[str, list]:
-    """The accumulated Pass2Candidates payload at persist time."""
+    """The accumulated Pass2Candidates payload (SERIALIZED dicts) at persist time."""
     return {
         "entities": rs["entities"],
         "relations": rs["relations"],
         "events": rs["events"],
         "facts": rs["facts"],
     }
+
+
+# ── shell: submit-assembly + fold-dispatch over the WX-T2 seams ────────────────
+# WX-T3b. Bridges the pure SM + the SDK extractor seams. Candidates are pydantic
+# models → stored SERIALIZED (model_dump) in resume_state JSONB, reconstructed where
+# the SDK needs objects (the trio postprocess anchors to entity objects; persist_pass2
+# takes objects). Imports are local to keep the pure-SM section import-free + dodge
+# any import cycle. ENTITY→TRIO only for this increment (recovery/filter-configured
+# projects fall back to the synchronous extract_pass2 in the runner branch).
+
+
+def _ser(items: list) -> list[dict]:
+    return [it.model_dump(mode="json") for it in items]
+
+
+def reconstruct_entities(rs: dict[str, Any]) -> list:
+    from loreweave_extraction.extractors.entity import LLMEntityCandidate
+    return [LLMEntityCandidate.model_validate(d) for d in rs.get("entities", [])]
+
+
+def reconstruct_candidates(rs: dict[str, Any]):
+    """Rebuild a Pass2Candidates from the serialized accumulators (for persist)."""
+    from loreweave_extraction.extractors.entity import LLMEntityCandidate
+    from loreweave_extraction.extractors.event import LLMEventCandidate
+    from loreweave_extraction.extractors.fact import LLMFactCandidate
+    from loreweave_extraction.extractors.relation import LLMRelationCandidate
+    from loreweave_extraction.pass2 import Pass2Candidates
+    return Pass2Candidates(
+        entities=[LLMEntityCandidate.model_validate(d) for d in rs.get("entities", [])],
+        relations=[LLMRelationCandidate.model_validate(d) for d in rs.get("relations", [])],
+        events=[LLMEventCandidate.model_validate(d) for d in rs.get("events", [])],
+        facts=[LLMFactCandidate.model_validate(d) for d in rs.get("facts", [])],
+    )
+
+
+def assemble_entity_submit(rs: dict[str, Any]) -> dict:
+    """Submit kwargs for the entity stage (build_entity_system + build_entity_submit_kwargs).
+    context_budget=None matches worker-ai's extract_pass2 call (chunk_size=15)."""
+    from loreweave_extraction.extractors.entity import (
+        build_entity_submit_kwargs, build_entity_system,
+    )
+    po = rs.get("prompt_overrides") or {}
+    system = build_entity_system(rs["known_entities"], po.get("entity"))
+    return build_entity_submit_kwargs(
+        system_prompt=system, text=rs["chunk_text"],
+        model_source=rs["model_source"], model_ref=rs["model_ref"],
+        project_id=rs["project_id"], context_budget=None,
+    )
+
+
+def fold_entity_job(rs: dict[str, Any], job, on_dropped=None) -> dict[str, Any]:
+    """Apply the entity terminal Job → serialize → advance the SM. Also computes
+    all_known (known ∪ entity names) for the trio, exactly as extract_pass2 does."""
+    from loreweave_extraction.extractors.entity import apply_entity_job
+    entities = apply_entity_job(
+        job, on_dropped=on_dropped, user_id=rs["user_id"],
+        project_id=rs["project_id"], known_entities=rs["known_entities"],
+    )
+    out = apply_entity_result(rs, _ser(entities))
+    out["all_known"] = list(set(list(rs["known_entities"]) + [e.name for e in entities]))
+    return out
+
+
+def assemble_trio_submits(rs: dict[str, Any]) -> dict[str, dict]:
+    """{op: submit_kwargs} for the 3 concurrent trio jobs (relation/event/fact),
+    anchored to all_known (= known ∪ entity names), matching extract_pass2."""
+    from loreweave_extraction.extractors import event, fact, relation
+    po = rs.get("prompt_overrides") or {}
+    known = rs["all_known"]
+    common = dict(
+        text=rs["chunk_text"], model_source=rs["model_source"],
+        model_ref=rs["model_ref"], project_id=rs["project_id"], context_budget=None,
+    )
+    return {
+        "relation": relation.build_relation_submit_kwargs(
+            system_prompt=relation.build_relation_system(known, po.get("relation")), **common),
+        "event": event.build_event_submit_kwargs(
+            system_prompt=event.build_event_system(known, po.get("event")), **common),
+        "fact": fact.build_fact_submit_kwargs(
+            system_prompt=fact.build_fact_system(known, po.get("fact")), **common),
+    }
+
+
+def fold_trio_job(rs: dict[str, Any], op: str, job, on_dropped=None) -> dict[str, Any]:
+    """Apply one trio op's terminal Job (anchored to the reconstructed entities) →
+    serialize → fold into the fan-in. Advances when all 3 ops have folded."""
+    from loreweave_extraction.extractors import event, fact, relation
+    entities = reconstruct_entities(rs)
+    known = rs["all_known"]
+    if op == "relation":
+        items = relation.apply_relation_job(
+            job, on_dropped=on_dropped, entities=entities, known_entities=known,
+            user_id=rs["user_id"], project_id=rs["project_id"])
+    elif op == "event":
+        items = event.apply_event_job(
+            job, on_dropped=on_dropped, entities=entities, known_entities=known,
+            user_id=rs["user_id"])
+    elif op == "fact":
+        items = fact.apply_fact_job(
+            job, on_dropped=on_dropped, entities=entities, known_entities=known,
+            user_id=rs["user_id"])
+    else:
+        return rs
+    return fold_trio_op(rs, op, _ser(items))

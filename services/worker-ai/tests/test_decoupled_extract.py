@@ -3,7 +3,25 @@ orchestrator. The DB/SDK shell + consumer are covered by the live-smoke; here we
 lock the stage transitions, the trio FAN-IN (advance only when all 3 folded, any
 order, idempotent on a duplicate), and the filter sub-loop."""
 
+from unittest.mock import MagicMock
+
 from app import decoupled_extract as d
+
+
+def _job(result: dict):
+    j = MagicMock()
+    j.status = "completed"
+    j.result = result
+    return j
+
+
+def _seed_shell_rs():
+    rs = d.new_extract_state(
+        chunk_text="Kai met Bob.", known_entities=[],
+        has_recovery=False, has_filter=False,
+    )
+    rs.update(user_id="u", project_id="p", model_source="user_model", model_ref="m")
+    return rs
 
 
 def _rs(has_recovery=False, has_filter=False):
@@ -140,3 +158,39 @@ def test_candidates_dict_assembles_accumulators():
     assert d.candidates_dict(rs) == {
         "entities": ["e"], "relations": ["r"], "events": ["v"], "facts": ["f"],
     }
+
+
+# ── WX-T3b shell (submit-assembly + fold-dispatch + serde) ─────────────────────
+
+def test_shell_entity_to_trio_to_persist_roundtrip():
+    """The shell drives entity → trio fan-in → persist over the SDK seams, storing
+    candidates SERIALIZED (JSON-safe) in rs and reconstructing them for persist."""
+    rs = _seed_shell_rs()
+
+    ek = d.assemble_entity_submit(rs)
+    assert ek["operation"] == "entity_extraction" and ek["model_ref"] == "m"
+
+    rs = d.fold_entity_job(rs, _job({"entities": [{"name": "Kai", "kind": "person", "confidence": 0.9}]}))
+    assert rs["stage"] == d.TRIO
+    assert "Kai" in rs["all_known"]
+    assert isinstance(rs["entities"][0], dict)  # serialized for JSONB
+
+    ts = d.assemble_trio_submits(rs)
+    assert set(ts) == {"relation", "event", "fact"}
+    assert ts["relation"]["operation"] == "relation_extraction"
+
+    rs = d.begin_trio(rs, {"relation": "jr", "event": "je", "fact": "jf"})
+    rs = d.fold_trio_job(rs, "relation", _job({"relations": []}))
+    rs = d.fold_trio_job(rs, "event", _job({"events": []}))
+    assert rs["stage"] == d.TRIO  # still waiting on fact
+    rs = d.fold_trio_job(rs, "fact", _job({"facts": []}))
+    assert rs["stage"] == d.PERSIST and d.trio_complete(rs)
+
+    cands = d.reconstruct_candidates(rs)
+    assert [e.name for e in cands.entities] == ["Kai"]
+
+
+def test_shell_empty_entities_short_circuits_to_persist():
+    rs = d.fold_entity_job(_seed_shell_rs(), _job({"entities": []}))
+    assert rs["stage"] == d.PERSIST  # no entities → nothing to anchor
+    assert d.reconstruct_candidates(rs).entities == []

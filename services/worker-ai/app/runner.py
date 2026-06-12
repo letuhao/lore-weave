@@ -1334,6 +1334,74 @@ async def _extract_and_persist(
     return persist_result, candidates
 
 
+def _decouple_enabled() -> bool:
+    """WX-T3b flag, read from the env (runner.py uses os.environ, not the pydantic
+    settings object — matches the same EXTRACTION_DECOUPLE_ENABLED that app.main's
+    settings.extraction_decouple_enabled reads, so worker + consumer stay coherent)."""
+    return os.environ.get("EXTRACTION_DECOUPLE_ENABLED", "").strip().lower() in ("1", "true", "yes")
+
+
+async def _start_decoupled_chunk(
+    pool: asyncpg.Pool, llm_client: LLMClient, *,
+    job: "JobRow", ch, text: str, book_id, run_snapshot, run_cfg_hash: str,
+    run_base_version: str, p3_hierarchy_paths, p3_chapter_index,
+    p3_book_parts, p3_is_last: bool,
+) -> None:
+    """WX-T3b — seed resume_state for one chapter + submit its entity job, then
+    return (released). The llm_extract_consumer folds the terminal events through
+    entity→trio→persist. The full per-chapter persist + cursor + spend context is
+    serialized into resume_state so the consumer (which only sees a job_id) can
+    finalize without the loop locals. run_payload is pre-built here (metrics zeroed —
+    the consumer fills counts from the persist result). Campaign + BYOK attribution
+    flow through the contextvars process_job already bound (submit_job stamps them)."""
+    from app import decoupled_extract as dx
+
+    eff_model_ref = job.billing_llm_model if job.billing_user_id else run_snapshot.model_ref
+    rs = dx.new_extract_state(
+        chunk_text=text, known_entities=[], has_recovery=False, has_filter=False,
+    )
+    rs.update(
+        user_id=str(job.user_id), project_id=str(job.project_id),
+        model_source="user_model", model_ref=str(eff_model_ref),
+        prompt_overrides=run_snapshot.prompts or {},
+        campaign_id=(str(job.campaign_id) if job.campaign_id else None),
+        billing_user_id=(str(job.billing_user_id) if job.billing_user_id else None),
+        persist_ctx={
+            "source_type": "chapter", "source_id": str(ch.chapter_id),
+            "job_id": str(job.job_id), "project_id": str(job.project_id),
+            "extraction_model": str(eff_model_ref),
+            "hierarchy_paths": p3_hierarchy_paths, "chapter_index": p3_chapter_index,
+            "book_parts": p3_book_parts, "is_last_chapter_of_book": p3_is_last,
+            "embedding_model_uuid": (job.embedding_model if p3_hierarchy_paths else None),
+            "embedding_dimension": (job.embedding_dimension if p3_hierarchy_paths else None),
+            "writer_autocreate": run_snapshot.writer_autocreate,
+            "billing_user_id": (str(job.billing_user_id) if job.billing_user_id else None),
+            "billing_llm_model": job.billing_llm_model,
+            "billing_embedding_model": job.billing_embedding_model,
+        },
+        run_payload=_run_payload(
+            job=job, book_id=book_id, chapter_ref=ch.chapter_id, snapshot=run_snapshot,
+            cfg_hash=run_cfg_hash, base_version=run_base_version,
+            outcome="succeeded", result=None,
+        ),
+        chapter_extracted={
+            "user_id": str(job.user_id), "project_id": str(job.project_id),
+            "book_id": str(book_id) if book_id else None,
+            "chapter_id": str(ch.chapter_id),
+        },
+        cursor_to_set={"last_chapter_id": str(ch.chapter_id), "scope": "chapters"},
+    )
+    submit = await llm_client.submit_job(
+        user_id=str(job.user_id), **dx.assemble_entity_submit(rs),
+    )
+    await pool.execute(
+        """UPDATE extraction_jobs
+           SET resume_state=$2::jsonb, provider_job_ids=$3::jsonb, pipeline_stage=$4
+           WHERE job_id=$1""",
+        job.job_id, json.dumps(rs), json.dumps([str(submit.job_id)]), rs["stage"],
+    )
+
+
 # ── Core job processing ─────────────────────────────────────────────
 
 
@@ -1373,6 +1441,21 @@ async def process_job(
     # per job (poll_and_run), so the ContextVar is task-local — concurrent jobs
     # for different campaigns never cross-contaminate.
     set_campaign_id(str(job.campaign_id) if job.campaign_id else None)
+
+    # LLM re-arch Phase 2b WX-T3b — decoupled-extraction in-flight guard. If a chunk
+    # is already in flight (the llm_extract_consumer is driving it off terminal
+    # events), do NOT re-enter: the consumer advances the cursor + clears
+    # resume_state when the chunk persists, and the next poll picks up the FOLLOWING
+    # chapter. Without this, the poll loop would re-submit the in-flight chapter every
+    # cycle. (Flag off ⇒ resume_state is always NULL ⇒ this never fires.)
+    if _decouple_enabled():
+        _inflight = await pool.fetchval(
+            "SELECT resume_state IS NOT NULL FROM extraction_jobs WHERE job_id=$1",
+            job.job_id,
+        )
+        if _inflight:
+            logger.debug("Job %s: a chunk is in-flight (decoupled) — consumer driving; skip poll", job.job_id)
+            return
 
     # FD-27 — reasoning-model advisory (once per job, best-effort). A reasoning
     # model used for extraction risks empty output (thinking suppression is a
@@ -1601,6 +1684,33 @@ async def process_job(
                         job.scope in ("chapters", "all")
                         and ch.chapter_id == pre_chapters[-1].chapter_id
                     )
+
+                # LLM re-arch Phase 2b WX-T3b — event-driven decouple of the chapter
+                # extraction. Submit the entity job + RELEASE (return); the
+                # llm_extract_consumer drives entity→trio→persist off the terminal
+                # events and advances the cursor + emits chapter_extracted. Gated to
+                # projects WITHOUT recovery/filter (those stages stay synchronous —
+                # the SM + WX-T2c seams support them; wiring is a follow-up). The next
+                # poll (resume_state cleared by the consumer) handles the next chapter.
+                if (
+                    _decouple_enabled()
+                    and job.scope in ("chapters", "all")
+                    and run_snapshot.precision_filter is None
+                    and run_snapshot.entity_recovery is None
+                ):
+                    await _start_decoupled_chunk(
+                        pool, llm_client, job=job, ch=ch, text=text, book_id=book_id,
+                        run_snapshot=run_snapshot, run_cfg_hash=run_cfg_hash,
+                        run_base_version=run_base_version,
+                        p3_hierarchy_paths=p3_hierarchy_paths,
+                        p3_chapter_index=p3_chapter_index,
+                        p3_book_parts=p3_book_parts, p3_is_last=p3_is_last,
+                    )
+                    logger.info(
+                        "Job %s: chapter %s submitted via DECOUPLED extraction (released)",
+                        job.job_id, ch.chapter_id,
+                    )
+                    return  # release — the consumer drives this chapter to persist
 
                 # Extract: Phase 4b-γ — worker-ai now runs the LLM
                 # stage in-process via loreweave_extraction.extract_pass2,

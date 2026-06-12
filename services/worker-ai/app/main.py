@@ -150,6 +150,20 @@ async def main() -> None:
     else:
         logger.info("summary consumer disabled via config")
 
+    # LLM re-arch Phase 2b WX-T3b — decoupled-extraction terminal-event consumer.
+    # Started only when the decouple flag is on (inert otherwise — no decoupled
+    # chunks exist so every event would ack+ignore). Drives entity→trio→persist off
+    # loreweave:events:llm_job_terminal for chapters the runner released.
+    if settings.extraction_decouple_enabled and settings.redis_url:
+        from app.llm_extract_consumer import consume_llm_terminal_stream
+        coroutines.append(consume_llm_terminal_stream(
+            pool, knowledge_client, llm_client,
+            redis_url=settings.redis_url,
+            consumer_name=f"{settings.summary_consumer_name}-extract",
+            block_ms=settings.summary_consumer_block_ms,
+        ))
+        logger.info("WX-T3b: decoupled-extraction consumer started")
+
     # Cycle 73f — runtime filter config reload. Subscribes to Redis
     # pubsub; on each signal, re-reads the Redis config key + atomically
     # swaps module-level `_PRECISION_FILTER_CONFIG`. Resilient: SDK
