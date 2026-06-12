@@ -317,8 +317,9 @@ from app.llm_extract_consumer import _sweep_once  # noqa: E402
 
 
 def _stranded_row(job_ids, stage=dx.TRIO):
+    # extraction_jobs is keyed by job_id (NO surrogate `id` column — live-smoke caught this).
     return {
-        "id": EJ,
+        "job_id": EJ,
         "provider_job_ids": list(job_ids),
         "resume_state": {"stage": stage, "user_id": USER},
     }
@@ -404,7 +405,7 @@ async def test_sweep_resolves_byok_owner_for_get_job(monkeypatch):
     # target billing_user_id, not the project owner's user_id, or it can't see the job.
     BILL = "cccccccc-cccc-cccc-cccc-cccccccccccc"
     row = {
-        "id": EJ, "provider_job_ids": ["j1"],
+        "job_id": EJ, "provider_job_ids": ["j1"],
         "resume_state": {"stage": dx.TRIO, "user_id": USER, "billing_user_id": BILL},
     }
     pool = FakePool(FakeConn([]), fetch_rows=[row])
@@ -433,4 +434,6 @@ async def test_sweep_query_filters_on_resume_and_idle(monkeypatch):
     assert "resume_state IS NOT NULL" in sql
     assert "make_interval" in sql and "updated_at <" in sql
     assert "status IN ('running', 'paused')" in sql
+    # extraction_jobs is keyed by job_id, not a surrogate `id` (real-schema parity)
+    assert "SELECT job_id" in sql
     assert captured["args"] == (900, 20)

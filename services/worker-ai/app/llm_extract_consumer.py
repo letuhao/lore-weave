@@ -56,7 +56,7 @@ async def _load_for_job(pool, provider_job_id: str):
     """(extraction_job_id, resume_state) for the chunk whose in-flight set contains
     `provider_job_id` — or None (a non-extraction job, or already finalized)."""
     row = await pool.fetchrow(
-        """SELECT id, resume_state FROM extraction_jobs
+        """SELECT job_id, resume_state FROM extraction_jobs
            WHERE resume_state IS NOT NULL
              AND provider_job_ids @> to_jsonb($1::text)""",
         provider_job_id,
@@ -65,7 +65,7 @@ async def _load_for_job(pool, provider_job_id: str):
         return None
     rs = row["resume_state"]
     rs = rs if isinstance(rs, dict) else json.loads(rs)
-    return row["id"], rs
+    return row["job_id"], rs
 
 
 async def _persist_inflight(ex, ej_id, provider_job_ids: list[str], rs: dict) -> None:
@@ -75,7 +75,7 @@ async def _persist_inflight(ex, ej_id, provider_job_ids: list[str], rs: dict) ->
         """UPDATE extraction_jobs
            SET provider_job_ids=$2::jsonb, resume_state=$3::jsonb, pipeline_stage=$4,
                updated_at=now()
-           WHERE id=$1""",
+           WHERE job_id=$1""",
         ej_id, json.dumps([str(j) for j in provider_job_ids]),
         json.dumps(rs), rs["stage"],
     )
@@ -83,7 +83,7 @@ async def _persist_inflight(ex, ej_id, provider_job_ids: list[str], rs: dict) ->
 
 async def _clear_resume(ex, ej_id) -> None:
     await ex.execute(
-        "UPDATE extraction_jobs SET resume_state=NULL, provider_job_ids=NULL, pipeline_stage='done' WHERE id=$1",
+        "UPDATE extraction_jobs SET resume_state=NULL, provider_job_ids=NULL, pipeline_stage='done' WHERE job_id=$1",
         ej_id,
     )
 
@@ -147,7 +147,7 @@ async def _persist_chunk(pool, knowledge_client, ej_id, rs: dict) -> None:
             # racing this one) already cleared resume_state, skip the cursor/spend/clear
             # entirely — the work is done; re-spending here is exactly the bug.
             locked = await conn.fetchrow(
-                "SELECT resume_state FROM extraction_jobs WHERE id=$1 FOR UPDATE",
+                "SELECT resume_state FROM extraction_jobs WHERE job_id=$1 FOR UPDATE",
                 ej_id,
             )
             if locked is None or locked["resume_state"] is None:
@@ -204,7 +204,7 @@ async def _resume(pool, knowledge_client, llm_client: LLMClient, owner_user_id, 
                 async with conn.transaction():
                     row = await conn.fetchrow(
                         """SELECT resume_state FROM extraction_jobs
-                           WHERE id=$1 AND resume_state IS NOT NULL FOR UPDATE""",
+                           WHERE job_id=$1 AND resume_state IS NOT NULL FOR UPDATE""",
                         ej_id,
                     )
                     if row is None:
@@ -310,7 +310,7 @@ async def _sweep_once(pool, knowledge_client, llm_client: LLMClient, *,
                       timeout_s: int, batch: int) -> int:
     """One sweep tick. Returns the number of rows re-driven (for tests/telemetry)."""
     rows = await pool.fetch(
-        """SELECT id, provider_job_ids, resume_state
+        """SELECT job_id, provider_job_ids, resume_state
            FROM extraction_jobs
            WHERE resume_state IS NOT NULL
              AND status IN ('running', 'paused')
@@ -340,14 +340,14 @@ async def _sweep_once(pool, knowledge_client, llm_client: LLMClient, *,
             if not job.is_terminal():
                 continue
             try:
-                await _resume(pool, knowledge_client, llm_client, None, jid, row["id"], rs)
+                await _resume(pool, knowledge_client, llm_client, None, jid, row["job_id"], rs)
                 redriven += 1
                 logger.warning(
                     "resume-sweep: re-drove stranded chunk ej=%s via job=%s (stage=%s)",
-                    row["id"], jid, rs.get("stage"),
+                    row["job_id"], jid, rs.get("stage"),
                 )
             except Exception:  # noqa: BLE001
-                logger.exception("resume-sweep: re-drive failed ej=%s job=%s", row["id"], jid)
+                logger.exception("resume-sweep: re-drive failed ej=%s job=%s", row["job_id"], jid)
             break  # _resume advanced/persisted the row; re-evaluate on the next tick
     return redriven
 
