@@ -161,9 +161,15 @@ struct GenerateArgs {
     /// `.glb` mesh grid resolution (longitude segments; latitude = half). Default 512.
     #[arg(long, default_value_t = 512)]
     glb_grid: u32,
-    /// `.glb` embedded biome-texture width (height = half). Default 2048.
+    /// `.glb` embedded-texture width (height = half). Default 2048.
     #[arg(long, default_value_t = 2048)]
     glb_texture: u32,
+    /// What paints the `.glb` surface: `biome` (climate colour, default),
+    /// `region` (continent/subcontinent/region hierarchy), `realm` (political
+    /// tiers), or `plate` (tectonic plates). `region`/`realm`/`plate` drape the
+    /// structural hierarchy over the same 3D terrain.
+    #[arg(long, value_enum, default_value_t = GlbColorArg::Biome)]
+    glb_color: GlbColorArg,
     /// `.glb` vertical exaggeration of elevation (planets need it to read). Default 0.06.
     #[arg(long, default_value_t = 0.06)]
     exaggeration: f32,
@@ -497,6 +503,7 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             (cli.glb_grid / 2).max(2),
             cli.exaggeration,
             cli.glb_texture,
+            cli.glb_color.into(),
         );
         if let Err(e) = std::fs::write(path, bytes) {
             eprintln!("error: write glb {}: {e}", path.display());
@@ -809,6 +816,26 @@ impl From<StyleArg> for RenderStyle {
         match s {
             StyleArg::Realistic => RenderStyle::Realistic,
             StyleArg::Atlas => RenderStyle::Atlas,
+        }
+    }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum GlbColorArg {
+    Biome,
+    Region,
+    Realm,
+    Plate,
+}
+
+impl From<GlbColorArg> for world_gen::export::ColorMode {
+    fn from(c: GlbColorArg) -> Self {
+        use world_gen::export::ColorMode;
+        match c {
+            GlbColorArg::Biome => ColorMode::Biome,
+            GlbColorArg::Region => ColorMode::Region,
+            GlbColorArg::Realm => ColorMode::Realm,
+            GlbColorArg::Plate => ColorMode::Plate,
         }
     }
 }

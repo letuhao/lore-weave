@@ -20,12 +20,42 @@ use serde_json::json;
 
 use crate::projection::Projection;
 use crate::relief::{ReliefField, RenderStyle};
-use crate::render::biome_image;
+use crate::render::{biome_image, plate_image, realm_image, region_image};
 use crate::world_map::WorldMap;
 
 /// Base radius of the exported globe (sea level sits near this; land rises above
 /// it by the exaggerated elevation).
 const BASE_RADIUS: f32 = 1.0;
+
+/// Which map layer paints the exported globe's embedded texture. The geometry
+/// (elevation displacement) is identical across modes — only the surface colour
+/// changes, so a `Region`/`Realm`/`Plate` globe shows the *structural hierarchy*
+/// (continents → subcontinents → regions, or the political tiers, or the
+/// tectonic plates) draped over the real 3D terrain, instead of biome colour.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorMode {
+    /// Biome / climate colour (the default).
+    Biome,
+    /// Region choropleth — continent/subcontinent/region boundaries.
+    Region,
+    /// Political-tier choropleth — province fill + realm/state outlines.
+    Realm,
+    /// Tectonic plates — continental/oceanic tint + plate boundaries.
+    Plate,
+}
+
+impl ColorMode {
+    /// Render the equirectangular texture for this colour mode.
+    fn texture(self, map: &WorldMap, w: u32, h: u32) -> image::RgbImage {
+        let (st, pr) = (RenderStyle::Realistic, Projection::Equirectangular);
+        match self {
+            ColorMode::Biome => biome_image(map, w, h, st, pr),
+            ColorMode::Region => region_image(map, w, h, st, pr),
+            ColorMode::Realm => realm_image(map, w, h, st, pr),
+            ColorMode::Plate => plate_image(map, w, h, st, pr),
+        }
+    }
+}
 
 // ── Heightmap ───────────────────────────────────────────────────────────────
 
@@ -77,6 +107,7 @@ pub fn glb_globe(
     grid_h: u32,
     exaggeration: f32,
     tex_width: u32,
+    color: ColorMode,
 ) -> Vec<u8> {
     let grid_w = grid_w.max(2);
     let grid_h = grid_h.max(2);
@@ -135,12 +166,10 @@ pub fn glb_globe(
     let normals = smooth_normals(&positions, &indices);
 
     let tex_width = tex_width.max(2);
-    let tex_png = encode_png(DynamicImage::ImageRgb8(biome_image(
+    let tex_png = encode_png(DynamicImage::ImageRgb8(color.texture(
         map,
         tex_width,
         (tex_width / 2).max(1),
-        RenderStyle::Realistic,
-        Projection::Equirectangular,
     )));
 
     assemble_glb(&positions, &normals, &texcoords, &indices, &tex_png)
@@ -381,7 +410,7 @@ mod tests {
     #[test]
     fn glb_has_valid_container() {
         let map = tiny_world();
-        let glb = glb_globe(&map, 16, 8, 0.06, 64);
+        let glb = glb_globe(&map, 16, 8, 0.06, 64, ColorMode::Biome);
         assert_eq!(&glb[0..4], b"glTF", "magic");
         assert_eq!(read_u32(&glb, 4), 2, "version 2");
         assert_eq!(read_u32(&glb, 8) as usize, glb.len(), "declared total length");
@@ -404,7 +433,7 @@ mod tests {
     fn glb_mesh_counts_are_consistent() {
         let map = tiny_world();
         let (gw, gh) = (16u32, 8u32);
-        let glb = glb_globe(&map, gw, gh, 0.06, 64);
+        let glb = glb_globe(&map, gw, gh, 0.06, 64, ColorMode::Biome);
         let json_len = read_u32(&glb, 12) as usize;
         let v: serde_json::Value = serde_json::from_slice(&glb[20..20 + json_len]).unwrap();
         let acc = &v["accessors"];
@@ -419,7 +448,7 @@ mod tests {
     #[test]
     fn glb_embeds_a_png_texture() {
         let map = tiny_world();
-        let glb = glb_globe(&map, 16, 8, 0.06, 64);
+        let glb = glb_globe(&map, 16, 8, 0.06, 64, ColorMode::Biome);
         let json_len = read_u32(&glb, 12) as usize;
         let v: serde_json::Value = serde_json::from_slice(&glb[20..20 + json_len]).unwrap();
         assert_eq!(v["materials"][0]["pbrMetallicRoughness"]["baseColorTexture"]["index"], 0);
@@ -438,7 +467,7 @@ mod tests {
         // smooth normals point outward (positive dot with the radial position).
         let map = tiny_world();
         let (gw, gh) = (32u32, 16u32);
-        let glb = glb_globe(&map, gw, gh, 0.06, 64);
+        let glb = glb_globe(&map, gw, gh, 0.06, 64, ColorMode::Biome);
         let json_len = read_u32(&glb, 12) as usize;
         let v: serde_json::Value = serde_json::from_slice(&glb[20..20 + json_len]).unwrap();
         let bin_off = 20 + json_len + 8;
@@ -474,7 +503,38 @@ mod tests {
     fn export_is_deterministic() {
         let map = tiny_world();
         assert_eq!(heightmap_png(&map, 128), heightmap_png(&map, 128));
-        assert_eq!(glb_globe(&map, 16, 8, 0.06, 64), glb_globe(&map, 16, 8, 0.06, 64));
+        assert_eq!(glb_globe(&map, 16, 8, 0.06, 64, ColorMode::Biome), glb_globe(&map, 16, 8, 0.06, 64, ColorMode::Biome));
+    }
+
+    #[test]
+    fn glb_color_mode_changes_only_the_texture_not_the_mesh() {
+        // A Region-coloured globe must have an identical mesh (same displaced
+        // geometry) to the Biome one, but a different embedded texture — so the
+        // structural hierarchy is draped over the SAME terrain.
+        let cs = CreativeSeed {
+            world_scale: WorldScale::Continent,
+            ..CreativeSeed::default()
+        };
+        let map = crate::generate(7, &cs);
+        let biome = glb_globe(&map, 32, 16, 0.06, 128, ColorMode::Biome);
+        let region = glb_globe(&map, 32, 16, 0.06, 128, ColorMode::Region);
+        assert_ne!(biome, region, "region texture must differ from biome");
+
+        // The POSITION bytes (the mesh) must be byte-identical across modes.
+        let pos_bytes = |glb: &[u8]| -> Vec<u8> {
+            let json_len = read_u32(glb, 12) as usize;
+            let v: serde_json::Value = serde_json::from_slice(&glb[20..20 + json_len]).unwrap();
+            let bin_off = 20 + json_len + 8;
+            let bv = v["accessors"][0]["bufferView"].as_u64().unwrap() as usize;
+            let off = bin_off + v["bufferViews"][bv]["byteOffset"].as_u64().unwrap() as usize;
+            let len = v["bufferViews"][bv]["byteLength"].as_u64().unwrap() as usize;
+            glb[off..off + len].to_vec()
+        };
+        assert_eq!(
+            pos_bytes(&biome),
+            pos_bytes(&region),
+            "mesh geometry must be identical across colour modes"
+        );
     }
 
     #[test]
@@ -489,7 +549,7 @@ mod tests {
         let relief =
             ReliefField::build(&map, gw, gh, RenderStyle::Realistic, Projection::Equirectangular);
         let sea_r = BASE_RADIUS + relief.sea * exag;
-        let glb = glb_globe(&map, gw, gh, exag, 64);
+        let glb = glb_globe(&map, gw, gh, exag, 64, ColorMode::Biome);
         // Pull POSITION bytes back and verify every vertex radius ≥ sea radius
         // (ocean clamped to sea, land above) and at least one rises above it.
         let json_len = read_u32(&glb, 12) as usize;
