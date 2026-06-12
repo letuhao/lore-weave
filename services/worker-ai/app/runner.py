@@ -15,6 +15,7 @@ subset the worker needs.
 
 from __future__ import annotations
 
+import asyncio
 import functools
 import json
 import logging
@@ -39,6 +40,7 @@ from loreweave_extraction import (
     resolve_effective_config,
 )
 from loreweave_extraction.errors import ExtractionError
+from loreweave_llm.errors import LLMError
 
 from app.clients import (
     BookClient,
@@ -1391,9 +1393,27 @@ async def _start_decoupled_chunk(
         },
         cursor_to_set={"last_chapter_id": str(ch.chapter_id), "scope": "chapters"},
     )
-    submit = await llm_client.submit_job(
-        user_id=str(job.user_id), **dx.assemble_entity_submit(rs),
-    )
+    # Bounded transient-retry on the entity submit — mirrors submit_and_wait's
+    # resilience. A fire-and-forget submit_job has no retry, so without this a single
+    # transient transport blip to provider-registry would PERMANENTLY fail the job
+    # (worse than the sync path). Genuine provider-down (all attempts fail) → raise →
+    # the job fails → the poll / campaign reconcile re-dispatches.
+    entity_kwargs = dx.assemble_entity_submit(rs)
+    submit = None
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            submit = await llm_client.submit_job(user_id=str(job.user_id), **entity_kwargs)
+            break
+        except LLMError as exc:
+            last_exc = exc
+            logger.warning(
+                "decoupled entity submit attempt %d/3 failed (transient?) chapter=%s: %s",
+                attempt + 1, ch.chapter_id, exc,
+            )
+            await asyncio.sleep(1.0 * (attempt + 1))
+    if submit is None:
+        raise last_exc if last_exc else RuntimeError("decoupled entity submit failed")
     await pool.execute(
         """UPDATE extraction_jobs
            SET resume_state=$2::jsonb, provider_job_ids=$3::jsonb, pipeline_stage=$4

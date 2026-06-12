@@ -198,7 +198,11 @@ async def consume_llm_terminal_stream(
 ) -> None:
     """Long-running consumer task (run via asyncio.gather in app.main, gated on the
     decouple flag). Cancel-safe: shutdown raises CancelledError from xreadgroup."""
-    client = aioredis.from_url(redis_url, decode_responses=True)
+    # socket_timeout=None is REQUIRED — a per-read socket timeout shorter than
+    # block_ms pre-empts the server-side BLOCK and raises redis.TimeoutError, which
+    # would crash the consumer task (and the worker via the gather). Mirrors the
+    # glossary / translation terminal consumers.
+    client = aioredis.from_url(redis_url, decode_responses=True, socket_timeout=None)
     try:
         try:
             # id="$" — forward-looking; a decoupled job in flight at first deploy
@@ -227,6 +231,8 @@ async def consume_llm_terminal_stream(
                                 msg_id,
                             )
                             await client.xack(TERMINAL_STREAM, GROUP, msg_id)
+            except aioredis.TimeoutError:
+                continue  # idle long-poll — no new events this block window
             except aioredis.ConnectionError:
                 logger.warning("terminal consumer: redis connection lost; retry in 5s")
                 import asyncio
