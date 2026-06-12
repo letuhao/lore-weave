@@ -227,7 +227,9 @@ class GenerationJobsRepo:
                     idempotency_key=idempotency_key, conn=c,
                 )
 
-    async def reap_stale_jobs(self, cutoff: datetime) -> int:
+    async def reap_stale_jobs(
+        self, cutoff: datetime, *, exclude_operations: list[str] | None = None
+    ) -> int:
         """Mark jobs orphaned in a non-terminal state as failed; return the count.
 
         A job still `pending`/`running` with `created_at <= cutoff` is presumed
@@ -236,7 +238,29 @@ class GenerationJobsRepo:
         Covers ALL job types (chapter-level + per-scene hygiene). Idempotent +
         multi-replica safe: a concurrent sweep just matches 0 already-reaped rows.
         The periodic backstop for D-COMP-CHAPTER-INFLIGHT-REAPER (the guard reaps
-        per-chapter opportunistically; this catches never-re-requested chapters)."""
+        per-chapter opportunistically; this catches never-re-requested chapters).
+
+        ``exclude_operations`` (D-M4-REAPER-WORKER-CONFLICT): when the composition
+        WORKER is enabled it IS a producer that resumes its own jobs (the
+        ``updated_at``-based stuck-job sweeper in ``app/worker``). This
+        ``created_at``-based reaper would otherwise spuriously fail a worker op
+        whose legitimate wall-clock exceeds the window. So the loop passes the
+        worker-op set (``SUPPORTED_OPERATIONS``): a job is worker-owned when its
+        ``operation`` is in that set OR it carries an ``input->>'worker_op'``
+        (generate/selection-edit stamp the canonical op there, not in
+        ``operation``). Those are left to the worker's sweeper. ``None`` (worker
+        off) → the original behavior verbatim (the inline producer never resumes,
+        so reaping a stale inline job is correct)."""
+        if exclude_operations:
+            query = """
+            UPDATE generation_job SET status = 'failed', updated_at = now()
+            WHERE status = ANY($1::text[]) AND created_at <= $2
+              AND NOT (operation = ANY($3::text[]) OR input->>'worker_op' IS NOT NULL)
+            RETURNING id
+            """
+            async with self._pool.acquire() as c:
+                rows = await c.fetch(query, list(_ACTIVE_STATUSES), cutoff, exclude_operations)
+            return len(rows)
         query = """
         UPDATE generation_job SET status = 'failed', updated_at = now()
         WHERE status = ANY($1::text[]) AND created_at <= $2

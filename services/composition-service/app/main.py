@@ -28,6 +28,7 @@ from app.config import settings
 from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool, get_pool
 from app.db.repositories.generation_jobs import GenerationJobsRepo
+from app.worker.operations import SUPPORTED_OPERATIONS
 from app.logging_config import setup_logging, trace_id_var
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
@@ -48,11 +49,18 @@ async def _reap_stale_jobs_loop() -> None:
     interval = settings.job_reaper_sweep_secs
     window = settings.chapter_inflight_stale_secs
     repo = GenerationJobsRepo(get_pool())
+    # D-M4-REAPER-WORKER-CONFLICT: when the worker is on it resumes its own jobs
+    # via the updated_at-based stuck-job sweeper, so this created_at reaper must
+    # NOT fail a worker op whose legitimate wall-clock exceeds the window. Exclude
+    # the worker-op set; flag-off keeps the original "reap everything" behavior.
+    exclude_ops = (
+        list(SUPPORTED_OPERATIONS) if settings.composition_worker_enabled else None
+    )
     while True:
         try:
             await asyncio.sleep(interval)
             cutoff = datetime.now(timezone.utc) - timedelta(seconds=window)
-            reaped = await repo.reap_stale_jobs(cutoff)
+            reaped = await repo.reap_stale_jobs(cutoff, exclude_operations=exclude_ops)
             if reaped:
                 logger.info("job reaper: marked %d stale job(s) failed", reaped)
         except asyncio.CancelledError:

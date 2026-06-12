@@ -613,6 +613,40 @@ async def test_reap_stale_jobs_marks_stale_failed_leaves_fresh(pool):
         assert await c.fetchval("SELECT status FROM generation_job WHERE id=$1", fresh.id) == "running"
 
 
+async def test_reap_stale_jobs_excludes_worker_ops(pool):
+    # D-M4-REAPER-WORKER-CONFLICT: with the worker on (exclude_operations passed),
+    # a stale WORKER-OP job is left for the worker's own updated_at sweeper, while a
+    # stale inline (non-worker) job is still reaped. Worker-ownership = operation in
+    # SUPPORTED_OPERATIONS OR an input->>'worker_op'.
+    from app.worker.operations import SUPPORTED_OPERATIONS
+
+    repo = GenerationJobsRepo(pool)
+    user, project, _ = _ids()
+    async with pool.acquire() as c:
+        worker_by_op = await c.fetchval(
+            """INSERT INTO generation_job (user_id, project_id, operation, mode, status, input, created_at)
+               VALUES ($1,$2,'stitch_chapter','auto','running','{}'::jsonb, now() - interval '1 hour')
+               RETURNING id""", user, project)
+        worker_by_input = await c.fetchval(
+            """INSERT INTO generation_job (user_id, project_id, operation, mode, status, input, created_at)
+               VALUES ($1,$2,'draft_scene','auto','running',$3::jsonb, now() - interval '1 hour')
+               RETURNING id""", user, project, json.dumps({"worker_op": "generate"}))
+        inline = await c.fetchval(
+            """INSERT INTO generation_job (user_id, project_id, operation, mode, status, input, created_at)
+               VALUES ($1,$2,'draft_chapter','auto','running','{}'::jsonb, now() - interval '1 hour')
+               RETURNING id""", user, project)
+
+    reaped = await repo.reap_stale_jobs(
+        datetime.now(timezone.utc) - timedelta(minutes=30),
+        exclude_operations=list(SUPPORTED_OPERATIONS),
+    )
+    assert reaped == 1  # only the inline job
+    async with pool.acquire() as c:
+        assert await c.fetchval("SELECT status FROM generation_job WHERE id=$1", worker_by_op) == "running"
+        assert await c.fetchval("SELECT status FROM generation_job WHERE id=$1", worker_by_input) == "running"
+        assert await c.fetchval("SELECT status FROM generation_job WHERE id=$1", inline) == "failed"
+
+
 async def test_create_chapter_job_guarded_opportunistic_reap(pool):
     # The guard marks THIS chapter's stale node-less jobs failed (opportunistic),
     # then creates a new one (the stale job is past the window, so it doesn't block).
