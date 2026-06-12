@@ -810,10 +810,15 @@ services:
       # dev compose stack so chapter-extraction runs get the +2.2pp
       # median F1 lift from c72c validation (see
       # services/knowledge-service/tests/quality/eval_runs/c72_compare.md).
-      # Filter adds ~30-90s wall-clock per chapter; override to empty
-      # to disable. Filter model UUID is the locked claude-4.7-opus
-      # judge (huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated).
-      KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF: ${KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF:-019e5650-eca7-78c2-985d-465aa3bce1ce}
+      # Filter adds ~30-90s wall-clock per chapter; override to empty to disable.
+      # ARCHITECTURAL DEBT (D-WX-PRECISION-FILTER-MODEL-ARCH): the model_ref was a
+      # hardcoded UUID of ONE user's model, submitted as user_model scoped to the
+      # request's user → 404 "model not found" for every other user (stalled the
+      # decoupled extraction fold; caught by the D-WX live-smoke). Default now EMPTY
+      # until the filter model is picked in the UI, registered in provider-registry,
+      # persisted on the campaign/extraction_job + resume_state, resolved per-user.
+      # Do NOT re-add a hardcoded model UUID here.
+      KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF: ${KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF:-}
       KNOWLEDGE_EXTRACTION_PRECISION_FILTER_PARTIAL_POLICY: ${KNOWLEDGE_EXTRACTION_PRECISION_FILTER_PARTIAL_POLICY:-drop}
       KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_SOURCE: ${KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_SOURCE:-user_model}
       # Cycle 73b — relation-only filter ships as default. Per c73b_compare.md,
@@ -1058,11 +1063,16 @@ services:
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       LOG_LEVEL: INFO
       POLL_INTERVAL_S: "5"
-      # Cycle 72 — Pass2 precision filter activation (mirrors
-      # knowledge-service config above). Worker-ai runs Pass 2 in-process
-      # via extract_pass2(); the env-driven filter wraps each chapter.
-      # Override to empty string to disable.
-      WORKER_AI_PRECISION_FILTER_MODEL_REF: ${WORKER_AI_PRECISION_FILTER_MODEL_REF:-019e5650-eca7-78c2-985d-465aa3bce1ce}
+      # Cycle 72 — Pass2 precision filter. ARCHITECTURAL DEBT (D-WX-PRECISION-FILTER-
+      # MODEL-ARCH): the filter model must NOT be a hardcoded env UUID — it pinned ONE
+      # user's model_ref, submitted as user_model scoped to the CAMPAIGN's user, so the
+      # decoupled filter stage 404'd ("model not found") + STALLED extraction for every
+      # OTHER user (caught by the D-WX live-smoke). Default now EMPTY (filter disabled,
+      # extraction degrades gracefully) until the proper fix lands: a per-campaign filter
+      # model picked in the UI, registered in provider-registry, persisted on the campaign
+      # + extraction_job, and carried in resume_state — resolved per-user like the
+      # knowledge/translation models. Do NOT re-add a hardcoded model UUID here.
+      WORKER_AI_PRECISION_FILTER_MODEL_REF: ${WORKER_AI_PRECISION_FILTER_MODEL_REF:-}
       WORKER_AI_PRECISION_FILTER_PARTIAL_POLICY: ${WORKER_AI_PRECISION_FILTER_PARTIAL_POLICY:-drop}
       WORKER_AI_PRECISION_FILTER_MODEL_SOURCE: ${WORKER_AI_PRECISION_FILTER_MODEL_SOURCE:-user_model}
       # Cycle 73b — see knowledge-service block for rationale; same default.
