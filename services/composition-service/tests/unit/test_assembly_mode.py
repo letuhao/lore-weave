@@ -319,6 +319,52 @@ def _chap_url():
     return f"/v1/composition/works/{PROJECT}/chapters/{CHAPTER}/generate"
 
 
+def test_chapter_generate_worker_enabled_enqueues_202(chap_ctx, monkeypatch):
+    # M4: COMPOSITION_WORKER_ENABLED → the chapter endpoint resolves pack/sort/critic
+    # into job.input behind the in-flight guard + enqueues + 202; the worker runs
+    # diverge+reflect. No inline diverge; persistence becomes the accept-step.
+    c, _, _, jobs, _, _ = chap_ctx
+    monkeypatch.setattr("app.routers.engine.settings.composition_worker_enabled", True)
+    enq = {"n": 0}
+
+    async def fake_enqueue(redis_url, *, job_id, user_id, project_id):
+        enq["n"] += 1
+        return True
+
+    async def must_not_run(llm, **kw):
+        raise AssertionError("worker path must not run diverge inline")
+
+    monkeypatch.setattr("app.routers.engine.enqueue_job", fake_enqueue)
+    monkeypatch.setattr("app.routers.engine.diverge", must_not_run)
+    r = c.post(_chap_url(), json=_chap_body())
+    assert r.status_code == 202
+    body = r.json()
+    assert body["status"] == "pending" and body["assembly_mode"] == "chapter"
+    assert body["enqueued"] == "ok" and enq["n"] == 1
+    inp = jobs._last_create["input"]
+    assert inp["worker_op"] == "chapter_generate" and inp["packed_prompt"] == "GROUNDING"
+    assert inp["chapter_id"] == str(CHAPTER)
+    assert inp["present_entity_ids"] == [str(ENT1), str(ENT2)]  # union cast (pov first)
+    assert inp["max_out"] == 1400  # plan-sized, carried for the worker
+    assert jobs._last_create["status"] == "pending"
+    assert not [s for _, s, _ in jobs.updates if s == "completed"]
+
+
+def test_chapter_generate_in_flight_409_when_worker_enabled(chap_ctx, monkeypatch):
+    # The worker path keeps the chapter in-flight guard (409) — a concurrent
+    # chapter-level job still blocks (generate + stitch both write the draft).
+    c, _, _, jobs, _, _ = chap_ctx
+    monkeypatch.setattr("app.routers.engine.settings.composition_worker_enabled", True)
+    jobs.inflight = "active-123"
+
+    async def fake_enqueue(redis_url, **kw):
+        raise AssertionError("must not enqueue on in-flight conflict")
+
+    monkeypatch.setattr("app.routers.engine.enqueue_job", fake_enqueue)
+    r = c.post(_chap_url(), json=_chap_body())
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "CHAPTER_JOB_IN_FLIGHT"
+
+
 def test_chapter_generate_happy_path(chap_ctx):
     c, _, _, jobs, book, state = chap_ctx
     r = c.post(_chap_url(), json=_chap_body())

@@ -29,6 +29,7 @@ __all__ = [
     "run_decompose",
     "run_stitch",
     "run_generate",
+    "run_chapter_generate",
 ]
 
 logger = logging.getLogger("composition.worker.operations")
@@ -39,11 +40,37 @@ class UnsupportedOperationError(RuntimeError):
     endpoint should only enqueue operations the worker can run)."""
 
 
+async def _maybe_narrative_threads(
+    pool: asyncpg.Pool, llm: LLMClient, sdict: dict[str, Any], profile, *,
+    user_id: str, project_id: str, scene_text: str, opened_at_node: str | None,
+    model_source: str, model_ref: str,
+) -> None:
+    """FD-1 narrative_thread S2 best-effort producer, gated per-work. Mirrors the
+    inline ``_maybe_detect_narrative_threads`` — never raises into the compute
+    (advisory). Shared by run_generate + run_chapter_generate."""
+    if not sdict.get("narrative_thread_enabled"):
+        return
+    from app.db.repositories.narrative_thread import NarrativeThreadRepo
+    from app.engine.narrative_thread import detect_and_update_threads
+    try:
+        await detect_and_update_threads(
+            llm, NarrativeThreadRepo(pool),
+            user_id=UUID(user_id), project_id=UUID(project_id),
+            scene_text=scene_text,
+            opened_at_node=UUID(opened_at_node) if opened_at_node else None,
+            drafter_source=model_source, drafter_ref=model_ref,
+            source_language=profile.source_language,
+            max_open=settings.narrative_thread_max_open_per_scene,
+        )
+    except Exception:  # noqa: BLE001 — advisory; must not fail the generate
+        logger.warning("narrative_thread S2 producer failed (advisory)", exc_info=True)
+
+
 #: worker-op identifiers the worker can run (the sweeper re-drive whitelist). For
 #: decompose/stitch this equals the job's ``operation`` column; for generate the
 #: ``operation`` is the user's free-form prose op ("draft_scene", …), so the
 #: canonical worker-op is carried in ``input['worker_op']`` and matched there too.
-SUPPORTED_OPERATIONS = ("decompose_preview", "stitch_chapter", "generate")
+SUPPORTED_OPERATIONS = ("decompose_preview", "stitch_chapter", "generate", "chapter_generate")
 
 
 async def run_decompose(llm: LLMClient, *, user_id: str, input: dict[str, Any]) -> dict[str, Any]:
@@ -160,11 +187,9 @@ async def run_generate(
     (NO book persistence — a per-scene auto draft isn't a chapter artifact; the FE
     accepts it into the editor). The cowrite STREAM path stays inline (a worker
     can't stream)."""
-    from app.db.repositories.narrative_thread import NarrativeThreadRepo
     from app.db.repositories.works import WorksRepo
     from app.engine.adaptive_k import adaptive_k
     from app.engine.canon_reflect import run_canon_reflect
-    from app.engine.narrative_thread import detect_and_update_threads
     from app.engine.select import select_draft
     from app.packer.profile import from_settings
 
@@ -235,20 +260,10 @@ async def run_generate(
         logger.warning("generate canon reflect failed (advisory) — keeping winner", exc_info=True)
 
     # FD-1 narrative_thread S2: best-effort promise-ledger producer (gated per-work).
-    if sdict.get("narrative_thread_enabled"):
-        try:
-            opened_at = input.get("outline_node_id")
-            await detect_and_update_threads(
-                llm, NarrativeThreadRepo(pool),
-                user_id=UUID(user_id), project_id=UUID(project_id),
-                scene_text=final_text,
-                opened_at_node=UUID(opened_at) if opened_at else None,
-                drafter_source=model_source, drafter_ref=model_ref,
-                source_language=profile.source_language,
-                max_open=settings.narrative_thread_max_open_per_scene,
-            )
-        except Exception:  # noqa: BLE001 — advisory; must not fail the generate
-            logger.warning("narrative_thread S2 producer failed (advisory)", exc_info=True)
+    await _maybe_narrative_threads(
+        pool, llm, sdict, profile, user_id=user_id, project_id=project_id,
+        scene_text=final_text, opened_at_node=input.get("outline_node_id"),
+        model_source=model_source, model_ref=model_ref)
 
     total_out = w.metering.output_tokens + revise_out_tokens
     truncated = (w.metering.finish_reason == "length") or (revise_finish == "length")
@@ -266,4 +281,106 @@ async def run_generate(
         "reasoning_source": input.get("reasoning"), "reasoning_effort": effort,
         "reinjected_promise_count": input.get("reinjected_promise_count"),
         "persisted": False,
+    }
+
+
+async def run_chapter_generate(
+    pool: asyncpg.Pool, llm: LLMClient, knowledge, *, input: dict[str, Any]
+) -> dict[str, Any]:
+    """Run the B2 single-pass chapter draft (``diverge`` k=1 → chapter-level
+    canon-reflect over the union cast) from the persisted input. Mirrors the inline
+    ``generate_chapter`` compute half. Option A: the worker COMPUTES + stores the
+    result (``persisted=False``); persistence to the book draft is the separate
+    bearer accept-step (``POST /jobs/{id}/persist``), since the worker has no user
+    bearer. The endpoint already resolved chapter_sort/scenes/pack into ``input``."""
+    from app.db.repositories.narrative_thread import NarrativeThreadRepo
+    from app.db.repositories.works import WorksRepo
+    from app.engine.canon_reflect import run_canon_reflect
+    from app.engine.select import diverge
+    from app.packer.profile import from_settings
+
+    user_id = input["user_id"]
+    project_id = input["project_id"]
+    work = await WorksRepo(pool).get(UUID(user_id), UUID(project_id))
+    sdict = (work.settings if work else None) or {}
+    profile = from_settings(work.settings if work else None)
+
+    model_source = input["model_source"]
+    model_ref = input["model_ref"]
+    operation = input["operation"]
+    guide = input.get("guide", "")
+    packed_prompt = input["packed_prompt"]
+    prompt_estimate = input["prompt_estimate"]
+    max_out = input["max_out"]
+    effort = input.get("reasoning_effort")
+    effort_arg = None if input.get("reasoning_passthrough") else effort
+    critic_source = input.get("critic_source")
+    critic_ref = input.get("critic_ref")
+    cast_glossary_ids = input.get("present_entity_ids") or []
+    chapter_id = input["chapter_id"]
+
+    try:
+        cands = await diverge(
+            llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
+            packed_prompt=packed_prompt, profile=profile, operation=operation, guide=guide,
+            k=1, prompt_est=prompt_estimate, max_tokens=max_out,
+            temperature=settings.compose_diverge_temperature, reasoning_effort=effort_arg,
+        )
+    except Exception as exc:  # noqa: BLE001 — no candidate / transport → terminal fail
+        raise ValueError(f"chapter generate failed: {exc}") from exc
+
+    winner = cands[0]
+    final_text = winner.text
+    canon_v: dict[str, Any] = {"violations": [], "resolved": True, "iterations": 0,
+                               "status": "degraded"}
+    revise_out_tokens = 0
+    revise_finish: str | None = None
+    try:
+        final_text, reflect, revise_out_tokens = await run_canon_reflect(
+            knowledge=knowledge, llm=llm, user_id=UUID(user_id), project_id=UUID(project_id),
+            cast_glossary_ids=cast_glossary_ids, scene_sort_order=input.get("scene_sort_order"),
+            draft=winner.text, packed_prompt=packed_prompt, profile=profile,
+            drafter_source=model_source, drafter_ref=model_ref,
+            judge_source=critic_source, judge_ref=critic_ref,
+            prompt_estimate=prompt_estimate, max_output_tokens=max_out,
+            max_iters=int(input.get("reflect_max_iters", 1) or 1),
+            reasoning_effort=effort_arg,
+        )
+        canon_v = {"violations": [v.model_dump() for v in reflect.violations],
+                   "resolved": reflect.resolved, "iterations": reflect.iterations,
+                   "status": reflect.status}
+        revise_finish = reflect.revise_finish_reason
+    except Exception:  # noqa: BLE001 — canon reflect must NEVER fail the generate (F1).
+        logger.warning("chapter canon reflect failed (advisory) — keeping draft", exc_info=True)
+
+    # FD-1 S2 producer over the whole-chapter draft. opened_at_node=None — the
+    # chapter pass uses a synthetic in-memory node (project-scoped thread).
+    await _maybe_narrative_threads(
+        pool, llm, sdict, profile, user_id=user_id, project_id=project_id,
+        scene_text=final_text, opened_at_node=None,
+        model_source=model_source, model_ref=model_ref)
+
+    # FD-1 S4a — advisory unpaid-promise DEBT count at chapter end (None when off).
+    open_promise_count: int | None = None
+    if sdict.get("narrative_thread_enabled"):
+        try:
+            open_promise_count = await NarrativeThreadRepo(pool).count_open(
+                UUID(user_id), UUID(project_id))
+        except Exception:  # noqa: BLE001 — advisory; must not fail the generate
+            logger.warning("open_promise_count read failed (advisory)", exc_info=True)
+
+    total_out = winner.metering.output_tokens + revise_out_tokens
+    truncated = (winner.metering.finish_reason == "length") or (revise_finish == "length")
+    return {
+        "text": final_text, "input_tokens": winner.metering.input_tokens,
+        "output_tokens": total_out, "measured": winner.metering.measured,
+        "truncated": truncated, "finish_reason": winner.metering.finish_reason,
+        "canon": canon_v, "assembly_mode": "chapter", "chapter_id": chapter_id,
+        # Option A — persistence is the separate bearer accept-step, not done here.
+        "persisted": False, "draft_version": None,
+        "open_promise_count": open_promise_count,
+        "grounding_available": input.get("grounding_available"),
+        "reasoning_source": input.get("reasoning"), "reasoning_effort": effort,
+        "reinjected_promise_count": input.get("reinjected_promise_count"),
+        "max_output_tokens": max_out,
     }

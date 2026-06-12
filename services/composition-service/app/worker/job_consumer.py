@@ -26,6 +26,7 @@ from app.worker.events import COMPOSITION_JOBS_STREAM, COMPOSITION_WORKER_GROUP
 from app.worker.operations import (
     SUPPORTED_OPERATIONS,
     UnsupportedOperationError,
+    run_chapter_generate,
     run_decompose,
     run_generate,
     run_stitch,
@@ -113,6 +114,11 @@ async def _run_operation(pool: asyncpg.Pool, llm: LLMClient, job) -> dict:
         inp.setdefault("user_id", str(job.user_id))
         inp.setdefault("project_id", str(job.project_id))
         return await run_generate(pool, llm, get_knowledge_client(), input=inp)
+    if op == "chapter_generate":
+        inp = dict(job.input or {})
+        inp.setdefault("user_id", str(job.user_id))
+        inp.setdefault("project_id", str(job.project_id))
+        return await run_chapter_generate(pool, llm, get_knowledge_client(), input=inp)
     raise UnsupportedOperationError(op)
 
 

@@ -299,6 +299,78 @@ async def test_run_generate_select_failure_is_terminal(monkeypatch):
         await run_generate(object(), object(), object(), input=inp)
 
 
+async def test_run_job_dispatches_chapter_generate_via_worker_op(monkeypatch):
+    job = _job(operation="draft_chapter",
+               input={"worker_op": "chapter_generate", "chapter_id": "c9"})
+    repo = _FakeRepo(job)
+    monkeypatch.setattr(jc, "GenerationJobsRepo", lambda pool: repo)
+    monkeypatch.setattr(jc, "get_knowledge_client", lambda: object())
+
+    captured: dict = {}
+
+    async def _rcg(pool, llm, knowledge, *, input):
+        captured.update(input)
+        return {"text": "chapter draft", "persisted": False, "chapter_id": "c9"}
+
+    monkeypatch.setattr(jc, "run_chapter_generate", _rcg)
+    out = await jc.run_job(object(), object(), job_id=str(job.id), user_id=str(job.user_id))
+    assert out == "completed"
+    assert repo.updates[-1][1]["text"] == "chapter draft"
+    assert captured["user_id"] == str(job.user_id)
+    assert captured["chapter_id"] == "c9"
+
+
+async def test_run_chapter_generate_single_pass_no_persist(monkeypatch):
+    import app.db.repositories.works as works_mod
+    import app.engine.select as select_mod
+    import app.engine.canon_reflect as reflect_mod
+    import app.packer.profile as profile_mod
+    from app.engine.select import Candidate
+    from app.engine.cowrite import DraftMetering
+    from app.worker.operations import run_chapter_generate
+
+    class _FakeWorks:
+        def __init__(self, pool): ...
+        async def get(self, uid, pid):
+            return SimpleNamespace(settings={})  # narrative_thread off
+
+    seen: dict = {}
+
+    async def _fake_diverge(llm, **kw):
+        seen.update(kw)
+        return [Candidate("CHAPTER PROSE", DraftMetering(40, 12, True))]
+
+    reflect = SimpleNamespace(violations=[], resolved=True, iterations=0,
+                              status="checked", revise_finish_reason=None)
+
+    async def _fake_reflect(**kw):
+        return (kw["draft"], reflect, 4)
+
+    monkeypatch.setattr(works_mod, "WorksRepo", _FakeWorks)
+    monkeypatch.setattr(select_mod, "diverge", _fake_diverge)
+    monkeypatch.setattr(reflect_mod, "run_canon_reflect", _fake_reflect)
+    monkeypatch.setattr(profile_mod, "from_settings", lambda s: SimpleNamespace(source_language="en"))
+
+    inp = {
+        "user_id": str(uuid4()), "project_id": str(uuid4()), "chapter_id": str(uuid4()),
+        "model_source": "user_model", "model_ref": "m1", "operation": "draft_chapter",
+        "packed_prompt": "GROUNDING", "prompt_estimate": 20, "max_out": 4000,
+        "present_entity_ids": ["e1", "e2"], "scene_sort_order": 3,
+        "reasoning": "rule_based", "reasoning_effort": None, "reasoning_passthrough": True,
+        "grounding_available": True, "reinjected_promise_count": 0, "reflect_max_iters": 1,
+        "critic_source": None, "critic_ref": None,
+    }
+    out = await run_chapter_generate(object(), object(), object(), input=inp)
+    assert out["text"] == "CHAPTER PROSE" and out["assembly_mode"] == "chapter"
+    assert out["output_tokens"] == 12 + 4  # winner + revise tokens
+    assert out["canon"]["status"] == "checked"
+    assert out["persisted"] is False and out["draft_version"] is None  # Option A
+    assert out["open_promise_count"] is None  # narrative_thread off
+    assert out["max_output_tokens"] == 4000
+    assert seen["k"] == 1  # single pass
+    assert seen["reasoning_effort"] is None  # passthrough → omit effort
+
+
 async def test_run_decompose_reconstructs_chapterplans_from_input(monkeypatch):
     import app.engine.plan as plan_mod
 

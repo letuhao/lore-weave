@@ -827,6 +827,53 @@ async def generate_chapter(
     max_out = body.max_output_tokens or min(
         len(scenes) * settings.chapter_gen_per_scene_tokens, settings.chapter_gen_max_tokens)
 
+    if settings.composition_worker_enabled:
+        # M4 (Option A) — resolve the bearer context (pack, chapter_sort, critic)
+        # HERE, persist it in job.input behind the chapter in-flight guard, enqueue
+        # → 202. The worker runs diverge(k=1) + canon-reflect + stores the result;
+        # persistence to the book draft is the separate bearer accept-step
+        # (POST /jobs/{id}/persist). Same guard + idempotency as the inline path.
+        sdict = work.settings or {}
+        c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
+        distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+        job_input = {
+            "model_source": body.model_source, "model_ref": str(body.model_ref),
+            "operation": body.operation, "worker_op": "chapter_generate",
+            "assembly_mode": "chapter", "chapter_id": str(chapter_id),
+            "packed_prompt": pc.prompt, "scene_sort_order": pc.scene_sort_order,
+            "present_entity_ids": [str(e) for e in pack_node["present_entity_ids"]],
+            "prompt_estimate": prompt_estimate, "max_out": max_out, "guide": body.guide,
+            "reasoning": reasoning.source, "reasoning_effort": reasoning.effort,
+            "reasoning_passthrough": reasoning.passthrough,
+            "grounding_available": pc.grounding_available,
+            "reinjected_promise_count": pc.reinjected_promise_count,
+            "reflect_max_iters": max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),
+            "critic_source": str(c_src) if distinct else None,
+            "critic_ref": str(c_ref) if distinct else None,
+        }
+        try:
+            job, created = await jobs.create_chapter_job_guarded(
+                user_id, project_id, chapter_id, operation=body.operation,
+                mode="auto", status="pending", input=job_input,
+                idempotency_key=body.idempotency_key,
+                stale_secs=settings.chapter_inflight_stale_secs)
+        except ChapterJobInFlightError as exc:
+            raise HTTPException(status_code=409, detail={
+                "code": "CHAPTER_JOB_IN_FLIGHT", "active_job_id": exc.active_job_id})
+        if not created:  # idempotent replay
+            r = job.result or {}
+            return JSONResponse({"job_id": str(job.id), "mode": "auto", "replay": True,
+                                 "text": r.get("text", ""), "status": job.status,
+                                 "canon": r.get("canon"), "assembly_mode": "chapter"})
+        enqueued = await enqueue_job(
+            settings.redis_url, job_id=str(job.id),
+            user_id=str(user_id), project_id=str(project_id))
+        return JSONResponse(
+            status_code=http_status.HTTP_202_ACCEPTED,
+            content={"job_id": str(job.id), "status": "pending", "mode": "auto",
+                     "assembly_mode": "chapter",
+                     "enqueued": "ok" if enqueued else "retriggerable"})
+
     # Idempotency keyed on the caller's key (design LOW-1: key on chapter_id +
     # assembly_mode in the value the caller builds). Chapter jobs aren't
     # node-scoped, so the per-scene S2 cancel doesn't apply; instead an in-flight
