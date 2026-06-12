@@ -88,6 +88,11 @@ export function configureGatewayApp(
     changeOrigin: true,
     pathFilter: (pathname: string) => pathname.startsWith('/v1/extraction'),
   });
+  const glossaryTranslateProxy = createProxyMiddleware({
+    target: urls.translationUrl,
+    changeOrigin: true,
+    pathFilter: (pathname: string) => pathname.startsWith('/v1/glossary-translate'),
+  });
   const glossaryProxy = createProxyMiddleware({
     target: urls.glossaryUrl,
     changeOrigin: true,
@@ -285,6 +290,11 @@ export function configureGatewayApp(
     res: Response,
     next: NextFunction,
   ) => void;
+  const glossaryTranslateProxyFn = glossaryTranslateProxy as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void;
   const glossaryProxyFn = glossaryProxy as unknown as (
     req: Request,
     res: Response,
@@ -356,6 +366,9 @@ export function configureGatewayApp(
     }
     if (req.path.startsWith('/v1/extraction')) {
       return extractionProxyFn(req, res, next);
+    }
+    if (req.path.startsWith('/v1/glossary-translate')) {
+      return glossaryTranslateProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/translation')) {
       return translationProxyFn(req, res, next);

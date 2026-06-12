@@ -39,6 +39,7 @@ class CreateExtractionJobPayload(BaseModel):
     model_ref: UUID | None = None
     context_filters: dict | None = None
     max_entities_per_kind: int = 30
+    thinking_enabled: bool = False
 
 
 class CancelJobResponse(BaseModel):
@@ -95,9 +96,17 @@ async def create_extraction_job(
                 detail={"code": "EXTRACT_NO_MODEL", "message": "No model configured. Set a model in Translation Settings first."},
             )
 
-    # Fetch kinds metadata for cost estimation
+    # Fetch kinds metadata for cost estimation + worker batching (must succeed).
     profile_data = await fetch_extraction_profile(str(book_id))
-    kinds_metadata = profile_data.get("kinds", []) if profile_data else []
+    if not profile_data or not profile_data.get("kinds"):
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "EXTRACT_PROFILE_UNAVAILABLE",
+                "message": "Could not load extraction profile from glossary-service.",
+            },
+        )
+    kinds_metadata = profile_data["kinds"]
 
     # Compute cost estimate
     # Rough estimate: assumes ~8K chars per chapter. Actual sizes would require fetching
@@ -147,6 +156,7 @@ async def create_extraction_job(
         "model_source": model_source,
         "model_ref": str(model_ref),
         "max_entities_per_kind": payload.max_entities_per_kind,
+        "thinking_enabled": payload.thinking_enabled,
     })
 
     return {

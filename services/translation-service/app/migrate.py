@@ -361,6 +361,34 @@ ALTER TABLE chapter_translations
 -- job_meta via the per-chapter message + a worker-set contextvar (see llm_client).
 ALTER TABLE translation_jobs
   ADD COLUMN IF NOT EXISTS campaign_id UUID;
+
+-- GT: Glossary batch translation jobs (enhancement track)
+CREATE TABLE IF NOT EXISTS glossary_translation_jobs (
+  job_id              UUID PRIMARY KEY DEFAULT uuidv7(),
+  book_id             UUID NOT NULL,
+  owner_user_id       UUID NOT NULL,
+  status              TEXT NOT NULL DEFAULT 'pending',
+  source_language     TEXT NOT NULL DEFAULT 'zh',
+  target_language     TEXT NOT NULL,
+  model_source        TEXT NOT NULL DEFAULT 'platform_model',
+  model_ref           UUID NOT NULL,
+  overwrite_mode      TEXT NOT NULL DEFAULT 'missing_only',
+  metadata            JSONB NOT NULL DEFAULT '{}',
+  total_entities      INT NOT NULL DEFAULT 0,
+  completed_entities  INT NOT NULL DEFAULT 0,
+  failed_entities     INT NOT NULL DEFAULT 0,
+  attrs_translated    INT NOT NULL DEFAULT 0,
+  attrs_skipped       INT NOT NULL DEFAULT 0,
+  total_input_tokens  BIGINT NOT NULL DEFAULT 0,
+  total_output_tokens BIGINT NOT NULL DEFAULT 0,
+  cost_estimate       JSONB,
+  error_message       TEXT,
+  started_at          TIMESTAMPTZ,
+  finished_at         TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_gtj_owner ON glossary_translation_jobs(owner_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_gtj_book  ON glossary_translation_jobs(book_id, created_at DESC);
 """
 
 

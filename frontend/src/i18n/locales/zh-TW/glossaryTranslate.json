@@ -1,0 +1,86 @@
+{
+  "title": "詞彙翻譯",
+  "subtitle": "使用 AI 批次翻譯實體屬性",
+  "steps": {
+    "config": "設定",
+    "confirm": "確認",
+    "progress": "進度",
+    "results": "結果"
+  },
+  "config": {
+    "title": "翻譯設定",
+    "description": "選擇目標語言與模型。所有有原文的屬性都會被翻譯。",
+    "sourceLanguage": "原文語言",
+    "sourceUnknown": "來自書籍",
+    "targetLanguage": "目標語言",
+    "overwriteMode": "覆寫政策",
+    "model": "模型",
+    "noModels": "尚未設定模型。",
+    "addInSettings": "在設定中新增",
+    "selectModel": "選擇模型...",
+    "allAttrsNote": "包含所有有原始值的屬性。已驗證的翻譯絕不會被覆寫。",
+    "sameLanguageError": "目標語言必須與書籍原文語言不同。",
+    "thinkingEnabled": "啟用思考／推理",
+    "thinkingHint": "預設關閉。若使用 Gemma 等模型並希望先推理再翻譯，可開啟。",
+    "mode": {
+      "missing_only": {
+        "label": "僅缺漏",
+        "hint": "跳過目標語言已有翻譯的屬性。"
+      },
+      "refresh_machine": {
+        "label": "刷新機器翻譯",
+        "hint": "重新翻譯草稿與機器翻譯。已驗證的翻譯不變。"
+      }
+    }
+  },
+  "confirm": {
+    "languages": "語言",
+    "mode": "模式",
+    "model": "模型",
+    "estimateNote": "實體數量與 token 用量在任務開始時確定。實際用量取決於每個實體的屬性數。",
+    "editConfig": "編輯設定",
+    "startTranslate": "開始翻譯",
+    "startFailed": "無法啟動翻譯任務",
+    "thinkingOn": "思考：開啟",
+    "thinkingOff": "思考：關閉"
+  },
+  "progress": {
+    "title": "正在翻譯詞彙",
+    "processing": "處理實體 {{current}} / {{total}}...",
+    "entityProgress": "實體進度",
+    "entitiesCount": "{{completed}} / {{total}} 個實體",
+    "failedCount": "{{count}} 個失敗",
+    "attrsTranslated": "已翻譯屬性",
+    "attrsSkipped": "已跳過",
+    "entitiesDone": "已完成",
+    "entitiesFailed": "失敗",
+    "cancel": "取消",
+    "cancelConfirm": "取消此翻譯任務？已處理的實體會保留翻譯。",
+    "cancelRequested": "已請求取消",
+    "noEntities": "此語言沒有需要翻譯的實體。"
+  },
+  "results": {
+    "title": "翻譯完成",
+    "titleNoEntities": "無需翻譯",
+    "titleWithErrors": "翻譯完成（有錯誤）",
+    "titleFailed": "翻譯失敗",
+    "titleCancelled": "翻譯已取消",
+    "duration": "{{count}} 個實體，耗時 {{duration}}",
+    "attrsTranslated": "已翻譯",
+    "attrsSkipped": "已跳過",
+    "entitiesDone": "已完成",
+    "entitiesFailed": "失敗",
+    "partialFailure": "{{count}} 個實體失敗",
+    "tokenUsage": "Token 用量",
+    "estimated": "預估：{{tokens}}",
+    "noEntities": "所有屬性在此語言已有翻譯，或沒有原文文字。",
+    "machineNote": "翻譯以機器信心度儲存 — 請在實體編輯器中檢視並驗證。",
+    "viewGlossary": "在詞彙中檢視",
+    "close": "關閉"
+  },
+  "button": {
+    "next": "下一步",
+    "back": "返回",
+    "cancel": "取消"
+  }
+}

@@ -45,6 +45,8 @@ export type ExtractionJobRequest = {
   model_ref: string;
   max_entities_per_kind?: number;
   context_filters?: ContextFilters;
+  /** When true, enable model reasoning/thinking (LM Studio enable_thinking). Default off for JSON output. */
+  thinking_enabled?: boolean;
 };
 
 // ── Extraction Job Response (from POST 202 + GET /v1/extraction/jobs/{jobId}) ──

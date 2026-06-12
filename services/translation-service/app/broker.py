@@ -70,11 +70,13 @@ async def connect_broker() -> None:
 
     # Extraction job queue
     extraction_q = await _channel.declare_queue("extraction.jobs", durable=True)
+    glossary_translate_q = await _channel.declare_queue("glossary_translate.jobs", durable=True)
 
     # Bind queues to the jobs exchange — routing key must match what publishers use
     await jobs_q.bind(_jobs_exchange, routing_key="translation.job")
     await chapters_q.bind(_jobs_exchange, routing_key="translation.chapter")
     await extraction_q.bind(_jobs_exchange, routing_key="extraction.job")
+    await glossary_translate_q.bind(_jobs_exchange, routing_key="glossary_translate.job")
 
 
 async def close_broker() -> None:

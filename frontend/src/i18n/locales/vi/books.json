@@ -137,6 +137,7 @@
     "kind_count": "{{count}} loại",
     "kind_count_other": "{{count}} loại",
     "extract": "Trích xuất",
+    "translate": "Dịch",
     "genres": "Thể loại",
     "unknown": "Loại chưa rõ",
     "ai_suggestions": "Đề xuất AI",

@@ -22,6 +22,7 @@ export type WizardState = {
   costEstimate: CostEstimate | null;
   kinds: ExtractionProfileKind[];
   selectedModelName: string;
+  thinkingEnabled: boolean;
   finalJobStatus: ExtractionJobStatus | null;
 };
 
@@ -42,6 +43,7 @@ export function useExtractionState(mode: WizardMode, preselectedChapterIds?: str
     costEstimate: null,
     kinds: [],
     selectedModelName: '',
+    thinkingEnabled: false,
     finalJobStatus: null,
   });
 
@@ -99,6 +101,10 @@ export function useExtractionState(mode: WizardMode, preselectedChapterIds?: str
     setState((prev) => ({ ...prev, selectedModelName }));
   }, []);
 
+  const setThinkingEnabled = useCallback((thinkingEnabled: boolean) => {
+    setState((prev) => ({ ...prev, thinkingEnabled }));
+  }, []);
+
   const setFinalJobStatus = useCallback((finalJobStatus: ExtractionJobStatus) => {
     setState((prev) => ({ ...prev, finalJobStatus }));
   }, []);
@@ -119,6 +125,7 @@ export function useExtractionState(mode: WizardMode, preselectedChapterIds?: str
     setJobId,
     setKinds,
     setSelectedModelName,
+    setThinkingEnabled,
     setFinalJobStatus,
     canClose,
   };

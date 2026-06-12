@@ -1,0 +1,86 @@
+{
+  "title": "Glossary Translation",
+  "subtitle": "Batch-translate entity attributes with AI",
+  "steps": {
+    "config": "Settings",
+    "confirm": "Confirm",
+    "progress": "Progress",
+    "results": "Results"
+  },
+  "config": {
+    "title": "Translation Settings",
+    "description": "Choose target language and model. All attributes with source text will be translated.",
+    "sourceLanguage": "Source language",
+    "sourceUnknown": "From book",
+    "targetLanguage": "Target language",
+    "overwriteMode": "Overwrite policy",
+    "model": "Model",
+    "noModels": "No models configured.",
+    "addInSettings": "Add in Settings",
+    "selectModel": "Select model...",
+    "allAttrsNote": "Every attribute with an original value is included. Verified translations are never overwritten.",
+    "sameLanguageError": "Target language must differ from the book source language.",
+    "thinkingEnabled": "Enable thinking / reasoning",
+    "thinkingHint": "Off is default. Turn on for Gemma and similar models if you want the model to reason before answering.",
+    "mode": {
+      "missing_only": {
+        "label": "Missing only",
+        "hint": "Skip attributes that already have a translation in the target language."
+      },
+      "refresh_machine": {
+        "label": "Refresh machine",
+        "hint": "Re-translate draft and machine translations. Verified translations stay unchanged."
+      }
+    }
+  },
+  "confirm": {
+    "languages": "Languages",
+    "mode": "Mode",
+    "model": "Model",
+    "estimateNote": "Entity count and token usage are determined when the job starts. Actual usage depends on attribute count per entity.",
+    "editConfig": "Edit settings",
+    "startTranslate": "Start Translation",
+    "startFailed": "Failed to start translation job",
+    "thinkingOn": "Thinking: on",
+    "thinkingOff": "Thinking: off"
+  },
+  "progress": {
+    "title": "Translating Glossary",
+    "processing": "Processing entity {{current}} of {{total}}...",
+    "entityProgress": "Entity progress",
+    "entitiesCount": "{{completed}} / {{total}} entities",
+    "failedCount": "{{count}} failed",
+    "attrsTranslated": "Attrs translated",
+    "attrsSkipped": "Attrs skipped",
+    "entitiesDone": "Entities done",
+    "entitiesFailed": "Entities failed",
+    "cancel": "Cancel",
+    "cancelConfirm": "Cancel this translation job? Entities already processed will keep their translations.",
+    "cancelRequested": "Cancellation requested",
+    "noEntities": "No entities need translation for this language."
+  },
+  "results": {
+    "title": "Translation Complete",
+    "titleNoEntities": "Nothing to Translate",
+    "titleWithErrors": "Translation Complete (with errors)",
+    "titleFailed": "Translation Failed",
+    "titleCancelled": "Translation Cancelled",
+    "duration": "{{count}} entities in {{duration}}",
+    "attrsTranslated": "Translated",
+    "attrsSkipped": "Skipped",
+    "entitiesDone": "Entities done",
+    "entitiesFailed": "Failed",
+    "partialFailure": "{{count}} entity(ies) failed",
+    "tokenUsage": "Token usage",
+    "estimated": "Estimated: {{tokens}}",
+    "noEntities": "All entity attributes already have translations in this language, or no attributes have source text.",
+    "machineNote": "Translations are saved as machine confidence — review and verify in the entity editor.",
+    "viewGlossary": "Review in Glossary",
+    "close": "Close"
+  },
+  "button": {
+    "next": "Next",
+    "back": "Back",
+    "cancel": "Cancel"
+  }
+}

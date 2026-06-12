@@ -137,6 +137,7 @@
     "kind_count": "{{count}} 種類",
     "kind_count_other": "{{count}} 種類",
     "extract": "擷取",
+    "translate": "翻譯",
     "genres": "類型",
     "unknown": "未知種類",
     "ai_suggestions": "AI 建議",

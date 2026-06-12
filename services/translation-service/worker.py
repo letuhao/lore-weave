@@ -34,6 +34,7 @@ from app.llm_client import set_campaign_id
 from app.workers.coordinator import handle_job_message
 from app.workers.chapter_worker import handle_chapter_message, _TransientError
 from app.workers.extraction_worker import handle_extraction_job
+from app.workers.glossary_translate_worker import handle_glossary_translate_job
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -155,6 +156,7 @@ async def main() -> None:
     job_queue        = await channel.get_queue("translation.jobs")
     chapter_queue    = await channel.get_queue("translation.chapters")
     extraction_queue = await channel.get_queue("extraction.jobs")
+    glossary_translate_queue = await channel.get_queue("glossary_translate.jobs")
 
     async def on_job(message: aio_pika.IncomingMessage) -> None:
         # Coordinator is fast (< 1s). Use process() for simple ack-on-success / requeue-on-error.
@@ -231,10 +233,22 @@ async def main() -> None:
             await handle_extraction_job(msg, get_pool(), publish, publish_event, llm_client)
             log.info("Extraction worker: job %s done", msg["job_id"])
 
+    async def on_glossary_translate(message: aio_pika.IncomingMessage) -> None:
+        set_campaign_id(None)
+        async with message.process(requeue=True):
+            msg = json.loads(message.body)
+            log.info("Glossary translate worker: job %s", msg["job_id"])
+            await handle_glossary_translate_job(msg, get_pool(), publish_event, llm_client)
+            log.info("Glossary translate worker: job %s done", msg["job_id"])
+
     await job_queue.consume(on_job)
     await chapter_queue.consume(on_chapter)
     await extraction_queue.consume(on_extraction)
-    log.info("Worker ready — consuming translation.jobs, translation.chapters, extraction.jobs")
+    await glossary_translate_queue.consume(on_glossary_translate)
+    log.info(
+        "Worker ready — consuming translation.jobs, translation.chapters, "
+        "extraction.jobs, glossary_translate.jobs",
+    )
 
     try:
         await asyncio.Future()  # run forever

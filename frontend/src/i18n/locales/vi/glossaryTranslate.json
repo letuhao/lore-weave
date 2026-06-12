@@ -1,0 +1,86 @@
+{
+  "title": "Dịch thuật ngữ",
+  "subtitle": "Dịch hàng loạt thuộc tính thực thể bằng AI",
+  "steps": {
+    "config": "Cài đặt",
+    "confirm": "Xác nhận",
+    "progress": "Tiến trình",
+    "results": "Kết quả"
+  },
+  "config": {
+    "title": "Cài đặt dịch",
+    "description": "Chọn ngôn ngữ đích và mô hình. Mọi thuộc tính có văn bản nguồn sẽ được dịch.",
+    "sourceLanguage": "Ngôn ngữ nguồn",
+    "sourceUnknown": "Từ sách",
+    "targetLanguage": "Ngôn ngữ đích",
+    "overwriteMode": "Chính sách ghi đè",
+    "model": "Mô hình",
+    "noModels": "Chưa cấu hình mô hình.",
+    "addInSettings": "Thêm trong Cài đặt",
+    "selectModel": "Chọn mô hình...",
+    "allAttrsNote": "Mọi thuộc tính có giá trị gốc đều được bao gồm. Bản dịch đã xác minh không bao giờ bị ghi đè.",
+    "sameLanguageError": "Ngôn ngữ đích phải khác ngôn ngữ nguồn của sách.",
+    "thinkingEnabled": "Bật suy nghĩ / reasoning",
+    "thinkingHint": "Mặc định tắt. Bật với Gemma và model tương tự nếu muốn model suy luận trước khi dịch.",
+    "mode": {
+      "missing_only": {
+        "label": "Chỉ thiếu",
+        "hint": "Bỏ qua thuộc tính đã có bản dịch ở ngôn ngữ đích."
+      },
+      "refresh_machine": {
+        "label": "Làm mới máy",
+        "hint": "Dịch lại bản nháp và bản máy. Bản đã xác minh giữ nguyên."
+      }
+    }
+  },
+  "confirm": {
+    "languages": "Ngôn ngữ",
+    "mode": "Chế độ",
+    "model": "Mô hình",
+    "estimateNote": "Số thực thể và token được xác định khi job bắt đầu. Mức dùng thực tế phụ thuộc số thuộc tính mỗi thực thể.",
+    "editConfig": "Sửa cài đặt",
+    "startTranslate": "Bắt đầu dịch",
+    "startFailed": "Không thể khởi tạo job dịch",
+    "thinkingOn": "Suy nghĩ: bật",
+    "thinkingOff": "Suy nghĩ: tắt"
+  },
+  "progress": {
+    "title": "Đang dịch thuật ngữ",
+    "processing": "Đang xử lý thực thể {{current}} / {{total}}...",
+    "entityProgress": "Tiến độ thực thể",
+    "entitiesCount": "{{completed}} / {{total}} thực thể",
+    "failedCount": "{{count}} lỗi",
+    "attrsTranslated": "Thuộc tính đã dịch",
+    "attrsSkipped": "Thuộc tính bỏ qua",
+    "entitiesDone": "Thực thể xong",
+    "entitiesFailed": "Thực thể lỗi",
+    "cancel": "Hủy",
+    "cancelConfirm": "Hủy job dịch? Thực thể đã xử lý vẫn giữ bản dịch.",
+    "cancelRequested": "Đã yêu cầu hủy",
+    "noEntities": "Không có thực thể nào cần dịch cho ngôn ngữ này."
+  },
+  "results": {
+    "title": "Dịch hoàn tất",
+    "titleNoEntities": "Không có gì để dịch",
+    "titleWithErrors": "Dịch hoàn tất (có lỗi)",
+    "titleFailed": "Dịch thất bại",
+    "titleCancelled": "Đã hủy dịch",
+    "duration": "{{count}} thực thể trong {{duration}}",
+    "attrsTranslated": "Đã dịch",
+    "attrsSkipped": "Bỏ qua",
+    "entitiesDone": "Thực thể xong",
+    "entitiesFailed": "Lỗi",
+    "partialFailure": "{{count}} thực thể lỗi",
+    "tokenUsage": "Token đã dùng",
+    "estimated": "Ước tính: {{tokens}}",
+    "noEntities": "Mọi thuộc tính đã có bản dịch ở ngôn ngữ này, hoặc không có văn bản nguồn.",
+    "machineNote": "Bản dịch lưu ở mức tin cậy máy — hãy xem lại và xác minh trong trình sửa thực thể.",
+    "viewGlossary": "Xem trong Thuật ngữ",
+    "close": "Đóng"
+  },
+  "button": {
+    "next": "Tiếp",
+    "back": "Quay lại",
+    "cancel": "Hủy"
+  }
+}

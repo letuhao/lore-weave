@@ -1,57 +1,63 @@
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
-import { useExtractionState, type WizardMode, type WizardStep } from './useExtractionState';
-import { StepProfile } from './StepProfile';
-import { StepBatchConfig } from './StepBatchConfig';
+import {
+  useGlossaryTranslateState,
+  isSameLanguageTarget,
+  type WizardStep,
+} from './useGlossaryTranslateState';
+import { StepConfig } from './StepConfig';
 import { StepConfirm } from './StepConfirm';
 import { StepProgress } from './StepProgress';
 import { StepResults } from './StepResults';
 import { cn } from '@/lib/utils';
-import type { ExtractionProfileKind, CostEstimate } from './types';
 
-interface ExtractionWizardProps {
+interface GlossaryTranslateWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   bookId: string;
-  mode: WizardMode;
-  preselectedChapterIds?: string[];
+  bookOriginalLanguage?: string;
   onComplete?: () => void;
 }
 
 const STEP_LABELS: Record<WizardStep, string> = {
-  profile: 'steps.profile',
-  chapters: 'steps.chapters',
+  config: 'steps.config',
   confirm: 'steps.confirm',
   progress: 'steps.progress',
   results: 'steps.results',
 };
 
-export function ExtractionWizard({
+export function GlossaryTranslateWizard({
   open,
   onOpenChange,
   bookId,
-  mode,
-  preselectedChapterIds,
+  bookOriginalLanguage,
   onComplete,
-}: ExtractionWizardProps) {
-  const { t } = useTranslation('extraction');
+}: GlossaryTranslateWizardProps) {
+  const { t } = useTranslation('glossaryTranslate');
   const {
     state,
     goNext,
     goBack,
     goToStep,
-    setProfile,
-    setChapterIds,
+    setTargetLanguage,
+    setOverwriteMode,
     setModelRef,
-    setMaxEntities,
-    setContextFilters,
-    setJobId,
-    setKinds,
     setSelectedModelName,
     setThinkingEnabled,
+    setJobCreated,
     setFinalJobStatus,
+    reset,
     canClose,
-  } = useExtractionState(mode, preselectedChapterIds);
+  } = useGlossaryTranslateState();
+
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      reset();
+    }
+    wasOpenRef.current = open;
+  }, [open, reset]);
 
   if (!open) return null;
 
@@ -60,55 +66,41 @@ export function ExtractionWizard({
     onOpenChange(false);
   };
 
-  const enabledKindsCount = Object.keys(state.profile).length;
-  const canProceedFromProfile = enabledKindsCount > 0 && !!state.modelRef;
+  const sameLanguage = isSameLanguageTarget(bookOriginalLanguage, state.targetLanguage);
+  const canProceedFromConfig = !!state.modelRef && !!state.targetLanguage && !sameLanguage;
 
   const renderStep = () => {
     switch (state.step) {
-      case 'profile':
+      case 'config':
         return (
-          <StepProfile
-            bookId={bookId}
-            profile={state.profile}
+          <StepConfig
+            targetLanguage={state.targetLanguage}
+            overwriteMode={state.overwriteMode}
             modelRef={state.modelRef}
             thinkingEnabled={state.thinkingEnabled}
-            onProfileChange={setProfile}
+            sourceLanguage={bookOriginalLanguage}
+            onTargetLanguageChange={setTargetLanguage}
+            onOverwriteModeChange={setOverwriteMode}
             onModelChange={setModelRef}
-            onThinkingEnabledChange={setThinkingEnabled}
-            onKindsLoaded={setKinds}
             onModelNameChange={setSelectedModelName}
-            onClose={handleClose}
-          />
-        );
-      case 'chapters':
-        return (
-          <StepBatchConfig
-            bookId={bookId}
-            chapterIds={state.chapterIds}
-            contextFilters={state.contextFilters}
-            maxEntitiesPerKind={state.maxEntitiesPerKind}
-            onChapterIdsChange={setChapterIds}
-            onContextFiltersChange={setContextFilters}
-            onMaxEntitiesChange={setMaxEntities}
+            onThinkingEnabledChange={setThinkingEnabled}
           />
         );
       case 'confirm':
         return (
           <StepConfirm
             bookId={bookId}
-            profile={state.profile}
-            chapterIds={state.chapterIds}
+            targetLanguage={state.targetLanguage}
+            overwriteMode={state.overwriteMode}
             modelRef={state.modelRef}
-            maxEntitiesPerKind={state.maxEntitiesPerKind}
-            contextFilters={state.contextFilters}
-            kinds={state.kinds}
             selectedModelName={state.selectedModelName}
             thinkingEnabled={state.thinkingEnabled}
-            onJobCreated={(jobId, costEstimate) => {
-              setJobId(jobId, costEstimate);
-              goNext();
+            sourceLanguage={bookOriginalLanguage}
+            onJobCreated={(jobId, totalEntities, costEstimate) => {
+              setJobCreated(jobId, totalEntities, costEstimate);
+              goToStep('progress');
             }}
-            onEditProfile={() => goToStep('profile')}
+            onEditConfig={() => goToStep('config')}
           />
         );
       case 'progress':
@@ -134,25 +126,22 @@ export function ExtractionWizard({
     }
   };
 
-  const showBackButton = state.stepIndex > 0 && state.step !== 'progress' && state.step !== 'results' && state.step !== 'confirm';
-  const showNextButton = state.step === 'profile' || state.step === 'chapters';
-  const canNext =
-    state.step === 'profile' ? canProceedFromProfile :
-    state.step === 'chapters' ? state.chapterIds.length > 0 :
-    false;
+  const showBackButton =
+    state.stepIndex > 0 &&
+    state.step !== 'progress' &&
+    state.step !== 'results' &&
+    state.step !== 'confirm';
+  const showNextButton = state.step === 'config';
 
   return (
     <>
-      {/* Backdrop */}
       <div className="fixed inset-0 z-50 bg-black/50" onClick={handleClose} />
 
-      {/* Dialog */}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div
-          className="w-full max-w-3xl rounded-lg border bg-background shadow-xl flex flex-col max-h-[85vh]"
+          className="w-full max-w-2xl rounded-lg border bg-background shadow-xl flex flex-col max-h-[85vh]"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Header */}
           <div className="flex items-center justify-between border-b px-5 py-3.5">
             <div>
               <h2 className="text-sm font-semibold">{t('title')}</h2>
@@ -168,7 +157,6 @@ export function ExtractionWizard({
             )}
           </div>
 
-          {/* Step indicator */}
           <div className="flex items-center gap-1 px-5 py-2 border-b bg-card/30">
             {state.steps.map((step, idx) => {
               const isCurrent = idx === state.stepIndex;
@@ -203,12 +191,12 @@ export function ExtractionWizard({
             })}
           </div>
 
-          {/* Body */}
-          <div className="flex-1 overflow-y-auto px-5 py-4">
-            {renderStep()}
-          </div>
+          <div className="flex-1 overflow-y-auto px-5 py-4">{renderStep()}</div>
 
-          {/* Footer */}
+          {sameLanguage && state.step === 'config' && (
+            <p className="px-5 pb-2 text-[10px] text-destructive">{t('config.sameLanguageError')}</p>
+          )}
+
           {(showBackButton || showNextButton) && (
             <div className="flex items-center justify-between border-t px-5 py-3">
               <div>
@@ -231,7 +219,7 @@ export function ExtractionWizard({
                 {showNextButton && (
                   <button
                     onClick={goNext}
-                    disabled={!canNext}
+                    disabled={!canProceedFromConfig}
                     className="rounded-md bg-primary px-4 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     {t('button.next')}

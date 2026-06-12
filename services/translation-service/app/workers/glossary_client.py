@@ -524,3 +524,66 @@ async def writeback_name_pairs(book_id: str, source_language: str,
     except Exception as exc:
         log.warning("name-pair writeback failed for book=%s: %s", book_id, exc)
         return None
+
+
+async def fetch_translation_candidates(
+    book_id: str,
+    target_language: str,
+    *,
+    overwrite_mode: str = "missing_only",
+    limit: int = 50,
+    offset: int = 0,
+    entity_ids: list[str] | None = None,
+) -> dict | None:
+    """GET /internal/books/{book_id}/translation-candidates."""
+    try:
+        params: dict[str, str] = {
+            "target_language": target_language,
+            "overwrite_mode": overwrite_mode,
+            "limit": str(limit),
+            "offset": str(offset),
+        }
+        if entity_ids:
+            params["entity_ids"] = ",".join(entity_ids)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(
+                f"{settings.glossary_service_internal_url}"
+                f"/internal/books/{book_id}/translation-candidates",
+                params=params,
+                headers={"X-Internal-Token": settings.internal_service_token},
+            )
+            if resp.status_code != 200:
+                log.warning(
+                    "translation-candidates returned %d for book=%s",
+                    resp.status_code, book_id,
+                )
+                return None
+            return resp.json()
+    except Exception as exc:
+        log.warning("translation-candidates fetch failed book=%s: %s", book_id, exc)
+        return None
+
+
+async def post_apply_translations(
+    book_id: str,
+    target_language: str,
+    items: list[dict],
+) -> dict | None:
+    """POST /internal/books/{book_id}/apply-translations."""
+    if not items:
+        return {"translated": 0, "skipped_verified": 0, "skipped_empty": 0, "failed": []}
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                f"{settings.glossary_service_internal_url}"
+                f"/internal/books/{book_id}/apply-translations",
+                json={"target_language": target_language, "items": items},
+                headers={"X-Internal-Token": settings.internal_service_token},
+            )
+            if resp.status_code != 200:
+                log.warning("apply-translations returned %d for book=%s", resp.status_code, book_id)
+                return None
+            return resp.json()
+    except Exception as exc:
+        log.warning("apply-translations failed book=%s: %s", book_id, exc)
+        return None

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Plus, Search, Filter, Trash2, Settings2, Layers, Sparkles, HelpCircle, Lightbulb, GitMerge } from 'lucide-react';
+import { BookOpen, Plus, Search, Filter, Trash2, Settings2, Layers, Sparkles, Languages, HelpCircle, Lightbulb, GitMerge } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
@@ -16,6 +16,7 @@ import { AiSuggestionsPanel } from '@/features/glossary/components/AiSuggestions
 import { MergeCandidatePanel } from '@/features/glossary/components/MergeCandidatePanel';
 import { EntityEditorModal } from '@/components/entity-editor';
 import { ExtractionWizard } from '@/features/extraction/ExtractionWizard';
+import { GlossaryTranslateWizard } from '@/features/glossary-translate/GlossaryTranslateWizard';
 import { BookAssistantDock } from '@/features/chat/BookAssistantDock';
 
 type GlossaryView = 'entities' | 'kinds' | 'genres' | 'unknown' | 'ai_suggestions' | 'merge_candidates';
@@ -49,6 +50,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
   const [view, setView] = useState<GlossaryView>('entities');
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [extractionOpen, setExtractionOpen] = useState(false);
+  const [translateOpen, setTranslateOpen] = useState(false);
 
   const { data: entityData, isLoading: entitiesLoading, error: entitiesError } = useQuery({
     queryKey: ['glossary-entities', bookId, filters],
@@ -198,6 +200,14 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
           >
             <Sparkles className="h-3.5 w-3.5" />
             {t('glossary.extract')}
+          </button>
+          <button
+            onClick={() => setTranslateOpen(true)}
+            data-testid="glossary-translate-trigger"
+            className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+          >
+            <Languages className="h-3.5 w-3.5" />
+            {t('glossary.translate')}
           </button>
           {aiSuggestCount > 0 && (
             <button
@@ -456,6 +466,14 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
         onOpenChange={setExtractionOpen}
         bookId={bookId}
         mode="batch"
+        onComplete={() => invalidate()}
+      />
+
+      <GlossaryTranslateWizard
+        open={translateOpen}
+        onOpenChange={setTranslateOpen}
+        bookId={bookId}
+        bookOriginalLanguage={bookOriginalLanguage}
         onComplete={() => invalidate()}
       />
 

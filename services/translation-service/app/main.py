@@ -21,6 +21,7 @@ from .routers import versions as versions_router
 from .routers import coverage as coverage_router
 from .routers import translate as translate_router
 from .routers import extraction as extraction_router
+from .routers import glossary_translate as glossary_translate_router
 from .routers import internal_dispatch as internal_dispatch_router
 
 
@@ -105,6 +106,7 @@ app.include_router(versions_router.router)
 app.include_router(coverage_router.router)
 app.include_router(translate_router.router)
 app.include_router(extraction_router.router)
+app.include_router(glossary_translate_router.router)
 app.include_router(internal_dispatch_router.router)
 
 

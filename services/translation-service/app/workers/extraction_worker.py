@@ -41,6 +41,7 @@ from .glossary_client import (
     fetch_known_entities,
     post_extracted_entities,
 )
+from .llm_thinking import thinking_llm_fields
 
 log = logging.getLogger(__name__)
 
@@ -84,6 +85,7 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     model_source = msg.get("model_source", "platform_model")
     model_ref = msg.get("model_ref")
     max_entities_per_kind = msg.get("max_entities_per_kind", 30)
+    thinking_enabled = bool(msg.get("thinking_enabled", False))
 
     log.info("extraction_worker: job %s — %d chapters", job_id, len(chapter_ids))
 
@@ -160,6 +162,7 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
                 model_source=model_source,
                 model_ref=model_ref,
                 max_entities_per_kind=max_entities_per_kind,
+                thinking_enabled=thinking_enabled,
                 pool=pool,
                 llm_client=llm_client,
             )
@@ -274,6 +277,7 @@ async def _process_extraction_chapter(
     model_source: str,
     model_ref: str | None,
     max_entities_per_kind: int,
+    thinking_enabled: bool,
     pool,
     llm_client: LLMClient,
 ) -> dict:
@@ -347,6 +351,7 @@ async def _process_extraction_chapter(
                     ],
                     "temperature": 0.1,
                     "max_tokens": 12000,
+                    **thinking_llm_fields(enabled=thinking_enabled),
                 },
                 chunking=None,
                 job_meta={

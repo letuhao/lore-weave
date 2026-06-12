@@ -20,12 +20,10 @@ import (
 )
 
 // getExtractionProfile auto-resolves entity kinds + attributes for extraction
-// based on the book's genre groups. Returns the full kinds metadata so the
-// frontend can render the extraction profile dialog.
+// based on the book's genre groups. JWT + book grant (public route only).
 //
-// Two routes share this handler:
-//   - Public:   GET /v1/glossary/books/{book_id}/extraction-profile  (JWT auth)
-//   - Internal: GET /internal/books/{book_id}/extraction-profile     (service token)
+//   - Public:   GET /v1/glossary/books/{book_id}/extraction-profile
+//   - Internal: GET /internal/books/{book_id}/extraction-profile → internalExtractionProfile
 func (s *Server) getExtractionProfile(w http.ResponseWriter, r *http.Request) {
 	userID, ok := s.requireUserID(r)
 	if !ok {
@@ -36,13 +34,24 @@ func (s *Server) getExtractionProfile(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// /review-impl: the /v1 profile is JWT/grant-gated (the service-token
-	// /internal/.../extraction-profile route is the one workers call). Reads = view.
 	if !s.requireGrant(w, r.Context(), bookID, userID, grantclient.GrantView) {
 		return
 	}
-	ctx := r.Context()
+	s.writeExtractionProfile(w, r.Context(), bookID)
+}
 
+// internalExtractionProfile serves workers (translation-service) via X-Internal-Token
+// only — no JWT. Must not delegate to getExtractionProfile (that broke extraction
+// jobs: kinds_metadata empty → 0 LLM batches).
+func (s *Server) internalExtractionProfile(w http.ResponseWriter, r *http.Request) {
+	bookID, ok := parsePathUUID(w, r, "book_id")
+	if !ok {
+		return
+	}
+	s.writeExtractionProfile(w, r.Context(), bookID)
+}
+
+func (s *Server) writeExtractionProfile(w http.ResponseWriter, ctx context.Context, bookID uuid.UUID) {
 	// 1. Fetch the book's genre names from genre_groups table
 	rows, err := s.pool.Query(ctx, `SELECT name FROM genre_groups WHERE book_id=$1 ORDER BY sort_order`, bookID)
 	if err != nil {
@@ -183,11 +192,6 @@ func (s *Server) getExtractionProfile(w http.ResponseWriter, r *http.Request) {
 		"kinds":         kinds,
 		"saved_profile": nil, // saved_profile lives on books table (book-service); frontend has it from GET /books/{id}
 	})
-}
-
-// internalExtractionProfile is an alias for the same handler, used on the internal route.
-func (s *Server) internalExtractionProfile(w http.ResponseWriter, r *http.Request) {
-	s.getExtractionProfile(w, r)
 }
 
 // getKnownEntities returns filtered entities for extraction prompt context.
