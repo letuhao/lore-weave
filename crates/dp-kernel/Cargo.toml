@@ -52,6 +52,11 @@ sqlx = { workspace = true }
 # and the bundle. RustCrypto's sha2 = no openssl dep, no Windows pain.
 sha2 = "0.10"
 
+# S6 / H1-loom — the CircuitBreaker sync core now lives in a tokio-free leaf
+# crate (so loom can build it). resilience.rs re-exports CircuitBreaker etc.
+# from here; the async with_timeout/retry/Bulkhead primitives stay local.
+breaker-core = { path = "../breaker-core" }
+
 [dev-dependencies]
 # Test runtime for the EventStore integration test suite. Multi-thread flavor
 # matches the production runtime.

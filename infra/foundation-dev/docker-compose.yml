@@ -78,6 +78,29 @@ services:
     volumes:
       - foundation-minio-data:/data
 
+  # S6 (Battery D) — toxiproxy fault-injection harness. Sits BETWEEN consumers
+  # and postgres/redis on the same network; fault drills point their DSN at the
+  # proxy listen ports and inject toxics (latency / timeout / down) via the admin
+  # API (scripts/chaos/toxic.sh). Only started for fault drills — a normal `up`
+  # can include it harmlessly (it idles until proxies are created at runtime).
+  #
+  # `-host=0.0.0.0` is REQUIRED: the toxiproxy-server default `-host localhost`
+  # binds 127.0.0.1 INSIDE the container, unreachable from the host. The proxy
+  # listen ports (55433 pg, 56380 redis) are pre-published here because toxiproxy
+  # binds them at runtime and Docker only forwards ports declared in compose.
+  toxiproxy-foundation:
+    image: ${FOUNDATION_TOXIPROXY_IMAGE:-ghcr.io/shopify/toxiproxy:2.11.0}
+    container_name: foundation-dev-toxiproxy
+    command: ["-host=0.0.0.0"]
+    # host:container use the SAME var on both sides so a single override shifts
+    # BOTH (the proxy binds the container port == the published port). On Windows
+    # the default 55433 falls in the excluded range 55394-55493 → override
+    # FOUNDATION_PG_PROXY_PORT (e.g. 55601); 55433 is fine on Linux CI.
+    ports:
+      - "127.0.0.1:${FOUNDATION_TOXIPROXY_PORT:-8474}:8474" # admin API
+      - "127.0.0.1:${FOUNDATION_PG_PROXY_PORT:-55433}:${FOUNDATION_PG_PROXY_PORT:-55433}" # pg_proxy listen
+      - "127.0.0.1:${FOUNDATION_REDIS_PROXY_PORT:-56380}:${FOUNDATION_REDIS_PROXY_PORT:-56380}" # redis_proxy listen
+
   # Phase 0 (D1=LocalStack): AWS KMS emulation for the PII KEK landing in P2.
   # Minimal — only the kms service is enabled. The P2 PII work points its KMS
   # endpoint at http://localhost:${FOUNDATION_KMS_PORT:-54566}.

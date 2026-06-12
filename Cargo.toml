@@ -25,6 +25,12 @@ members = [
     "services/travel-service",
     "crates/world-gen",
     "crates/meta-rs",
+    # S6 / H1-loom — tokio-free CircuitBreaker sync core extracted from
+    # dp-kernel::resilience so it can be exhaustively race-checked with loom
+    # (loom can't build inside dp-kernel: tokio's transitive deps break under
+    # --cfg loom). dp-kernel re-exports CircuitBreaker from here; public path
+    # dp_kernel::resilience::CircuitBreaker is unchanged.
+    "crates/breaker-core",
     "crates/dp-kernel",
     # Cycle 13 — L3.B per-aggregate projection skeletons (consume
     # `crates/dp-kernel::Projection` trait shipped cycle 12; write to the
