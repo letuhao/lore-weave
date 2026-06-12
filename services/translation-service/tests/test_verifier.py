@@ -91,3 +91,54 @@ def test_single_char_glossary_name_no_substring_false_positive():
     prevents this spurious high-severity flag (which M1b would re-translate on)."""
     r = verify_rules({0: "国王说话了。"}, {0: "Nhà vua đã nói."}, {"王": "Vương"}, "vi")
     assert "wrong_name" not in _types(r)
+
+
+# ── D-V3-TRANSLATION-PROMPT-ECHO: verbatim source echo ────────────────────────
+
+def test_echo_verbatim_copy_flagged_high():
+    """The model copied the source under [BLOCK N] instead of translating → HIGH
+    untranslated so the corrector re-translates it."""
+    src = "魔王終於來到了城堡。"
+    r = verify_rules({0: src}, {0: src}, {}, "vi")
+    assert "untranslated" in _types(r) and r.high
+
+
+def test_echo_caught_for_cjk_target_where_script_leak_cannot_fire():
+    """zh→ja: a verbatim echo can't be caught by the rule-2 CJK script-leak (target IS
+    CJK) — the echo check catches it."""
+    src = "魔王終於來到了城堡裡面。"
+    r = verify_rules({0: src}, {0: src}, {}, "ja")
+    assert "untranslated" in _types(r)
+
+
+def test_echo_ignores_short_block():
+    """A short verbatim block (< _ECHO_MIN_CHARS) is not flagged — too noisy. (ja target
+    so the rule-2 CJK script-leak doesn't also fire and mask the echo guard.)"""
+    r = verify_rules({0: "魔王。"}, {0: "魔王。"}, {}, "ja")
+    assert "untranslated" not in _types(r)
+
+
+def test_echo_ignores_pure_number_symbol_passthrough():
+    """A number/symbol block legitimately passes through unchanged — never an echo flag."""
+    r = verify_rules({0: "12:34:56 — 2024"}, {0: "12:34:56 — 2024"}, {}, "vi")
+    assert "untranslated" not in _types(r)
+
+
+def test_echo_not_flagged_for_real_translation():
+    r = verify_rules(
+        {0: "魔王終於來到了城堡。"}, {0: "Ma vương cuối cùng đã đến lâu đài."}, {}, "vi",
+    )
+    assert "untranslated" not in _types(r)
+
+
+def test_echo_normalizes_whitespace():
+    """A copy that differs only in whitespace is still an echo."""
+    r = verify_rules({0: "魔王 終於 來到了城堡。"}, {0: "魔王   終於 來到了城堡。"}, {}, "vi")
+    assert "untranslated" in _types(r)
+
+
+def test_block_prompt_forbids_echo():
+    """The block translator prompt carries the explicit anti-echo rule (prompt-format
+    half of D-V3-TRANSLATION-PROMPT-ECHO)."""
+    from app.workers.session_translator import _BLOCK_SYSTEM_PROMPT
+    assert "NEVER copy the source" in _BLOCK_SYSTEM_PROMPT

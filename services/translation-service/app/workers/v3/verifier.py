@@ -16,10 +16,30 @@ from ..chunk_splitter import _is_cjk, _SENTENCE_ENDS
 from .quality import Issue, IssueReport
 
 _NUM = re.compile(r"\d+")
+_LETTER = re.compile(r"[^\W\d_]", re.UNICODE)  # any unicode "letter" (excl. digits/_/punct)
 _CJK_LANGS = frozenset({"zh", "ja", "ko"})
 _REPEAT_CAP = 3              # an identical sentence repeated >= this many times = looping
 _OMISSION_MIN_SENTENCES = 3  # only judge omission once the source has some structure
 _OMISSION_RATIO = 0.6        # draft sentence count below this fraction of source = suspect
+# D-V3-TRANSLATION-PROMPT-ECHO: a weak model sometimes COPIES the source under
+# [BLOCK N] instead of translating it. Only flag a verbatim echo of a block with
+# real translatable content (≥ this many normalized chars + a CJK/letter) so a
+# legit pass-through (a number, a symbol, a short proper token) is never churned.
+_ECHO_MIN_CHARS = 6
+
+
+def _norm(text: str) -> str:
+    return " ".join((text or "").split())
+
+
+def _is_source_echo(src: str, draft: str) -> bool:
+    """The draft is a verbatim copy of the source (untranslated) — high-precision: exact
+    after whitespace-normalisation, the source is substantive (≥ _ECHO_MIN_CHARS), and it
+    carries a CJK char or a letter (a pure number/symbol block legitimately passes through)."""
+    s = _norm(src)
+    if len(s) < _ECHO_MIN_CHARS or _norm(draft) != s:
+        return False
+    return _has_cjk(s) or bool(_LETTER.search(s))
 
 
 def _lang_is_cjk(code: str) -> bool:
@@ -122,6 +142,16 @@ def verify_rules(
             issues.append(Issue(
                 idx, "repetition", "high",
                 "excessive sentence repetition (model looping)",
+            ))
+
+        # 6. Source echo (D-V3-TRANSLATION-PROMPT-ECHO): the model copied the source
+        #    verbatim instead of translating. HIGH → the corrector re-translates this
+        #    block. Catches echo for ALL target scripts, incl. CJK→CJK where the rule-2
+        #    script-leak check can't fire.
+        if _is_source_echo(src, draft):
+            issues.append(Issue(
+                idx, "untranslated", "high",
+                "draft is a verbatim copy of the source (untranslated — model echoed)",
             ))
 
     return IssueReport(issues)
