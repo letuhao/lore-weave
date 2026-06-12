@@ -4,7 +4,9 @@ import { X, Save, Loader2, Link2, Languages, FileText, Tag, Trash2 } from 'lucid
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
+import { resolveEntityDisplayName } from '@/features/glossary/lib/resolveDisplayValue';
 import { type GlossaryEntity, type AttributeValue, type Translation } from '@/features/glossary/types';
+import { getLanguageName } from '@/lib/languages';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { AttrCard } from './AttrCard';
 import { AttrTranslationRow } from './AttrTranslationRow';
@@ -19,13 +21,14 @@ interface EntityEditorModalProps {
   bookGenreTags?: string[];
   kindGenreTags?: string[];
   bookOriginalLanguage?: string;
+  displayLanguage?: string;
   onClose: () => void;
   onSaved: () => void;
   onDelete: () => void;
   initialTab?: EditorTab;
 }
 
-export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGenreTags = [], bookOriginalLanguage, onClose, onSaved, onDelete, initialTab = 'attributes' }: EntityEditorModalProps) {
+export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGenreTags = [], bookOriginalLanguage, displayLanguage, onClose, onSaved, onDelete, initialTab = 'attributes' }: EntityEditorModalProps) {
   const { t } = useTranslation('entityEditor');
   const { accessToken } = useAuth();
   const [entity, setEntity] = useState<GlossaryEntity | null>(null);
@@ -47,6 +50,16 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
   }, [accessToken, bookId, entityId]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const viewTranslationMode = Boolean(
+    displayLanguage && bookOriginalLanguage && displayLanguage !== bookOriginalLanguage,
+  );
+
+  useEffect(() => {
+    if (viewTranslationMode && displayLanguage) {
+      setTranslationLang(displayLanguage);
+    }
+  }, [viewTranslationMode, displayLanguage]);
 
   // Esc to close
   useEffect(() => {
@@ -176,6 +189,10 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
   const sysAttrs = sortedAttrs.filter((a) => a.attribute_def.is_system);
   const usrAttrs = sortedAttrs.filter((a) => !a.attribute_def.is_system);
 
+  const headerTitle = viewTranslationMode
+    ? resolveEntityDisplayName(entity.attribute_values, displayLanguage, bookOriginalLanguage)
+    : entity.display_name;
+
   return (
     <>
       {/* Backdrop */}
@@ -191,7 +208,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
           {/* ── Header ── */}
           <div className="flex items-center justify-between border-b bg-card px-6 py-4 flex-shrink-0">
             <div className="flex items-center gap-2.5 min-w-0">
-              <span className="font-serif text-base font-semibold truncate">{entity.display_name || t('modal.untitled')}</span>
+              <span className="font-serif text-base font-semibold truncate">{headerTitle || t('modal.untitled')}</span>
               <span
                 className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium flex-shrink-0"
                 style={{ backgroundColor: entity.kind.color + '18', color: entity.kind.color }}
@@ -235,6 +252,12 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
 
           {/* ── Meta bar ── */}
           <div className="flex items-center gap-4 border-b px-6 py-2.5 text-[11px] text-muted-foreground flex-shrink-0" style={{ background: 'rgba(24,20,18,0.4)' }}>
+            {viewTranslationMode && displayLanguage && (
+              <span className="inline-flex items-center gap-1 text-blue-400">
+                <Languages className="h-3 w-3" />
+                {t('modal.viewing_in_language', { lang: getLanguageName(displayLanguage) })}
+              </span>
+            )}
             <span className="inline-flex items-center gap-1"><Link2 className="h-3 w-3" />{t('modal.meta.chapters', { count: entity.chapter_link_count })}</span>
             <span className="inline-flex items-center gap-1"><Languages className="h-3 w-3" />{t('modal.meta.translations', { count: entity.translation_count })}</span>
             <button type="button" onClick={() => setActiveTab('evidences')} className="inline-flex items-center gap-1 hover:text-primary transition-colors"><FileText className="h-3 w-3" />{t('modal.meta.evidences', { count: entity.evidence_count })}</button>
@@ -276,7 +299,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
               )}
             </button>
             {/* Language selector — only visible on attributes tab */}
-            {activeTab === 'attributes' && (
+            {activeTab === 'attributes' && !viewTranslationMode && (
               <>
                 <span className="flex-1" />
                 <div className="flex items-center gap-1.5">
@@ -337,6 +360,9 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                     <AttrGrid
                       attrs={sysAttrs} getValue={getValue} onChange={handleChange}
                       pendingChanges={pendingChanges} translationLang={translationLang}
+                      viewTranslationMode={viewTranslationMode}
+                      displayLanguage={displayLanguage}
+                      bookOriginalLanguage={bookOriginalLanguage}
                       bookId={bookId} entityId={entityId} onTranslationChanged={handleTranslationChanged}
                     />
                   </>
@@ -349,6 +375,9 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                     <AttrGrid
                       attrs={usrAttrs} getValue={getValue} onChange={handleChange}
                       pendingChanges={pendingChanges} translationLang={translationLang}
+                      viewTranslationMode={viewTranslationMode}
+                      displayLanguage={displayLanguage}
+                      bookOriginalLanguage={bookOriginalLanguage}
                       bookId={bookId} entityId={entityId} onTranslationChanged={handleTranslationChanged}
                     />
                   </>
@@ -365,6 +394,7 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                 bookId={bookId}
                 entityId={entityId}
                 bookOriginalLanguage={bookOriginalLanguage}
+                defaultDisplayLanguage={viewTranslationMode ? displayLanguage : undefined}
                 onCountChange={(delta) => {
                   if (!entity) return;
                   setEntity({ ...entity, evidence_count: entity.evidence_count + delta });
@@ -419,16 +449,20 @@ function SectionLabel({ color, children }: { color: 'info' | 'primary'; children
   );
 }
 
-function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, bookId, entityId, onTranslationChanged }: {
+function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, viewTranslationMode, displayLanguage, bookOriginalLanguage, bookId, entityId, onTranslationChanged }: {
   attrs: AttributeValue[];
   getValue: (attr: AttributeValue) => string;
   onChange: (id: string, value: string) => void;
   pendingChanges: Map<string, string>;
   translationLang: string;
+  viewTranslationMode: boolean;
+  displayLanguage?: string;
+  bookOriginalLanguage?: string;
   bookId: string;
   entityId: string;
   onTranslationChanged: (attrValueId: string, updated: Translation | null, oldTranslationId?: string) => void;
 }) {
+  const { t } = useTranslation('entityEditor');
   const rendered: ReactNode[] = [];
   let shortBuffer: ReactNode[] = [];
 
@@ -450,10 +484,13 @@ function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, 
     const modified = pendingChanges.has(attr.attr_value_id);
     const hasTranslations = attr.translations.length > 0;
 
-    // Find existing translation for selected language
-    const activeLang = translationLang && translationLang !== '__new' ? translationLang : '';
+    const activeLang = viewTranslationMode && displayLanguage
+      ? displayLanguage
+      : translationLang && translationLang !== '__new'
+        ? translationLang
+        : '';
     const existingTranslation = activeLang
-      ? attr.translations.find((t) => t.language_code === activeLang)
+      ? attr.translations.find((tr) => tr.language_code === activeLang)
       : undefined;
 
     const translationSlot = activeLang ? (
@@ -483,11 +520,20 @@ function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, 
         hasTranslations={hasTranslations}
         translationSlot={translationSlot}
       >
-        <CardComponent
-          value={getValue(attr)}
-          onChange={(v) => onChange(attr.attr_value_id, v)}
-          options={def.options}
-        />
+        {viewTranslationMode ? (
+          <p className="text-[10px] text-muted-foreground mb-2">
+            {t('modal.viewing_original', {
+              lang: bookOriginalLanguage ? getLanguageName(bookOriginalLanguage) : '?',
+            })}
+            : {getValue(attr) || '—'}
+          </p>
+        ) : (
+          <CardComponent
+            value={getValue(attr)}
+            onChange={(v) => onChange(attr.attr_value_id, v)}
+            options={def.options}
+          />
+        )}
       </AttrCard>
     );
 

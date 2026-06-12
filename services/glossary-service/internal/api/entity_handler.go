@@ -457,11 +457,19 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	q := r.URL.Query()
+	displayLang := strings.TrimSpace(q.Get("display_language"))
 
 	// Build dynamic WHERE clause
 	args := []any{bookID}
 	n := 1
 	where := []string{"e.book_id = $1", "e.deleted_at IS NULL"}
+
+	var displayLangArg int
+	if displayLang != "" {
+		n++
+		displayLangArg = n
+		args = append(args, displayLang)
+	}
 
 	// Filter: kind_codes
 	if kc := q.Get("kind_codes"); kc != "" {
@@ -501,16 +509,34 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Filter: search (ILIKE on name/term attribute original_value)
+	// Filter: search (ILIKE on name/term original_value; also translation when display_language set)
 	if searchVal := q.Get("search"); searchVal != "" {
 		n++
-		where = append(where, fmt.Sprintf(`EXISTS (
+		searchArg := n
+		args = append(args, "%"+searchVal+"%")
+		if displayLang != "" {
+			where = append(where, fmt.Sprintf(`EXISTS (
 			SELECT 1 FROM entity_attribute_values eav
 			JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
 			WHERE eav.entity_id = e.entity_id
 			  AND ad.code IN ('name','term')
-			  AND eav.original_value ILIKE $%d)`, n))
-		args = append(args, "%"+searchVal+"%")
+			  AND (
+			    eav.original_value ILIKE $%d
+			    OR EXISTS (
+			      SELECT 1 FROM attribute_translations at
+			      WHERE at.attr_value_id = eav.attr_value_id
+			        AND at.language_code = $%d
+			        AND at.value ILIKE $%d
+			    )
+			  ))`, searchArg, displayLangArg, searchArg))
+		} else {
+			where = append(where, fmt.Sprintf(`EXISTS (
+			SELECT 1 FROM entity_attribute_values eav
+			JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+			WHERE eav.entity_id = e.entity_id
+			  AND ad.code IN ('name','term')
+			  AND eav.original_value ILIKE $%d)`, searchArg))
+		}
 	}
 
 	// Filter: tags (AND containment)
@@ -557,16 +583,40 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 	offsetArg := n
 	args = append(args, limit, offset)
 
-	mainSQL := fmt.Sprintf(`
-		SELECT
-			e.entity_id, e.book_id, e.kind_id, e.status, e.tags, e.created_at, e.updated_at,
-			ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
-			COALESCE((
+	displayNameSQL := `COALESCE((
 				SELECT eav.original_value FROM entity_attribute_values eav
 				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
 				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
 				ORDER BY ad.sort_order LIMIT 1
-			), '') AS display_name,
+			), '')`
+	displayNameTranslationSQL := `NULL::text`
+	if displayLang != "" {
+		displayNameSQL = fmt.Sprintf(`COALESCE((
+				SELECT COALESCE(NULLIF(at.value, ''), eav.original_value)
+				FROM entity_attribute_values eav
+				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+				LEFT JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
+					AND at.language_code = $%d
+				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
+				ORDER BY ad.sort_order LIMIT 1
+			), '')`, displayLangArg)
+		displayNameTranslationSQL = fmt.Sprintf(`(
+				SELECT NULLIF(at.value, '')
+				FROM entity_attribute_values eav
+				JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
+				LEFT JOIN attribute_translations at ON at.attr_value_id = eav.attr_value_id
+					AND at.language_code = $%d
+				WHERE eav.entity_id = e.entity_id AND ad.code IN ('name','term')
+				ORDER BY ad.sort_order LIMIT 1
+			)`, displayLangArg)
+	}
+
+	mainSQL := fmt.Sprintf(`
+		SELECT
+			e.entity_id, e.book_id, e.kind_id, e.status, e.tags, e.created_at, e.updated_at,
+			ek.kind_id, ek.code, ek.name, ek.icon, ek.color,
+			%s AS display_name,
+			%s AS display_name_translation,
 			e.short_description, e.is_pinned_for_context,
 			(SELECT COUNT(*) FROM chapter_entity_links WHERE entity_id = e.entity_id) AS chapter_link_count,
 			(SELECT COUNT(*) FROM attribute_translations tr
@@ -580,7 +630,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 		%s
 		%s
 		LIMIT $%d OFFSET $%d`,
-		whereClause, sortClause, limitArg, offsetArg)
+		displayNameSQL, displayNameTranslationSQL, whereClause, sortClause, limitArg, offsetArg)
 
 	rows, err := s.pool.Query(ctx, mainSQL, args...)
 	if err != nil {
@@ -597,6 +647,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 			&item.CreatedAt, &item.UpdatedAt,
 			&item.Kind.KindID, &item.Kind.Code, &item.Kind.Name, &item.Kind.Icon, &item.Kind.Color,
 			&item.DisplayName,
+			&item.DisplayNameTranslation,
 			&item.ShortDescription, &item.IsPinnedForContext,
 			&item.ChapterLinkCount, &item.TranslationCount, &item.EvidenceCount,
 		); err != nil {

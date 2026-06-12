@@ -20,6 +20,8 @@
       "attributes": "Thuộc tính",
       "evidences": "Dẫn chứng"
     },
+    "viewing_in_language": "Đang xem bằng {{lang}}",
+    "viewing_original": "Gốc ({{lang}})",
     "translation_lang_aria": "Ngôn ngữ bản dịch",
     "no_translation": "Không dịch",
     "add_language": "+ Thêm ngôn ngữ...",

@@ -20,6 +20,8 @@
       "attributes": "Attributes",
       "evidences": "Evidences"
     },
+    "viewing_in_language": "Viewing in {{lang}}",
+    "viewing_original": "Original ({{lang}})",
     "translation_lang_aria": "Translation language",
     "no_translation": "No translation",
     "add_language": "+ Add language...",

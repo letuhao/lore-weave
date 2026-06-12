@@ -5,7 +5,9 @@ import { BookOpen, Plus, Search, Filter, Trash2, Settings2, Layers, Sparkles, La
 import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { glossaryApi } from '@/features/glossary/api';
+import { useGlossaryDisplayLanguage } from '@/features/glossary/hooks/useGlossaryDisplayLanguage';
 import { type GlossaryEntitySummary, type EntityKind, type FilterState, defaultFilters } from '@/features/glossary/types';
+import { getLanguageName, LANGUAGE_NAMES } from '@/lib/languages';
 import { Skeleton } from '@/components/shared/Skeleton';
 import { EmptyState, ConfirmDialog } from '@/components/shared';
 import { cn } from '@/lib/utils';
@@ -52,9 +54,34 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
   const [extractionOpen, setExtractionOpen] = useState(false);
   const [translateOpen, setTranslateOpen] = useState(false);
 
+  const { displayLanguage, setDisplayLanguage, apiDisplayLanguage } = useGlossaryDisplayLanguage(
+    bookId,
+    bookOriginalLanguage,
+  );
+
+  const languageOptions = useMemo(() => {
+    const opts: { code: string; label: string }[] = [];
+    if (bookOriginalLanguage) {
+      opts.push({
+        code: bookOriginalLanguage,
+        label: t('glossary.display_language_original', { lang: getLanguageName(bookOriginalLanguage) }),
+      });
+    }
+    for (const code of Object.keys(LANGUAGE_NAMES)) {
+      if (code === bookOriginalLanguage) continue;
+      opts.push({ code, label: getLanguageName(code) });
+    }
+    return opts;
+  }, [bookOriginalLanguage, t]);
+
   const { data: entityData, isLoading: entitiesLoading, error: entitiesError } = useQuery({
-    queryKey: ['glossary-entities', bookId, filters],
-    queryFn: () => glossaryApi.listEntities(bookId, { ...filters, limit: 100, offset: 0 }, accessToken!),
+    queryKey: ['glossary-entities', bookId, filters, apiDisplayLanguage],
+    queryFn: () =>
+      glossaryApi.listEntities(
+        bookId,
+        { ...filters, limit: 100, offset: 0, displayLanguage: apiDisplayLanguage },
+        accessToken!,
+      ),
     enabled: !!accessToken,
   });
 
@@ -192,7 +219,25 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
             {visibleKinds.length > 0 && ` · ${t('glossary.kind_count', { count: visibleKinds.length })}`}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <div className="flex items-center gap-1.5">
+            <label htmlFor="glossary-display-lang" className="text-[10px] text-muted-foreground whitespace-nowrap">
+              {t('glossary.display_language')}
+            </label>
+            <select
+              id="glossary-display-lang"
+              data-testid="glossary-display-language"
+              value={displayLanguage}
+              onChange={(e) => setDisplayLanguage(e.target.value)}
+              className="h-8 rounded-md border bg-background px-2 text-[11px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+            >
+              {languageOptions.map((opt) => (
+                <option key={opt.code} value={opt.code}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <button
             onClick={() => setExtractionOpen(true)}
             data-testid="glossary-extract-trigger"
@@ -390,7 +435,14 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium truncate">
+                  <span
+                    className="text-sm font-medium truncate"
+                    title={
+                      apiDisplayLanguage && !e.display_name_translation
+                        ? t('glossary.fallback_to_original')
+                        : undefined
+                    }
+                  >
                     {e.display_name || t('glossary.untitled')}
                   </span>
                   <KindBadge kind={e.kind} />
@@ -452,6 +504,7 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
             bookGenreTags={bookGenreTags}
             kindGenreTags={kindTags}
             bookOriginalLanguage={bookOriginalLanguage}
+            displayLanguage={displayLanguage}
             onClose={() => setSelectedEntityId(null)}
             onSaved={() => invalidate()}
             onDelete={() => {
