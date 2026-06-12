@@ -95,27 +95,18 @@ def _load_precision_filter_config() -> PrecisionFilterConfig | None:
             cycle-73b ship uses ``"relation"`` for 55% latency
             reduction at near-identical F1).
     """
-    model_ref = os.environ.get("WORKER_AI_PRECISION_FILTER_MODEL_REF", "").strip()
-    if not model_ref:
-        return None
-    partial_policy = os.environ.get(
-        "WORKER_AI_PRECISION_FILTER_PARTIAL_POLICY", "keep"
-    ).strip() or "keep"
-    model_source = os.environ.get(
-        "WORKER_AI_PRECISION_FILTER_MODEL_SOURCE", "user_model"
-    ).strip() or "user_model"
-    categories_env = os.environ.get(
-        "WORKER_AI_PRECISION_FILTER_CATEGORIES", "entity,relation,event"
-    ).strip() or "entity,relation,event"
-    categories = tuple(
-        c.strip() for c in categories_env.split(",") if c.strip()
-    )
-    return PrecisionFilterConfig(
-        model_ref=model_ref,
-        model_source=model_source,  # type: ignore[arg-type]
-        partial_policy=partial_policy,  # type: ignore[arg-type]
-        categories=categories,  # type: ignore[arg-type]
-    )
+    # D-WX-PRECISION-FILTER-MODEL-ARCH: the filter MODEL must NOT come from a platform
+    # env. A hardcoded env model_ref is cross-tenant — it was submitted as user_model
+    # scoped to the CAMPAIGN's user, so provider-registry 404'd "model not found" for
+    # every user who didn't own it, leaving the decoupled fold's terminal event
+    # un-acked and stalling the chapter forever (D-WX live-smoke finding). The filter
+    # is now configured PER-PROJECT via extraction_config.precision_filter
+    # (PrecisionFilterOverride: enabled + model_ref + model_source + categories +
+    # partial_policy) — FE-set, DB-stored, resolved per-user, merged onto these
+    # (now model-less) global defaults in resolve_effective_config(project_overrides=).
+    # There is NO global env model source. Behavior knobs without a model are
+    # meaningless, so the whole global default is None.
+    return None
 
 
 # Cached at module load; None when env unset = zero-overhead default.

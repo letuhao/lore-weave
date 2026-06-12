@@ -830,9 +830,12 @@ async def test_orchestrator_emits_filter_applied_stage_log(
     assert "filter_coverage" in ev
 
 
-def test_load_precision_filter_config_orchestrator_env_set() -> None:
-    """Env reader: KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF set
-    → PrecisionFilterConfig parsed correctly."""
+def test_load_precision_filter_config_ignores_env_model_ref() -> None:
+    """D-WX-PRECISION-FILTER-MODEL-ARCH — the env is NO LONGER a filter-model source.
+    Even with KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF set, the loader returns
+    None: a global env model is cross-tenant (404'd for every non-owning user, stalling
+    the decoupled fold). The filter model now comes ONLY from the per-project
+    extraction_config.precision_filter override, resolved per-user. Regression-lock."""
     import os
     from app.extraction.pass2_orchestrator import _load_precision_filter_config
 
@@ -844,38 +847,10 @@ def test_load_precision_filter_config_orchestrator_env_set() -> None:
         )
     }
     try:
-        os.environ["KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF"] = "claude-4.7-opus-uuid"
+        os.environ["KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF"] = "some-cross-tenant-uuid"
         os.environ["KNOWLEDGE_EXTRACTION_PRECISION_FILTER_PARTIAL_POLICY"] = "drop"
-        config = _load_precision_filter_config()
-        assert config is not None
-        assert config.model_ref == "claude-4.7-opus-uuid"
-        assert config.partial_policy == "drop"
-        # cycle 73b — default categories backward-compat = all 3
-        assert config.categories == ("entity", "relation", "event")
-    finally:
-        for k, v in saved.items():
-            os.environ.pop(k, None)
-            if v is not None:
-                os.environ[k] = v
-
-
-def test_load_precision_filter_config_categories_relation_only() -> None:
-    """Cycle 73b — categories env reads as a tuple subset."""
-    import os
-    from app.extraction.pass2_orchestrator import _load_precision_filter_config
-
-    saved = {
-        k: os.environ.pop(k, None) for k in (
-            "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF",
-            "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_CATEGORIES",
-        )
-    }
-    try:
-        os.environ["KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF"] = "test-model"
         os.environ["KNOWLEDGE_EXTRACTION_PRECISION_FILTER_CATEGORIES"] = "relation"
-        config = _load_precision_filter_config()
-        assert config is not None
-        assert config.categories == ("relation",)
+        assert _load_precision_filter_config() is None
     finally:
         for k, v in saved.items():
             os.environ.pop(k, None)

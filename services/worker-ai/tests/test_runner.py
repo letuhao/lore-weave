@@ -1876,8 +1876,13 @@ def test_load_precision_filter_config_env_unset_returns_none() -> None:
             os.environ["WORKER_AI_PRECISION_FILTER_MODEL_REF"] = original
 
 
-def test_load_precision_filter_config_env_set_builds_config() -> None:
-    """Env set → PrecisionFilterConfig with parsed kwargs."""
+def test_load_precision_filter_config_ignores_env_model_ref() -> None:
+    """D-WX-PRECISION-FILTER-MODEL-ARCH — the env is NO LONGER a filter-model source.
+    Even with WORKER_AI_PRECISION_FILTER_MODEL_REF set, the loader returns None: a
+    global env model is cross-tenant (it 404'd for every user who didn't own it and
+    stalled the decoupled fold). The filter model now comes ONLY from the per-project
+    extraction_config.precision_filter override (resolve_effective_config), resolved
+    per-user. This regression-locks that no env can reintroduce a global filter model."""
     import os
     from app.runner import _load_precision_filter_config
 
@@ -1890,41 +1895,11 @@ def test_load_precision_filter_config_env_set_builds_config() -> None:
         )
     }
     try:
-        os.environ["WORKER_AI_PRECISION_FILTER_MODEL_REF"] = "claude-4.7-opus-uuid"
+        os.environ["WORKER_AI_PRECISION_FILTER_MODEL_REF"] = "some-cross-tenant-uuid"
         os.environ["WORKER_AI_PRECISION_FILTER_PARTIAL_POLICY"] = "drop"
-        os.environ["WORKER_AI_PRECISION_FILTER_MODEL_SOURCE"] = "platform_model"
-        config = _load_precision_filter_config()
-        assert config is not None
-        assert config.model_ref == "claude-4.7-opus-uuid"
-        assert config.partial_policy == "drop"
-        assert config.model_source == "platform_model"
-        # cycle 73b — default categories backward-compat = all 3
-        assert config.categories == ("entity", "relation", "event")
-    finally:
-        for k, v in saved.items():
-            os.environ.pop(k, None)
-            if v is not None:
-                os.environ[k] = v
-
-
-def test_load_precision_filter_config_categories_relation_only() -> None:
-    """Cycle 73b — WORKER_AI_PRECISION_FILTER_CATEGORIES=relation
-    parses to a single-category tuple."""
-    import os
-    from app.runner import _load_precision_filter_config
-
-    saved = {
-        k: os.environ.pop(k, None) for k in (
-            "WORKER_AI_PRECISION_FILTER_MODEL_REF",
-            "WORKER_AI_PRECISION_FILTER_CATEGORIES",
-        )
-    }
-    try:
-        os.environ["WORKER_AI_PRECISION_FILTER_MODEL_REF"] = "test-model"
+        os.environ["WORKER_AI_PRECISION_FILTER_MODEL_SOURCE"] = "user_model"
         os.environ["WORKER_AI_PRECISION_FILTER_CATEGORIES"] = "relation"
-        config = _load_precision_filter_config()
-        assert config is not None
-        assert config.categories == ("relation",)
+        assert _load_precision_filter_config() is None
     finally:
         for k, v in saved.items():
             os.environ.pop(k, None)
@@ -1932,28 +1907,49 @@ def test_load_precision_filter_config_categories_relation_only() -> None:
                 os.environ[k] = v
 
 
-def test_load_precision_filter_config_categories_comma_separated() -> None:
-    """Whitespace-tolerant comma split for KNOWLEDGE_C72_CATEGORIES-style env."""
-    import os
-    from app.runner import _load_precision_filter_config
+def test_resolve_filter_falls_back_to_extraction_model() -> None:
+    """D-WX-PRECISION-FILTER-MODEL-ARCH — a per-project precision_filter override that
+    ENABLES the filter WITHOUT its own model_ref resolves to the EXTRACTION model
+    (user-owned, UI-selected, DB-stored, per-user) — never an env/global model. The
+    category/policy still come from the override."""
+    from loreweave_extraction import resolve_effective_config
 
-    saved = {
-        k: os.environ.pop(k, None) for k in (
-            "WORKER_AI_PRECISION_FILTER_MODEL_REF",
-            "WORKER_AI_PRECISION_FILTER_CATEGORIES",
-        )
-    }
-    try:
-        os.environ["WORKER_AI_PRECISION_FILTER_MODEL_REF"] = "test-model"
-        os.environ["WORKER_AI_PRECISION_FILTER_CATEGORIES"] = "relation, event"
-        config = _load_precision_filter_config()
-        assert config is not None
-        assert config.categories == ("relation", "event")
-    finally:
-        for k, v in saved.items():
-            os.environ.pop(k, None)
-            if v is not None:
-                os.environ[k] = v
+    snap = resolve_effective_config(
+        global_defaults={
+            "model_ref": "user-extraction-model", "model_source": "user_model",
+            "precision_filter": None, "entity_recovery": None, "writer_autocreate": False,
+        },
+        project_overrides={
+            "precision_filter": {
+                "enabled": True, "categories": ["relation"], "partial_policy": "drop",
+            },
+        },
+    )
+    assert snap.precision_filter is not None
+    assert snap.precision_filter.model_ref == "user-extraction-model"
+    assert snap.precision_filter.model_source == "user_model"
+    assert snap.precision_filter.categories == ("relation",)
+
+
+def test_resolve_filter_honors_explicit_override_model() -> None:
+    """An explicit per-project filter model_ref (e.g. a stronger judge the user picked
+    in the UI) is honored over the extraction-model fallback — still per-user."""
+    from loreweave_extraction import resolve_effective_config
+
+    snap = resolve_effective_config(
+        global_defaults={
+            "model_ref": "extraction-model", "model_source": "user_model",
+            "precision_filter": None, "entity_recovery": None, "writer_autocreate": False,
+        },
+        project_overrides={
+            "precision_filter": {
+                "enabled": True, "model_ref": "explicit-filter-model",
+                "model_source": "user_model", "categories": ["relation"],
+            },
+        },
+    )
+    assert snap.precision_filter is not None
+    assert snap.precision_filter.model_ref == "explicit-filter-model"
 
 
 # ── Cycle 73d — entity recovery env loader ─────────────────────────────

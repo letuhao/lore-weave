@@ -101,30 +101,15 @@ def _load_precision_filter_config() -> PrecisionFilterConfig | None:
             cycle-73b ship uses ``"relation"`` for 55% latency
             reduction at near-identical F1).
     """
-    model_ref = os.environ.get(
-        "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_REF", ""
-    ).strip()
-    if not model_ref:
-        return None
-    partial_policy = os.environ.get(
-        "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_PARTIAL_POLICY", "keep"
-    ).strip() or "keep"
-    model_source = os.environ.get(
-        "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_MODEL_SOURCE", "user_model"
-    ).strip() or "user_model"
-    categories_env = os.environ.get(
-        "KNOWLEDGE_EXTRACTION_PRECISION_FILTER_CATEGORIES",
-        "entity,relation,event",
-    ).strip() or "entity,relation,event"
-    categories = tuple(
-        c.strip() for c in categories_env.split(",") if c.strip()
-    )
-    return PrecisionFilterConfig(
-        model_ref=model_ref,
-        model_source=model_source,  # type: ignore[arg-type]
-        partial_policy=partial_policy,  # type: ignore[arg-type]
-        categories=categories,  # type: ignore[arg-type]
-    )
+    # D-WX-PRECISION-FILTER-MODEL-ARCH: the filter MODEL must NOT come from a platform
+    # env. A hardcoded env model_ref is cross-tenant — submitted as user_model scoped
+    # to the request's user, so provider-registry 404'd "model not found" for every
+    # user who didn't own it (decoupled extraction fold stalled — D-WX live-smoke
+    # finding). The filter is configured PER-PROJECT via
+    # extraction_config.precision_filter (PrecisionFilterOverride: enabled + model_ref
+    # + model_source + categories + partial_policy) — FE-set, DB-stored, resolved
+    # per-user, merged onto these (now model-less) global defaults. No env model source.
+    return None
 
 
 # Cached at module load. Re-read by tests via patch on this name.
