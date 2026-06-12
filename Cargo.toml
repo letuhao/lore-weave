@@ -74,6 +74,9 @@ members = [
     # (world-service Rust shards, future roleplay-service Rust shards) to
     # call glossary-service canon RPCs (read + write + seed-export).
     "clients/rust/glossary_client",
+    # S9 (2026-06-12) — Stateright model checking of foundation protocols
+    # (I9 lifecycle CAS, I13 outbox, I7 cross-reality fan-out).
+    "crates/foundation-model",
 ]
 
 [workspace.package]
