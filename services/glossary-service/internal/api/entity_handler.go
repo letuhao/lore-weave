@@ -465,10 +465,15 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 	where := []string{"e.book_id = $1", "e.deleted_at IS NULL"}
 
 	var displayLangArg int
-	if displayLang != "" {
+	displayLangInArgs := false
+	bindDisplayLang := func() {
+		if displayLang == "" || displayLangInArgs {
+			return
+		}
 		n++
 		displayLangArg = n
 		args = append(args, displayLang)
+		displayLangInArgs = true
 	}
 
 	// Filter: kind_codes
@@ -515,6 +520,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 		searchArg := n
 		args = append(args, "%"+searchVal+"%")
 		if displayLang != "" {
+			bindDisplayLang()
 			where = append(where, fmt.Sprintf(`EXISTS (
 			SELECT 1 FROM entity_attribute_values eav
 			JOIN attribute_definitions ad ON ad.attr_def_id = eav.attr_def_id
@@ -591,6 +597,7 @@ func (s *Server) listEntities(w http.ResponseWriter, r *http.Request) {
 			), '')`
 	displayNameTranslationSQL := `NULL::text`
 	if displayLang != "" {
+		bindDisplayLang()
 		displayNameSQL = fmt.Sprintf(`COALESCE((
 				SELECT COALESCE(NULLIF(at.value, ''), eav.original_value)
 				FROM entity_attribute_values eav
