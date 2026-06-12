@@ -12,6 +12,20 @@ Retry strategy for translation.chapters:
   - After _MAX_TRANSIENT_RETRIES exhausted, ack the original and let the chapter stay failed
     (DB was already updated by handle_chapter_message before raising).
   - Permanent errors (Exception): ack and leave DB state as failed (already updated by handler).
+
+Decouple invariant (D-2B-DECOUPLE-FLAG-COUPLING):
+  The decoupled translate path is split across TWO processes that BOTH gate on the
+  SAME ``translation_decouple_enabled`` flag but carry INDEPENDENT env:
+    - this worker (submits decoupled chapters that release immediately), and
+    - the API container's lifespan (runs the resume consumer + the stuck-resume sweeper
+      off the LLM terminal-event stream).
+  The hard invariant: **decouple ON in the worker ⇒ the terminal-resume consumer MUST be
+  running in the API container, else submitted chapters never resume and stall** until the
+  2h stale-chapter sweep marks them failed. Compose wires the same env to both by
+  convention, but that is NOT enforcement. ``_assert_decouple_consumer_reachable()`` makes
+  the coupling loud at startup: when the flag is on it best-effort probes for the resume
+  consumer group on the terminal stream and emits an actionable WARNING if it's absent
+  (never fatal — a co-start race is benign and self-heals).
 """
 import asyncio
 import json
