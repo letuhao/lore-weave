@@ -635,6 +635,17 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       MINIO_EXTERNAL_URL: ${MINIO_EXTERNAL_URL:-http://localhost:9123}
+      # LLM re-arch Phase 3 M5 — decoupled video-gen. DB + Redis back the
+      # job-row + terminal-event path; the flag (default false) keeps the
+      # inline 201 path verbatim until the worker is turned on.
+      VIDEO_GEN_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_video_gen
+      REDIS_URL: redis://redis:6379
+      VIDEO_GEN_DECOUPLE_ENABLED: ${VIDEO_GEN_DECOUPLE_ENABLED:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "8213:8088"
     healthcheck:
@@ -642,6 +653,39 @@ services:
       interval: 5s
       timeout: 3s
       start_period: 10s
+
+  # LLM re-arch Phase 3 M5 — video-gen terminal-event worker. Same image as
+  # video-gen-service (CMD override → `python -m app.worker`), runs the
+  # loreweave:events:llm_job_terminal consumer + stuck-job sweeper that download
+  # finished videos → MinIO → mark the job-row done. No HTTP port. Flag-gated by
+  # VIDEO_GEN_DECOUPLE_ENABLED (default false → idle), which MUST match the API's
+  # flag: the API only submits decoupled 202 jobs when it's on.
+  video-gen-worker:
+    build:
+      context: ..
+      dockerfile: services/video-gen-service/Dockerfile
+      labels: *build-labels
+    command: ["python", "-m", "app.worker"]
+    environment:
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_EXTERNAL_URL: ${MINIO_EXTERNAL_URL:-http://localhost:9123}
+      VIDEO_GEN_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_video_gen
+      REDIS_URL: redis://redis:6379
+      # Must match video-gen-service: the worker resumes only jobs the API submits.
+      VIDEO_GEN_DECOUPLE_ENABLED: ${VIDEO_GEN_DECOUPLE_ENABLED:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
 
   chat-service:
     build:

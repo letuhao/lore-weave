@@ -76,3 +76,8 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_knowledge')
 -- Event log (worker-infra relay; tables created by worker-infra migrate.go)
 SELECT 'CREATE DATABASE loreweave_events'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_events')\gexec
+
+-- Video generation (LLM re-arch Phase 3 M5 — decoupled video_gen_jobs; tables
+-- created by video-gen-service migrate.py, mirroring the M1 job-row pattern)
+SELECT 'CREATE DATABASE loreweave_video_gen'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'loreweave_video_gen')\gexec
