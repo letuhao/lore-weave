@@ -54,8 +54,25 @@ jobs:
           path: tests/conformance/results/
           if-no-files-found: warn
 
+  loom-ci:
+    name: H1-loom CircuitBreaker race-check (per-PR)
+    # S6 / H1-loom. loom is CPU-only (no stack) and fast (<1ms model), so it gates
+    # per-PR — unlike the heavy live fault drills which run only in the nightly
+    # job below. Runs the breaker-core loom suite under --cfg loom; the bite
+    # (should_panic) proves loom catches an unsynchronized counter.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: loom model-check (breaker-core)
+        env:
+          RUSTFLAGS: "--cfg loom"
+        run: cargo test -p breaker-core loom_tests
+
   standing-integrity-nightly:
-    name: Standing integrity gate (nightly — live battery)
+    name: Standing integrity + S6 fault drills (nightly — live battery)
     # S5 (Battery B). Unlike the bare-runner job above, this boots the foundation
     # stack FIRST so the live-probes (incl. standing-integrity-gate, which seeds N
     # shards → rebuild → real integrity-checker differential → drift+coverage gate,
@@ -72,11 +89,13 @@ jobs:
           go-version: "1.25"
       # The gate smoke discovers binaries at target/debug/{rebuilder,replay-aggregate}
       # and {tests/workload-gen/wg, services/integrity-checker/ic} (no .exe on Linux).
+      # The S6 fault drills additionally need the publisher (services/publisher/pub).
       - name: build foundation binaries
         run: |
           cargo build -p world-service --bin rebuilder --bin replay-aggregate
           go build -C tests/workload-gen -o wg ./cmd/workload-gen
           go build -C services/integrity-checker -o ic ./cmd/integrity-checker
+          go build -C services/publisher -o pub ./cmd/publisher
       # Boot PG + Redis via the foundation-dev compose so the runner's
       # `foundation-stack` predicate is met (else every live-probe → notrun). The
       # default port 55432 is fine on Linux (the dev-box 55600 override is a

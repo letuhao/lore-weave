@@ -233,6 +233,13 @@ func (OSEnvironment) Provides(req string) bool {
 	case "docker":
 		_, err := exec.LookPath("docker")
 		return err == nil
+	case "cargo":
+		// S6 loom-circuit-breaker is a rust-test (RUSTFLAGS=--cfg loom). On the
+		// Go-only bare conformance runner cargo is absent → the case degrades to
+		// notrun instead of fail-closed. A Rust-toolchain CI job (or a dev box)
+		// provides it.
+		_, err := exec.LookPath("cargo")
+		return err == nil
 	case "foundation-stack":
 		// "the live stack is up" = BOTH the foundation Postgres AND Redis are
 		// reachable (publisher-smoke needs both; a PG-only check would

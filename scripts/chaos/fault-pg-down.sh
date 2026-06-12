@@ -31,6 +31,11 @@ TOXIC="bash $ROOT/scripts/chaos/toxic.sh"
 PROXY_DSN="postgres://${PG_USER}:${PG_PASS}@127.0.0.1:${PG_PROXY_PORT}/${DB}?sslmode=disable"
 
 log() { printf '[pg-down] %s\n' "$*"; }
+# Verdict convention (review-impl #1): fault couldn't be injected → NOTRUN
+# (exit 2). System invariant violated under the fault (didn't fail fast, partial
+# corruption, broken recovery) → FAIL (exit 1).
+notrun() { log "NOTRUN(setup/timing): $*"; $TOXIC up pg_proxy >/dev/null 2>&1 || true; exit 2; }
+fail()   { log "FAIL: $*"; $TOXIC up pg_proxy >/dev/null 2>&1 || true; exit 1; }
 psql_db() { docker exec -i "$PG_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$1" "${@:2}"; }
 
 WG="${WG_BIN:-}"
@@ -60,23 +65,18 @@ rc=0
 out="$("$WG" -seed "$SEED" -profile "$PROFILE" -emit -dsn "$PROXY_DSN" 2>&1)" || rc=$?
 elapsed=$(( $(date +%s%3N) - start ))
 
-# fault-real (non-vacuity): a drill that injected nothing would let emit SUCCEED.
-if [ "$rc" -eq 0 ]; then
-  log "FAIL(non-vacuous): emit SUCCEEDED while pg_proxy was down — the fault was not real"
-  $TOXIC up pg_proxy; exit 1
-fi
-# fail FAST: a connection refused returns promptly; a multi-second hang = bad
-# (pool/timeout misconfig). 20s is a generous ceiling for "did not hang".
-if [ "$elapsed" -ge 20000 ]; then
-  log "FAIL: emit took ${elapsed}ms to fail — did not fail fast (hang/timeout misconfig)"
-  $TOXIC up pg_proxy; exit 1
-fi
+# fault-real: emit SUCCEEDING while down = the fault didn't inject (the down
+# mis-fired / DSN bypassed the proxy) → NOTRUN, not a system fail.
+[ "$rc" -ne 0 ] || notrun "emit succeeded while pg_proxy was down — the fault did not inject"
+# fail FAST: a connection refused returns promptly; a multi-second hang = a REAL
+# bad behavior (pool/timeout misconfig). 20s is a generous ceiling for "did not hang".
+[ "$elapsed" -lt 20000 ] || fail "emit took ${elapsed}ms to fail — did not fail fast (hang/timeout misconfig)"
 log "emit failed fast in ${elapsed}ms (rc=$rc) — graceful: ${out##*$'\n'}"
 
 # no partial corruption: the failed emit (connection refused / tx rollback) must
-# have written NOTHING. Check DIRECT (the proxy is down).
+# have written NOTHING. A non-zero count is a REAL atomicity violation → FAIL.
 wrote="$(psql_db "$DB" -tA -c "SELECT count(*) FROM events")"
-[ "$wrote" = "0" ] || { log "FAIL: ${wrote} event(s) written by a FAILED emit — partial corruption"; $TOXIC up pg_proxy; exit 1; }
+[ "$wrote" = "0" ] || fail "${wrote} event(s) written by a FAILED emit — partial corruption"
 log "no partial state: 0 events written by the failed emit (transactional)"
 
 # ── recovery: up → fresh emit → C3 verify clean ──────────────────────────────
@@ -84,7 +84,7 @@ log "UP pg_proxy; fresh emit + C3 verify on recovery ..."
 $TOXIC up pg_proxy
 "$WG" -seed "$SEED" -profile "$PROFILE" -emit -dsn "$PROXY_DSN"
 ev="$(psql_db "$DB" -tA -c "SELECT count(*) FROM events")"
-[ "$ev" -gt 0 ] || { log "FAIL: fresh emit wrote 0 events after recovery"; exit 1; }
+[ "$ev" -gt 0 ] || fail "fresh emit wrote 0 events after recovery — recovery broken"
 "$WG" -seed "$SEED" -profile "$PROFILE" -verify -dsn "$PROXY_DSN"
 $TOXIC reset
 $TOXIC delete-proxy pg_proxy
