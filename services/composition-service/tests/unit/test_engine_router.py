@@ -399,3 +399,77 @@ def test_get_job_404_and_happy(ctx):
     c, _, _, _, jobs, _, _ = ctx
     r = c.get(f"/v1/composition/jobs/{JOB}")
     assert r.status_code == 200 and r.json()["id"] == str(JOB)
+
+
+# ── M4 Option A: accept/persist a worker-computed chapter result ──
+
+class _StubBook:
+    def __init__(self):
+        self.patched: list = []
+
+    async def get_draft(self, book_id, chapter_id, bearer):
+        return {"draft_version": 7}
+
+    async def patch_draft(self, book_id, chapter_id, bearer, *, body,
+                          expected_draft_version, body_format, commit_message):
+        self.patched.append(commit_message)
+        return {"draft_version": 8}
+
+
+def _use_book(stub):
+    from app.main import app
+    from app.deps import get_book_client_dep
+    app.dependency_overrides[get_book_client_dep] = lambda: stub
+
+
+def test_persist_job_writes_draft_and_stamps_result(ctx):
+    c, _, _, _, jobs, _, _ = ctx
+    book = _StubBook()
+    _use_book(book)
+    CH = uuid.uuid4()
+    jobs.job = _job(status="completed", result={
+        "text": "stitched chapter", "chapter_id": str(CH),
+        "assembly_mode": "per_scene_stitch", "persisted": False})
+    r = c.post(f"/v1/composition/jobs/{JOB}/persist", json={})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["persisted"] is True and body["draft_version"] == 8
+    assert book.patched == ["AI chapter draft (per_scene_stitch, accepted)"]
+    # the result is re-stamped persisted=True (idempotent re-accept guard)
+    last = jobs.updates[-1]
+    assert last[1] == "completed" and last[2]["result"]["persisted"] is True
+
+
+def test_persist_job_idempotent_when_already_persisted(ctx):
+    c, _, _, _, jobs, _, _ = ctx
+    book = _StubBook()
+    _use_book(book)
+    jobs.job = _job(status="completed", result={
+        "text": "x", "chapter_id": str(uuid.uuid4()), "persisted": True, "draft_version": 4})
+    r = c.post(f"/v1/composition/jobs/{JOB}/persist", json={})
+    assert r.status_code == 200 and r.json() == {
+        "job_id": str(JOB), "persisted": True, "draft_version": 4, "already": True}
+    assert book.patched == []  # no second PATCH
+
+
+def test_persist_job_422_when_no_chapter_id(ctx):
+    c, _, _, _, jobs, _, _ = ctx
+    _use_book(_StubBook())
+    jobs.job = _job(status="completed", result={"text": "a per-scene draft"})  # no chapter_id
+    r = c.post(f"/v1/composition/jobs/{JOB}/persist", json={})
+    assert r.status_code == 422 and r.json()["detail"]["code"] == "JOB_NOT_PERSISTABLE"
+
+
+def test_persist_job_409_when_not_completed(ctx):
+    c, _, _, _, jobs, _, _ = ctx
+    _use_book(_StubBook())
+    jobs.job = _job(status="running", result={"text": "x", "chapter_id": str(uuid.uuid4())})
+    r = c.post(f"/v1/composition/jobs/{JOB}/persist", json={})
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "JOB_NOT_COMPLETED"
+
+
+def test_persist_job_404_when_missing(ctx):
+    c, _, _, _, jobs, _, _ = ctx
+    _use_book(_StubBook())
+    jobs.job = None
+    assert c.post(f"/v1/composition/jobs/{JOB}/persist", json={}).status_code == 404

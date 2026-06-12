@@ -151,6 +151,12 @@ class StitchBody(BaseModel):
     persist: bool = True
 
 
+class PersistJobBody(BaseModel):
+    # M4 Option A accept-step. Optional override for the book-draft commit message;
+    # defaults to an "AI chapter draft (<mode>, accepted)" label.
+    commit_message: Annotated[str, StringConstraints(max_length=500)] | None = None
+
+
 class CritiqueBody(BaseModel):
     # Optional: an advisory critique may run before a revision exists (the FE
     # critiques the just-generated passage). When present it anchors the
@@ -1107,6 +1113,65 @@ async def get_job(
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
     return job.model_dump(mode="json")
+
+
+@router.post("/jobs/{job_id}/persist")
+async def persist_job(
+    job_id: UUID,
+    body: PersistJobBody,
+    user_id: UUID = Depends(get_current_user),
+    bearer: str = Depends(get_bearer_token),
+    jobs: GenerationJobsRepo = Depends(get_generation_jobs_repo),
+    works: WorksRepo = Depends(get_works_repo),
+    book: BookClient = Depends(get_book_client_dep),
+) -> dict[str, Any]:
+    """M4 Option A — the accept/persist step for a WORKER-computed chapter result.
+
+    The composition worker has only the internal-auth LLM (no user bearer), so it
+    COMPUTES the chapter (stitch / chapter generate) and stores the text in
+    ``generation_job.result`` with ``persisted: False``; this endpoint writes that
+    text into the book-service draft with the CALLER's bearer. For the inline
+    (flag-off) path the endpoint persisted directly, so this is a no-op there — it
+    exists for the worker (202) path the FE polls then accepts.
+
+    Guards: the job must be the caller's, ``completed``, and carry a
+    ``chapter_id`` + ``text`` in its result (a per-scene draft has no chapter_id →
+    422, never mis-persisted as a chapter). Idempotent: a job already
+    ``persisted`` returns success without a second write (the cross-store
+    best-effort rule — the text is durable in the job regardless)."""
+    job = await jobs.get(user_id, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    if job.status != "completed":
+        raise HTTPException(status_code=409, detail={
+            "code": "JOB_NOT_COMPLETED", "status": job.status})
+    result = dict(job.result or {})
+    chapter_id = result.get("chapter_id")
+    text = result.get("text")
+    if not chapter_id or not text:
+        # A per-scene / non-chapter result is not a persistable chapter draft.
+        raise HTTPException(status_code=422, detail={
+            "code": "JOB_NOT_PERSISTABLE",
+            "detail": "job result has no chapter_id/text to persist as a chapter draft"})
+    if result.get("persisted"):  # idempotent — already written, don't double-PATCH
+        return {"job_id": str(job.id), "persisted": True,
+                "draft_version": result.get("draft_version"), "already": True}
+
+    work = await works.get(user_id, job.project_id)
+    if work is None:
+        raise HTTPException(status_code=404, detail="work not found")
+
+    assembly = result.get("assembly_mode", "chapter")
+    msg = body.commit_message or f"AI chapter draft ({assembly}, accepted)"
+    persisted, draft_version, persist_error = await _persist_chapter_draft(
+        book, work.book_id, UUID(str(chapter_id)), bearer, text, msg)
+    if persisted:
+        # Stamp the result so a re-accept is idempotent + the job reflects the write.
+        await jobs.update_status(
+            user_id, job.id, job.status,
+            result={**result, "persisted": True, "draft_version": draft_version})
+    return {"job_id": str(job.id), "persisted": persisted,
+            "draft_version": draft_version, "persist_error": persist_error}
 
 
 @router.post("/jobs/{job_id}/critique")

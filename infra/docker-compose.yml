@@ -192,6 +192,41 @@ services:
     ports:
       - "8217:8093"
 
+  # LLM re-arch Phase 3 M4 — composition batch-job worker. Same image as
+  # composition-service (CMD override → `python -m app.worker`), runs the
+  # Redis-Streams composition_jobs consumer + stuck-job sweeper that drive the
+  # decoupled batch ops (decompose / stitch / generate / chapter-gen). No HTTP
+  # port. Flag-gated by COMPOSITION_WORKER_ENABLED (default false → idle), which
+  # MUST match the API's flag: the API only enqueues 202 jobs when it's on.
+  composition-worker:
+    build:
+      context: ..
+      dockerfile: services/composition-service/Dockerfile
+      labels: *build-labels
+    command: ["python", "-m", "app.worker"]
+    environment:
+      COMPOSITION_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_composition
+      JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: INFO
+      # Must match composition-service: the worker runs only when the API enqueues.
+      COMPOSITION_WORKER_ENABLED: ${COMPOSITION_WORKER_ENABLED:-false}
+      # Same internal service URLs as the API — the worker re-resolves pack context
+      # (book/glossary/knowledge) + the internal-auth LLM for the compute half.
+      KNOWLEDGE_INTERNAL_URL: http://knowledge-service:8092
+      GLOSSARY_INTERNAL_URL: http://glossary-service:8088
+      BOOK_INTERNAL_URL: http://book-service:8082
+      LLM_GATEWAY_INTERNAL_URL: http://provider-registry-service:8085
+      PACK_COMPRESS_RECENT_THRESHOLD_CHARS: ${PACK_COMPRESS_RECENT_THRESHOLD_CHARS:-6000}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   sharing-service:
     # Phase 6c — repo-root build context so the Dockerfile can COPY
     # sdks/go/observability for the go.mod replace directive.
