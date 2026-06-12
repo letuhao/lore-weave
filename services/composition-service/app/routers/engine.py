@@ -15,6 +15,7 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi import status as http_status
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
 
@@ -23,6 +24,7 @@ from app.clients.glossary_client import GlossaryClient
 from app.clients.knowledge_client import KnowledgeClient
 from app.clients.llm_client import LLMClient
 from app.config import settings
+from app.worker.events import enqueue_job
 from app.db.repositories import ChapterJobInFlightError, ReferenceViolationError
 from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.generation_corrections import (
@@ -945,6 +947,51 @@ async def stitch_chapter_endpoint(
     # ~their combined length), clamped to the ceiling — long chapters need room.
     max_out = body.max_output_tokens or min(
         len(drafts) * settings.chapter_gen_per_scene_tokens, settings.stitch_max_tokens)
+
+    if settings.composition_worker_enabled:
+        # M4 (Option A) — resolve the bearer-only bits (chapter_sort, critic config)
+        # HERE, persist them + the resolved context in job.input, enqueue → 202. The
+        # worker runs stitch + canon-reflect + stores the result; persistence to the
+        # book draft stays a separate bearer accept-step (GET /jobs/{id} polls). Same
+        # in-flight guard + idempotency as the inline path.
+        chapter_sort = (await book.get_chapter_sort_orders([chapter_id])).get(str(chapter_id))
+        sdict = work.settings or {}
+        c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
+        distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+        job_input = {
+            "model_source": body.model_source, "model_ref": str(body.model_ref),
+            "operation": "stitch_chapter", "assembly_mode": "per_scene_stitch",
+            "chapter_id": str(chapter_id), "chapter_intent": chapter_intent,
+            "cast_glossary_ids": [str(e) for e in union_cast(scenes)],
+            "chapter_sort": chapter_sort, "max_out": max_out,
+            "reasoning": reasoning.source,
+            "reasoning_effort": None if reasoning.passthrough else reasoning.effort,
+            "reflect_max_iters": max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),
+            "critic_source": str(c_src) if distinct else None,
+            "critic_ref": str(c_ref) if distinct else None,
+        }
+        try:
+            job, created = await jobs.create_chapter_job_guarded(
+                user_id, project_id, chapter_id, operation="stitch_chapter",
+                mode="auto", status="pending", input=job_input,
+                idempotency_key=body.idempotency_key,
+                stale_secs=settings.chapter_inflight_stale_secs)
+        except ChapterJobInFlightError as exc:
+            raise HTTPException(status_code=409, detail={
+                "code": "CHAPTER_JOB_IN_FLIGHT", "active_job_id": exc.active_job_id})
+        if not created:  # idempotent replay
+            r = job.result or {}
+            return JSONResponse({"job_id": str(job.id), "status": job.status,
+                                 "mode": "auto", "replay": True,
+                                 "text": r.get("text", ""), "canon": r.get("canon"),
+                                 "assembly_mode": "per_scene_stitch"})
+        enqueued = await enqueue_job(
+            settings.redis_url, job_id=str(job.id),
+            user_id=str(user_id), project_id=str(project_id))
+        return JSONResponse(
+            status_code=http_status.HTTP_202_ACCEPTED,
+            content={"job_id": str(job.id), "status": "pending",
+                     "enqueued": "ok" if enqueued else "retriggerable"})
 
     # In-flight guard (Cycle-2): reject a concurrent chapter-level job for this
     # chapter (a running generate or stitch) with 409 — both write this chapter's

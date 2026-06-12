@@ -19,6 +19,7 @@ from uuid import UUID
 import asyncpg
 import redis.asyncio as aioredis
 
+from app.clients.knowledge_client import get_knowledge_client
 from app.clients.llm_client import LLMClient, get_llm_client
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.worker.events import COMPOSITION_JOBS_STREAM, COMPOSITION_WORKER_GROUP
@@ -26,6 +27,7 @@ from app.worker.operations import (
     SUPPORTED_OPERATIONS,
     UnsupportedOperationError,
     run_decompose,
+    run_stitch,
 )
 
 __all__ = [
@@ -87,10 +89,16 @@ async def run_job(
 
 
 async def _run_operation(pool: asyncpg.Pool, llm: LLMClient, job) -> dict:
-    """Dispatch by operation. Foundation: decompose only; later increments add
-    generate/selection-edit/chapter-gen/stitch (they also take pool + clients)."""
+    """Dispatch by operation. The op's bearer-authenticated context was resolved
+    into job.input by the endpoint; user_id/project_id come off the job row. Ops
+    needing knowledge (canon-reflect) grab the internal-auth singleton lazily."""
     if job.operation == "decompose_preview":
         return await run_decompose(llm, user_id=str(job.user_id), input=job.input or {})
+    if job.operation == "stitch_chapter":
+        inp = dict(job.input or {})
+        inp.setdefault("user_id", str(job.user_id))
+        inp.setdefault("project_id", str(job.project_id))
+        return await run_stitch(pool, llm, get_knowledge_client(), input=inp)
     raise UnsupportedOperationError(job.operation)
 
 
