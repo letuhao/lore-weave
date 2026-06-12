@@ -84,6 +84,45 @@ def parse_issues(text: str, valid_indices: set[int]) -> list[Issue]:
     return issues
 
 
+# ── Decouple seams (LLM re-arch Phase 2b-T3b) ───────────────────────────────────
+# The submit-shape + the parse are split out PURE so the decoupled v3_verify SM can
+# submit the LLM-verify fire-and-forget and parse on the terminal event. The sync
+# llm_verify below calls them, so behaviour is byte-identical.
+
+
+def build_verify_submit_kwargs(
+    source_texts: dict[int, str], draft_texts: dict[int, str],
+    source_lang: str, target_lang: str, verifier_model: tuple[str, str],
+    *, knowledge_brief: str = "",
+) -> dict:
+    """Pure: submit_and_wait / submit_job kwargs for the LLM-verify call (user_id +
+    transient_retry_budget stay per-call)."""
+    src_model, ref = verifier_model
+    messages = _build_messages(source_texts, draft_texts, source_lang, target_lang,
+                               knowledge_brief)
+    return dict(
+        operation="translation",
+        model_source=src_model,
+        model_ref=str(ref),
+        input={
+            "messages": messages,
+            "reasoning_effort": "none",
+            "chat_template_kwargs": {"enable_thinking": False},
+        },
+        chunking=None,
+        job_meta={"verifier": "llm"},
+    )
+
+
+def parse_verify_job(job, valid_indices: set[int]) -> list[Issue]:
+    """Pure: validate the terminal Job + parse → Issues (detected_by='llm'). Returns []
+    on any non-usable outcome (verification never fails the chapter)."""
+    if getattr(job, "status", None) != "completed":
+        return []
+    text, _, _ = _parse_sdk_response(job)
+    return parse_issues(text, valid_indices)
+
+
 async def llm_verify(
     source_texts: dict[int, str],
     draft_texts: dict[int, str],
@@ -98,28 +137,16 @@ async def llm_verify(
     """Best-effort LLM semantic verification → list[Issue] (detected_by='llm')."""
     if not draft_texts:
         return []
-    src_model, ref = verifier_model
-    messages = _build_messages(source_texts, draft_texts, source_lang, target_lang,
-                               knowledge_brief)
     try:
         job = await llm_client.submit_and_wait(
             user_id=msg["user_id"],
-            operation="translation",
-            model_source=src_model,
-            model_ref=str(ref),
-            input={
-                "messages": messages,
-                "reasoning_effort": "none",
-                "chat_template_kwargs": {"enable_thinking": False},
-            },
-            chunking=None,
-            job_meta={"verifier": "llm"},
             transient_retry_budget=1,
+            **build_verify_submit_kwargs(
+                source_texts, draft_texts, source_lang, target_lang, verifier_model,
+                knowledge_brief=knowledge_brief,
+            ),
         )
-        if job.status != "completed":
-            return []
-        text, _, _ = _parse_sdk_response(job)
-        return parse_issues(text, set(draft_texts.keys()))
+        return parse_verify_job(job, set(draft_texts.keys()))
     except Exception as exc:  # best-effort — never fail the chapter on verification
         log.warning("v3 LLM verifier failed (non-fatal): %s", exc)
         return []

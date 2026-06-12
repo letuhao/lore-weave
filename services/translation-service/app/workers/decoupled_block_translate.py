@@ -216,7 +216,7 @@ def memo_from_translated(rs: dict[str, Any]) -> str:
 async def start_chapter_blocks(
     *, pool, llm_client: LLMClient, chapter_translation_id: UUID,
     blocks: list[dict], source_lang: str, msg: dict, context_window: int,
-    chapter_text: str = "",
+    chapter_text: str = "", v3: dict | None = None,
 ) -> bool:
     """Build the batch plan + glossary context, seed resume_state, submit batch 0.
     Returns True if a batch was submitted (chapter now in-flight → the consumer
@@ -268,6 +268,12 @@ async def start_chapter_blocks(
     rs["msg"] = msg
     rs["context_window"] = context_window
     rs["chapter_text"] = chapter_text  # quality-feed source_text at finalize (M7d parity)
+    if v3 is not None:
+        # V3 decouple (2b-T3b): chain the verify/correct loop after the block translate.
+        # The verifier/corrector need the VERIFIED glossary map (not the auto-correct map);
+        # stash it from the same glossary_ctx so the consumer doesn't refetch.
+        rs["post_block"] = "v3_verify"
+        rs["v3"] = {**v3, "cmap": dict(glossary_ctx.verified_map or {})}
     await _submit_next_batch(ex=pool, llm_client=llm_client,
                              chapter_translation_id=chapter_translation_id, rs=rs)
     return True
@@ -371,6 +377,16 @@ async def resume(
             if rs["translatable_count"] > 0 and translated_count == 0:
                 fail_reason = (
                     f"translation produced no output: 0/{rs['translatable_count']} blocks translated"
+                )
+            elif rs.get("post_block") == "v3_verify":
+                # V3 decouple (2b-T3b): instead of finalizing, chain into the verify/correct
+                # loop UNDER this lock — the transition submits the first verify/corrector and
+                # advances provider_job_id, so a redelivered last-batch terminal skips. Returns
+                # a finalize payload ONLY for the no-LLM-work case (rule_only + no HIGH rule
+                # issues); None ⇒ v3_verify is now in flight (don't finalize/clear here).
+                from .v3.decoupled_v3_verify import transition_from_block
+                finalize_payload = await transition_from_block(
+                    conn, llm_client, chapter_translation_id, rs, result_blocks,
                 )
             else:
                 finalize_payload = (

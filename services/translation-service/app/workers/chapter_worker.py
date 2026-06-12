@@ -184,6 +184,25 @@ async def _process_chapter(msg, job_id, chapter_id, user_id, pool, publish_event
                 return  # released — the consumer finalizes on the terminal events
             # No translatable batches → fall through to the synchronous path, which
             # finalizes the original blocks as the empty-plan case does.
+        elif (
+            settings.translation_decouple_enabled
+            and pipeline_version == "v3"
+            # 2b-T3b — full V3 decouple: block translate → (mode-chain) verify/correct loop
+            # → defer-finalize. The 2-pass cold-start re-translate (D-V3-DECOUPLE-COLDSTART-2PASS)
+            # stays synchronous, so those jobs fall through to the sync v3 path.
+            and msg.get("cold_start_mode") != "two_pass"
+        ):
+            from .v3.orchestrator import decoupled_v3_block_start
+            log.info("chapter %s: using DECOUPLED V3 pipeline (decouple flag on)", chapter_id)
+            submitted = await decoupled_v3_block_start(
+                pool=pool, llm_client=llm_client,
+                chapter_translation_id=chapter_translation_id,
+                blocks=blocks, source_lang=source_lang, msg=msg,
+                context_window=context_window, chapter_text=chapter_text,
+            )
+            if submitted:
+                return  # released — the consumer chains block→v3_verify→finalize
+            # No translatable batches → fall through to the synchronous v3 path.
         (translated_blocks, input_tokens, output_tokens, translated_count,
          translatable_count, translated_texts) = (
             await _translate_blocks(

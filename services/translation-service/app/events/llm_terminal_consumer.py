@@ -162,7 +162,16 @@ class LLMTerminalConsumer:
         msg = rs["msg"]
         set_campaign_id(msg.get("campaign_id"))
         try:
-            if rs.get("mode") == "block":
+            if rs.get("mode") == "v3_verify":
+                # 2b-T3b — the decoupled V3 verify/correct loop (chained after the block
+                # translate). Same finalize_cb (_finalize_chapter honors pipeline_version='v3').
+                from ..workers.v3 import decoupled_v3_verify
+                await decoupled_v3_verify.resume(
+                    pool=self._pool, llm_client=self._llm_client, job=job,
+                    chapter_translation_id=ct_id,
+                    finalize_cb=self._make_block_finalize_cb(msg, ct_id, rs),
+                )
+            elif rs.get("mode") == "block":
                 await decoupled_block_translate.resume(
                     pool=self._pool, llm_client=self._llm_client, job=job,
                     chapter_translation_id=ct_id,

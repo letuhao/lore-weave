@@ -102,25 +102,17 @@ async def _maybe_two_pass_cold_start(
         return result
 
 
-async def translate_chapter_blocks_v3(
-    blocks: list[dict],
-    source_lang: str,
-    msg: dict,
-    pool,
-    chapter_translation_id: UUID,
-    *,
-    llm_client,
-    context_window: int = 8192,
-):
-    from ..session_translator import translate_chapter_blocks
+async def _compute_v3_context(blocks: list[dict], source_lang: str, msg: dict) -> tuple[str, str]:
+    """V3 Translator/Verifier context prelude (M4b/G4 knowledge brief + M4d-1 timeline +
+    M4c prev-memo + romanization), computed ONCE per chapter. Returns (extra_system,
+    knowledge_brief) — the brief is fed to BOTH the Translator and the Verifier (§12.2 #4).
+    Shared by the sync `translate_chapter_blocks_v3` and the decoupled v3 block start so
+    they stay byte-identical. Each segment is best-effort (must not fail the translation)."""
     from ..block_classifier import classify_block, extract_translatable_text
     from .romanization import romanization_instruction
-    from .semantic_chunker import tag_groups
     from .knowledge_context import build_context_brief, build_timeline_block
+    from .chapter_memo import build_prev_memo_block
 
-    # M4b/G4 — pronoun/honorific brief from glossary bios + knowledge relations,
-    # computed ONCE per chapter and fed to BOTH the Translator and the Verifier
-    # (§12.2 #4). Best-effort: a failure here must not fail the translation.
     try:
         chapter_src = "\n".join(
             extract_translatable_text(b) for b in blocks
@@ -133,12 +125,6 @@ async def translate_chapter_blocks_v3(
         log.warning("v3 knowledge brief failed (non-fatal): %s", exc)
         knowledge_brief = ""
 
-    # M4d-1 — cross-chapter "story so far" timeline memo (knowledge events before
-    # this chapter). Best-effort, V3-only, Translator-side only (continuity
-    # context, not a verifier rule). Keyed on the book-service `sort_order` (the
-    # global reading position knowledge's event_order uses) — NOT the job-local
-    # `chapter_index`. When sort_order is unavailable we skip rather than window
-    # the wrong events.
     timeline_block = ""
     chapter_order = msg.get("chapter_sort_order")
     if chapter_order is not None:
@@ -150,15 +136,70 @@ async def translate_chapter_blocks_v3(
             log.warning("v3 timeline memo failed (non-fatal): %s", exc)
             timeline_block = ""
 
-    # M4c — opportunistic prev-chapter memo (§12.1): used when chapter N-1's memo
-    # already exists; never forces ordering. V3-only (V2 ignores msg["prev_memo"]).
-    from .chapter_memo import build_prev_memo_block
     prev_memo_block = build_prev_memo_block(msg.get("prev_memo"))
-
     extra = romanization_instruction(source_lang, msg.get("target_language", ""))
     for _seg in (knowledge_brief, prev_memo_block, timeline_block):
         if _seg:
             extra = (extra + "\n\n" + _seg).strip()
+    return extra, knowledge_brief
+
+
+def _qa_config(msg: dict) -> tuple[str, bool, int]:
+    """(qa_depth, use_llm, max_rounds) from the job — the same gating the sync
+    _verify_correct_persist applies (rule_only skips LLM; thorough loops ≤5)."""
+    qa_depth = msg.get("qa_depth", "standard")
+    use_llm = qa_depth != "rule_only"
+    try:
+        configured_rounds = int(msg.get("max_qa_rounds", 2))
+    except (TypeError, ValueError):
+        configured_rounds = 2
+    max_rounds = min(_MAX_QA_ROUNDS, max(1, configured_rounds)) if qa_depth == "thorough" else 1
+    return qa_depth, use_llm, max_rounds
+
+
+async def decoupled_v3_block_start(
+    *, pool, llm_client, chapter_translation_id: UUID, blocks: list[dict],
+    source_lang: str, msg: dict, context_window: int, chapter_text: str = "",
+) -> bool:
+    """2b-T3b — start the DECOUPLED V3 pipeline: the block translate runs via
+    `decoupled_block_translate` (with the V3 extras as extra_system + the V3 config stashed
+    in resume_state['v3']); on block completion the consumer chains into the decoupled
+    verify/correct loop (mode='v3_verify') instead of finalizing (defer-finalize). Returns
+    True if a batch was submitted (released); False if there were no translatable batches
+    (caller falls through to the sync v3 path)."""
+    from ..decoupled_block_translate import start_chapter_blocks
+
+    extra, knowledge_brief = await _compute_v3_context(blocks, source_lang, msg)
+    qa_depth, use_llm, max_rounds = _qa_config(msg)
+    return await start_chapter_blocks(
+        pool=pool, llm_client=llm_client, chapter_translation_id=chapter_translation_id,
+        blocks=blocks, source_lang=source_lang,
+        msg={**msg, "extra_system": extra}, context_window=context_window,
+        chapter_text=chapter_text,
+        v3={
+            "knowledge_brief": knowledge_brief,
+            "verifier_model": list(_verifier_model(msg)),
+            "qa_depth": qa_depth, "use_llm": use_llm, "max_rounds": max_rounds,
+        },
+    )
+
+
+async def translate_chapter_blocks_v3(
+    blocks: list[dict],
+    source_lang: str,
+    msg: dict,
+    pool,
+    chapter_translation_id: UUID,
+    *,
+    llm_client,
+    context_window: int = 8192,
+):
+    from ..session_translator import translate_chapter_blocks
+    from .semantic_chunker import tag_groups
+
+    # M4b/G4 knowledge brief + M4d-1 timeline + M4c prev-memo + romanization (shared
+    # with the decoupled v3 start so both prelude identically).
+    extra, knowledge_brief = await _compute_v3_context(blocks, source_lang, msg)
 
     result = await translate_chapter_blocks(
         blocks, source_lang, msg, pool, chapter_translation_id,

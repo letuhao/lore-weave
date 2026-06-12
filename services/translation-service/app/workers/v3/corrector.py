@@ -41,6 +41,46 @@ def _build_messages(source_text, draft_text, issues, source_lang, target_lang, g
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
+# ── Decouple seams (LLM re-arch Phase 2b-T3b) ───────────────────────────────────
+# The per-block submit-shape + the parse are split out PURE so the decoupled v3_verify
+# SM can fan out one corrector job per flagged block (fire-and-forget) and apply on the
+# terminal events. The sync correct_high_severity_blocks below calls them, byte-identical.
+
+
+def build_corrector_submit_kwargs(
+    source_text: str, draft_text: str, issues, source_lang: str, target_lang: str,
+    glossary_block: str, *, block_idx: int,
+) -> dict:
+    """Pure: submit kwargs for ONE block's correction (user_id + transient_retry_budget
+    stay per-call). model_source/model_ref come from the job msg at the call site."""
+    messages = _build_messages(
+        source_text, draft_text, issues, source_lang, target_lang, glossary_block,
+    )
+    return dict(
+        operation="translation",
+        input={
+            "messages": messages,
+            # Suppress hidden thinking on reasoning models (parity with the V2
+            # translator) so reasoning tokens don't burn the output budget.
+            "reasoning_effort": "none",
+            "chat_template_kwargs": {"enable_thinking": False},
+        },
+        chunking=None,
+        job_meta={"corrector_block": block_idx},
+    )
+
+
+def parse_corrector_job(job) -> str | None:
+    """Pure: validate the terminal Job + extract the corrected text. Returns None on any
+    non-usable outcome (the caller keeps the original draft)."""
+    if getattr(job, "status", None) != "completed":
+        return None
+    text, _, _ = _parse_sdk_response(job)
+    if text and text.strip():
+        return text.strip()
+    return None
+
+
 async def correct_high_severity_blocks(
     flagged_indices,
     source_texts: dict[int, str],
@@ -62,31 +102,20 @@ async def correct_high_severity_blocks(
         issues = [i for i in report.issues if i.block_index == idx and i.severity == "high"]
         if not issues:
             continue
-        messages = _build_messages(
-            source_texts[idx], draft_texts.get(idx, ""), issues,
-            source_lang, target_lang, glossary_block,
-        )
         try:
             job = await llm_client.submit_and_wait(
                 user_id=msg["user_id"],
-                operation="translation",
                 model_source=msg["model_source"],
                 model_ref=str(msg["model_ref"]),
-                input={
-                    "messages": messages,
-                    # Suppress hidden thinking on reasoning models (parity with the
-                    # V2 translator) so reasoning tokens don't burn the output budget.
-                    "reasoning_effort": "none",
-                    "chat_template_kwargs": {"enable_thinking": False},
-                },
-                chunking=None,
-                job_meta={"corrector_block": idx},
                 transient_retry_budget=1,
+                **build_corrector_submit_kwargs(
+                    source_texts[idx], draft_texts.get(idx, ""), issues,
+                    source_lang, target_lang, glossary_block, block_idx=idx,
+                ),
             )
-            if job.status == "completed":
-                text, _, _ = _parse_sdk_response(job)
-                if text and text.strip():
-                    corrected[idx] = text.strip()
+            text = parse_corrector_job(job)
+            if text:
+                corrected[idx] = text
         except Exception as exc:  # best-effort — keep the original draft on failure
             log.warning("v3 corrector: block %s re-translate failed (non-fatal): %s", idx, exc)
     return corrected
