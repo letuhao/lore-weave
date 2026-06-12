@@ -8,7 +8,31 @@
 
 ## Current status & next session (handoff)
 
-> **🆕 2026-05-31 (session 100) — KÖPPEN CLIMATE ON THE SPHERE — BUILT.**
+> **🆕 2026-05-31 (session 100) — 3D WORLD EXPORT — BUILT.** The world MODEL has
+> been a real 3D sphere (3D Voronoi mesh + `u16` elevation + plate tectonics + the
+> climate arc) all along, but had only ever been rendered to 2D images. Added
+> `crates/world-gen/src/export.rs` (new): two exports so the planet can be seen/used
+> in true 3D —
+> - **glTF 2.0 `.glb`** displaced globe mesh (lat/lon grid displaced by elevation,
+>   ocean clamped to a smooth sea, continents rise above), with an **embedded
+>   equirectangular biome texture** + smooth normals. CLI `--glb`/`--glb-grid`
+>   (512)/`--glb-texture` (2048)/`--exaggeration` (0.06). Open in Blender/Godot/Unity
+>   to see the 3D planet.
+> - **16-bit equirectangular heightmap PNG** for terrain pipelines. CLI
+>   `--heightmap-png`/`--heightmap-width` (2048).
+>
+> Hand-rolled GLB writer via `serde_json` (no new dep). 7 export tests + full lib 404
+> green, clippy-clean, `/review-impl` (normals-outward guard added; pole-normal
+> fallback fixed). Real seed-7 `.glb` independently validated as glTF 2.0. No
+> `content_hash` impact (render-side). Spec/plan:
+> [`docs/specs/2026-05-31-world-3d-export.md`](../../specs/2026-05-31-world-3d-export.md),
+> [`docs/plans/2026-05-31-world-3d-export.md`](../../plans/2026-05-31-world-3d-export.md).
+> **Remaining "see 3D in-app" option:** a built-in three.js globe viewer in the
+> frontend (not built — export-only for now).
+>
+> ---
+>
+> **2026-05-31 (session 100) — KÖPPEN CLIMATE ON THE SPHERE — BUILT.**
 > Branch `world-gen-sdk-refactor` (climate arc → new PR; PR #13 already merged).
 > Built candidate A from the session-99
 > spec: ported the **validated** `flat_climate` Köppen-Geiger classifier into the

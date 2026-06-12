@@ -17,6 +17,7 @@ pub mod climate;
 pub mod creative_seed;
 pub mod culture;
 pub mod erosion;
+pub mod export;
 pub mod feature;
 pub mod flat_climate;
 pub mod flatworld;

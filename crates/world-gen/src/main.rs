@@ -154,6 +154,25 @@ struct GenerateArgs {
     /// Optional political-map SVG path.
     #[arg(long)]
     svg: Option<PathBuf>,
+    /// Optional 3D export — a glTF 2.0 `.glb` displaced globe mesh with an
+    /// embedded equirectangular biome texture (open in Blender / Godot / Unity).
+    #[arg(long)]
+    glb: Option<PathBuf>,
+    /// `.glb` mesh grid resolution (longitude segments; latitude = half). Default 512.
+    #[arg(long, default_value_t = 512)]
+    glb_grid: u32,
+    /// `.glb` embedded biome-texture width (height = half). Default 2048.
+    #[arg(long, default_value_t = 2048)]
+    glb_texture: u32,
+    /// `.glb` vertical exaggeration of elevation (planets need it to read). Default 0.06.
+    #[arg(long, default_value_t = 0.06)]
+    exaggeration: f32,
+    /// Optional 16-bit equirectangular heightmap PNG path (terrain-engine input).
+    #[arg(long)]
+    heightmap_png: Option<PathBuf>,
+    /// Heightmap width (height = half). Default 2048.
+    #[arg(long, default_value_t = 2048)]
+    heightmap_width: u32,
     /// Render detail — **pixels per cell** (linear). The PNG dimensions are
     /// derived from this × the cell count × the projection aspect (2:1 for
     /// equirectangular, 1:1 for orthographic), so a bigger world renders to a
@@ -462,6 +481,28 @@ fn run_generate(cli: GenerateArgs) -> ExitCode {
             return ExitCode::FAILURE;
         }
         println!("wrote {}", svg.display());
+    }
+    if let Some(path) = &cli.heightmap_png {
+        let bytes = world_gen::export::heightmap_png(&map, cli.heightmap_width);
+        if let Err(e) = std::fs::write(path, bytes) {
+            eprintln!("error: write heightmap {}: {e}", path.display());
+            return ExitCode::FAILURE;
+        }
+        println!("wrote {} (16-bit equirectangular heightmap)", path.display());
+    }
+    if let Some(path) = &cli.glb {
+        let bytes = world_gen::export::glb_globe(
+            &map,
+            cli.glb_grid,
+            (cli.glb_grid / 2).max(2),
+            cli.exaggeration,
+            cli.glb_texture,
+        );
+        if let Err(e) = std::fs::write(path, bytes) {
+            eprintln!("error: write glb {}: {e}", path.display());
+            return ExitCode::FAILURE;
+        }
+        println!("wrote {} (glTF 2.0 globe mesh)", path.display());
     }
     ExitCode::SUCCESS
 }
