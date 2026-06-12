@@ -169,7 +169,7 @@ book_id, save_raw_extraction, run_cfg_hash, run_base_version, cursor_to_set, cha
 - `fold_entity_job(rs, job)` = apply_entity_job → set all_known = known ∪ entity names → apply_entity_result. (serialize candidates).
 - `fold_trio_job(rs, op, job)` = apply_<op>_job(entities=reconstruct(rs.entities)) → fold_trio_op.
 - recovery: `assemble_recovery(rs)` = prepare_recovery (Tier1+2 inline) → build_recovery_batches → {batch_key: kwargs}; `fold_recovery_job` = parse_recovery_job+_parse_decisions → apply_recovery_batch → fold_recovery_task; on complete → finalize_recovery.
-- filter: `assemble_filter(rs)` = build_filter_category_batches per category → {cat:batch → kwargs}; `fold_filter_job` = parse_filter_job+_parse_verdicts → fold_filter_task; on complete → compute_filter_kept per cat + stitch.
+- filter: `assemble_filter(rs)` = build_filter_category_batches per category → {cat:batch → kwargs}; `fold_filter_job` = parse_filter_job+_parse_verdicts → fold_filter_task; on complete → compute_filter_kept per cat + stitch. **TRAP (review-impl finding 3):** `fold_filter_task` stores verdict keys as **str** (JSON-safe), but `compute_filter_kept` indexes by **int** `idx` — convert `{int(k): v}` per category when reconstructing, or every item reads `unjudged` and nothing is kept/dropped. (Same for any int-keyed accumulator round-tripped through resume_state JSONB.)
 
 ### consumer (worker-ai/app/llm_extract_consumer.py — model on summary_consumer + translation's llm_terminal_consumer)
 stream `loreweave:events:llm_job_terminal`, group `worker-ai-extract-resume`. `_handle`:
