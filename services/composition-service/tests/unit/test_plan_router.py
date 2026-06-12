@@ -167,7 +167,13 @@ def test_decompose_preview_worker_enabled_enqueues_202(ctx, monkeypatch):
     async def fail_decompose(*a, **kw):
         raise AssertionError("inline decompose must NOT run when the worker is enabled")
 
-    monkeypatch.setattr("app.routers.plan.get_generation_jobs_repo", lambda: FakeJobsRepo())
+    # get_generation_jobs_repo is ASYNC (deps.py) — the endpoint MUST await it.
+    # Mock it async so a missing `await` regresses to a 'coroutine has no attribute
+    # create' 500 (the exact bug the live-smoke caught; a sync mock would hide it).
+    async def fake_repo():
+        return FakeJobsRepo()
+
+    monkeypatch.setattr("app.routers.plan.get_generation_jobs_repo", fake_repo)
     monkeypatch.setattr("app.routers.plan.enqueue_job", fake_enqueue)
     monkeypatch.setattr("app.routers.plan.decompose", fail_decompose)
 

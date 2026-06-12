@@ -167,6 +167,11 @@ services:
       JWT_SECRET: ${JWT_SECRET:-loreweave_local_dev_jwt_secret_change_me_32chars}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
       REDIS_URL: redis://redis:6379
+      # M4 decouple — the API enqueues batch ops only when this is on. MUST match
+      # the composition-worker's flag (same env var): API on / worker off enqueues
+      # jobs nothing consumes; API off (the bug this fixes — the var was never wired
+      # to the service) silently runs every batch op inline + the worker idles.
+      COMPOSITION_WORKER_ENABLED: ${COMPOSITION_WORKER_ENABLED:-false}
       LOG_LEVEL: INFO
       # S2 — long-chapter state-compress threshold (chars of raw story-so-far
       # before the packer compresses the older portion). Default 6000; overridable.

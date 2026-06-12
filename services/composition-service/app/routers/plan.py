@@ -162,7 +162,7 @@ async def decompose_preview(
         # The repo is built lazily HERE (not a top-level Depends) so the default
         # inline path never touches the pool — keeps the flag-off contract + tests
         # unchanged.
-        jobs = get_generation_jobs_repo()
+        jobs = await get_generation_jobs_repo()
         job_input = {
             "model_source": str(body.model_source),
             "model_ref": str(body.model_ref),
