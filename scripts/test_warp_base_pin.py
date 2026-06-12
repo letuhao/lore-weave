@@ -107,6 +107,27 @@ def test_pin_base_unreachable_sha_returns_blocked(repo):
     assert _git(wt, "rev-parse", "HEAD") == repo["old"]
 
 
+def test_pin_base_refuses_in_primary_worktree(repo):
+    """The real-run hazard: running pin-base from the PRIMARY checkout (a slice whose
+    isolation worktree was never created) must REFUSE — never yank the coordinator's
+    main repo onto the slice branch. Exit 4 (wrong_worktree), main repo untouched."""
+    main = repo["main"]
+    before_head = _git(main, "rev-parse", "HEAD")
+    before_branch = _git(main, "rev-parse", "--abbrev-ref", "HEAD")
+    r = _pin_base(main, "warp/t/slice-1", repo["new"])
+    assert r.returncode == 4, r.stdout + r.stderr
+    assert "wrong_worktree" in (r.stdout + r.stderr)
+    # the primary checkout did NOT move and was NOT switched to the slice branch
+    assert _git(main, "rev-parse", "HEAD") == before_head
+    assert _git(main, "rev-parse", "--abbrev-ref", "HEAD") == before_branch
+    # and no slice branch was created in the primary repo
+    rc = subprocess.run(
+        ["git", "show-ref", "--verify", "--quiet", "refs/heads/warp/t/slice-1"],
+        cwd=main,
+    ).returncode
+    assert rc != 0
+
+
 def test_pin_base_branch_tip_is_descendant_after_commit(repo):
     """After pin + a slice commit, the coordinator's post-return check
     (`merge-base --is-ancestor BASE branch`) holds — the belt to pin's suspenders."""

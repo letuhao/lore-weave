@@ -43,9 +43,15 @@ python scripts/warp/worktrees.py pin-base --branch <BRANCH> --base <BASE_SHA>
 - **Exit 0** → you are now on `<BRANCH>` at `<BASE_SHA>`. Proceed to required reading.
 - **Exit 3** (`base_mismatch`) → the base SHA is unreachable in your worktree; you
   cannot self-heal. **STOP** and return `BLOCKED` with reason `base_mismatch`.
+- **Exit 4** (`wrong_worktree`) → you are NOT inside your own isolated worktree (it
+  wasn't created, or your shell cwd escaped it). pin-base refuses rather than clobber
+  the coordinator's main checkout. **STOP** and return `BLOCKED` with reason
+  `wrong_worktree`. Do NOT `cd` elsewhere and retry — the Coordinator re-spawns you.
+- **Any other non-zero** → **STOP** and return `BLOCKED` with the printed message.
 
-Do NOT read any file or run any test before this succeeds — reading against a stale
-base would mislead everything downstream.
+Run this from your worktree's default cwd — do NOT `cd` to find the script; it is at
+`scripts/warp/worktrees.py` inside your worktree. Do NOT read any file or run any test
+before pin-base succeeds — reading against a stale base would mislead everything downstream.
 
 ## Required reading (in this order)
 
@@ -104,7 +110,7 @@ have none — cold start). Everything you need is the frozen interface + your su
   "result": "BLOCKED",
   "slice_id": <SLICE_ID>,
   "branch": "<BRANCH>",
-  "reason": "needs_out_of_scope_write | frozen_interface_insufficient | acceptance_unreachable | prompt_interpolation_failure | base_mismatch",
+  "reason": "needs_out_of_scope_write | frozen_interface_insufficient | acceptance_unreachable | prompt_interpolation_failure | base_mismatch | wrong_worktree",
   "detail": "<=300 chars — e.g. which file outside the write-set was needed, or which frozen contract gap blocked you",
   "files_modified": ["<any partial work committed>"]
 }

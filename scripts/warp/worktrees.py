@@ -26,11 +26,13 @@ Exit codes:
   1  check: stale warp worktrees/branches found (refuse to start a new fan-out)
   2  usage / git error
   3  pin-base: base SHA unreachable in this worktree (caller returns BLOCKED)
+  4  pin-base: refused — running in the PRIMARY worktree, not a slice's linked one
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 
@@ -153,6 +155,23 @@ def cmd_pin_base(args) -> int:
     2 git error.
     """
     branch, base = args.branch, args.base
+    # 0. PRIMARY-WORKTREE GUARD (the real-run hazard): `git checkout -B` mutates
+    #    whichever worktree the cwd resolves to. If a slice runs this from the
+    #    PRIMARY checkout (its isolation worktree wasn't created, or it cd'd out),
+    #    pin-base would yank the coordinator's main repo onto the slice branch in
+    #    detached/clobbered HEAD — exactly the chaos the first real fan-out hit.
+    #    Refuse: in the primary worktree --absolute-git-dir == the common gitdir;
+    #    in a linked worktree they differ. Caller treats exit 4 as BLOCKED.
+    rc_a, gd, _ = _git("rev-parse", "--absolute-git-dir")
+    rc_b, gcd, _ = _git("rev-parse", "--git-common-dir")
+    gd, gcd = gd.strip(), gcd.strip()
+    if gcd and not os.path.isabs(gcd):
+        gcd = os.path.abspath(gcd)
+    if rc_a == 0 and rc_b == 0 and gd and gcd and os.path.realpath(gd) == os.path.realpath(gcd):
+        print("wrong_worktree: refusing to pin-base in the PRIMARY worktree — run this "
+              "from INSIDE the slice's own isolated worktree. Return BLOCKED(wrong_worktree).",
+              file=sys.stderr)
+        return 4
     # 1. reachability guard — the base commit MUST exist in this worktree's shared
     #    object DB. If it doesn't, the harness gave us a detached repo we can't fix
     #    locally; that's a BLOCKED design signal, not something to checkout around.

@@ -107,6 +107,15 @@ BUILD — fan out (one message, all slices, concurrent):
                        → BASE_SHA was unreachable in the slice's worktree (harness gave a
                          detached/unrelated repo). Re-spawn the slice; if it persists, the
                          worktree substrate is broken on this box → fall back to serial /loom.
+    - result BLOCKED with wrong_worktree
+                       → the slice's isolation worktree wasn't created (or its cwd escaped),
+                         so pin-base refused rather than clobber YOUR main checkout. Re-spawn;
+                         if it persists for that slice, build it serially in /loom instead of
+                         fanning it out. (Real-run note: a slice with no worktree silently
+                         operates on the primary checkout — the wrong_worktree guard + a post-
+                         fan-out `git worktree list` sanity check catch this; if your main repo
+                         is ever detached after a fan-out, a slice ran in it — restore with
+                         `git checkout <feat-branch>` and re-pin the slice branch ref.)
     - result BLOCKED with needs_out_of_scope_write | frozen_interface_insufficient
                        → a DESIGN signal: STOP, return to DESIGN (re-slice / re-freeze). Do NOT patch around it.
 
