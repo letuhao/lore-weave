@@ -1,0 +1,58 @@
+# /warp Slice Manifest — clear-defers-codeside
+#
+# Clears the 12 "can-do-now" code/test defers of the LLM-execution re-arch (Phase 3
+# + WX/2B carryover), as 5 provably-disjoint per-service slices. The inter-slice
+# contract is EMPTY (no shared type/API/migration-sequence change) — the only shared
+# surfaces are the two frozen magnets below, which NO slice may touch (the orchestrator
+# owns docker-compose env overrides + the SESSION_HANDOFF update, applied after reconcile).
+#
+# Validate: python scripts/workflow-gate.py slices docs/warp/clear-defers-codeside/manifest.yaml --verify-frozen
+
+task: clear-defers-codeside
+
+# The shared-write magnets, frozen for the fan-out. Slices add new runtime config as
+# DEFAULTS in their own service config.py; compose env overrides are an orchestrator
+# step (live-smoke batch). SESSION_HANDOFF is orchestrator-owned (updated post-reconcile).
+frozen_interface:
+  - path: infra/docker-compose.yml
+    sha: 51c944bcaa53a2e8b304a4783b6efc1623180df8
+  - path: docs/sessions/SESSION_HANDOFF.md
+    sha: 53e56fc287ae5a47a17999d95118ecc736e3786f
+
+slices:
+  - id: 1
+    label: composition-reaper-conflict
+    writes: [services/composition-service/**]
+    reads:  [sdks/python/**]
+    acceptance: ["python -m pytest -q  (cwd services/composition-service)"]
+
+  - id: 2
+    label: lore-enrichment-compose-task-hardening
+    writes: [services/lore-enrichment-service/**]
+    reads:  [sdks/python/**]
+    acceptance: ["python -m pytest -q  (cwd services/lore-enrichment-service)"]
+
+  - id: 3
+    label: worker-ai-trio-race-runsample
+    writes: [services/worker-ai/**]
+    reads:  [sdks/python/**]
+    acceptance: ["python -m pytest -q  (cwd services/worker-ai)"]
+
+  - id: 4
+    label: translation-flag-coupling-block-obs
+    writes: [services/translation-service/**]
+    reads:  [sdks/python/**]
+    acceptance: ["python -m pytest -q  (cwd services/translation-service)"]
+
+  - id: 5
+    label: observability-substream-and-log
+    writes: [services/chat-service/**, services/provider-registry-service/**]
+    reads:  [sdks/python/**, sdks/go/**]
+    acceptance:
+      - "python -m pytest -q  (cwd services/chat-service)"
+      - "go build ./... && go vet ./...  (cwd services/provider-registry-service)"
+
+merge_plan:
+  integrate_order: [1, 2, 3, 4, 5]
+  reconcile_evidence: "per-service unit suites green post-merge (composition / lore-enrichment / worker-ai / translation / chat pytest + provider-registry go build+vet); cross-service live-smoke deferred to the go-live batch (the flags these harden stay default-off)"
+  on_contract_violation: HALT_REDESIGN
