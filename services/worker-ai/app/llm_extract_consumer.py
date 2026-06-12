@@ -246,10 +246,10 @@ async def _process_msg(client, pool, knowledge_client, llm_client, msg_id: str, 
     """Process one terminal event with BOUNDED retry (review-impl finding 1). On a
     transient failure (DB blip, knowledge 503, slow get_job) we DO NOT ack — the
     message stays in the PEL and is re-processed by the startup drain on the next run,
-    so the chapter is NOT permanently dropped (there is no stale-resume sweeper for
-    extraction; immediate-ack would strand the job forever). A genuine poison is acked
-    after MAX_RETRIES deliveries so it can't redeliver-storm. Mirrors the glossary /
-    translation terminal consumers."""
+    so the chapter is NOT permanently dropped; the Wave-1b stuck-resume sweeper is the
+    additional runtime backstop (a row idle past the timeout is re-driven even without
+    a redelivery). A genuine poison is acked after MAX_RETRIES deliveries so it can't
+    redeliver-storm. Mirrors the glossary / translation terminal consumers."""
     try:
         await _handle(pool, knowledge_client, llm_client, fields)
         await client.xack(TERMINAL_STREAM, GROUP, msg_id)
@@ -260,18 +260,16 @@ async def _process_msg(client, pool, knowledge_client, llm_client, msg_id: str, 
         if count >= MAX_RETRIES:
             # /review-impl finding 1 — the finalize tx is strict (no best-effort
             # cursor-advance fallback), so a POISON finalize leaves resume_state SET
-            # while we ack here: a Redis stream gives no redelivery after ack, and
-            # there is no stale-resume sweeper YET. So name the stranded chunk loudly
-            # and point at its recovery. Until the sweeper lands (D-WX-SUBMIT-PERSIST-GAP,
-            # Wave 1b — the designed runtime backstop), recovery is a worker restart
-            # (the startup PEL drain) — which this ack also forfeits. This is acceptable
-            # ONLY while the decouple flag is OFF; the sweeper MUST precede default-on.
+            # while we ack here: a Redis stream gives no redelivery after ack. The
+            # Wave-1b stuck-resume sweeper IS the runtime backstop (it re-drives a row
+            # idle past the timeout even with no redelivery), so name the stranded chunk
+            # loudly for observability; the sweeper recovers it on its next tick.
             job_id = _field(fields, "job_id")
             logger.error(
                 "decoupled-extract resume POISON after %d× msg=%s job=%s — acking; the "
-                "chunk's resume_state may be STRANDED (no terminal-event redelivery after "
-                "ack, no sweeper yet). Recovery: the stuck-resume sweeper (Wave 1b) or "
-                "manual re-drive. Last error: %s",
+                "chunk's resume_state is STRANDED for now (no terminal-event redelivery "
+                "after ack). Recovery: the Wave-1b stuck-resume sweeper re-drives it on "
+                "its next tick. Last error: %s",
                 count, msg_id, job_id, exc,
             )
             await client.xack(TERMINAL_STREAM, GROUP, msg_id)
@@ -307,8 +305,6 @@ async def _drain_pending(client, pool, knowledge_client, llm_client, consumer_na
 # `_resume` (the FOR UPDATE / finalize-recheck make a concurrent consumer + sweeper
 # safe). A still-in-flight job is left alone (slow, not stuck).
 
-TERMINAL_JOB_STATUSES = {"completed", "failed", "cancelled"}
-
 
 async def _sweep_once(pool, knowledge_client, llm_client: LLMClient, *,
                       timeout_s: int, batch: int) -> int:
@@ -338,8 +334,10 @@ async def _sweep_once(pool, knowledge_client, llm_client: LLMClient, *,
                 continue
             # Only replay a TERMINAL job — _resume folds the job result unconditionally
             # (it's normally driven by a terminal event), so re-driving a still-running
-            # job would fold an incomplete result. Slow ≠ stuck.
-            if getattr(job, "status", None) not in TERMINAL_JOB_STATUSES:
+            # job would fold an incomplete result. Slow ≠ stuck. Use the SDK's own
+            # predicate (the single source of truth for terminal states — no parallel
+            # status set to drift out of sync).
+            if not job.is_terminal():
                 continue
             try:
                 await _resume(pool, knowledge_client, llm_client, None, jid, row["id"], rs)

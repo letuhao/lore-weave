@@ -334,11 +334,21 @@ def _spy_resume(monkeypatch):
     return calls
 
 
+def _sdk_job(status, result=None):
+    """A get_job return that mirrors the SDK Job's is_terminal() predicate — the
+    sweeper now keys on job.is_terminal(), not a hardcoded status set (review-impl)."""
+    return SimpleNamespace(
+        status=status,
+        result={} if result is None else result,
+        is_terminal=lambda: status in ("completed", "failed", "cancelled"),
+    )
+
+
 async def test_sweep_redrives_a_terminal_job(monkeypatch):
     conn = FakeConn([])
     pool = FakePool(conn, fetch_rows=[_stranded_row(["j1"])])
     llm = AsyncMock()
-    llm.get_job.return_value = SimpleNamespace(status="completed", result={})
+    llm.get_job.return_value = _sdk_job("completed")
     calls = _spy_resume(monkeypatch)
 
     n = await _sweep_once(pool, AsyncMock(), llm, timeout_s=900, batch=20)
@@ -350,7 +360,7 @@ async def test_sweep_leaves_inflight_job_alone(monkeypatch):
     conn = FakeConn([])
     pool = FakePool(conn, fetch_rows=[_stranded_row(["j1"])])
     llm = AsyncMock()
-    llm.get_job.return_value = SimpleNamespace(status="running", result=None)  # slow ≠ stuck
+    llm.get_job.return_value = _sdk_job("running")  # slow ≠ stuck
     calls = _spy_resume(monkeypatch)
 
     n = await _sweep_once(pool, AsyncMock(), llm, timeout_s=900, batch=20)
@@ -366,7 +376,7 @@ async def test_sweep_tries_next_id_when_get_job_errors(monkeypatch):
     async def get_job(jid, user_id=None):
         if jid == "bad":
             raise RuntimeError("transient")
-        return SimpleNamespace(status="completed", result={})
+        return _sdk_job("completed")
 
     llm.get_job.side_effect = get_job
     calls = _spy_resume(monkeypatch)
@@ -380,12 +390,31 @@ async def test_sweep_redrives_once_per_row_then_breaks(monkeypatch):
     conn = FakeConn([])
     pool = FakePool(conn, fetch_rows=[_stranded_row(["j1", "j2"])])  # both terminal
     llm = AsyncMock()
-    llm.get_job.return_value = SimpleNamespace(status="completed", result={})
+    llm.get_job.return_value = _sdk_job("completed")
     calls = _spy_resume(monkeypatch)
 
     n = await _sweep_once(pool, AsyncMock(), llm, timeout_s=900, batch=20)
 
     assert n == 1 and calls == ["j1"]  # one re-drive advances the row; re-eval next tick
+
+
+async def test_sweep_resolves_byok_owner_for_get_job(monkeypatch):
+    # review-impl finding 4 — a BYOK job is OWNED by the billing user (submit_job
+    # overrides user_id with the billing contextvar), so the sweeper's get_job must
+    # target billing_user_id, not the project owner's user_id, or it can't see the job.
+    BILL = "cccccccc-cccc-cccc-cccc-cccccccccccc"
+    row = {
+        "id": EJ, "provider_job_ids": ["j1"],
+        "resume_state": {"stage": dx.TRIO, "user_id": USER, "billing_user_id": BILL},
+    }
+    pool = FakePool(FakeConn([]), fetch_rows=[row])
+    llm = AsyncMock()
+    llm.get_job.return_value = _sdk_job("completed")
+    _spy_resume(monkeypatch)
+
+    await _sweep_once(pool, AsyncMock(), llm, timeout_s=900, batch=20)
+
+    assert llm.get_job.call_args.kwargs["user_id"] == BILL
 
 
 async def test_sweep_query_filters_on_resume_and_idle(monkeypatch):
