@@ -42,6 +42,10 @@ members = [
     # per-reality projection write path from canon.* events fanned out via
     # the xreality protocol (cycle 10) + meta-worker canon writer (cycle 24+).
     "crates/projections/canon",
+    # S2/C2 (2026-06-04) — from-spec golden fixtures: {event -> expected
+    # projection delta} per event type, asserted against the full projection
+    # set's apply_one. The value-correctness oracle (regression-lock framing).
+    "crates/projection-golden",
     # Cycle 27 — L5.I.3 full canon-guardrail implementation. Backwards-compat
     # with cycle-25 `dp-kernel::canon_cache::CanonGuardrail` trait (Q-L5-5
     # LOCKED). Production roleplay-service / world-service binds

@@ -1,0 +1,22 @@
+{
+  "_spec": "world.kv_set → INSERT world_kv_projection {key, value (payload.value), last_event_version, updated_at=env.recorded_at} (WorldKvProjection; payload.key must be a string).",
+  "envelope": {
+    "event_id": "00000000-0000-0000-0000-000000000601",
+    "event_type": "world.kv_set",
+    "event_version": 1,
+    "aggregate_id": "world",
+    "aggregate_type": "world",
+    "aggregate_version": 1,
+    "reality_id": "22222222-2222-2222-2222-222222222222",
+    "occurred_at": "2026-01-01T00:00:00.000000Z",
+    "recorded_at": "2026-01-01T00:00:00.000000Z",
+    "payload": { "key": "quest.flag", "value": true }
+  },
+  "expected_updates": [
+    { "Insert": {
+      "table": "world_kv_projection",
+      "row": { "key": "quest.flag", "value": true, "last_event_version": 1, "updated_at": "2026-01-01T00:00:00.000000Z" },
+      "meta": { "event_id": "00000000-0000-0000-0000-000000000601", "aggregate_version": 1, "applied_at": "2026-01-01T00:00:00.000000Z" }
+    }}
+  ]
+}

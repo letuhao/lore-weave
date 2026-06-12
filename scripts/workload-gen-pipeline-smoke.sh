@@ -124,3 +124,15 @@ done
 log "total projection rows = $TOTAL (from $EVENTS events)"
 [ "$TOTAL" -gt 0 ] || { log "FAIL: projections empty after rebuild"; exit 1; }
 log "PASS: emit → rebuild populated $TOTAL projection rows from $EVENTS events"
+
+# C structural (S2) — no-orphan sweep over the freshly-rebuilt projections:
+# every projection row's event_id must resolve to a real event. A latent guard
+# (tautological on a rebuilt DB today; fires the day a non-rebuild writer lands)
+# — run here so it stays green in the same pipeline the rows came from.
+log "C structural: no-orphan projection sweep ..."
+if [ -n "$WG" ]; then
+  "$WG" -check-projections -dsn "$REALITY_DSN"
+else
+  ( cd tests/workload-gen && "${GO_BIN:-go}" run ./cmd/workload-gen -check-projections -dsn "$REALITY_DSN" )
+fi
+log "PASS: emit → rebuild → no-orphan clean (B→derived spine + C structural)"

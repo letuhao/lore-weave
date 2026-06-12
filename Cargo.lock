@@ -1773,6 +1773,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "projection-golden"
+version = "0.1.0"
+dependencies = [
+ "dp-kernel",
+ "projections-canon",
+ "projections-npc",
+ "projections-pc",
+ "projections-region",
+ "projections-session",
+ "projections-world-kv",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "projections-canon"
 version = "0.1.0"
 dependencies = [
