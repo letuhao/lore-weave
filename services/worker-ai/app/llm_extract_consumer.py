@@ -68,8 +68,10 @@ async def _load_for_job(pool, provider_job_id: str):
     return row["id"], rs
 
 
-async def _persist_inflight(pool, ej_id, provider_job_ids: list[str], rs: dict) -> None:
-    await pool.execute(
+async def _persist_inflight(ex, ej_id, provider_job_ids: list[str], rs: dict) -> None:
+    # ex is a Pool OR an asyncpg Connection (the trio-fold race guard persists the
+    # merged state inside the FOR UPDATE tx — D-WX-TRIO-FANIN-RACE).
+    await ex.execute(
         """UPDATE extraction_jobs
            SET provider_job_ids=$2::jsonb, resume_state=$3::jsonb, pipeline_stage=$4
            WHERE id=$1""",
@@ -78,23 +80,32 @@ async def _persist_inflight(pool, ej_id, provider_job_ids: list[str], rs: dict) 
     )
 
 
-async def _clear_resume(pool, ej_id) -> None:
-    await pool.execute(
+async def _clear_resume(ex, ej_id) -> None:
+    await ex.execute(
         "UPDATE extraction_jobs SET resume_state=NULL, provider_job_ids=NULL, pipeline_stage='done' WHERE id=$1",
         ej_id,
     )
 
 
 async def _persist_chunk(pool, knowledge_client, ej_id, rs: dict) -> None:
-    """Terminal stage: persist candidates → advance cursor + emit chapter_extracted
-    (atomic) → record spend → clear resume_state. Finalize-FIRST then clear (a crash
-    between redelivers; the lookup still finds the row to retry). The campaign
-    reconcile backstops a lost completion event."""
+    """Terminal stage: persist candidates to knowledge (idempotent MERGE, BEFORE the
+    tx) → then advance cursor + emit run/chapter_extracted + record spend + clear
+    resume_state ALL IN ONE TRANSACTION.
+
+    D-WX-PERSIST-DOUBLE-SPEND: the spend + the resume-clear are folded into the same
+    tx as the cursor-advance, and the tx re-reads the row ``FOR UPDATE`` and skips if
+    resume_state is already NULL — so a redelivery (the previous code crashed in the
+    multi-write window after `_record_spending` before `_clear_resume`) re-runs the
+    idempotent persist_pass2 but does NOT re-spend: either the whole finalize committed
+    (row cleared → recheck returns NULL → skip) or none of it did (retry cleanly).
+    persist_pass2 stays OUTSIDE the tx (it's a knowledge HTTP call; holding a DB row
+    lock across it would pin a pooled connection — and the MERGE is idempotent)."""
     from app.runner import (
         _DEFAULT_COST_PER_ITEM as COST,
-        _advance_cursor_and_emit_run,
+        _advance_cursor,
         _record_spending,
     )
+    from app.outbox_emit import emit_chapter_extracted, emit_extraction_run
 
     ctx = rs["persist_ctx"]
     cands = dx.reconstruct_candidates(rs)
@@ -119,8 +130,7 @@ async def _persist_chunk(pool, knowledge_client, ej_id, rs: dict) -> None:
         billing_embedding_model=ctx.get("billing_embedding_model"),
     )
 
-    # Fill the pre-built run_payload's metrics from the persist result, then advance
-    # the cursor + emit the run + the campaign completion event in ONE tx.
+    # Fill the pre-built run_payload's metrics from the persist result.
     run_payload = dict(rs["run_payload"])
     run_payload["metrics"] = {
         **run_payload.get("metrics", {}),
@@ -129,13 +139,29 @@ async def _persist_chunk(pool, knowledge_client, ej_id, rs: dict) -> None:
         "events_merged": result.events_merged,
         "facts_merged": result.facts_merged,
     }
-    await _advance_cursor_and_emit_run(
-        pool, owner_id, UUID(ctx["job_id"]), rs["cursor_to_set"], run_payload,
-        chapter_extracted=rs.get("chapter_extracted"),
-    )
-    if project_id is not None:
-        await _record_spending(pool, owner_id, project_id, COST)
-    await _clear_resume(pool, ej_id)
+    chapter_extracted = rs.get("chapter_extracted")
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            # Re-read FOR UPDATE: if a concurrent finalize (a duplicate terminal event
+            # racing this one) already cleared resume_state, skip the cursor/spend/clear
+            # entirely — the work is done; re-spending here is exactly the bug.
+            locked = await conn.fetchrow(
+                "SELECT resume_state FROM extraction_jobs WHERE id=$1 FOR UPDATE",
+                ej_id,
+            )
+            if locked is None or locked["resume_state"] is None:
+                logger.info(
+                    "decoupled extraction: chunk %s already finalized concurrently; "
+                    "skipping cursor/spend (no double-spend)", ctx["source_id"],
+                )
+                return
+            await _advance_cursor(conn, owner_id, UUID(ctx["job_id"]), rs["cursor_to_set"])
+            await emit_extraction_run(conn, run_payload)
+            if chapter_extracted is not None:
+                await emit_chapter_extracted(conn, **chapter_extracted)
+            if project_id is not None:
+                await _record_spending(conn, owner_id, project_id, COST)
+            await _clear_resume(conn, ej_id)
     logger.info(
         "decoupled extraction: chunk %s persisted via event path (entities=%d relations=%d)",
         ctx["source_id"], result.entities_merged, result.relations_created,
@@ -164,14 +190,37 @@ async def _resume(pool, knowledge_client, llm_client: LLMClient, owner_user_id, 
                 await _persist_chunk(pool, knowledge_client, ej_id, rs)
 
         elif stage == dx.TRIO:
-            op = dx.op_for_job(rs, job_id)
-            if op is None:  # duplicate of an already-superseded op
-                return
-            rs = dx.fold_trio_job(rs, op, job)
-            if rs["stage"] == dx.TRIO:  # still waiting on the other ops
-                await _persist_inflight(pool, ej_id, list(rs["trio_jobs"].values()), rs)
-            else:  # all 3 folded → persist
-                await _persist_chunk(pool, knowledge_client, ej_id, rs)
+            # D-WX-TRIO-FANIN-RACE — the fold is a read-modify-write on resume_state.
+            # With >1 worker-ai replica, the relation/event/fact terminal events arrive
+            # concurrently; each replica would read the same rs, fold only its own op,
+            # and the last write would clobber the others → a lost op → the fan-in
+            # never completes (chunk stuck in TRIO). SELECT ... FOR UPDATE serialises
+            # the read-modify-write on the row so every op is folded. The fold +
+            # in-flight persist run UNDER the lock; the terminal persist (a knowledge
+            # HTTP call) runs OUTSIDE it (persist_chunk re-locks + is idempotent).
+            completed_rs = None
+            async with pool.acquire() as conn:
+                async with conn.transaction():
+                    row = await conn.fetchrow(
+                        """SELECT resume_state FROM extraction_jobs
+                           WHERE id=$1 AND resume_state IS NOT NULL FOR UPDATE""",
+                        ej_id,
+                    )
+                    if row is None:
+                        return  # finalized/cleared by a concurrent winner
+                    fresh = row["resume_state"]
+                    fresh = fresh if isinstance(fresh, dict) else json.loads(fresh)
+                    if fresh.get("stage") != dx.TRIO:
+                        return  # a concurrent fold already advanced past trio
+                    op = dx.op_for_job(fresh, job_id)
+                    if op is None:  # duplicate of an already-superseded op
+                        return
+                    fresh = dx.fold_trio_job(fresh, op, job)
+                    await _persist_inflight(conn, ej_id, list(fresh["trio_jobs"].values()), fresh)
+                    if fresh["stage"] != dx.TRIO:  # all 3 folded → finalize
+                        completed_rs = fresh
+            if completed_rs is not None:
+                await _persist_chunk(pool, knowledge_client, ej_id, completed_rs)
 
         else:  # PERSIST / unexpected — finalize defensively
             await _persist_chunk(pool, knowledge_client, ej_id, rs)
@@ -208,9 +257,21 @@ async def _process_msg(client, pool, knowledge_client, llm_client, msg_id: str, 
         count = int(await client.incr(retry_key))
         await client.expire(retry_key, 3600)
         if count >= MAX_RETRIES:
+            # /review-impl finding 1 — the finalize tx is strict (no best-effort
+            # cursor-advance fallback), so a POISON finalize leaves resume_state SET
+            # while we ack here: a Redis stream gives no redelivery after ack, and
+            # there is no stale-resume sweeper YET. So name the stranded chunk loudly
+            # and point at its recovery. Until the sweeper lands (D-WX-SUBMIT-PERSIST-GAP,
+            # Wave 1b — the designed runtime backstop), recovery is a worker restart
+            # (the startup PEL drain) — which this ack also forfeits. This is acceptable
+            # ONLY while the decouple flag is OFF; the sweeper MUST precede default-on.
+            job_id = _field(fields, "job_id")
             logger.error(
-                "decoupled-extract resume failed %d× msg=%s — acking (poison): %s",
-                count, msg_id, exc,
+                "decoupled-extract resume POISON after %d× msg=%s job=%s — acking; the "
+                "chunk's resume_state may be STRANDED (no terminal-event redelivery after "
+                "ack, no sweeper yet). Recovery: the stuck-resume sweeper (Wave 1b) or "
+                "manual re-drive. Last error: %s",
+                count, msg_id, job_id, exc,
             )
             await client.xack(TERMINAL_STREAM, GROUP, msg_id)
             await client.delete(retry_key)

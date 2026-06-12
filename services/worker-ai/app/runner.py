@@ -814,7 +814,7 @@ async def _append_log(
 
 
 async def _record_spending(
-    pool: asyncpg.Pool, user_id: UUID, project_id: UUID, cost: Decimal,
+    ex: Any, user_id: UUID, project_id: UUID, cost: Decimal,
 ) -> None:
     """D-K16.11-01 — update the per-project monthly + all-time spend
     counters after a successful extraction item.
@@ -829,9 +829,13 @@ async def _record_spending(
     Not guarded by an atomic budget check — that's ``_try_spend``'s job
     on ``extraction_jobs.max_spend_usd``. This function is strictly
     accounting + rollover.
-    """
+
+    ``ex`` is a Pool (default) OR an asyncpg Connection — the latter lets the
+    decoupled-extraction finalize fold the spend into the SAME tx as the
+    cursor-advance + resume-clear, so a crash can't leave spend recorded with
+    resume_state still present (D-WX-PERSIST-DOUBLE-SPEND)."""
     month_key = datetime.now(timezone.utc).strftime("%Y-%m")
-    await pool.execute(
+    await ex.execute(
         """
         UPDATE knowledge_projects
         SET current_month_spent_usd = CASE
