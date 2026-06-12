@@ -632,8 +632,8 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-loreweave}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-loreweave_dev_minio_secret}
       MINIO_EXTERNAL_URL: ${MINIO_EXTERNAL_URL:-http://localhost:9123}
       # LLM re-arch Phase 3 M5 — decoupled video-gen. DB + Redis back the
       # job-row + terminal-event path; the flag (default false) keeps the
@@ -673,8 +673,8 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-loreweave}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-loreweave_dev_minio_secret}
       MINIO_EXTERNAL_URL: ${MINIO_EXTERNAL_URL:-http://localhost:9123}
       VIDEO_GEN_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_video_gen
       REDIS_URL: redis://redis:6379

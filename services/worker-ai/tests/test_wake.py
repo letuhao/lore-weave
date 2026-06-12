@@ -50,6 +50,24 @@ async def test_wait_degrades_to_sleep_on_xread_error():
 
 
 @pytest.mark.asyncio
+async def test_wait_false_on_redis_timeout_not_a_fault(caplog):
+    """redis-py 8: an idle blocking XREAD raises TimeoutError instead of returning
+    [] (the 5.x behavior this was written against). It is the NORMAL no-wake
+    timeout — wait() must return False WITHOUT logging a fault traceback or
+    sleeping a SECOND timeout_s. Before the fix this spammed a traceback every
+    idle cycle and doubled poll latency."""
+    import redis.asyncio as aioredis
+
+    w, _ = _waiter(xread_error=aioredis.TimeoutError("idle block expired"))
+    with patch("app.wake.asyncio.sleep", new=AsyncMock()) as fake_sleep:
+        with caplog.at_level("WARNING"):
+            assert await w.wait(0.01) is False
+        fake_sleep.assert_not_awaited()  # no degrade-to-sleep → no doubled latency
+    assert "wake: XREAD failed" not in caplog.text  # no fault traceback spam
+    assert w._last_id == "$"  # tail unchanged
+
+
+@pytest.mark.asyncio
 async def test_wait_sleeps_when_redis_init_fails():
     # Redis init raised → no client → plain sleep, never True.
     with patch("app.wake.aioredis.from_url", side_effect=ConnectionError("no redis")):
