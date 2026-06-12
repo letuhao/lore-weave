@@ -644,3 +644,25 @@ async def test_sweep_query_filters_on_resume_and_idle(monkeypatch):
     # extraction_jobs is keyed by job_id, not a surrogate `id` (real-schema parity)
     assert "SELECT job_id" in sql
     assert captured["args"] == (900, 20)
+
+
+async def test_sweep_select_uses_for_update_skip_locked(monkeypatch):
+    # D-WX-TRIO-FANIN-RACE (sweep side) — two worker-ai replicas must not both claim
+    # the SAME stranded row and double-submit an ENTITY-stage re-drive. FOR UPDATE
+    # SKIP LOCKED makes concurrent sweeps claim DISJOINT rows: the second replica's
+    # SELECT skips a row already locked by the first instead of blocking on it. The
+    # trio fold's own FOR UPDATE (no SKIP — it must block) stays as-is.
+    captured = {}
+
+    class CapturingPool(FakePool):
+        async def fetch(self, sql, *args):
+            captured["sql"] = sql
+            return []
+
+    pool = CapturingPool(FakeConn([]))
+    await _sweep_once(pool, AsyncMock(), AsyncMock(), timeout_s=900, batch=20)
+
+    sql = captured["sql"]
+    assert "FOR UPDATE SKIP LOCKED" in sql      # disjoint per-replica claim
+    # the LIMIT must precede FOR UPDATE (Postgres grammar: locking clause is last)
+    assert sql.index("LIMIT") < sql.index("FOR UPDATE SKIP LOCKED")

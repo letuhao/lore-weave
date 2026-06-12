@@ -460,6 +460,14 @@ async def _drain_pending(client, pool, knowledge_client, llm_client, consumer_na
 async def _sweep_once(pool, knowledge_client, llm_client: LLMClient, *,
                       timeout_s: int, batch: int) -> int:
     """One sweep tick. Returns the number of rows re-driven (for tests/telemetry)."""
+    # D-WX-TRIO-FANIN-RACE (sweep side) — FOR UPDATE SKIP LOCKED so concurrent
+    # worker-ai replicas claim DISJOINT stranded rows: a row already locked by another
+    # replica's in-flight sweep is skipped (not blocked on), preventing two replicas
+    # from both re-driving the same chunk and double-submitting its ENTITY-stage fan-out.
+    # The lock is held only for the duration of this SELECT's own (implicit) statement
+    # context here; _resume re-locks the row under its own FOR UPDATE when it folds, so
+    # the claim is a best-effort partition, not a long-held lock. The trio fold's own
+    # FOR UPDATE (no SKIP — it must block to serialise the read-modify-write) is unchanged.
     rows = await pool.fetch(
         """SELECT job_id, provider_job_ids, resume_state
            FROM extraction_jobs
@@ -467,7 +475,8 @@ async def _sweep_once(pool, knowledge_client, llm_client: LLMClient, *,
              AND status IN ('running', 'paused')
              AND updated_at < now() - make_interval(secs => $1::int)
            ORDER BY updated_at ASC
-           LIMIT $2::int""",
+           LIMIT $2::int
+           FOR UPDATE SKIP LOCKED""",
         timeout_s, batch,
     )
     redriven = 0
