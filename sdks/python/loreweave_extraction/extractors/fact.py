@@ -391,6 +391,27 @@ def parse_fact_job(
     return _tolerant_parse_facts(raw_items, on_dropped=on_dropped)
 
 
+def build_fact_system(
+    known_entities: list[str], prompt_override_system: str | None = None,
+) -> str:
+    """Pure: the fact system prompt (WX-T2d)."""
+    safe_known = json.dumps(known_entities, ensure_ascii=False).replace("{", "{{").replace("}", "}}")
+    return apply_prompt_override(
+        load_prompt("fact_system", known_entities=safe_known), prompt_override_system,
+    )
+
+
+def apply_fact_job(
+    job: Any, *, on_dropped: DroppedHandler | None,
+    entities: list, known_entities: list[str], user_id: str,
+) -> list[LLMFactCandidate]:
+    """Parse + postprocess a fact terminal Job (WX-T2d)."""
+    return _postprocess(
+        parse_fact_job(job, on_dropped=on_dropped),
+        entities=entities, known_entities=known_entities, user_id=user_id,
+    )
+
+
 def _tolerant_parse_facts(
     raw_items: list[Any],
     *,

@@ -330,6 +330,29 @@ def parse_entity_job(
     return _tolerant_parse_entities(raw_items, on_dropped=on_dropped)
 
 
+def build_entity_system(
+    known_entities: list[str], prompt_override_system: str | None = None,
+) -> str:
+    """Pure: the entity system prompt (WX-T2d). Same as extract_entities builds —
+    so the decoupled orchestrator assembles an identical submit."""
+    safe_known = json.dumps(known_entities, ensure_ascii=False).replace("{", "{{").replace("}", "}}")
+    return apply_prompt_override(
+        load_prompt("entity_system", known_entities=safe_known), prompt_override_system,
+    )
+
+
+def apply_entity_job(
+    job: Any, *, on_dropped: DroppedHandler | None,
+    user_id: str, project_id: str | None, known_entities: list[str],
+) -> list[LLMEntityCandidate]:
+    """Parse + postprocess an entity terminal Job (WX-T2d) = parse_entity_job →
+    _postprocess. Identical to extract_entities' tail."""
+    return _postprocess(
+        parse_entity_job(job, on_dropped=on_dropped),
+        user_id=user_id, project_id=project_id, known_entities=known_entities,
+    )
+
+
 def _tolerant_parse_entities(
     raw_items: list[Any],
     *,

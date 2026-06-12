@@ -332,6 +332,28 @@ def parse_relation_job(
     return _tolerant_parse_relations(raw_items, on_dropped=on_dropped)
 
 
+def build_relation_system(
+    known_entities: list[str], prompt_override_system: str | None = None,
+) -> str:
+    """Pure: the relation system prompt (WX-T2d)."""
+    safe_known = json.dumps(known_entities, ensure_ascii=False).replace("{", "{{").replace("}", "}}")
+    return apply_prompt_override(
+        load_prompt("relation_system", known_entities=safe_known), prompt_override_system,
+    )
+
+
+def apply_relation_job(
+    job: Any, *, on_dropped: DroppedHandler | None,
+    entities: list, known_entities: list[str], user_id: str, project_id: str | None,
+) -> list[LLMRelationCandidate]:
+    """Parse + postprocess a relation terminal Job (WX-T2d)."""
+    return _postprocess(
+        parse_relation_job(job, on_dropped=on_dropped),
+        entities=entities, known_entities=known_entities,
+        user_id=user_id, project_id=project_id,
+    )
+
+
 def _tolerant_parse_relations(
     raw_items: list[Any],
     *,
